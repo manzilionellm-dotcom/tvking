@@ -1,0 +1,31 @@
+# =========================================================
+#  analysis_options.yaml — Règles de qualité de code Dart
+# =========================================================
+#  Sert à imposer un style de code propre et à éviter les bugs
+#  classiques. Exécuté avec `flutter analyze` ou par l'IDE.
+# =========================================================
+
+# On hérite des règles officielles "recommandées par Flutter".
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # Forcer le nommage des constructeurs avec `const` quand possible
+    # (très important pour les performances de rendu).
+    prefer_const_constructors: true
+    prefer_const_literals_to_create_immutables: true
+
+    # Interdire les `print()` en production (utiliser un logger).
+    avoid_print: true
+
+    # Forcer les noms de fichiers en snake_case (convention Dart).
+    file_names: true
+
+analyzer:
+  # Considérer les warnings comme des erreurs en CI (plus strict).
+  errors:
+    invalid_annotation_target: ignore
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true

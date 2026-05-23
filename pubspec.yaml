@@ -1,0 +1,58 @@
+# =========================================================
+#  pubspec.yaml — Manifeste du projet Flutter
+# =========================================================
+#  C'est l'équivalent de "package.json" en Node.js.
+#  Il décrit :
+#    - le nom et la version de l'app
+#    - les SDK requis (Dart, Flutter)
+#    - les dépendances externes (packages pub.dev)
+#    - les assets (images, polices) embarqués dans l'app
+# =========================================================
+
+name: tv_king
+description: "TV King — lecteur IPTV premium pour mobile, Android TV et Fire TV."
+publish_to: 'none'        # On NE publie PAS sur pub.dev (app privée)
+version: 0.1.0+1          # 0.1.0 = version humaine, +1 = build number Android
+
+environment:
+  # Dart 3.5+ : nous utilisons les "records" et pattern matching modernes.
+  sdk: ^3.5.0
+  # Flutter 3.24+ : version stable récente, recommandée pour TV.
+  flutter: ">=3.24.0"
+
+# -----------------------------------------------------------------
+# DÉPENDANCES — Phase 1 (cœur de l'application)
+# -----------------------------------------------------------------
+# Volontairement minimaliste pour l'instant. On ajoutera au fur
+# et à mesure des phases : media_kit, drift, riverpod, firebase...
+# -----------------------------------------------------------------
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Icônes style iOS (incluses par défaut dans tout projet Flutter)
+  cupertino_icons: ^1.0.8
+
+  # Police "Inter" sans avoir à embarquer le TTF :
+  # google_fonts télécharge la police la première fois puis la cache.
+  google_fonts: ^6.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # Règles de lint officielles Flutter — détecte les mauvaises
+  # pratiques au moment du `flutter analyze`.
+  flutter_lints: ^4.0.0
+
+# -----------------------------------------------------------------
+# CONFIGURATION FLUTTER
+# -----------------------------------------------------------------
+flutter:
+  # Active Material 3 (le design system moderne de Google).
+  uses-material-design: true
+
+  # Pas encore d'assets locaux. On ajoutera quand on aura des
+  # logos de chaînes pré-embarqués, des animations Lottie, etc.
+  # assets:
+  #   - assets/images/
