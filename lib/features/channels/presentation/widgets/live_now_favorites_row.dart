@@ -169,11 +169,11 @@ class _LiveSlot {
   double? get progress {
     if (program == null) return null;
     final DateTime now = DateTime.now();
-    final int total = program!.end
-        .difference(program!.start)
-        .inSeconds;
+    final DateTime start = program!.startDateTime;
+    final DateTime stop = program!.stopDateTime;
+    final int total = stop.difference(start).inSeconds;
     if (total <= 0) return null;
-    final int elapsed = now.difference(program!.start).inSeconds;
+    final int elapsed = now.difference(start).inSeconds;
     return (elapsed / total).clamp(0.0, 1.0);
   }
 }
