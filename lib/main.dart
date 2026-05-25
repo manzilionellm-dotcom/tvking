@@ -12,6 +12,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:media_kit/media_kit.dart';
 
 import 'core/theme/app_theme.dart';
 import 'features/channels/presentation/home_screen.dart';
@@ -20,6 +21,11 @@ import 'features/playlists/data/playlist_repository.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialise libmpv pour la lecture vidéo (Phase 1.3).
+  // À appeler AVANT runApp, sinon la 1ʳᵉ ouverture d'un flux
+  // génère un crash natif.
+  MediaKit.ensureInitialized();
 
   // Statut bar et nav bar transparentes pour que notre dégradé
   // s'étende jusqu'aux bords de l'écran.

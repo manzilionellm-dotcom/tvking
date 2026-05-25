@@ -47,6 +47,25 @@ dependencies:
   # range son fichier .db (chez Android : /data/data/com.x/...).
   path_provider: ^2.1.5
 
+  # --- Phase 1.3 : Lecteur vidéo ---
+  # media_kit est basé sur libmpv (le même moteur que VLC,
+  # TiviMate, Stremio). C'est LA référence pour lire :
+  #   - HLS (.m3u8)
+  #   - MPEG-TS (.ts) ← format IPTV principal
+  #   - MP4, MKV, AVI...
+  #   - audio multi-pistes, sous-titres
+  # Avantages : décodage natif via libmpv, performance top,
+  # surcouche Dart propre. Inconvénient : ajoute ~25 Mo
+  # à l'APK (les binaires libmpv pour ARM/x86).
+  media_kit: ^1.1.11
+  media_kit_video: ^1.2.5
+  media_kit_libs_android_video: ^1.3.6
+
+  # Garde l'écran allumé pendant la lecture (sinon Android
+  # éteint l'écran après 30s d'inactivité, même en pleine
+  # lecture vidéo).
+  wakelock_plus: ^1.2.10
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

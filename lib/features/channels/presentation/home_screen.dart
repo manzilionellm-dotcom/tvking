@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/presentation/add_playlist_screen.dart';
 import '../../playlists/presentation/playlists_screen.dart';
@@ -47,19 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // ----- Navigation helpers -----
 
   void _onChannelTap(Channel channel) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.fromLTRB(20, 0, 20, 90),
-        backgroundColor: AppColors.surfaceHigh,
-        duration: const Duration(seconds: 2),
-        content: Text(
-          'Lecture de "${channel.name}" — lecteur à brancher (Phase 1.3)',
-          style: AppTextStyles.bodyLarge,
-        ),
-      ),
-    );
+    playChannel(context, channel);
   }
 
   Future<void> _openAddPlaylist() async {

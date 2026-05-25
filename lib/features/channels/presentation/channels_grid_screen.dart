@@ -19,7 +19,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../playlists/data/favorites_repository.dart';
+import '../../player/presentation/play_channel.dart';
 import '../domain/channel.dart';
 import 'widgets/channel_card.dart';
 
@@ -93,23 +93,7 @@ class ChannelsGridScreen extends StatelessWidget {
   }
 
   void _onChannelTap(BuildContext context, Channel channel) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        backgroundColor: AppColors.surfaceHigh,
-        action: SnackBarAction(
-          label: '♥',
-          textColor: AppColors.accentPink,
-          onPressed: () => FavoritesRepository.instance.toggle(channel.id),
-        ),
-        content: Text(
-          '${channel.name} — lecteur à brancher (Phase 1.3)',
-          style: AppTextStyles.bodyLarge,
-        ),
-      ),
-    );
+    playChannel(context, channel);
   }
 
   Widget _buildEmpty() {

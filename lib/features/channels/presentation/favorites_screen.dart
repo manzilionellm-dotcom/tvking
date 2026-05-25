@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../domain/channel.dart';
@@ -99,22 +100,6 @@ class FavoritesScreen extends StatelessWidget {
   }
 
   void _onTap(BuildContext context, Channel channel) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        backgroundColor: AppColors.surfaceHigh,
-        action: SnackBarAction(
-          label: 'Retirer ♥',
-          textColor: AppColors.accentPink,
-          onPressed: () => FavoritesRepository.instance.toggle(channel.id),
-        ),
-        content: Text(
-          '${channel.name} — lecteur à brancher (Phase 1.3)',
-          style: AppTextStyles.bodyLarge,
-        ),
-      ),
-    );
+    playChannel(context, channel);
   }
 }
