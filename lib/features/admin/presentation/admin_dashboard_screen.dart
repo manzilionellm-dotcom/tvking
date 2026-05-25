@@ -21,6 +21,7 @@ import 'package:flutter/services.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../device/data/remote_config_repository.dart';
 import '../data/admin_client.dart';
 import '../data/admin_credentials.dart';
 import '../data/gist_repository.dart';
@@ -42,12 +43,39 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final TextEditingController _patCtrl = TextEditingController();
   final TextEditingController _gistIdCtrl = TextEditingController();
 
+  /// Quand la connexion GitHub est configurée (PAT + gist ID), on
+  /// replie la carte de setup pour ne plus voir que la liste des
+  /// clients + le FAB. L'utilisateur peut ré-ouvrir via le bouton
+  /// "modifier" du badge "Connecté".
+  bool _setupExpanded = false;
+
   @override
   void initState() {
     super.initState();
     final AdminCredentials cred = AdminCredentials.instance;
     _patCtrl.text = cred.pat ?? '';
-    _gistIdCtrl.text = cred.gistId ?? '';
+
+    // Si pas de gist ID configuré explicitement → on tente de
+    // l'extraire de l'URL déjà saisie en Réglages → Provisioning à
+    // distance. Comme ça l'admin n'a pas à le re-taper.
+    String? gistId = cred.gistId;
+    if (gistId == null || gistId.isEmpty) {
+      final String? remoteUrl =
+          RemoteConfigRepository.instance.status.url;
+      if (remoteUrl != null && remoteUrl.isNotEmpty) {
+        gistId = AdminCredentials.extractGistIdFromUrl(remoteUrl);
+        if (gistId != null) {
+          // On le sauvegarde pour la prochaine ouverture.
+          AdminCredentials.instance.setGistId(gistId);
+        }
+      }
+    }
+    _gistIdCtrl.text = gistId ?? '';
+
+    // Si tout est configuré → setup replié, on charge direct.
+    // Sinon → setup déplié pour que l'utilisateur le complète.
+    _setupExpanded = !cred.canWrite;
+
     if (cred.hasGistId) {
       _load();
     }
@@ -100,11 +128,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     await AdminCredentials.instance.setPat(_patCtrl.text);
     await AdminCredentials.instance.setGistId(_gistIdCtrl.text);
     if (!mounted) return;
+    // Une fois configuré → on replie la carte pour ne plus voir
+    // les champs techniques et laisser la liste de clients
+    // prendre toute la place.
+    setState(() => _setupExpanded = false);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
         content: Text(
-          'Identifiants enregistrés.',
+          'Connecté à GitHub. Tu peux maintenant ajouter des clients.',
           style: AppTextStyles.bodyMedium,
         ),
       ),
@@ -313,6 +345,67 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   // ============================================================
 
   Widget _credentialsCard() {
+    final AdminCredentials cred = AdminCredentials.instance;
+    final bool collapsed = !_setupExpanded && cred.canWrite;
+    if (collapsed) return _collapsedCredentials(cred);
+    return _expandedCredentials();
+  }
+
+  /// Carte mini : juste un badge "✓ Connecté" + bouton modifier.
+  /// Visible quand le setup est terminé — laisse la place à la
+  /// liste de clients.
+  Widget _collapsedCredentials(AdminCredentials cred) {
+    final String shortId = cred.gistId!.length > 12
+        ? '${cred.gistId!.substring(0, 8)}…'
+        : cred.gistId!;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.success.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.check_circle_rounded,
+              color: AppColors.success, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Connecté à GitHub',
+                  style: AppTextStyles.bodyLarge.copyWith(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  'gist $shortId',
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    fontSize: 11,
+                    color: AppColors.textMuted,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => setState(() => _setupExpanded = true),
+            child: const Text('Modifier'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Carte complète avec les 2 champs — visible quand pas encore
+  /// configuré OU quand l'admin tape "Modifier".
+  Widget _expandedCredentials() {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -331,9 +424,26 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               Text('Connexion GitHub',
                   style: AppTextStyles.headlineMedium
                       .copyWith(fontSize: 15)),
+              const Spacer(),
+              if (AdminCredentials.instance.canWrite)
+                TextButton(
+                  onPressed: () =>
+                      setState(() => _setupExpanded = false),
+                  child: const Text('Replier'),
+                ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
+          Text(
+            'Setup une seule fois. Après ça, tu ajoutes des clients '
+            'directement avec juste leur MAC + une URL M3U.',
+            style: AppTextStyles.bodyMedium.copyWith(
+              fontSize: 12,
+              color: AppColors.textMuted,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 12),
           _label('ID du gist'),
           TextField(
             controller: _gistIdCtrl,
@@ -504,27 +614,51 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Widget _emptyBlock() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.border),
       ),
       child: Column(
         children: <Widget>[
-          Icon(Icons.group_outlined,
-              size: 36, color: AppColors.textMuted),
-          const SizedBox(height: 10),
-          Text(
-            'Aucun client encore.',
-            style: AppTextStyles.bodyLarge.copyWith(fontSize: 14),
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.accent.withValues(alpha: 0.15),
+            ),
+            child: Icon(Icons.person_add_alt_1_rounded,
+                size: 32, color: AppColors.accent),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 14),
           Text(
-            'Tape "Nouveau client" en bas pour en ajouter un.',
+            'Aucun client pour l\'instant',
+            style: AppTextStyles.headlineMedium.copyWith(fontSize: 16),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Tape sur le bouton ci-dessous, colle la MAC que ton client '
+            't\'a envoyée + son URL M3U. C\'est tout.',
+            textAlign: TextAlign.center,
             style: AppTextStyles.bodyMedium.copyWith(
               fontSize: 12,
               color: AppColors.textMuted,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton.icon(
+              onPressed: _loading ? null : _addClient,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text(
+                'Ajouter mon premier client',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
           ),
         ],

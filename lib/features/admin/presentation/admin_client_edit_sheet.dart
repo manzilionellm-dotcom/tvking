@@ -84,9 +84,8 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
     if (!RegExp(r'^MK(?::[0-9A-F]{2}){5}$').hasMatch(mac)) {
       return 'MAC invalide. Format attendu : MK:AA:BB:CC:DD:EE';
     }
-    if (_playlistNameCtrl.text.trim().isEmpty) {
-      return 'Donne un nom à la playlist.';
-    }
+    // Le nom de playlist est optionnel — on met "Abonnement IPTV"
+    // par défaut si vide. Permet à l'admin de juste taper MAC + URL.
     if (_type == 'm3u') {
       if (_m3uUrlCtrl.text.trim().isEmpty) {
         return 'L\'URL M3U est obligatoire.';
@@ -115,8 +114,12 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
     }
     setState(() => _saving = true);
 
+    final String pName = _playlistNameCtrl.text.trim().isEmpty
+        ? 'Abonnement IPTV'
+        : _playlistNameCtrl.text.trim();
+
     final AdminPlaylist playlist = AdminPlaylist(
-      name: _playlistNameCtrl.text.trim(),
+      name: pName,
       type: _type,
       url: _type == 'm3u' ? _m3uUrlCtrl.text.trim() : null,
       epgUrl:
@@ -217,11 +220,11 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
                 const SizedBox(height: 12),
                 _typeSwitcher(),
                 const SizedBox(height: 14),
-                _label('Nom de la playlist'),
+                _label('Nom de la playlist (optionnel)'),
                 TextField(
                   controller: _playlistNameCtrl,
                   decoration: const InputDecoration(
-                    hintText: 'Ex : Mon abonnement, IPTV Premium…',
+                    hintText: 'Défaut : "Abonnement IPTV"',
                   ),
                 ),
                 const SizedBox(height: 14),
