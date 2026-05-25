@@ -30,7 +30,7 @@ import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/presentation/add_playlist_screen.dart';
-import '../../playlists/presentation/playlists_screen.dart';
+import '../../settings/presentation/settings_screen.dart';
 import '../data/recently_watched_repository.dart';
 import '../domain/channel.dart';
 import '../domain/channel_genre.dart';
@@ -54,7 +54,12 @@ class _HomeScreenState extends State<HomeScreen> {
   int _currentNavIndex = 0;
   final FavoritesRepoSnapshot _favSnap = FavoritesRepoSnapshot();
 
-  void _onChannelTap(Channel ch) => playChannel(context, ch);
+  /// La playlist "complète" à passer au player pour activer le zapping
+  /// ⏮ / ⏭. On utilise les chaînes du repo (cache mémoire instantané).
+  List<Channel> _zapList() => PlaylistRepository.instance.currentChannels;
+
+  void _onChannelTap(Channel ch) =>
+      playChannel(context, ch, zapPlaylist: _zapList());
   void _onChannelLongPress(Channel ch) => showChannelDetail(context, ch);
 
   Future<void> _openAddPlaylist() => Navigator.of(context).push<void>(
@@ -69,7 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
   Future<void> _openSettings() => Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(builder: (_) => const PlaylistsScreen()),
+        MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
       );
 
   Future<void> _openFavorites() => Navigator.of(context).push<void>(

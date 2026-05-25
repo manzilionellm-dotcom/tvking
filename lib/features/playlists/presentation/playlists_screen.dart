@@ -224,7 +224,15 @@ class _PlaylistTile extends StatelessWidget {
             ),
           ),
 
-          // Action delete
+          // Actions
+          IconButton(
+            icon: Icon(
+              Icons.refresh_rounded,
+              color: AppColors.accent,
+            ),
+            tooltip: 'Re-synchroniser',
+            onPressed: () => _refresh(context),
+          ),
           IconButton(
             icon: Icon(
               Icons.delete_outline,
@@ -236,6 +244,40 @@ class _PlaylistTile extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _refresh(BuildContext context) async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Re-synchronisation en cours...'),
+        duration: Duration(seconds: 30),
+      ),
+    );
+    try {
+      final bool ok =
+          await PlaylistRepository.instance.refreshPlaylist(playlist);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: ok ? AppColors.success : AppColors.live,
+          content: Text(
+            ok
+                ? 'Playlist "${playlist.name}" à jour'
+                : 'Re-synchronisation impossible',
+          ),
+        ),
+      );
+    } on Exception catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.live,
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    }
   }
 
   Future<void> _confirmDelete(BuildContext context) async {

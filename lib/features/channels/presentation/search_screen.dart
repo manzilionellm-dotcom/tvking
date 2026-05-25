@@ -135,7 +135,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   final Channel ch = results[index];
                   return ChannelCard(
                     channel: ch,
-                    onTap: () => _onTap(ch),
+                    onTap: () => _onTap(ch, results),
                   );
                 },
               );
@@ -146,8 +146,8 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  void _onTap(Channel channel) {
-    playChannel(context, channel);
+  void _onTap(Channel channel, List<Channel> results) {
+    playChannel(context, channel, zapPlaylist: results);
   }
 
   Widget _hint() {

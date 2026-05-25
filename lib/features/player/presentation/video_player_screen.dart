@@ -34,9 +34,17 @@ import 'widgets/player_stats_overlay.dart';
 import 'widgets/player_tracks_sheet.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
-  const VideoPlayerScreen({required this.channel, super.key});
+  const VideoPlayerScreen({
+    required this.channel,
+    this.zapPlaylist,
+    super.key,
+  });
 
   final Channel channel;
+
+  /// Si fourni, le player active les boutons ⏮ / ⏭ pour zapper
+  /// dans cette liste. Sinon ces boutons sont masqués.
+  final List<Channel>? zapPlaylist;
 
   @override
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
@@ -54,12 +62,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isBuffering = true;
   bool _isPlaying = false;
 
+  // Pour le zapping : la chaîne courante (peut changer dans la session
+  // sans recréer l'écran) et l'index dans la zapPlaylist.
+  late Channel _currentChannel;
+
   final List<StreamSubscription<dynamic>> _subs =
       <StreamSubscription<dynamic>>[];
 
   @override
   void initState() {
     super.initState();
+
+    _currentChannel = widget.channel;
 
     WakelockPlus.enable();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -137,7 +151,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // Listener pour les changements de réglages → réapplication immédiate
     PlayerSettings.instance.addListener(_onSettingsChanged);
 
-    _player.open(Media(widget.channel.streamUrl));
+    _player.open(Media(_currentChannel.streamUrl));
 
     // Restaure la dernière vitesse
     if (PlayerSettings.instance.lastSpeed != 1.0) {
@@ -146,6 +160,37 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     _scheduleHideOverlay();
   }
+
+  // ----- Zapping -----
+
+  bool get _canZap =>
+      widget.zapPlaylist != null && widget.zapPlaylist!.length > 1;
+
+  int get _zapIndex {
+    if (widget.zapPlaylist == null) return -1;
+    return widget.zapPlaylist!
+        .indexWhere((Channel c) => c.id == _currentChannel.id);
+  }
+
+  void _zapTo(int newIndex) {
+    if (widget.zapPlaylist == null) return;
+    final List<Channel> list = widget.zapPlaylist!;
+    if (list.isEmpty) return;
+    final int wrapped = ((newIndex % list.length) + list.length) % list.length;
+    final Channel next = list[wrapped];
+    setState(() {
+      _currentChannel = next;
+      _hasError = false;
+      _errorMessage = null;
+      _isBuffering = true;
+    });
+    RecentlyWatchedRepository.instance.record(next.id);
+    _player.open(Media(next.streamUrl));
+    _scheduleHideOverlay();
+  }
+
+  void _zapNext() => _zapTo(_zapIndex + 1);
+  void _zapPrev() => _zapTo(_zapIndex - 1);
 
   Future<void> _applyMpvOptions() async {
     final PlayerSettings s = PlayerSettings.instance;
@@ -219,7 +264,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _errorMessage = null;
       _isBuffering = true;
     });
-    _player.open(Media(widget.channel.streamUrl));
+    _player.open(Media(_currentChannel.streamUrl));
   }
 
   Future<void> _openTracks() async {
@@ -355,7 +400,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // ----- Composants -----
 
   Widget _buildOverlay() {
-    final Channel ch = widget.channel;
+    final Channel ch = _currentChannel;
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -435,12 +480,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
             ),
 
-            // ----- Centre : Play / Pause géant -----
+            // ----- Centre : ⏮ Play/Pause géant ⏭ -----
             Expanded(
               child: Center(
-                child: _PlayPauseButton(
-                  isPlaying: _isPlaying,
-                  onTap: _togglePlayPause,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    if (_canZap)
+                      _ZapButton(
+                        icon: Icons.skip_previous_rounded,
+                        onTap: _zapPrev,
+                      ),
+                    if (_canZap) const SizedBox(width: 24),
+                    _PlayPauseButton(
+                      isPlaying: _isPlaying,
+                      onTap: _togglePlayPause,
+                    ),
+                    if (_canZap) const SizedBox(width: 24),
+                    if (_canZap)
+                      _ZapButton(
+                        icon: Icons.skip_next_rounded,
+                        onTap: _zapNext,
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -597,6 +659,37 @@ class _PlayPauseButton extends StatelessWidget {
             color: Colors.white,
             size: 48,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ZapButton extends StatelessWidget {
+  const _ZapButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white.withValues(alpha: 0.1),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.3),
+              width: 1.5,
+            ),
+          ),
+          child: Icon(icon, color: Colors.white, size: 28),
         ),
       ),
     );

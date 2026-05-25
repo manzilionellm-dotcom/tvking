@@ -115,26 +115,31 @@ class PremiumRow extends StatelessWidget {
         ),
 
         // ----- Liste horizontale -----
+        // itemExtent + cacheExtent généreux → scroll fluide même
+        // si la rangée contient les 20 chaînes max d'une section.
         SizedBox(
           height: rowHeight,
-          child: ListView.separated(
+          child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
             physics: const BouncingScrollPhysics(),
             itemCount: channels.length,
-            separatorBuilder: (BuildContext _, int __) =>
-                const SizedBox(width: 12),
+            itemExtent: PremiumChannelCard.cardWidth + 12,
+            cacheExtent: 600,
             itemBuilder: (BuildContext context, int index) {
               final Channel ch = channels[index];
               return RepaintBoundary(
-                child: SizedBox(
-                  width: PremiumChannelCard.cardWidth,
-                  child: PremiumChannelCard(
-                    channel: ch,
-                    onTap: () => onChannelTap(ch),
-                    onLongPress: onChannelLongPress != null
-                        ? () => onChannelLongPress!(ch)
-                        : null,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: SizedBox(
+                    width: PremiumChannelCard.cardWidth,
+                    child: PremiumChannelCard(
+                      channel: ch,
+                      onTap: () => onChannelTap(ch),
+                      onLongPress: onChannelLongPress != null
+                          ? () => onChannelLongPress!(ch)
+                          : null,
+                    ),
                   ),
                 ),
               );

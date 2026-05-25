@@ -4,7 +4,8 @@
 //  Centralise l'action "lancer une chaîne". Avantages :
 //    - Un seul endroit pour ajouter une transition spécifique
 //    - On enregistre automatiquement dans l'historique récent
-//      (alimente "Continue Watching" sur l'accueil)
+//    - Optionnellement, on passe une liste de chaînes pour
+//      activer le zapping ⏮ / ⏭ dans le player
 //
 //  Toutes les surfaces (Home, Grid, Favoris, Search, Detail
 //  sheet) passent par ce helper.
@@ -16,14 +17,19 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import 'video_player_screen.dart';
 
-Future<void> playChannel(BuildContext context, Channel channel) {
-  // Trace l'ouverture pour la section "Continue Watching".
-  // Pas besoin d'attendre — c'est asynchrone et non bloquant.
+Future<void> playChannel(
+  BuildContext context,
+  Channel channel, {
+  List<Channel>? zapPlaylist,
+}) {
   RecentlyWatchedRepository.instance.record(channel.id);
 
   return Navigator.of(context).push<void>(
     MaterialPageRoute<void>(
-      builder: (_) => VideoPlayerScreen(channel: channel),
+      builder: (_) => VideoPlayerScreen(
+        channel: channel,
+        zapPlaylist: zapPlaylist,
+      ),
     ),
   );
 }

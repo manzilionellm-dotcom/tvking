@@ -86,7 +86,7 @@ class FavoritesScreen extends StatelessWidget {
                       final Channel ch = favs[index];
                       return ChannelCard(
                         channel: ch,
-                        onTap: () => _onTap(context, ch),
+                        onTap: () => _onTap(context, ch, favs),
                       );
                     },
                   );
@@ -99,7 +99,7 @@ class FavoritesScreen extends StatelessWidget {
     );
   }
 
-  void _onTap(BuildContext context, Channel channel) {
-    playChannel(context, channel);
+  void _onTap(BuildContext context, Channel channel, List<Channel> favs) {
+    playChannel(context, channel, zapPlaylist: favs);
   }
 }

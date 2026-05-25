@@ -27,6 +27,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -65,39 +66,56 @@ class CategorySectionScreen extends StatefulWidget {
 }
 
 class _CategorySectionScreenState extends State<CategorySectionScreen> {
+  static const String _kViewModePrefKey = 'section.view_mode';
   SectionViewMode _viewMode = SectionViewMode.compact;
 
   // Sous-filtres
   bool _liveOnly = false;
   ChannelQuality? _qualityFilter;
-  String? _selectedSubCategory; // catégorie M3U brute pour drill-down
+  String? _selectedSubCategory;
+  CountryInfo? _countryFilter;
 
   // Recherche interne
   String _query = '';
   final TextEditingController _searchCtrl = TextEditingController();
 
-  // Snapshot local. On l'initialise avec le cache du repo (synchrone)
-  // ET on déclenche un fetch DB direct + abonnement au stream pour
-  // se prémunir de tout souci de timing entre les écrans.
   List<Channel> _channels = const <Channel>[];
   StreamSubscription<List<Channel>>? _sub;
 
   @override
   void initState() {
     super.initState();
-    // 1) Cache synchrone (souvent suffisant)
     _channels = PlaylistRepository.instance.currentChannels;
-    // 2) Fallback : si le cache est vide, on fetch direct depuis SQLite
     if (_channels.isEmpty) {
       PlaylistRepository.instance.getAllChannels().then((List<Channel> ch) {
         if (mounted) setState(() => _channels = ch);
       });
     }
-    // 3) Abonnement live pour les mutations futures
     _sub =
         PlaylistRepository.instance.channelsStream.listen((List<Channel> ch) {
       if (mounted) setState(() => _channels = ch);
     });
+    _restoreViewMode();
+  }
+
+  Future<void> _restoreViewMode() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String? saved = prefs.getString(_kViewModePrefKey);
+    if (!mounted || saved == null) return;
+    setState(() {
+      _viewMode = saved == 'grid'
+          ? SectionViewMode.grid
+          : SectionViewMode.compact;
+    });
+  }
+
+  Future<void> _setViewMode(SectionViewMode mode) async {
+    setState(() => _viewMode = mode);
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _kViewModePrefKey,
+      mode == SectionViewMode.grid ? 'grid' : 'compact',
+    );
   }
 
   @override
@@ -153,21 +171,11 @@ class _CategorySectionScreenState extends State<CategorySectionScreen> {
       appBar: AppBar(
         title: Text(widget.title),
         actions: <Widget>[
-          IconButton(
-            tooltip: _viewMode == SectionViewMode.compact
-                ? 'Affichage grille'
-                : 'Affichage liste',
-            icon: Icon(
-              _viewMode == SectionViewMode.compact
-                  ? Icons.grid_view_rounded
-                  : Icons.view_list_rounded,
-            ),
-            onPressed: () => setState(() {
-              _viewMode = _viewMode == SectionViewMode.compact
-                  ? SectionViewMode.grid
-                  : SectionViewMode.compact;
-            }),
+          _ViewModeToggle(
+            current: _viewMode,
+            onChanged: _setViewMode,
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: Builder(
@@ -220,6 +228,81 @@ class _CategorySectionScreenState extends State<CategorySectionScreen> {
 // ============================================================
 //  Composants internes
 // ============================================================
+
+class _ViewModeToggle extends StatelessWidget {
+  const _ViewModeToggle({
+    required this.current,
+    required this.onChanged,
+  });
+
+  final SectionViewMode current;
+  final ValueChanged<SectionViewMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: <Widget>[
+          _segment(
+            icon: Icons.view_list_rounded,
+            selected: current == SectionViewMode.compact,
+            onTap: () => onChanged(SectionViewMode.compact),
+            tooltip: 'Liste',
+          ),
+          Container(
+            width: 1,
+            height: 20,
+            color: AppColors.border,
+          ),
+          _segment(
+            icon: Icons.grid_view_rounded,
+            selected: current == SectionViewMode.grid,
+            onTap: () => onChanged(SectionViewMode.grid),
+            tooltip: 'Grille',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _segment({
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+    required String tooltip,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: Tooltip(
+        message: tooltip,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: selected ? AppColors.accent : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              color: selected ? Colors.black : AppColors.textSecondary,
+              size: 18,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _SearchBar extends StatelessWidget {
   const _SearchBar({required this.controller, required this.onChanged});
@@ -484,7 +567,7 @@ class _CompactList extends StatelessWidget {
         return RepaintBoundary(
           child: CompactChannelRow(
             channel: ch,
-            onTap: () => playChannel(context, ch),
+            onTap: () => playChannel(context, ch, zapPlaylist: channels),
             onLongPress: () => showChannelDetail(context, ch),
           ),
         );
@@ -519,7 +602,7 @@ class _Grid extends StatelessWidget {
             return RepaintBoundary(
               child: ChannelCard(
                 channel: ch,
-                onTap: () => playChannel(context, ch),
+                onTap: () => playChannel(context, ch, zapPlaylist: channels),
                 onLongPress: () => showChannelDetail(context, ch),
               ),
             );

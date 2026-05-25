@@ -279,6 +279,94 @@ class PlaylistRepository {
   }
 
   // ============================================================
+  //  REFRESH — re-télécharge la même source
+  // ============================================================
+
+  /// Re-télécharge une playlist existante en utilisant les mêmes
+  /// paramètres d'origine. Supprime les anciennes chaînes et
+  /// charge les nouvelles. Le `playlistId` reste le même.
+  ///
+  /// Retourne `true` si la sync a réussi, lance une Exception sinon.
+  Future<bool> refreshPlaylist(Playlist playlist) async {
+    if (playlist.id == null) return false;
+    final Database db = await PlaylistDatabase.instance.database;
+
+    if (playlist.type == PlaylistType.m3u && playlist.m3uUrl != null) {
+      final http.Client client = http.Client();
+      try {
+        final http.Response resp = await client
+            .get(Uri.parse(playlist.m3uUrl!))
+            .timeout(const Duration(seconds: 60));
+        if (resp.statusCode != 200) {
+          throw Exception('Erreur HTTP ${resp.statusCode}');
+        }
+        final M3uParseResult parsed =
+            M3uParser.parse(resp.body, playlistId: playlist.id!);
+        if (parsed.channels.isEmpty) {
+          throw Exception('Aucune chaîne dans la nouvelle version.');
+        }
+        // Remplace les chaînes existantes
+        await db.delete(
+          'channels',
+          where: 'playlist_id = ?',
+          whereArgs: <Object>[playlist.id!],
+        );
+        await _insertChannels(parsed.channels);
+        await _updatePlaylistMetrics(
+          playlist.copyWith(
+            channelCount: parsed.channels.length,
+            lastSyncedAt: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
+        await _emitCurrentState();
+        return true;
+      } finally {
+        client.close();
+      }
+    }
+
+    if (playlist.type == PlaylistType.xtream &&
+        playlist.xtreamServer != null &&
+        playlist.xtreamUsername != null &&
+        playlist.xtreamPassword != null) {
+      final XtreamClient xtream = XtreamClient(
+        serverUrl: playlist.xtreamServer!,
+        username: playlist.xtreamUsername!,
+        password: playlist.xtreamPassword!,
+      );
+      try {
+        await xtream.verifyCredentials();
+        final Map<String, String> cats = await xtream.fetchLiveCategories();
+        final List<Channel> channels = await xtream.fetchLiveChannels(
+          playlistId: playlist.id!,
+          categories: cats,
+        );
+        if (channels.isEmpty) {
+          throw Exception('Aucune chaîne live disponible.');
+        }
+        await db.delete(
+          'channels',
+          where: 'playlist_id = ?',
+          whereArgs: <Object>[playlist.id!],
+        );
+        await _insertChannels(channels);
+        await _updatePlaylistMetrics(
+          playlist.copyWith(
+            channelCount: channels.length,
+            lastSyncedAt: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
+        await _emitCurrentState();
+        return true;
+      } finally {
+        xtream.dispose();
+      }
+    }
+
+    return false;
+  }
+
+  // ============================================================
   //  Helpers SQLite internes
   // ============================================================
 

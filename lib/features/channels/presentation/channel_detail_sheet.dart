@@ -22,6 +22,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
+import '../../playlists/data/playlist_repository.dart';
 import '../domain/channel.dart';
 import 'widgets/channel_logo.dart';
 
@@ -162,7 +163,12 @@ class ChannelDetailSheet extends StatelessWidget {
                         child: ElevatedButton.icon(
                           onPressed: () {
                             Navigator.of(context).pop();
-                            playChannel(context, channel);
+                            playChannel(
+                              context,
+                              channel,
+                              zapPlaylist:
+                                  PlaylistRepository.instance.currentChannels,
+                            );
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.accent,

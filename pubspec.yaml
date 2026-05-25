@@ -75,11 +75,15 @@ dependencies:
 
   # --- Phase 1.4 : Refonte UI premium ---
   # Cache + chargement asynchrone des logos de chaînes.
-  # Indispensable pour scroller 20 000+ chaînes sans saccade :
-  #   - télécharge chaque logo une seule fois puis le sert depuis le disque
-  #   - placeholder pendant le téléchargement
-  #   - errorWidget pour les logos qui n'existent pas (404)
   cached_network_image: ^3.4.1
+
+  # --- Phase 1.5 : Finitions / About / Updater ---
+  # Lit la version réelle de l'APK (depuis le pubspec → AndroidManifest).
+  # Utilisée par l'écran About et l'update checker.
+  package_info_plus: ^8.1.4
+
+  # Ouvre une URL externe dans le navigateur (liens GitHub, etc.).
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:

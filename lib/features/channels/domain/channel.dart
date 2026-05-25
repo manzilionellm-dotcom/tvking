@@ -113,16 +113,25 @@ class Channel {
   /// Catégorie nettoyée pour l'affichage.
   String get prettyCategory => ChannelClassifier.prettifyCategory(category);
 
-  /// Genre détecté (Sports, Films, Séries...) pour la classification
-  /// dans les sections principales de l'app.
-  ChannelGenre get genre => ChannelClassifier.classifyGenre(name, category);
+  /// Genre détecté. **Caché** dans une Map statique car appelé
+  /// à chaque rebuild sur 20 000+ chaînes — sans cache, les regex
+  /// du classifier saturaient le main thread et l'UI laguait.
+  ChannelGenre get genre => _ChannelComputedCache.genres.putIfAbsent(
+        id,
+        () => ChannelClassifier.classifyGenre(name, category),
+      );
 
-  /// Pays détecté (null si on ne sait pas).
-  CountryInfo? get country =>
-      ChannelClassifier.detectCountry(name, category);
+  /// Pays détecté (caché — voir [genre]).
+  CountryInfo? get country => _ChannelComputedCache.countries.putIfAbsent(
+        id,
+        () => ChannelClassifier.detectCountry(name, category),
+      );
 
-  /// Qualité détectée (HD, FHD, 4K, 8K).
-  ChannelQuality get quality => ChannelClassifier.detectQuality(name);
+  /// Qualité détectée (cachée — voir [genre]).
+  ChannelQuality get quality => _ChannelComputedCache.qualities.putIfAbsent(
+        id,
+        () => ChannelClassifier.detectQuality(name),
+      );
 
   /// Indique si la chaîne a un logo distant utilisable.
   bool get hasLogo => logoUrl != null && logoUrl!.trim().isNotEmpty;
@@ -143,4 +152,30 @@ class Channel {
   /// Pas de couleurs de marque arbitraires dans la v2.
   /// Le getter est conservé pour la compatibilité d'API.
   List<Color>? get gradientColors => null;
+}
+
+/// Cache statique pour les valeurs calculées (genre / pays / qualité).
+///
+/// Pourquoi : la classification (regex) est coûteuse. Sur 20 000
+/// chaînes parcourues plusieurs fois par build (Home calcule 9
+/// listes filtrées), on saturait le thread UI. Le cache mémoire
+/// transforme 20 000 regex en 20 000 lookups O(1).
+///
+/// Limite : la Map vit pendant toute la session — ~50 octets par
+/// chaîne soit ~1 Mo pour 20 000 entrées, négligeable.
+abstract final class _ChannelComputedCache {
+  static final Map<String, ChannelGenre> genres = <String, ChannelGenre>{};
+  static final Map<String, CountryInfo?> countries = <String, CountryInfo?>{};
+  static final Map<String, ChannelQuality> qualities =
+      <String, ChannelQuality>{};
+
+  /// À appeler quand on supprime une playlist : on nettoie les
+  /// entrées orphelines pour ne pas faire de fuite mémoire.
+  static void invalidate(Iterable<String> idsToRemove) {
+    for (final String id in idsToRemove) {
+      genres.remove(id);
+      countries.remove(id);
+      qualities.remove(id);
+    }
+  }
 }
