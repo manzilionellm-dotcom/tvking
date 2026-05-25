@@ -63,8 +63,22 @@ class PlaylistRepository {
   final StreamController<List<Playlist>> _playlistsController =
       StreamController<List<Playlist>>.broadcast();
 
+  // Dernier snapshot émis — sert d'`initialData` aux nouveaux
+  // abonnés du Stream (qui ne reçoivent PAS l'event passé d'un
+  // broadcast stream). Sans ça, naviguer d'un écran à l'autre
+  // affichait "0 chaînes" jusqu'à la prochaine mise à jour.
+  List<Channel> _channelsCache = const <Channel>[];
+  List<Playlist> _playlistsCache = const <Playlist>[];
+
   Stream<List<Channel>> get channelsStream => _channelsController.stream;
   Stream<List<Playlist>> get playlistsStream => _playlistsController.stream;
+
+  /// Snapshot synchrone des chaînes actuellement chargées. À utiliser
+  /// en `initialData` d'un StreamBuilder pour avoir l'état immédiatement.
+  List<Channel> get currentChannels => _channelsCache;
+
+  /// Snapshot synchrone des playlists actuellement chargées.
+  List<Playlist> get currentPlaylists => _playlistsCache;
 
   /// Charge initialement les chaînes depuis la base et émet sur le stream.
   /// À appeler une fois au démarrage de l'app.
@@ -306,6 +320,10 @@ class PlaylistRepository {
   Future<void> _emitCurrentState() async {
     final List<Channel> channels = await getAllChannels();
     final List<Playlist> playlists = await getAllPlaylists();
+    // Met à jour les caches synchrones avant d'émettre
+    // (`currentChannels` est ainsi cohérent avec le dernier event).
+    _channelsCache = channels;
+    _playlistsCache = playlists;
     if (!_channelsController.isClosed) {
       _channelsController.add(channels);
     }

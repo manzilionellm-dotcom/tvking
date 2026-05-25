@@ -145,7 +145,7 @@ class _CategorySectionScreenState extends State<CategorySectionScreen> {
       ),
       body: StreamBuilder<List<Channel>>(
         stream: PlaylistRepository.instance.channelsStream,
-        initialData: const <Channel>[],
+        initialData: PlaylistRepository.instance.currentChannels,
         builder: (BuildContext context, AsyncSnapshot<List<Channel>> snap) {
           final List<Channel> all = snap.data ?? <Channel>[];
           final List<Channel> filtered = _applyFilters(all);

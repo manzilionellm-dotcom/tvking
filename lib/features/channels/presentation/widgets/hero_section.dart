@@ -168,15 +168,18 @@ class HeroSection extends StatelessWidget {
                         ],
                         const SizedBox(height: 14),
 
-                        // ----- Boutons d'action -----
-                        Row(
+                        // ----- Boutons d'action (Wrap pour
+                        //       éviter l'overflow sur petits écrans
+                        //       avec des noms de chaîne longs) -----
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
                           children: <Widget>[
                             _PrimaryButton(
                               icon: Icons.play_arrow_rounded,
                               label: 'Lecture',
                               onPressed: onWatch,
                             ),
-                            const SizedBox(width: 8),
                             _SecondaryButton(
                               icon: Icons.info_outline_rounded,
                               label: 'Détails',

@@ -32,7 +32,7 @@ class FavoritesScreen extends StatelessWidget {
           final Set<String> favIds = favSnap.data ?? <String>{};
           return StreamBuilder<List<Channel>>(
             stream: PlaylistRepository.instance.channelsStream,
-            initialData: const <Channel>[],
+            initialData: PlaylistRepository.instance.currentChannels,
             builder:
                 (BuildContext context, AsyncSnapshot<List<Channel>> chanSnap) {
               final List<Channel> all = chanSnap.data ?? <Channel>[];

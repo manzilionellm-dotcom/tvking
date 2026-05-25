@@ -41,7 +41,7 @@ class PlaylistsScreen extends StatelessWidget {
       ),
       body: StreamBuilder<List<Playlist>>(
         stream: PlaylistRepository.instance.playlistsStream,
-        initialData: const <Playlist>[],
+        initialData: PlaylistRepository.instance.currentPlaylists,
         builder: (BuildContext context, AsyncSnapshot<List<Playlist>> snap) {
           final List<Playlist> playlists = snap.data ?? <Playlist>[];
           if (playlists.isEmpty) {

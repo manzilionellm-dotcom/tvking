@@ -30,7 +30,7 @@ class CategoriesScreen extends StatelessWidget {
       ),
       body: StreamBuilder<List<Channel>>(
         stream: PlaylistRepository.instance.channelsStream,
-        initialData: const <Channel>[],
+        initialData: PlaylistRepository.instance.currentChannels,
         builder: (BuildContext context, AsyncSnapshot<List<Channel>> snap) {
           final List<Channel> channels = snap.data ?? <Channel>[];
           if (channels.isEmpty) {
