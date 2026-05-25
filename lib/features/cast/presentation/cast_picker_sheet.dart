@@ -320,10 +320,17 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                             ),
                     ),
 
-                    // ----- Fallback universel "via navigateur" -----
+                    // ----- Fallback "via navigateur" — Plan B discret -----
+                    //  Le QR code passe en lien texte sobre. Mis en
+                    //  avant uniquement quand AUCUN device n'est trouvé
+                    //  (l'utilisateur a vraiment besoin d'une alternative).
+                    //  Sinon affiché en petit en bas — on évite que ça
+                    //  concurrence visuellement les vraies TVs détectées.
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-                      child: _WebFallbackTile(),
+                      padding: const EdgeInsets.fromLTRB(20, 6, 20, 4),
+                      child: _WebFallbackLink(
+                        prominent: devices.isEmpty && !discovering,
+                      ),
                     ),
 
                     // ----- Aide en bas -----
@@ -624,80 +631,58 @@ class _ActiveSessionBanner extends StatelessWidget {
 //  aucun récepteur DLNA / Roku / Chromecast n'est trouvé.
 // ============================================================
 
-class _WebFallbackTile extends StatelessWidget {
-  const _WebFallbackTile();
+/// Lien Plan B — discret par défaut, mis en avant uniquement quand
+/// aucune TV n'a été trouvée. Ne concurrence jamais visuellement
+/// les vrais devices détectés.
+class _WebFallbackLink extends StatelessWidget {
+  const _WebFallbackLink({required this.prominent});
+
+  /// `true` quand aucun device n'a été trouvé après scan complet —
+  /// on rend le lien plus visible pour que l'utilisateur ait une
+  /// porte de sortie. `false` quand des TVs existent — on garde le
+  /// lien tout petit en footer.
+  final bool prominent;
 
   @override
   Widget build(BuildContext context) {
+    final Color textColor =
+        prominent ? AppColors.accent : AppColors.textMuted;
+    final String label = prominent
+        ? 'Pas de TV trouvée ? Cast via navigateur'
+        : 'Ou cast via navigateur';
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         onTap: () async {
-          Navigator.of(context).pop();
-          await showWebCastSetup(context);
+          // On capture le navigator AVANT de pop pour éviter
+          // d'utiliser un context déactivé après le pop.
+          final NavigatorState rootNav = Navigator.of(context);
+          rootNav.pop();
+          await showWebCastSetup(rootNav.context);
         },
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: AppColors.success.withValues(alpha: 0.4),
-              width: 1.2,
-            ),
-          ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.qr_code_rounded,
-                  color: AppColors.success,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Row(
-                      children: <Widget>[
-                        Text(
-                          'Cast via navigateur',
-                          style: AppTextStyles.bodyLarge.copyWith(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        const _KindBadge(kind: CastDeviceKind.webBrowser),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Marche sur N\'IMPORTE quelle TV avec un navigateur '
-                      'web. QR code à scanner avec la TV.',
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
-                        height: 1.3,
-                      ),
-                      maxLines: 2,
-                    ),
-                  ],
-                ),
-              ),
               Icon(
-                Icons.arrow_forward_rounded,
-                color: AppColors.success,
-                size: 18,
+                Icons.qr_code_rounded,
+                size: 16,
+                color: textColor,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: AppTextStyles.bodyMedium.copyWith(
+                  fontSize: 12,
+                  color: textColor,
+                  fontWeight:
+                      prominent ? FontWeight.w600 : FontWeight.w500,
+                  decoration: TextDecoration.underline,
+                  decorationColor: textColor.withValues(alpha: 0.5),
+                ),
               ),
             ],
           ),

@@ -337,6 +337,45 @@ class PlaylistRepository {
 
   /// Re-télécharge une playlist existante en utilisant les mêmes
   /// paramètres d'origine. Supprime les anciennes chaînes et
+  /// Re-synchronise TOUTES les playlists en parallèle. Renvoie le
+  /// nombre de playlists actualisées avec succès. Sert au bouton
+  /// "Actualiser" de la home et à l'auto-refresh au démarrage.
+  Future<int> refreshAll() async {
+    final List<Playlist> all = await getAllPlaylists();
+    int ok = 0;
+    for (final Playlist p in all) {
+      try {
+        final bool result = await refreshPlaylist(p);
+        if (result) ok++;
+      } catch (_) {
+        // Best-effort — si une playlist échoue, on passe à la
+        // suivante (on ne veut pas bloquer les autres).
+      }
+    }
+    return ok;
+  }
+
+  /// Variante "soft" pour l'auto-refresh au démarrage : ne rafraîchit
+  /// que les playlists dont `lastSyncedAt` date de plus de [staleness].
+  /// Évite de re-fetch à chaque ouverture d'app si l'utilisateur lance
+  /// 5 fois dans l'heure.
+  Future<int> refreshStale({
+    Duration staleness = const Duration(hours: 12),
+  }) async {
+    final List<Playlist> all = await getAllPlaylists();
+    final int cutoff =
+        DateTime.now().subtract(staleness).millisecondsSinceEpoch;
+    int ok = 0;
+    for (final Playlist p in all) {
+      final int? last = p.lastSyncedAt;
+      if (last != null && last > cutoff) continue;
+      try {
+        if (await refreshPlaylist(p)) ok++;
+      } catch (_) {}
+    }
+    return ok;
+  }
+
   /// charge les nouvelles. Le `playlistId` reste le même.
   ///
   /// Retourne `true` si la sync a réussi, lance une Exception sinon.

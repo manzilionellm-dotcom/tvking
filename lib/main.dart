@@ -82,6 +82,13 @@ Future<void> main() async {
   // ce qui rend l'expérience "fluide comme YouTube".
   CastManager.instance.startWarmup();
 
+  // Auto-refresh silencieux des playlists trop vieilles (> 12h depuis
+  // la dernière sync). Lancé 3s après le boot pour ne pas concurrencer
+  // le rendu initial. Si tout est récent, ne fait rien.
+  Future<void>.delayed(const Duration(seconds: 3), () {
+    PlaylistRepository.instance.refreshStale();
+  });
+
   // Choix Cinema / Daylight / System — chargé avant runApp pour
   // éviter un flash de mauvais thème au démarrage.
   await ThemeModeRepository.instance.initialize();

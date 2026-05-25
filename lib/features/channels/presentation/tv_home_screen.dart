@@ -328,6 +328,34 @@ class _TvTopBar extends StatelessWidget {
             ),
           ),
           const Spacer(),
+          // Bouton Actualiser TV — focusable au D-pad, visible à 3 m.
+          _TvIconButton(
+            icon: Icons.refresh_rounded,
+            label: 'Actualiser',
+            onTap: () async {
+              final ScaffoldMessengerState m =
+                  ScaffoldMessenger.of(context);
+              try {
+                final int ok =
+                    await PlaylistRepository.instance.refreshAll();
+                m.showSnackBar(SnackBar(
+                  behavior: SnackBarBehavior.floating,
+                  content: Text(
+                    ok == 0
+                        ? 'Aucune playlist actualisée.'
+                        : 'Actualisé : $ok playlist(s).',
+                  ),
+                ));
+              } catch (e) {
+                m.showSnackBar(SnackBar(
+                  behavior: SnackBarBehavior.floating,
+                  backgroundColor: AppColors.live,
+                  content: Text('Erreur : $e'),
+                ));
+              }
+            },
+          ),
+          const SizedBox(width: 10),
           _TvIconButton(
             icon: Icons.search_rounded,
             label: 'Recherche',

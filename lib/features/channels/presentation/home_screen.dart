@@ -190,6 +190,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       actions: <Widget>[
+        // Bouton Actualiser — visible, première position d'actions.
+        // L'app rafraîchit déjà les playlists vieilles au démarrage,
+        // mais l'utilisateur a aussi le droit de forcer manuellement.
+        const _RefreshButton(),
         const CastButton(),
         IconButton(
           tooltip: 'Guide TV',
@@ -514,6 +518,97 @@ class _BackgroundLayer extends StatelessWidget {
         gradient: AppColors.backgroundGradient,
       ),
       child: SizedBox.expand(),
+    );
+  }
+}
+
+// ============================================================
+//  Bouton Actualiser dans l'AppBar
+// ============================================================
+//  Tape → refresh.all() en arrière-plan, l'icône tourne pendant
+//  la sync, snackbar discret avec le résultat. L'utilisateur n'est
+//  pas bloqué — il peut continuer à scroller pendant que ça
+//  tourne.
+// ============================================================
+
+class _RefreshButton extends StatefulWidget {
+  const _RefreshButton();
+
+  @override
+  State<_RefreshButton> createState() => _RefreshButtonState();
+}
+
+class _RefreshButtonState extends State<_RefreshButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _spin;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _spin = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    );
+  }
+
+  @override
+  void dispose() {
+    _spin.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    _spin.repeat();
+    final ScaffoldMessengerState messenger =
+        ScaffoldMessenger.of(context);
+    try {
+      final int ok = await PlaylistRepository.instance.refreshAll();
+      messenger.clearSnackBars();
+      messenger.showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(
+            ok == 0
+                ? 'Aucune playlist actualisée.'
+                : 'Actualisé : $ok playlist(s).',
+            style: AppTextStyles.bodyMedium,
+          ),
+        ),
+      );
+    } catch (e) {
+      messenger.clearSnackBars();
+      messenger.showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.live,
+          content: Text(
+            'Erreur : ${e.toString().replaceFirst('Exception: ', '')}',
+            style: AppTextStyles.bodyMedium,
+          ),
+        ),
+      );
+    } finally {
+      _spin.stop();
+      _spin.reset();
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: 'Actualiser les playlists',
+      onPressed: _busy ? null : _refresh,
+      icon: RotationTransition(
+        turns: _spin,
+        child: Icon(
+          Icons.refresh_rounded,
+          color: _busy ? AppColors.accent : null,
+        ),
+      ),
     );
   }
 }
