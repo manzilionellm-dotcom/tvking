@@ -12,12 +12,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'core/branding/brand_logo.dart';
+import 'core/i18n/locale_repository.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_mode_repository.dart';
+import 'l10n/generated/app_localizations.dart';
 import 'features/about/data/update_checker.dart';
 import 'features/cast/data/cast_manager.dart';
 import 'features/channels/data/recently_watched_repository.dart';
@@ -85,6 +88,11 @@ Future<void> main() async {
   // `_AppEntry` puisse décider immédiatement quel home afficher.
   await DeviceClassRepository.instance.initialize();
 
+  // Langue préférée (FR / EN / ES / SV / DA / NB / AR / SW / Système).
+  // Doit être chargée avant runApp pour éviter un flash de mauvaise
+  // langue au premier frame.
+  await LocaleRepository.instance.initialize();
+
   // Update checker — silencieux en arrière-plan. Le résultat est lu
   // par AboutScreen / un toast plus tard.
   unawaited(UpdateChecker.instance.check());
@@ -98,7 +106,11 @@ class TvKingApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: ThemeModeRepository.instance,
+      listenable:
+          Listenable.merge(<Listenable>[
+        ThemeModeRepository.instance,
+        LocaleRepository.instance,
+      ]),
       builder: (BuildContext context, _) {
         return MaterialApp(
           title: BrandStrings.appName,
@@ -106,6 +118,20 @@ class TvKingApp extends StatelessWidget {
           theme: AppTheme.daylight,
           darkTheme: AppTheme.cinema,
           themeMode: ThemeModeRepository.instance.mode,
+
+          // Internationalisation — la liste des langues supportées
+          // sort de `LocaleRepository`. Quand l'utilisateur choisit
+          // "Système" (locale=null), Flutter retombe sur la langue
+          // de l'OS s'il y a un .arb correspondant, sinon sur fr.
+          locale: LocaleRepository.instance.locale,
+          supportedLocales: LocaleRepository.supportedLocales,
+          localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+
           home: const _AppEntry(),
         );
       },

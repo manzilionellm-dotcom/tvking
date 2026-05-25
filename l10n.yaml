@@ -1,0 +1,16 @@
+# =========================================================
+#  l10n.yaml — Config du générateur gen-l10n
+# =========================================================
+#  Indique où trouver les fichiers .arb et comment nommer la
+#  classe Dart générée. Le générateur tourne automatiquement
+#  à chaque `flutter pub get` grâce à `flutter.generate: true`
+#  dans pubspec.yaml.
+# =========================================================
+
+arb-dir: lib/l10n
+template-arb-file: app_fr.arb
+output-localization-file: app_localizations.dart
+output-class: AppLocalizations
+nullable-getter: false
+synthetic-package: false
+output-dir: lib/l10n/generated

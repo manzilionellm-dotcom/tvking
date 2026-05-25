@@ -19,6 +19,15 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # ----- Internationalisation -----
+  # `flutter_localizations` fournit les délégués Material / Cupertino
+  # pour les ~80 langues officielles supportées par Flutter (dates,
+  # nombres, RTL, etc.). `intl` est la lib bas-niveau utilisée par
+  # le générateur gen-l10n pour produire AppLocalizations.
+  flutter_localizations:
+    sdk: flutter
+  intl: any
+
   # Icônes style iOS (incluses par défaut dans Flutter)
   cupertino_icons: ^1.0.8
 
@@ -115,6 +124,11 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Active le générateur officiel `flutter gen-l10n` qui transforme
+  # les fichiers `.arb` de `lib/l10n/` en classe `AppLocalizations`.
+  # La génération est automatique à chaque `flutter pub get`.
+  generate: true
 
   # ----- Branding -----
   # Logo officiel 7 MOTION, utilisé dans le splash, l'AppBar de

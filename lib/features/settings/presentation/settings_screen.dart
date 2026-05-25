@@ -10,6 +10,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/locale_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/theme_mode_repository.dart';
@@ -41,6 +42,10 @@ class SettingsScreen extends StatelessWidget {
             //  Daylight = version claire dérivée pour usage diurne.
             _SectionTitle('Apparence'),
             const _ThemeModePicker(),
+
+            // ====== LANGUE ======
+            _SectionTitle('Langue'),
+            const _LanguagePicker(),
 
             // ====== LECTEUR ======
             _SectionTitle('Lecteur vidéo'),
@@ -599,6 +604,166 @@ class _ThemeOption extends StatelessWidget {
                 ],
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+//  _LanguagePicker — Choix de langue
+// ============================================================
+//  Bottom sheet listant chaque langue dans sa graphie native +
+//  l'option "Système" (suit l'OS). Choix persistant via
+//  LocaleRepository.
+// ============================================================
+
+class _LanguagePicker extends StatelessWidget {
+  const _LanguagePicker();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: LocaleRepository.instance,
+      builder: (BuildContext context, _) {
+        final Locale? current = LocaleRepository.instance.locale;
+        final String label = current == null
+            ? 'Système'
+            : LocaleRepository.localeLabels[current.languageCode] ??
+                current.languageCode;
+        return _ActionTile(
+          icon: Icons.translate_rounded,
+          title: 'Langue de l\'application',
+          subtitle: label,
+          onTap: () => _openSheet(context),
+        );
+      },
+    );
+  }
+
+  Future<void> _openSheet(BuildContext context) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (BuildContext ctx) {
+        return SafeArea(
+          top: false,
+          child: ListenableBuilder(
+            listenable: LocaleRepository.instance,
+            builder: (BuildContext context, _) {
+              final Locale? current = LocaleRepository.instance.locale;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                    child: Row(
+                      children: <Widget>[
+                        Icon(Icons.translate_rounded,
+                            color: AppColors.accent, size: 20),
+                        const SizedBox(width: 10),
+                        Text('Langue',
+                            style: AppTextStyles.headlineMedium),
+                      ],
+                    ),
+                  ),
+                  // ----- Option Système -----
+                  _LanguageTile(
+                    label: 'Système',
+                    sublabel: 'Suit la langue de l\'OS',
+                    selected: current == null,
+                    onTap: () async {
+                      await LocaleRepository.instance.setLocale(null);
+                      if (context.mounted) Navigator.of(context).pop();
+                    },
+                  ),
+                  const Divider(height: 1),
+                  // ----- Liste des langues supportées -----
+                  ...LocaleRepository.supportedLocales.map((Locale loc) {
+                    return _LanguageTile(
+                      label: LocaleRepository
+                              .localeLabels[loc.languageCode] ??
+                          loc.languageCode,
+                      sublabel: loc.languageCode.toUpperCase(),
+                      selected: current?.languageCode == loc.languageCode,
+                      onTap: () async {
+                        await LocaleRepository.instance.setLocale(loc);
+                        if (context.mounted) Navigator.of(context).pop();
+                      },
+                    );
+                  }),
+                  const SizedBox(height: 8),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _LanguageTile extends StatelessWidget {
+  const _LanguageTile({
+    required this.label,
+    required this.sublabel,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final String sublabel;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      label,
+                      style: AppTextStyles.bodyLarge.copyWith(
+                        fontSize: 15,
+                        color: selected
+                            ? AppColors.accent
+                            : AppColors.textPrimary,
+                        fontWeight: selected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      sublabel,
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (selected)
+                Icon(Icons.check_rounded,
+                    color: AppColors.accent, size: 20),
+            ],
           ),
         ),
       ),

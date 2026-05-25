@@ -1,0 +1,123 @@
+{
+  "@@locale": "fr",
+  "@@x-template": true,
+  "@@x-description": "Template canonique — toutes les autres langues s'alignent sur ces clefs.",
+
+  "appName": "7 MOTION",
+  "@appName": { "description": "Nom de la marque — ne pas traduire." },
+
+  "appTagline": "Cinéma sans limites",
+  "@appTagline": { "description": "Phrase signature affichée sous le logo." },
+
+  "navHome": "Accueil",
+  "navLive": "Live TV",
+  "navSearch": "Recherche",
+  "navFavorites": "Favoris",
+  "navProfile": "Profil",
+
+  "sectionResume": "Reprendre",
+  "sectionFavorites": "Favoris",
+  "sectionSportsLive": "Sports en direct",
+  "sectionLiveNow": "En direct maintenant",
+  "sectionMovies": "Films",
+  "sectionSeries": "Séries",
+  "sectionKids": "Jeunesse",
+  "sectionNews": "Info & Actualités",
+  "sectionMusic": "Musique",
+  "sectionDocs": "Documentaires",
+  "sectionDiscover": "À découvrir",
+  "sectionLiveOnFavorites": "Live maintenant sur tes favoris",
+  "sectionTonight": "Découvre ce soir",
+  "sectionResumeWhereYouLeftOff": "Reprendre où tu t'es arrêté",
+
+  "channelCount": "{count, plural, =0{Aucune chaîne} =1{1 chaîne} other{{count} chaînes}}",
+  "@channelCount": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+
+  "buttonContinue": "Continuer",
+  "buttonNext": "Suivant",
+  "buttonSkip": "Passer",
+  "buttonStart": "Commencer",
+  "buttonOk": "OK",
+  "buttonCancel": "Annuler",
+  "buttonSave": "Enregistrer",
+  "buttonDelete": "Supprimer",
+  "buttonRetry": "Réessayer",
+  "buttonResume": "Reprendre",
+  "buttonWatch": "Regarder",
+  "buttonSeeAll": "Tout voir",
+  "buttonSyncNow": "Synchroniser",
+
+  "playerPause": "Pause",
+  "playerPlay": "Lecture",
+  "playerRec": "REC",
+  "playerStop": "STOP",
+  "playerTracks": "Pistes",
+  "playerSpeed": "Vitesse",
+  "playerRatio": "Format",
+  "playerSettings": "Réglages",
+  "playerRecording": "Enregistrement en cours",
+
+  "castIdle": "Cast vers une TV",
+  "castSearching": "Recherche sur ton WiFi…",
+  "castDevicesHint": "DLNA · Roku · navigateur web.",
+  "castSendTo": "Envoyer vers…",
+  "castConnected": "Cast en cours sur",
+  "castStop": "Arrêter",
+  "castViaBrowser": "Cast via navigateur",
+  "castViaBrowserSubtitle": "Marche sur N'IMPORTE quelle TV avec un navigateur web. QR code à scanner avec la TV.",
+
+  "settingsTitle": "Réglages",
+  "settingsAppearance": "Apparence",
+  "settingsLanguage": "Langue",
+  "settingsLanguageSystem": "Système",
+  "settingsPlayer": "Lecteur vidéo",
+  "settingsPlaylists": "Playlists",
+  "settingsRecordings": "Enregistrements",
+  "settingsStorage": "Stockage",
+  "settingsApp": "Application",
+  "settingsAbout": "À propos",
+  "settingsProvisioning": "Provisioning à distance",
+  "settingsClearHistory": "Vider l'historique de visionnage",
+
+  "themeCinema": "Cinema",
+  "themeCinemaSubtitle": "Maison Noir",
+  "themeDaylight": "Daylight",
+  "themeDaylightSubtitle": "Lumière du jour",
+  "themeAuto": "Auto",
+  "themeAutoSubtitle": "Suit l'OS",
+
+  "deviceQuestion": "Tu es sur quoi ?",
+  "deviceHelp": "On adapte l'expérience à ton appareil. Tu pourras changer ce choix dans les Réglages.",
+  "devicePhone": "Téléphone",
+  "devicePhoneSubtitle": "Smartphone, tablette",
+  "devicePhoneDesc": "Interface tactile compacte. Navigation au doigt, mini-player et écran plein écran fluides.",
+  "deviceTv": "Télévision",
+  "deviceTvSubtitle": "Android TV, Fire TV, Google TV",
+  "deviceTvDesc": "Layout XL pour télécommande. Focus rings visibles à 3 m, tailles cinéma, raccourcis D-pad.",
+  "deviceAuto": "Auto",
+  "deviceAutoSubtitle": "Détection automatique",
+  "deviceAutoDesc": "L'app devine d'après ton écran. Bon choix si tu ne sais pas, ou si tu utilises plusieurs appareils.",
+
+  "onboardingWelcomeTitle": "Bienvenue sur 7 MOTION",
+  "onboardingWelcomeDesc": "Cinéma sans limites. Conçu pour la TV, optimisé pour ton téléphone, beau partout.",
+  "onboardingLoadTitle": "Charge ta playlist",
+  "onboardingLoadDesc": "Colle une URL M3U, ou tes identifiants Xtream. Tes chaînes apparaissent en quelques secondes.",
+  "onboardingVipTitle": "Profite de la signature VIP",
+  "onboardingVipDesc": "Logos haute qualité, navigation Apple TV, recherche instantanée, lecteur 4K/8K.",
+
+  "emptyNoPlaylist": "Aucune playlist",
+  "emptyAddYourFirst": "Ajoute ta première playlist M3U ou tes identifiants Xtream pour commencer.",
+  "addPlaylist": "Ajouter une playlist",
+
+  "resumeBannerTitle": "Reprendre {channel}",
+  "@resumeBannerTitle": {
+    "placeholders": { "channel": { "type": "String" } }
+  },
+  "resumeBannerSubtitle": "Tu regardais il y a {minutes} min",
+  "@resumeBannerSubtitle": {
+    "placeholders": { "minutes": { "type": "int" } }
+  },
+  "resumeBannerDismiss": "Plus tard"
+}
