@@ -19,6 +19,10 @@ import 'package:flutter/material.dart';
 
 import 'channel_genre.dart';
 
+// Re-export pour que les widgets qui importent `channel.dart`
+// aient aussi accès à ChannelGenre / ChannelQuality / CountryInfo.
+export 'channel_genre.dart';
+
 @immutable
 class Channel {
   const Channel({
