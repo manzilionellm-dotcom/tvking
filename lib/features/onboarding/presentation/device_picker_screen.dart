@@ -115,6 +115,10 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
                   const SizedBox(height: 36),
 
                   // ----- Cartes -----
+                  //  Sur téléphone portrait les 3 cartes ne rentrent
+                  //  pas en hauteur — on les rend scrollables. Sur
+                  //  desktop / TV large on garde les 3 colonnes
+                  //  côte à côte sans scroll.
                   Expanded(
                     child: wide
                         ? Row(
@@ -127,14 +131,21 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
                               Expanded(child: _autoCard()),
                             ],
                           )
-                        : Column(
-                            children: <Widget>[
-                              _phoneCard(),
-                              const SizedBox(height: 12),
-                              _tvCard(),
-                              const SizedBox(height: 12),
-                              _autoCard(),
-                            ],
+                        : SingleChildScrollView(
+                            physics: const BouncingScrollPhysics(),
+                            child: Column(
+                              children: <Widget>[
+                                _phoneCard(),
+                                const SizedBox(height: 12),
+                                _tvCard(),
+                                const SizedBox(height: 12),
+                                _autoCard(),
+                                // Petit espace pour ne pas que la
+                                // 3e carte se retrouve collée au
+                                // bouton "Continuer" en bas.
+                                const SizedBox(height: 4),
+                              ],
+                            ),
                           ),
                   ),
 
