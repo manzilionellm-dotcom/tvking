@@ -18,6 +18,7 @@ import 'package:flutter/foundation.dart';
 
 import '../domain/cast_device.dart';
 import 'cast_transport.dart';
+import 'mdns_discovery.dart';
 import 'ssdp_discovery.dart';
 
 enum CastState {
@@ -53,6 +54,7 @@ class CastManager extends ChangeNotifier {
   // qu'elle s'ouvre instantanément la 2e fois.
   final List<CastDevice> _discovered = <CastDevice>[];
   StreamSubscription<CastDevice>? _discoverySub;
+  StreamSubscription<CastDevice>? _mdnsSub;
   Timer? _discoveryTimer;
   Timer? _warmupTimer;
 
@@ -95,21 +97,29 @@ class CastManager extends ChangeNotifier {
     notifyListeners();
 
     _discoverySub?.cancel();
+    _mdnsSub?.cancel();
     _discoveryTimer?.cancel();
 
-    _discoverySub = SsdpDiscovery.instance
-        .discover(timeout: timeout)
-        .listen((CastDevice d) {
-      // Double dédup : par id (UUID racine) ET par host+port pour
-      // ne jamais lister la même TV plusieurs fois même si la
-      // discovery SSDP renvoie des USN inconsistants.
+    void onDevice(CastDevice d) {
+      // Double dédup : par id ET par host+port pour ne jamais lister
+      // la même TV plusieurs fois même si SSDP et mDNS la renvoient
+      // tous les deux (cas typique des Google TV qui font SSDP +
+      // Chromecast en même temps).
       final bool already = _discovered.any((CastDevice e) =>
           e.id == d.id ||
           (e.host == d.host && e.port == d.port));
       if (already) return;
       _discovered.add(d);
       notifyListeners();
-    });
+    }
+
+    // SSDP en parallèle (DLNA + Roku)
+    _discoverySub =
+        SsdpDiscovery.instance.discover(timeout: timeout).listen(onDevice);
+
+    // mDNS en parallèle (Chromecast / Google TV)
+    _mdnsSub =
+        MdnsDiscovery.instance.discover(timeout: timeout).listen(onDevice);
 
     _discoveryTimer = Timer(timeout, () {
       if (_state == CastState.discovering) {
@@ -121,8 +131,10 @@ class CastManager extends ChangeNotifier {
 
   void stopDiscovery() {
     _discoverySub?.cancel();
+    _mdnsSub?.cancel();
     _discoveryTimer?.cancel();
     _discoverySub = null;
+    _mdnsSub = null;
     _discoveryTimer = null;
     if (_state == CastState.discovering) {
       _state = isCasting ? CastState.casting : CastState.idle;

@@ -94,6 +94,40 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
   Future<void> _onDeviceTap(CastDevice device) async {
     final CastManager mgr = CastManager.instance;
 
+    // Chromecast → on n'a pas le protocole CASTV2 natif. Mais les
+    // Chromecasts / Google TV ont tous Chrome installé, donc on
+    // bascule sur le fallback web (QR code) qui marche très bien
+    // sur ces appareils. L'utilisateur ouvre Chrome sur la TV,
+    // scanne le QR, et c'est parti.
+    if (device.kind == CastDeviceKind.chromecast ||
+        device.kind == CastDeviceKind.googleCast) {
+      // On capture le navigator du parent AVANT de pop, pour pouvoir
+      // ouvrir le sheet web setup juste après sans risque de context
+      // déactivé.
+      final NavigatorState rootNav = Navigator.of(context);
+      final ScaffoldMessengerState messenger =
+          ScaffoldMessenger.of(context);
+      rootNav.pop();
+      messenger.clearSnackBars();
+      messenger.showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.accent,
+          content: Text(
+            'Chromecast détecté — on passe par son navigateur.',
+            style: AppTextStyles.bodyMedium.copyWith(
+              color: Colors.black,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      );
+      // Ouvre le sheet web setup avec le context du Navigator parent
+      // (toujours monté après le pop du picker).
+      await showWebCastSetup(rootNav.context);
+      return;
+    }
+
     // Mode "global" : on mémorise juste la cible. Pas de flux à
     // envoyer maintenant — playChannel s'en chargera ensuite.
     if (_isGlobalMode) {

@@ -101,6 +101,11 @@ dependencies:
   # de construire l'URL "http://<mon-ip>:8090/" que la TV doit ouvrir).
   network_info_plus: ^6.1.1
 
+  # Découverte mDNS / Bonjour — sert à trouver les Chromecasts et
+  # Google TV sur le LAN (service `_googlecast._tcp`). Package
+  # officiel Flutter, fonctionne sur Android et iOS.
+  multicast_dns: ^0.3.2+8
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
