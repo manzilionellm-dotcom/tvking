@@ -24,6 +24,7 @@ import 'l10n/generated/app_localizations.dart';
 import 'features/about/data/update_checker.dart';
 import 'features/cast/data/cast_manager.dart';
 import 'features/channels/data/recently_watched_repository.dart';
+import 'features/channels/data/watch_history_repository.dart';
 import 'features/channels/presentation/home_screen.dart';
 import 'features/channels/presentation/tv_home_screen.dart';
 import 'features/device/data/device_identity.dart';
@@ -60,6 +61,7 @@ Future<void> main() async {
   unawaited(PlaylistRepository.instance.initialize());
   unawaited(FavoritesRepository.instance.initialize());
   unawaited(RecentlyWatchedRepository.instance.initialize());
+  unawaited(WatchHistoryRepository.instance.initialize());
   unawaited(EpgRepository.instance.initialize());
   unawaited(RecordingRepository.instance.initialize());
   unawaited(PlayerSettings.instance.load());

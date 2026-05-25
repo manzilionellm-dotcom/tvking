@@ -25,7 +25,7 @@ class PlaylistDatabase {
 
   static const String _kDbFileName = 'tv_king.db';
   // v2 ajoute la colonne `epg_url` à la table playlists.
-  static const int _kDbVersion = 2;
+  static const int _kDbVersion = 3;
 
   Database? _db;
 
@@ -92,6 +92,25 @@ class PlaylistDatabase {
       CREATE INDEX idx_channels_category ON channels(category)
     ''');
 
+    // v3 : sessions de visionnage pour le Hook Model (Continue Watching,
+    // affinity scoring, time-of-day adaptation).
+    await db.execute('''
+      CREATE TABLE watch_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel_id TEXT NOT NULL,
+        channel_name TEXT,
+        started_at INTEGER NOT NULL,
+        ended_at INTEGER,
+        duration_ms INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX idx_ws_started ON watch_sessions(started_at DESC)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_ws_channel ON watch_sessions(channel_id)',
+    );
+
     if (kDebugMode) debugPrint('[DB] Schéma v$version créé.');
   }
 
@@ -102,6 +121,30 @@ class PlaylistDatabase {
     if (oldVersion < 2) {
       // v2 : ajoute epg_url
       await db.execute('ALTER TABLE playlists ADD COLUMN epg_url TEXT');
+    }
+    if (oldVersion < 3) {
+      // v3 : ajoute la table watch_sessions pour le tracking précis
+      // du temps de visionnage par chaîne. Chaque entrée = une session
+      // de lecture (open → close du player). Permet :
+      //   - "Reprendre où tu t'es arrêté" précis à la seconde
+      //   - Affinity scoring par genre (somme des durées par chaîne)
+      //   - Adaptation horaire (heure de visionnage habituelle)
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS watch_sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          channel_id TEXT NOT NULL,
+          channel_name TEXT,
+          started_at INTEGER NOT NULL,
+          ended_at INTEGER,
+          duration_ms INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_ws_started ON watch_sessions(started_at DESC)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_ws_channel ON watch_sessions(channel_id)',
+      );
     }
   }
 }

@@ -37,6 +37,7 @@ import 'favorites_screen.dart';
 import 'search_screen.dart';
 import 'widgets/channel_logo.dart';
 import 'widgets/empty_state.dart';
+import 'widgets/resume_banner.dart';
 
 class TvHomeScreen extends StatefulWidget {
   const TvHomeScreen({super.key});
@@ -163,7 +164,16 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             ),
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
+
+          // ----- Bannière "Reprendre où tu t'es arrêté" -----
+          //  Hook Model — Continue Watching. Visible si < 60 min.
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 48),
+            child: ResumeBanner(),
+          ),
+
+          const SizedBox(height: 16),
 
           // ----- Hero XL -----
           _TvHero(

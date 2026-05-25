@@ -29,6 +29,7 @@ import '../../../core/widgets/live_badge.dart';
 import '../../cast/data/cast_manager.dart';
 import '../../cast/presentation/cast_picker_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
+import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
@@ -84,6 +85,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Recording? _activeRecording;
   bool get _isRecording => _activeRecording != null;
 
+  /// ID de la session de visionnage en cours (table `watch_sessions`).
+  /// Démarrée dans `initState`, fermée dans `dispose`. Sert au Hook
+  /// Model : Continue Watching + affinity scoring.
+  int _watchSessionId = 0;
+
   final List<StreamSubscription<dynamic>> _subs =
       <StreamSubscription<dynamic>>[];
 
@@ -92,6 +98,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     super.initState();
 
     _currentChannel = widget.channel;
+
+    // Ouvre une session de visionnage pour le Hook Model.
+    // Fire-and-forget — on n'attend pas l'I/O DB.
+    WatchHistoryRepository.instance
+        .startSession(
+          channelId: widget.channel.id,
+          channelName: widget.channel.cleanName,
+        )
+        .then((int id) => _watchSessionId = id);
 
     WakelockPlus.enable();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -205,6 +220,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _isBuffering = true;
     });
     RecentlyWatchedRepository.instance.record(next.id);
+    // Zap = nouvelle session côté Hook Model. On ferme l'ancienne et
+    // on en ouvre une nouvelle pour que les durées soient justes.
+    if (_watchSessionId > 0) {
+      WatchHistoryRepository.instance.endSession(_watchSessionId);
+    }
+    WatchHistoryRepository.instance
+        .startSession(
+          channelId: next.id,
+          channelName: next.cleanName,
+        )
+        .then((int id) => _watchSessionId = id);
     _player.open(Media(next.streamUrl));
     _scheduleHideOverlay();
   }
@@ -327,6 +353,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _hideOverlayTimer?.cancel();
     for (final StreamSubscription<dynamic> s in _subs) {
       s.cancel();
+    }
+    // Ferme proprement la session de visionnage. Si l'app est killée
+    // sans dispose, _cleanupAbandoned() au prochain boot rattrape.
+    if (_watchSessionId > 0) {
+      WatchHistoryRepository.instance.endSession(_watchSessionId);
     }
     PlayerSettings.instance.removeListener(_onSettingsChanged);
     _player.dispose();

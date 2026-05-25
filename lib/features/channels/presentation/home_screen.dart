@@ -46,6 +46,7 @@ import 'widgets/empty_state.dart';
 import 'widgets/floating_bottom_nav.dart';
 import 'widgets/hero_section.dart';
 import 'widgets/premium_row.dart';
+import 'widgets/resume_banner.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -239,6 +240,11 @@ class _HomeScreenState extends State<HomeScreen> {
       physics: const BouncingScrollPhysics(),
       slivers: <Widget>[
         const SliverPadding(padding: EdgeInsets.only(top: 64)),
+
+        // ----- Bannière "Reprendre où tu t'es arrêté" -----
+        //  Hook Model — Continue Watching. Visible seulement si la
+        //  dernière session date de < 60 min (sinon SizedBox.shrink).
+        const SliverToBoxAdapter(child: ResumeBanner()),
 
         // ----- Hero -----
         SliverPadding(
