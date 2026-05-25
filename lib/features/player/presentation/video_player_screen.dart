@@ -85,15 +85,53 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (mounted) setState(() => _isBuffering = b);
     }));
     _subs.add(_player.stream.playing.listen((bool p) {
-      if (mounted) setState(() => _isPlaying = p);
-    }));
-    _subs.add(_player.stream.error.listen((String e) {
       if (mounted) {
         setState(() {
-          _hasError = true;
-          _errorMessage = e;
+          _isPlaying = p;
+          // Si le stream se met à jouer, on dégage l'overlay d'erreur
+          // (libmpv envoie souvent des warnings "force-seekable" qui ne
+          // sont pas fatals — la vidéo joue quand même).
+          if (p && _hasError) {
+            _hasError = false;
+            _errorMessage = null;
+          }
         });
       }
+    }));
+    _subs.add(_player.stream.error.listen((String e) {
+      if (!mounted) return;
+      // Filtre les messages non-fatals de libmpv. Liste basée
+      // sur les messages courants qui ne bloquent PAS la lecture :
+      //   - "force-seekable" : seek impossible (normal pour le live)
+      //   - "demuxer warning" : avertissement de démultiplexeur
+      //   - "first-frame-late" : décodage légèrement en retard
+      //   - "Audio device underrun" : artefact son temporaire
+      final String lower = e.toLowerCase();
+      const List<String> nonFatal = <String>[
+        'force-seekable',
+        'demuxer',
+        'first-frame',
+        'underrun',
+        'discontinuity',
+        'frame drop',
+      ];
+      final bool isWarning =
+          nonFatal.any((String pattern) => lower.contains(pattern));
+      if (isWarning) {
+        // On log mais on n'affiche pas l'overlay d'erreur
+        debugPrint('[Player] WARNING (ignoré) : $e');
+        return;
+      }
+      // Si la lecture est déjà active, c'est probablement aussi
+      // un warning tardif — on ne casse pas l'expérience.
+      if (_isPlaying) {
+        debugPrint('[Player] Erreur reçue pendant la lecture, ignorée : $e');
+        return;
+      }
+      setState(() {
+        _hasError = true;
+        _errorMessage = e;
+      });
     }));
 
     // Listener pour les changements de réglages → réapplication immédiate
