@@ -32,6 +32,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
 import '../domain/playlist.dart';
+import 'm3u_fetcher.dart';
 import 'm3u_parser.dart';
 import 'playlist_database.dart';
 import 'xtream_client.dart';
@@ -134,24 +135,25 @@ class PlaylistRepository {
       );
       final int playlistId = await _insertPlaylist(newPlaylist);
 
-      // 2) Télécharge le contenu M3U
+      // 2) Télécharge le contenu M3U via le fetcher robuste
+      //    (User-Agent navigateur + UTF-8 / Latin-1 fallback +
+      //    strip BOM + timeout 90s — gère les serveurs paranos
+      //    ou les exports Windows-1252 mal étiquetés).
       if (kDebugMode) debugPrint('[Repo] GET $url');
-      final http.Response resp = await client
-          .get(Uri.parse(url))
-          .timeout(const Duration(seconds: 60));
-
-      if (resp.statusCode != 200) {
-        throw Exception('Erreur HTTP ${resp.statusCode}');
-      }
+      final String body = await M3uFetcher.fetch(url, httpClient: client);
 
       // 3) Parse + insertion en batch
       final M3uParseResult parsed =
-          M3uParser.parse(resp.body, playlistId: playlistId);
+          M3uParser.parse(body, playlistId: playlistId);
 
       if (parsed.channels.isEmpty) {
         await _deletePlaylist(playlistId);
+        final String hint = parsed.warnings.isEmpty
+            ? ''
+            : '\n\nDétails parser :\n${parsed.warnings.take(3).join('\n')}';
         throw Exception(
-          'Aucune chaîne trouvée dans le fichier M3U. URL invalide ?',
+          'Aucune chaîne trouvée dans le fichier M3U. '
+          'URL invalide ou format incompatible ?$hint',
         );
       }
 
@@ -386,14 +388,14 @@ class PlaylistRepository {
     if (playlist.type == PlaylistType.m3u && playlist.m3uUrl != null) {
       final http.Client client = http.Client();
       try {
-        final http.Response resp = await client
-            .get(Uri.parse(playlist.m3uUrl!))
-            .timeout(const Duration(seconds: 60));
-        if (resp.statusCode != 200) {
-          throw Exception('Erreur HTTP ${resp.statusCode}');
-        }
+        // Même fetcher robuste qu'à l'ajout initial (Latin-1 fallback,
+        // User-Agent navigateur, strip BOM, timeout 90s).
+        final String body = await M3uFetcher.fetch(
+          playlist.m3uUrl!,
+          httpClient: client,
+        );
         final M3uParseResult parsed =
-            M3uParser.parse(resp.body, playlistId: playlist.id!);
+            M3uParser.parse(body, playlistId: playlist.id!);
         if (parsed.channels.isEmpty) {
           throw Exception('Aucune chaîne dans la nouvelle version.');
         }
