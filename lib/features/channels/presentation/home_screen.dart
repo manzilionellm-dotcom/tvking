@@ -42,9 +42,12 @@ import 'category_section_screen.dart';
 import 'channel_detail_sheet.dart';
 import 'favorites_screen.dart';
 import 'search_screen.dart';
+import '../data/affinity_service.dart';
+import '../data/time_of_day_service.dart';
 import 'widgets/empty_state.dart';
 import 'widgets/floating_bottom_nav.dart';
 import 'widgets/hero_section.dart';
+import 'widgets/live_now_favorites_row.dart';
 import 'widgets/premium_row.dart';
 import 'widgets/resume_banner.dart';
 
@@ -58,6 +61,28 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentNavIndex = 0;
   final FavoritesRepoSnapshot _favSnap = FavoritesRepoSnapshot();
+
+  @override
+  void initState() {
+    super.initState();
+    // Calcule les scores d'affinité + l'heure suggérée au démarrage
+    // pour que la première frame ait déjà les rangées dans le bon
+    // ordre. Aucune attente — les services sont ChangeNotifier, l'UI
+    // rebuilds automatiquement quand le calcul finit (via _onAffinityChanged).
+    AffinityService.instance.addListener(_onAffinityChanged);
+    AffinityService.instance.ensureFresh();
+    TimeOfDayService.instance.refresh();
+  }
+
+  @override
+  void dispose() {
+    AffinityService.instance.removeListener(_onAffinityChanged);
+    super.dispose();
+  }
+
+  void _onAffinityChanged() {
+    if (mounted) setState(() {});
+  }
 
   /// La playlist "complète" à passer au player pour activer le zapping
   /// ⏮ / ⏭. On utilise les chaînes du repo (cache mémoire instantané).
@@ -286,23 +311,13 @@ class _HomeScreenState extends State<HomeScreen> {
         // ----- Favoris -----
         SliverToBoxAdapter(child: _favoritesRow(byId)),
 
-        // ----- Sports Live -----
-        if (sports.isNotEmpty)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 18),
-              child: PremiumRow(
-                title: 'Sports en direct',
-                subtitle: '${sports.length} chaînes',
-                channels: sports.take(20).toList(),
-                onChannelTap: _onChannelTap,
-                onChannelLongPress: _onChannelLongPress,
-                onSeeAll: () => _openSection('Sports', ChannelGenre.sports),
-              ),
-            ),
-          ),
+        // ----- LIVE MAINTENANT SUR TES FAVORIS -----
+        //  Hook Model — variable reward + investment :
+        //  chaque seconde un programme différent passe sur tes
+        //  chaînes favorites. Chaque ouverture = nouveauté.
+        const SliverToBoxAdapter(child: LiveNowFavoritesRow()),
 
-        // ----- Live Now -----
+        // ----- En direct maintenant (Live Now) -----
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.only(bottom: 18),
@@ -317,104 +332,18 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
 
-        // ----- Films -----
-        if (movies.isNotEmpty)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 18),
-              child: PremiumRow(
-                title: 'Films',
-                subtitle: '${movies.length} chaînes',
-                channels: movies.take(20).toList(),
-                onChannelTap: _onChannelTap,
-                onChannelLongPress: _onChannelLongPress,
-                onSeeAll: () => _openSection('Films', ChannelGenre.movies),
-              ),
-            ),
-          ),
-
-        // ----- Séries -----
-        if (series.isNotEmpty)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 18),
-              child: PremiumRow(
-                title: 'Séries',
-                subtitle: '${series.length} chaînes',
-                channels: series.take(20).toList(),
-                onChannelTap: _onChannelTap,
-                onChannelLongPress: _onChannelLongPress,
-                onSeeAll: () => _openSection('Séries', ChannelGenre.series),
-              ),
-            ),
-          ),
-
-        // ----- Kids -----
-        if (kids.isNotEmpty)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 18),
-              child: PremiumRow(
-                title: 'Jeunesse',
-                subtitle: '${kids.length} chaînes',
-                channels: kids.take(20).toList(),
-                onChannelTap: _onChannelTap,
-                onChannelLongPress: _onChannelLongPress,
-                onSeeAll: () => _openSection('Jeunesse', ChannelGenre.kids),
-              ),
-            ),
-          ),
-
-        // ----- News -----
-        if (news.isNotEmpty)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 18),
-              child: PremiumRow(
-                title: 'Info & Actualités',
-                subtitle: '${news.length} chaînes',
-                channels: news.take(20).toList(),
-                onChannelTap: _onChannelTap,
-                onChannelLongPress: _onChannelLongPress,
-                onSeeAll: () => _openSection('Info', ChannelGenre.news),
-              ),
-            ),
-          ),
-
-        // ----- Music -----
-        if (music.isNotEmpty)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 18),
-              child: PremiumRow(
-                title: 'Musique',
-                subtitle: '${music.length} chaînes',
-                channels: music.take(20).toList(),
-                onChannelTap: _onChannelTap,
-                onChannelLongPress: _onChannelLongPress,
-                onSeeAll: () => _openSection('Musique', ChannelGenre.music),
-              ),
-            ),
-          ),
-
-        // ----- Documentaires -----
-        if (docs.isNotEmpty)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 18),
-              child: PremiumRow(
-                title: 'Documentaires',
-                subtitle: '${docs.length} chaînes',
-                channels: docs.take(20).toList(),
-                onChannelTap: _onChannelTap,
-                onChannelLongPress: _onChannelLongPress,
-                onSeeAll: () => _openSection(
-                  'Documentaires',
-                  ChannelGenre.documentary,
-                ),
-              ),
-            ),
-          ),
+        // ----- Rangées par genre, triées par affinité (Hook Model) -----
+        //  Le genre dominant remonte en haut. On rebuilds quand le
+        //  service notifie un changement (nouveaux scores).
+        ..._buildGenreSlivers(<ChannelGenre, List<Channel>>{
+          ChannelGenre.sports: sports,
+          ChannelGenre.movies: movies,
+          ChannelGenre.series: series,
+          ChannelGenre.kids: kids,
+          ChannelGenre.news: news,
+          ChannelGenre.music: music,
+          ChannelGenre.documentary: docs,
+        }),
 
         // ----- Découvertes (catalogue complet, ordre inversé) -----
         SliverToBoxAdapter(
@@ -434,6 +363,81 @@ class _HomeScreenState extends State<HomeScreen> {
         const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
       ],
     );
+  }
+
+  /// Construit les slivers de rangées par genre, triés par affinité
+  /// (genre le plus regardé en premier). Si aucune affinité encore
+  /// calculée → ordre par défaut "marketing" (Sports → Films → Séries…).
+  /// Le ListenableBuilder repaint quand AffinityService notifie.
+  List<Widget> _buildGenreSlivers(Map<ChannelGenre, List<Channel>> byGenre) {
+    // Ordre par défaut (avant qu'on ait des données utilisateur)
+    const List<ChannelGenre> defaultOrder = <ChannelGenre>[
+      ChannelGenre.sports,
+      ChannelGenre.movies,
+      ChannelGenre.series,
+      ChannelGenre.kids,
+      ChannelGenre.news,
+      ChannelGenre.music,
+      ChannelGenre.documentary,
+    ];
+
+    final List<ChannelGenre> ranked = AffinityService.instance.rankedGenres;
+    final List<ChannelGenre> order = <ChannelGenre>[];
+    // 1) Genres rankés par affinité d'abord (dans l'ordre du service)
+    for (final ChannelGenre g in ranked) {
+      if (defaultOrder.contains(g) && !order.contains(g)) {
+        order.add(g);
+      }
+    }
+    // 2) Puis le reste dans l'ordre par défaut
+    for (final ChannelGenre g in defaultOrder) {
+      if (!order.contains(g)) order.add(g);
+    }
+
+    return <Widget>[
+      for (final ChannelGenre g in order)
+        if ((byGenre[g] ?? <Channel>[]).isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: PremiumRow(
+                title: _genreLabel(g),
+                subtitle: '${(byGenre[g] ?? <Channel>[]).length} chaînes',
+                channels: (byGenre[g] ?? <Channel>[]).take(20).toList(),
+                onChannelTap: _onChannelTap,
+                onChannelLongPress: _onChannelLongPress,
+                onSeeAll: () => _openSection(_genreLabel(g), g),
+              ),
+            ),
+          ),
+    ];
+  }
+
+  String _genreLabel(ChannelGenre g) {
+    switch (g) {
+      case ChannelGenre.sports:
+        return 'Sports en direct';
+      case ChannelGenre.movies:
+        return 'Films';
+      case ChannelGenre.series:
+        return 'Séries';
+      case ChannelGenre.kids:
+        return 'Jeunesse';
+      case ChannelGenre.news:
+        return 'Info & Actualités';
+      case ChannelGenre.music:
+        return 'Musique';
+      case ChannelGenre.documentary:
+        return 'Documentaires';
+      case ChannelGenre.entertainment:
+        return 'Divertissement';
+      case ChannelGenre.international:
+        return 'International';
+      case ChannelGenre.adult:
+        return 'Adulte';
+      case ChannelGenre.other:
+        return 'Autres';
+    }
   }
 
   Widget _favoritesRow(Map<String, Channel> byId) {
