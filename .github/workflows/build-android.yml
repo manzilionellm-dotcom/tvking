@@ -57,6 +57,14 @@ jobs:
           channel: 'stable'
           cache: true
 
+      # Diagnostic — imprime la version exacte de Flutter récupérée
+      # par l'action. Permet de comparer avec ce dont les nouvelles
+      # APIs (WidgetStateProperty, DialogThemeData, etc.) ont besoin.
+      - name: Print exact Flutter version
+        run: |
+          flutter --version
+          dart --version
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 

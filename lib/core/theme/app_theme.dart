@@ -155,21 +155,21 @@ abstract final class AppTheme {
           ),
           // Focus / hover → champagne bright. Pressed → champagne deep.
         ).copyWith(
-          overlayColor: WidgetStateProperty.resolveWith<Color?>(
-            (Set<WidgetState> states) {
-              if (states.contains(WidgetState.pressed)) {
+          overlayColor: MaterialStateProperty.resolveWith<Color?>(
+            (Set<MaterialState> states) {
+              if (states.contains(MaterialState.pressed)) {
                 return palette.champagneDeep.withValues(alpha: 0.25);
               }
-              if (states.contains(WidgetState.hovered) ||
-                  states.contains(WidgetState.focused)) {
+              if (states.contains(MaterialState.hovered) ||
+                  states.contains(MaterialState.focused)) {
                 return palette.champagneBright.withValues(alpha: 0.16);
               }
               return null;
             },
           ),
-          side: WidgetStateProperty.resolveWith<BorderSide?>(
-            (Set<WidgetState> states) {
-              if (states.contains(WidgetState.focused)) {
+          side: MaterialStateProperty.resolveWith<BorderSide?>(
+            (Set<MaterialState> states) {
+              if (states.contains(MaterialState.focused)) {
                 return BorderSide(color: palette.champagneBright, width: 2);
               }
               return null;
@@ -192,21 +192,21 @@ abstract final class AppTheme {
             width: 1.2,
           ),
         ).copyWith(
-          overlayColor: WidgetStateProperty.resolveWith<Color?>(
-            (Set<WidgetState> states) {
-              if (states.contains(WidgetState.pressed)) {
+          overlayColor: MaterialStateProperty.resolveWith<Color?>(
+            (Set<MaterialState> states) {
+              if (states.contains(MaterialState.pressed)) {
                 return palette.champagne.withValues(alpha: 0.20);
               }
-              if (states.contains(WidgetState.hovered) ||
-                  states.contains(WidgetState.focused)) {
+              if (states.contains(MaterialState.hovered) ||
+                  states.contains(MaterialState.focused)) {
                 return palette.champagne.withValues(alpha: 0.10);
               }
               return null;
             },
           ),
-          side: WidgetStateProperty.resolveWith<BorderSide?>(
-            (Set<WidgetState> states) {
-              if (states.contains(WidgetState.focused)) {
+          side: MaterialStateProperty.resolveWith<BorderSide?>(
+            (Set<MaterialState> states) {
+              if (states.contains(MaterialState.focused)) {
                 return BorderSide(color: palette.champagneBright, width: 2);
               }
               return BorderSide(
@@ -225,13 +225,13 @@ abstract final class AppTheme {
           textStyle: AppTextStyles.button,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         ).copyWith(
-          overlayColor: WidgetStateProperty.resolveWith<Color?>(
-            (Set<WidgetState> states) {
-              if (states.contains(WidgetState.pressed)) {
+          overlayColor: MaterialStateProperty.resolveWith<Color?>(
+            (Set<MaterialState> states) {
+              if (states.contains(MaterialState.pressed)) {
                 return palette.champagne.withValues(alpha: 0.15);
               }
-              if (states.contains(WidgetState.hovered) ||
-                  states.contains(WidgetState.focused)) {
+              if (states.contains(MaterialState.hovered) ||
+                  states.contains(MaterialState.focused)) {
                 return palette.champagne.withValues(alpha: 0.08);
               }
               return null;
@@ -271,19 +271,19 @@ abstract final class AppTheme {
 
       // ----- Switch : track champagne quand actif -----
       switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.resolveWith<Color>(
-          (Set<WidgetState> states) {
-            if (states.contains(WidgetState.selected)) return primaryOnAccent;
+        thumbColor: MaterialStateProperty.resolveWith<Color>(
+          (Set<MaterialState> states) {
+            if (states.contains(MaterialState.selected)) return primaryOnAccent;
             return palette.textSecondary;
           },
         ),
-        trackColor: WidgetStateProperty.resolveWith<Color>(
-          (Set<WidgetState> states) {
-            if (states.contains(WidgetState.selected)) return palette.champagne;
+        trackColor: MaterialStateProperty.resolveWith<Color>(
+          (Set<MaterialState> states) {
+            if (states.contains(MaterialState.selected)) return palette.champagne;
             return palette.glass;
           },
         ),
-        trackOutlineColor: WidgetStateProperty.all<Color>(palette.border),
+        trackOutlineColor: MaterialStateProperty.all<Color>(palette.border),
       ),
 
       // ----- Slider : track champagne -----
@@ -306,20 +306,10 @@ abstract final class AppTheme {
         ),
       ),
 
-      // ----- Dialog : surface elevated + radius généreux -----
-      dialogTheme: DialogThemeData(
-        backgroundColor: palette.elevated,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        titleTextStyle: AppTextStyles.headlineMedium.copyWith(
-          color: palette.textPrimary,
-        ),
-        contentTextStyle: AppTextStyles.bodyMedium.copyWith(
-          color: palette.textSecondary,
-        ),
-      ),
+      // NOTE: dialogTheme retiré volontairement. `DialogThemeData`
+      // n'existe que depuis Flutter 3.27 ; pour rester compatible
+      // avec tout `stable` on laisse Material gérer les dialogs avec
+      // ses défauts (déjà cohérents avec notre colorScheme).
 
       // ----- Bottom sheet -----
       bottomSheetTheme: BottomSheetThemeData(
