@@ -9,11 +9,25 @@
 import 'package:flutter/foundation.dart';
 
 enum CastDeviceKind {
-  /// Mediarender DLNA / UPnP (Fire TV via AirReceiver, Smart TV...)
+  /// MediaRenderer DLNA / UPnP (Fire TV via AirReceiver, Smart TV...)
   dlna,
 
-  /// Google Cast — sera implémenté dans une session dédiée
-  /// (nécessite le Cast SDK natif).
+  /// Google Cast — Chromecast natif, Google TV, Android TV avec
+  /// Chromecast intégré (Sony, Philips, TCL, Hisense), Vizio
+  /// SmartCast. Découvert via mDNS (`_googlecast._tcp.local`).
+  chromecast,
+
+  /// Roku TV ou dongle Roku. Découvert via SSDP avec ST
+  /// `roku:ecp`. Pilotage via External Control Protocol (HTTP).
+  roku,
+
+  /// Fallback universel : on héberge une page HTML5 dans l'app,
+  /// l'utilisateur ouvre l'URL (ou scanne un QR code) sur le
+  /// navigateur de sa TV. Marche partout où il y a un browser.
+  webBrowser,
+
+  /// Alias historique — équivalent à [chromecast]. Conservé pour
+  /// compatibilité du code existant.
   googleCast,
 }
 

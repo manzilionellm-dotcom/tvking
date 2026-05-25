@@ -16,8 +16,9 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../domain/cast_device.dart';
+import 'cast_transport.dart';
 
-class UpnpAvTransport {
+class UpnpAvTransport implements CastTransport {
   UpnpAvTransport(this.device);
 
   final CastDevice device;
@@ -25,6 +26,7 @@ class UpnpAvTransport {
   static const String _kService = 'urn:schemas-upnp-org:service:AVTransport:1';
 
   /// Envoie un flux au récepteur et démarre la lecture.
+  @override
   Future<void> playStream({
     required String streamUrl,
     String title = 'TV King',
@@ -49,11 +51,13 @@ class UpnpAvTransport {
     );
   }
 
+  @override
   Future<void> pause() => _soapCall(
         action: 'Pause',
         body: '<InstanceID>0</InstanceID>',
       );
 
+  @override
   Future<void> resume() => _soapCall(
         action: 'Play',
         body: '''
@@ -62,6 +66,7 @@ class UpnpAvTransport {
         ''',
       );
 
+  @override
   Future<void> stop() => _soapCall(
         action: 'Stop',
         body: '<InstanceID>0</InstanceID>',

@@ -17,8 +17,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../domain/cast_device.dart';
+import 'cast_transport.dart';
 import 'ssdp_discovery.dart';
-import 'upnp_av_transport.dart';
 
 enum CastState {
   idle,
@@ -35,7 +35,7 @@ class CastManager extends ChangeNotifier {
 
   CastState _state = CastState.idle;
   CastDevice? _device;
-  UpnpAvTransport? _transport;
+  CastTransport? _transport;
   String? _currentStreamUrl;
   String? _currentTitle;
   String? _errorMessage;
@@ -185,7 +185,7 @@ class CastManager extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _transport = UpnpAvTransport(device);
+      _transport = CastTransport.forDevice(device);
       await _transport!.playStream(streamUrl: streamUrl, title: title);
       _currentStreamUrl = streamUrl;
       _currentTitle = title;

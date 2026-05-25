@@ -438,14 +438,22 @@ class _DeviceTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      '${device.manufacturer ?? "DLNA"} · ${device.host}',
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: <Widget>[
+                        _KindBadge(kind: device.kind),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            device.host,
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              fontSize: 11,
+                              color: AppColors.textMuted,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -560,5 +568,56 @@ class _ActiveSessionBanner extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+// ============================================================
+//  Badge "DLNA" / "Roku" / "Chromecast" — petite pastille à
+//  côté du nom pour que l'utilisateur sache à quel type de
+//  récepteur il a affaire avant de connecter.
+// ============================================================
+
+class _KindBadge extends StatelessWidget {
+  const _KindBadge({required this.kind});
+
+  final CastDeviceKind kind;
+
+  @override
+  Widget build(BuildContext context) {
+    final ({String label, Color color}) info = _info(kind);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: info.color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: info.color.withValues(alpha: 0.4),
+          width: 0.8,
+        ),
+      ),
+      child: Text(
+        info.label,
+        style: AppTextStyles.labelSmall.copyWith(
+          color: info.color,
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.6,
+        ),
+      ),
+    );
+  }
+
+  ({String label, Color color}) _info(CastDeviceKind k) {
+    switch (k) {
+      case CastDeviceKind.dlna:
+        return (label: 'DLNA', color: AppColors.textSecondary);
+      case CastDeviceKind.roku:
+        return (label: 'ROKU', color: const Color(0xFF662D91));
+      case CastDeviceKind.chromecast:
+      case CastDeviceKind.googleCast:
+        return (label: 'CAST', color: const Color(0xFF4285F4));
+      case CastDeviceKind.webBrowser:
+        return (label: 'WEB', color: AppColors.success);
+    }
   }
 }

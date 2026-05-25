@@ -31,6 +31,7 @@ import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
 
 import '../domain/cast_device.dart';
+import 'roku_ecp_transport.dart';
 
 class SsdpDiscovery {
   SsdpDiscovery._();
@@ -77,10 +78,13 @@ class SsdpDiscovery {
         _handleResponse(dg, seenRootIds, controller);
       });
 
-      // Envoie les M-SEARCH pour MediaRenderer ET pour AVTransport
+      // Envoie les M-SEARCH pour MediaRenderer + AVTransport (DLNA),
+      // pour roku:ecp (TVs / dongles Roku) et "ssdp:all" comme filet
+      // de sécurité (certains devices ne répondent qu'à ssdp:all).
       final List<String> targets = <String>[
         'urn:schemas-upnp-org:device:MediaRenderer:1',
         'urn:schemas-upnp-org:service:AVTransport:1',
+        'roku:ecp',
         'ssdp:all',
       ];
       for (final String st in targets) {
@@ -130,6 +134,7 @@ class SsdpDiscovery {
       final Map<String, String> headers = _parseHeaders(text);
       final String? location = headers['LOCATION'];
       final String? usn = headers['USN'];
+      final String? st = headers['ST'];
       if (location == null || usn == null) return;
 
       // Extrait l'UUID racine : "uuid:abc::urn:..." → "uuid:abc"
@@ -139,6 +144,20 @@ class SsdpDiscovery {
       if (seenRootIds.contains(rootId)) return;
       seenRootIds.add(rootId);
 
+      // ----- Branche Roku -----
+      // Roku répond avec ST = "roku:ecp" et LOCATION pointant vers
+      // http://<ip>:8060/. Pas de descripteur UPnP — on interroge
+      // directement /query/device-info pour le nom.
+      if ((st != null && st.contains('roku:ecp')) ||
+          location.contains(':8060')) {
+        final CastDevice? device =
+            await _parseRokuDevice(location, rootId);
+        if (device == null) return;
+        if (!controller.isClosed) controller.add(device);
+        return;
+      }
+
+      // ----- Branche DLNA / UPnP standard -----
       // Télécharge le descripteur UPnP
       final http.Response resp = await http
           .get(Uri.parse(location))
@@ -151,6 +170,42 @@ class SsdpDiscovery {
       if (!controller.isClosed) controller.add(device);
     } catch (e) {
       if (kDebugMode) debugPrint('[SSDP] parse error: $e');
+    }
+  }
+
+  /// Construit un CastDevice à partir d'une réponse SSDP Roku.
+  /// Roku n'a pas de descripteur UPnP : on interroge son endpoint
+  /// `/query/device-info` (XML simple) pour récupérer le nom de
+  /// l'appareil et son modèle.
+  Future<CastDevice?> _parseRokuDevice(
+    String location,
+    String rootId,
+  ) async {
+    try {
+      final Uri loc = Uri.parse(location);
+      final Map<String, String> info =
+          await RokuEcpTransport.queryDeviceInfo(loc.host);
+
+      final String friendly = info['user-device-name'] ??
+          info['friendly-device-name'] ??
+          info['default-device-name'] ??
+          'Roku';
+      final String? model =
+          info['model-name'] ?? info['model-number'];
+
+      return CastDevice(
+        id: rootId,
+        name: friendly,
+        kind: CastDeviceKind.roku,
+        host: loc.host,
+        port: loc.port == 0 ? 8060 : loc.port,
+        controlUrl: 'http://${loc.host}:${loc.port == 0 ? 8060 : loc.port}',
+        manufacturer: 'Roku',
+        model: model,
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('[SSDP] Roku parse error: $e');
+      return null;
     }
   }
 
