@@ -32,9 +32,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   static const List<_OnboardingPage> _pages = <_OnboardingPage>[
     _OnboardingPage(
       icon: Icons.live_tv_rounded,
-      title: 'Bienvenue sur TV King',
+      title: 'Bienvenue sur 7 MOTION',
       description:
-          'Le lecteur IPTV premium. Conçu pour la TV, optimisé pour ton téléphone, beau partout.',
+          'Cinéma sans limites. Conçu pour la TV, optimisé pour ton téléphone, beau partout.',
     ),
     _OnboardingPage(
       icon: Icons.cloud_upload_outlined,

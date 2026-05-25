@@ -76,6 +76,20 @@ jobs:
       - name: Generate native Android folder
         run: flutter create . --platforms=android --org com.manzilionellm.tvking --project-name tv_king
 
+      # Branding 7 MOTION : remplace le label par défaut du manifest
+      # (`tv_king`) par "7 MOTION" pour que le nom affiché sur le
+      # bureau Android soit le bon. Note : on garde l'org Java
+      # `com.manzilionellm.tvking` pour ne pas casser les installs
+      # existantes (changer l'applicationId = nouvelle app séparée).
+      - name: Brand AndroidManifest with 7 MOTION label
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ -f "$MANIFEST" ]; then
+            sed -i 's|android:label="tv_king"|android:label="7 MOTION"|g' "$MANIFEST"
+            echo "--- Patched manifest ---"
+            grep 'android:label' "$MANIFEST" || true
+          fi
+
       - name: Get dependencies
         run: flutter pub get
 
@@ -107,9 +121,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: TV King — dernier build
+          name: 7 MOTION — dernier build
           body: |
-            Dernier build automatique de TV King.
+            Dernier build automatique de 7 MOTION.
 
             • Branche : `${{ github.ref_name }}`
             • Commit : `${{ github.sha }}`
@@ -132,7 +146,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: TV King build ${{ github.run_number }}
+          name: 7 MOTION build ${{ github.run_number }}
           body: |
             Build #${{ github.run_number }} de la branche `${{ github.ref_name }}`.
             Commit `${{ github.sha }}`.

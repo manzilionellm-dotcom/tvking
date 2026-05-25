@@ -1,31 +1,33 @@
 // =========================================================
-//  lumiere_tokens.dart — Système de design "LUMIÈRE / Maison Noir"
+//  lumiere_tokens.dart — Système de design "7 MOTION"
 // =========================================================
-//  Source de vérité unique pour les couleurs et l'accent
-//  cinématographique. Deux modes :
+//  Identité 7 MOTION : noir métallique + rouge braise.
+//  Inspiré du logo — cinéma d'action, mouvement, intensité
+//  retenue. Pas de Netflix-red criard, pas de néon : le rouge
+//  est un rouge "ember" / "braise" qui rougeoie sans agresser.
 //
-//    - Cinema Mode (dark, défaut) : "club privé caché", chaud,
-//      immersif, doux pour les yeux. Maison Noir.
-//    - Daylight Mode : version claire dérivée pour usage diurne.
-//      Mêmes intentions (champagne, calme, premium) inversées.
+//  Deux modes :
+//    - Cinema Mode (dark, défaut) : surfaces charbon presque
+//      noires (jamais le noir pur), accents ember-red.
+//    - Daylight Mode (light) : version diurne dérivée, ivoires
+//      chauds + ember deep pour rester lisible.
 //
-//  Règle absolue : aucune valeur de couleur ne doit exister
-//  ailleurs dans l'app. Tout passe par `LumiereColors` ou par
-//  son facade statique `AppColors` (qui réplique le Cinema Mode
-//  pour rétrocompatibilité).
+//  Source de vérité. Aucune valeur de couleur n'existe ailleurs
+//  dans l'app.
 //
-//  Disponibilité dans les widgets :
-//    - via `Theme.of(context).extension<LumiereColors>()!` pour
-//      les composants qui doivent s'adapter aux deux modes
-//    - via `AppColors.X` (constants) pour les composants qui
-//      restent en Cinema Mode permanent (mini-player, splash...)
+//  Disponibilité :
+//    - Composants context-aware (deux modes) →
+//      `LumiereColors.of(context).X`
+//    - Composants Cinema Mode permanent (splash, lecteur vidéo) →
+//      `AppColors.X` (raccourci const)
 // =========================================================
 
 import 'package:flutter/material.dart';
 
-/// Extension `ThemeData` qui transporte la palette LUMIÈRE complète.
-/// Les composants context-aware lisent ces tokens via
-/// `Theme.of(context).extension<LumiereColors>()!`.
+/// Extension `ThemeData` qui transporte la palette 7 MOTION complète.
+/// Le nom de classe reste `LumiereColors` pour conserver une API stable
+/// entre les rebrandings successifs (l'app est encore jeune, l'identité
+/// peut bouger ; les valeurs changent, l'API non).
 @immutable
 class LumiereColors extends ThemeExtension<LumiereColors> {
   const LumiereColors({
@@ -53,45 +55,45 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
   });
 
   // -------- Surfaces --------
-  /// Fond principal de l'app. En Cinema : aubergine très foncée.
-  /// En Daylight : ivoire chaud.
+  /// Fond principal. Cinema : charbon presque noir avec une pointe
+  /// de chaleur. Daylight : ivoire chaud.
   final Color canvas;
 
-  /// Surface "vide" (splash, vidéo en plein écran). Plus profond
-  /// que le canvas. En Cinema c'est le noir le plus sombre qu'on
-  /// s'autorise — toujours teinté pour éviter le noir pur.
+  /// Surface la plus profonde (splash, vidéo plein écran). Jamais
+  /// le noir pur — on garde une trace de chaleur pour les OLED.
   final Color voidSurface;
 
   /// Surface élevée (cards, panels, sheets).
   final Color elevated;
 
-  /// Glassmorphism — un peu plus claire que `elevated`, semi-translucide
-  /// quand combinée avec `BackdropFilter`.
+  /// Glassmorphism — à combiner avec `BackdropFilter`.
   final Color glass;
 
   /// Overlay le plus haut (modals, snackbars, dialogs).
   final Color overcast;
 
-  // -------- Accent champagne --------
-  /// Accent principal — chaud, sobre, signe "privé / premium".
+  // -------- Accent ember (rouge braise) --------
+  /// Le nom du token reste `champagne` pour compatibilité, mais
+  /// la valeur est désormais ember-red 7 MOTION. Le rebranding
+  /// n'a pas à se propager dans 427 références.
   final Color champagne;
 
-  /// Variante claire — pour les états focus / hover / brillance.
+  /// Variante claire — ember glow, états focus / hover / brillance.
   final Color champagneBright;
 
-  /// Variante deep — pour les bordures actives, états sélectionnés
-  /// passifs, et le Daylight Mode où il devient l'accent principal.
+  /// Variante deep — ember-blood, bordures actives, états sélectionnés
+  /// passifs et accent principal du Daylight Mode.
   final Color champagneDeep;
 
-  /// Halo cuivré — utilisé pour les glows / ombres champagne sur
-  /// les CTAs primaires et les éléments focus.
+  /// Halo ember — utilisé pour les glows / ombres rouges sur les CTAs
+  /// primaires et les éléments focus.
   final Color brassGlow;
 
   // -------- Texte --------
   final Color textPrimary;
   final Color textSecondary;
 
-  /// Niveau intermédiaire — métadonnées, sous-titres discrets.
+  /// Niveau intermédiaire — métadonnées discrètes.
   final Color textTertiary;
 
   /// Texte très estompé — hints, timestamps, états désactivés.
@@ -101,125 +103,125 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
   /// Vert apaisé (jamais néon).
   final Color statusSuccess;
 
-  /// Ambre champagne — buffering, avertissements doux.
+  /// Ambre / orange — buffering, avertissements doux.
   final Color statusWarning;
 
-  /// Rouge bordeaux — erreurs critiques, badge LIVE. Volontairement
-  /// pas le rouge Netflix #E50914 ni les rouges saturés tape-à-l'œil.
+  /// Rouge ember (le même tone que l'accent ; volontairement distinct
+  /// de `champagne` par une variation de saturation pour éviter
+  /// l'ambiguïté visuelle accent/erreur).
   final Color statusError;
 
   /// Bleu cendre froid — info neutre.
   final Color statusInfo;
 
   // -------- Dérivés --------
-  /// Liseré subtil pour délimiter cards / panels sans agressivité.
+  /// Liseré subtil pour cards / panels.
   final Color border;
 
-  /// Voile sombre par-dessus une image (cards, hero) pour rendre
-  /// le texte par-dessus lisible.
+  /// Voile sombre par-dessus une image.
   final Color scrim;
 
-  /// Gradient de fond global, très subtil, donne la profondeur sans
-  /// distraire du contenu.
+  /// Gradient de fond global, très subtil.
   final LinearGradient canvasGradient;
 
   /// Voile dégradé pour le bas des héros plein écran.
   final LinearGradient heroScrim;
 
   // ============================================================
-  //  Cinema Mode (Maison Noir) — défaut, identité du produit
+  //  Cinema Mode (7 MOTION) — défaut, identité du produit
   // ============================================================
   static const LumiereColors cinema = LumiereColors(
-    canvas: Color(0xFF0E0B14),
-    voidSurface: Color(0xFF0A0810),
-    elevated: Color(0xFF16121C),
-    glass: Color(0xFF1C1826),
-    overcast: Color(0xFF221D2D),
-    champagne: Color(0xFFD4B483),
-    champagneBright: Color(0xFFE8C896),
-    champagneDeep: Color(0xFF9C8359),
-    brassGlow: Color(0xFFB8965E),
-    textPrimary: Color(0xFFF4EDE4),
-    textSecondary: Color(0xFFC8BFB2),
-    textTertiary: Color(0xFF8A8278),
-    textMuted: Color(0xFF5C564E),
-    statusSuccess: Color(0xFF7FB890),
-    statusWarning: Color(0xFFD4A574),
-    statusError: Color(0xFFC97064),
-    statusInfo: Color(0xFF8FA8C4),
-    border: Color(0x14F4EDE4), // text.primary @ 8% — liseré subtil
-    scrim: Color(0xCC0A0810),
+    canvas: Color(0xFF0A0A0C),
+    voidSurface: Color(0xFF050507),
+    elevated: Color(0xFF14141A),
+    glass: Color(0xFF1C1C24),
+    overcast: Color(0xFF28282F),
+    // Ember-red — saturé mais profond, pas Netflix-red ni néon
+    champagne: Color(0xFFD63A30),
+    champagneBright: Color(0xFFFF5A4A),
+    champagneDeep: Color(0xFF8E1F1D),
+    brassGlow: Color(0xFFFF5A4A),
+    textPrimary: Color(0xFFF0EDE9),
+    textSecondary: Color(0xFFB6B0A8),
+    textTertiary: Color(0xFF7E7872),
+    textMuted: Color(0xFF4E4A45),
+    statusSuccess: Color(0xFF5FA975),
+    statusWarning: Color(0xFFD69847),
+    // Erreur = ember-glow (légèrement plus orangé que l'accent pour
+    // se distinguer en contexte d'alerte critique).
+    statusError: Color(0xFFE84A3E),
+    statusInfo: Color(0xFF6A8DB0),
+    border: Color(0x14F0EDE9), // textPrimary @ 8%
+    scrim: Color(0xCC050507),
     canvasGradient: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: <Color>[
-        Color(0xFF14101D),
-        Color(0xFF0E0B14),
-        Color(0xFF09070D),
+        Color(0xFF101012),
+        Color(0xFF0A0A0C),
+        Color(0xFF050507),
       ],
     ),
     heroScrim: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: <Color>[
-        Color(0x000A0810),
-        Color(0x800A0810),
-        Color(0xFF0A0810),
+        Color(0x00050507),
+        Color(0x80050507),
+        Color(0xFF050507),
       ],
       stops: <double>[0.0, 0.55, 1.0],
     ),
   );
 
   // ============================================================
-  //  Daylight Mode — version claire dérivée, mêmes intentions
+  //  Daylight Mode — version claire dérivée
   // ============================================================
-  //  Les couleurs sont dérivées pour préserver l'identité Maison
-  //  Noir : ivoires chauds, champagne plus profond pour passer la
-  //  contraste AA sur fond clair, textes en espresso (jamais noir
-  //  pur). Aucun blanc clinique, aucun gris froid.
+  //  Ivoires chauds, ember deep pour passer le contraste AA, texte
+  //  espresso (jamais noir pur). On évite tout blanc clinique.
   static const LumiereColors daylight = LumiereColors(
-    canvas: Color(0xFFF6F1E8),
-    voidSurface: Color(0xFFFAF7F1),
-    elevated: Color(0xFFECE4D3),
-    glass: Color(0xFFDDD3BE),
-    overcast: Color(0xFFCFC4AC),
-    champagne: Color(0xFF8A7142),
-    champagneBright: Color(0xFF9C8359),
-    champagneDeep: Color(0xFF6E5933),
-    brassGlow: Color(0xFF76603C),
-    textPrimary: Color(0xFF1A1612),
-    textSecondary: Color(0xFF4A4138),
-    textTertiary: Color(0xFF7A6F61),
-    textMuted: Color(0xFFA89C87),
-    statusSuccess: Color(0xFF4E8261),
-    statusWarning: Color(0xFFB07F3E),
-    statusError: Color(0xFFA14538),
+    canvas: Color(0xFFF5F2EC),
+    voidSurface: Color(0xFFFAF8F3),
+    elevated: Color(0xFFE9E5DC),
+    glass: Color(0xFFD9D4C8),
+    overcast: Color(0xFFCAC4B5),
+    champagne: Color(0xFF9B2421),
+    champagneBright: Color(0xFFC8302E),
+    champagneDeep: Color(0xFF6E1714),
+    brassGlow: Color(0xFFC8302E),
+    textPrimary: Color(0xFF1A0F0E),
+    textSecondary: Color(0xFF423835),
+    textTertiary: Color(0xFF6E635E),
+    textMuted: Color(0xFF9C9388),
+    statusSuccess: Color(0xFF3E7553),
+    statusWarning: Color(0xFFA77433),
+    statusError: Color(0xFFB02E2A),
     statusInfo: Color(0xFF466389),
-    border: Color(0x141A1612), // text.primary @ 8%
-    scrim: Color(0xCCFAF7F1),
+    border: Color(0x141A0F0E), // textPrimary @ 8%
+    scrim: Color(0xCCFAF8F3),
     canvasGradient: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: <Color>[
-        Color(0xFFFAF7F1),
-        Color(0xFFF6F1E8),
-        Color(0xFFEDE5D5),
+        Color(0xFFFAF8F3),
+        Color(0xFFF5F2EC),
+        Color(0xFFEDE9DF),
       ],
     ),
     heroScrim: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: <Color>[
-        Color(0x00F6F1E8),
-        Color(0x80F6F1E8),
-        Color(0xFFF6F1E8),
+        Color(0x00F5F2EC),
+        Color(0x80F5F2EC),
+        Color(0xFFF5F2EC),
       ],
       stops: <double>[0.0, 0.55, 1.0],
     ),
   );
 
-  /// Helper pratique pour accéder à la palette depuis un widget.
-  /// Tombe sur Cinema Mode si l'extension n'est pas attachée (sécurité).
+  /// Helper pratique. Tombe sur Cinema Mode si l'extension n'est pas
+  /// attachée (sécurité).
   static LumiereColors of(BuildContext context) {
     return Theme.of(context).extension<LumiereColors>() ?? cinema;
   }

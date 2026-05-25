@@ -25,7 +25,7 @@ abstract class CastTransport {
   /// toujours, ignore en silence si non supporté.
   Future<void> playStream({
     required String streamUrl,
-    String title = 'TV King',
+    String title = '7 MOTION',
   });
 
   Future<void> pause();

@@ -22,7 +22,7 @@ class ChromecastTransport implements CastTransport {
   @override
   Future<void> playStream({
     required String streamUrl,
-    String title = 'TV King',
+    String title = '7 MOTION',
   }) {
     throw Exception(
       'Cast Chromecast pas encore implémenté. Utilise DLNA ou le '

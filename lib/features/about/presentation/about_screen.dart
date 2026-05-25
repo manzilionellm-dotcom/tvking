@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/branding/brand_logo.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../device/presentation/device_id_card.dart';
@@ -85,33 +86,13 @@ class _AboutScreenState extends State<AboutScreen> {
               ),
               child: Column(
                 children: <Widget>[
-                  Container(
-                    width: 84,
-                    height: 84,
-                    decoration: BoxDecoration(
-                      color: AppColors.accent,
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: <BoxShadow>[
-                        BoxShadow(
-                          color:
-                              AppColors.accent.withValues(alpha: 0.4),
-                          blurRadius: 28,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.live_tv_rounded,
-                      color: Colors.black,
-                      size: 48,
-                    ),
-                  ),
+                  const BrandLogo.medium(),
                   const SizedBox(height: 16),
                   Text(
-                    'TV KING',
+                    BrandStrings.appName,
                     style: AppTextStyles.headlineLarge.copyWith(
                       letterSpacing: 4,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -322,7 +303,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 border: Border.all(color: AppColors.border),
               ),
               child: Text(
-                'TV King est un lecteur média générique. Aucun contenu n\'est '
+                '7 MOTION est un lecteur média générique. Aucun contenu n\'est '
                 'inclus avec l\'app. Tu es responsable des sources que tu '
                 'ajoutes et de leur conformité aux lois en vigueur dans '
                 'ton pays.',

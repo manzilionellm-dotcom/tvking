@@ -7,7 +7,7 @@
 # =========================================================
 
 name: tv_king
-description: "TV King — lecteur IPTV premium pour mobile, Android TV et Fire TV."
+description: "7 MOTION — lecteur IPTV premium pour mobile, Android TV et Fire TV."
 publish_to: 'none'
 version: 0.2.0+2
 
@@ -115,3 +115,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # ----- Branding -----
+  # Logo officiel 7 MOTION, utilisé dans le splash, l'AppBar de
+  # l'accueil et l'écran "À propos".
+  assets:
+    - assets/branding/logo_7motion.jpg

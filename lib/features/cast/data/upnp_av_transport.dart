@@ -29,7 +29,7 @@ class UpnpAvTransport implements CastTransport {
   @override
   Future<void> playStream({
     required String streamUrl,
-    String title = 'TV King',
+    String title = '7 MOTION',
   }) async {
     final String metadata = _buildDidlMetadata(streamUrl, title);
     await _soapCall(

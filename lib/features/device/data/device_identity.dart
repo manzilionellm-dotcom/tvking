@@ -6,7 +6,9 @@
 //  être familier aux clients IPTV :
 //      MK:A3:B2:F1:8E:91
 //
-//  "MK" = TV King (préfixe constant pour reconnaître nos apps).
+//  "MK" = préfixe constant hérité (historique). On le conserve tel
+//  quel après le rebrand 7 MOTION pour ne pas invalider les MACs
+//  déjà émises chez les clients existants.
 //  Les 5 octets suivants = aléatoires, générés au premier
 //  lancement et stockés à vie dans SharedPreferences.
 //

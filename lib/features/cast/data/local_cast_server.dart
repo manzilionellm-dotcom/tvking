@@ -137,7 +137,7 @@ class LocalCastServer {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <title>TV King — Cast</title>
+  <title>7 MOTION — Cast</title>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.min.js"></script>
   <style>
@@ -161,11 +161,15 @@ class LocalCastServer {
     #empty.hidden { display: none; }
     #logo {
       width: 88px; height: 88px; border-radius: 18px;
-      background: #FFCB05; display: flex; align-items: center; justify-content: center;
-      font-size: 48px;
+      background: #050507;
+      border: 1px solid rgba(255,90,74,0.35);
+      box-shadow: 0 0 32px rgba(255,90,74,0.35);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 48px; font-weight: 800; color: #D63A30;
+      letter-spacing: -2px;
     }
-    h1 { margin: 0; font-size: 22px; letter-spacing: 4px; font-weight: 800; }
-    p { margin: 0; opacity: 0.7; font-size: 14px; max-width: 480px; line-height: 1.5; }
+    h1 { margin: 0; font-size: 22px; letter-spacing: 4px; font-weight: 700; color: #F0EDE9; }
+    p { margin: 0; opacity: 0.7; font-size: 14px; max-width: 480px; line-height: 1.5; color: #B6B0A8; }
     #title {
       position: absolute; top: 0; left: 0; right: 0;
       padding: 14px 20px;
@@ -187,8 +191,8 @@ class LocalCastServer {
 <body>
 <div id="stage">
   <div id="empty">
-    <div id="logo">📺</div>
-    <h1>TV KING</h1>
+    <div id="logo">7</div>
+    <h1>7 MOTION</h1>
     <p>En attente d'une chaîne… Lance n'importe quelle chaîne depuis ton téléphone, elle apparaîtra ici dans 2 secondes.</p>
   </div>
   <video id="v" playsinline autoplay controls></video>

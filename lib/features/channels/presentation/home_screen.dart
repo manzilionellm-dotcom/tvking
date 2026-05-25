@@ -24,6 +24,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/branding/brand_logo.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../cast/presentation/cast_button.dart';
@@ -149,26 +150,15 @@ class _HomeScreenState extends State<HomeScreen> {
       elevation: 0,
       title: Row(
         children: <Widget>[
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: AppColors.accent,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: const Icon(
-              Icons.live_tv_rounded,
-              color: Colors.black,
-              size: 18,
-            ),
-          ),
+          const BrandLogo.compact(),
           const SizedBox(width: 10),
           Text(
-            'TV KING',
+            BrandStrings.appName,
             style: AppTextStyles.headlineLarge.copyWith(
               fontSize: 18,
-              letterSpacing: 3,
-              fontWeight: FontWeight.w800,
+              letterSpacing: 3.2,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
             ),
           ),
         ],

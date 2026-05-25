@@ -27,7 +27,7 @@ class WebBrowserTransport implements CastTransport {
   @override
   Future<void> playStream({
     required String streamUrl,
-    String title = 'TV King',
+    String title = '7 MOTION',
   }) async {
     // Le serveur est déjà démarré par la sélection du device. Ici on
     // se contente de pousser la nouvelle URL — la TV la reprendra

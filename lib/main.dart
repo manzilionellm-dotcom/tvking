@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
+import 'core/branding/brand_logo.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_mode_repository.dart';
@@ -93,7 +94,7 @@ class TvKingApp extends StatelessWidget {
       listenable: ThemeModeRepository.instance,
       builder: (BuildContext context, _) {
         return MaterialApp(
-          title: 'TV King',
+          title: BrandStrings.appName,
           debugShowCheckedModeBanner: false,
           theme: AppTheme.daylight,
           darkTheme: AppTheme.cinema,
@@ -141,32 +142,18 @@ class _AppEntryState extends State<_AppEntry> {
   }
 }
 
-/// Splash minimal Maison Noir — apparaît max 50 ms le temps que le
-/// flag onboarding soit lu depuis SharedPreferences. Toujours en
-/// Cinema Mode quelle que soit la préférence utilisateur — c'est
-/// l'identité du produit qui s'affiche en premier.
+/// Splash 7 MOTION — apparaît max 50 ms le temps que le flag
+/// onboarding soit lu depuis SharedPreferences. Toujours en Cinema
+/// Mode : c'est l'identité du produit qui s'affiche en premier.
 class _Splash extends StatelessWidget {
   const _Splash();
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return const Scaffold(
       backgroundColor: AppColors.voidSurface,
       body: Center(
-        child: Container(
-          width: 100,
-          height: 100,
-          decoration: BoxDecoration(
-            color: AppColors.accent,
-            borderRadius: BorderRadius.circular(22),
-            boxShadow: AppColors.champagneGlow,
-          ),
-          child: const Icon(
-            Icons.local_movies_rounded,
-            color: Color(0xFF1A1612),
-            size: 52,
-          ),
-        ),
+        child: BrandLogo.splash(),
       ),
     );
   }

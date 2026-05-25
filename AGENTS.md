@@ -1,4 +1,7 @@
-# Conventions de code — TV King
+# Conventions de code — 7 MOTION
+
+<!-- Codename interne / dépôt : `tv_king`. -->
+
 
 Projet **Flutter** (Dart). Cible : Android mobile + Android TV / Fire TV + Google TV.
 À terme : iOS / iPadOS / Apple TV / Web (panneau admin).

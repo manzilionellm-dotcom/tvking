@@ -1,4 +1,7 @@
-# TV King — Lecteur IPTV Premium
+# 7 MOTION — Lecteur IPTV Premium
+
+<!-- Codename Dart / repo : `tv_king` (conservé en interne). -->
+
 
 App Flutter pour mobile, Android TV et Fire TV. Style **Apple TV / Netflix** :
 logos haute qualité, classification automatique des chaînes (Sports, Films,
@@ -99,7 +102,7 @@ lib/
 
 ## 📜 Légal
 
-TV King est un **lecteur média générique** comme VLC. Aucune playlist
+7 MOTION est un **lecteur média générique** comme VLC. Aucune playlist
 n'est incluse. Aucun lien vers du contenu protégé. L'utilisateur est
 responsable des sources qu'il ajoute et de leur conformité aux lois
 en vigueur dans son pays.
