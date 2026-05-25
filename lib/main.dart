@@ -22,10 +22,13 @@ import 'features/about/data/update_checker.dart';
 import 'features/cast/data/cast_manager.dart';
 import 'features/channels/data/recently_watched_repository.dart';
 import 'features/channels/presentation/home_screen.dart';
+import 'features/channels/presentation/tv_home_screen.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/device/data/remote_config_repository.dart';
 import 'features/epg/data/epg_repository.dart';
+import 'features/onboarding/data/device_class_repository.dart';
 import 'features/onboarding/data/onboarding_state.dart';
+import 'features/onboarding/presentation/device_picker_screen.dart';
 import 'features/onboarding/presentation/onboarding_screen.dart';
 import 'features/player/data/player_settings.dart';
 import 'features/playlists/data/favorites_repository.dart';
@@ -78,6 +81,10 @@ Future<void> main() async {
   // éviter un flash de mauvais thème au démarrage.
   await ThemeModeRepository.instance.initialize();
 
+  // Classe d'appareil (Téléphone / TV / Auto). Chargée tôt pour que
+  // `_AppEntry` puisse décider immédiatement quel home afficher.
+  await DeviceClassRepository.instance.initialize();
+
   // Update checker — silencieux en arrière-plan. Le résultat est lu
   // par AboutScreen / un toast plus tard.
   unawaited(UpdateChecker.instance.check());
@@ -107,8 +114,12 @@ class TvKingApp extends StatelessWidget {
 }
 
 /// Décide quel écran montrer en premier :
-///   - Si onboarding pas encore complété → OnboardingScreen
-///   - Sinon → HomeScreen
+///   - 1er lancement → DevicePickerScreen (téléphone / TV / auto)
+///   - puis OnboardingScreen (3 slides)
+///   - puis HomeScreen (Phone ou TV selon le choix)
+///
+/// Le flag onboarding est aussi utilisé pour considérer que le
+/// device picker a été vu (les deux sont liés au "1er lancement").
 class _AppEntry extends StatefulWidget {
   const _AppEntry();
 
@@ -118,27 +129,55 @@ class _AppEntry extends StatefulWidget {
 
 class _AppEntryState extends State<_AppEntry> {
   bool? _onboardingDone;
+  bool _devicePicked = false;
 
   @override
   void initState() {
     super.initState();
     OnboardingState.instance.hasCompleted().then((bool done) {
-      if (mounted) setState(() => _onboardingDone = done);
+      if (mounted) {
+        setState(() {
+          _onboardingDone = done;
+          // Si l'onboarding est complété, on considère que le device
+          // picker l'est aussi (il vient AVANT). Pour un user qui a
+          // déjà l'app installée et qui se met à jour, c'est juste.
+          _devicePicked = done;
+        });
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
     if (_onboardingDone == null) {
-      // Splash très court pendant qu'on lit SharedPreferences
       return const _Splash();
     }
+
+    // 1) Première étape : choix de la classe d'appareil
+    if (!_devicePicked) {
+      return DevicePickerScreen(
+        onDone: () => setState(() => _devicePicked = true),
+      );
+    }
+
+    // 2) Onboarding (slides bienvenue / playlist / premium)
     if (_onboardingDone == false) {
       return OnboardingScreen(
         onDone: () => setState(() => _onboardingDone = true),
       );
     }
-    return const HomeScreen();
+
+    // 3) Home — version TV ou téléphone selon le choix utilisateur.
+    //    On re-watche le repo pour qu'un changement dans Réglages
+    //    (futur) bascule immédiatement le layout.
+    return ListenableBuilder(
+      listenable: DeviceClassRepository.instance,
+      builder: (BuildContext context, _) {
+        final bool isTv =
+            DeviceClassRepository.instance.isTvFor(context);
+        return isTv ? const TvHomeScreen() : const HomeScreen();
+      },
+    );
   }
 }
 
