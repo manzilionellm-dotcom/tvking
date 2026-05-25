@@ -451,14 +451,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   child: _forcedAspect(mode) == null
                       ? Video(
                           controller: _videoController,
-                          controls: NoVideoControls,
+                          controls: (VideoState _) => const SizedBox.shrink(),
                           fit: _fitFromMode(mode),
                         )
                       : AspectRatio(
                           aspectRatio: _forcedAspect(mode)!,
                           child: Video(
                             controller: _videoController,
-                            controls: NoVideoControls,
+                            controls: (VideoState _) => const SizedBox.shrink(),
                             fit: _fitFromMode(mode),
                           ),
                         ),

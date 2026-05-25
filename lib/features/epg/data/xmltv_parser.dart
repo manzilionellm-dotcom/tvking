@@ -79,7 +79,7 @@ class XmltvParser {
 
     final Stream<List<XmlEvent>> events = bytes
         .transform(utf8.decoder)
-        .transform(const XmlEventDecoder());
+        .transform(XmlEventDecoder());
 
     await for (final List<XmlEvent> chunk in events) {
       for (final XmlEvent event in chunk) {
