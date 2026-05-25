@@ -101,14 +101,42 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: Publish as GitHub Release (manual trigger only)
+      # Toujours mettre à jour la release "latest" pour que le lien
+      # direct https://github.com/.../releases/latest/download/
+      # pointe vers le dernier APK. Ainsi l'utilisateur peut
+      # installer depuis son téléphone sans naviguer dans Actions.
+      - name: Publish/replace "latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: TV King — dernier build
+          body: |
+            Dernier build automatique de TV King.
+
+            • Branche : `${{ github.ref_name }}`
+            • Commit : `${{ github.sha }}`
+            • Run : #${{ github.run_number }}
+
+            **Pour installer :**
+            1. Ouvre ce lien sur ton téléphone Android
+            2. Télécharge `app-debug.apk`
+            3. Si Android refuse → autorise "Sources inconnues" dans les Paramètres
+            4. Lance l'APK pour installer
+
+            ⚠️ Ce build est en mode debug — pour usage de test, pas pour distribution finale.
+          files: build/app/outputs/flutter-apk/app-debug.apk
+          prerelease: true
+          make_latest: 'true'
+
+      # Bonus : tag versionné (un par run) pour garder un historique
+      - name: Publish versioned release
         if: github.event_name == 'workflow_dispatch' && inputs.make_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: TV King build ${{ github.run_number }}
           body: |
-            Build automatique de la branche `${{ github.ref_name }}`.
+            Build #${{ github.run_number }} de la branche `${{ github.ref_name }}`.
             Commit `${{ github.sha }}`.
           files: build/app/outputs/flutter-apk/app-debug.apk
           prerelease: true
