@@ -25,6 +25,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/branding/brand_logo.dart';
+import '../../../core/branding/powered_by_marquee.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../cast/presentation/cast_button.dart';
@@ -165,6 +166,15 @@ class _HomeScreenState extends State<HomeScreen> {
               onTap: _onNavTap,
             ),
           ),
+          // Signature défilante "POWERED BY 7 — THE FEW" juste
+          // au-dessus de la bottom nav flottante. Fine bande
+          // ember discrète qui marque la maison sans gêner.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 110,
+            child: const PoweredByMarquee(),
+          ),
         ],
       ),
     );
@@ -174,21 +184,11 @@ class _HomeScreenState extends State<HomeScreen> {
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
-      title: Row(
-        children: <Widget>[
-          const BrandLogo.compact(),
-          const SizedBox(width: 10),
-          Text(
-            BrandStrings.appName,
-            style: AppTextStyles.headlineLarge.copyWith(
-              fontSize: 18,
-              letterSpacing: 3.2,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ],
-      ),
+      // Logo seul dans l'AppBar — le wordmark "7 MOTION" prenait
+      // trop de place avec 5 icônes d'action à droite et causait
+      // un RIGHT OVERFLOWED sur les phones standards. Le logo
+      // ember est suffisamment reconnaissable.
+      title: const BrandLogo.compact(),
       actions: <Widget>[
         // Bouton Actualiser — visible, première position d'actions.
         // L'app rafraîchit déjà les playlists vieilles au démarrage,

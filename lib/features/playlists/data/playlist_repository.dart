@@ -329,7 +329,33 @@ class PlaylistRepository {
   // ============================================================
 
   Future<void> deletePlaylist(int playlistId) async {
+    // Vidage SYNCHRONE du cache mémoire + émission immédiate d'une
+    // liste vide AVANT le DELETE SQL. Sur grosses playlists (20k+
+    // chaînes), le delete cascade prend 10-30s — sans ce vidage,
+    // l'UI continue d'afficher les vieilles chaînes pendant tout
+    // ce temps et l'utilisateur a l'impression que rien ne s'est
+    // passé. Avec : la home se vide instantanément, puis on
+    // ré-émet l'état réel à la fin du DELETE pour rester cohérent.
+    final List<Playlist> remainingPlaylists = _playlistsCache
+        .where((Playlist p) => p.id != playlistId)
+        .toList();
+    final List<Channel> remainingChannels = _channelsCache
+        .where((Channel c) => c.playlistId != playlistId)
+        .toList();
+    _playlistsCache = remainingPlaylists;
+    _channelsCache = remainingChannels;
+    if (!_playlistsController.isClosed) {
+      _playlistsController.add(remainingPlaylists);
+    }
+    if (!_channelsController.isClosed) {
+      _channelsController.add(remainingChannels);
+    }
+
+    // Maintenant le DELETE SQL réel (peut prendre du temps sur
+    // grosses playlists, mais l'UI est déjà à jour).
     await _deletePlaylist(playlistId);
+    // Re-émet l'état "officiel" depuis la DB pour rester cohérent
+    // en cas d'incohérence (rare).
     await _emitCurrentState();
   }
 

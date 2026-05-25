@@ -19,6 +19,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/branding/brand_logo.dart';
+import '../../../core/branding/powered_by_marquee.dart';
 import '../../../core/support/vip_help_card.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -289,7 +290,11 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               ),
             ),
 
-          const SizedBox(height: 80),
+          // Signature défilante "POWERED BY 7 — THE FEW" en pied
+          // de page TV. Discret mais présent.
+          const SizedBox(height: 32),
+          const PoweredByMarquee(height: 32),
+          const SizedBox(height: 40),
         ],
       ),
     );

@@ -16,6 +16,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'core/branding/brand_logo.dart';
+import 'core/branding/powered_by_marquee.dart';
 import 'core/i18n/locale_repository.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
@@ -230,10 +231,19 @@ class _Splash extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: AppColors.voidSurface,
-      body: Center(
-        child: BrandLogo.splash(),
+      body: SafeArea(
+        child: Column(
+          children: const <Widget>[
+            Expanded(
+              child: Center(child: BrandLogo.splash()),
+            ),
+            // ----- Signature marquee qui défile -----
+            PoweredByMarquee(),
+            SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }
