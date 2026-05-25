@@ -26,6 +26,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/live_badge.dart';
+import '../../cast/data/cast_manager.dart';
+import '../../cast/presentation/cast_picker_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/favorites_repository.dart';
@@ -377,6 +379,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _scheduleHideOverlay();
   }
 
+  Future<void> _openCastPicker() async {
+    final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+    final String title = widget.overrideTitle ?? _currentChannel.cleanName;
+    _hideOverlayTimer?.cancel();
+    await showCastPicker(context, streamUrl: url, title: title);
+    _scheduleHideOverlay();
+  }
+
   Future<void> _openSettings() async {
     _hideOverlayTimer?.cancel();
     await showModalBottomSheet<void>(
@@ -567,6 +577,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     ),
                   ),
                   _FavoriteToggle(channelId: ch.id),
+                  ListenableBuilder(
+                    listenable: CastManager.instance,
+                    builder: (BuildContext context, _) {
+                      final bool casting =
+                          CastManager.instance.isCasting;
+                      return IconButton(
+                        icon: Icon(
+                          casting
+                              ? Icons.cast_connected_rounded
+                              : Icons.cast_rounded,
+                          color: casting
+                              ? AppColors.accent
+                              : Colors.white,
+                        ),
+                        tooltip: casting
+                            ? 'Casting en cours — tap pour gérer'
+                            : 'Envoyer vers une TV',
+                        onPressed: _openCastPicker,
+                      );
+                    },
+                  ),
                   IconButton(
                     icon: const Icon(
                       Icons.refresh_rounded,

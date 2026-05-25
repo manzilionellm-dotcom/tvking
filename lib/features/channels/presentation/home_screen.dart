@@ -26,6 +26,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../cast/presentation/cast_mini_bar.dart';
 import '../../epg/presentation/tv_guide_screen.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
@@ -121,6 +122,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 return _buildContent(channels);
               },
             ),
+          ),
+          // Mini-bar de cast (visible seulement quand un cast est actif)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 56,
+            left: 0,
+            right: 0,
+            child: const CastMiniBar(),
           ),
           Align(
             alignment: Alignment.bottomCenter,
