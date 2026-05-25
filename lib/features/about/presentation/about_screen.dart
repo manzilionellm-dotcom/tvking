@@ -13,6 +13,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/branding/brand_logo.dart';
+import '../../../core/support/vip_help_card.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../device/presentation/device_id_card.dart';
@@ -122,6 +123,11 @@ class _AboutScreenState extends State<AboutScreen> {
                 ],
               ),
             ),
+
+            const SizedBox(height: 20),
+
+            // ----- Aide VIP — accessible en premier après le hero -----
+            const VipHelpCard.full(),
 
             const SizedBox(height: 20),
 

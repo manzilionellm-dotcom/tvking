@@ -11,6 +11,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/locale_repository.dart';
+import '../../../core/support/vip_help_card.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/theme_mode_repository.dart';
@@ -37,6 +38,14 @@ class SettingsScreen extends StatelessWidget {
         physics: const BouncingScrollPhysics(),
         child: Column(
           children: <Widget>[
+            // ====== AIDE VIP — toujours en haut, très visible ======
+            //  Le client doit pouvoir nous joindre en 1 tap, depuis
+            //  l'écran qu'il consulte le plus quand quelque chose
+            //  cloche (Réglages).
+            _SectionTitle('Aide & Support'),
+            const VipHelpCard.full(),
+            const SizedBox(height: 4),
+
             // ====== APPARENCE ======
             //  Cinema (Maison Noir) = défaut, identité du produit.
             //  Daylight = version claire dérivée pour usage diurne.
