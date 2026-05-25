@@ -1,0 +1,120 @@
+// =========================================================
+//  favorites_screen.dart — Liste des chaînes favorites
+// =========================================================
+//  Combine 2 streams (chaînes + IDs favoris) avec StreamBuilder
+//  imbriqué et affiche une grille des chaînes mises en favori.
+// =========================================================
+
+import 'package:flutter/material.dart';
+
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_text_styles.dart';
+import '../../playlists/data/favorites_repository.dart';
+import '../../playlists/data/playlist_repository.dart';
+import '../domain/channel.dart';
+import 'widgets/channel_card.dart';
+
+class FavoritesScreen extends StatelessWidget {
+  const FavoritesScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        title: const Text('Favoris'),
+      ),
+      body: StreamBuilder<Set<String>>(
+        stream: FavoritesRepository.instance.favoritesStream,
+        initialData: FavoritesRepository.instance.current,
+        builder: (BuildContext context, AsyncSnapshot<Set<String>> favSnap) {
+          final Set<String> favIds = favSnap.data ?? <String>{};
+          return StreamBuilder<List<Channel>>(
+            stream: PlaylistRepository.instance.channelsStream,
+            initialData: const <Channel>[],
+            builder:
+                (BuildContext context, AsyncSnapshot<List<Channel>> chanSnap) {
+              final List<Channel> all = chanSnap.data ?? <Channel>[];
+              final List<Channel> favs =
+                  all.where((Channel c) => favIds.contains(c.id)).toList();
+
+              if (favs.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(
+                        Icons.favorite_outline,
+                        size: 56,
+                        color: AppColors.textMuted,
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'Aucun favori pour l\'instant',
+                        style: AppTextStyles.bodyLarge,
+                      ),
+                      const SizedBox(height: 6),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: Text(
+                          'Appuie sur ♥ dans le menu d\'une chaîne pour la garder ici.',
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.bodyMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints cons) {
+                  final double w = cons.maxWidth;
+                  final int cols = w >= 1000 ? 4 : w >= 700 ? 3 : 2;
+                  return GridView.builder(
+                    padding: const EdgeInsets.all(16),
+                    physics: const BouncingScrollPhysics(),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: cols,
+                      mainAxisSpacing: 14,
+                      crossAxisSpacing: 14,
+                      childAspectRatio: 16 / 11,
+                    ),
+                    itemCount: favs.length,
+                    itemBuilder: (BuildContext context, int index) {
+                      final Channel ch = favs[index];
+                      return ChannelCard(
+                        channel: ch,
+                        onTap: () => _onTap(context, ch),
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  void _onTap(BuildContext context, Channel channel) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        backgroundColor: AppColors.surfaceHigh,
+        action: SnackBarAction(
+          label: 'Retirer ♥',
+          textColor: AppColors.accentPink,
+          onPressed: () => FavoritesRepository.instance.toggle(channel.id),
+        ),
+        content: Text(
+          '${channel.name} — lecteur à brancher (Phase 1.3)',
+          style: AppTextStyles.bodyLarge,
+        ),
+      ),
+    );
+  }
+}

@@ -1,19 +1,19 @@
 // =========================================================
 //  home_screen.dart — Écran d'accueil "TV King"
 // =========================================================
-//  Phase 1.1+1.2 : on branche le `PlaylistRepository`.
+//  Phase 1.1+1.2 — branche le `PlaylistRepository` (chaînes
+//  réelles parsées en M3U/Xtream) et tous les écrans
+//  satellites : Catégories, Recherche, Favoris, Réglages,
+//  Voir tout.
 //
-//  Logique :
-//    - On s'abonne au `channelsStream` du repository.
-//    - Tant qu'on reçoit une liste vide → affichage `EmptyStateView`
-//      avec bouton "Ajouter une playlist".
-//    - Dès qu'on a des chaînes → on les répartit dans les
-//      sections (Hero, Pour vous, En direct, Découvertes,
-//      Par catégorie) au lieu des chaînes fictives.
+//  Logique d'affichage :
+//    - Liste vide → EmptyStateView (CTA ajouter playlist)
+//    - Liste pleine → Hero + Chips + plusieurs ChannelRow
 //
-//  Hero choisi : la PREMIÈRE chaîne live de la liste pour
-//  l'instant. Plus tard (Phase 5), ce sera la dernière
-//  regardée ou l'algo de recommandation.
+//  Bottom nav 5 onglets (Accueil / TV Guide / Films /
+//  Recherche / Profil). Pour l'instant 3 sont fonctionnels
+//  (Accueil + Recherche + Profil), les 2 autres affichent un
+//  message "Phase à venir".
 // =========================================================
 
 import 'package:flutter/material.dart';
@@ -22,7 +22,12 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/presentation/add_playlist_screen.dart';
+import '../../playlists/presentation/playlists_screen.dart';
 import '../domain/channel.dart';
+import 'categories_screen.dart';
+import 'channels_grid_screen.dart';
+import 'favorites_screen.dart';
+import 'search_screen.dart';
 import 'widgets/channel_row.dart';
 import 'widgets/empty_state.dart';
 import 'widgets/floating_bottom_nav.dart';
@@ -39,23 +44,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentNavIndex = 0;
 
-  // ----- Helpers UX -----
-
-  void _showComingSoon(String featureName) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.fromLTRB(20, 0, 20, 90),
-        backgroundColor: AppColors.surfaceHigh,
-        duration: const Duration(seconds: 2),
-        content: Text(
-          '$featureName — bientôt disponible',
-          style: AppTextStyles.bodyLarge,
-        ),
-      ),
-    );
-  }
+  // ----- Navigation helpers -----
 
   void _onChannelTap(Channel channel) {
     ScaffoldMessenger.of(context).clearSnackBars();
@@ -82,6 +71,57 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _openCategories() {
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => const CategoriesScreen()),
+    );
+  }
+
+  Future<void> _openFavorites() {
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => const FavoritesScreen()),
+    );
+  }
+
+  Future<void> _openSearch() {
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
+    );
+  }
+
+  Future<void> _openSettings() {
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => const PlaylistsScreen()),
+    );
+  }
+
+  Future<void> _openSeeAll(String title, List<Channel> channels) {
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => ChannelsGridScreen(
+          title: title,
+          channels: channels,
+        ),
+      ),
+    );
+  }
+
+  void _showComingSoon(String featureName) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 90),
+        backgroundColor: AppColors.surfaceHigh,
+        duration: const Duration(seconds: 2),
+        content: Text(
+          '$featureName — bientôt disponible',
+          style: AppTextStyles.bodyLarge,
+        ),
+      ),
+    );
+  }
+
   // ----- UI -----
 
   @override
@@ -92,10 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: _buildAppBar(),
       body: Stack(
         children: <Widget>[
-          // Fond + halos communs à tous les états
           const _BackgroundLayer(),
-
-          // Contenu réactif au repository
           SafeArea(
             bottom: false,
             child: StreamBuilder<List<Channel>>(
@@ -111,24 +148,11 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
           ),
-
-          // Bottom nav par-dessus tout
           Align(
             alignment: Alignment.bottomCenter,
             child: FloatingBottomNav(
               currentIndex: _currentNavIndex,
-              onTap: (int i) {
-                setState(() => _currentNavIndex = i);
-                if (i != 0) {
-                  _showComingSoon(_navLabel(i));
-                  Future<void>.delayed(
-                    const Duration(milliseconds: 1500),
-                    () {
-                      if (mounted) setState(() => _currentNavIndex = 0);
-                    },
-                  );
-                }
-              },
+              onTap: _onNavTap,
             ),
           ),
         ],
@@ -136,44 +160,57 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  String _navLabel(int index) {
+  void _onNavTap(int index) {
+    setState(() => _currentNavIndex = index);
     switch (index) {
+      case 0:
+        // Déjà sur Accueil, rien à faire
+        break;
       case 1:
-        return 'TV Guide (Phase 2)';
+        // TV Guide → Phase 2
+        _showComingSoon('TV Guide (Phase 2)');
+        _resetNavToHome();
+        break;
       case 2:
-        return 'Films (futur Xtream VOD)';
+        // Films → Phase Xtream VOD
+        _showComingSoon('Films (Phase Xtream VOD)');
+        _resetNavToHome();
+        break;
       case 3:
-        return 'Recherche (Phase 1.4)';
+        _openSearch().then((_) => _resetNavToHome());
+        break;
       case 4:
-        return 'Profil (Phase 5)';
-      default:
-        return 'Accueil';
+        _openSettings().then((_) => _resetNavToHome());
+        break;
     }
   }
 
-  /// Contenu standard quand on a au moins une chaîne.
+  void _resetNavToHome() {
+    Future<void>.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) setState(() => _currentNavIndex = 0);
+    });
+  }
+
+  /// Contenu principal quand on a au moins une chaîne.
   Widget _buildContent(List<Channel> channels) {
+    // Sélection du Hero — première chaîne live
     final Channel hero = channels.firstWhere(
       (Channel c) => c.isLive,
       orElse: () => channels.first,
     );
 
-    // Découpages simples pour les rangées (Phase 1, pas encore
-    // d'algo de recommandation : on prend des slices variés).
+    // Sections — pour vous = 15 premières (hors hero)
     final List<Channel> forYou =
-        channels.where((Channel c) => c.id != hero.id).take(15).toList();
-    final List<Channel> liveNow = channels
-        .where((Channel c) => c.isLive)
-        .take(20)
-        .toList();
-    final List<Channel> discoveries = channels.reversed.take(20).toList();
+        channels.where((Channel c) => c.id != hero.id).take(20).toList();
+    final List<Channel> liveNow =
+        channels.where((Channel c) => c.isLive).take(30).toList();
+    final List<Channel> discoveries = channels.reversed.take(30).toList();
 
-    // Catégorie la plus représentée (pour avoir une 4ème rangée
-    // dynamique et thématique)
+    // Catégorie phare (la + représentée)
     final String topCategory = _findTopCategory(channels);
     final List<Channel> topCategoryChannels = channels
         .where((Channel c) => c.category == topCategory)
-        .take(20)
+        .take(30)
         .toList();
 
     return SingleChildScrollView(
@@ -190,17 +227,17 @@ class _HomeScreenState extends State<HomeScreen> {
             child: HeroSection(
               channel: hero,
               onWatch: () => _onChannelTap(hero),
-              onInfo: () => _showComingSoon('Fiche détaillée de la chaîne'),
+              onInfo: () => _showComingSoon('Fiche détaillée'),
             ),
           ),
           const SizedBox(height: 20),
 
-          // ---- Quick chips ----
+          // ---- Quick chips → vrais écrans ----
           QuickChipsRow(
-            onCategories: () => _showComingSoon('Toutes les catégories'),
-            onFavorites: () => _showComingSoon('Favoris'),
-            onSearch: () => _showComingSoon('Recherche'),
-            onSettings: () => _showComingSoon('Réglages'),
+            onCategories: _openCategories,
+            onFavorites: _openFavorites,
+            onSearch: _openSearch,
+            onSettings: _openSettings,
           ),
           const SizedBox(height: 24),
 
@@ -209,7 +246,7 @@ class _HomeScreenState extends State<HomeScreen> {
             title: 'Pour vous',
             channels: forYou,
             onChannelTap: _onChannelTap,
-            onSeeAll: () => _showComingSoon('Voir tout — Pour vous'),
+            onSeeAll: () => _openSeeAll('Pour vous', channels),
           ),
           const SizedBox(height: 24),
 
@@ -218,7 +255,10 @@ class _HomeScreenState extends State<HomeScreen> {
             title: 'En direct maintenant',
             channels: liveNow,
             onChannelTap: _onChannelTap,
-            onSeeAll: () => _showComingSoon('Voir tout — En direct'),
+            onSeeAll: () => _openSeeAll(
+              'En direct maintenant',
+              channels.where((Channel c) => c.isLive).toList(),
+            ),
           ),
           const SizedBox(height: 24),
 
@@ -228,7 +268,12 @@ class _HomeScreenState extends State<HomeScreen> {
               title: topCategory,
               channels: topCategoryChannels,
               onChannelTap: _onChannelTap,
-              onSeeAll: () => _showComingSoon('Voir tout — $topCategory'),
+              onSeeAll: () => _openSeeAll(
+                topCategory,
+                channels
+                    .where((Channel c) => c.category == topCategory)
+                    .toList(),
+              ),
             ),
           if (topCategoryChannels.isNotEmpty) const SizedBox(height: 24),
 
@@ -237,14 +282,14 @@ class _HomeScreenState extends State<HomeScreen> {
             title: 'Découvertes',
             channels: discoveries,
             onChannelTap: _onChannelTap,
-            onSeeAll: () => _showComingSoon('Voir tout — Découvertes'),
+            onSeeAll: () =>
+                _openSeeAll('Découvertes', channels.reversed.toList()),
           ),
         ],
       ),
     );
   }
 
-  /// Trouve la catégorie la plus présente dans la playlist.
   String _findTopCategory(List<Channel> channels) {
     final Map<String, int> counts = <String, int>{};
     for (final Channel c in channels) {
@@ -272,7 +317,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       actions: <Widget>[
-        // Bouton "Ajouter playlist" toujours accessible
         IconButton(
           tooltip: 'Ajouter une playlist',
           onPressed: _openAddPlaylist,
@@ -280,13 +324,16 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         IconButton(
           tooltip: 'Recherche',
-          onPressed: () => _showComingSoon('Recherche'),
+          onPressed: _openSearch,
           icon: const Icon(Icons.search, color: Colors.white),
         ),
         IconButton(
-          tooltip: 'Profil',
-          onPressed: () => _showComingSoon('Profil'),
-          icon: const Icon(Icons.account_circle_outlined, color: Colors.white),
+          tooltip: 'Mes playlists',
+          onPressed: _openSettings,
+          icon: const Icon(
+            Icons.account_circle_outlined,
+            color: Colors.white,
+          ),
         ),
         const SizedBox(width: 4),
       ],
@@ -294,7 +341,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// Fond global de l'écran : dégradé + 2 halos d'ambiance.
 class _BackgroundLayer extends StatelessWidget {
   const _BackgroundLayer();
 

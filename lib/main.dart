@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 
 import 'core/theme/app_theme.dart';
 import 'features/channels/presentation/home_screen.dart';
+import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/playlist_repository.dart';
 
 Future<void> main() async {
@@ -31,10 +32,12 @@ Future<void> main() async {
     ),
   );
 
-  // Initialise le repo (ouvre la base SQLite + émet l'état courant).
-  // Fait en parallèle du build du widget tree pour ne pas bloquer
-  // le first frame ; le HomeScreen recevra les chaînes via le Stream.
+  // Initialise les repositories (ouvre la base SQLite + émettent
+  // l'état courant). Fait en parallèle du build du widget tree
+  // pour ne pas bloquer le first frame ; HomeScreen recevra les
+  // chaînes via les Streams.
   unawaited(PlaylistRepository.instance.initialize());
+  unawaited(FavoritesRepository.instance.initialize());
 
   runApp(const TvKingApp());
 }

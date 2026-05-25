@@ -33,6 +33,26 @@ import 'm3u_parser.dart';
 import 'playlist_database.dart';
 import 'xtream_client.dart';
 
+/// Résultat individuel d'un import en lot.
+class BatchImportResult {
+  const BatchImportResult.success({
+    required this.name,
+    required this.channelCount,
+  })  : ok = true,
+        error = null;
+
+  const BatchImportResult.failure({
+    required this.name,
+    required this.error,
+  })  : ok = false,
+        channelCount = 0;
+
+  final bool ok;
+  final String name;
+  final int channelCount;
+  final String? error;
+}
+
 class PlaylistRepository {
   PlaylistRepository._();
   static final PlaylistRepository instance = PlaylistRepository._();
@@ -129,6 +149,48 @@ class PlaylistRepository {
     } finally {
       if (httpClient == null) client.close();
     }
+  }
+
+  // ============================================================
+  //  AJOUT PLAYLIST — M3U en LOT (multi-URL)
+  // ============================================================
+
+  /// Importe plusieurs URLs M3U d'un coup. La progression est
+  /// rapportée via [onProgress] qui reçoit (urlActuelle, indexCourant,
+  /// total, success, errorMessageOuNull).
+  ///
+  /// On continue même si une URL plante — on collecte les erreurs
+  /// et on les renvoie à la fin.
+  Future<List<BatchImportResult>> addM3uPlaylistsBatch({
+    required List<({String name, String url})> entries,
+    void Function(int index, int total, String name, BatchImportResult? result)?
+        onProgress,
+  }) async {
+    final List<BatchImportResult> results = <BatchImportResult>[];
+    for (int i = 0; i < entries.length; i++) {
+      final ({String name, String url}) entry = entries[i];
+      onProgress?.call(i, entries.length, entry.name, null);
+      try {
+        final Playlist saved = await addM3uPlaylist(
+          name: entry.name,
+          url: entry.url,
+        );
+        final BatchImportResult ok = BatchImportResult.success(
+          name: entry.name,
+          channelCount: saved.channelCount,
+        );
+        results.add(ok);
+        onProgress?.call(i + 1, entries.length, entry.name, ok);
+      } on Exception catch (e) {
+        final BatchImportResult ko = BatchImportResult.failure(
+          name: entry.name,
+          error: e.toString(),
+        );
+        results.add(ko);
+        onProgress?.call(i + 1, entries.length, entry.name, ko);
+      }
+    }
+    return results;
   }
 
   // ============================================================

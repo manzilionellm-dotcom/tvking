@@ -41,13 +41,21 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen>
   final TextEditingController _xtUserCtrl = TextEditingController();
   final TextEditingController _xtPassCtrl = TextEditingController();
 
+  // Formulaire Bulk M3U
+  final TextEditingController _bulkPrefixCtrl =
+      TextEditingController(text: 'Playlist');
+  final TextEditingController _bulkUrlsCtrl = TextEditingController();
+  int _bulkProgressCurrent = 0;
+  int _bulkProgressTotal = 0;
+  List<BatchImportResult> _bulkResults = <BatchImportResult>[];
+
   bool _busy = false;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -59,6 +67,8 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen>
     _xtServerCtrl.dispose();
     _xtUserCtrl.dispose();
     _xtPassCtrl.dispose();
+    _bulkPrefixCtrl.dispose();
+    _bulkUrlsCtrl.dispose();
     super.dispose();
   }
 
@@ -91,6 +101,80 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen>
       _setError(_humanReadable(e));
     } finally {
       _setBusy(false);
+    }
+  }
+
+  Future<void> _submitBulk() async {
+    final String prefix = _bulkPrefixCtrl.text.trim();
+    final String raw = _bulkUrlsCtrl.text;
+
+    if (prefix.isEmpty) {
+      _setError('Donne un préfixe (ex: "Mes playlists").');
+      return;
+    }
+
+    // Extraction des URLs : une par ligne, vide ignorée
+    final List<String> urls = raw
+        .split('\n')
+        .map((String l) => l.trim())
+        .where((String l) =>
+            l.isNotEmpty &&
+            (l.startsWith('http://') || l.startsWith('https://')))
+        .toList();
+
+    if (urls.isEmpty) {
+      _setError(
+        'Colle une URL par ligne (chacune doit commencer par http:// ou https://).',
+      );
+      return;
+    }
+    if (urls.length > 10) {
+      _setError(
+        'Max 10 URLs à la fois (tu en as ${urls.length}). Découpe en plusieurs lots.',
+      );
+      return;
+    }
+
+    final List<({String name, String url})> entries = <({String name, String url})>[
+      for (int i = 0; i < urls.length; i++)
+        (name: '$prefix #${i + 1}', url: urls[i]),
+    ];
+
+    _setBusy(true);
+    setState(() {
+      _bulkProgressCurrent = 0;
+      _bulkProgressTotal = entries.length;
+      _bulkResults = <BatchImportResult>[];
+    });
+
+    final List<BatchImportResult> results =
+        await PlaylistRepository.instance.addM3uPlaylistsBatch(
+      entries: entries,
+      onProgress: (int index, int total, String name, BatchImportResult? r) {
+        if (!mounted) return;
+        setState(() {
+          _bulkProgressCurrent = index;
+          _bulkProgressTotal = total;
+          if (r != null) _bulkResults = <BatchImportResult>[..._bulkResults, r];
+        });
+      },
+    );
+
+    _setBusy(false);
+
+    final int ok = results.where((BatchImportResult r) => r.ok).length;
+    final int fail = results.where((BatchImportResult r) => !r.ok).length;
+
+    if (!mounted) return;
+    if (ok > 0 && fail == 0) {
+      // Toutes les playlists ont marché → on ferme
+      Navigator.of(context).pop();
+    } else if (ok == 0) {
+      _setError('Aucune playlist n\'a pu être importée. Vérifie les URLs.');
+    } else {
+      _setError(
+        '$ok importée(s), $fail en erreur. Tu peux fermer ou réessayer.',
+      );
     }
   }
 
@@ -170,12 +254,15 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen>
         title: const Text('Ajouter une playlist'),
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
           indicatorColor: AppColors.accentPink,
           labelColor: AppColors.accentPink,
           unselectedLabelColor: Colors.white60,
           tabs: const <Widget>[
             Tab(text: 'M3U / URL'),
             Tab(text: 'Xtream Codes'),
+            Tab(text: 'M3U en lot'),
           ],
         ),
       ),
@@ -185,6 +272,7 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen>
           children: <Widget>[
             _buildM3uForm(),
             _buildXtreamForm(),
+            _buildBulkForm(),
           ],
         ),
       ),
@@ -284,6 +372,150 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen>
                 : 'Se connecter et charger',
             icon: _busy ? null : Icons.cloud_download_rounded,
             onPressed: _busy ? null : _submitXtream,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBulkForm() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          _intro(
+            'Colle jusqu\'à 10 URLs M3U d\'un coup, une par ligne. '
+            'L\'app va les télécharger en série et créer une playlist '
+            'séparée pour chacune (renommée "Préfixe #1", "Préfixe #2"...).',
+          ),
+          const SizedBox(height: 24),
+          _label('Préfixe des noms'),
+          _textField(
+            controller: _bulkPrefixCtrl,
+            hint: 'Mes playlists',
+            icon: Icons.label_outline,
+          ),
+          const SizedBox(height: 16),
+          _label('URLs M3U (une par ligne, max 10)'),
+          TextField(
+            controller: _bulkUrlsCtrl,
+            enabled: !_busy,
+            keyboardType: TextInputType.multiline,
+            maxLines: 8,
+            minLines: 4,
+            autocorrect: false,
+            style: AppTextStyles.bodyLarge.copyWith(fontSize: 13),
+            decoration: InputDecoration(
+              hintText: 'http://serveur1.com/get.php?...\n'
+                  'http://serveur2.com/playlist.m3u\n'
+                  'https://example.com/list.m3u8',
+              hintStyle: AppTextStyles.bodyMedium.copyWith(
+                color: AppColors.textMuted,
+                fontSize: 12,
+              ),
+              filled: true,
+              fillColor: AppColors.surface,
+              contentPadding: const EdgeInsets.all(14),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.08),
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.08),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: AppColors.accentPink.withValues(alpha: 0.8),
+                  width: 1.6,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+
+          // Barre de progression pendant l'import
+          if (_busy && _bulkProgressTotal > 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Text(
+                    'Import : $_bulkProgressCurrent / $_bulkProgressTotal',
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      color: AppColors.accentCyan,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: _bulkProgressTotal == 0
+                          ? null
+                          : _bulkProgressCurrent / _bulkProgressTotal,
+                      minHeight: 6,
+                      backgroundColor: Colors.white.withValues(alpha: 0.1),
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(AppColors.accentPink),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // Résultats individuels
+          if (_bulkResults.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                children: _bulkResults
+                    .map((BatchImportResult r) => _bulkResultLine(r))
+                    .toList(),
+              ),
+            ),
+
+          if (_errorMessage != null) _errorBanner(_errorMessage!),
+          const SizedBox(height: 8),
+          _primaryButton(
+            label: _busy
+                ? 'Import en cours...'
+                : 'Importer toutes les playlists',
+            icon: _busy ? null : Icons.cloud_download_rounded,
+            onPressed: _busy ? null : _submitBulk,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bulkResultLine(BatchImportResult r) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: <Widget>[
+          Icon(
+            r.ok ? Icons.check_circle : Icons.cancel,
+            color: r.ok ? AppColors.success : AppColors.live,
+            size: 16,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              r.ok
+                  ? '${r.name} — ${r.channelCount} chaînes'
+                  : '${r.name} — ${r.error ?? "échec"}',
+              style: AppTextStyles.bodyMedium.copyWith(fontSize: 12),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),

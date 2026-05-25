@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/live_badge.dart';
+import '../../../playlists/data/favorites_repository.dart';
 import '../../domain/channel.dart';
 
 class ChannelPoster extends StatefulWidget {
@@ -110,6 +111,13 @@ class _ChannelPosterState extends State<ChannelPoster> {
                               child: LiveBadge(),
                             ),
 
+                          // Coeur favori en haut à droite
+                          Positioned(
+                            top: 6,
+                            right: 6,
+                            child: _PosterFavorite(channelId: ch.id),
+                          ),
+
                           // Bordure lumineuse au focus
                           if (_isFocused)
                             Positioned.fill(
@@ -156,6 +164,44 @@ class _ChannelPosterState extends State<ChannelPoster> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Coeur favori discret pour les vignettes Poster (rangées horizontales).
+class _PosterFavorite extends StatelessWidget {
+  const _PosterFavorite({required this.channelId});
+
+  final String channelId;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<Set<String>>(
+      stream: FavoritesRepository.instance.favoritesStream,
+      initialData: FavoritesRepository.instance.current,
+      builder: (BuildContext context, AsyncSnapshot<Set<String>> snap) {
+        final bool isFav = (snap.data ?? <String>{}).contains(channelId);
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: () => FavoritesRepository.instance.toggle(channelId),
+            child: Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.black.withValues(alpha: 0.5),
+              ),
+              child: Icon(
+                isFav ? Icons.favorite : Icons.favorite_outline,
+                color: isFav ? AppColors.accentPink : Colors.white,
+                size: 14,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
