@@ -24,6 +24,8 @@
 //    - Par qualité (HD+)
 // =========================================================
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -74,9 +76,34 @@ class _CategorySectionScreenState extends State<CategorySectionScreen> {
   String _query = '';
   final TextEditingController _searchCtrl = TextEditingController();
 
+  // Snapshot local. On l'initialise avec le cache du repo (synchrone)
+  // ET on déclenche un fetch DB direct + abonnement au stream pour
+  // se prémunir de tout souci de timing entre les écrans.
+  List<Channel> _channels = const <Channel>[];
+  StreamSubscription<List<Channel>>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    // 1) Cache synchrone (souvent suffisant)
+    _channels = PlaylistRepository.instance.currentChannels;
+    // 2) Fallback : si le cache est vide, on fetch direct depuis SQLite
+    if (_channels.isEmpty) {
+      PlaylistRepository.instance.getAllChannels().then((List<Channel> ch) {
+        if (mounted) setState(() => _channels = ch);
+      });
+    }
+    // 3) Abonnement live pour les mutations futures
+    _sub =
+        PlaylistRepository.instance.channelsStream.listen((List<Channel> ch) {
+      if (mounted) setState(() => _channels = ch);
+    });
+  }
+
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _sub?.cancel();
     super.dispose();
   }
 
@@ -143,11 +170,9 @@ class _CategorySectionScreenState extends State<CategorySectionScreen> {
           ),
         ],
       ),
-      body: StreamBuilder<List<Channel>>(
-        stream: PlaylistRepository.instance.channelsStream,
-        initialData: PlaylistRepository.instance.currentChannels,
-        builder: (BuildContext context, AsyncSnapshot<List<Channel>> snap) {
-          final List<Channel> all = snap.data ?? <Channel>[];
+      body: Builder(
+        builder: (BuildContext context) {
+          final List<Channel> all = _channels;
           final List<Channel> filtered = _applyFilters(all);
 
           return Column(
