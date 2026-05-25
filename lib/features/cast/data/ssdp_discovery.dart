@@ -47,9 +47,15 @@ class SsdpDiscovery {
     final StreamController<CastDevice> controller =
         StreamController<CastDevice>();
 
-    // IDs déjà émis pour éviter les doublons (un device répond
-    // souvent plusieurs fois aux M-SEARCH).
-    final Set<String> seenIds = <String>{};
+    // ID racine (UUID) déjà émis. Un même appareil envoie souvent
+    // 3-5 réponses SSDP (une par service UPnP qu'il expose) avec
+    // des USN différents mais le MÊME UUID racine — par exemple :
+    //   uuid:abc::upnp:rootdevice
+    //   uuid:abc::urn:schemas-upnp-org:device:MediaRenderer:1
+    //   uuid:abc::urn:schemas-upnp-org:service:AVTransport:1
+    // → on dédupe sur le préfixe "uuid:abc" pour ne lister la TV
+    //   qu'UNE seule fois.
+    final Set<String> seenRootIds = <String>{};
     final List<RawDatagramSocket> sockets = <RawDatagramSocket>[];
 
     try {
@@ -68,7 +74,7 @@ class SsdpDiscovery {
         if (event != RawSocketEvent.read) return;
         final Datagram? dg = socket.receive();
         if (dg == null) return;
-        _handleResponse(dg, seenIds, controller);
+        _handleResponse(dg, seenRootIds, controller);
       });
 
       // Envoie les M-SEARCH pour MediaRenderer ET pour AVTransport
@@ -116,7 +122,7 @@ class SsdpDiscovery {
 
   Future<void> _handleResponse(
     Datagram dg,
-    Set<String> seenIds,
+    Set<String> seenRootIds,
     StreamController<CastDevice> controller,
   ) async {
     try {
@@ -125,8 +131,13 @@ class SsdpDiscovery {
       final String? location = headers['LOCATION'];
       final String? usn = headers['USN'];
       if (location == null || usn == null) return;
-      if (seenIds.contains(usn)) return;
-      seenIds.add(usn);
+
+      // Extrait l'UUID racine : "uuid:abc::urn:..." → "uuid:abc"
+      // ou "uuid:abc" si pas de "::"
+      final int sep = usn.indexOf('::');
+      final String rootId = sep > 0 ? usn.substring(0, sep) : usn;
+      if (seenRootIds.contains(rootId)) return;
+      seenRootIds.add(rootId);
 
       // Télécharge le descripteur UPnP
       final http.Response resp = await http
@@ -135,7 +146,7 @@ class SsdpDiscovery {
       if (resp.statusCode != 200) return;
 
       final CastDevice? device =
-          _parseDeviceDescriptor(resp.body, location, usn);
+          _parseDeviceDescriptor(resp.body, location, rootId);
       if (device == null) return;
       if (!controller.isClosed) controller.add(device);
     } catch (e) {

@@ -75,8 +75,13 @@ class CastManager extends ChangeNotifier {
     _discoverySub = SsdpDiscovery.instance
         .discover(timeout: timeout)
         .listen((CastDevice d) {
-      // Évite les doublons (par id)
-      if (_discovered.any((CastDevice e) => e.id == d.id)) return;
+      // Double dédup : par id (UUID racine) ET par host+port pour
+      // ne jamais lister la même TV plusieurs fois même si la
+      // discovery SSDP renvoie des USN inconsistants.
+      final bool already = _discovered.any((CastDevice e) =>
+          e.id == d.id ||
+          (e.host == d.host && e.port == d.port));
+      if (already) return;
       _discovered.add(d);
       notifyListeners();
     });
