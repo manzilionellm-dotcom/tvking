@@ -110,6 +110,14 @@ jobs:
       - name: Generate AppLocalizations from .arb files
         run: flutter gen-l10n || true
 
+      # Remplace l'icône Flutter par défaut (le F bleu généré par
+      # `flutter create`) par notre logo 7 MOTION dans tous les
+      # dossiers mipmap-* (mdpi/hdpi/xhdpi/xxhdpi/xxxhdpi). Sans
+      # cette étape, l'utilisateur voit le F bleu sur son bureau
+      # même si le contenu de l'app est 7 MOTION.
+      - name: Generate launcher icons (7 MOTION ember)
+        run: dart run flutter_launcher_icons
+
       - name: Build debug APK
         run: flutter build apk --debug --no-tree-shake-icons
 

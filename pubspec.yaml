@@ -127,6 +127,30 @@ dev_dependencies:
   # Règles de lint officielles Flutter
   flutter_lints: ^4.0.0
 
+  # ----- Génération des icônes de lancement -----
+  # Sans ce package, `flutter create` met l'icône Flutter par défaut
+  # (le F bleu). Avec, on génère toutes les tailles mipmap-* depuis
+  # notre logo 7 MOTION. CI lance `dart run flutter_launcher_icons`
+  # juste après `flutter create` pour que l'icône finale soit ember.
+  flutter_launcher_icons: ^0.14.1
+
+# ============================================================
+#  Configuration du generateur d'icones (utilisée par
+#  flutter_launcher_icons). L'icône source est notre logo
+#  7 MOTION en JPG (1011×965). Adaptive icon : on utilise la
+#  même image en foreground et un fond noir profond (voidSurface
+#  de LUMIERE) pour respecter l'identité Maison Noir même sous
+#  le mask circulaire Android.
+# ============================================================
+flutter_launcher_icons:
+  android: true
+  ios: false
+  remove_alpha_ios: false
+  image_path: "assets/branding/logo_7motion.jpg"
+  min_sdk_android: 21
+  adaptive_icon_background: "#0A0A0C"
+  adaptive_icon_foreground: "assets/branding/logo_7motion.jpg"
+
 flutter:
   uses-material-design: true
 
