@@ -54,99 +54,105 @@ class HomeScreen extends StatelessWidget {
           const SizedBox(width: 8),
         ],
       ),
-      body: Stack(
-        children: <Widget>[
-          // -------- Couche 1 : dégradé de fond principal --------------
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: AppColors.backgroundGradient,
-            ),
-            child: SizedBox.expand(),
-          ),
+      // LayoutBuilder au sommet : on calcule le nombre de colonnes
+      // de la grille en fonction de la largeur réelle de l'écran,
+      // une fois pour toutes. On évite ainsi `SliverLayoutBuilder`
+      // qui demande le type `SliverConstraints` (parfois non visible
+      // suivant les versions de Flutter et les imports).
+      body: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final double w = constraints.maxWidth;
+          // Nombre de colonnes selon la largeur disponible.
+          final int cols = w >= 1400
+              ? 5
+              : w >= 1000
+                  ? 4
+                  : w >= 700
+                      ? 3
+                      : 2;
 
-          // -------- Couche 2 : halos lumineux flous (ambiance) --------
-          // Deux cercles flous très transparents qui donnent vie au fond.
-          Positioned(
-            top: -120,
-            left: -80,
-            child: _GlowOrb(
-              color: AppColors.accentPink.withValues(alpha: 0.25),
-              size: 320,
-            ),
-          ),
-          Positioned(
-            bottom: -160,
-            right: -100,
-            child: _GlowOrb(
-              color: AppColors.accentCyan.withValues(alpha: 0.18),
-              size: 380,
-            ),
-          ),
+          return Stack(
+            children: <Widget>[
+              // -------- Couche 1 : dégradé de fond principal --------------
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: AppColors.backgroundGradient,
+                ),
+                child: SizedBox.expand(),
+              ),
 
-          // -------- Couche 3 : le contenu défilable -------------------
-          SafeArea(
-            child: CustomScrollView(
-              slivers: <Widget>[
-                // Petit espace sous l'AppBar
-                const SliverToBoxAdapter(child: SizedBox(height: 80)),
+              // -------- Couche 2 : halos lumineux flous (ambiance) --------
+              // Deux cercles flous très transparents qui donnent vie au fond.
+              Positioned(
+                top: -120,
+                left: -80,
+                child: _GlowOrb(
+                  color: AppColors.accentPink.withValues(alpha: 0.25),
+                  size: 320,
+                ),
+              ),
+              Positioned(
+                bottom: -160,
+                right: -100,
+                child: _GlowOrb(
+                  color: AppColors.accentCyan.withValues(alpha: 0.18),
+                  size: 380,
+                ),
+              ),
 
-                // Titre "Bienvenue"
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                  sliver: SliverToBoxAdapter(
-                    child: Text(
-                      'Bienvenue',
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        color: AppColors.textMuted,
+              // -------- Couche 3 : le contenu défilable -------------------
+              SafeArea(
+                child: CustomScrollView(
+                  slivers: <Widget>[
+                    // Petit espace sous l'AppBar
+                    const SliverToBoxAdapter(child: SizedBox(height: 80)),
+
+                    // Titre "Bienvenue"
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                      sliver: SliverToBoxAdapter(
+                        child: Text(
+                          'Bienvenue',
+                          style: AppTextStyles.bodyMedium.copyWith(
+                            color: AppColors.textMuted,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                  sliver: SliverToBoxAdapter(
-                    child: Text(
-                      'Que voulez-vous regarder ?',
-                      style: AppTextStyles.displayLarge.copyWith(fontSize: 34),
-                    ),
-                  ),
-                ),
-
-                // Titre de section
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-                  sliver: SliverToBoxAdapter(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: <Widget>[
-                        Text(
-                          'En direct',
-                          style: AppTextStyles.headlineLarge,
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                      sliver: SliverToBoxAdapter(
+                        child: Text(
+                          'Que voulez-vous regarder ?',
+                          style: AppTextStyles.displayLarge.copyWith(fontSize: 34),
                         ),
-                        Text(
-                          '${kFakeChannels.length} chaînes',
-                          style: AppTextStyles.bodyMedium,
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
 
-                // ---- Grille responsive de chaînes ----
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
-                  sliver: SliverLayoutBuilder(
-                    builder: (BuildContext context, SliverConstraints cons) {
-                      final double w = cons.crossAxisExtent;
-                      // Nombre de colonnes selon la largeur disponible.
-                      final int cols = w >= 1400
-                          ? 5
-                          : w >= 1000
-                              ? 4
-                              : w >= 700
-                                  ? 3
-                                  : 2;
-                      return SliverGrid(
+                    // Titre de section
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                      sliver: SliverToBoxAdapter(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: <Widget>[
+                            Text(
+                              'En direct',
+                              style: AppTextStyles.headlineLarge,
+                            ),
+                            Text(
+                              '${kFakeChannels.length} chaînes',
+                              style: AppTextStyles.bodyMedium,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // ---- Grille responsive de chaînes ----
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
+                      sliver: SliverGrid(
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: cols,
                           mainAxisSpacing: 16,
@@ -176,14 +182,14 @@ class HomeScreen extends StatelessWidget {
                           },
                           childCount: kFakeChannels.length,
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-        ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }
