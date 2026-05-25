@@ -20,6 +20,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../epg/data/epg_repository.dart';
+import '../../epg/domain/epg_program.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -104,37 +106,50 @@ class ChannelDetailSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 22),
 
-                  // ----- Programme en cours (placeholder Phase 2) -----
-                  if (channel.currentProgram != null) ...<Widget>[
-                    _sectionLabel('Programme en cours'),
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Row(
+                  // ----- Programme en cours + suivant (EPG) -----
+                  FutureBuilder<List<EpgProgram?>>(
+                    future: Future.wait(<Future<EpgProgram?>>[
+                      EpgRepository.instance.currentProgram(channel.id),
+                      EpgRepository.instance.nextProgram(channel.id),
+                    ]),
+                    builder: (BuildContext context,
+                        AsyncSnapshot<List<EpgProgram?>> snap) {
+                      final List<EpgProgram?> progs =
+                          snap.data ?? <EpgProgram?>[null, null];
+                      final EpgProgram? cur = progs[0];
+                      final EpgProgram? next =
+                          progs.length > 1 ? progs[1] : null;
+                      if (cur == null && next == null) {
+                        return const SizedBox.shrink();
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Icon(
-                            Icons.play_circle_outline_rounded,
-                            color: AppColors.accent,
-                            size: 22,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              channel.currentProgram!,
-                              style: AppTextStyles.bodyLarge
-                                  .copyWith(fontSize: 14),
+                          _sectionLabel('Programme'),
+                          const SizedBox(height: 6),
+                          if (cur != null)
+                            _programTile(
+                              icon: Icons.play_circle_filled_rounded,
+                              title: cur.title,
+                              subtitle:
+                                  '${cur.timeRangeShort} · En cours',
+                              accent: true,
                             ),
-                          ),
+                          if (next != null) ...<Widget>[
+                            const SizedBox(height: 6),
+                            _programTile(
+                              icon: Icons.schedule_rounded,
+                              title: next.title,
+                              subtitle:
+                                  '${next.timeRangeShort} · Après',
+                              accent: false,
+                            ),
+                          ],
+                          const SizedBox(height: 22),
                         ],
-                      ),
-                    ),
-                    const SizedBox(height: 22),
-                  ],
+                      );
+                    },
+                  ),
 
                   // ----- Détails techniques -----
                   _sectionLabel('Détails'),
@@ -207,6 +222,59 @@ class ChannelDetailSheet extends StatelessWidget {
       style: AppTextStyles.labelSmall.copyWith(
         color: AppColors.textSecondary,
         fontSize: 11,
+      ),
+    );
+  }
+
+  Widget _programTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool accent,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: accent ? AppColors.accentSurface : AppColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: accent
+              ? AppColors.accent.withValues(alpha: 0.5)
+              : AppColors.border,
+        ),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(
+            icon,
+            color: accent ? AppColors.accent : AppColors.textSecondary,
+            size: 22,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  title,
+                  style: AppTextStyles.bodyLarge.copyWith(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  subtitle,
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    fontSize: 11,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

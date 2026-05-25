@@ -18,6 +18,7 @@ import 'core/theme/app_theme.dart';
 import 'features/about/data/update_checker.dart';
 import 'features/channels/data/recently_watched_repository.dart';
 import 'features/channels/presentation/home_screen.dart';
+import 'features/epg/data/epg_repository.dart';
 import 'features/onboarding/data/onboarding_state.dart';
 import 'features/onboarding/presentation/onboarding_screen.dart';
 import 'features/player/data/player_settings.dart';
@@ -46,6 +47,7 @@ Future<void> main() async {
   unawaited(PlaylistRepository.instance.initialize());
   unawaited(FavoritesRepository.instance.initialize());
   unawaited(RecentlyWatchedRepository.instance.initialize());
+  unawaited(EpgRepository.instance.initialize());
   unawaited(PlayerSettings.instance.load());
 
   // Update checker — silencieux en arrière-plan. Le résultat est lu

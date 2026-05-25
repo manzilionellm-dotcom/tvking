@@ -33,6 +33,7 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen>
   final TextEditingController _m3uNameCtrl =
       TextEditingController(text: 'Ma playlist');
   final TextEditingController _m3uUrlCtrl = TextEditingController();
+  final TextEditingController _m3uEpgCtrl = TextEditingController();
 
   // Formulaire Xtream
   final TextEditingController _xtNameCtrl =
@@ -63,6 +64,7 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen>
     _tabController.dispose();
     _m3uNameCtrl.dispose();
     _m3uUrlCtrl.dispose();
+    _m3uEpgCtrl.dispose();
     _xtNameCtrl.dispose();
     _xtServerCtrl.dispose();
     _xtUserCtrl.dispose();
@@ -79,6 +81,7 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen>
   Future<void> _submitM3u() async {
     final String name = _m3uNameCtrl.text.trim();
     final String url = _m3uUrlCtrl.text.trim();
+    final String epgUrl = _m3uEpgCtrl.text.trim();
 
     if (name.isEmpty) {
       _setError('Donne un nom à ta playlist (ex : "Mon abonnement").');
@@ -88,12 +91,20 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen>
       _setError('URL invalide. Elle doit commencer par http:// ou https://');
       return;
     }
+    if (epgUrl.isNotEmpty &&
+        !epgUrl.startsWith('http://') &&
+        !epgUrl.startsWith('https://')) {
+      _setError(
+          'URL EPG invalide. Laisse vide si tu n\'en as pas, ou commence par http(s)://');
+      return;
+    }
 
     _setBusy(true);
     try {
       final Playlist saved = await PlaylistRepository.instance.addM3uPlaylist(
         name: name,
         url: url,
+        epgUrl: epgUrl.isEmpty ? null : epgUrl,
       );
       if (!mounted) return;
       _onSuccess(saved);
@@ -305,6 +316,25 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen>
             icon: Icons.link,
             keyboardType: TextInputType.url,
             autocorrect: false,
+          ),
+          const SizedBox(height: 16),
+          _label('URL EPG XMLTV (optionnel)'),
+          _textField(
+            controller: _m3uEpgCtrl,
+            hint: 'http://serveur.com/xmltv.php?username=...',
+            icon: Icons.event_note_rounded,
+            keyboardType: TextInputType.url,
+            autocorrect: false,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              'Optionnel · Active le guide TV et les programmes en cours.',
+              style: AppTextStyles.bodyMedium.copyWith(
+                fontSize: 11,
+                color: AppColors.textMuted,
+              ),
+            ),
           ),
           const SizedBox(height: 24),
           if (_errorMessage != null) _errorBanner(_errorMessage!),

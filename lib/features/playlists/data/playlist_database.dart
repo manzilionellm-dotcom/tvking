@@ -24,7 +24,8 @@ class PlaylistDatabase {
   static final PlaylistDatabase instance = PlaylistDatabase._();
 
   static const String _kDbFileName = 'tv_king.db';
-  static const int _kDbVersion = 1;
+  // v2 ajoute la colonne `epg_url` à la table playlists.
+  static const int _kDbVersion = 2;
 
   Database? _db;
 
@@ -60,6 +61,7 @@ class PlaylistDatabase {
         xtream_server TEXT,
         xtream_username TEXT,
         xtream_password TEXT,
+        epg_url TEXT,
         created_at INTEGER NOT NULL,
         last_synced_at INTEGER,
         channel_count INTEGER NOT NULL DEFAULT 0
@@ -94,9 +96,12 @@ class PlaylistDatabase {
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Place-holder pour les futures migrations.
     if (kDebugMode) {
-      debugPrint('[DB] Migration $oldVersion → $newVersion (pas encore implémenté)');
+      debugPrint('[DB] Migration $oldVersion → $newVersion');
+    }
+    if (oldVersion < 2) {
+      // v2 : ajoute epg_url
+      await db.execute('ALTER TABLE playlists ADD COLUMN epg_url TEXT');
     }
   }
 }

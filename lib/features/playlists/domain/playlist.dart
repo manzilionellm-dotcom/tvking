@@ -30,6 +30,7 @@ class Playlist {
     this.xtreamServer,
     this.xtreamUsername,
     this.xtreamPassword,
+    this.epgUrl,
     this.lastSyncedAt,
     this.channelCount = 0,
   });
@@ -59,6 +60,10 @@ class Playlist {
   /// Phase 5 on chiffrera avec flutter_secure_storage).
   final String? xtreamPassword;
 
+  /// URL XMLTV pour l'EPG (optionnel — pour Xtream l'EPG vient
+  /// automatiquement via xmltv.php).
+  final String? epgUrl;
+
   /// Dernière synchronisation réussie (null = jamais).
   final int? lastSyncedAt;
 
@@ -76,6 +81,7 @@ class Playlist {
       'xtream_server': xtreamServer,
       'xtream_username': xtreamUsername,
       'xtream_password': xtreamPassword,
+      'epg_url': epgUrl,
       'created_at': createdAt,
       'last_synced_at': lastSyncedAt,
       'channel_count': channelCount,
@@ -95,6 +101,7 @@ class Playlist {
       xtreamServer: map['xtream_server'] as String?,
       xtreamUsername: map['xtream_username'] as String?,
       xtreamPassword: map['xtream_password'] as String?,
+      epgUrl: map['epg_url'] as String?,
       lastSyncedAt: map['last_synced_at'] as int?,
       channelCount: (map['channel_count'] as int?) ?? 0,
     );
@@ -114,6 +121,7 @@ class Playlist {
       xtreamServer: xtreamServer,
       xtreamUsername: xtreamUsername,
       xtreamPassword: xtreamPassword,
+      epgUrl: epgUrl,
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
       channelCount: channelCount ?? this.channelCount,
     );

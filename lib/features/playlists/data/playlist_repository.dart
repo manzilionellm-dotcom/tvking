@@ -26,8 +26,11 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
+// ignore: depend_on_referenced_packages — dart:async fournit unawaited
+
 
 import '../../channels/domain/channel.dart';
+import '../../epg/data/epg_repository.dart';
 import '../domain/playlist.dart';
 import 'm3u_parser.dart';
 import 'playlist_database.dart';
@@ -115,6 +118,7 @@ class PlaylistRepository {
   Future<Playlist> addM3uPlaylist({
     required String name,
     required String url,
+    String? epgUrl,
     http.Client? httpClient,
   }) async {
     final http.Client client = httpClient ?? http.Client();
@@ -125,6 +129,7 @@ class PlaylistRepository {
         name: name,
         type: PlaylistType.m3u,
         m3uUrl: url,
+        epgUrl: epgUrl,
         createdAt: DateTime.now().millisecondsSinceEpoch,
       );
       final int playlistId = await _insertPlaylist(newPlaylist);
@@ -159,9 +164,34 @@ class PlaylistRepository {
       await _updatePlaylistMetrics(saved);
 
       await _emitCurrentState();
+
+      // Si une URL EPG est fournie → on déclenche la sync en
+      // arrière-plan (non bloquant : l'utilisateur peut déjà
+      // naviguer pendant que l'EPG arrive).
+      if (epgUrl != null && epgUrl.isNotEmpty) {
+        unawaited(_syncEpgFor(parsed.channels, epgUrl));
+      }
       return saved;
     } finally {
       if (httpClient == null) client.close();
+    }
+  }
+
+  /// Lance l'import EPG en arrière-plan, ignore les erreurs réseau
+  /// (l'utilisateur peut toujours retenter manuellement plus tard).
+  Future<void> _syncEpgFor(
+    List<Channel> channels,
+    String epgUrl,
+  ) async {
+    try {
+      final Set<String> ids =
+          channels.map((Channel c) => c.id).toSet();
+      await EpgRepository.instance.downloadAndImport(
+        url: epgUrl,
+        knownChannelIds: ids,
+      );
+    } catch (_) {
+      // Silencieux — l'EPG est optionnel.
     }
   }
 
@@ -211,6 +241,19 @@ class PlaylistRepository {
   //  AJOUT PLAYLIST — Xtream Codes
   // ============================================================
 
+  /// URL XMLTV auto-générée pour un compte Xtream.
+  /// Standard de fait : <serveur>/xmltv.php?username=X&password=Y
+  static String xtreamEpgUrl({
+    required String serverUrl,
+    required String username,
+    required String password,
+  }) {
+    final String base = serverUrl.endsWith('/')
+        ? serverUrl.substring(0, serverUrl.length - 1)
+        : serverUrl;
+    return '$base/xmltv.php?username=$username&password=$password';
+  }
+
   Future<Playlist> addXtreamPlaylist({
     required String name,
     required String serverUrl,
@@ -228,7 +271,7 @@ class PlaylistRepository {
     try {
       await xtream.verifyCredentials();
 
-      // 2) Crée la playlist en base
+      // 2) Crée la playlist en base (avec EPG URL auto-générée)
       final Playlist newPlaylist = Playlist(
         id: null,
         name: name,
@@ -236,6 +279,11 @@ class PlaylistRepository {
         xtreamServer: serverUrl,
         xtreamUsername: username,
         xtreamPassword: password,
+        epgUrl: xtreamEpgUrl(
+          serverUrl: serverUrl,
+          username: username,
+          password: password,
+        ),
         createdAt: DateTime.now().millisecondsSinceEpoch,
       );
       final int playlistId = await _insertPlaylist(newPlaylist);
@@ -263,6 +311,11 @@ class PlaylistRepository {
       await _updatePlaylistMetrics(saved);
 
       await _emitCurrentState();
+
+      // EPG auto en arrière-plan (Xtream a sa propre URL XMLTV)
+      if (newPlaylist.epgUrl != null) {
+        unawaited(_syncEpgFor(channels, newPlaylist.epgUrl!));
+      }
       return saved;
     } finally {
       if (httpClient == null) xtream.dispose();

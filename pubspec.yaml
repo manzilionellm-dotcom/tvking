@@ -78,12 +78,18 @@ dependencies:
   cached_network_image: ^3.4.1
 
   # --- Phase 1.5 : Finitions / About / Updater ---
-  # Lit la version réelle de l'APK (depuis le pubspec → AndroidManifest).
-  # Utilisée par l'écran About et l'update checker.
   package_info_plus: ^8.1.4
-
-  # Ouvre une URL externe dans le navigateur (liens GitHub, etc.).
   url_launcher: ^6.3.1
+
+  # --- Phase 2 : EPG XMLTV ---
+  # Parser XML en streaming (XmlEventReader) — indispensable pour
+  # ingérer les fichiers EPG qui font souvent 100-500 Mo sans
+  # exploser la RAM du téléphone.
+  xml: ^6.5.0
+
+  # Décompression gzip — beaucoup d'EPG sont servis en .xml.gz pour
+  # diviser la bande passante par 10.
+  archive: ^3.6.1
 
 dev_dependencies:
   flutter_test:

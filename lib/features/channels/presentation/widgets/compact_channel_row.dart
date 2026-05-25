@@ -13,6 +13,8 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../epg/data/epg_repository.dart';
+import '../../../epg/domain/epg_program.dart';
 import '../../../playlists/data/favorites_repository.dart';
 import '../../domain/channel.dart';
 import 'channel_logo.dart';
@@ -110,33 +112,68 @@ class _CompactChannelRowState extends State<CompactChannelRow> {
                           ],
                         ),
                         const SizedBox(height: 2),
-                        Row(
-                          children: <Widget>[
-                            Icon(
-                              ch.genre.icon,
-                              size: 11,
-                              color: AppColors.textMuted,
-                            ),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                ch.prettyCategory,
-                                style: AppTextStyles.bodyMedium.copyWith(
-                                  fontSize: 11,
+                        FutureBuilder<EpgProgram?>(
+                          future:
+                              EpgRepository.instance.currentProgram(ch.id),
+                          builder: (BuildContext context,
+                              AsyncSnapshot<EpgProgram?> snap) {
+                            // Si on a un programme EPG → on l'affiche
+                            // avec icône calendrier ; sinon catégorie M3U.
+                            final EpgProgram? p = snap.data;
+                            if (p != null) {
+                              return Row(
+                                children: <Widget>[
+                                  Icon(
+                                    Icons.play_circle_outline_rounded,
+                                    size: 11,
+                                    color: AppColors.accent,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      p.title,
+                                      style: AppTextStyles.bodyMedium
+                                          .copyWith(
+                                        fontSize: 11,
+                                        color: AppColors.textSecondary,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }
+                            return Row(
+                              children: <Widget>[
+                                Icon(
+                                  ch.genre.icon,
+                                  size: 11,
                                   color: AppColors.textMuted,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (ch.country != null) ...<Widget>[
-                              const SizedBox(width: 6),
-                              Text(
-                                ch.country!.flag,
-                                style: const TextStyle(fontSize: 11),
-                              ),
-                            ],
-                          ],
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    ch.prettyCategory,
+                                    style: AppTextStyles.bodyMedium.copyWith(
+                                      fontSize: 11,
+                                      color: AppColors.textMuted,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (ch.country != null) ...<Widget>[
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    ch.country!.flag,
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                ],
+                              ],
+                            );
+                          },
                         ),
                       ],
                     ),
