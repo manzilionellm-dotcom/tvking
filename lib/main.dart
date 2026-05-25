@@ -24,6 +24,7 @@ import 'features/onboarding/presentation/onboarding_screen.dart';
 import 'features/player/data/player_settings.dart';
 import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/playlist_repository.dart';
+import 'features/recordings/data/recording_repository.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -48,6 +49,7 @@ Future<void> main() async {
   unawaited(FavoritesRepository.instance.initialize());
   unawaited(RecentlyWatchedRepository.instance.initialize());
   unawaited(EpgRepository.instance.initialize());
+  unawaited(RecordingRepository.instance.initialize());
   unawaited(PlayerSettings.instance.load());
 
   // Update checker — silencieux en arrière-plan. Le résultat est lu

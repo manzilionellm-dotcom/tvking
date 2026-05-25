@@ -26,8 +26,11 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/live_badge.dart';
+import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/favorites_repository.dart';
+import '../../recordings/data/recording_repository.dart';
+import '../../recordings/domain/recording.dart';
 import '../data/player_settings.dart';
 import 'widgets/player_settings_sheet.dart';
 import 'widgets/player_stats_overlay.dart';
@@ -37,6 +40,8 @@ class VideoPlayerScreen extends StatefulWidget {
   const VideoPlayerScreen({
     required this.channel,
     this.zapPlaylist,
+    this.overrideUrl,
+    this.overrideTitle,
     super.key,
   });
 
@@ -45,6 +50,13 @@ class VideoPlayerScreen extends StatefulWidget {
   /// Si fourni, le player active les boutons ⏮ / ⏭ pour zapper
   /// dans cette liste. Sinon ces boutons sont masqués.
   final List<Channel>? zapPlaylist;
+
+  /// Si fourni, on lit cette URL au lieu de `channel.streamUrl`.
+  /// Sert pour le catch-up / replay.
+  final String? overrideUrl;
+
+  /// Titre à afficher en surimpression (ex : nom du programme).
+  final String? overrideTitle;
 
   @override
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
@@ -65,6 +77,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // Pour le zapping : la chaîne courante (peut changer dans la session
   // sans recréer l'écran) et l'index dans la zapPlaylist.
   late Channel _currentChannel;
+
+  // Enregistrement en cours (null si pas d'enregistrement actif).
+  Recording? _activeRecording;
+  bool get _isRecording => _activeRecording != null;
 
   final List<StreamSubscription<dynamic>> _subs =
       <StreamSubscription<dynamic>>[];
@@ -151,7 +167,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // Listener pour les changements de réglages → réapplication immédiate
     PlayerSettings.instance.addListener(_onSettingsChanged);
 
-    _player.open(Media(_currentChannel.streamUrl));
+    // URL effective : overrideUrl (catch-up) sinon stream live
+    final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+    _player.open(Media(url));
 
     // Restaure la dernière vitesse
     if (PlayerSettings.instance.lastSpeed != 1.0) {
@@ -191,6 +209,86 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _zapNext() => _zapTo(_zapIndex + 1);
   void _zapPrev() => _zapTo(_zapIndex - 1);
+
+  // ----- Enregistrement -----
+
+  Future<void> _toggleRecording() async {
+    if (_isRecording) {
+      await _stopRecording();
+    } else {
+      await _startRecording();
+    }
+    _scheduleHideOverlay();
+  }
+
+  Future<void> _startRecording() async {
+    try {
+      final String path =
+          await RecordingRepository.instance.createFilePath(
+        channelName: _currentChannel.cleanName,
+        programTitle: widget.overrideTitle,
+      );
+      // Demande à libmpv de copier le flux dans `path`
+      final bool ok = await _setMpvProperty('stream-record', path);
+      if (!ok) {
+        _toast('Enregistrement non supporté sur ce flux');
+        return;
+      }
+      final Recording rec =
+          await RecordingRepository.instance.startRecording(
+        channelId: _currentChannel.id,
+        channelName: _currentChannel.cleanName,
+        programTitle: widget.overrideTitle,
+        filePath: path,
+      );
+      if (mounted) {
+        setState(() => _activeRecording = rec);
+        _toast('Enregistrement démarré');
+      }
+    } catch (e) {
+      _toast('Impossible de démarrer : $e');
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    try {
+      await _setMpvProperty('stream-record', '');
+      final Recording? rec = _activeRecording;
+      if (rec != null) {
+        await RecordingRepository.instance.finishRecording(rec);
+      }
+      if (mounted) {
+        setState(() => _activeRecording = null);
+        _toast('Enregistrement sauvegardé');
+      }
+    } catch (e) {
+      _toast('Erreur arrêt enregistrement : $e');
+    }
+  }
+
+  Future<bool> _setMpvProperty(String name, String value) async {
+    try {
+      // ignore: invalid_use_of_protected_member
+      final dynamic native = (_player.platform as dynamic);
+      await native?.setProperty(name, value);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: AppColors.surfaceHigh,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        content: Text(message, style: AppTextStyles.bodyLarge),
+      ),
+    );
+  }
 
   Future<void> _applyMpvOptions() async {
     final PlayerSettings s = PlayerSettings.instance;
@@ -264,7 +362,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _errorMessage = null;
       _isBuffering = true;
     });
-    _player.open(Media(_currentChannel.streamUrl));
+    final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+    _player.open(Media(url));
   }
 
   Future<void> _openTracks() async {
@@ -529,13 +628,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     onTap: _openSettings,
                   ),
                   _ControlButton(
-                    icon: PlayerSettings.instance.showStats
-                        ? Icons.analytics
-                        : Icons.analytics_outlined,
-                    label: 'Stats',
-                    onTap: () => PlayerSettings.instance.setShowStats(
-                      !PlayerSettings.instance.showStats,
-                    ),
+                    icon: _isRecording
+                        ? Icons.stop_circle_rounded
+                        : Icons.fiber_manual_record_rounded,
+                    label: _isRecording ? 'STOP' : 'REC',
+                    iconColor: _isRecording ? AppColors.live : null,
+                    onTap: _toggleRecording,
                   ),
                   _ControlButton(
                     icon: Icons.tune_rounded,
@@ -701,11 +799,13 @@ class _ControlButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.iconColor,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
@@ -717,13 +817,13 @@ class _ControlButton extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(icon, color: Colors.white, size: 22),
+            Icon(icon, color: iconColor ?? Colors.white, size: 22),
             const SizedBox(height: 2),
             Text(
               label,
               style: AppTextStyles.bodyMedium.copyWith(
                 fontSize: 10,
-                color: Colors.white,
+                color: iconColor ?? Colors.white,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

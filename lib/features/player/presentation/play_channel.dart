@@ -6,9 +6,11 @@
 //    - On enregistre automatiquement dans l'historique récent
 //    - Optionnellement, on passe une liste de chaînes pour
 //      activer le zapping ⏮ / ⏭ dans le player
+//    - Optionnellement, on passe une `overrideUrl` (catch-up)
+//      qui sera lue au lieu de l'URL live de la chaîne
 //
 //  Toutes les surfaces (Home, Grid, Favoris, Search, Detail
-//  sheet) passent par ce helper.
+//  sheet, TV Guide) passent par ce helper.
 // =========================================================
 
 import 'package:flutter/material.dart';
@@ -21,6 +23,8 @@ Future<void> playChannel(
   BuildContext context,
   Channel channel, {
   List<Channel>? zapPlaylist,
+  String? overrideUrl,
+  String? overrideTitle,
 }) {
   RecentlyWatchedRepository.instance.record(channel.id);
 
@@ -29,6 +33,8 @@ Future<void> playChannel(
       builder: (_) => VideoPlayerScreen(
         channel: channel,
         zapPlaylist: zapPlaylist,
+        overrideUrl: overrideUrl,
+        overrideTitle: overrideTitle,
       ),
     ),
   );

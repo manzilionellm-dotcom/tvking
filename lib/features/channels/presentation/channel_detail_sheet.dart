@@ -22,6 +22,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
+import '../../epg/presentation/channel_programs_screen.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -206,6 +207,35 @@ class ChannelDetailSheet extends StatelessWidget {
                         child: _FavoriteButton(channelId: channel.id),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 10),
+                  // ----- Voir tous les programmes (replay 24h) -----
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push<void>(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                ChannelProgramsScreen(channel: channel),
+                          ),
+                        );
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.textPrimary,
+                        side: BorderSide(color: AppColors.border),
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      icon: const Icon(Icons.event_note_rounded, size: 20),
+                      label: const Text(
+                        'Programmes du jour & Replay',
+                      ),
+                    ),
                   ),
                 ],
               ),

@@ -16,6 +16,7 @@ import '../../about/presentation/about_screen.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../player/data/player_settings.dart';
 import '../../playlists/presentation/playlists_screen.dart';
+import '../../recordings/presentation/recordings_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -83,6 +84,20 @@ class SettingsScreen extends StatelessWidget {
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute<void>(
                   builder: (_) => const PlaylistsScreen(),
+                ),
+              ),
+            ),
+
+            // ====== ENREGISTREMENTS ======
+            _SectionTitle('Enregistrements'),
+            _ActionTile(
+              icon: Icons.movie_filter_outlined,
+              title: 'Mes enregistrements',
+              subtitle:
+                  'Liste des flux capturés via le bouton REC du lecteur.',
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => const RecordingsScreen(),
                 ),
               ),
             ),

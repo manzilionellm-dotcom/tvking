@@ -23,6 +23,7 @@ import '../../channels/domain/channel.dart';
 import '../../channels/presentation/widgets/channel_logo.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../data/catchup_url_builder.dart';
 import '../data/epg_repository.dart';
 import '../domain/epg_program.dart';
 
@@ -378,18 +379,46 @@ class _GuideBody extends StatelessWidget {
                       rowHeight: rowHeight,
                       now: now,
                       onProgramTap: (EpgProgram p) {
-                        // Si le programme est en cours → on lance la chaîne.
-                        // Si futur → on affiche un petit toast info.
+                        final int nowMs = now.millisecondsSinceEpoch;
                         if (p.isLiveAt(now)) {
+                          // En cours → live direct
                           playChannel(context, ch, zapPlaylist: channels);
+                        } else if (p.stopTime <= nowMs) {
+                          // Passé → on tente le catch-up
+                          final String? catchupUrl =
+                              CatchupUrlBuilder.build(
+                            channel: ch,
+                            program: p,
+                          );
+                          if (catchupUrl != null) {
+                            playChannel(
+                              context,
+                              ch,
+                              overrideUrl: catchupUrl,
+                              overrideTitle: p.title,
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).clearSnackBars();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                backgroundColor: AppColors.surfaceHigh,
+                                behavior: SnackBarBehavior.floating,
+                                content: Text(
+                                  'Catch-up indisponible pour ${ch.cleanName}',
+                                  style: AppTextStyles.bodyMedium,
+                                ),
+                              ),
+                            );
+                          }
                         } else {
+                          // Futur → toast info (rappel viendra Phase 3.2)
                           ScaffoldMessenger.of(context).clearSnackBars();
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               backgroundColor: AppColors.surfaceHigh,
                               behavior: SnackBarBehavior.floating,
                               content: Text(
-                                '${p.title} · ${p.timeRangeShort}',
+                                '${p.title} · démarre à ${p.timeRangeShort.split(' – ').first}',
                                 style: AppTextStyles.bodyMedium,
                               ),
                             ),
