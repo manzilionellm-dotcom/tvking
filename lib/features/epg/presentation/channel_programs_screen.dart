@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../cast/presentation/cast_button.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/presentation/widgets/channel_logo.dart';
 import '../../player/presentation/play_channel.dart';
@@ -66,6 +67,10 @@ class _ChannelProgramsScreenState extends State<ChannelProgramsScreen> {
             ),
           ],
         ),
+        actions: const <Widget>[
+          CastButton(),
+          SizedBox(width: 6),
+        ],
       ),
       body: FutureBuilder<List<EpgProgram>>(
         future: _future,

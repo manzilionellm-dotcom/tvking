@@ -25,6 +25,8 @@ import '../../../core/theme/app_text_styles.dart';
 import '../data/cast_manager.dart';
 import '../domain/cast_device.dart';
 
+/// Ouvre le picker en mode "envoyer ce flux maintenant".
+/// → Tap sur un device = la TV se met à lire `streamUrl` immédiatement.
 Future<void> showCastPicker(
   BuildContext context, {
   required String streamUrl,
@@ -39,15 +41,31 @@ Future<void> showCastPicker(
   );
 }
 
+/// Ouvre le picker en mode "global" (depuis Home, Live, etc.).
+/// → Tap sur un device = on mémorise la cible, sans envoyer de flux.
+///   Ensuite, dès que l'utilisateur tape sur une chaîne, le flux part
+///   automatiquement vers la TV (modèle YouTube/Netflix).
+Future<void> showCastPickerGlobal(BuildContext context) {
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (_) => const CastPickerSheet(),
+  );
+}
+
 class CastPickerSheet extends StatefulWidget {
   const CastPickerSheet({
-    required this.streamUrl,
-    required this.title,
+    this.streamUrl,
+    this.title,
     super.key,
   });
 
-  final String streamUrl;
-  final String title;
+  /// Si `null`, le picker est en mode "global" — il mémorise juste le
+  /// device sélectionné sans déclencher de lecture.
+  final String? streamUrl;
+  final String? title;
 
   @override
   State<CastPickerSheet> createState() => _CastPickerSheetState();
@@ -57,6 +75,10 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
   @override
   void initState() {
     super.initState();
+    // Lance un scan (en gardant la liste chaude pré-warmée) pour ne
+    // jamais afficher de "page vide" si le warmup a déjà trouvé du
+    // monde. L'utilisateur voit instantanément les devices connus,
+    // puis le scan en cours peut en ajouter d'autres.
     CastManager.instance.startDiscovery();
   }
 
@@ -66,10 +88,26 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
     super.dispose();
   }
 
-  Future<void> _castTo(CastDevice device) async {
+  bool get _isGlobalMode => widget.streamUrl == null;
+
+  Future<void> _onDeviceTap(CastDevice device) async {
     final CastManager mgr = CastManager.instance;
 
-    // Si on caste déjà sur un AUTRE device → on coupe propre d'abord
+    // Mode "global" : on mémorise juste la cible. Pas de flux à
+    // envoyer maintenant — playChannel s'en chargera ensuite.
+    if (_isGlobalMode) {
+      mgr.selectDevice(device);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      _toast(
+        context,
+        'Connecté à ${device.name}. Tape une chaîne pour l\'envoyer.',
+        accent: true,
+      );
+      return;
+    }
+
+    // Mode "flux maintenant" : si on caste déjà ailleurs → coupe propre
     if (mgr.isCasting && mgr.device?.id != device.id) {
       await mgr.disconnect();
     }
@@ -77,8 +115,8 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
     try {
       await mgr.castTo(
         device,
-        streamUrl: widget.streamUrl,
-        title: widget.title,
+        streamUrl: widget.streamUrl!,
+        title: widget.title ?? 'Lecture',
       );
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -142,7 +180,12 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
               builder: (BuildContext context, _) {
                 final CastManager mgr = CastManager.instance;
                 final List<CastDevice> devices = mgr.discoveredDevices;
-                final CastDevice? active = mgr.device;
+                // "Actif" = soit en train de caster, soit pré-sélectionné
+                // (mode global). Les deux états méritent le marqueur
+                // "EN COURS" pour rassurer l'utilisateur que sa cible
+                // est bien en place.
+                final CastDevice? active =
+                    mgr.device ?? mgr.selectedDevice;
                 final bool discovering = mgr.state == CastState.discovering;
 
                 return Column(
@@ -186,7 +229,9 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                                 onPressed: discovering
                                     ? null
                                     : () => CastManager.instance
-                                        .startDiscovery(),
+                                        .startDiscovery(
+                                          keepExisting: false,
+                                        ),
                               ),
                             ],
                           ),
@@ -234,7 +279,7 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                                 return _DeviceTile(
                                   device: d,
                                   isActive: isActive,
-                                  onTap: () => _castTo(d),
+                                  onTap: () => _onDeviceTap(d),
                                 );
                               },
                             ),

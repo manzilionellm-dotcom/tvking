@@ -40,15 +40,27 @@ class CastManager extends ChangeNotifier {
   String? _currentTitle;
   String? _errorMessage;
 
-  // Liste des devices découverts pendant la session de discovery actuelle.
+  /// Device "sélectionné" — différent du device "casting actif".
+  /// Quand l'utilisateur ouvre le picker global (depuis Home, Live...)
+  /// sans flux à envoyer, on retient quand même son choix. Plus tard
+  /// quand il tape sur une chaîne, on route le flux vers ce device au
+  /// lieu d'ouvrir le player local. C'est le modèle YouTube/Netflix :
+  /// "connecte ta TV une fois, ensuite tout y va".
+  CastDevice? _selectedDevice;
+
+  // Liste des devices découverts. NE PAS clear à chaque discovery —
+  // on garde la liste chaude entre les ouvertures du picker pour
+  // qu'elle s'ouvre instantanément la 2e fois.
   final List<CastDevice> _discovered = <CastDevice>[];
   StreamSubscription<CastDevice>? _discoverySub;
   Timer? _discoveryTimer;
+  Timer? _warmupTimer;
 
   // ----- Getters -----
 
   CastState get state => _state;
   CastDevice? get device => _device;
+  CastDevice? get selectedDevice => _selectedDevice;
   String? get currentTitle => _currentTitle;
   String? get errorMessage => _errorMessage;
   List<CastDevice> get discoveredDevices =>
@@ -57,15 +69,28 @@ class CastManager extends ChangeNotifier {
   bool get isCasting =>
       _state == CastState.casting || _state == CastState.paused;
 
+  /// `true` dès qu'un device est prêt à recevoir un flux — qu'il
+  /// soit déjà en train de caster ou simplement "connecté en attente".
+  /// Utilisé par `playChannel()` pour décider de router le flux vers
+  /// la TV au lieu d'ouvrir le player local.
+  bool get hasTarget => _selectedDevice != null;
+
   // ----- Discovery -----
 
   /// Lance la découverte SSDP et expose les résultats dans
   /// [discoveredDevices]. Notifie ses listeners à chaque ajout.
+  ///
+  /// Si [keepExisting] est `true` (cas du refresh dans le picker
+  /// déjà ouvert ou du warmup), on n'efface pas la liste avant le
+  /// scan — au pire on rajoute des devices, jamais on n'en enlève.
+  /// Ça évite le flash "liste vide → liste pleine" qui rend l'UI
+  /// peu fluide.
   Future<void> startDiscovery({
     Duration timeout = const Duration(seconds: 5),
+    bool keepExisting = true,
   }) async {
     if (_state == CastState.discovering) return;
-    _discovered.clear();
+    if (!keepExisting) _discovered.clear();
     _state = CastState.discovering;
     notifyListeners();
 
@@ -105,6 +130,47 @@ class CastManager extends ChangeNotifier {
     }
   }
 
+  /// Démarre un cycle de scan silencieux en arrière-plan : un premier
+  /// scan rapide après [initialDelay], puis un re-scan toutes les
+  /// [interval]. Comme ça, dès que l'utilisateur ouvre le picker, la
+  /// liste est déjà chaude — pas d'attente, expérience YouTube/Netflix.
+  void startWarmup({
+    Duration initialDelay = const Duration(seconds: 2),
+    Duration interval = const Duration(seconds: 60),
+  }) {
+    _warmupTimer?.cancel();
+    Future<void>.delayed(initialDelay, () {
+      if (_state != CastState.discovering && !isCasting) {
+        startDiscovery(timeout: const Duration(seconds: 3));
+      }
+    });
+    _warmupTimer = Timer.periodic(interval, (_) {
+      // On ne dérange jamais une session active ou une discovery en cours
+      if (_state == CastState.discovering || isCasting) return;
+      startDiscovery(timeout: const Duration(seconds: 3));
+    });
+  }
+
+  void stopWarmup() {
+    _warmupTimer?.cancel();
+    _warmupTimer = null;
+  }
+
+  // ----- Sélection sans lecture (mode "global picker") -----
+
+  /// Mémorise un device comme cible par défaut, sans envoyer de flux.
+  /// `playChannel()` enverra automatiquement les chaînes vers ce
+  /// device tant qu'il n'est pas désélectionné via [clearTarget].
+  void selectDevice(CastDevice device) {
+    _selectedDevice = device;
+    notifyListeners();
+  }
+
+  void clearTarget() {
+    _selectedDevice = null;
+    notifyListeners();
+  }
+
   // ----- Cast vers un device -----
 
   Future<void> castTo(
@@ -123,6 +189,7 @@ class CastManager extends ChangeNotifier {
       await _transport!.playStream(streamUrl: streamUrl, title: title);
       _currentStreamUrl = streamUrl;
       _currentTitle = title;
+      _selectedDevice = device;
       _state = CastState.casting;
       notifyListeners();
     } on Exception catch (e) {
@@ -161,6 +228,7 @@ class CastManager extends ChangeNotifier {
     } catch (_) {}
     _transport = null;
     _device = null;
+    _selectedDevice = null;
     _currentStreamUrl = null;
     _currentTitle = null;
     _state = CastState.idle;

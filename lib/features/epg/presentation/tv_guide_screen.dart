@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../cast/presentation/cast_button.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/presentation/widgets/channel_logo.dart';
 import '../../player/presentation/play_channel.dart';
@@ -122,6 +123,7 @@ class _TvGuideScreenState extends State<TvGuideScreen> {
       appBar: AppBar(
         title: const Text('Guide TV'),
         actions: <Widget>[
+          const CastButton(),
           IconButton(
             icon: const Icon(Icons.my_location_rounded),
             tooltip: 'Aller à maintenant',

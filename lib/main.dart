@@ -16,6 +16,7 @@ import 'package:media_kit/media_kit.dart';
 
 import 'core/theme/app_theme.dart';
 import 'features/about/data/update_checker.dart';
+import 'features/cast/data/cast_manager.dart';
 import 'features/channels/data/recently_watched_repository.dart';
 import 'features/channels/presentation/home_screen.dart';
 import 'features/device/data/device_identity.dart';
@@ -63,6 +64,12 @@ Future<void> main() async {
   // RemoteConfigRepository va fetch + appliquer les playlists du
   // serveur, puis re-fetcher toutes les 30 min en tâche de fond.
   unawaited(RemoteConfigRepository.instance.initialize());
+
+  // Pré-warm du cast : 1er scan SSDP 2s après le boot, puis re-scan
+  // toutes les 60s en tâche de fond. Conséquence : dès que l'utilisateur
+  // tape l'icône Cast, la liste des TVs apparaît instantanément — c'est
+  // ce qui rend l'expérience "fluide comme YouTube".
+  CastManager.instance.startWarmup();
 
   // Update checker — silencieux en arrière-plan. Le résultat est lu
   // par AboutScreen / un toast plus tard.

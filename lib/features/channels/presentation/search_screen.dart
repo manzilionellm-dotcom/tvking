@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../cast/presentation/cast_button.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../domain/channel.dart';
@@ -81,6 +82,8 @@ class _SearchScreenState extends State<SearchScreen> {
                 setState(() => _query = '');
               },
             ),
+          const CastButton(),
+          const SizedBox(width: 6),
         ],
       ),
       body: StreamBuilder<List<Channel>>(

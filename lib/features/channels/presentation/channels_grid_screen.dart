@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../cast/presentation/cast_button.dart';
 import '../../player/presentation/play_channel.dart';
 import '../domain/channel.dart';
 import 'widgets/channel_card.dart';
@@ -56,6 +57,10 @@ class ChannelsGridScreen extends StatelessWidget {
             ),
           ],
         ),
+        actions: const <Widget>[
+          CastButton(),
+          SizedBox(width: 6),
+        ],
       ),
       body: channels.isEmpty
           ? _buildEmpty()

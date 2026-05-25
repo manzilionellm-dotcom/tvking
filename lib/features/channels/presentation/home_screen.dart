@@ -26,6 +26,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../cast/presentation/cast_button.dart';
 import '../../cast/presentation/cast_mini_bar.dart';
 import '../../epg/presentation/tv_guide_screen.dart';
 import '../../player/presentation/play_channel.dart';
@@ -173,6 +174,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       actions: <Widget>[
+        const CastButton(),
         IconButton(
           tooltip: 'Guide TV',
           onPressed: () => Navigator.of(context).push<void>(
@@ -181,11 +183,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           icon: const Icon(Icons.event_note_rounded),
-        ),
-        IconButton(
-          tooltip: 'Ajouter une playlist',
-          onPressed: _openAddPlaylist,
-          icon: const Icon(Icons.add_rounded),
         ),
         IconButton(
           tooltip: 'Recherche',

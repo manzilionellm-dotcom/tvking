@@ -31,6 +31,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../cast/presentation/cast_button.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../domain/channel.dart';
@@ -171,6 +172,7 @@ class _CategorySectionScreenState extends State<CategorySectionScreen> {
       appBar: AppBar(
         title: Text(widget.title),
         actions: <Widget>[
+          const CastButton(),
           _ViewModeToggle(
             current: _viewMode,
             onChanged: _setViewMode,
