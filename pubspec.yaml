@@ -66,6 +66,13 @@ dependencies:
   # lecture vidéo).
   wakelock_plus: ^1.2.10
 
+  # SharedPreferences pour persister les réglages utilisateur
+  # (taille du buffer, ratio préféré, etc.) entre les sessions.
+  shared_preferences: ^2.3.4
+
+  # Picture-in-Picture sera ajouté en Phase 4 (avec le Cast),
+  # car il demande aussi une config dans AndroidManifest.xml.
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

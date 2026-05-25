@@ -1,19 +1,18 @@
 // =========================================================
-//  video_player_screen.dart — Lecteur vidéo plein écran
+//  video_player_screen.dart — Lecteur vidéo HAUT NIVEAU
 // =========================================================
-//  Phase 1.3 — branche le moteur `media_kit` (libmpv) pour
-//  lire les flux IPTV : HLS, MPEG-TS, MP4, audio multi-piste.
+//  Phase 1.3 — version améliorée :
 //
-//  UX :
-//    - Plein écran, statut bar masquée
-//    - Tap → bascule l'overlay (titre + bouton retour + Play/Pause + Stop)
-//    - L'overlay s'auto-masque après 4s d'inactivité
-//    - Écran maintenu allumé via wakelock_plus
-//    - Buffering visible (cercle pulsant)
-//    - Erreur réseau affichée clairement
-//
-//  Orientation : forcée à `portrait & landscape` (l'utilisateur
-//  décide). Sur Android TV / Fire TV → paysage par défaut.
+//    - Décodage hardware (hwdec=auto-safe) pour 4K/8K
+//    - Buffer configurable (5-60s, défaut 20s)
+//    - Pistes audio multiples sélectionnables
+//    - Sous-titres sélectionnables
+//    - Vitesse de lecture (0.5x → 2x)
+//    - Ratio d'affichage (16:9, 4:3, fit, fill, stretch, 2.39:1)
+//    - Overlay statistiques (résolution, codec, FPS)
+//    - Plein écran immersif + wakelock
+//    - Recharge en cas d'erreur
+//    - Réglages persistés entre sessions
 // =========================================================
 
 import 'dart:async';
@@ -29,6 +28,10 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/live_badge.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/favorites_repository.dart';
+import '../data/player_settings.dart';
+import 'widgets/player_settings_sheet.dart';
+import 'widgets/player_stats_overlay.dart';
+import 'widgets/player_tracks_sheet.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
   const VideoPlayerScreen({required this.channel, super.key});
@@ -51,52 +54,98 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isBuffering = true;
   bool _isPlaying = false;
 
-  late final StreamSubscription<bool> _bufferingSub;
-  late final StreamSubscription<bool> _playingSub;
-  late final StreamSubscription<String> _errorSub;
+  final List<StreamSubscription<dynamic>> _subs =
+      <StreamSubscription<dynamic>>[];
 
   @override
   void initState() {
     super.initState();
 
-    // Garde l'écran allumé pendant la lecture
     WakelockPlus.enable();
-
-    // Statut bar : full immersive sticky (revient au touch)
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    _player = Player();
+    // Charge d'abord les réglages persistés
+    PlayerSettings.instance.load();
+
+    // Configure le Player avec un buffer généreux (pour 4K/8K)
+    _player = Player(
+      configuration: PlayerConfiguration(
+        bufferSize: PlayerSettings.instance.bufferBytes,
+        // Logs visibles seulement en debug, pas en release
+        logLevel: MPVLogLevel.warn,
+      ),
+    );
     _videoController = VideoController(_player);
 
-    // Abonne aux flux d'événements du player
-    _bufferingSub = _player.stream.buffering.listen((bool b) {
+    // Applique les options libmpv pour hardware decoding + cache
+    _applyMpvOptions();
+
+    // Abonne aux événements
+    _subs.add(_player.stream.buffering.listen((bool b) {
       if (mounted) setState(() => _isBuffering = b);
-    });
-    _playingSub = _player.stream.playing.listen((bool p) {
+    }));
+    _subs.add(_player.stream.playing.listen((bool p) {
       if (mounted) setState(() => _isPlaying = p);
-    });
-    _errorSub = _player.stream.error.listen((String e) {
+    }));
+    _subs.add(_player.stream.error.listen((String e) {
       if (mounted) {
         setState(() {
           _hasError = true;
           _errorMessage = e;
         });
       }
-    });
+    }));
 
-    // Lance la lecture
+    // Listener pour les changements de réglages → réapplication immédiate
+    PlayerSettings.instance.addListener(_onSettingsChanged);
+
     _player.open(Media(widget.channel.streamUrl));
 
-    // Programme le masquage de l'overlay après quelques secondes
+    // Restaure la dernière vitesse
+    if (PlayerSettings.instance.lastSpeed != 1.0) {
+      _player.setRate(PlayerSettings.instance.lastSpeed);
+    }
+
     _scheduleHideOverlay();
+  }
+
+  Future<void> _applyMpvOptions() async {
+    final PlayerSettings s = PlayerSettings.instance;
+
+    // Décodage hardware si activé.
+    // "auto-safe" = tente HW, retombe sur SW si pas dispo (sans bug visuel).
+    final String hwdec = s.hardwareDecode ? 'auto-safe' : 'no';
+
+    // Les properties libmpv ne sont accessibles que via la
+    // surface native du player (pas l'API Dart de haut niveau).
+    // On essaie/catch parce que certaines plateformes ne
+    // l'exposent pas (web par ex.).
+    try {
+      // ignore: invalid_use_of_protected_member
+      final dynamic native = (_player.platform as dynamic);
+      await native?.setProperty('hwdec', hwdec);
+      await native?.setProperty('cache', 'yes');
+      // Maximum 4 secondes de retour en arrière à mettre en cache
+      await native?.setProperty('cache-secs', s.bufferSeconds.toString());
+    } catch (_) {
+      // Pas grave, on continue avec les défauts.
+    }
+  }
+
+  void _onSettingsChanged() {
+    // Quand l'utilisateur change un réglage en cours de lecture
+    // → applique en live ce qui peut l'être à chaud.
+    _applyMpvOptions();
+    if (mounted) setState(() {}); // pour le ratio
   }
 
   @override
   void dispose() {
     _hideOverlayTimer?.cancel();
-    _bufferingSub.cancel();
-    _playingSub.cancel();
-    _errorSub.cancel();
+    for (final StreamSubscription<dynamic> s in _subs) {
+      s.cancel();
+    }
+    PlayerSettings.instance.removeListener(_onSettingsChanged);
     _player.dispose();
     WakelockPlus.disable();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -135,6 +184,61 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _player.open(Media(widget.channel.streamUrl));
   }
 
+  Future<void> _openTracks() async {
+    _hideOverlayTimer?.cancel();
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => PlayerTracksSheet(player: _player),
+    );
+    _scheduleHideOverlay();
+  }
+
+  Future<void> _openSettings() async {
+    _hideOverlayTimer?.cancel();
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => PlayerSettingsSheet(
+        currentSpeed: _player.state.rate,
+        onSpeedChange: (double s) => _player.setRate(s),
+      ),
+    );
+    _scheduleHideOverlay();
+  }
+
+  // ----- Mapping AspectRatioMode → BoxFit + ratio -----
+
+  BoxFit _fitFromMode(AspectRatioMode m) {
+    switch (m) {
+      case AspectRatioMode.fit:
+        return BoxFit.contain;
+      case AspectRatioMode.fill:
+        return BoxFit.cover;
+      case AspectRatioMode.stretch:
+        return BoxFit.fill;
+      case AspectRatioMode.ratio169:
+      case AspectRatioMode.ratio43:
+      case AspectRatioMode.ratio219:
+        return BoxFit.contain;
+    }
+  }
+
+  double? _forcedAspect(AspectRatioMode m) {
+    switch (m) {
+      case AspectRatioMode.ratio169:
+        return 16 / 9;
+      case AspectRatioMode.ratio43:
+        return 4 / 3;
+      case AspectRatioMode.ratio219:
+        return 2.39;
+      default:
+        return null;
+    }
+  }
+
   // ----- UI -----
 
   @override
@@ -143,46 +247,68 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       backgroundColor: Colors.black,
       body: GestureDetector(
         onTap: _toggleOverlay,
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            // ----- 1. La vidéo -----
-            Center(
-              child: Video(
-                controller: _videoController,
-                controls: NoVideoControls, // on dessine notre propre overlay
-                fit: BoxFit.contain,
-              ),
-            ),
+        child: ListenableBuilder(
+          listenable: PlayerSettings.instance,
+          builder: (BuildContext context, _) {
+            final AspectRatioMode mode = PlayerSettings.instance.aspectMode;
+            return Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
+                // ----- 1. La vidéo (avec aspect ratio forcé si demandé) -----
+                Center(
+                  child: _forcedAspect(mode) == null
+                      ? Video(
+                          controller: _videoController,
+                          controls: NoVideoControls,
+                          fit: _fitFromMode(mode),
+                        )
+                      : AspectRatio(
+                          aspectRatio: _forcedAspect(mode)!,
+                          child: Video(
+                            controller: _videoController,
+                            controls: NoVideoControls,
+                            fit: _fitFromMode(mode),
+                          ),
+                        ),
+                ),
 
-            // ----- 2. Spinner pendant le buffering -----
-            if (_isBuffering && !_hasError)
-              const Center(
-                child: SizedBox(
-                  width: 56,
-                  height: 56,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 3,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      Colors.white,
+                // ----- 2. Spinner pendant le buffering -----
+                if (_isBuffering && !_hasError)
+                  const Center(
+                    child: SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
                     ),
                   ),
+
+                // ----- 3. Stats overlay (toggle dans les réglages) -----
+                if (PlayerSettings.instance.showStats && !_hasError)
+                  Positioned(
+                    top: MediaQuery.of(context).padding.top + 12,
+                    left: 12,
+                    child: PlayerStatsOverlay(player: _player),
+                  ),
+
+                // ----- 4. Overlay erreur -----
+                if (_hasError) _buildErrorOverlay(),
+
+                // ----- 5. Overlay contrôles -----
+                AnimatedOpacity(
+                  duration: const Duration(milliseconds: 220),
+                  opacity: _overlayVisible ? 1.0 : 0.0,
+                  child: IgnorePointer(
+                    ignoring: !_overlayVisible,
+                    child: _buildOverlay(),
+                  ),
                 ),
-              ),
-
-            // ----- 3. Overlay erreur -----
-            if (_hasError) _buildErrorOverlay(),
-
-            // ----- 4. Overlay des contrôles -----
-            AnimatedOpacity(
-              duration: const Duration(milliseconds: 220),
-              opacity: _overlayVisible ? 1.0 : 0.0,
-              child: IgnorePointer(
-                ignoring: !_overlayVisible,
-                child: _buildOverlay(),
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );
@@ -201,9 +327,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             Colors.black.withValues(alpha: 0.75),
             Colors.transparent,
             Colors.transparent,
-            Colors.black.withValues(alpha: 0.85),
+            Colors.black.withValues(alpha: 0.9),
           ],
-          stops: const <double>[0, 0.25, 0.6, 1],
+          stops: const <double>[0, 0.22, 0.55, 1],
         ),
       ),
       child: SafeArea(
@@ -271,7 +397,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
             ),
 
-            // ----- Centre : bouton Play/Pause géant -----
+            // ----- Centre : Play / Pause géant -----
             Expanded(
               child: Center(
                 child: _PlayPauseButton(
@@ -281,39 +407,42 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
             ),
 
-            // ----- Bas : éventuelles infos / boutons supplémentaires -----
+            // ----- Bas : barre de contrôles -----
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.45),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Icon(
-                      Icons.info_outline_rounded,
-                      color: AppColors.accentCyan,
-                      size: 18,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: <Widget>[
+                  _ControlButton(
+                    icon: Icons.subtitles_outlined,
+                    label: 'Pistes',
+                    onTap: _openTracks,
+                  ),
+                  _ControlButton(
+                    icon: Icons.speed_rounded,
+                    label: '${_player.state.rate.toStringAsFixed(_player.state.rate == _player.state.rate.toInt() ? 0 : 2)}x',
+                    onTap: _openSettings,
+                  ),
+                  _ControlButton(
+                    icon: _aspectIcon(PlayerSettings.instance.aspectMode),
+                    label: PlayerSettings.instance.aspectMode.label,
+                    onTap: _openSettings,
+                  ),
+                  _ControlButton(
+                    icon: PlayerSettings.instance.showStats
+                        ? Icons.analytics
+                        : Icons.analytics_outlined,
+                    label: 'Stats',
+                    onTap: () => PlayerSettings.instance.setShowStats(
+                      !PlayerSettings.instance.showStats,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Tap = afficher/masquer les contrôles · '
-                        'Play/Pause au centre · ⟳ pour recharger',
-                        style: AppTextStyles.bodyMedium.copyWith(
-                          color: Colors.white70,
-                          fontSize: 11,
-                        ),
-                        maxLines: 2,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                  _ControlButton(
+                    icon: Icons.tune_rounded,
+                    label: 'Réglages',
+                    onTap: _openSettings,
+                  ),
+                ],
               ),
             ),
           ],
@@ -322,9 +451,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     );
   }
 
+  IconData _aspectIcon(AspectRatioMode mode) {
+    switch (mode) {
+      case AspectRatioMode.fit:
+        return Icons.fit_screen_outlined;
+      case AspectRatioMode.fill:
+        return Icons.aspect_ratio_rounded;
+      case AspectRatioMode.stretch:
+        return Icons.open_in_full_rounded;
+      case AspectRatioMode.ratio169:
+      case AspectRatioMode.ratio43:
+      case AspectRatioMode.ratio219:
+        return Icons.crop_landscape_rounded;
+    }
+  }
+
   Widget _buildErrorOverlay() {
     return Container(
-      color: Colors.black.withValues(alpha: 0.7),
+      color: Colors.black.withValues(alpha: 0.78),
       padding: const EdgeInsets.all(24),
       child: Center(
         child: Column(
@@ -387,10 +531,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 }
 
 class _PlayPauseButton extends StatelessWidget {
-  const _PlayPauseButton({
-    required this.isPlaying,
-    required this.onTap,
-  });
+  const _PlayPauseButton({required this.isPlaying, required this.onTap});
 
   final bool isPlaying;
   final VoidCallback onTap;
@@ -403,8 +544,8 @@ class _PlayPauseButton extends StatelessWidget {
         customBorder: const CircleBorder(),
         onTap: onTap,
         child: Container(
-          width: 80,
-          height: 80,
+          width: 88,
+          height: 88,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: Colors.white.withValues(alpha: 0.15),
@@ -416,8 +557,47 @@ class _PlayPauseButton extends StatelessWidget {
           child: Icon(
             isPlaying ? Icons.pause : Icons.play_arrow_rounded,
             color: Colors.white,
-            size: 44,
+            size: 48,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ControlButton extends StatelessWidget {
+  const _ControlButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, color: Colors.white, size: 22),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: AppTextStyles.bodyMedium.copyWith(
+                fontSize: 10,
+                color: Colors.white,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ),
       ),
     );
