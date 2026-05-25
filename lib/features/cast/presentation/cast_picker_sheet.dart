@@ -24,6 +24,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/cast_manager.dart';
 import '../domain/cast_device.dart';
+import 'web_cast_setup_sheet.dart';
 
 /// Ouvre le picker en mode "envoyer ce flux maintenant".
 /// → Tap sur un device = la TV se met à lire `streamUrl` immédiatement.
@@ -239,7 +240,7 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                           Text(
                             discovering
                                 ? 'Recherche sur ton WiFi...'
-                                : 'Récepteurs DLNA / UPnP détectés.',
+                                : 'DLNA · Roku · navigateur web.',
                             style: AppTextStyles.bodyMedium.copyWith(
                               fontSize: 12,
                               color: AppColors.textMuted,
@@ -283,6 +284,12 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                                 );
                               },
                             ),
+                    ),
+
+                    // ----- Fallback universel "via navigateur" -----
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                      child: _WebFallbackTile(),
                     ),
 
                     // ----- Aide en bas -----
@@ -576,6 +583,95 @@ class _ActiveSessionBanner extends StatelessWidget {
 //  côté du nom pour que l'utilisateur sache à quel type de
 //  récepteur il a affaire avant de connecter.
 // ============================================================
+
+// ============================================================
+//  Tile "fallback web universel" — toujours visible. Permet de
+//  caster vers N'IMPORTE quelle TV avec un navigateur, même si
+//  aucun récepteur DLNA / Roku / Chromecast n'est trouvé.
+// ============================================================
+
+class _WebFallbackTile extends StatelessWidget {
+  const _WebFallbackTile();
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () async {
+          Navigator.of(context).pop();
+          await showWebCastSetup(context);
+        },
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: AppColors.success.withValues(alpha: 0.4),
+              width: 1.2,
+            ),
+          ),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.success.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.qr_code_rounded,
+                  color: AppColors.success,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Text(
+                          'Cast via navigateur',
+                          style: AppTextStyles.bodyLarge.copyWith(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const _KindBadge(kind: CastDeviceKind.webBrowser),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Marche sur N\'IMPORTE quelle TV avec un navigateur '
+                      'web. QR code à scanner avec la TV.',
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
+                        height: 1.3,
+                      ),
+                      maxLines: 2,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_rounded,
+                color: AppColors.success,
+                size: 18,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _KindBadge extends StatelessWidget {
   const _KindBadge({required this.kind});

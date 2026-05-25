@@ -1,17 +1,23 @@
 // =========================================================
-//  web_browser_transport.dart — Fallback universel via navigateur
+//  web_browser_transport.dart — Fallback universel "navigateur"
 // =========================================================
-//  Stub — implémentation complète à venir.
-//  Idée : l'app héberge un mini-serveur HTTP local qui sert
-//  une page HTML5 <video>. L'utilisateur scanne un QR code
-//  avec sa TV (ou tape l'URL dans le navigateur de la TV) et
-//  la chaîne joue. Marche sur N'IMPORTE QUELLE TV avec un
-//  navigateur web — Google TV, Samsung Tizen, LG WebOS, vieilles
-//  Smart TVs...
+//  Concrètement : on démarre `LocalCastServer` qui sert une page
+//  HTML5 <video> sur http://<ip-du-phone>:<port>/. L'utilisateur
+//  ouvre cette URL sur sa TV (en scannant un QR code, ou en
+//  tapant l'URL dans le navigateur de sa TV). À chaque chaîne
+//  jouée depuis le téléphone, la page TV met à jour son flux
+//  automatiquement (polling de /current toutes les 2s).
+//
+//  Couverture : N'IMPORTE QUELLE TV avec un navigateur web —
+//  Google TV, Android TV, Samsung Tizen, LG WebOS, Vizio, Hisense,
+//  vieilles Smart TVs, écrans connectés, etc. C'est le filet
+//  de sécurité ultime quand ni DLNA, ni Chromecast, ni Roku ne
+//  marchent.
 // =========================================================
 
 import '../domain/cast_device.dart';
 import 'cast_transport.dart';
+import 'local_cast_server.dart';
 
 class WebBrowserTransport implements CastTransport {
   WebBrowserTransport(this.device);
@@ -22,18 +28,25 @@ class WebBrowserTransport implements CastTransport {
   Future<void> playStream({
     required String streamUrl,
     String title = 'TV King',
-  }) {
-    throw Exception(
-      'Fallback navigateur pas encore implémenté.',
-    );
+  }) async {
+    // Le serveur est déjà démarré par la sélection du device. Ici on
+    // se contente de pousser la nouvelle URL — la TV la reprendra
+    // sous 2s via son polling.
+    await LocalCastServer.instance.start();
+    LocalCastServer.instance.setCurrent(url: streamUrl, title: title);
   }
 
   @override
-  Future<void> pause() async {}
+  Future<void> pause() async {
+    // Pas de pause côté serveur — la TV gère via ses propres contrôles
+    // (le tag <video> a `controls` activé).
+  }
 
   @override
   Future<void> resume() async {}
 
   @override
-  Future<void> stop() async {}
+  Future<void> stop() async {
+    LocalCastServer.instance.setCurrent(url: '', title: '');
+  }
 }

@@ -91,6 +91,16 @@ dependencies:
   # diviser la bande passante par 10.
   archive: ^3.6.1
 
+  # --- Cast universel via QR code ---
+  # Génère le QR code qui pointe vers le mini-serveur HTTP local
+  # de l'app. La TV scanne le QR avec son navigateur (ou tape l'URL
+  # à la main) et joue le flux dans une page HTML5.
+  qr_flutter: ^4.1.0
+
+  # Récupère l'IP locale du téléphone sur le WiFi (sinon impossible
+  # de construire l'URL "http://<mon-ip>:8090/" que la TV doit ouvrir).
+  network_info_plus: ^6.1.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
