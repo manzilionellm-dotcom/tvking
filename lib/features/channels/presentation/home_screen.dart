@@ -63,6 +63,15 @@ class _HomeScreenState extends State<HomeScreen> {
   int _currentNavIndex = 0;
   final FavoritesRepoSnapshot _favSnap = FavoritesRepoSnapshot();
 
+  /// Cache mémoïsé du bucketing par genre. La home se rebuild à
+  /// chaque event stream (refresh, favoris, affinité…), et bucketer
+  /// 27 000 chaînes en 8 listes prend ~50 ms — accumulé sur 10
+  /// rebuilds, c'est visible. On garde la dernière computation
+  /// indexée par l'IDENTITÉ de la liste reçue : tant que le repo
+  /// ne ré-émet pas, on réutilise le cache.
+  List<Channel>? _bucketCacheKey;
+  _Buckets? _bucketCacheValue;
+
   @override
   void initState() {
     super.initState();
@@ -224,42 +233,27 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Widget _buildContent(List<Channel> all) {
-    // Pré-calculs (rapides même à 20k channels — itère 1× la liste)
-    final Map<String, Channel> byId = <String, Channel>{};
-    final List<Channel> sports = <Channel>[];
-    final List<Channel> movies = <Channel>[];
-    final List<Channel> series = <Channel>[];
-    final List<Channel> kids = <Channel>[];
-    final List<Channel> news = <Channel>[];
-    final List<Channel> music = <Channel>[];
-    final List<Channel> docs = <Channel>[];
-    final List<Channel> live = <Channel>[];
-
-    for (final Channel c in all) {
-      byId[c.id] = c;
-      if (c.isLive) live.add(c);
-      switch (c.genre) {
-        case ChannelGenre.sports:
-          sports.add(c);
-        case ChannelGenre.movies:
-          movies.add(c);
-        case ChannelGenre.series:
-          series.add(c);
-        case ChannelGenre.kids:
-          kids.add(c);
-        case ChannelGenre.news:
-          news.add(c);
-        case ChannelGenre.music:
-          music.add(c);
-        case ChannelGenre.documentary:
-          docs.add(c);
-        case ChannelGenre.entertainment:
-        case ChannelGenre.international:
-        case ChannelGenre.adult:
-        case ChannelGenre.other:
-          break;
-      }
+    // ----- Memoization : on bucketise UNE FOIS par liste -----
+    //  L'identity check (`identical`) suffit car le repo crée une
+    //  nouvelle List<Channel> à chaque émission. Tant que la même
+    //  liste est passée → on réutilise les buckets calculés.
+    _Buckets buckets;
+    if (identical(_bucketCacheKey, all) && _bucketCacheValue != null) {
+      buckets = _bucketCacheValue!;
+    } else {
+      buckets = _Buckets.fromAll(all);
+      _bucketCacheKey = all;
+      _bucketCacheValue = buckets;
     }
+    final Map<String, Channel> byId = buckets.byId;
+    final List<Channel> sports = buckets.sports;
+    final List<Channel> movies = buckets.movies;
+    final List<Channel> series = buckets.series;
+    final List<Channel> kids = buckets.kids;
+    final List<Channel> news = buckets.news;
+    final List<Channel> music = buckets.music;
+    final List<Channel> docs = buckets.docs;
+    final List<Channel> live = buckets.live;
 
     // Hero : prend la 1ʳᵉ chaîne avec un logo (plus joli) sinon la 1ʳᵉ
     final Channel hero =
@@ -503,6 +497,86 @@ class FavoritesRepoSnapshot {
           (BuildContext context, AsyncSnapshot<Set<String>> snap) {
         return builder((snap.data ?? <String>{}).toList());
       },
+    );
+  }
+}
+
+// ============================================================
+//  _Buckets — Résultat memoïsé du bucketing par genre
+// ============================================================
+//  Construit en O(N) une fois par liste reçue, puis réutilisé
+//  par les rebuilds suivants tant que la liste est la même
+//  instance (identity check côté caller).
+// ============================================================
+
+class _Buckets {
+  _Buckets({
+    required this.byId,
+    required this.sports,
+    required this.movies,
+    required this.series,
+    required this.kids,
+    required this.news,
+    required this.music,
+    required this.docs,
+    required this.live,
+  });
+
+  final Map<String, Channel> byId;
+  final List<Channel> sports;
+  final List<Channel> movies;
+  final List<Channel> series;
+  final List<Channel> kids;
+  final List<Channel> news;
+  final List<Channel> music;
+  final List<Channel> docs;
+  final List<Channel> live;
+
+  factory _Buckets.fromAll(List<Channel> all) {
+    final Map<String, Channel> byId = <String, Channel>{};
+    final List<Channel> sports = <Channel>[];
+    final List<Channel> movies = <Channel>[];
+    final List<Channel> series = <Channel>[];
+    final List<Channel> kids = <Channel>[];
+    final List<Channel> news = <Channel>[];
+    final List<Channel> music = <Channel>[];
+    final List<Channel> docs = <Channel>[];
+    final List<Channel> live = <Channel>[];
+    for (final Channel c in all) {
+      byId[c.id] = c;
+      if (c.isLive) live.add(c);
+      switch (c.genre) {
+        case ChannelGenre.sports:
+          sports.add(c);
+        case ChannelGenre.movies:
+          movies.add(c);
+        case ChannelGenre.series:
+          series.add(c);
+        case ChannelGenre.kids:
+          kids.add(c);
+        case ChannelGenre.news:
+          news.add(c);
+        case ChannelGenre.music:
+          music.add(c);
+        case ChannelGenre.documentary:
+          docs.add(c);
+        case ChannelGenre.entertainment:
+        case ChannelGenre.international:
+        case ChannelGenre.adult:
+        case ChannelGenre.other:
+          break;
+      }
+    }
+    return _Buckets(
+      byId: byId,
+      sports: sports,
+      movies: movies,
+      series: series,
+      kids: kids,
+      news: news,
+      music: music,
+      docs: docs,
+      live: live,
     );
   }
 }
