@@ -859,6 +859,13 @@ class _RemoteConfigCardState extends State<_RemoteConfigCard> {
               const DeviceIdCard(showCaption: false),
               const SizedBox(height: 14),
 
+              // ---- Comment ça marche (admin) ----
+              //  Petit explainer pour le user / revendeur qui ouvre
+              //  cette section pour la 1ère fois et se demande
+              //  comment ajouter une playlist à un MAC donné.
+              _ProvisioningHowItWorks(),
+              const SizedBox(height: 14),
+
               // Champ URL
               Text(
                 'URL du fichier de configuration',
@@ -1015,6 +1022,229 @@ class _RemoteConfigCardState extends State<_RemoteConfigCard> {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ============================================================
+//  _ProvisioningHowItWorks — Mini-tuto admin
+// ============================================================
+//  Expansion repliable qui explique le workflow MAG-style :
+//  comment ajouter une playlist pour un client donné en éditant
+//  un JSON unique hébergé sur GitHub Gist (ou n'importe quel
+//  HTTP serveur).
+// ============================================================
+
+class _ProvisioningHowItWorks extends StatefulWidget {
+  const _ProvisioningHowItWorks();
+
+  @override
+  State<_ProvisioningHowItWorks> createState() =>
+      _ProvisioningHowItWorksState();
+}
+
+class _ProvisioningHowItWorksState
+    extends State<_ProvisioningHowItWorks> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          // ----- Header tappable -----
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => setState(() => _open = !_open),
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: <Widget>[
+                    Icon(
+                      Icons.help_outline_rounded,
+                      color: AppColors.accent,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Comment ça marche ?',
+                        style: AppTextStyles.bodyLarge.copyWith(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.accent,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      _open
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      color: AppColors.accent,
+                      size: 20,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // ----- Contenu déplié -----
+          if (_open)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  _howStep(
+                    '1',
+                    'Crée un gist GitHub (https://gist.github.com) '
+                    'avec un seul fichier nommé `config.json`.',
+                  ),
+                  _howStep(
+                    '2',
+                    'Mets-y le contenu suivant, un bloc par client '
+                    '(une MAC = un client) :',
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.voidSurface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: SelectableText(
+                      '{\n'
+                      '  "MK:AA:BB:CC:DD:EE": {\n'
+                      '    "playlists": [\n'
+                      '      {\n'
+                      '        "name": "Mon abonnement",\n'
+                      '        "type": "m3u",\n'
+                      '        "url": "http://serveur/get.php?…",\n'
+                      '        "epg_url": "http://serveur/xmltv.php?…"\n'
+                      '      }\n'
+                      '    ]\n'
+                      '  }\n'
+                      '}',
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _howStep(
+                    '3',
+                    'Récupère l\'URL "Raw" du gist (clique sur Raw, '
+                    'puis copie l\'URL de la barre d\'adresse).',
+                  ),
+                  _howStep(
+                    '4',
+                    'Colle cette URL dans le champ ci-dessous et tape '
+                    '"Enregistrer". L\'app va re-fetcher toutes les 30 min.',
+                  ),
+                  _howStep(
+                    '5',
+                    'Pour ajouter un nouveau client : ouvre ton gist, '
+                    'ajoute un nouveau bloc avec sa MAC, sauvegarde. '
+                    'Pas besoin de lien spécial — TOUS les clients '
+                    'pointent vers la même URL, chacun ne voit que '
+                    'ses propres playlists.',
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppColors.accent.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Icon(
+                          Icons.lightbulb_rounded,
+                          color: AppColors.accent,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Astuce sécu : crée le gist en mode SECRET '
+                            '(URL non-devinable). Sinon n\'importe qui '
+                            'avec l\'URL voit toutes les playlists et '
+                            'leurs identifiants Xtream.',
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              fontSize: 11,
+                              color: AppColors.textSecondary,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _howStep(String n, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Container(
+            width: 18,
+            height: 18,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.accent,
+            ),
+            child: Text(
+              n,
+              style: AppTextStyles.labelSmall.copyWith(
+                color: AppColors.voidSurface,
+                fontWeight: FontWeight.w800,
+                fontSize: 10,
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: AppTextStyles.bodyMedium.copyWith(
+                fontSize: 12,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

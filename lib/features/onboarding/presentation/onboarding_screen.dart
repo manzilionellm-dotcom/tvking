@@ -1,19 +1,27 @@
 // =========================================================
 //  onboarding_screen.dart — Première impression de l'app
 // =========================================================
-//  3 slides avec PageView :
+//  4 slides avec PageView :
 //    1. Bienvenue + identité de marque
-//    2. Charger une playlist IPTV
-//    3. Découvrir l'expérience premium
+//    2. Identifiant 7 MOTION (MAC) + envoi WhatsApp au revendeur
+//       — c'est LA slide critique pour les utilisateurs qui
+//       passent par un revendeur. Ils voient leur ID, l'envoient
+//       par WhatsApp en 2 taps, puis attendent que leurs chaînes
+//       arrivent automatiquement.
+//    3. Charger une playlist manuellement (optionnel)
+//    4. Découvrir l'expérience premium
 //
 //  À la fin → flag `OnboardingState.markCompleted()` + push
 //  vers HomeScreen.
 // =========================================================
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../../core/support/vip_support.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../device/data/device_identity.dart';
 import '../data/onboarding_state.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -29,24 +37,33 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _controller = PageController();
   int _page = 0;
 
+  /// 4 slides — la 2e est spéciale (widget interactif au lieu d'un
+  /// simple icon + texte). On marque ça avec `isMacSlide = true`.
   static const List<_OnboardingPage> _pages = <_OnboardingPage>[
     _OnboardingPage(
-      icon: Icons.live_tv_rounded,
+      icon: Icons.local_movies_rounded,
       title: 'Bienvenue sur 7 MOTION',
       description:
           'Cinéma sans limites. Conçu pour la TV, optimisé pour ton téléphone, beau partout.',
     ),
     _OnboardingPage(
-      icon: Icons.cloud_upload_outlined,
-      title: 'Charge ta playlist',
+      icon: Icons.fingerprint_rounded,
+      title: 'Ton identifiant 7 MOTION',
       description:
-          'Colle une URL M3U, ou tes identifiants Xtream. Tes chaînes apparaissent en quelques secondes.',
+          'Envoie ce code à ton revendeur. Il l\'utilise pour activer tes chaînes à distance — tu n\'as rien d\'autre à faire.',
+      isMacSlide: true,
     ),
     _OnboardingPage(
-      icon: Icons.star_rounded,
-      title: 'Profite de la signature VIP',
+      icon: Icons.cloud_upload_outlined,
+      title: 'Ou charge ta propre playlist',
       description:
-          'Logos haute qualité, navigation Apple TV, recherche instantanée, lecteur 4K/8K.',
+          'Tu as déjà une URL M3U ou des identifiants Xtream ? Colle-les dans Réglages → Playlists. Tes chaînes apparaissent en quelques secondes.',
+    ),
+    _OnboardingPage(
+      icon: Icons.workspace_premium_rounded,
+      title: 'Signature 7 MOTION',
+      description:
+          'Logos haute qualité, navigation cinéma, recherche instantanée, lecteur 4K/8K, cast vers toute TV.',
     ),
   ];
 
@@ -72,7 +89,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       backgroundColor: AppColors.background,
       body: Stack(
         children: <Widget>[
-          // Halo doré derrière
+          // Halo ember derrière
           Positioned(
             top: -120,
             right: -100,
@@ -120,7 +137,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     onPageChanged: (int i) => setState(() => _page = i),
                     itemCount: _pages.length,
                     itemBuilder: (BuildContext context, int index) {
-                      return _SlideView(page: _pages[index]);
+                      final _OnboardingPage page = _pages[index];
+                      if (page.isMacSlide) {
+                        return _MacHandoffSlide(page: page);
+                      }
+                      return _SlideView(page: page);
                     },
                   ),
                 ),
@@ -155,21 +176,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   child: SizedBox(
                     width: double.infinity,
                     height: 54,
-                    child: ElevatedButton(
+                    child: FilledButton(
                       onPressed: _next,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.accent,
-                        foregroundColor: Colors.black,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
                       child: Text(
                         _page == _pages.length - 1
                             ? 'Commencer'
                             : 'Suivant',
                         style: AppTextStyles.bodyLarge.copyWith(
-                          color: Colors.black,
                           fontWeight: FontWeight.w700,
                           fontSize: 16,
                         ),
@@ -191,12 +204,21 @@ class _OnboardingPage {
     required this.icon,
     required this.title,
     required this.description,
+    this.isMacSlide = false,
   });
 
   final IconData icon;
   final String title;
   final String description;
+
+  /// Marque la slide qui montre le MAC + actions Copier / WhatsApp.
+  /// Si `true`, on rend `_MacHandoffSlide` au lieu de `_SlideView`.
+  final bool isMacSlide;
 }
+
+// ============================================================
+//  Slide standard — icône + titre + description
+// ============================================================
 
 class _SlideView extends StatelessWidget {
   const _SlideView({required this.page});
@@ -250,6 +272,192 @@ class _SlideView extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+//  Slide MAC handoff — MAC géant + Copier + Envoyer WhatsApp
+// ============================================================
+
+class _MacHandoffSlide extends StatefulWidget {
+  const _MacHandoffSlide({required this.page});
+  final _OnboardingPage page;
+
+  @override
+  State<_MacHandoffSlide> createState() => _MacHandoffSlideState();
+}
+
+class _MacHandoffSlideState extends State<_MacHandoffSlide> {
+  String? _mac;
+
+  @override
+  void initState() {
+    super.initState();
+    DeviceIdentity.instance.mac.then((String value) {
+      if (mounted) setState(() => _mac = value);
+    });
+  }
+
+  Future<void> _copy() async {
+    if (_mac == null) return;
+    await Clipboard.setData(ClipboardData(text: _mac!));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text('Identifiant copié : $_mac',
+            style: AppTextStyles.bodyMedium),
+      ),
+    );
+  }
+
+  Future<void> _sendWhatsApp() async {
+    if (_mac == null) return;
+    final String msg =
+        'Bonjour 7 MOTION, voici mon identifiant pour activer mes chaînes :\n\n$_mac';
+    final bool ok = await VipSupport.openWhatsApp(customMessage: msg);
+    if (!mounted || ok) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text(
+          'WhatsApp introuvable. Contacte ${VipSupport.displayNumber}.',
+          style: AppTextStyles.bodyMedium,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String display = _mac ?? 'MK:??:??:??:??:??';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            const SizedBox(height: 8),
+            // ----- Pastille fingerprint -----
+            Container(
+              width: 90,
+              height: 90,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.surface,
+                border: Border.all(color: AppColors.accent, width: 2),
+                boxShadow: <BoxShadow>[
+                  BoxShadow(
+                    color: AppColors.accent.withValues(alpha: 0.25),
+                    blurRadius: 28,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+              child: Icon(
+                widget.page.icon,
+                color: AppColors.accent,
+                size: 42,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              widget.page.title,
+              textAlign: TextAlign.center,
+              style: AppTextStyles.headlineLarge.copyWith(
+                fontSize: 24,
+                height: 1.2,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // ----- MAC en GROS au centre -----
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 18,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceHigh,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: AppColors.accent.withValues(alpha: 0.5),
+                  width: 1.4,
+                ),
+                boxShadow: AppColors.champagneGlow,
+              ),
+              child: Column(
+                children: <Widget>[
+                  Text(
+                    'TON IDENTIFIANT',
+                    style: AppTextStyles.eyebrow,
+                  ),
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    display,
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.4,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            Text(
+              widget.page.description,
+              textAlign: TextAlign.center,
+              style: AppTextStyles.bodyMedium.copyWith(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                height: 1.55,
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // ----- Bouton primaire : envoyer via WhatsApp -----
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: _mac == null ? null : _sendWhatsApp,
+                icon: const Icon(Icons.chat_rounded, size: 20),
+                label: const Text(
+                  'Envoyer à mon revendeur',
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF25D366),
+                  foregroundColor: Colors.white,
+                  textStyle: AppTextStyles.button.copyWith(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // ----- Bouton secondaire : copier dans le presse-papier -----
+            SizedBox(
+              width: double.infinity,
+              height: 46,
+              child: OutlinedButton.icon(
+                onPressed: _mac == null ? null : _copy,
+                icon: const Icon(Icons.copy_rounded, size: 18),
+                label: const Text('Copier l\'identifiant'),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }
