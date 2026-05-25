@@ -24,9 +24,12 @@ dependencies:
   # pour les ~80 langues officielles supportées par Flutter (dates,
   # nombres, RTL, etc.). `intl` est la lib bas-niveau utilisée par
   # le générateur gen-l10n pour produire AppLocalizations.
+  # `intl: any` cause des conflits avec le pin imposé par
+  # flutter_localizations sur certaines versions du SDK — on utilise
+  # `^0.19.0` qui correspond au pin Flutter 3.24+ stable.
   flutter_localizations:
     sdk: flutter
-  intl: any
+  intl: ^0.19.0
 
   # Icônes style iOS (incluses par défaut dans Flutter)
   cupertino_icons: ^1.0.8

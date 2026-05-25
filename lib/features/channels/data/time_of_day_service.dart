@@ -26,6 +26,7 @@ import 'package:flutter/foundation.dart';
 
 import '../domain/channel_genre.dart';
 import 'watch_history_repository.dart';
+// Présent pour le debugPrint conditionnel — pas d'effet en release.
 
 class TimeOfDayService extends ChangeNotifier {
   TimeOfDayService._();
@@ -73,19 +74,23 @@ class TimeOfDayService extends ChangeNotifier {
     final ChannelGenre base =
         _defaults[hour] ?? ChannelGenre.entertainment;
 
-    // 2) Apprentissage : on regarde quel genre est le plus regardé
-    //    à cette heure-ci sur les 30 derniers jours.
+    // 2) Apprentissage : on récupère le total de visionnage à cette
+    //    heure-ci sur les 30 derniers jours. Pour cette version on
+    //    garde simple : le default pattern fait foi. Le croisement
+    //    "à cette heure × ce genre" arrivera en P2.
+    //
+    //    On lit quand même la valeur pour valider que le tracking
+    //    fonctionne, et pour préparer le terrain (debug print en dev).
     final Map<int, int> byHour =
         await WatchHistoryRepository.instance.watchTimeByHour(days: 30);
     final int hourMs = byHour[hour] ?? 0;
+    if (hourMs > 0 && kDebugMode) {
+      debugPrint(
+        '[TimeOfDay] hour=$hour, history=${hourMs ~/ 60000}min — using default=$base',
+      );
+    }
 
-    // Si l'user a regardé > 10 minutes à cette heure-ci sur 30 jours,
-    // son comportement domine. Sinon on garde le pattern par défaut.
-    // Note : on ne peut pas savoir QUEL genre sans recroiser avec
-    // watch_sessions × genre — pour cette version on garde simple,
-    // le default + un boost via Affinity domine.
-    _suggested = hourMs > 600000 ? base : base;
-
+    _suggested = base;
     notifyListeners();
   }
 }
