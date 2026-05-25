@@ -16,6 +16,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/theme_mode_repository.dart';
 import '../../about/presentation/about_screen.dart';
+import '../../admin/presentation/admin_pin_screen.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../device/data/remote_config_repository.dart';
 import '../../device/presentation/device_id_card.dart';
@@ -168,6 +169,20 @@ class SettingsScreen extends StatelessWidget {
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute<void>(
                   builder: (_) => const AboutScreen(),
+                ),
+              ),
+            ),
+
+            // ====== ADMIN (discret, protégé par PIN) ======
+            //  Visible pour tout le monde mais inutilisable sans le
+            //  code admin. C'est moi (le revendeur) qui ai le code.
+            _ActionTile(
+              icon: Icons.admin_panel_settings_outlined,
+              title: 'Mode admin',
+              subtitle: 'Gestion des clients (réservé revendeur).',
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => const AdminPinScreen(),
                 ),
               ),
             ),
