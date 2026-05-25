@@ -37,8 +37,7 @@ class HeroSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<Color> gradient = channel.gradientColors ??
-        <Color>[AppColors.surface, AppColors.surfaceHigh];
+    final List<Color> gradient = channel.effectiveGradient;
 
     return AspectRatio(
       // Format paysage généreux pour l'effet "cinéma".

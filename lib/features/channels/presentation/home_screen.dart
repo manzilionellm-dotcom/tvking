@@ -1,30 +1,30 @@
 // =========================================================
-//  home_screen.dart — Écran d'accueil "TV King" v0.2
+//  home_screen.dart — Écran d'accueil "TV King"
 // =========================================================
-//  Refonte UI Phase 1.0bis — layout style Apple TV / Netflix.
+//  Phase 1.1+1.2 : on branche le `PlaylistRepository`.
 //
-//  Composition (de haut en bas) :
-//    1. AppBar minimaliste (logo + recherche/profil)
-//    2. Hero vedette (un grand panneau pour LA chaîne mise
-//       en avant, avec play button + boutons d'action)
-//    3. Quick Chips (Catégories / Favoris / Recherche / Réglages)
-//    4. Rangée horizontale "Pour vous" (chaînes recommandées)
-//    5. Rangée horizontale "En direct maintenant" (lives actuels)
-//    6. Rangée horizontale "Découvertes" (chaînes peu vues)
-//    7. Floating bottom nav (Accueil / TV Guide / Films / etc.)
+//  Logique :
+//    - On s'abonne au `channelsStream` du repository.
+//    - Tant qu'on reçoit une liste vide → affichage `EmptyStateView`
+//      avec bouton "Ajouter une playlist".
+//    - Dès qu'on a des chaînes → on les répartit dans les
+//      sections (Hero, Pour vous, En direct, Découvertes,
+//      Par catégorie) au lieu des chaînes fictives.
 //
-//  Phase 1 — pas encore de logique de recommandation ; on
-//  utilise les 10 chaînes fictives en les répartissant dans
-//  les sections de façon visuellement plaisante.
+//  Hero choisi : la PREMIÈRE chaîne live de la liste pour
+//  l'instant. Plus tard (Phase 5), ce sera la dernière
+//  regardée ou l'algo de recommandation.
 // =========================================================
 
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../data/fake_channels.dart';
+import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/presentation/add_playlist_screen.dart';
 import '../domain/channel.dart';
 import 'widgets/channel_row.dart';
+import 'widgets/empty_state.dart';
 import 'widgets/floating_bottom_nav.dart';
 import 'widgets/hero_section.dart';
 import 'widgets/quick_chips_row.dart';
@@ -37,12 +37,10 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  /// Index de l'onglet actif dans la bottom nav.
-  /// 0 = Accueil par défaut. Les autres onglets afficheront
-  /// un placeholder "Bientôt disponible" pour l'instant.
   int _currentNavIndex = 0;
 
-  /// Notification stub réutilisée par tous les boutons placeholder.
+  // ----- Helpers UX -----
+
   void _showComingSoon(String featureName) {
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -75,118 +73,46 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _openAddPlaylist() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const AddPlaylistScreen(),
+        fullscreenDialog: true,
+      ),
+    );
+  }
+
+  // ----- UI -----
+
   @override
   Widget build(BuildContext context) {
-    // On découpe les 10 chaînes fictives en sections variées.
-    // Phase 1 — pas de vraie recommandation, juste un découpage
-    // visuel pour remplir l'UI.
-    final Channel hero = kFakeChannels.first;
-    final List<Channel> forYou = kFakeChannels.sublist(1);
-    final List<Channel> liveNow =
-        kFakeChannels.where((Channel c) => c.isLive).toList();
-    final List<Channel> discoveries =
-        kFakeChannels.reversed.toList(); // ordre inversé pour varier
-
     return Scaffold(
       extendBodyBehindAppBar: true,
-      extendBody: true, // la bottom nav flotte par-dessus le contenu
+      extendBody: true,
       appBar: _buildAppBar(),
       body: Stack(
         children: <Widget>[
-          // ===== Couche 1 : dégradé de fond principal =====
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: AppColors.backgroundGradient,
-            ),
-            child: SizedBox.expand(),
-          ),
+          // Fond + halos communs à tous les états
+          const _BackgroundLayer(),
 
-          // ===== Couche 2 : halos d'ambiance =====
-          Positioned(
-            top: -120,
-            left: -80,
-            child: _GlowOrb(
-              color: AppColors.accentPink.withValues(alpha: 0.22),
-              size: 320,
-            ),
-          ),
-          Positioned(
-            bottom: -160,
-            right: -100,
-            child: _GlowOrb(
-              color: AppColors.accentCyan.withValues(alpha: 0.18),
-              size: 380,
-            ),
-          ),
-
-          // ===== Couche 3 : contenu scrollable =====
+          // Contenu réactif au repository
           SafeArea(
-            bottom: false, // la bottom nav gère son propre safe-area
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.only(bottom: 100),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  // Espace sous AppBar transparente
-                  const SizedBox(height: 70),
-
-                  // ---- HERO : grande bannière vedette ----
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: HeroSection(
-                      channel: hero,
-                      onWatch: () => _onChannelTap(hero),
-                      onInfo: () =>
-                          _showComingSoon('Fiche détaillée de la chaîne'),
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // ---- Quick Chips ----
-                  QuickChipsRow(
-                    onCategories: () => _showComingSoon('Catégories'),
-                    onFavorites: () => _showComingSoon('Favoris'),
-                    onSearch: () => _showComingSoon('Recherche'),
-                    onSettings: () => _showComingSoon('Réglages'),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // ---- Rangée "Pour vous" ----
-                  ChannelRow(
-                    title: 'Pour vous',
-                    channels: forYou,
-                    onChannelTap: _onChannelTap,
-                    onSeeAll: () => _showComingSoon('Voir tout — Pour vous'),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // ---- Rangée "En direct maintenant" ----
-                  ChannelRow(
-                    title: 'En direct maintenant',
-                    channels: liveNow,
-                    onChannelTap: _onChannelTap,
-                    onSeeAll: () => _showComingSoon('Voir tout — En direct'),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // ---- Rangée "Découvertes" ----
-                  ChannelRow(
-                    title: 'Découvertes',
-                    channels: discoveries,
-                    onChannelTap: _onChannelTap,
-                    onSeeAll: () => _showComingSoon('Voir tout — Découvertes'),
-                  ),
-                ],
-              ),
+            bottom: false,
+            child: StreamBuilder<List<Channel>>(
+              stream: PlaylistRepository.instance.channelsStream,
+              initialData: const <Channel>[],
+              builder: (BuildContext context,
+                  AsyncSnapshot<List<Channel>> snapshot) {
+                final List<Channel> channels = snapshot.data ?? <Channel>[];
+                if (channels.isEmpty) {
+                  return EmptyStateView(onAddPlaylist: _openAddPlaylist);
+                }
+                return _buildContent(channels);
+              },
             ),
           ),
 
-          // ===== Couche 4 : bottom nav flottante =====
+          // Bottom nav par-dessus tout
           Align(
             alignment: Alignment.bottomCenter,
             child: FloatingBottomNav(
@@ -195,7 +121,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 setState(() => _currentNavIndex = i);
                 if (i != 0) {
                   _showComingSoon(_navLabel(i));
-                  // On revient sur Accueil après l'annonce — phase 1.
                   Future<void>.delayed(
                     const Duration(milliseconds: 1500),
                     () {
@@ -226,6 +151,116 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Contenu standard quand on a au moins une chaîne.
+  Widget _buildContent(List<Channel> channels) {
+    final Channel hero = channels.firstWhere(
+      (Channel c) => c.isLive,
+      orElse: () => channels.first,
+    );
+
+    // Découpages simples pour les rangées (Phase 1, pas encore
+    // d'algo de recommandation : on prend des slices variés).
+    final List<Channel> forYou =
+        channels.where((Channel c) => c.id != hero.id).take(15).toList();
+    final List<Channel> liveNow = channels
+        .where((Channel c) => c.isLive)
+        .take(20)
+        .toList();
+    final List<Channel> discoveries = channels.reversed.take(20).toList();
+
+    // Catégorie la plus représentée (pour avoir une 4ème rangée
+    // dynamique et thématique)
+    final String topCategory = _findTopCategory(channels);
+    final List<Channel> topCategoryChannels = channels
+        .where((Channel c) => c.category == topCategory)
+        .take(20)
+        .toList();
+
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.only(bottom: 100),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const SizedBox(height: 70),
+
+          // ---- HERO ----
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: HeroSection(
+              channel: hero,
+              onWatch: () => _onChannelTap(hero),
+              onInfo: () => _showComingSoon('Fiche détaillée de la chaîne'),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // ---- Quick chips ----
+          QuickChipsRow(
+            onCategories: () => _showComingSoon('Toutes les catégories'),
+            onFavorites: () => _showComingSoon('Favoris'),
+            onSearch: () => _showComingSoon('Recherche'),
+            onSettings: () => _showComingSoon('Réglages'),
+          ),
+          const SizedBox(height: 24),
+
+          // ---- Pour vous ----
+          ChannelRow(
+            title: 'Pour vous',
+            channels: forYou,
+            onChannelTap: _onChannelTap,
+            onSeeAll: () => _showComingSoon('Voir tout — Pour vous'),
+          ),
+          const SizedBox(height: 24),
+
+          // ---- En direct ----
+          ChannelRow(
+            title: 'En direct maintenant',
+            channels: liveNow,
+            onChannelTap: _onChannelTap,
+            onSeeAll: () => _showComingSoon('Voir tout — En direct'),
+          ),
+          const SizedBox(height: 24),
+
+          // ---- Catégorie phare ----
+          if (topCategoryChannels.isNotEmpty)
+            ChannelRow(
+              title: topCategory,
+              channels: topCategoryChannels,
+              onChannelTap: _onChannelTap,
+              onSeeAll: () => _showComingSoon('Voir tout — $topCategory'),
+            ),
+          if (topCategoryChannels.isNotEmpty) const SizedBox(height: 24),
+
+          // ---- Découvertes ----
+          ChannelRow(
+            title: 'Découvertes',
+            channels: discoveries,
+            onChannelTap: _onChannelTap,
+            onSeeAll: () => _showComingSoon('Voir tout — Découvertes'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Trouve la catégorie la plus présente dans la playlist.
+  String _findTopCategory(List<Channel> channels) {
+    final Map<String, int> counts = <String, int>{};
+    for (final Channel c in channels) {
+      counts[c.category] = (counts[c.category] ?? 0) + 1;
+    }
+    String best = 'Autres';
+    int bestCount = -1;
+    counts.forEach((String name, int count) {
+      if (count > bestCount) {
+        best = name;
+        bestCount = count;
+      }
+    });
+    return best;
+  }
+
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       title: Text(
@@ -237,21 +272,63 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       actions: <Widget>[
+        // Bouton "Ajouter playlist" toujours accessible
         IconButton(
+          tooltip: 'Ajouter une playlist',
+          onPressed: _openAddPlaylist,
+          icon: const Icon(Icons.add_rounded, color: Colors.white),
+        ),
+        IconButton(
+          tooltip: 'Recherche',
           onPressed: () => _showComingSoon('Recherche'),
           icon: const Icon(Icons.search, color: Colors.white),
         ),
         IconButton(
+          tooltip: 'Profil',
           onPressed: () => _showComingSoon('Profil'),
           icon: const Icon(Icons.account_circle_outlined, color: Colors.white),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 4),
       ],
     );
   }
 }
 
-/// Halo lumineux circulaire pour l'ambiance VIP.
+/// Fond global de l'écran : dégradé + 2 halos d'ambiance.
+class _BackgroundLayer extends StatelessWidget {
+  const _BackgroundLayer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: <Widget>[
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: AppColors.backgroundGradient,
+          ),
+          child: SizedBox.expand(),
+        ),
+        Positioned(
+          top: -120,
+          left: -80,
+          child: _GlowOrb(
+            color: AppColors.accentPink.withValues(alpha: 0.22),
+            size: 320,
+          ),
+        ),
+        Positioned(
+          bottom: -160,
+          right: -100,
+          child: _GlowOrb(
+            color: AppColors.accentCyan.withValues(alpha: 0.18),
+            size: 380,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _GlowOrb extends StatelessWidget {
   const _GlowOrb({required this.color, required this.size});
 

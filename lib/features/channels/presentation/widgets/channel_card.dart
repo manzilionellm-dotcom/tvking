@@ -44,9 +44,8 @@ class _ChannelCardState extends State<ChannelCard> {
   Widget build(BuildContext context) {
     final Channel ch = widget.channel;
 
-    // Couleurs du dégradé (fallback en gris foncé si non fournies).
-    final List<Color> gradient = ch.gradientColors ??
-        <Color>[AppColors.surface, AppColors.surfaceHigh];
+    // Couleurs du dégradé (auto-générées depuis l'id si non fournies).
+    final List<Color> gradient = ch.effectiveGradient;
 
     return Focus(
       // onFocusChange est déclenché quand on arrive sur la carte

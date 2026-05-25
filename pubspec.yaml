@@ -1,58 +1,58 @@
 # =========================================================
 #  pubspec.yaml — Manifeste du projet Flutter
 # =========================================================
-#  C'est l'équivalent de "package.json" en Node.js.
-#  Il décrit :
-#    - le nom et la version de l'app
-#    - les SDK requis (Dart, Flutter)
-#    - les dépendances externes (packages pub.dev)
-#    - les assets (images, polices) embarqués dans l'app
+#  Phase 1.1 + 1.2 : on ajoute les briques pour charger les
+#  playlists M3U et causer avec l'API Xtream Codes, ainsi
+#  que du stockage local SQLite.
 # =========================================================
 
 name: tv_king
 description: "TV King — lecteur IPTV premium pour mobile, Android TV et Fire TV."
-publish_to: 'none'        # On NE publie PAS sur pub.dev (app privée)
-version: 0.1.0+1          # 0.1.0 = version humaine, +1 = build number Android
+publish_to: 'none'
+version: 0.2.0+2
 
 environment:
-  # Dart 3.5+ : nous utilisons les "records" et pattern matching modernes.
   sdk: ^3.5.0
-  # Flutter 3.24+ : version stable récente, recommandée pour TV.
   flutter: ">=3.24.0"
 
-# -----------------------------------------------------------------
-# DÉPENDANCES — Phase 1 (cœur de l'application)
-# -----------------------------------------------------------------
-# Volontairement minimaliste pour l'instant. On ajoutera au fur
-# et à mesure des phases : media_kit, drift, riverpod, firebase...
-# -----------------------------------------------------------------
 dependencies:
   flutter:
     sdk: flutter
 
-  # Icônes style iOS (incluses par défaut dans tout projet Flutter)
+  # Icônes style iOS (incluses par défaut dans Flutter)
   cupertino_icons: ^1.0.8
 
-  # Police "Inter" sans avoir à embarquer le TTF :
-  # google_fonts télécharge la police la première fois puis la cache.
+  # Police "Inter" via google_fonts (téléchargement + cache automatique)
   google_fonts: ^6.2.1
+
+  # --- Phase 1.1 / 1.2 ---
+
+  # Client HTTP officiel Flutter. Sert à :
+  #   - télécharger les fichiers .m3u depuis une URL
+  #   - causer avec l'API Xtream Codes (player_api.php)
+  http: ^1.2.2
+
+  # SQLite pour Flutter. Permet de stocker localement :
+  #   - la liste des playlists ajoutées
+  #   - toutes les chaînes parsées, par playlist
+  #   - les métadonnées (catégories, logos, dates de sync)
+  # Indispensable pour ne pas re-télécharger le .m3u à chaque
+  # lancement de l'app — gain de perf énorme sur grosses listes.
+  sqflite: ^2.4.1
+
+  # Manipulation de chemins de fichiers portable Android/iOS.
+  path: ^1.9.0
+
+  # Donne accès au dossier de données de l'app, où sqflite
+  # range son fichier .db (chez Android : /data/data/com.x/...).
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  # Règles de lint officielles Flutter — détecte les mauvaises
-  # pratiques au moment du `flutter analyze`.
+  # Règles de lint officielles Flutter
   flutter_lints: ^4.0.0
 
-# -----------------------------------------------------------------
-# CONFIGURATION FLUTTER
-# -----------------------------------------------------------------
 flutter:
-  # Active Material 3 (le design system moderne de Google).
   uses-material-design: true
-
-  # Pas encore d'assets locaux. On ajoutera quand on aura des
-  # logos de chaînes pré-embarqués, des animations Lottie, etc.
-  # assets:
-  #   - assets/images/

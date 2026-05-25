@@ -38,8 +38,7 @@ class _ChannelPosterState extends State<ChannelPoster> {
   @override
   Widget build(BuildContext context) {
     final Channel ch = widget.channel;
-    final List<Color> gradient = ch.gradientColors ??
-        <Color>[AppColors.surface, AppColors.surfaceHigh];
+    final List<Color> gradient = ch.effectiveGradient;
 
     return Focus(
       onFocusChange: (bool hasFocus) {
