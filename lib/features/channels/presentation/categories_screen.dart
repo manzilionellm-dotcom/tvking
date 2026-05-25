@@ -89,16 +89,23 @@ class _CategoryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Petit dégradé déterministe basé sur le nom — chaque catégorie
-    // a "sa" couleur stable.
+    // Dégradé déterministe basé sur le nom — chaque catégorie a "sa"
+    // dérivée Maison Noir stable. On reste dans la famille champagne /
+    // surfaces sombres : pas de néons, pas d'arc-en-ciel.
     final int seed = name.hashCode.abs();
     final List<List<Color>> palette = const <List<Color>>[
-      <Color>[Color(0xFFFF3366), Color(0xFF7B1FA2)],
-      <Color>[Color(0xFF00D9FF), Color(0xFF0288D1)],
-      <Color>[Color(0xFFFFD700), Color(0xFFFF6F00)],
-      <Color>[Color(0xFF00E676), Color(0xFF00BFA5)],
-      <Color>[Color(0xFFE040FB), Color(0xFF7C4DFF)],
-      <Color>[Color(0xFFD32F2F), Color(0xFF212121)],
+      // champagne deep → canvas
+      <Color>[Color(0xFF9C8359), Color(0xFF0E0B14)],
+      // brass glow → elevated
+      <Color>[Color(0xFFB8965E), Color(0xFF16121C)],
+      // champagne → overcast
+      <Color>[Color(0xFFD4B483), Color(0xFF221D2D)],
+      // info ash → glass
+      <Color>[Color(0xFF8FA8C4), Color(0xFF1C1826)],
+      // status warning → canvas
+      <Color>[Color(0xFFD4A574), Color(0xFF0E0B14)],
+      // status success → elevated
+      <Color>[Color(0xFF7FB890), Color(0xFF16121C)],
     ];
     final List<Color> gradient = palette[seed % palette.length];
 

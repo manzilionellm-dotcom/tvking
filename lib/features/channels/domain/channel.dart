@@ -141,12 +141,12 @@ class Channel {
   //  été migrés vers ChannelLogo.
   // ============================================================
 
-  /// Hérité de la v1 — gradient unique premium (or muted) servant
-  /// uniquement de "skeleton" si jamais quelqu'un l'appelle.
-  /// Le nouveau design n'utilise pas de gradient aléatoire.
+  /// Hérité de la v1 — gradient unique LUMIÈRE (elevated → overcast)
+  /// servant uniquement de "skeleton" si jamais quelqu'un l'appelle.
+  /// Le design Maison Noir n'utilise pas de gradient aléatoire.
   List<Color> get effectiveGradient => const <Color>[
-        Color(0xFF1A1F26),
-        Color(0xFF242B33),
+        Color(0xFF16121C), // surface.elevated
+        Color(0xFF221D2D), // surface.overcast
       ];
 
   /// Pas de couleurs de marque arbitraires dans la v2.

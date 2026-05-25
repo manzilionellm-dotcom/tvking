@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/theme/theme_mode_repository.dart';
 import '../../about/presentation/about_screen.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../device/data/remote_config_repository.dart';
@@ -35,6 +36,12 @@ class SettingsScreen extends StatelessWidget {
         physics: const BouncingScrollPhysics(),
         child: Column(
           children: <Widget>[
+            // ====== APPARENCE ======
+            //  Cinema (Maison Noir) = défaut, identité du produit.
+            //  Daylight = version claire dérivée pour usage diurne.
+            _SectionTitle('Apparence'),
+            const _ThemeModePicker(),
+
             // ====== LECTEUR ======
             _SectionTitle('Lecteur vidéo'),
             ListenableBuilder(
@@ -455,6 +462,149 @@ class _SliderTile extends StatelessWidget {
 //    - L'état de la dernière sync (succès / erreur / inconnu)
 //    - Un bouton "Synchroniser maintenant"
 // ============================================================
+
+// ============================================================
+//  _ThemeModePicker — Sélecteur Cinema / Daylight / Système
+// ============================================================
+//  Trois pastilles côte à côte. La sélection active porte la
+//  bordure champagne et un léger halo cuivré.
+// ============================================================
+
+class _ThemeModePicker extends StatelessWidget {
+  const _ThemeModePicker();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: ThemeModeRepository.instance,
+      builder: (BuildContext context, _) {
+        final ThemeMode current = ThemeModeRepository.instance.mode;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            children: <Widget>[
+              _ThemeOption(
+                icon: Icons.nightlight_round,
+                label: 'Cinema',
+                subtitle: 'Maison Noir',
+                selected: current == ThemeMode.dark,
+                onTap: () =>
+                    ThemeModeRepository.instance.setMode(ThemeMode.dark),
+              ),
+              _ThemeOption(
+                icon: Icons.wb_sunny_outlined,
+                label: 'Daylight',
+                subtitle: 'Lumière du jour',
+                selected: current == ThemeMode.light,
+                onTap: () =>
+                    ThemeModeRepository.instance.setMode(ThemeMode.light),
+              ),
+              _ThemeOption(
+                icon: Icons.brightness_auto_outlined,
+                label: 'Auto',
+                subtitle: 'Suit l\'OS',
+                selected: current == ThemeMode.system,
+                onTap: () =>
+                    ThemeModeRepository.instance.setMode(ThemeMode.system),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ThemeOption extends StatelessWidget {
+  const _ThemeOption({
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    // Respect du système : si l'utilisateur a activé "réduire les
+    // animations" dans l'OS, MediaQuery.disableAnimations remonte
+    // true et on coupe la transition.
+    final bool disableMotion =
+        MediaQuery.disableAnimationsOf(context);
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: onTap,
+            child: AnimatedContainer(
+              duration: disableMotion
+                  ? Duration.zero
+                  : const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color: selected
+                    ? AppColors.accentSurface
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: selected
+                      ? AppColors.accent
+                      : AppColors.border,
+                  width: selected ? 1.4 : 1,
+                ),
+                boxShadow: selected ? AppColors.champagneGlow : null,
+              ),
+              child: Column(
+                children: <Widget>[
+                  Icon(
+                    icon,
+                    color:
+                        selected ? AppColors.accent : AppColors.textSecondary,
+                    size: 22,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    label,
+                    style: AppTextStyles.bodyLarge.copyWith(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: selected
+                          ? AppColors.accent
+                          : AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      fontSize: 10,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _RemoteConfigCard extends StatefulWidget {
   const _RemoteConfigCard();
