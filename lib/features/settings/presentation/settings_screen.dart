@@ -14,6 +14,8 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../about/presentation/about_screen.dart';
 import '../../channels/data/recently_watched_repository.dart';
+import '../../device/data/remote_config_repository.dart';
+import '../../device/presentation/device_id_card.dart';
 import '../../player/data/player_settings.dart';
 import '../../playlists/presentation/playlists_screen.dart';
 import '../../recordings/presentation/recordings_screen.dart';
@@ -87,6 +89,13 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
             ),
+
+            // ====== PROVISIONING À DISTANCE ======
+            //  L'admin (toi) maintient un JSON sur GitHub Gist (ou
+            //  n'importe quel endpoint HTTP). Chaque appareil pioche
+            //  ses playlists en se reconnaissant par son MAC virtuel.
+            _SectionTitle('Provisioning à distance'),
+            const _RemoteConfigCard(),
 
             // ====== ENREGISTREMENTS ======
             _SectionTitle('Enregistrements'),
@@ -433,6 +442,255 @@ class _SliderTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ============================================================
+//  _RemoteConfigCard — Bloc "Provisioning à distance"
+// ============================================================
+//  Affiche :
+//    - L'identifiant unique (MAC virtuel) de l'appareil
+//    - Un champ pour l'URL JSON publiée par l'admin
+//    - L'état de la dernière sync (succès / erreur / inconnu)
+//    - Un bouton "Synchroniser maintenant"
+// ============================================================
+
+class _RemoteConfigCard extends StatefulWidget {
+  const _RemoteConfigCard();
+
+  @override
+  State<_RemoteConfigCard> createState() => _RemoteConfigCardState();
+}
+
+class _RemoteConfigCardState extends State<_RemoteConfigCard> {
+  final TextEditingController _urlController = TextEditingController();
+  bool _seeded = false;
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  void _seedFromRepo(RemoteConfigStatus status) {
+    if (_seeded) return;
+    _seeded = true;
+    final String? url = status.url;
+    if (url != null && url.isNotEmpty) {
+      _urlController.text = url;
+    }
+  }
+
+  Future<void> _save() async {
+    final String value = _urlController.text.trim();
+    await RemoteConfigRepository.instance.setUrl(value);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          value.isEmpty
+              ? 'Provisioning à distance désactivé.'
+              : 'URL enregistrée. Synchronisation en cours…',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _syncNow() async {
+    await RemoteConfigRepository.instance.syncNow();
+  }
+
+  String _formatTime(DateTime? t) {
+    if (t == null) return 'jamais';
+    final DateTime local = t.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(local.day)}/${two(local.month)} '
+        '${two(local.hour)}:${two(local.minute)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: RemoteConfigRepository.instance,
+      builder: (BuildContext context, _) {
+        final RemoteConfigStatus status =
+            RemoteConfigRepository.instance.status;
+        _seedFromRepo(status);
+        final bool syncing = RemoteConfigRepository.instance.isSyncing;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              // Identifiant — l'admin en a besoin pour cibler ce client
+              const DeviceIdCard(showCaption: false),
+              const SizedBox(height: 14),
+
+              // Champ URL
+              Text(
+                'URL du fichier de configuration',
+                style: AppTextStyles.bodyLarge.copyWith(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: _urlController,
+                keyboardType: TextInputType.url,
+                autocorrect: false,
+                style: AppTextStyles.bodyLarge.copyWith(fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'https://gist.github.com/…/raw/config.json',
+                  hintStyle: AppTextStyles.bodyMedium.copyWith(
+                    fontSize: 12,
+                    color: AppColors.textMuted,
+                  ),
+                  filled: true,
+                  fillColor: AppColors.surfaceHigh,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'L\'app interrogera cette URL toutes les 30 minutes '
+                'pour récupérer les playlists assignées à cet appareil.',
+                style: AppTextStyles.bodyMedium.copyWith(
+                  fontSize: 11,
+                  color: AppColors.textMuted,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _save,
+                      icon: const Icon(Icons.save_rounded, size: 16),
+                      label: const Text('Enregistrer'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                        foregroundColor: Colors.black,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: syncing ? null : _syncNow,
+                      icon: syncing
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(Icons.sync_rounded, size: 16),
+                      label: Text(syncing ? 'Sync…' : 'Synchroniser'),
+                    ),
+                  ),
+                ],
+              ),
+
+              // ---- Statut ----
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceHigh,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    _statusLine(
+                      icon: status.knownAtAdmin
+                          ? Icons.verified_rounded
+                          : Icons.help_outline_rounded,
+                      color: status.knownAtAdmin
+                          ? AppColors.success
+                          : AppColors.textMuted,
+                      label: status.knownAtAdmin
+                          ? 'Reconnu par ton admin'
+                          : 'Pas encore enregistré côté admin',
+                    ),
+                    const SizedBox(height: 6),
+                    _statusLine(
+                      icon: Icons.playlist_add_check_rounded,
+                      color: AppColors.accent,
+                      label: '${status.playlistsApplied} '
+                          'playlist(s) appliquée(s)',
+                    ),
+                    const SizedBox(height: 6),
+                    _statusLine(
+                      icon: Icons.check_circle_outline_rounded,
+                      color: AppColors.textSecondary,
+                      label:
+                          'Dernier succès : ${_formatTime(status.lastSuccessAt)}',
+                    ),
+                    const SizedBox(height: 6),
+                    _statusLine(
+                      icon: Icons.access_time_rounded,
+                      color: AppColors.textSecondary,
+                      label:
+                          'Dernière tentative : ${_formatTime(status.lastAttemptAt)}',
+                    ),
+                    if (status.lastError != null) ...<Widget>[
+                      const SizedBox(height: 6),
+                      _statusLine(
+                        icon: Icons.error_outline_rounded,
+                        color: AppColors.live,
+                        label: status.lastError!,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _statusLine({
+    required IconData icon,
+    required Color color,
+    required String label,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Icon(icon, color: color, size: 14),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: AppTextStyles.bodyMedium.copyWith(
+              fontSize: 12,
+              color: color,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

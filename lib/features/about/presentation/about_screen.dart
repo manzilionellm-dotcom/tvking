@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../device/presentation/device_id_card.dart';
 import '../data/update_checker.dart';
 
 class AboutScreen extends StatefulWidget {
@@ -139,6 +140,16 @@ class _AboutScreenState extends State<AboutScreen> {
                     ),
                 ],
               ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // ----- Identifiant unique de cet appareil -----
+            //  Sert à associer l'appareil à un abonnement côté admin.
+            _section(
+              icon: Icons.fingerprint_rounded,
+              title: 'Mon appareil',
+              child: const DeviceIdCard(),
             ),
 
             const SizedBox(height: 20),
