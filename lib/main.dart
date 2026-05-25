@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'core/theme/app_theme.dart';
+import 'features/channels/data/recently_watched_repository.dart';
 import 'features/channels/presentation/home_screen.dart';
 import 'features/player/data/player_settings.dart';
 import 'features/playlists/data/favorites_repository.dart';
@@ -45,6 +46,7 @@ Future<void> main() async {
   // chaînes via les Streams.
   unawaited(PlaylistRepository.instance.initialize());
   unawaited(FavoritesRepository.instance.initialize());
+  unawaited(RecentlyWatchedRepository.instance.initialize());
   unawaited(PlayerSettings.instance.load());
 
   runApp(const TvKingApp());

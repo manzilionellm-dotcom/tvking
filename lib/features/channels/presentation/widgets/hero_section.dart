@@ -1,19 +1,19 @@
 // =========================================================
-//  hero_section.dart — Bannière vedette de l'accueil
+//  hero_section.dart — Bannière "vedette" Premium v2
 // =========================================================
-//  Grand panneau en haut de l'écran d'accueil qui met en
-//  valeur UNE chaîne (la première de la playlist, ou la
-//  dernière regardée plus tard, ou la chaîne avec le
-//  programme le plus populaire — au choix).
+//  Refonte Phase 1.4 :
+//    - Plus de gradient coloré géant aux couleurs aléatoires
+//    - Card sombre élégante avec :
+//        * Logo de la chaîne BIEN visible à gauche
+//        * Bloc texte propre (nom, genre, pays, programme)
+//        * Bouton "Lecture" doré (l'unique accent) en CTA
+//        * Bouton "Détails" secondaire
+//    - Discret badge LIVE en haut à gauche
+//    - Badge "VEDETTE" doré en haut à droite
 //
-//  Quand la Phase 1.3 (lecteur vidéo) sera là, ce panneau
-//  affichera un APERÇU VIDÉO en arrière-plan (mute par
-//  défaut, comme YouTube/Netflix). Pour l'instant, dégradé
-//  + initiales géantes en placeholder.
-//
-//  Boutons d'action :
-//    - "Regarder" → ouvre la chaîne en plein écran (à brancher)
-//    - "Plus d'infos" → ouvre la fiche détaillée (à brancher)
+//  L'idée : la vedette doit RENDRE HOMMAGE à la marque de la
+//  chaîne (donc montrer son logo), pas l'effacer derrière des
+//  effets visuels.
 // =========================================================
 
 import 'package:flutter/material.dart';
@@ -22,6 +22,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/live_badge.dart';
 import '../../domain/channel.dart';
+import 'channel_logo.dart';
 
 class HeroSection extends StatelessWidget {
   const HeroSection({
@@ -37,176 +38,154 @@ class HeroSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<Color> gradient = channel.effectiveGradient;
-
-    return AspectRatio(
-      // Format paysage généreux pour l'effet "cinéma".
-      // Sur téléphone vertical, ça occupe ~40% de la hauteur d'écran.
-      aspectRatio: 16 / 11,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.border, width: 1),
+        ),
         child: Stack(
           children: <Widget>[
-            // ---------- Fond dégradé pleine surface ----------
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: gradient,
-                ),
-              ),
-            ),
-
-            // Initiales translucides géantes en arrière-plan
+            // ----- Halo doré subtil en arrière-plan -----
             Positioned.fill(
-              child: Align(
-                alignment: const Alignment(0.6, -0.3),
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    channel.initials,
-                    style: AppTextStyles.channelInitials.copyWith(
-                      fontSize: 200,
-                      color: Colors.white.withValues(alpha: 0.18),
-                      height: 1,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            // Bouton "Play" central translucide (l'utilisateur sait
-            // que c'est "lisible" même sans avoir le lecteur encore)
-            Positioned.fill(
-              child: Center(
-                child: Container(
-                  width: 64,
-                  height: 64,
+              child: IgnorePointer(
+                child: DecoratedBox(
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.15),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.4),
-                      width: 2,
+                    borderRadius: BorderRadius.circular(20),
+                    gradient: RadialGradient(
+                      center: Alignment.topRight,
+                      radius: 1.2,
+                      colors: <Color>[
+                        AppColors.accent.withValues(alpha: 0.07),
+                        Colors.transparent,
+                      ],
                     ),
                   ),
-                  child: const Icon(
-                    Icons.play_arrow_rounded,
-                    color: Colors.white,
-                    size: 36,
-                  ),
                 ),
               ),
             ),
 
-            // ---------- Voile sombre en bas (lisibilité texte) ----------
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.center,
-                    end: Alignment.bottomCenter,
-                    colors: <Color>[
-                      Colors.transparent,
-                      Colors.black.withValues(alpha: 0.85),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // ---------- Badge LIVE en haut à gauche ----------
-            if (channel.isLive)
-              const Positioned(
-                top: 16,
-                left: 16,
-                child: LiveBadge(),
-              ),
-
-            // ---------- Badge "VEDETTE" en haut à droite ----------
-            Positioned(
-              top: 16,
-              right: 16,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.gold.withValues(alpha: 0.95),
-                  borderRadius: BorderRadius.circular(6),
-                  boxShadow: <BoxShadow>[
-                    BoxShadow(
-                      color: AppColors.gold.withValues(alpha: 0.4),
-                      blurRadius: 12,
-                    ),
-                  ],
-                ),
-                child: Text(
-                  'VEDETTE',
-                  style: AppTextStyles.labelSmall.copyWith(
-                    color: Colors.black,
-                    fontSize: 10,
-                  ),
-                ),
-              ),
-            ),
-
-            // ---------- Contenu bas : nom + programme + boutons ----------
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: 18,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
+            // ----- Contenu -----
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
                 children: <Widget>[
-                  // Catégorie en petit cyan
-                  Text(
-                    channel.category.toUpperCase(),
-                    style: AppTextStyles.labelSmall.copyWith(
-                      color: AppColors.accentCyan,
-                      fontSize: 10,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  // Nom de la chaîne en très gros
-                  Text(
-                    channel.name,
-                    style: AppTextStyles.headlineLarge.copyWith(fontSize: 26),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  // Programme en cours
-                  if (channel.currentProgram != null)
-                    Text(
-                      channel.currentProgram!,
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        color: Colors.white.withValues(alpha: 0.85),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  const SizedBox(height: 14),
-                  // Boutons d'action
-                  Row(
+                  // ----- Logo à gauche -----
+                  Stack(
                     children: <Widget>[
-                      _HeroButton(
-                        icon: Icons.play_arrow_rounded,
-                        label: 'Regarder',
-                        isPrimary: true,
-                        onPressed: onWatch,
+                      ChannelLogo(
+                        channel: channel,
+                        size: ChannelLogoSize.large,
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                      const SizedBox(width: 10),
-                      _HeroButton(
-                        icon: Icons.info_outline_rounded,
-                        label: 'Plus d\'infos',
-                        isPrimary: false,
-                        onPressed: onInfo,
-                      ),
+                      if (channel.isLive)
+                        const Positioned(
+                          top: 6,
+                          left: 6,
+                          child: LiveBadge(),
+                        ),
                     ],
+                  ),
+                  const SizedBox(width: 16),
+
+                  // ----- Texte à droite -----
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        // Mini chip "VEDETTE"
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppColors.accentSurface,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: AppColors.accent
+                                  .withValues(alpha: 0.5),
+                              width: 0.8,
+                            ),
+                          ),
+                          child: Text(
+                            'VEDETTE',
+                            style: AppTextStyles.labelSmall.copyWith(
+                              color: AppColors.accent,
+                              fontSize: 9,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Nom de la chaîne
+                        Text(
+                          channel.cleanName,
+                          style: AppTextStyles.headlineLarge.copyWith(
+                            fontSize: 22,
+                            height: 1.15,
+                            letterSpacing: -0.3,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 6),
+
+                        // Metadata (genre + pays + qualité)
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: <Widget>[
+                            _metaChip(
+                              icon: channel.genre.icon,
+                              text: channel.genre.label,
+                            ),
+                            if (channel.country != null)
+                              _metaChip(
+                                text:
+                                    '${channel.country!.flag} ${channel.country!.name}',
+                              ),
+                            if (channel.quality != ChannelQuality.sd)
+                              ChannelQualityBadge(quality: channel.quality),
+                          ],
+                        ),
+
+                        // Programme en cours (Phase 2)
+                        if (channel.currentProgram != null) ...<Widget>[
+                          const SizedBox(height: 8),
+                          Text(
+                            channel.currentProgram!,
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                              fontStyle: FontStyle.italic,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                        const SizedBox(height: 14),
+
+                        // ----- Boutons d'action -----
+                        Row(
+                          children: <Widget>[
+                            _PrimaryButton(
+                              icon: Icons.play_arrow_rounded,
+                              label: 'Lecture',
+                              onPressed: onWatch,
+                            ),
+                            const SizedBox(width: 8),
+                            _SecondaryButton(
+                              icon: Icons.info_outline_rounded,
+                              label: 'Détails',
+                              onPressed: onInfo,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -216,21 +195,44 @@ class HeroSection extends StatelessWidget {
       ),
     );
   }
+
+  Widget _metaChip({IconData? icon, required String text}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (icon != null) ...<Widget>[
+            Icon(icon, size: 11, color: AppColors.textSecondary),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            text,
+            style: AppTextStyles.labelSmall.copyWith(
+              color: AppColors.textSecondary,
+              fontSize: 10,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-/// Bouton compact du Hero — version primaire (blanche)
-/// et version secondaire (semi-transparente).
-class _HeroButton extends StatelessWidget {
-  const _HeroButton({
+class _PrimaryButton extends StatelessWidget {
+  const _PrimaryButton({
     required this.icon,
     required this.label,
-    required this.isPrimary,
     required this.onPressed,
   });
 
   final IconData icon;
   final String label;
-  final bool isPrimary;
   final VoidCallback onPressed;
 
   @override
@@ -241,32 +243,67 @@ class _HeroButton extends StatelessWidget {
         onTap: onPressed,
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: isPrimary
-                ? Colors.white
-                : Colors.white.withValues(alpha: 0.15),
+            color: AppColors.accent,
             borderRadius: BorderRadius.circular(10),
-            border: isPrimary
-                ? null
-                : Border.all(
-                    color: Colors.white.withValues(alpha: 0.3),
-                    width: 1,
-                  ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(
-                icon,
-                size: 18,
-                color: isPrimary ? Colors.black : Colors.white,
-              ),
+              Icon(icon, size: 18, color: Colors.black),
               const SizedBox(width: 6),
               Text(
                 label,
                 style: AppTextStyles.bodyLarge.copyWith(
-                  color: isPrimary ? Colors.black : Colors.white,
+                  color: Colors.black,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SecondaryButton extends StatelessWidget {
+  const _SecondaryButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.border, width: 1.2),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(icon, size: 18, color: AppColors.textPrimary),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: AppTextStyles.bodyLarge.copyWith(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),

@@ -1,19 +1,25 @@
 // =========================================================
-//  home_screen.dart — Écran d'accueil "TV King"
+//  home_screen.dart — Accueil "TV King" v1.4 (premium)
 // =========================================================
-//  Phase 1.1+1.2 — branche le `PlaylistRepository` (chaînes
-//  réelles parsées en M3U/Xtream) et tous les écrans
-//  satellites : Catégories, Recherche, Favoris, Réglages,
-//  Voir tout.
+//  Refonte Phase 1.4 — direction Apple TV / Netflix / Plex.
 //
-//  Logique d'affichage :
-//    - Liste vide → EmptyStateView (CTA ajouter playlist)
-//    - Liste pleine → Hero + Chips + plusieurs ChannelRow
+//  Architecture d'information :
+//    1. Hero "VEDETTE" (1 chaîne mise en avant)
+//    2. Continue Watching (chaînes récemment visionnées)
+//    3. Favorites
+//    4. Sports Live
+//    5. Live Now (genre-mix populaire)
+//    6. Films
+//    7. Séries
+//    8. Jeunesse
+//    9. Info
+//   10. Découvertes
 //
-//  Bottom nav 5 onglets (Accueil / TV Guide / Films /
-//  Recherche / Profil). Pour l'instant 3 sont fonctionnels
-//  (Accueil + Recherche + Profil), les 2 autres affichent un
-//  message "Phase à venir".
+//  Toutes les sections sont des `PremiumRow` (rangées
+//  horizontales scrollables, ~150px de haut). Chaque "Voir
+//  tout" ouvre `CategorySectionScreen` filtré.
+//
+//  Bottom nav : Accueil / Live TV / Recherche / Favoris / Profil.
 // =========================================================
 
 import 'package:flutter/material.dart';
@@ -21,19 +27,21 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../player/presentation/play_channel.dart';
+import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/presentation/add_playlist_screen.dart';
 import '../../playlists/presentation/playlists_screen.dart';
+import '../data/recently_watched_repository.dart';
 import '../domain/channel.dart';
-import 'categories_screen.dart';
-import 'channels_grid_screen.dart';
+import '../domain/channel_genre.dart';
+import 'category_section_screen.dart';
+import 'channel_detail_sheet.dart';
 import 'favorites_screen.dart';
 import 'search_screen.dart';
-import 'widgets/channel_row.dart';
 import 'widgets/empty_state.dart';
 import 'widgets/floating_bottom_nav.dart';
 import 'widgets/hero_section.dart';
-import 'widgets/quick_chips_row.dart';
+import 'widgets/premium_row.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -44,81 +52,52 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentNavIndex = 0;
+  final FavoritesRepoSnapshot _favSnap = FavoritesRepoSnapshot();
 
-  // ----- Navigation helpers -----
+  void _onChannelTap(Channel ch) => playChannel(context, ch);
+  void _onChannelLongPress(Channel ch) => showChannelDetail(context, ch);
 
-  void _onChannelTap(Channel channel) {
-    playChannel(context, channel);
-  }
+  Future<void> _openAddPlaylist() => Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => const AddPlaylistScreen(),
+          fullscreenDialog: true,
+        ),
+      );
 
-  Future<void> _openAddPlaylist() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => const AddPlaylistScreen(),
-        fullscreenDialog: true,
-      ),
-    );
-  }
+  Future<void> _openSearch() => Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
+      );
 
-  Future<void> _openCategories() {
-    return Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => const CategoriesScreen()),
-    );
-  }
+  Future<void> _openSettings() => Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(builder: (_) => const PlaylistsScreen()),
+      );
 
-  Future<void> _openFavorites() {
-    return Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => const FavoritesScreen()),
-    );
-  }
+  Future<void> _openFavorites() => Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(builder: (_) => const FavoritesScreen()),
+      );
 
-  Future<void> _openSearch() {
-    return Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
-    );
-  }
+  Future<void> _openLiveTV() => Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => const CategorySectionScreen(title: 'Live TV'),
+        ),
+      );
 
-  Future<void> _openSettings() {
-    return Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => const PlaylistsScreen()),
-    );
-  }
-
-  Future<void> _openSeeAll(String title, List<Channel> channels) {
+  Future<void> _openSection(String title, ChannelGenre genre) {
     return Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => ChannelsGridScreen(
-          title: title,
-          channels: channels,
-        ),
+        builder: (_) =>
+            CategorySectionScreen(title: title, genreFilter: genre),
       ),
     );
   }
-
-  void _showComingSoon(String featureName) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.fromLTRB(20, 0, 20, 90),
-        backgroundColor: AppColors.surfaceHigh,
-        duration: const Duration(seconds: 2),
-        content: Text(
-          '$featureName — bientôt disponible',
-          style: AppTextStyles.bodyLarge,
-        ),
-      ),
-    );
-  }
-
-  // ----- UI -----
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
       extendBody: true,
-      appBar: _buildAppBar(),
+      backgroundColor: AppColors.background,
+      appBar: _appBar(),
       body: Stack(
         children: <Widget>[
           const _BackgroundLayer(),
@@ -128,8 +107,8 @@ class _HomeScreenState extends State<HomeScreen> {
               stream: PlaylistRepository.instance.channelsStream,
               initialData: const <Channel>[],
               builder: (BuildContext context,
-                  AsyncSnapshot<List<Channel>> snapshot) {
-                final List<Channel> channels = snapshot.data ?? <Channel>[];
+                  AsyncSnapshot<List<Channel>> snap) {
+                final List<Channel> channels = snap.data ?? <Channel>[];
                 if (channels.isEmpty) {
                   return EmptyStateView(onAddPlaylist: _openAddPlaylist);
                 }
@@ -149,240 +128,372 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _onNavTap(int index) {
-    setState(() => _currentNavIndex = index);
-    switch (index) {
-      case 0:
-        // Déjà sur Accueil, rien à faire
-        break;
-      case 1:
-        // TV Guide → Phase 2
-        _showComingSoon('TV Guide (Phase 2)');
-        _resetNavToHome();
-        break;
-      case 2:
-        // Films → Phase Xtream VOD
-        _showComingSoon('Films (Phase Xtream VOD)');
-        _resetNavToHome();
-        break;
-      case 3:
-        _openSearch().then((_) => _resetNavToHome());
-        break;
-      case 4:
-        _openSettings().then((_) => _resetNavToHome());
-        break;
-    }
-  }
-
-  void _resetNavToHome() {
-    Future<void>.delayed(const Duration(milliseconds: 800), () {
-      if (mounted) setState(() => _currentNavIndex = 0);
-    });
-  }
-
-  /// Contenu principal quand on a au moins une chaîne.
-  Widget _buildContent(List<Channel> channels) {
-    // Sélection du Hero — première chaîne live
-    final Channel hero = channels.firstWhere(
-      (Channel c) => c.isLive,
-      orElse: () => channels.first,
-    );
-
-    // Sections — pour vous = 15 premières (hors hero)
-    final List<Channel> forYou =
-        channels.where((Channel c) => c.id != hero.id).take(20).toList();
-    final List<Channel> liveNow =
-        channels.where((Channel c) => c.isLive).take(30).toList();
-    final List<Channel> discoveries = channels.reversed.take(30).toList();
-
-    // Catégorie phare (la + représentée)
-    final String topCategory = _findTopCategory(channels);
-    final List<Channel> topCategoryChannels = channels
-        .where((Channel c) => c.category == topCategory)
-        .take(30)
-        .toList();
-
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.only(bottom: 100),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  PreferredSizeWidget _appBar() {
+    return AppBar(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      title: Row(
         children: <Widget>[
-          const SizedBox(height: 70),
-
-          // ---- HERO ----
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: HeroSection(
-              channel: hero,
-              onWatch: () => _onChannelTap(hero),
-              onInfo: () => _showComingSoon('Fiche détaillée'),
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: AppColors.accent,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Icon(
+              Icons.live_tv_rounded,
+              color: Colors.black,
+              size: 18,
             ),
           ),
-          const SizedBox(height: 20),
-
-          // ---- Quick chips → vrais écrans ----
-          QuickChipsRow(
-            onCategories: _openCategories,
-            onFavorites: _openFavorites,
-            onSearch: _openSearch,
-            onSettings: _openSettings,
-          ),
-          const SizedBox(height: 24),
-
-          // ---- Pour vous ----
-          ChannelRow(
-            title: 'Pour vous',
-            channels: forYou,
-            onChannelTap: _onChannelTap,
-            onSeeAll: () => _openSeeAll('Pour vous', channels),
-          ),
-          const SizedBox(height: 24),
-
-          // ---- En direct ----
-          ChannelRow(
-            title: 'En direct maintenant',
-            channels: liveNow,
-            onChannelTap: _onChannelTap,
-            onSeeAll: () => _openSeeAll(
-              'En direct maintenant',
-              channels.where((Channel c) => c.isLive).toList(),
+          const SizedBox(width: 10),
+          Text(
+            'TV KING',
+            style: AppTextStyles.headlineLarge.copyWith(
+              fontSize: 18,
+              letterSpacing: 3,
+              fontWeight: FontWeight.w800,
             ),
-          ),
-          const SizedBox(height: 24),
-
-          // ---- Catégorie phare ----
-          if (topCategoryChannels.isNotEmpty)
-            ChannelRow(
-              title: topCategory,
-              channels: topCategoryChannels,
-              onChannelTap: _onChannelTap,
-              onSeeAll: () => _openSeeAll(
-                topCategory,
-                channels
-                    .where((Channel c) => c.category == topCategory)
-                    .toList(),
-              ),
-            ),
-          if (topCategoryChannels.isNotEmpty) const SizedBox(height: 24),
-
-          // ---- Découvertes ----
-          ChannelRow(
-            title: 'Découvertes',
-            channels: discoveries,
-            onChannelTap: _onChannelTap,
-            onSeeAll: () =>
-                _openSeeAll('Découvertes', channels.reversed.toList()),
           ),
         ],
-      ),
-    );
-  }
-
-  String _findTopCategory(List<Channel> channels) {
-    final Map<String, int> counts = <String, int>{};
-    for (final Channel c in channels) {
-      counts[c.category] = (counts[c.category] ?? 0) + 1;
-    }
-    String best = 'Autres';
-    int bestCount = -1;
-    counts.forEach((String name, int count) {
-      if (count > bestCount) {
-        best = name;
-        bestCount = count;
-      }
-    });
-    return best;
-  }
-
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      title: Text(
-        'TV KING',
-        style: AppTextStyles.headlineLarge.copyWith(
-          color: AppColors.gold,
-          letterSpacing: 4,
-          fontSize: 20,
-        ),
       ),
       actions: <Widget>[
         IconButton(
           tooltip: 'Ajouter une playlist',
           onPressed: _openAddPlaylist,
-          icon: const Icon(Icons.add_rounded, color: Colors.white),
+          icon: const Icon(Icons.add_rounded),
         ),
         IconButton(
           tooltip: 'Recherche',
           onPressed: _openSearch,
-          icon: const Icon(Icons.search, color: Colors.white),
+          icon: const Icon(Icons.search_rounded),
         ),
         IconButton(
           tooltip: 'Mes playlists',
           onPressed: _openSettings,
-          icon: const Icon(
-            Icons.account_circle_outlined,
-            color: Colors.white,
+          icon: const Icon(Icons.account_circle_outlined),
+        ),
+        const SizedBox(width: 6),
+      ],
+    );
+  }
+
+  // ============================================================
+  //  Contenu principal — liste verticale de sections
+  // ============================================================
+
+  Widget _buildContent(List<Channel> all) {
+    // Pré-calculs (rapides même à 20k channels — itère 1× la liste)
+    final Map<String, Channel> byId = <String, Channel>{};
+    final List<Channel> sports = <Channel>[];
+    final List<Channel> movies = <Channel>[];
+    final List<Channel> series = <Channel>[];
+    final List<Channel> kids = <Channel>[];
+    final List<Channel> news = <Channel>[];
+    final List<Channel> music = <Channel>[];
+    final List<Channel> docs = <Channel>[];
+    final List<Channel> live = <Channel>[];
+
+    for (final Channel c in all) {
+      byId[c.id] = c;
+      if (c.isLive) live.add(c);
+      switch (c.genre) {
+        case ChannelGenre.sports:
+          sports.add(c);
+        case ChannelGenre.movies:
+          movies.add(c);
+        case ChannelGenre.series:
+          series.add(c);
+        case ChannelGenre.kids:
+          kids.add(c);
+        case ChannelGenre.news:
+          news.add(c);
+        case ChannelGenre.music:
+          music.add(c);
+        case ChannelGenre.documentary:
+          docs.add(c);
+        case ChannelGenre.entertainment:
+        case ChannelGenre.international:
+        case ChannelGenre.adult:
+        case ChannelGenre.other:
+          break;
+      }
+    }
+
+    // Hero : prend la 1ʳᵉ chaîne avec un logo (plus joli) sinon la 1ʳᵉ
+    final Channel hero =
+        all.firstWhere((Channel c) => c.hasLogo, orElse: () => all.first);
+
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
+      slivers: <Widget>[
+        const SliverPadding(padding: EdgeInsets.only(top: 64)),
+
+        // ----- Hero -----
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+          sliver: SliverToBoxAdapter(
+            child: HeroSection(
+              channel: hero,
+              onWatch: () => _onChannelTap(hero),
+              onInfo: () => _onChannelLongPress(hero),
+            ),
           ),
         ),
-        const SizedBox(width: 4),
+
+        // ----- Continue Watching -----
+        StreamBuilder<List<String>>(
+          stream: RecentlyWatchedRepository.instance.stream,
+          initialData: RecentlyWatchedRepository.instance.current,
+          builder: (BuildContext context, AsyncSnapshot<List<String>> snap) {
+            final List<Channel> recent = <Channel>[];
+            for (final String id in snap.data ?? <String>[]) {
+              final Channel? c = byId[id];
+              if (c != null) recent.add(c);
+            }
+            if (recent.isEmpty) return const SliverToBoxAdapter();
+            return SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 18),
+                child: PremiumRow(
+                  title: 'Reprendre',
+                  channels: recent,
+                  onChannelTap: _onChannelTap,
+                  onChannelLongPress: _onChannelLongPress,
+                ),
+              ),
+            );
+          },
+        ),
+
+        // ----- Favoris -----
+        SliverToBoxAdapter(child: _favoritesRow(byId)),
+
+        // ----- Sports Live -----
+        if (sports.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: PremiumRow(
+                title: 'Sports en direct',
+                subtitle: '${sports.length} chaînes',
+                channels: sports.take(20).toList(),
+                onChannelTap: _onChannelTap,
+                onChannelLongPress: _onChannelLongPress,
+                onSeeAll: () => _openSection('Sports', ChannelGenre.sports),
+              ),
+            ),
+          ),
+
+        // ----- Live Now -----
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 18),
+            child: PremiumRow(
+              title: 'En direct maintenant',
+              subtitle: '${live.length} chaînes',
+              channels: live.take(20).toList(),
+              onChannelTap: _onChannelTap,
+              onChannelLongPress: _onChannelLongPress,
+              onSeeAll: _openLiveTV,
+            ),
+          ),
+        ),
+
+        // ----- Films -----
+        if (movies.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: PremiumRow(
+                title: 'Films',
+                subtitle: '${movies.length} chaînes',
+                channels: movies.take(20).toList(),
+                onChannelTap: _onChannelTap,
+                onChannelLongPress: _onChannelLongPress,
+                onSeeAll: () => _openSection('Films', ChannelGenre.movies),
+              ),
+            ),
+          ),
+
+        // ----- Séries -----
+        if (series.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: PremiumRow(
+                title: 'Séries',
+                subtitle: '${series.length} chaînes',
+                channels: series.take(20).toList(),
+                onChannelTap: _onChannelTap,
+                onChannelLongPress: _onChannelLongPress,
+                onSeeAll: () => _openSection('Séries', ChannelGenre.series),
+              ),
+            ),
+          ),
+
+        // ----- Kids -----
+        if (kids.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: PremiumRow(
+                title: 'Jeunesse',
+                subtitle: '${kids.length} chaînes',
+                channels: kids.take(20).toList(),
+                onChannelTap: _onChannelTap,
+                onChannelLongPress: _onChannelLongPress,
+                onSeeAll: () => _openSection('Jeunesse', ChannelGenre.kids),
+              ),
+            ),
+          ),
+
+        // ----- News -----
+        if (news.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: PremiumRow(
+                title: 'Info & Actualités',
+                subtitle: '${news.length} chaînes',
+                channels: news.take(20).toList(),
+                onChannelTap: _onChannelTap,
+                onChannelLongPress: _onChannelLongPress,
+                onSeeAll: () => _openSection('Info', ChannelGenre.news),
+              ),
+            ),
+          ),
+
+        // ----- Music -----
+        if (music.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: PremiumRow(
+                title: 'Musique',
+                subtitle: '${music.length} chaînes',
+                channels: music.take(20).toList(),
+                onChannelTap: _onChannelTap,
+                onChannelLongPress: _onChannelLongPress,
+                onSeeAll: () => _openSection('Musique', ChannelGenre.music),
+              ),
+            ),
+          ),
+
+        // ----- Documentaires -----
+        if (docs.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: PremiumRow(
+                title: 'Documentaires',
+                subtitle: '${docs.length} chaînes',
+                channels: docs.take(20).toList(),
+                onChannelTap: _onChannelTap,
+                onChannelLongPress: _onChannelLongPress,
+                onSeeAll: () => _openSection(
+                  'Documentaires',
+                  ChannelGenre.documentary,
+                ),
+              ),
+            ),
+          ),
+
+        // ----- Découvertes (catalogue complet, ordre inversé) -----
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 18),
+            child: PremiumRow(
+              title: 'À découvrir',
+              channels: all.reversed.take(20).toList(),
+              onChannelTap: _onChannelTap,
+              onChannelLongPress: _onChannelLongPress,
+              onSeeAll: _openLiveTV,
+            ),
+          ),
+        ),
+
+        // Espace pour la bottom nav flottante
+        const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
       ],
+    );
+  }
+
+  Widget _favoritesRow(Map<String, Channel> byId) {
+    return _favSnap.buildFavorites(
+      builder: (List<String> favIds) {
+        final List<Channel> favs = <Channel>[];
+        for (final String id in favIds) {
+          final Channel? c = byId[id];
+          if (c != null) favs.add(c);
+        }
+        if (favs.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 18),
+          child: PremiumRow(
+            title: 'Favoris',
+            subtitle: '${favs.length} chaînes',
+            channels: favs.take(20).toList(),
+            onChannelTap: _onChannelTap,
+            onChannelLongPress: _onChannelLongPress,
+            onSeeAll: _openFavorites,
+          ),
+        );
+      },
+    );
+  }
+
+  // ----- Bottom Nav -----
+
+  void _onNavTap(int index) {
+    setState(() => _currentNavIndex = index);
+    switch (index) {
+      case 0:
+        break; // déjà sur Accueil
+      case 1:
+        _openLiveTV().then((_) => _resetNav());
+      case 2:
+        _openSearch().then((_) => _resetNav());
+      case 3:
+        _openFavorites().then((_) => _resetNav());
+      case 4:
+        _openSettings().then((_) => _resetNav());
+    }
+  }
+
+  void _resetNav() {
+    Future<void>.delayed(const Duration(milliseconds: 600), () {
+      if (mounted) setState(() => _currentNavIndex = 0);
+    });
+  }
+}
+
+// ----- Helper pour lire les favoris en stream -----
+class FavoritesRepoSnapshot {
+  Widget buildFavorites({required Widget Function(List<String>) builder}) {
+    return StreamBuilder<Set<String>>(
+      stream: FavoritesRepository.instance.favoritesStream,
+      initialData: FavoritesRepository.instance.current,
+      builder:
+          (BuildContext context, AsyncSnapshot<Set<String>> snap) {
+        return builder((snap.data ?? <String>{}).toList());
+      },
     );
   }
 }
 
+// ----- Fond global avec dégradé subtil -----
 class _BackgroundLayer extends StatelessWidget {
   const _BackgroundLayer();
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: <Widget>[
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: AppColors.backgroundGradient,
-          ),
-          child: SizedBox.expand(),
-        ),
-        Positioned(
-          top: -120,
-          left: -80,
-          child: _GlowOrb(
-            color: AppColors.accentPink.withValues(alpha: 0.22),
-            size: 320,
-          ),
-        ),
-        Positioned(
-          bottom: -160,
-          right: -100,
-          child: _GlowOrb(
-            color: AppColors.accentCyan.withValues(alpha: 0.18),
-            size: 380,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _GlowOrb extends StatelessWidget {
-  const _GlowOrb({required this.color, required this.size});
-
-  final Color color;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: <Color>[color, color.withValues(alpha: 0)],
-          ),
-        ),
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: AppColors.backgroundGradient,
       ),
+      child: SizedBox.expand(),
     );
   }
 }

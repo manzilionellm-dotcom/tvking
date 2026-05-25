@@ -1,200 +1,184 @@
 // =========================================================
-//  channel_card.dart — Vignette d'une chaîne TV
+//  channel_card.dart — Card paysage pour les grilles
 // =========================================================
-//  Élément central de l'écran d'accueil. Pour chaque chaîne,
-//  on affiche :
-//    - Une "tuile" carrée avec dégradé + initiales (placeholder
-//      de logo en attendant les vraies images).
-//    - Le nom de la chaîne en gros.
-//    - La catégorie en plus petit.
-//    - Le programme en cours sur 1 ligne.
-//    - Un badge "EN DIRECT" en haut à gauche si applicable.
+//  Refonte Phase 1.4 :
 //
-//  Bonus TV : la carte réagit au focus de la télécommande
-//  (D-pad) avec un effet "scale + glow" — typique des UIs TV.
+//    AVANT : fond multicolore aléatoire + initiales géantes
+//    APRÈS : card sombre élégante + logo de chaîne centré
+//
+//  Utilisé par :
+//    - `ChannelsGridScreen` (Voir tout, Catégorie, Recherche...)
+//    - `FavoritesScreen`
+//    - Tout endroit qui affiche une grille de chaînes
+//
+//  Ratio 16:11 pour bien afficher un logo sans le déformer
+//  tout en gardant une présence visuelle correcte.
 // =========================================================
 
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/widgets/live_badge.dart';
 import '../../../playlists/data/favorites_repository.dart';
 import '../../domain/channel.dart';
+import 'channel_logo.dart';
 
 class ChannelCard extends StatefulWidget {
   const ChannelCard({
     required this.channel,
     required this.onTap,
+    this.onLongPress,
     super.key,
   });
 
   final Channel channel;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   @override
   State<ChannelCard> createState() => _ChannelCardState();
 }
 
 class _ChannelCardState extends State<ChannelCard> {
-  /// True quand la carte est sélectionnée par la télécommande TV
-  /// ou survolée à la souris (Android TV, web, desktop).
-  bool _isFocused = false;
+  bool _focused = false;
 
   @override
   Widget build(BuildContext context) {
     final Channel ch = widget.channel;
 
-    // Couleurs du dégradé (auto-générées depuis l'id si non fournies).
-    final List<Color> gradient = ch.effectiveGradient;
-
     return Focus(
-      // onFocusChange est déclenché quand on arrive sur la carte
-      // avec le D-pad d'une télécommande Android TV / Fire TV.
-      onFocusChange: (bool hasFocus) {
-        setState(() => _isFocused = hasFocus);
-      },
+      onFocusChange: (bool f) => setState(() => _focused = f),
       child: MouseRegion(
-        // Pour la souris (Android TV avec souris, desktop, web).
-        onEnter: (_) => setState(() => _isFocused = true),
-        onExit: (_) => setState(() => _isFocused = false),
+        onEnter: (_) => setState(() => _focused = true),
+        onExit: (_) => setState(() => _focused = false),
         child: GestureDetector(
           onTap: widget.onTap,
+          onLongPress: widget.onLongPress,
           child: AnimatedContainer(
-            // Animation fluide à chaque changement de focus.
-            duration: const Duration(milliseconds: 220),
+            duration: const Duration(milliseconds: 200),
             curve: Curves.easeOutCubic,
-            // Effet "scale" au focus : la carte grandit légèrement.
-            transform: _isFocused
-                ? (Matrix4.identity()..scale(1.05))
+            transform: _focused
+                ? (Matrix4.identity()..scale(1.03))
                 : Matrix4.identity(),
             transformAlignment: Alignment.center,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              // Glow lumineux uniquement quand la carte est en focus.
-              boxShadow: _isFocused
+              borderRadius: BorderRadius.circular(14),
+              color: AppColors.surface,
+              border: Border.all(
+                color: _focused ? AppColors.accent : AppColors.border,
+                width: _focused ? 1.5 : 1,
+              ),
+              boxShadow: _focused
                   ? <BoxShadow>[
                       BoxShadow(
-                        color: gradient.first.withValues(alpha: 0.6),
-                        blurRadius: 28,
-                        spreadRadius: 2,
+                        color: AppColors.accent.withValues(alpha: 0.2),
+                        blurRadius: 18,
                       ),
                     ]
                   : <BoxShadow>[],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(14),
               child: Stack(
                 children: <Widget>[
-                  // ---------- Fond dégradé + initiales ---------------
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: gradient,
+                  // ----- Logo centré -----
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 56),
+                      child: ChannelLogo(
+                        channel: ch,
+                        size: ChannelLogoSize.medium,
+                        borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                   ),
 
-                  // Initiales gigantesques en transparence.
-                  Positioned.fill(
-                    child: Align(
-                      alignment: const Alignment(0, -0.2),
-                      child: Text(
-                        ch.initials,
-                        style: AppTextStyles.channelInitials.copyWith(
-                          color: Colors.white.withValues(alpha: 0.85),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // ---------- Voile sombre en bas (lisibilité) -------
-                  Positioned.fill(
-                    child: DecoratedBox(
+                  // ----- Bandeau bas opaque : nom + meta -----
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          begin: Alignment.center,
+                          begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: <Color>[
                             Colors.transparent,
-                            Colors.black.withValues(alpha: 0.85),
+                            AppColors.background.withValues(alpha: 0.92),
                           ],
                         ),
                       ),
-                    ),
-                  ),
-
-                  // ---------- Bandeau bas : nom + métadonnées --------
-                  Positioned(
-                    left: 14,
-                    right: 14,
-                    bottom: 12,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          ch.name,
-                          style: AppTextStyles.headlineMedium,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          ch.category,
-                          style: AppTextStyles.bodyMedium.copyWith(
-                            color: AppColors.accentCyan,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                        ),
-                        if (ch.currentProgram != null) ...<Widget>[
-                          const SizedBox(height: 6),
+                      padding: const EdgeInsets.fromLTRB(10, 16, 10, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
                           Text(
-                            ch.currentProgram!,
-                            style: AppTextStyles.bodyMedium.copyWith(
+                            ch.cleanName,
+                            style: AppTextStyles.bodyLarge.copyWith(
                               fontSize: 12,
-                              color: AppColors.textMuted,
+                              fontWeight: FontWeight.w600,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                        ],
-                      ],
-                    ),
-                  ),
-
-                  // ---------- Badge "EN DIRECT" en haut à gauche -----
-                  if (ch.isLive)
-                    const Positioned(
-                      top: 12,
-                      left: 12,
-                      child: LiveBadge(),
-                    ),
-
-                  // ---------- Bouton "Favori ♥" en haut à droite -----
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: _FavoriteToggle(channelId: ch.id),
-                  ),
-
-                  // ---------- Bordure lumineuse au focus -------------
-                  if (_isFocused)
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.9),
-                              width: 2,
-                            ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: <Widget>[
+                              Icon(
+                                ch.genre.icon,
+                                size: 10,
+                                color: AppColors.textMuted,
+                              ),
+                              const SizedBox(width: 3),
+                              Flexible(
+                                child: Text(
+                                  ch.genre.label,
+                                  style: AppTextStyles.bodyMedium.copyWith(
+                                    fontSize: 10,
+                                    color: AppColors.textMuted,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (ch.country != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 4),
+                                  child: Text(
+                                    ch.country!.flag,
+                                    style: const TextStyle(fontSize: 10),
+                                  ),
+                                ),
+                            ],
                           ),
-                        ),
+                        ],
                       ),
                     ),
+                  ),
+
+                  // ----- Badge LIVE haut-gauche -----
+                  if (ch.isLive)
+                    const Positioned(
+                      top: 10,
+                      left: 10,
+                      child: _LivePill(),
+                    ),
+
+                  // ----- Badge qualité haut-droite -----
+                  if (ch.quality != ChannelQuality.sd)
+                    Positioned(
+                      top: 10,
+                      right: 38,
+                      child: ChannelQualityBadge(quality: ch.quality),
+                    ),
+
+                  // ----- Bouton favori haut-droite -----
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: _FavoriteToggle(channelId: ch.id),
+                  ),
                 ],
               ),
             ),
@@ -205,8 +189,29 @@ class _ChannelCardState extends State<ChannelCard> {
   }
 }
 
-/// Petit bouton coeur en haut à droite des vignettes.
-/// S'abonne au stream des favoris pour rester synchronisé.
+class _LivePill extends StatelessWidget {
+  const _LivePill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.live,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        'LIVE',
+        style: AppTextStyles.labelSmall.copyWith(
+          color: Colors.white,
+          fontSize: 9,
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+}
+
 class _FavoriteToggle extends StatelessWidget {
   const _FavoriteToggle({required this.channelId});
 
@@ -219,25 +224,15 @@ class _FavoriteToggle extends StatelessWidget {
       initialData: FavoritesRepository.instance.current,
       builder: (BuildContext context, AsyncSnapshot<Set<String>> snap) {
         final bool isFav = (snap.data ?? <String>{}).contains(channelId);
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: () => FavoritesRepository.instance.toggle(channelId),
-            child: Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.black.withValues(alpha: 0.4),
-              ),
-              child: Icon(
-                isFav ? Icons.favorite : Icons.favorite_outline,
-                color: isFav ? AppColors.accentPink : Colors.white,
-                size: 18,
-              ),
-            ),
+        return IconButton(
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          icon: Icon(
+            isFav ? Icons.favorite : Icons.favorite_outline,
+            color: isFav ? AppColors.accent : Colors.white,
+            size: 16,
           ),
+          onPressed: () => FavoritesRepository.instance.toggle(channelId),
         );
       },
     );

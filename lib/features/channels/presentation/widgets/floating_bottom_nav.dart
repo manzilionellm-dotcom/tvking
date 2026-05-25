@@ -35,9 +35,9 @@ class FloatingBottomNav extends StatelessWidget {
 
   static const List<_NavItem> _items = <_NavItem>[
     _NavItem(icon: Icons.home_rounded, label: 'Accueil'),
-    _NavItem(icon: Icons.live_tv_rounded, label: 'TV Guide'),
-    _NavItem(icon: Icons.movie_creation_outlined, label: 'Films'),
+    _NavItem(icon: Icons.live_tv_rounded, label: 'Live TV'),
     _NavItem(icon: Icons.search_rounded, label: 'Recherche'),
+    _NavItem(icon: Icons.favorite_rounded, label: 'Favoris'),
     _NavItem(icon: Icons.account_circle_outlined, label: 'Profil'),
   ];
 
@@ -103,7 +103,7 @@ class _NavButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color color = selected ? AppColors.accentPink : Colors.white;
+    final Color color = selected ? AppColors.accent : Colors.white;
 
     return Material(
       color: Colors.transparent,
@@ -119,7 +119,7 @@ class _NavButton extends StatelessWidget {
           ),
           decoration: BoxDecoration(
             color: selected
-                ? AppColors.accentPink.withValues(alpha: 0.15)
+                ? AppColors.accentSurface
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(18),
           ),

@@ -73,6 +73,14 @@ dependencies:
   # Picture-in-Picture sera ajouté en Phase 4 (avec le Cast),
   # car il demande aussi une config dans AndroidManifest.xml.
 
+  # --- Phase 1.4 : Refonte UI premium ---
+  # Cache + chargement asynchrone des logos de chaînes.
+  # Indispensable pour scroller 20 000+ chaînes sans saccade :
+  #   - télécharge chaque logo une seule fois puis le sert depuis le disque
+  #   - placeholder pendant le téléchargement
+  #   - errorWidget pour les logos qui n'existent pas (404)
+  cached_network_image: ^3.4.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

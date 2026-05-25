@@ -17,12 +17,14 @@ abstract final class AppTheme {
     // ColorScheme = ensemble cohérent de couleurs Material 3.
     // On le construit "from seed" pour générer automatiquement
     // les variantes (container, onSurface...) à partir d'un accent.
+    // Refonte v1.4 : un seul accent (or), texte secondaire en gris froid.
     final ColorScheme colorScheme = ColorScheme.fromSeed(
-      seedColor: AppColors.accentPink,
+      seedColor: AppColors.accent,
       brightness: Brightness.dark,
       surface: AppColors.surface,
-      primary: AppColors.accentPink,
-      secondary: AppColors.accentCyan,
+      primary: AppColors.accent,
+      onPrimary: Colors.black,
+      secondary: AppColors.textSecondary,
     );
 
     return ThemeData(
