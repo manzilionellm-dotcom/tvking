@@ -22,7 +22,7 @@ Future<void> main() async {
 
   // Statut bar et nav bar transparentes pour que notre dégradé
   // s'étende jusqu'aux bords de l'écran.
-  await SystemChrome.setSystemUIOverlayStyle(
+  SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       systemNavigationBarColor: Colors.transparent,
