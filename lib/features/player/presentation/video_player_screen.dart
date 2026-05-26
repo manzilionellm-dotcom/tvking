@@ -360,15 +360,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Future<void> _stopRecording() async {
     try {
       await _setMpvProperty('stream-record', '');
+
+      // Laisse à libmpv le temps de FLUSH son buffer sur disque avant
+      // qu'on lise la taille du fichier ou qu'on tente l'export Galerie.
+      // Sans ce délai, on lit un .ts encore en cours d'écriture (taille
+      // 0 ou partielle) → MediaStore refuse / export échoue.
+      // 800 ms = compromis entre UX (snackbar pas trop long à arriver)
+      // et fiabilité (libmpv flush généralement en 200-500 ms).
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+
       final Recording? rec = _activeRecording;
       if (rec != null) {
         await RecordingRepository.instance.finishRecording(rec);
       }
 
       // Arrête le ForegroundService natif et retire la notification
-      // persistante de la barre de statut. À faire APRÈS la finalisation
-      // libmpv pour que l'écriture du fichier soit complète au moment
-      // où Android peut éventuellement recycler le process.
+      // persistante de la barre de statut.
       await RecordingService.instance.stop();
 
       if (mounted) {
@@ -377,26 +384,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       }
 
       // Export vers la galerie photo du téléphone — sans bloquer
-      // l'UX. Si le `.ts` est valide (libmpv a réussi à le finaliser),
-      // MediaStore le copie sous Movies/7MOTION/<name>.mp4 et la
-      // Galerie l'affiche dès le prochain scan.
-      //
-      // Best effort : si l'export foire (espace plein, permission
-      // refusée, etc.), le fichier original reste accessible via
-      // l'écran Enregistrements (storage privé app).
+      // l'UX. Si l'export échoue, on affiche le motif EXACT remonté
+      // par le code natif (au lieu d'un "indisponible" vague) pour
+      // diagnostiquer en live.
       if (rec != null) {
         final String displayName = rec.filePath
             .split('/')
             .last
             .replaceAll('.ts', '.mp4');
-        final bool exported = await GalleryExporter.exportVideo(
+        final GalleryExportResult res = await GalleryExporter.exportVideo(
           srcPath: rec.filePath,
           displayName: displayName,
         );
         if (mounted) {
-          _toast(exported
-              ? 'Sauvegardé dans Galerie › Movies › 7MOTION'
-              : 'Sauvegardé localement (export galerie indisponible)');
+          if (res.success) {
+            _toast('Sauvegardé dans Galerie › Movies');
+          } else {
+            _toast('Sauvé local — export galerie KO : ${res.userFacingError}');
+          }
         }
       }
     } catch (e) {

@@ -30,12 +30,10 @@ class GalleryExporter {
   static const MethodChannel _channel =
       MethodChannel('com.manzilionellm.tvking/gallery');
 
-  /// Copie [srcPath] (un fichier .ts existant) vers la galerie photo
-  /// du téléphone sous `Movies/7MOTION/[displayName]`. Le nom DOIT
-  /// contenir l'extension (`.mp4` recommandé). Best effort — retourne
-  /// `false` sans throw si l'opération échoue, pour ne jamais bloquer
-  /// la fin d'un enregistrement.
-  static Future<bool> exportVideo({
+  /// Résultat de l'export. Contient un flag de succès et, en cas
+  /// d'échec, le code + message d'erreur côté natif pour qu'on puisse
+  /// l'afficher dans le snackbar (au lieu d'un "indisponible" vague).
+  static Future<GalleryExportResult> exportVideo({
     required String srcPath,
     required String displayName,
   }) async {
@@ -47,16 +45,44 @@ class GalleryExporter {
           'displayName': displayName,
         },
       );
-      return result ?? false;
+      return GalleryExportResult(success: result ?? false);
     } on PlatformException catch (e) {
       if (kDebugMode) {
-        debugPrint('[Gallery] export PlatformException: ${e.message}');
+        debugPrint('[Gallery] export ${e.code}: ${e.message}');
       }
-      return false;
+      return GalleryExportResult(
+        success: false,
+        errorCode: e.code,
+        errorMessage: e.message,
+      );
     } on MissingPluginException {
       // Channel pas câblé (ex. iOS, ou build sans overlay)
       if (kDebugMode) debugPrint('[Gallery] channel manquant');
-      return false;
+      return const GalleryExportResult(
+        success: false,
+        errorCode: 'NO_CHANNEL',
+        errorMessage: 'Bridge natif manquant',
+      );
     }
+  }
+}
+
+class GalleryExportResult {
+  const GalleryExportResult({
+    required this.success,
+    this.errorCode,
+    this.errorMessage,
+  });
+
+  final bool success;
+  final String? errorCode;
+  final String? errorMessage;
+
+  /// Texte court pour le snackbar quand on échoue.
+  String get userFacingError {
+    if (success) return '';
+    final String code = errorCode ?? 'UNKNOWN';
+    final String msg = errorMessage ?? '';
+    return msg.isEmpty ? code : '$code · $msg';
   }
 }

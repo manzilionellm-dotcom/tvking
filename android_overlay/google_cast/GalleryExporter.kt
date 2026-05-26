@@ -78,27 +78,39 @@ class GalleryExporter(
         val srcFile = File(srcPath)
         if (!srcFile.exists()) {
             Log.w(TAG, "Source introuvable: $srcPath")
-            result.success(false)
+            // result.error pour que le snackbar côté Dart affiche le motif
+            // exact au lieu d'un "indisponible" vague.
+            result.error("SRC_MISSING", "Fichier introuvable: $srcPath", null)
             return
         }
-        if (srcFile.length() == 0L) {
+        val srcSize = srcFile.length()
+        if (srcSize == 0L) {
             Log.w(TAG, "Source vide (0 octets): $srcPath")
-            result.success(false)
+            result.error(
+                "SRC_EMPTY",
+                "Fichier .ts vide — libmpv n'a peut-être pas eu le temps de flush",
+                null,
+            )
             return
         }
 
         try {
-            // Prépare l'entrée MediaStore. RELATIVE_PATH est Android 10+ :
-            // sur <10 le fichier ira dans Movies/ directement, sans
-            // sous-dossier "7MOTION".
+            // Prépare l'entrée MediaStore. RELATIVE_PATH = Movies seulement
+            // (pas de sous-dossier "7MOTION"). Plusieurs constructeurs Android
+            // refusent la création de sous-dossier via MediaStore — c'est
+            // implémentation-dépendant. À la place, on préfixe le nom du
+            // fichier par "7MOTION_" pour qu'il soit reconnaissable dans
+            // la liste de la galerie.
+            val finalDisplayName = if (displayName.startsWith("7MOTION_")) {
+                displayName
+            } else {
+                "7MOTION_$displayName"
+            }
             val values = ContentValues().apply {
-                put(MediaStore.Video.Media.DISPLAY_NAME, displayName)
+                put(MediaStore.Video.Media.DISPLAY_NAME, finalDisplayName)
                 put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    put(
-                        MediaStore.Video.Media.RELATIVE_PATH,
-                        "${Environment.DIRECTORY_MOVIES}/7MOTION",
-                    )
+                    put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES)
                     // IS_PENDING = 1 : le fichier est "en cours d'écriture",
                     // pas visible des autres apps. On le passe à 0 après
                     // que la copie soit complète — comportement atomique.
@@ -113,10 +125,15 @@ class GalleryExporter(
                 MediaStore.Video.Media.EXTERNAL_CONTENT_URI
             }
 
+            Log.i(TAG, "Inserting MediaStore entry: $finalDisplayName ($srcSize bytes)")
             val uri = context.contentResolver.insert(collection, values)
                 ?: run {
                     Log.e(TAG, "MediaStore.insert returned null")
-                    result.success(false)
+                    result.error(
+                        "INSERT_NULL",
+                        "MediaStore a refusé l'insertion (collection=$collection)",
+                        null,
+                    )
                     return
                 }
 
@@ -145,9 +162,16 @@ class GalleryExporter(
 
             Log.i(TAG, "Exported $srcPath → $uri")
             result.success(true)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException: $e")
+            result.error(
+                "PERMISSION_DENIED",
+                "Permission MediaStore refusée — vérifie les autorisations de l'app",
+                null,
+            )
         } catch (e: Exception) {
             Log.e(TAG, "exportVideo failed: $e")
-            result.error("EXPORT_FAILED", e.message, null)
+            result.error("EXPORT_FAILED", e.message ?: e.javaClass.simpleName, null)
         }
     }
 }
