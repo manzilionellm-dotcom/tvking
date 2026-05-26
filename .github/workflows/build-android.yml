@@ -120,14 +120,18 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      # `flutter pub get` est censé déclencher gen-l10n quand
-      # `generate: true` dans pubspec.yaml, mais sur certaines versions
-      # du SDK ça ne se produit pas, et la compile échoue parce que
-      # AppLocalizations n'existe pas. On le lance explicitement pour
-      # garantir que `lib/l10n/generated/app_localizations.dart` est
-      # bien présent avant `flutter build`.
+      # FAIL-HARD : si gen-l10n foire (clé manquante, placeholder mal
+      # formé), on veut le SAVOIR — pas continuer avec un AppLocalizations
+      # stale qui fait sauter le compile plus loin.
       - name: Generate AppLocalizations from .arb files
-        run: flutter gen-l10n || true
+        run: |
+          set -ex
+          flutter gen-l10n
+          echo "--- Check that our new keys are exposed ---"
+          grep -E "navLiveSports|chipFootball|emptyHeading" lib/l10n/generated/app_localizations.dart | head -5 || {
+            echo "❌ nouvelles clés non générées — gen-l10n a probablement échoué"
+            exit 1
+          }
 
       # Remplace l'icône Flutter par défaut (le F bleu généré par
       # `flutter create`) par notre logo 7 MOTION dans tous les
