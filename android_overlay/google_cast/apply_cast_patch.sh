@@ -59,10 +59,12 @@ cat "$MANIFEST"
 
 # --- 1. Copy Kotlin files ---------------------------
 mkdir -p "$ANDROID_PKG_PATH"
-cp -v "$OVERLAY/MainActivity.kt"            "$ANDROID_PKG_PATH/MainActivity.kt"
-cp -v "$OVERLAY/GoogleCastApi.kt"           "$ANDROID_PKG_PATH/GoogleCastApi.kt"
-cp -v "$OVERLAY/CastOptionsProviderImpl.kt" "$ANDROID_PKG_PATH/CastOptionsProviderImpl.kt"
-cp -v "$OVERLAY/GalleryExporter.kt"         "$ANDROID_PKG_PATH/GalleryExporter.kt"
+cp -v "$OVERLAY/MainActivity.kt"               "$ANDROID_PKG_PATH/MainActivity.kt"
+cp -v "$OVERLAY/GoogleCastApi.kt"              "$ANDROID_PKG_PATH/GoogleCastApi.kt"
+cp -v "$OVERLAY/CastOptionsProviderImpl.kt"    "$ANDROID_PKG_PATH/CastOptionsProviderImpl.kt"
+cp -v "$OVERLAY/GalleryExporter.kt"            "$ANDROID_PKG_PATH/GalleryExporter.kt"
+cp -v "$OVERLAY/RecordingForegroundService.kt" "$ANDROID_PKG_PATH/RecordingForegroundService.kt"
+cp -v "$OVERLAY/RecordingServiceBridge.kt"     "$ANDROID_PKG_PATH/RecordingServiceBridge.kt"
 
 ls -la "$ANDROID_PKG_PATH/"
 
@@ -112,7 +114,27 @@ else
   # Le `&` dans META serait interprété par sed — on utilise un délimiteur
   # alternatif `|` et on échappe rien (notre string n'a pas de `|`).
   sed -i "s|</application>|${META}\n    </application>|" "$MANIFEST"
-  echo "✅ Patched AndroidManifest"
+  echo "✅ Patched AndroidManifest (Cast)"
+fi
+
+# --- 3b. Patch AndroidManifest pour RecordingForegroundService ---
+# Permissions + déclaration du service. Idempotent.
+if grep -q "RecordingForegroundService" "$MANIFEST"; then
+  echo "Service Recording déjà déclaré — skip"
+else
+  # Permissions juste après <manifest ...>  (avant <application>).
+  # FOREGROUND_SERVICE + WAKE_LOCK requis dès Android 9.
+  # FOREGROUND_SERVICE_MEDIA_PLAYBACK requis depuis Android 14 pour
+  # spécifier le type "mediaPlayback".
+  # POST_NOTIFICATIONS requis depuis Android 13 pour afficher la
+  # notification du foreground service.
+  PERMS='    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-permission android:name="android.permission.USE_BIOMETRIC" />'
+  sed -i "s|<application|${PERMS}\n\n    <application|" "$MANIFEST"
+
+  # Déclaration du service avant </application>.
+  SVC='        <service android:name=".RecordingForegroundService" android:foregroundServiceType="mediaPlayback" android:exported="false" />'
+  sed -i "s|</application>|${SVC}\n    </application>|" "$MANIFEST"
+  echo "✅ Patched AndroidManifest (Service + permissions)"
 fi
 
 echo "----- AFTER: build.gradle (last 30 lines) -----"

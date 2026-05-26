@@ -27,6 +27,7 @@ class MainActivity : FlutterFragmentActivity() {
 
     private var castApi: GoogleCastApi? = null
     private var galleryExporter: GalleryExporter? = null
+    private var recordingService: RecordingServiceBridge? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -42,6 +43,16 @@ class MainActivity : FlutterFragmentActivity() {
         // apparaissent dans la galerie photo du téléphone, pas
         // perdus dans Android/data/...
         galleryExporter = GalleryExporter(
+            messenger = flutterEngine.dartExecutor.binaryMessenger,
+            context = applicationContext,
+        )
+
+        // Service ForegroundService — channel ".../recording_service"
+        // Maintient l'app vivante quand l'enregistrement tourne et
+        // que l'utilisateur quitte l'app pour lire un SMS / prendre
+        // un appel. Sans ça, Android peut tuer le process et l'enregistrement
+        // donne un fichier tronqué.
+        recordingService = RecordingServiceBridge(
             messenger = flutterEngine.dartExecutor.binaryMessenger,
             context = applicationContext,
         )

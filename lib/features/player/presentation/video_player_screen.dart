@@ -35,6 +35,7 @@ import '../../onboarding/data/device_class_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/gallery_exporter.dart';
 import '../../recordings/data/recording_repository.dart';
+import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
 import '../data/player_settings.dart';
 import 'widgets/player_settings_sheet.dart';
@@ -283,9 +284,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         programTitle: widget.overrideTitle,
         filePath: path,
       );
+
+      // Démarre le ForegroundService natif qui empêche Android de
+      // tuer notre process quand l'utilisateur passe en arrière-plan
+      // (lire un SMS, prendre un appel, etc.) pendant l'enregistrement.
+      // Best effort : si le service refuse de démarrer (permission,
+      // OS exotique), l'enregistrement continue quand même mais sans
+      // la garantie anti-kill.
+      await RecordingService.instance.start(
+        title: widget.overrideTitle != null && widget.overrideTitle!.isNotEmpty
+            ? '${_currentChannel.cleanName} – ${widget.overrideTitle}'
+            : _currentChannel.cleanName,
+      );
+
       if (mounted) {
         setState(() => _activeRecording = rec);
-        _toast('Enregistrement démarré');
+        _toast('Enregistrement démarré – continue même hors écran');
       }
     } catch (e) {
       _toast('Impossible de démarrer : $e');
@@ -299,6 +313,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (rec != null) {
         await RecordingRepository.instance.finishRecording(rec);
       }
+
+      // Arrête le ForegroundService natif et retire la notification
+      // persistante de la barre de statut. À faire APRÈS la finalisation
+      // libmpv pour que l'écriture du fichier soit complète au moment
+      // où Android peut éventuellement recycler le process.
+      await RecordingService.instance.stop();
+
       if (mounted) {
         setState(() => _activeRecording = null);
         _toast('Enregistrement sauvegardé');
