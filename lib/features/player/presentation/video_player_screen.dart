@@ -19,7 +19,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:floating/floating.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -87,15 +86,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Recording? _activeRecording;
   bool get _isRecording => _activeRecording != null;
 
-  // Picture-in-Picture — mini-lecteur YouTube Premium. Quand on quitte
-  // l'app ou qu'on tape le bouton PiP, la vidéo continue dans une
-  // fenêtre flottante par-dessus le launcher / les autres apps.
-  final Floating _floating = Floating();
-
-  /// `true` si Android >= 8 ET l'activity déclare supportsPictureInPicture
-  /// dans le manifest (patché par le workflow CI). Sinon le bouton
-  /// PiP est masqué proprement — pas de toast d'erreur.
-  bool _pipAvailable = false;
+  // Picture-in-Picture désactivé temporairement (le plugin `floating: ^4`
+  // a un mismatch JVM target avec le SDK Android du CI, casse Gradle).
+  // À rétablir avec un patch gradle ou un autre plugin compatible.
 
   /// ID de la session de visionnage en cours (table `watch_sessions`).
   /// Démarrée dans `initState`, fermée dans `dispose`. Sert au Hook
@@ -123,19 +116,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     WakelockPlus.enable();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    // Picture-in-Picture : arme le mode "auto-PiP au minimize". Dès que
-    // l'utilisateur swipe vers le bureau Android, la vidéo continue de
-    // jouer dans une fenêtre flottante 16:9 par-dessus tout. Renvoie
-    // unavailable proprement sur Android < 8.
-    _floating.isPipAvailable.then((bool ok) {
-      if (!mounted) return;
-      setState(() => _pipAvailable = ok);
-      if (ok) {
-        _floating.enable(
-          const OnLeavePiP(aspectRatio: Rational.landscape()),
-        );
-      }
-    });
+    // (PiP temporairement désactivé — voir note plus haut)
 
     // Charge d'abord les réglages persistés
     PlayerSettings.instance.load();
@@ -394,24 +375,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     PlayerSettings.instance.removeListener(_onSettingsChanged);
     _player.dispose();
     WakelockPlus.disable();
-    // Libère le PiP — `cancelOnLeavePiP` retire l'auto-PiP au lifecycle.
-    // Le package `floating` v4 n'expose PAS de méthode `dispose()`
-    // publique (mon erreur dans le commit précédent qui cassait le
-    // build) ; le channel natif Android est nettoyé automatiquement
-    // quand l'activity finit.
-    _floating.cancelOnLeavePiP();
+    // (PiP désactivé — voir note plus haut)
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
-  }
-
-  /// Méthode déclenchée par le bouton PiP de la barre de contrôles.
-  /// Entre IMMÉDIATEMENT en PiP (sans attendre le minimize), comme
-  /// le bouton "PIP" de l'overlay de YouTube.
-  Future<void> _enterPipNow() async {
-    if (!_pipAvailable) return;
-    await _floating.enable(
-      const ImmediatePiP(aspectRatio: Rational.landscape()),
-    );
   }
 
   // ----- Helpers UX -----
@@ -780,16 +746,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     iconColor: _isRecording ? AppColors.live : null,
                     onTap: _toggleRecording,
                   ),
-                  // Bouton PiP — masqué sur Android < 8 (pipAvailable=false)
-                  // et sur TV (PiP n'a aucun sens en 10-foot). YouTube
-                  // Premium style : tap = lecture continue dans une mini-
-                  // fenêtre flottante. Auto-PiP au minimize est déjà armé.
-                  if (_pipAvailable && !_isTvUi)
-                    _ControlButton(
-                      icon: Icons.picture_in_picture_alt_rounded,
-                      label: 'PiP',
-                      onTap: _enterPipNow,
-                    ),
+                  // Bouton PiP désactivé temporairement (incompat JVM
+                  // target du plugin `floating: ^4` sur le SDK Android
+                  // CI). À rétablir quand on a un plugin compatible.
                   _ControlButton(
                     icon: Icons.tune_rounded,
                     label: 'Réglages',
