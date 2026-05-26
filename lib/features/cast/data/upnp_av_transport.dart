@@ -7,48 +7,140 @@
 //    - Play                              → lecture
 //    - Pause                             → pause
 //    - Stop                              → arrêt + libère le renderer
+//    - GetTransportInfo                  → diagnostic post-SetURI
 //
-//  Les requêtes SOAP sont des POST HTTP avec un body XML très
-//  spécifique. Le header `SOAPAction` doit nommer l'opération.
+//  --- Pourquoi cette refonte ---
+//
+//  La version v1 envoyait un protocolInfo ultra-minimal
+//  (`http-get:*:video/mp2t:*`) qui faisait planter Samsung, LG,
+//  Sony (HTTP 500 sur SetAVTransportURI) parce qu'il manque les
+//  tokens DLNA.ORG_PN / DLNA.ORG_OP / DLNA.ORG_FLAGS. Elle ne
+//  faisait pas non plus de Stop préalable, ce qui fait qu'un
+//  renderer en état TRANSITIONING refusait la nouvelle URI.
+//
+//  v2 :
+//    1. Toujours Stop AVANT SetAVTransportURI (best-effort).
+//    2. Construit un DIDL-Lite complet avec [DlnaProfile] qui
+//       choisit le bon profil (MPEG_TS_SD_NA_ISO pour TS, etc.).
+//    3. Après SetAVTransportURI, on poll GetTransportInfo jusqu'à
+//       ce que le state sorte de TRANSITIONING (max 2s) AVANT
+//       d'envoyer Play — beaucoup de TVs renvoient 500 sinon.
+//    4. Whitespace compacté dans le SOAP envelope (certaines TVs
+//       Samsung parsent strict et rejettent les espaces excédentaires).
+//    5. Header `Content-Type: text/xml; charset=utf-8` (sans quotes
+//       autour de utf-8 — c'est ce que la spec UPnP DA2.0 §3.2.3
+//       attend).
+//    6. Trois modes de métadonnée [MetadataMode] que le caller peut
+//       basculer entre tentatives : `full` (profil DLNA complet),
+//       `minimal` (protocolInfo sans PN, juste MIME) ou `none`
+//       (CurrentURIMetaData vide — fallback ultime).
 // =========================================================
+
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:xml/xml.dart';
 
 import '../domain/cast_device.dart';
 import 'cast_transport.dart';
+import 'dlna_profiles.dart';
+
+/// Niveau de détail du DIDL-Lite envoyé au récepteur. Le caller
+/// (cast_manager) bascule entre ces modes au fil des retries.
+enum MetadataMode {
+  /// Profil DLNA complet (DLNA.ORG_PN + OP + FLAGS). Cas par défaut
+  /// qui fonctionne sur 90% des récepteurs modernes.
+  full,
+
+  /// Pas de DLNA.ORG_PN — `protocolInfo` réduit à `http-get:*:<MIME>:*`.
+  /// Utile pour les vieilles TVs ou les renderers atypiques (VLC en
+  /// renderer mode, BubbleUPnP) qui n'aiment pas un PN qui ne matche
+  /// pas leur Sink exact.
+  minimal,
+
+  /// CurrentURIMetaData totalement vide — uniquement l'URL est envoyée.
+  /// Fallback ultime : certains récepteurs Roku-en-mode-DLNA et vieux
+  /// Sony refusent toute métadonnée.
+  none,
+}
 
 class UpnpAvTransport implements CastTransport {
   UpnpAvTransport(this.device);
 
   final CastDevice device;
 
-  static const String _kService = 'urn:schemas-upnp-org:service:AVTransport:1';
+  /// Profil DLNA à utiliser. Initialisé par défaut sur MPEG-TS LIVE
+  /// (cas IPTV le plus courant). Le cast_manager le remplace avec
+  /// un profil déduit du [StreamProbe] avant chaque tentative.
+  DlnaProfile profile = const DlnaProfile(
+    mime: 'video/mp2t',
+    profileName: 'MPEG_TS_SD_NA_ISO',
+    transferMode: DlnaTransferMode.streaming,
+    objectClass: 'object.item.videoItem.videoBroadcast',
+    fileExtension: 'ts',
+  );
+
+  /// Mode de métadonnée pour la PROCHAINE tentative. Le cast_manager
+  /// le bascule (`full` → `minimal` → `none`) entre les retries.
+  MetadataMode metadataMode = MetadataMode.full;
+
+  static const String _kAvTransportService =
+      'urn:schemas-upnp-org:service:AVTransport:1';
+
+  static const Duration _kSoapTimeout = Duration(seconds: 5);
+
+  // ============================================================
+  //  Interface CastTransport
+  // ============================================================
 
   /// Envoie un flux au récepteur et démarre la lecture.
+  /// Le caller s'attend à ce que cette méthode retourne une fois
+  /// la lecture VRAIMENT commencée — pour ça on poll GetTransportInfo
+  /// jusqu'à TRANSPORT_STATE = PLAYING (timeout 4s).
   @override
   Future<void> playStream({
     required String streamUrl,
     String title = '7 MOTION',
   }) async {
-    final String metadata = _buildDidlMetadata(streamUrl, title);
+    // (1) Best-effort Stop pour libérer le récepteur s'il était occupé.
+    //     Beaucoup de Samsung / Sony renvoient 500 sur SetAVTransportURI
+    //     si le state actuel est PLAYING ou TRANSITIONING. Stop force
+    //     le retour à STOPPED. On ignore les erreurs (le device peut
+    //     déjà être stopped → 200, ou ne pas connaître Stop → 500).
+    try {
+      await _soapCall(
+        action: 'Stop',
+        body: '<InstanceID>0</InstanceID>',
+      );
+    } on Exception {
+      // ignore — best effort
+    }
+
+    // (2) Construit le bloc de métadonnées DIDL-Lite selon le mode courant.
+    final String metadata = _buildMetadataForCurrentMode(streamUrl, title);
+
+    // (3) SetAVTransportURI — le point où ça pète habituellement.
     await _soapCall(
       action: 'SetAVTransportURI',
-      body: '''
-        <InstanceID>0</InstanceID>
-        <CurrentURI>${_escape(streamUrl)}</CurrentURI>
-        <CurrentURIMetaData>${_escape(metadata)}</CurrentURIMetaData>
-      ''',
+      body: '<InstanceID>0</InstanceID>'
+          '<CurrentURI>${_escape(streamUrl)}</CurrentURI>'
+          '<CurrentURIMetaData>${_escape(metadata)}</CurrentURIMetaData>',
     );
-    // Petit délai pour laisser le device charger l'URI
-    await Future<void>.delayed(const Duration(milliseconds: 300));
+
+    // (4) Poll GetTransportInfo jusqu'à sortir de TRANSITIONING.
+    //     Sans ça, Play sur un device en TRANSITIONING renvoie 500.
+    await _waitOutOfTransition(maxWait: const Duration(seconds: 2));
+
+    // (5) Play
     await _soapCall(
       action: 'Play',
-      body: '''
-        <InstanceID>0</InstanceID>
-        <Speed>1</Speed>
-      ''',
+      body: '<InstanceID>0</InstanceID><Speed>1</Speed>',
     );
+
+    // (6) Vérifie qu'on est vraiment passé en PLAYING (ou PAUSED — certains
+    //     récepteurs démarrent en PAUSED avant de jouer). Sinon on lève.
+    await _waitForPlaying(maxWait: const Duration(seconds: 4));
   }
 
   @override
@@ -60,10 +152,7 @@ class UpnpAvTransport implements CastTransport {
   @override
   Future<void> resume() => _soapCall(
         action: 'Play',
-        body: '''
-          <InstanceID>0</InstanceID>
-          <Speed>1</Speed>
-        ''',
+        body: '<InstanceID>0</InstanceID><Speed>1</Speed>',
       );
 
   @override
@@ -72,56 +161,197 @@ class UpnpAvTransport implements CastTransport {
         body: '<InstanceID>0</InstanceID>',
       );
 
-  // ----- Internes -----
+  // ============================================================
+  //  Construction des SOAP envelopes
+  // ============================================================
+
+  /// Construit le bloc DIDL-Lite à mettre dans CurrentURIMetaData
+  /// en fonction du [MetadataMode] courant.
+  String _buildMetadataForCurrentMode(String url, String title) {
+    switch (metadataMode) {
+      case MetadataMode.full:
+        return _buildDidlLite(
+          url: url,
+          title: title,
+          protocolInfo: profile.buildProtocolInfo(),
+        );
+      case MetadataMode.minimal:
+        return _buildDidlLite(
+          url: url,
+          title: title,
+          protocolInfo: profile.buildMinimalProtocolInfo(),
+        );
+      case MetadataMode.none:
+        // Quelques renderers refusent une chaîne vide et préfèrent
+        // l'absence pure. Ici "" est valide pour le SOAP, le caller
+        // n'a qu'à mettre des `<CurrentURIMetaData></CurrentURIMetaData>`.
+        return '';
+    }
+  }
+
+  /// Construit un bloc DIDL-Lite formaté sur UNE LIGNE pour éviter
+  /// les espaces indésirables que certains parseurs SOAP stricts
+  /// (Samsung Tizen 2019+) refusent.
+  String _buildDidlLite({
+    required String url,
+    required String title,
+    required String protocolInfo,
+  }) {
+    final StringBuffer b = StringBuffer()
+      ..write('<DIDL-Lite ')
+      ..write('xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" ')
+      ..write('xmlns:dc="http://purl.org/dc/elements/1.1/" ')
+      ..write('xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" ')
+      ..write('xmlns:sec="http://www.sec.co.kr/">')
+      ..write('<item id="1" parentID="0" restricted="1">')
+      ..write('<dc:title>${_escape(title)}</dc:title>')
+      ..write('<upnp:class>${profile.objectClass}</upnp:class>')
+      ..write('<res protocolInfo="${_escape(protocolInfo)}">')
+      ..write(_escape(url))
+      ..write('</res>')
+      ..write('</item>')
+      ..write('</DIDL-Lite>');
+    return b.toString();
+  }
+
+  // ============================================================
+  //  Polling GetTransportInfo
+  // ============================================================
+
+  /// Poll GetTransportInfo jusqu'à ce que CurrentTransportState
+  /// ne soit plus TRANSITIONING. Beaucoup de récepteurs renvoient
+  /// 500 sur Play s'ils sont encore en transition.
+  Future<void> _waitOutOfTransition({
+    required Duration maxWait,
+    Duration pollEvery = const Duration(milliseconds: 250),
+  }) async {
+    final DateTime deadline = DateTime.now().add(maxWait);
+    while (DateTime.now().isBefore(deadline)) {
+      final String? state = await _getTransportState();
+      if (state == null || state != 'TRANSITIONING') return;
+      await Future<void>.delayed(pollEvery);
+    }
+  }
+
+  /// Poll GetTransportInfo jusqu'à PLAYING (ou PAUSED_PLAYBACK).
+  /// Si on n'y arrive pas dans le délai, on lève — le caller
+  /// déclenchera un retry avec un autre profil/mode.
+  Future<void> _waitForPlaying({
+    required Duration maxWait,
+    Duration pollEvery = const Duration(milliseconds: 300),
+  }) async {
+    final DateTime deadline = DateTime.now().add(maxWait);
+    String? lastState;
+    while (DateTime.now().isBefore(deadline)) {
+      lastState = await _getTransportState();
+      if (lastState == 'PLAYING' ||
+          lastState == 'PAUSED_PLAYBACK' ||
+          lastState == 'RECORDING') {
+        return;
+      }
+      // STOPPED après Play = le récepteur a refusé silencieusement
+      // (cas typique d'un codec non supporté). On le déclare en
+      // échec immédiatement pour déclencher le failover.
+      if (lastState == 'STOPPED') {
+        throw Exception(
+          'Le récepteur a refusé le flux (état STOPPED après Play)',
+        );
+      }
+      await Future<void>.delayed(pollEvery);
+    }
+    if (lastState == null) {
+      // GetTransportInfo non supporté — on suppose que le Play a
+      // marché (on n'a aucun moyen de vérifier).
+      return;
+    }
+    throw Exception(
+      'La lecture n\'a pas démarré (dernier état: $lastState)',
+    );
+  }
+
+  Future<String?> _getTransportState() async {
+    try {
+      final http.Response resp = await _soapRequest(
+        action: 'GetTransportInfo',
+        body: '<InstanceID>0</InstanceID>',
+      );
+      if (resp.statusCode != 200) return null;
+      final XmlDocument doc = XmlDocument.parse(resp.body);
+      final Iterable<XmlElement> matches =
+          doc.findAllElements('CurrentTransportState');
+      if (matches.isEmpty) return null;
+      return matches.first.innerText.trim();
+    } on Exception {
+      return null;
+    }
+  }
+
+  // ============================================================
+  //  HTTP SOAP plomberie
+  // ============================================================
 
   Future<void> _soapCall({
     required String action,
     required String body,
   }) async {
-    final String envelope = '''
-<?xml version="1.0" encoding="utf-8"?>
-<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
-            s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-  <s:Body>
-    <u:$action xmlns:u="$_kService">
-      $body
-    </u:$action>
-  </s:Body>
-</s:Envelope>'''.trim();
-
-    final http.Response resp = await http.post(
-      Uri.parse(device.controlUrl),
-      headers: <String, String>{
-        'Content-Type': 'text/xml; charset="utf-8"',
-        'SOAPAction': '"$_kService#$action"',
-      },
-      body: envelope,
-    ).timeout(const Duration(seconds: 5));
-
+    final http.Response resp = await _soapRequest(action: action, body: body);
     if (resp.statusCode != 200) {
       if (kDebugMode) {
-        debugPrint('[UPnP] $action → HTTP ${resp.statusCode}\n${resp.body}');
+        debugPrint(
+          '[UPnP] $action → HTTP ${resp.statusCode}\n${resp.body}',
+        );
       }
-      throw Exception(
-        'UPnP $action a échoué (HTTP ${resp.statusCode}). Le récepteur a peut-être refusé.',
-      );
+      // Tentative de lecture du faultString UPnP pour un message plus
+      // précis (mais on ne le montre PAS à l'utilisateur, juste en log).
+      final String detail = _parseSoapFault(resp.body) ??
+          'HTTP ${resp.statusCode}';
+      throw Exception('UPnP $action a échoué : $detail');
     }
   }
 
-  /// Construit un bloc de métadonnées DIDL-Lite que les
-  /// récepteurs DLNA attendent. Sans ça beaucoup refusent
-  /// de jouer le flux.
-  String _buildDidlMetadata(String url, String title) {
-    return '''
-<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"
-           xmlns:dc="http://purl.org/dc/elements/1.1/"
-           xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/">
-  <item id="1" parentID="0" restricted="1">
-    <dc:title>${_escape(title)}</dc:title>
-    <upnp:class>object.item.videoItem</upnp:class>
-    <res protocolInfo="http-get:*:video/mp2t:*">${_escape(url)}</res>
-  </item>
-</DIDL-Lite>''';
+  Future<http.Response> _soapRequest({
+    required String action,
+    required String body,
+  }) async {
+    final String envelope =
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" '
+        's:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">'
+        '<s:Body>'
+        '<u:$action xmlns:u="$_kAvTransportService">'
+        '$body'
+        '</u:$action>'
+        '</s:Body>'
+        '</s:Envelope>';
+
+    return http
+        .post(
+          Uri.parse(device.controlUrl),
+          headers: <String, String>{
+            'Content-Type': 'text/xml; charset=utf-8',
+            'SOAPAction': '"$_kAvTransportService#$action"',
+            'Connection': 'close',
+            'User-Agent': '7MOTION/1.0 UPnP/1.0',
+          },
+          body: envelope,
+        )
+        .timeout(_kSoapTimeout);
+  }
+
+  /// Extrait le `<errorDescription>` ou `<faultstring>` d'une réponse
+  /// SOAP 500 — uniquement pour les logs dev. Format UPnP 1.0 §3.2.2.
+  String? _parseSoapFault(String body) {
+    try {
+      final XmlDocument doc = XmlDocument.parse(body);
+      final Iterable<XmlElement> errDesc =
+          doc.findAllElements('errorDescription');
+      if (errDesc.isNotEmpty) return errDesc.first.innerText.trim();
+      final Iterable<XmlElement> fault = doc.findAllElements('faultstring');
+      if (fault.isNotEmpty) return fault.first.innerText.trim();
+    } on Exception {
+      // body pas XML → tant pis
+    }
+    return null;
   }
 
   String _escape(String s) => s

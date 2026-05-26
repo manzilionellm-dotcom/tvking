@@ -138,14 +138,28 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
       if (!mounted) return;
       Navigator.of(context).pop();
       _toast(context, 'Envoi vers ${device.name}', accent: true);
-    } on Exception catch (e) {
+    } on Exception catch (_) {
       if (!mounted) return;
-      _toast(
-        context,
-        e.toString().replaceFirst('Exception: ', ''),
-        error: true,
-      );
+      // Le CastManager a déjà transformé l'exception en message friendly
+      // français (via _friendlyMessageFor) et l'expose via `progress`.
+      final String friendly = mgr.progress.message.isNotEmpty
+          ? mgr.progress.message
+          : 'Le cast a échoué. Réessaie.';
+      _toast(context, friendly, error: true);
     }
+  }
+
+  /// Sous-titre du picker — adaptatif selon l'état du CastManager.
+  /// Pendant un connect, on relaye le `CastProgress.message` pour que
+  /// l'utilisateur voie EN DIRECT la progression du failover :
+  ///   "Vérification du flux..." → "Connexion à la TV (2/3)..."
+  String _statusLine(CastManager mgr, {required bool discovering}) {
+    if (mgr.state == CastState.connecting &&
+        mgr.progress.message.isNotEmpty) {
+      return mgr.progress.message;
+    }
+    if (discovering) return 'Recherche sur ton WiFi...';
+    return 'DLNA · Roku · navigateur web.';
   }
 
   Future<void> _disconnect() async {
@@ -254,12 +268,12 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            discovering
-                                ? 'Recherche sur ton WiFi...'
-                                : 'DLNA · Roku · navigateur web.',
+                            _statusLine(mgr, discovering: discovering),
                             style: AppTextStyles.bodyMedium.copyWith(
                               fontSize: 12,
-                              color: AppColors.textMuted,
+                              color: mgr.state == CastState.connecting
+                                  ? AppColors.accent
+                                  : AppColors.textMuted,
                             ),
                           ),
                           if (active != null) ...<Widget>[
