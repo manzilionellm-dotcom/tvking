@@ -107,26 +107,5 @@
   "@resumeBannerTitle": { "placeholders": { "channel": { "type": "String" } } },
   "resumeBannerSubtitle": "كنت تشاهد منذ {minutes} دقيقة",
   "@resumeBannerSubtitle": { "placeholders": { "minutes": { "type": "int" } } },
-  "resumeBannerDismiss": "لاحقاً",
-
-  "navLiveSports": "مباشر",
-  "navCinema": "سينما",
-  "navSeries": "مسلسلات",
-  "navAdult": "للكبار",
-
-  "chipFootball": "كرة القدم",
-  "chipKids": "أطفال",
-  "chipEntertainment": "ترفيه",
-  "chipNews": "أخبار",
-  "chipDocumentary": "وثائقيات",
-  "chipMusic": "موسيقى",
-
-  "emptyHeading": "قنواتك في الطريق",
-  "emptySubtitle": "أرسل معرّفك إلى البائع لتفعيل قنواتك عن بُعد — ستظهر هنا تلقائياً.",
-  "emptyIdLabel": "معرّفك",
-  "emptySendReseller": "إرسال إلى البائع",
-  "emptyCopyId": "نسخ المعرّف",
-  "emptyOr": "أو",
-  "emptyIptv": "هل لديك اشتراك IPTV بالفعل؟",
-  "emptyXtreamAdd": "إضافة عبر Xtream Codes"
+  "resumeBannerDismiss": "لاحقاً"
 }

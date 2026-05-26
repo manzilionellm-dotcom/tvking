@@ -17,7 +17,6 @@ import '../../../../core/branding/brand_logo.dart';
 import '../../../../core/support/vip_support.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../../l10n/generated/app_localizations.dart';
 import '../../../device/data/device_identity.dart';
 import '../../../playlists/presentation/xtream_login_sheet.dart';
 
@@ -71,7 +70,6 @@ class _EmptyStateViewState extends State<EmptyStateView> {
   @override
   Widget build(BuildContext context) {
     final String display = _mac ?? 'MK:??:??:??:??:??';
-    final AppLocalizations l = AppLocalizations.of(context)!;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -84,14 +82,16 @@ class _EmptyStateViewState extends State<EmptyStateView> {
                 const SizedBox(height: 22),
 
                 Text(
-                  l.emptyHeading,
+                  'Tes chaînes arrivent bientôt',
                   textAlign: TextAlign.center,
                   style: AppTextStyles.headlineLarge
                       .copyWith(fontSize: 22),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  l.emptySubtitle,
+                  'Envoie ton identifiant à ton revendeur. Il active '
+                  'tes chaînes à distance — elles apparaîtront ici '
+                  'automatiquement.',
                   textAlign: TextAlign.center,
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 13,
@@ -117,7 +117,8 @@ class _EmptyStateViewState extends State<EmptyStateView> {
                   ),
                   child: Column(
                     children: <Widget>[
-                      Text(l.emptyIdLabel, style: AppTextStyles.eyebrow),
+                      Text('TON IDENTIFIANT',
+                          style: AppTextStyles.eyebrow),
                       const SizedBox(height: 6),
                       SelectableText(
                         display,
@@ -141,7 +142,7 @@ class _EmptyStateViewState extends State<EmptyStateView> {
                   child: FilledButton.icon(
                     onPressed: _mac == null ? null : _sendWhatsApp,
                     icon: const Icon(Icons.chat_rounded, size: 20),
-                    label: Text(l.emptySendReseller),
+                    label: const Text('Envoyer à mon revendeur'),
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF25D366),
                       foregroundColor: Colors.white,
@@ -161,7 +162,7 @@ class _EmptyStateViewState extends State<EmptyStateView> {
                   child: OutlinedButton.icon(
                     onPressed: _mac == null ? null : _copy,
                     icon: const Icon(Icons.copy_rounded, size: 18),
-                    label: Text(l.emptyCopyId),
+                    label: const Text('Copier l\'identifiant'),
                   ),
                 ),
 
@@ -173,7 +174,7 @@ class _EmptyStateViewState extends State<EmptyStateView> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       child: Text(
-                        l.emptyOr,
+                        'OU',
                         style: AppTextStyles.labelSmall.copyWith(
                           color: AppColors.textMuted,
                           fontSize: 10,
@@ -191,7 +192,7 @@ class _EmptyStateViewState extends State<EmptyStateView> {
                 //  besoin de revendeur — ils possèdent déjà un
                 //  abonnement IPTV et veulent juste se connecter.
                 Text(
-                  l.emptyIptv,
+                  'Tu as déjà un abonnement IPTV ?',
                   textAlign: TextAlign.center,
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 13,
@@ -205,7 +206,7 @@ class _EmptyStateViewState extends State<EmptyStateView> {
                   child: OutlinedButton.icon(
                     onPressed: () => showXtreamLoginSheet(context),
                     icon: const Icon(Icons.vpn_key_rounded, size: 18),
-                    label: Text(l.emptyXtreamAdd),
+                    label: const Text('Ajouter via Xtream Codes'),
                   ),
                 ),
               ],

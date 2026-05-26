@@ -107,26 +107,5 @@
   "@resumeBannerTitle": { "placeholders": { "channel": { "type": "String" } } },
   "resumeBannerSubtitle": "Ulikuwa unaangalia dakika {minutes} zilizopita",
   "@resumeBannerSubtitle": { "placeholders": { "minutes": { "type": "int" } } },
-  "resumeBannerDismiss": "Baadaye",
-
-  "navLiveSports": "Moja kwa moja",
-  "navCinema": "Sinema",
-  "navSeries": "Mfululizo",
-  "navAdult": "Watu wazima",
-
-  "chipFootball": "Mpira wa miguu",
-  "chipKids": "Watoto",
-  "chipEntertainment": "Burudani",
-  "chipNews": "Habari",
-  "chipDocumentary": "Hati",
-  "chipMusic": "Muziki",
-
-  "emptyHeading": "Vituo vyako vinakuja hivi karibuni",
-  "emptySubtitle": "Tuma kitambulisho chako kwa muuzaji wako. Atawasha vituo vyako kwa mbali — vitaonekana hapa kiotomatiki.",
-  "emptyIdLabel": "KITAMBULISHO CHAKO",
-  "emptySendReseller": "Tuma kwa muuzaji",
-  "emptyCopyId": "Nakili kitambulisho",
-  "emptyOr": "AU",
-  "emptyIptv": "Una usajili wa IPTV tayari?",
-  "emptyXtreamAdd": "Ongeza kupitia Xtream Codes"
+  "resumeBannerDismiss": "Baadaye"
 }

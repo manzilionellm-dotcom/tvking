@@ -26,7 +26,6 @@ import 'package:flutter/material.dart';
 
 import '../../../core/branding/brand_logo.dart';
 import '../../../core/branding/powered_by_marquee.dart';
-import '../../../l10n/generated/app_localizations.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../cast/presentation/cast_button.dart';
@@ -150,12 +149,11 @@ class _HomeScreenState extends State<HomeScreen> {
   //  standard) — pas besoin de re-grouper là.
 
   Future<void> _openFootball() {
-    final AppLocalizations l = AppLocalizations.of(context)!;
     return Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => FocusedCategoryScreen(
-          title: l.chipFootball,
-          keywords: const <String>[
+        builder: (_) => const FocusedCategoryScreen(
+          title: 'Football',
+          keywords: <String>[
             'foot', 'soccer', 'bein', 'rmc sport', 'champion',
             'ligue 1', 'ligue 2', 'premier league', 'liga',
             'serie a', 'bundesliga', 'eurosport', 'fox sport',
@@ -167,42 +165,40 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildCategoryChips() {
-    final AppLocalizations l = AppLocalizations.of(context)!;
     return RoundCategoryRow(
       items: <RoundCategoryItem>[
         RoundCategoryItem(
-          label: l.chipFootball,
+          label: 'Football',
           icon: Icons.sports_soccer_rounded,
           onTap: _openFootball,
         ),
         RoundCategoryItem(
-          label: l.chipKids,
+          label: 'Jeunesse',
           icon: Icons.child_care_rounded,
-          onTap: () => _openSection(l.chipKids, ChannelGenre.kids),
+          onTap: () => _openSection('Jeunesse', ChannelGenre.kids),
         ),
         RoundCategoryItem(
-          label: l.chipEntertainment,
+          label: 'Divertissement',
           icon: Icons.theater_comedy_rounded,
           onTap: () => _openSection(
-            l.chipEntertainment,
+            'Divertissement',
             ChannelGenre.entertainment,
           ),
         ),
         RoundCategoryItem(
-          label: l.chipNews,
+          label: 'Info',
           icon: Icons.newspaper_rounded,
-          onTap: () => _openSection(l.chipNews, ChannelGenre.news),
+          onTap: () => _openSection('Info', ChannelGenre.news),
         ),
         RoundCategoryItem(
-          label: l.chipDocumentary,
+          label: 'Docu',
           icon: Icons.public_rounded,
-          onTap: () =>
-              _openSection(l.chipDocumentary, ChannelGenre.documentary),
+          onTap: () => _openSection('Documentaires', ChannelGenre.documentary),
         ),
         RoundCategoryItem(
-          label: l.chipMusic,
+          label: 'Musique',
           icon: Icons.music_note_rounded,
-          onTap: () => _openSection(l.chipMusic, ChannelGenre.music),
+          onTap: () => _openSection('Musique', ChannelGenre.music),
         ),
       ],
     );
@@ -560,22 +556,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onNavTap(int index) {
     setState(() => _currentNavIndex = index);
-    final AppLocalizations l = AppLocalizations.of(context)!;
     switch (index) {
       case 0:
-        _openSection(l.navLiveSports, ChannelGenre.sports)
-            .then((_) => _resetNav());
+        _openSection('Live', ChannelGenre.sports).then((_) => _resetNav());
       case 1:
         break; // déjà sur l'accueil Live TV
       case 2:
-        _openSection(l.navCinema, ChannelGenre.movies)
-            .then((_) => _resetNav());
+        _openSection('Cinéma', ChannelGenre.movies).then((_) => _resetNav());
       case 3:
-        _openSection(l.navSeries, ChannelGenre.series)
-            .then((_) => _resetNav());
+        _openSection('Séries', ChannelGenre.series).then((_) => _resetNav());
       case 4:
-        _openSection(l.navAdult, ChannelGenre.adult)
-            .then((_) => _resetNav());
+        _openSection('Adulte', ChannelGenre.adult).then((_) => _resetNav());
     }
   }
 

@@ -121,17 +121,14 @@ jobs:
         run: flutter pub get
 
       # FAIL-HARD : si gen-l10n foire (clé manquante, placeholder mal
-      # formé), on veut le SAVOIR — pas continuer avec un AppLocalizations
-      # stale qui fait sauter le compile plus loin.
+      # formé), on veut le SAVOIR. L'i18n des écrans est temporairement
+      # revertée — on rétablira quand on comprendra pourquoi gen-l10n
+      # foirait sur les nouvelles clés.
       - name: Generate AppLocalizations from .arb files
         run: |
           set -ex
           flutter gen-l10n
-          echo "--- Check that our new keys are exposed ---"
-          grep -E "navLiveSports|chipFootball|emptyHeading" lib/l10n/generated/app_localizations.dart | head -5 || {
-            echo "❌ nouvelles clés non générées — gen-l10n a probablement échoué"
-            exit 1
-          }
+          test -f lib/l10n/generated/app_localizations.dart
 
       # Remplace l'icône Flutter par défaut (le F bleu généré par
       # `flutter create`) par notre logo 7 MOTION dans tous les

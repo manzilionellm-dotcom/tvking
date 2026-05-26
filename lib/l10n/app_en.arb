@@ -107,26 +107,5 @@
   "@resumeBannerTitle": { "placeholders": { "channel": { "type": "String" } } },
   "resumeBannerSubtitle": "You were watching {minutes} min ago",
   "@resumeBannerSubtitle": { "placeholders": { "minutes": { "type": "int" } } },
-  "resumeBannerDismiss": "Later",
-
-  "navLiveSports": "Live",
-  "navCinema": "Cinema",
-  "navSeries": "Series",
-  "navAdult": "Adult",
-
-  "chipFootball": "Football",
-  "chipKids": "Kids",
-  "chipEntertainment": "Entertainment",
-  "chipNews": "News",
-  "chipDocumentary": "Docs",
-  "chipMusic": "Music",
-
-  "emptyHeading": "Your channels are coming",
-  "emptySubtitle": "Send your ID to your reseller. They will activate your channels remotely — they will appear here automatically.",
-  "emptyIdLabel": "YOUR ID",
-  "emptySendReseller": "Send to my reseller",
-  "emptyCopyId": "Copy ID",
-  "emptyOr": "OR",
-  "emptyIptv": "Already have an IPTV subscription?",
-  "emptyXtreamAdd": "Add via Xtream Codes"
+  "resumeBannerDismiss": "Later"
 }

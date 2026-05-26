@@ -23,7 +23,6 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../../l10n/generated/app_localizations.dart';
 
 class FloatingBottomNav extends StatelessWidget {
   const FloatingBottomNav({
@@ -35,24 +34,16 @@ class FloatingBottomNav extends StatelessWidget {
   final int currentIndex;
   final void Function(int index) onTap;
 
-  /// Labels traduits via AppLocalizations — appelés au build car ils
-  /// dépendent du `context` (l'app peut changer de langue à chaud).
-  /// L'ancienne `static const _items` était littérale FR — invisible
-  /// au LocaleRepository, donc changement de langue sans effet.
-  List<_NavItem> _items(BuildContext context) {
-    final AppLocalizations l = AppLocalizations.of(context)!;
-    return <_NavItem>[
-      _NavItem(icon: Icons.sports_soccer_rounded, label: l.navLiveSports),
-      _NavItem(icon: Icons.live_tv_rounded, label: l.navLive),
-      _NavItem(icon: Icons.movie_creation_outlined, label: l.navCinema),
-      _NavItem(icon: Icons.theaters_rounded, label: l.navSeries),
-      _NavItem(icon: Icons.lock_outline_rounded, label: l.navAdult),
-    ];
-  }
+  static const List<_NavItem> _items = <_NavItem>[
+    _NavItem(icon: Icons.sports_soccer_rounded, label: 'Live'),
+    _NavItem(icon: Icons.live_tv_rounded, label: 'Live TV'),
+    _NavItem(icon: Icons.movie_creation_outlined, label: 'Cinéma'),
+    _NavItem(icon: Icons.theaters_rounded, label: 'Séries'),
+    _NavItem(icon: Icons.lock_outline_rounded, label: 'Adulte'),
+  ];
 
   @override
   Widget build(BuildContext context) {
-    final List<_NavItem> items = _items(context);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -72,8 +63,8 @@ class FloatingBottomNav extends StatelessWidget {
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: List<Widget>.generate(items.length, (int i) {
-                  final _NavItem item = items[i];
+                children: List<Widget>.generate(_items.length, (int i) {
+                  final _NavItem item = _items[i];
                   final bool selected = i == currentIndex;
                   return _NavButton(
                     icon: item.icon,
