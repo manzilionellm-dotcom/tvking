@@ -48,6 +48,18 @@ Future<void> main() async {
   // libmpv natif — AVANT runApp pour ne pas crasher au premier lecteur
   MediaKit.ensureInitialized();
 
+  // Rotation auto autorisée sur toutes les orientations supportées.
+  // Sans ça, même quand l'utilisateur incline son téléphone en mode
+  // paysage pour regarder un film, l'écran reste verrouillé en portrait
+  // si l'auto-rotate Android est désactivé. Ici on FORCE l'app à
+  // accepter les 3 orientations utiles (portraitUp + landscape gauche/droite).
+  // portraitDown est exclu — personne ne regarde Netflix la tête en bas.
+  SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
+
   // Statut bar et nav bar transparentes pour que le fond couvre tout
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(

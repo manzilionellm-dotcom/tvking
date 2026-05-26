@@ -19,6 +19,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:floating/floating.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -31,6 +32,7 @@ import '../../cast/presentation/cast_picker_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
+import '../../onboarding/data/device_class_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
@@ -85,6 +87,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Recording? _activeRecording;
   bool get _isRecording => _activeRecording != null;
 
+  // Picture-in-Picture — mini-lecteur YouTube Premium. Quand on quitte
+  // l'app ou qu'on tape le bouton PiP, la vidéo continue dans une
+  // fenêtre flottante par-dessus le launcher / les autres apps.
+  final Floating _floating = Floating();
+
+  /// `true` si Android >= 8 ET l'activity déclare supportsPictureInPicture
+  /// dans le manifest (patché par le workflow CI). Sinon le bouton
+  /// PiP est masqué proprement — pas de toast d'erreur.
+  bool _pipAvailable = false;
+
   /// ID de la session de visionnage en cours (table `watch_sessions`).
   /// Démarrée dans `initState`, fermée dans `dispose`. Sert au Hook
   /// Model : Continue Watching + affinity scoring.
@@ -110,6 +122,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     WakelockPlus.enable();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+    // Picture-in-Picture : arme le mode "auto-PiP au minimize". Dès que
+    // l'utilisateur swipe vers le bureau Android, la vidéo continue de
+    // jouer dans une fenêtre flottante 16:9 par-dessus tout. Renvoie
+    // unavailable proprement sur Android < 8.
+    _floating.isPipAvailable.then((bool ok) {
+      if (!mounted) return;
+      setState(() => _pipAvailable = ok);
+      if (ok) {
+        _floating.enable(
+          const OnLeavePiP(aspectRatio: Rational.landscape()),
+        );
+      }
+    });
 
     // Charge d'abord les réglages persistés
     PlayerSettings.instance.load();
@@ -200,6 +226,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   bool get _canZap =>
       widget.zapPlaylist != null && widget.zapPlaylist!.length > 1;
+
+  /// `true` quand l'écran tourne sur une TV / Android TV / Fire TV
+  /// (10-foot UI, télécommande). Le layout du player s'adapte —
+  /// boutons focusables au D-pad, ⏮/⏭ visibles, pas de swipe.
+  /// Appelé dans build() donc le context est dispo.
+  bool get _isTvUi => DeviceClassRepository.instance.isTvFor(context);
 
   int get _zapIndex {
     if (widget.zapPlaylist == null) return -1;
@@ -362,8 +394,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     PlayerSettings.instance.removeListener(_onSettingsChanged);
     _player.dispose();
     WakelockPlus.disable();
+    // Libère le PiP — cancelOnLeavePiP retire l'auto-PiP, dispose
+    // ferme le channel natif. Idempotent si on n'a jamais activé.
+    _floating.cancelOnLeavePiP();
+    _floating.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
+  }
+
+  /// Méthode déclenchée par le bouton PiP de la barre de contrôles.
+  /// Entre IMMÉDIATEMENT en PiP (sans attendre le minimize), comme
+  /// le bouton "PIP" de l'overlay de YouTube.
+  Future<void> _enterPipNow() async {
+    if (!_pipAvailable) return;
+    await _floating.enable(
+      const ImmediatePiP(aspectRatio: Rational.landscape()),
+    );
   }
 
   // ----- Helpers UX -----
@@ -473,8 +519,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         // Geste swipe vertical pour zapper — remplace les ⏮ / ⏭ qui
         // encombraient le centre de l'image. Geste premium type Netflix.
         // Vitesse > 300 px/s pour éviter les déclenchements accidentels
-        // pendant un scroll de l'overlay.
-        onVerticalDragEnd: _canZap
+        // pendant un scroll de l'overlay. Désactivé sur TV — pas de
+        // swipe sur télécommande, les boutons ⏮/⏭ restent visibles.
+        onVerticalDragEnd: (_canZap && !_isTvUi)
             ? (DragEndDetails d) {
                 final double v = d.primaryVelocity ?? 0;
                 if (v < -300) {
@@ -655,19 +702,50 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
             ),
 
-            // ----- Centre : Play/Pause minimaliste, pas de cercles -----
+            // ----- Centre : Play/Pause minimaliste -----
             //
-            //  Avant : 3 cercles flottants (⏮ ⏯ ⏭) qui cassaient
-            //  l'immersion + le ⏮/⏭ n'avait pas de sens sur LIVE.
-            //  Maintenant : un seul play/pause discret, sans fond ni
-            //  bordure. Le zap channel passe par le swipe vertical
+            //  Sur PHONE : juste le play/pause discret au milieu, sans
+            //  fond ni bordure (immersif). Zap channel = swipe vertical
             //  sur la vidéo (voir GestureDetector.onVerticalDragEnd).
+            //
+            //  Sur TV : on remet les boutons ⏮ / ⏭ autour du play/pause
+            //  car il n'y a pas de geste swipe avec une télécommande.
+            //  Les 3 boutons sont focusables au D-pad et le user navigue
+            //  gauche/droite, OK pour zapper ou play/pause.
             Expanded(
               child: Center(
-                child: _PlayPauseButton(
-                  isPlaying: _isPlaying,
-                  onTap: _togglePlayPause,
-                ),
+                child: _isTvUi
+                    ? Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: <Widget>[
+                          if (_canZap)
+                            _TvDpadButton(
+                              icon: Icons.skip_previous_rounded,
+                              onTap: _zapPrev,
+                              autofocus: false,
+                            ),
+                          if (_canZap) const SizedBox(width: 32),
+                          _TvDpadButton(
+                            icon: _isPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            onTap: _togglePlayPause,
+                            autofocus: true,
+                            large: true,
+                          ),
+                          if (_canZap) const SizedBox(width: 32),
+                          if (_canZap)
+                            _TvDpadButton(
+                              icon: Icons.skip_next_rounded,
+                              onTap: _zapNext,
+                              autofocus: false,
+                            ),
+                        ],
+                      )
+                    : _PlayPauseButton(
+                        isPlaying: _isPlaying,
+                        onTap: _togglePlayPause,
+                      ),
               ),
             ),
 
@@ -700,6 +778,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     iconColor: _isRecording ? AppColors.live : null,
                     onTap: _toggleRecording,
                   ),
+                  // Bouton PiP — masqué sur Android < 8 (pipAvailable=false)
+                  // et sur TV (PiP n'a aucun sens en 10-foot). YouTube
+                  // Premium style : tap = lecture continue dans une mini-
+                  // fenêtre flottante. Auto-PiP au minimize est déjà armé.
+                  if (_pipAvailable && !_isTvUi)
+                    _ControlButton(
+                      icon: Icons.picture_in_picture_alt_rounded,
+                      label: 'PiP',
+                      onTap: _enterPipNow,
+                    ),
                   _ControlButton(
                     icon: Icons.tune_rounded,
                     label: 'Réglages',
@@ -889,6 +977,80 @@ class _FavoriteToggle extends StatelessWidget {
           onPressed: () => FavoritesRepository.instance.toggle(channelId),
         );
       },
+    );
+  }
+}
+
+/// Bouton du player en mode TV (10-foot UI). Focusable au D-pad,
+/// scale 1.08 + bordure ember au focus, autofocus optionnel sur le
+/// play/pause central. La version `large: true` est utilisée pour
+/// le play/pause au milieu, les autres pour ⏮ / ⏭.
+class _TvDpadButton extends StatefulWidget {
+  const _TvDpadButton({
+    required this.icon,
+    required this.onTap,
+    this.autofocus = false,
+    this.large = false,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool autofocus;
+  final bool large;
+
+  @override
+  State<_TvDpadButton> createState() => _TvDpadButtonState();
+}
+
+class _TvDpadButtonState extends State<_TvDpadButton> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final double size = widget.large ? 96 : 72;
+    final double iconSize = widget.large ? 56 : 40;
+    return Focus(
+      autofocus: widget.autofocus,
+      onFocusChange: (bool f) => setState(() => _focused = f),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _focused ? 1.08 : 1.0,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: _focused
+                  ? AppColors.accent.withValues(alpha: 0.28)
+                  : Colors.white.withValues(alpha: 0.08),
+              border: Border.all(
+                color: _focused
+                    ? AppColors.accent
+                    : Colors.white.withValues(alpha: 0.25),
+                width: _focused ? 2.5 : 1.5,
+              ),
+              boxShadow: _focused
+                  ? <BoxShadow>[
+                      BoxShadow(
+                        color: AppColors.accent.withValues(alpha: 0.45),
+                        blurRadius: 24,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Icon(
+              widget.icon,
+              color: Colors.white,
+              size: iconSize,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

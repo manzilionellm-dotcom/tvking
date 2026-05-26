@@ -75,6 +75,15 @@ dependencies:
   media_kit_video: ^1.2.5
   media_kit_libs_android_video: ^1.3.6
 
+  # Picture-in-Picture Android — mini-lecteur flottant style YouTube
+  # Premium. Quand l'utilisateur quitte l'app pendant une lecture,
+  # la vidéo continue dans une mini-fenêtre par-dessus le launcher
+  # / les autres apps. Le plugin gère le AndroidManifest pour ajouter
+  # `supportsPictureInPicture="true"` et le lifecycle natif.
+  # Min Android 8 (API 26) ; sur Android < 8 l'API renvoie "unavailable"
+  # proprement.
+  floating: ^4.0.0
+
   # Garde l'écran allumé pendant la lecture (sinon Android
   # éteint l'écran après 30s d'inactivité, même en pleine
   # lecture vidéo).

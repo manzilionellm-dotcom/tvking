@@ -89,13 +89,25 @@ jobs:
       # bureau Android soit le bon. Note : on garde l'org Java
       # `com.manzilionellm.tvking` pour ne pas casser les installs
       # existantes (changer l'applicationId = nouvelle app séparée).
-      - name: Brand AndroidManifest with 7 MOTION label
+      - name: Brand AndroidManifest with 7 MOTION label + enable PiP
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
           if [ -f "$MANIFEST" ]; then
+            # Label affiché sur le bureau Android
             sed -i 's|android:label="tv_king"|android:label="7 MOTION"|g' "$MANIFEST"
+
+            # Picture-in-Picture (mode mini-lecteur quand on quitte l'app).
+            # Le AndroidManifest régénéré par `flutter create` ne déclare
+            # PAS `supportsPictureInPicture`. Sans ce flag l'OS refuse le
+            # enterPictureInPictureMode() qu'on appelle via le plugin
+            # `floating` → l'utilisateur perd la lecture quand il minimise.
+            # On l'ajoute juste après la déclaration de la MainActivity.
+            if ! grep -q 'supportsPictureInPicture' "$MANIFEST"; then
+              sed -i 's|android:launchMode="singleTop"|android:launchMode="singleTop"\n            android:supportsPictureInPicture="true"|' "$MANIFEST"
+            fi
+
             echo "--- Patched manifest ---"
-            grep 'android:label' "$MANIFEST" || true
+            grep -E 'android:label|supportsPictureInPicture' "$MANIFEST" || true
           fi
 
       - name: Get dependencies
