@@ -88,7 +88,13 @@ class UpnpAvTransport implements CastTransport {
   static const String _kAvTransportService =
       'urn:schemas-upnp-org:service:AVTransport:1';
 
-  static const Duration _kSoapTimeout = Duration(seconds: 5);
+  /// Timeout SOAP par commande. Initialement à 5s mais constaté
+  /// trop court sur LG webOS QNED816QA (diag du user) : la TV met
+  /// 8-12s à répondre au SetAVTransportURI quand le service AVTransport
+  /// vient juste de s'allumer (mode standby). On passe à 15s — large
+  /// pour ne pas timeout sur les TVs lentes, sans bloquer l'UX trop
+  /// longtemps en cas de TV vraiment morte.
+  static const Duration _kSoapTimeout = Duration(seconds: 15);
 
   /// Détection LG WebOS / NetCast. Certaines TVs LG sont strictes
   /// sur le User-Agent et n'acceptent les commandes SOAP que si

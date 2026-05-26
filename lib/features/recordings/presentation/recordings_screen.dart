@@ -15,6 +15,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../data/gallery_exporter.dart';
 import '../data/recording_repository.dart';
 import '../domain/recording.dart';
 
@@ -80,9 +81,51 @@ class RecordingsScreen extends StatelessWidget {
   }
 }
 
-class _RecordingTile extends StatelessWidget {
+/// Tuile d'enregistrement — version StatefulWidget pour gérer l'état
+/// de loading pendant l'export vers la Galerie. Affiche un spinner
+/// sur l'icône "Exporter" tant que la copie MediaStore tourne.
+class _RecordingTile extends StatefulWidget {
   const _RecordingTile({required this.recording});
   final Recording recording;
+
+  @override
+  State<_RecordingTile> createState() => _RecordingTileState();
+}
+
+class _RecordingTileState extends State<_RecordingTile> {
+  bool _exporting = false;
+
+  Recording get recording => widget.recording;
+
+  Future<void> _exportToGallery() async {
+    if (_exporting) return;
+    // Vérifie que le fichier existe vraiment avant d'appeler le natif.
+    // Si pas → message clair sans même tenter MediaStore.
+    setState(() => _exporting = true);
+    final String fileName = recording.filePath.split('/').last;
+    final String displayName = fileName.replaceAll('.ts', '.mp4');
+    final GalleryExportResult res = await GalleryExporter.exportVideo(
+      srcPath: recording.filePath,
+      displayName: displayName,
+    );
+    if (!mounted) return;
+    setState(() => _exporting = false);
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: AppColors.surfaceHigh,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        duration: Duration(seconds: res.success ? 4 : 8),
+        content: Text(
+          res.success
+              ? 'Exporté dans Galerie › Movies sous "7MOTION_$displayName"'
+              : 'Export échec : ${res.userFacingError}',
+          style: AppTextStyles.bodyMedium,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -177,6 +220,29 @@ class _RecordingTile extends StatelessWidget {
                   ],
                 ),
               ),
+              // Bouton "Exporter vers Galerie" — appelle MediaStore pour
+              // copier le .ts (rebaptisé .mp4) dans Movies/. Visible
+              // uniquement quand l'enregistrement est terminé. Spinner
+              // pendant l'opération, qui peut prendre 1-3s sur un long clip.
+              if (!inProgress)
+                IconButton(
+                  icon: _exporting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.accent,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.drive_file_move_outline,
+                          color: AppColors.accent,
+                          size: 22,
+                        ),
+                  tooltip: 'Sauvegarder dans la Galerie',
+                  onPressed: _exporting ? null : _exportToGallery,
+                ),
               IconButton(
                 icon: Icon(
                   Icons.delete_outline,

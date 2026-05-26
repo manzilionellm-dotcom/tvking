@@ -33,7 +33,6 @@ import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../onboarding/data/device_class_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
-import '../../recordings/data/gallery_exporter.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
@@ -362,11 +361,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await _setMpvProperty('stream-record', '');
 
       // Laisse à libmpv le temps de FLUSH son buffer sur disque avant
-      // qu'on lise la taille du fichier ou qu'on tente l'export Galerie.
-      // Sans ce délai, on lit un .ts encore en cours d'écriture (taille
-      // 0 ou partielle) → MediaStore refuse / export échoue.
-      // 800 ms = compromis entre UX (snackbar pas trop long à arriver)
-      // et fiabilité (libmpv flush généralement en 200-500 ms).
+      // qu'on lise la taille du fichier. Sans ce délai, on lit un .ts
+      // encore en cours d'écriture (taille partielle).
       await Future<void>.delayed(const Duration(milliseconds: 800));
 
       final Recording? rec = _activeRecording;
@@ -380,29 +376,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       if (mounted) {
         setState(() => _activeRecording = null);
-        _toast('Enregistrement sauvegardé');
-      }
-
-      // Export vers la galerie photo du téléphone — sans bloquer
-      // l'UX. Si l'export échoue, on affiche le motif EXACT remonté
-      // par le code natif (au lieu d'un "indisponible" vague) pour
-      // diagnostiquer en live.
-      if (rec != null) {
-        final String displayName = rec.filePath
-            .split('/')
-            .last
-            .replaceAll('.ts', '.mp4');
-        final GalleryExportResult res = await GalleryExporter.exportVideo(
-          srcPath: rec.filePath,
-          displayName: displayName,
+        // UX change : on ne tente PLUS l'export Galerie auto ici.
+        // Raison : libmpv peut prendre plusieurs secondes à finaliser
+        // le fichier sur certains flux, et un export auto silencieux
+        // qui foire est plus frustrant qu'un bouton manuel qu'on
+        // déclenche quand on veut.
+        //
+        // À la place, on dit clairement à l'utilisateur où trouver
+        // son enregistrement, et il pourra tap "Sauvegarder dans la
+        // Galerie" depuis l'écran Mes enregistrements quand il veut
+        // (à ce moment-là le .ts est SÛREMENT complet).
+        _toast(
+          'Sauvegardé — exporte-le depuis Réglages › Mes enregistrements',
         );
-        if (mounted) {
-          if (res.success) {
-            _toast('Sauvegardé dans Galerie › Movies');
-          } else {
-            _toast('Sauvé local — export galerie KO : ${res.userFacingError}');
-          }
-        }
       }
     } catch (e) {
       _toast('Erreur arrêt enregistrement : $e');
