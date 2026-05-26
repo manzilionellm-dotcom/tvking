@@ -5,15 +5,16 @@
 //  flotte au-dessus du contenu en bas d'écran (style iOS 17
 //  / Apple TV / dernières versions Netflix).
 //
-//  5 onglets pour l'instant :
-//    - Accueil (sélectionné par défaut)
-//    - TV Guide (Phase 2)
-//    - Films (futur Xtream VOD)
-//    - Recherche (Phase 1.4)
-//    - Profil (Phase 5)
+//  Refonte UX "utilisable par un enfant ou un vieux" :
+//    - Live          → sport en direct (foot principalement)
+//    - Live TV       → toutes les chaînes TV (accueil)
+//    - Cinéma        → films / VOD
+//    - Séries        → séries TV
+//    - Adulte        → contenu adulte (sera protégé par PIN)
 //
-//  Phase 1 — uniquement visuel, les autres onglets afficheront
-//  un message "Bientôt disponible" pour l'instant.
+//  La recherche et les réglages restent dans l'AppBar du haut
+//  pour ne pas surcharger la nav du bas (5 items max).
+//  Les favoris vivent dans l'AppBar du haut + sur chaque card.
 // =========================================================
 
 import 'dart:ui';
@@ -34,11 +35,11 @@ class FloatingBottomNav extends StatelessWidget {
   final void Function(int index) onTap;
 
   static const List<_NavItem> _items = <_NavItem>[
-    _NavItem(icon: Icons.home_rounded, label: 'Accueil'),
+    _NavItem(icon: Icons.sports_soccer_rounded, label: 'Live'),
     _NavItem(icon: Icons.live_tv_rounded, label: 'Live TV'),
-    _NavItem(icon: Icons.search_rounded, label: 'Recherche'),
-    _NavItem(icon: Icons.favorite_rounded, label: 'Favoris'),
-    _NavItem(icon: Icons.account_circle_outlined, label: 'Profil'),
+    _NavItem(icon: Icons.movie_creation_outlined, label: 'Cinéma'),
+    _NavItem(icon: Icons.theaters_rounded, label: 'Séries'),
+    _NavItem(icon: Icons.lock_outline_rounded, label: 'Adulte'),
   ];
 
   @override

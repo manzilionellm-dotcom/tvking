@@ -60,7 +60,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentNavIndex = 0;
+  // Index 1 = "Live TV" sur la nouvelle BottomNav (la nav refaite
+  // a Live en 0 et Live TV en 1, et l'accueil EST Live TV).
+  int _currentNavIndex = 1;
   final FavoritesRepoSnapshot _favSnap = FavoritesRepoSnapshot();
 
   /// Cache mémoïsé du bucketing par genre. La home se rebuild à
@@ -470,26 +472,34 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ----- Bottom Nav -----
+  //
+  //  Refonte UX :
+  //    0 = Live      (sport en direct, foot principalement)
+  //    1 = Live TV   (accueil = vue par défaut, ce qu'on voit déjà)
+  //    2 = Cinéma    (films / VOD)
+  //    3 = Séries    (séries TV)
+  //    4 = Adulte    (contenu adulte ; PIN parental à ajouter plus tard)
 
   void _onNavTap(int index) {
     setState(() => _currentNavIndex = index);
     switch (index) {
       case 0:
-        break; // déjà sur Accueil
+        _openSection('Live', ChannelGenre.sports).then((_) => _resetNav());
       case 1:
-        _openLiveTV().then((_) => _resetNav());
+        break; // déjà sur l'accueil Live TV
       case 2:
-        _openSearch().then((_) => _resetNav());
+        _openSection('Cinéma', ChannelGenre.movies).then((_) => _resetNav());
       case 3:
-        _openFavorites().then((_) => _resetNav());
+        _openSection('Séries', ChannelGenre.series).then((_) => _resetNav());
       case 4:
-        _openSettings().then((_) => _resetNav());
+        _openSection('Adulte', ChannelGenre.adult).then((_) => _resetNav());
     }
   }
 
   void _resetNav() {
     Future<void>.delayed(const Duration(milliseconds: 600), () {
-      if (mounted) setState(() => _currentNavIndex = 0);
+      // Reset sur 1 = Live TV = accueil par défaut (cf. _currentNavIndex)
+      if (mounted) setState(() => _currentNavIndex = 1);
     });
   }
 }
