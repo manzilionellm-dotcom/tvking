@@ -23,6 +23,8 @@ import '../../device/data/remote_config_repository.dart';
 import '../../device/presentation/device_id_card.dart';
 import '../../player/data/player_settings.dart';
 import '../../recordings/presentation/recordings_screen.dart';
+import '../../security/data/biometric_auth.dart';
+import '../../security/data/lock_settings.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -125,6 +127,17 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
             ),
+
+            // ====== SÉCURITÉ ======
+            //  Verrouillage biométrique à l'ouverture. Demande
+            //  l'empreinte digitale (ou le PIN/pattern système en
+            //  fallback) au démarrage à froid. Aucun re-lock quand
+            //  l'app revient du background — choix UX déclaré par
+            //  le client. Si le device n'a aucune méthode d'auth
+            //  configurée, le toggle n'a aucun effet (Android refuse
+            //  de bloquer un device sans verrouillage).
+            _SectionTitle('Sécurité'),
+            const _LockToggleTile(),
 
             // ====== STOCKAGE ======
             _SectionTitle('Stockage'),
@@ -235,6 +248,72 @@ class SettingsScreen extends StatelessWidget {
 // ============================================================
 //  Composants internes
 // ============================================================
+
+/// Toggle "Verrouiller à l'ouverture". Si l'utilisateur active le
+/// switch, on lance IMMÉDIATEMENT le prompt d'auth biométrique en
+/// guise de test — si ça échoue (pas d'empreinte enrôlée, pas de
+/// PIN configuré...), on n'active pas le réglage, pour éviter que
+/// l'user se retrouve coincé hors de l'app à la prochaine ouverture.
+class _LockToggleTile extends StatefulWidget {
+  const _LockToggleTile();
+
+  @override
+  State<_LockToggleTile> createState() => _LockToggleTileState();
+}
+
+class _LockToggleTileState extends State<_LockToggleTile> {
+  bool? _enabled;
+
+  @override
+  void initState() {
+    super.initState();
+    LockSettings.instance.isLockEnabled().then((bool e) {
+      if (mounted) setState(() => _enabled = e);
+    });
+  }
+
+  Future<void> _toggle(bool value) async {
+    if (value) {
+      // Activation : on demande l'auth UNE FOIS pour vérifier que
+      // l'utilisateur peut bien déverrouiller son téléphone.
+      final bool ok = await BiometricAuth.instance.authenticate(
+        reason: 'Confirme avec ton empreinte ou PIN pour activer le verrouillage',
+      );
+      if (!ok) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Verrouillage non activé — auth échouée ou pas '
+                'd\'empreinte / PIN configurés sur ce téléphone.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+    }
+    await LockSettings.instance.setLockEnabled(value);
+    if (mounted) setState(() => _enabled = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_enabled == null) {
+      // Placeholder pendant le chargement SharedPreferences (~5 ms)
+      return const SizedBox(height: 56);
+    }
+    return _SwitchTile(
+      icon: Icons.fingerprint,
+      title: 'Verrouiller à l\'ouverture',
+      subtitle:
+          'Demande l\'empreinte ou PIN au démarrage de l\'app. '
+          'Pas de re-verrouillage si tu reviens du multitâche.',
+      value: _enabled!,
+      onChanged: _toggle,
+    );
+  }
+}
 
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle(this.text);

@@ -120,6 +120,14 @@ dependencies:
   # officiel Flutter, fonctionne sur Android et iOS.
   multicast_dns: ^0.3.2+8
 
+  # Authentification biométrique — empreinte digitale, Face Unlock,
+  # ou code PIN/mot de passe système Android en fallback. Plugin
+  # officiel Flutter. Sert au "Verrouillage à l'ouverture" de l'app.
+  # En cas d'absence de biométrie configurée sur le device, fallback
+  # automatique sur le PIN/pattern/mot-de-passe de l'écran de
+  # verrouillage Android — pas besoin de gérer notre propre PIN.
+  local_auth: ^2.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

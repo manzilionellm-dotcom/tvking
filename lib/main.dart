@@ -40,6 +40,8 @@ import 'features/onboarding/presentation/onboarding_screen.dart';
 import 'features/player/data/player_settings.dart';
 import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/playlist_repository.dart';
+import 'features/security/data/lock_settings.dart';
+import 'features/security/presentation/lock_screen.dart';
 import 'features/recordings/data/recording_repository.dart';
 
 Future<void> main() async {
@@ -186,6 +188,11 @@ class _AppEntry extends StatefulWidget {
 class _AppEntryState extends State<_AppEntry> {
   bool? _onboardingDone;
   bool _devicePicked = false;
+  // Verrouillage biométrique : null = pas encore chargé, true/false = état
+  // du réglage `security.lock_on_open`. Tant que `_unlocked` est false ET
+  // que le lock est activé, on affiche `LockScreen` au lieu de l'app.
+  bool? _lockEnabled;
+  bool _unlocked = false;
 
   @override
   void initState() {
@@ -201,12 +208,32 @@ class _AppEntryState extends State<_AppEntry> {
         });
       }
     });
+
+    // Charge le réglage lock_on_open en parallèle. L'app n'attend pas
+    // ce flag pour montrer le splash, mais on en a besoin avant le
+    // premier rendu d'écran fonctionnel pour décider lock vs app.
+    LockSettings.instance.isLockEnabled().then((bool enabled) {
+      if (mounted) {
+        setState(() => _lockEnabled = enabled);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_onboardingDone == null) {
+    // Splash tant qu'on n'a pas chargé les flags persistés.
+    if (_onboardingDone == null || _lockEnabled == null) {
       return const _Splash();
+    }
+
+    // 0) Verrouillage biométrique — AVANT tout autre écran. L'utilisateur
+    //    doit s'authentifier (empreinte ou PIN système) si le réglage
+    //    `security.lock_on_open` est activé. Ne s'applique qu'au cold
+    //    start ; pas de re-lock sur retour de background (choix UX).
+    if (_lockEnabled == true && !_unlocked) {
+      return LockScreen(
+        onUnlocked: () => setState(() => _unlocked = true),
+      );
     }
 
     // 1) Première étape : choix de la classe d'appareil
