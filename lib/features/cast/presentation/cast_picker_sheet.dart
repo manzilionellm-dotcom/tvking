@@ -94,36 +94,42 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
   Future<void> _onDeviceTap(CastDevice device) async {
     final CastManager mgr = CastManager.instance;
 
-    // Chromecast → on n'a pas le protocole CASTV2 natif. Mais les
-    // Chromecasts / Google TV ont tous Chrome installé, donc on
-    // bascule sur le fallback web (QR code) qui marche très bien
-    // sur ces appareils. L'utilisateur ouvre Chrome sur la TV,
-    // scanne le QR, et c'est parti.
+    // ----- Chromecast : on tente, on prévient si ça marche pas -----
+    //  Le protocole CASTV2 natif n'est pas implémenté dans l'app
+    //  (binaire protobuf sur TLS, plusieurs jours de travail). On
+    //  affiche un dialogue honnête à l'utilisateur : "Le cast natif
+    //  Chromecast n'est pas dispo. Tu veux passer par le navigateur
+    //  de la TV ?". S'il accepte → QR. S'il refuse → on reste sur
+    //  le picker, peut-être qu'il a une autre TV DLNA détectée.
     if (device.kind == CastDeviceKind.chromecast ||
         device.kind == CastDeviceKind.googleCast) {
-      // On capture le navigator du parent AVANT de pop, pour pouvoir
-      // ouvrir le sheet web setup juste après sans risque de context
-      // déactivé.
-      final NavigatorState rootNav = Navigator.of(context);
-      final ScaffoldMessengerState messenger =
-          ScaffoldMessenger.of(context);
-      rootNav.pop();
-      messenger.clearSnackBars();
-      messenger.showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: AppColors.accent,
+      final bool? useBrowser = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext ctx) => AlertDialog(
+          title: Text('${device.name}'),
           content: Text(
-            'Chromecast détecté — on passe par son navigateur.',
-            style: AppTextStyles.bodyMedium.copyWith(
-              color: Colors.black,
-              fontWeight: FontWeight.w700,
-            ),
+            'Le cast natif Chromecast n\'est pas encore disponible '
+            'dans 7 MOTION. Mais on peut utiliser le navigateur web '
+            'de ta TV — ouvre Chrome / l\'app YouTube sur ${device.name} '
+            'puis scanne le QR code qu\'on va t\'afficher.',
+            style: AppTextStyles.bodyMedium.copyWith(height: 1.5),
           ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Utiliser le navigateur'),
+            ),
+          ],
         ),
       );
-      // Ouvre le sheet web setup avec le context du Navigator parent
-      // (toujours monté après le pop du picker).
+      if (useBrowser != true) return;
+
+      final NavigatorState rootNav = Navigator.of(context);
+      rootNav.pop();
       await showWebCastSetup(rootNav.context);
       return;
     }
@@ -158,11 +164,36 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
       _toast(context, 'Envoi vers ${device.name}', accent: true);
     } on Exception catch (e) {
       if (!mounted) return;
-      _toast(
-        context,
-        e.toString().replaceFirst('Exception: ', ''),
-        error: true,
+      // Échec du cast natif → on propose au client le QR comme
+      // plan B (le device a peut-être un navigateur web).
+      final String errMsg = e.toString().replaceFirst('Exception: ', '');
+      final bool? useBrowser = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext ctx) => AlertDialog(
+          title: Text('Cast vers ${device.name} a échoué'),
+          content: Text(
+            '$errMsg\n\nTu veux essayer via le navigateur web de '
+            'ta TV à la place ?',
+            style: AppTextStyles.bodyMedium.copyWith(height: 1.5),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Cast via navigateur'),
+            ),
+          ],
+        ),
       );
+      if (!mounted) return;
+      if (useBrowser == true) {
+        final NavigatorState rootNav = Navigator.of(context);
+        rootNav.pop();
+        await showWebCastSetup(rootNav.context);
+      }
     }
   }
 
