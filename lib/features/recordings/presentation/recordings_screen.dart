@@ -9,6 +9,9 @@
 //    - actions : Lecture / Supprimer
 // =========================================================
 
+import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -98,7 +101,28 @@ class _RecordingTileState extends State<_RecordingTile> {
   bool _exporting = false;
   bool _stopping = false;
 
+  /// Timer qui ticke chaque seconde sur les recordings EN COURS pour
+  /// rafraîchir l'affichage du compteur de bytes live. Null sur les
+  /// recordings finalisés (pas besoin de rebuild).
+  Timer? _liveTicker;
+
   Recording get recording => widget.recording;
+
+  @override
+  void initState() {
+    super.initState();
+    if (recording.endedAt == null) {
+      _liveTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _liveTicker?.cancel();
+    super.dispose();
+  }
 
   /// Arrête un enregistrement "EN COURS" depuis la liste.
   /// Reproduit la séquence du player :
@@ -203,23 +227,13 @@ class _RecordingTileState extends State<_RecordingTile> {
           ),
           child: Row(
             children: <Widget>[
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: inProgress
-                      ? AppColors.live.withValues(alpha: 0.18)
-                      : AppColors.accent.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  inProgress
-                      ? Icons.fiber_manual_record_rounded
-                      : Icons.movie_creation_outlined,
-                  color:
-                      inProgress ? AppColors.live : AppColors.accent,
-                  size: 22,
-                ),
+              // Logo de la chaîne (CachedNetworkImage) avec fallback
+              // sur l'icône movie si pas de logo en DB. Sur les
+              // recordings EN COURS, on superpose un petit point rouge
+              // clignotant en haut-droite pour le côté "REC live".
+              _RecordingThumb(
+                logoUrl: recording.channelLogoUrl,
+                inProgress: inProgress,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -248,7 +262,7 @@ class _RecordingTileState extends State<_RecordingTile> {
                     const SizedBox(height: 4),
                     Row(
                       children: <Widget>[
-                        if (inProgress)
+                        if (inProgress) ...<Widget>[
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
@@ -263,8 +277,14 @@ class _RecordingTileState extends State<_RecordingTile> {
                                 fontSize: 9,
                               ),
                             ),
-                          )
-                        else ...<Widget>[
+                          ),
+                          // Compteur de bytes live — rafraîchi chaque
+                          // seconde par _liveTicker. Lit la taille
+                          // directement depuis le job actif du downloader
+                          // (si présent), sinon 0 (cas orphelin).
+                          const SizedBox(width: 6),
+                          _miniTag(_liveBytesLabel()),
+                        ] else ...<Widget>[
                           _miniTag(recording.durationLabel),
                           const SizedBox(width: 6),
                           _miniTag(recording.sizeLabel),
@@ -343,6 +363,24 @@ class _RecordingTileState extends State<_RecordingTile> {
         ),
       ),
     );
+  }
+
+  /// Convertit bytesWritten du downloader (live) en label lisible.
+  /// Affiche "0 B" si pas de job actif (cas d'un orphelin laissé par
+  /// un crash : la card reste EN COURS mais le downloader n'a plus
+  /// de _Job pour ce filePath).
+  String _liveBytesLabel() {
+    final int bytes =
+        HttpRecordingDownloader.instance.bytesWrittenFor(recording.filePath);
+    if (bytes <= 0) return '0 B';
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    }
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
   Widget _miniTag(String text) {
@@ -469,6 +507,132 @@ class _RecordingPlayerState extends State<_RecordingPlayer> {
                               ImageChunkEvent? p) =>
                           p == null ? child : const SizedBox.shrink(),
                     ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Vignette d'enregistrement — affiche le LOGO de la chaîne (cached)
+/// avec un padding sombre derrière, et un petit point rouge clignotant
+/// en haut-droite si le recording est encore EN COURS.
+///
+/// Fallback gracieux : si pas de logoUrl en DB, on retombe sur
+/// l'icône movie/REC d'origine.
+class _RecordingThumb extends StatefulWidget {
+  const _RecordingThumb({
+    required this.logoUrl,
+    required this.inProgress,
+  });
+
+  final String? logoUrl;
+  final bool inProgress;
+
+  @override
+  State<_RecordingThumb> createState() => _RecordingThumbState();
+}
+
+class _RecordingThumbState extends State<_RecordingThumb>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.inProgress) {
+      _pulse = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 900),
+      )..repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _RecordingThumb oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Si le recording passe de EN COURS → fini, on arrête la pulsation.
+    if (oldWidget.inProgress && !widget.inProgress) {
+      _pulse?.dispose();
+      _pulse = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String? logo = widget.logoUrl;
+    final bool hasLogo = logo != null && logo.isNotEmpty;
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: Stack(
+        children: <Widget>[
+          // Fond + logo (ou fallback icon)
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: widget.inProgress
+                  ? AppColors.live.withValues(alpha: 0.18)
+                  : AppColors.surfaceHigh,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            padding: const EdgeInsets.all(6),
+            child: hasLogo
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: CachedNetworkImage(
+                      imageUrl: logo,
+                      fit: BoxFit.contain,
+                      fadeInDuration: const Duration(milliseconds: 200),
+                      errorWidget: (_, __, ___) => Icon(
+                        Icons.movie_creation_outlined,
+                        color: widget.inProgress
+                            ? AppColors.live
+                            : AppColors.accent,
+                        size: 22,
+                      ),
+                    ),
+                  )
+                : Icon(
+                    widget.inProgress
+                        ? Icons.fiber_manual_record_rounded
+                        : Icons.movie_creation_outlined,
+                    color: widget.inProgress
+                        ? AppColors.live
+                        : AppColors.accent,
+                    size: 22,
+                  ),
+          ),
+          // Point rouge clignotant en haut-droite (uniquement EN COURS).
+          // Tap visuel "REC live" — exactement le pattern caméra/Twitch.
+          if (widget.inProgress && _pulse != null)
+            Positioned(
+              top: 4,
+              right: 4,
+              child: FadeTransition(
+                opacity: Tween<double>(begin: 0.35, end: 1.0).animate(_pulse!),
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: AppColors.live,
+                    shape: BoxShape.circle,
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: AppColors.live.withValues(alpha: 0.6),
+                        blurRadius: 6,
+                      ),
+                    ],
                   ),
                 ),
               ),
