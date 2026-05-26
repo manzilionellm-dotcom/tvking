@@ -16,7 +16,9 @@
 // =========================================================
 
 import 'dart:async';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
@@ -327,6 +329,34 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _toast('Enregistrement non supporté sur ce flux');
         return;
       }
+
+      // Vérification : libmpv ouvre-t-il vraiment le fichier ?
+      // `setProperty('stream-record', ...)` retourne sans erreur même
+      // quand mpv ignore silencieusement (cas constaté côté user :
+      // fichier 0 octets, "0 min, 0 B" dans Mes enregistrements).
+      // On attend 2 secondes puis on check `File.exists()` + length > 0.
+      // Si non, on annule tout proprement avec un message clair.
+      await Future<void>.delayed(const Duration(seconds: 2));
+      final File checkFile = File(path);
+      final bool fileOk = await checkFile.exists() &&
+          (await checkFile.length()) > 0;
+      if (!fileOk) {
+        if (kDebugMode) {
+          debugPrint(
+            '[Rec] libmpv n\'a pas créé/écrit dans $path après 2s — abort',
+          );
+        }
+        // Tente de stopper le set en cours côté libmpv
+        await _setMpvProperty('stream-record', '');
+        if (mounted) {
+          _toast(
+            'libmpv refuse d\'enregistrer ce flux '
+            '(format incompatible ou non bufferisable)',
+          );
+        }
+        return;
+      }
+
       final Recording rec =
           await RecordingRepository.instance.startRecording(
         channelId: _currentChannel.id,
@@ -337,10 +367,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       // Démarre le ForegroundService natif qui empêche Android de
       // tuer notre process quand l'utilisateur passe en arrière-plan
-      // (lire un SMS, prendre un appel, etc.) pendant l'enregistrement.
-      // Best effort : si le service refuse de démarrer (permission,
-      // OS exotique), l'enregistrement continue quand même mais sans
-      // la garantie anti-kill.
+      // pendant l'enregistrement.
       await RecordingService.instance.start(
         title: widget.overrideTitle != null && widget.overrideTitle!.isNotEmpty
             ? '${_currentChannel.cleanName} – ${widget.overrideTitle}'
@@ -349,7 +376,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       if (mounted) {
         setState(() => _activeRecording = rec);
-        _toast('Enregistrement démarré – continue même hors écran');
+        _toast('Enregistrement démarré — laisse tourner ≥ 10 secondes');
       }
     } catch (e) {
       _toast('Impossible de démarrer : $e');
