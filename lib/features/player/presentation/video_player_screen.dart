@@ -389,17 +389,26 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _stopRecording() async {
     try {
-      // Arrête le downloader HTTP — flush + close du fichier proprement.
-      // Retourne le nombre exact d'octets écrits (utile pour le toast).
-      final int bytes = await HttpRecordingDownloader.instance.stop();
-
       final Recording? rec = _activeRecording;
+
+      // Arrête UNIQUEMENT le job de CE recording (par filePath).
+      // Critique pour les recordings parallèles : sinon on tuerait
+      // aussi les autres chaînes que l'user enregistre en même temps
+      // depuis d'autres sessions player.
+      final int bytes = rec != null
+          ? await HttpRecordingDownloader.instance.stop(filePath: rec.filePath)
+          : await HttpRecordingDownloader.instance.stop();
+
       if (rec != null) {
         await RecordingRepository.instance.finishRecording(rec);
       }
 
-      // Arrête le ForegroundService natif et retire la notification.
-      await RecordingService.instance.stop();
+      // Le ForegroundService natif ne s'arrête QUE si plus AUCUN
+      // recording n'est actif. Sinon on garde le service vivant
+      // pour protéger les autres enregistrements parallèles.
+      if (HttpRecordingDownloader.instance.activeCount == 0) {
+        await RecordingService.instance.stop();
+      }
 
       if (mounted) {
         setState(() => _activeRecording = null);

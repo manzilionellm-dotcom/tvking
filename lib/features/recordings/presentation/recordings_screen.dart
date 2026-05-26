@@ -113,13 +113,19 @@ class _RecordingTileState extends State<_RecordingTile> {
     if (_stopping) return;
     setState(() => _stopping = true);
     try {
-      // Best-effort : si le singleton ne tourne pas, il retourne 0.
+      // Stoppe UNIQUEMENT le job de ce recording (par filePath).
+      // Best-effort : si le job n'existe pas (orphelin DB), no-op.
       try {
-        await HttpRecordingDownloader.instance.stop();
+        await HttpRecordingDownloader.instance
+            .stop(filePath: recording.filePath);
       } catch (_) {}
-      try {
-        await RecordingService.instance.stop();
-      } catch (_) {}
+      // ForegroundService : on l'arrête seulement si plus aucun
+      // recording n'est actif (cas multi-recordings parallèles).
+      if (HttpRecordingDownloader.instance.activeCount == 0) {
+        try {
+          await RecordingService.instance.stop();
+        } catch (_) {}
+      }
       await RecordingRepository.instance.finishRecording(recording);
       if (!mounted) return;
       ScaffoldMessenger.of(context).clearSnackBars();

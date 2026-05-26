@@ -17,6 +17,22 @@
 //
 //  Avantage : on contrôle TOUT, on peut reporter la taille en temps
 //  réel, et libmpv ne nous bloque plus silencieusement.
+//
+//  V2 — Recordings parallèles :
+//    L'user a demandé "ajoute que je peux enregistrer plus de
+//    10 chaînes en même temps". On garde l'API publique singleton
+//    mais en interne on maintient une `Map<String, _Job>` keyed
+//    par filePath. Chaque job possède son propre HttpClient,
+//    StreamSubscription, IOSink et compteur de bytes — totalement
+//    isolés les uns des autres.
+//
+//    start(streamUrl, filePath) crée un nouveau job (sans toucher
+//    aux autres). stop(filePath) arrête juste celui demandé.
+//    stop() sans argument = arrête TOUT (legacy fallback).
+//
+//    Pas de limite logicielle au nombre de jobs simultanés ; la
+//    limite réelle = nb de sockets que l'OS autorise (~1000) et
+//    surtout la bande passante / limite du fournisseur IPTV.
 // =========================================================
 
 import 'dart:async';
@@ -24,46 +40,61 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
-/// Singleton : un seul enregistrement actif à la fois côté téléphone.
-/// (Pas de support multi-channel parallèle pour V1.)
+/// Singleton qui orchestre N jobs d'enregistrement parallèles.
+/// Chaque "job" = une chaîne en cours de capture (1 connexion HTTP
+/// dédiée + 1 IOSink dédié vers son fichier .ts).
 class HttpRecordingDownloader {
   HttpRecordingDownloader._();
   static final HttpRecordingDownloader instance = HttpRecordingDownloader._();
 
-  HttpClient? _client;
-  StreamSubscription<List<int>>? _sub;
-  IOSink? _sink;
-  String? _currentPath;
-  int _bytesWritten = 0;
-  bool _isRecording = false;
+  /// Jobs actifs, keyed par filePath (unique par recording).
+  final Map<String, _Job> _jobs = <String, _Job>{};
 
-  bool get isRecording => _isRecording;
-  int get bytesWritten => _bytesWritten;
-  String? get currentPath => _currentPath;
+  /// `true` si au moins un job est actif (utile pour le ForegroundService :
+  /// on le maintient en vie tant qu'au moins 1 enregistrement tourne).
+  bool get isRecording => _jobs.isNotEmpty;
 
-  /// Démarre l'enregistrement. Retourne `true` si l'init s'est bien
-  /// passée (connexion établie, fichier créé, premier byte arrivé en
-  /// `<2s`). Retourne `false` en cas d'erreur HTTP / réseau / disque,
-  /// et nettoie ses ressources.
+  /// Nombre de recordings en cours en parallèle.
+  int get activeCount => _jobs.length;
+
+  /// `true` si ce filePath précis est en cours d'enregistrement.
+  bool isRecordingFile(String filePath) => _jobs.containsKey(filePath);
+
+  /// Total cumulé de tous les jobs actifs (utile pour debug).
+  int get bytesWritten {
+    int sum = 0;
+    for (final _Job j in _jobs.values) {
+      sum += j.bytesWritten;
+    }
+    return sum;
+  }
+
+  /// Bytes écrits pour un fichier précis (0 si pas trouvé).
+  int bytesWrittenFor(String filePath) =>
+      _jobs[filePath]?.bytesWritten ?? 0;
+
+  /// Démarre un nouveau job d'enregistrement vers `filePath`.
+  /// Plusieurs jobs peuvent coexister tant qu'ils écrivent dans
+  /// des fichiers différents. Retourne `false` si :
+  ///   - ce filePath est DÉJÀ en cours (double-start ignoré)
+  ///   - la requête HTTP échoue
+  ///   - l'ouverture du fichier échoue
   Future<bool> start({
     required String streamUrl,
     required String filePath,
   }) async {
-    if (_isRecording) {
-      if (kDebugMode) debugPrint('[Rec] déjà en cours');
+    if (_jobs.containsKey(filePath)) {
+      if (kDebugMode) debugPrint('[Rec] $filePath déjà en cours');
       return false;
     }
 
+    final _Job job = _Job(filePath: filePath);
     try {
-      _client = HttpClient();
-      _client!.connectionTimeout = const Duration(seconds: 15);
-      // Important pour le streaming : ne PAS suivre les redirects
-      // automatiquement → on les gère manuellement pour avoir l'URL finale.
-      // Mais HttpClient suit par défaut jusqu'à 5 redirects, et c'est
-      // ce qu'on veut ici (Xtream redirige souvent vers une autre IP).
+      job.client = HttpClient();
+      job.client!.connectionTimeout = const Duration(seconds: 15);
 
       final HttpClientRequest req =
-          await _client!.getUrl(Uri.parse(streamUrl));
+          await job.client!.getUrl(Uri.parse(streamUrl));
       // Mime un client de streaming standard pour ne pas être bloqué
       // par les Xtream qui filtrent les User-Agent "Dart".
       req.headers.set(HttpHeaders.userAgentHeader, 'VLC/3.0.18 LibVLC/3.0.18');
@@ -74,84 +105,111 @@ class HttpRecordingDownloader {
         if (kDebugMode) {
           debugPrint('[Rec] HTTP ${resp.statusCode} sur $streamUrl');
         }
-        _client?.close(force: true);
-        _client = null;
+        job.client?.close(force: true);
         return false;
       }
 
       final File file = File(filePath);
       await file.parent.create(recursive: true);
-      _sink = file.openWrite();
-      _currentPath = filePath;
-      _bytesWritten = 0;
-      _isRecording = true;
+      job.sink = file.openWrite();
+      _jobs[filePath] = job;
 
-      // Listen au flux. Chaque chunk reçu = on write + on accumule
-      // la taille (utile pour le snackbar de feedback à l'arrêt).
-      _sub = resp.listen(
+      job.sub = resp.listen(
         (List<int> chunk) {
           try {
-            _sink?.add(chunk);
-            _bytesWritten += chunk.length;
+            job.sink?.add(chunk);
+            job.bytesWritten += chunk.length;
           } catch (e) {
             if (kDebugMode) debugPrint('[Rec] sink write error: $e');
           }
         },
         onError: (Object e, StackTrace s) {
-          if (kDebugMode) debugPrint('[Rec] stream error: $e');
-          _cleanup();
+          if (kDebugMode) debugPrint('[Rec] stream error ($filePath): $e');
+          _cleanupJob(filePath);
         },
         onDone: () {
           if (kDebugMode) {
-            debugPrint('[Rec] stream done, $_bytesWritten bytes');
+            debugPrint(
+                '[Rec] stream done ($filePath), ${job.bytesWritten} bytes');
           }
-          _cleanup();
+          _cleanupJob(filePath);
         },
         cancelOnError: true,
       );
 
-      if (kDebugMode) debugPrint('[Rec] downloader started → $filePath');
+      if (kDebugMode) {
+        debugPrint(
+            '[Rec] downloader started → $filePath (${_jobs.length} actifs)');
+      }
       return true;
     } catch (e) {
-      if (kDebugMode) debugPrint('[Rec] start failed: $e');
-      _cleanup();
+      if (kDebugMode) debugPrint('[Rec] start failed ($filePath): $e');
+      _cleanupJob(filePath);
       return false;
     }
   }
 
-  /// Arrête l'enregistrement, ferme le fichier, libère le client HTTP.
-  /// Retourne le nombre total d'octets écrits — utile pour le snackbar.
-  Future<int> stop() async {
-    final int finalSize = _bytesWritten;
-    await _sub?.cancel();
-    _sub = null;
-    try {
-      await _sink?.flush();
-      await _sink?.close();
-    } catch (_) {}
-    _sink = null;
-    try {
-      _client?.close(force: true);
-    } catch (_) {}
-    _client = null;
-    _isRecording = false;
-    if (kDebugMode) debugPrint('[Rec] stopped at $finalSize bytes');
-    return finalSize;
+  /// Arrête un job d'enregistrement précis (par filePath) ou TOUS
+  /// les jobs si `filePath == null` (legacy : maintient la compat
+  /// avec l'ancien code qui appelait `.stop()` sans argument).
+  /// Retourne le total d'octets écrits pour le(s) job(s) arrêté(s).
+  Future<int> stop({String? filePath}) async {
+    if (filePath != null) {
+      final _Job? job = _jobs[filePath];
+      if (job == null) return 0;
+      final int size = job.bytesWritten;
+      await _stopJob(job);
+      _jobs.remove(filePath);
+      if (kDebugMode) {
+        debugPrint(
+            '[Rec] stopped $filePath ($size bytes, ${_jobs.length} actifs restants)');
+      }
+      return size;
+    }
+    // Mode "stop all" → arrête tous les jobs et retourne le total.
+    int total = 0;
+    final List<_Job> all = _jobs.values.toList();
+    for (final _Job job in all) {
+      total += job.bytesWritten;
+      await _stopJob(job);
+    }
+    _jobs.clear();
+    if (kDebugMode) debugPrint('[Rec] stopped ALL ($total bytes total)');
+    return total;
   }
 
-  /// Cleanup interne sur erreur stream ou onDone naturel. Idempotent.
-  void _cleanup() {
-    _isRecording = false;
-    try {
-      _sink?.flush();
-    } catch (_) {}
-    try {
-      _sink?.close();
-    } catch (_) {}
-    _sink = null;
-    try {
-      _client?.close(force: true);
-    } catch (_) {}
-    _client = null;
+  /// Cleanup d'un job sans le retirer de la map (utilisé par onDone /
+  /// onError quand le stream se termine de lui-même côté serveur).
+  void _cleanupJob(String filePath) {
+    final _Job? job = _jobs.remove(filePath);
+    if (job == null) return;
+    _stopJob(job);
   }
+
+  Future<void> _stopJob(_Job job) async {
+    try {
+      await job.sub?.cancel();
+    } catch (_) {}
+    job.sub = null;
+    try {
+      await job.sink?.flush();
+      await job.sink?.close();
+    } catch (_) {}
+    job.sink = null;
+    try {
+      job.client?.close(force: true);
+    } catch (_) {}
+    job.client = null;
+  }
+}
+
+/// État interne d'un seul recording en cours.
+/// Mutable car les champs sont assignés au fil du start().
+class _Job {
+  _Job({required this.filePath});
+  final String filePath;
+  HttpClient? client;
+  StreamSubscription<List<int>>? sub;
+  IOSink? sink;
+  int bytesWritten = 0;
 }
