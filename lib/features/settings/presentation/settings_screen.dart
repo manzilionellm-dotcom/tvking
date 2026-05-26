@@ -17,6 +17,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/theme_mode_repository.dart';
 import '../../about/presentation/about_screen.dart';
 import '../../admin/presentation/admin_pin_screen.dart';
+import '../../cast/presentation/cast_diagnostics_screen.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../device/data/remote_config_repository.dart';
 import '../../device/presentation/device_id_card.dart';
@@ -150,6 +151,26 @@ class SettingsScreen extends StatelessWidget {
                   }
                 }
               },
+            ),
+
+            // ====== CAST ======
+            //  Outil de diagnostic pour identifier les TVs qui
+            //  refusent le cast et lesquelles stratégies marchent
+            //  (direct / relay / metadata minimale). Le rapport
+            //  JSON copiable se colle dans une issue ou dans
+            //  lib/features/cast/COMPATIBILITY.md pour empiler
+            //  les données empiriques.
+            _SectionTitle('Cast'),
+            _ActionTile(
+              icon: Icons.troubleshoot_rounded,
+              title: 'Diagnostic cast',
+              subtitle:
+                  'Teste plusieurs chaînes sur une TV et rapporte la stratégie qui marche.',
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => const CastDiagnosticsScreen(),
+                ),
+              ),
             ),
 
             // ====== À PROPOS ======

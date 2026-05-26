@@ -18,6 +18,7 @@ import 'package:flutter/foundation.dart';
 
 import '../domain/cast_device.dart';
 import 'cast_progress.dart';
+import 'cast_session_diagnostic.dart';
 import 'cast_transport.dart';
 import 'dlna_capabilities.dart';
 import 'dlna_profiles.dart';
@@ -56,6 +57,17 @@ class CastManager extends ChangeNotifier {
   /// pour afficher des messages humains au lieu de stack traces.
   CastProgress _progress = CastProgress.idle;
   CastProgress get progress => _progress;
+
+  /// Ring buffer des 20 dernières sessions de cast. L'écran Diagnostic
+  /// les liste pour identifier les patterns d'échec (quelle TV ?
+  /// quelle stratégie a marché ? quel genre de stream tombe ?).
+  /// Réinitialisé seulement à la mort du process — pas persisté
+  /// sur disque, c'est de la donnée de session.
+  static const int _kMaxRecentDiagnostics = 20;
+  final List<CastSessionDiagnostic> _recentDiagnostics =
+      <CastSessionDiagnostic>[];
+  List<CastSessionDiagnostic> get recentDiagnostics =>
+      List<CastSessionDiagnostic>.unmodifiable(_recentDiagnostics);
 
   /// Device "sélectionné" — différent du device "casting actif".
   /// Quand l'utilisateur ouvre le picker global (depuis Home, Live...)
@@ -205,6 +217,8 @@ class CastManager extends ChangeNotifier {
     CastDevice device, {
     required String streamUrl,
     required String title,
+    String? channelName,
+    String? channelGenre,
   }) async {
     stopDiscovery();
     _state = CastState.connecting;
@@ -213,10 +227,31 @@ class CastManager extends ChangeNotifier {
     _currentRelayUrl = null;
     _setProgress(CastProgress.validating);
 
+    final CastSessionDiagnostic diag = CastSessionDiagnostic(
+      startedAt: DateTime.now(),
+      device: device,
+      originalUrl: streamUrl,
+      channelName: channelName,
+      channelGenre: channelGenre,
+    );
+    final Stopwatch totalSw = Stopwatch()..start();
+
     try {
       // (1) Pré-vol : on vérifie l'URL avant de la pousser au récepteur.
       final StreamProbeResult probe =
           await StreamProbe.instance.probe(streamUrl);
+      diag.probe = ProbeSummary(
+        success: probe.success,
+        finalUrl: probe.finalUrl, // redacté à l'export JSON
+        redirectCount: probe.redirectCount,
+        timeToFirstByteMs: probe.timeToFirstByte,
+        mime: probe.mime,
+        contentLength: probe.contentLength,
+        acceptsRanges: probe.acceptsRanges,
+        requiresAuth: probe.requiresAuth,
+        errorCode: probe.errorCode,
+        errorReason: probe.errorReason,
+      );
       if (!probe.success) {
         throw Exception(probe.errorReason ?? 'Flux indisponible');
       }
@@ -230,13 +265,36 @@ class CastManager extends ChangeNotifier {
           transport: _transport! as UpnpAvTransport,
           probe: probe,
           title: title,
+          diag: diag,
         );
       } else {
         _setProgress(CastProgress.connecting());
-        await _transport!.playStream(
-          streamUrl: probe.finalUrl,
-          title: title,
-        );
+        final Stopwatch sw = Stopwatch()..start();
+        try {
+          await _transport!.playStream(
+            streamUrl: probe.finalUrl,
+            title: title,
+          );
+          diag.attempts.add(AttemptResult(
+            strategyIndex: 0,
+            strategyName: 'direct',
+            urlKind: 'direct',
+            metadataMode: 'n/a',
+            durationMs: sw.elapsedMilliseconds,
+            success: true,
+          ));
+        } on Exception catch (e) {
+          diag.attempts.add(AttemptResult(
+            strategyIndex: 0,
+            strategyName: 'direct',
+            urlKind: 'direct',
+            metadataMode: 'n/a',
+            durationMs: sw.elapsedMilliseconds,
+            success: false,
+            errorMessage: e.toString(),
+          ));
+          rethrow;
+        }
       }
 
       _currentStreamUrl = streamUrl;
@@ -244,6 +302,7 @@ class CastManager extends ChangeNotifier {
       _selectedDevice = device;
       _state = CastState.casting;
       _setProgress(CastProgress.live);
+      diag.success = true;
     } on Exception catch (e) {
       _state = CastState.error;
       _errorMessage = e.toString();
@@ -253,9 +312,21 @@ class CastManager extends ChangeNotifier {
           details: e.toString(),
         ),
       );
+      diag.finalErrorMessage = e.toString();
       // On garde _device/_transport pour permettre le diagnostic UI ;
       // ils seront vraiment nettoyés au prochain disconnect().
       rethrow;
+    } finally {
+      diag.totalDurationMs = totalSw.elapsedMilliseconds;
+      diag.finalUserMessage = _progress.message;
+      _archiveDiagnostic(diag);
+    }
+  }
+
+  void _archiveDiagnostic(CastSessionDiagnostic d) {
+    _recentDiagnostics.insert(0, d);
+    while (_recentDiagnostics.length > _kMaxRecentDiagnostics) {
+      _recentDiagnostics.removeLast();
     }
   }
 
@@ -271,11 +342,28 @@ class CastManager extends ChangeNotifier {
     required UpnpAvTransport transport,
     required StreamProbeResult probe,
     required String title,
+    required CastSessionDiagnostic diag,
   }) async {
     // Capabilities (Sink) — best-effort, on continue même si vide.
     _setProgress(CastProgress.detecting);
     final DlnaSink sink =
         await DlnaCapabilities.instance.fetchSink(transport.device);
+
+    // Snapshot des caps pour le diagnostic (max 12 entries pour rester
+    // lisible dans le rapport copié).
+    final List<String> profileNames = <String>[];
+    for (final String e in sink.entries) {
+      final List<String> parts = e.split(':');
+      if (parts.length < 4) continue;
+      final RegExpMatch? m =
+          RegExp(r'DLNA\.ORG_PN=([A-Z0-9_]+)').firstMatch(parts[3]);
+      if (m != null) profileNames.add(m.group(1)!);
+    }
+    diag.sink = SinkSummary(
+      entryCount: sink.entries.length,
+      mimeTypes: sink.mimeTypes.take(12).toList(growable: false),
+      profileNames: profileNames.toSet().take(12).toList(growable: false),
+    );
 
     // Profil retenu pour ce flux (informé par MIME + LIVE/VOD heuristique).
     final DlnaProfile profile = DlnaProfiles.select(
@@ -283,6 +371,7 @@ class CastManager extends ChangeNotifier {
       finalMime: probe.mime,
       isLive: probe.isLive,
     );
+    diag.profile = ProfileSummary.from(profile);
 
     // Si le profil n'est pas du tout annoncé dans la Sink, on log mais
     // on tente quand même — la Sink est souvent incomplète.
@@ -311,6 +400,11 @@ class CastManager extends ChangeNotifier {
     Exception? lastError;
     for (int s = startStrategy; s < totalStrategies; s++) {
       final int displayAttempt = s - startStrategy + 1;
+      final Stopwatch attemptSw = Stopwatch()..start();
+      final String strategyName = _strategyName(s);
+      final String urlKind = s == 0 ? 'direct' : 'relay';
+      final String metaName = s == 2 ? 'minimal' : 'full';
+
       try {
         _setProgress(
           CastProgress.connecting(attempt: displayAttempt, total: budget),
@@ -337,9 +431,26 @@ class CastManager extends ChangeNotifier {
         }
 
         await transport.playStream(streamUrl: urlToCast, title: title);
+        diag.attempts.add(AttemptResult(
+          strategyIndex: s,
+          strategyName: strategyName,
+          urlKind: urlKind,
+          metadataMode: metaName,
+          durationMs: attemptSw.elapsedMilliseconds,
+          success: true,
+        ));
         return; // succès
       } on Exception catch (e) {
         lastError = e;
+        diag.attempts.add(AttemptResult(
+          strategyIndex: s,
+          strategyName: strategyName,
+          urlKind: urlKind,
+          metadataMode: metaName,
+          durationMs: attemptSw.elapsedMilliseconds,
+          success: false,
+          errorMessage: e.toString(),
+        ));
         if (s + 1 < totalStrategies) {
           _setProgress(
             CastProgress.retrying(
@@ -352,6 +463,19 @@ class CastManager extends ChangeNotifier {
       }
     }
     throw lastError ?? Exception('Cast DLNA échec inconnu');
+  }
+
+  String _strategyName(int strategyIndex) {
+    switch (strategyIndex) {
+      case 0:
+        return 'direct+full';
+      case 1:
+        return 'relay+full';
+      case 2:
+        return 'relay+minimal';
+      default:
+        return 'unknown';
+    }
   }
 
   Future<String> _ensureRelayUrl({
