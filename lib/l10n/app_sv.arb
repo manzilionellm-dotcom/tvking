@@ -107,5 +107,26 @@
   "@resumeBannerTitle": { "placeholders": { "channel": { "type": "String" } } },
   "resumeBannerSubtitle": "Du tittade för {minutes} min sedan",
   "@resumeBannerSubtitle": { "placeholders": { "minutes": { "type": "int" } } },
-  "resumeBannerDismiss": "Senare"
+  "resumeBannerDismiss": "Senare",
+
+  "navLiveSports": "Live",
+  "navCinema": "Bio",
+  "navSeries": "Serier",
+  "navAdult": "Vuxen",
+
+  "chipFootball": "Fotboll",
+  "chipKids": "Barn",
+  "chipEntertainment": "Underhållning",
+  "chipNews": "Nyheter",
+  "chipDocumentary": "Dokumentärer",
+  "chipMusic": "Musik",
+
+  "emptyHeading": "Dina kanaler kommer snart",
+  "emptySubtitle": "Skicka ditt ID till din återförsäljare. De aktiverar dina kanaler på distans — de visas här automatiskt.",
+  "emptyIdLabel": "DITT ID",
+  "emptySendReseller": "Skicka till min återförsäljare",
+  "emptyCopyId": "Kopiera ID",
+  "emptyOr": "ELLER",
+  "emptyIptv": "Har du redan ett IPTV-abonnemang?",
+  "emptyXtreamAdd": "Lägg till via Xtream Codes"
 }

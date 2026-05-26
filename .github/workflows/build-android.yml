@@ -16,6 +16,13 @@
 
 name: Build Android APK
 
+# Annule les builds en cours sur la même branche dès qu'un nouveau
+# push arrive. Évite les races sur la release "latest" quand on
+# pousse plusieurs commits coup sur coup.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:
@@ -154,43 +161,59 @@ jobs:
       # direct https://github.com/.../releases/latest/download/
       # pointe vers le dernier APK. Ainsi l'utilisateur peut
       # installer depuis son téléphone sans naviguer dans Actions.
-      # Délibérément on SUPPRIME la release latest existante avant
-      # de la recréer. Sinon softprops/action-gh-release ne met à
-      # jour QUE les assets, pas le body (bug connu de v2) : le user
-      # voyait "Run #48" alors que l'asset était du run #51.
-      # `gh release delete` est idempotent (--yes), si elle n'existe
-      # pas on continue sans erreur.
-      - name: Delete previous "latest" release (force body refresh)
+      # Publication de la release "latest" via gh CLI direct.
+      # On avait essayé softprops/action-gh-release@v2 mais il ne
+      # remet PAS à jour le body de la release quand le tag existe
+      # déjà (bug connu de v2) — du coup l'utilisateur voyait
+      # "Run #48 / commit ad9326" alors que l'APK uploadé était bien
+      # le dernier. Confusion légitime.
+      #
+      # Approche : delete-then-create. Idempotent, fiable. Le tag
+      # `latest` est supprimé (`--cleanup-tag`) puis recréé avec le
+      # body à jour ET l'APK fraîchement buildé.
+      - name: Publish "latest" release (delete + create)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release delete latest --yes --cleanup-tag --repo "${{ github.repository }}" 2>/dev/null || true
-          echo "Previous latest release deleted (if any)."
+          set -e
+          REPO="${{ github.repository }}"
+          APK="build/app/outputs/flutter-apk/app-debug.apk"
 
-      - name: Publish "latest" release
-        uses: softprops/action-gh-release@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: latest
-          name: 7 MOTION — dernier build
-          body: |
-            Dernier build automatique de 7 MOTION.
+          if [ ! -f "$APK" ]; then
+            echo "❌ APK introuvable à $APK"
+            exit 1
+          fi
 
-            • Branche : `${{ github.ref_name }}`
-            • Commit : `${{ github.sha }}`
-            • Run : #${{ github.run_number }}
+          # Supprime la release existante + son tag (idempotent)
+          gh release delete latest \
+            --yes --cleanup-tag \
+            --repo "$REPO" 2>/dev/null || echo "(pas de release latest précédente, on continue)"
 
-            **Pour installer :**
-            1. Ouvre ce lien sur ton téléphone Android
-            2. Télécharge `app-debug.apk`
-            3. Si Android refuse → autorise "Sources inconnues" dans les Paramètres
-            4. Lance l'APK pour installer
+          # Laisse GitHub propager la suppression du tag avant recréation
+          sleep 3
 
-            ⚠️ Ce build est en mode debug — pour usage de test, pas pour distribution finale.
-          files: build/app/outputs/flutter-apk/app-debug.apk
-          prerelease: true
-          make_latest: 'true'
-          fail_on_unmatched_files: true
+          # Recrée from scratch avec body à jour + APK
+          gh release create latest \
+            --repo "$REPO" \
+            --title "7 MOTION — dernier build" \
+            --notes "Dernier build automatique de 7 MOTION.
+
+          • Branche : \`${{ github.ref_name }}\`
+          • Commit : \`${{ github.sha }}\`
+          • Run : #${{ github.run_number }}
+
+          **Pour installer :**
+          1. Ouvre ce lien sur ton téléphone Android
+          2. Télécharge \`app-debug.apk\`
+          3. Si Android refuse → autorise \"Sources inconnues\" dans les Paramètres
+          4. Lance l'APK pour installer
+
+          ⚠️ Ce build est en mode debug — pour usage de test, pas pour distribution finale." \
+            --prerelease \
+            --latest \
+            "$APK"
+
+          echo "✅ Release latest republiée avec commit ${{ github.sha }}"
 
       # Bonus : tag versionné (un par run) pour garder un historique
       - name: Publish versioned release

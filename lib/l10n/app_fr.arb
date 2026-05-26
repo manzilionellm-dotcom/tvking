@@ -119,5 +119,26 @@
   "@resumeBannerSubtitle": {
     "placeholders": { "minutes": { "type": "int" } }
   },
-  "resumeBannerDismiss": "Plus tard"
+  "resumeBannerDismiss": "Plus tard",
+
+  "navLiveSports": "Live",
+  "navCinema": "Cinéma",
+  "navSeries": "Séries",
+  "navAdult": "Adulte",
+
+  "chipFootball": "Football",
+  "chipKids": "Jeunesse",
+  "chipEntertainment": "Divertissement",
+  "chipNews": "Info",
+  "chipDocumentary": "Docu",
+  "chipMusic": "Musique",
+
+  "emptyHeading": "Tes chaînes arrivent bientôt",
+  "emptySubtitle": "Envoie ton identifiant à ton revendeur. Il active tes chaînes à distance — elles apparaîtront ici automatiquement.",
+  "emptyIdLabel": "TON IDENTIFIANT",
+  "emptySendReseller": "Envoyer à mon revendeur",
+  "emptyCopyId": "Copier l'identifiant",
+  "emptyOr": "OU",
+  "emptyIptv": "Tu as déjà un abonnement IPTV ?",
+  "emptyXtreamAdd": "Ajouter via Xtream Codes"
 }

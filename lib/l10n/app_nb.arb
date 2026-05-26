@@ -107,5 +107,26 @@
   "@resumeBannerTitle": { "placeholders": { "channel": { "type": "String" } } },
   "resumeBannerSubtitle": "Du så det for {minutes} min siden",
   "@resumeBannerSubtitle": { "placeholders": { "minutes": { "type": "int" } } },
-  "resumeBannerDismiss": "Senere"
+  "resumeBannerDismiss": "Senere",
+
+  "navLiveSports": "Live",
+  "navCinema": "Kino",
+  "navSeries": "Serier",
+  "navAdult": "Voksen",
+
+  "chipFootball": "Fotball",
+  "chipKids": "Barn",
+  "chipEntertainment": "Underholdning",
+  "chipNews": "Nyheter",
+  "chipDocumentary": "Dokumentar",
+  "chipMusic": "Musikk",
+
+  "emptyHeading": "Kanalene dine kommer snart",
+  "emptySubtitle": "Send ID-en din til forhandleren. De aktiverer kanalene dine eksternt — de vises automatisk her.",
+  "emptyIdLabel": "DIN ID",
+  "emptySendReseller": "Send til forhandleren min",
+  "emptyCopyId": "Kopier ID",
+  "emptyOr": "ELLER",
+  "emptyIptv": "Har du allerede et IPTV-abonnement?",
+  "emptyXtreamAdd": "Legg til via Xtream Codes"
 }
