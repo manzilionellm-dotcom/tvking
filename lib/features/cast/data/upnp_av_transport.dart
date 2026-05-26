@@ -221,6 +221,18 @@ class UpnpAvTransport implements CastTransport {
     required String title,
     required String protocolInfo,
   }) {
+    // Adaptation MIME selon le récepteur. Diagnostic capturé sur la TV
+    // LG QNED816QA de l'utilisateur : sa sink contient
+    // `video/vnd.dlna.mpeg-tts` mais PAS `video/mp2t`. Quand on envoie
+    // `video/mp2t`, LG répond "Resource not found" car elle ne reconnaît
+    // pas le MIME annoncé. On rewrite le MIME en MIME que LG comprend.
+    String effectiveProtocolInfo = protocolInfo;
+    if (_isLg && protocolInfo.contains('video/mp2t')) {
+      effectiveProtocolInfo = protocolInfo.replaceAll(
+        'video/mp2t',
+        'video/vnd.dlna.mpeg-tts',
+      );
+    }
     final StringBuffer b = StringBuffer()
       ..write('<DIDL-Lite ')
       ..write('xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" ')
@@ -230,7 +242,7 @@ class UpnpAvTransport implements CastTransport {
       ..write('<item id="1" parentID="0" restricted="1">')
       ..write('<dc:title>${_escape(title)}</dc:title>')
       ..write('<upnp:class>${profile.objectClass}</upnp:class>')
-      ..write('<res protocolInfo="${_escape(protocolInfo)}">')
+      ..write('<res protocolInfo="${_escape(effectiveProtocolInfo)}">')
       ..write(_escape(url))
       ..write('</res>')
       ..write('</item>')
