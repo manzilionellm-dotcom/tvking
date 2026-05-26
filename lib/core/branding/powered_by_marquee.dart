@@ -162,16 +162,20 @@ class _PoweredByMarqueeState extends State<PoweredByMarquee>
   }
 }
 
-/// Signature discrète "THE FEW · NOT FOR EVERYONE" — version statique,
-/// minuscule, gris ténu. Conçue pour vivre **juste sous le logo 7**
-/// dans le header, comme la baseline d'une maison de couture sous
-/// son monogramme. Pas d'animation, pas de fond, pas de bordure —
-/// elle ne demande aucune attention, elle est là si on la cherche.
+/// Signature discrète "THE FEW · NOT FOR EVERYONE" — version "shimmer
+/// luxe" : le texte reste gris ténu en permanence (textMuted), et toutes
+/// les 6 secondes une ligne ember TRAVERSE les lettres de gauche à droite
+/// en 1.5s avant de disparaître. Genre signature lumineuse Apple /
+/// monogramme Hermès qui s'illumine doucement — pas de défilement,
+/// pas d'effet ticker.
 ///
-/// Remplace la `PoweredByMarquee` animée du pied d'écran (jugée trop
-/// "ticker de bourse" pour un produit premium). Le marquee animé
-/// reste utilisé sur le splash uniquement.
-class BrandSignature extends StatelessWidget {
+/// Implémentation :
+///   - ShaderMask + LinearGradient avec stops glissants
+///   - blendMode srcIn : le shader REMPLACE la couleur du texte
+///   - 25% du cycle = shimmer en mouvement, 75% = repos invisible
+///   - Respect de MediaQuery.disableAnimationsOf — sans animation,
+///     on retombe sur un Text statique en textMuted (aucun cost CPU)
+class BrandSignature extends StatefulWidget {
   const BrandSignature({
     super.key,
     this.text = 'THE FEW · NOT FOR EVERYONE',
@@ -180,19 +184,91 @@ class BrandSignature extends StatelessWidget {
   final String text;
 
   @override
+  State<BrandSignature> createState() => _BrandSignatureState();
+}
+
+class _BrandSignatureState extends State<BrandSignature>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 6),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  static const TextStyle _baseStyle = TextStyle(
+    fontSize: 8,
+    color: Colors.white, // remplacé par le shader, juste fallback
+    letterSpacing: 2.4,
+    fontWeight: FontWeight.w600,
+    height: 1.0,
+  );
+
+  @override
   Widget build(BuildContext context) {
-    return Text(
-      text,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: AppTextStyles.labelSmall.copyWith(
-        fontSize: 8,
-        // textMuted = gris très ténu de LUMIERE — ne tire pas l'œil.
-        color: AppColors.textMuted,
-        letterSpacing: 2.4,
-        fontWeight: FontWeight.w600,
-        height: 1.0,
-      ),
+    final bool reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final TextStyle style = AppTextStyles.labelSmall.merge(_baseStyle);
+
+    if (reduceMotion) {
+      return Text(
+        widget.text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: style.copyWith(color: AppColors.textMuted),
+      );
+    }
+
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (BuildContext context, _) {
+        // Cycle : 25% premier = shimmer traverse de gauche à droite,
+        // 75% restant = invisible à droite (texte purement gris ténu).
+        final double t = _ctrl.value;
+        final double shimmerX = t < 0.25 ? -0.3 + (t / 0.25) * 1.6 : 2.0;
+
+        return ShaderMask(
+          blendMode: BlendMode.srcIn,
+          shaderCallback: (Rect bounds) {
+            // 3 stops glissants : gris → ember bright → gris.
+            // Largeur du highlight = 0.3 (assez court pour rester discret).
+            final double s0 = (shimmerX - 0.2).clamp(0.0, 1.0);
+            final double s1 = shimmerX.clamp(0.0, 1.0);
+            final double s2 = (shimmerX + 0.2).clamp(0.0, 1.0);
+            // Garantit stops strictement croissants (LinearGradient l'exige)
+            final List<double> stops = <double>[
+              s0,
+              s1 <= s0 ? s0 + 0.0001 : s1,
+              s2 <= s1 ? s1 + 0.0001 : s2,
+            ];
+            return LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: <Color>[
+                AppColors.textMuted,
+                AppColors.accentBright,
+                AppColors.textMuted,
+              ],
+              stops: stops,
+            ).createShader(bounds);
+          },
+          child: Text(
+            widget.text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: style,
+          ),
+        );
+      },
     );
   }
 }
