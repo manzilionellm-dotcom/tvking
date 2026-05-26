@@ -62,6 +62,7 @@ mkdir -p "$ANDROID_PKG_PATH"
 cp -v "$OVERLAY/MainActivity.kt"            "$ANDROID_PKG_PATH/MainActivity.kt"
 cp -v "$OVERLAY/GoogleCastApi.kt"           "$ANDROID_PKG_PATH/GoogleCastApi.kt"
 cp -v "$OVERLAY/CastOptionsProviderImpl.kt" "$ANDROID_PKG_PATH/CastOptionsProviderImpl.kt"
+cp -v "$OVERLAY/GalleryExporter.kt"         "$ANDROID_PKG_PATH/GalleryExporter.kt"
 
 ls -la "$ANDROID_PKG_PATH/"
 

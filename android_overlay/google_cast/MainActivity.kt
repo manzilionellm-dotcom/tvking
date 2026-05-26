@@ -26,15 +26,24 @@ import io.flutter.embedding.engine.FlutterEngine
 class MainActivity : FlutterFragmentActivity() {
 
     private var castApi: GoogleCastApi? = null
+    private var galleryExporter: GalleryExporter? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // Câblage du Cast SDK. GoogleCastApi gère lui-même son
-        // MethodChannel — pas besoin de le retenir au-delà de l'init.
+        // Cast SDK natif — channel "com.manzilionellm.tvking/cast"
         castApi = GoogleCastApi(
             messenger = flutterEngine.dartExecutor.binaryMessenger,
             activity = this,
+        )
+
+        // Export Galerie via MediaStore — channel ".../gallery"
+        // Pour que les enregistrements .ts (libmpv stream-record)
+        // apparaissent dans la galerie photo du téléphone, pas
+        // perdus dans Android/data/...
+        galleryExporter = GalleryExporter(
+            messenger = flutterEngine.dartExecutor.binaryMessenger,
+            context = applicationContext,
         )
     }
 }

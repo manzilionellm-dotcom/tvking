@@ -33,6 +33,7 @@ import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../onboarding/data/device_class_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
+import '../../recordings/data/gallery_exporter.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
 import '../data/player_settings.dart';
@@ -301,6 +302,30 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (mounted) {
         setState(() => _activeRecording = null);
         _toast('Enregistrement sauvegardé');
+      }
+
+      // Export vers la galerie photo du téléphone — sans bloquer
+      // l'UX. Si le `.ts` est valide (libmpv a réussi à le finaliser),
+      // MediaStore le copie sous Movies/7MOTION/<name>.mp4 et la
+      // Galerie l'affiche dès le prochain scan.
+      //
+      // Best effort : si l'export foire (espace plein, permission
+      // refusée, etc.), le fichier original reste accessible via
+      // l'écran Enregistrements (storage privé app).
+      if (rec != null) {
+        final String displayName = rec.filePath
+            .split('/')
+            .last
+            .replaceAll('.ts', '.mp4');
+        final bool exported = await GalleryExporter.exportVideo(
+          srcPath: rec.filePath,
+          displayName: displayName,
+        );
+        if (mounted) {
+          _toast(exported
+              ? 'Sauvegardé dans Galerie › Movies › 7MOTION'
+              : 'Sauvegardé localement (export galerie indisponible)');
+        }
       }
     } catch (e) {
       _toast('Erreur arrêt enregistrement : $e');
