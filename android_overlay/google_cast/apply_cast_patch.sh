@@ -17,7 +17,10 @@ set -ex
 
 ANDROID_PKG_PATH="android/app/src/main/kotlin/com/manzilionellm/tvking"
 MANIFEST="android/app/src/main/AndroidManifest.xml"
-BUILD_GRADLE="android/app/build.gradle"
+# Flutter génère maintenant `build.gradle.kts` (Kotlin DSL) au lieu de
+# l'ancien `build.gradle` (Groovy). Détecté empiriquement au run #67.
+BUILD_GRADLE="android/app/build.gradle.kts"
+BUILD_GRADLE_GROOVY="android/app/build.gradle"
 OVERLAY="android_overlay/google_cast"
 
 echo "============================================="
@@ -28,10 +31,20 @@ echo "Files in overlay:"
 ls -la "$OVERLAY/"
 
 # --- Sanity checks --------------------------------
+# Détecte si on est en Kotlin DSL (.kts) ou Groovy (.gradle).
+# Les Flutter récents utilisent .kts ; les anciens .gradle.
 if [ ! -f "$BUILD_GRADLE" ]; then
-  echo "❌ $BUILD_GRADLE introuvable — flutter create a foiré ?"
-  ls -la android/app/ || true
-  exit 1
+  if [ -f "$BUILD_GRADLE_GROOVY" ]; then
+    echo "Found Groovy build.gradle — using it"
+    BUILD_GRADLE="$BUILD_GRADLE_GROOVY"
+    BUILD_GRADLE_IS_KTS="false"
+  else
+    echo "❌ Ni $BUILD_GRADLE ni $BUILD_GRADLE_GROOVY — flutter create a foiré ?"
+    ls -la android/app/ || true
+    exit 1
+  fi
+else
+  BUILD_GRADLE_IS_KTS="true"
 fi
 if [ ! -f "$MANIFEST" ]; then
   echo "❌ $MANIFEST introuvable"
@@ -56,23 +69,36 @@ ls -la "$ANDROID_PKG_PATH/"
 if grep -q "play-services-cast-framework" "$BUILD_GRADLE"; then
   echo "Cast deps déjà présentes dans $BUILD_GRADLE — skip"
 else
-  # Insère les deps Cast SDK juste avant la dernière `}` du fichier.
-  # Approche bête mais sûre : on append un NOUVEAU bloc dependencies
-  # à la fin du fichier. Gradle accepte les blocs dependencies multiples
-  # — il les fusionne.
-  cat >> "$BUILD_GRADLE" <<'GRADLE_EOF'
+  # Append un NOUVEAU bloc dependencies à la fin du fichier.
+  # Gradle accepte les blocs dependencies multiples — il fusionne.
+  # Syntaxe différente selon Kotlin DSL ou Groovy.
+  if [ "$BUILD_GRADLE_IS_KTS" = "true" ]; then
+    cat >> "$BUILD_GRADLE" <<'KTS_EOF'
 
 // === Cast SDK overlay ===
 // Dépendances Google Cast Framework + AndroidX MediaRouter
 // ajoutées par apply_cast_patch.sh APRÈS `flutter create`.
+// Syntaxe Kotlin DSL : implementation("...") avec parenthèses.
+dependencies {
+    implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
+    implementation("androidx.mediarouter:mediarouter:1.6.0")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.fragment:fragment:1.6.2")
+}
+KTS_EOF
+  else
+    cat >> "$BUILD_GRADLE" <<'GROOVY_EOF'
+
+// === Cast SDK overlay ===
 dependencies {
     implementation 'com.google.android.gms:play-services-cast-framework:21.5.0'
     implementation 'androidx.mediarouter:mediarouter:1.6.0'
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.fragment:fragment:1.6.2'
 }
-GRADLE_EOF
-  echo "✅ Patched build.gradle"
+GROOVY_EOF
+  fi
+  echo "✅ Patched $BUILD_GRADLE"
 fi
 
 # --- 3. Patch AndroidManifest.xml (OPTIONS_PROVIDER) -
