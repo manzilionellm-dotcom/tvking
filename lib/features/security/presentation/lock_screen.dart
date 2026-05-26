@@ -86,7 +86,7 @@ class _LockScreenState extends State<LockScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              Text('7 MOTION', style: AppTextStyles.titleLarge),
+              Text('7 MOTION', style: AppTextStyles.headlineLarge),
               const SizedBox(height: 4),
               Text(
                 'Application verrouillée',
@@ -110,7 +110,7 @@ class _LockScreenState extends State<LockScreen> {
                       horizontal: 32,
                       vertical: 14,
                     ),
-                    textStyle: AppTextStyles.titleMedium,
+                    textStyle: AppTextStyles.button,
                   ),
                 ),
               if (_authenticating)
