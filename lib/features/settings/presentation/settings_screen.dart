@@ -988,7 +988,7 @@ class _RemoteConfigCardState extends State<_RemoteConfigCard> {
                 autocorrect: false,
                 style: AppTextStyles.bodyLarge.copyWith(fontSize: 13),
                 decoration: InputDecoration(
-                  hintText: 'https://gist.github.com/…/raw/config.json',
+                  hintText: 'https://exemple.com/.../config.json',
                   hintStyle: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 12,
                     color: AppColors.textMuted,
@@ -1216,8 +1216,9 @@ class _ProvisioningHowItWorksState
                 children: <Widget>[
                   _howStep(
                     '1',
-                    'Crée un gist GitHub (https://gist.github.com) '
-                    'avec un seul fichier nommé `config.json`.',
+                    'Héberge un fichier `config.json` sur un service '
+                    'de ton choix (paste anonyme, JSONBin, ton propre '
+                    'serveur, etc.) — un seul fichier accessible en HTTPS.',
                   ),
                   _howStep(
                     '2',
@@ -1257,8 +1258,8 @@ class _ProvisioningHowItWorksState
                   const SizedBox(height: 10),
                   _howStep(
                     '3',
-                    'Récupère l\'URL "Raw" du gist (clique sur Raw, '
-                    'puis copie l\'URL de la barre d\'adresse).',
+                    'Récupère l\'URL HTTPS directe du fichier (celle qui '
+                    'retourne le JSON brut, pas une page HTML).',
                   ),
                   _howStep(
                     '4',
@@ -1267,7 +1268,7 @@ class _ProvisioningHowItWorksState
                   ),
                   _howStep(
                     '5',
-                    'Pour ajouter un nouveau client : ouvre ton gist, '
+                    'Pour ajouter un nouveau client : ouvre ton fichier, '
                     'ajoute un nouveau bloc avec sa MAC, sauvegarde. '
                     'Pas besoin de lien spécial — TOUS les clients '
                     'pointent vers la même URL, chacun ne voit que '
@@ -1294,9 +1295,10 @@ class _ProvisioningHowItWorksState
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Astuce sécu : crée le gist en mode SECRET '
-                            '(URL non-devinable). Sinon n\'importe qui '
-                            'avec l\'URL voit toutes les playlists et '
+                            'Astuce sécu : héberge ton fichier sous une '
+                            'URL non-devinable (token long ou path random). '
+                            'Sinon n\'importe qui avec l\'URL voit toutes '
+                            'les playlists et '
                             'leurs identifiants Xtream.',
                             style: AppTextStyles.bodyMedium.copyWith(
                               fontSize: 11,

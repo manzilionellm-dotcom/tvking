@@ -52,7 +52,7 @@ class _AboutScreenState extends State<AboutScreen> {
       _update = info;
       if (info == null) {
         _checkError =
-            'Impossible de contacter GitHub. Vérifie ta connexion.';
+            'Impossible de contacter le serveur de mises à jour. Vérifie ta connexion.';
       }
     });
   }
@@ -189,7 +189,7 @@ class _AboutScreenState extends State<AboutScreen> {
                                 _openUrl(_update!.releaseUrl),
                             icon: const Icon(Icons.open_in_new_rounded,
                                 size: 16),
-                            label: const Text('Voir sur GitHub'),
+                            label: const Text('Voir les notes de version'),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: AppColors.accent,
                               side: BorderSide(
@@ -253,24 +253,10 @@ class _AboutScreenState extends State<AboutScreen> {
               child: Column(
                 children: <Widget>[
                   _linkTile(
-                    icon: Icons.code_rounded,
-                    label: 'Code source (GitHub)',
-                    onTap: () => _openUrl(
-                      'https://github.com/manzilionellm-dotcom/tvking',
-                    ),
-                  ),
-                  _linkTile(
-                    icon: Icons.bug_report_outlined,
-                    label: 'Signaler un bug',
-                    onTap: () => _openUrl(
-                      'https://github.com/manzilionellm-dotcom/tvking/issues',
-                    ),
-                  ),
-                  _linkTile(
                     icon: Icons.privacy_tip_outlined,
                     label: 'Politique de confidentialité',
                     onTap: () => _openUrl(
-                      'https://github.com/manzilionellm-dotcom/tvking/blob/main/PRIVACY.md',
+                      'https://7motion.app/privacy',
                     ),
                   ),
                 ],
