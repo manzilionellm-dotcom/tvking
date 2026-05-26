@@ -20,10 +20,15 @@
 
 package com.manzilionellm.tvking
 
+import android.util.Log
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 
 class MainActivity : FlutterFragmentActivity() {
+
+    companion object {
+        private const val TAG = "MainActivity"
+    }
 
     private var castApi: GoogleCastApi? = null
     private var galleryExporter: GalleryExporter? = null
@@ -32,29 +37,40 @@ class MainActivity : FlutterFragmentActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // Cast SDK natif — channel "com.manzilionellm.tvking/cast"
-        castApi = GoogleCastApi(
-            messenger = flutterEngine.dartExecutor.binaryMessenger,
-            activity = this,
-        )
+        Log.i(TAG, "configureFlutterEngine — wiring MethodChannels")
+        val messenger = flutterEngine.dartExecutor.binaryMessenger
 
-        // Export Galerie via MediaStore — channel ".../gallery"
-        // Pour que les enregistrements .ts (libmpv stream-record)
-        // apparaissent dans la galerie photo du téléphone, pas
-        // perdus dans Android/data/...
-        galleryExporter = GalleryExporter(
-            messenger = flutterEngine.dartExecutor.binaryMessenger,
-            context = applicationContext,
-        )
+        // Chaque channel est instancié dans son propre try/catch :
+        // si UN handler crash à l'init (ex. dépendance native manquante),
+        // les AUTRES restent câblés. Sans ça, une exception dans le 3e
+        // wiring empêche le 1er et le 2e d'être disponibles côté Dart →
+        // MissingPluginException "Bridge natif manquant" sur tous.
 
-        // Service ForegroundService — channel ".../recording_service"
-        // Maintient l'app vivante quand l'enregistrement tourne et
-        // que l'utilisateur quitte l'app pour lire un SMS / prendre
-        // un appel. Sans ça, Android peut tuer le process et l'enregistrement
-        // donne un fichier tronqué.
-        recordingService = RecordingServiceBridge(
-            messenger = flutterEngine.dartExecutor.binaryMessenger,
-            context = applicationContext,
-        )
+        try {
+            castApi = GoogleCastApi(messenger = messenger, activity = this)
+            Log.i(TAG, "  ✓ Cast channel wired")
+        } catch (e: Throwable) {
+            Log.e(TAG, "  ✗ Cast channel failed: $e", e)
+        }
+
+        try {
+            galleryExporter = GalleryExporter(
+                messenger = messenger,
+                context = applicationContext,
+            )
+            Log.i(TAG, "  ✓ Gallery channel wired")
+        } catch (e: Throwable) {
+            Log.e(TAG, "  ✗ Gallery channel failed: $e", e)
+        }
+
+        try {
+            recordingService = RecordingServiceBridge(
+                messenger = messenger,
+                context = applicationContext,
+            )
+            Log.i(TAG, "  ✓ RecordingService channel wired")
+        } catch (e: Throwable) {
+            Log.e(TAG, "  ✗ RecordingService channel failed: $e", e)
+        }
     }
 }

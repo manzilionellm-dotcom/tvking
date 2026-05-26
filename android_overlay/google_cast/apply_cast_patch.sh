@@ -15,13 +15,46 @@
 
 set -ex
 
-ANDROID_PKG_PATH="android/app/src/main/kotlin/com/manzilionellm/tvking"
 MANIFEST="android/app/src/main/AndroidManifest.xml"
 # Flutter génère maintenant `build.gradle.kts` (Kotlin DSL) au lieu de
 # l'ancien `build.gradle` (Groovy). Détecté empiriquement au run #67.
 BUILD_GRADLE="android/app/build.gradle.kts"
 BUILD_GRADLE_GROOVY="android/app/build.gradle"
 OVERLAY="android_overlay/google_cast"
+
+# Détection DYNAMIQUE du package Java/Kotlin que flutter create a
+# choisi. Avec `--org com.manzilionellm.tvking --project-name tv_king`,
+# Flutter peut générer SOIT `com.manzilionellm.tvking` SOIT
+# `com.manzilionellm.tvking.tv_king` selon la version. Sans détection,
+# le MainActivity custom de mon overlay n'est PAS la classe que le
+# manifest référence → mes MethodChannel ne sont jamais câblés au
+# runtime → MissingPluginException "Bridge natif manquant".
+#
+# On lit le `package ...;` du MainActivity généré par Flutter et on
+# l'utilise pour :
+#   1. Copier les .kt overlay AU MÊME endroit (overwrite le default)
+#   2. Réécrire la déclaration `package ...` dans nos .kt
+#   3. Référencer le bon FQCN dans le manifest meta-data Cast
+echo "============================================="
+echo "  Détection du package Flutter généré"
+echo "============================================="
+FLUTTER_MAIN=$(find android/app/src/main/kotlin -name "MainActivity.kt" 2>/dev/null | head -1)
+if [ -z "$FLUTTER_MAIN" ]; then
+  echo "❌ MainActivity.kt non trouvé après flutter create"
+  echo "Structure de android/app/src/main/ :"
+  find android/app/src/main -type f 2>/dev/null | head -20
+  exit 1
+fi
+echo "MainActivity trouvé : $FLUTTER_MAIN"
+DETECTED_PKG=$(grep -m1 "^package " "$FLUTTER_MAIN" | sed -E 's/^package +([^;]+);?\s*$/\1/' | tr -d '[:space:]')
+if [ -z "$DETECTED_PKG" ]; then
+  echo "❌ Impossible de lire le package depuis $FLUTTER_MAIN"
+  head -5 "$FLUTTER_MAIN"
+  exit 1
+fi
+echo "Package détecté : $DETECTED_PKG"
+ANDROID_PKG_PATH=$(dirname "$FLUTTER_MAIN")
+echo "Path d'installation : $ANDROID_PKG_PATH"
 
 echo "============================================="
 echo "  Cast SDK overlay — diagnostic"
@@ -57,14 +90,22 @@ tail -30 "$BUILD_GRADLE"
 echo "----- BEFORE: AndroidManifest.xml -----"
 cat "$MANIFEST"
 
-# --- 1. Copy Kotlin files ---------------------------
+# --- 1. Copy Kotlin files avec PACKAGE corrigé -----
+# On copie chaque .kt overlay au path détecté, en RÉÉCRIVANT la
+# déclaration `package com.manzilionellm.tvking` par le package réel
+# détecté ($DETECTED_PKG). Sans ça, les classes sont chargées mais ne
+# matchent pas la référence du manifest → mes MethodChannel handlers
+# ne sont jamais bound.
 mkdir -p "$ANDROID_PKG_PATH"
-cp -v "$OVERLAY/MainActivity.kt"               "$ANDROID_PKG_PATH/MainActivity.kt"
-cp -v "$OVERLAY/GoogleCastApi.kt"              "$ANDROID_PKG_PATH/GoogleCastApi.kt"
-cp -v "$OVERLAY/CastOptionsProviderImpl.kt"    "$ANDROID_PKG_PATH/CastOptionsProviderImpl.kt"
-cp -v "$OVERLAY/GalleryExporter.kt"            "$ANDROID_PKG_PATH/GalleryExporter.kt"
-cp -v "$OVERLAY/RecordingForegroundService.kt" "$ANDROID_PKG_PATH/RecordingForegroundService.kt"
-cp -v "$OVERLAY/RecordingServiceBridge.kt"     "$ANDROID_PKG_PATH/RecordingServiceBridge.kt"
+for kt_file in MainActivity.kt GoogleCastApi.kt CastOptionsProviderImpl.kt \
+               GalleryExporter.kt RecordingForegroundService.kt \
+               RecordingServiceBridge.kt; do
+  src="$OVERLAY/$kt_file"
+  dst="$ANDROID_PKG_PATH/$kt_file"
+  # sed rewrite : `package com.manzilionellm.tvking` → `package $DETECTED_PKG`
+  sed "s|^package com\.manzilionellm\.tvking\$|package $DETECTED_PKG|" "$src" > "$dst"
+  echo "  ✓ $kt_file → $dst (package: $DETECTED_PKG)"
+done
 
 ls -la "$ANDROID_PKG_PATH/"
 
@@ -109,12 +150,11 @@ if grep -q "OPTIONS_PROVIDER_CLASS_NAME" "$MANIFEST"; then
   echo "Cast OPTIONS_PROVIDER déjà présent — skip"
 else
   # Insère la meta-data Cast juste avant </application>.
-  # Sed simple, pas de regex complexe.
-  META='        <meta-data android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME" android:value="com.manzilionellm.tvking.CastOptionsProviderImpl" />'
-  # Le `&` dans META serait interprété par sed — on utilise un délimiteur
-  # alternatif `|` et on échappe rien (notre string n'a pas de `|`).
+  # Le FQCN référence le package DÉTECTÉ (pas en dur com.manzilionellm.tvking)
+  # pour matcher où Flutter create a réellement mis les classes.
+  META="        <meta-data android:name=\"com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME\" android:value=\"${DETECTED_PKG}.CastOptionsProviderImpl\" />"
   sed -i "s|</application>|${META}\n    </application>|" "$MANIFEST"
-  echo "✅ Patched AndroidManifest (Cast)"
+  echo "✅ Patched AndroidManifest (Cast → ${DETECTED_PKG}.CastOptionsProviderImpl)"
 fi
 
 # --- 3b. Patch AndroidManifest pour RecordingForegroundService ---
@@ -132,6 +172,10 @@ else
   sed -i "s|<application|${PERMS}\n\n    <application|" "$MANIFEST"
 
   # Déclaration du service avant </application>.
+  # `android:name=".RecordingForegroundService"` est relatif au package
+  # racine de l'application (déclaré dans <manifest package="..."> ou
+  # dans <namespace> du build.gradle). Donc ça marche quel que soit
+  # le package détecté.
   SVC='        <service android:name=".RecordingForegroundService" android:foregroundServiceType="mediaPlayback" android:exported="false" />'
   sed -i "s|</application>|${SVC}\n    </application>|" "$MANIFEST"
   echo "✅ Patched AndroidManifest (Service + permissions)"
