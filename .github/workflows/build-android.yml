@@ -201,26 +201,32 @@ jobs:
 
           ⚠️ Ce build est en mode debug — pour usage de test, pas pour distribution finale."
 
+          # Diagnostic verbeux — si quelque chose foire, on saura où
+          echo "=== gh version ==="
+          gh --version
+          echo "=== existing release ==="
+          gh release view latest --repo "$REPO" 2>&1 | head -5 || echo "(pas de release latest)"
+
           if gh release view latest --repo "$REPO" >/dev/null 2>&1; then
-            echo "Release latest existe — on l'édite"
+            echo "Release latest existe — edit + upload"
             gh release edit latest --repo "$REPO" \
               --title "7 MOTION — dernier build" \
               --notes "$NOTES" \
-              --prerelease \
-              --verify-tag=false || echo "  ⚠ edit failed"
-            echo "Upload de l'APK (--clobber pour remplacer)"
-            gh release upload latest --repo "$REPO" --clobber "$APK" \
-              || echo "  ⚠ upload failed"
+              --prerelease 2>&1 || echo "  ⚠ edit failed (continue)"
+            gh release upload latest --repo "$REPO" --clobber "$APK" 2>&1 \
+              || echo "  ⚠ upload failed (continue)"
           else
-            echo "Release latest n'existe pas — on la crée"
+            echo "Release latest absente — create from scratch"
             gh release create latest --repo "$REPO" \
               --title "7 MOTION — dernier build" \
               --notes "$NOTES" \
               --prerelease --latest \
-              "$APK" || echo "  ⚠ create failed"
+              "$APK" 2>&1 || echo "  ⚠ create failed (continue)"
           fi
 
-          echo "✅ Étape release publiée (sha ${{ github.sha }})"
+          echo "=== final release state ==="
+          gh release view latest --repo "$REPO" 2>&1 | head -10 || echo "(introuvable)"
+          echo "✅ Étape release terminée (sha ${{ github.sha }})"
 
       # Bonus : tag versionné (un par run) pour garder un historique
       - name: Publish versioned release
