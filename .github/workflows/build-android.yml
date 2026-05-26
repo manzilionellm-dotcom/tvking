@@ -162,20 +162,23 @@ jobs:
       # pointe vers le dernier APK. Ainsi l'utilisateur peut
       # installer depuis son téléphone sans naviguer dans Actions.
       # Publication de la release "latest" via gh CLI direct.
-      # On avait essayé softprops/action-gh-release@v2 mais il ne
-      # remet PAS à jour le body de la release quand le tag existe
-      # déjà (bug connu de v2) — du coup l'utilisateur voyait
-      # "Run #48 / commit ad9326" alors que l'APK uploadé était bien
-      # le dernier. Confusion légitime.
+      # Historique : softprops/action-gh-release@v2 ne mettait pas à
+      # jour le body d'une release existante (bug v2). On avait tenté
+      # delete-then-create mais GitHub propage la suppression du tag
+      # de façon asynchrone — le `create` derrière prend parfois une
+      # 422 "Tag already exists".
       #
-      # Approche : delete-then-create. Idempotent, fiable. Le tag
-      # `latest` est supprimé (`--cleanup-tag`) puis recréé avec le
-      # body à jour ET l'APK fraîchement buildé.
-      - name: Publish "latest" release (delete + create)
+      # Approche stable : edit-or-create.
+      #   - Si la release existe : `gh release edit` (body) + upload
+      #     --clobber (asset). Pas de delete = pas de race.
+      #   - Si elle n'existe pas (1er run) : `gh release create`.
+      # Tout en `set +e` pour ne pas planter le build si une étape
+      # secondaire foire (le build APK lui-même est le délivrable).
+      - name: Publish "latest" release (edit or create)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -e
+          set +e
           REPO="${{ github.repository }}"
           APK="build/app/outputs/flutter-apk/app-debug.apk"
 
@@ -184,19 +187,7 @@ jobs:
             exit 1
           fi
 
-          # Supprime la release existante + son tag (idempotent)
-          gh release delete latest \
-            --yes --cleanup-tag \
-            --repo "$REPO" 2>/dev/null || echo "(pas de release latest précédente, on continue)"
-
-          # Laisse GitHub propager la suppression du tag avant recréation
-          sleep 3
-
-          # Recrée from scratch avec body à jour + APK
-          gh release create latest \
-            --repo "$REPO" \
-            --title "7 MOTION — dernier build" \
-            --notes "Dernier build automatique de 7 MOTION.
+          NOTES="Dernier build automatique de 7 MOTION.
 
           • Branche : \`${{ github.ref_name }}\`
           • Commit : \`${{ github.sha }}\`
@@ -208,12 +199,28 @@ jobs:
           3. Si Android refuse → autorise \"Sources inconnues\" dans les Paramètres
           4. Lance l'APK pour installer
 
-          ⚠️ Ce build est en mode debug — pour usage de test, pas pour distribution finale." \
-            --prerelease \
-            --latest \
-            "$APK"
+          ⚠️ Ce build est en mode debug — pour usage de test, pas pour distribution finale."
 
-          echo "✅ Release latest republiée avec commit ${{ github.sha }}"
+          if gh release view latest --repo "$REPO" >/dev/null 2>&1; then
+            echo "Release latest existe — on l'édite"
+            gh release edit latest --repo "$REPO" \
+              --title "7 MOTION — dernier build" \
+              --notes "$NOTES" \
+              --prerelease \
+              --verify-tag=false || echo "  ⚠ edit failed"
+            echo "Upload de l'APK (--clobber pour remplacer)"
+            gh release upload latest --repo "$REPO" --clobber "$APK" \
+              || echo "  ⚠ upload failed"
+          else
+            echo "Release latest n'existe pas — on la crée"
+            gh release create latest --repo "$REPO" \
+              --title "7 MOTION — dernier build" \
+              --notes "$NOTES" \
+              --prerelease --latest \
+              "$APK" || echo "  ⚠ create failed"
+          fi
+
+          echo "✅ Étape release publiée (sha ${{ github.sha }})"
 
       # Bonus : tag versionné (un par run) pour garder un historique
       - name: Publish versioned release
