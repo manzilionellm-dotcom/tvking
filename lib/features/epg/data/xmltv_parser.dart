@@ -1,0 +1,220 @@
+// =========================================================
+//  xmltv_parser.dart — Parser XMLTV en streaming
+// =========================================================
+//  Pourquoi streaming : un EPG XMLTV typique fait 100-500 Mo,
+//  parfois 1 Go pour les EPG mondiaux. Charger tout en RAM
+//  ferait crasher l'app sur la plupart des téléphones.
+//
+//  On utilise `XmlEventReader` du package `xml` qui lit les
+//  événements XML un à un sans construire l'arbre complet.
+//
+//  Pour chaque <programme> rencontré → on émet un EpgProgram
+//  via le callback `onProgram`. L'appelant peut batcher dans
+//  SQLite, écarter les programmes périmés, etc.
+//
+//  Format XMLTV pris en charge :
+//    <programme start="20260524180000 +0200"
+//               stop ="20260524200000 +0200"
+//               channel="canal-plus">
+//      <title>...</title>
+//      <desc>...</desc>
+//      <category>...</category>
+//      <icon src="..." />
+//    </programme>
+// =========================================================
+
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:xml/xml_events.dart';
+
+import '../domain/epg_program.dart';
+
+class XmltvParser {
+  XmltvParser._();
+
+  /// Parse un Stream<List<int>> (typiquement la réponse HTTP du
+  /// téléchargement de l'EPG) et émet les programmes au fil de l'eau.
+  ///
+  /// - [onProgram] : callback appelé pour chaque programme.
+  /// - [now] : référence de temps pour décider quoi garder. Par
+  ///   défaut DateTime.now().
+  /// - [keepHoursBeforeNow] : combien d'heures de programmes passés
+  ///   on garde (utile pour le catch-up). Défaut 1h.
+  /// - [keepHoursAfterNow] : combien d'heures futures on garde.
+  ///   Défaut 48h (2 jours), suffisant pour la plupart des usages.
+  /// - [skipPredicate] : si fourni, retourne true pour les programmes
+  ///   à ignorer (par ex. canal absent de la playlist).
+  ///
+  /// Retourne le nombre total de programmes émis.
+  static Future<int> parse(
+    Stream<List<int>> bytes, {
+    required Future<void> Function(EpgProgram program) onProgram,
+    DateTime? now,
+    int keepHoursBeforeNow = 1,
+    int keepHoursAfterNow = 48,
+    bool Function(String channelId)? skipPredicate,
+  }) async {
+    final DateTime ref = now ?? DateTime.now();
+    final int minStop = ref
+        .subtract(Duration(hours: keepHoursBeforeNow))
+        .millisecondsSinceEpoch;
+    final int maxStart =
+        ref.add(Duration(hours: keepHoursAfterNow)).millisecondsSinceEpoch;
+
+    int emitted = 0;
+
+    // État courant du parser
+    bool insideProgramme = false;
+    String? curChannelId;
+    int? curStartMs;
+    int? curStopMs;
+    String? curTitle;
+    String? curDesc;
+    String? curCategory;
+    String? curIconUrl;
+    String? activeTag;
+    final StringBuffer textBuf = StringBuffer();
+
+    final Stream<List<XmlEvent>> events = bytes
+        .transform(utf8.decoder)
+        .transform(XmlEventDecoder());
+
+    await for (final List<XmlEvent> chunk in events) {
+      for (final XmlEvent event in chunk) {
+        if (event is XmlStartElementEvent) {
+          final String name = event.localName;
+          if (name == 'programme') {
+            insideProgramme = true;
+            // Reset
+            curChannelId = null;
+            curStartMs = null;
+            curStopMs = null;
+            curTitle = null;
+            curDesc = null;
+            curCategory = null;
+            curIconUrl = null;
+
+            for (final XmlEventAttribute attr in event.attributes) {
+              switch (attr.localName) {
+                case 'channel':
+                  curChannelId = attr.value;
+                case 'start':
+                  curStartMs = _parseXmltvDate(attr.value);
+                case 'stop':
+                  curStopMs = _parseXmltvDate(attr.value);
+              }
+            }
+          } else if (insideProgramme) {
+            activeTag = name;
+            textBuf.clear();
+            if (name == 'icon') {
+              for (final XmlEventAttribute attr in event.attributes) {
+                if (attr.localName == 'src') {
+                  curIconUrl = attr.value;
+                }
+              }
+            }
+          }
+        } else if (event is XmlTextEvent) {
+          if (insideProgramme && activeTag != null) {
+            textBuf.write(event.value);
+          }
+        } else if (event is XmlCDATAEvent) {
+          if (insideProgramme && activeTag != null) {
+            textBuf.write(event.value);
+          }
+        } else if (event is XmlEndElementEvent) {
+          final String name = event.localName;
+          if (insideProgramme) {
+            if (name == 'title') {
+              curTitle = textBuf.toString().trim();
+            } else if (name == 'desc') {
+              curDesc = textBuf.toString().trim();
+            } else if (name == 'category') {
+              curCategory ??= textBuf.toString().trim();
+            } else if (name == 'programme') {
+              // Fin d'un programme → on émet si valide
+              insideProgramme = false;
+              if (curChannelId != null &&
+                  curStartMs != null &&
+                  curStopMs != null &&
+                  curTitle != null &&
+                  curTitle!.isNotEmpty) {
+                final bool skip =
+                    skipPredicate != null && skipPredicate(curChannelId!);
+                final bool inWindow =
+                    curStopMs! >= minStop && curStartMs! <= maxStart;
+                if (!skip && inWindow) {
+                  final EpgProgram prog = EpgProgram(
+                    channelId: curChannelId!,
+                    startTime: curStartMs!,
+                    stopTime: curStopMs!,
+                    title: curTitle!,
+                    description: curDesc == null || curDesc!.isEmpty
+                        ? null
+                        : curDesc,
+                    category: curCategory == null || curCategory!.isEmpty
+                        ? null
+                        : curCategory,
+                    iconUrl: curIconUrl,
+                  );
+                  await onProgram(prog);
+                  emitted++;
+                }
+              }
+            }
+            activeTag = null;
+          }
+        }
+      }
+    }
+
+    if (kDebugMode) {
+      debugPrint('[XmltvParser] $emitted programmes ingérés');
+    }
+    return emitted;
+  }
+
+  // ----- Date XMLTV → millisecondes epoch UTC -----
+
+  /// XMLTV utilise le format "yyyyMMddHHmmss +HHMM" (ou "Z" pour UTC).
+  /// Exemple : "20260524180000 +0200" = 24 mai 2026, 18:00, GMT+2.
+  static int? _parseXmltvDate(String value) {
+    final String raw = value.trim();
+    if (raw.length < 14) return null;
+    final int? y = int.tryParse(raw.substring(0, 4));
+    final int? mo = int.tryParse(raw.substring(4, 6));
+    final int? d = int.tryParse(raw.substring(6, 8));
+    final int? h = int.tryParse(raw.substring(8, 10));
+    final int? mi = int.tryParse(raw.substring(10, 12));
+    final int? s = int.tryParse(raw.substring(12, 14));
+    if (y == null || mo == null || d == null || h == null ||
+        mi == null || s == null) {
+      return null;
+    }
+
+    // Offset éventuel après l'espace
+    int offsetMinutes = 0;
+    final int spaceIdx = raw.indexOf(' ', 14);
+    if (spaceIdx > 0 && raw.length >= spaceIdx + 5) {
+      final String tz = raw.substring(spaceIdx + 1);
+      if (tz.toUpperCase() == 'Z') {
+        offsetMinutes = 0;
+      } else if (tz.length >= 5 && (tz[0] == '+' || tz[0] == '-')) {
+        final int sign = tz[0] == '-' ? -1 : 1;
+        final int? oh = int.tryParse(tz.substring(1, 3));
+        final int? om = int.tryParse(tz.substring(3, 5));
+        if (oh != null && om != null) {
+          offsetMinutes = sign * (oh * 60 + om);
+        }
+      }
+    }
+
+    // Construire en UTC en soustrayant l'offset
+    final DateTime asUtc = DateTime.utc(y, mo, d, h, mi, s)
+        .subtract(Duration(minutes: offsetMinutes));
+    return asUtc.millisecondsSinceEpoch;
+  }
+}

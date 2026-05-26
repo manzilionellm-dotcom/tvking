@@ -1,0 +1,183 @@
+# =========================================================
+#  build-android.yml — Build APK automatique dans le cloud
+# =========================================================
+#  À chaque push sur main / claude/* / feature/* (ou manuel),
+#  GitHub Actions :
+#    1. Récupère le code
+#    2. Installe JDK 17 + Flutter stable + Android SDK
+#    3. Génère les fichiers natifs Android
+#    4. Compile l'APK debug
+#    5. Uploade en artifact + (optionnellement) en Release
+#
+#  Pour récupérer l'APK :
+#    • Actions → Build Android APK → dernier run → Artifacts
+#    • OU Releases (si déclenché manuellement avec "Make release")
+# =========================================================
+
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'claude/**'
+      - 'feature/**'
+  workflow_dispatch:
+    inputs:
+      make_release:
+        description: 'Aussi publier en GitHub Release (true/false)'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: write   # nécessaire pour créer/mettre à jour une release
+
+jobs:
+  build:
+    name: Build debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      # Diagnostic — imprime la version exacte de Flutter récupérée
+      # par l'action. Permet de comparer avec ce dont les nouvelles
+      # APIs (WidgetStateProperty, DialogThemeData, etc.) ont besoin.
+      - name: Print exact Flutter version
+        run: |
+          flutter --version
+          dart --version
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Show toolchain versions (diagnostic)
+        run: |
+          set -e
+          echo "=== java ==="
+          java -version
+          echo "=== flutter ==="
+          flutter --version
+          echo "=== flutter doctor ==="
+          flutter doctor -v || true
+
+      - name: Generate native Android folder
+        run: flutter create . --platforms=android --org com.manzilionellm.tvking --project-name tv_king
+
+      # Branding 7 MOTION : remplace le label par défaut du manifest
+      # (`tv_king`) par "7 MOTION" pour que le nom affiché sur le
+      # bureau Android soit le bon. Note : on garde l'org Java
+      # `com.manzilionellm.tvking` pour ne pas casser les installs
+      # existantes (changer l'applicationId = nouvelle app séparée).
+      - name: Brand AndroidManifest with 7 MOTION label
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ -f "$MANIFEST" ]; then
+            sed -i 's|android:label="tv_king"|android:label="7 MOTION"|g' "$MANIFEST"
+            echo "--- Patched manifest ---"
+            grep 'android:label' "$MANIFEST" || true
+          fi
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      # `flutter pub get` est censé déclencher gen-l10n quand
+      # `generate: true` dans pubspec.yaml, mais sur certaines versions
+      # du SDK ça ne se produit pas, et la compile échoue parce que
+      # AppLocalizations n'existe pas. On le lance explicitement pour
+      # garantir que `lib/l10n/generated/app_localizations.dart` est
+      # bien présent avant `flutter build`.
+      - name: Generate AppLocalizations from .arb files
+        run: flutter gen-l10n || true
+
+      # Remplace l'icône Flutter par défaut (le F bleu généré par
+      # `flutter create`) par notre logo 7 MOTION dans tous les
+      # dossiers mipmap-* (mdpi/hdpi/xhdpi/xxhdpi/xxxhdpi). Sans
+      # cette étape, l'utilisateur voit le F bleu sur son bureau
+      # même si le contenu de l'app est 7 MOTION.
+      - name: Generate launcher icons (7 MOTION ember)
+        run: dart run flutter_launcher_icons
+
+      - name: Build debug APK
+        run: flutter build apk --debug --no-tree-shake-icons
+
+      - name: Check APK exists
+        run: |
+          if [ ! -f build/app/outputs/flutter-apk/app-debug.apk ]; then
+            echo "❌ APK introuvable — voir les logs ci-dessus."
+            find build -name '*.apk' || true
+            exit 1
+          fi
+          ls -lah build/app/outputs/flutter-apk/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tvking-debug-apk-${{ github.sha }}
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      # Toujours mettre à jour la release "latest" pour que le lien
+      # direct https://github.com/.../releases/latest/download/
+      # pointe vers le dernier APK. Ainsi l'utilisateur peut
+      # installer depuis son téléphone sans naviguer dans Actions.
+      - name: Publish/replace "latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: latest
+          name: 7 MOTION — dernier build
+          body: |
+            Dernier build automatique de 7 MOTION.
+
+            • Branche : `${{ github.ref_name }}`
+            • Commit : `${{ github.sha }}`
+            • Run : #${{ github.run_number }}
+
+            **Pour installer :**
+            1. Ouvre ce lien sur ton téléphone Android
+            2. Télécharge `app-debug.apk`
+            3. Si Android refuse → autorise "Sources inconnues" dans les Paramètres
+            4. Lance l'APK pour installer
+
+            ⚠️ Ce build est en mode debug — pour usage de test, pas pour distribution finale.
+          files: build/app/outputs/flutter-apk/app-debug.apk
+          prerelease: true
+          make_latest: 'true'
+          fail_on_unmatched_files: true
+          # `continue-on-error: false` (défaut) — on veut savoir si
+          # le release upload plante au lieu qu'il échoue silencieusement
+
+      # Bonus : tag versionné (un par run) pour garder un historique
+      - name: Publish versioned release
+        if: github.event_name == 'workflow_dispatch' && inputs.make_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: 7 MOTION build ${{ github.run_number }}
+          body: |
+            Build #${{ github.run_number }} de la branche `${{ github.ref_name }}`.
+            Commit `${{ github.sha }}`.
+          files: build/app/outputs/flutter-apk/app-debug.apk
+          prerelease: true
