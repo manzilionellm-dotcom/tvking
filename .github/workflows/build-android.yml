@@ -154,7 +154,20 @@ jobs:
       # direct https://github.com/.../releases/latest/download/
       # pointe vers le dernier APK. Ainsi l'utilisateur peut
       # installer depuis son téléphone sans naviguer dans Actions.
-      - name: Publish/replace "latest" release
+      # Délibérément on SUPPRIME la release latest existante avant
+      # de la recréer. Sinon softprops/action-gh-release ne met à
+      # jour QUE les assets, pas le body (bug connu de v2) : le user
+      # voyait "Run #48" alors que l'asset était du run #51.
+      # `gh release delete` est idempotent (--yes), si elle n'existe
+      # pas on continue sans erreur.
+      - name: Delete previous "latest" release (force body refresh)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes --cleanup-tag --repo "${{ github.repository }}" 2>/dev/null || true
+          echo "Previous latest release deleted (if any)."
+
+      - name: Publish "latest" release
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -178,8 +191,6 @@ jobs:
           prerelease: true
           make_latest: 'true'
           fail_on_unmatched_files: true
-          # `continue-on-error: false` (défaut) — on veut savoir si
-          # le release upload plante au lieu qu'il échoue silencieusement
 
       # Bonus : tag versionné (un par run) pour garder un historique
       - name: Publish versioned release
