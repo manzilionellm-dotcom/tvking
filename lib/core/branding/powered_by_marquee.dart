@@ -24,8 +24,13 @@ class PoweredByMarquee extends StatefulWidget {
     super.key,
     this.text = 'POWERED BY 7 — THE FEW · NOT FOR EVERYONE',
     this.duration = const Duration(seconds: 18),
-    this.height = 26,
+    this.height = 30,
+    this.tinted = true,
   });
+
+  /// Si `true`, ajoute un fond très légèrement teinté ember pour
+  /// que la bande soit visible même sur fond ultra-sombre.
+  final bool tinted;
 
   /// Le texte qui défile. Sera répété autant de fois que
   /// nécessaire pour remplir la largeur.
@@ -64,13 +69,36 @@ class _PoweredByMarqueeState extends State<PoweredByMarquee>
     final bool reduceMotion = MediaQuery.disableAnimationsOf(context);
     final TextStyle style = AppTextStyles.labelSmall.copyWith(
       color: AppColors.accent,
-      fontSize: 10,
-      letterSpacing: 2.4,
+      fontSize: 11,
+      letterSpacing: 2.6,
       fontWeight: FontWeight.w700,
     );
 
-    return SizedBox(
+    return Container(
       height: widget.height,
+      decoration: widget.tinted
+          ? BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: <Color>[
+                  AppColors.accent.withValues(alpha: 0.0),
+                  AppColors.accent.withValues(alpha: 0.08),
+                  AppColors.accent.withValues(alpha: 0.0),
+                ],
+              ),
+              border: Border(
+                top: BorderSide(
+                  color: AppColors.accent.withValues(alpha: 0.16),
+                  width: 0.5,
+                ),
+                bottom: BorderSide(
+                  color: AppColors.accent.withValues(alpha: 0.16),
+                  width: 0.5,
+                ),
+              ),
+            )
+          : null,
       child: ClipRect(
         child: reduceMotion
             ? _staticBand(style)

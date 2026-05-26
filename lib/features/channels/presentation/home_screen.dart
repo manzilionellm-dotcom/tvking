@@ -170,19 +170,22 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           Align(
             alignment: Alignment.bottomCenter,
-            child: FloatingBottomNav(
-              currentIndex: _currentNavIndex,
-              onTap: _onNavTap,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                // Signature défilante "POWERED BY 7 — THE FEW"
+                // au-dessus du bottom nav, garantie visible (Column
+                // déterministe au lieu d'un Positioned qui se faisait
+                // cacher derrière le FloatingBottomNav).
+                const PoweredByMarquee(),
+                const SizedBox(height: 4),
+                FloatingBottomNav(
+                  currentIndex: _currentNavIndex,
+                  onTap: _onNavTap,
+                ),
+                const SizedBox(height: 8),
+              ],
             ),
-          ),
-          // Signature défilante "POWERED BY 7 — THE FEW" juste
-          // au-dessus de la bottom nav flottante. Fine bande
-          // ember discrète qui marque la maison sans gêner.
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 110,
-            child: const PoweredByMarquee(),
           ),
         ],
       ),
