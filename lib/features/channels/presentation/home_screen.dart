@@ -39,6 +39,8 @@ import '../../settings/presentation/settings_screen.dart';
 import '../data/recently_watched_repository.dart';
 import '../domain/channel.dart';
 import '../domain/channel_genre.dart';
+import 'focused_category_screen.dart';
+import 'widgets/round_category_row.dart';
 import 'category_section_screen.dart';
 import 'channel_detail_sheet.dart';
 import 'favorites_screen.dart';
@@ -135,6 +137,70 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (_) =>
             CategorySectionScreen(title: title, genreFilter: genre),
       ),
+    );
+  }
+
+  // ----- Catégories rondes (chips Apple TV) -----
+  //
+  //  Football a son propre écran (FocusedCategoryScreen) qui regroupe
+  //  par pays — c'est la demande explicite : "toutes les chaînes
+  //  football, mais avec les pays vu différemment". Pour les autres
+  //  catégories on réutilise CategorySectionScreen existant (grille
+  //  standard) — pas besoin de re-grouper là.
+
+  Future<void> _openFootball() {
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const FocusedCategoryScreen(
+          title: 'Football',
+          keywords: <String>[
+            'foot', 'soccer', 'bein', 'rmc sport', 'champion',
+            'ligue 1', 'ligue 2', 'premier league', 'liga',
+            'serie a', 'bundesliga', 'eurosport', 'fox sport',
+            'sky sport', 'tnt sport', 'espn',
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoryChips() {
+    return RoundCategoryRow(
+      items: <RoundCategoryItem>[
+        RoundCategoryItem(
+          label: 'Football',
+          icon: Icons.sports_soccer_rounded,
+          onTap: _openFootball,
+        ),
+        RoundCategoryItem(
+          label: 'Jeunesse',
+          icon: Icons.child_care_rounded,
+          onTap: () => _openSection('Jeunesse', ChannelGenre.kids),
+        ),
+        RoundCategoryItem(
+          label: 'Divertissement',
+          icon: Icons.theater_comedy_rounded,
+          onTap: () => _openSection(
+            'Divertissement',
+            ChannelGenre.entertainment,
+          ),
+        ),
+        RoundCategoryItem(
+          label: 'Info',
+          icon: Icons.newspaper_rounded,
+          onTap: () => _openSection('Info', ChannelGenre.news),
+        ),
+        RoundCategoryItem(
+          label: 'Docu',
+          icon: Icons.public_rounded,
+          onTap: () => _openSection('Documentaires', ChannelGenre.documentary),
+        ),
+        RoundCategoryItem(
+          label: 'Musique',
+          icon: Icons.music_note_rounded,
+          onTap: () => _openSection('Musique', ChannelGenre.music),
+        ),
+      ],
     );
   }
 
@@ -289,6 +355,14 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
+
+        // ----- Catégories rondes (Apple TV chips) -----
+        //  Raccourcis directs : Football, Jeunesse, Divertissement,
+        //  Info, Doc. Pour l'utilisateur qui sait DÉJÀ ce qu'il
+        //  cherche, plus rapide que de scanner les rails par genre.
+        //  Football ouvre une vue dédiée regroupée par pays.
+        SliverToBoxAdapter(child: _buildCategoryChips()),
+        const SliverToBoxAdapter(child: SizedBox(height: 8)),
 
         // ----- Continue Watching -----
         StreamBuilder<List<String>>(
