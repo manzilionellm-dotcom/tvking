@@ -100,6 +100,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   final List<StreamSubscription<dynamic>> _subs =
       <StreamSubscription<dynamic>>[];
 
+  /// PageController du swipe TikTok-style. Initialisé en LAZY dans le
+  /// build car `_zapIndex` dépend de la position dans la playlist et
+  /// du `_currentChannel` qui peut changer. Reste `null` sur TV ou
+  /// quand `_canZap == false` (pas de playlist).
+  PageController? _zapPageController;
+
+  /// Quand on appelle `_zapTo` depuis un BOUTON (⏮/⏭, télécommande),
+  /// on déclenche `animateToPage` sur le PageController, qui à son
+  /// tour tire `onPageChanged`. Pour éviter de re-traiter le swipe
+  /// déjà appliqué (double `_player.open`), on flag pendant l'animation.
+  bool _zapAnimating = false;
+
   @override
   void initState() {
     super.initState();
@@ -222,12 +234,48 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         .indexWhere((Channel c) => c.id == _currentChannel.id);
   }
 
+  /// Zap à un index donné. Appelé depuis :
+  ///   - les boutons ⏮/⏭ (avec wrap modulo pour la liste circulaire)
+  ///   - la télécommande TV
+  ///   - le PageView TikTok via `_onZapPageChanged` (index déjà borné)
+  ///
+  /// Si un PageController est actif (mode TikTok), on lui demande
+  /// d'animer la transition, ce qui déclenchera `onPageChanged` qui
+  /// appellera `_applyZap`. Sinon on appelle `_applyZap` direct.
   void _zapTo(int newIndex) {
     if (widget.zapPlaylist == null) return;
     final List<Channel> list = widget.zapPlaylist!;
     if (list.isEmpty) return;
     final int wrapped = ((newIndex % list.length) + list.length) % list.length;
-    final Channel next = list[wrapped];
+
+    if (_zapPageController != null && _zapPageController!.hasClients) {
+      // Animation fluide TikTok-style. `_zapAnimating` empêche le
+      // double-firing de `onPageChanged` pendant l'animation.
+      _zapAnimating = true;
+      _zapPageController!
+          .animateToPage(
+            wrapped,
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+          )
+          .whenComplete(() => _zapAnimating = false);
+    } else {
+      // Mode TV ou playlist absente → bascule direct.
+      _applyZap(wrapped);
+    }
+  }
+
+  /// Applique réellement le changement de chaîne. Tirée par `_zapTo`
+  /// directement (mode TV) ou par `onPageChanged` du PageView après
+  /// le snap d'un swipe utilisateur.
+  void _applyZap(int newIndex) {
+    if (widget.zapPlaylist == null) return;
+    final List<Channel> list = widget.zapPlaylist!;
+    if (newIndex < 0 || newIndex >= list.length) return;
+    final Channel next = list[newIndex];
+    // Ignore si on est déjà sur cette chaîne (évite un `_player.open`
+    // redondant qui re-démarrerait le buffering pour rien).
+    if (next.id == _currentChannel.id) return;
     setState(() {
       _currentChannel = next;
       _hasError = false;
@@ -249,6 +297,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _player.open(Media(next.streamUrl));
     _scheduleHideOverlay();
   }
+
+  /// Callback du `PageView` quand l'utilisateur a fini un swipe vertical.
+  void _onZapPageChanged(int newIndex) => _applyZap(newIndex);
 
   void _zapNext() => _zapTo(_zapIndex + 1);
   void _zapPrev() => _zapTo(_zapIndex - 1);
@@ -419,6 +470,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       WatchHistoryRepository.instance.endSession(_watchSessionId);
     }
     PlayerSettings.instance.removeListener(_onSettingsChanged);
+    _zapPageController?.dispose();
     _player.dispose();
     WakelockPlus.disable();
     // (PiP désactivé — voir note plus haut)
@@ -526,30 +578,61 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool useTikTokSwipe = _canZap && !_isTvUi;
+    // Initialise le PageController au PREMIER build où on en a besoin.
+    // Lazy car `_zapIndex` dépend de `_currentChannel` qui peut changer
+    // entre initState et le premier build (race condition rare mais
+    // évitable comme ça).
+    if (useTikTokSwipe && _zapPageController == null) {
+      final int initial = _zapIndex.clamp(0, widget.zapPlaylist!.length - 1);
+      _zapPageController = PageController(initialPage: initial);
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
-      body: GestureDetector(
-        onTap: _toggleOverlay,
-        // Geste swipe vertical pour zapper — remplace les ⏮ / ⏭ qui
-        // encombraient le centre de l'image. Geste premium type Netflix.
-        // Vitesse > 300 px/s pour éviter les déclenchements accidentels
-        // pendant un scroll de l'overlay. Désactivé sur TV — pas de
-        // swipe sur télécommande, les boutons ⏮/⏭ restent visibles.
-        onVerticalDragEnd: (_canZap && !_isTvUi)
-            ? (DragEndDetails d) {
-                final double v = d.primaryVelocity ?? 0;
-                if (v < -300) {
-                  _zapNext();
-                } else if (v > 300) {
-                  _zapPrev();
-                }
-              }
-            : null,
-        child: ListenableBuilder(
-          listenable: PlayerSettings.instance,
-          builder: (BuildContext context, _) {
-            final AspectRatioMode mode = PlayerSettings.instance.aspectMode;
-            return Stack(
+      body: useTikTokSwipe
+          ? _buildTikTokPageView()
+          : _buildPlayerSurface(),
+    );
+  }
+
+  /// PageView vertical "TikTok-style" — swipe haut/bas pour zapper.
+  /// Chaque page est la zone player ; la page active rend la vidéo
+  /// en cours de lecture, les voisines un poster de la chaîne (logo
+  /// + nom) pour la transition fluide pendant le swipe.
+  Widget _buildTikTokPageView() {
+    final List<Channel> list = widget.zapPlaylist!;
+    return PageView.builder(
+      scrollDirection: Axis.vertical,
+      controller: _zapPageController,
+      // Physics élastique — donne le rebond doux qu'on attend d'un
+      // feed TikTok / Reels au lieu du clamp brutal par défaut.
+      physics: const BouncingScrollPhysics(),
+      onPageChanged: _onZapPageChanged,
+      itemCount: list.length,
+      itemBuilder: (BuildContext context, int i) {
+        final bool isCurrent = list[i].id == _currentChannel.id;
+        return GestureDetector(
+          onTap: _toggleOverlay,
+          child: isCurrent
+              ? _buildPlayerSurface()
+              : _ZapPreviewPage(channel: list[i]),
+        );
+      },
+    );
+  }
+
+  /// Surface de lecture : la vidéo + spinner + stats + overlays.
+  /// Extraite pour pouvoir être ré-utilisée à l'identique dans le
+  /// PageView et dans le mode mono-page (TV / playlist absente).
+  Widget _buildPlayerSurface() {
+    return GestureDetector(
+      onTap: _toggleOverlay,
+      child: ListenableBuilder(
+        listenable: PlayerSettings.instance,
+        builder: (BuildContext context, _) {
+          final AspectRatioMode mode = PlayerSettings.instance.aspectMode;
+          return Stack(
               fit: StackFit.expand,
               children: <Widget>[
                 // ----- 1. La vidéo (avec aspect ratio forcé si demandé) -----
@@ -1059,5 +1142,109 @@ class _TvDpadButtonState extends State<_TvDpadButton> {
         ),
       ),
     );
+  }
+}
+
+// ============================================================
+//  _ZapPreviewPage — Page placeholder pendant le swipe TikTok
+// ============================================================
+//  Affichée pour chaque chaîne du PageView qui n'est PAS en cours
+//  de lecture. Pendant le swipe, l'utilisateur voit ce poster
+//  glisser depuis le haut/bas vers le centre. Au snap, le poster
+//  est remplacé par le widget Video qui démarre la lecture.
+//
+//  Design : ultra-sobre, noir, avec le logo de la chaîne grand
+//  centré et son nom — style "Reels coming up" / TikTok preview.
+// ============================================================
+
+class _ZapPreviewPage extends StatelessWidget {
+  const _ZapPreviewPage({required this.channel});
+
+  final Channel channel;
+
+  @override
+  Widget build(BuildContext context) {
+    final String? logoUrl = channel.logoUrl;
+    return ColoredBox(
+      color: Colors.black,
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          // Halo subtil rouge ember pour signaler "à venir"
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment.center,
+                  radius: 1.0,
+                  colors: <Color>[
+                    AppColors.accent.withValues(alpha: 0.08),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                // Logo de la chaîne ou initiales
+                Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceHigh,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: AppColors.accent.withValues(alpha: 0.3),
+                      width: 1.5,
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: logoUrl != null && logoUrl.isNotEmpty
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(22.5),
+                          child: Image.network(
+                            logoUrl,
+                            width: 120,
+                            height: 120,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Text(
+                              _initials(channel.cleanName),
+                              style: AppTextStyles.displayLarge,
+                            ),
+                          ),
+                        )
+                      : Text(
+                          _initials(channel.cleanName),
+                          style: AppTextStyles.displayLarge,
+                        ),
+                ),
+                const SizedBox(height: 24),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Text(
+                    channel.cleanName,
+                    style: AppTextStyles.headlineMedium,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _initials(String name) {
+    final List<String> words = name.split(RegExp(r'\s+'));
+    if (words.length >= 2) {
+      return (words[0].substring(0, 1) + words[1].substring(0, 1)).toUpperCase();
+    }
+    return name.substring(0, name.length.clamp(0, 2)).toUpperCase();
   }
 }
