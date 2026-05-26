@@ -35,6 +35,7 @@ import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../onboarding/data/device_class_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
+import '../../recordings/data/http_recording_downloader.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
@@ -323,37 +324,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         channelName: _currentChannel.cleanName,
         programTitle: widget.overrideTitle,
       );
-      // Demande à libmpv de copier le flux dans `path`
-      final bool ok = await _setMpvProperty('stream-record', path);
-      if (!ok) {
-        _toast('Enregistrement non supporté sur ce flux');
-        return;
-      }
 
-      // Vérification : libmpv ouvre-t-il vraiment le fichier ?
-      // `setProperty('stream-record', ...)` retourne sans erreur même
-      // quand mpv ignore silencieusement (cas constaté côté user :
-      // fichier 0 octets, "0 min, 0 B" dans Mes enregistrements).
-      // On attend 2 secondes puis on check `File.exists()` + length > 0.
-      // Si non, on annule tout proprement avec un message clair.
-      await Future<void>.delayed(const Duration(seconds: 2));
-      final File checkFile = File(path);
-      final bool fileOk = await checkFile.exists() &&
-          (await checkFile.length()) > 0;
-      if (!fileOk) {
-        if (kDebugMode) {
-          debugPrint(
-            '[Rec] libmpv n\'a pas créé/écrit dans $path après 2s — abort',
-          );
-        }
-        // Tente de stopper le set en cours côté libmpv
-        await _setMpvProperty('stream-record', '');
-        if (mounted) {
-          _toast(
-            'libmpv refuse d\'enregistrer ce flux '
-            '(format incompatible ou non bufferisable)',
-          );
-        }
+      // NOUVEAU PIPELINE : on n'utilise PLUS `stream-record` de libmpv
+      // qui s'avère silencieusement inopérant sur les flux IPTV
+      // testés par l'utilisateur (BFM TV 3 min → 0 octets).
+      //
+      // À la place, un downloader HTTP en Dart pur (cf.
+      // http_recording_downloader.dart) ouvre une 2e connexion vers
+      // le même streamUrl et écrit les bytes dans le fichier .ts au
+      // fur et à mesure. Plus aucune dépendance à libmpv pour
+      // l'enregistrement — on contrôle TOUT côté Dart.
+      //
+      // Note : 2 connexions HTTP au serveur Xtream (1 pour le player,
+      // 1 pour le downloader). Certains fournisseurs limitent à 1
+      // connexion/credentials — on verra à l'usage.
+      final bool ok = await HttpRecordingDownloader.instance.start(
+        streamUrl: _currentChannel.streamUrl,
+        filePath: path,
+      );
+      if (!ok) {
+        _toast(
+          'Impossible de démarrer l\'enregistrement '
+          '(serveur injoignable ou refuse la 2e connexion)',
+        );
         return;
       }
 
@@ -376,7 +369,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       if (mounted) {
         setState(() => _activeRecording = rec);
-        _toast('Enregistrement démarré — laisse tourner ≥ 10 secondes');
+        _toast('Enregistrement démarré — bytes accumulés en temps réel');
       }
     } catch (e) {
       _toast('Impossible de démarrer : $e');
@@ -385,41 +378,46 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _stopRecording() async {
     try {
-      await _setMpvProperty('stream-record', '');
-
-      // Laisse à libmpv le temps de FLUSH son buffer sur disque avant
-      // qu'on lise la taille du fichier. Sans ce délai, on lit un .ts
-      // encore en cours d'écriture (taille partielle).
-      await Future<void>.delayed(const Duration(milliseconds: 800));
+      // Arrête le downloader HTTP — flush + close du fichier proprement.
+      // Retourne le nombre exact d'octets écrits (utile pour le toast).
+      final int bytes = await HttpRecordingDownloader.instance.stop();
 
       final Recording? rec = _activeRecording;
       if (rec != null) {
         await RecordingRepository.instance.finishRecording(rec);
       }
 
-      // Arrête le ForegroundService natif et retire la notification
-      // persistante de la barre de statut.
+      // Arrête le ForegroundService natif et retire la notification.
       await RecordingService.instance.stop();
 
       if (mounted) {
         setState(() => _activeRecording = null);
-        // UX change : on ne tente PLUS l'export Galerie auto ici.
-        // Raison : libmpv peut prendre plusieurs secondes à finaliser
-        // le fichier sur certains flux, et un export auto silencieux
-        // qui foire est plus frustrant qu'un bouton manuel qu'on
-        // déclenche quand on veut.
-        //
-        // À la place, on dit clairement à l'utilisateur où trouver
-        // son enregistrement, et il pourra tap "Sauvegarder dans la
-        // Galerie" depuis l'écran Mes enregistrements quand il veut
-        // (à ce moment-là le .ts est SÛREMENT complet).
-        _toast(
-          'Sauvegardé — exporte-le depuis Réglages › Mes enregistrements',
-        );
+        // Formatage taille : Bytes / KB / MB / GB selon ordre de grandeur.
+        final String sizeLabel = _humanSize(bytes);
+        if (bytes == 0) {
+          _toast(
+            'Enregistrement vide (0 B) — le serveur a refusé la 2e connexion',
+          );
+        } else {
+          _toast(
+            'Enregistrement sauvegardé ($sizeLabel) — '
+            'exporte depuis Mes enregistrements',
+          );
+        }
       }
     } catch (e) {
       _toast('Erreur arrêt enregistrement : $e');
     }
+  }
+
+  /// Convertit un nombre d'octets en chaîne lisible (KB / MB / GB).
+  String _humanSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
   Future<bool> _setMpvProperty(String name, String value) async {
