@@ -1,25 +1,25 @@
 // =========================================================
-//  admin_credentials.dart — Code PIN admin + token GitHub
+//  admin_credentials.dart — Connexion au backend Worker
 // =========================================================
-//  Stockage local des credentials nécessaires pour piloter le
-//  gist GitHub (lecture/écriture) depuis le mode admin de l'app :
+//  Stockage local des credentials nécessaires pour piloter
+//  notre backend Cloudflare Worker depuis le mode admin :
 //
-//    - PIN admin (4-8 chiffres) qui protège l'accès au dashboard
-//    - GitHub Personal Access Token (scope `gist`) pour écrire
-//    - ID du gist (extrait automatiquement de l'URL Raw configurée
-//      dans Réglages → Provisioning à distance)
+//    - PIN admin (4 chiffres) qui protège l'accès au dashboard
+//      sur le téléphone admin
+//    - URL du Worker (https://seven-motion-backend.X.workers.dev)
+//    - Secret admin (envoyé en header X-Admin-Secret aux endpoints
+//      /admin/* du Worker)
+//
+//  REMPLACE l'ancienne configuration GitHub Gist (gist ID + PAT)
+//  qui demandait à l'utilisateur de comprendre des concepts geeks
+//  (PAT scope `gist`, gist secret vs public, etc.).
 //
 //  SÉCURITÉ — note honnête :
 //    Tout est dans SharedPreferences (XML chiffré par le Keystore
 //    Android sur 9+, sinon clair). C'est l'appareil de l'admin
 //    lui-même donc le modèle de menace est faible. Pour passer à
-//    flutter_secure_storage (Android Keystore explicite) il
-//    suffira de remplacer ce repo sans toucher au reste.
-//
-//    Le PIN est stocké en clair — la "sécurité" du mode admin
-//    est principalement par obscurité (le bouton n'est pas
-//    annoncé). Un PIN haché n'apporte rien si l'attaquant a
-//    déjà accès aux SharedPreferences.
+//    flutter_secure_storage (Android Keystore explicite), changer
+//    juste l'impl de read/write sans toucher au reste.
 // =========================================================
 
 import 'package:flutter/foundation.dart';
@@ -30,32 +30,54 @@ class AdminCredentials extends ChangeNotifier {
   static final AdminCredentials instance = AdminCredentials._();
 
   static const String _kPinKey = 'admin.pin.v1';
-  static const String _kPatKey = 'admin.github_pat.v1';
-  static const String _kGistIdKey = 'admin.gist_id.v1';
+  static const String _kWorkerUrlKey = 'admin.worker_url.v2';
+  static const String _kAdminSecretKey = 'admin.secret.v2';
+
+  // Legacy (gist) — lus uniquement pour migration au démarrage,
+  // puis effacés.
+  static const String _kLegacyPatKey = 'admin.github_pat.v1';
+  static const String _kLegacyGistIdKey = 'admin.gist_id.v1';
 
   String? _pin;
-  String? _pat;
-  String? _gistId;
+  String? _workerUrl;
+  String? _adminSecret;
 
   /// `true` quand un code PIN admin a déjà été défini.
   bool get hasPin => _pin != null && _pin!.isNotEmpty;
 
-  /// `true` quand un GitHub PAT est configuré (donc on peut écrire).
-  bool get hasPat => _pat != null && _pat!.isNotEmpty;
+  /// `true` quand l'URL du Worker est configurée.
+  bool get hasWorkerUrl => _workerUrl != null && _workerUrl!.isNotEmpty;
 
-  /// `true` quand on a tout pour écrire (PAT + gist ID).
-  bool get canWrite => hasPat && hasGistId;
+  /// `true` quand le secret admin est configuré.
+  bool get hasAdminSecret =>
+      _adminSecret != null && _adminSecret!.isNotEmpty;
 
-  bool get hasGistId => _gistId != null && _gistId!.isNotEmpty;
+  /// `true` quand on a tout pour lire/écrire le backend.
+  bool get canWrite => hasWorkerUrl && hasAdminSecret;
 
-  String? get pat => _pat;
-  String? get gistId => _gistId;
+  String? get workerUrl => _workerUrl;
+  String? get adminSecret => _adminSecret;
 
   Future<void> initialize() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     _pin = prefs.getString(_kPinKey);
-    _pat = prefs.getString(_kPatKey);
-    _gistId = prefs.getString(_kGistIdKey);
+    _workerUrl = prefs.getString(_kWorkerUrlKey);
+    _adminSecret = prefs.getString(_kAdminSecretKey);
+
+    // Migration : si on a encore des creds Gist legacy, on les
+    // efface (ils ne servent plus à rien dans la nouvelle archi).
+    final bool hadLegacy = prefs.containsKey(_kLegacyPatKey) ||
+        prefs.containsKey(_kLegacyGistIdKey);
+    if (hadLegacy) {
+      await prefs.remove(_kLegacyPatKey);
+      await prefs.remove(_kLegacyGistIdKey);
+      if (kDebugMode) {
+        debugPrint(
+          '[Admin] Migration : creds Gist legacy effacés. '
+          'Configure le Worker URL + secret dans la console admin.',
+        );
+      }
+    }
     notifyListeners();
   }
 
@@ -71,59 +93,39 @@ class AdminCredentials extends ChangeNotifier {
     return input == _pin;
   }
 
-  Future<void> setPat(String pat) async {
-    _pat = pat.trim();
+  Future<void> setWorkerUrl(String url) async {
+    // Normalisation : retire trailing slash pour éviter `//config/MAC`
+    _workerUrl =
+        url.trim().endsWith('/') ? url.trim().substring(0, url.trim().length - 1) : url.trim();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kPatKey, _pat!);
+    await prefs.setString(_kWorkerUrlKey, _workerUrl!);
     notifyListeners();
   }
 
-  Future<void> setGistId(String gistId) async {
-    _gistId = gistId.trim();
+  Future<void> setAdminSecret(String secret) async {
+    _adminSecret = secret.trim();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kGistIdKey, _gistId!);
+    await prefs.setString(_kAdminSecretKey, _adminSecret!);
     notifyListeners();
   }
 
-  /// Extrait l'ID du gist depuis n'importe quelle URL gist GitHub :
-  ///   https://gist.githubusercontent.com/USER/abc123/raw/...
-  ///   https://gist.github.com/USER/abc123
-  ///   https://api.github.com/gists/abc123
-  ///   abc123 (déjà l'ID brut)
-  ///
-  /// Renvoie `null` si rien ne match.
-  static String? extractGistIdFromUrl(String url) {
-    if (url.trim().isEmpty) return null;
-    final String trimmed = url.trim();
-
-    // URL contenant /gist*.../USER/<ID>/...
-    final RegExp gistUrlPattern =
-        RegExp(r'gist(?:hubusercontent)?\.github\.com/[^/]+/([a-f0-9]+)');
-    final RegExpMatch? m1 = gistUrlPattern.firstMatch(trimmed);
-    if (m1 != null) return m1.group(1);
-
-    // URL API : api.github.com/gists/<ID>
-    final RegExp apiPattern =
-        RegExp(r'api\.github\.com/gists/([a-f0-9]+)');
-    final RegExpMatch? m2 = apiPattern.firstMatch(trimmed);
-    if (m2 != null) return m2.group(1);
-
-    // ID brut (40 caractères hex typiques d'un gist)
-    if (RegExp(r'^[a-f0-9]{20,40}$').hasMatch(trimmed)) {
-      return trimmed;
-    }
-
-    return null;
+  /// Construit l'URL publique `/config/:mac` que les clients
+  /// utilisent pour récupérer leur playlist. Sert à pré-remplir
+  /// automatiquement la section "Provisioning à distance" côté
+  /// client (un seul `workerUrl` partagé pour tous).
+  String? publicConfigUrlFor(String mac) {
+    if (!hasWorkerUrl) return null;
+    return '$_workerUrl/config/$mac';
   }
 
   Future<void> reset() async {
     _pin = null;
-    _pat = null;
-    _gistId = null;
+    _workerUrl = null;
+    _adminSecret = null;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kPinKey);
-    await prefs.remove(_kPatKey);
-    await prefs.remove(_kGistIdKey);
+    await prefs.remove(_kWorkerUrlKey);
+    await prefs.remove(_kAdminSecretKey);
     notifyListeners();
     if (kDebugMode) debugPrint('[Admin] Credentials reset');
   }

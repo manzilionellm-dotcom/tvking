@@ -173,7 +173,22 @@ class RemoteConfigRepository extends ChangeNotifier {
       final Map<String, dynamic> full =
           jsonDecode(body) as Map<String, dynamic>;
       final String mac = await DeviceIdentity.instance.mac;
-      final dynamic mine = full[mac];
+
+      // Deux formats supportés :
+      //
+      // 1) Worker Cloudflare (nouveau backend) : l'URL est
+      //    `…/config/<MAC>` et le payload est déjà filtré pour
+      //    cette MAC. Il a la forme `{ "name": "...", "playlists": [...] }`.
+      //
+      // 2) Legacy GitHub Gist : un seul JSON multi-MAC où
+      //    chaque entrée racine est une MAC. Forme :
+      //    `{ "MK:AA:..": { "playlists": [...] }, ... }`.
+      //
+      // On essaie le format 1 d'abord (présence de la clef
+      // "playlists" en racine), puis on retombe sur le format 2.
+      final dynamic mine = full.containsKey('playlists')
+          ? full
+          : full[mac];
 
       if (mine == null) {
         _knownAtAdmin = false;
