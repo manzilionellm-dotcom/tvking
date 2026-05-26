@@ -90,6 +90,24 @@ class UpnpAvTransport implements CastTransport {
 
   static const Duration _kSoapTimeout = Duration(seconds: 5);
 
+  /// Détection LG WebOS / NetCast. Certaines TVs LG sont strictes
+  /// sur le User-Agent et n'acceptent les commandes SOAP que si
+  /// l'agent leur ressemble à un client maison ("LG NetCast 4.0").
+  /// Avec un agent générique, elles répondent 200 sur SetURI puis
+  /// restent silencieuses en STOPPED sur Play.
+  bool get _isLg =>
+      (device.manufacturer?.toLowerCase().contains('lg') ?? false) ||
+      device.name.toLowerCase().contains('webos') ||
+      device.name.toLowerCase().contains(' lg ') ||
+      device.name.toLowerCase().startsWith('lg ') ||
+      device.name.toLowerCase().startsWith('[lg]');
+
+  /// Détection Samsung Tizen / Smart TV. Idem : User-Agent custom
+  /// pour matcher les attentes du serveur DMR Samsung.
+  bool get _isSamsung =>
+      (device.manufacturer?.toLowerCase().contains('samsung') ?? false) ||
+      device.name.toLowerCase().contains('samsung');
+
   // ============================================================
   //  Interface CastTransport
   // ============================================================
@@ -324,18 +342,58 @@ class UpnpAvTransport implements CastTransport {
         '</s:Body>'
         '</s:Envelope>';
 
-    return http
+    // En-têtes adaptés au constructeur. LG et Samsung sont stricts
+    // sur le User-Agent — un agent générique peut faire passer
+    // SetURI en 200 sans erreur, puis Play reste muet en STOPPED.
+    final Map<String, String> headers = <String, String>{
+      'Content-Type': 'text/xml; charset=utf-8',
+      'SOAPAction': '"$_kAvTransportService#$action"',
+      'Connection': 'close',
+    };
+    if (_isLg) {
+      headers['User-Agent'] = 'LG NetCast 4.0';
+    } else if (_isSamsung) {
+      headers['User-Agent'] = 'SEC_HHP_PC/1.0';
+    } else {
+      headers['User-Agent'] = '7MOTION/1.0 UPnP/1.0';
+    }
+    // Pour SetAVTransportURI sur du LIVE, on annonce explicitement
+    // un transfert "Streaming" via les en-têtes DLNA — ça aide les
+    // renderers récents à choisir le bon décodeur sans deviner
+    // depuis l'extension du fichier (.ts est ambigu pour beaucoup
+    // de TVs grand public).
+    if (action == 'SetAVTransportURI') {
+      headers['transferMode.dlna.org'] = 'Streaming';
+      // Le contentFeatures complet (4 champs : pn / op / ps / flags)
+      // = exactement ce qu'on met dans protocolInfo, sans le préfixe
+      // `http-get:*:<mime>:`.
+      final List<String> parts = profile.buildProtocolInfo().split(':');
+      if (parts.length >= 4) {
+        headers['contentFeatures.dlna.org'] = parts[3];
+      }
+    }
+
+    if (kDebugMode) {
+      debugPrint(
+        '[UPnP] → ${_isLg ? "LG " : _isSamsung ? "SS " : ""}'
+        '${device.name} :: $action',
+      );
+    }
+
+    final http.Response resp = await http
         .post(
           Uri.parse(device.controlUrl),
-          headers: <String, String>{
-            'Content-Type': 'text/xml; charset=utf-8',
-            'SOAPAction': '"$_kAvTransportService#$action"',
-            'Connection': 'close',
-            'User-Agent': '7MOTION/1.0 UPnP/1.0',
-          },
+          headers: headers,
           body: envelope,
         )
         .timeout(_kSoapTimeout);
+
+    if (kDebugMode && resp.statusCode != 200) {
+      debugPrint(
+        '[UPnP] ← ${resp.statusCode} from ${device.name} :: $action',
+      );
+    }
+    return resp;
   }
 
   /// Extrait le `<errorDescription>` ou `<faultstring>` d'une réponse
