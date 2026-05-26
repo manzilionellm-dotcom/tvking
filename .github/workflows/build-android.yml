@@ -145,6 +145,7 @@ jobs:
       - name: Publish/replace "latest" release
         uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: latest
           name: 7 MOTION — dernier build
           body: |
@@ -164,6 +165,9 @@ jobs:
           files: build/app/outputs/flutter-apk/app-debug.apk
           prerelease: true
           make_latest: 'true'
+          fail_on_unmatched_files: true
+          # `continue-on-error: false` (défaut) — on veut savoir si
+          # le release upload plante au lieu qu'il échoue silencieusement
 
       # Bonus : tag versionné (un par run) pour garder un historique
       - name: Publish versioned release
