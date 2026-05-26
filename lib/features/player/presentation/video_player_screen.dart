@@ -470,6 +470,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       backgroundColor: Colors.black,
       body: GestureDetector(
         onTap: _toggleOverlay,
+        // Geste swipe vertical pour zapper — remplace les ⏮ / ⏭ qui
+        // encombraient le centre de l'image. Geste premium type Netflix.
+        // Vitesse > 300 px/s pour éviter les déclenchements accidentels
+        // pendant un scroll de l'overlay.
+        onVerticalDragEnd: _canZap
+            ? (DragEndDetails d) {
+                final double v = d.primaryVelocity ?? 0;
+                if (v < -300) {
+                  _zapNext();
+                } else if (v > 300) {
+                  _zapPrev();
+                }
+              }
+            : null,
         child: ListenableBuilder(
           listenable: PlayerSettings.instance,
           builder: (BuildContext context, _) {
@@ -578,7 +592,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
                         Text(
-                          ch.name,
+                          ch.cleanName,
                           style: AppTextStyles.headlineMedium
                               .copyWith(fontSize: 18),
                           maxLines: 1,
@@ -641,29 +655,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
             ),
 
-            // ----- Centre : ⏮ Play/Pause géant ⏭ -----
+            // ----- Centre : Play/Pause minimaliste, pas de cercles -----
+            //
+            //  Avant : 3 cercles flottants (⏮ ⏯ ⏭) qui cassaient
+            //  l'immersion + le ⏮/⏭ n'avait pas de sens sur LIVE.
+            //  Maintenant : un seul play/pause discret, sans fond ni
+            //  bordure. Le zap channel passe par le swipe vertical
+            //  sur la vidéo (voir GestureDetector.onVerticalDragEnd).
             Expanded(
               child: Center(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    if (_canZap)
-                      _ZapButton(
-                        icon: Icons.skip_previous_rounded,
-                        onTap: _zapPrev,
-                      ),
-                    if (_canZap) const SizedBox(width: 24),
-                    _PlayPauseButton(
-                      isPlaying: _isPlaying,
-                      onTap: _togglePlayPause,
-                    ),
-                    if (_canZap) const SizedBox(width: 24),
-                    if (_canZap)
-                      _ZapButton(
-                        icon: Icons.skip_next_rounded,
-                        onTap: _zapNext,
-                      ),
-                  ],
+                child: _PlayPauseButton(
+                  isPlaying: _isPlaying,
+                  onTap: _togglePlayPause,
                 ),
               ),
             ),
@@ -798,58 +801,26 @@ class _PlayPauseButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Pas de cercle, pas de bordure — juste l'icône blanche.
+    // Apple TV / Netflix mobile : l'OSD reste discret, l'icône
+    // a une légère ombre pour rester lisible sur les scènes claires.
     return Material(
       color: Colors.transparent,
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onTap,
-        child: Container(
-          width: 88,
-          height: 88,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.white.withValues(alpha: 0.15),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.5),
-              width: 2,
-            ),
-          ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
           child: Icon(
-            isPlaying ? Icons.pause : Icons.play_arrow_rounded,
+            isPlaying
+                ? Icons.pause_rounded
+                : Icons.play_arrow_rounded,
             color: Colors.white,
-            size: 48,
+            size: 72,
+            shadows: const <Shadow>[
+              Shadow(color: Colors.black54, blurRadius: 16),
+            ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ZapButton extends StatelessWidget {
-  const _ZapButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.white.withValues(alpha: 0.1),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.3),
-              width: 1.5,
-            ),
-          ),
-          child: Icon(icon, color: Colors.white, size: 28),
         ),
       ),
     );

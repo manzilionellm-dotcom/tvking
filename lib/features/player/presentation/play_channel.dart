@@ -43,7 +43,7 @@ Future<void> playChannel(
   final CastDevice? target = mgr.selectedDevice ?? mgr.device;
   if (target != null) {
     final String url = overrideUrl ?? channel.streamUrl;
-    final String title = overrideTitle ?? channel.name;
+    final String title = overrideTitle ?? channel.cleanName;
     try {
       await mgr.castTo(target, streamUrl: url, title: title);
       if (context.mounted) {

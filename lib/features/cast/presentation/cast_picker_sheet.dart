@@ -24,6 +24,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/cast_manager.dart';
 import '../domain/cast_device.dart';
+import 'web_cast_setup_sheet.dart';
 
 /// Ouvre le picker en mode "envoyer ce flux maintenant".
 /// → Tap sur un device = la TV se met à lire `streamUrl` immédiatement.
@@ -93,20 +94,15 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
   Future<void> _onDeviceTap(CastDevice device) async {
     final CastManager mgr = CastManager.instance;
 
-    // ----- Chromecast non supporté nativement -----
-    //  L'app n'implémente pas le protocole CASTV2 binaire de Google.
-    //  Pour caster sur Chromecast / Google TV, il faut une intégration
-    //  Google Cast SDK qui demande plusieurs jours de boulot natif
-    //  (cf. note dans le code). Pour l'instant on dit clairement que
-    //  ce n'est pas dispo et on encourage à utiliser une TV DLNA.
+    // ----- Chromecast / Google TV : bascule vers le mode QR -----
+    //  Pas de Google Cast SDK natif (refusé, trop lourd). À la place,
+    //  on ouvre le sheet QR : l'utilisateur ouvre l'URL sur sa Google
+    //  TV / Android TV (qui ont tous un navigateur), et à partir de
+    //  là toutes les chaînes castent automatiquement.
     if (device.kind == CastDeviceKind.chromecast ||
         device.kind == CastDeviceKind.googleCast) {
-      _toast(
-        context,
-        'Cast Chromecast pas encore supporté nativement. '
-        'Utilise une TV DLNA / AirReceiver à la place.',
-        error: true,
-      );
+      Navigator.of(context).pop();
+      await showWebCastSetup(context);
       return;
     }
 
@@ -118,7 +114,7 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
       Navigator.of(context).pop();
       _toast(
         context,
-        'Connecté à ${device.name}. Tape une chaîne pour l\'envoyer.',
+        'Connecté à ${device.displayName}. Tape une chaîne pour l\'envoyer.',
         accent: true,
       );
       return;
@@ -137,7 +133,7 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
       );
       if (!mounted) return;
       Navigator.of(context).pop();
-      _toast(context, 'Envoi vers ${device.name}', accent: true);
+      _toast(context, 'Envoi vers ${device.displayName}', accent: true);
     } on Exception catch (_) {
       if (!mounted) return;
       // Le CastManager a déjà transformé l'exception en message friendly
@@ -149,17 +145,16 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
     }
   }
 
-  /// Sous-titre du picker — adaptatif selon l'état du CastManager.
-  /// Pendant un connect, on relaye le `CastProgress.message` pour que
-  /// l'utilisateur voie EN DIRECT la progression du failover :
-  ///   "Vérification du flux..." → "Connexion à la TV (2/3)..."
-  String _statusLine(CastManager mgr, {required bool discovering}) {
+  /// Sous-titre du picker — adaptatif. Au repos = `null` (rien affiché,
+  /// pas de jargon protocolaire). Pendant un connect on relaye le
+  /// `CastProgress.message` pour montrer le failover en direct.
+  String? _statusLine(CastManager mgr, {required bool discovering}) {
     if (mgr.state == CastState.connecting &&
         mgr.progress.message.isNotEmpty) {
       return mgr.progress.message;
     }
-    if (discovering) return 'Recherche sur ton WiFi...';
-    return 'DLNA · Roku · navigateur web.';
+    if (discovering) return 'Recherche sur ton WiFi…';
+    return null;
   }
 
   Future<void> _disconnect() async {
@@ -266,16 +261,23 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            _statusLine(mgr, discovering: discovering),
-                            style: AppTextStyles.bodyMedium.copyWith(
-                              fontSize: 12,
-                              color: mgr.state == CastState.connecting
-                                  ? AppColors.accent
-                                  : AppColors.textMuted,
+                          // Sous-titre : affiché UNIQUEMENT pendant un
+                          // connect ou une discovery active. Au repos on
+                          // ne montre rien — pas de jargon protocolaire
+                          // ("DLNA · Roku · navigateur web") qui pollue.
+                          if (_statusLine(mgr, discovering: discovering) !=
+                              null) ...<Widget>[
+                            const SizedBox(height: 2),
+                            Text(
+                              _statusLine(mgr, discovering: discovering)!,
+                              style: AppTextStyles.bodyMedium.copyWith(
+                                fontSize: 12,
+                                color: mgr.state == CastState.connecting
+                                    ? AppColors.accent
+                                    : AppColors.textMuted,
+                              ),
                             ),
-                          ),
+                          ],
                           if (active != null) ...<Widget>[
                             const SizedBox(height: 14),
                             _ActiveSessionBanner(
@@ -316,11 +318,7 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                             ),
                     ),
 
-                    // ----- Aide en bas -----
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
-                      child: _help(),
-                    ),
+                    const SizedBox(height: 8),
                   ],
                 );
               },
@@ -367,37 +365,6 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
     );
   }
 
-  Widget _help() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.surface.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: AppColors.accent.withValues(alpha: 0.2),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Icon(Icons.info_outline_rounded,
-              size: 16, color: AppColors.accent),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Fire TV : installe "AirReceiver" pour activer DLNA. '
-              'Smart TV : active "Partage réseau" ou "DLNA" dans ses paramètres.',
-              style: AppTextStyles.bodyMedium.copyWith(
-                fontSize: 11,
-                color: AppColors.textMuted,
-                height: 1.5,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 // ============================================================
@@ -417,49 +384,39 @@ class _DeviceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final _BrandInfo brand = _brandFor(device);
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         onTap: isActive ? null : onTap,
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           decoration: BoxDecoration(
-            color: isActive
-                ? AppColors.accentSurface
-                : AppColors.surface,
-            borderRadius: BorderRadius.circular(12),
+            color:
+                isActive ? AppColors.accentSurface : AppColors.surface,
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: isActive ? AppColors.accent : AppColors.border,
-              width: isActive ? 1.5 : 1,
+              width: isActive ? 1.4 : 1,
             ),
           ),
           child: Row(
             children: <Widget>[
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: isActive
-                      ? AppColors.accent
-                      : AppColors.accent.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.tv_rounded,
-                  color: isActive ? Colors.black : AppColors.accent,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
+              // ----- Monogramme de la marque (style télécommande universelle) -----
+              //  Une box ronde avec les 2-4 lettres de la marque
+              //  (LG, SAM, TCL, SONY...). Plus identifiable visuellement
+              //  qu'une icône TV générique + badge protocolaire.
+              _BrandMonogram(brand: brand, active: isActive),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      device.name,
+                      device.displayName,
                       style: AppTextStyles.bodyLarge.copyWith(
-                        fontSize: 14,
+                        fontSize: 15,
                         fontWeight: FontWeight.w600,
                         color: isActive
                             ? AppColors.accent
@@ -468,24 +425,19 @@ class _DeviceTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: <Widget>[
-                        _KindBadge(kind: device.kind),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            device.host,
-                            style: AppTextStyles.bodyMedium.copyWith(
-                              fontSize: 11,
-                              color: AppColors.textMuted,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                    if (brand.subtitle != null) ...<Widget>[
+                      const SizedBox(height: 2),
+                      Text(
+                        brand.subtitle!,
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          fontSize: 11,
+                          color: AppColors.textMuted,
+                          letterSpacing: 0.4,
                         ),
-                      ],
-                    ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -521,6 +473,46 @@ class _DeviceTile extends StatelessWidget {
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Box ronde 48×48 contenant les lettres de la marque (LG, SAM, TCL…).
+/// Style "télécommande universelle" — l'utilisateur reconnaît
+/// visuellement sa TV au lieu de lire "DLNA 192.168.8.4".
+class _BrandMonogram extends StatelessWidget {
+  const _BrandMonogram({required this.brand, required this.active});
+
+  final _BrandInfo brand;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 48,
+      height: 48,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: active
+            ? AppColors.accent.withValues(alpha: 0.18)
+            : AppColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: active
+              ? AppColors.accent.withValues(alpha: 0.5)
+              : AppColors.border,
+          width: 1,
+        ),
+      ),
+      child: Text(
+        brand.monogram,
+        style: AppTextStyles.labelSmall.copyWith(
+          fontSize: brand.monogram.length >= 4 ? 11 : 13,
+          fontWeight: FontWeight.w800,
+          color: active ? AppColors.accent : AppColors.textPrimary,
+          letterSpacing: 1.0,
         ),
       ),
     );
@@ -574,7 +566,7 @@ class _ActiveSessionBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 1),
                 Text(
-                  device.name,
+                  device.displayName,
                   style: AppTextStyles.bodyLarge.copyWith(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
@@ -603,52 +595,92 @@ class _ActiveSessionBanner extends StatelessWidget {
 }
 
 // ============================================================
-//  Badge "DLNA" / "Roku" / "Chromecast" — petite pastille à
-//  côté du nom pour que l'utilisateur sache à quel type de
-//  récepteur il a affaire avant de connecter.
+//  Détection de marque — style télécommande universelle
+// ============================================================
+//  On déduit la marque du device depuis manufacturer / model /
+//  name. Le monogramme s'affiche dans la tile (LG, SAM, SONY...).
+//  Le sous-titre OS (webOS / Tizen / Android TV) reste discret.
+//
+//  Pas de logos officiels checkés (poids APK + droits brand),
+//  juste de la typo dans une box ronde — minimaliste premium.
 // ============================================================
 
-class _KindBadge extends StatelessWidget {
-  const _KindBadge({required this.kind});
+class _BrandInfo {
+  const _BrandInfo({required this.monogram, this.subtitle});
 
-  final CastDeviceKind kind;
+  /// 2-4 lettres affichées dans la box ronde.
+  final String monogram;
 
-  @override
-  Widget build(BuildContext context) {
-    final ({String label, Color color}) info = _info(kind);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      decoration: BoxDecoration(
-        color: info.color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(
-          color: info.color.withValues(alpha: 0.4),
-          width: 0.8,
-        ),
-      ),
-      child: Text(
-        info.label,
-        style: AppTextStyles.labelSmall.copyWith(
-          color: info.color,
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.6,
-        ),
-      ),
-    );
+  /// Ligne discrète sous le nom : "LG webOS", "Samsung Tizen",
+  /// "Android TV", "Apple TV"… ou `null` si on n'a aucune info.
+  final String? subtitle;
+}
+
+_BrandInfo _brandFor(CastDevice d) {
+  final String haystack =
+      '${d.manufacturer ?? ""} ${d.model ?? ""} ${d.name}'
+          .toLowerCase();
+
+  bool has(String needle) => haystack.contains(needle);
+
+  // ----- Marques de TV courantes -----
+  if (has('lg')) return const _BrandInfo(monogram: 'LG', subtitle: 'LG · webOS');
+  if (has('samsung')) {
+    return const _BrandInfo(monogram: 'SAM', subtitle: 'Samsung · Tizen');
   }
-
-  ({String label, Color color}) _info(CastDeviceKind k) {
-    switch (k) {
-      case CastDeviceKind.dlna:
-        return (label: 'DLNA', color: AppColors.textSecondary);
-      case CastDeviceKind.roku:
-        return (label: 'ROKU', color: const Color(0xFF662D91));
-      case CastDeviceKind.chromecast:
-      case CastDeviceKind.googleCast:
-        return (label: 'CAST', color: const Color(0xFF4285F4));
-      case CastDeviceKind.webBrowser:
-        return (label: 'WEB', color: AppColors.success);
-    }
+  if (has('sony') || has('bravia')) {
+    return const _BrandInfo(monogram: 'SONY', subtitle: 'Sony · Android TV');
+  }
+  if (has('tcl')) {
+    return const _BrandInfo(monogram: 'TCL', subtitle: 'TCL · Android TV');
+  }
+  if (has('hisense')) {
+    return const _BrandInfo(
+        monogram: 'HIS', subtitle: 'Hisense · VIDAA / Android');
+  }
+  if (has('philips')) {
+    return const _BrandInfo(
+        monogram: 'PHIL', subtitle: 'Philips · Android TV / SAPHI');
+  }
+  if (has('vizio')) {
+    return const _BrandInfo(monogram: 'VIZ', subtitle: 'Vizio · SmartCast');
+  }
+  if (has('panasonic')) {
+    return const _BrandInfo(monogram: 'PAN', subtitle: 'Panasonic');
+  }
+  if (has('sharp')) return const _BrandInfo(monogram: 'SHRP', subtitle: 'Sharp');
+  if (has('toshiba')) {
+    return const _BrandInfo(monogram: 'TOSH', subtitle: 'Toshiba');
+  }
+  if (has('xiaomi') || has('mi tv') || has('redmi')) {
+    return const _BrandInfo(monogram: 'MI', subtitle: 'Xiaomi · Android TV');
+  }
+  // ----- Boîtiers / dongles -----
+  if (has('shield')) {
+    return const _BrandInfo(monogram: 'SHLD', subtitle: 'NVIDIA SHIELD');
+  }
+  if (has('fire') || has('amazon')) {
+    return const _BrandInfo(monogram: 'FIRE', subtitle: 'Amazon Fire TV');
+  }
+  if (has('roku')) {
+    return const _BrandInfo(monogram: 'ROKU', subtitle: 'Roku');
+  }
+  if (has('apple') || has('appletv')) {
+    return const _BrandInfo(monogram: 'APPL', subtitle: 'Apple TV');
+  }
+  if (has('chromecast') || has('google')) {
+    return const _BrandInfo(monogram: 'GOOG', subtitle: 'Google · Chromecast');
+  }
+  // ----- Fallbacks par kind -----
+  switch (d.kind) {
+    case CastDeviceKind.chromecast:
+    case CastDeviceKind.googleCast:
+      return const _BrandInfo(monogram: 'CAST', subtitle: 'Google Cast');
+    case CastDeviceKind.roku:
+      return const _BrandInfo(monogram: 'ROKU', subtitle: 'Roku');
+    case CastDeviceKind.webBrowser:
+      return const _BrandInfo(monogram: 'WEB', subtitle: 'Navigateur');
+    case CastDeviceKind.dlna:
+      return const _BrandInfo(monogram: 'TV', subtitle: null);
   }
 }

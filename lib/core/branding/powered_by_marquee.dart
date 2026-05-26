@@ -161,3 +161,38 @@ class _PoweredByMarqueeState extends State<PoweredByMarquee>
     );
   }
 }
+
+/// Signature discrète "THE FEW · NOT FOR EVERYONE" — version statique,
+/// minuscule, gris ténu. Conçue pour vivre **juste sous le logo 7**
+/// dans le header, comme la baseline d'une maison de couture sous
+/// son monogramme. Pas d'animation, pas de fond, pas de bordure —
+/// elle ne demande aucune attention, elle est là si on la cherche.
+///
+/// Remplace la `PoweredByMarquee` animée du pied d'écran (jugée trop
+/// "ticker de bourse" pour un produit premium). Le marquee animé
+/// reste utilisé sur le splash uniquement.
+class BrandSignature extends StatelessWidget {
+  const BrandSignature({
+    super.key,
+    this.text = 'THE FEW · NOT FOR EVERYONE',
+  });
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: AppTextStyles.labelSmall.copyWith(
+        fontSize: 8,
+        // textMuted = gris très ténu de LUMIERE — ne tire pas l'œil.
+        color: AppColors.textMuted,
+        letterSpacing: 2.4,
+        fontWeight: FontWeight.w600,
+        height: 1.0,
+      ),
+    );
+  }
+}

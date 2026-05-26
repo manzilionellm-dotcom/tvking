@@ -62,6 +62,30 @@ class CastDevice {
   final String? manufacturer;
   final String? model;
 
+  /// Nom court "premium" pour l'UI — on retire les artefacts techy
+  /// que les TVs balancent dans leur friendlyName SSDP/mDNS :
+  ///   "[LG] webOS TV QNED816QA" → "LG webOS TV"
+  ///   "Samsung TV UE55Q60T (Salon)" → "Samsung TV (Salon)"
+  ///   "Salon" → "Salon"
+  ///
+  /// On garde [name] brut intact pour le diagnostic JSON et les logs ;
+  /// uniquement les widgets UI affichent [displayName].
+  String get displayName {
+    String s = name;
+    // 1) Retire les `[XX] ` ou `[XX]` en début (brackets brand)
+    s = s.replaceFirst(RegExp(r'^\s*\[[^\]]+\]\s*'), '');
+    // 2) Retire un suffixe modèle alphanumérique trapu en fin :
+    //    "...QNED816QA", "...UE55Q60T", "...XR-65A95K" — pattern :
+    //    un dernier mot d'au moins 6 char qui mélange majuscules+chiffres.
+    s = s.replaceFirst(
+      RegExp(r'\s+[A-Z]{2,}[-_]?[A-Z0-9]*[0-9]+[A-Z0-9]*\s*$'),
+      '',
+    );
+    s = s.trim();
+    // Garde-fou : si on a tout mangé, on revient au brut.
+    return s.length < 2 ? name : s;
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) || (other is CastDevice && other.id == id);

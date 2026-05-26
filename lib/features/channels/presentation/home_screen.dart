@@ -173,12 +173,9 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                // Signature défilante "POWERED BY 7 — THE FEW"
-                // au-dessus du bottom nav, garantie visible (Column
-                // déterministe au lieu d'un Positioned qui se faisait
-                // cacher derrière le FloatingBottomNav).
-                const PoweredByMarquee(),
-                const SizedBox(height: 4),
+                // La signature ne défile plus en pied d'écran — elle
+                // vit maintenant en haut, collée sous le logo dans
+                // l'AppBar (cf. _buildAppBar). Voir BrandSignature.
                 FloatingBottomNav(
                   currentIndex: _currentNavIndex,
                   onTap: _onNavTap,
@@ -196,11 +193,18 @@ class _HomeScreenState extends State<HomeScreen> {
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
-      // Logo seul dans l'AppBar — le wordmark "7 MOTION" prenait
-      // trop de place avec 5 icônes d'action à droite et causait
-      // un RIGHT OVERFLOWED sur les phones standards. Le logo
-      // ember est suffisamment reconnaissable.
-      title: const BrandLogo.compact(),
+      // Logo + signature discrète juste en-dessous — baseline maison
+      // de couture sous le monogramme. La signature animée du pied
+      // d'écran a été supprimée (effet ticker = pas premium).
+      title: const Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          BrandLogo.compact(),
+          SizedBox(height: 2),
+          BrandSignature(),
+        ],
+      ),
       actions: <Widget>[
         // Bouton Actualiser — visible, première position d'actions.
         // L'app rafraîchit déjà les playlists vieilles au démarrage,

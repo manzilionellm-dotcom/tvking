@@ -216,7 +216,10 @@ class LocalCastServer {
 
     final HttpClient client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 8)
-      ..idleTimeout = const Duration(seconds: 30)
+      // idleTimeout doit être LARGE — un flux LIVE peut avoir des creux
+      // de quelques secondes entre les segments. À 30s on coupait après
+      // ~5s sur certaines TVs LG (popup natif "périphérique déconnecté").
+      ..idleTimeout = const Duration(minutes: 10)
       ..userAgent = 'VLC/3.0.20 LibVLC/3.0.20 (7 MOTION Relay)'
       ..autoUncompress = false;
 
@@ -301,9 +304,12 @@ class LocalCastServer {
     out.headers.set('getcontentFeatures.dlna.org', contentFeatures);
     out.headers.set('transferMode.dlna.org', entry.profile.transferMode.header);
 
-    // Pas de cache — c'est du LIVE quoi qu'il arrive
+    // Pas de cache — c'est du LIVE quoi qu'il arrive.
     out.headers.set('Cache-Control', 'no-store, no-cache');
-    out.headers.set('Connection', 'close');
+    // Pas de `Connection: close` — certaines TVs LG l'interprètent
+    // comme "le serveur va couper", déclenchent un popup natif
+    // "périphérique déconnecté" après quelques secondes. Keep-alive
+    // par défaut convient mieux à un flux LIVE.
   }
 
   /// Découvre l'IP locale du téléphone sur le bon réseau (celui

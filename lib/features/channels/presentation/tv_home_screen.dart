@@ -290,10 +290,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               ),
             ),
 
-          // Signature défilante "POWERED BY 7 — THE FEW" en pied
-          // de page TV. Discret mais présent.
-          const SizedBox(height: 32),
-          const PoweredByMarquee(height: 32),
+          // La signature défilante du pied a été retirée — elle vit
+          // maintenant collée au logo dans le top bar TV (cf. _TvTopBar).
           const SizedBox(height: 40),
         ],
       ),
@@ -324,13 +322,23 @@ class _TvTopBar extends StatelessWidget {
         children: <Widget>[
           const BrandLogo.compact(),
           const SizedBox(width: 14),
-          Text(
-            BrandStrings.appName,
-            style: AppTextStyles.headlineLarge.copyWith(
-              fontSize: 22,
-              letterSpacing: 4,
-              fontWeight: FontWeight.w700,
-            ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                BrandStrings.appName,
+                style: AppTextStyles.headlineLarge.copyWith(
+                  fontSize: 22,
+                  letterSpacing: 4,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              // Baseline discrète sous le wordmark — la signature
+              // animée du pied (ticker style) est supprimée.
+              const BrandSignature(),
+            ],
           ),
           const Spacer(),
           // Bouton Actualiser TV — focusable au D-pad, visible à 3 m.
