@@ -1,19 +1,19 @@
 // =========================================================
 //  admin_dashboard_screen.dart — Console admin in-app
 // =========================================================
-//  Permet à l'admin (toi) de gérer ses clients SANS éditer le
-//  gist GitHub à la main :
+//  Permet à l'admin (toi) de gérer ses clients depuis le téléphone
+//  via le mini-backend Cloudflare Worker (cf. cloudflare/) :
 //
-//    - Setup : pose le PAT GitHub + l'ID gist (une seule fois)
+//    - Setup : URL du Worker + secret admin (une seule fois)
 //    - Liste : tous les clients avec leur MAC + nom + nb playlists
 //    - Add  : bouton "+ Nouveau client" → ouvre le sheet de création
 //    - Edit : tap sur un client → ouvre le sheet pré-rempli
 //    - Delete : long-press sur un client → confirmation puis suppression
-//    - Refresh : bouton refresh → re-fetch le gist (au cas où
+//    - Refresh : bouton refresh → re-fetch côté serveur (au cas où
 //      modifié depuis un autre appareil)
 //
-//  Tous les écrits passent par GistRepository.write() qui
-//  reconstruit le JSON et le push sur GitHub via API authentifiée.
+//  Tous les écrits passent par BackendRepository qui parle au
+//  Worker via API REST authentifiée (header X-Admin-Secret).
 // =========================================================
 
 import 'package:flutter/material.dart';
@@ -314,7 +314,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 )
               else if (_error != null)
                 _errorBlock(_error!)
-              else if (_clients.isEmpty && cred.hasGistId)
+              else if (_clients.isEmpty && cred.canWrite)
                 _emptyBlock()
               else
                 ..._clients.map(_clientTile),
