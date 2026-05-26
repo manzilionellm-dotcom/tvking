@@ -105,6 +105,20 @@ jobs:
             grep 'android:label' "$MANIFEST" || true
           fi
 
+      # Active le Google Cast SDK natif (le VRAI, celui de YouTube /
+      # Netflix). Le script copie nos 3 fichiers Kotlin (MainActivity,
+      # GoogleCastApi, CastOptionsProviderImpl) dans le package Android
+      # généré, ET patche android/app/build.gradle (deps Cast Framework
+      # + AndroidX MediaRouter + AppCompat + Fragment), ET patche
+      # AndroidManifest.xml pour la meta-data OPTIONS_PROVIDER_CLASS_NAME
+      # requise par le SDK Cast.
+      #
+      # Idempotent — re-run sans effet si déjà patché. Si quelque chose
+      # foire dans le script, `set -e` interne le fait crasher avec un
+      # message clair.
+      - name: Apply Google Cast SDK overlay
+        run: bash android_overlay/google_cast/apply_cast_patch.sh
+
       - name: Get dependencies
         run: flutter pub get
 
