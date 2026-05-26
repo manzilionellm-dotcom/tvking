@@ -79,7 +79,12 @@ class FavoritesScreen extends StatelessWidget {
                   final int cols = w >= 1000 ? 4 : w >= 700 ? 3 : 2;
                   return GridView.builder(
                     padding: const EdgeInsets.all(16),
-                    physics: const BouncingScrollPhysics(),
+                    physics: const BouncingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
+                    ),
+                    cacheExtent: 800,
+                    addAutomaticKeepAlives: false,
+                    addRepaintBoundaries: true,
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: cols,
                       mainAxisSpacing: 14,

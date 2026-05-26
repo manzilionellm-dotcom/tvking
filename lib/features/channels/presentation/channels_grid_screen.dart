@@ -76,7 +76,12 @@ class ChannelsGridScreen extends StatelessWidget {
                             : 2;
                 return GridView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                  physics: const BouncingScrollPhysics(),
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  cacheExtent: 800,
+                  addAutomaticKeepAlives: false,
+                  addRepaintBoundaries: true,
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: cols,
                     mainAxisSpacing: 14,

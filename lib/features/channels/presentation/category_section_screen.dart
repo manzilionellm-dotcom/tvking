@@ -560,9 +560,14 @@ class _CompactList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.builder(
-      physics: const BouncingScrollPhysics(),
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
       // itemExtent = clé de la perf à 20k items
       itemExtent: CompactChannelRow.height,
+      cacheExtent: 1200, // pré-rend ~20 tiles invisibles → scroll smooth
+      addAutomaticKeepAlives: false,
+      addRepaintBoundaries: false, // déjà fait manuellement plus bas
       itemCount: channels.length,
       itemBuilder: (BuildContext context, int index) {
         final Channel ch = channels[index];
@@ -591,7 +596,11 @@ class _Grid extends StatelessWidget {
         final int cols = w >= 1400 ? 6 : w >= 1000 ? 5 : w >= 700 ? 4 : 3;
         return GridView.builder(
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
-          physics: const BouncingScrollPhysics(),
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          cacheExtent: 800,
+          addAutomaticKeepAlives: false,
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: cols,
             mainAxisSpacing: 12,
