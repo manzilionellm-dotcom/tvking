@@ -13,6 +13,7 @@
 // =========================================================
 
 import '../domain/cast_device.dart';
+import 'google_cast_transport.dart';
 import 'roku_ecp_transport.dart';
 import 'upnp_av_transport.dart';
 import 'web_browser_transport.dart';
@@ -44,15 +45,13 @@ abstract class CastTransport {
         return RokuEcpTransport(device);
       case CastDeviceKind.chromecast:
       case CastDeviceKind.googleCast:
-        // Sans Google Cast SDK natif (refusé : trop lourd, +~5 MB APK),
-        // on bascule TOUT Chromecast sur le transport navigateur web :
-        //   - Google TV / Android TV ont un Chrome intégré → marche
-        //   - Chromecast dongle pur sans browser → ne marche pas, mais
-        //     au moins pas d'erreur cryptique ; l'utilisateur peut
-        //     ouvrir l'URL sur sa TV manuellement via le sheet QR.
-        // Le picker ouvre le sheet QR (showWebCastSetup) au tap sur
-        // un Chromecast pour guider l'utilisateur dès la première fois.
-        return WebBrowserTransport(device);
+        // Vraie intégration Google Cast SDK natif (le même que YouTube
+        // et Netflix utilisent). Bridge Kotlin custom via MethodChannel
+        // — pas de plugin Flutter fragile (cf. floating qui a explosé
+        // sur JVM target mismatch). Si l'utilisateur n'a pas Google Play
+        // Services, GoogleCastTransport lève une exception et le
+        // CastManager retombe gracieusement sur le fallback adéquat.
+        return GoogleCastTransport(device);
       case CastDeviceKind.webBrowser:
         return WebBrowserTransport(device);
     }

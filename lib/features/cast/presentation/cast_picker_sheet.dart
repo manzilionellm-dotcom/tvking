@@ -24,7 +24,6 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/cast_manager.dart';
 import '../domain/cast_device.dart';
-import 'web_cast_setup_sheet.dart';
 
 /// Ouvre le picker en mode "envoyer ce flux maintenant".
 /// → Tap sur un device = la TV se met à lire `streamUrl` immédiatement.
@@ -94,17 +93,10 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
   Future<void> _onDeviceTap(CastDevice device) async {
     final CastManager mgr = CastManager.instance;
 
-    // ----- Chromecast / Google TV : bascule vers le mode QR -----
-    //  Pas de Google Cast SDK natif (refusé, trop lourd). À la place,
-    //  on ouvre le sheet QR : l'utilisateur ouvre l'URL sur sa Google
-    //  TV / Android TV (qui ont tous un navigateur), et à partir de
-    //  là toutes les chaînes castent automatiquement.
-    if (device.kind == CastDeviceKind.chromecast ||
-        device.kind == CastDeviceKind.googleCast) {
-      Navigator.of(context).pop();
-      await showWebCastSetup(context);
-      return;
-    }
+    // Chromecast / Google TV : on a maintenant un VRAI bridge SDK
+    // natif (cf. GoogleCastTransport). Le tap passe par le flow
+    // normal — castTo → SDK ouvre son dialog → user tap sa TV →
+    // playback démarre direct, comme Netflix.
 
     // Mode "global" : on mémorise juste la cible. Pas de flux à
     // envoyer maintenant — playChannel s'en chargera ensuite.
