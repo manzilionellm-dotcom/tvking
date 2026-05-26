@@ -386,24 +386,31 @@ class CastManager extends ChangeNotifier {
 
     transport.profile = profile;
 
-    // Échelle de stratégies en gradient :
+    // Échelle de stratégies en gradient (étendue à 5 niveaux) :
     //   0 = direct + métadonnée DLNA complète (cas idéal, latence min)
-    //   1 = relay  + métadonnée DLNA complète (résout 95% des 500)
-    //   2 = relay  + métadonnée minimale (sans PN, dernier recours)
+    //   1 = direct + métadonnée minimale (juste MIME, pas de PN)
+    //   2 = direct + AUCUNE métadonnée (URL nue → fallback ultime direct)
+    //   3 = relay  + métadonnée DLNA complète (résout 95% des 500)
+    //   4 = relay  + métadonnée minimale (sans PN, dernier recours)
     //
-    // Si le probe nous a déjà dit "passe par la relay" (redirects, auth,
-    // MIME ambigu...), on saute la stratégie 0 d'emblée.
-    final int startStrategy = probe.shouldUseRelay ? 1 : 0;
-    const int totalStrategies = 3;
-    final int budget = totalStrategies - startStrategy;
+    // ATTENTION : on essaie TOUJOURS les 3 stratégies "direct" d'abord,
+    // MÊME si le probe dit shouldUseRelay = true. Constaté empiriquement
+    // sur la TV LG de l'utilisateur : le relay timeout systématiquement
+    // (la TV ne joint pas notre serveur local — VLAN ou firewall) alors
+    // que la TV elle-même a accès Internet et pourrait fetch Xtream
+    // directement. Le probe est conservateur, mais ça n'aide pas pour
+    // les TVs qui rejettent le relay.
+    const int totalStrategies = 5;
+    final int startStrategy = 0;
+    final int budget = totalStrategies;
 
     Exception? lastError;
     for (int s = startStrategy; s < totalStrategies; s++) {
-      final int displayAttempt = s - startStrategy + 1;
+      final int displayAttempt = s + 1;
       final Stopwatch attemptSw = Stopwatch()..start();
       final String strategyName = _strategyName(s);
-      final String urlKind = s == 0 ? 'direct' : 'relay';
-      final String metaName = s == 2 ? 'minimal' : 'full';
+      final String urlKind = s < 3 ? 'direct' : 'relay';
+      final String metaName = (s == 1 || s == 4) ? 'minimal' : (s == 2 ? 'none' : 'full');
 
       try {
         _setProgress(
@@ -411,23 +418,35 @@ class CastManager extends ChangeNotifier {
         );
 
         final String urlToCast;
-        if (s == 0) {
-          urlToCast = probe.finalUrl;
-          transport.metadataMode = MetadataMode.full;
-        } else if (s == 1) {
-          urlToCast = await _ensureRelayUrl(
-            upstreamUrl: probe.finalUrl,
-            profile: profile,
-            receiverHost: transport.device.host,
-          );
-          transport.metadataMode = MetadataMode.full;
-        } else {
-          urlToCast = await _ensureRelayUrl(
-            upstreamUrl: probe.finalUrl,
-            profile: profile,
-            receiverHost: transport.device.host,
-          );
-          transport.metadataMode = MetadataMode.minimal;
+        switch (s) {
+          case 0:
+            urlToCast = probe.finalUrl;
+            transport.metadataMode = MetadataMode.full;
+            break;
+          case 1:
+            urlToCast = probe.finalUrl;
+            transport.metadataMode = MetadataMode.minimal;
+            break;
+          case 2:
+            urlToCast = probe.finalUrl;
+            transport.metadataMode = MetadataMode.none;
+            break;
+          case 3:
+            urlToCast = await _ensureRelayUrl(
+              upstreamUrl: probe.finalUrl,
+              profile: profile,
+              receiverHost: transport.device.host,
+            );
+            transport.metadataMode = MetadataMode.full;
+            break;
+          default: // 4
+            urlToCast = await _ensureRelayUrl(
+              upstreamUrl: probe.finalUrl,
+              profile: profile,
+              receiverHost: transport.device.host,
+            );
+            transport.metadataMode = MetadataMode.minimal;
+            break;
         }
 
         await transport.playStream(streamUrl: urlToCast, title: title);
@@ -470,8 +489,12 @@ class CastManager extends ChangeNotifier {
       case 0:
         return 'direct+full';
       case 1:
-        return 'relay+full';
+        return 'direct+minimal';
       case 2:
+        return 'direct+nometa';
+      case 3:
+        return 'relay+full';
+      case 4:
         return 'relay+minimal';
       default:
         return 'unknown';
