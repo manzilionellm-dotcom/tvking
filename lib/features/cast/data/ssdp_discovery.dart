@@ -142,7 +142,19 @@ class SsdpDiscovery {
       final int sep = usn.indexOf('::');
       final String rootId = sep > 0 ? usn.substring(0, sep) : usn;
       if (seenRootIds.contains(rootId)) return;
-      seenRootIds.add(rootId);
+      // IMPORTANT : on NE marque PAS rootId comme "seen" maintenant.
+      // Une TV LG webOS annonce 5+ services UPnP par multicast SSDP,
+      // chacun avec un LOCATION URL différent qui pointe vers une
+      // description XML potentiellement différente. Pour la TV de
+      // l'utilisateur, c'était la description du service rootdevice
+      // qui arrivait en 1er — SANS AVTransport — donc on rejetait
+      // mais on marquait quand même rootId comme vu → les autres 4
+      // annonces (qui contenaient AVTransport) étaient skip.
+      //
+      // Fix : on ne marque seen QU'APRÈS avoir confirmé qu'on a un
+      // device EXPLOITABLE (avec AVTransport pour DLNA, ou Roku
+      // valide). Si la 1ère annonce ne donne rien, les autres ont
+      // leur chance.
 
       // ----- Branche Roku -----
       // Roku répond avec ST = "roku:ecp" et LOCATION pointant vers
@@ -153,6 +165,7 @@ class SsdpDiscovery {
         final CastDevice? device =
             await _parseRokuDevice(location, rootId);
         if (device == null) return;
+        seenRootIds.add(rootId);
         if (!controller.isClosed) controller.add(device);
         return;
       }
@@ -167,6 +180,7 @@ class SsdpDiscovery {
       final CastDevice? device =
           _parseDeviceDescriptor(resp.body, location, rootId);
       if (device == null) return;
+      seenRootIds.add(rootId);
       if (!controller.isClosed) controller.add(device);
     } catch (e) {
       if (kDebugMode) debugPrint('[SSDP] parse error: $e');
