@@ -46,9 +46,22 @@ class RecordingRepository {
         file_path TEXT NOT NULL,
         started_at INTEGER NOT NULL,
         ended_at INTEGER,
-        file_size_bytes INTEGER NOT NULL DEFAULT 0
+        file_size_bytes INTEGER NOT NULL DEFAULT 0,
+        channel_logo_url TEXT
       )
     ''');
+
+    // Migration : la colonne `channel_logo_url` a été ajoutée plus tard.
+    // Pour les bases existantes, on ALTER TABLE. Idempotent : si la colonne
+    // existe déjà, SQLite throw une DatabaseException qu'on ignore.
+    try {
+      await db.execute(
+        'ALTER TABLE recordings ADD COLUMN channel_logo_url TEXT',
+      );
+    } on DatabaseException catch (_) {
+      // Colonne déjà présente — bénin
+    }
+
     _initialized = true;
     await _refresh();
   }
@@ -96,6 +109,7 @@ class RecordingRepository {
     required String channelName,
     String? programTitle,
     required String filePath,
+    String? channelLogoUrl,
   }) async {
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
@@ -106,6 +120,7 @@ class RecordingRepository {
       programTitle: programTitle,
       filePath: filePath,
       startedAt: DateTime.now().millisecondsSinceEpoch,
+      channelLogoUrl: channelLogoUrl,
     );
     final int id = await db.insert('recordings', rec.toMap());
     await _refresh();

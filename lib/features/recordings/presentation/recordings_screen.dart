@@ -341,6 +341,7 @@ class _RecordingPlayerState extends State<_RecordingPlayer> {
 
   @override
   Widget build(BuildContext context) {
+    final String? logoUrl = widget.recording.channelLogoUrl;
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -351,8 +352,42 @@ class _RecordingPlayerState extends State<_RecordingPlayer> {
           overflow: TextOverflow.ellipsis,
         ),
       ),
-      body: Center(
-        child: Video(controller: _controller),
+      body: Stack(
+        children: <Widget>[
+          Center(
+            child: Video(controller: _controller),
+          ),
+          // Logo flottant de la chaîne — style "France 2 en bas-droite".
+          // Affiché si le Recording avait stocké un logoUrl (recordings
+          // créés APRÈS la migration DB ; pour les anciens, pas de logo).
+          if (logoUrl != null && logoUrl.isNotEmpty)
+            Positioned(
+              bottom: 16,
+              right: 16,
+              child: IgnorePointer(
+                child: Opacity(
+                  opacity: 0.75,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Image.network(
+                      logoUrl,
+                      height: 36,
+                      width: 60,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      loadingBuilder: (BuildContext c, Widget child,
+                              ImageChunkEvent? p) =>
+                          p == null ? child : const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -356,6 +356,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         channelName: _currentChannel.cleanName,
         programTitle: widget.overrideTitle,
         filePath: path,
+        channelLogoUrl: _currentChannel.logoUrl,
       );
 
       // Démarre le ForegroundService natif qui empêche Android de
@@ -689,6 +690,43 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     top: MediaQuery.of(context).padding.top + 12,
                     left: 12,
                     child: PlayerStatsOverlay(player: _player),
+                  ),
+
+                // ----- 3bis. Logo flottant de la chaîne (style France 2) -----
+                //  En bas-droite, semi-transparent, masqué quand l'overlay
+                //  contrôles est visible (pour ne pas cacher les boutons).
+                //  Charge depuis le `logoUrl` du Channel ; fallback : pas
+                //  de logo si l'URL est nulle ou casse au load.
+                if (!_hasError &&
+                    !_overlayVisible &&
+                    _currentChannel.logoUrl != null &&
+                    _currentChannel.logoUrl!.isNotEmpty)
+                  Positioned(
+                    bottom: 16,
+                    right: 16,
+                    child: IgnorePointer(
+                      child: Opacity(
+                        opacity: 0.75,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Image.network(
+                            _currentChannel.logoUrl!,
+                            height: 36,
+                            width: 60,
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) =>
+                                const SizedBox.shrink(),
+                            loadingBuilder: (BuildContext c, Widget child,
+                                ImageChunkEvent? p) =>
+                                p == null ? child : const SizedBox.shrink(),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
 
                 // ----- 4. Overlay erreur -----

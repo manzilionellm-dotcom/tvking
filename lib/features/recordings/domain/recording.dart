@@ -18,6 +18,7 @@ class Recording {
     this.programTitle,
     this.endedAt,
     this.fileSizeBytes = 0,
+    this.channelLogoUrl,
   });
 
   final int? id;
@@ -28,6 +29,11 @@ class Recording {
   final int startedAt;
   final int? endedAt;
   final int fileSizeBytes;
+  /// URL du logo de la chaîne au moment de l'enregistrement — utilisée
+  /// pour afficher le logo en overlay flottant lors de la relecture
+  /// (style "France 2 en bas-droite"). Null pour les anciens enregistrements
+  /// faits avant l'ajout de cette colonne.
+  final String? channelLogoUrl;
 
   Duration get duration {
     final int end = endedAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -73,6 +79,7 @@ class Recording {
       'started_at': startedAt,
       'ended_at': endedAt,
       'file_size_bytes': fileSizeBytes,
+      'channel_logo_url': channelLogoUrl,
     };
   }
 
@@ -86,6 +93,7 @@ class Recording {
       startedAt: map['started_at'] as int,
       endedAt: map['ended_at'] as int?,
       fileSizeBytes: (map['file_size_bytes'] as int?) ?? 0,
+      channelLogoUrl: map['channel_logo_url'] as String?,
     );
   }
 
@@ -103,6 +111,7 @@ class Recording {
       startedAt: startedAt,
       endedAt: endedAt ?? this.endedAt,
       fileSizeBytes: fileSizeBytes ?? this.fileSizeBytes,
+      channelLogoUrl: channelLogoUrl,
     );
   }
 }
