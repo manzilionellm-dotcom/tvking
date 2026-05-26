@@ -16,7 +16,9 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/gallery_exporter.dart';
+import '../data/http_recording_downloader.dart';
 import '../data/recording_repository.dart';
+import '../data/recording_service.dart';
 import '../domain/recording.dart';
 
 class RecordingsScreen extends StatelessWidget {
@@ -94,8 +96,54 @@ class _RecordingTile extends StatefulWidget {
 
 class _RecordingTileState extends State<_RecordingTile> {
   bool _exporting = false;
+  bool _stopping = false;
 
   Recording get recording => widget.recording;
+
+  /// Arrête un enregistrement "EN COURS" depuis la liste.
+  /// Reproduit la séquence du player :
+  ///   1. flush + close du downloader HTTP (singleton)
+  ///   2. kill du ForegroundService (retire la notif persistante)
+  ///   3. marque le Recording comme `endedAt = now` dans la DB
+  /// Si ce n'est pas LE recording actif (cas d'un orphelin laissé
+  /// par un crash / fermeture brutale), les 2 premières étapes
+  /// sont des no-op et on passe directement au step 3 → la tuile
+  /// se transforme en card finalisée (durée + taille + export).
+  Future<void> _stopRecording() async {
+    if (_stopping) return;
+    setState(() => _stopping = true);
+    try {
+      // Best-effort : si le singleton ne tourne pas, il retourne 0.
+      try {
+        await HttpRecordingDownloader.instance.stop();
+      } catch (_) {}
+      try {
+        await RecordingService.instance.stop();
+      } catch (_) {}
+      await RecordingRepository.instance.finishRecording(recording);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.surfaceHigh,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 3),
+          content: Text(
+            'Enregistrement arrêté — exporte-le vers la Galerie',
+            style: AppTextStyles.bodyMedium,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur arrêt : $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _stopping = false);
+    }
+  }
 
   Future<void> _exportToGallery() async {
     if (_exporting) return;
@@ -220,6 +268,38 @@ class _RecordingTileState extends State<_RecordingTile> {
                   ],
                 ),
               ),
+              // Bouton STOP — visible uniquement pour les recordings
+              // "EN COURS". Permet d'arrêter sans devoir rouvrir le
+              // player de la chaîne d'origine (utile pour les orphelins
+              // laissés par un crash, ou quand le user veut juste finir
+              // un enregistrement long depuis cet écran).
+              if (inProgress)
+                IconButton(
+                  icon: _stopping
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.live,
+                          ),
+                        )
+                      : Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: AppColors.live,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Icon(
+                            Icons.stop_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                  tooltip: 'Arrêter l\'enregistrement',
+                  onPressed: _stopping ? null : _stopRecording,
+                ),
               // Bouton "Exporter vers Galerie" — appelle MediaStore pour
               // copier le .ts (rebaptisé .mp4) dans Movies/. Visible
               // uniquement quand l'enregistrement est terminé. Spinner
