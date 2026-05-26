@@ -17,6 +17,8 @@ import 'package:media_kit/media_kit.dart';
 
 import 'core/branding/brand_logo.dart';
 import 'core/branding/powered_by_marquee.dart';
+import 'core/branding/verified_badge.dart';
+import 'core/theme/app_text_styles.dart' show AppTextStyles;
 import 'core/i18n/locale_repository.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
@@ -276,13 +278,32 @@ class _Splash extends StatelessWidget {
       backgroundColor: AppColors.voidSurface,
       body: SafeArea(
         child: Column(
-          children: const <Widget>[
+          children: <Widget>[
             Expanded(
-              child: Center(child: BrandLogo.splash()),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    const BrandLogo.splash(),
+                    const SizedBox(height: 18),
+                    // Ligne "7 MOTION ✓" — le badge bleu vérifié à côté
+                    // du wordmark, comme sur les profils Instagram /
+                    // WhatsApp / Twitter officiels.
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Text('7 MOTION', style: AppTextStyles.headlineLarge),
+                        const SizedBox(width: 8),
+                        const VerifiedBadge.large(),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
             // ----- Signature marquee qui défile -----
-            PoweredByMarquee(),
-            SizedBox(height: 16),
+            const PoweredByMarquee(),
+            const SizedBox(height: 16),
           ],
         ),
       ),

@@ -14,6 +14,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/branding/verified_badge.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/biometric_auth.dart';
@@ -86,7 +87,14 @@ class _LockScreenState extends State<LockScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              Text('7 MOTION', style: AppTextStyles.headlineLarge),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Text('7 MOTION', style: AppTextStyles.headlineLarge),
+                  const SizedBox(width: 8),
+                  const VerifiedBadge.large(),
+                ],
+              ),
               const SizedBox(height: 4),
               Text(
                 'Application verrouillée',

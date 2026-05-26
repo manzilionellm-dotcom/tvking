@@ -132,6 +132,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     WakelockPlus.enable();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
+    // Auto-rotation paysage : le player accepte les 4 orientations.
+    // Quand l'utilisateur tourne le téléphone à l'horizontale, l'app
+    // bascule automatiquement en landscape (et immersiveSticky cache
+    // status + nav bar pour un fullscreen total style YouTube / Netflix).
+    SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+
     // (PiP temporairement désactivé — voir note plus haut)
 
     // Charge d'abord les réglages persistés
@@ -492,6 +502,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     WakelockPlus.disable();
     // (PiP désactivé — voir note plus haut)
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    // Restaure portrait-only en quittant le player (l'accueil et les
+    // autres écrans sont conçus en portrait).
+    SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+      DeviceOrientation.portraitUp,
+    ]);
     super.dispose();
   }
 
