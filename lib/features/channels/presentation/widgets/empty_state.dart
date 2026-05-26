@@ -18,6 +18,7 @@ import '../../../../core/support/vip_support.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../device/data/device_identity.dart';
+import '../../../playlists/presentation/xtream_login_sheet.dart';
 
 class EmptyStateView extends StatefulWidget {
   const EmptyStateView({
@@ -162,6 +163,50 @@ class _EmptyStateViewState extends State<EmptyStateView> {
                     onPressed: _mac == null ? null : _copy,
                     icon: const Icon(Icons.copy_rounded, size: 18),
                     label: const Text('Copier l\'identifiant'),
+                  ),
+                ),
+
+                // ----- Séparateur "OU" -----
+                const SizedBox(height: 20),
+                Row(
+                  children: <Widget>[
+                    Expanded(child: Divider(color: AppColors.border)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: Text(
+                        'OU',
+                        style: AppTextStyles.labelSmall.copyWith(
+                          color: AppColors.textMuted,
+                          fontSize: 10,
+                          letterSpacing: 1.6,
+                        ),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: AppColors.border)),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                // ----- Tu as déjà tes Xtream Codes ? -----
+                //  Pour les utilisateurs auto-suffisants qui n'ont pas
+                //  besoin de revendeur — ils possèdent déjà un
+                //  abonnement IPTV et veulent juste se connecter.
+                Text(
+                  'Tu as déjà un abonnement IPTV ?',
+                  textAlign: TextAlign.center,
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: () => showXtreamLoginSheet(context),
+                    icon: const Icon(Icons.vpn_key_rounded, size: 18),
+                    label: const Text('Ajouter via Xtream Codes'),
                   ),
                 ),
               ],
