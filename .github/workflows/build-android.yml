@@ -174,18 +174,20 @@ jobs:
       #   - Si elle n'existe pas (1er run) : `gh release create`.
       # Tout en `set +e` pour ne pas planter le build si une étape
       # secondaire foire (le build APK lui-même est le délivrable).
-      - name: Publish "latest" release (edit or create)
+      - name: Publish "latest" release (FAIL-HARD diag)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set +e
+          # Mode FAIL-HARD : `set -e` + `set -x` (trace commands).
+          # Si N'IMPORTE QUELLE commande gh foire, le job sera marqué
+          # FAILED — visible dans la liste Actions. C'est le seul moyen
+          # de diagnostiquer le problème sans accès aux logs détaillés.
+          set -ex
           REPO="${{ github.repository }}"
           APK="build/app/outputs/flutter-apk/app-debug.apk"
 
-          if [ ! -f "$APK" ]; then
-            echo "❌ APK introuvable à $APK"
-            exit 1
-          fi
+          test -f "$APK"
+          ls -lh "$APK"
 
           NOTES="Dernier build automatique de 7 MOTION.
 
@@ -199,34 +201,29 @@ jobs:
           3. Si Android refuse → autorise \"Sources inconnues\" dans les Paramètres
           4. Lance l'APK pour installer
 
-          ⚠️ Ce build est en mode debug — pour usage de test, pas pour distribution finale."
+          ⚠️ Ce build est en mode debug — pour usage de test."
 
-          # Diagnostic verbeux — si quelque chose foire, on saura où
-          echo "=== gh version ==="
           gh --version
-          echo "=== existing release ==="
-          gh release view latest --repo "$REPO" 2>&1 | head -5 || echo "(pas de release latest)"
+          gh auth status
 
-          if gh release view latest --repo "$REPO" >/dev/null 2>&1; then
-            echo "Release latest existe — edit + upload"
+          if gh release view latest --repo "$REPO"; then
+            echo ">>> Release latest existe, on l'édite"
             gh release edit latest --repo "$REPO" \
               --title "7 MOTION — dernier build" \
               --notes "$NOTES" \
-              --prerelease 2>&1 || echo "  ⚠ edit failed (continue)"
-            gh release upload latest --repo "$REPO" --clobber "$APK" 2>&1 \
-              || echo "  ⚠ upload failed (continue)"
+              --prerelease
+            gh release upload latest --repo "$REPO" --clobber "$APK"
           else
-            echo "Release latest absente — create from scratch"
+            echo ">>> Release latest absente, on la crée"
             gh release create latest --repo "$REPO" \
               --title "7 MOTION — dernier build" \
               --notes "$NOTES" \
               --prerelease --latest \
-              "$APK" 2>&1 || echo "  ⚠ create failed (continue)"
+              "$APK"
           fi
 
-          echo "=== final release state ==="
-          gh release view latest --repo "$REPO" 2>&1 | head -10 || echo "(introuvable)"
-          echo "✅ Étape release terminée (sha ${{ github.sha }})"
+          echo ">>> État final"
+          gh release view latest --repo "$REPO"
 
       # Bonus : tag versionné (un par run) pour garder un historique
       - name: Publish versioned release
