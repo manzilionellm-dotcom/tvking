@@ -21,7 +21,6 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../device/data/remote_config_repository.dart';
 import '../../device/presentation/device_id_card.dart';
 import '../../player/data/player_settings.dart';
-import '../../playlists/presentation/playlists_screen.dart';
 import '../../recordings/presentation/recordings_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -98,19 +97,12 @@ class SettingsScreen extends StatelessWidget {
               },
             ),
 
-            // ====== PLAYLISTS ======
-            _SectionTitle('Playlists'),
-            _ActionTile(
-              icon: Icons.playlist_play_rounded,
-              title: 'Mes playlists',
-              subtitle:
-                  'Ajouter, supprimer, gérer les sources M3U / Xtream.',
-              onTap: () => Navigator.of(context).push<void>(
-                MaterialPageRoute<void>(
-                  builder: (_) => const PlaylistsScreen(),
-                ),
-              ),
-            ),
+            // NOTE: la section "Mes playlists / Ajouter M3U" a été
+            // retirée. Le client ne gère plus ses playlists lui-même —
+            // elles arrivent automatiquement via le revendeur (admin)
+            // qui les pousse à distance grâce à l'identifiant 7 MOTION.
+            // Si tu es l'admin et tu veux modifier des playlists, va
+            // dans "Mode admin" en bas de cette page.
 
             // ====== PROVISIONING À DISTANCE ======
             //  L'admin (toi) maintient un JSON sur GitHub Gist (ou

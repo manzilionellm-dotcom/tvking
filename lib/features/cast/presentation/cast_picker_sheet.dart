@@ -24,7 +24,6 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/cast_manager.dart';
 import '../domain/cast_device.dart';
-import 'web_cast_setup_sheet.dart';
 
 /// Ouvre le picker en mode "envoyer ce flux maintenant".
 /// → Tap sur un device = la TV se met à lire `streamUrl` immédiatement.
@@ -94,43 +93,20 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
   Future<void> _onDeviceTap(CastDevice device) async {
     final CastManager mgr = CastManager.instance;
 
-    // ----- Chromecast : on tente, on prévient si ça marche pas -----
-    //  Le protocole CASTV2 natif n'est pas implémenté dans l'app
-    //  (binaire protobuf sur TLS, plusieurs jours de travail). On
-    //  affiche un dialogue honnête à l'utilisateur : "Le cast natif
-    //  Chromecast n'est pas dispo. Tu veux passer par le navigateur
-    //  de la TV ?". S'il accepte → QR. S'il refuse → on reste sur
-    //  le picker, peut-être qu'il a une autre TV DLNA détectée.
+    // ----- Chromecast non supporté nativement -----
+    //  L'app n'implémente pas le protocole CASTV2 binaire de Google.
+    //  Pour caster sur Chromecast / Google TV, il faut une intégration
+    //  Google Cast SDK qui demande plusieurs jours de boulot natif
+    //  (cf. note dans le code). Pour l'instant on dit clairement que
+    //  ce n'est pas dispo et on encourage à utiliser une TV DLNA.
     if (device.kind == CastDeviceKind.chromecast ||
         device.kind == CastDeviceKind.googleCast) {
-      final bool? useBrowser = await showDialog<bool>(
-        context: context,
-        builder: (BuildContext ctx) => AlertDialog(
-          title: Text('${device.name}'),
-          content: Text(
-            'Le cast natif Chromecast n\'est pas encore disponible '
-            'dans 7 MOTION. Mais on peut utiliser le navigateur web '
-            'de ta TV — ouvre Chrome / l\'app YouTube sur ${device.name} '
-            'puis scanne le QR code qu\'on va t\'afficher.',
-            style: AppTextStyles.bodyMedium.copyWith(height: 1.5),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Annuler'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Utiliser le navigateur'),
-            ),
-          ],
-        ),
+      _toast(
+        context,
+        'Cast Chromecast pas encore supporté nativement. '
+        'Utilise une TV DLNA / AirReceiver à la place.',
+        error: true,
       );
-      if (useBrowser != true) return;
-
-      final NavigatorState rootNav = Navigator.of(context);
-      rootNav.pop();
-      await showWebCastSetup(rootNav.context);
       return;
     }
 
@@ -164,36 +140,11 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
       _toast(context, 'Envoi vers ${device.name}', accent: true);
     } on Exception catch (e) {
       if (!mounted) return;
-      // Échec du cast natif → on propose au client le QR comme
-      // plan B (le device a peut-être un navigateur web).
-      final String errMsg = e.toString().replaceFirst('Exception: ', '');
-      final bool? useBrowser = await showDialog<bool>(
-        context: context,
-        builder: (BuildContext ctx) => AlertDialog(
-          title: Text('Cast vers ${device.name} a échoué'),
-          content: Text(
-            '$errMsg\n\nTu veux essayer via le navigateur web de '
-            'ta TV à la place ?',
-            style: AppTextStyles.bodyMedium.copyWith(height: 1.5),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Annuler'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Cast via navigateur'),
-            ),
-          ],
-        ),
+      _toast(
+        context,
+        e.toString().replaceFirst('Exception: ', ''),
+        error: true,
       );
-      if (!mounted) return;
-      if (useBrowser == true) {
-        final NavigatorState rootNav = Navigator.of(context);
-        rootNav.pop();
-        await showWebCastSetup(rootNav.context);
-      }
     }
   }
 
@@ -349,19 +300,6 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                                 );
                               },
                             ),
-                    ),
-
-                    // ----- Fallback "via navigateur" — Plan B discret -----
-                    //  Le QR code passe en lien texte sobre. Mis en
-                    //  avant uniquement quand AUCUN device n'est trouvé
-                    //  (l'utilisateur a vraiment besoin d'une alternative).
-                    //  Sinon affiché en petit en bas — on évite que ça
-                    //  concurrence visuellement les vraies TVs détectées.
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 6, 20, 4),
-                      child: _WebFallbackLink(
-                        prominent: devices.isEmpty && !discovering,
-                      ),
                     ),
 
                     // ----- Aide en bas -----
@@ -655,73 +593,6 @@ class _ActiveSessionBanner extends StatelessWidget {
 //  côté du nom pour que l'utilisateur sache à quel type de
 //  récepteur il a affaire avant de connecter.
 // ============================================================
-
-// ============================================================
-//  Tile "fallback web universel" — toujours visible. Permet de
-//  caster vers N'IMPORTE quelle TV avec un navigateur, même si
-//  aucun récepteur DLNA / Roku / Chromecast n'est trouvé.
-// ============================================================
-
-/// Lien Plan B — discret par défaut, mis en avant uniquement quand
-/// aucune TV n'a été trouvée. Ne concurrence jamais visuellement
-/// les vrais devices détectés.
-class _WebFallbackLink extends StatelessWidget {
-  const _WebFallbackLink({required this.prominent});
-
-  /// `true` quand aucun device n'a été trouvé après scan complet —
-  /// on rend le lien plus visible pour que l'utilisateur ait une
-  /// porte de sortie. `false` quand des TVs existent — on garde le
-  /// lien tout petit en footer.
-  final bool prominent;
-
-  @override
-  Widget build(BuildContext context) {
-    final Color textColor =
-        prominent ? AppColors.accent : AppColors.textMuted;
-    final String label = prominent
-        ? 'Pas de TV trouvée ? Cast via navigateur'
-        : 'Ou cast via navigateur';
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: () async {
-          // On capture le navigator AVANT de pop pour éviter
-          // d'utiliser un context déactivé après le pop.
-          final NavigatorState rootNav = Navigator.of(context);
-          rootNav.pop();
-          await showWebCastSetup(rootNav.context);
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              Icon(
-                Icons.qr_code_rounded,
-                size: 16,
-                color: textColor,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: AppTextStyles.bodyMedium.copyWith(
-                  fontSize: 12,
-                  color: textColor,
-                  fontWeight:
-                      prominent ? FontWeight.w600 : FontWeight.w500,
-                  decoration: TextDecoration.underline,
-                  decorationColor: textColor.withValues(alpha: 0.5),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _KindBadge extends StatelessWidget {
   const _KindBadge({required this.kind});
