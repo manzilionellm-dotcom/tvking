@@ -394,10 +394,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     PlayerSettings.instance.removeListener(_onSettingsChanged);
     _player.dispose();
     WakelockPlus.disable();
-    // Libère le PiP — cancelOnLeavePiP retire l'auto-PiP, dispose
-    // ferme le channel natif. Idempotent si on n'a jamais activé.
+    // Libère le PiP — `cancelOnLeavePiP` retire l'auto-PiP au lifecycle.
+    // Le package `floating` v4 n'expose PAS de méthode `dispose()`
+    // publique (mon erreur dans le commit précédent qui cassait le
+    // build) ; le channel natif Android est nettoyé automatiquement
+    // quand l'activity finit.
     _floating.cancelOnLeavePiP();
-    _floating.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
