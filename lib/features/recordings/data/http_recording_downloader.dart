@@ -36,9 +36,16 @@
 // =========================================================
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+
+/// Décodeur UTF-8 tolérant aux octets invalides. Sert à lire le
+/// corps texte d'une playlist HLS .m3u8 sans crasher si un segment
+/// non-UTF-8 traîne (rare mais arrive sur certains serveurs IPTV
+/// qui encodent des accents en Latin-1).
+const Utf8Decoder _utf8Lenient = Utf8Decoder(allowMalformed: true);
 
 /// Singleton qui orchestre N jobs d'enregistrement parallèles.
 /// Chaque "job" = une chaîne en cours de capture (1 connexion HTTP
@@ -412,5 +419,11 @@ class _Job {
   HttpClient? client;
   StreamSubscription<List<int>>? sub;
   IOSink? sink;
+
+  /// URLs des segments .ts HLS déjà téléchargés — déduplique entre
+  /// 2 polls de la playlist (la fenêtre live garde 3-6 segments
+  /// dont la plupart sont déjà téléchargés au cycle précédent).
+  /// Utilisé uniquement par _runHlsLoop ; les jobs raw l'ignorent.
+  final Set<String> seenSegments = <String>{};
   int bytesWritten = 0;
 }
