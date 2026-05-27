@@ -155,29 +155,29 @@ L'URL `latest` du release GitHub est overwrite à chaque push du
 workflow CI → le binaire qui répond à `/dl` est **toujours le dernier
 build**, pas besoin de toucher au Worker quand tu sors une version.
 
-### Setup domaine personnalisé `7motion.com/dl`
+### Setup domaine personnalisé `7themotion.com/dl`
 
-Pour que tes clients tapent `7motion.com/dl` au lieu de
+Pour que tes clients tapent `7themotion.com/dl` au lieu de
 `seven-motion-backend.TON_PSEUDO.workers.dev/dl` :
 
-1. **Ajoute 7motion.com à Cloudflare** (gratuit, change les NS chez
+1. **Ajoute 7themotion.com à Cloudflare** (gratuit, change les NS chez
    ton registrar pour pointer vers Cloudflare).
 
 2. **Dashboard Cloudflare** → Workers → ton Worker `seven-motion-backend`
-   → onglet "Triggers" → "Add Custom Domain" → tape `7motion.com`.
+   → onglet "Triggers" → "Add Custom Domain" → tape `7themotion.com`.
 
 3. Cloudflare crée le DNS + le certificat HTTPS automatiquement
    (~2 min de propagation).
 
 4. **Teste :**
    ```bash
-   curl -I https://7motion.com/dl
+   curl -I https://7themotion.com/dl
    # → HTTP/2 302
    # → location: https://github.com/.../app-debug.apk
    ```
 
-5. Tes clients vont sur https://7motion.com (landing pro) ou tapent
-   directement `7motion.com/dl` dans Downloader Fire TV / Android TV.
+5. Tes clients vont sur https://7themotion.com (landing pro) ou tapent
+   directement `7themotion.com/dl` dans Downloader Fire TV / Android TV.
 
 ### Codes vanity sous TON contrôle (recommandé)
 
@@ -188,12 +188,12 @@ veux**, pas besoin de passer par un tiers.
 Exemples qui marchent tous out-of-the-box après deploy :
 
 ```
-https://7motion.com/1       → 302 → APK
-https://7motion.com/x       → 302 → APK
-https://7motion.com/666666  → 302 → APK
-https://7motion.com/88888   → 302 → APK
-https://7motion.com/leo     → 302 → APK
-https://7motion.com/2026    → 302 → APK
+https://7themotion.com/1       → 302 → APK
+https://7themotion.com/x       → 302 → APK
+https://7themotion.com/666666  → 302 → APK
+https://7themotion.com/88888   → 302 → APK
+https://7themotion.com/leo     → 302 → APK
+https://7themotion.com/2026    → 302 → APK
 ```
 
 Avantages vs codes Downloader officiels (AFTVnews) :
@@ -217,7 +217,7 @@ Si tu préfères un VRAI code Downloader natif (5 chiffres style
 "12345" affiché dans la grille des "popular codes" AFTVnews) :
 
 1. Va sur https://www.aftvnews.com/downloader/
-2. Champ "Submit URL" → tape `https://7motion.com/dl`
+2. Champ "Submit URL" → tape `https://7themotion.com/dl`
 3. Le site génère un code à 5 chiffres (ex: `987654`)
 4. Note le code et partage-le à tes clients :
    > "Lance Downloader, tape `987654`, GO."

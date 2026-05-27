@@ -75,7 +75,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       icon: Icons.celebration_outlined,
       title: 'Essai gratuit 10 jours',
       description:
-          'Profite de toutes les fonctions pendant 10 jours. Ensuite 13 €/an sur tous tes appareils — paiement sécurisé sur 7motion.com (jamais in-app).',
+          'Profite de toutes les fonctions pendant 10 jours. Ensuite 13 €/an sur tous tes appareils — paiement sécurisé sur 7themotion.com (jamais in-app).',
     ),
   ];
 

@@ -3,9 +3,9 @@
 // =========================================================
 //  Affichée dans Paramètres et À propos. Montre :
 //    - Essai actif → "Essai gratuit · 8 jours restants" + bouton
-//      "Voir les offres" qui ouvre 7motion.com
+//      "Voir les offres" qui ouvre 7themotion.com
 //    - Essai expiré → bandeau rouge "Essai terminé" + bouton
-//      "Acheter sur 7motion.com" en CTA principal
+//      "Acheter sur 7themotion.com" en CTA principal
 //    - Payé → "Abonnement actif · expire le 27/05/2027"
 //
 //  Aucun paiement in-app — tout passe par le site marchand.
@@ -78,8 +78,8 @@ class SubscriptionCard extends StatelessWidget {
                   icon: const Icon(Icons.open_in_new_rounded, size: 18),
                   label: Text(
                     status == SubscriptionStatus.trialExpired
-                        ? 'Acheter sur 7motion.com'
-                        : 'Voir les offres sur 7motion.com',
+                        ? 'Acheter sur 7themotion.com'
+                        : 'Voir les offres sur 7themotion.com',
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: status == SubscriptionStatus.trialExpired
@@ -176,7 +176,7 @@ class SubscriptionCard extends StatelessWidget {
             'débloquées sur cet appareil et tes autres installations 7 MOTION.';
       case SubscriptionStatus.trialExpired:
         return 'Ton essai gratuit de $kTrialDurationDays jours est terminé. '
-            'Souscris l\'abonnement à 13 €/an sur 7motion.com pour continuer.';
+            'Souscris l\'abonnement à 13 €/an sur 7themotion.com pour continuer.';
       case SubscriptionStatus.trialActive:
         return 'Profite de toutes les fonctions premium pendant ton essai. '
             'Ensuite 13 €/an sur tous tes appareils.';

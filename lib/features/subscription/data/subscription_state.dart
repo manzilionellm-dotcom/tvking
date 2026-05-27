@@ -3,7 +3,7 @@
 // =========================================================
 //  Modèle commercial 7 MOTION (demande user) :
 //    - 10 jours d'essai gratuit dès le 1er lancement
-//    - Ensuite 13 €/an, paiement sur https://7motion.com
+//    - Ensuite 13 €/an, paiement sur https://7themotion.com
 //      (PAS d'in-app purchase Google Play → bypass de la
 //       commission 30%)
 //
@@ -12,7 +12,7 @@
 //  est dérivé localement — pas de backend pour V1.
 //
 //  Pour la V2 (gestion centralisée), on branchera DeviceIdentity
-//  + un endpoint 7motion.com qui retourne `{trialDays, paid, expiresAt}`
+//  + un endpoint 7themotion.com qui retourne `{trialDays, paid, expiresAt}`
 //  pour permettre la révocation et la prolongation à distance.
 // =========================================================
 
@@ -23,7 +23,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 const int kTrialDurationDays = 10;
 
 /// URL du site marchand (paiement externe, modèle TiViMate).
-const String kPurchaseUrl = 'https://7motion.com';
+const String kPurchaseUrl = 'https://7themotion.com';
 
 enum SubscriptionStatus {
   /// L'user n'a jamais lancé l'app — premier boot.
@@ -106,7 +106,7 @@ class SubscriptionState extends ChangeNotifier {
   }
 
   /// Marque l'abonnement comme payé jusqu'à `until`. Appelé par
-  /// la V2 quand on validera la licence côté serveur 7motion.com.
+  /// la V2 quand on validera la licence côté serveur 7themotion.com.
   /// Pour V1, exposé pour les tests dev uniquement.
   Future<void> markPaidUntil(DateTime until) async {
     _paidUntil = until;

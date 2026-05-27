@@ -53,7 +53,7 @@ class SettingsScreen extends StatelessWidget {
             // ====== ABONNEMENT ======
             //  Carte trial/abonnement TiViMate-style. Le user voit
             //  où il en est dans les 10j d'essai (ou si payé) + un
-            //  CTA pour acheter sur 7motion.com (paiement externe,
+            //  CTA pour acheter sur 7themotion.com (paiement externe,
             //  pas d'in-app purchase Google Play).
             _SectionTitle('Mon abonnement'),
             const SubscriptionCard(),

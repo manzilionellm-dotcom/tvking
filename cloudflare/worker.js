@@ -199,8 +199,8 @@ const LANDING_HTML = `<!doctype html>
       <h2>Installation via Downloader</h2>
       <ol>
         <li>Lance <strong>Downloader</strong> sur ta Fire TV / Android TV</li>
-        <li>Tape l'URL : <code>7motion.com/dl</code>
-            <br>ou un code court : <code>7motion.com/1</code>, <code>7motion.com/666666</code></li>
+        <li>Tape l'URL : <code>7themotion.com/dl</code>
+            <br>ou un code court : <code>7themotion.com/1</code>, <code>7themotion.com/666666</code></li>
         <li>Bouton <strong>GO</strong> &rarr; téléchargement automatique</li>
         <li>Bouton <strong>Install</strong> quand le téléchargement finit</li>
       </ol>
@@ -475,10 +475,10 @@ export default {
     // Tout segment unique non réservé est traité comme un code
     // vanity choisi par l'admin pour ses clients. Exemples :
     //
-    //   https://7motion.com/666666  → 302 APK
-    //   https://7motion.com/88888   → 302 APK
-    //   https://7motion.com/1       → 302 APK (ultra court)
-    //   https://7motion.com/x       → 302 APK (1 lettre)
+    //   https://7themotion.com/666666  → 302 APK
+    //   https://7themotion.com/88888   → 302 APK
+    //   https://7themotion.com/1       → 302 APK (ultra court)
+    //   https://7themotion.com/x       → 302 APK (1 lettre)
     //
     // Avantage vs codes officiels AFTVnews (5 chiffres aléatoires) :
     //  - Admin choisit lui-même son code, peut viser un nombre
