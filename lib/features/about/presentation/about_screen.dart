@@ -13,6 +13,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/branding/brand_logo.dart';
+import '../../../core/branding/verified_badge.dart';
 import '../../../core/support/vip_help_card.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -90,12 +91,23 @@ class _AboutScreenState extends State<AboutScreen> {
                 children: <Widget>[
                   const BrandLogo.medium(),
                   const SizedBox(height: 16),
-                  Text(
-                    BrandStrings.appName,
-                    style: AppTextStyles.headlineLarge.copyWith(
-                      letterSpacing: 4,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  // "7 MOTION ✓" — badge bleu Instagram-style APRÈS
+                  // le wordmark, comme l'a demandé l'user. Pas sur
+                  // l'image du logo ni sur l'icône launcher.
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: <Widget>[
+                      Text(
+                        BrandStrings.appName,
+                        style: AppTextStyles.headlineLarge.copyWith(
+                          letterSpacing: 4,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const VerifiedBadge.medium(),
+                    ],
                   ),
                   const SizedBox(height: 4),
                   Text(

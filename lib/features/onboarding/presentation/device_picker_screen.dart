@@ -18,6 +18,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/branding/brand_logo.dart';
+import '../../../core/branding/verified_badge.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/device_class_repository.dart';
@@ -78,7 +79,7 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  // ----- Header brand -----
+                  // ----- Header brand (avec badge ✓ après MOTION) -----
                   Row(
                     children: <Widget>[
                       const BrandLogo.compact(),
@@ -91,6 +92,8 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      const VerifiedBadge.small(),
                     ],
                   ),
                   const SizedBox(height: 56),
