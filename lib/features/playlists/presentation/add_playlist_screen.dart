@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/widgets/legal_disclaimer.dart';
 import '../data/playlist_repository.dart';
 import '../domain/playlist.dart';
 
@@ -278,12 +279,25 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen>
         ),
       ),
       body: SafeArea(
-        child: TabBarView(
-          controller: _tabController,
+        child: Column(
           children: <Widget>[
-            _buildM3uForm(),
-            _buildXtreamForm(),
-            _buildBulkForm(),
+            // Bandeau légal TiViMate-style — rappelle dès l'arrivée
+            // que 7 MOTION ne fournit pas les flux et que l'user
+            // doit apporter sa propre URL IPTV.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: const LegalDisclaimer.compact(),
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: <Widget>[
+                  _buildM3uForm(),
+                  _buildXtreamForm(),
+                  _buildBulkForm(),
+                ],
+              ),
+            ),
           ],
         ),
       ),

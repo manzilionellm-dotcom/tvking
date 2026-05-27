@@ -33,7 +33,6 @@ import 'features/channels/presentation/home_screen.dart';
 import 'features/channels/presentation/tv_home_screen.dart';
 import 'features/admin/data/admin_credentials.dart';
 import 'features/device/data/device_identity.dart';
-import 'features/device/data/remote_config_repository.dart';
 import 'features/epg/data/epg_repository.dart';
 import 'features/onboarding/data/device_class_repository.dart';
 import 'features/onboarding/data/onboarding_state.dart';
@@ -91,10 +90,10 @@ Future<void> main() async {
   // premier frame (About, Réglages, etc.).
   unawaited(DeviceIdentity.instance.preload());
 
-  // Provisioning à distance : si une URL est déjà configurée,
-  // RemoteConfigRepository va fetch + appliquer les playlists du
-  // serveur, puis re-fetcher toutes les 30 min en tâche de fond.
-  unawaited(RemoteConfigRepository.instance.initialize());
+  // NB : la "fixation à distance" (RemoteConfigRepository qui
+  // fetchait des playlists depuis un Gist toutes les 30 min) a
+  // été RETIRÉE à la demande user. 7 MOTION ne fournit aucun
+  // contenu — l'utilisateur apporte sa propre URL IPTV en local.
 
   // Credentials du mode admin (PIN + GitHub PAT + gist ID). Chargés
   // tôt pour que l'entrée "Admin" dans Réglages sache si on demande

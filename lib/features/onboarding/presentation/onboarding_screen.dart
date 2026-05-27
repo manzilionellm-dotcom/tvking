@@ -47,17 +47,23 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           'Cinéma sans limites. Conçu pour la TV, optimisé pour ton téléphone, beau partout.',
     ),
     _OnboardingPage(
-      icon: Icons.fingerprint_rounded,
-      title: 'Ton identifiant 7 MOTION',
+      icon: Icons.verified_user_outlined,
+      title: 'Apporte ton fournisseur',
       description:
-          'Envoie ce code à ton revendeur. Il l\'utilise pour activer tes chaînes à distance — tu n\'as rien d\'autre à faire.',
-      isMacSlide: true,
+          '7 MOTION est un lecteur. Nous ne vendons aucun flux, aucune chaîne. Tu dois souscrire un abonnement IPTV auprès du fournisseur de ton choix.',
     ),
     _OnboardingPage(
       icon: Icons.cloud_upload_outlined,
-      title: 'Ou charge ta propre playlist',
+      title: 'Charge ta playlist',
       description:
-          'Tu as déjà une URL M3U ou des identifiants Xtream ? Colle-les dans Réglages → Playlists. Tes chaînes apparaissent en quelques secondes.',
+          'Ouvre Réglages › Playlists et colle ton URL M3U ou tes identifiants Xtream. Tes chaînes apparaissent en quelques secondes.',
+    ),
+    _OnboardingPage(
+      icon: Icons.fingerprint_rounded,
+      title: 'Ton identifiant appareil',
+      description:
+          'Cet ID identifie ton installation 7 MOTION. Garde-le pour le support technique de l\'app — pour toute question sur les chaînes, contacte ton fournisseur IPTV.',
+      isMacSlide: true,
     ),
     _OnboardingPage(
       icon: Icons.workspace_premium_rounded,

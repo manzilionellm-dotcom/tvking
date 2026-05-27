@@ -16,6 +16,7 @@ import '../../../core/branding/brand_logo.dart';
 import '../../../core/support/vip_help_card.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/widgets/legal_disclaimer.dart';
 import '../../device/presentation/device_id_card.dart';
 import '../data/update_checker.dart';
 
@@ -123,6 +124,13 @@ class _AboutScreenState extends State<AboutScreen> {
                 ],
               ),
             ),
+
+            const SizedBox(height: 20),
+
+            // ----- Mention légale TiViMate-style — affichée en TOP
+            //       pour que tout nouveau user comprenne dès la 1re
+            //       visite que 7 MOTION ne vend AUCUN flux IPTV.
+            const LegalDisclaimer.full(),
 
             const SizedBox(height: 20),
 
