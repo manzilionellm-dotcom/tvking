@@ -134,6 +134,10 @@ class SubscriptionCard extends StatelessWidget {
         return Icons.lock_clock_rounded;
       case SubscriptionStatus.trialActive:
         return Icons.celebration_outlined;
+      case SubscriptionStatus.frozen:
+        return Icons.ac_unit_rounded;
+      case SubscriptionStatus.banned:
+        return Icons.block_rounded;
       case SubscriptionStatus.unknown:
         return Icons.hourglass_empty_rounded;
     }
@@ -144,7 +148,10 @@ class SubscriptionCard extends StatelessWidget {
       case SubscriptionStatus.paid:
         return AppColors.accent;
       case SubscriptionStatus.trialExpired:
+      case SubscriptionStatus.banned:
         return AppColors.live;
+      case SubscriptionStatus.frozen:
+        return AppColors.warning;
       case SubscriptionStatus.trialActive:
       case SubscriptionStatus.unknown:
         return AppColors.accent;
@@ -164,6 +171,10 @@ class SubscriptionCard extends StatelessWidget {
         final int n = state.trialDaysRemaining;
         if (n == 1) return 'Essai gratuit · 1 jour restant';
         return 'Essai gratuit · $n jours restants';
+      case SubscriptionStatus.frozen:
+        return 'Compte temporairement gelé';
+      case SubscriptionStatus.banned:
+        return 'Compte suspendu';
       case SubscriptionStatus.unknown:
         return 'Chargement…';
     }
@@ -180,6 +191,10 @@ class SubscriptionCard extends StatelessWidget {
       case SubscriptionStatus.trialActive:
         return 'Profite de toutes les fonctions premium pendant ton essai. '
             'Ensuite 13 €/an sur tous tes appareils.';
+      case SubscriptionStatus.frozen:
+        return 'Ton compte est en pause. Contacte le support pour réactiver.';
+      case SubscriptionStatus.banned:
+        return 'Ton compte a été suspendu par l\'administrateur.';
       case SubscriptionStatus.unknown:
         return '';
     }
