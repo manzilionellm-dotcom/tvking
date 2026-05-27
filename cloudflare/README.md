@@ -179,12 +179,42 @@ Pour que tes clients tapent `7motion.com/dl` au lieu de
 5. Tes clients vont sur https://7motion.com (landing pro) ou tapent
    directement `7motion.com/dl` dans Downloader Fire TV / Android TV.
 
-### Code Downloader court (5 chiffres style "12345")
+### Codes vanity sous TON contrôle (recommandé)
 
-L'app **Downloader by AFTVnews** propose un système de codes courts
-permettant à tes clients de taper juste 5 chiffres au lieu d'une URL.
+Le Worker accepte n'importe quel pathname unique non réservé et le
+traite comme un code de téléchargement. **Tu choisis le code que tu
+veux**, pas besoin de passer par un tiers.
 
-Comment l'obtenir (gratuit) :
+Exemples qui marchent tous out-of-the-box après deploy :
+
+```
+https://7motion.com/1       → 302 → APK
+https://7motion.com/x       → 302 → APK
+https://7motion.com/666666  → 302 → APK
+https://7motion.com/88888   → 302 → APK
+https://7motion.com/leo     → 302 → APK
+https://7motion.com/2026    → 302 → APK
+```
+
+Avantages vs codes Downloader officiels (AFTVnews) :
+  - **Tu choisis** le code (chiffres répétés, anniversaire, mot court…)
+  - **Sous ton contrôle** — pas révocable par un tiers
+  - Marche dans Downloader, navigateur, curl, wget, n'importe quel
+    client HTTP qui suit les redirects
+
+Routes réservées (ne PAS utiliser comme code vanity) :
+  - `admin` (mode admin auth)
+  - `config` (config client par MAC)
+  - `dl`, `install` (alias officiels)
+  - `favicon.ico`, `robots.txt`, `sitemap.xml`
+
+Tout le reste est libre — y compris codes multi-caractères, casse
+mélangée (`MyApp` → 302), Unicode, etc.
+
+### Code Downloader officiel AFTVnews (5 chiffres aléatoires)
+
+Si tu préfères un VRAI code Downloader natif (5 chiffres style
+"12345" affiché dans la grille des "popular codes" AFTVnews) :
 
 1. Va sur https://www.aftvnews.com/downloader/
 2. Champ "Submit URL" → tape `https://7motion.com/dl`
@@ -192,12 +222,8 @@ Comment l'obtenir (gratuit) :
 4. Note le code et partage-le à tes clients :
    > "Lance Downloader, tape `987654`, GO."
 
-Le code redirige vers ton `/dl` qui redirige vers le GitHub release.
-Tout reste invisible côté client : il voit juste 7 MOTION s'installer.
-
-**Note :** le code peut être révoqué par AFTVnews s'il est signalé,
-mais reste valable indéfiniment sinon. Le fallback `7motion.com/dl`
-fonctionnera toujours.
+Le code peut être révoqué par AFTVnews s'il est signalé. Préfère
+les codes vanity ci-dessus pour de la stabilité long terme.
 
 ---
 

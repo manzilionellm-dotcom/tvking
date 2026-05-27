@@ -199,7 +199,8 @@ const LANDING_HTML = `<!doctype html>
       <h2>Installation via Downloader</h2>
       <ol>
         <li>Lance <strong>Downloader</strong> sur ta Fire TV / Android TV</li>
-        <li>Tape l'URL : <code>7motion.com/dl</code></li>
+        <li>Tape l'URL : <code>7motion.com/dl</code>
+            <br>ou un code court : <code>7motion.com/1</code>, <code>7motion.com/666666</code></li>
         <li>Bouton <strong>GO</strong> &rarr; téléchargement automatique</li>
         <li>Bouton <strong>Install</strong> quand le téléchargement finit</li>
       </ol>
@@ -466,6 +467,36 @@ export default {
     // /install — alias canal alternatif (utile si on veut router
     // par device class plus tard : /install?tv=firetv, etc.)
     if (segments.length === 1 && segments[0] === 'install') {
+      return Response.redirect(APK_URL, 302);
+    }
+
+    // ===== CODES VANITY DOWNLOADER =====
+    //
+    // Tout segment unique non réservé est traité comme un code
+    // vanity choisi par l'admin pour ses clients. Exemples :
+    //
+    //   https://7motion.com/666666  → 302 APK
+    //   https://7motion.com/88888   → 302 APK
+    //   https://7motion.com/1       → 302 APK (ultra court)
+    //   https://7motion.com/x       → 302 APK (1 lettre)
+    //
+    // Avantage vs codes officiels AFTVnews (5 chiffres aléatoires) :
+    //  - Admin choisit lui-même son code, peut viser un nombre
+    //    mémorable (anniversaire, repeat digit, simple "1"…)
+    //  - 100 % sous son contrôle (pas révocable par un tiers)
+    //  - Marche sur n'importe quel client HTTP (Downloader, navigateur,
+    //    curl, wget, lecteurs APK alternatifs…)
+    //
+    // Sécurité : on filtre les préfixes réservés pour ne pas
+    // collisionner avec /admin/* et /config/*. On accepte tout
+    // ce qui n'est PAS dans cette liste — y compris caractères
+    // unicode, espaces encodés, etc. — parce que Downloader ne
+    // supporte que ASCII de toute façon.
+    const RESERVED = new Set([
+      'admin', 'config', 'dl', 'install',
+      'favicon.ico', 'robots.txt', 'sitemap.xml',
+    ]);
+    if (segments.length === 1 && !RESERVED.has(segments[0].toLowerCase())) {
       return Response.redirect(APK_URL, 302);
     }
 
