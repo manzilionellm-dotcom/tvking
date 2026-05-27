@@ -1177,19 +1177,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     tooltip: 'Mini-fenêtre',
                     onPressed: _enterPipManually,
                   ),
-                  // Bouton "Cast QR" — alternative universelle au
-                  // Chromecast classique : génère un QR code de
-                  // l'URL du flux que n'importe quel autre device
-                  // (TV smart, ordi, tablette, autre tel) peut
-                  // scanner pour lancer la lecture cross-OS.
-                  IconButton(
-                    icon: const Icon(
-                      Icons.qr_code_2_rounded,
-                      color: Colors.white,
-                    ),
-                    tooltip: 'Cast par QR Code',
-                    onPressed: _openQrCast,
-                  ),
+                  // NB : le bouton "Cast par QR Code" a été retiré du
+                  // header à la demande de l'user — il prenait de la
+                  // place et le cast officiel via clé Google Cast sera
+                  // privilégié à l'avenir (achat de clé prévu). La
+                  // méthode _openQrCast et le sheet sont conservés
+                  // dans le code pour réactivation rapide si besoin.
                   ListenableBuilder(
                     listenable: CastManager.instance,
                     builder: (BuildContext context, _) {
