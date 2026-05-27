@@ -687,6 +687,28 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _scheduleHideOverlay();
   }
 
+  /// Bouton manuel "Mini-fenêtre" dans la rangée de contrôles du
+  /// player. Permet de tester / utiliser le PiP sans devoir
+  /// appuyer HOME. Utile aussi sur les devices où onUserLeaveHint
+  /// n'est pas appelé (MIUI / certaines surcouches).
+  Future<void> _enterPipManually() async {
+    final bool ok = await PipService.instance.enterPip();
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(
+            'Mini-fenêtre indisponible sur cet appareil (requiert Android 8+). '
+            'Active aussi la permission Picture-in-picture dans : '
+            'Paramètres → Apps → 7 MOTION → Permissions.',
+            style: AppTextStyles.bodyMedium,
+          ),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
+  }
+
   Future<void> _openSettings() async {
     _hideOverlayTimer?.cancel();
     await showModalBottomSheet<void>(
@@ -1074,6 +1096,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     ),
                   ),
                   _FavoriteToggle(channelId: ch.id),
+                  // Bouton "Mini-fenêtre" (PiP) — déclenche manuellement
+                  // le passage en mini-fenêtre flottante style YouTube
+                  // Premium. Sur Android 8+, c'est le même mécanisme
+                  // qu'un appui HOME pendant la lecture, mais l'user a
+                  // un contrôle explicite sans devoir quitter l'app.
+                  // Sur les devices qui ne supportent pas PiP, l'appel
+                  // retourne false → on affiche un toast d'erreur.
+                  IconButton(
+                    icon: const Icon(
+                      Icons.picture_in_picture_alt_rounded,
+                      color: Colors.white,
+                    ),
+                    tooltip: 'Mini-fenêtre',
+                    onPressed: _enterPipManually,
+                  ),
                   // Bouton "Cast QR" — alternative universelle au
                   // Chromecast classique : génère un QR code de
                   // l'URL du flux que n'importe quel autre device
