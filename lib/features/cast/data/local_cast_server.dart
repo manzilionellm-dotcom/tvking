@@ -493,7 +493,36 @@ class LocalCastServer {
     }
   }
 
-  // Polling de l'API /current — quand l'URL change, on lance la nouvelle vidéo.
+  // ---------------------------------------------------------------
+  // MODE QR ONE-SHOT : si l'URL contient ?url=..., on joue direct
+  // ce flux et on N'ACTIVE PAS le polling. C'est le cas quand
+  // quelqu'un a scanné un QR Cast depuis le téléphone — le QR
+  // encode déjà l'URL du flux dans le query string, pas besoin
+  // d'attendre un signal du téléphone.
+  // ---------------------------------------------------------------
+  function getParam(name) {
+    try {
+      return new URLSearchParams(window.location.search).get(name);
+    } catch (e) {
+      // Fallback navigateur préhistorique
+      var re = new RegExp('[?&]' + name + '=([^&#]*)');
+      var m = re.exec(window.location.search);
+      return m ? decodeURIComponent(m[1].replace(/\+/g, ' ')) : null;
+    }
+  }
+
+  var qrUrl = getParam('url');
+  if (qrUrl) {
+    var qrTitle = getParam('title') || '';
+    currentUrl = qrUrl;
+    play(qrUrl, qrTitle);
+    return; // pas de polling — le QR encode déjà la chaîne
+  }
+
+  // ---------------------------------------------------------------
+  // MODE LIVE-LINK : on polle /current toutes les 2 s. Quand l'URL
+  // change (le user zappe sur son tel), on lance la nouvelle vidéo.
+  // ---------------------------------------------------------------
   function poll() {
     fetch('/current', { cache: 'no-store' })
       .then(function (r) { return r.json(); })
