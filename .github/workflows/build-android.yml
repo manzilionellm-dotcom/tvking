@@ -182,6 +182,36 @@ jobs:
       - name: Apply Google Cast SDK overlay
         run: bash android_overlay/google_cast/apply_cast_patch.sh
 
+      # Patch AndroidManifest pour activer le Picture-in-Picture
+      # natif sur la MainActivity (mode YouTube Premium : vidéo
+      # continue en mini-fenêtre quand on quitte l'app).
+      #
+      # Trois attributs à AJOUTER sur la balise <activity ...> :
+      #   android:supportsPictureInPicture="true"   ← l'essentiel
+      #   android:resizeableActivity="true"          ← exigé pour multi-window/PiP
+      #   android:configChanges="...|screenLayout|smallestScreenSize|screenSize|orientation"
+      #
+      # Le flutter create génère déjà android:configChanges avec
+      # ces valeurs depuis Flutter 3.0+, donc on ne touche QUE
+      # supportsPictureInPicture + resizeableActivity.
+      # Sed idempotent — re-run sans effet.
+      - name: Patch AndroidManifest for Picture-in-Picture
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ ! -f "$MANIFEST" ]; then
+            echo "❌ Manifest manquant"; exit 1
+          fi
+          if ! grep -q 'supportsPictureInPicture' "$MANIFEST"; then
+            # Insère les 2 attributs APRÈS android:name=".MainActivity"
+            # qui est toujours présent (généré par flutter create).
+            sed -i 's|android:name=".MainActivity"|android:name=".MainActivity"\n            android:supportsPictureInPicture="true"\n            android:resizeableActivity="true"|' "$MANIFEST"
+            echo "✓ PiP attributes ajoutés sur MainActivity"
+          else
+            echo "⊙ PiP déjà patché (re-run)"
+          fi
+          grep -A2 'supportsPictureInPicture' "$MANIFEST" || true
+
       - name: Get dependencies
         run: flutter pub get
 

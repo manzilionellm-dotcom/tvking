@@ -40,6 +40,7 @@ import '../../recordings/data/http_recording_downloader.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
+import '../data/pip_service.dart';
 import '../data/player_settings.dart';
 import 'widgets/player_settings_sheet.dart';
 import 'widgets/player_stats_overlay.dart';
@@ -91,9 +92,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Recording? _activeRecording;
   bool get _isRecording => _activeRecording != null;
 
-  // Picture-in-Picture désactivé temporairement (le plugin `floating: ^4`
-  // a un mismatch JVM target avec le SDK Android du CI, casse Gradle).
-  // À rétablir avec un patch gradle ou un autre plugin compatible.
+  // Picture-in-Picture : implémenté en NATIF Android via
+  // MainActivity.kt + MethodChannel `tvking/pip`. Pas de plugin
+  // tiers — voir `lib/features/player/data/pip_service.dart` et
+  // l'override `onUserLeaveHint` côté Kotlin. Mode YouTube
+  // Premium : la vidéo continue en mini-fenêtre quand l'user
+  // appuie HOME pendant la lecture.
 
   /// ID de la session de visionnage en cours (table `watch_sessions`).
   /// Démarrée dans `initState`, fermée dans `dispose`. Sert au Hook
@@ -120,6 +124,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     super.initState();
 
     _currentChannel = widget.channel;
+
+    // Écoute les changements d'état PiP côté natif. Quand l'OS bascule
+    // en mini-fenêtre, on cache d'autorité l'overlay des contrôles —
+    // ses boutons seraient illisibles à 300×170 et masqueraient la vidéo.
+    PipService.instance.addListener(_onPipChanged);
+    // Aspect ratio par défaut — la plupart des flux IPTV sont 16:9.
+    PipService.instance.setAspectRatio(numerator: 16, denominator: 9);
 
     // Ouvre une session de visionnage pour le Hook Model.
     // Fire-and-forget — on n'attend pas l'I/O DB.
@@ -187,6 +198,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           }
         });
       }
+      // Signal au natif Android pour le PiP auto : "lecture en
+      // cours". Si l'utilisateur appuie HOME pendant que `p == true`,
+      // MainActivity.onUserLeaveHint() entrera en mini-fenêtre
+      // (style YouTube Premium). Aucun appel quand `p == false`
+      // = home → app cachée normalement (pas de PiP).
+      PipService.instance.setPlaybackActive(p);
     }));
     _subs.add(_player.stream.error.listen((String e) {
       if (!mounted) return;
@@ -583,7 +600,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _zapPageController?.dispose();
     _player.dispose();
     WakelockPlus.disable();
-    // (PiP désactivé — voir note plus haut)
+    // À la sortie du lecteur, on dit au natif "plus de playback"
+    // pour qu'un futur appui HOME ne déclenche pas le PiP par erreur
+    // (ex. si l'user revient sur la home pour zapper rapidement).
+    PipService.instance.setPlaybackActive(false);
+    PipService.instance.removeListener(_onPipChanged);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     // Restaure portrait-only en quittant le player (l'accueil et les
     // autres écrans sont conçus en portrait).
@@ -603,8 +624,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   void _toggleOverlay() {
+    // En mini-fenêtre PiP, l'overlay des contrôles serait illisible
+    // et masquerait la vidéo. On bloque le toggle. L'utilisateur
+    // pilote la mini-fenêtre via les contrôles natifs Android.
+    if (PipService.instance.isInPipMode) return;
     setState(() => _overlayVisible = !_overlayVisible);
     if (_overlayVisible) _scheduleHideOverlay();
+  }
+
+  /// Appelé chaque fois que l'état PiP change côté natif. On force
+  /// l'overlay à se cacher dès qu'on entre en mini-fenêtre.
+  void _onPipChanged() {
+    if (!mounted) return;
+    if (PipService.instance.isInPipMode && _overlayVisible) {
+      setState(() => _overlayVisible = false);
+    }
   }
 
   void _togglePlayPause() {
