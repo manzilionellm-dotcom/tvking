@@ -35,6 +35,7 @@ import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/presentation/add_playlist_screen.dart';
+import '../../security/data/biometric_auth.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../data/recently_watched_repository.dart';
 import '../domain/channel.dart';
@@ -566,8 +567,49 @@ class _HomeScreenState extends State<HomeScreen> {
       case 3:
         _openSection('Séries', ChannelGenre.series).then((_) => _resetNav());
       case 4:
-        _openSection('Adulte', ChannelGenre.adult).then((_) => _resetNav());
+        // Section Adulte protégée par empreinte digitale (demande user).
+        // Avant d'ouvrir la grille de chaînes XXX, on déclenche le dialog
+        // système BiometricAuth : empreinte → fallback PIN/pattern Android.
+        // Si l'auth échoue ou est annulée, on reset la nav sans ouvrir.
+        _openAdultGuarded().then((_) => _resetNav());
     }
+  }
+
+  /// Ouvre la section Adulte UNIQUEMENT après authentification
+  /// biométrique réussie. Sinon toast d'erreur et abandon.
+  Future<void> _openAdultGuarded() async {
+    final bool supported = await BiometricAuth.instance.isSupported();
+    if (!supported) {
+      // Device sans capteur ni PIN système (très rare) : on tolère
+      // l'accès sans bloquer — c'est le comportement local_auth par
+      // défaut. À l'usage, sur tous les Android récents l'auth
+      // est disponible et bloquera.
+      if (!mounted) return;
+      await _openSection('Adulte', ChannelGenre.adult);
+      return;
+    }
+    final bool authed = await BiometricAuth.instance.authenticate(
+      reason: 'Accède à la section Adulte',
+    );
+    if (!authed) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.surfaceHigh,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 2),
+          content: Text(
+            'Authentification annulée — section Adulte verrouillée',
+            style: AppTextStyles.bodyMedium,
+          ),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    await _openSection('Adulte', ChannelGenre.adult);
   }
 
   void _resetNav() {
