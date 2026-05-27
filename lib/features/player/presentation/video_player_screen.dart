@@ -379,20 +379,37 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // Note : 2 connexions HTTP au serveur Xtream (1 pour le player,
       // 1 pour le downloader). Certains fournisseurs limitent à 1
       // connexion/credentials — on verra à l'usage.
+      // ORDRE CRITIQUE POUR L'ENREGISTREMENT EN ARRIÈRE-PLAN :
+      //
+      //   1. Démarrer le ForegroundService EN PREMIER pour qu'il
+      //      acquière le PartialWakeLock + WifiLock AVANT que la
+      //      requête HTTP du downloader ne s'ouvre. Sinon, dès que
+      //      l'user appuie HOME, Android met le CPU en sommeil et
+      //      coupe le WiFi → la socket HTTP est tuée → enregistrement
+      //      s'arrête sans qu'on s'en rende compte.
+      //
+      //   2. PUIS lancer le download HTTP qui hérite du contexte
+      //      'awake' garanti par les locks du service.
+      //
+      // C'était le bug du screenshot 'ADULT: ALBA XXX' du user :
+      // 27 Mo en foreground, 0 octet de plus dès qu'il quittait l'app.
+      await RecordingService.instance.start(
+        title: widget.overrideTitle != null && widget.overrideTitle!.isNotEmpty
+            ? '${_currentChannel.cleanName} – ${widget.overrideTitle}'
+            : _currentChannel.cleanName,
+      );
+
       final bool ok = await HttpRecordingDownloader.instance.start(
         streamUrl: _currentChannel.streamUrl,
         filePath: path,
       );
       if (!ok) {
-        // Message pédagogique : la cause habituelle n'est PAS un
-        // bug de l'app, c'est une limite côté fournisseur IPTV
-        // (1 seule connexion autorisée par identifiant). L'user
-        // doit demander à son revendeur / fournisseur d'autoriser
-        // 2 connexions simultanées pour pouvoir enregistrer
-        // pendant qu'il regarde.
+        // Si le download n'a pas pu démarrer, on annule aussi le
+        // service pour ne pas garder une notification fantôme.
+        await RecordingService.instance.stop();
         _toast(
-          'Enregistrement impossible : ton fournisseur IPTV refuse '
-          'une 2e connexion simultanée. Demande-lui d\'autoriser '
+          'Enregistrement impossible : le serveur a refusé la requête. '
+          'Vérifie ton URL ou demande à ton fournisseur d\'autoriser '
           '2 connexions sur ton compte.',
         );
         return;
@@ -407,18 +424,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         channelLogoUrl: _currentChannel.logoUrl,
       );
 
-      // Démarre le ForegroundService natif qui empêche Android de
-      // tuer notre process quand l'utilisateur passe en arrière-plan
-      // pendant l'enregistrement.
-      await RecordingService.instance.start(
-        title: widget.overrideTitle != null && widget.overrideTitle!.isNotEmpty
-            ? '${_currentChannel.cleanName} – ${widget.overrideTitle}'
-            : _currentChannel.cleanName,
-      );
-
       if (mounted) {
         setState(() => _activeRecording = rec);
-        _toast('Enregistrement démarré — bytes accumulés en temps réel');
+        _toast(
+          'Enregistrement démarré — continue même hors application',
+        );
       }
     } catch (e) {
       _toast('Impossible de démarrer : $e');

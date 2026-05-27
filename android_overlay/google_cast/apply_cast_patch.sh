@@ -168,7 +168,13 @@ else
   # spécifier le type "mediaPlayback".
   # POST_NOTIFICATIONS requis depuis Android 13 pour afficher la
   # notification du foreground service.
-  PERMS='    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-permission android:name="android.permission.USE_BIOMETRIC" />'
+  # ACCESS_WIFI_STATE = requis pour `WifiManager.createWifiLock()`,
+  # qu'on utilise dans RecordingForegroundService pour empêcher
+  # Android de mettre le WiFi en sommeil pendant l'enregistrement
+  # quand l'écran s'éteint. Sans ce lock, en ~30 s d'inactivité,
+  # le WiFi peut se mettre en mode économie et tuer la socket HTTP
+  # du downloader → enregistrement arrêté après ~30 s en background.
+  PERMS='    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />\n    <uses-permission android:name="android.permission.USE_BIOMETRIC" />'
   sed -i "s|<application|${PERMS}\n\n    <application|" "$MANIFEST"
 
   # Déclaration du service avant </application>.
