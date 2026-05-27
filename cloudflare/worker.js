@@ -52,6 +52,174 @@
 //  DÉPLOIEMENT — voir README.md à côté de ce fichier.
 // =========================================================
 
+// ----- Constantes APK / téléchargement -----
+//
+// URL du GitHub release qui pointe TOUJOURS vers le dernier APK
+// (le tag "latest" est overwrite à chaque push du workflow CI,
+//  donc le binaire qui répond à cette URL est toujours à jour).
+const APK_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/latest/app-debug.apk';
+
+// Landing page HTML servie sur la racine. Style Maison Noir :
+// fond noir, ember rouge, typo sobre. Optimisée pour téléphones
+// ET pour les navigateurs intégrés des Smart TV (pas de JS).
+const LANDING_HTML = `<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>7 MOTION — Téléchargement</title>
+  <meta name="description" content="Lecteur IPTV premium 7 MOTION. Téléchargez l'APK Android/Fire TV/Android TV.">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0A0A0C;
+      color: #F2F2F4;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      max-width: 520px;
+      width: 100%;
+      padding: 32px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, #16161A 0%, #0E0E12 100%);
+      border: 1px solid rgba(214, 174, 96, 0.25);
+      box-shadow: 0 0 40px rgba(214, 174, 96, 0.08);
+    }
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 8px;
+    }
+    .brand h1 {
+      font-size: 32px;
+      letter-spacing: 4px;
+      font-weight: 700;
+      color: #F2F2F4;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #3897F0;
+      color: white;
+      font-size: 14px;
+      font-weight: 900;
+    }
+    .tagline {
+      text-align: center;
+      color: #8E8E94;
+      font-size: 12px;
+      letter-spacing: 2px;
+      margin-bottom: 32px;
+    }
+    .dl {
+      display: block;
+      width: 100%;
+      padding: 18px;
+      border-radius: 12px;
+      background: #D6AE60;
+      color: #0A0A0C;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 700;
+      text-decoration: none;
+      letter-spacing: 0.5px;
+      transition: transform 0.15s;
+    }
+    .dl:hover { transform: translateY(-1px); }
+    .dl small {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      opacity: 0.8;
+      margin-top: 4px;
+      letter-spacing: 1px;
+    }
+    .steps {
+      margin-top: 28px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(214, 174, 96, 0.18);
+    }
+    .steps h2 {
+      font-size: 13px;
+      letter-spacing: 1.5px;
+      color: #D6AE60;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+    .steps ol {
+      padding-left: 22px;
+      color: #C4C4CA;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    .steps code {
+      background: #1F1F25;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #D6AE60;
+    }
+    .legal {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(214, 174, 96, 0.12);
+      font-size: 10.5px;
+      color: #6E6E74;
+      line-height: 1.5;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">
+      <h1>7 MOTION</h1>
+      <span class="badge">&check;</span>
+    </div>
+    <p class="tagline">THE FEW &middot; NOT FOR EVERYONE</p>
+
+    <a class="dl" href="/dl">
+      Télécharger l'APK
+      <small>Android &middot; Fire TV &middot; Android TV</small>
+    </a>
+
+    <div class="steps">
+      <h2>Installation via Downloader</h2>
+      <ol>
+        <li>Lance <strong>Downloader</strong> sur ta Fire TV / Android TV</li>
+        <li>Tape l'URL : <code>7motion.com/dl</code></li>
+        <li>Bouton <strong>GO</strong> &rarr; téléchargement automatique</li>
+        <li>Bouton <strong>Install</strong> quand le téléchargement finit</li>
+      </ol>
+    </div>
+
+    <p class="legal">
+      7 MOTION ne vend, ne distribue et ne fournit aucun flux IPTV,
+      aucune chaîne ni aucun contenu. Apportez votre propre
+      abonnement auprès du fournisseur de votre choix.
+    </p>
+  </div>
+</body>
+</html>`;
+
+const HTML_HEADERS = {
+  'Content-Type': 'text/html; charset=utf-8',
+  'Cache-Control': 'public, max-age=300',
+  'Access-Control-Allow-Origin': '*',
+};
+
 const JSON_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
   'Access-Control-Allow-Origin': '*',
@@ -279,11 +447,28 @@ export default {
       }
     }
 
-    // Healthcheck
-    if (segments.length === 0 || (segments.length === 1 && segments[0] === '')) {
-      return new Response('7 MOTION worker is alive.\n', { headers: TEXT_HEADERS });
+    // / — landing page HTML (téléchargement + tuto Downloader)
+    if (segments.length === 0) {
+      return new Response(LANDING_HTML, { headers: HTML_HEADERS });
     }
 
-    return notFound('Unknown route. Try /config/:mac or /admin/clients');
+    // /dl — redirection 302 vers l'APK GitHub release.
+    // Downloader (Fire TV / Android TV) suit le redirect et télécharge
+    // le binaire. URL publique courte et propre, sans github visible.
+    // Variante /dl/release pour aliasing futur (release vs beta).
+    if (
+      (segments.length === 1 && segments[0] === 'dl') ||
+      (segments.length === 2 && segments[0] === 'dl' && segments[1] === 'release')
+    ) {
+      return Response.redirect(APK_URL, 302);
+    }
+
+    // /install — alias canal alternatif (utile si on veut router
+    // par device class plus tard : /install?tv=firetv, etc.)
+    if (segments.length === 1 && segments[0] === 'install') {
+      return Response.redirect(APK_URL, 302);
+    }
+
+    return notFound('Unknown route. Try /, /dl, /config/:mac or /admin/clients');
   },
 };

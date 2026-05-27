@@ -137,6 +137,70 @@ Pas besoin de rien faire côté app — l'URL ne change pas.
 
 ---
 
+## Téléchargement client — endpoint `/dl` + landing page
+
+Le Worker héberge aussi un **canal de téléchargement public** pour que
+tes clients installent 7 MOTION sans voir l'URL GitHub.
+
+### Routes exposées
+
+| Route | Comportement |
+|---|---|
+| `GET /` | Landing page HTML (logo + bouton télécharger + tuto Downloader) |
+| `GET /dl` | HTTP 302 → APK GitHub release `latest` |
+| `GET /dl/release` | Idem (alias futur pour distinguer release/beta) |
+| `GET /install` | Idem (alias canal alternatif) |
+
+L'URL `latest` du release GitHub est overwrite à chaque push du
+workflow CI → le binaire qui répond à `/dl` est **toujours le dernier
+build**, pas besoin de toucher au Worker quand tu sors une version.
+
+### Setup domaine personnalisé `7motion.com/dl`
+
+Pour que tes clients tapent `7motion.com/dl` au lieu de
+`seven-motion-backend.TON_PSEUDO.workers.dev/dl` :
+
+1. **Ajoute 7motion.com à Cloudflare** (gratuit, change les NS chez
+   ton registrar pour pointer vers Cloudflare).
+
+2. **Dashboard Cloudflare** → Workers → ton Worker `seven-motion-backend`
+   → onglet "Triggers" → "Add Custom Domain" → tape `7motion.com`.
+
+3. Cloudflare crée le DNS + le certificat HTTPS automatiquement
+   (~2 min de propagation).
+
+4. **Teste :**
+   ```bash
+   curl -I https://7motion.com/dl
+   # → HTTP/2 302
+   # → location: https://github.com/.../app-debug.apk
+   ```
+
+5. Tes clients vont sur https://7motion.com (landing pro) ou tapent
+   directement `7motion.com/dl` dans Downloader Fire TV / Android TV.
+
+### Code Downloader court (5 chiffres style "12345")
+
+L'app **Downloader by AFTVnews** propose un système de codes courts
+permettant à tes clients de taper juste 5 chiffres au lieu d'une URL.
+
+Comment l'obtenir (gratuit) :
+
+1. Va sur https://www.aftvnews.com/downloader/
+2. Champ "Submit URL" → tape `https://7motion.com/dl`
+3. Le site génère un code à 5 chiffres (ex: `987654`)
+4. Note le code et partage-le à tes clients :
+   > "Lance Downloader, tape `987654`, GO."
+
+Le code redirige vers ton `/dl` qui redirige vers le GitHub release.
+Tout reste invisible côté client : il voit juste 7 MOTION s'installer.
+
+**Note :** le code peut être révoqué par AFTVnews s'il est signalé,
+mais reste valable indéfiniment sinon. Le fallback `7motion.com/dl`
+fonctionnera toujours.
+
+---
+
 ## Sécurité
 
 - Le `ADMIN_SECRET` est stocké chiffré chez Cloudflare. Si tu le perds,
