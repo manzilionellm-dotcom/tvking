@@ -21,6 +21,8 @@ import '../../cast/presentation/cast_diagnostics_screen.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../device/presentation/device_id_card.dart';
 import '../../player/data/player_settings.dart';
+import '../../playlists/presentation/add_playlist_screen.dart';
+import '../../playlists/presentation/playlists_screen.dart';
 import '../../recordings/presentation/recordings_screen.dart';
 import '../../security/data/biometric_auth.dart';
 import '../../security/data/lock_settings.dart';
@@ -116,6 +118,40 @@ class SettingsScreen extends StatelessWidget {
             // qui les pousse à distance grâce à l'identifiant 7 MOTION.
             // Si tu es l'admin et tu veux modifier des playlists, va
             // dans "Mode admin" en bas de cette page.
+            //
+            // RÉ-ACTIVÉE (mai 2026) — le user veut quand même un accès
+            // direct depuis Réglages pour :
+            //   a) Tester l'app avec ses propres URLs Xtream pendant
+            //      le dev (le revendeur lui-même est aussi utilisateur)
+            //   b) Les clients qui ARRIVENT avec leur propre abo IPTV
+            //      ailleurs et veulent juste utiliser 7 MOTION comme
+            //      lecteur, sans passer par le système de revendeur.
+            // L'écosystème revendeur (Mode admin → push à distance via
+            // backend Cloudflare) reste intact, c'est juste une porte
+            // supplémentaire pour l'usage direct.
+            _SectionTitle('Mes sources IPTV'),
+            _ActionTile(
+              icon: Icons.playlist_play_rounded,
+              title: 'Mes playlists',
+              subtitle:
+                  'Liste des sources IPTV ajoutées (M3U + Xtream Codes).',
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => const PlaylistsScreen(),
+                ),
+              ),
+            ),
+            _ActionTile(
+              icon: Icons.add_circle_outline_rounded,
+              title: 'Ajouter une source',
+              subtitle:
+                  'Colle une URL M3U ou un compte Xtream Codes (host + user + mdp).',
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => const AddPlaylistScreen(),
+                ),
+              ),
+            ),
 
             // ====== ENREGISTREMENTS ======
             _SectionTitle('Enregistrements'),
