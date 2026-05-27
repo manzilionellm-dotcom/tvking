@@ -89,9 +89,12 @@ class _EmptyStateViewState extends State<EmptyStateView> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Envoie ton identifiant à ton revendeur. Il active '
-                  'tes chaînes à distance — elles apparaîtront ici '
-                  'automatiquement.',
+                  // Texte volontairement abstrait — on n'évoque plus
+                  // ni 'revendeur' ni 'WhatsApp'. Le client voit un
+                  // service d'activation à distance pro, point.
+                  'Active tes chaînes en 1 tap. Notre équipe configure '
+                  'ton accès en quelques minutes — elles apparaîtront '
+                  'ici automatiquement.',
                   textAlign: TextAlign.center,
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 13,
@@ -135,20 +138,26 @@ class _EmptyStateViewState extends State<EmptyStateView> {
                 ),
                 const SizedBox(height: 18),
 
-                // ----- Bouton primaire : WhatsApp -----
+                // ----- CTA primaire : activation -----
+                // Bouton ember 7 MOTION (plus de vert WhatsApp visible).
+                // Le tap ouvre WhatsApp en silence avec le bon message —
+                // le client ne sait pas qu'il y a un canal humain
+                // derrière, c'est l'effet 'service d'activation auto'
+                // voulu par le branding 7 MOTION.
                 SizedBox(
                   width: double.infinity,
                   height: 52,
                   child: FilledButton.icon(
                     onPressed: _mac == null ? null : _sendWhatsApp,
-                    icon: const Icon(Icons.chat_rounded, size: 20),
-                    label: const Text('Envoyer à mon revendeur'),
+                    icon: const Icon(Icons.bolt_rounded, size: 22),
+                    label: const Text('Activer mes chaînes'),
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF25D366),
-                      foregroundColor: Colors.white,
+                      backgroundColor: AppColors.accent,
+                      foregroundColor: AppColors.voidSurface,
                       textStyle: AppTextStyles.button.copyWith(
                         fontSize: 15,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.3,
                       ),
                     ),
                   ),

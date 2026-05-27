@@ -60,9 +60,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     ),
     _OnboardingPage(
       icon: Icons.fingerprint_rounded,
-      title: 'Ton identifiant appareil',
+      title: 'Active tes chaînes',
       description:
-          'Cet ID identifie ton installation 7 MOTION. Garde-le pour le support technique de l\'app — pour toute question sur les chaînes, contacte ton fournisseur IPTV.',
+          'Cet identifiant unique permet d\'activer ton compte à distance. Envoie-le en 1 tap, notre équipe configure ton accès en quelques minutes.',
       isMacSlide: true,
     ),
     _OnboardingPage(
@@ -331,11 +331,14 @@ class _MacHandoffSlideState extends State<_MacHandoffSlide> {
         'Bonjour 7 MOTION, voici mon identifiant pour activer mes chaînes :\n\n$_mac';
     final bool ok = await VipSupport.openWhatsApp(customMessage: msg);
     if (!mounted || ok) return;
+    // Toast volontairement vague — pas de mention WhatsApp pour
+    // cohérence avec le branding 'service d'activation pro'.
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
         content: Text(
-          'WhatsApp introuvable. Contacte ${VipSupport.displayNumber}.',
+          'Impossible d\'envoyer ta demande. '
+          'Contacte le support au ${VipSupport.displayNumber}.',
           style: AppTextStyles.bodyMedium,
         ),
       ),
@@ -435,22 +438,23 @@ class _MacHandoffSlideState extends State<_MacHandoffSlide> {
             ),
             const SizedBox(height: 24),
 
-            // ----- Bouton primaire : envoyer via WhatsApp -----
+            // ----- CTA primaire : activation -----
+            // Bouton ember (plus de vert WhatsApp). Tap → WhatsApp
+            // s'ouvre en silence avec l'identifiant pré-rempli.
             SizedBox(
               width: double.infinity,
               height: 52,
               child: FilledButton.icon(
                 onPressed: _mac == null ? null : _sendWhatsApp,
-                icon: const Icon(Icons.chat_rounded, size: 20),
-                label: const Text(
-                  'Envoyer à mon revendeur',
-                ),
+                icon: const Icon(Icons.bolt_rounded, size: 22),
+                label: const Text('Activer mes chaînes'),
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF25D366),
-                  foregroundColor: Colors.white,
+                  backgroundColor: AppColors.accent,
+                  foregroundColor: AppColors.voidSurface,
                   textStyle: AppTextStyles.button.copyWith(
                     fontSize: 15,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.3,
                   ),
                 ),
               ),
