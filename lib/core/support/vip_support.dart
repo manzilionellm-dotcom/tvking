@@ -43,4 +43,30 @@ abstract final class VipSupport {
       return false;
     }
   }
+
+  /// Compose le numéro de support dans l'appli Téléphone du système.
+  /// Sur Android, ça OUVRE l'écran de composition pré-rempli — le
+  /// client doit valider d'un tap pour lancer l'appel (Android n'a
+  /// jamais le droit de lancer un appel sans confirmation user).
+  ///
+  /// Sur les appareils SANS module téléphonie (tablettes Wi-Fi, TV,
+  /// Fire TV), `launchUrl` retourne false. L'appelant doit afficher
+  /// un toast 'Cet appareil ne peut pas appeler' et proposer le
+  /// canal Message à la place.
+  static Future<bool> openPhoneCall() async {
+    // On garde le numéro affichage (avec +) car `tel:` accepte le
+    // format E.164. On retire seulement les espaces — les tirets et
+    // le + sont tolérés par tous les OS.
+    final String dialNumber = displayNumber.replaceAll(' ', '');
+    final Uri uri = Uri.parse('tel:$dialNumber');
+    try {
+      return await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('[VipSupport] phone launchUrl error: $e');
+      return false;
+    }
+  }
 }

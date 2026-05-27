@@ -14,7 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../core/branding/brand_logo.dart';
-import '../../../../core/support/vip_support.dart';
+import '../../../../core/support/support_choice_sheet.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../device/data/device_identity.dart';
@@ -59,9 +59,12 @@ class _EmptyStateViewState extends State<EmptyStateView> {
     );
   }
 
-  Future<void> _sendWhatsApp() async {
+  /// Au tap, sheet à 2 choix (message instantané ou appel) avec
+  /// le MAC pré-rempli dans le message côté messagerie.
+  Future<void> _activate() async {
     if (_mac == null) return;
-    await VipSupport.openWhatsApp(
+    await showSupportChoiceSheet(
+      context,
       customMessage:
           'Bonjour 7 MOTION, voici mon identifiant pour activer mes chaînes :\n\n$_mac',
     );
@@ -148,7 +151,7 @@ class _EmptyStateViewState extends State<EmptyStateView> {
                   width: double.infinity,
                   height: 52,
                   child: FilledButton.icon(
-                    onPressed: _mac == null ? null : _sendWhatsApp,
+                    onPressed: _mac == null ? null : _activate,
                     icon: const Icon(Icons.bolt_rounded, size: 22),
                     label: const Text('Activer mes chaînes'),
                     style: FilledButton.styleFrom(

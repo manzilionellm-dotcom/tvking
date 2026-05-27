@@ -18,7 +18,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../core/support/vip_support.dart';
+import '../../../core/support/support_choice_sheet.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../device/data/device_identity.dart';
@@ -325,24 +325,14 @@ class _MacHandoffSlideState extends State<_MacHandoffSlide> {
     );
   }
 
-  Future<void> _sendWhatsApp() async {
+  /// Au tap, sheet à 2 choix (message ou appel) avec le MAC
+  /// pré-rempli côté messagerie. Le sheet gère lui-même les
+  /// fallbacks d'erreur (toast 'impossible d'ouvrir...').
+  Future<void> _activate() async {
     if (_mac == null) return;
     final String msg =
         'Bonjour 7 MOTION, voici mon identifiant pour activer mes chaînes :\n\n$_mac';
-    final bool ok = await VipSupport.openWhatsApp(customMessage: msg);
-    if (!mounted || ok) return;
-    // Toast volontairement vague — pas de mention WhatsApp pour
-    // cohérence avec le branding 'service d'activation pro'.
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        content: Text(
-          'Impossible d\'envoyer ta demande. '
-          'Contacte le support au ${VipSupport.displayNumber}.',
-          style: AppTextStyles.bodyMedium,
-        ),
-      ),
-    );
+    await showSupportChoiceSheet(context, customMessage: msg);
   }
 
   @override
@@ -445,7 +435,7 @@ class _MacHandoffSlideState extends State<_MacHandoffSlide> {
               width: double.infinity,
               height: 52,
               child: FilledButton.icon(
-                onPressed: _mac == null ? null : _sendWhatsApp,
+                onPressed: _mac == null ? null : _activate,
                 icon: const Icon(Icons.bolt_rounded, size: 22),
                 label: const Text('Activer mes chaînes'),
                 style: FilledButton.styleFrom(

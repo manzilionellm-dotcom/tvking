@@ -16,7 +16,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
-import 'vip_support.dart';
+import 'support_choice_sheet.dart';
 
 enum VipHelpVariant { full, compact, floating }
 
@@ -54,27 +54,15 @@ class _VipHelpCardState extends State<VipHelpCard>
     super.dispose();
   }
 
+  /// Au tap, on n'ouvre PLUS WhatsApp directement — on présente
+  /// d'abord un bottom sheet à 2 choix (message ou appel). C'est
+  /// plus pro et ça donne le choix au client selon son contexte
+  /// (en transports → message, dans son canapé → appel direct).
   Future<void> _open() async {
     if (_opening) return;
     setState(() => _opening = true);
-    final bool ok = await VipSupport.openWhatsApp();
-    if (!mounted) return;
-    setState(() => _opening = false);
-    if (!ok) {
-      // Volontairement vague — on ne dit pas "WhatsApp" pour ne pas
-      // dévoiler le canal de support. Si vraiment l'app ne peut pas
-      // ouvrir, on donne le numéro brut sans le nommer.
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: Text(
-            'Impossible d\'ouvrir la messagerie. '
-            'Contacte-nous au ${VipSupport.displayNumber}.',
-            style: AppTextStyles.bodyMedium,
-          ),
-        ),
-      );
-    }
+    await showSupportChoiceSheet(context);
+    if (mounted) setState(() => _opening = false);
   }
 
   @override
