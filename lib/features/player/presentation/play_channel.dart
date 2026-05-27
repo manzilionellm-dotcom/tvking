@@ -31,6 +31,7 @@
 // =========================================================
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
@@ -44,6 +45,19 @@ Future<void> playChannel(
   String? overrideTitle,
 }) async {
   RecentlyWatchedRepository.instance.record(channel.id);
+
+  // ROTATION FORCÉE PAYSAGE AVANT LE PUSH NAVIGATOR.
+  // Si on attend `VideoPlayerScreen.initState` pour forcer la rotation,
+  // le premier frame du player s'affiche encore en portrait (vidéo
+  // étirée, bandeaux noirs), puis Android tourne en 200-500 ms — flash
+  // moche. En appelant `setPreferredOrientations` ICI, Android a le
+  // temps de tourner pendant la transition d'écran (la transition
+  // MaterialPageRoute fait ~300 ms). Quand le player apparaît,
+  // l'orientation est déjà bonne, plein cadre direct.
+  await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
 
   if (!context.mounted) return;
   await Navigator.of(context).push<void>(

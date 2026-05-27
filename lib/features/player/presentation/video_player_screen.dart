@@ -878,16 +878,49 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // l'overlay quand il est visible, p. ex.). `autofocus: true`
     // garantit qu'au cold start le player capte les touches même
     // si rien d'autre n'a le focus.
-    return Focus(
-      autofocus: true,
-      onKeyEvent: _handlePlayerKeyEvent,
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: useTikTokSwipe
-            ? _buildTikTokPageView()
-            : _buildPlayerSurface(),
+    //
+    // `PopScope(canPop: false, ...)` intercepte le back gesture /
+    // bouton retour pour entrer en PiP au lieu de fermer le
+    // player — comportement YouTube Premium canonique : "tu n'as
+    // pas DIT que tu voulais arrêter la vidéo, tu as juste appuyé
+    // back, donc je continue de jouer en mini-fenêtre."
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: _onPopInvoked,
+      child: Focus(
+        autofocus: true,
+        onKeyEvent: _handlePlayerKeyEvent,
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          body: useTikTokSwipe
+              ? _buildTikTokPageView()
+              : _buildPlayerSurface(),
+        ),
       ),
     );
+  }
+
+  /// Intercepteur du BACK. Si la vidéo joue ET que le PiP est
+  /// supporté ET qu'on n'est pas déjà en PiP, on entre en mini-
+  /// fenêtre plutôt que de fermer le player. Sinon, pop normal.
+  Future<void> _onPopInvoked(bool didPop, Object? result) async {
+    if (didPop) return; // déjà sorti, rien à faire
+    if (!mounted) return;
+
+    final bool alreadyInPip = PipService.instance.isInPipMode;
+    final bool pipSupported = await PipService.instance.isSupported();
+
+    if (!alreadyInPip && pipSupported && _isPlaying) {
+      final bool ok = await PipService.instance.enterPip();
+      // Si le natif refuse (permission désactivée, etc.), on quitte
+      // quand même — sinon le bouton back ferait rien.
+      if (!ok && mounted) {
+        Navigator.of(context).pop();
+      }
+      return;
+    }
+    // Pas de PiP possible → pop normal du player.
+    if (mounted) Navigator.of(context).pop();
   }
 
   /// PageView vertical "TikTok-style" — swipe haut/bas pour zapper.
