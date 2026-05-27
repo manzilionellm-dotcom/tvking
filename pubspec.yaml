@@ -9,7 +9,7 @@
 name: tv_king
 description: "7 MOTION — lecteur IPTV premium pour mobile, Android TV et Fire TV."
 publish_to: 'none'
-version: 0.3.0+10
+version: 0.3.0+11
 
 environment:
   sdk: ^3.5.0
