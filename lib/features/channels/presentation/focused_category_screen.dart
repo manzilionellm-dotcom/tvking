@@ -33,6 +33,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../domain/channel.dart';
+import 'channels_grid_screen.dart';
 import 'widgets/premium_row.dart';
 
 class FocusedCategoryScreen extends StatelessWidget {
@@ -91,6 +92,19 @@ class FocusedCategoryScreen extends StatelessWidget {
                     subtitle: '${entry.value.length} chaînes',
                     channels: entry.value,
                     onChannelTap: (Channel ch) => playChannel(context, ch),
+                    // "Voir tout" → ouvre la grille intégrale des
+                    // chaînes du pays. Permet à l'user d'accéder
+                    // jusqu'à la dernière des 200+ chaînes sans
+                    // se contenter du carrousel horizontal limité.
+                    onSeeAll: () => Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (_) => ChannelsGridScreen(
+                          title: '$title · ${entry.key}',
+                          subtitle: '${entry.value.length} chaînes',
+                          channels: entry.value,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               const SliverToBoxAdapter(child: SizedBox(height: 80)),
