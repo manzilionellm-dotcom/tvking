@@ -23,6 +23,7 @@ import '../../../core/branding/powered_by_marquee.dart';
 import '../../../core/support/vip_help_card.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/widgets/tv_focusable.dart';
 import '../../cast/presentation/cast_button.dart';
 import '../../cast/presentation/cast_mini_bar.dart';
 import '../../epg/presentation/tv_guide_screen.dart';
@@ -152,6 +153,11 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       child: ListView(
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.symmetric(vertical: 32),
+        // Pré-rendre 1200 dp hors viewport = quand l'utilisateur
+        // descend rapidement avec le D-pad, les rangées suivantes
+        // sont déjà mesurées et prêtes à afficher (pas de jank
+        // visible). Coût mémoire négligeable face au confort TV.
+        cacheExtent: 1200,
         children: <Widget>[
           // ----- Top bar avec brand + actions -----
           _TvTopBar(
@@ -399,6 +405,10 @@ class _TvTopBar extends StatelessWidget {
   }
 }
 
+/// Bouton icône du top bar TV — focus géré par `TvFocusable`.
+/// Garde une logique propre (fond ember au focus pour signaler la
+/// sélection, icône change de teinte) que `TvFocusable` n'a pas
+/// vocation à embarquer (c'est cosmétique de ce widget précis).
 class _TvIconButton extends StatefulWidget {
   const _TvIconButton({
     required this.icon,
@@ -415,47 +425,51 @@ class _TvIconButton extends StatefulWidget {
 }
 
 class _TvIconButtonState extends State<_TvIconButton> {
-  bool _focused = false;
+  final FocusNode _focusNode = FocusNode(debugLabel: 'tv-icon-button');
+
+  @override
+  void initState() {
+    super.initState();
+    // On suit le focus pour piloter la couleur de fond / icône
+    // sans dupliquer la logique de bordure & glow (gérée par
+    // `TvFocusable`).
+    _focusNode.addListener(_onFocus);
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocus);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _onFocus() {
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
-    return FocusableActionDetector(
-      onShowFocusHighlight: (bool f) => setState(() => _focused = f),
-      actions: <Type, Action<Intent>>{
-        ActivateIntent: CallbackAction<ActivateIntent>(
-          onInvoke: (_) {
-            widget.onTap();
-            return null;
-          },
-        ),
-      },
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: widget.onTap,
+    final bool focused = _focusNode.hasFocus;
+    return TvFocusable(
+      onTap: widget.onTap,
+      focusNode: _focusNode,
+      borderRadius: BorderRadius.circular(12),
+      semanticsLabel: widget.label,
+      // Pas de scroll-on-focus utile dans la top bar (toujours visible),
+      // on désactive juste le surcoût.
+      ensureVisibleAlignment: 0.5,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        width: 64,
+        height: 64,
+        decoration: BoxDecoration(
+          color: focused ? AppColors.accentSurface : AppColors.surface,
           borderRadius: BorderRadius.circular(12),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: _focused
-                  ? AppColors.accentSurface
-                  : AppColors.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _focused ? AppColors.accent : AppColors.border,
-                width: _focused ? 2 : 1,
-              ),
-              boxShadow: _focused ? AppColors.champagneGlow : null,
-            ),
-            child: Icon(
-              widget.icon,
-              color:
-                  _focused ? AppColors.accent : AppColors.textSecondary,
-              size: 24,
-            ),
-          ),
+        ),
+        child: Icon(
+          widget.icon,
+          color: focused ? AppColors.accent : AppColors.textSecondary,
+          size: 28,
         ),
       ),
     );
@@ -621,19 +635,32 @@ class _TvRow extends StatelessWidget {
             ),
           ),
           SizedBox(
-            height: 220,
+            // Cards TV agrandies (200×280) — plus lisibles à 3 m
+            // qu'un écran de téléphone à 30 cm. La hauteur de la
+            // rangée englobe la carte + marge d'aération.
+            height: 290,
             child: FocusTraversalGroup(
               policy: ReadingOrderTraversalPolicy(),
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
                 padding: const EdgeInsets.symmetric(horizontal: 64),
+                // Pré-rendre 1000 dp à droite = quand l'utilisateur
+                // appuie ⟶ plusieurs fois rapidement, les cartes
+                // suivantes sont déjà prêtes (pas de "trou blanc"
+                // pendant que le logo charge).
+                cacheExtent: 1000,
                 itemCount: channels.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 14),
+                separatorBuilder: (_, __) => const SizedBox(width: 18),
                 itemBuilder: (BuildContext context, int i) {
-                  return _TvCard(
-                    channel: channels[i],
-                    onTap: () => onTap(channels[i]),
+                  // RepaintBoundary isole le repaint de chaque carte
+                  // pour que l'animation de scale au focus ne force
+                  // pas le repaint de toute la rangée.
+                  return RepaintBoundary(
+                    child: _TvCard(
+                      channel: channels[i],
+                      onTap: () => onTap(channels[i]),
+                    ),
                   );
                 },
               ),
@@ -645,91 +672,60 @@ class _TvRow extends StatelessWidget {
   }
 }
 
-class _TvCard extends StatefulWidget {
+/// Carte chaîne TV — version 10-foot (200×280) avec focus ring
+/// ember + scale + scroll-on-focus géré centralement par
+/// `TvFocusable`. Si tu veux changer le look TV global (rayon,
+/// glow, scale), édite `TvFocusable`, pas ce fichier.
+class _TvCard extends StatelessWidget {
   const _TvCard({required this.channel, required this.onTap});
 
   final Channel channel;
   final VoidCallback onTap;
 
   @override
-  State<_TvCard> createState() => _TvCardState();
-}
-
-class _TvCardState extends State<_TvCard> {
-  bool _focused = false;
-
-  @override
   Widget build(BuildContext context) {
-    final bool reduceMotion = MediaQuery.disableAnimationsOf(context);
-    return FocusableActionDetector(
-      onShowFocusHighlight: (bool f) => setState(() => _focused = f),
-      actions: <Type, Action<Intent>>{
-        ActivateIntent: CallbackAction<ActivateIntent>(
-          onInvoke: (_) {
-            widget.onTap();
-            return null;
-          },
-        ),
-      },
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(14),
-          child: AnimatedScale(
-            scale: _focused ? 1.06 : 1.0,
-            duration: reduceMotion
-                ? Duration.zero
-                : const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            child: AnimatedContainer(
-              duration: reduceMotion
-                  ? Duration.zero
-                  : const Duration(milliseconds: 180),
-              width: 170,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: _focused ? AppColors.accent : AppColors.border,
-                  width: _focused ? 2.4 : 1,
-                ),
-                boxShadow: _focused ? AppColors.champagneGlow : null,
+    return TvFocusable(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      unfocusedBorderColor: AppColors.border,
+      semanticsLabel: channel.cleanName,
+      child: SizedBox(
+        width: 200,
+        height: 280,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              ChannelLogo(
+                channel: channel,
+                size: ChannelLogoSize.large,
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: <Widget>[
-                    ChannelLogo(
-                      channel: widget.channel,
-                      size: ChannelLogoSize.large,
-                    ),
-                    // Scrim bas pour lisibilité du nom
-                    const Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: AppColors.cardScrim,
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 10,
-                      left: 12,
-                      right: 12,
-                      child: Text(
-                        widget.channel.cleanName,
-                        style: AppTextStyles.bodyLarge.copyWith(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+              // Scrim bas pour lisibilité du nom posé par-dessus
+              const Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: AppColors.cardScrim,
+                  ),
                 ),
               ),
-            ),
+              Positioned(
+                bottom: 14,
+                left: 14,
+                right: 14,
+                child: Text(
+                  channel.cleanName,
+                  // Taille 16 px pour rester lisible à 3 m.
+                  // L'ancienne valeur 13 px était trop fine pour TV.
+                  style: AppTextStyles.bodyLarge.copyWith(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
         ),
       ),

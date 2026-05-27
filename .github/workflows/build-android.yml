@@ -105,6 +105,69 @@ jobs:
             grep 'android:label' "$MANIFEST" || true
           fi
 
+      # Active le mode Android TV / Fire TV / Google TV :
+      #
+      #   1. <uses-feature android.software.leanback required=false>
+      #      Indique à Google Play Store / Amazon Appstore qu'on
+      #      SAIT tourner sur TV sans pour autant l'exiger (l'app
+      #      reste installable sur téléphone).
+      #
+      #   2. <uses-feature android.hardware.touchscreen required=false>
+      #      ⚠️ SANS CETTE LIGNE, Google Play considère que l'app
+      #      EXIGE un écran tactile et la cache aux Android TVs.
+      #      C'est le bug le plus courant des apps Flutter sur TV.
+      #
+      #   3. Catégorie LEANBACK_LAUNCHER sur l'activité principale,
+      #      pour que la grille d'apps Android TV (le launcher
+      #      natif) liste l'app à côté de Netflix, Prime, etc.
+      #      Sans cette catégorie, l'app apparaît UNIQUEMENT dans
+      #      "Toutes les apps", pas dans la home TV.
+      #
+      #   4. android:banner sur <application> = vignette 320×180 dp
+      #      requise par le launcher TV. On pointe vers le launcher
+      #      icon par défaut (généré par flutter_launcher_icons).
+      #      C'est pas un VRAI banner cinématique, mais ça déverrouille
+      #      la visibilité — un banner dédié sera créé plus tard
+      #      dans assets/branding/tv_banner.png.
+      #
+      # Implémentation : sed pur, idempotent (re-run sans effet si
+      # déjà patché grâce aux greps de vérif).
+      - name: Patch AndroidManifest for Android TV (leanback)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ ! -f "$MANIFEST" ]; then
+            echo "❌ Manifest manquant — flutter create a-t-il tourné ?"
+            exit 1
+          fi
+
+          # 1+2. uses-feature — injectés juste après <manifest ...>
+          if ! grep -q 'android.software.leanback' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-feature android:name="android.software.leanback" android:required="false"/>\n    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>' "$MANIFEST"
+            echo "✓ uses-feature leanback + touchscreen ajoutés"
+          else
+            echo "⊙ uses-feature leanback déjà présent (re-run)"
+          fi
+
+          # 3. LEANBACK_LAUNCHER — injecté après LAUNCHER existant
+          if ! grep -q 'LEANBACK_LAUNCHER' "$MANIFEST"; then
+            sed -i 's|<category android:name="android.intent.category.LAUNCHER"/>|<category android:name="android.intent.category.LAUNCHER"/>\n                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>|' "$MANIFEST"
+            echo "✓ catégorie LEANBACK_LAUNCHER ajoutée"
+          else
+            echo "⊙ LEANBACK_LAUNCHER déjà présent"
+          fi
+
+          # 4. android:banner — sur <application>
+          if ! grep -q 'android:banner' "$MANIFEST"; then
+            sed -i 's|android:icon="@mipmap/ic_launcher"|android:icon="@mipmap/ic_launcher"\n        android:banner="@mipmap/ic_launcher"|' "$MANIFEST"
+            echo "✓ android:banner ajouté (pointe vers le launcher icon)"
+          else
+            echo "⊙ android:banner déjà présent"
+          fi
+
+          echo "--- Manifest patché ---"
+          cat "$MANIFEST"
+
       # Active le Google Cast SDK natif (le VRAI, celui de YouTube /
       # Netflix). Le script copie nos 3 fichiers Kotlin (MainActivity,
       # GoogleCastApi, CastOptionsProviderImpl) dans le package Android

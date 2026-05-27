@@ -658,6 +658,112 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _scheduleHideOverlay();
   }
 
+  // ============================================================
+  //  Télécommande Android TV / Fire TV — touches média + D-pad
+  // ============================================================
+  //  La télécommande envoie des `LogicalKeyboardKey` Flutter
+  //  standard, mais SANS handler explicite l'app ne fait rien
+  //  quand on appuie Play / Pause / Channel±. On câble ici la
+  //  logique pour offrir l'expérience "vraie TV" :
+  //
+  //    Play / Pause / PlayPause / Space        → toggle play
+  //    Stop / Back-long-press                  → sort du lecteur
+  //    MediaTrackNext / Channel+               → chaîne suivante
+  //    MediaTrackPrevious / Channel-           → chaîne précédente
+  //    FastForward / Flèche droite (no overlay)→ +10 secondes
+  //    Rewind      / Flèche gauche (no overlay)→ -10 secondes
+  //    Flèche haut/bas (no overlay)            → zap suivant/précédent
+  //    OK / Enter / Select (no overlay)        → afficher l'overlay
+  //
+  //  Quand l'overlay des contrôles est visible, on laisse les
+  //  flèches naviguer entre les boutons (focus traversal Flutter
+  //  natif) au lieu de zapper — sinon on ne pourrait pas changer
+  //  les réglages à la télécommande. Les touches MEDIA_* en
+  //  revanche sont TOUJOURS interceptées, peu importe l'overlay.
+  // ============================================================
+
+  /// Saute de `delta` secondes (positif = avance, négatif = recul).
+  /// Borne à zéro pour éviter de seek négatif. Affiche un mini-toast
+  /// pour confirmer visuellement le saut (utile en TV sans haptique).
+  void _seekBy(Duration delta) {
+    final Duration current = _player.state.position;
+    Duration target = current + delta;
+    if (target < Duration.zero) target = Duration.zero;
+    _player.seek(target);
+    final int secs = delta.inSeconds;
+    _toast(secs >= 0 ? '⟳ +${secs}s' : '⟲ ${secs}s');
+  }
+
+  /// Handler clavier / télécommande. Branché sur le `Focus` parent
+  /// du Scaffold. Retourne `KeyEventResult.handled` quand l'événement
+  /// est consommé (pour stopper la propagation) ou `ignored` quand on
+  /// veut laisser les Focus enfants gérer (ex. nav dans l'overlay).
+  KeyEventResult _handlePlayerKeyEvent(FocusNode node, KeyEvent event) {
+    // KeyDownEvent uniquement — éviter de tirer 2× sur Up + Down.
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final LogicalKeyboardKey k = event.logicalKey;
+
+    // -------- Touches média : TOUJOURS interceptées --------
+    if (k == LogicalKeyboardKey.mediaPlay ||
+        k == LogicalKeyboardKey.mediaPause ||
+        k == LogicalKeyboardKey.mediaPlayPause) {
+      _togglePlayPause();
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.mediaStop) {
+      Navigator.of(context).maybePop();
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.mediaTrackNext ||
+        k == LogicalKeyboardKey.channelDown) {
+      if (_canZap) _zapNext();
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.mediaTrackPrevious ||
+        k == LogicalKeyboardKey.channelUp) {
+      if (_canZap) _zapPrev();
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.mediaFastForward) {
+      _seekBy(const Duration(seconds: 10));
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.mediaRewind) {
+      _seekBy(const Duration(seconds: -10));
+      return KeyEventResult.handled;
+    }
+
+    // -------- Flèches : seulement si overlay caché --------
+    // Sinon on bloquerait la nav D-pad dans les boutons de l'overlay.
+    if (!_overlayVisible) {
+      if (k == LogicalKeyboardKey.arrowUp) {
+        if (_canZap) _zapPrev();
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowDown) {
+        if (_canZap) _zapNext();
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowLeft) {
+        _seekBy(const Duration(seconds: -10));
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowRight) {
+        _seekBy(const Duration(seconds: 10));
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.space ||
+          k == LogicalKeyboardKey.enter ||
+          k == LogicalKeyboardKey.numpadEnter ||
+          k == LogicalKeyboardKey.select) {
+        _toggleOverlay();
+        return KeyEventResult.handled;
+      }
+    }
+
+    return KeyEventResult.ignored;
+  }
+
   // ----- Mapping AspectRatioMode → BoxFit + ratio -----
 
   BoxFit _fitFromMode(AspectRatioMode m) {
@@ -702,11 +808,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _zapPageController = PageController(initialPage: initial);
     }
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: useTikTokSwipe
-          ? _buildTikTokPageView()
-          : _buildPlayerSurface(),
+    // Le `Focus` parent reçoit les touches télécommande qui n'ont
+    // PAS été consommées par les widgets enfants (boutons de
+    // l'overlay quand il est visible, p. ex.). `autofocus: true`
+    // garantit qu'au cold start le player capte les touches même
+    // si rien d'autre n'a le focus.
+    return Focus(
+      autofocus: true,
+      onKeyEvent: _handlePlayerKeyEvent,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: useTikTokSwipe
+            ? _buildTikTokPageView()
+            : _buildPlayerSurface(),
+      ),
     );
   }
 

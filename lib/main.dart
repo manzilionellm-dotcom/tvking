@@ -171,6 +171,28 @@ class TvKingApp extends StatelessWidget {
             GlobalCupertinoLocalizations.delegate,
           ],
 
+          // Clamp du textScaler système. Sur Android TV, l'option
+          // "Accessibilité → Taille du texte" peut monter à 200%,
+          // ce qui CASSE TOUS LES LAYOUTS d'apps fixés en dp (cards
+          // débordent, boutons coupent leur label, etc.).
+          //   - min 0.9 : aucune raison de rétrécir, c'est moche.
+          //   - max 1.25 : laisse l'utilisateur agrandir un peu pour
+          //     les yeux fatigués, mais pas au point de casser les
+          //     mesures de boutons / lignes / icônes.
+          // S'applique partout — phone comme TV — pour cohérence.
+          builder: (BuildContext context, Widget? child) {
+            final MediaQueryData mq = MediaQuery.of(context);
+            return MediaQuery(
+              data: mq.copyWith(
+                textScaler: mq.textScaler.clamp(
+                  minScaleFactor: 0.9,
+                  maxScaleFactor: 1.25,
+                ),
+              ),
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
+
           home: const _AppEntry(),
         );
       },
