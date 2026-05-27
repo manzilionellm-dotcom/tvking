@@ -119,8 +119,9 @@ class _DeviceIdCardState extends State<DeviceIdCard> {
           if (widget.showCaption) ...<Widget>[
             const SizedBox(height: 6),
             Text(
-              'Donne ce code à ton revendeur pour qu\'il associe '
-              'tes abonnements à cet appareil.',
+              'Identifie ton installation 7 MOTION. Garde ce code '
+              'pour le support technique de l\'app. Pour toute '
+              'question sur les chaînes, contacte ton fournisseur IPTV.',
               style: AppTextStyles.bodyMedium.copyWith(
                 fontSize: 11,
                 color: AppColors.textMuted,

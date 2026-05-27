@@ -25,6 +25,7 @@ import '../../recordings/presentation/recordings_screen.dart';
 import '../../security/data/biometric_auth.dart';
 import '../../security/data/lock_settings.dart';
 import '../../subscription/presentation/subscription_card.dart';
+import '../../vpn/presentation/vpn_card.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -140,6 +141,8 @@ class SettingsScreen extends StatelessWidget {
             //  de bloquer un device sans verrouillage).
             _SectionTitle('Sécurité'),
             const _LockToggleTile(),
+            const SizedBox(height: 10),
+            const VpnCard(),
 
             // ====== STOCKAGE ======
             _SectionTitle('Stockage'),
