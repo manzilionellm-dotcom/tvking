@@ -60,6 +60,60 @@
 const APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/latest/app-debug.apk';
 
+// ===========================================================
+//  Monétisation — Trial / Subscription / Freeze
+// ===========================================================
+//  Politique :
+//    - Tout client qui ouvre l'app la 1ère fois reçoit un essai
+//      gratuit de TRIAL_DAYS. Au-delà, son `paid` doit être passé
+//      à true par l'admin (manuellement, depuis le panel) sinon
+//      l'app affiche un écran 'essai expiré' bloquant.
+//    - L'admin peut GELER (`status: 'frozen'`) ou BANNIR
+//      (`status: 'banned'`) un client à tout moment. L'app détecte
+//      via `GET /api/status/:mac` au démarrage et bloque la lecture.
+//    - L'app PINGUE le serveur via `POST /api/heartbeat` à chaque
+//      ouverture — ça met à jour `last_seen_at` et crée la fiche
+//      automatiquement au 1er lancement.
+// ===========================================================
+
+const TRIAL_DAYS = 10;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/// Calcule l'état de monétisation d'un client à partir de sa fiche
+/// KV. Renvoie un objet sérialisable que l'app cliente peut lire
+/// pour décider quoi afficher (lecture normale, écran d'expiration,
+/// écran de gel).
+function computeStatus(client, now = Date.now()) {
+  if (!client) {
+    return {
+      exists: false,
+      status: 'unknown',
+      paid: false,
+      trial_until: 0,
+      days_left: 0,
+      expired: false,
+      frozen: false,
+      banned: false,
+    };
+  }
+  const status = client.status || 'active';
+  const paid = client.paid === true;
+  const trialUntil =
+    client.trial_until || (client.added_at || now) + TRIAL_DAYS * DAY_MS;
+  const daysLeft = Math.ceil((trialUntil - now) / DAY_MS);
+  const expired = !paid && trialUntil <= now;
+  return {
+    exists: true,
+    status,
+    paid,
+    trial_until: trialUntil,
+    days_left: Math.max(0, daysLeft),
+    expired,
+    frozen: status === 'frozen',
+    banned: status === 'banned',
+  };
+}
+
 // Landing page HTML servie sur la racine. Style Maison Noir :
 // fond noir, ember rouge, typo sobre. Optimisée pour téléphones
 // ET pour les navigateurs intégrés des Smart TV (pas de JS).
@@ -215,6 +269,460 @@ const LANDING_HTML = `<!doctype html>
 </body>
 </html>`;
 
+// ============================================================
+//  Panel admin web — page HTML autonome servie à /admin/panel
+// ============================================================
+//  L'admin tape https://7themotion.com/admin/panel dans son
+//  navigateur (ordi ou téléphone). Il voit un formulaire de
+//  login (X-Admin-Secret), puis la liste de tous les clients
+//  avec leurs statuts trial / paid / frozen / banned. Chaque
+//  ligne a des boutons d'action rapide.
+//
+//  Pas de framework — HTML + CSS + JS vanilla pour rester
+//  ultra léger (sert en 1 round-trip, charge en < 50 ms).
+//  Le secret admin est stocké en sessionStorage (vidé à la
+//  fermeture du navigateur — meilleur que localStorage pour
+//  le risque de fuite).
+// ============================================================
+const ADMIN_PANEL_HTML = `<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>7 MOTION — Panel admin</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0A0A0C;
+      color: #F0EDE9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    h1 {
+      font-size: 22px;
+      letter-spacing: 4px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .tagline {
+      color: #7E7872;
+      font-size: 11px;
+      letter-spacing: 2px;
+      margin-bottom: 28px;
+    }
+    .card {
+      background: linear-gradient(180deg, #14141A 0%, #0E0E12 100%);
+      border: 1px solid rgba(214, 58, 48, 0.25);
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 18px;
+    }
+    label {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      color: #B6B0A8;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+    input[type="text"], input[type="password"], textarea {
+      width: 100%;
+      padding: 12px 14px;
+      background: #1C1C24;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      color: #F0EDE9;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: #D63A30;
+    }
+    button {
+      padding: 10px 16px;
+      background: #D63A30;
+      color: #050507;
+      border: 0;
+      border-radius: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 13px;
+    }
+    button:hover { background: #FF5A4A; }
+    button.ghost {
+      background: transparent;
+      color: #B6B0A8;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    button.ghost:hover { color: #F0EDE9; border-color: #D63A30; }
+    button.danger { background: #8E1F1D; color: #F0EDE9; }
+    button.danger:hover { background: #B02E2A; }
+    .row-actions button {
+      margin-right: 6px;
+      margin-bottom: 4px;
+      padding: 6px 10px;
+      font-size: 11px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 12px 10px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      vertical-align: top;
+    }
+    th {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      color: #7E7872;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .mac {
+      font-family: monospace;
+      color: #D63A30;
+      font-weight: 700;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      letter-spacing: 1px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .badge.active { background: rgba(95,169,117,0.18); color: #5FA975; }
+    .badge.frozen { background: rgba(214,152,71,0.18); color: #D69847; }
+    .badge.banned { background: rgba(232,74,62,0.18); color: #E84A3E; }
+    .badge.paid { background: rgba(214,58,48,0.18); color: #D63A30; }
+    .badge.unpaid { background: rgba(126,120,114,0.18); color: #7E7872; }
+    .filter-bar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .filter-bar button {
+      padding: 6px 12px;
+      font-size: 11px;
+      background: transparent;
+      color: #B6B0A8;
+      border: 1px solid rgba(255,255,255,0.10);
+    }
+    .filter-bar button.active {
+      background: #D63A30;
+      color: #050507;
+      border-color: #D63A30;
+    }
+    #empty {
+      padding: 40px;
+      text-align: center;
+      color: #7E7872;
+      font-size: 13px;
+    }
+    .stat {
+      display: inline-block;
+      margin-right: 22px;
+      padding: 4px 0;
+    }
+    .stat strong {
+      font-size: 18px;
+      color: #D63A30;
+      display: block;
+    }
+    .stat span {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      color: #7E7872;
+      text-transform: uppercase;
+    }
+    @media (max-width: 720px) {
+      table { font-size: 11px; }
+      th, td { padding: 8px 6px; }
+    }
+  </style>
+</head>
+<body>
+  <h1>7 MOTION</h1>
+  <div class="tagline">PANEL ADMIN</div>
+
+  <!-- ===== ÉCRAN LOGIN ===== -->
+  <div id="login-card" class="card">
+    <label>Secret admin (ADMIN_SECRET du Worker)</label>
+    <input type="password" id="secret-input" placeholder="••••••••••••" autocomplete="off">
+    <div style="margin-top:14px">
+      <button onclick="login()">Se connecter</button>
+      <button class="ghost" onclick="document.getElementById('secret-input').value=''">Effacer</button>
+    </div>
+    <div id="login-error" style="color:#E84A3E;font-size:12px;margin-top:10px;display:none"></div>
+  </div>
+
+  <!-- ===== ÉCRAN PRINCIPAL (caché tant que pas loggé) ===== -->
+  <div id="main" style="display:none">
+    <div class="card">
+      <div class="stat"><strong id="stat-total">0</strong><span>Clients total</span></div>
+      <div class="stat"><strong id="stat-active">0</strong><span>Actifs</span></div>
+      <div class="stat"><strong id="stat-paid">0</strong><span>Payants</span></div>
+      <div class="stat"><strong id="stat-frozen">0</strong><span>Gelés</span></div>
+      <div class="stat"><strong id="stat-expired">0</strong><span>Essai expiré</span></div>
+      <button class="ghost" style="float:right" onclick="refresh()">↻ Actualiser</button>
+      <button class="ghost" style="float:right;margin-right:6px" onclick="logout()">Déconnexion</button>
+    </div>
+
+    <div class="card">
+      <div class="filter-bar">
+        <button data-filter="all" class="active" onclick="setFilter('all')">Tous</button>
+        <button data-filter="trial" onclick="setFilter('trial')">En essai</button>
+        <button data-filter="paid" onclick="setFilter('paid')">Payants</button>
+        <button data-filter="expired" onclick="setFilter('expired')">Essai expiré</button>
+        <button data-filter="frozen" onclick="setFilter('frozen')">Gelés</button>
+        <button data-filter="banned" onclick="setFilter('banned')">Bannis</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>MAC</th>
+            <th>Nom</th>
+            <th>Statut</th>
+            <th>Essai</th>
+            <th>Vu</th>
+            <th>Note</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div id="empty" style="display:none">Aucun client dans cette catégorie.</div>
+    </div>
+  </div>
+
+<script>
+const SECRET_KEY = '_7m_admin_secret';
+let allClients = [];
+let currentFilter = 'all';
+
+function getSecret() {
+  return sessionStorage.getItem(SECRET_KEY) || '';
+}
+
+function setSecret(s) {
+  sessionStorage.setItem(SECRET_KEY, s);
+}
+
+function clearSecret() {
+  sessionStorage.removeItem(SECRET_KEY);
+}
+
+function login() {
+  const s = document.getElementById('secret-input').value.trim();
+  if (!s) return showLoginError('Entre le secret admin.');
+  setSecret(s);
+  refresh();
+}
+
+function logout() {
+  clearSecret();
+  document.getElementById('login-card').style.display = 'block';
+  document.getElementById('main').style.display = 'none';
+  document.getElementById('secret-input').value = '';
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('login-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+async function api(path, opts = {}) {
+  const headers = Object.assign(
+    { 'X-Admin-Secret': getSecret(), 'Content-Type': 'application/json' },
+    opts.headers || {},
+  );
+  const resp = await fetch(path, Object.assign({}, opts, { headers }));
+  if (resp.status === 401) {
+    clearSecret();
+    logout();
+    showLoginError('Secret invalide ou expiré.');
+    throw new Error('unauthorized');
+  }
+  return resp;
+}
+
+async function refresh() {
+  try {
+    const resp = await api('/admin/clients');
+    if (!resp.ok) {
+      showLoginError('Erreur ' + resp.status + ' — secret correct ?');
+      logout();
+      return;
+    }
+    const list = await resp.json();
+    allClients = list;
+    document.getElementById('login-card').style.display = 'none';
+    document.getElementById('main').style.display = 'block';
+    render();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function setFilter(f) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-bar button').forEach(b => {
+    b.classList.toggle('active', b.dataset.filter === f);
+  });
+  render();
+}
+
+function filterClients(list) {
+  const now = Date.now();
+  switch (currentFilter) {
+    case 'trial':
+      return list.filter(c => !c.paid && (c.status || 'active') === 'active' && (c.trial_until || 0) > now);
+    case 'paid':
+      return list.filter(c => c.paid);
+    case 'expired':
+      return list.filter(c => !c.paid && (c.trial_until || 0) <= now && (c.status || 'active') !== 'banned');
+    case 'frozen':
+      return list.filter(c => c.status === 'frozen');
+    case 'banned':
+      return list.filter(c => c.status === 'banned');
+    default:
+      return list;
+  }
+}
+
+function daysLeft(client) {
+  const now = Date.now();
+  const trial = client.trial_until || 0;
+  return Math.ceil((trial - now) / (24 * 60 * 60 * 1000));
+}
+
+function formatDate(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  return day + '/' + month + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]));
+}
+
+function render() {
+  const filtered = filterClients(allClients);
+  const tbody = document.getElementById('tbody');
+  const empty = document.getElementById('empty');
+
+  // Stats globales
+  const now = Date.now();
+  document.getElementById('stat-total').textContent = allClients.length;
+  document.getElementById('stat-active').textContent = allClients.filter(c => (c.status || 'active') === 'active').length;
+  document.getElementById('stat-paid').textContent = allClients.filter(c => c.paid).length;
+  document.getElementById('stat-frozen').textContent = allClients.filter(c => c.status === 'frozen').length;
+  document.getElementById('stat-expired').textContent = allClients.filter(c => !c.paid && (c.trial_until || 0) <= now && c.status !== 'banned').length;
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = filtered.map(c => {
+    const days = daysLeft(c);
+    const status = c.status || 'active';
+    const paid = c.paid === true;
+    const statusBadge = '<span class="badge ' + status + '">' + status + '</span>';
+    const paidBadge = paid
+      ? '<span class="badge paid">Payé</span>'
+      : days > 0
+        ? '<span class="badge unpaid">Essai ' + days + 'j</span>'
+        : '<span class="badge unpaid">Expiré</span>';
+    return '<tr>' +
+      '<td class="mac">' + escapeHtml(c.mac) + '</td>' +
+      '<td>' + escapeHtml(c.name || '—') + '</td>' +
+      '<td>' + statusBadge + ' ' + paidBadge + '</td>' +
+      '<td>' + (days > 0 ? days + 'j' : '—') + '</td>' +
+      '<td>' + formatDate(c.last_seen_at) + '</td>' +
+      '<td style="max-width:160px;font-size:11px;color:#B6B0A8">' + escapeHtml(c.note || '') + '</td>' +
+      '<td class="row-actions">' +
+        (paid ? '<button class="ghost" onclick="action(\\''+c.mac+'\\',\\'mark_unpaid\\')">Annuler payé</button>' : '<button onclick="action(\\''+c.mac+'\\',\\'mark_paid\\')">✓ Marquer payé</button>') +
+        '<button class="ghost" onclick="renew(\\''+c.mac+'\\')">↻ Renouveler</button>' +
+        (status === 'frozen' ? '<button onclick="action(\\''+c.mac+'\\',\\'unfreeze\\')">▶ Réactiver</button>' : '<button class="ghost" onclick="action(\\''+c.mac+'\\',\\'freeze\\')">❄ Geler</button>') +
+        (status === 'banned' ? '<button onclick="action(\\''+c.mac+'\\',\\'unfreeze\\')">▶ Débannir</button>' : '<button class="danger" onclick="action(\\''+c.mac+'\\',\\'ban\\')">⛔ Bannir</button>') +
+        '<button class="ghost" onclick="editNote(\\''+c.mac+'\\')">📝 Note</button>' +
+      '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+async function action(mac, act) {
+  try {
+    const resp = await api('/admin/clients/' + encodeURIComponent(mac) + '/action', {
+      method: 'POST',
+      body: JSON.stringify({ action: act }),
+    });
+    if (!resp.ok) return alert('Erreur ' + resp.status);
+    await refresh();
+  } catch (e) {
+    if (e.message !== 'unauthorized') alert(e.message);
+  }
+}
+
+async function renew(mac) {
+  const days = prompt('Renouveler de combien de jours ?', '365');
+  if (!days) return;
+  try {
+    const resp = await api('/admin/clients/' + encodeURIComponent(mac) + '/action', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'renew', days: Number(days) }),
+    });
+    if (!resp.ok) return alert('Erreur ' + resp.status);
+    await refresh();
+  } catch (e) {
+    if (e.message !== 'unauthorized') alert(e.message);
+  }
+}
+
+async function editNote(mac) {
+  const current = (allClients.find(c => c.mac === mac) || {}).note || '';
+  const note = prompt('Note pour ' + mac + ' :', current);
+  if (note === null) return; // annulé
+  try {
+    const resp = await api('/admin/clients/' + encodeURIComponent(mac) + '/action', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'note', note }),
+    });
+    if (!resp.ok) return alert('Erreur ' + resp.status);
+    await refresh();
+  } catch (e) {
+    if (e.message !== 'unauthorized') alert(e.message);
+  }
+}
+
+// Boot : si on a déjà un secret en session, on tente direct
+if (getSecret()) {
+  refresh();
+}
+// Touche Enter dans le champ secret = login
+document.getElementById('secret-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') login();
+});
+</script>
+</body>
+</html>`;
+
 const HTML_HEADERS = {
   'Content-Type': 'text/html; charset=utf-8',
   'Cache-Control': 'public, max-age=300',
@@ -328,19 +836,28 @@ function validateClientBody(body) {
   if (!body.mac || !MAC_RX.test(body.mac)) {
     return 'invalid mac, expected MK:XX:XX:XX:XX:XX';
   }
-  if (!Array.isArray(body.playlists) || body.playlists.length === 0) {
-    return 'playlists must be a non-empty array';
+  // playlists est optionnel sur les updates partiels — l'admin peut
+  // vouloir juste passer paid=true sans toucher aux playlists.
+  if (body.playlists !== undefined) {
+    if (!Array.isArray(body.playlists)) {
+      return 'playlists must be an array';
+    }
+    for (const p of body.playlists) {
+      if (!p || typeof p !== 'object') return 'each playlist must be an object';
+      if (p.type !== 'm3u' && p.type !== 'xtream') {
+        return 'playlist.type must be "m3u" or "xtream"';
+      }
+      if (p.type === 'm3u' && !p.url) {
+        return 'm3u playlist requires url';
+      }
+      if (p.type === 'xtream' && (!p.server || !p.username || !p.password)) {
+        return 'xtream playlist requires server, username, password';
+      }
+    }
   }
-  for (const p of body.playlists) {
-    if (!p || typeof p !== 'object') return 'each playlist must be an object';
-    if (p.type !== 'm3u' && p.type !== 'xtream') {
-      return 'playlist.type must be "m3u" or "xtream"';
-    }
-    if (p.type === 'm3u' && !p.url) {
-      return 'm3u playlist requires url';
-    }
-    if (p.type === 'xtream' && (!p.server || !p.username || !p.password)) {
-      return 'xtream playlist requires server, username, password';
+  if (body.status !== undefined) {
+    if (!['active', 'frozen', 'banned'].includes(body.status)) {
+      return 'status must be active, frozen or banned';
     }
   }
   return null; // valid
@@ -381,14 +898,154 @@ async function handleUpsertClient(request, env, mac) {
 
   const now = Date.now();
   const existing = await readClient(env, body.mac);
+  const addedAt = existing?.added_at || now;
+
+  // Merge intelligent : si un champ n'est PAS dans le body, on
+  // conserve sa valeur précédente (update partiel). Permet à
+  // l'admin de modifier UN champ à la fois depuis le panel sans
+  // devoir renvoyer tout l'objet.
   const merged = {
-    name: body.name || existing?.name || '',
-    playlists: body.playlists,
-    added_at: existing?.added_at || now,
+    name: body.name !== undefined ? body.name : existing?.name || '',
+    playlists: body.playlists !== undefined
+      ? body.playlists
+      : existing?.playlists || [],
+    added_at: addedAt,
     updated_at: now,
+    // Monétisation
+    status: body.status || existing?.status || 'active',
+    paid: body.paid !== undefined ? !!body.paid : existing?.paid === true,
+    trial_until:
+      body.trial_until !== undefined
+        ? body.trial_until
+        : existing?.trial_until || addedAt + TRIAL_DAYS * DAY_MS,
+    note: body.note !== undefined ? body.note : existing?.note || '',
+    last_seen_at: existing?.last_seen_at || 0,
   };
   await writeClient(env, body.mac, merged);
   return json({ ok: true, mac: body.mac, ...merged });
+}
+
+// =========================================================
+//  HEARTBEAT — appelé par l'app cliente à chaque démarrage
+// =========================================================
+//  Si la fiche n'existe pas → on la crée avec trial 10 jours.
+//  Si la fiche existe → on met à jour last_seen_at.
+//  Toujours public (pas d'auth) : l'identifiant est le MAC,
+//  comme pour /config/:mac.
+// =========================================================
+async function handleHeartbeat(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch (_) {
+    return badRequest('invalid JSON body');
+  }
+  const mac = body?.mac;
+  if (!mac || !MAC_RX.test(mac)) {
+    return badRequest('invalid mac, expected MK:XX:XX:XX:XX:XX');
+  }
+
+  const now = Date.now();
+  const existing = await readClient(env, mac);
+
+  if (!existing) {
+    // 1er heartbeat de ce MAC → on crée sa fiche, trial 10 jours.
+    const fresh = {
+      name: '',
+      playlists: [],
+      added_at: now,
+      updated_at: now,
+      status: 'active',
+      paid: false,
+      trial_until: now + TRIAL_DAYS * DAY_MS,
+      note: '',
+      last_seen_at: now,
+      first_seen_at: now,
+    };
+    await writeClient(env, mac, fresh);
+    return json({ ok: true, created: true, ...computeStatus(fresh, now) });
+  }
+
+  // Fiche existe : on rafraîchit last_seen_at sans toucher au reste.
+  const updated = { ...existing, last_seen_at: now };
+  await writeClient(env, mac, updated);
+  return json({ ok: true, created: false, ...computeStatus(updated, now) });
+}
+
+// =========================================================
+//  STATUS PUBLIC — appelé par l'app à chaque démarrage juste
+//  après le heartbeat, pour savoir si elle doit afficher
+//  l'écran 'essai expiré' ou 'compte gelé'.
+// =========================================================
+async function handlePublicStatus(env, mac) {
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const data = await readClient(env, mac);
+  return json(computeStatus(data));
+}
+
+// =========================================================
+//  ACTIONS RAPIDES ADMIN — boutons du panel web qui mutent
+//  un seul champ à la fois sans nécessiter de renvoyer tout
+//  l'objet client.
+//
+//  POST /admin/clients/:mac/action  body: { action: 'freeze' | ... }
+//
+//  Actions supportées :
+//    freeze     → status = 'frozen'
+//    unfreeze   → status = 'active'
+//    ban        → status = 'banned'
+//    mark_paid  → paid = true
+//    mark_unpaid→ paid = false
+//    renew      → trial_until = now + (body.days || 365) * DAY_MS
+//    note       → note = body.note
+// =========================================================
+async function handleAdminAction(request, env, mac) {
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  let body;
+  try {
+    body = await request.json();
+  } catch (_) {
+    return badRequest('invalid JSON body');
+  }
+  const action = body?.action;
+  const existing = await readClient(env, mac);
+  if (!existing) return notFound(`Client ${mac} introuvable`);
+
+  const now = Date.now();
+  const updated = { ...existing, updated_at: now };
+
+  switch (action) {
+    case 'freeze':
+      updated.status = 'frozen';
+      break;
+    case 'unfreeze':
+      updated.status = 'active';
+      break;
+    case 'ban':
+      updated.status = 'banned';
+      break;
+    case 'mark_paid':
+      updated.paid = true;
+      break;
+    case 'mark_unpaid':
+      updated.paid = false;
+      break;
+    case 'renew': {
+      const days = Number(body?.days) > 0 ? Number(body.days) : 365;
+      updated.trial_until = now + days * DAY_MS;
+      break;
+    }
+    case 'note':
+      updated.note = String(body?.note || '');
+      break;
+    default:
+      return badRequest(
+        'action must be one of: freeze, unfreeze, ban, mark_paid, mark_unpaid, renew, note',
+      );
+  }
+
+  await writeClient(env, mac, updated);
+  return json({ ok: true, mac, ...updated });
 }
 
 async function handleDeleteClient(env, mac) {
@@ -427,6 +1084,28 @@ export default {
       return handlePublicConfig(env, segments[1]);
     }
 
+    // /api/heartbeat — public, l'app pingue à chaque démarrage
+    if (segments[0] === 'api' && segments[1] === 'heartbeat' && segments.length === 2) {
+      if (request.method !== 'POST') {
+        return badRequest('only POST supported on /api/heartbeat');
+      }
+      return handleHeartbeat(request, env);
+    }
+
+    // /api/status/:mac — public, l'app demande son état trial/freeze
+    if (segments[0] === 'api' && segments[1] === 'status' && segments.length === 3) {
+      if (request.method !== 'GET') {
+        return badRequest('only GET supported on /api/status/:mac');
+      }
+      return handlePublicStatus(env, segments[2]);
+    }
+
+    // /admin/panel — page HTML du panel admin (auth via input dans la page)
+    if (segments[0] === 'admin' && segments[1] === 'panel' && segments.length === 2) {
+      if (request.method !== 'GET') return badRequest('only GET');
+      return new Response(ADMIN_PANEL_HTML, { headers: HTML_HEADERS });
+    }
+
     // /admin/clients — auth requise
     if (segments[0] === 'admin' && segments[1] === 'clients') {
       if (!checkAdmin(request, env)) return unauthorized();
@@ -445,6 +1124,12 @@ export default {
         if (request.method === 'PUT') return handleUpsertClient(request, env, mac);
         if (request.method === 'DELETE') return handleDeleteClient(env, mac);
         return badRequest('method not allowed');
+      }
+      // /admin/clients/:mac/action — boutons d'action rapide du panel
+      if (segments.length === 4 && segments[3] === 'action') {
+        const mac = segments[2];
+        if (request.method === 'POST') return handleAdminAction(request, env, mac);
+        return badRequest('only POST on action');
       }
     }
 
@@ -493,7 +1178,7 @@ export default {
     // unicode, espaces encodés, etc. — parce que Downloader ne
     // supporte que ASCII de toute façon.
     const RESERVED = new Set([
-      'admin', 'config', 'dl', 'install',
+      'admin', 'config', 'dl', 'install', 'api', 'panel',
       'favicon.ico', 'robots.txt', 'sitemap.xml',
     ]);
     if (segments.length === 1 && !RESERVED.has(segments[0].toLowerCase())) {

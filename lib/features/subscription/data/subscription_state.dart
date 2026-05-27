@@ -19,6 +19,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../device/data/device_identity.dart';
+import 'subscription_backend.dart';
+
 /// Durée de l'essai gratuit en jours.
 const int kTrialDurationDays = 10;
 
@@ -35,8 +38,14 @@ enum SubscriptionStatus {
   /// Essai épuisé, achat requis.
   trialExpired,
 
-  /// User a payé son abonnement (pour la V2, pas encore branché).
+  /// User a payé son abonnement (validé côté serveur).
   paid,
+
+  /// L'admin a gelé ce client — l'app ne doit plus fonctionner.
+  frozen,
+
+  /// L'admin a banni ce client — fiche conservée mais bloquée.
+  banned,
 }
 
 class SubscriptionState extends ChangeNotifier {
@@ -50,13 +59,38 @@ class SubscriptionState extends ChangeNotifier {
   DateTime? _paidUntil;
   bool _loaded = false;
 
+  /// Snapshot du serveur (heartbeat + status). Reste `unknown` tant
+  /// que la première sync n'a pas eu lieu OU si le serveur est
+  /// inaccessible (mode dégradé : on retombe sur le trial local).
+  RemoteSubscriptionStatus _remote = RemoteSubscriptionStatus.unknown;
+
   bool get isLoaded => _loaded;
   DateTime? get firstLaunchAt => _firstLaunchAt;
   DateTime? get paidUntil => _paidUntil;
+  RemoteSubscriptionStatus get remote => _remote;
 
-  /// Status calculé live à partir des dates persistées.
+  /// Status calculé. PRIORITÉ AU SERVEUR si on a reçu une réponse
+  /// fraîche du backend ; sinon on retombe sur le calcul local.
+  ///
+  ///  remote.banned   → status = banned
+  ///  remote.frozen   → status = frozen
+  ///  remote.paid     → status = paid
+  ///  remote.expired  → status = trialExpired
+  ///  remote.exists   → status = trialActive (jours restants côté serveur)
+  ///  (sinon)         → calcul local sur firstLaunchAt
   SubscriptionStatus get status {
     if (!_loaded) return SubscriptionStatus.unknown;
+
+    // ----- Source de vérité côté serveur (si dispo) -----
+    if (_remote.exists) {
+      if (_remote.banned) return SubscriptionStatus.banned;
+      if (_remote.frozen) return SubscriptionStatus.frozen;
+      if (_remote.paid) return SubscriptionStatus.paid;
+      if (_remote.expired) return SubscriptionStatus.trialExpired;
+      return SubscriptionStatus.trialActive;
+    }
+
+    // ----- Fallback local (offline ou 1er boot avant heartbeat) -----
     final DateTime now = DateTime.now();
     if (_paidUntil != null && _paidUntil!.isAfter(now)) {
       return SubscriptionStatus.paid;
@@ -69,13 +103,23 @@ class SubscriptionState extends ChangeNotifier {
     return SubscriptionStatus.trialExpired;
   }
 
-  /// Jours restants d'essai (0 si épuisé ou inconnu).
+  /// Jours restants d'essai. Priorité serveur, fallback local.
   int get trialDaysRemaining {
+    if (_remote.exists) return _remote.daysLeft;
     if (_firstLaunchAt == null) return kTrialDurationDays;
     final int daysSince =
         DateTime.now().difference(_firstLaunchAt!).inDays;
     final int remaining = kTrialDurationDays - daysSince;
     return remaining > 0 ? remaining : 0;
+  }
+
+  /// True si l'app doit afficher un écran bloquant (gelé, banni,
+  /// ou essai expiré non payé). Utilisé par `_AppEntry` au boot.
+  bool get shouldBlockUser {
+    final SubscriptionStatus s = status;
+    return s == SubscriptionStatus.frozen ||
+        s == SubscriptionStatus.banned ||
+        s == SubscriptionStatus.trialExpired;
   }
 
   /// Charge l'état depuis SharedPreferences. Si c'est le 1er
@@ -125,5 +169,51 @@ class SubscriptionState extends ChangeNotifier {
     _paidUntil = null;
     _loaded = false;
     notifyListeners();
+  }
+
+  /// Synchronise avec le backend Cloudflare.
+  ///
+  /// Étapes :
+  ///   1. POST /api/heartbeat — déclare au serveur "je suis là".
+  ///      Si nouveau, le serveur crée la fiche avec trial 10 j.
+  ///      Sinon il met juste à jour last_seen_at.
+  ///   2. Le résultat du heartbeat contient déjà le statut courant,
+  ///      pas besoin d'un GET séparé.
+  ///   3. On stocke en `_remote` et on notifie pour rebuild les UI.
+  ///
+  /// À appeler au boot (depuis `_AppEntry`) après l'init du
+  /// DeviceIdentity. Si le réseau est down, `_remote` reste
+  /// `unknown` et le calcul retombe sur le trial local — l'app
+  /// reste utilisable hors-ligne.
+  Future<void> syncWithBackend() async {
+    try {
+      final String mac = await DeviceIdentity.instance.mac;
+      final RemoteSubscriptionStatus snap =
+          await SubscriptionBackend.heartbeat(mac);
+      _remote = snap;
+      // Si le serveur dit 'paid', on persiste un fallback local
+      // pour 7 jours (au cas où l'app passe offline ensuite, on
+      // ne bloquera pas le user qui a déjà payé).
+      if (snap.paid) {
+        final DateTime fallback =
+            DateTime.now().add(const Duration(days: 7));
+        if (_paidUntil == null || fallback.isAfter(_paidUntil!)) {
+          await markPaidUntil(fallback);
+        }
+      }
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Subscription] syncWithBackend error: $e');
+    }
+  }
+
+  /// Force un re-fetch du statut serveur sans toucher au heartbeat
+  /// (le `last_seen_at` ne bouge pas). Utilisé par le pull-to-refresh.
+  Future<void> refreshRemote() async {
+    try {
+      final String mac = await DeviceIdentity.instance.mac;
+      _remote = await SubscriptionBackend.getStatus(mac);
+      notifyListeners();
+    } catch (_) {}
   }
 }

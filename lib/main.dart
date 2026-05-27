@@ -45,6 +45,7 @@ import 'features/security/data/lock_settings.dart';
 import 'features/security/presentation/lock_screen.dart';
 import 'features/recordings/data/recording_repository.dart';
 import 'features/subscription/data/subscription_state.dart';
+import 'features/subscription/presentation/subscription_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -93,8 +94,14 @@ Future<void> main() async {
 
   // Essai gratuit de 10 jours + abonnement 13 €/an. Au tout
   // premier boot, persiste firstLaunchAt = now pour démarrer le
-  // compte à rebours. Aucun appel réseau — calcul 100 % local.
-  unawaited(SubscriptionState.instance.initialize());
+  // compte à rebours local. PUIS sync avec le backend Cloudflare
+  // qui est l'autorité finale (l'admin peut geler/débloquer un
+  // client à distance depuis le panel /admin/panel).
+  unawaited(SubscriptionState.instance.initialize().then((_) {
+    // Sync non bloquant : si le réseau est down, l'app utilise
+    // le trial local en fallback (calcul offline).
+    SubscriptionState.instance.syncWithBackend();
+  }));
 
   // NB : la "fixation à distance" (RemoteConfigRepository qui
   // fetchait des playlists depuis un Gist toutes les 30 min) a
@@ -279,15 +286,28 @@ class _AppEntryState extends State<_AppEntry> {
       );
     }
 
-    // 3) Home — version TV ou téléphone selon le choix utilisateur.
-    //    On re-watche le repo pour qu'un changement dans Réglages
-    //    (futur) bascule immédiatement le layout.
+    // 3) Gate de monétisation — l'admin peut geler / bannir un
+    //    client à distance via le panel web, et le trial expire
+    //    au bout de 10 jours. Si l'une de ces conditions s'applique,
+    //    on affiche un écran bloquant à la place de l'app. L'écran
+    //    est listenable au SubscriptionState : dès que l'admin
+    //    réactive le client (ou marque payé), l'app débloque
+    //    automatiquement au prochain refresh.
     return ListenableBuilder(
-      listenable: DeviceClassRepository.instance,
+      listenable: SubscriptionState.instance,
       builder: (BuildContext context, _) {
-        final bool isTv =
-            DeviceClassRepository.instance.isTvFor(context);
-        return isTv ? const TvHomeScreen() : const HomeScreen();
+        if (SubscriptionState.instance.shouldBlockUser) {
+          return const SubscriptionGateScreen();
+        }
+        // 4) Home — version TV ou téléphone selon le choix utilisateur.
+        return ListenableBuilder(
+          listenable: DeviceClassRepository.instance,
+          builder: (BuildContext context, _) {
+            final bool isTv =
+                DeviceClassRepository.instance.isTvFor(context);
+            return isTv ? const TvHomeScreen() : const HomeScreen();
+          },
+        );
       },
     );
   }
