@@ -30,6 +30,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/live_badge.dart';
 import '../../cast/data/cast_manager.dart';
 import '../../cast/presentation/cast_picker_sheet.dart';
+import '../../cast/presentation/qr_cast_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
@@ -635,6 +636,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _scheduleHideOverlay();
   }
 
+  Future<void> _openQrCast() async {
+    final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+    final String title = widget.overrideTitle ?? _currentChannel.cleanName;
+    _hideOverlayTimer?.cancel();
+    await showQrCastSheet(context, streamUrl: url, channelName: title);
+    _scheduleHideOverlay();
+  }
+
   Future<void> _openSettings() async {
     _hideOverlayTimer?.cancel();
     await showModalBottomSheet<void>(
@@ -907,6 +916,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     ),
                   ),
                   _FavoriteToggle(channelId: ch.id),
+                  // Bouton "Cast QR" — alternative universelle au
+                  // Chromecast classique : génère un QR code de
+                  // l'URL du flux que n'importe quel autre device
+                  // (TV smart, ordi, tablette, autre tel) peut
+                  // scanner pour lancer la lecture cross-OS.
+                  IconButton(
+                    icon: const Icon(
+                      Icons.qr_code_2_rounded,
+                      color: Colors.white,
+                    ),
+                    tooltip: 'Cast par QR Code',
+                    onPressed: _openQrCast,
+                  ),
                   ListenableBuilder(
                     listenable: CastManager.instance,
                     builder: (BuildContext context, _) {
