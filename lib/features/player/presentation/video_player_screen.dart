@@ -144,21 +144,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     WakelockPlus.enable();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    // ROTATION AUTOMATIQUE FORCÉE EN PAYSAGE à l'ouverture du
-    // lecteur. La TV / cinéma se regarde en 16:9 — on n'attend
-    // PAS que l'utilisateur tourne le téléphone manuellement,
-    // surtout si son auto-rotate Android est désactivé.
+    // ROTATION AUTO QUI SUIT LE TÉLÉPHONE (style YouTube / Netflix).
     //
-    //   - On AUTORISE les deux paysages (gauche/droite) pour que
-    //     l'utilisateur puisse tenir son tel comme il préfère et
-    //     que ça suive son retournement physique.
-    //   - On EXCLUT portrait : sinon iOS-style le téléphone bascule
-    //     immédiatement en portrait étiré si l'auto-rotate sense
-    //     un micro-mouvement → image microscopique, vidéo écrasée.
+    // L'utilisateur veut que la vidéo tourne en fonction de COMMENT
+    // il tient son téléphone : portrait → vidéo en portrait avec
+    // bandeaux noirs en haut/bas, paysage → vidéo plein cadre 16:9.
+    // Pas de forçage : c'est le capteur d'orientation qui décide.
     //
-    // Le dispose() ci-dessous (ligne ~580) restaure portraitUp,
-    // donc la home revient au portrait dès la sortie du lecteur.
+    // En spécifiant les 3 orientations utiles au système Android via
+    // `setPreferredOrientations`, on outrepasse le réglage 'rotation
+    // automatique' du système : MÊME SI l'utilisateur a désactivé
+    // l'auto-rotate dans son panneau rapide, la vidéo tournera
+    // quand même quand il bascule son téléphone — c'est exactement
+    // le comportement YouTube / Netflix.
+    //
+    // On exclut `portraitDown` (téléphone tête en bas) — personne ne
+    // regarde de vidéo retournée à 180°, et certains téléphones n'ont
+    // de toute façon pas de capteur pour cette orientation-là.
     SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+      DeviceOrientation.portraitUp,
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
