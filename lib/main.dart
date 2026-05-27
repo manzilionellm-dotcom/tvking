@@ -44,6 +44,7 @@ import 'features/playlists/data/playlist_repository.dart';
 import 'features/security/data/lock_settings.dart';
 import 'features/security/presentation/lock_screen.dart';
 import 'features/recordings/data/recording_repository.dart';
+import 'features/subscription/data/subscription_state.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -89,6 +90,11 @@ Future<void> main() async {
   // Pré-chargée pour qu'elle soit dispo synchrone partout dès le
   // premier frame (About, Réglages, etc.).
   unawaited(DeviceIdentity.instance.preload());
+
+  // Essai gratuit de 10 jours + abonnement 13 €/an. Au tout
+  // premier boot, persiste firstLaunchAt = now pour démarrer le
+  // compte à rebours. Aucun appel réseau — calcul 100 % local.
+  unawaited(SubscriptionState.instance.initialize());
 
   // NB : la "fixation à distance" (RemoteConfigRepository qui
   // fetchait des playlists depuis un Gist toutes les 30 min) a

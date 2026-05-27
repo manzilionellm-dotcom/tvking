@@ -24,6 +24,7 @@ import '../../player/data/player_settings.dart';
 import '../../recordings/presentation/recordings_screen.dart';
 import '../../security/data/biometric_auth.dart';
 import '../../security/data/lock_settings.dart';
+import '../../subscription/presentation/subscription_card.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -46,6 +47,15 @@ class SettingsScreen extends StatelessWidget {
             //  cloche (Réglages).
             _SectionTitle('Aide & Support'),
             const VipHelpCard.full(),
+            const SizedBox(height: 4),
+
+            // ====== ABONNEMENT ======
+            //  Carte trial/abonnement TiViMate-style. Le user voit
+            //  où il en est dans les 10j d'essai (ou si payé) + un
+            //  CTA pour acheter sur 7motion.com (paiement externe,
+            //  pas d'in-app purchase Google Play).
+            _SectionTitle('Mon abonnement'),
+            const SubscriptionCard(),
             const SizedBox(height: 4),
 
             // ====== APPARENCE ======

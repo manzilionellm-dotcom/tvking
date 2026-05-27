@@ -67,9 +67,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     ),
     _OnboardingPage(
       icon: Icons.workspace_premium_rounded,
-      title: 'Signature 7 MOTION',
+      title: 'Tout ce qu\'il te faut',
       description:
-          'Logos haute qualité, navigation cinéma, recherche instantanée, lecteur 4K/8K, cast vers toute TV.',
+          'Sans publicité. Cast vers TV, ordi, tablette. Enregistrement en parallèle. VPN intégré. Lecteur 4K/8K. QR-cast. Recherche instantanée.',
+    ),
+    _OnboardingPage(
+      icon: Icons.celebration_outlined,
+      title: 'Essai gratuit 10 jours',
+      description:
+          'Profite de toutes les fonctions pendant 10 jours. Ensuite 13 €/an sur tous tes appareils — paiement sécurisé sur 7motion.com (jamais in-app).',
     ),
   ];
 
