@@ -61,11 +61,14 @@ class _VipHelpCardState extends State<VipHelpCard>
     if (!mounted) return;
     setState(() => _opening = false);
     if (!ok) {
+      // Volontairement vague — on ne dit pas "WhatsApp" pour ne pas
+      // dévoiler le canal de support. Si vraiment l'app ne peut pas
+      // ouvrir, on donne le numéro brut sans le nommer.
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           behavior: SnackBarBehavior.floating,
           content: Text(
-            'WhatsApp introuvable sur ton appareil. '
+            'Impossible d\'ouvrir la messagerie. '
             'Contacte-nous au ${VipSupport.displayNumber}.',
             style: AppTextStyles.bodyMedium,
           ),
@@ -198,7 +201,11 @@ class _VipHelpCardState extends State<VipHelpCard>
               ),
               const SizedBox(height: 2),
               Text(
-                'Support direct sur WhatsApp, 7j/7.',
+                // On évite délibérément de nommer WhatsApp ici. Le
+                // user veut un bouton qui SE PRÉSENTE comme un
+                // concierge privé / support haut de gamme, et qui
+                // ouvre WhatsApp en silence quand tapé.
+                'Concierge privé · Réponse 7j/7.',
                 style: AppTextStyles.bodyMedium.copyWith(
                   fontSize: 12,
                   color: AppColors.textMuted,
@@ -208,15 +215,17 @@ class _VipHelpCardState extends State<VipHelpCard>
           ),
         ),
         const SizedBox(width: 10),
-        // ----- CTA WhatsApp -----
+        // ----- CTA neutre (ember, pas vert WhatsApp) -----
+        // Box ember + icône casque support — signale "support
+        // premium" sans révéler la techno derrière (WhatsApp).
         Container(
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: const Color(0xFF25D366).withValues(alpha: 0.16),
+            color: AppColors.accent.withValues(alpha: 0.16),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: const Color(0xFF25D366).withValues(alpha: 0.5),
+              color: AppColors.accent.withValues(alpha: 0.55),
             ),
           ),
           child: _opening
@@ -225,8 +234,8 @@ class _VipHelpCardState extends State<VipHelpCard>
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(
-                  Icons.chat_rounded,
-                  color: Color(0xFF25D366),
+                  Icons.support_agent_rounded,
+                  color: AppColors.accent,
                   size: 22,
                 ),
         ),
@@ -274,26 +283,19 @@ class _VipHelpCardState extends State<VipHelpCard>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Row(
-                      children: <Widget>[
-                        Text(
-                          'Aide VIP',
-                          style: AppTextStyles.bodyLarge.copyWith(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Icon(
-                          Icons.chat_rounded,
-                          color: const Color(0xFF25D366),
-                          size: 14,
-                        ),
-                      ],
+                    // Plus d'icône verte WhatsApp à côté du titre —
+                    // on veut un branding "Aide VIP" sobre, agnostique
+                    // de la techno derrière.
+                    Text(
+                      'Aide VIP',
+                      style: AppTextStyles.bodyLarge.copyWith(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Notre équipe te répond sur WhatsApp.',
+                      'Concierge dédié · Réponse 7j/7.',
                       style: AppTextStyles.bodyMedium.copyWith(
                         fontSize: 11,
                         color: AppColors.textMuted,
