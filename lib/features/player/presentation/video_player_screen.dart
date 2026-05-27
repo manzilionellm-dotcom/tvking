@@ -384,9 +384,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         filePath: path,
       );
       if (!ok) {
+        // Message pédagogique : la cause habituelle n'est PAS un
+        // bug de l'app, c'est une limite côté fournisseur IPTV
+        // (1 seule connexion autorisée par identifiant). L'user
+        // doit demander à son revendeur / fournisseur d'autoriser
+        // 2 connexions simultanées pour pouvoir enregistrer
+        // pendant qu'il regarde.
         _toast(
-          'Impossible de démarrer l\'enregistrement '
-          '(serveur injoignable ou refuse la 2e connexion)',
+          'Enregistrement impossible : ton fournisseur IPTV refuse '
+          'une 2e connexion simultanée. Demande-lui d\'autoriser '
+          '2 connexions sur ton compte.',
         );
         return;
       }
@@ -447,7 +454,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         final String sizeLabel = _humanSize(bytes);
         if (bytes == 0) {
           _toast(
-            'Enregistrement vide (0 B) — le serveur a refusé la 2e connexion',
+            'Enregistrement vide. Ton fournisseur IPTV n\'autorise '
+            'qu\'une seule connexion à la fois — demande à augmenter '
+            'la limite pour pouvoir enregistrer.',
           );
         } else {
           _toast(
@@ -1110,14 +1119,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 2),
-                        Row(
-                          children: <Widget>[
-                            if (ch.isLive) ...<Widget>[
-                              const LiveBadge(),
-                              const SizedBox(width: 8),
-                            ],
-                            Flexible(
-                              child: Text(
+                        // FittedBox(scaleDown) protège la Row
+                        // badge + catégorie contre les écrans étroits.
+                        // Si le contenu dépasse la largeur dispo, tout
+                        // est réduit en bloc au lieu de déborder à droite
+                        // (le 'RIGHT OVERFLOWED BY 36 PIXELS' qu'on
+                        // voyait en debug build). Aligné à gauche pour
+                        // garder le visuel naturel.
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              if (ch.isLive) ...<Widget>[
+                                const LiveBadge(),
+                                const SizedBox(width: 8),
+                              ],
+                              Text(
                                 ch.category,
                                 style: AppTextStyles.bodyMedium.copyWith(
                                   color: AppColors.accentCyan,
@@ -1126,8 +1145,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ],
                     ),
