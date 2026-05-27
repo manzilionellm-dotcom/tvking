@@ -154,14 +154,14 @@ flutter_launcher_icons:
   android: true
   ios: false
   remove_alpha_ios: false
-  # Variante "verified" = même logo + badge bleu Instagram-style ✓
-  # incrusté en haut-droite (généré côté CI/dev via PIL). User a
-  # demandé que le badge soit visible directement sur l'icône du
-  # launcher Android, pas seulement dans le splash interne.
-  image_path: "assets/branding/logo_7motion_verified.jpg"
+  # Logo source 7 MOTION (PAS de badge ✓ incrusté — l'user a
+  # finalement demandé que le badge "vérifié" reste UNIQUEMENT
+  # dans l'interface après le texte "MOTION", pas sur l'image
+  # de l'icône launcher Android).
+  image_path: "assets/branding/logo_7motion.jpg"
   min_sdk_android: 21
   adaptive_icon_background: "#0A0A0C"
-  adaptive_icon_foreground: "assets/branding/logo_7motion_verified.jpg"
+  adaptive_icon_foreground: "assets/branding/logo_7motion.jpg"
 
 flutter:
   uses-material-design: true

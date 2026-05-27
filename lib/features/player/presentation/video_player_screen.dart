@@ -482,6 +482,70 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await native?.setProperty('cache', 'yes');
       // Maximum 4 secondes de retour en arrière à mettre en cache
       await native?.setProperty('cache-secs', s.bufferSeconds.toString());
+
+      // === STABILITÉ LONGUE DURÉE (fix bug "lit 2 min et recommence") ===
+      //
+      // L'user constatait que le player s'arrêtait après ~2 min sur
+      // certaines chaînes puis redémarrait depuis le début. Cause
+      // typique : le serveur IPTV ferme la connexion HTTP (session
+      // timeout ou idle keepalive), libmpv détecte EOS et reset.
+      //
+      // Options ajoutées pour rendre le player "le plus puissant
+      // de sa catégorie" sur lecture continue 24/7 :
+
+      // 1. Reconnexion automatique côté libavformat (FFmpeg).
+      //    Si le serveur coupe ou que le réseau lag, libmpv
+      //    rejoint la connexion sans tuer le pipeline.
+      //    - reconnect=1            : reconnecte sur erreur HTTP
+      //    - reconnect_streamed=1   : OK aussi sur les flux non-seekable
+      //    - reconnect_delay_max=30 : jusqu'à 30s de backoff
+      //    - reconnect_at_eof=1     : redémarre aussi à l'EOF prématuré
+      //    - reconnect_on_http_error=4xx,5xx : reconnect sur erreurs HTTP
+      await native?.setProperty(
+        'stream-lavf-o',
+        'reconnect=1,reconnect_streamed=1,reconnect_delay_max=30,'
+            'reconnect_at_eof=1,reconnect_on_http_error=4xx,5xx,'
+            'reconnect_on_network_error=1',
+      );
+
+      // 2. Cache demuxer généreux — absorbe les hoquets réseau
+      //    sans interrompre la lecture. Valeurs élevées car les
+      //    téléphones modernes ont >4 GB RAM.
+      //    - demuxer-max-bytes      : 512 MiB de buffer avant
+      //    - demuxer-max-back-bytes : 128 MiB de back-buffer
+      //    - demuxer-readahead-secs : 20s d'avance bufferisée
+      await native?.setProperty('demuxer-max-bytes', '536870912');
+      await native?.setProperty('demuxer-max-back-bytes', '134217728');
+      await native?.setProperty('demuxer-readahead-secs', '20');
+
+      // 3. Ne pas pause sur cache underrun — préfère un micro
+      //    rebuffer transparent qu'un freeze de la lecture.
+      await native?.setProperty('cache-pause', 'no');
+      await native?.setProperty('cache-pause-wait', '1');
+
+      // 4. Timeout réseau confortable (60s vs 10s par défaut).
+      //    Sur 4G/5G en mobilité, les RTT peuvent piquer >10s.
+      await native?.setProperty('network-timeout', '60');
+
+      // 5. keep-open=yes : NE PAS quitter le player sur EOF.
+      //    Sans ça, certains flux malformés font sortir libmpv
+      //    de la lecture et l'écran reste figé sur la dernière
+      //    frame avant de redémarrer (= le bug "2min recommence").
+      await native?.setProperty('keep-open', 'yes');
+      await native?.setProperty('keep-open-pause', 'no');
+
+      // 6. User-Agent mimant VLC — certains Xtream bloquent
+      //    les UA "libmpv" ou "Dart" et coupent la connexion
+      //    après le timeout par défaut côté serveur (~120s).
+      await native?.setProperty(
+        'user-agent',
+        'VLC/3.0.18 LibVLC/3.0.18',
+      );
+
+      // 7. force-seekable=yes : même sur des flux live qui
+      //    déclarent ne pas être seekable, libmpv peut zapper
+      //    dans le cache → permet le rebobinage des 20s.
+      await native?.setProperty('force-seekable', 'yes');
     } catch (_) {
       // Pas grave, on continue avec les défauts.
     }
