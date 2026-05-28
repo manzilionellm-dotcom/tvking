@@ -480,7 +480,7 @@ jobs:
           • Run : #${{ github.run_number }}
 
           **Installation** : usage exclusivement réservé aux personnes majeures.
-          Sideload via le domaine Cloudflare (`/redroom`).
+          Sideload via le domaine Cloudflare (/redroom).
 
           ⚠️ Mode debug — non destiné à la distribution publique."
 
