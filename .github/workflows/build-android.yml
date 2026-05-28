@@ -421,26 +421,19 @@ jobs:
       - name: Generate AppLocalizations from .arb files
         run: flutter gen-l10n || true
 
-      # Génère un PNG 512×512 "R rouge sang sur velours noir" via
-      # ImageMagick (pré-installé sur ubuntu-latest). Sert d'asset
-      # source à flutter_launcher_icons. Placeholder honorable en
-      # attendant un asset designé proprement.
-      - name: Generate Red Room launcher asset (R sur velours)
-        run: |
-          set -e
-          mkdir -p assets/branding
-          convert -size 512x512 xc:'#08060A' \
-            -fill '#D63A30' \
-            -font DejaVu-Sans-Bold \
-            -pointsize 380 \
-            -gravity center \
-            -annotate +0+30 R \
-            assets/branding/logo_redroom.png
-          ls -lah assets/branding/logo_redroom.png
-          file assets/branding/logo_redroom.png
-
-      - name: Generate launcher icons (Red Room R rouge)
-        run: dart run flutter_launcher_icons -f flutter_launcher_icons_redroom.yaml
+      # NOTE — Icône lanceur pour Red Room
+      # ────────────────────────────────────
+      # Phase de stabilisation : on ne génère PAS d'icône custom pour
+      # ce build. La cible cible 'R rouge sur velours' demande un
+      # asset designé proprement (ou un pipeline Pillow/Python qui
+      # n'est pas encore validé). En attendant, le build sort avec
+      # l'icône Flutter par défaut, ce qui n'empêche PAS le
+      # fonctionnement de l'app — c'est juste moche.
+      #
+      # Quand on aura un vrai logo Red Room (SVG/PNG livré par un
+      # designer ou produit via Pillow), on remettra le step
+      # `flutter_launcher_icons -f flutter_launcher_icons_redroom.yaml`
+      # ici et l'icône passera ember-rouge sur velours.
 
       # CLEF DE VOÛTE : on cible main_redroom.dart, qui pose
       # FlavorConfig.redRoom AVANT le boot commun.
