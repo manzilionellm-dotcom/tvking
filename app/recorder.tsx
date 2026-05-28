@@ -213,7 +213,7 @@ export default function Recorder() {
   const hasStream = status !== "idle";
   const progress = Math.min(1, elapsed / MAX_DURATION_SECONDS);
 
-  const downloadName = `tvking-${new Date().toISOString().replace(/[:.]/g, "-")}.${
+  const downloadName = `chambre-rouge-${new Date().toISOString().replace(/[:.]/g, "-")}.${
     mimeType.includes("mp4") ? "mp4" : "webm"
   }`;
 
@@ -231,7 +231,7 @@ export default function Recorder() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-3xl font-black tracking-tight text-zinc-100">
-            TVKing <span className="text-red-500">Recorder</span>
+            Chambre <span className="text-red-500">Rouge</span>
           </h1>
           <p className="mt-1 text-sm text-zinc-400">
             Enregistre jusqu&apos;à{" "}

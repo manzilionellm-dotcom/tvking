@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TVKing Recorder +18",
+  title: "Chambre Rouge +18",
   description:
-    "Enregistreur vidéo navigateur — webcam + micro, jusqu'à 6h en continu.",
+    "Chambre Rouge — enregistreur vidéo navigateur, webcam + micro, jusqu'à 6h en continu.",
 };
 
 export default function RootLayout({
