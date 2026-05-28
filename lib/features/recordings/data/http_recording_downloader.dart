@@ -33,6 +33,27 @@
 //    Pas de limite logicielle au nombre de jobs simultanés ; la
 //    limite réelle = nb de sockets que l'OS autorise (~1000) et
 //    surtout la bande passante / limite du fournisseur IPTV.
+//
+//  V3 — Enregistrements longue durée (jusqu'à 6 h) :
+//    PROBLÈME constaté par l'utilisateur : l'app affiche bien
+//    "enregistrement en cours" mais le fichier ne grossit plus
+//    après ~2 minutes. Cause racine : les CDN / serveurs Xtream
+//    FERMENT périodiquement la socket HTTP (recyclage de connexion,
+//    fin d'un buffer côté edge, load-balancer qui rebascule…).
+//    Quand ça arrive, le `Stream` Dart émet `onDone` → l'ancien
+//    code nettoyait le job → l'enregistrement s'arrêtait en silence.
+//
+//    CORRECTIF : pour un flux LIVE, `onDone` ne veut PAS dire "fin
+//    de l'émission", ça veut dire "le serveur a coupé, reconnecte".
+//    On rouvre donc une nouvelle connexion HTTP et on CONTINUE à
+//    écrire dans le MÊME fichier (le .ts est concaténable, comme le
+//    font ffmpeg / TiviMate). On ne s'arrête réellement que sur :
+//      - un stop() explicite de l'utilisateur,
+//      - le plafond de 6 h atteint (kMaxRecordingDuration),
+//      - trop d'échecs de reconnexion consécutifs (serveur mort).
+//
+//    Un Timer par job déclenche l'auto-stop à 6 h. La limite évite
+//    qu'un enregistrement oublié remplisse le stockage du téléphone.
 // =========================================================
 
 import 'dart:async';
@@ -40,6 +61,19 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+
+/// Durée maximale d'un enregistrement. Au-delà, le job s'arrête tout
+/// seul proprement (flush + close + callback) pour ne pas remplir le
+/// stockage si l'utilisateur oublie d'appuyer sur stop. 6 h couvre un
+/// match + prolongations, un marathon de séries, une nuit de docu…
+const Duration kMaxRecordingDuration = Duration(hours: 6);
+
+/// Nombre d'échecs de reconnexion CONSÉCUTIFS tolérés avant
+/// d'abandonner un job. Tant qu'au moins une reconnexion réussit, ce
+/// compteur est remis à zéro — donc un flux qui hoquette toute la nuit
+/// continue indéfiniment. On n'abandonne que si le serveur est
+/// vraiment injoignable plusieurs essais d'affilée.
+const int _kMaxReconnectFailures = 12;
 
 /// Décodeur UTF-8 tolérant aux octets invalides. Sert à lire le
 /// corps texte d'une playlist HLS .m3u8 sans crasher si un segment
@@ -86,9 +120,16 @@ class HttpRecordingDownloader {
   ///   - ce filePath est DÉJÀ en cours (double-start ignoré)
   ///   - la requête HTTP échoue après tous les retries
   ///   - l'ouverture du fichier échoue
+  ///
+  /// [onAutoStopped] est appelé UNIQUEMENT quand le job se termine
+  /// de lui-même (plafond de 6 h atteint, ou serveur définitivement
+  /// injoignable après plusieurs reconnexions). Il N'est PAS appelé
+  /// quand l'utilisateur fait stop() lui-même. Permet à l'UI de
+  /// finaliser la fiche en base et de retirer le badge "REC".
   Future<bool> start({
     required String streamUrl,
     required String filePath,
+    void Function(String filePath)? onAutoStopped,
   }) async {
     if (_jobs.containsKey(filePath)) {
       if (kDebugMode) debugPrint('[Rec] $filePath déjà en cours');
@@ -109,20 +150,84 @@ class HttpRecordingDownloader {
     // playlist au lieu de la vidéo → 0 bytes vidéo utilisables.
     final bool isHls = streamUrl.toLowerCase().contains('.m3u8');
     if (isHls) {
-      return _startHls(streamUrl: streamUrl, filePath: filePath);
+      return _startHls(
+        streamUrl: streamUrl,
+        filePath: filePath,
+        onAutoStopped: onAutoStopped,
+      );
     }
-    return _startRaw(streamUrl: streamUrl, filePath: filePath);
+    return _startRaw(
+      streamUrl: streamUrl,
+      filePath: filePath,
+      onAutoStopped: onAutoStopped,
+    );
   }
 
-  /// Pipeline classique : 1 GET HTTP qui dure tant que le serveur
-  /// envoie des bytes (flux MPEG-TS live). On streame directement
+  /// Pipeline classique : flux MPEG-TS live tiré en 1 GET HTTP qui
+  /// dure tant que le serveur envoie des bytes. On streame directement
   /// dans le fichier sans buffer mémoire.
+  ///
+  /// Nouveauté V3 : si le serveur ferme la socket (onDone) ou qu'une
+  /// erreur réseau survient (onError), on NE s'arrête PAS — on rouvre
+  /// une connexion et on continue d'écrire dans le même fichier, tant
+  /// qu'on n'a pas dépassé 6 h ni reçu de stop() explicite. C'est ça
+  /// qui corrige le bug "l'enregistrement s'arrête au bout de 2 min".
   Future<bool> _startRaw({
     required String streamUrl,
     required String filePath,
+    void Function(String filePath)? onAutoStopped,
   }) async {
-    final _Job job = _Job(filePath: filePath);
+    final _Job job = _Job(filePath: filePath)
+      ..onAutoStopped = onAutoStopped;
+
+    // 1) On ouvre le fichier de sortie AVANT toute connexion. Il
+    //    restera ouvert pendant toute la durée de l'enregistrement,
+    //    y compris à travers les reconnexions (on append).
     try {
+      final File file = File(filePath);
+      await file.parent.create(recursive: true);
+      job.sink = file.openWrite();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Rec] ouverture fichier KO ($filePath): $e');
+      await _stopJob(job);
+      return false;
+    }
+
+    // 2) Première connexion. Si elle échoue d'emblée, on rend false
+    //    pour que l'UI affiche l'erreur (serveur injoignable / refus).
+    final HttpClientResponse? resp = await _openRawConnection(job, streamUrl);
+    if (resp == null) {
+      await _stopJob(job);
+      return false;
+    }
+
+    // 3) Le job est officiellement actif. On programme l'auto-stop à
+    //    6 h et on branche l'écoute des bytes.
+    _jobs[filePath] = job;
+    _armMaxDurationTimer(job);
+    _attachRawListener(job, streamUrl, resp);
+
+    if (kDebugMode) {
+      debugPrint(
+          '[Rec] raw downloader started → $filePath (${_jobs.length} actifs)');
+    }
+    return true;
+  }
+
+  /// Ouvre (ou rouvre) une connexion HTTP brute vers le flux et
+  /// retourne la réponse prête à être écoutée, ou `null` si le
+  /// serveur refuse / est injoignable. Réutilisable pour la 1ère
+  /// connexion ET pour chaque reconnexion.
+  Future<HttpClientResponse?> _openRawConnection(
+    _Job job,
+    String streamUrl,
+  ) async {
+    try {
+      // On repart d'un HttpClient neuf à chaque (re)connexion : plus
+      // sûr que de réutiliser un client dont la socket vient de mourir.
+      try {
+        job.client?.close(force: true);
+      } catch (_) {}
       job.client = HttpClient()
         // 30s pour ouvrir la socket — certains serveurs Xtream
         // sont lents à répondre la première fois.
@@ -152,52 +257,111 @@ class HttpRecordingDownloader {
         if (kDebugMode) {
           debugPrint('[Rec] HTTP ${resp.statusCode} sur $streamUrl');
         }
-        job.client?.close(force: true);
-        return false;
+        try {
+          job.client?.close(force: true);
+        } catch (_) {}
+        return null;
       }
-
-      final File file = File(filePath);
-      await file.parent.create(recursive: true);
-      job.sink = file.openWrite();
-      _jobs[filePath] = job;
-
-      job.sub = resp.listen(
-        (List<int> chunk) {
-          try {
-            job.sink?.add(chunk);
-            job.bytesWritten += chunk.length;
-          } catch (e) {
-            if (kDebugMode) debugPrint('[Rec] sink write error: $e');
-          }
-        },
-        onError: (Object e, StackTrace s) {
-          if (kDebugMode) debugPrint('[Rec] stream error ($filePath): $e');
-          // Ne PAS cleanup ici sur micro-erreur réseau — un flux
-          // live peut hoqueter sans devoir tuer le recording.
-          // L'user verra simplement les bytes ne plus s'incrémenter.
-        },
-        onDone: () {
-          if (kDebugMode) {
-            debugPrint(
-                '[Rec] stream done ($filePath), ${job.bytesWritten} bytes');
-          }
-          _cleanupJob(filePath);
-        },
-        // false = on continue d'écouter même si une erreur passe.
-        // Critique pour les flux live qui hoquettent souvent.
-        cancelOnError: false,
-      );
-
-      if (kDebugMode) {
-        debugPrint(
-            '[Rec] raw downloader started → $filePath (${_jobs.length} actifs)');
-      }
-      return true;
+      return resp;
     } catch (e) {
-      if (kDebugMode) debugPrint('[Rec] _startRaw failed ($filePath): $e');
-      _cleanupJob(filePath);
-      return false;
+      if (kDebugMode) debugPrint('[Rec] _openRawConnection KO: $e');
+      return null;
     }
+  }
+
+  /// Branche l'écoute des bytes d'une réponse HTTP sur le sink du job.
+  /// À la moindre fin de flux (onDone) ou erreur (onError), on tente
+  /// une reconnexion au lieu d'arrêter — sauf si stop() a été demandé.
+  void _attachRawListener(
+    _Job job,
+    String streamUrl,
+    HttpClientResponse resp,
+  ) {
+    job.sub = resp.listen(
+      (List<int> chunk) {
+        try {
+          job.sink?.add(chunk);
+          job.bytesWritten += chunk.length;
+        } catch (e) {
+          if (kDebugMode) debugPrint('[Rec] sink write error: $e');
+        }
+      },
+      onError: (Object e, StackTrace s) {
+        if (kDebugMode) debugPrint('[Rec] stream error (${job.filePath}): $e');
+        // cancelOnError:true → la souscription est terminée après
+        // cette erreur, on enchaîne sur une reconnexion.
+        _reconnectRaw(job, streamUrl);
+      },
+      onDone: () {
+        if (kDebugMode) {
+          debugPrint(
+              '[Rec] socket fermée par le serveur (${job.filePath}), '
+              '${job.bytesWritten} bytes — tentative de reconnexion');
+        }
+        _reconnectRaw(job, streamUrl);
+      },
+      // true : après une erreur, la souscription se termine et c'est
+      // NOUS qui décidons de reconnecter (évite le double-déclenchement
+      // onError + onDone sur la même souscription).
+      cancelOnError: true,
+    );
+  }
+
+  /// Rouvre une connexion et reprend l'écriture dans le même fichier.
+  /// Appelée quand le serveur a coupé. S'arrête définitivement si :
+  ///   - stop() a été demandé entre-temps (job.stopping),
+  ///   - le job n'est plus dans la map (déjà nettoyé),
+  ///   - on a dépassé 6 h,
+  ///   - trop d'échecs de reconnexion consécutifs.
+  Future<void> _reconnectRaw(_Job job, String streamUrl) async {
+    if (job.stopping || !_jobs.containsKey(job.filePath)) return;
+
+    // Plafond 6 h — on finalise proprement.
+    if (job.elapsed >= kMaxRecordingDuration) {
+      if (kDebugMode) {
+        debugPrint('[Rec] plafond 6 h atteint sur ${job.filePath}');
+      }
+      _autoFinish(job.filePath);
+      return;
+    }
+
+    // On annule la souscription morte (le client sera recréé dans
+    // _openRawConnection). Le sink reste ouvert : on append.
+    try {
+      await job.sub?.cancel();
+    } catch (_) {}
+    job.sub = null;
+
+    // Petit délai avant de retaper le serveur (évite le hammering
+    // si le serveur est en train de rebasculer d'edge).
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (job.stopping || !_jobs.containsKey(job.filePath)) return;
+
+    final HttpClientResponse? resp = await _openRawConnection(job, streamUrl);
+    if (resp == null) {
+      job.reconnectFailures++;
+      if (job.reconnectFailures >= _kMaxReconnectFailures) {
+        if (kDebugMode) {
+          debugPrint('[Rec] serveur injoignable, abandon ${job.filePath}');
+        }
+        _autoFinish(job.filePath);
+        return;
+      }
+      // Back-off progressif : 2s, 4s, 6s… plafonné à 16s.
+      final int wait = (2 * job.reconnectFailures).clamp(2, 16);
+      await Future<void>.delayed(Duration(seconds: wait));
+      return _reconnectRaw(job, streamUrl);
+    }
+
+    // Reconnexion réussie → on repart de zéro côté compteur d'échecs.
+    job.reconnectFailures = 0;
+    job.reconnectCount++;
+    if (kDebugMode) {
+      debugPrint(
+          '[Rec] reconnecté ${job.filePath} '
+          '(reconnexion #${job.reconnectCount}, ${job.bytesWritten} bytes)');
+    }
+    _attachRawListener(job, streamUrl, resp);
   }
 
   /// Pipeline HLS : on polle la playlist toutes les 5 s, on
@@ -207,8 +371,10 @@ class HttpRecordingDownloader {
   Future<bool> _startHls({
     required String streamUrl,
     required String filePath,
+    void Function(String filePath)? onAutoStopped,
   }) async {
-    final _Job job = _Job(filePath: filePath);
+    final _Job job = _Job(filePath: filePath)
+      ..onAutoStopped = onAutoStopped;
     try {
       job.client = HttpClient()
         ..connectionTimeout = const Duration(seconds: 30)
@@ -231,6 +397,7 @@ class HttpRecordingDownloader {
       await file.parent.create(recursive: true);
       job.sink = file.openWrite();
       _jobs[filePath] = job;
+      _armMaxDurationTimer(job);
 
       // Boucle de poll/download en arrière-plan. On ne await pas —
       // start() doit rendre la main immédiatement pour que l'UI
@@ -249,9 +416,12 @@ class HttpRecordingDownloader {
     }
   }
 
-  /// Boucle infinie qui polle la playlist HLS et télécharge les
-  /// segments. S'arrête quand le job est retiré de _jobs (par
-  /// stop()) ou après 5 erreurs consécutives.
+  /// Boucle qui polle la playlist HLS et télécharge les segments.
+  /// Tourne jusqu'à un stop() explicite OU le plafond de 6 h. Comme
+  /// pour le pipeline raw, une coupure serveur ne tue plus le
+  /// recording : on tolère beaucoup d'erreurs consécutives (le live
+  /// peut hoqueter longtemps) et on n'abandonne que si le serveur
+  /// reste injoignable un long moment d'affilée.
   Future<void> _runHlsLoop({
     required String streamUrl,
     required String filePath,
@@ -260,7 +430,14 @@ class HttpRecordingDownloader {
     final Uri playlistUri = Uri.parse(streamUrl);
     int consecutiveErrors = 0;
 
-    while (_jobs.containsKey(filePath) && consecutiveErrors < 5) {
+    while (_jobs.containsKey(filePath) && !job.stopping) {
+      // Plafond 6 h.
+      if (job.elapsed >= kMaxRecordingDuration) {
+        if (kDebugMode) {
+          debugPrint('[Rec] plafond 6 h atteint sur $filePath (HLS)');
+        }
+        break;
+      }
       try {
         final HttpClientResponse resp = await _httpGet(
           job.client!,
@@ -274,7 +451,7 @@ class HttpRecordingDownloader {
         // ~3-6 segments dans une fenêtre glissante).
         int newlyDownloaded = 0;
         for (final String segUrl in segments) {
-          if (!_jobs.containsKey(filePath)) break; // stop demandé
+          if (!_jobs.containsKey(filePath) || job.stopping) break;
           if (job.seenSegments.contains(segUrl)) continue;
           job.seenSegments.add(segUrl);
           await _downloadSegment(job, segUrl);
@@ -293,9 +470,19 @@ class HttpRecordingDownloader {
         consecutiveErrors++;
         if (kDebugMode) {
           debugPrint(
-              '[Rec] HLS loop error ($consecutiveErrors/5) on $filePath: $e');
+              '[Rec] HLS loop error '
+              '($consecutiveErrors/$_kMaxReconnectFailures) on $filePath: $e');
         }
-        await Future<void>.delayed(const Duration(seconds: 2));
+        // On n'abandonne qu'après BEAUCOUP d'erreurs d'affilée
+        // (serveur vraiment mort), avec back-off progressif.
+        if (consecutiveErrors >= _kMaxReconnectFailures) {
+          if (kDebugMode) {
+            debugPrint('[Rec] serveur HLS injoignable, abandon $filePath');
+          }
+          break;
+        }
+        final int wait = (2 * consecutiveErrors).clamp(2, 16);
+        await Future<void>.delayed(Duration(seconds: wait));
       }
     }
 
@@ -304,7 +491,12 @@ class HttpRecordingDownloader {
           '[Rec] HLS loop EXITED for $filePath '
           '(${job.bytesWritten} bytes, errors=$consecutiveErrors)');
     }
-    _cleanupJob(filePath);
+    // Si on sort de la boucle alors que ce n'était PAS un stop()
+    // explicite, c'est un auto-stop (6 h ou serveur mort) → on
+    // prévient l'UI. Sinon stop() s'occupe déjà de tout.
+    if (!job.stopping) {
+      _autoFinish(filePath);
+    }
   }
 
   /// Helper : GET HTTP avec follow redirects activé. Indispensable
@@ -365,6 +557,10 @@ class HttpRecordingDownloader {
     if (filePath != null) {
       final _Job? job = _jobs[filePath];
       if (job == null) return 0;
+      // On marque `stopping` AVANT de couper : ça empêche une boucle
+      // HLS ou une reconnexion raw en cours de relancer une connexion
+      // pendant qu'on ferme.
+      job.stopping = true;
       final int size = job.bytesWritten;
       await _stopJob(job);
       _jobs.remove(filePath);
@@ -378,12 +574,45 @@ class HttpRecordingDownloader {
     int total = 0;
     final List<_Job> all = _jobs.values.toList();
     for (final _Job job in all) {
+      job.stopping = true;
       total += job.bytesWritten;
       await _stopJob(job);
     }
     _jobs.clear();
     if (kDebugMode) debugPrint('[Rec] stopped ALL ($total bytes total)');
     return total;
+  }
+
+  /// Programme l'arrêt automatique du job à 6 h. Si l'utilisateur fait
+  /// stop() avant, le timer est annulé dans _stopJob.
+  void _armMaxDurationTimer(_Job job) {
+    job.maxTimer = Timer(kMaxRecordingDuration, () {
+      if (kDebugMode) {
+        debugPrint('[Rec] timer 6 h déclenché → arrêt ${job.filePath}');
+      }
+      _autoFinish(job.filePath);
+    });
+  }
+
+  /// Arrêt PROVOQUÉ PAR LE JOB lui-même (plafond 6 h atteint ou
+  /// serveur définitivement injoignable), par opposition à stop()
+  /// déclenché par l'utilisateur. On ferme proprement puis on
+  /// notifie l'UI via le callback onAutoStopped pour qu'elle finalise
+  /// la fiche en base et retire le badge "REC".
+  void _autoFinish(String filePath) {
+    final _Job? job = _jobs.remove(filePath);
+    if (job == null) return;
+    job.stopping = true;
+    final void Function(String)? cb = job.onAutoStopped;
+    // _stopJob est async mais on n'a pas besoin de l'attendre ici —
+    // le flush/close se fait en arrière-plan, et le callback peut
+    // partir tout de suite (l'UI lira la taille du fichier ensuite).
+    _stopJob(job);
+    if (cb != null) {
+      // On déclenche le callback hors de la pile d'appels courante
+      // pour éviter tout effet de bord de réentrance.
+      scheduleMicrotask(() => cb(filePath));
+    }
   }
 
   /// Cleanup d'un job sans le retirer de la map (utilisé par onDone /
@@ -395,6 +624,10 @@ class HttpRecordingDownloader {
   }
 
   Future<void> _stopJob(_Job job) async {
+    try {
+      job.maxTimer?.cancel();
+    } catch (_) {}
+    job.maxTimer = null;
     try {
       await job.sub?.cancel();
     } catch (_) {}
@@ -419,6 +652,33 @@ class _Job {
   HttpClient? client;
   StreamSubscription<List<int>>? sub;
   IOSink? sink;
+
+  /// Horodatage de démarrage — sert à calculer la durée écoulée et à
+  /// déclencher l'arrêt automatique à 6 h.
+  final DateTime startedAt = DateTime.now();
+
+  /// Durée écoulée depuis le démarrage de l'enregistrement.
+  Duration get elapsed => DateTime.now().difference(startedAt);
+
+  /// Passe à `true` dès qu'un stop() explicite (ou un auto-stop) est
+  /// demandé. Tant que c'est `false`, les coupures serveur déclenchent
+  /// une reconnexion ; à `true`, on laisse tout se fermer.
+  bool stopping = false;
+
+  /// Timer d'arrêt automatique à kMaxRecordingDuration (6 h).
+  Timer? maxTimer;
+
+  /// Callback optionnel appelé quand le job s'arrête DE LUI-MÊME
+  /// (6 h ou serveur mort), pas sur stop() utilisateur.
+  void Function(String filePath)? onAutoStopped;
+
+  /// Nombre de reconnexions réussies (diagnostic / logs).
+  int reconnectCount = 0;
+
+  /// Échecs de reconnexion CONSÉCUTIFS. Remis à 0 dès qu'une
+  /// reconnexion aboutit. Déclenche l'abandon au-delà de
+  /// _kMaxReconnectFailures.
+  int reconnectFailures = 0;
 
   /// URLs des segments .ts HLS déjà téléchargés — déduplique entre
   /// 2 polls de la playlist (la fenêtre live garde 3-6 segments

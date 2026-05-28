@@ -402,6 +402,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       final bool ok = await HttpRecordingDownloader.instance.start(
         streamUrl: _currentChannel.streamUrl,
         filePath: path,
+        // Appelé si le job s'arrête de LUI-MÊME : plafond de 6 h
+        // atteint, ou serveur définitivement injoignable. On finalise
+        // alors la fiche en base et on rafraîchit l'UI (badge "REC").
+        onAutoStopped: _onRecordingAutoStopped,
       );
       if (!ok) {
         // Si le download n'a pas pu démarrer, on annule aussi le
@@ -477,6 +481,30 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       }
     } catch (e) {
       _toast('Erreur arrêt enregistrement : $e');
+    }
+  }
+
+  /// Callback déclenché par le downloader quand un enregistrement
+  /// s'arrête TOUT SEUL (plafond de 6 h atteint, ou serveur devenu
+  /// injoignable après plusieurs reconnexions). On finalise la fiche
+  /// en base par son chemin (robuste même si l'UI a changé), on coupe
+  /// le ForegroundService s'il ne reste plus aucun job, et on retire
+  /// le badge "REC" si c'est bien l'enregistrement courant.
+  Future<void> _onRecordingAutoStopped(String filePath) async {
+    try {
+      await RecordingRepository.instance.finishRecordingByPath(filePath);
+      if (HttpRecordingDownloader.instance.activeCount == 0) {
+        await RecordingService.instance.stop();
+      }
+      if (mounted && _activeRecording?.filePath == filePath) {
+        setState(() => _activeRecording = null);
+        _toast(
+          'Enregistrement terminé (limite de 6 h atteinte) — '
+          'retrouve-le dans Mes enregistrements',
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Player] auto-stop finalize KO: $e');
     }
   }
 

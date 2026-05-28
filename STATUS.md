@@ -111,6 +111,13 @@
 - ✅ PiP n'existait pas → implémentation native via MainActivity.kt
 - ✅ Bouton QR retiré du header player (preference user)
 - ✅ Mentions WhatsApp retirées partout
+- ✅ **Enregistrement s'arrêtait après ~2 min** → cause : les CDN/Xtream
+  ferment périodiquement la socket HTTP (`onDone`), l'ancien code
+  nettoyait le job au lieu de reconnecter. Fix dans
+  `http_recording_downloader.dart` : reconnexion auto sur coupure
+  (raw + HLS, back-off progressif), plafond max **6 h**
+  (`kMaxRecordingDuration`), callback `onAutoStopped` +
+  `finishRecordingByPath` pour finaliser proprement la fiche en base.
 
 ## Bugs connus / pas encore résolus
 

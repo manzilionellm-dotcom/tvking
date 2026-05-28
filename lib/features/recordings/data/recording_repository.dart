@@ -150,6 +150,34 @@ class RecordingRepository {
     await _refresh();
   }
 
+  /// Finalise un enregistrement par son CHEMIN de fichier, sans avoir
+  /// besoin de l'objet Recording. Utilisé par l'auto-stop du
+  /// downloader (plafond 6 h ou serveur mort) : à ce moment-là on ne
+  /// connaît que le filePath, et la fiche peut ne plus être en
+  /// mémoire côté UI. On ne touche qu'aux fiches encore "en cours"
+  /// (ended_at IS NULL) pour ce chemin.
+  Future<void> finishRecordingByPath(String filePath) async {
+    await initialize();
+    final Database db = await PlaylistDatabase.instance.database;
+    int size = 0;
+    try {
+      final File f = File(filePath);
+      if (await f.exists()) {
+        size = await f.length();
+      }
+    } catch (_) {}
+    await db.update(
+      'recordings',
+      <String, Object?>{
+        'ended_at': DateTime.now().millisecondsSinceEpoch,
+        'file_size_bytes': size,
+      },
+      where: 'file_path = ? AND ended_at IS NULL',
+      whereArgs: <Object>[filePath],
+    );
+    await _refresh();
+  }
+
   Future<void> delete(Recording rec) async {
     await initialize();
     if (rec.id == null) return;
