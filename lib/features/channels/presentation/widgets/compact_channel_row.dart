@@ -10,6 +10,7 @@
 // =========================================================
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
@@ -41,20 +42,61 @@ class CompactChannelRow extends StatefulWidget {
 class _CompactChannelRowState extends State<CompactChannelRow> {
   bool _focused = false;
 
+  /// Centralise focus visuel + scroll-on-focus, comme dans les autres
+  /// cards. Particulièrement critique ici : ce widget est utilisé en
+  /// ListView.builder avec itemExtent pour les playlists de 20 000+
+  /// chaînes. À la télécommande, sans ensureVisible, le focus pouvait
+  /// disparaître hors écran sans signal et l'utilisateur perdait le fil.
+  void _onFocusChange(bool focused) {
+    if (!mounted) return;
+    setState(() => _focused = focused);
+    if (focused) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Scrollable.ensureVisible(
+          context,
+          alignment: 0.3,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+        );
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final Channel ch = widget.channel;
-    return Focus(
-      onFocusChange: (bool f) => setState(() => _focused = f),
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _focused = true),
-        onExit: (_) => setState(() => _focused = false),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: widget.onTap,
-            onLongPress: widget.onLongPress,
-            child: AnimatedContainer(
+    // Pattern input-agnostic standard : FocusableActionDetector pour
+    // mapper OK/Enter → onTap (sinon télécommande ne peut pas valider).
+    // On garde Material+InkWell interne pour le ripple Material visible
+    // au tap doigt (utile en mode mobile/tablette en plus de la TV).
+    // La déco custom (border-left ember 3 px + accentSurface bg) reste
+    // la signature visuelle TiviMate-like du widget.
+    return FocusableActionDetector(
+      onShowFocusHighlight: _onFocusChange,
+      mouseCursor: SystemMouseCursors.click,
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            widget.onTap();
+            return null;
+          },
+        ),
+      },
+      child: Semantics(
+        button: true,
+        label: ch.cleanName,
+        focusable: true,
+        focused: _focused,
+        child: MouseRegion(
+          onEnter: (_) => _onFocusChange(true),
+          onExit: (_) => _onFocusChange(false),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: widget.onTap,
+              onLongPress: widget.onLongPress,
+              child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               height: CompactChannelRow.height,
               decoration: BoxDecoration(
@@ -193,6 +235,7 @@ class _CompactChannelRowState extends State<CompactChannelRow> {
             ),
           ),
         ),
+      ),
       ),
     );
   }
