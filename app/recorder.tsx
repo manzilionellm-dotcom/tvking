@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 const MAX_DURATION_SECONDS = 6 * 60 * 60;
 const CHUNK_INTERVAL_MS = 5000;
@@ -52,6 +58,13 @@ export default function Recorder() {
   const [error, setError] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string>("");
+  const [pipActive, setPipActive] = useState(false);
+  const [autoPip, setAutoPip] = useState(true);
+  const pipSupported = useSyncExternalStore(
+    () => () => {},
+    () => !!document.pictureInPictureEnabled,
+    () => false,
+  );
 
   const stopTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -207,6 +220,64 @@ export default function Recorder() {
       if (downloadUrl) URL.revokeObjectURL(downloadUrl);
     };
   }, [downloadUrl]);
+
+  useEffect(() => {
+    const video = previewRef.current;
+    if (!video) return;
+    const onEnter = () => setPipActive(true);
+    const onLeave = () => setPipActive(false);
+    video.addEventListener("enterpictureinpicture", onEnter);
+    video.addEventListener("leavepictureinpicture", onLeave);
+    return () => {
+      video.removeEventListener("enterpictureinpicture", onEnter);
+      video.removeEventListener("leavepictureinpicture", onLeave);
+    };
+  }, [downloadUrl]);
+
+  useEffect(() => {
+    const video = previewRef.current;
+    if (!video) return;
+    type AutoPipVideo = HTMLVideoElement & { autoPictureInPicture?: boolean };
+    (video as AutoPipVideo).autoPictureInPicture = autoPip;
+    if (autoPip) {
+      video.setAttribute("autopictureinpicture", "");
+    } else {
+      video.removeAttribute("autopictureinpicture");
+    }
+  }, [autoPip, downloadUrl]);
+
+  useEffect(() => {
+    if (!autoPip) return;
+    const onVisibility = async () => {
+      const video = previewRef.current;
+      if (!video || video.paused || video.ended) return;
+      if (document.visibilityState !== "hidden") return;
+      if (document.pictureInPictureElement) return;
+      try {
+        await video.requestPictureInPicture();
+      } catch {
+        /* navigateur refuse sans geste utilisateur — silencieux */
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [autoPip]);
+
+  const togglePip = useCallback(async () => {
+    const video = previewRef.current;
+    if (!video) return;
+    try {
+      if (document.pictureInPictureElement === video) {
+        await document.exitPictureInPicture();
+      } else {
+        await video.requestPictureInPicture();
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Mini-lecteur indisponible.",
+      );
+    }
+  }, []);
 
   const isRecording = status === "recording";
   const isPaused = status === "paused";
@@ -381,6 +452,15 @@ export default function Recorder() {
                 ⬇ Télécharger
               </a>
             )}
+            {pipSupported && downloadUrl && (
+              <button
+                type="button"
+                onClick={togglePip}
+                className="rounded-full border border-red-700 bg-red-950/40 px-6 py-3 text-sm font-bold uppercase tracking-wide text-red-200 transition hover:bg-red-900/40"
+              >
+                {pipActive ? "⊠ Fermer mini-lecteur" : "▭ Mini-lecteur"}
+              </button>
+            )}
           </>
         )}
 
@@ -403,6 +483,17 @@ export default function Recorder() {
         <span>
           Taille : <span className="text-zinc-300">{formatBytes(bytes)}</span>
         </span>
+        {pipSupported && (
+          <label className="flex cursor-pointer items-center gap-2 text-zinc-400">
+            <input
+              type="checkbox"
+              checked={autoPip}
+              onChange={(e) => setAutoPip(e.target.checked)}
+              className="h-3.5 w-3.5 accent-red-500"
+            />
+            Mini-lecteur auto quand je change d&apos;app
+          </label>
+        )}
         <span className="text-amber-400/80">
           ⚠ Les longs enregistrements consomment beaucoup de mémoire. Pour 6h, prévois
           plusieurs Go libres.
