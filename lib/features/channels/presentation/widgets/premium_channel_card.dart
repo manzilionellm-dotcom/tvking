@@ -17,6 +17,7 @@
 // =========================================================
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
@@ -45,15 +46,67 @@ class PremiumChannelCard extends StatefulWidget {
 class _PremiumChannelCardState extends State<PremiumChannelCard> {
   bool _focused = false;
 
+  /// Appelé quand le focus visuel entre/sort. On centralise ici
+  /// le `setState` ET le scroll-on-focus, pour que les deux sources
+  /// (clavier/D-pad via FocusableActionDetector, souris via MouseRegion)
+  /// déclenchent le MÊME comportement.
+  ///
+  /// Le `addPostFrameCallback` est crucial : sans lui, `ensureVisible`
+  /// peut s'exécuter avant que la ListView ait fini de mesurer ses
+  /// enfants → saut visuel saccadé. C'est le pattern Flutter standard.
+  void _onFocusChange(bool focused) {
+    if (!mounted) return;
+    setState(() => _focused = focused);
+    if (focused) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        // `Scrollable.ensureVisible` remonte l'arbre, trouve le
+        // Scrollable parent (la rangée horizontale ou la grille)
+        // et anime son offset pour ramener la card visible. No-op
+        // silencieux si on n'est dans aucun Scrollable.
+        Scrollable.ensureVisible(
+          context,
+          alignment: 0.3,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+        );
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final Channel ch = widget.channel;
 
-    return Focus(
-      onFocusChange: (bool f) => setState(() => _focused = f),
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _focused = true),
-        onExit: (_) => setState(() => _focused = false),
+    // `FocusableActionDetector` (vs `Focus` seul) mappe nativement la
+    // touche OK/Enter télécommande à un `ActivateIntent`, qu'on convertit
+    // ici en `widget.onTap`. SANS cette indirection, la télécommande
+    // pouvait focusser la card mais pas la valider — bug bloquant TV.
+    //
+    // `onShowFocusHighlight` (vs `onFocusChange`) ne se déclenche QUE
+    // pour la navigation au clavier / D-pad — pas pour le focus
+    // programmatique ou le tap au doigt. C'est exactement ce qu'on
+    // veut : le ring ember n'apparaît qu'en navigation focus, pas
+    // sur tap doigt (qui a déjà son ripple Material).
+    return FocusableActionDetector(
+      onShowFocusHighlight: _onFocusChange,
+      mouseCursor: SystemMouseCursors.click,
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            widget.onTap();
+            return null;
+          },
+        ),
+      },
+      child: Semantics(
+        button: true,
+        label: ch.cleanName,
+        focusable: true,
+        focused: _focused,
+        child: MouseRegion(
+        onEnter: (_) => _onFocusChange(true),
+        onExit: (_) => _onFocusChange(false),
         child: GestureDetector(
           onTap: widget.onTap,
           onLongPress: widget.onLongPress,
@@ -171,6 +224,7 @@ class _PremiumChannelCardState extends State<PremiumChannelCard> {
             ),
           ),
         ),
+      ),
       ),
     );
   }

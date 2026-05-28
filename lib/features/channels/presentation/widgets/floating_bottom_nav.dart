@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/tv_focusable.dart';
 
 class FloatingBottomNav extends StatelessWidget {
   const FloatingBottomNav({
@@ -89,6 +90,28 @@ class _NavItem {
   final String label;
 }
 
+// =========================================================
+//  _NavButton — Bouton individuel input-agnostic
+// =========================================================
+//  Refonte TV : wrappé dans `TvFocusable` pour que la
+//  télécommande Android TV / Fire TV / clavier / souris-air
+//  reçoive le MÊME focus ring ember que partout dans l'app.
+//
+//  Pourquoi pas juste `InkWell` ?
+//    - `InkWell` répond au tap doigt et au clavier (focus
+//      ring système gris, peu visible).
+//    - `TvFocusable` ajoute par-dessus : bordure ember 2.4 px,
+//      scale 1.06, scroll auto si dans un Scrollable, et
+//      respect du réglage "Réduire les animations".
+//    - On supprime le `Material > InkWell` interne pour éviter
+//      la double zone tactile + double ripple (TvFocusable
+//      fournit déjà son propre `Material > InkWell`).
+//
+//  Le `borderRadius: 18` du TvFocusable matche la pill interne
+//  pour que le focus ring épouse exactement la forme dessinée.
+//  `showGlow: false` parce que la barre est compacte — un halo
+//  ember sur chaque onglet baverait sur les voisins.
+// =========================================================
 class _NavButton extends StatelessWidget {
   const _NavButton({
     required this.icon,
@@ -106,49 +129,48 @@ class _NavButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final Color color = selected ? AppColors.accent : Colors.white;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          padding: EdgeInsets.symmetric(
-            horizontal: selected ? 14 : 10,
-            vertical: 8,
-          ),
-          decoration: BoxDecoration(
-            color: selected
-                ? AppColors.accentSurface
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(icon, color: color, size: 22),
-              // Le label apparaît UNIQUEMENT sur l'onglet sélectionné
-              // pour économiser la place et créer un effet "pill" Apple.
-              AnimatedSize(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                child: selected
-                    ? Padding(
-                        padding: const EdgeInsets.only(left: 6),
-                        child: Text(
-                          label,
-                          style: AppTextStyles.bodyMedium.copyWith(
-                            color: color,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
+    return TvFocusable(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      showGlow: false,
+      semanticsLabel: label,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: EdgeInsets.symmetric(
+          horizontal: selected ? 14 : 10,
+          vertical: 8,
+        ),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.accentSurface : Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, color: color, size: 22),
+            // Le label apparaît UNIQUEMENT sur l'onglet sélectionné
+            // pour économiser la place et créer un effet "pill" Apple.
+            // Au focus télécommande, le focus ring ember + l'icône
+            // restent les signaux principaux — c'est suffisant.
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOutCubic,
+              child: selected
+                  ? Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: Text(
+                        label,
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          color: color,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
                         ),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-            ],
-          ),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
         ),
       ),
     );
