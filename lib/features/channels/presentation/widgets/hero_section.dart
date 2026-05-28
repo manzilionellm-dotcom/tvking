@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/live_badge.dart';
+import '../../../../core/widgets/tv_focusable.dart';
 import '../../domain/channel.dart';
 import 'channel_logo.dart';
 
@@ -240,33 +241,36 @@ class _PrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppColors.accent,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(icon, size: 18, color: Colors.black),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: AppTextStyles.bodyLarge.copyWith(
-                  color: Colors.black,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                ),
+    // CTA "Lecture" du Hero — c'est LE bouton principal de l'écran.
+    // À la télécommande, il doit être ULTRA visible quand focusé,
+    // donc on garde `showGlow: true` (halo ember 0.32 par défaut)
+    // contrairement aux chips / onglets compacts. C'est lui qui
+    // mérite naturellement l'autofocus à l'ouverture (l'écran parent
+    // s'en occupe, le widget reste réutilisable ailleurs).
+    return TvFocusable(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(10),
+      semanticsLabel: label,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.accent,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, size: 18, color: Colors.black),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: AppTextStyles.bodyLarge.copyWith(
+                color: Colors.black,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -286,33 +290,35 @@ class _SecondaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.border, width: 1.2),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(icon, size: 18, color: AppColors.textPrimary),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: AppTextStyles.bodyLarge.copyWith(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
+    // Bouton secondaire "Détails" — on garde showGlow: false pour
+    // hiérarchiser visuellement (le Primary garde le halo, le
+    // Secondary juste le focus ring ember). Sinon les deux boutons
+    // côte-à-côte se font visuellement concurrence au focus.
+    return TvFocusable(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(10),
+      showGlow: false,
+      semanticsLabel: label,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.border, width: 1.2),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, size: 18, color: AppColors.textPrimary),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: AppTextStyles.bodyLarge.copyWith(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

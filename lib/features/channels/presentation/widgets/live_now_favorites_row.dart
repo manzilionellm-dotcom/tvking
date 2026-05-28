@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/tv_focusable.dart';
 import '../../../epg/data/epg_repository.dart';
 import '../../../epg/domain/epg_program.dart';
 import '../../../player/presentation/play_channel.dart';
@@ -186,19 +187,28 @@ class _LiveCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          width: 220,
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.border),
-          ),
+    // _LiveCard est consommé dans une rangée horizontale scrollable
+    // ("En direct chez tes favoris"). À la télécommande, sans
+    // TvFocusable on ne pouvait ni voir où on était ni scroller la
+    // liste pour suivre le focus. borderRadius: 12 matche le Container
+    // interne. showGlow: false car les cards sont rapprochées.
+    // semanticsLabel : nom de chaîne + titre du programme pour que
+    // TalkBack lise "Real Madrid - PSG sur beIN Sports" et pas juste
+    // le nom de la chaîne (que l'utilisateur connaît déjà).
+    return TvFocusable(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      showGlow: false,
+      semanticsLabel:
+          '${slot.channel.cleanName} — ${slot.program?.title ?? 'En direct'}',
+      child: Container(
+        width: 220,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
@@ -263,7 +273,6 @@ class _LiveCard extends StatelessWidget {
                 ),
             ],
           ),
-        ),
       ),
     );
   }

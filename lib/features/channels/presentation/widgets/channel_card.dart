@@ -16,6 +16,7 @@
 // =========================================================
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
@@ -42,19 +43,57 @@ class ChannelCard extends StatefulWidget {
 class _ChannelCardState extends State<ChannelCard> {
   bool _focused = false;
 
+  /// Centralise focus visuel + scroll-on-focus (clavier/D-pad + souris).
+  /// Voir `premium_channel_card.dart` pour la pédagogie complète
+  /// (même pattern, on évite la duplication de commentaires).
+  void _onFocusChange(bool focused) {
+    if (!mounted) return;
+    setState(() => _focused = focused);
+    if (focused) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Scrollable.ensureVisible(
+          context,
+          alignment: 0.3,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+        );
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final Channel ch = widget.channel;
 
-    return Focus(
-      onFocusChange: (bool f) => setState(() => _focused = f),
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _focused = true),
-        onExit: (_) => setState(() => _focused = false),
-        child: GestureDetector(
-          onTap: widget.onTap,
-          onLongPress: widget.onLongPress,
-          child: AnimatedContainer(
+    // `FocusableActionDetector` mappe la touche OK/Enter télécommande
+    // à `ActivateIntent` → `widget.onTap`. Sans ça, on pouvait focusser
+    // une card de la grille mais pas la valider. `onShowFocusHighlight`
+    // ne se déclenche QUE pour la nav clavier/D-pad — pas pour le tap
+    // doigt (qui a son propre signal via GestureDetector).
+    return FocusableActionDetector(
+      onShowFocusHighlight: _onFocusChange,
+      mouseCursor: SystemMouseCursors.click,
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            widget.onTap();
+            return null;
+          },
+        ),
+      },
+      child: Semantics(
+        button: true,
+        label: ch.cleanName,
+        focusable: true,
+        focused: _focused,
+        child: MouseRegion(
+          onEnter: (_) => _onFocusChange(true),
+          onExit: (_) => _onFocusChange(false),
+          child: GestureDetector(
+            onTap: widget.onTap,
+            onLongPress: widget.onLongPress,
+            child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOutCubic,
             transform: _focused
@@ -184,6 +223,7 @@ class _ChannelCardState extends State<ChannelCard> {
             ),
           ),
         ),
+      ),
       ),
     );
   }
