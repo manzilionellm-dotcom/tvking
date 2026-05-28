@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/tv_focusable.dart';
 
 class SectionHeader extends StatelessWidget {
   const SectionHeader({
@@ -35,31 +36,43 @@ class SectionHeader extends StatelessWidget {
             style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
           ),
           if (onSeeAll != null)
-            TextButton(
-              onPressed: onSeeAll,
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                minimumSize: const Size(0, 32),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    'Voir tout',
-                    style: AppTextStyles.bodyMedium.copyWith(
-                      color: AppColors.accentCyan,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+            // Remplace TextButton par TvFocusable : on PERD le ripple
+            // Material (cosmétique mineure au tap doigt) mais on GAGNE
+            // le focus ring ember cohérent avec le reste de l'app à la
+            // télécommande / clavier. Sans ça, le focus système Flutter
+            // sur TextButton est un cadre gris quasi-invisible sur fond
+            // charbon Cinema Mode → l'utilisateur TV ne sait pas que
+            // le bouton est focusé. borderRadius: 8 cohérent avec
+            // l'esthétique compacte du lien.
+            TvFocusable(
+              onTap: onSeeAll!,
+              borderRadius: BorderRadius.circular(8),
+              showGlow: false,
+              semanticsLabel: 'Voir tout $title',
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 6,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      'Voir tout',
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        color: AppColors.accentCyan,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 2),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 16,
-                    color: AppColors.accentCyan,
-                  ),
-                ],
+                    const SizedBox(width: 2),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 16,
+                      color: AppColors.accentCyan,
+                    ),
+                  ],
+                ),
               ),
             ),
         ],

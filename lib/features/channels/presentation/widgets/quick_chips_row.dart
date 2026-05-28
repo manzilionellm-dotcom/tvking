@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/tv_focusable.dart';
 
 class QuickChipsRow extends StatelessWidget {
   const QuickChipsRow({
@@ -82,41 +83,46 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          decoration: BoxDecoration(
-            color: AppColors.surface.withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.06),
-              width: 1,
+    // Wrappé dans TvFocusable pour que la télécommande / clavier
+    // reçoive le focus ring ember 2.4 px (vs le focus système Flutter
+    // grisâtre quasi-invisible). showGlow: false parce que les chips
+    // sont collés horizontalement — un halo baverait sur les voisins.
+    // borderRadius: 14 matche le Container interne pour que le ring
+    // épouse exactement la forme du chip.
+    return TvFocusable(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      showGlow: false,
+      semanticsLabel: label,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: AppColors.surface.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.06),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(
+              icon,
+              color: AppColors.accentCyan,
+              size: 22,
             ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(
-                icon,
-                color: AppColors.accentCyan,
-                size: 22,
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: AppTextStyles.bodyMedium.copyWith(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
               ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: AppTextStyles.bodyMedium.copyWith(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ),
       ),
     );
