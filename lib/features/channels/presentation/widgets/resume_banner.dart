@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/tv_focusable.dart';
 import '../../../player/presentation/play_channel.dart';
 import '../../../playlists/data/playlist_repository.dart';
 import '../../data/watch_history_repository.dart';
@@ -106,22 +107,27 @@ class _Banner extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onResume,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: AppColors.accent.withValues(alpha: 0.45),
-                width: 1.3,
-              ),
-              boxShadow: AppColors.champagneGlow,
+      // Hero CTA "Reprendre" — c'est LE bouton qui génère ~70% des
+      // plays sur Netflix d'après les benchmarks d'industrie. Sur TV
+      // il mérite l'autofocus à l'apparition (géré par l'écran parent
+      // si présent). On garde showGlow: true par défaut → le halo
+      // ember 0.32 vient s'ajouter au halo champagneGlow déjà présent
+      // sur le banner = signal très clair "appuie sur OK ici".
+      child: TvFocusable(
+        onTap: onResume,
+        borderRadius: BorderRadius.circular(16),
+        semanticsLabel: 'Reprendre ${channel.cleanName}',
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: AppColors.accent.withValues(alpha: 0.45),
+              width: 1.3,
             ),
+            boxShadow: AppColors.champagneGlow,
+          ),
             child: Row(
               children: <Widget>[
                 // Logo de la chaîne
@@ -182,7 +188,6 @@ class _Banner extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }

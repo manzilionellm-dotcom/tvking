@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/tv_focusable.dart';
 import '../../domain/channel.dart';
 import 'premium_channel_card.dart';
 
@@ -83,31 +84,38 @@ class PremiumRow extends StatelessWidget {
                 ),
               ),
               if (onSeeAll != null)
-                TextButton(
-                  onPressed: onSeeAll,
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.accent,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: const Size(0, 32),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Text(
-                        'Voir tout',
-                        style: AppTextStyles.bodyMedium.copyWith(
-                          color: AppColors.accent,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                // Même refonte que SectionHeader : on perd le ripple
+                // Material du TextButton mais on gagne le focus ring
+                // ember visible à la télécommande (vs le focus système
+                // gris invisible sur fond charbon).
+                TvFocusable(
+                  onTap: onSeeAll!,
+                  borderRadius: BorderRadius.circular(8),
+                  showGlow: false,
+                  semanticsLabel: 'Voir tout $title',
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Text(
+                          'Voir tout',
+                          style: AppTextStyles.bodyMedium.copyWith(
+                            color: AppColors.accent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      Icon(
-                        Icons.chevron_right_rounded,
-                        size: 16,
-                        color: AppColors.accent,
-                      ),
-                    ],
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          size: 16,
+                          color: AppColors.accent,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
             ],

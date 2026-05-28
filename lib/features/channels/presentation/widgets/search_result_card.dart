@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/tv_focusable.dart';
 import '../../domain/channel.dart';
 import '../../domain/channel_genre.dart';
 import 'channel_logo.dart';
@@ -37,12 +38,20 @@ class SearchResultCard extends StatelessWidget {
     final ChannelQuality quality = channel.quality;
     final CountryInfo? country = channel.country;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
+    // Hardening TV : on remplace Material+InkWell par TvFocusable
+    // pour le focus ring ember télécommande. Mais l'InkWell d'origine
+    // gérait aussi `onLongPress` (= ouvrir la sheet détail). On le
+    // remet via un GestureDetector EXTERNE — le long-press ne crée pas
+    // de conflit avec le tap car le framework dispatche selon le type
+    // de geste. La télécommande ne déclenche que onTap (OK/Enter →
+    // ActivateIntent) ; le long-press reste un raccourci doigt uniquement.
+    return GestureDetector(
+      onLongPress: onLongPress,
+      child: TvFocusable(
         onTap: onTap,
-        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(14),
+        showGlow: false,
+        semanticsLabel: channel.cleanName,
         child: Container(
           decoration: BoxDecoration(
             color: AppColors.surface,
