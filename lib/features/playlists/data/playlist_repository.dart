@@ -29,6 +29,7 @@ import 'package:sqflite/sqflite.dart';
 // ignore: depend_on_referenced_packages — dart:async fournit unawaited
 
 
+import '../../../core/flavor/flavor.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
 import '../domain/playlist.dart';
@@ -98,7 +99,17 @@ class PlaylistRepository {
     final Database db = await PlaylistDatabase.instance.database;
     final List<Map<String, Object?>> rows =
         await db.query('channels', orderBy: 'name COLLATE NOCASE ASC');
-    return rows.map(_channelFromMap).toList();
+    final List<Channel> all = rows.map(_channelFromMap).toList();
+
+    // Filtre adultOnly du flavor Red Room. On le pose ICI (point
+    // unique de lecture) pour que TOUS les consommateurs (home,
+    // favoris, recherche, EPG, recommandations) héritent
+    // automatiquement de la restriction. Aucun risque d'oubli dans
+    // un widget qui contournerait le repo.
+    if (FlavorConfig.current.adultOnly) {
+      return all.where((Channel c) => c.genre == ChannelGenre.adult).toList();
+    }
+    return all;
   }
 
   Future<List<Playlist>> getAllPlaylists() async {

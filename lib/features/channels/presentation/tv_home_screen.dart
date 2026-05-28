@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/branding/brand_logo.dart';
 import '../../../core/branding/powered_by_marquee.dart';
+import '../../../core/flavor/flavor.dart';
 import '../../../core/support/vip_help_card.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -333,7 +334,7 @@ class _TvTopBar extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Text(
-                BrandStrings.appName,
+                FlavorConfig.current.appName,
                 style: AppTextStyles.headlineLarge.copyWith(
                   fontSize: 22,
                   letterSpacing: 4,

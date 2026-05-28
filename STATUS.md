@@ -17,15 +17,34 @@
 
 ---
 
-## Identité du produit
+## Identité des produits
 
-- **Nom** : 7 MOTION
+Deux apps dans le MÊME repo (flavors Flutter) :
+
+### 7 MOTION (flavor principal, grand public)
 - **Tagline** : "THE FEW · NOT FOR EVERYONE"
 - **Branding** : Maison Noir — fond charbon `#0A0A0C`, accent ember
   rouge `#D63A30`, texte ivoire `#F0EDE9`. Jamais Netflix-red ni néon.
 - **Logo** : 7 rouge sur noir + badge bleu vérifié à côté du wordmark
 - **Modèle commercial** : 13 €/an sur 7themotion.com, paiement EXTERNE
-  (pas d'in-app Google Play, bypass commission 30%)
+- **Package Android** : `com.manzilionellm.tvking`
+- **Entrypoint** : `lib/main.dart`
+- **Téléchargement** : `99999.7themotion.com/dl`
+
+### Red Room (flavor adulte 18+)
+- **Tagline** : "STRICTLY 18+ · AFTER HOURS"
+- **Branding** : R rouge sang sur velours noir
+- **Restrictions** : seules les chaînes [ChannelGenre.adult]
+  apparaissent (filtre au niveau `PlaylistRepository.getAllChannels`).
+  Biométrie OBLIGATOIRE à chaque cold start. Gate "j'ai 18+" au
+  premier lancement. Pas de Play Store (politique Google).
+  Pas d'iOS (politique Apple).
+- **Package Android** : `com.redroom.player` (différent → cohabite
+  avec 7 MOTION sans collision sur le téléphone)
+- **Entrypoint** : `lib/main_redroom.dart`
+- **Téléchargement** : `99999.7themotion.com/redroom`
+- **Aiguillage** : `lib/core/flavor/flavor.dart` →
+  `FlavorConfig.current.{adultOnly, biometricMandatory, requireAgeGate}`
 
 ---
 

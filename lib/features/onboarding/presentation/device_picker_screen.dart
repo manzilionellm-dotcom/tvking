@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/branding/brand_logo.dart';
 import '../../../core/branding/verified_badge.dart';
+import '../../../core/flavor/flavor.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/device_class_repository.dart';
@@ -85,7 +86,7 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
                       const BrandLogo.compact(),
                       const SizedBox(width: 12),
                       Text(
-                        BrandStrings.appName,
+                        FlavorConfig.current.appName,
                         style: AppTextStyles.headlineLarge.copyWith(
                           fontSize: 18,
                           letterSpacing: 3.2,

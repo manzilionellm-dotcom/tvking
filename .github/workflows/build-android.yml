@@ -333,3 +333,177 @@ jobs:
             Commit `${{ github.sha }}`.
           files: build/app/outputs/flutter-apk/app-debug.apk
           prerelease: true
+
+  # =========================================================
+  #  JOB 2 — Red Room : variante adulte du même codebase
+  # =========================================================
+  #  Même séquence d'init que le job principal, MAIS :
+  #    - flutter create avec --org com.redroom.player et
+  #      --project-name red_room → applicationId distinct,
+  #      les deux apps cohabitent sur le téléphone sans
+  #      écraser l'install 7 MOTION.
+  #    - label "Red Room" dans le manifest.
+  #    - flutter build avec -t lib/main_redroom.dart →
+  #      entrypoint qui pose FlavorConfig.redRoom AVANT le
+  #      boot commun (adultOnly, biometricMandatory, age gate).
+  #    - L'APK est publié sur la release dédiée `redroom-latest`
+  #      (le Worker Cloudflare expose `/redroom` → 302 vers
+  #      cette release).
+  #
+  #  On laisse les 2 jobs tourner en parallèle (pas de needs:)
+  #  pour gagner du temps wall-clock à chaque push.
+  # =========================================================
+  build_redroom:
+    name: Build Red Room debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses || true
+
+      # Génération Android avec applicationId Red Room distinct.
+      # --project-name reste un slug Dart valide (red_room) ; le
+      # nom affiché est patché juste après dans le manifest.
+      - name: Generate native Android folder (Red Room org)
+        run: flutter create . --platforms=android --org com.redroom.player --project-name red_room
+
+      - name: Brand AndroidManifest with Red Room label
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ -f "$MANIFEST" ]; then
+            sed -i 's|android:label="red_room"|android:label="Red Room"|g' "$MANIFEST"
+            grep 'android:label' "$MANIFEST" || true
+          fi
+
+      # Le manifest TV-friendly N'EST PAS appliqué à Red Room :
+      # l'usage cible est strictement mobile (les TV familiales
+      # ne sont pas un cas d'usage pour le contenu adulte). On
+      # garde leanback OFF pour ne pas voir l'icône sur le
+      # launcher Android TV.
+
+      # Apply the Google Cast overlay (le script est idempotent
+      # et ne dépend pas du flavor — Red Room peut caster aussi).
+      - name: Apply Google Cast SDK overlay
+        run: bash android_overlay/google_cast/apply_cast_patch.sh
+
+      - name: Patch AndroidManifest for Picture-in-Picture
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'supportsPictureInPicture' "$MANIFEST"; then
+            sed -i 's|android:name=".MainActivity"|android:name=".MainActivity"\n            android:supportsPictureInPicture="true"\n            android:resizeableActivity="true"|' "$MANIFEST"
+          fi
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Generate AppLocalizations from .arb files
+        run: flutter gen-l10n || true
+
+      # Génère un PNG 512×512 "R rouge sang sur velours noir" via
+      # ImageMagick (pré-installé sur ubuntu-latest). Sert d'asset
+      # source à flutter_launcher_icons. Placeholder honorable en
+      # attendant un asset designé proprement.
+      - name: Generate Red Room launcher asset (R sur velours)
+        run: |
+          set -e
+          mkdir -p assets/branding
+          convert -size 512x512 xc:'#08060A' \
+            -fill '#D63A30' \
+            -font DejaVu-Sans-Bold \
+            -pointsize 380 \
+            -gravity center \
+            -annotate +0+30 R \
+            assets/branding/logo_redroom.png
+          ls -lah assets/branding/logo_redroom.png
+          file assets/branding/logo_redroom.png
+
+      - name: Generate launcher icons (Red Room R rouge)
+        run: dart run flutter_launcher_icons -f flutter_launcher_icons_redroom.yaml
+
+      # CLEF DE VOÛTE : on cible main_redroom.dart, qui pose
+      # FlavorConfig.redRoom AVANT le boot commun.
+      - name: Build Red Room debug APK
+        run: flutter build apk --debug --no-tree-shake-icons -t lib/main_redroom.dart
+
+      - name: Check APK exists
+        run: |
+          if [ ! -f build/app/outputs/flutter-apk/app-debug.apk ]; then
+            echo "❌ APK Red Room introuvable"
+            find build -name '*.apk' || true
+            exit 1
+          fi
+          ls -lah build/app/outputs/flutter-apk/
+
+      - name: Rename APK to redroom.apk
+        run: cp build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/redroom.apk
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: redroom-debug-apk-${{ github.sha }}
+          path: build/app/outputs/flutter-apk/redroom.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      # Publication sur une release dédiée `redroom-latest` pour
+      # que le Worker puisse rediriger /redroom vers ce binaire
+      # sans interférer avec la release `latest` de 7 MOTION.
+      - name: Publish "redroom-latest" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -ex
+          REPO="${{ github.repository }}"
+          APK="build/app/outputs/flutter-apk/redroom.apk"
+
+          test -f "$APK"
+          ls -lh "$APK"
+
+          NOTES="Dernier build automatique de Red Room (variante adulte 18+).
+
+          • Branche : \`${{ github.ref_name }}\`
+          • Commit : \`${{ github.sha }}\`
+          • Run : #${{ github.run_number }}
+
+          **Installation** : usage exclusivement réservé aux personnes majeures.
+          Sideload via le domaine Cloudflare (`/redroom`).
+
+          ⚠️ Mode debug — non destiné à la distribution publique."
+
+          if gh release view redroom-latest --repo "$REPO"; then
+            gh release edit redroom-latest --repo "$REPO" \
+              --title "Red Room — dernier build" \
+              --notes "$NOTES" \
+              --prerelease
+            gh release upload redroom-latest --repo "$REPO" --clobber "$APK"
+          else
+            gh release create redroom-latest --repo "$REPO" \
+              --title "Red Room — dernier build" \
+              --notes "$NOTES" \
+              --prerelease \
+              "$APK"
+          fi
+
+          gh release view redroom-latest --repo "$REPO"

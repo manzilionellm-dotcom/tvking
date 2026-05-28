@@ -41,13 +41,29 @@ import 'features/onboarding/presentation/onboarding_screen.dart';
 import 'features/player/data/player_settings.dart';
 import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/playlist_repository.dart';
+import 'core/flavor/flavor.dart';
+import 'features/security/data/age_gate_settings.dart';
 import 'features/security/data/lock_settings.dart';
+import 'features/security/presentation/age_gate_screen.dart';
 import 'features/security/presentation/lock_screen.dart';
 import 'features/recordings/data/recording_repository.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/subscription/presentation/subscription_gate.dart';
 
 Future<void> main() async {
+  // Identité du build 7 MOTION grand public. Doit être posée AVANT
+  // `bootApp()` (qui touche aux repos, lesquels lisent `FlavorConfig`).
+  // La variante Red Room a son propre entrypoint `main_redroom.dart`
+  // qui pose `FlavorConfig.redRoom` puis appelle le MÊME `bootApp()`.
+  FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
+  await bootApp();
+}
+
+/// Séquence d'initialisation partagée par les deux entrypoints
+/// (`main.dart` et `main_redroom.dart`). Le flavor doit déjà avoir
+/// été posé par l'appelant — on lit `FlavorConfig.current` librement
+/// à partir d'ici.
+Future<void> bootApp() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // libmpv natif — AVANT runApp pour ne pas crasher au premier lecteur
@@ -159,7 +175,9 @@ class TvKingApp extends StatelessWidget {
       ]),
       builder: (BuildContext context, _) {
         return MaterialApp(
-          title: BrandStrings.appName,
+          // Titre Material — utilisé par Android pour le label de l'app
+          // dans le recent-apps switcher. Reflet du flavor courant.
+          title: FlavorConfig.current.appName,
           debugShowCheckedModeBanner: false,
           theme: AppTheme.daylight,
           darkTheme: AppTheme.cinema,
@@ -229,6 +247,11 @@ class _AppEntryState extends State<_AppEntry> {
   // que le lock est activé, on affiche `LockScreen` au lieu de l'app.
   bool? _lockEnabled;
   bool _unlocked = false;
+  // Confirmation 18+ (utilisée uniquement par le flavor Red Room).
+  // `null` = pas encore chargé, `true` = déjà confirmée à un précédent
+  // boot. Si le flavor n'exige pas le gate, on saute en posant `true`
+  // directement dans initState.
+  bool? _ageGateConfirmed;
 
   @override
   void initState() {
@@ -248,24 +271,56 @@ class _AppEntryState extends State<_AppEntry> {
     // Charge le réglage lock_on_open en parallèle. L'app n'attend pas
     // ce flag pour montrer le splash, mais on en a besoin avant le
     // premier rendu d'écran fonctionnel pour décider lock vs app.
-    LockSettings.instance.isLockEnabled().then((bool enabled) {
-      if (mounted) {
-        setState(() => _lockEnabled = enabled);
-      }
-    });
+    // Sur Red Room (biometricMandatory = true), on FORCE le lock à
+    // ON quoi qu'ait choisi l'utilisateur dans Réglages.
+    final FlavorConfig flavor = FlavorConfig.current;
+    if (flavor.biometricMandatory) {
+      _lockEnabled = true;
+    } else {
+      LockSettings.instance.isLockEnabled().then((bool enabled) {
+        if (mounted) {
+          setState(() => _lockEnabled = enabled);
+        }
+      });
+    }
+
+    // Gate âge : uniquement Red Room. Sur 7 MOTION, on by-pass
+    // directement avec `true` pour ne pas bloquer le boot.
+    if (flavor.requireAgeGate) {
+      AgeGateSettings.instance.isConfirmed().then((bool ok) {
+        if (mounted) {
+          setState(() => _ageGateConfirmed = ok);
+        }
+      });
+    } else {
+      _ageGateConfirmed = true;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     // Splash tant qu'on n'a pas chargé les flags persistés.
-    if (_onboardingDone == null || _lockEnabled == null) {
+    if (_onboardingDone == null ||
+        _lockEnabled == null ||
+        _ageGateConfirmed == null) {
       return const _Splash();
     }
 
-    // 0) Verrouillage biométrique — AVANT tout autre écran. L'utilisateur
-    //    doit s'authentifier (empreinte ou PIN système) si le réglage
-    //    `security.lock_on_open` est activé. Ne s'applique qu'au cold
-    //    start ; pas de re-lock sur retour de background (choix UX).
+    // 0a) Gate "j'ai 18 ans" — Red Room uniquement. Le flavor sevenMotion
+    //     a posé `_ageGateConfirmed = true` dans initState, donc on saute.
+    //     Si non confirmé : l'écran s'affiche, le bouton "ENTRER" met à
+    //     jour la pref et passe la suite. Le refus tente de quitter l'app.
+    if (_ageGateConfirmed == false) {
+      return AgeGateScreen(
+        onConfirmed: () => setState(() => _ageGateConfirmed = true),
+      );
+    }
+
+    // 0b) Verrouillage biométrique — AVANT tout autre écran. L'utilisateur
+    //     doit s'authentifier (empreinte ou PIN système) si le réglage
+    //     `security.lock_on_open` est activé OU si le flavor exige
+    //     biometricMandatory (Red Room). Ne s'applique qu'au cold start ;
+    //     pas de re-lock sur retour de background (choix UX).
     if (_lockEnabled == true && !_unlocked) {
       return LockScreen(
         onUnlocked: () => setState(() => _unlocked = true),

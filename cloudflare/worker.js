@@ -60,6 +60,14 @@
 const APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/latest/app-debug.apk';
 
+// Variante Red Room (flavor adulte 18+ du MÊME repo). Publiée sur
+// une release dédiée `redroom-latest` par le job CI `build_redroom`.
+// Le binaire a un applicationId différent (`com.redroom.player`),
+// donc l'installation NE remplace PAS l'app 7 MOTION sur le téléphone
+// du client — les deux peuvent cohabiter.
+const REDROOM_APK_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/redroom-latest/redroom.apk';
+
 // ===========================================================
 //  Monétisation — Trial / Subscription / Freeze
 // ===========================================================
@@ -1155,6 +1163,17 @@ export default {
       return Response.redirect(APK_URL, 302);
     }
 
+    // /redroom — variante adulte 18+. Pointe vers la release
+    // dédiée `redroom-latest`. Le binaire a son propre applicationId
+    // donc il s'installe à côté de 7 MOTION sans collision.
+    // /redroom/dl est un alias pour cohérence avec /dl du 7 MOTION.
+    if (
+      (segments.length === 1 && segments[0] === 'redroom') ||
+      (segments.length === 2 && segments[0] === 'redroom' && segments[1] === 'dl')
+    ) {
+      return Response.redirect(REDROOM_APK_URL, 302);
+    }
+
     // ===== CODES VANITY DOWNLOADER =====
     //
     // Tout segment unique non réservé est traité comme un code
@@ -1179,6 +1198,7 @@ export default {
     // supporte que ASCII de toute façon.
     const RESERVED = new Set([
       'admin', 'config', 'dl', 'install', 'api', 'panel',
+      'redroom',
       'favicon.ico', 'robots.txt', 'sitemap.xml',
     ]);
     if (segments.length === 1 && !RESERVED.has(segments[0].toLowerCase())) {
