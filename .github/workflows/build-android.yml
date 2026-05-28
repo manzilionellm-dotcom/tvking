@@ -402,18 +402,17 @@ jobs:
       # garde leanback OFF pour ne pas voir l'icône sur le
       # launcher Android TV.
 
-      # Apply the Google Cast overlay (le script est idempotent
-      # et ne dépend pas du flavor — Red Room peut caster aussi).
-      - name: Apply Google Cast SDK overlay
-        run: bash android_overlay/google_cast/apply_cast_patch.sh
-
-      - name: Patch AndroidManifest for Picture-in-Picture
-        run: |
-          set -e
-          MANIFEST=android/app/src/main/AndroidManifest.xml
-          if ! grep -q 'supportsPictureInPicture' "$MANIFEST"; then
-            sed -i 's|android:name=".MainActivity"|android:name=".MainActivity"\n            android:supportsPictureInPicture="true"\n            android:resizeableActivity="true"|' "$MANIFEST"
-          fi
+      # Phase de stabilisation Red Room :
+      # On SKIP volontairement les patches Cast SDK et Picture-in-Picture
+      # pour ce build. Raisons :
+      #   1. apply_cast_patch.sh touche au manifest + au build.gradle ;
+      #      si une étape sed échoue silencieusement sur le package
+      #      com.redroom.player, le build complet meurt — on perd un
+      #      cycle CI pour rien.
+      #   2. Cast et PiP ne sont PAS critiques pour le v1 Red Room.
+      #      L'utilisateur veut d'abord voir l'app booter, valider la
+      #      gate âge, l'empreinte, le filtre adulte. Cast viendra en v2.
+      # On les rajoutera une fois que le build de base passe vert.
 
       - name: Get dependencies
         run: flutter pub get
