@@ -43,6 +43,36 @@ abstract final class AppColors {
   static Color get border => const Color(0xFFF0EDE9).withValues(alpha: 0.08);
 
   // -------------------------------------------------------
+  //  PALETTE CINÉMA — niveaux supplémentaires (Phase 1 redesign)
+  // -------------------------------------------------------
+  //  Surfaces étagées pour la profondeur "directed film scene".
+  //  Le rythme va de obsidian (fond le plus profond) à ash
+  //  (overlay le plus haut), avec des transitions chaudes-froides
+  //  imperceptibles qui donnent la sensation de stratification.
+
+  /// Niveau 0 — obsidian. Fond principal sur grandes surfaces
+  /// cinéma (home, hero plein écran).
+  static const Color obsidian = Color(0xFF0E0E12);
+
+  /// Niveau 1 — midnight. Première élévation pour les rails.
+  static const Color midnight = Color(0xFF16161C);
+
+  /// Niveau 2 — slate. Cards posters, chips.
+  static const Color slate = Color(0xFF1F1F26);
+
+  /// Niveau 3 — ash. Overlays, sheets, modal headers.
+  static const Color ash = Color(0xFF2A2A33);
+
+  /// Voile glass — surface translucide pour BackdropFilter
+  /// (dock flottant, app bars translucides).
+  static Color get glassSurface =>
+      const Color(0xFF14141A).withValues(alpha: 0.55);
+
+  /// Liseré ultra-subtil pour les verres flottants.
+  static Color get glassBorder =>
+      const Color(0xFFF0EDE9).withValues(alpha: 0.06);
+
+  // -------------------------------------------------------
   //  ACCENT EMBER (rouge braise 7 MOTION)
   // -------------------------------------------------------
 
@@ -62,6 +92,30 @@ abstract final class AppColors {
   /// Voile très léger d'accent — fond d'un état sélectionné.
   static Color get accentSurface =>
       const Color(0xFFD63A30).withValues(alpha: 0.14);
+
+  // -------------------------------------------------------
+  //  CHAMPAGNE — accent non-critique (Phase 1 redesign)
+  // -------------------------------------------------------
+  //  Le brief design dit : réduire l'usage du rouge de 60-70 %.
+  //  Le rouge ne sert PLUS qu'au critique (LIVE, focus actif,
+  //  CTA primaire, sélection navigation). Pour tous les autres
+  //  accents (eyebrows, badges éditoriaux, "VEDETTE",
+  //  séparateurs de catégorie, citations…) on utilise un
+  //  champagne désaturé qui donne la sensation premium calme
+  //  d'Apple TV+ ou de Criterion Channel.
+
+  /// Champagne — accent éditorial principal (eyebrows, badges
+  /// "À LA UNE", "RECOMMANDÉ", "NOUVEAU"). Ni or jaune
+  /// agressif ni rouge — un crème chaud très tamisé.
+  static const Color champagne = Color(0xFFE8D9C0);
+
+  /// Champagne profond — pour les bordures fines et les hovers
+  /// non-critiques. Encore plus discret que `champagne`.
+  static const Color champagneDeep = Color(0xFFB39B7C);
+
+  /// Voile champagne — fond des chips éditoriaux.
+  static Color get champagneSurface =>
+      const Color(0xFFE8D9C0).withValues(alpha: 0.10);
 
   // -------------------------------------------------------
   //  TEXTE

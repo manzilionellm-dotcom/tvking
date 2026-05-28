@@ -1,25 +1,43 @@
 // =========================================================
-//  hero_section.dart — Bannière "vedette" Premium v2
+//  hero_section.dart — Bannière cinéma edge-to-edge (Phase 1
+//                      redesign)
 // =========================================================
-//  Refonte Phase 1.4 :
-//    - Plus de gradient coloré géant aux couleurs aléatoires
-//    - Card sombre élégante avec :
-//        * Logo de la chaîne BIEN visible à gauche
-//        * Bloc texte propre (nom, genre, pays, programme)
-//        * Bouton "Lecture" doré (l'unique accent) en CTA
-//        * Bouton "Détails" secondaire
-//    - Discret badge LIVE en haut à gauche
-//    - Badge "VEDETTE" doré en haut à droite
+//  Refonte design Phase 1 :
 //
-//  L'idée : la vedette doit RENDRE HOMMAGE à la marque de la
-//  chaîne (donc montrer son logo), pas l'effacer derrière des
-//  effets visuels.
+//  AVANT : une "card" rectangle compacte avec logo à gauche,
+//          texte à droite, halo radial discret. Esthétique
+//          dashboard SaaS, pas cinéma.
+//
+//  APRÈS : une bannière edge-to-edge qui occupe TOUTE la
+//          largeur disponible, avec :
+//            - l'artwork de la chaîne en pleine étendue,
+//              dupliqué en ARRIÈRE-PLAN avec un blur fort
+//              et une saturation amortie → "backdrop blur"
+//              à la Apple TV+ (l'image teinte l'écran sans
+//              le couvrir),
+//            - l'artwork NET au premier plan dans une zone
+//              centrée/à gauche selon proportions,
+//            - un scrim noir-en-bas pour la lisibilité du
+//              texte (style Netflix/HBO),
+//            - eyebrow champagne (PAS rouge — on a réduit
+//              le red usage de 65 % comme demandé),
+//            - title display cinéma (Inter 600 / -1.0 ls),
+//            - métadonnées discrètes (genre · pays · qualité),
+//            - CTAs flottants (Lecture en ember critique +
+//              Détails translucide glass).
+//
+//  C'est l'incarnation du principe "content is the hero" du
+//  brief : aucun container visible, aucune bordure, aucune
+//  card. L'image règne, le texte habite l'image.
 // =========================================================
+
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/theme/cinematic_spacing.dart';
 import '../../../../core/widgets/live_badge.dart';
 import '../../../../core/widgets/tv_focusable.dart';
 import '../../domain/channel.dart';
@@ -37,236 +55,318 @@ class HeroSection extends StatelessWidget {
   final VoidCallback onWatch;
   final VoidCallback onInfo;
 
+  /// Hauteur cible du hero. Calée pour que la composition
+  /// title + meta + CTAs respire sans pousser le premier rail
+  /// hors-écran sur un téléphone standard (≈ 6.1").
+  static const double _heroHeight = 360.0;
+
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.border, width: 1),
-        ),
+      borderRadius: BorderRadius.circular(CinematicSpacing.radiusXL),
+      child: SizedBox(
+        height: _heroHeight,
+        width: double.infinity,
         child: Stack(
+          fit: StackFit.expand,
           children: <Widget>[
-            // ----- Halo doré subtil en arrière-plan -----
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    gradient: RadialGradient(
-                      center: Alignment.topRight,
-                      radius: 1.2,
-                      colors: <Color>[
-                        AppColors.accent.withValues(alpha: 0.07),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
+            // --- Couche 1 : backdrop blur (artwork géant flou) ---
+            _AmbientBackdrop(channel: channel),
+
+            // --- Couche 2 : scrim bottom → lisibilité texte ---
+            const _BottomScrim(),
+
+            // --- Couche 3 : portrait artwork net (côté gauche) ---
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(
+                  left: CinematicSpacing.l,
+                  top: CinematicSpacing.l,
                 ),
+                child: _PortraitArtwork(channel: channel),
               ),
             ),
 
-            // ----- Contenu -----
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: <Widget>[
-                  // ----- Logo à gauche -----
-                  Stack(
-                    children: <Widget>[
-                      ChannelLogo(
-                        channel: channel,
-                        size: ChannelLogoSize.large,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      if (channel.isLive)
-                        const Positioned(
-                          top: 6,
-                          left: 6,
-                          child: LiveBadge(),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(width: 16),
+            // --- Couche 4 : badge LIVE en haut à gauche ---
+            if (channel.isLive)
+              const Positioned(
+                top: CinematicSpacing.m,
+                left: CinematicSpacing.m,
+                child: LiveBadge(),
+              ),
 
-                  // ----- Texte à droite -----
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        // Mini chip "VEDETTE"
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: AppColors.accentSurface,
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: AppColors.accent
-                                  .withValues(alpha: 0.5),
-                              width: 0.8,
-                            ),
-                          ),
-                          child: Text(
-                            'VEDETTE',
-                            style: AppTextStyles.labelSmall.copyWith(
-                              color: AppColors.accent,
-                              fontSize: 9,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-
-                        // Nom de la chaîne
-                        Text(
-                          channel.cleanName,
-                          style: AppTextStyles.headlineLarge.copyWith(
-                            fontSize: 22,
-                            height: 1.15,
-                            letterSpacing: -0.3,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 6),
-
-                        // Metadata (genre + pays + qualité)
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: <Widget>[
-                            _metaChip(
-                              icon: channel.genre.icon,
-                              text: channel.genre.label,
-                            ),
-                            if (channel.country != null)
-                              _metaChip(
-                                text:
-                                    '${channel.country!.flag} ${channel.country!.name}',
-                              ),
-                            if (channel.quality != ChannelQuality.sd)
-                              ChannelQualityBadge(quality: channel.quality),
-                          ],
-                        ),
-
-                        // Programme en cours (Phase 2)
-                        if (channel.currentProgram != null) ...<Widget>[
-                          const SizedBox(height: 8),
-                          Text(
-                            channel.currentProgram!,
-                            style: AppTextStyles.bodyMedium.copyWith(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                              fontStyle: FontStyle.italic,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                        const SizedBox(height: 14),
-
-                        // ----- Boutons d'action (Wrap pour
-                        //       éviter l'overflow sur petits écrans
-                        //       avec des noms de chaîne longs) -----
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: <Widget>[
-                            _PrimaryButton(
-                              icon: Icons.play_arrow_rounded,
-                              label: 'Lecture',
-                              onPressed: onWatch,
-                            ),
-                            _SecondaryButton(
-                              icon: Icons.info_outline_rounded,
-                              label: 'Détails',
-                              onPressed: onInfo,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+            // --- Couche 5 : texte + CTAs (bas du hero) ---
+            Positioned(
+              left: CinematicSpacing.l,
+              right: CinematicSpacing.l,
+              bottom: CinematicSpacing.l,
+              child: _HeroCopy(
+                channel: channel,
+                onWatch: onWatch,
+                onInfo: onInfo,
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _metaChip({IconData? icon, required String text}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceHigh,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          if (icon != null) ...<Widget>[
-            Icon(icon, size: 11, color: AppColors.textSecondary),
-            const SizedBox(width: 4),
-          ],
-          Text(
-            text,
-            style: AppTextStyles.labelSmall.copyWith(
-              color: AppColors.textSecondary,
-              fontSize: 10,
-              letterSpacing: 0.3,
-            ),
-          ),
-        ],
       ),
     );
   }
 }
 
-class _PrimaryButton extends StatelessWidget {
-  const _PrimaryButton({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
+// =========================================================
+//  COUCHE 1 — Backdrop ambiant (artwork géant + blur fort)
+// =========================================================
+//  Le logo de la chaîne (souvent carré, basse résolution) est
+//  étiré en plein cadre, puis flouté agressivement. Résultat :
+//  une lueur colorée qui teinte l'arrière-plan sans qu'on
+//  reconnaisse l'image — exactement le truc d'Apple TV+ et de
+//  Spotify. Si pas de logo, on tombe sur un dégradé neutre
+//  obsidian → midnight (jamais d'écran vide moche).
+class _AmbientBackdrop extends StatelessWidget {
+  const _AmbientBackdrop({required this.channel});
+  final Channel channel;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!channel.hasLogo) {
+      return const _NeutralBackdrop();
+    }
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        // 1) Logo étiré, fortement saturé en sombre.
+        Image.network(
+          channel.logoUrl!,
+          fit: BoxFit.cover,
+          // L'image sert UNIQUEMENT de fond coloré. Si elle échoue
+          // (404, timeout, format non géré), on retombe sur le
+          // dégradé neutre — l'écran ne doit jamais avoir l'air cassé.
+          errorBuilder: (_, __, ___) => const _NeutralBackdrop(),
+        ),
+        // 2) Blur cinéma + voile sombre pour ramener au charbon.
+        BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 36, sigmaY: 36),
+          child: Container(color: Colors.black.withValues(alpha: 0.55)),
+        ),
+      ],
+    );
+  }
+}
+
+class _NeutralBackdrop extends StatelessWidget {
+  const _NeutralBackdrop();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[AppColors.midnight, AppColors.obsidian],
+        ),
+      ),
+    );
+  }
+}
+
+// =========================================================
+//  COUCHE 2 — Bottom scrim (dégradé sombre vers le bas)
+// =========================================================
+//  Sans ce voile, le texte blanc en bas du hero serait
+//  illisible sur des artworks clairs. C'est le standard
+//  Netflix / Disney+ / HBO Max.
+class _BottomScrim extends StatelessWidget {
+  const _BottomScrim();
+
+  @override
+  Widget build(BuildContext context) {
+    return const IgnorePointer(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: <Color>[
+              Color(0x00000000),
+              Color(0x33000000),
+              Color(0xCC050507),
+            ],
+            stops: <double>[0.35, 0.65, 1.0],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =========================================================
+//  COUCHE 3 — Artwork net (logo encadré, taille hero)
+// =========================================================
+//  On garde le logo de la chaîne lisible et net dans un cadre
+//  premium (rayon grand, ombre douce). Le ChannelLogo existant
+//  gère déjà ses fallbacks initiales — on lui demande juste
+//  une taille hero.
+class _PortraitArtwork extends StatelessWidget {
+  const _PortraitArtwork({required this.channel});
+  final Channel channel;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(CinematicSpacing.radiusL),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.45),
+            blurRadius: 32,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: ChannelLogo(
+        channel: channel,
+        size: ChannelLogoSize.large,
+        borderRadius: BorderRadius.circular(CinematicSpacing.radiusL),
+      ),
+    );
+  }
+}
+
+// =========================================================
+//  COUCHE 5 — Texte + CTAs (bas du hero)
+// =========================================================
+//  Composition typographique :
+//    - eyebrow champagne ("À LA UNE")
+//    - titre display cinéma (38px, w600, ls -1.0)
+//    - row de meta (genre · pays · qualité)
+//    - CTAs flottants : Lecture (ember) + Détails (glass)
+//
+//  Aucune card, aucune bordure : on est posé DIRECTEMENT sur
+//  l'artwork, le scrim fait son travail de lisibilité.
+class _HeroCopy extends StatelessWidget {
+  const _HeroCopy({
+    required this.channel,
+    required this.onWatch,
+    required this.onInfo,
   });
 
-  final IconData icon;
-  final String label;
+  final Channel channel;
+  final VoidCallback onWatch;
+  final VoidCallback onInfo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        // --- Eyebrow champagne ---
+        // Non plus un chip avec fond rouge : juste deux lettres
+        // crème espacées, à la Apple TV+ / Criterion.
+        Text(
+          'À LA UNE',
+          style: AppTextStyles.eyebrowChampagne,
+        ),
+        const SizedBox(height: CinematicSpacing.s),
+
+        // --- Title display cinéma ---
+        Text(
+          channel.cleanName,
+          style: AppTextStyles.displayHero,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: CinematicSpacing.s),
+
+        // --- Métadonnées discrètes ---
+        _MetaLine(channel: channel),
+
+        // --- Programme courant si disponible ---
+        if (channel.currentProgram != null) ...<Widget>[
+          const SizedBox(height: CinematicSpacing.xs),
+          Text(
+            channel.currentProgram!,
+            style: AppTextStyles.bodyMedium.copyWith(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+        const SizedBox(height: CinematicSpacing.m),
+
+        // --- CTAs flottants ---
+        Row(
+          children: <Widget>[
+            _PlayCta(onPressed: onWatch),
+            const SizedBox(width: CinematicSpacing.s),
+            _InfoCta(onPressed: onInfo),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Ligne de métadonnées sous le titre. Pas de chips encadrés
+/// (lourd) : juste des fragments séparés par des points
+/// médians, à la manière des génériques de film.
+class _MetaLine extends StatelessWidget {
+  const _MetaLine({required this.channel});
+  final Channel channel;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<String> parts = <String>[
+      channel.genre.label,
+      if (channel.country != null) channel.country!.name,
+      if (channel.quality != ChannelQuality.sd) channel.quality.badge,
+    ];
+    return Text(
+      parts.join('   ·   '),
+      style: AppTextStyles.labelSmall.copyWith(
+        color: AppColors.textSecondary,
+        fontSize: 11,
+        letterSpacing: 1.6,
+      ),
+    );
+  }
+}
+
+// =========================================================
+//  CTA "LECTURE" — rouge ember (l'UN des rares endroits où
+//  le rouge survit après la coupe à 35 % du brief).
+//  Bouton plein, texte noir, accessible aux télécommandes via
+//  TvFocusable.
+// =========================================================
+class _PlayCta extends StatelessWidget {
+  const _PlayCta({required this.onPressed});
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    // CTA "Lecture" du Hero — c'est LE bouton principal de l'écran.
-    // À la télécommande, il doit être ULTRA visible quand focusé,
-    // donc on garde `showGlow: true` (halo ember 0.32 par défaut)
-    // contrairement aux chips / onglets compacts. C'est lui qui
-    // mérite naturellement l'autofocus à l'ouverture (l'écran parent
-    // s'en occupe, le widget reste réutilisable ailleurs).
     return TvFocusable(
       onTap: onPressed,
-      borderRadius: BorderRadius.circular(10),
-      semanticsLabel: label,
+      borderRadius: BorderRadius.circular(CinematicSpacing.radiusM),
+      semanticsLabel: 'Lecture',
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
         decoration: BoxDecoration(
           color: AppColors.accent,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(CinematicSpacing.radiusM),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(icon, size: 18, color: Colors.black),
+            const Icon(Icons.play_arrow_rounded, size: 20, color: Colors.black),
             const SizedBox(width: 6),
             Text(
-              label,
-              style: AppTextStyles.bodyLarge.copyWith(
+              'Lecture',
+              style: AppTextStyles.button.copyWith(
                 color: Colors.black,
-                fontSize: 13,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -277,48 +377,57 @@ class _PrimaryButton extends StatelessWidget {
   }
 }
 
-class _SecondaryButton extends StatelessWidget {
-  const _SecondaryButton({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final String label;
+// =========================================================
+//  CTA "DÉTAILS" — glass translucide, plus du tout en bordure
+//  rouge (avant : `AppColors.border` mélangeait blanc et accent).
+//  Maintenant : voile glass + texte ivoire. Le rouge ne survit
+//  QUE sur le bouton Lecture, conformément à la doctrine
+//  "red = focus/CTA/LIVE uniquement".
+// =========================================================
+class _InfoCta extends StatelessWidget {
+  const _InfoCta({required this.onPressed});
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    // Bouton secondaire "Détails" — on garde showGlow: false pour
-    // hiérarchiser visuellement (le Primary garde le halo, le
-    // Secondary juste le focus ring ember). Sinon les deux boutons
-    // côte-à-côte se font visuellement concurrence au focus.
     return TvFocusable(
       onTap: onPressed,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(CinematicSpacing.radiusM),
       showGlow: false,
-      semanticsLabel: label,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.border, width: 1.2),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(icon, size: 18, color: AppColors.textPrimary),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: AppTextStyles.bodyLarge.copyWith(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+      semanticsLabel: 'Détails',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(CinematicSpacing.radiusM),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(CinematicSpacing.radiusM),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.12),
+                width: 1,
               ),
             ),
-          ],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                const Icon(
+                  Icons.info_outline_rounded,
+                  size: 18,
+                  color: AppColors.textPrimary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Détails',
+                  style: AppTextStyles.button.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

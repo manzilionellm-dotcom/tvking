@@ -17,6 +17,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/curation/title_curator.dart';
 import 'channel_genre.dart';
 
 // Re-export pour que les widgets qui importent `channel.dart`
@@ -100,18 +101,26 @@ class Channel {
     return (words[0][0] + words[1][0]).toUpperCase();
   }
 
-  /// Nom propre, sans les décorations type "##" / "==" en début.
-  String get cleanName {
-    String s = name;
-    s = s.replaceAll(RegExp(r'^[#*=•‣◆◇■□●○▪▫\s|/-]+'), '');
-    s = s.replaceAll(RegExp(r'[#*=•‣◆◇■□●○▪▫]+\s*$'), '');
-    s = s.replaceAll(RegExp(r'\s+'), ' ');
-    s = s.trim();
-    return s.isEmpty ? name : s;
-  }
+  /// Nom propre, présentable à l'écran. Passe par le
+  /// [TitleCurator] qui retire les préfixes IPTV (`FR |`,
+  /// `ADULT:`), les suffixes techniques (`RAW`, `FHD`, `BACKUP`),
+  /// les décorations (`★ ⚡ 🔥`) et applique un Title Case
+  /// respectueux des acronymes (TF1, BBC, BFM…). Résultat : un
+  /// nom digne d'une vraie plateforme premium, jamais d'IPTV
+  /// brut affiché tel quel à l'utilisateur.
+  ///
+  /// Le `name` brut reste accessible via `name` directement —
+  /// utile pour la recherche, l'EPG, le matching de favoris.
+  String get cleanName => TitleCurator.curate(name);
 
-  /// Catégorie nettoyée pour l'affichage.
-  String get prettyCategory => ChannelClassifier.prettifyCategory(category);
+  /// Catégorie présentable à l'écran. Passe par le dictionnaire
+  /// éditorial du [TitleCurator] (ex: "ADULT" → "After Dark",
+  /// "MOVIES" → "Cinéma"), avec fallback sur le classifier
+  /// historique si aucune entrée éditoriale n'est connue.
+  String get prettyCategory {
+    final String classifier = ChannelClassifier.prettifyCategory(category);
+    return TitleCurator.curateCategory(classifier);
+  }
 
   /// Genre détecté. **Caché** dans une Map statique car appelé
   /// à chaque rebuild sur 20 000+ chaînes — sans cache, les regex

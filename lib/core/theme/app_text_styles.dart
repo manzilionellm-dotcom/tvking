@@ -32,6 +32,32 @@ abstract final class AppTextStyles {
         height: 1.05,
       );
 
+  /// Display HERO — titre principal d'une bannière cinéma
+  /// edge-to-edge (HomeScreen, hero d'une chaîne en vedette).
+  /// Très grand, tracking serré, poids moyen : on imite l'impact
+  /// d'une affiche de cinéma. À utiliser parcimonieusement —
+  /// jamais plus d'un par écran.
+  static TextStyle get displayHero => GoogleFonts.inter(
+        fontSize: 38,
+        fontWeight: FontWeight.w600,
+        color: AppColors.textPrimary,
+        letterSpacing: -1.0,
+        height: 1.05,
+      );
+
+  /// Eyebrow champagne — la petite ligne au-dessus d'un titre
+  /// hero ("LE PLUS REGARDÉ", "À LA UNE", "NOUVEAUTÉ"). Couleur
+  /// champagne désaturée pour rester premium sans rouge.
+  /// Remplace `eyebrow` (qui restait en accent rouge) sur les
+  /// surfaces où on ne veut PAS du critique.
+  static TextStyle get eyebrowChampagne => GoogleFonts.inter(
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        color: AppColors.champagne,
+        letterSpacing: 2.6,
+        height: 1.0,
+      );
+
   /// Titre de section principal (Films, Séries, Sports…).
   static TextStyle get headlineLarge => GoogleFonts.inter(
         fontSize: 28,
