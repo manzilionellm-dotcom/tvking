@@ -12,6 +12,7 @@
 // =========================================================
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
@@ -36,21 +37,55 @@ class ChannelPoster extends StatefulWidget {
 class _ChannelPosterState extends State<ChannelPoster> {
   bool _isFocused = false;
 
+  /// Focus visuel + scroll auto pour la rangée horizontale parente.
+  /// Voir premium_channel_card.dart pour la pédagogie complète.
+  void _onFocusChange(bool focused) {
+    if (!mounted) return;
+    setState(() => _isFocused = focused);
+    if (focused) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Scrollable.ensureVisible(
+          context,
+          alignment: 0.3,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+        );
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final Channel ch = widget.channel;
     final List<Color> gradient = ch.effectiveGradient;
 
-    return Focus(
-      onFocusChange: (bool hasFocus) {
-        setState(() => _isFocused = hasFocus);
+    // FocusableActionDetector mappe OK/Enter télécommande → onTap
+    // (sinon focus visible mais impossible de valider). Le visuel
+    // custom de ChannelPoster (scale 1.06 + glow gradient first color
+    // 0.55 + bordure blanche 2 px au focus) reste intact.
+    return FocusableActionDetector(
+      onShowFocusHighlight: _onFocusChange,
+      mouseCursor: SystemMouseCursors.click,
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            widget.onTap();
+            return null;
+          },
+        ),
       },
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _isFocused = true),
-        onExit: (_) => setState(() => _isFocused = false),
-        child: GestureDetector(
-          onTap: widget.onTap,
-          child: AnimatedContainer(
+      child: Semantics(
+        button: true,
+        label: ch.name,
+        focusable: true,
+        focused: _isFocused,
+        child: MouseRegion(
+          onEnter: (_) => _onFocusChange(true),
+          onExit: (_) => _onFocusChange(false),
+          child: GestureDetector(
+            onTap: widget.onTap,
+            child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOutCubic,
             transform: _isFocused
@@ -163,6 +198,7 @@ class _ChannelPosterState extends State<ChannelPoster> {
             ),
           ),
         ),
+      ),
       ),
     );
   }
