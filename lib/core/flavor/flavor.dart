@@ -127,12 +127,20 @@ class FlavorConfig {
   );
 
   /// Red Room — variante adulte stricte.
+  ///
+  /// Choix utilisateur post-test : on a desactive `biometricMandatory`.
+  /// La premiere version forcait la biometrie a chaque cold start,
+  /// mais sur les telephones sans verrouillage d'ecran configure cote
+  /// OS, l'utilisateur se retrouvait bloque sans pouvoir entrer.
+  /// L'age gate "j'ai 18+" reste obligatoire (legal minimum), et
+  /// l'utilisateur peut toujours activer un verrou bio + PIN manuelle-
+  /// ment via Reglages > Securite s'il le souhaite.
   static const FlavorConfig redRoom = FlavorConfig(
     flavor: Flavor.redRoom,
     appName: 'Red Room',
     appTagline: 'STRICTLY 18+ · AFTER HOURS',
     adultOnly: true,
-    biometricMandatory: true,
+    biometricMandatory: false,
     requireAgeGate: true,
   );
 }
