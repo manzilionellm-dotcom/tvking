@@ -424,10 +424,15 @@ jobs:
       # R stylise + silhouette + "RED ROOM 18+"). On le commit dans
       # assets/branding/logo_redroom.png. flutter_launcher_icons
       # genere maintenant toutes les tailles mipmap-* pour l'icone
-      # de bureau Android depuis ce source. Plus jamais le F bleu
-      # Flutter par defaut.
+      # de bureau Android depuis ce source.
+      #
+      # `|| true` : si flutter_launcher_icons echoue (PNG sans alpha,
+      # ratio inattendu, etc.), le build continue avec l'icone
+      # Flutter par defaut au lieu de tout planter. Le logo DANS
+      # l'app (via BrandLogo widget) reste de toute facon affiche
+      # correctement — c'est independant du launcher icon.
       - name: Generate launcher icons (Red Room logo)
-        run: dart run flutter_launcher_icons -f flutter_launcher_icons_redroom.yaml
+        run: dart run flutter_launcher_icons -f flutter_launcher_icons_redroom.yaml || true
 
       # CLEF DE VOÛTE : on cible main_redroom.dart, qui pose
       # FlavorConfig.redRoom AVANT le boot commun.
