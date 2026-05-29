@@ -90,6 +90,20 @@ abstract final class TitleCurator {
   );
 
   // -----------------------------------------------------------------
+  //  Bandes de separateurs IPTV : ########, ________, ========,
+  //  --------, ~~~~~~~ et derivees. Tres frequents dans les flux
+  //  Xtream pour signaler une nouvelle categorie ou separer
+  //  visuellement (ex : "######## Adult RAW ###############").
+  //  On les retire au debut, a la fin, OU encadres d'espaces au
+  //  milieu d'un nom. Seuil >=3 pour ne pas casser des noms
+  //  legitimes comme "MTV_LIVE" ou "BBC-Two" qui n'ont qu'un seul
+  //  separateur.
+  // -----------------------------------------------------------------
+  static final RegExp _bulkSeparators = RegExp(
+    r'(^|\s)[#_=*\-~]{3,}(\s|$)',
+  );
+
+  // -----------------------------------------------------------------
   //  Acronymes à NE PAS title-caser (rester en MAJ).
   // -----------------------------------------------------------------
   //  TF1, BFM, RMC, BBC, CNN, ESPN, NHK, etc.
@@ -183,7 +197,19 @@ abstract final class TitleCurator {
 
     String s = raw;
 
-    // 1) Retire les décorations (★ ⚡ 🔥 ✨ etc.)
+    // 1a) Retire les bandes de separateurs IPTV : ########,
+    //     ________, ======== etc. en debut/fin/milieu (≥3 chars).
+    //     replaceAll en boucle car une bande au milieu peut creer
+    //     un nouveau debut/fin apres remplacement.
+    String before;
+    int safety = 4;
+    do {
+      before = s;
+      s = s.replaceAll(_bulkSeparators, ' ');
+      safety--;
+    } while (before != s && safety > 0);
+
+    // 1b) Retire les décorations Unicode (★ ⚡ 🔥 ✨ etc.)
     s = s.replaceAll(_decorations, ' ');
 
     // 2) Retire les crochets [VIP], [HD], (BACKUP), {RAW}, etc.

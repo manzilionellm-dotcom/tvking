@@ -25,6 +25,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/branding/brand_logo.dart';
+import '../../../core/flavor/flavor.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/cinematic_spacing.dart';
@@ -163,6 +164,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildCategoryChips() {
+    // Sur le flavor Red Room (adultOnly = true), aucun de ces genres
+    // n'a de sens — il n'y a pas de Football / Jeunesse / Info dans
+    // un catalogue 18+. Phase 1.0c remplacera par des chips Red Room
+    // (Couples, Solo, Studios, etc.) ; pour 1.0b on hide simplement.
+    if (FlavorConfig.current.adultOnly) {
+      return const SizedBox.shrink();
+    }
     return RoundCategoryRow(
       items: <RoundCategoryItem>[
         RoundCategoryItem(
