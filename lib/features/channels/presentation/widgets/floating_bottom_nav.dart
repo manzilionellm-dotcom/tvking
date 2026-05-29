@@ -1,20 +1,23 @@
 // =========================================================
 //  floating_bottom_nav.dart — Barre de navigation flottante
 // =========================================================
-//  Barre semi-transparente avec effet glassmorphism qui
-//  flotte au-dessus du contenu en bas d'écran (style iOS 17
-//  / Apple TV / dernières versions Netflix).
+//  Refonte Phase 1.0b ("premium streaming platform") :
 //
-//  Refonte UX "utilisable par un enfant ou un vieux" :
-//    - Live          → sport en direct (foot principalement)
-//    - Live TV       → toutes les chaînes TV (accueil)
-//    - Cinéma        → films / VOD
-//    - Séries        → séries TV
-//    - Adulte        → contenu adulte (sera protégé par PIN)
+//  L'ancienne nav exposait des genres (Sport, Live TV, Cinema,
+//  Series, Adulte) — c'est un panel revendeur, pas une nav de
+//  plateforme premium. Les utilisateurs de Netflix ou Apple TV+
+//  ne tapent jamais "Sport" en bas d'ecran pour explorer du sport.
 //
-//  La recherche et les réglages restent dans l'AppBar du haut
-//  pour ne pas surcharger la nav du bas (5 items max).
-//  Les favoris vivent dans l'AppBar du haut + sur chaque card.
+//  Nouveau modele aligne sur les standards OTT :
+//
+//    Home       — accueil discovery (hero + rails)
+//    Trending   — contenu en vogue
+//    Live       — sport et chaines en direct (Live TV merge)
+//    Favoris    — liste perso (anciennement dans AppBar)
+//    Profil     — compte, reglages, guide TV, cast
+//                  (anciennement icones dans AppBar top right)
+//
+//  Glassmorphism conserve + indicateur de selection subtil.
 // =========================================================
 
 import 'dart:ui';
@@ -36,11 +39,11 @@ class FloatingBottomNav extends StatelessWidget {
   final void Function(int index) onTap;
 
   static const List<_NavItem> _items = <_NavItem>[
-    _NavItem(icon: Icons.sports_soccer_rounded, label: 'Live'),
-    _NavItem(icon: Icons.live_tv_rounded, label: 'Live TV'),
-    _NavItem(icon: Icons.movie_creation_outlined, label: 'Cinéma'),
-    _NavItem(icon: Icons.theaters_rounded, label: 'Séries'),
-    _NavItem(icon: Icons.lock_outline_rounded, label: 'Adulte'),
+    _NavItem(icon: Icons.home_rounded, label: 'Home'),
+    _NavItem(icon: Icons.local_fire_department_rounded, label: 'Trending'),
+    _NavItem(icon: Icons.podcasts_rounded, label: 'Live'),
+    _NavItem(icon: Icons.favorite_rounded, label: 'Favoris'),
+    _NavItem(icon: Icons.person_rounded, label: 'Profil'),
   ];
 
   @override

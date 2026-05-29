@@ -25,18 +25,16 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/branding/brand_logo.dart';
-import '../../../core/branding/powered_by_marquee.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../cast/presentation/cast_button.dart';
+import '../../../core/theme/cinematic_spacing.dart';
 import '../../cast/presentation/cast_mini_bar.dart';
-import '../../epg/presentation/tv_guide_screen.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/presentation/add_playlist_screen.dart';
+import '../../profile/presentation/profile_screen.dart';
 import '../../security/data/biometric_auth.dart';
-import '../../settings/presentation/settings_screen.dart';
 import '../data/recently_watched_repository.dart';
 import '../domain/channel.dart';
 import '../domain/channel_genre.dart';
@@ -65,7 +63,10 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   // Index 1 = "Live TV" sur la nouvelle BottomNav (la nav refaite
   // a Live en 0 et Live TV en 1, et l'accueil EST Live TV).
-  int _currentNavIndex = 1;
+  // Phase 1.0b : Home = index 0 (au lieu de Live TV index 1 dans
+  // l'ancienne nav). Voir floating_bottom_nav.dart pour la liste
+  // des onglets : Home, Trending, Live, Favoris, Profil.
+  int _currentNavIndex = 0;
   final FavoritesRepoSnapshot _favSnap = FavoritesRepoSnapshot();
 
   /// Cache mémoïsé du bucketing par genre. La home se rebuild à
@@ -116,10 +117,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _openSearch() => Navigator.of(context).push<void>(
         MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
-      );
-
-  Future<void> _openSettings() => Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
       );
 
   Future<void> _openFavorites() => Navigator.of(context).push<void>(
@@ -259,49 +256,37 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   PreferredSizeWidget _appBar() {
+    // Refonte Phase 1.0b : top bar minimal style Netflix / Apple TV+.
+    // L'ancienne AppBar exposait 5 boutons (Refresh, Cast, Guide TV,
+    // Recherche, Reglages) — visuel de console d'admin, pas de
+    // plateforme premium. Tout ca part dans l'onglet Profil de la
+    // nav du bas, sauf la Recherche qui reste dispo en 1 tap.
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
-      // Logo + signature discrète juste en-dessous — baseline maison
-      // de couture sous le monogramme. La signature animée du pied
-      // d'écran a été supprimée (effet ticker = pas premium).
-      title: const Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          BrandLogo.compact(),
-          SizedBox(height: 2),
-          BrandSignature(),
-        ],
-      ),
+      title: const BrandLogo.compact(),
+      titleSpacing: CinematicSpacing.l,
       actions: <Widget>[
-        // Bouton Actualiser — visible, première position d'actions.
-        // L'app rafraîchit déjà les playlists vieilles au démarrage,
-        // mais l'utilisateur a aussi le droit de forcer manuellement.
-        const _RefreshButton(),
-        const CastButton(),
-        IconButton(
-          tooltip: 'Guide TV',
-          onPressed: () => Navigator.of(context).push<void>(
-            MaterialPageRoute<void>(
-              builder: (_) => const TvGuideScreen(),
-            ),
-          ),
-          icon: const Icon(Icons.event_note_rounded),
-        ),
         IconButton(
           tooltip: 'Recherche',
           onPressed: _openSearch,
           icon: const Icon(Icons.search_rounded),
         ),
         IconButton(
-          tooltip: 'Réglages',
-          onPressed: _openSettings,
-          icon: const Icon(Icons.settings_outlined),
+          tooltip: 'Profil',
+          onPressed: _goToProfile,
+          icon: const Icon(Icons.person_rounded),
         ),
         const SizedBox(width: 6),
       ],
     );
+  }
+
+  /// Bascule sur l'onglet Profil (index 4) — utilise par l'icone
+  /// profile en haut a droite, qui doit ouvrir la meme vue que le
+  /// tap sur la nav du bas (coherence Apple TV+ / Mubi).
+  void _goToProfile() {
+    setState(() => _currentNavIndex = 4);
   }
 
   // ============================================================
@@ -546,32 +531,42 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ----- Bottom Nav -----
+  // ----- Bottom Nav (Phase 1.0b standards OTT) -----
   //
-  //  Refonte UX :
-  //    0 = Live      (sport en direct, foot principalement)
-  //    1 = Live TV   (accueil = vue par défaut, ce qu'on voit déjà)
-  //    2 = Cinéma    (films / VOD)
-  //    3 = Séries    (séries TV)
-  //    4 = Adulte    (contenu adulte ; PIN parental à ajouter plus tard)
+  //    0 = Home      (l'ecran actuel : hero + rails)
+  //    1 = Trending  (provisoire : Cinema qui contient la VOD)
+  //    2 = Live      (sport et chaines live)
+  //    3 = Favoris   (liste personnelle)
+  //    4 = Profil    (settings + guide TV + cast + about)
+  //
+  //  Le contenu reel des sections Trending et Live sera retravaille
+  //  en Phase 1.0c (vrais rails de discovery au lieu d'un push de
+  //  grille generique). Pour 1.0b, on garde le pattern push existant
+  //  qui marche deja, pour ne pas mettre le doigt dans le contenu.
 
   void _onNavTap(int index) {
     setState(() => _currentNavIndex = index);
     switch (index) {
       case 0:
-        _openSection('Live', ChannelGenre.sports).then((_) => _resetNav());
+        break; // deja sur l'accueil
       case 1:
-        break; // déjà sur l'accueil Live TV
+        // Trending : provisoire = Cinema (VOD). Sera un vrai rail
+        // de discovery en Phase 1.0c.
+        _openSection('Trending', ChannelGenre.movies).then((_) => _resetNav());
       case 2:
-        _openSection('Cinéma', ChannelGenre.movies).then((_) => _resetNav());
+        // Live : sport en direct + (a terme) chaines live. Pour
+        // l'instant on route sport, c'est l'usage majoritaire.
+        _openSection('Live', ChannelGenre.sports).then((_) => _resetNav());
       case 3:
-        _openSection('Séries', ChannelGenre.series).then((_) => _resetNav());
+        _openFavorites().then((_) => _resetNav());
       case 4:
-        // Section Adulte protégée par empreinte digitale (demande user).
-        // Avant d'ouvrir la grille de chaînes XXX, on déclenche le dialog
-        // système BiometricAuth : empreinte → fallback PIN/pattern Android.
-        // Si l'auth échoue ou est annulée, on reset la nav sans ouvrir.
-        _openAdultGuarded().then((_) => _resetNav());
+        Navigator.of(context)
+            .push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => const ProfileScreen(),
+              ),
+            )
+            .then((_) => _resetNav());
     }
   }
 
@@ -614,8 +609,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _resetNav() {
     Future<void>.delayed(const Duration(milliseconds: 600), () {
-      // Reset sur 1 = Live TV = accueil par défaut (cf. _currentNavIndex)
-      if (mounted) setState(() => _currentNavIndex = 1);
+      // Reset sur 0 = Home (cf. nav Phase 1.0b).
+      if (mounted) setState(() => _currentNavIndex = 0);
     });
   }
 }
@@ -729,93 +724,8 @@ class _BackgroundLayer extends StatelessWidget {
   }
 }
 
-// ============================================================
-//  Bouton Actualiser dans l'AppBar
-// ============================================================
-//  Tape → refresh.all() en arrière-plan, l'icône tourne pendant
-//  la sync, snackbar discret avec le résultat. L'utilisateur n'est
-//  pas bloqué — il peut continuer à scroller pendant que ça
-//  tourne.
-// ============================================================
-
-class _RefreshButton extends StatefulWidget {
-  const _RefreshButton();
-
-  @override
-  State<_RefreshButton> createState() => _RefreshButtonState();
-}
-
-class _RefreshButtonState extends State<_RefreshButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _spin;
-  bool _busy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _spin = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 1),
-    );
-  }
-
-  @override
-  void dispose() {
-    _spin.dispose();
-    super.dispose();
-  }
-
-  Future<void> _refresh() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    _spin.repeat();
-    final ScaffoldMessengerState messenger =
-        ScaffoldMessenger.of(context);
-    try {
-      final int ok = await PlaylistRepository.instance.refreshAll();
-      messenger.clearSnackBars();
-      messenger.showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: Text(
-            ok == 0
-                ? 'Aucune playlist actualisée.'
-                : 'Actualisé : $ok playlist(s).',
-            style: AppTextStyles.bodyMedium,
-          ),
-        ),
-      );
-    } catch (e) {
-      messenger.clearSnackBars();
-      messenger.showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: AppColors.live,
-          content: Text(
-            'Erreur : ${e.toString().replaceFirst('Exception: ', '')}',
-            style: AppTextStyles.bodyMedium,
-          ),
-        ),
-      );
-    } finally {
-      _spin.stop();
-      _spin.reset();
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: 'Actualiser les playlists',
-      onPressed: _busy ? null : _refresh,
-      icon: RotationTransition(
-        turns: _spin,
-        child: Icon(
-          Icons.refresh_rounded,
-          color: _busy ? AppColors.accent : null,
-        ),
-      ),
-    );
-  }
-}
+// L'ancien _RefreshButton de la AppBar est retire en Phase 1.0b
+// (top bar minimal). Le rafraichissement automatique des playlists
+// vieilles se fait deja au boot via PlaylistRepository.refreshStale ;
+// un pull-to-refresh sur Home pourra etre ajoute en Phase 1.0c
+// quand le scaffold de discovery sera reecrit.
