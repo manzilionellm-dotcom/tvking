@@ -1,14 +1,24 @@
 // =========================================================
 //  lock_screen.dart — Écran de verrouillage à l'ouverture
 // =========================================================
-//  Affiché par main.dart AVANT le `MaterialApp` si le réglage
-//  "Verrouiller à l'ouverture" est activé. L'utilisateur doit
-//  s'authentifier (empreinte ou PIN système) pour accéder à l'app.
+//  Affiche par main.dart AVANT le `MaterialApp` si le reglage
+//  "Verrouiller a l'ouverture" est active OU si le flavor exige
+//  biometricMandatory (Red Room).
 //
-//  Design : très sobre, dark, avec le logo 7 MOTION centré et un
-//  bouton "Déverrouiller" qui déclenche le prompt biométrique.
-//  Si le user annule ou foire son auth, il peut retenter ; pas
-//  de "kill the app" — Android lui-même propose le PIN fallback.
+//  L'utilisateur a DEUX chemins pour entrer :
+//
+//    1) Empreinte biometrique systeme. Auto-declenchee au boot,
+//       re-declenchable via le bouton "Empreinte digitale".
+//       Bypass si l'OS n'a pas de PIN/schema configure ET aucun
+//       capteur biometrique (local_auth retourne true direct).
+//
+//    2) Code a 4 chiffres GERE PAR L'APP (AppPinSettings).
+//       Par defaut "0000" sur une install fraiche, modifiable
+//       dans Reglages > Securite. Ce chemin marche TOUJOURS,
+//       independamment de la config Android — important pour
+//       les capteurs sous-ecran qui n'arrivent pas a registrer
+//       le doigt (cas vecu par l'utilisateur sur sa premiere
+//       install Red Room).
 // =========================================================
 
 import 'package:flutter/material.dart';
@@ -18,10 +28,11 @@ import '../../../core/branding/verified_badge.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../data/app_pin_settings.dart';
 import '../data/biometric_auth.dart';
 
 class LockScreen extends StatefulWidget {
-  /// Callback appelé une fois que l'auth a réussi.
+  /// Callback appele une fois que l'auth a reussi (biometrie ou PIN).
   final VoidCallback onUnlocked;
 
   const LockScreen({super.key, required this.onUnlocked});
@@ -32,46 +43,68 @@ class LockScreen extends StatefulWidget {
 
 class _LockScreenState extends State<LockScreen> {
   bool _authenticating = false;
-  bool _attempted = false;
-  // Nombre d'echecs / annulations consecutifs. Au-dela de 2, on
-  // affiche un message de secours pour debloquer l'utilisateur qui
-  // n'a pas de PIN systeme configure ou dont le capteur sous l'ecran
-  // ne repond pas. C'est la difference entre un utilisateur frustre
-  // qui desinstalle l'app et un utilisateur qui sait quoi faire.
-  int _failures = 0;
+  // PIN tape par l'utilisateur. On utilise un TextEditingController
+  // plutot qu'un setState a chaque keystroke pour la perf et pour
+  // pouvoir clear() le champ apres une tentative ratee.
+  final TextEditingController _pinCtrl = TextEditingController();
+  String? _pinError;
+  // Le PIN est-il encore le defaut "0000" ? Si oui, on affiche un
+  // helper pour le faire savoir au user (utile sur premiere install).
+  bool _isDefaultPin = false;
 
   @override
   void initState() {
     super.initState();
-    // Auto-déclenche le prompt biométrique dès que l'écran est
-    // affiché, sans que l'user ait à tap "Déverrouiller" la première
-    // fois. UX d'app bancaire : un seul geste = empreinte au boot.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _unlock());
+    // Auto-declenche le prompt biometrique au boot, comme une app
+    // bancaire. Si ca echoue (capteur HS, annulation), le user a
+    // toujours le PIN comme parachute.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _tryBiometric());
+    AppPinSettings.instance.isUsingDefault().then((bool isDefault) {
+      if (mounted) setState(() => _isDefaultPin = isDefault);
+    });
   }
 
-  Future<void> _unlock() async {
+  @override
+  void dispose() {
+    _pinCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _tryBiometric() async {
     if (_authenticating) return;
-    setState(() {
-      _authenticating = true;
-      _attempted = true;
-    });
+    setState(() => _authenticating = true);
     final bool ok = await BiometricAuth.instance.authenticate(
-      reason: 'Déverrouille ${FlavorConfig.current.appName}',
+      reason: 'Deverrouille ${FlavorConfig.current.appName}',
     );
     if (!mounted) return;
     if (ok) {
       widget.onUnlocked();
-    } else {
-      setState(() {
-        _authenticating = false;
-        _failures++;
-      });
+      return;
     }
+    setState(() => _authenticating = false);
+  }
+
+  Future<void> _tryPin() async {
+    final String pin = _pinCtrl.text.trim();
+    if (pin.length < 4) {
+      setState(() => _pinError = 'Tape au moins 4 chiffres.');
+      return;
+    }
+    final bool ok = await AppPinSettings.instance.verify(pin);
+    if (!mounted) return;
+    if (ok) {
+      widget.onUnlocked();
+      return;
+    }
+    setState(() {
+      _pinError = 'Code incorrect.';
+      _pinCtrl.clear();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    // Sur l'écran de lock, on cache la status bar pour que l'écran
+    // Sur l'ecran de lock, on cache la status bar pour que l'ecran
     // soit pleinement immersif (style verrouillage bancaire).
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
 
@@ -79,60 +112,56 @@ class _LockScreenState extends State<LockScreen> {
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              // Logo / marque
-              Container(
-                width: 96,
-                height: 96,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.accent, width: 2),
-                ),
-                child: const Icon(
-                  Icons.lock_outline,
-                  size: 48,
-                  color: AppColors.accent,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  Text(
-                    FlavorConfig.current.appName,
-                    style: AppTextStyles.headlineLarge,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 32,
+              vertical: 24,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                // Logo / marque
+                Container(
+                  width: 96,
+                  height: 96,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.accent, width: 2),
                   ),
-                  // Le badge verifie est l'identite visuelle de
-                  // 7 MOTION uniquement ; il n'apparait pas pour
-                  // Red Room (ou un futur flavor) qui a sa propre
-                  // marque.
-                  if (FlavorConfig.current.flavor == Flavor.sevenMotion) ...[
-                    const SizedBox(width: 8),
-                    const VerifiedBadge.large(),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Application verrouillée',
-                style: AppTextStyles.bodyMedium.copyWith(
-                  color: AppColors.textSecondary,
+                  child: const Icon(
+                    Icons.lock_outline,
+                    size: 48,
+                    color: AppColors.accent,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 48),
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Text(
+                      FlavorConfig.current.appName,
+                      style: AppTextStyles.headlineLarge,
+                    ),
+                    // Le badge verifie est l'identite visuelle de
+                    // 7 MOTION uniquement.
+                    if (FlavorConfig.current.flavor == Flavor.sevenMotion) ...[
+                      const SizedBox(width: 8),
+                      const VerifiedBadge.large(),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Application verrouillee',
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 36),
 
-              // Bouton de déverrouillage manuel — affiche SI on a
-              // deja tente. On garde le bouton visible pendant
-              // _authenticating (avec un spinner integre) au lieu
-              // de le cacher : si le prompt systeme ne s'affiche
-              // pas (capteur sous l'ecran qui ne registre rien, OS
-              // qui ignore le dialog), l'utilisateur ne se retrouve
-              // pas devant un ecran vide en attente.
-              if (_attempted)
+                // ===== BOUTON BIOMETRIE =====
                 ElevatedButton.icon(
-                  onPressed: _authenticating ? null : _unlock,
+                  onPressed: _authenticating ? null : _tryBiometric,
                   icon: _authenticating
                       ? const SizedBox(
                           width: 18,
@@ -145,7 +174,7 @@ class _LockScreenState extends State<LockScreen> {
                       : const Icon(Icons.fingerprint),
                   label: Text(_authenticating
                       ? 'Authentification...'
-                      : 'Déverrouiller'),
+                      : 'Empreinte digitale'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.accent,
                     foregroundColor: AppColors.background,
@@ -154,35 +183,105 @@ class _LockScreenState extends State<LockScreen> {
                       vertical: 14,
                     ),
                     textStyle: AppTextStyles.button,
+                    minimumSize: const Size(220, 48),
                   ),
                 ),
 
-              // Conseil de secours apres 2 echecs/annulations : on
-              // explique a l'utilisateur que SI sa biometrie ne
-              // repond pas, c'est probablement parce qu'aucun PIN
-              // n'est configure cote OS. local_auth ne peut pas
-              // proposer un fallback PIN si l'OS lui-meme n'en a
-              // pas. Le message est minimaliste pour ne pas
-              // distraire si tout fonctionne normalement.
-              if (_failures >= 2) ...[
+                // ===== SEPARATEUR "OU" =====
                 const SizedBox(height: 24),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Text(
-                    "Empreinte indisponible ?\n"
-                    "Configure un verrou d'écran (PIN / schéma) dans "
-                    "Réglages Android → Sécurité, puis reviens et "
-                    "retape Déverrouiller.",
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.bodyMedium.copyWith(
-                      color: AppColors.textTertiary,
-                      fontSize: 12,
-                      height: 1.5,
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Divider(
+                        color: AppColors.textTertiary.withValues(alpha: 0.3),
+                      ),
                     ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        'OU',
+                        style: AppTextStyles.labelSmall.copyWith(
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Divider(
+                        color: AppColors.textTertiary.withValues(alpha: 0.3),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // ===== CHAMP PIN =====
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 240),
+                  child: TextField(
+                    controller: _pinCtrl,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    maxLength: 8,
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.headlineMedium.copyWith(
+                      letterSpacing: 8,
+                    ),
+                    autofocus: false,
+                    onSubmitted: (_) => _tryPin(),
+                    decoration: InputDecoration(
+                      hintText: '••••',
+                      hintStyle: AppTextStyles.headlineMedium.copyWith(
+                        color: AppColors.textTertiary,
+                        letterSpacing: 8,
+                      ),
+                      counterText: '',
+                      errorText: _pinError,
+                      filled: true,
+                      fillColor: AppColors.surfaceHigh,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.digitsOnly,
+                    ],
                   ),
                 ),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: _tryPin,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.surfaceOverlay,
+                    foregroundColor: AppColors.textPrimary,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 12,
+                    ),
+                    minimumSize: const Size(220, 44),
+                  ),
+                  child: const Text('Valider le code'),
+                ),
+
+                // ===== HELPER PIN PAR DEFAUT =====
+                if (_isDefaultPin) ...[
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      'Code par defaut : ${AppPinSettings.defaultPin}\n'
+                      'Modifiable dans Reglages > Securite.',
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        color: AppColors.textTertiary,
+                        fontSize: 12,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
