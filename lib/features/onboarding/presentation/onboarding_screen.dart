@@ -18,6 +18,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/flavor/flavor.dart';
 import '../../../core/support/support_choice_sheet.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -37,44 +38,54 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _controller = PageController();
   int _page = 0;
 
-  /// Slides d'onboarding. La slide "Apporte ton fournisseur" qui
-  /// expliquait "nous ne vendons aucun flux" a ete retiree (post
-  /// virage user vers la posture revendeur : le serveur est
-  /// maintenant hardcode dans FlavorConfig et l'utilisateur ne se
-  /// voit que le formulaire identifiant/code secret).
-  static const List<_OnboardingPage> _pages = <_OnboardingPage>[
-    _OnboardingPage(
-      icon: Icons.local_movies_rounded,
-      title: 'Bienvenue sur 7 MOTION',
-      description:
-          'Cinéma sans limites. Conçu pour la TV, optimisé pour ton téléphone, beau partout.',
-    ),
-    _OnboardingPage(
-      icon: Icons.cloud_upload_outlined,
-      title: 'Charge ta playlist',
-      description:
-          'Ouvre Réglages › Playlists et colle ton URL M3U ou tes identifiants Xtream. Tes chaînes apparaissent en quelques secondes.',
-    ),
-    _OnboardingPage(
-      icon: Icons.fingerprint_rounded,
-      title: 'Active tes chaînes',
-      description:
-          'Cet identifiant unique permet d\'activer ton compte à distance. Envoie-le en 1 tap, notre équipe configure ton accès en quelques minutes.',
-      isMacSlide: true,
-    ),
-    _OnboardingPage(
-      icon: Icons.workspace_premium_rounded,
-      title: 'Tout ce qu\'il te faut',
-      description:
-          'Sans publicité. Cast vers TV, ordi, tablette. Enregistrement en parallèle. VPN intégré. Lecteur 4K/8K. QR-cast. Recherche instantanée.',
-    ),
-    _OnboardingPage(
-      icon: Icons.celebration_outlined,
-      title: 'Essai gratuit 10 jours',
-      description:
-          'Profite de toutes les fonctions pendant 10 jours. Ensuite 13 €/an sur tous tes appareils — paiement sécurisé sur 7themotion.com (jamais in-app).',
-    ),
-  ];
+  /// Slides d'onboarding.
+  ///
+  /// Note : on PASSE de `static const` a un getter parce que la
+  /// premiere slide doit afficher le nom du flavor courant (7 MOTION
+  /// ou Red Room) lu via `FlavorConfig.current.appName` qui n'est
+  /// pas connu a la compilation. La perf reste OK : 5 elements
+  /// crees a chaque acces du getter, negligeable.
+  ///
+  /// La slide 'Apporte ton fournisseur — nous ne vendons aucun flux'
+  /// a ete retiree (post virage utilisateur vers la posture
+  /// revendeur : le serveur est hardcode dans FlavorConfig et
+  /// l'utilisateur ne voit que le formulaire identifiant/code).
+  static List<_OnboardingPage> get _pages {
+    final String appName = FlavorConfig.current.appName;
+    return <_OnboardingPage>[
+      _OnboardingPage(
+        icon: Icons.local_movies_rounded,
+        title: 'Bienvenue sur $appName',
+        description:
+            'Cinéma sans limites. Conçu pour la TV, optimisé pour ton téléphone, beau partout.',
+      ),
+      const _OnboardingPage(
+        icon: Icons.cloud_upload_outlined,
+        title: 'Charge ta playlist',
+        description:
+            'Ouvre Réglages › Playlists et colle ton URL M3U ou tes identifiants Xtream. Tes chaînes apparaissent en quelques secondes.',
+      ),
+      const _OnboardingPage(
+        icon: Icons.fingerprint_rounded,
+        title: 'Active tes chaînes',
+        description:
+            'Cet identifiant unique permet d\'activer ton compte à distance. Envoie-le en 1 tap, notre équipe configure ton accès en quelques minutes.',
+        isMacSlide: true,
+      ),
+      const _OnboardingPage(
+        icon: Icons.workspace_premium_rounded,
+        title: 'Tout ce qu\'il te faut',
+        description:
+            'Sans publicité. Cast vers TV, ordi, tablette. Enregistrement en parallèle. VPN intégré. Lecteur 4K/8K. QR-cast. Recherche instantanée.',
+      ),
+      const _OnboardingPage(
+        icon: Icons.celebration_outlined,
+        title: 'Essai gratuit 10 jours',
+        description:
+            'Profite de toutes les fonctions pendant 10 jours. Ensuite 13 €/an sur tous tes appareils — paiement sécurisé (jamais in-app).',
+      ),
+    ];
+  }
 
   void _next() {
     if (_page < _pages.length - 1) {
@@ -327,8 +338,12 @@ class _MacHandoffSlideState extends State<_MacHandoffSlide> {
   /// fallbacks d'erreur (toast 'impossible d'ouvrir...').
   Future<void> _activate() async {
     if (_mac == null) return;
+    // Message d'activation a destination du support — le nom du
+    // flavor est injecte dynamiquement pour que Red Room ne signe
+    // pas 'Bonjour 7 MOTION' a tes clients.
+    final String appName = FlavorConfig.current.appName;
     final String msg =
-        'Bonjour 7 MOTION, voici mon identifiant pour activer mes chaînes :\n\n$_mac';
+        'Bonjour $appName, voici mon identifiant pour activer mes chaînes :\n\n$_mac';
     await showSupportChoiceSheet(context, customMessage: msg);
   }
 
