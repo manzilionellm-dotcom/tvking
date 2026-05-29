@@ -52,6 +52,13 @@
 //  DÉPLOIEMENT — voir README.md à côté de ce fichier.
 // =========================================================
 
+// API v1 — App Licensing Platform (cf. cloudflare/api_v1.js)
+// Routee depuis le bas du fetch() en haut de la chaine de match.
+import { apiV1 } from './api_v1.js';
+// Migration KV → D1 (cf. cloudflare/migrate_kv_to_d1.js) — exposee
+// via POST /admin/migrate-to-d1 et protegee par X-Admin-Secret.
+import { runMigration } from './migrate_kv_to_d1.js';
+
 // ----- Constantes APK / téléchargement -----
 //
 // URL du GitHub release qui pointe TOUJOURS vers le dernier APK
@@ -1082,6 +1089,15 @@ export default {
     }
 
     const url = new URL(request.url);
+
+    // ===== API v1 (App Licensing Platform — D1 backed) =====
+    // Tout le namespace /api/v1/* part dans le module api_v1.js.
+    // Coexiste avec les anciens /admin/* et /api/* qui restent
+    // intacts (compat ascendante apps mobiles deployees).
+    if (url.pathname.startsWith('/api/v1/')) {
+      return apiV1(request, env);
+    }
+
     const segments = url.pathname.split('/').filter(Boolean);
 
     // /config/:mac — public
@@ -1112,6 +1128,20 @@ export default {
     if (segments[0] === 'admin' && segments[1] === 'panel' && segments.length === 2) {
       if (request.method !== 'GET') return badRequest('only GET');
       return new Response(ADMIN_PANEL_HTML, { headers: HTML_HEADERS });
+    }
+
+    // /admin/migrate-to-d1 — migration one-shot KV → D1.
+    // Protege par X-Admin-Secret comme tout /admin/*. Idempotent :
+    // peut etre rejoue sans dupliquer (skip si device deja en D1).
+    // Body optionnel : { dry_run: true } pour simuler sans ecrire.
+    if (segments[0] === 'admin' && segments[1] === 'migrate-to-d1' &&
+        segments.length === 2) {
+      if (!checkAdmin(request, env)) return unauthorized();
+      if (request.method !== 'POST') return badRequest('only POST');
+      let body = {};
+      try { body = await request.json(); } catch (_) {}
+      const result = await runMigration(env, { dryRun: !!body.dry_run });
+      return json(result);
     }
 
     // /admin/clients — auth requise

@@ -148,19 +148,70 @@ Deux apps dans le MÊME repo (flavors Flutter) :
 
 ---
 
-## Prochaines étapes prévues
+## App Licensing Platform (Phase 1.A — démarrée)
 
-1. **Tester en conditions réelles** sur Fire TV / Android TV /
-   téléphone : enregistrement background, PiP, rotation auto,
-   panel admin web
-2. **Panel admin Flutter** : étendre l'écran existant pour afficher
-   colonnes trial/paid/status (Phase 3 prévue)
-3. **Webhook paiement** : auto-marquer payé sans intervention manuelle
-4. **Notifications client j-3 avant expiration** : push notif "Ton
-   essai expire dans 3 jours"
-5. **Acheter clé Chromecast** pour tester le cast natif Google
-6. **QA pass complet** : suivre les bugs et tester avant lancement
-   public
+Nouvelle plateforme centrale pour gérer toutes les apps du portfolio
+(7 MOTION, Red Room, futures). Cf. brief utilisateur "SaaS App
+Licensing Platform" — Shopify/Stripe/Firebase pour ses apps.
+
+### Stack
+- **Backend** : Cloudflare Worker existant + nouveau module
+  `cloudflare/api_v1.js` (namespace `/api/v1/*` parallèle aux endpoints
+  legacy `/admin/*` et `/api/*` qui restent intacts pour compat ascendante).
+- **Base de données** : nouvelle Cloudflare **D1** (`tvking_licensing`).
+  Schéma complet dans `cloudflare/schema.sql` (apps, customers, devices,
+  licenses, playlists, payments, audit_logs, notifications, resellers,
+  admin_users).
+- **Migration KV → D1** : `cloudflare/migrate_kv_to_d1.js` exposé via
+  `POST /admin/migrate-to-d1` (idempotent, supporte `{dry_run: true}`).
+- **Frontend admin** : `admin-panel/` — React + Vite + Tailwind à
+  déployer sur Cloudflare Pages (build command : `cd admin-panel &&
+  npm install && npm run build`, output : `admin-panel/dist`).
+
+### Setup user one-time (à faire dès que tu installes Node + Wrangler)
+1. `cd cloudflare && wrangler d1 create tvking_licensing`
+2. Paste l'`id` retourné dans `wrangler.toml` à la place de
+   `REMPLACE_MOI_PAR_L_ID_D1`
+3. `wrangler d1 execute tvking_licensing --remote --file=schema.sql`
+4. `wrangler deploy` (deploy le Worker avec les nouveaux endpoints)
+5. `curl -X POST https://<worker>/admin/migrate-to-d1
+        -H "X-Admin-Secret: <secret>"
+        -d '{"dry_run":true}'` pour simuler
+6. Si OK → re-curl sans `dry_run` → la migration écrit dans D1
+7. Connecter Cloudflare Pages au repo (cf. `admin-panel/README.md`)
+
+### Pages disponibles Phase 1.A
+- `/login` — auth JWT (bootstrap : email=`admin`, password=`ADMIN_SECRET`)
+- `/` Dashboard — KPIs lus en direct de D1
+- `/customers` — liste + recherche (lecture seule en 1.A)
+- `/devices` — liste + recherche (lecture seule en 1.A)
+- `/apps` — liste (lecture seule en 1.A)
+- `/activations` — liste licenses (lecture seule en 1.A)
+- `/playlists` `/renewals` `/payments` `/resellers` `/notifications`
+  `/logs` `/settings` → stubs marqués "Soon" en sidebar
+
+### Phase 1.B (prochaine session)
+- Création/édition Customers/Devices/Apps complète (boutons "Nouveau")
+- Formulaire **Activer un MAC** (MAC + App + durée 1m/3m/6m/1y/lifetime → 1 clic)
+- Renouvellement de license (cumule les jours si renouvelé avant expiration)
+- Push playlist Xtream à distance (chiffrement creds via Web Crypto AES-GCM)
+- Filtres avancés sur licenses (status, app, expirant dans 7j)
+- Audit logs en lecture
+
+### Phases ultérieures (non démarrées)
+- 1.C — Resellers (portal séparé + crédits + stats)
+- 2 — Paiements Stripe/PayPal + webhook auto-create license + invoice PDF
+- 3 — Customer self-service portal (account.7themotion.com)
+- 4 — Cron auto-expire + auto-renew + notifs email via Resend
+- 5 — Analytics avancées (revenue, top apps, top resellers, renewal rate)
+
+---
+
+## Anciennes étapes mobiles (gardées en backlog)
+1. Cast Chromecast natif à tester (attente clé)
+2. QA pass complet sur Fire TV / Android TV / téléphone
+3. Bug enregistrement "stop à 1 min" à diagnostiquer (probablement
+   limite 1 connexion par provider IPTV — cf. message user)
 
 ---
 

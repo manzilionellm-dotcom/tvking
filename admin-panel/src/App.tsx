@@ -1,0 +1,79 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { authApi, getToken, setToken, ApiError } from '@/lib/api';
+import { LoginPage } from '@/pages/LoginPage';
+import { DashboardPage } from '@/pages/DashboardPage';
+import { CustomersPage } from '@/pages/CustomersPage';
+import { DevicesPage } from '@/pages/DevicesPage';
+import { AppsPage } from '@/pages/AppsPage';
+import { ActivationsPage } from '@/pages/ActivationsPage';
+
+/// Etats possibles de l'app :
+///   - bootstrapping : on verifie si le token est encore valide
+///   - logged_in     : token OK, on rend les pages
+///   - logged_out    : on rend LoginPage
+type AuthStatus = 'bootstrapping' | 'logged_in' | 'logged_out';
+
+export default function App() {
+  const [status, setStatus] = useState<AuthStatus>('bootstrapping');
+  const nav = useNavigate();
+
+  // Au chargement initial, on tente /auth/me avec le token stocke.
+  // Si 401 → on flush et on bascule en logged_out.
+  useEffect(() => {
+    const t = getToken();
+    if (!t) {
+      setStatus('logged_out');
+      return;
+    }
+    authApi.me()
+      .then(() => setStatus('logged_in'))
+      .catch((e) => {
+        if (e instanceof ApiError && e.status === 401) setToken(null);
+        setStatus('logged_out');
+      });
+  }, []);
+
+  const handleLoggedIn = useCallback(() => {
+    setStatus('logged_in');
+    nav('/');
+  }, [nav]);
+
+  const handleLogout = useCallback(() => {
+    setToken(null);
+    setStatus('logged_out');
+    nav('/login');
+  }, [nav]);
+
+  if (status === 'bootstrapping') {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-obsidian">
+        <div className="text-xs uppercase tracking-widest text-ink-tertiary">
+          Chargement…
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'logged_out') {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage onLoggedIn={handleLoggedIn} />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    );
+  }
+
+  // Logged in
+  return (
+    <Routes>
+      <Route path="/login" element={<Navigate to="/" replace />} />
+      <Route path="/"            element={<DashboardPage   onLogout={handleLogout} />} />
+      <Route path="/customers"   element={<CustomersPage   onLogout={handleLogout} />} />
+      <Route path="/devices"     element={<DevicesPage     onLogout={handleLogout} />} />
+      <Route path="/apps"        element={<AppsPage        onLogout={handleLogout} />} />
+      <Route path="/activations" element={<ActivationsPage onLogout={handleLogout} />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}

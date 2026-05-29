@@ -1,0 +1,60 @@
+# =========================================================
+#  build-admin-panel.yml — CI sanity check du panel admin
+# =========================================================
+#  Cloudflare Pages se charge du DEPLOIEMENT automatique
+#  (connecte au repo via le dashboard). Ce workflow sert
+#  uniquement a verifier que le panel BUILD sur chaque push
+#  qui touche `admin-panel/`, pour eviter de pousser un
+#  commit qui casse la build sans le savoir.
+#
+#  La Pages CI Cloudflare fera son propre build separe ;
+#  ce workflow est notre garde-fou rapide.
+# =========================================================
+
+name: Build admin panel
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+      - 'feature/**'
+    paths:
+      - 'admin-panel/**'
+      - '.github/workflows/build-admin-panel.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Vite build (sanity check)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: admin-panel
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: admin-panel/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: TypeScript + Vite build
+        run: npm run build
+
+      - name: Show output size
+        run: |
+          echo "=== dist/ contents ==="
+          ls -lah dist/
+          echo "=== total size ==="
+          du -sh dist/

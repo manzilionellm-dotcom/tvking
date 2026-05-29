@@ -16,5 +16,32 @@ compatibility_date = "2025-05-01"
 binding = "KV_7MOTION"
 id = "REMPLACE_MOI_PAR_L_ID_DU_KV"
 
+# =========================================================
+#  D1 — base SQL relationnelle (App Licensing Platform v1)
+# =========================================================
+#  Setup one-time (manuel, sur ta machine ou via le dashboard) :
+#
+#    1) wrangler d1 create tvking_licensing
+#       → te donne un id du genre "abc123-..."
+#
+#    2) Colle cet id ci-dessous a la place de REMPLACE_MOI
+#
+#    3) wrangler d1 execute tvking_licensing --remote --file=schema.sql
+#       → cree toutes les tables (apps, customers, devices, licenses,
+#         playlists, payments, audit_logs, notifications, etc.)
+#
+#  Le Worker accede ensuite a la base via `env.DB.prepare(...)`.
+#  En production le binding fonctionne automatiquement ; en local
+#  `wrangler dev --local --persist` simule D1 avec SQLite local.
+# =========================================================
+[[d1_databases]]
+binding = "DB"
+database_name = "tvking_licensing"
+database_id = "REMPLACE_MOI_PAR_L_ID_D1"
+
 # Le secret admin n'est PAS dans ce fichier — il se met via
 # `wrangler secret put ADMIN_SECRET` pour ne JAMAIS être commité.
+#
+# Pareil pour la cle de chiffrement des credentials Xtream :
+# `wrangler secret put SECRETS_KEY` (32 bytes base64 minimum,
+# genere via `openssl rand -base64 32`).
