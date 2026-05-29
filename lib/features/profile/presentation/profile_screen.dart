@@ -33,6 +33,7 @@ import '../../cast/domain/cast_device.dart';
 import '../../cast/presentation/cast_picker_sheet.dart';
 import '../../device/data/device_identity.dart';
 import '../../epg/presentation/tv_guide_screen.dart';
+import '../../recordings/presentation/recordings_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -83,6 +84,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute<void>(
                   builder: (_) => const TvGuideScreen(),
+                ),
+              ),
+            ),
+            _MenuTile(
+              icon: Icons.fiber_manual_record_rounded,
+              title: 'Mes enregistrements',
+              subtitle: 'Tes captures de direct',
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => const RecordingsScreen(),
                 ),
               ),
             ),

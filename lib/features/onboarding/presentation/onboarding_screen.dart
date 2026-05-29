@@ -37,20 +37,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _controller = PageController();
   int _page = 0;
 
-  /// 4 slides — la 2e est spéciale (widget interactif au lieu d'un
-  /// simple icon + texte). On marque ça avec `isMacSlide = true`.
+  /// Slides d'onboarding. La slide "Apporte ton fournisseur" qui
+  /// expliquait "nous ne vendons aucun flux" a ete retiree (post
+  /// virage user vers la posture revendeur : le serveur est
+  /// maintenant hardcode dans FlavorConfig et l'utilisateur ne se
+  /// voit que le formulaire identifiant/code secret).
   static const List<_OnboardingPage> _pages = <_OnboardingPage>[
     _OnboardingPage(
       icon: Icons.local_movies_rounded,
       title: 'Bienvenue sur 7 MOTION',
       description:
           'Cinéma sans limites. Conçu pour la TV, optimisé pour ton téléphone, beau partout.',
-    ),
-    _OnboardingPage(
-      icon: Icons.verified_user_outlined,
-      title: 'Apporte ton fournisseur',
-      description:
-          '7 MOTION est un lecteur. Nous ne vendons aucun flux, aucune chaîne. Tu dois souscrire un abonnement IPTV auprès du fournisseur de ton choix.',
     ),
     _OnboardingPage(
       icon: Icons.cloud_upload_outlined,
