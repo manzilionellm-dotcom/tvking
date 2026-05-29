@@ -16,6 +16,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../flavor/flavor.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 
@@ -178,10 +179,18 @@ class _PoweredByMarqueeState extends State<PoweredByMarquee>
 class BrandSignature extends StatefulWidget {
   const BrandSignature({
     super.key,
-    this.text = 'THE FEW · NOT FOR EVERYONE',
+    this.text,
   });
 
-  final String text;
+  /// Si null : utilise automatiquement la tagline du flavor courant
+  /// (`FlavorConfig.current.appTagline`). En pratique presque toujours
+  /// null pour que la signature suive l'identite du build (7 MOTION
+  /// affichera 'THE FEW · NOT FOR EVERYONE', Red Room affichera
+  /// 'STRICTLY 18+ · AFTER HOURS', etc.).
+  final String? text;
+
+  /// Texte resolu : flavor tagline si rien d'explicite n'est passe.
+  String get resolvedText => text ?? FlavorConfig.current.appTagline;
 
   @override
   State<BrandSignature> createState() => _BrandSignatureState();
@@ -221,7 +230,7 @@ class _BrandSignatureState extends State<BrandSignature>
 
     if (reduceMotion) {
       return Text(
-        widget.text,
+        widget.resolvedText,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: style.copyWith(color: AppColors.textMuted),
@@ -262,7 +271,7 @@ class _BrandSignatureState extends State<BrandSignature>
             ).createShader(bounds);
           },
           child: Text(
-            widget.text,
+            widget.resolvedText,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: style,

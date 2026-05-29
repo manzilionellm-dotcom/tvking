@@ -42,6 +42,7 @@ class FlavorConfig {
     required this.adultOnly,
     required this.biometricMandatory,
     required this.requireAgeGate,
+    required this.iptvServerUrl,
   });
 
   /// Identité technique du build (utile pour les analytics, le
@@ -75,6 +76,15 @@ class FlavorConfig {
   /// affiché AU PREMIER lancement (puis le choix est mémorisé en
   /// SharedPreferences). Un refus = sortie de l'app.
   final bool requireAgeGate;
+
+  /// URL du serveur Xtream Codes utilise PAR DEFAUT pour ce flavor.
+  /// Cache au client (qui ne voit que les 2 champs identifiant /
+  /// code secret) — c'est l'app qui fournit le serveur implicitement.
+  /// Strategie revendeur : tous les clients de cette app pointent
+  /// vers le meme serveur central, identifie par leurs credentials.
+  /// Si un jour 7 MOTION et Red Room ont des serveurs differents,
+  /// il suffit de changer cette ligne sur la variante concernee.
+  final String iptvServerUrl;
 
   /// Configuration actuelle. Doit être posée par `main()` AVANT
   /// le premier `runApp(...)`. Si on lit sans avoir set, on a un
@@ -124,6 +134,7 @@ class FlavorConfig {
     adultOnly: false,
     biometricMandatory: false,
     requireAgeGate: false,
+    iptvServerUrl: 'http://pro.best-iptvinreviews.com',
   );
 
   /// Red Room — variante adulte stricte.
@@ -135,6 +146,11 @@ class FlavorConfig {
   /// L'age gate "j'ai 18+" reste obligatoire (legal minimum), et
   /// l'utilisateur peut toujours activer un verrou bio + PIN manuelle-
   /// ment via Reglages > Securite s'il le souhaite.
+  ///
+  /// Serveur IPTV : meme URL que 7 MOTION pour l'instant (decision
+  /// utilisateur "un seul serveur partage"). Si on veut splitter
+  /// adulte / grand public sur des serveurs differents plus tard,
+  /// il suffit de changer cette ligne — aucune autre modif d'app.
   static const FlavorConfig redRoom = FlavorConfig(
     flavor: Flavor.redRoom,
     appName: 'Red Room',
@@ -142,5 +158,6 @@ class FlavorConfig {
     adultOnly: true,
     biometricMandatory: false,
     requireAgeGate: true,
+    iptvServerUrl: 'http://pro.best-iptvinreviews.com',
   );
 }
