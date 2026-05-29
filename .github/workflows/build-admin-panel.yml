@@ -43,8 +43,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: admin-panel/package-lock.json
+          # Pas de cache npm pour ce 1er build : il faudrait commiter
+          # un package-lock.json pour activer le cache, mais on n'en
+          # a pas encore. On le rajoutera quand le lockfile sera
+          # genere automatiquement par npm install ci-dessous et
+          # committe via un futur commit.
 
       - name: Install dependencies
         run: npm install
