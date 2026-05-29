@@ -420,19 +420,14 @@ jobs:
       - name: Generate AppLocalizations from .arb files
         run: flutter gen-l10n || true
 
-      # NOTE — Icône lanceur pour Red Room
-      # ────────────────────────────────────
-      # Phase de stabilisation : on ne génère PAS d'icône custom pour
-      # ce build. La cible cible 'R rouge sur velours' demande un
-      # asset designé proprement (ou un pipeline Pillow/Python qui
-      # n'est pas encore validé). En attendant, le build sort avec
-      # l'icône Flutter par défaut, ce qui n'empêche PAS le
-      # fonctionnement de l'app — c'est juste moche.
-      #
-      # Quand on aura un vrai logo Red Room (SVG/PNG livré par un
-      # designer ou produit via Pillow), on remettra le step
-      # `flutter_launcher_icons -f flutter_launcher_icons_redroom.yaml`
-      # ici et l'icône passera ember-rouge sur velours.
+      # L'utilisateur a livre le vrai logo Red Room (PNG 1254x1254,
+      # R stylise + silhouette + "RED ROOM 18+"). On le commit dans
+      # assets/branding/logo_redroom.png. flutter_launcher_icons
+      # genere maintenant toutes les tailles mipmap-* pour l'icone
+      # de bureau Android depuis ce source. Plus jamais le F bleu
+      # Flutter par defaut.
+      - name: Generate launcher icons (Red Room logo)
+        run: dart run flutter_launcher_icons -f flutter_launcher_icons_redroom.yaml
 
       # CLEF DE VOÛTE : on cible main_redroom.dart, qui pose
       # FlavorConfig.redRoom AVANT le boot commun.

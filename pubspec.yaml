@@ -176,3 +176,4 @@ flutter:
   # l'accueil et l'écran "À propos".
   assets:
     - assets/branding/logo_7motion.jpg
+    - assets/branding/logo_redroom.png

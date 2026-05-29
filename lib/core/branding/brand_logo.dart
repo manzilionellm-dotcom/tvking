@@ -17,6 +17,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../flavor/flavor.dart';
 import '../theme/app_colors.dart';
 import '../theme/lumiere_tokens.dart';
 
@@ -37,7 +38,29 @@ class BrandLogo extends StatelessWidget {
 
   final BrandLogoSize size;
 
-  static const String _assetPath = 'assets/branding/logo_7motion.jpg';
+  /// Asset PNG/JPG selon le flavor courant. Le logo Red Room (R rouge
+  /// stylise sur velours noir, livre par l'utilisateur) remplace
+  /// 1:1 le logo 7 MOTION partout dans l'app quand le binaire est
+  /// celui de Red Room.
+  static String get _assetPath {
+    switch (FlavorConfig.current.flavor) {
+      case Flavor.redRoom:
+        return 'assets/branding/logo_redroom.png';
+      case Flavor.sevenMotion:
+        return 'assets/branding/logo_7motion.jpg';
+    }
+  }
+
+  /// Lettre de repli affichee si l'asset image ne charge pas (rare,
+  /// mais on prefere une lettre qu'un widget casse).
+  static String get _fallbackLetter {
+    switch (FlavorConfig.current.flavor) {
+      case Flavor.redRoom:
+        return 'R';
+      case Flavor.sevenMotion:
+        return '7';
+    }
+  }
 
   double get _dp {
     switch (size) {
@@ -90,7 +113,7 @@ class BrandLogo extends StatelessWidget {
         errorBuilder: (BuildContext _, Object __, StackTrace? ___) {
           return Center(
             child: Text(
-              '7',
+              _fallbackLetter,
               style: TextStyle(
                 color: AppColors.accent,
                 fontSize: _dp * 0.5,

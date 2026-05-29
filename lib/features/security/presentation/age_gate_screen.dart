@@ -23,7 +23,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../core/flavor/flavor.dart';
+import '../../../core/branding/brand_logo.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/cinematic_spacing.dart';
@@ -51,7 +51,6 @@ class AgeGateScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final FlavorConfig flavor = FlavorConfig.current;
     return Scaffold(
       backgroundColor: AppColors.voidSurface,
       body: SafeArea(
@@ -69,30 +68,13 @@ class AgeGateScreen extends StatelessWidget {
                 children: <Widget>[
                   const Spacer(),
 
-                  // Wordmark Red Room — grand "R" rouge sang
-                  // dans un cercle velours.
-                  Center(
-                    child: _RedRoomMark(),
-                  ),
-                  const SizedBox(height: CinematicSpacing.xl),
-
-                  // App name + tagline
-                  Text(
-                    flavor.appName,
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.displayHero.copyWith(
-                      fontSize: 32,
-                      letterSpacing: -0.6,
-                    ),
-                  ),
-                  const SizedBox(height: CinematicSpacing.xs),
-                  Text(
-                    flavor.appTagline,
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.eyebrowChampagne.copyWith(
-                      color: AppColors.champagneDeep,
-                    ),
-                  ),
+                  // Logo Red Room officiel (R stylise + silhouette
+                  // + 'RED ROOM 18+', livre par l'utilisateur). Le
+                  // PNG inclut deja le wordmark + le badge 18+ donc
+                  // on ne re-affiche PAS 'Red Room' ni la tagline
+                  // en dessous — ce serait redondant et nuirait a
+                  // la composition.
+                  const Center(child: BrandLogo.splash()),
 
                   const SizedBox(height: CinematicSpacing.xxl),
 
@@ -164,48 +146,6 @@ class AgeGateScreen extends StatelessWidget {
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Mark "R" gros et sang, posé dans un cercle velours noir.
-/// Sert d'identité visuelle ultra-minimale en attendant un
-/// vrai asset graphique (icône lanceur en SVG/PNG sera produite
-/// plus tard et viendra remplacer cet emoji-typo).
-class _RedRoomMark extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 120,
-      height: 120,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: const RadialGradient(
-          colors: <Color>[
-            Color(0xFF2A0A10), // velours rouge brunâtre
-            Color(0xFF050507), // void
-          ],
-          radius: 1.0,
-        ),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: AppColors.accent.withValues(alpha: 0.45),
-            blurRadius: 38,
-            spreadRadius: 2,
-          ),
-        ],
-      ),
-      child: Center(
-        child: Text(
-          'R',
-          style: AppTextStyles.displayLarge.copyWith(
-            color: AppColors.accent,
-            fontSize: 72,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -2,
           ),
         ),
       ),

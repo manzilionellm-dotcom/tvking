@@ -5,10 +5,10 @@
 #  `build_redroom` via :
 #    dart run flutter_launcher_icons -f flutter_launcher_icons_redroom.yaml
 #
-#  Le PNG source `assets/branding/logo_redroom.png` est généré
-#  dans le job CI lui-même par ImageMagick (un grand R rouge sang
-#  sur fond velours noir). Une fois la marque mûre, on remplacera
-#  ce placeholder par un asset designé proprement.
+#  Le PNG source `assets/branding/logo_redroom.png` est le vrai logo
+#  Red Room livré par l'utilisateur (R stylisé + silhouette + "RED
+#  ROOM 18+", 1254×1254). flutter_launcher_icons génère toutes les
+#  tailles mipmap-* depuis ce source pour l'icône de bureau Android.
 # =========================================================
 
 flutter_launcher_icons:
