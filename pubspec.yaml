@@ -128,6 +128,30 @@ dependencies:
   # verrouillage Android — pas besoin de gérer notre propre PIN.
   local_auth: ^2.3.0
 
+# ============================================================
+#  Dependency overrides — corrections de versions transitive
+# ============================================================
+#  Le build CI Red Room a foire le 2026-05-30 sur l'erreur :
+#    "Could not find method kotlin{} for arguments [...] on
+#     project ':screen_brightness_android'"
+#
+#  Cause : `screen_brightness_android` 2.1.x (tire en transitif par
+#  `media_kit_video` pour gerer la luminosite plein-ecran) utilise
+#  un bloc `kotlin{ jvmToolchain(17) }` dans son build.gradle qui
+#  exige le plugin Kotlin Gradle 1.8+ applique au project root.
+#  Le `flutter create` du runner CI genere un build.gradle avec une
+#  config Kotlin plus ancienne donc l'evaluation Gradle plante.
+#
+#  Solution sans casser le reste : on pin la version 1.x de
+#  screen_brightness_android (build.gradle sans bloc kotlin{}).
+#  La 1.x est largement compatible avec media_kit_video qui
+#  n'utilise que les methodes communes (getBrightness, setBrightness).
+#  A re-evaluer quand on upgradera l'AGP / Kotlin Gradle plugin
+#  cote android_overlay/apply_cast_patch.sh.
+# ============================================================
+dependency_overrides:
+  screen_brightness_android: ^1.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
