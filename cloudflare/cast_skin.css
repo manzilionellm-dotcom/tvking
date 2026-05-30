@@ -1,0 +1,35 @@
+/* =========================================================
+   cast_skin.css — Skin Styled Media Receiver Cloudflare-hosted
+   =========================================================
+   Voie alternative au Custom Receiver (cast_receiver.js). A
+   utiliser si on enregistre une "Styled Media Receiver" sur la
+   Google Cast SDK Developer Console : Google fournit le HTML
+   par defaut, on injecte juste CE fichier comme "Skin URL".
+
+   URL publique a coller dans le champ Skin URL :
+     https://99999.7themotion.com/cast-skin.css
+
+   Variables documentees par Google :
+     https://developers.google.com/cast/docs/styled_receiver/customize
+   ========================================================= */
+
+cast-media-player {
+  /* Fond global de l'idle screen + des controles overlay. */
+  --background-color: #0A0A0C;
+
+  /* Logo affiche sur l'idle screen (rien ne joue) — on pointe
+     vers le PNG 7 MOTION committe dans le repo (raw GitHub). */
+  --logo-image: url('https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/main/assets/branding/logo_7motion.jpg');
+  --logo-background-color: #0A0A0C;
+
+  /* Splash image apparait pendant le chargement d'un media. */
+  --splash-image: url('https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/main/assets/branding/logo_7motion.jpg');
+  --splash-background-color: #0A0A0C;
+
+  /* Couleur ember pour la barre de progression et la pause. */
+  --progress-color: #D63A30;
+  --break-color: #D63A30;
+  --buffer-color: rgba(255, 90, 74, 0.45);
+  --play-icon-color: #F2F2F4;
+  --pause-icon-color: #F2F2F4;
+}

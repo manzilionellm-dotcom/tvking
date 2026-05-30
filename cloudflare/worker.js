@@ -58,6 +58,10 @@ import { apiV1 } from './api_v1.js';
 // Migration KV → D1 (cf. cloudflare/migrate_kv_to_d1.js) — exposee
 // via POST /admin/migrate-to-d1 et protegee par X-Admin-Secret.
 import { runMigration } from './migrate_kv_to_d1.js';
+// Cast receiver HTML (cf. cloudflare/cast_receiver.js) — page CAF
+// hebergee a /cast-receiver, URL a coller dans la Google Cast SDK
+// Developer Console pour obtenir un Receiver Application ID.
+import { castReceiverHtml } from './cast_receiver.js';
 
 // ----- Constantes APK / téléchargement -----
 //
@@ -1202,6 +1206,52 @@ export default {
       (segments.length === 2 && segments[0] === 'redroom' && segments[1] === 'dl')
     ) {
       return Response.redirect(REDROOM_APK_URL, 302);
+    }
+
+    // /cast-receiver — page HTML CAF pour Google Cast Custom Receiver.
+    // URL a coller dans la Google Cast SDK Developer Console.
+    // Query string ?app=redroom bascule le branding sur Red Room ;
+    // sans query string, c'est le branding 7 MOTION par defaut.
+    if (segments.length === 1 && segments[0] === 'cast-receiver') {
+      const flavor = url.searchParams.get('app') || '7motion';
+      return new Response(castReceiverHtml(flavor), {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          // Cache 10 minutes — la page receiver bouge peu, et le
+          // Chromecast la recharge a chaque session de cast.
+          'Cache-Control': 'public, max-age=600',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+
+    // /cast-skin.css — feuille de style pour Google Cast Styled
+    // Media Receiver. Voie alternative au Custom Receiver, plus
+    // simple a enregistrer cote Console (juste un CSS au lieu d'un
+    // HTML complet). Sert le fichier cast_skin.css en CSS.
+    if (segments.length === 1 && segments[0] === 'cast-skin.css') {
+      // Le fichier statique CSS est embarque dans cast_receiver.js
+      // version compactee pour eviter une 2e dependance d'import.
+      // On le declare ici inline pour rester self-contained.
+      const css = `cast-media-player{` +
+        `--background-color:#0A0A0C;` +
+        `--logo-image:url('https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/main/assets/branding/logo_7motion.jpg');` +
+        `--logo-background-color:#0A0A0C;` +
+        `--splash-image:url('https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/main/assets/branding/logo_7motion.jpg');` +
+        `--splash-background-color:#0A0A0C;` +
+        `--progress-color:#D63A30;` +
+        `--break-color:#D63A30;` +
+        `--buffer-color:rgba(255,90,74,0.45);` +
+        `--play-icon-color:#F2F2F4;` +
+        `--pause-icon-color:#F2F2F4;` +
+        `}`;
+      return new Response(css, {
+        headers: {
+          'Content-Type': 'text/css; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
     }
 
     // ===== CODES VANITY DOWNLOADER =====
