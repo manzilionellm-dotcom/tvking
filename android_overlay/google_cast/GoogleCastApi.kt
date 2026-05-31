@@ -139,7 +139,30 @@ class GoogleCastApi(
             return
         }
         try {
-            val dialog = MediaRouteChooserDialog(fragmentActivity)
+            // ⚠️ Bug fix Android (constat diagnostic cast 2026-05-31) :
+            //
+            //   IllegalStateException: background can not be translucent: #0
+            //
+            // MainActivity Flutter herite par defaut d'un theme qui a
+            // android:windowIsTranslucent=true (pour permettre des
+            // transitions de demarrage propres). MediaRouteChooserDialog
+            // refuse de s'afficher sur un context translucide.
+            //
+            // Fix : on enveloppe l'activity dans un ContextThemeWrapper
+            // avec un theme opaque (Material AppCompat Dialog). Le dialog
+            // utilise ce theme pour son rendu et accepte de s'ouvrir.
+            // Aucune influence sur MainActivity reelle ni sur les autres
+            // dialogs de l'app.
+            // Theme AppCompat Light Dialog — opaque, guaranti dispo
+            // (androidx.appcompat est deja une dep transitive du Cast SDK).
+            // Si on voulait pousser plus loin, on pourrait declarer
+            // un theme custom dans styles.xml aux couleurs 7 MOTION,
+            // mais le rendering AppCompat suffit pour la liste des TVs.
+            val themedContext = androidx.appcompat.view.ContextThemeWrapper(
+                fragmentActivity,
+                androidx.appcompat.R.style.Theme_AppCompat_Light_Dialog_Alert,
+            )
+            val dialog = MediaRouteChooserDialog(themedContext)
             dialog.routeSelector = ctx.mergedSelector!!
             dialog.show()
             result.success(null)
