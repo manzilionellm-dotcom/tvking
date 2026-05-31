@@ -240,29 +240,51 @@ jobs:
             exit 0
           fi
           echo "Patching $FILE"
-          # Le chemin est passé via env var pour éviter le piège
-          # des heredoc Python où $FILE ne serait pas substitué.
           export PATCH_FILE="$FILE"
+          # Dump diagnostique : montre ce qu'il y a dans le fichier
+          # autour de la ligne 52 (l'erreur disait line: 52).
+          echo "===== ORIGINAL build.gradle (lignes 40-65) ====="
+          sed -n '40,65p' "$FILE"
+          echo "===== fin dump ====="
           python3 << 'PYEOF'
           import os, re
           file = os.environ['PATCH_FILE']
           with open(file) as f:
-              content = f.read()
-          # Match `kotlin {` en début de ligne, suivi de n'importe
-          # quoi jusqu'au `}` qui ferme. Non-greedy.
-          new = re.sub(
-              r'^kotlin\s*\{[^{}]*\}\s*\n',
-              '',
-              content,
-              flags=re.MULTILINE,
-          )
-          if new != content:
+              lines = f.readlines()
+          # Parseur ligne-par-ligne qui retire tout bloc `kotlin {...}`
+          # quelle que soit l'indentation et même s'il y a des
+          # accolades imbriquées. On compte les `{` et `}` pour
+          # trouver la fin réelle du bloc.
+          kotlin_block_re = re.compile(r'^\s*kotlin\s*\{')
+          out = []
+          in_kotlin = False
+          depth = 0
+          removed = 0
+          for line in lines:
+              if not in_kotlin:
+                  if kotlin_block_re.match(line):
+                      in_kotlin = True
+                      depth = line.count('{') - line.count('}')
+                      removed += 1
+                      if depth <= 0:
+                          in_kotlin = False  # bloc sur une seule ligne
+                      continue
+                  out.append(line)
+              else:
+                  depth += line.count('{') - line.count('}')
+                  removed += 1
+                  if depth <= 0:
+                      in_kotlin = False
+          if removed > 0:
               with open(file, 'w') as f:
-                  f.write(new)
-              print('✓ bloc kotlin{} retiré')
+                  f.writelines(out)
+              print(f'✓ retiré {removed} ligne(s) du bloc kotlin{{}}')
           else:
               print('⊙ aucun bloc kotlin{} trouvé (peut-être déjà fixé)')
           PYEOF
+          echo "===== APRÈS patch (lignes 40-65) ====="
+          sed -n '40,65p' "$FILE"
+          echo "===== fin dump ====="
       # `generate: true` dans pubspec.yaml, mais sur certaines versions
       # du SDK ça ne se produit pas. On le lance explicitement.
       # `|| true` : gen-l10n émet des WARNINGS qui n'affectent pas
