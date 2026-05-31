@@ -1276,9 +1276,18 @@ export default {
     // ce qui n'est PAS dans cette liste — y compris caractères
     // unicode, espaces encodés, etc. — parce que Downloader ne
     // supporte que ASCII de toute façon.
+    // Routes reservees : tout segment unique present ici n'est PAS
+    // considere comme un code vanity Downloader et donc N'EST PAS
+    // redirige vers l'APK par le catch-all. C'est une defense en
+    // profondeur : si pour une raison X le `if` specifique d'une
+    // route ci-dessus echoue a matcher (modif accidentelle, bug
+    // wrangler bundle, edge avec ancien cache), le catch-all ne fera
+    // PAS de redirect APK trompeur — il tombera proprement sur le
+    // 404 final.
     const RESERVED = new Set([
       'admin', 'config', 'dl', 'install', 'api', 'panel',
       'redroom',
+      'cast-receiver', 'cast-skin.css',
       'favicon.ico', 'robots.txt', 'sitemap.xml',
     ]);
     if (segments.length === 1 && !RESERVED.has(segments[0].toLowerCase())) {
