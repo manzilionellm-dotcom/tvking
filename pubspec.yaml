@@ -72,7 +72,14 @@ dependencies:
   # surcouche Dart propre. Inconvénient : ajoute ~25 Mo
   # à l'APK (les binaires libmpv pour ARM/x86).
   media_kit: ^1.1.11
-  media_kit_video: ^1.2.5
+  # Bump 1.2.5 → 1.3.0+ (suggestion de l'erreur pub get du 2026-05-31)
+  # parce que media_kit_video 1.2.x utilisait
+  # screen_brightness_platform_interface ^0.2.2 (ancienne version)
+  # qui pullait screen_brightness 2.x → screen_brightness_android 2.1.5
+  # qui a un build.gradle avec un bloc kotlin{} cassant le build CI.
+  # media_kit_video 1.3.0+ utilise platform_interface 2.x avec un
+  # screen_brightness compatible et un build.gradle sans bloc kotlin{}.
+  media_kit_video: ^1.3.0
   media_kit_libs_android_video: ^1.3.6
 
   # Garde l'écran allumé pendant la lecture (sinon Android
@@ -128,29 +135,11 @@ dependencies:
   # verrouillage Android — pas besoin de gérer notre propre PIN.
   local_auth: ^2.3.0
 
-# ============================================================
-#  Dependency overrides — corrections de versions transitive
-# ============================================================
-#  Le build CI Red Room a foire le 2026-05-30 sur l'erreur :
-#    "Could not find method kotlin{} for arguments [...] on
-#     project ':screen_brightness_android'"
-#
-#  Cause : `screen_brightness_android` 2.1.x (tire en transitif par
-#  `media_kit_video` pour gerer la luminosite plein-ecran) utilise
-#  un bloc `kotlin{ jvmToolchain(17) }` dans son build.gradle qui
-#  exige le plugin Kotlin Gradle 1.8+ applique au project root.
-#  Le `flutter create` du runner CI genere un build.gradle avec une
-#  config Kotlin plus ancienne donc l'evaluation Gradle plante.
-#
-#  Solution sans casser le reste : on pin la version 1.x de
-#  screen_brightness_android (build.gradle sans bloc kotlin{}).
-#  La 1.x est largement compatible avec media_kit_video qui
-#  n'utilise que les methodes communes (getBrightness, setBrightness).
-#  A re-evaluer quand on upgradera l'AGP / Kotlin Gradle plugin
-#  cote android_overlay/apply_cast_patch.sh.
-# ============================================================
-dependency_overrides:
-  screen_brightness_android: ^1.0.0
+# Pas de dependency_overrides : le bump media_kit_video ^1.3.0
+# ci-dessus suffit. L'override screen_brightness_android: ^1.0.0
+# que j'avais ajoute le 2026-05-30 creait un conflit de versions
+# impossible avec media_kit_video 1.2.x (cf. pub get error du
+# 2026-05-31). Retire en suivant la suggestion explicite de pub.
 
 dev_dependencies:
   flutter_test:
