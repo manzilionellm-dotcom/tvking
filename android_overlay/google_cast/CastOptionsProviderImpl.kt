@@ -5,14 +5,24 @@
 //  `OptionsProvider` et fournit le CAST APP ID — l'identifiant
 //  du receiver-side à charger sur le Chromecast.
 //
-//  Pour 7 MOTION on utilise le **Default Media Receiver** de
-//  Google (App ID `CC1AD845`). C'est un receiver générique qui
-//  joue n'importe quel flux HLS / DASH / MP4 / MP2T sans qu'on
-//  ait à développer une web app receiver custom (qui exigerait
-//  un compte Cast Developer Console + hébergement HTML).
+//  Receiver utilisé : Custom Styled Media Receiver enregistré
+//  sur la Google Cast SDK Developer Console (compte
+//  manzilionel.lm@gmail.com) sous l'App ID `46F815A5`.
+//
+//  Le receiver est skinné via le CSS hébergé sur notre Worker
+//  Cloudflare :
+//    https://99999.7themotion.com/cast-skin.css
+//  Couleurs : fond charbon (#0A0A0C), accent ember (#D63A30),
+//  logo 7 MOTION en idle / splash.
+//
+//  Statut : "Unpublished" sur la Console = utilisable uniquement
+//  sur les Chromecast enregistrées comme appareils de test sur
+//  le compte développeur. Pour distribution grand public, il
+//  faudra "Publish" l'application sur la Console (séparément).
 //
 //  Comportement : tap sur la TV depuis le dialog Cast → la TV
-//  charge l'URL receiver de Google → joue notre stream.
+//  charge notre receiver brandé → joue notre stream avec le
+//  logo 7 MOTION sur l'idle screen.
 //
 //  Ce fichier est référencé dans AndroidManifest.xml :
 //    <meta-data
@@ -50,10 +60,13 @@ class CastOptionsProviderImpl : OptionsProvider {
             .build()
 
         return CastOptions.Builder()
-            // App ID = Default Media Receiver (CC1AD845)
-            // = receiver web officiel de Google, joue HLS/DASH/MP4/MP2T
-            // sans dev custom. Idéal pour notre cas IPTV.
-            .setReceiverApplicationId("CC1AD845")
+            // App ID = Custom Styled Media Receiver "7 MOTION"
+            // enregistre sur la Google Cast SDK Developer Console
+            // (compte manzilionel.lm@gmail.com, statut Unpublished
+            // au 2026-05-31). Skin URL pointe vers
+            // https://99999.7themotion.com/cast-skin.css → logo
+            // 7 MOTION, fond charbon, accent ember sur la TV.
+            .setReceiverApplicationId("46F815A5")
             .setCastMediaOptions(mediaOptions)
             // Resume la session si l'app est tuée puis relancée
             // dans les 30 min — l'utilisateur ne se reconnecte pas
