@@ -69,12 +69,20 @@ abstract final class TitleCurator {
   static const List<String> _stripWords = <String>[
     'raw', 'backup', 'bkp', 'feed', 'source', 'src', 'stream',
     'main', 'master', 'mirror',
-    'fhd', 'uhd', 'sd', 'hd+', 'full hd', 'fullhd', '4k', '4 k',
+    // Qualité video
+    'fhd', 'uhd', 'sd', 'hd', 'hd+', 'full hd', 'fullhd', '4k', '4 k',
     'h265', 'h264', 'hevc', 'avc',
+    // Frame rate (typiques sur les chaines sport / 24/7)
+    '60fps', '60 fps', '30fps', '30 fps', '50fps', '25fps', '120fps',
     'iptv', 'xtream',
     'opt', 'option',
+    // Combinaisons 24/7 / 24h
     '24/7', '24-7', '24h', '247',
     'vip', 'plus', 'premium',
+    // Combinaisons qualite avec slash (HD/RAW, FHD/SD)
+    // a virer AVANT que la normalisation des slashes les casse
+    'hd/raw', 'fhd/raw', 'sd/raw', 'uhd/raw',
+    'hd/sd', 'fhd/hd', '4k/uhd',
     // tags de qualité parfois entre crochets
     '[hd]', '[fhd]', '[uhd]', '[4k]', '[sd]', '[vip]', '[backup]',
     '[raw]', '[main]',
@@ -90,17 +98,21 @@ abstract final class TitleCurator {
   );
 
   // -----------------------------------------------------------------
-  //  Bandes de separateurs IPTV : ########, ________, ========,
-  //  --------, ~~~~~~~ et derivees. Tres frequents dans les flux
-  //  Xtream pour signaler une nouvelle categorie ou separer
-  //  visuellement (ex : "######## Adult RAW ###############").
+  //  Bandes de separateurs IPTV : ##, ##########, ____,
+  //  ========, --------, ~~~~~~~ et derivees. Tres frequents
+  //  dans les flux Xtream pour signaler une nouvelle categorie
+  //  ou separer visuellement.
+  //  Exemples reels du fournisseur Lionel :
+  //    "## 24/7 ACTION/ADVENTURE ##"
+  //    "## 24/7 CARTOON ##"
+  //    "### FRANCE CARRIBEAN ###"
   //  On les retire au debut, a la fin, OU encadres d'espaces au
-  //  milieu d'un nom. Seuil >=3 pour ne pas casser des noms
-  //  legitimes comme "MTV_LIVE" ou "BBC-Two" qui n'ont qu'un seul
-  //  separateur.
+  //  milieu d'un nom. Seuil >=2 pour matcher les `##` typiques.
+  //  Risque de faux-positif : on touche pas a "F#" ou "C#" car
+  //  ils n'ont qu'UN # (pas 2+), donc safe.
   // -----------------------------------------------------------------
   static final RegExp _bulkSeparators = RegExp(
-    r'(^|\s)[#_=*\-~]{3,}(\s|$)',
+    r'(^|\s)[#_=*\-~]{2,}(\s|$)',
   );
 
   // -----------------------------------------------------------------
@@ -264,9 +276,28 @@ abstract final class TitleCurator {
     }
 
     // 6) Normalise les espaces et la ponctuation résiduelle.
+    //    /|\ deviennent des espaces. C'est ici que "HD/RAW" devient
+    //    "HD RAW" et "MOVIES/ACTORS" devient "MOVIES ACTORS".
     s = s.replaceAll(RegExp(r'[\|/\\]+'), ' ');
     s = s.replaceAll(RegExp(r'\s*[-–—]\s*$'), '');
     s = s.replaceAll(RegExp(r'^\s*[-–—]\s*'), '');
+    s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    // 6.5) DEUXIÈME passe de strip words sur le résultat normalisé.
+    //      Apres step 6, "HD/RAW" est devenu "HD RAW" : maintenant
+    //      les tokens HD et RAW peuvent etre attrapes par
+    //      _stripWords s'ils n'avaient pas matche au step 4 (ou si
+    //      le slash etait dans le chemin).
+    //      Pareil pour "MOVIES/ACTORS RAW 60fps" qui devient
+    //      "MOVIES ACTORS RAW 60fps" → ici on attrape RAW + 60fps.
+    for (final String w in _stripWords) {
+      final RegExp rx = RegExp(
+        r'(^|\s)' + RegExp.escape(w) + r'(\s|$)',
+        caseSensitive: false,
+      );
+      s = s.replaceAll(rx, ' ');
+    }
+    // Re-normalise les espaces apres ce 2e strip.
     s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
 
     // 7) Title-case respectueux (en gardant les acronymes connus
