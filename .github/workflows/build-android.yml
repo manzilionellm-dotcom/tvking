@@ -215,7 +215,54 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      # `flutter pub get` est censé déclencher gen-l10n quand
+      # Patch screen_brightness_android 2.1.5 cassé
+      # ─────────────────────────────────────────────
+      # Le package screen_brightness_android 2.1.5 publié sur
+      # pub.dev fin mai 2026 a un build.gradle qui contient un
+      # bloc `kotlin { jvmToolchain(17) }` au top-level. Ce bloc
+      # exige que le plugin Kotlin Gradle soit appliqué au project
+      # root, ce que le `flutter create` du runner CI ne fait pas
+      # automatiquement → erreur "Could not find method kotlin()".
+      #
+      # Le bloc jvmToolchain n'est PAS strictement nécessaire pour
+      # la compilation : on l'enlève avec sed et le build passe.
+      # On garde le reste du build.gradle (compileOptions, deps,
+      # etc.) intact.
+      #
+      # Idempotent : si le fichier ou le bloc n'existent pas, le
+      # step réussit sans rien faire.
+      - name: Patch screen_brightness_android build.gradle
+        run: |
+          set -e
+          FILE=$(find ~/.pub-cache/hosted/pub.dev -path "*/screen_brightness_android-*/android/build.gradle" 2>/dev/null | head -1)
+          if [ -z "$FILE" ]; then
+            echo "⊙ screen_brightness_android pas dans pub-cache, skip"
+            exit 0
+          fi
+          echo "Patching $FILE"
+          # Le chemin est passé via env var pour éviter le piège
+          # des heredoc Python où $FILE ne serait pas substitué.
+          export PATCH_FILE="$FILE"
+          python3 << 'PYEOF'
+          import os, re
+          file = os.environ['PATCH_FILE']
+          with open(file) as f:
+              content = f.read()
+          # Match `kotlin {` en début de ligne, suivi de n'importe
+          # quoi jusqu'au `}` qui ferme. Non-greedy.
+          new = re.sub(
+              r'^kotlin\s*\{[^{}]*\}\s*\n',
+              '',
+              content,
+              flags=re.MULTILINE,
+          )
+          if new != content:
+              with open(file, 'w') as f:
+                  f.write(new)
+              print('✓ bloc kotlin{} retiré')
+          else:
+              print('⊙ aucun bloc kotlin{} trouvé (peut-être déjà fixé)')
+          PYEOF
       # `generate: true` dans pubspec.yaml, mais sur certaines versions
       # du SDK ça ne se produit pas. On le lance explicitement.
       # `|| true` : gen-l10n émet des WARNINGS qui n'affectent pas
@@ -416,6 +463,40 @@ jobs:
 
       - name: Get dependencies
         run: flutter pub get
+
+      # Cf. job principal : screen_brightness_android 2.1.5 est cassé
+      # (bloc kotlin{} au top-level qui requiert le plugin Kotlin
+      # appliqué au project root, ce que Flutter ne fait pas dans
+      # cette config CI). On retire le bloc, le reste du build.gradle
+      # est intact, la compilation passe.
+      - name: Patch screen_brightness_android build.gradle (Red Room)
+        run: |
+          set -e
+          FILE=$(find ~/.pub-cache/hosted/pub.dev -path "*/screen_brightness_android-*/android/build.gradle" 2>/dev/null | head -1)
+          if [ -z "$FILE" ]; then
+            echo "⊙ screen_brightness_android pas dans pub-cache, skip"
+            exit 0
+          fi
+          echo "Patching $FILE"
+          export PATCH_FILE="$FILE"
+          python3 << 'PYEOF'
+          import os, re
+          file = os.environ['PATCH_FILE']
+          with open(file) as f:
+              content = f.read()
+          new = re.sub(
+              r'^kotlin\s*\{[^{}]*\}\s*\n',
+              '',
+              content,
+              flags=re.MULTILINE,
+          )
+          if new != content:
+              with open(file, 'w') as f:
+                  f.write(new)
+              print('✓ bloc kotlin{} retiré')
+          else:
+              print('⊙ aucun bloc kotlin{} trouvé')
+          PYEOF
 
       - name: Generate AppLocalizations from .arb files
         run: flutter gen-l10n || true
