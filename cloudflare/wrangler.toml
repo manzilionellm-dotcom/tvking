@@ -10,11 +10,30 @@ main = "worker.js"
 compatibility_date = "2025-05-01"
 
 # Workers KV namespace pour stocker les configs clients.
-# Remplace l'`id` ci-dessous par celui que tu auras créé via
-# `wrangler kv:namespace create "KV_7MOTION"` (voir README).
-[[kv_namespaces]]
-binding = "KV_7MOTION"
-id = "REMPLACE_MOI_PAR_L_ID_DU_KV"
+#
+# TEMPORAIREMENT DÉSACTIVÉ — verification au 2026-05-31 :
+# le compte Cloudflare de l'utilisateur n'a AUCUN namespace KV
+# cree, et le Worker en prod (lively-voice-7cb0) n'a aucun binding
+# attache. L'ancien wrangler.toml referencait un placeholder
+# 'REMPLACE_MOI_PAR_L_ID_DU_KV' qui faisait planter wrangler deploy
+# avec code 10042 "KV namespace not valid".
+#
+# Consequence : les endpoints /api/heartbeat, /admin/clients,
+# /config/:mac (qui utilisent env.KV_7MOTION) retournent des erreurs.
+# OK car non utilises en prod — les apps mobiles utilisent le
+# formulaire login Xtream local, pas le backend KV.
+#
+# Pour les besoins futurs, on migrera vers D1 (cf. Phase 1.A
+# App Licensing Platform) plutot que recreer un KV.
+#
+# Pour re-activer ce binding plus tard si necessaire :
+#   1) npx wrangler kv namespace create "KV_7MOTION"
+#      → te donne un id type "abc123def4567890"
+#   2) Decommente le bloc ci-dessous et remplace l'id
+#   3) wrangler deploy
+# [[kv_namespaces]]
+# binding = "KV_7MOTION"
+# id = "REMPLACE_MOI_PAR_L_ID_DU_KV"
 
 # =========================================================
 #  D1 — base SQL relationnelle (App Licensing Platform v1)
