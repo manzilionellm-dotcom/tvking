@@ -403,8 +403,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         streamUrl: _currentChannel.streamUrl,
         filePath: path,
         // Appelé si le job s'arrête de LUI-MÊME : plafond de 6 h
-        // atteint, ou serveur définitivement injoignable. On finalise
-        // alors la fiche en base et on rafraîchit l'UI (badge "REC").
+        // atteint, serveur définitivement injoignable, OU echec disque
+        // consecutif (Phase 1 / F-02). Le second argument indique la
+        // cause precise pour qu'on affiche le bon message.
         onAutoStopped: _onRecordingAutoStopped,
       );
       if (!ok) {
@@ -426,6 +427,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         programTitle: widget.overrideTitle,
         filePath: path,
         channelLogoUrl: _currentChannel.logoUrl,
+        // Phase 1 / F-04 : on persiste l'URL upstream pour le
+        // diagnostic et pour preparer un futur resume apres kill OS.
+        streamUrl: _currentChannel.streamUrl,
       );
 
       if (mounted) {
@@ -485,26 +489,51 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   /// Callback déclenché par le downloader quand un enregistrement
-  /// s'arrête TOUT SEUL (plafond de 6 h atteint, ou serveur devenu
-  /// injoignable après plusieurs reconnexions). On finalise la fiche
-  /// en base par son chemin (robuste même si l'UI a changé), on coupe
-  /// le ForegroundService s'il ne reste plus aucun job, et on retire
-  /// le badge "REC" si c'est bien l'enregistrement courant.
-  Future<void> _onRecordingAutoStopped(String filePath) async {
+  /// s'arrête TOUT SEUL (plafond de 6 h atteint, serveur devenu
+  /// injoignable après plusieurs reconnexions, OU erreur disque
+  /// consecutive — Phase 1 / F-02). On finalise la fiche en base
+  /// par son chemin (robuste même si l'UI a changé), on coupe le
+  /// ForegroundService s'il ne reste plus aucun job, et on retire le
+  /// badge "REC" si c'est bien l'enregistrement courant.
+  ///
+  /// Le message UX (Phase 1 / F-03) est choisi en fonction de
+  /// [reason] : on ne dit plus "limite de 6 h" quand c'est en fait
+  /// le serveur ou le disque qui a coupe.
+  Future<void> _onRecordingAutoStopped(
+    String filePath,
+    AutoStopReason reason,
+  ) async {
     try {
-      await RecordingRepository.instance.finishRecordingByPath(filePath);
+      await RecordingRepository.instance.finishRecordingByPath(
+        filePath,
+        reason: reason.name,
+      );
       if (HttpRecordingDownloader.instance.activeCount == 0) {
         await RecordingService.instance.stop();
       }
       if (mounted && _activeRecording?.filePath == filePath) {
         setState(() => _activeRecording = null);
-        _toast(
-          'Enregistrement terminé (limite de 6 h atteinte) — '
-          'retrouve-le dans Mes enregistrements',
-        );
+        _toast(_autoStopMessage(reason));
       }
     } catch (e) {
       if (kDebugMode) debugPrint('[Player] auto-stop finalize KO: $e');
+    }
+  }
+
+  /// Texte court, en francais, accessible — un message different par
+  /// cause (Phase 1 / F-03). Reste sous 130 caracteres pour ne pas
+  /// debordre le toast Material.
+  String _autoStopMessage(AutoStopReason reason) {
+    switch (reason) {
+      case AutoStopReason.maxDurationReached:
+        return 'Enregistrement terminé (limite de 6 h atteinte) — '
+            'retrouve-le dans Mes enregistrements';
+      case AutoStopReason.serverUnreachable:
+        return 'Enregistrement arrêté : ton serveur IPTV ne répond plus. '
+            'Le fichier est sauvegardé dans Mes enregistrements.';
+      case AutoStopReason.diskError:
+        return 'Enregistrement arrêté : stockage insuffisant ou écriture '
+            'impossible. Vérifie l\'espace libre.';
     }
   }
 

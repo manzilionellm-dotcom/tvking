@@ -100,7 +100,15 @@ Future<void> bootApp() async {
   unawaited(RecentSearchesRepository.instance.initialize());
   unawaited(WatchHistoryRepository.instance.initialize());
   unawaited(EpgRepository.instance.initialize());
-  unawaited(RecordingRepository.instance.initialize());
+  unawaited(
+    // Phase 1 / F-01 : juste apres l'init, on balaie les fiches
+    // restees `ended_at IS NULL` parce que le process precedent a
+    // ete tue par l'OS pendant l'enregistrement (NOT_STICKY).
+    // recoverOrphans est idempotent — si rien a recuperer, no-op.
+    RecordingRepository.instance.initialize().then((_) {
+      return RecordingRepository.instance.recoverOrphans();
+    }),
+  );
   unawaited(PlayerSettings.instance.load());
 
   // Identité unique de l'appareil (MAC virtuel "MK:XX:XX:XX:XX:XX").

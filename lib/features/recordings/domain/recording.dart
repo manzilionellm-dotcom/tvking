@@ -1,8 +1,8 @@
 // =========================================================
 //  recording.dart — Modèle d'un enregistrement local
 // =========================================================
-//  Métadonnées d'un fichier .ts capturé par libmpv via la
-//  propriété `stream-record`. Stocké en SQLite.
+//  Métadonnées d'un fichier .ts capturé par le downloader HTTP
+//  Dart pur (cf. data/http_recording_downloader.dart). Stocké en SQLite.
 // =========================================================
 
 import 'package:flutter/foundation.dart';
@@ -19,6 +19,8 @@ class Recording {
     this.endedAt,
     this.fileSizeBytes = 0,
     this.channelLogoUrl,
+    this.streamUrl,
+    this.autoStopReason,
   });
 
   final int? id;
@@ -34,6 +36,24 @@ class Recording {
   /// (style "France 2 en bas-droite"). Null pour les anciens enregistrements
   /// faits avant l'ajout de cette colonne.
   final String? channelLogoUrl;
+
+  /// Phase 1 / F-04 : URL upstream du flux IPTV au moment du start.
+  /// Persistee pour pouvoir, plus tard, implementer un "resume apres
+  /// kill OS" (Phase 2+ — non implemente en Phase 1). Aussi utile pour
+  /// le diagnostic : un user peut nous dire "ce recording a planté"
+  /// et on saura quelle URL retesteer. Null pour les anciens
+  /// enregistrements faits avant la migration.
+  final String? streamUrl;
+
+  /// Phase 1 / F-03 : motif d'arret automatique, persiste a la
+  /// finalisation. Valeurs canoniques (cf.
+  /// http_recording_downloader.dart `AutoStopReason`) :
+  ///   - `maxDurationReached`
+  ///   - `serverUnreachable`
+  ///   - `diskError`
+  ///   - `interruptedByOsKill`   (recovere via recoverOrphans, F-01)
+  ///   - `null`                  (stop volontaire utilisateur ou ancien)
+  final String? autoStopReason;
 
   Duration get duration {
     final int end = endedAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -80,6 +100,8 @@ class Recording {
       'ended_at': endedAt,
       'file_size_bytes': fileSizeBytes,
       'channel_logo_url': channelLogoUrl,
+      'stream_url': streamUrl,
+      'auto_stop_reason': autoStopReason,
     };
   }
 
@@ -94,6 +116,8 @@ class Recording {
       endedAt: map['ended_at'] as int?,
       fileSizeBytes: (map['file_size_bytes'] as int?) ?? 0,
       channelLogoUrl: map['channel_logo_url'] as String?,
+      streamUrl: map['stream_url'] as String?,
+      autoStopReason: map['auto_stop_reason'] as String?,
     );
   }
 
@@ -101,6 +125,7 @@ class Recording {
     int? id,
     int? endedAt,
     int? fileSizeBytes,
+    String? autoStopReason,
   }) {
     return Recording(
       id: id ?? this.id,
@@ -112,6 +137,8 @@ class Recording {
       endedAt: endedAt ?? this.endedAt,
       fileSizeBytes: fileSizeBytes ?? this.fileSizeBytes,
       channelLogoUrl: channelLogoUrl,
+      streamUrl: streamUrl,
+      autoStopReason: autoStopReason ?? this.autoStopReason,
     );
   }
 }

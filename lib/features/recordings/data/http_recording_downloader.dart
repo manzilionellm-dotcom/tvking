@@ -62,6 +62,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/observability/structured_logger.dart';
+
 /// Durée maximale d'un enregistrement. Au-delà, le job s'arrête tout
 /// seul proprement (flush + close + callback) pour ne pas remplir le
 /// stockage si l'utilisateur oublie d'appuyer sur stop. 6 h couvre un
@@ -74,6 +76,38 @@ const Duration kMaxRecordingDuration = Duration(hours: 6);
 /// continue indéfiniment. On n'abandonne que si le serveur est
 /// vraiment injoignable plusieurs essais d'affilée.
 const int _kMaxReconnectFailures = 12;
+
+/// Phase 1 / F-02 : nombre d'erreurs CONSÉCUTIVES sur `sink.add` tolérées
+/// avant de couper le job avec [AutoStopReason.diskError].
+///
+/// Pourquoi un seuil et pas une coupure immédiate :
+///   - Une 1ʳᵉ erreur peut etre transitoire (filesystem qui re-mount,
+///     remount externe SD card juste apres ejection, etc.).
+///   - On veut surtout proteger contre le cas "le disque est plein,
+///     l'erreur se repete au prochain chunk" — qui se manifeste par N
+///     erreurs d'affilee.
+///
+/// 5 = compromis : assez petit pour ne pas gaspiller 30s de data,
+/// assez grand pour absorber un hoquet ponctuel. Ajustable.
+const int _kMaxConsecutiveSinkErrors = 5;
+
+/// Phase 1 / F-03 : motif d'arret automatique. Permet a l'UI de
+/// distinguer les trois causes possibles et d'afficher un message
+/// adapte (au lieu du "limite de 6 h atteinte" generique trompeur).
+enum AutoStopReason {
+  /// Plafond [kMaxRecordingDuration] atteint — comportement normal,
+  /// l'utilisateur a juste oublie d'arreter.
+  maxDurationReached,
+
+  /// Serveur upstream injoignable apres [_kMaxReconnectFailures]
+  /// reconnexions consecutives qui ont toutes echoue. Le flux est
+  /// probablement mort (provider down, token expire, internet coupe).
+  serverUnreachable,
+
+  /// Echec d'ecriture disque (stockage plein, SD card ejectee, droits
+  /// retires). Le fichier .ts est tronque a la derniere ecriture reussie.
+  diskError,
+}
 
 /// Décodeur UTF-8 tolérant aux octets invalides. Sert à lire le
 /// corps texte d'une playlist HLS .m3u8 sans crasher si un segment
@@ -123,13 +157,18 @@ class HttpRecordingDownloader {
   ///
   /// [onAutoStopped] est appelé UNIQUEMENT quand le job se termine
   /// de lui-même (plafond de 6 h atteint, ou serveur définitivement
-  /// injoignable après plusieurs reconnexions). Il N'est PAS appelé
-  /// quand l'utilisateur fait stop() lui-même. Permet à l'UI de
-  /// finaliser la fiche en base et de retirer le badge "REC".
+  /// injoignable après plusieurs reconnexions, OU echec disque
+  /// consecutif depuis Phase 1). Il N'est PAS appelé quand
+  /// l'utilisateur fait stop() lui-même. Permet à l'UI de finaliser
+  /// la fiche en base et de retirer le badge "REC".
+  ///
+  /// Le second argument [AutoStopReason] indique la cause precise — l'UI
+  /// adapte son message ("limite 6h" vs "serveur injoignable" vs
+  /// "stockage plein"). Phase 1 / F-03.
   Future<bool> start({
     required String streamUrl,
     required String filePath,
-    void Function(String filePath)? onAutoStopped,
+    void Function(String filePath, AutoStopReason reason)? onAutoStopped,
   }) async {
     if (_jobs.containsKey(filePath)) {
       if (kDebugMode) debugPrint('[Rec] $filePath déjà en cours');
@@ -175,9 +214,9 @@ class HttpRecordingDownloader {
   Future<bool> _startRaw({
     required String streamUrl,
     required String filePath,
-    void Function(String filePath)? onAutoStopped,
+    void Function(String filePath, AutoStopReason reason)? onAutoStopped,
   }) async {
-    final _Job job = _Job(filePath: filePath)
+    final _Job job = _Job(filePath: filePath, streamUrl: streamUrl)
       ..onAutoStopped = onAutoStopped;
 
     // 1) On ouvre le fichier de sortie AVANT toute connexion. Il
@@ -211,6 +250,15 @@ class HttpRecordingDownloader {
       debugPrint(
           '[Rec] raw downloader started → $filePath (${_jobs.length} actifs)');
     }
+    StructuredLogger.instance.info(
+      domain: 'rec',
+      event: 'job.start',
+      ctx: <String, Object?>{
+        'filePath': filePath,
+        'pipeline': 'raw',
+        'activeCount': _jobs.length,
+      },
+    );
     return true;
   }
 
@@ -282,8 +330,35 @@ class HttpRecordingDownloader {
         try {
           job.sink?.add(chunk);
           job.bytesWritten += chunk.length;
+          // Une ecriture reussie remet a 0 le compteur d'erreurs disque
+          // — un hoquet ponctuel n'abat pas le job.
+          if (job.sinkErrorCount != 0) {
+            job.sinkErrorCount = 0;
+          }
         } catch (e) {
-          if (kDebugMode) debugPrint('[Rec] sink write error: $e');
+          // Phase 1 / F-02 : on COMPTE chaque echec de sink.add.
+          // Au-dela du seuil, on coupe proprement avec
+          // AutoStopReason.diskError pour ne PAS continuer a tirer
+          // de la bande passante en ecrivant dans le vide.
+          job.sinkErrorCount++;
+          if (kDebugMode) {
+            debugPrint(
+                '[Rec] sink write error (${job.sinkErrorCount}/$_kMaxConsecutiveSinkErrors) '
+                '${job.filePath}: $e');
+          }
+          StructuredLogger.instance.warn(
+            domain: 'rec',
+            event: 'job.disk_error',
+            ctx: <String, Object?>{
+              'filePath': job.filePath,
+              'consecutive': job.sinkErrorCount,
+              'bytesWritten': job.bytesWritten,
+              'error': e.toString(),
+            },
+          );
+          if (job.sinkErrorCount >= _kMaxConsecutiveSinkErrors) {
+            _autoFinish(job.filePath, AutoStopReason.diskError);
+          }
         }
       },
       onError: (Object e, StackTrace s) {
@@ -321,7 +396,7 @@ class HttpRecordingDownloader {
       if (kDebugMode) {
         debugPrint('[Rec] plafond 6 h atteint sur ${job.filePath}');
       }
-      _autoFinish(job.filePath);
+      _autoFinish(job.filePath, AutoStopReason.maxDurationReached);
       return;
     }
 
@@ -340,11 +415,20 @@ class HttpRecordingDownloader {
     final HttpClientResponse? resp = await _openRawConnection(job, streamUrl);
     if (resp == null) {
       job.reconnectFailures++;
+      StructuredLogger.instance.warn(
+        domain: 'rec',
+        event: 'job.reconnect_fail',
+        ctx: <String, Object?>{
+          'filePath': job.filePath,
+          'consecutiveFailures': job.reconnectFailures,
+          'maxFailures': _kMaxReconnectFailures,
+        },
+      );
       if (job.reconnectFailures >= _kMaxReconnectFailures) {
         if (kDebugMode) {
           debugPrint('[Rec] serveur injoignable, abandon ${job.filePath}');
         }
-        _autoFinish(job.filePath);
+        _autoFinish(job.filePath, AutoStopReason.serverUnreachable);
         return;
       }
       // Back-off progressif : 2s, 4s, 6s… plafonné à 16s.
@@ -361,6 +445,15 @@ class HttpRecordingDownloader {
           '[Rec] reconnecté ${job.filePath} '
           '(reconnexion #${job.reconnectCount}, ${job.bytesWritten} bytes)');
     }
+    StructuredLogger.instance.info(
+      domain: 'rec',
+      event: 'job.reconnect_success',
+      ctx: <String, Object?>{
+        'filePath': job.filePath,
+        'reconnectCount': job.reconnectCount,
+        'bytesWritten': job.bytesWritten,
+      },
+    );
     _attachRawListener(job, streamUrl, resp);
   }
 
@@ -371,9 +464,9 @@ class HttpRecordingDownloader {
   Future<bool> _startHls({
     required String streamUrl,
     required String filePath,
-    void Function(String filePath)? onAutoStopped,
+    void Function(String filePath, AutoStopReason reason)? onAutoStopped,
   }) async {
-    final _Job job = _Job(filePath: filePath)
+    final _Job job = _Job(filePath: filePath, streamUrl: streamUrl)
       ..onAutoStopped = onAutoStopped;
     try {
       job.client = HttpClient()
@@ -408,6 +501,15 @@ class HttpRecordingDownloader {
         debugPrint(
             '[Rec] HLS downloader started → $filePath (${_jobs.length} actifs)');
       }
+      StructuredLogger.instance.info(
+        domain: 'rec',
+        event: 'job.start',
+        ctx: <String, Object?>{
+          'filePath': filePath,
+          'pipeline': 'hls',
+          'activeCount': _jobs.length,
+        },
+      );
       return true;
     } catch (e) {
       if (kDebugMode) debugPrint('[Rec] _startHls failed ($filePath): $e');
@@ -430,12 +532,19 @@ class HttpRecordingDownloader {
     final Uri playlistUri = Uri.parse(streamUrl);
     int consecutiveErrors = 0;
 
+    // Phase 1 / F-03 : on tracke la raison qui fera sortir de la
+    // boucle pour propager au callback. Par defaut on assume le
+    // serveur mort (cas le plus frequent dans la pratique IPTV) ; le
+    // plafond 6 h ecrit explicitement maxDurationReached avant break.
+    AutoStopReason exitReason = AutoStopReason.serverUnreachable;
+
     while (_jobs.containsKey(filePath) && !job.stopping) {
       // Plafond 6 h.
       if (job.elapsed >= kMaxRecordingDuration) {
         if (kDebugMode) {
           debugPrint('[Rec] plafond 6 h atteint sur $filePath (HLS)');
         }
+        exitReason = AutoStopReason.maxDurationReached;
         break;
       }
       try {
@@ -489,13 +598,18 @@ class HttpRecordingDownloader {
     if (kDebugMode) {
       debugPrint(
           '[Rec] HLS loop EXITED for $filePath '
-          '(${job.bytesWritten} bytes, errors=$consecutiveErrors)');
+          '(${job.bytesWritten} bytes, errors=$consecutiveErrors, '
+          'reason=${exitReason.name})');
     }
     // Si on sort de la boucle alors que ce n'était PAS un stop()
-    // explicite, c'est un auto-stop (6 h ou serveur mort) → on
-    // prévient l'UI. Sinon stop() s'occupe déjà de tout.
+    // explicite, c'est un auto-stop (6 h ou serveur mort ou diskError
+    // declenche depuis _downloadSegment) → on prévient l'UI.
+    // Sinon stop() s'occupe déjà de tout.
     if (!job.stopping) {
-      _autoFinish(filePath);
+      // _downloadSegment a peut-etre deja appele _autoFinish suite a
+      // une rafale d'erreurs disque ; dans ce cas le job a deja ete
+      // retire de _jobs et le second _autoFinish sera no-op.
+      _autoFinish(filePath, exitReason);
     }
   }
 
@@ -541,8 +655,33 @@ class HttpRecordingDownloader {
       }
       await for (final List<int> chunk in resp) {
         if (job.sink == null) return; // stop demandé
-        job.sink!.add(chunk);
-        job.bytesWritten += chunk.length;
+        try {
+          job.sink!.add(chunk);
+          job.bytesWritten += chunk.length;
+          if (job.sinkErrorCount != 0) {
+            job.sinkErrorCount = 0;
+          }
+        } catch (sinkErr) {
+          // Phase 1 / F-02 : meme logique que le pipeline raw — on
+          // compte les echecs disque et on coupe au seuil.
+          job.sinkErrorCount++;
+          StructuredLogger.instance.warn(
+            domain: 'rec',
+            event: 'job.disk_error',
+            ctx: <String, Object?>{
+              'filePath': job.filePath,
+              'pipeline': 'hls',
+              'consecutive': job.sinkErrorCount,
+              'bytesWritten': job.bytesWritten,
+              'error': sinkErr.toString(),
+            },
+          );
+          if (job.sinkErrorCount >= _kMaxConsecutiveSinkErrors) {
+            _autoFinish(job.filePath, AutoStopReason.diskError);
+            return; // sort du await-for, la boucle exterieure verra _jobs vide
+          }
+          // Sous le seuil : on continue (le chunk est perdu mais le job vit).
+        }
       }
     } catch (e) {
       if (kDebugMode) debugPrint('[Rec] segment download error: $e');
@@ -568,6 +707,17 @@ class HttpRecordingDownloader {
         debugPrint(
             '[Rec] stopped $filePath ($size bytes, ${_jobs.length} actifs restants)');
       }
+      StructuredLogger.instance.info(
+        domain: 'rec',
+        event: 'job.stop',
+        ctx: <String, Object?>{
+          'filePath': filePath,
+          'bytesWritten': size,
+          'elapsedSeconds': job.elapsed.inSeconds,
+          'reconnectCount': job.reconnectCount,
+          'activeCount': _jobs.length,
+        },
+      );
       return size;
     }
     // Mode "stop all" → arrête tous les jobs et retourne le total.
@@ -590,20 +740,35 @@ class HttpRecordingDownloader {
       if (kDebugMode) {
         debugPrint('[Rec] timer 6 h déclenché → arrêt ${job.filePath}');
       }
-      _autoFinish(job.filePath);
+      _autoFinish(job.filePath, AutoStopReason.maxDurationReached);
     });
   }
 
-  /// Arrêt PROVOQUÉ PAR LE JOB lui-même (plafond 6 h atteint ou
-  /// serveur définitivement injoignable), par opposition à stop()
-  /// déclenché par l'utilisateur. On ferme proprement puis on
-  /// notifie l'UI via le callback onAutoStopped pour qu'elle finalise
-  /// la fiche en base et retire le badge "REC".
-  void _autoFinish(String filePath) {
+  /// Arrêt PROVOQUÉ PAR LE JOB lui-même (plafond 6 h atteint,
+  /// serveur définitivement injoignable, OU erreur disque consecutive
+  /// — Phase 1 / F-02), par opposition à stop() déclenché par
+  /// l'utilisateur. On ferme proprement puis on notifie l'UI via le
+  /// callback [onAutoStopped] pour qu'elle finalise la fiche en base
+  /// et retire le badge "REC". Le motif [reason] est propage au
+  /// callback (Phase 1 / F-03) pour que l'UI choisisse le message
+  /// adapte.
+  void _autoFinish(String filePath, AutoStopReason reason) {
     final _Job? job = _jobs.remove(filePath);
     if (job == null) return;
     job.stopping = true;
-    final void Function(String)? cb = job.onAutoStopped;
+    final void Function(String, AutoStopReason)? cb = job.onAutoStopped;
+    StructuredLogger.instance.info(
+      domain: 'rec',
+      event: 'job.auto_stop',
+      ctx: <String, Object?>{
+        'filePath': filePath,
+        'reason': reason.name,
+        'bytesWritten': job.bytesWritten,
+        'elapsedSeconds': job.elapsed.inSeconds,
+        'reconnectCount': job.reconnectCount,
+        'activeCount': _jobs.length,
+      },
+    );
     // _stopJob est async mais on n'a pas besoin de l'attendre ici —
     // le flush/close se fait en arrière-plan, et le callback peut
     // partir tout de suite (l'UI lira la taille du fichier ensuite).
@@ -611,7 +776,7 @@ class HttpRecordingDownloader {
     if (cb != null) {
       // On déclenche le callback hors de la pile d'appels courante
       // pour éviter tout effet de bord de réentrance.
-      scheduleMicrotask(() => cb(filePath));
+      scheduleMicrotask(() => cb(filePath, reason));
     }
   }
 
@@ -647,8 +812,15 @@ class HttpRecordingDownloader {
 /// État interne d'un seul recording en cours.
 /// Mutable car les champs sont assignés au fil du start().
 class _Job {
-  _Job({required this.filePath});
+  _Job({required this.filePath, required this.streamUrl});
   final String filePath;
+
+  /// URL upstream du flux, conservee pour les logs structures et
+  /// pour qu'une future logique de "resume apres kill OS" puisse la
+  /// retrouver (Phase 1+ — F-04 prepare le terrain, le resume n'est
+  /// PAS implemente ici).
+  final String streamUrl;
+
   HttpClient? client;
   StreamSubscription<List<int>>? sub;
   IOSink? sink;
@@ -669,8 +841,10 @@ class _Job {
   Timer? maxTimer;
 
   /// Callback optionnel appelé quand le job s'arrête DE LUI-MÊME
-  /// (6 h ou serveur mort), pas sur stop() utilisateur.
-  void Function(String filePath)? onAutoStopped;
+  /// (6 h, serveur mort, ou erreur disque), pas sur stop() utilisateur.
+  /// Le second argument indique la raison precise pour que l'UI
+  /// adapte le message (Phase 1 / F-03).
+  void Function(String filePath, AutoStopReason reason)? onAutoStopped;
 
   /// Nombre de reconnexions réussies (diagnostic / logs).
   int reconnectCount = 0;
@@ -679,6 +853,11 @@ class _Job {
   /// reconnexion aboutit. Déclenche l'abandon au-delà de
   /// _kMaxReconnectFailures.
   int reconnectFailures = 0;
+
+  /// Phase 1 / F-02 : echecs de sink.add CONSECUTIFS. Remis a 0 a
+  /// chaque ecriture reussie. Au-dela de [_kMaxConsecutiveSinkErrors]
+  /// le job est coupe avec [AutoStopReason.diskError].
+  int sinkErrorCount = 0;
 
   /// URLs des segments .ts HLS déjà téléchargés — déduplique entre
   /// 2 polls de la playlist (la fenêtre live garde 3-6 segments

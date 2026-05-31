@@ -16,6 +16,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/observability/structured_logger.dart';
 import '../domain/cast_device.dart';
 import 'cast_progress.dart';
 import 'cast_session_diagnostic.dart';
@@ -27,6 +28,15 @@ import 'mdns_discovery.dart';
 import 'ssdp_discovery.dart';
 import 'stream_probe.dart';
 import 'upnp_av_transport.dart';
+
+/// Phase 1 / F-09 : plafond dur sur une session [castTo]. Au-dela,
+/// on coupe net et on remonte un message UX clair plutot que de
+/// laisser l'utilisateur attendre 60-90s sans signal.
+///
+/// 25s = compromis empirique : assez large pour 5 strategies x ~3-5s
+/// chacune dans le cas median, assez court pour ne pas faire
+/// abandonner l'utilisateur.
+const Duration kCastTotalTimeout = Duration(seconds: 25);
 
 enum CastState {
   idle,
@@ -220,6 +230,70 @@ class CastManager extends ChangeNotifier {
     String? channelName,
     String? channelGenre,
   }) async {
+    // Phase 1 / F-09 : on borne la session entiere a kCastTotalTimeout.
+    // En cas de depassement, _castToInner sera abandonne, on coupe
+    // proprement (disconnect best-effort) et on remonte une
+    // TimeoutException avec un message UX clair.
+    try {
+      await _castToInner(
+        device,
+        streamUrl: streamUrl,
+        title: title,
+        channelName: channelName,
+        channelGenre: channelGenre,
+      ).timeout(kCastTotalTimeout);
+    } on TimeoutException {
+      StructuredLogger.instance.warn(
+        domain: 'cast',
+        event: 'session.global_timeout',
+        ctx: <String, Object?>{
+          'deviceKind': device.kind.name,
+          'deviceName': device.name,
+          'timeoutSeconds': kCastTotalTimeout.inSeconds,
+        },
+      );
+      // [HYPOTHESE] Limitation connue : `.timeout()` abandonne le
+      // Future de _castToInner mais Dart ne sait pas reellement
+      // l'interrompre. Les SOAP en cours continuent en arriere-plan
+      // jusqu'a leurs propres timeouts (15s SOAP x N), puis leurs
+      // exceptions deviennent des unhandled errors. Pas de leak
+      // memoire grave (HttpClient se fermera tout seul), juste du
+      // bruit dans les logs. Une vraie annulation cooperative (flag
+      // _cancelled verifie entre chaque strategie) sera ajoutee en
+      // Phase 2 si besoin.
+      //
+      // Best-effort cleanup : on coupe le transport courant pour ne
+      // pas laisser une connexion ouverte cote TV ; disconnect()
+      // reset l'etat.
+      try {
+        await disconnect();
+      } catch (_) {
+        // disconnect best-effort, on continue meme si echec.
+      }
+      // On remplace l'etat residuel par un error explicite — prend
+      // le pas sur le `idle` que disconnect() vient de poser. Si
+      // _castToInner finit sa course apres et re-ecrit le state, ce
+      // sera aussi vers error (son propre catch) → pas
+      // d'inconsistance visible utilisateur.
+      _state = CastState.error;
+      _errorMessage = 'Cast trop long — la TV ou le réseau ne répondent pas';
+      _setProgress(
+        CastProgress.failure(
+          'La TV met trop de temps à répondre. Essaie le mode QR code.',
+          details: 'castTo timeout after ${kCastTotalTimeout.inSeconds}s',
+        ),
+      );
+      throw Exception(_errorMessage);
+    }
+  }
+
+  Future<void> _castToInner(
+    CastDevice device, {
+    required String streamUrl,
+    required String title,
+    String? channelName,
+    String? channelGenre,
+  }) async {
     stopDiscovery();
     _state = CastState.connecting;
     _device = device;
@@ -306,13 +380,34 @@ class CastManager extends ChangeNotifier {
     } on Exception catch (e) {
       _state = CastState.error;
       _errorMessage = e.toString();
+      // Phase 1 / F-12 : si les DEUX strategies relay (3 et 4) ont
+      // echoue, on sait que la TV n'arrive pas a joindre notre
+      // serveur local — typiquement isolation VLAN/WiFi invite.
+      // Dans ce cas on remplace le message generique par un hint
+      // actionnable qui pointe vers la VRAIE cause.
+      final bool relayPathBlocked = bothRelayStrategiesFailed(diag);
+      final String userMessage = relayPathBlocked
+          ? 'Ta TV ne joint pas le téléphone (WiFi invité ou isolation '
+              'AP ?). Essaie le mode QR code, il contourne ce blocage.'
+          : _friendlyMessageFor(e);
       _setProgress(
         CastProgress.failure(
-          _friendlyMessageFor(e),
+          userMessage,
           details: e.toString(),
         ),
       );
       diag.finalErrorMessage = e.toString();
+      if (relayPathBlocked) {
+        StructuredLogger.instance.warn(
+          domain: 'cast',
+          event: 'session.relay_unreachable',
+          ctx: <String, Object?>{
+            'deviceKind': device.kind.name,
+            'deviceName': device.name,
+            'attempts': diag.attempts.length,
+          },
+        );
+      }
       // On garde _device/_transport pour permettre le diagnostic UI ;
       // ils seront vraiment nettoyés au prochain disconnect().
       rethrow;
@@ -328,6 +423,44 @@ class CastManager extends ChangeNotifier {
     while (_recentDiagnostics.length > _kMaxRecentDiagnostics) {
       _recentDiagnostics.removeLast();
     }
+    StructuredLogger.instance.info(
+      domain: 'cast',
+      event: d.success ? 'session.success' : 'session.failure',
+      ctx: <String, Object?>{
+        'deviceKind': d.device.kind.name,
+        'deviceName': d.device.name,
+        'totalDurationMs': d.totalDurationMs,
+        'attempts': d.attempts.length,
+        if (d.winningAttempt != null)
+          'winningStrategy': d.winningAttempt!.strategyName,
+        if (!d.success && d.finalUserMessage != null)
+          'userMessage': d.finalUserMessage,
+      },
+    );
+  }
+
+  /// Phase 1 / F-12 : retourne `true` si LES DEUX strategies relay
+  /// (index 3 = relay+full, index 4 = relay+minimal) ont ete tentees
+  /// et ont echoue. C'est le signal "la TV ne joint pas notre serveur
+  /// local" — typique d'une isolation WiFi/VLAN.
+  ///
+  /// On ne se base pas sur le contenu du message d'erreur (timeout vs
+  /// 500 vs STOPPED) car les TVs varient ; c'est la combinaison "les
+  /// deux ont rate" qui est diagnostique.
+  ///
+  /// `@visibleForTesting` : public uniquement pour les tests unitaires
+  /// (cf. test/features/cast/data/relay_failure_test.dart). Le seul
+  /// caller en prod est `_castToInner` plus haut.
+  @visibleForTesting
+  bool bothRelayStrategiesFailed(CastSessionDiagnostic d) {
+    bool sawFail3 = false;
+    bool sawFail4 = false;
+    for (final AttemptResult a in d.attempts) {
+      if (a.success) continue;
+      if (a.strategyIndex == 3) sawFail3 = true;
+      if (a.strategyIndex == 4) sawFail4 = true;
+    }
+    return sawFail3 && sawFail4;
   }
 
   /// Chaîne de failover spécifique DLNA — 3 tentatives :
