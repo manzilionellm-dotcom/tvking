@@ -19,25 +19,27 @@ id = "REMPLACE_MOI_PAR_L_ID_DU_KV"
 # =========================================================
 #  D1 — base SQL relationnelle (App Licensing Platform v1)
 # =========================================================
-#  Setup one-time (manuel, sur ta machine ou via le dashboard) :
+#  TEMPORAIREMENT DÉSACTIVÉ — la base D1 n'a pas encore été créée
+#  côté Cloudflare. Tant que `wrangler d1 create tvking_licensing`
+#  n'est pas lancé pour obtenir un vrai `database_id`, on commente
+#  le binding pour ne pas bloquer le `wrangler deploy` (qui validait
+#  l'ID placeholder et plantait).
 #
+#  À RÉACTIVER quand on attaque Phase 1.A admin platform :
 #    1) wrangler d1 create tvking_licensing
-#       → te donne un id du genre "abc123-..."
-#
-#    2) Colle cet id ci-dessous a la place de REMPLACE_MOI
-#
+#       → te donne un id réel
+#    2) Décommente le bloc ci-dessous et remplace l'id
 #    3) wrangler d1 execute tvking_licensing --remote --file=schema.sql
-#       → cree toutes les tables (apps, customers, devices, licenses,
-#         playlists, payments, audit_logs, notifications, etc.)
+#    4) wrangler deploy (re-déploie le Worker avec le binding actif)
 #
-#  Le Worker accede ensuite a la base via `env.DB.prepare(...)`.
-#  En production le binding fonctionne automatiquement ; en local
-#  `wrangler dev --local --persist` simule D1 avec SQLite local.
+#  En attendant : les endpoints /api/v1/* (qui utilisent env.DB)
+#  retournent une erreur 500 "db_unbound" — pas de souci, ils ne
+#  sont pas encore utilisés en prod.
 # =========================================================
-[[d1_databases]]
-binding = "DB"
-database_name = "tvking_licensing"
-database_id = "REMPLACE_MOI_PAR_L_ID_D1"
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "tvking_licensing"
+# database_id = "REMPLACE_MOI_PAR_L_ID_D1"
 
 # Le secret admin n'est PAS dans ce fichier — il se met via
 # `wrangler secret put ADMIN_SECRET` pour ne JAMAIS être commité.
