@@ -39,6 +39,17 @@ import 'upnp_av_transport.dart';
 /// abandonner l'utilisateur.
 const Duration kCastTotalTimeout = Duration(seconds: 25);
 
+/// Phase 1+/B5 — Exception interne levee par `_checkCancelled` quand
+/// une session inner a ete supersede par un timeout outer ou une
+/// nouvelle castTo. Type dedie pour pouvoir la distinguer d'une vraie
+/// erreur de cast dans les logs / diag.
+class _CastSessionCancelled implements Exception {
+  _CastSessionCancelled(this.message);
+  final String message;
+  @override
+  String toString() => 'CastSessionCancelled: $message';
+}
+
 enum CastState {
   idle,
   discovering,
@@ -172,6 +183,44 @@ class CastManager extends ChangeNotifier {
   CastDevice? _device;
   CastTransport? _transport;
   String? _currentTitle;
+
+  /// Phase 1+/B5 (2026-06-01) — Annulation cooperative du `_castToInner`.
+  ///
+  /// Le `.timeout(kCastTotalTimeout)` cote outer leve TimeoutException
+  /// apres 25s, mais le Future inner CONTINUE silencieusement parce
+  /// que Dart ne peut pas reellement annuler un Future ([HYPOTHESE]
+  /// documentee inline). Resultat observe en diag terrain :
+  ///   - User voit l'erreur a 25s
+  ///   - Inner archive le diag a 90-157s
+  ///   - Pendant ces 65-130s d'orphelin, le HttpClient + le relay
+  ///     restent vivants et envoient encore des SOAP a la TV
+  ///   - Le prochain `castTo` voit une TV deja confuse par les SOAP
+  ///     orphelins de la session precedente
+  ///
+  /// Fix : chaque appel a `castTo` increments `_sessionSeq`. L'inner
+  /// capture sa propre valeur (`mySeq`). Entre chaque etape (probe,
+  /// caps, attempt N), il appelle `_checkCancelled(mySeq)` qui throw
+  /// si _sessionSeq a ete bumpe ailleurs. Resultat :
+  ///   - Inner s'arrete proprement au prochain await boundary
+  ///   - Pas plus de quelques secondes d'orphelin (le temps du SOAP
+  ///     en cours de completer)
+  ///   - Diag totalDurationMs proche de la realite UX
+  int _sessionSeq = 0;
+
+  /// Phase 1+/B5 — Helper d'annulation cooperative. Appele entre
+  /// chaque etape de `_castToInner` / `_castDlnaWithFailover`. Si le
+  /// `_sessionSeq` global a ete bumpe par un autre call (outer
+  /// timeout ou nouvelle session castTo), on throw avec un type
+  /// dedie qui sera capture par le `on Exception catch` du caller
+  /// et archive proprement (sans noise UX vers le user puisque
+  /// l'outer a deja rendu).
+  void _checkCancelled(int mySeq) {
+    if (_sessionSeq != mySeq) {
+      throw _CastSessionCancelled(
+        'Session cast superseded (mySeq=$mySeq, current=$_sessionSeq)',
+      );
+    }
+  }
   String? _errorMessage;
 
   /// URL relay actuellement enregistrée pour la session courante,
@@ -361,6 +410,11 @@ class CastManager extends ChangeNotifier {
         imageUrl: imageUrl,
       ).timeout(kCastTotalTimeout);
     } on TimeoutException {
+      // Phase 1+/B5 (2026-06-01) — Annulation cooperative.
+      // Bump `_sessionSeq` immediatement. L'inner orphelin verra
+      // au prochain `_checkCancelled` que sa session est obsolete
+      // et s'arretera proprement au lieu de continuer 90-157s.
+      _sessionSeq++;
       StructuredLogger.instance.warn(
         domain: 'cast',
         event: 'session.global_timeout',
@@ -368,10 +422,15 @@ class CastManager extends ChangeNotifier {
           'deviceKind': device.kind.name,
           'deviceName': device.name,
           'timeoutSeconds': kCastTotalTimeout.inSeconds,
+          'newSessionSeq': _sessionSeq,
         },
       );
-      // [HYPOTHESE] Limitation connue : `.timeout()` abandonne le
-      // Future de _castToInner mais Dart ne sait pas reellement
+      // Note : annulation cooperative — le Future inner finit son
+      // SOAP en cours (15s max) puis voit le mismatch de seq et exit.
+      // Plus court que les 90-157s pre-B5 mais pas instantane.
+      // [HYPOTHESE — historique] Limitation connue avant B5 :
+      // `.timeout()` abandonnait le Future de _castToInner mais Dart
+      // ne savait pas reellement
       // l'interrompre. Les SOAP en cours continuent en arriere-plan
       // jusqu'a leurs propres timeouts (15s SOAP x N), puis leurs
       // exceptions deviennent des unhandled errors. Pas de leak
@@ -414,6 +473,9 @@ class CastManager extends ChangeNotifier {
     String? imageUrl,
   }) async {
     stopDiscovery();
+    // Phase 1+/B5 (2026-06-01) — Capture ma seq des le start. Si une
+    // autre castTo bumpe _sessionSeq pendant que je tourne, j'arrete.
+    final int mySeq = ++_sessionSeq;
     _state = CastState.connecting;
     _device = device;
     _errorMessage = null;
@@ -431,6 +493,7 @@ class CastManager extends ChangeNotifier {
 
     try {
       // (1) Pré-vol : on vérifie l'URL avant de la pousser au récepteur.
+      _checkCancelled(mySeq);
       final StreamProbeResult probe =
           await StreamProbe.instance.probe(streamUrl);
       diag.probe = ProbeSummary(
@@ -452,6 +515,7 @@ class CastManager extends ChangeNotifier {
       // (2) Branche DLNA = chaîne de failover (direct → relay → meta minimal).
       //     Branche non-DLNA = appel direct simple, comportement historique
       //     conservé pour ne pas régresser Roku / Web / Chromecast-stub.
+      _checkCancelled(mySeq);
       _transport = CastTransport.forDevice(device);
       if (device.kind == CastDeviceKind.dlna) {
         await _castDlnaWithFailover(
@@ -460,6 +524,7 @@ class CastManager extends ChangeNotifier {
           title: title,
           diag: diag,
           imageUrl: imageUrl,
+          mySeq: mySeq,
         );
       } else {
         _setProgress(CastProgress.connecting());
@@ -629,7 +694,10 @@ class CastManager extends ChangeNotifier {
     required String title,
     required CastSessionDiagnostic diag,
     String? imageUrl,
+    required int mySeq,
   }) async {
+    // Phase 1+/B5 — Annulation cooperative check juste apres l'entree.
+    _checkCancelled(mySeq);
     // Capabilities (Sink) — best-effort, on continue même si vide.
     _setProgress(CastProgress.detecting);
     final DlnaSink sink =
@@ -712,6 +780,11 @@ class CastManager extends ChangeNotifier {
 
     Exception? lastError;
     for (int s = startStrategy; s < totalStrategies; s++) {
+      // Phase 1+/B5 — Check cancellation entre chaque strategie. Si
+      // l'outer a timeout (25s) et bump _sessionSeq, on s'arrete au
+      // lieu d'enchainer les strategies restantes (qui ajoutaient
+      // 60-90s d'orphelin avant ce fix).
+      _checkCancelled(mySeq);
       final int displayAttempt = s + 1;
       final Stopwatch attemptSw = Stopwatch()..start();
       final String strategyName = _strategyName(s);
