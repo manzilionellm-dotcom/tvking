@@ -146,6 +146,26 @@ class StreamProbe {
         reason.contains('servname');
   }
 
+  /// Phase 1+/B3 — Strip un eventuel `?` vide en fin d'URL et trim
+  /// les espaces. Les playlists IPTV pirates incluent souvent un `?`
+  /// orphelin a la fin des URLs `.ts`. C'est legal cote HTTP mais
+  /// provoque des refus chez certains recepteurs DLNA stricts (LG
+  /// notamment). Idempotent.
+  ///
+  /// Public + visibleForTesting parce que la regle est testable
+  /// independamment et qu'on peut un jour vouloir l'appeler depuis
+  /// d'autres call sites (relay, sanitisation cote recepteur, etc.).
+  @visibleForTesting
+  static String sanitizeStreamUrl(String url) {
+    String s = url.trim();
+    // Retire les ? de fin orphelins (pas de query apres). Boucle pour
+    // gerer le cas degenere "url???".
+    while (s.endsWith('?')) {
+      s = s.substring(0, s.length - 1);
+    }
+    return s;
+  }
+
   /// Probe avec retry automatique sur les echecs DNS. Pourquoi :
   ///
   /// Diagnostic terrain du 2026-06-01 — 7 sessions cast d'affilee
@@ -223,6 +243,13 @@ class StreamProbe {
     Duration timeout = const Duration(seconds: 6),
     int maxRedirects = 5,
   }) async {
+    // Phase 1+/B3 (2026-06-01) : strip d'un eventuel `?` de fin
+    // (cas observe sur les URLs Xtream "http://.../live/USER/PASS/ID.ts?").
+    // Le `?` vide est techniquement legal mais provoque des bugs
+    // chez certains recepteurs DLNA (LG QNED816QA notamment) qui
+    // refusent la session. On normalise ici, le reste du pipeline
+    // recoit une URL clean.
+    url = sanitizeStreamUrl(url);
     final Stopwatch sw = Stopwatch()..start();
     final HttpClient client = HttpClient()
       ..connectionTimeout = timeout

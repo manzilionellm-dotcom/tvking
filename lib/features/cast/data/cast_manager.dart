@@ -502,12 +502,15 @@ class CastManager extends ChangeNotifier {
     } on Exception catch (e) {
       _state = CastState.error;
       _errorMessage = e.toString();
-      // Phase 1 / F-12 : si les DEUX strategies relay (3 et 4) ont
-      // echoue, on sait que la TV n'arrive pas a joindre notre
-      // serveur local — typiquement isolation VLAN/WiFi invite.
-      // Dans ce cas on remplace le message generique par un hint
-      // actionnable qui pointe vers la VRAIE cause.
-      final bool relayPathBlocked = bothRelayStrategiesFailed(diag);
+      // Phase 1 / F-12 + B1 (2026-06-01) : le hint "WiFi isolation"
+      // ne doit s'afficher QUE quand les deux strategies relay ont
+      // timeout (= la TV ne joint pas notre serveur). Si elles ont
+      // echoue avec un message explicite cote TV ("Transition not
+      // available", "Action Failed", "Resource not found"...), le
+      // probleme N'EST PAS le WiFi — c'est la TV qui refuse pour
+      // d'autres raisons. Diag terrain LG QNED816QA 2026-06-01 a
+      // montre le faux positif.
+      final bool relayPathBlocked = bothRelayStrategiesTimedOut(diag);
       final String userMessage = relayPathBlocked
           ? 'Ta TV ne joint pas le téléphone (WiFi invité ou isolation '
               'AP ?). Essaie le mode QR code, il contourne ce blocage.'
@@ -563,16 +566,8 @@ class CastManager extends ChangeNotifier {
 
   /// Phase 1 / F-12 : retourne `true` si LES DEUX strategies relay
   /// (index 3 = relay+full, index 4 = relay+minimal) ont ete tentees
-  /// et ont echoue. C'est le signal "la TV ne joint pas notre serveur
-  /// local" — typique d'une isolation WiFi/VLAN.
-  ///
-  /// On ne se base pas sur le contenu du message d'erreur (timeout vs
-  /// 500 vs STOPPED) car les TVs varient ; c'est la combinaison "les
-  /// deux ont rate" qui est diagnostique.
-  ///
-  /// `@visibleForTesting` : public uniquement pour les tests unitaires
-  /// (cf. test/features/cast/data/relay_failure_test.dart). Le seul
-  /// caller en prod est `_castToInner` plus haut.
+  /// et ont echoue, peu importe la cause. Conservee pour
+  /// retrocompatibilite des tests existants.
   @visibleForTesting
   bool bothRelayStrategiesFailed(CastSessionDiagnostic d) {
     bool sawFail3 = false;
@@ -583,6 +578,43 @@ class CastManager extends ChangeNotifier {
       if (a.strategyIndex == 4) sawFail4 = true;
     }
     return sawFail3 && sawFail4;
+  }
+
+  /// Phase 1+/B1 (2026-06-01) : version raffinee de
+  /// [bothRelayStrategiesFailed] qui exige que les deux echecs soient
+  /// des **timeouts**.
+  ///
+  /// Rationale : un timeout SOAP relay = la TV n'a meme pas reussi a
+  /// joindre notre serveur (vrai signal WiFi isolation). Un echec
+  /// type "Transition not available" / "Action Failed" relay = la TV
+  /// nous joint mais REFUSE pour une autre raison (etat interne,
+  /// codec, etc.). Avant B1, on confondait les deux et on affichait
+  /// le faux hint "WiFi invite" sur le mauvais diagnostic.
+  ///
+  /// Cas observe sur LG QNED816QA 2026-06-01 : strategies relay ont
+  /// echoue avec "Transition not available" -> N'EST PAS un cas WiFi
+  /// -> on doit montrer le message specifique TRANSITIONING, pas le
+  /// hint WiFi.
+  @visibleForTesting
+  bool bothRelayStrategiesTimedOut(CastSessionDiagnostic d) {
+    AttemptResult? a3;
+    AttemptResult? a4;
+    for (final AttemptResult a in d.attempts) {
+      if (a.strategyIndex == 3) a3 = a;
+      if (a.strategyIndex == 4) a4 = a;
+    }
+    if (a3 == null || a4 == null) return false;
+    if (a3.success || a4.success) return false;
+    return _looksLikeTimeout(a3.errorMessage) &&
+        _looksLikeTimeout(a4.errorMessage);
+  }
+
+  bool _looksLikeTimeout(String? msg) {
+    if (msg == null) return false;
+    final String s = msg.toLowerCase();
+    return s.contains('timeoutexception') ||
+        s.contains('timed out') ||
+        s.contains('future not completed');
   }
 
   /// Chaîne de failover spécifique DLNA — 3 tentatives :
@@ -808,13 +840,17 @@ class CastManager extends ChangeNotifier {
   /// `@visibleForTesting` : public uniquement pour tests unitaires
   /// (cf. test/features/cast/data/friendly_message_test.dart). En
   /// prod, le seul caller est `_castToInner`.
+  ///
+  /// Phase 1+/B1-B2 (2026-06-01) : ORDRE des branches affine apres
+  /// retour diag terrain LG QNED816QA. Les patterns specifiques
+  /// (Transition not available, Action Failed, HTTP 458) passent
+  /// AVANT le hint generique "reseau" pour eviter de faussement
+  /// pointer du doigt le WiFi.
   @visibleForTesting
   String friendlyMessageFor(Exception e) {
     final String s = e.toString().toLowerCase();
-    // Phase 1+ / DNS : branche specifique AVANT le generique 'reseau'
-    // pour ne pas afficher "Connexion impossible avec la TV" quand
-    // en fait c'est le hostname du fournisseur IPTV qui ne resout
-    // pas. Cas terrain 2026-06-01 (diag SHIELD 7/8 failures DNS).
+
+    // --- DNS / hostname (Phase 1+) ---
     if (s.contains('hostname') ||
         s.contains('no address') ||
         s.contains('failed host lookup') ||
@@ -823,18 +859,54 @@ class CastManager extends ChangeNotifier {
         s.contains('servname')) {
       return 'Internet ou DNS instable. Réessaie dans quelques secondes.';
     }
+
+    // --- TV bloquee en TRANSITIONING (Phase 1+/B2) ---
+    // Symptome observe sur LG QNED816QA : un cast precedent a laisse
+    // l'AVTransport dans un etat "TRANSITIONING" non recuperable
+    // depuis le sender. La TV refuse alors toutes les commandes
+    // SetURI / Play. Solution utilisateur fiable : redemarrer la TV.
+    if (s.contains('transition not available') ||
+        s.contains('transitioning')) {
+      return 'Ta TV est bloquée sur un précédent cast. '
+          'Éteins-la quelques secondes puis rallume-la et réessaie.';
+    }
+
+    // --- Action refusee par le recepteur (codec / format inconnu) ---
+    if (s.contains('action failed') ||
+        s.contains('resource not found')) {
+      return 'Ta TV n\'accepte pas ce format. Essaie une autre chaîne '
+          'ou le mode QR code.';
+    }
+
+    // --- HTTP 458 ou autres 4xx custom des providers IPTV ---
+    // Beaucoup de revendeurs Xtream renvoient 458 pour "trop de
+    // connexions simultanees" (la limite de l'abonnement).
+    if (s.contains('458')) {
+      return 'Ton fournisseur IPTV refuse une connexion supplémentaire '
+          '(limite atteinte). Coupe une autre app qui regarde et réessaie.';
+    }
+
+    // --- Timeout serveur generique ---
     if (s.contains('timeout') || s.contains('ne répond pas')) {
       return 'La TV ne répond pas. Vérifie le WiFi.';
     }
+
+    // --- Auth / abonnement expire ---
     if (s.contains('auth') || s.contains('401') || s.contains('403')) {
       return 'Accès au flux refusé — ton abonnement a peut-être expiré.';
     }
+
+    // --- Refus generique du recepteur (500, STOPPED apres Play) ---
     if (s.contains('refusé') || s.contains('500') || s.contains('stopped')) {
-      return 'Cette TV n\'a pas accepté ce flux. Essaie une autre chaîne ou le mode QR code.';
+      return 'Cette TV n\'a pas accepté ce flux. Essaie une autre chaîne '
+          'ou le mode QR code.';
     }
+
+    // --- Reseau bas-niveau ---
     if (s.contains('réseau') || s.contains('socket')) {
       return 'Connexion impossible avec la TV.';
     }
+
     return 'Le cast a échoué. Essaie de relancer.';
   }
 
