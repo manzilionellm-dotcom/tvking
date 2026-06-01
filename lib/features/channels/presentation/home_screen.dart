@@ -342,7 +342,7 @@ class _HomeScreenState extends State<HomeScreen> {
       slivers: <Widget>[
         const SliverPadding(padding: EdgeInsets.only(top: 64)),
 
-        // ----- Bandeau "App payante" (essai 7 j · 5,99 €/an · 9,99 € à vie) -----
+        // ----- Bandeau "App payante" (essai 7 j · 13 €/an) -----
         const SliverToBoxAdapter(child: PaywallBanner()),
         const SliverToBoxAdapter(child: SizedBox(height: 8)),
 

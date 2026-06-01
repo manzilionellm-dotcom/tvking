@@ -82,7 +82,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         icon: Icons.celebration_outlined,
         title: 'Essai gratuit 7 jours',
         description:
-            'Profite de toutes les fonctions pendant 7 jours. Ensuite 5,99 € / an ou 9,99 € à vie sur tous tes appareils — paiement sécurisé (jamais in-app).',
+            'Profite de toutes les fonctions pendant 7 jours. Ensuite 13 €/an sur tous tes appareils — paiement sécurisé (jamais in-app).',
       ),
     ];
   }

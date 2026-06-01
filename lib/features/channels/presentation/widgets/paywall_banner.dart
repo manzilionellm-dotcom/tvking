@@ -6,8 +6,7 @@
 //
 //  Tarifs (validés par l'utilisateur) :
 //    - Essai gratuit : 7 jours
-//    - 5,99 € / an
-//    - 9,99 € à vie
+//    - 13 € / an
 //
 //  Le bandeau est tappable : il ouvre la feuille "Ma source"
 //  (ajouter ses codes / activer l'app) — l'utilisateur choisit le
@@ -64,7 +63,7 @@ class PaywallBanner extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Application payante · puis 5,99 € / an ou 9,99 € à vie',
+                        'Application payante · puis 13 € / an',
                         style: AppTextStyles.bodyMedium.copyWith(
                           fontSize: 12,
                           color: AppColors.textSecondary,

@@ -6,7 +6,7 @@
 //
 //    - banned        → "Compte suspendu définitivement"
 //    - frozen        → "Compte gelé temporairement"
-//    - trialExpired  → "Essai gratuit terminé, paye 5,99 €/an ou 9,99 € à vie"
+//    - trialExpired  → "Essai gratuit terminé, paye 13 €/an"
 //
 //  Tous proposent un bouton "Contacter le support" (sheet à 2
 //  choix message/appel) et pour le trial-expired, un bouton
@@ -55,9 +55,8 @@ class SubscriptionGateScreen extends StatelessWidget {
                     ? 'Ton compte est en pause. Contacte le support '
                         'pour réactiver l\'accès.'
                     : 'Ton essai gratuit de $kTrialDurationDays jours est '
-                        'terminé. Abonne-toi à 5,99 € / an ou 9,99 € à vie '
-                        'pour continuer à utiliser 7 MOTION sur tous tes '
-                        'appareils.';
+                        'terminé. Abonne-toi à 13 €/an pour continuer à '
+                        'utiliser 7 MOTION sur tous tes appareils.';
 
             return RefreshIndicator(
               color: AppColors.accent,
@@ -135,7 +134,7 @@ class SubscriptionGateScreen extends StatelessWidget {
                       child: FilledButton.icon(
                         onPressed: () => _openPurchase(),
                         icon: const Icon(Icons.shopping_bag_rounded, size: 22),
-                        label: const Text('M\'abonner — 5,99 €/an · 9,99 € à vie'),
+                        label: const Text('M\'abonner — 13 €/an'),
                         style: FilledButton.styleFrom(
                           backgroundColor: AppColors.accent,
                           foregroundColor: AppColors.voidSurface,

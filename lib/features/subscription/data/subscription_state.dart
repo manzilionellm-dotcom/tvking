@@ -3,9 +3,9 @@
 // =========================================================
 //  Modèle commercial 7 MOTION (demande user) :
 //    - 7 jours d'essai gratuit dès le 1er lancement
-//    - Ensuite 5,99 €/an OU 9,99 € à vie, paiement sur
-//      https://7themotion.com (PAS d'in-app purchase Google Play
-//      → bypass de la commission 30%)
+//    - Ensuite 13 €/an, paiement sur https://7themotion.com
+//      (PAS d'in-app purchase Google Play → bypass de la
+//       commission 30%)
 //
 //  Cette classe persiste UNIQUEMENT le timestamp du 1er lancement
 //  via SharedPreferences. Tout le calcul (jours restants, etc.)

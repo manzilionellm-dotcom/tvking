@@ -120,7 +120,7 @@ Future<void> bootApp() async {
   // premier frame (About, Réglages, etc.).
   unawaited(DeviceIdentity.instance.preload());
 
-  // Essai gratuit de 7 jours + abonnement 5,99 €/an ou 9,99 € à vie. Au tout
+  // Essai gratuit de 7 jours + abonnement 13 €/an. Au tout
   // premier boot, persiste firstLaunchAt = now pour démarrer le
   // compte à rebours local. PUIS sync avec le backend Cloudflare
   // qui est l'autorité finale (l'admin peut geler/débloquer un
