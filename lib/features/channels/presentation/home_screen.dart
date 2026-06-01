@@ -39,7 +39,6 @@ import '../../security/data/biometric_auth.dart';
 import '../data/recently_watched_repository.dart';
 import '../domain/channel.dart';
 import '../domain/channel_genre.dart';
-import 'focused_category_screen.dart';
 import 'widgets/round_category_row.dart';
 import 'category_section_screen.dart';
 import 'channel_detail_sheet.dart';
@@ -142,68 +141,51 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ----- Catégories rondes (chips Apple TV) -----
   //
-  //  Football a son propre écran (FocusedCategoryScreen) qui regroupe
-  //  par pays — c'est la demande explicite : "toutes les chaînes
-  //  football, mais avec les pays vu différemment". Pour les autres
-  //  catégories on réutilise CategorySectionScreen existant (grille
-  //  standard) — pas besoin de re-grouper là.
-
-  Future<void> _openFootball() {
-    return Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => const FocusedCategoryScreen(
-          title: 'Football',
-          keywords: <String>[
-            'foot', 'soccer', 'bein', 'rmc sport', 'champion',
-            'ligue 1', 'ligue 2', 'premier league', 'liga',
-            'serie a', 'bundesliga', 'eurosport', 'fox sport',
-            'sky sport', 'tnt sport', 'espn',
-          ],
-        ),
-      ),
-    );
-  }
+  //  Demande utilisateur 2026-06-01 : des VRAIES catégories qui
+  //  agrègent TOUTES les chaînes d'un genre, tous pays confondus.
+  //  Chaque chip ouvre `CategorySectionScreen(genreFilter: …)` qui
+  //  balaie l'intégralité du catalogue et n'affiche QUE ce genre —
+  //  donc "Sport" = toutes les chaînes sport (FR, UK, US, ES, AR…)
+  //  réunies au même endroit. Plus de chip "Football" qui ne
+  //  montrait qu'un sous-ensemble par mots-clés.
+  //
+  //  Ordre = priorité utilisateur : Sport, Info, Enfants, Sciences,
+  //  puis Films et Musique.
 
   Widget _buildCategoryChips() {
     // Sur le flavor Red Room (adultOnly = true), aucun de ces genres
-    // n'a de sens — il n'y a pas de Football / Jeunesse / Info dans
-    // un catalogue 18+. Phase 1.0c remplacera par des chips Red Room
-    // (Couples, Solo, Studios, etc.) ; pour 1.0b on hide simplement.
+    // n'a de sens — il n'y a pas de Sport / Enfants / Info dans un
+    // catalogue 18+. On masque simplement.
     if (FlavorConfig.current.adultOnly) {
       return const SizedBox.shrink();
     }
-    // Phase 1+/2026-06-01 : icones line art (outlined) au lieu des
-    // pleines rondes, pour matcher l'estehique "premium streaming
-    // dashboard" demandee par l'utilisateur.
+    // Icônes line art (outlined) pour matcher l'esthétique premium.
     return RoundCategoryRow(
       items: <RoundCategoryItem>[
         RoundCategoryItem(
-          label: 'Football',
+          label: 'Sport',
           icon: Icons.sports_soccer_outlined,
-          onTap: _openFootball,
+          onTap: () => _openSection('Sport', ChannelGenre.sports),
         ),
         RoundCategoryItem(
-          label: 'Jeunesse',
-          icon: Icons.child_friendly_outlined,
-          onTap: () => _openSection('Jeunesse', ChannelGenre.kids),
-        ),
-        RoundCategoryItem(
-          label: 'Cinema',
-          icon: Icons.movie_creation_outlined,
-          onTap: () => _openSection(
-            'Divertissement',
-            ChannelGenre.entertainment,
-          ),
-        ),
-        RoundCategoryItem(
-          label: 'Actu',
+          label: 'Info',
           icon: Icons.newspaper_outlined,
           onTap: () => _openSection('Info', ChannelGenre.news),
         ),
         RoundCategoryItem(
-          label: 'Docu',
-          icon: Icons.travel_explore_outlined,
-          onTap: () => _openSection('Documentaires', ChannelGenre.documentary),
+          label: 'Enfants',
+          icon: Icons.child_friendly_outlined,
+          onTap: () => _openSection('Enfants', ChannelGenre.kids),
+        ),
+        RoundCategoryItem(
+          label: 'Sciences',
+          icon: Icons.science_outlined,
+          onTap: () => _openSection('Sciences', ChannelGenre.documentary),
+        ),
+        RoundCategoryItem(
+          label: 'Films',
+          icon: Icons.movie_creation_outlined,
+          onTap: () => _openSection('Films', ChannelGenre.movies),
         ),
         RoundCategoryItem(
           label: 'Musique',
@@ -279,6 +261,14 @@ class _HomeScreenState extends State<HomeScreen> {
       title: const BrandLogo.compact(),
       titleSpacing: CinematicSpacing.l,
       actions: <Widget>[
+        // "+" toujours visible : ajouter ses propres codes (Xtream /
+        // M3U / M3U en lot) directement depuis l'accueil, à tout
+        // moment — pas seulement quand la liste est vide.
+        IconButton(
+          tooltip: 'Ajouter mes codes',
+          onPressed: _openAddPlaylist,
+          icon: const Icon(Icons.add_rounded),
+        ),
         IconButton(
           tooltip: 'Recherche',
           onPressed: _openSearch,
