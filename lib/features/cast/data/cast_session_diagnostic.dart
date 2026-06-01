@@ -186,6 +186,12 @@ class CastSessionDiagnostic {
   String? finalErrorMessage;
   String? finalUserMessage;
 
+  /// Pré-vol réseau (2026-06-01) : résultat du test de joignabilité
+  /// TCP de la TV avant de tenter le cast. `null` = pas testé (cas
+  /// Chromecast/WebBrowser), `true` = socket ouverte, `false` =
+  /// injoignable (probable AP isolation / TV endormie / autre WiFi).
+  bool? deviceReachable;
+
   /// Stratégie qui a finalement marché — `null` si tout a échoué.
   AttemptResult? get winningAttempt {
     for (final AttemptResult a in attempts) {
@@ -221,6 +227,7 @@ class CastSessionDiagnostic {
           .map((AttemptResult a) => a.toJson())
           .toList(growable: false),
       if (totalDurationMs != null) 'totalDurationMs': totalDurationMs,
+      if (deviceReachable != null) 'deviceReachable': deviceReachable,
       'success': success,
       if (win != null) 'winningStrategy': win.strategyName,
       if (finalUserMessage != null) 'finalUserMessage': finalUserMessage,

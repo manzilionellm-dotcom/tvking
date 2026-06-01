@@ -13,6 +13,7 @@
 // =========================================================
 
 import 'dart:async';
+import 'dart:io' show Socket;
 
 import 'package:flutter/foundation.dart';
 
@@ -492,6 +493,32 @@ class CastManager extends ChangeNotifier {
     final Stopwatch totalSw = Stopwatch()..start();
 
     try {
+      // (0) Pré-vol RÉSEAU (2026-06-01) : avant tout, on vérifie que la
+      //     TV est JOIGNABLE en TCP sur son port de contrôle. Sans ça,
+      //     une TV endormie / sur un autre WiFi / isolée par l'« AP
+      //     isolation » de la box faisait grinder les 5 stratégies
+      //     pendant ~25s (chaque SOAP timeout sur errno 113 "No route
+      //     to host") avant d'échouer. Ici on échoue en ~2,5s avec un
+      //     message clair et actionnable. On ne fait ce test que pour
+      //     les récepteurs pilotés en TCP direct sur le LAN (DLNA, Roku) :
+      //     Chromecast (SDK natif via Google Play Services) et WebBrowser
+      //     (page ouverte côté TV) ont un autre chemin réseau.
+      if (device.kind == CastDeviceKind.dlna ||
+          device.kind == CastDeviceKind.roku) {
+        _checkCancelled(mySeq);
+        _setProgress(CastProgress.connecting());
+        final bool reachable = await _probeDeviceReachable(device);
+        diag.deviceReachable = reachable;
+        if (!reachable) {
+          // Message contient "no route to host" → friendlyMessageFor le
+          // route vers le hint réseau/AP-isolation dédié (Phase 1+/B4).
+          throw Exception(
+            'TV injoignable sur le réseau (${device.host}:${device.port}) '
+            '— no route to host (pré-vol TCP)',
+          );
+        }
+      }
+
       // (1) Pré-vol : on vérifie l'URL avant de la pousser au récepteur.
       _checkCancelled(mySeq);
       final StreamProbeResult probe =
@@ -905,6 +932,38 @@ class CastManager extends ChangeNotifier {
     return url;
   }
 
+  /// Pré-vol réseau (2026-06-01) : tente une connexion TCP brève vers le
+  /// port de contrôle de la TV. Retourne `true` si la socket s'ouvre,
+  /// `false` sur timeout / refus / "no route to host".
+  ///
+  /// Pourquoi : la découverte SSDP/mDNS se fait en MULTICAST (UDP), qui
+  /// traverse souvent l'« AP isolation » d'une box — donc la TV apparaît
+  /// dans la liste. Mais le cast réel se fait en UNICAST TCP, que l'AP
+  /// isolation BLOQUE. Résultat avant ce fix : la TV est listée mais
+  /// chaque tentative de cast échoue en `errno 113` après un long
+  /// timeout. Ce pré-vol détecte le cas en ~2,5s et permet d'afficher
+  /// tout de suite le bon diagnostic (cf. friendlyMessageFor).
+  ///
+  /// 2,5s = assez pour un LAN WiFi normal (RTT < 50ms, connexion en
+  /// quelques ms), assez court pour ne pas faire patienter sur une TV
+  /// réellement injoignable.
+  Future<bool> _probeDeviceReachable(CastDevice device) async {
+    try {
+      final Socket socket = await Socket.connect(
+        device.host,
+        device.port,
+        timeout: const Duration(milliseconds: 2500),
+      );
+      socket.destroy();
+      return true;
+    } on Exception {
+      // SocketException (timeout, no route to host, connection refused)
+      // → injoignable. On ne log pas ici : le caller throw un message
+      // dédié qui sera archivé dans le diagnostic.
+      return false;
+    }
+  }
+
   /// Convertit une Exception interne en message court pour l'UI.
   /// Les libellés évitent tout jargon technique.
   ///
@@ -994,9 +1053,22 @@ class CastManager extends ChangeNotifier {
         s.contains('errno = 101') ||
         s.contains('connection refused') ||
         s.contains('errno = 111')) {
-      return 'Ta TV est éteinte ou plus sur le même WiFi que ton '
-          'téléphone. Vérifie qu\'elle est allumée et connectée au '
-          'même réseau, puis relance le scan.';
+      // La TV apparaît dans la liste (découverte multicast) mais ne
+      // répond pas en TCP direct → 3 causes possibles, de la plus
+      // simple à la plus probable quand ça persiste :
+      //   1. TV endormie / éteinte
+      //   2. Téléphone et TV sur des WiFi différents (invité, 4G…)
+      //   3. « Isolation client / AP isolation » activée sur la box —
+      //      le routeur bloque la communication entre appareils. C'est
+      //      LA cause quand la TV est bien listée mais qu'aucun cast ne
+      //      passe (cf. errno 113 répété).
+      return 'Ta TV ne répond pas sur le réseau. Vérifie : '
+          '(1) qu\'elle est allumée, '
+          '(2) qu\'elle est sur le MÊME WiFi que ton téléphone '
+          '(pas le réseau "invité"), '
+          '(3) que l\'option « Isolation client / AP isolation » est '
+          'DÉSACTIVÉE dans les réglages de ta box internet. '
+          'En attendant, le mode QR code contourne ce blocage.';
     }
 
     // --- Reseau bas-niveau ---
