@@ -25,7 +25,7 @@ class PlaylistDatabase {
 
   static const String _kDbFileName = 'tv_king.db';
   // v2 ajoute la colonne `epg_url` à la table playlists.
-  static const int _kDbVersion = 3;
+  static const int _kDbVersion = 4;
 
   Database? _db;
 
@@ -64,9 +64,13 @@ class PlaylistDatabase {
         epg_url TEXT,
         created_at INTEGER NOT NULL,
         last_synced_at INTEGER,
-        channel_count INTEGER NOT NULL DEFAULT 0
+        channel_count INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 0
       )
     ''');
+    await db.execute(
+      'CREATE INDEX idx_playlists_active ON playlists(is_active)',
+    );
 
     await db.execute('''
       CREATE TABLE channels (
@@ -144,6 +148,31 @@ class PlaylistDatabase {
       );
       await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_ws_channel ON watch_sessions(channel_id)',
+      );
+    }
+    if (oldVersion < 4) {
+      // v4 (Phase 1+/2026-06-01) : multi-serveurs avec is_active.
+      // L'utilisateur peut ajouter N playlists et basculer entre
+      // elles. La colonne is_active distingue celle qui sert de
+      // source de chaines pour l'app a un instant donne.
+      //
+      // Migration : si une playlist existe deja (cas user single
+      // serveur jusqu'a aujourd'hui), on la marque automatiquement
+      // active pour ne pas casser son experience.
+      await db.execute(
+        'ALTER TABLE playlists ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0',
+      );
+      // Marque la PREMIERE playlist (par created_at ASC = la plus
+      // ancienne, probablement celle que l'user utilise actuellement)
+      // comme active. SQLite n'a pas de UPDATE LIMIT 1 -> on passe par
+      // un sous-select sur l'id.
+      await db.execute('''
+        UPDATE playlists SET is_active = 1
+        WHERE id = (SELECT id FROM playlists ORDER BY created_at ASC LIMIT 1)
+      ''');
+      // Index partiel pour O(1) sur la lookup "active playlist".
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_playlists_active ON playlists(is_active)',
       );
     }
   }

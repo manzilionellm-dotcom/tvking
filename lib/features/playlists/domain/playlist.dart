@@ -33,6 +33,7 @@ class Playlist {
     this.epgUrl,
     this.lastSyncedAt,
     this.channelCount = 0,
+    this.isActive = false,
   });
 
   /// ID auto-incrémenté par SQLite. Null = pas encore enregistrée.
@@ -70,6 +71,13 @@ class Playlist {
   /// Nombre de chaînes après la dernière sync.
   final int channelCount;
 
+  /// Phase 1+/Multi-serveurs (2026-06-01) : indique si cette playlist
+  /// est la source de chaines active pour l'app. Un seul `true` a la
+  /// fois — la repo garantit l'exclusivite via [setActive]. Quand
+  /// false, ses chaines existent en base mais ne sont pas exposees
+  /// par [PlaylistRepository.getAllChannels].
+  final bool isActive;
+
   // ---------- Sérialisation SQLite ----------
 
   Map<String, Object?> toMap() {
@@ -85,6 +93,7 @@ class Playlist {
       'created_at': createdAt,
       'last_synced_at': lastSyncedAt,
       'channel_count': channelCount,
+      'is_active': isActive ? 1 : 0,
     };
   }
 
@@ -104,6 +113,7 @@ class Playlist {
       epgUrl: map['epg_url'] as String?,
       lastSyncedAt: map['last_synced_at'] as int?,
       channelCount: (map['channel_count'] as int?) ?? 0,
+      isActive: (map['is_active'] as int?) == 1,
     );
   }
 
@@ -111,6 +121,7 @@ class Playlist {
     int? id,
     int? lastSyncedAt,
     int? channelCount,
+    bool? isActive,
   }) {
     return Playlist(
       id: id ?? this.id,
@@ -124,6 +135,7 @@ class Playlist {
       epgUrl: epgUrl,
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
       channelCount: channelCount ?? this.channelCount,
+      isActive: isActive ?? this.isActive,
     );
   }
 }

@@ -97,8 +97,36 @@ class PlaylistRepository {
 
   Future<List<Channel>> getAllChannels() async {
     final Database db = await PlaylistDatabase.instance.database;
-    final List<Map<String, Object?>> rows =
-        await db.query('channels', orderBy: 'name COLLATE NOCASE ASC');
+
+    // Phase 1+/Multi-serveurs (2026-06-01) : si une playlist est
+    // marquee active, on filtre les chaines pour ne renvoyer que les
+    // siennes. Sinon (cas sans active marquee — peut arriver si
+    // l'user a delete la derniere active sans en designer une autre),
+    // on retombe sur "toutes les chaines de toutes les playlists"
+    // pour ne pas casser l'app.
+    final List<Map<String, Object?>> activeRows = await db.query(
+      'playlists',
+      columns: <String>['id'],
+      where: 'is_active = 1',
+      limit: 1,
+    );
+
+    List<Map<String, Object?>> rows;
+    if (activeRows.isNotEmpty) {
+      final int activeId = activeRows.first['id'] as int;
+      rows = await db.query(
+        'channels',
+        where: 'playlist_id = ?',
+        whereArgs: <Object>[activeId],
+        orderBy: 'name COLLATE NOCASE ASC',
+      );
+    } else {
+      // Fallback : aucune playlist active explicitement -> tout
+      rows = await db.query(
+        'channels',
+        orderBy: 'name COLLATE NOCASE ASC',
+      );
+    }
     final List<Channel> all = rows.map(_channelFromMap).toList();
 
     // Filtre adultOnly du flavor Red Room. On le pose ICI (point
@@ -117,6 +145,53 @@ class PlaylistRepository {
     final List<Map<String, Object?>> rows =
         await db.query('playlists', orderBy: 'created_at DESC');
     return rows.map(Playlist.fromMap).toList();
+  }
+
+  /// Phase 1+/Multi-serveurs : retourne la playlist active, ou la 1ere
+  /// (la plus ancienne) si aucune n'est marquee. `null` si la base
+  /// est vide.
+  Future<Playlist?> getActivePlaylist() async {
+    final Database db = await PlaylistDatabase.instance.database;
+    // 1) Tente la marquee active
+    final List<Map<String, Object?>> active = await db.query(
+      'playlists',
+      where: 'is_active = 1',
+      limit: 1,
+    );
+    if (active.isNotEmpty) return Playlist.fromMap(active.first);
+    // 2) Fallback sur la plus ancienne
+    final List<Map<String, Object?>> first = await db.query(
+      'playlists',
+      orderBy: 'created_at ASC',
+      limit: 1,
+    );
+    if (first.isEmpty) return null;
+    return Playlist.fromMap(first.first);
+  }
+
+  /// Phase 1+/Multi-serveurs : marque [playlistId] comme la playlist
+  /// active. Garantit l'exclusivite (toutes les autres passent a
+  /// is_active=0) via une transaction. Refresh ensuite le stream
+  /// channels pour que l'UI bascule sans recharger.
+  Future<void> setActivePlaylist(int playlistId) async {
+    final Database db = await PlaylistDatabase.instance.database;
+    await db.transaction((Transaction txn) async {
+      await txn.update(
+        'playlists',
+        <String, Object?>{'is_active': 0},
+        // Tout sauf la cible -> 0
+        where: 'id != ?',
+        whereArgs: <Object>[playlistId],
+      );
+      await txn.update(
+        'playlists',
+        <String, Object?>{'is_active': 1},
+        where: 'id = ?',
+        whereArgs: <Object>[playlistId],
+      );
+    });
+    // Re-emit les chaines de la nouvelle playlist active.
+    await _emitCurrentState();
   }
 
   // ============================================================
@@ -503,13 +578,56 @@ class PlaylistRepository {
 
   Future<int> _insertPlaylist(Playlist playlist) async {
     final Database db = await PlaylistDatabase.instance.database;
-    return db.insert('playlists', playlist.toMap());
+    // Phase 1+/Multi-serveurs : si c'est la PREMIERE playlist (la
+    // table etait vide), on la marque auto-active. Sinon, les
+    // suivantes sont inactives par defaut (l'user les active
+    // explicitement depuis l'UI). Comme ca le user qui n'utilise
+    // qu'une playlist n'a jamais besoin de "choisir" — l'app marche
+    // naturellement.
+    final List<Map<String, Object?>> existing = await db.query(
+      'playlists',
+      columns: <String>['id'],
+      limit: 1,
+    );
+    final bool isFirst = existing.isEmpty;
+    final Map<String, Object?> map = playlist.toMap();
+    if (isFirst) {
+      map['is_active'] = 1;
+    }
+    return db.insert('playlists', map);
   }
 
   Future<void> _deletePlaylist(int id) async {
     final Database db = await PlaylistDatabase.instance.database;
+    // Phase 1+/Multi-serveurs : si on delete l'active, on promeut la
+    // plus ancienne playlist restante comme nouvelle active. Comme ca
+    // l'user n'a pas a aller manuellement reactiver une autre source
+    // apres suppression.
+    final List<Map<String, Object?>> wasActive = await db.query(
+      'playlists',
+      columns: <String>['id'],
+      where: 'id = ? AND is_active = 1',
+      whereArgs: <Object>[id],
+      limit: 1,
+    );
     // ON DELETE CASCADE → les chaînes liées tombent automatiquement
     await db.delete('playlists', where: 'id = ?', whereArgs: <Object>[id]);
+    if (wasActive.isNotEmpty) {
+      final List<Map<String, Object?>> next = await db.query(
+        'playlists',
+        columns: <String>['id'],
+        orderBy: 'created_at ASC',
+        limit: 1,
+      );
+      if (next.isNotEmpty) {
+        await db.update(
+          'playlists',
+          <String, Object?>{'is_active': 1},
+          where: 'id = ?',
+          whereArgs: <Object>[next.first['id'] as int],
+        );
+      }
+    }
   }
 
   /// Insert toutes les chaînes en CHUNKS de 1000 + ré-émet l'état
