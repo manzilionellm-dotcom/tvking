@@ -1319,35 +1319,88 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 child: _isTvUi
                     ? Row(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          if (_canZap)
-                            _TvDpadButton(
-                              icon: Icons.skip_previous_rounded,
-                              onTap: _zapPrev,
-                              autofocus: false,
-                            ),
-                          if (_canZap) const SizedBox(width: 32),
-                          _TvDpadButton(
-                            icon: _isPlaying
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                            onTap: _togglePlayPause,
-                            autofocus: true,
-                            large: true,
-                          ),
-                          if (_canZap) const SizedBox(width: 32),
-                          if (_canZap)
-                            _TvDpadButton(
-                              icon: Icons.skip_next_rounded,
-                              onTap: _zapNext,
-                              autofocus: false,
-                            ),
-                        ],
+                        // VOD (film / replay) : recul / play / avance.
+                        // Live : zap chaîne précédente / play / suivante.
+                        children: !_currentChannel.isLive
+                            ? <Widget>[
+                                _TvDpadButton(
+                                  icon: Icons.replay_10_rounded,
+                                  onTap: () =>
+                                      _seekBy(const Duration(seconds: -10)),
+                                ),
+                                const SizedBox(width: 32),
+                                _TvDpadButton(
+                                  icon: _isPlaying
+                                      ? Icons.pause_rounded
+                                      : Icons.play_arrow_rounded,
+                                  onTap: _togglePlayPause,
+                                  autofocus: true,
+                                  large: true,
+                                ),
+                                const SizedBox(width: 32),
+                                _TvDpadButton(
+                                  icon: Icons.forward_10_rounded,
+                                  onTap: () =>
+                                      _seekBy(const Duration(seconds: 10)),
+                                ),
+                              ]
+                            : <Widget>[
+                                if (_canZap)
+                                  _TvDpadButton(
+                                    icon: Icons.skip_previous_rounded,
+                                    onTap: _zapPrev,
+                                    autofocus: false,
+                                  ),
+                                if (_canZap) const SizedBox(width: 32),
+                                _TvDpadButton(
+                                  icon: _isPlaying
+                                      ? Icons.pause_rounded
+                                      : Icons.play_arrow_rounded,
+                                  onTap: _togglePlayPause,
+                                  autofocus: true,
+                                  large: true,
+                                ),
+                                if (_canZap) const SizedBox(width: 32),
+                                if (_canZap)
+                                  _TvDpadButton(
+                                    icon: Icons.skip_next_rounded,
+                                    onTap: _zapNext,
+                                    autofocus: false,
+                                  ),
+                              ],
                       )
-                    : _PlayPauseButton(
-                        isPlaying: _isPlaying,
-                        onTap: _togglePlayPause,
-                      ),
+                    // PHONE : pour la VOD on encadre le play/pause de
+                    // deux boutons recul/avance ±10 s. Pour le live,
+                    // seul le play/pause (le seek n'a pas de sens).
+                    : !_currentChannel.isLive
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: <Widget>[
+                              _SeekIconButton(
+                                icon: Icons.replay_10_rounded,
+                                semanticsLabel: 'Reculer 10 secondes',
+                                onTap: () =>
+                                    _seekBy(const Duration(seconds: -10)),
+                              ),
+                              const SizedBox(width: 24),
+                              _PlayPauseButton(
+                                isPlaying: _isPlaying,
+                                onTap: _togglePlayPause,
+                              ),
+                              const SizedBox(width: 24),
+                              _SeekIconButton(
+                                icon: Icons.forward_10_rounded,
+                                semanticsLabel: 'Avancer 10 secondes',
+                                onTap: () =>
+                                    _seekBy(const Duration(seconds: 10)),
+                              ),
+                            ],
+                          )
+                        : _PlayPauseButton(
+                            isPlaying: _isPlaying,
+                            onTap: _togglePlayPause,
+                          ),
               ),
             ),
 
@@ -1503,6 +1556,47 @@ class _PlayPauseButton extends StatelessWidget {
             shadows: const <Shadow>[
               Shadow(color: Colors.black54, blurRadius: 16),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bouton de saut ±10 s pour la VOD (téléphone). Style discret type
+/// Apple TV / Netflix : icône blanche ombrée, zone tactile circulaire,
+/// pas de cercle lourd qui alourdirait l'OSD immersif.
+class _SeekIconButton extends StatelessWidget {
+  const _SeekIconButton({
+    required this.icon,
+    required this.onTap,
+    required this.semanticsLabel,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final String semanticsLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: semanticsLabel,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Icon(
+              icon,
+              color: Colors.white,
+              size: 44,
+              shadows: const <Shadow>[
+                Shadow(color: Colors.black54, blurRadius: 16),
+              ],
+            ),
           ),
         ),
       ),
