@@ -1,0 +1,68 @@
+// =========================================================
+//  cast_transport.dart — Interface abstraite "envoyer un flux"
+// =========================================================
+//  Chaque protocole de cast (DLNA, Chromecast, Roku, fallback
+//  web...) implémente cette interface. Le CastManager parle
+//  uniquement à `CastTransport` et délègue le détail du
+//  protocole au bon implémentateur via une factory basée sur
+//  `CastDevice.kind`.
+//
+//  Cette indirection permet d'ajouter un nouveau protocole en
+//  écrivant juste un fichier "*_transport.dart" + un cas dans
+//  la factory — sans toucher au reste de l'app.
+// =========================================================
+
+import '../domain/cast_device.dart';
+import 'google_cast_transport.dart';
+import 'roku_ecp_transport.dart';
+import 'upnp_av_transport.dart';
+import 'web_browser_transport.dart';
+
+abstract class CastTransport {
+  /// Envoie [streamUrl] au récepteur et démarre la lecture.
+  /// [title] est affiché dans l'OSD du récepteur quand celui-ci
+  /// gère un titre (DLNA, Chromecast). Roku ne l'affiche pas
+  /// toujours, ignore en silence si non supporté.
+  ///
+  /// [imageUrl] (Phase 1+/G1) : URL absolue de l'illustration a
+  /// montrer sur l'ecran d'accueil du recepteur — typiquement le
+  /// logo de la chaine. Optionnel. Chaque implementation choisit ce
+  /// qu'elle en fait : Google Cast l'injecte dans
+  /// `MediaMetadata.addImage`, DLNA dans `upnp:albumArtURI`, Roku
+  /// dans son ContentMeta. `null` = pas de visuel (le recepteur
+  /// affichera son placeholder).
+  Future<void> playStream({
+    required String streamUrl,
+    String title = '7 MOTION',
+    String? imageUrl,
+  });
+
+  Future<void> pause();
+  Future<void> resume();
+  Future<void> stop();
+
+  /// Construit l'implémentation appropriée pour un device donné.
+  /// Le `CastManager` appelle cette factory dès qu'il a besoin de
+  /// piloter un récepteur. Aucune ressource n'est ouverte ici —
+  /// les connexions réseau sont établies au premier appel à
+  /// [playStream].
+  static CastTransport forDevice(CastDevice device) {
+    switch (device.kind) {
+      case CastDeviceKind.dlna:
+        return UpnpAvTransport(device);
+      case CastDeviceKind.roku:
+        return RokuEcpTransport(device);
+      case CastDeviceKind.chromecast:
+      case CastDeviceKind.googleCast:
+        // Vraie intégration Google Cast SDK natif (le même que YouTube
+        // et Netflix utilisent). Bridge Kotlin custom via MethodChannel
+        // — pas de plugin Flutter fragile (cf. floating qui a explosé
+        // sur JVM target mismatch). Si l'utilisateur n'a pas Google Play
+        // Services, GoogleCastTransport lève une exception et le
+        // CastManager retombe gracieusement sur le fallback adéquat.
+        return GoogleCastTransport(device);
+      case CastDeviceKind.webBrowser:
+        return WebBrowserTransport(device);
+    }
+  }
+}

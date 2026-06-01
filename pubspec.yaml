@@ -1,0 +1,194 @@
+# =========================================================
+#  pubspec.yaml — Manifeste du projet Flutter
+# =========================================================
+#  Phase 1.1 + 1.2 : on ajoute les briques pour charger les
+#  playlists M3U et causer avec l'API Xtream Codes, ainsi
+#  que du stockage local SQLite.
+# =========================================================
+
+name: tv_king
+description: "7 MOTION — lecteur IPTV premium pour mobile, Android TV et Fire TV."
+publish_to: 'none'
+version: 0.3.0+11
+
+environment:
+  sdk: ^3.5.0
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ----- Internationalisation -----
+  # `flutter_localizations` fournit les délégués Material / Cupertino
+  # pour les ~80 langues officielles supportées par Flutter (dates,
+  # nombres, RTL, etc.). `intl` est la lib bas-niveau utilisée par
+  # le générateur gen-l10n pour produire AppLocalizations.
+  #
+  # IMPORTANT : `flutter_localizations` du SDK Flutter stable courant
+  # pin `intl` à 0.20.2 exactement. Toute contrainte qui ne contient
+  # pas 0.20.2 fait planter `flutter pub get` avec un version solve
+  # error. Donc on aligne sur ^0.20.2.
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.2
+
+  # Icônes style iOS (incluses par défaut dans Flutter)
+  cupertino_icons: ^1.0.8
+
+  # Police "Inter" via google_fonts (téléchargement + cache automatique)
+  google_fonts: ^6.2.1
+
+  # --- Phase 1.1 / 1.2 ---
+
+  # Client HTTP officiel Flutter. Sert à :
+  #   - télécharger les fichiers .m3u depuis une URL
+  #   - causer avec l'API Xtream Codes (player_api.php)
+  http: ^1.2.2
+
+  # SQLite pour Flutter. Permet de stocker localement :
+  #   - la liste des playlists ajoutées
+  #   - toutes les chaînes parsées, par playlist
+  #   - les métadonnées (catégories, logos, dates de sync)
+  # Indispensable pour ne pas re-télécharger le .m3u à chaque
+  # lancement de l'app — gain de perf énorme sur grosses listes.
+  sqflite: ^2.4.1
+
+  # Manipulation de chemins de fichiers portable Android/iOS.
+  path: ^1.9.0
+
+  # Donne accès au dossier de données de l'app, où sqflite
+  # range son fichier .db (chez Android : /data/data/com.x/...).
+  path_provider: ^2.1.5
+
+  # --- Phase 1.3 : Lecteur vidéo ---
+  # media_kit est basé sur libmpv (le même moteur que VLC,
+  # TiviMate, Stremio). C'est LA référence pour lire :
+  #   - HLS (.m3u8)
+  #   - MPEG-TS (.ts) ← format IPTV principal
+  #   - MP4, MKV, AVI...
+  #   - audio multi-pistes, sous-titres
+  # Avantages : décodage natif via libmpv, performance top,
+  # surcouche Dart propre. Inconvénient : ajoute ~25 Mo
+  # à l'APK (les binaires libmpv pour ARM/x86).
+  media_kit: ^1.1.11
+  # Bump 1.2.5 → 1.3.0+ (suggestion de l'erreur pub get du 2026-05-31)
+  # parce que media_kit_video 1.2.x utilisait
+  # screen_brightness_platform_interface ^0.2.2 (ancienne version)
+  # qui pullait screen_brightness 2.x → screen_brightness_android 2.1.5
+  # qui a un build.gradle avec un bloc kotlin{} cassant le build CI.
+  # media_kit_video 1.3.0+ utilise platform_interface 2.x avec un
+  # screen_brightness compatible et un build.gradle sans bloc kotlin{}.
+  media_kit_video: ^1.3.0
+  media_kit_libs_android_video: ^1.3.6
+
+  # Garde l'écran allumé pendant la lecture (sinon Android
+  # éteint l'écran après 30s d'inactivité, même en pleine
+  # lecture vidéo).
+  wakelock_plus: ^1.2.10
+
+  # SharedPreferences pour persister les réglages utilisateur
+  # (taille du buffer, ratio préféré, etc.) entre les sessions.
+  shared_preferences: ^2.3.4
+
+  # Picture-in-Picture sera ajouté en Phase 4 (avec le Cast),
+  # car il demande aussi une config dans AndroidManifest.xml.
+
+  # --- Phase 1.4 : Refonte UI premium ---
+  # Cache + chargement asynchrone des logos de chaînes.
+  cached_network_image: ^3.4.1
+
+  # --- Phase 1.5 : Finitions / About / Updater ---
+  package_info_plus: ^8.1.4
+  url_launcher: ^6.3.1
+
+  # --- Phase 2 : EPG XMLTV ---
+  # Parser XML en streaming (XmlEventReader) — indispensable pour
+  # ingérer les fichiers EPG qui font souvent 100-500 Mo sans
+  # exploser la RAM du téléphone.
+  xml: ^6.5.0
+
+  # Décompression gzip — beaucoup d'EPG sont servis en .xml.gz pour
+  # diviser la bande passante par 10.
+  archive: ^3.6.1
+
+  # --- Cast universel via QR code ---
+  # Génère le QR code qui pointe vers le mini-serveur HTTP local
+  # de l'app. La TV scanne le QR avec son navigateur (ou tape l'URL
+  # à la main) et joue le flux dans une page HTML5.
+  qr_flutter: ^4.1.0
+
+  # Récupère l'IP locale du téléphone sur le WiFi (sinon impossible
+  # de construire l'URL "http://<mon-ip>:8090/" que la TV doit ouvrir).
+  network_info_plus: ^6.1.1
+
+  # Découverte mDNS / Bonjour — sert à trouver les Chromecasts et
+  # Google TV sur le LAN (service `_googlecast._tcp`). Package
+  # officiel Flutter, fonctionne sur Android et iOS.
+  multicast_dns: ^0.3.2+8
+
+  # Authentification biométrique — empreinte digitale, Face Unlock,
+  # ou code PIN/mot de passe système Android en fallback. Plugin
+  # officiel Flutter. Sert au "Verrouillage à l'ouverture" de l'app.
+  # En cas d'absence de biométrie configurée sur le device, fallback
+  # automatique sur le PIN/pattern/mot-de-passe de l'écran de
+  # verrouillage Android — pas besoin de gérer notre propre PIN.
+  local_auth: ^2.3.0
+
+# Pin de screen_brightness_android pour eviter la 2.1.5 qui a un
+# build.gradle cassé (bloc kotlin{} top-level inutilisable par notre
+# config Flutter CI). 2.1.4 (juste avant la cassée) est compatible
+# avec media_kit_video ^1.3.0+. Le CI a aussi un patch sed/python
+# en filet de sécurité au cas où.
+dependency_overrides:
+  screen_brightness_android: 2.1.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # Règles de lint officielles Flutter
+  flutter_lints: ^4.0.0
+
+  # ----- Génération des icônes de lancement -----
+  # Sans ce package, `flutter create` met l'icône Flutter par défaut
+  # (le F bleu). Avec, on génère toutes les tailles mipmap-* depuis
+  # notre logo 7 MOTION. CI lance `dart run flutter_launcher_icons`
+  # juste après `flutter create` pour que l'icône finale soit ember.
+  flutter_launcher_icons: ^0.14.1
+
+# ============================================================
+#  Configuration du generateur d'icones (utilisée par
+#  flutter_launcher_icons). L'icône source est notre logo
+#  7 MOTION en JPG (1011×965). Adaptive icon : on utilise la
+#  même image en foreground et un fond noir profond (voidSurface
+#  de LUMIERE) pour respecter l'identité Maison Noir même sous
+#  le mask circulaire Android.
+# ============================================================
+flutter_launcher_icons:
+  android: true
+  ios: false
+  remove_alpha_ios: false
+  # Logo source 7 MOTION (PAS de badge ✓ incrusté — l'user a
+  # finalement demandé que le badge "vérifié" reste UNIQUEMENT
+  # dans l'interface après le texte "MOTION", pas sur l'image
+  # de l'icône launcher Android).
+  image_path: "assets/branding/logo_7motion.jpg"
+  min_sdk_android: 21
+  adaptive_icon_background: "#0A0A0C"
+  adaptive_icon_foreground: "assets/branding/logo_7motion.jpg"
+
+flutter:
+  uses-material-design: true
+
+  # Active le générateur officiel `flutter gen-l10n` qui transforme
+  # les fichiers `.arb` de `lib/l10n/` en classe `AppLocalizations`.
+  # La génération est automatique à chaque `flutter pub get`.
+  generate: true
+
+  # ----- Branding -----
+  # Logo officiel 7 MOTION, utilisé dans le splash, l'AppBar de
+  # l'accueil et l'écran "À propos".
+  assets:
+    - assets/branding/logo_7motion.jpg
+    - assets/branding/logo_redroom.png

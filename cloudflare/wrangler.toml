@@ -1,0 +1,68 @@
+# =========================================================
+#  wrangler.toml — Configuration Cloudflare Worker 7 MOTION
+# =========================================================
+#  À utiliser avec la CLI `wrangler` (npm install -g wrangler).
+#  Voir README.md pour les étapes de déploiement.
+# =========================================================
+
+name = "seven-motion-backend"
+main = "worker.js"
+compatibility_date = "2025-05-01"
+
+# Workers KV namespace pour stocker les configs clients.
+#
+# TEMPORAIREMENT DÉSACTIVÉ — verification au 2026-05-31 :
+# le compte Cloudflare de l'utilisateur n'a AUCUN namespace KV
+# cree, et le Worker en prod (lively-voice-7cb0) n'a aucun binding
+# attache. L'ancien wrangler.toml referencait un placeholder
+# 'REMPLACE_MOI_PAR_L_ID_DU_KV' qui faisait planter wrangler deploy
+# avec code 10042 "KV namespace not valid".
+#
+# Consequence : les endpoints /api/heartbeat, /admin/clients,
+# /config/:mac (qui utilisent env.KV_7MOTION) retournent des erreurs.
+# OK car non utilises en prod — les apps mobiles utilisent le
+# formulaire login Xtream local, pas le backend KV.
+#
+# Pour les besoins futurs, on migrera vers D1 (cf. Phase 1.A
+# App Licensing Platform) plutot que recreer un KV.
+#
+# Pour re-activer ce binding plus tard si necessaire :
+#   1) npx wrangler kv namespace create "KV_7MOTION"
+#      → te donne un id type "abc123def4567890"
+#   2) Decommente le bloc ci-dessous et remplace l'id
+#   3) wrangler deploy
+# [[kv_namespaces]]
+# binding = "KV_7MOTION"
+# id = "REMPLACE_MOI_PAR_L_ID_DU_KV"
+
+# =========================================================
+#  D1 — base SQL relationnelle (App Licensing Platform v1)
+# =========================================================
+#  TEMPORAIREMENT DÉSACTIVÉ — la base D1 n'a pas encore été créée
+#  côté Cloudflare. Tant que `wrangler d1 create tvking_licensing`
+#  n'est pas lancé pour obtenir un vrai `database_id`, on commente
+#  le binding pour ne pas bloquer le `wrangler deploy` (qui validait
+#  l'ID placeholder et plantait).
+#
+#  À RÉACTIVER quand on attaque Phase 1.A admin platform :
+#    1) wrangler d1 create tvking_licensing
+#       → te donne un id réel
+#    2) Décommente le bloc ci-dessous et remplace l'id
+#    3) wrangler d1 execute tvking_licensing --remote --file=schema.sql
+#    4) wrangler deploy (re-déploie le Worker avec le binding actif)
+#
+#  En attendant : les endpoints /api/v1/* (qui utilisent env.DB)
+#  retournent une erreur 500 "db_unbound" — pas de souci, ils ne
+#  sont pas encore utilisés en prod.
+# =========================================================
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "tvking_licensing"
+# database_id = "REMPLACE_MOI_PAR_L_ID_D1"
+
+# Le secret admin n'est PAS dans ce fichier — il se met via
+# `wrangler secret put ADMIN_SECRET` pour ne JAMAIS être commité.
+#
+# Pareil pour la cle de chiffrement des credentials Xtream :
+# `wrangler secret put SECRETS_KEY` (32 bytes base64 minimum,
+# genere via `openssl rand -base64 32`).

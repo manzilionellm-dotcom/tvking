@@ -1,0 +1,22 @@
+# =========================================================
+#  flutter_launcher_icons_redroom.yaml — Icône Red Room
+# =========================================================
+#  Config dédiée au flavor Red Room. Utilisée par le job CI
+#  `build_redroom` via :
+#    dart run flutter_launcher_icons -f flutter_launcher_icons_redroom.yaml
+#
+#  Le PNG source `assets/branding/logo_redroom.png` est le vrai logo
+#  Red Room livré par l'utilisateur (R stylisé + silhouette + "RED
+#  ROOM 18+", 1254×1254). flutter_launcher_icons génère toutes les
+#  tailles mipmap-* depuis ce source pour l'icône de bureau Android.
+# =========================================================
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/branding/logo_redroom.png"
+  min_sdk_android: 21
+  # Fond velours profond — plus chaud que le voidSurface 7 MOTION
+  # pour évoquer le velours d'un théâtre.
+  adaptive_icon_background: "#08060A"
+  adaptive_icon_foreground: "assets/branding/logo_redroom.png"
