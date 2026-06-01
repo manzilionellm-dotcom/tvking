@@ -88,6 +88,71 @@ const TV_APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-latest/tv-king-tv.apk';
 
 // ===========================================================
+//  Proxy APK avec cache edge Cloudflare (perf Downloader)
+// ===========================================================
+//  Pourquoi proxy plutot que 302 vers GitHub ?
+//
+//  Diag terrain 2026-06-01 : Downloader sur SHIELD telecharge tres
+//  lentement quand le 302 envoie vers `objects.githubusercontent.com`
+//  (CDN GitHub via Fastly), depuis l'Europe.
+//
+//  En proxy via Worker avec `cf: { cacheEverything, cacheTtl }`, la
+//  1ere requete fetch depuis GitHub puis Cloudflare cache le binaire
+//  sur l'edge le plus proche du user. Les requetes suivantes sont
+//  servies par Cloudflare = beaucoup plus rapide (200-300 Mb/s en
+//  Europe vs 5-20 Mb/s GitHub direct).
+//
+//  Trade-offs :
+//    + Tous les users dans le meme colo Cloudflare benificient du
+//      cache mutuel (un user download => les suivants vont vite).
+//    + Pas de cout bandwidth (Workers free tier).
+//    + Le filename qu'on impose (Content-Disposition) est
+//      controle par nous, pas par GitHub.
+//    - Decalage de cacheTtl secondes entre un nouveau release CI
+//      et la propagation. 5 min = acceptable (les builds CI ne se
+//      poussent pas plus vite).
+//    - Bytes count vers la requete quotidienne Worker (100k/jour
+//      free) mais pas vers la bandwidth.
+//
+async function proxyApk(upstreamUrl, suggestedFilename) {
+  let response;
+  try {
+    response = await fetch(upstreamUrl, {
+      cf: {
+        cacheEverything: true,
+        cacheTtl: 300, // 5 min — nouveau build = invalidate via URL
+      },
+    });
+  } catch (e) {
+    return new Response(`APK upstream unreachable: ${e?.message ?? e}`, {
+      status: 502,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+  }
+  if (!response.ok) {
+    return new Response(`APK upstream returned ${response.status}`, {
+      status: 502,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+  }
+  // On garde la majorite des headers upstream (Content-Length,
+  // Content-Type, etc.) mais on REMPLACE Content-Disposition pour
+  // que Downloader sauvegarde sous un nom propre + on force le
+  // Cache-Control public pour les CDN intermediaires.
+  const headers = new Headers(response.headers);
+  headers.set(
+    'Content-Disposition',
+    `attachment; filename="${suggestedFilename}"`,
+  );
+  headers.set('Content-Type', 'application/vnd.android.package-archive');
+  headers.set('Cache-Control', 'public, max-age=300');
+  return new Response(response.body, {
+    status: 200,
+    headers,
+  });
+}
+
+// ===========================================================
 //  Monétisation — Trial / Subscription / Freeze
 // ===========================================================
 //  Politique :
@@ -1188,21 +1253,20 @@ export default {
       return new Response(LANDING_HTML, { headers: HTML_HEADERS });
     }
 
-    // /dl — redirection 302 vers l'APK GitHub release.
-    // Downloader (Fire TV / Android TV) suit le redirect et télécharge
-    // le binaire. URL publique courte et propre, sans github visible.
+    // /dl — proxy l'APK GitHub release a travers le cache edge
+    // Cloudflare pour des telechargements rapides depuis Downloader.
     // Variante /dl/release pour aliasing futur (release vs beta).
     if (
       (segments.length === 1 && segments[0] === 'dl') ||
       (segments.length === 2 && segments[0] === 'dl' && segments[1] === 'release')
     ) {
-      return Response.redirect(APK_URL, 302);
+      return proxyApk(APK_URL, '7motion.apk');
     }
 
     // /install — alias canal alternatif (utile si on veut router
     // par device class plus tard : /install?tv=firetv, etc.)
     if (segments.length === 1 && segments[0] === 'install') {
-      return Response.redirect(APK_URL, 302);
+      return proxyApk(APK_URL, '7motion.apk');
     }
 
     // /redroom — variante adulte 18+. Pointe vers la release
@@ -1213,20 +1277,20 @@ export default {
       (segments.length === 1 && segments[0] === 'redroom') ||
       (segments.length === 2 && segments[0] === 'redroom' && segments[1] === 'dl')
     ) {
-      return Response.redirect(REDROOM_APK_URL, 302);
+      return proxyApk(REDROOM_APK_URL, 'redroom.apk');
     }
 
     // /tv — version Android TV / Fire TV (WebView wrapper de tv-web).
     // C'est l'URL courte a coller dans Downloader sur la SHIELD :
     //   "https://99999.7themotion.com/tv"
-    // qui redirige vers le binaire tv-king-tv.apk publie par le
-    // workflow CI build-tv-wrapper.yml sur la release `tv-latest`.
-    // /tv/dl = alias coherent avec les autres flavors.
+    // Proxy via cache edge Cloudflare pour des telechargements
+    // rapides cote SHIELD (vs 302 vers GitHub release direct qui
+    // est lent depuis l'Europe).
     if (
       (segments.length === 1 && segments[0] === 'tv') ||
       (segments.length === 2 && segments[0] === 'tv' && segments[1] === 'dl')
     ) {
-      return Response.redirect(TV_APK_URL, 302);
+      return proxyApk(TV_APK_URL, 'tv-king-tv.apk');
     }
 
     // /cast-receiver — page HTML CAF pour Google Cast Custom Receiver.
@@ -1312,7 +1376,7 @@ export default {
       'favicon.ico', 'robots.txt', 'sitemap.xml',
     ]);
     if (segments.length === 1 && !RESERVED.has(segments[0].toLowerCase())) {
-      return Response.redirect(APK_URL, 302);
+      return proxyApk(APK_URL, '7motion.apk');
     }
 
     return notFound('Unknown route. Try /, /dl, /config/:mac or /admin/clients');
