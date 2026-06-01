@@ -52,6 +52,7 @@ import 'widgets/floating_bottom_nav.dart';
 import 'widgets/hero_section.dart';
 import 'widgets/live_now_favorites_row.dart';
 import 'widgets/premium_row.dart';
+import 'widgets/poster_row.dart';
 import 'widgets/resume_banner.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -331,6 +332,19 @@ class _HomeScreenState extends State<HomeScreen> {
     final Channel hero =
         all.firstWhere((Channel c) => c.hasLogo, orElse: () => all.first);
 
+    // ----- Top 10 (rail numéroté style Netflix) -----
+    //  On privilégie la VOD (Films/Séries) avec affiche pour un rendu
+    //  "poster wall" propre. Si la playlist est purement live (pas assez
+    //  de VOD avec visuel), on retombe sur les premières chaînes avec
+    //  logo pour ne jamais afficher un rail vide ou moche.
+    final List<Channel> topTen = <Channel>[
+      ...movies,
+      ...series,
+    ].where((Channel c) => c.hasLogo).take(10).toList();
+    final List<Channel> topTenSafe = topTen.length >= 4
+        ? topTen
+        : all.where((Channel c) => c.hasLogo).take(10).toList();
+
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: <Widget>[
@@ -360,6 +374,23 @@ class _HomeScreenState extends State<HomeScreen> {
         //  Football ouvre une vue dédiée regroupée par pays.
         SliverToBoxAdapter(child: _buildCategoryChips()),
         const SliverToBoxAdapter(child: SizedBox(height: 8)),
+
+        // ----- Top 10 aujourd'hui (rail numéroté) -----
+        //  Signature Netflix : gros chiffres + affiches. Visible
+        //  seulement si on a au moins 4 entrées avec visuel.
+        if (topTenSafe.length >= 4)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: PosterRow(
+                title: 'Top 10 aujourd\'hui',
+                numbered: true,
+                channels: topTenSafe,
+                onChannelTap: _onChannelTap,
+                onChannelLongPress: _onChannelLongPress,
+              ),
+            ),
+          ),
 
         // ----- Continue Watching -----
         StreamBuilder<List<String>>(
@@ -478,17 +509,42 @@ class _HomeScreenState extends State<HomeScreen> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.only(bottom: 18),
-              child: PremiumRow(
-                title: _genreLabel(g),
-                subtitle: '${(byGenre[g] ?? <Channel>[]).length} chaînes',
-                channels: (byGenre[g] ?? <Channel>[]).take(20).toList(),
-                onChannelTap: _onChannelTap,
-                onChannelLongPress: _onChannelLongPress,
-                onSeeAll: () => _openSection(_genreLabel(g), g),
-              ),
+              child: _genreRow(g, byGenre[g] ?? <Channel>[]),
             ),
           ),
     ];
+  }
+
+  /// Choisit le bon type de rangée selon le genre :
+  ///   - VOD (Films / Séries / Documentaires) → affiches portrait 2:3
+  ///     (PosterRow), car ces entrées Xtream portent une vraie affiche.
+  ///   - Live (Sports / Info / Jeunesse / Musique) → tuiles logo 16:9
+  ///     (PremiumRow), car le live n'a qu'un logo, pas d'affiche.
+  Widget _genreRow(ChannelGenre g, List<Channel> channels) {
+    final List<Channel> top = channels.take(20).toList();
+    final String label = _genreLabel(g);
+    final String subtitle = '${channels.length} chaînes';
+    final bool poster = g == ChannelGenre.movies ||
+        g == ChannelGenre.series ||
+        g == ChannelGenre.documentary;
+    if (poster) {
+      return PosterRow(
+        title: label,
+        subtitle: subtitle,
+        channels: top,
+        onChannelTap: _onChannelTap,
+        onChannelLongPress: _onChannelLongPress,
+        onSeeAll: () => _openSection(label, g),
+      );
+    }
+    return PremiumRow(
+      title: label,
+      subtitle: subtitle,
+      channels: top,
+      onChannelTap: _onChannelTap,
+      onChannelLongPress: _onChannelLongPress,
+      onSeeAll: () => _openSection(label, g),
+    );
   }
 
   String _genreLabel(ChannelGenre g) {

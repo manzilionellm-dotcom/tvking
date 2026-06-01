@@ -75,8 +75,8 @@ class PremiumRow extends StatelessWidget {
                         child: Text(
                           subtitle!,
                           style: AppTextStyles.bodyMedium.copyWith(
-                            fontSize: 11,
-                            color: AppColors.textMuted,
+                            fontSize: 12,
+                            color: AppColors.textTertiary,
                           ),
                         ),
                       ),

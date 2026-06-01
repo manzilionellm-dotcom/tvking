@@ -192,15 +192,15 @@ class _CompactChannelRowState extends State<CompactChannelRow> {
                                 Icon(
                                   ch.genre.icon,
                                   size: 11,
-                                  color: AppColors.textMuted,
+                                  color: AppColors.textTertiary,
                                 ),
                                 const SizedBox(width: 4),
                                 Flexible(
                                   child: Text(
                                     ch.prettyCategory,
                                     style: AppTextStyles.bodyMedium.copyWith(
-                                      fontSize: 11,
-                                      color: AppColors.textMuted,
+                                      fontSize: 12,
+                                      color: AppColors.textTertiary,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,

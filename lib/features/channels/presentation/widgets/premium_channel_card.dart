@@ -189,7 +189,7 @@ class _PremiumChannelCardState extends State<PremiumChannelCard> {
                 Text(
                   ch.cleanName,
                   style: AppTextStyles.bodyLarge.copyWith(
-                    fontSize: 13,
+                    fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textPrimary,
                   ),
@@ -202,7 +202,7 @@ class _PremiumChannelCardState extends State<PremiumChannelCard> {
                     Icon(
                       ch.genre.icon,
                       size: 11,
-                      color: AppColors.textMuted,
+                      color: AppColors.textTertiary,
                     ),
                     const SizedBox(width: 4),
                     Flexible(
@@ -211,8 +211,8 @@ class _PremiumChannelCardState extends State<PremiumChannelCard> {
                             ? '${ch.country!.flag} ${ch.genre.label}'
                             : ch.genre.label,
                         style: AppTextStyles.bodyMedium.copyWith(
-                          fontSize: 11,
-                          color: AppColors.textMuted,
+                          fontSize: 12,
+                          color: AppColors.textTertiary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
