@@ -36,8 +36,9 @@ import 'features/device/data/device_identity.dart';
 import 'features/epg/data/epg_repository.dart';
 import 'features/onboarding/data/device_class_repository.dart';
 import 'features/onboarding/data/onboarding_state.dart';
-import 'features/onboarding/presentation/device_picker_screen.dart';
-import 'features/onboarding/presentation/onboarding_screen.dart';
+// Phase 1+/2026-06-01 : DevicePicker + Onboarding supprimes du
+// flow. Imports retires (les fichiers existent toujours dans
+// features/onboarding/presentation/ pour eventuelle reprise).
 import 'features/player/data/player_settings.dart';
 import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/playlist_repository.dart';
@@ -236,13 +237,15 @@ class TvKingApp extends StatelessWidget {
   }
 }
 
-/// Décide quel écran montrer en premier :
-///   - 1er lancement → DevicePickerScreen (téléphone / TV / auto)
-///   - puis OnboardingScreen (3 slides)
-///   - puis HomeScreen (Phone ou TV selon le choix)
+/// Décide quel écran montrer en premier (post-Phase 1+/2026-06-01) :
+///   - Age gate (Red Room) si jamais confirme
+///   - Lock biometrique si active
+///   - HomeScreen directement (Phone ou TV selon DeviceClass.auto)
 ///
-/// Le flag onboarding est aussi utilisé pour considérer que le
-/// device picker a été vu (les deux sont liés au "1er lancement").
+/// DevicePickerScreen + OnboardingScreen ont ete RETIRES du flow :
+/// les utilisateurs entrent directement dans l'app, sans demo ni
+/// tuto. Voir le commentaire dans build() (etape "1)") pour les
+/// details.
 class _AppEntry extends StatefulWidget {
   const _AppEntry();
 
@@ -251,8 +254,10 @@ class _AppEntry extends StatefulWidget {
 }
 
 class _AppEntryState extends State<_AppEntry> {
+  // Onboarding/DevicePicker retires du flow (cf. build). On garde le
+  // flag `_onboardingDone` pour ne pas re-evaluer en boucle et pour
+  // qu'on puisse restaurer le flow sans refactor si on change d'avis.
   bool? _onboardingDone;
-  bool _devicePicked = false;
   // Verrouillage biométrique : null = pas encore chargé, true/false = état
   // du réglage `security.lock_on_open`. Tant que `_unlocked` est false ET
   // que le lock est activé, on affiche `LockScreen` au lieu de l'app.
@@ -271,10 +276,8 @@ class _AppEntryState extends State<_AppEntry> {
       if (mounted) {
         setState(() {
           _onboardingDone = done;
-          // Si l'onboarding est complété, on considère que le device
-          // picker l'est aussi (il vient AVANT). Pour un user qui a
-          // déjà l'app installée et qui se met à jour, c'est juste.
-          _devicePicked = done;
+          // DevicePicker retire — la decision se fait via DeviceClass.auto
+          // (taille d'ecran). Plus de drapeau `_devicePicked`.
         });
       }
     });
@@ -338,18 +341,28 @@ class _AppEntryState extends State<_AppEntry> {
       );
     }
 
-    // 1) Première étape : choix de la classe d'appareil
-    if (!_devicePicked) {
-      return DevicePickerScreen(
-        onDone: () => setState(() => _devicePicked = true),
-      );
-    }
-
-    // 2) Onboarding (slides bienvenue / playlist / premium)
+    // 1) DevicePicker + 2) Onboarding : SUPPRIMES (decision produit
+    //    2026-06-01). L'utilisateur entre directement dans l'app, pas
+    //    de demo / tuto / choix de classe d'appareil au 1er lancement.
+    //
+    //    - DeviceClass reste en mode `auto` (DeviceClassRepository
+    //      defaut) : l'app detecte au runtime via la taille d'ecran.
+    //    - OnboardingState est marquee completed silencieusement la
+    //      1ere fois pour ne PAS replonger l'user dans le tuto si on
+    //      change d'avis et qu'on remet l'ecran un jour.
+    //
+    //    L'utilisateur qui n'a pas de playlist arrive directement sur
+    //    le home avec un etat vide + bouton "Ajouter une playlist"
+    //    (deja present dans Reglages > Playlists). C'est plus direct
+    //    qu'un onboarding qui lui explique ce qu'il sait deja
+    //    (il a installe une app IPTV, il sait qu'il faut une source).
     if (_onboardingDone == false) {
-      return OnboardingScreen(
-        onDone: () => setState(() => _onboardingDone = true),
-      );
+      // One-shot : marque completed pour ne pas re-evaluer cette
+      // branche aux prochains setState et eviter le flash UI. Pas
+      // d'attente du Future (best-effort cote persistance).
+      _onboardingDone = true;
+      // ignore: discarded_futures
+      OnboardingState.instance.markCompleted();
     }
 
     // 3) Gate de monétisation — l'admin peut geler / bannir un
