@@ -754,8 +754,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Future<void> _openCastPicker() async {
     final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
     final String title = widget.overrideTitle ?? _currentChannel.cleanName;
+    // Phase 1+/G1 : on transmet le logo de la chaine pour que le
+    // recepteur (TV / Chromecast / SHIELD) l'affiche sur son ecran
+    // d'attente et en overlay pendant la lecture — au lieu du
+    // placeholder Cast generique.
+    final String? imageUrl = _currentChannel.logoUrl;
     _hideOverlayTimer?.cancel();
-    await showCastPicker(context, streamUrl: url, title: title);
+    await showCastPicker(
+      context,
+      streamUrl: url,
+      title: title,
+      imageUrl: imageUrl,
+    );
     _scheduleHideOverlay();
   }
 

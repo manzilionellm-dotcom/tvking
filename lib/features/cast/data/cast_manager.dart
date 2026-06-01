@@ -23,6 +23,7 @@ import 'cast_session_diagnostic.dart';
 import 'cast_transport.dart';
 import 'dlna_capabilities.dart';
 import 'dlna_profiles.dart';
+import 'google_cast_api.dart';
 import 'local_cast_server.dart';
 import 'mdns_discovery.dart';
 import 'ssdp_discovery.dart';
@@ -48,8 +49,124 @@ enum CastState {
 }
 
 class CastManager extends ChangeNotifier {
-  CastManager._();
+  CastManager._() {
+    _subscribeToNativeEvents();
+  }
   static final CastManager instance = CastManager._();
+
+  /// Phase 1+/G2 — abonnements aux streams natifs Google Cast SDK
+  /// (sessionEvent + mediaStateChanged). Garde l'etat Dart aligne
+  /// avec ce que la TV fait reellement, meme quand l'utilisateur
+  /// pause depuis sa telecommande SHIELD ou un autre sender.
+  StreamSubscription<CastNativeSessionEvent>? _nativeSessionSub;
+  StreamSubscription<CastNativeMediaState>? _nativeMediaSub;
+
+  void _subscribeToNativeEvents() {
+    _nativeSessionSub = GoogleCastApi.instance.sessionEventStream.listen(
+      _onNativeSessionEvent,
+      onError: (Object e) {
+        StructuredLogger.instance.warn(
+          domain: 'cast',
+          event: 'native.session_stream_error',
+          ctx: <String, Object?>{'error': e.toString()},
+        );
+      },
+    );
+    _nativeMediaSub = GoogleCastApi.instance.mediaStateStream.listen(
+      _onNativeMediaState,
+      onError: (Object e) {
+        StructuredLogger.instance.warn(
+          domain: 'cast',
+          event: 'native.media_stream_error',
+          ctx: <String, Object?>{'error': e.toString()},
+        );
+      },
+    );
+  }
+
+  void _onNativeSessionEvent(CastNativeSessionEvent evt) {
+    StructuredLogger.instance.info(
+      domain: 'cast',
+      event: 'native.session_event',
+      ctx: <String, Object?>{
+        'kind': evt.kind,
+        if (evt.errorCode != 0) 'errorCode': evt.errorCode,
+      },
+    );
+    switch (evt.kind) {
+      case 'ended':
+      case 'suspended':
+        // Le SDK signale la fin de la session — on aligne notre etat.
+        // ATTENTION : ne pas appeler disconnect() ici (eviterait une
+        // boucle car notre disconnect() ferme aussi la session SDK).
+        // On reset juste l'etat Dart.
+        if (_state == CastState.casting || _state == CastState.paused) {
+          _state = CastState.idle;
+          _setProgress(CastProgress.idle);
+        }
+        break;
+      case 'resumed_at_boot':
+        // Le SDK a restaure une session via setResumeSavedSession au
+        // boot — on n'a pas de _device/_transport associes cote Dart,
+        // mais on doit refleter qu'une session est techniquement
+        // active. L'utilisateur peut casser cette session via
+        // disconnect() depuis l'UI ou le picker.
+        if (_state == CastState.idle) {
+          _state = CastState.casting;
+          _setProgress(CastProgress.live);
+        }
+        break;
+    }
+  }
+
+  void _onNativeMediaState(CastNativeMediaState state) {
+    // L'etat Dart ne refait surface que pour les transitions
+    // play/pause utiles a l'UI. On n'a pas (encore) de mapping
+    // buffering -> CastState dedie (sera utile quand on aura un
+    // mini-player synchronise).
+    switch (state.playerState) {
+      case CastNativePlayerState.playing:
+        if (_state == CastState.paused) {
+          _state = CastState.casting;
+          _setProgress(CastProgress.live);
+        }
+        break;
+      case CastNativePlayerState.paused:
+        if (_state == CastState.casting) {
+          _state = CastState.paused;
+          _setProgress(CastProgress.pausedState);
+        }
+        break;
+      case CastNativePlayerState.idle:
+        // Lecture finie ou stop par la TV. Si on etait en cours, on
+        // revient en idle (l'utilisateur peut relancer une chaine).
+        if (_state == CastState.casting || _state == CastState.paused) {
+          _state = CastState.idle;
+          _setProgress(CastProgress.idle);
+        }
+        break;
+      case CastNativePlayerState.loading:
+      case CastNativePlayerState.buffering:
+      case CastNativePlayerState.unknown:
+        // Pas de transition Dart — le state existant est conserve.
+        break;
+    }
+    StructuredLogger.instance.info(
+      domain: 'cast',
+      event: 'native.media_state',
+      ctx: <String, Object?>{
+        'playerState': state.playerState.name,
+        'castManagerState': _state.name,
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _nativeSessionSub?.cancel();
+    _nativeMediaSub?.cancel();
+    super.dispose();
+  }
 
   CastState _state = CastState.idle;
   CastDevice? _device;
@@ -229,6 +346,7 @@ class CastManager extends ChangeNotifier {
     required String title,
     String? channelName,
     String? channelGenre,
+    String? imageUrl,
   }) async {
     // Phase 1 / F-09 : on borne la session entiere a kCastTotalTimeout.
     // En cas de depassement, _castToInner sera abandonne, on coupe
@@ -241,6 +359,7 @@ class CastManager extends ChangeNotifier {
         title: title,
         channelName: channelName,
         channelGenre: channelGenre,
+        imageUrl: imageUrl,
       ).timeout(kCastTotalTimeout);
     } on TimeoutException {
       StructuredLogger.instance.warn(
@@ -293,6 +412,7 @@ class CastManager extends ChangeNotifier {
     required String title,
     String? channelName,
     String? channelGenre,
+    String? imageUrl,
   }) async {
     stopDiscovery();
     _state = CastState.connecting;
@@ -340,6 +460,7 @@ class CastManager extends ChangeNotifier {
           probe: probe,
           title: title,
           diag: diag,
+          imageUrl: imageUrl,
         );
       } else {
         _setProgress(CastProgress.connecting());
@@ -348,6 +469,7 @@ class CastManager extends ChangeNotifier {
           await _transport!.playStream(
             streamUrl: probe.finalUrl,
             title: title,
+            imageUrl: imageUrl,
           );
           diag.attempts.add(AttemptResult(
             strategyIndex: 0,
@@ -476,6 +598,7 @@ class CastManager extends ChangeNotifier {
     required StreamProbeResult probe,
     required String title,
     required CastSessionDiagnostic diag,
+    String? imageUrl,
   }) async {
     // Capabilities (Sink) — best-effort, on continue même si vide.
     _setProgress(CastProgress.detecting);
@@ -602,7 +725,11 @@ class CastManager extends ChangeNotifier {
             break;
         }
 
-        await transport.playStream(streamUrl: urlToCast, title: title);
+        await transport.playStream(
+          streamUrl: urlToCast,
+          title: title,
+          imageUrl: imageUrl,
+        );
         diag.attempts.add(AttemptResult(
           strategyIndex: s,
           strategyName: strategyName,

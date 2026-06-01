@@ -28,17 +28,25 @@ import 'web_cast_setup_sheet.dart';
 
 /// Ouvre le picker en mode "envoyer ce flux maintenant".
 /// → Tap sur un device = la TV se met à lire `streamUrl` immédiatement.
+///
+/// [imageUrl] (Phase 1+/G1) = logo de la chaine a afficher sur la TV
+/// (idle screen + overlay). Optionnel.
 Future<void> showCastPicker(
   BuildContext context, {
   required String streamUrl,
   required String title,
+  String? imageUrl,
 }) {
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => CastPickerSheet(streamUrl: streamUrl, title: title),
+    builder: (_) => CastPickerSheet(
+      streamUrl: streamUrl,
+      title: title,
+      imageUrl: imageUrl,
+    ),
   );
 }
 
@@ -60,6 +68,7 @@ class CastPickerSheet extends StatefulWidget {
   const CastPickerSheet({
     this.streamUrl,
     this.title,
+    this.imageUrl,
     super.key,
   });
 
@@ -67,6 +76,10 @@ class CastPickerSheet extends StatefulWidget {
   /// device sélectionné sans déclencher de lecture.
   final String? streamUrl;
   final String? title;
+
+  /// Logo de la chaine — sera affiche sur le recepteur (idle +
+  /// overlay) via les metadonnees Cast. Phase 1+/G1.
+  final String? imageUrl;
 
   @override
   State<CastPickerSheet> createState() => _CastPickerSheetState();
@@ -123,6 +136,7 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
         device,
         streamUrl: widget.streamUrl!,
         title: widget.title ?? 'Lecture',
+        imageUrl: widget.imageUrl,
       );
       if (!mounted) return;
       Navigator.of(context).pop();

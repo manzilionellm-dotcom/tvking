@@ -26,17 +26,137 @@
 //  compatible avec le `CastTransport` interface.
 // =========================================================
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+/// Phase 1+/G2 — Etat de lecture remonte par le SDK Cast natif.
+/// Couvre les transitions declenchees par la telecommande TV ou un
+/// autre sender — pas uniquement nos appels Dart.
+enum CastNativePlayerState {
+  idle,
+  loading,
+  playing,
+  paused,
+  buffering,
+  unknown,
+}
+
+/// Evenement de session emis par le natif (start / resume / end /
+/// suspended / failed). Permet a CastManager de garder son `_state`
+/// aligne avec la session SDK reelle, meme apres un reboot Dart.
+@immutable
+class CastNativeSessionEvent {
+  const CastNativeSessionEvent(this.kind, [this.errorCode = 0]);
+  final String kind;
+  final int errorCode;
+}
+
+/// Snapshot du state media du recepteur. Mute de RemoteMediaClient.
+@immutable
+class CastNativeMediaState {
+  const CastNativeMediaState({
+    required this.playerState,
+    required this.isPlaying,
+    required this.isPaused,
+    required this.isBuffering,
+  });
+
+  final CastNativePlayerState playerState;
+  final bool isPlaying;
+  final bool isPaused;
+  final bool isBuffering;
+}
+
 class GoogleCastApi {
-  GoogleCastApi._();
+  GoogleCastApi._() {
+    // Tests unitaires : si WidgetsFlutterBinding n'est pas initialise
+    // (tests purs sans `TestWidgetsFlutterBinding.ensureInitialized()`),
+    // setMethodCallHandler assert. On wrap dans try/catch pour que la
+    // construction reste possible — les tests qui ont besoin du
+    // handler doivent initialiser le binding eux-memes.
+    try {
+      _channel.setMethodCallHandler(_onMethodCall);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[GoogleCast] setMethodCallHandler defer: $e');
+      }
+    }
+  }
   static final GoogleCastApi instance = GoogleCastApi._();
 
   /// Nom du channel — doit être IDENTIQUE côté Kotlin
   /// (GoogleCastApi.kt utilise le même).
   static const MethodChannel _channel =
       MethodChannel('com.manzilionellm.tvking/cast');
+
+  // ----- Phase 1+/G2 : streams pousses par le natif vers Dart -----
+
+  final StreamController<CastNativeMediaState> _mediaStateCtrl =
+      StreamController<CastNativeMediaState>.broadcast();
+  final StreamController<CastNativeSessionEvent> _sessionEventCtrl =
+      StreamController<CastNativeSessionEvent>.broadcast();
+
+  /// Stream des transitions d'etat media (PLAYING/PAUSED/IDLE/...)
+  /// remontees par RemoteMediaClient.Callback cote Kotlin.
+  Stream<CastNativeMediaState> get mediaStateStream =>
+      _mediaStateCtrl.stream;
+
+  /// Stream des evenements de cycle de vie de session SDK
+  /// (started, resumed, ended, suspended, start_failed, etc.).
+  Stream<CastNativeSessionEvent> get sessionEventStream =>
+      _sessionEventCtrl.stream;
+
+  Future<dynamic> _onMethodCall(MethodCall call) async {
+    try {
+      switch (call.method) {
+        case 'onMediaStateChanged':
+          final Map<Object?, Object?> args =
+              (call.arguments as Map<Object?, Object?>?) ?? const {};
+          final String stateStr = (args['playerState'] as String?) ?? 'unknown';
+          _mediaStateCtrl.add(CastNativeMediaState(
+            playerState: _parsePlayerState(stateStr),
+            isPlaying: (args['isPlaying'] as bool?) ?? false,
+            isPaused: (args['isPaused'] as bool?) ?? false,
+            isBuffering: (args['isBuffering'] as bool?) ?? false,
+          ));
+          break;
+        case 'onSessionEvent':
+          final Map<Object?, Object?> args =
+              (call.arguments as Map<Object?, Object?>?) ?? const {};
+          _sessionEventCtrl.add(CastNativeSessionEvent(
+            (args['event'] as String?) ?? 'unknown',
+            (args['errorCode'] as int?) ?? 0,
+          ));
+          break;
+        default:
+          if (kDebugMode) {
+            debugPrint('[GoogleCast] event inconnu ${call.method}');
+          }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[GoogleCast] onMethodCall: $e');
+    }
+    return null;
+  }
+
+  CastNativePlayerState _parsePlayerState(String s) {
+    switch (s) {
+      case 'playing':
+        return CastNativePlayerState.playing;
+      case 'paused':
+        return CastNativePlayerState.paused;
+      case 'buffering':
+        return CastNativePlayerState.buffering;
+      case 'idle':
+        return CastNativePlayerState.idle;
+      case 'loading':
+        return CastNativePlayerState.loading;
+      default:
+        return CastNativePlayerState.unknown;
+    }
+  }
 
   /// `true` si Google Play Services + Cast Framework sont
   /// disponibles sur le device. Sur les phones sans Google

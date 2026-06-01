@@ -39,17 +39,25 @@ class RokuEcpTransport implements CastTransport {
   Future<void> playStream({
     required String streamUrl,
     String title = '7 MOTION',
+    String? imageUrl,
   }) async {
     final String videoFormat = _detectFormat(streamUrl);
 
-    final Uri uri = Uri.parse(
-      '$_base/launch/$_kMediaPlayerChannelId',
-    ).replace(queryParameters: <String, String>{
+    // Phase 1+/G1 : Roku ECP `launch` accepte un parametre optionnel
+    // `posterUrl` que le channel media player utilise pour le visuel
+    // d'attente. On le passe quand on l'a — Roku ignore les params
+    // qu'il ne reconnait pas, donc sans risque sur les chaines tierces.
+    final Map<String, String> params = <String, String>{
       'u': streamUrl,
       't': 'v',
       'videoFormat': videoFormat,
       'Title': title,
-    });
+      if (imageUrl != null && imageUrl.isNotEmpty) 'posterUrl': imageUrl,
+    };
+
+    final Uri uri = Uri.parse(
+      '$_base/launch/$_kMediaPlayerChannelId',
+    ).replace(queryParameters: params);
 
     final http.Response resp = await http
         .post(uri)

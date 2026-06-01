@@ -30,8 +30,11 @@ import androidx.mediarouter.app.MediaRouteChooserDialog
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaLoadRequestData
 import com.google.android.gms.cast.MediaMetadata
+import com.google.android.gms.cast.MediaStatus
 import com.google.android.gms.cast.framework.CastContext
+import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.SessionManager
+import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
@@ -72,6 +75,141 @@ class GoogleCastApi(
     }
 
     private val sessionManager: SessionManager? = castContext?.sessionManager
+
+    /**
+     * Phase 1+/G2 — Synchronisation bidirectionnelle.
+     *
+     * Le RemoteMediaClient.Callback est invoque par le SDK Cast a
+     * chaque changement d'etat sur la TV (PLAYING / PAUSED / IDLE /
+     * BUFFERING), MEME quand le declencheur est la telecommande
+     * physique de la TV ou un autre sender. Sans ce callback, l'app
+     * Dart ne savait jamais quand l'utilisateur pausait depuis sa
+     * telecommande SHIELD -> l'UI sender affichait toujours
+     * "playing" alors que la TV etait en pause. C'est exactement le
+     * "l'app ment a l'utilisateur" identifie comme critique.
+     *
+     * On enregistre le callback :
+     *   - quand la session devient active (via SessionManagerListener)
+     *   - on le retire quand la session se termine (anti-leak)
+     */
+    private val remoteMediaCallback = object : RemoteMediaClient.Callback() {
+        override fun onStatusUpdated() {
+            val client = remoteMediaClient() ?: return
+            emitMediaState(client)
+        }
+    }
+
+    private val sessionListener = object : SessionManagerListener<CastSession> {
+        override fun onSessionStarted(session: CastSession, sessionId: String) {
+            attachMediaCallback()
+            emitSessionEvent("started")
+        }
+        override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
+            attachMediaCallback()
+            emitSessionEvent("resumed")
+        }
+        override fun onSessionEnded(session: CastSession, error: Int) {
+            detachMediaCallback()
+            emitSessionEvent("ended")
+        }
+        override fun onSessionSuspended(session: CastSession, reason: Int) {
+            detachMediaCallback()
+            emitSessionEvent("suspended")
+        }
+        override fun onSessionStarting(session: CastSession) {}
+        override fun onSessionResuming(session: CastSession, sessionId: String) {}
+        override fun onSessionEnding(session: CastSession) {}
+        override fun onSessionStartFailed(session: CastSession, error: Int) {
+            emitSessionEvent("start_failed", error)
+        }
+        override fun onSessionResumeFailed(session: CastSession, error: Int) {
+            emitSessionEvent("resume_failed", error)
+        }
+    }
+
+    init {
+        // Branchement du listener sessions des le construction. Le SDK
+        // est responsable de la lifecycle — pas besoin de detacher
+        // manuellement, l'Activity Flutter persiste tant que l'app
+        // tourne.
+        sessionManager?.addSessionManagerListener(
+            sessionListener,
+            CastSession::class.java,
+        )
+        // Si une session existait deja (ex. resume apres reboot Dart
+        // via setResumeSavedSession), on s'accroche tout de suite.
+        if (sessionManager?.currentCastSession?.isConnected == true) {
+            attachMediaCallback()
+            // Et on emet un evenement immediat pour que Dart sache
+            // qu'on est connecte.
+            emitSessionEvent("resumed_at_boot")
+        }
+    }
+
+    private fun attachMediaCallback() {
+        val client = remoteMediaClient() ?: return
+        try {
+            client.registerCallback(remoteMediaCallback)
+            // Emission immediate du state courant pour que Dart se
+            // synchronise sans attendre le 1er status update.
+            emitMediaState(client)
+        } catch (e: Exception) {
+            Log.w(TAG, "registerCallback failed: $e")
+        }
+    }
+
+    private fun detachMediaCallback() {
+        val client = remoteMediaClient() ?: return
+        try {
+            client.unregisterCallback(remoteMediaCallback)
+        } catch (e: Exception) {
+            Log.w(TAG, "unregisterCallback failed: $e")
+        }
+    }
+
+    /**
+     * Push un evenement "session.*" vers Dart via invokeMethod
+     * (one-way). Dart ignore les evenements inconnus.
+     */
+    private fun emitSessionEvent(event: String, errorCode: Int = 0) {
+        try {
+            channel.invokeMethod(
+                "onSessionEvent",
+                mapOf("event" to event, "errorCode" to errorCode),
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "emitSessionEvent: $e")
+        }
+    }
+
+    /**
+     * Push l'etat de lecture courant vers Dart. Le mapping est ce
+     * que CastManager attend (cf. _onNativeMediaState dans
+     * cast_manager.dart).
+     */
+    private fun emitMediaState(client: RemoteMediaClient) {
+        try {
+            val playerState = when (client.playerState) {
+                MediaStatus.PLAYER_STATE_PLAYING -> "playing"
+                MediaStatus.PLAYER_STATE_PAUSED -> "paused"
+                MediaStatus.PLAYER_STATE_BUFFERING -> "buffering"
+                MediaStatus.PLAYER_STATE_IDLE -> "idle"
+                MediaStatus.PLAYER_STATE_LOADING -> "loading"
+                else -> "unknown"
+            }
+            channel.invokeMethod(
+                "onMediaStateChanged",
+                mapOf(
+                    "playerState" to playerState,
+                    "isPlaying" to client.isPlaying,
+                    "isPaused" to client.isPaused,
+                    "isBuffering" to client.isBuffering,
+                ),
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "emitMediaState: $e")
+        }
+    }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         try {

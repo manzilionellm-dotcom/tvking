@@ -126,7 +126,16 @@ class UpnpAvTransport implements CastTransport {
   Future<void> playStream({
     required String streamUrl,
     String title = '7 MOTION',
+    String? imageUrl,
   }) async {
+    // Phase 1+/G1 : DLNA pourrait porter `imageUrl` dans le DIDL-Lite
+    // via `upnp:albumArtURI`. Pas encore wire — la conformite varie
+    // beaucoup entre TVs et risquerait de re-casser le failover
+    // empirique stable. A backlog dedie quand on aura des tests
+    // matrice TVs reels. Le parametre est accepte pour respecter
+    // l'interface CastTransport ; explicitement ignore ici.
+    // ignore: unused_local_variable
+    final _ = imageUrl;
     // (1) Best-effort Stop pour libérer le récepteur s'il était occupé.
     //     Beaucoup de Samsung / Sony renvoient 500 sur SetAVTransportURI
     //     si le state actuel est PLAYING ou TRANSITIONING. Stop force

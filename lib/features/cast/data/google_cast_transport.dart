@@ -37,6 +37,7 @@ class GoogleCastTransport implements CastTransport {
   Future<void> playStream({
     required String streamUrl,
     String title = '7 MOTION',
+    String? imageUrl,
   }) async {
     final GoogleCastApi api = GoogleCastApi.instance;
 
@@ -82,11 +83,16 @@ class GoogleCastTransport implements CastTransport {
     //    Le SDK Cast natif gère le MediaInfo, le MediaLoadOptions,
     //    le contentType, la metadata… on lui passe juste l'URL +
     //    titre + MIME deviné depuis l'URL.
+    //    Phase 1+/G1 : on transmet aussi `imageUrl` (logo de la
+    //    chaine) — la TV l'affiche en idle et en overlay pendant la
+    //    lecture. Sans ca le recepteur tombait sur son placeholder
+    //    generique meme quand on connaissait le logo.
     final String mime = _guessMime(streamUrl);
     final bool loaded = await api.loadMedia(
       streamUrl: streamUrl,
       title: title,
       mime: mime,
+      imageUrl: imageUrl,
     );
     if (!loaded) {
       throw Exception('La TV a refusé le flux.');

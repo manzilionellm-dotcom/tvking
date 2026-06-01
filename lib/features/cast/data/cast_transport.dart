@@ -23,9 +23,18 @@ abstract class CastTransport {
   /// [title] est affiché dans l'OSD du récepteur quand celui-ci
   /// gère un titre (DLNA, Chromecast). Roku ne l'affiche pas
   /// toujours, ignore en silence si non supporté.
+  ///
+  /// [imageUrl] (Phase 1+/G1) : URL absolue de l'illustration a
+  /// montrer sur l'ecran d'accueil du recepteur — typiquement le
+  /// logo de la chaine. Optionnel. Chaque implementation choisit ce
+  /// qu'elle en fait : Google Cast l'injecte dans
+  /// `MediaMetadata.addImage`, DLNA dans `upnp:albumArtURI`, Roku
+  /// dans son ContentMeta. `null` = pas de visuel (le recepteur
+  /// affichera son placeholder).
   Future<void> playStream({
     required String streamUrl,
     String title = '7 MOTION',
+    String? imageUrl,
   });
 
   Future<void> pause();

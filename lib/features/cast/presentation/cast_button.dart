@@ -38,6 +38,17 @@ class CastButton extends StatelessWidget {
         final bool hasTarget = mgr.hasTarget;
         final bool isActive = mgr.isCasting;
         final bool scanning = mgr.state == CastState.discovering;
+        final bool hasDevices = mgr.discoveredDevices.isNotEmpty;
+
+        // Phase 1+/G4 : la spec exige que l'icone Cast ne s'affiche
+        // QUE quand au moins un appareil est detecte (ou qu'on caste
+        // deja, ou qu'un device a deja ete selectionne en mode global,
+        // ou qu'un scan est en cours — pour donner le feedback visuel).
+        // Sinon l'utilisateur tape sur une icone qui ouvre une liste
+        // vide -> sentiment d'app cassee.
+        if (!hasDevices && !isActive && !hasTarget && !scanning) {
+          return const SizedBox.shrink();
+        }
 
         final Color color = hasTarget
             ? AppColors.accent

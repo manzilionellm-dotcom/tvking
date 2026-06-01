@@ -28,10 +28,17 @@ class WebBrowserTransport implements CastTransport {
   Future<void> playStream({
     required String streamUrl,
     String title = '7 MOTION',
+    String? imageUrl,
   }) async {
     // Le serveur est déjà démarré par la sélection du device. Ici on
     // se contente de pousser la nouvelle URL — la TV la reprendra
     // sous 2s via son polling.
+    //
+    // Phase 1+/G1 : `imageUrl` (logo de chaine) n'est pas encore
+    // affiche sur la page HTML5 du LocalCastServer. Backlog dedie
+    // (signature `setCurrent` a etendre + affichage cote HTML page).
+    // ignore: unused_local_variable
+    final _ = imageUrl;
     await LocalCastServer.instance.start();
     LocalCastServer.instance.setCurrent(url: streamUrl, title: title);
   }
