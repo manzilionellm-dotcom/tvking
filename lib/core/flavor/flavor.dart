@@ -134,7 +134,12 @@ class FlavorConfig {
     adultOnly: false,
     biometricMandatory: false,
     requireAgeGate: false,
-    iptvServerUrl: 'http://pro.best-iptvinreviews.com',
+    // 2026-06-01 : bascule depuis `pro.best-iptvinreviews.com`
+    // (saturé en 458 + TTFB 50-77s, plantait login + cast) vers le
+    // nouveau revendeur `yzrgxcat.getpremiumiptv.fr`. URL choisie
+    // par l'utilisateur, credentials individuels saisis au login
+    // (Identifiant + code secret) — pas hardcodes.
+    iptvServerUrl: 'http://yzrgxcat.getpremiumiptv.fr',
   );
 
   /// Red Room — variante adulte stricte.
@@ -158,6 +163,7 @@ class FlavorConfig {
     adultOnly: true,
     biometricMandatory: false,
     requireAgeGate: true,
-    iptvServerUrl: 'http://pro.best-iptvinreviews.com',
+    // Idem 7 MOTION : bascule 2026-06-01 vers le nouveau revendeur.
+    iptvServerUrl: 'http://yzrgxcat.getpremiumiptv.fr',
   );
 }
