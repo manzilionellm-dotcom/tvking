@@ -23,7 +23,7 @@ export default function Hero({ slides }: { slides: MediaItem[] }) {
   }, [slides.length]);
 
   return (
-    <header className="relative mb-[1.5rem] h-[58vh] min-h-[24rem] w-full overflow-hidden">
+    <header className="relative z-[2] mb-[1.5rem] h-[58vh] min-h-[24rem] w-full overflow-hidden">
       {/* Backdrop */}
       <div
         key={slide.id}
@@ -43,7 +43,7 @@ export default function Hero({ slides }: { slides: MediaItem[] }) {
           )}
         </div>
 
-        <h1 className="max-w-[36ch] text-[3.4rem] font-extrabold leading-[1.05] tracking-tight text-[var(--text-high)]">
+        <h1 className="font-display max-w-[36ch] text-[4rem] font-extrabold leading-[1.02] tracking-tight text-[var(--text-high)] [text-shadow:0_0.2rem_1.5rem_rgba(0,0,0,0.5)]">
           {slide.title}
         </h1>
         <p className="max-w-[48ch] text-[1.4rem] text-[var(--text-medium)]">{slide.subtitle}</p>
@@ -51,7 +51,8 @@ export default function Hero({ slides }: { slides: MediaItem[] }) {
         <div className="mt-[0.6rem] flex items-center gap-[1rem]">
           <button
             data-focusable
-            className="focusable flex items-center gap-[0.6rem] rounded-[var(--radius)] bg-[var(--gold)] px-[1.6rem] py-[0.8rem] text-[1.25rem] font-bold text-black"
+            className="focusable flex items-center gap-[0.6rem] rounded-[var(--radius)] px-[1.7rem] py-[0.85rem] text-[1.25rem] font-bold text-black shadow-[0_0.6rem_1.6rem_rgba(227,185,107,0.35)]"
+            style={{ background: "var(--gold-grad)" }}
           >
             <svg className="h-[1.3rem] w-[1.3rem]" viewBox="0 0 24 24" fill="currentColor">
               <path d="M8 5v14l11-7z" />

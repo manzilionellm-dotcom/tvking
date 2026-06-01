@@ -75,7 +75,7 @@ function Group({
               onClick={() => onPick(o.value)}
               className="focusable flex min-w-[11rem] flex-col items-start rounded-[var(--radius)] px-[1.3rem] py-[0.9rem] text-left"
               style={{
-                background: active ? "var(--gold)" : "var(--surface-2)",
+                background: active ? "var(--gold-grad)" : "var(--surface-2)",
                 color: active ? "#000" : "var(--text-high)",
               }}
             >
@@ -103,7 +103,7 @@ export default function ReglagesPage() {
 
   return (
     <div className="pb-[var(--safe-y)] pl-[var(--safe-x)] pr-[var(--safe-x)] pt-[var(--safe-y)]">
-      <h1 className="mb-[0.4rem] text-[2.6rem] font-extrabold tracking-tight text-[var(--text-high)]">
+      <h1 className="font-display mb-[0.4rem] text-[3rem] font-extrabold tracking-tight text-[var(--text-high)]">
         Réglages d&apos;affichage
       </h1>
       <p className="mb-[2.2rem] text-[1.3rem] text-[var(--text-medium)]">

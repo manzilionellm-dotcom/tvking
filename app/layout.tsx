@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist } from "next/font/google";
+import { Geist, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import Sidebar from "./components/Sidebar";
 import SpatialNav from "./components/SpatialNav";
@@ -8,6 +8,14 @@ import Preferences from "./components/Preferences";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+});
+
+// Elegant high-contrast serif for display titles — the "royal" voice. Used only
+// at large sizes (legible at TV distance); body stays in the sans for clarity.
+const playfair = Playfair_Display({
+  variable: "--font-display",
+  subsets: ["latin"],
+  weight: ["600", "700", "800", "900"],
 });
 
 export const metadata: Metadata = {
@@ -32,7 +40,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr" className={`${geistSans.variable} h-full antialiased`}>
+    <html lang="fr" className={`${geistSans.variable} ${playfair.variable} h-full antialiased`}>
       <body className="min-h-full bg-[var(--bg)]">
         <Preferences />
         <Sidebar />

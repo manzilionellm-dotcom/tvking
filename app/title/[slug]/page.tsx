@@ -58,7 +58,7 @@ export default async function TitlePage({ params }: PageProps<"/title/[slug]">) 
             )}
           </div>
 
-          <h1 className="max-w-[34ch] text-[3.4rem] font-extrabold leading-[1.05] tracking-tight text-[var(--text-high)]">
+          <h1 className="font-display max-w-[34ch] text-[3.8rem] font-extrabold leading-[1.04] tracking-tight text-[var(--text-high)] [text-shadow:0_0.2rem_1.5rem_rgba(0,0,0,0.5)]">
             {item.title}
           </h1>
 
@@ -76,7 +76,8 @@ export default async function TitlePage({ params }: PageProps<"/title/[slug]">) 
             {item.live === "upcoming" ? (
               <button
                 data-focusable
-                className="focusable rounded-[var(--radius)] bg-[var(--gold)] px-[1.6rem] py-[0.8rem] text-[1.25rem] font-bold text-black"
+                className="focusable rounded-[var(--radius)] px-[1.6rem] py-[0.8rem] text-[1.25rem] font-bold text-black shadow-[0_0.6rem_1.6rem_rgba(227,185,107,0.35)]"
+                style={{ background: "var(--gold-grad)" }}
               >
                 🔔 Me rappeler
               </button>
@@ -84,7 +85,8 @@ export default async function TitlePage({ params }: PageProps<"/title/[slug]">) 
               <Link
                 href={`/watch/${item.id}`}
                 data-focusable
-                className="focusable flex items-center gap-[0.6rem] rounded-[var(--radius)] bg-[var(--gold)] px-[1.6rem] py-[0.8rem] text-[1.25rem] font-bold text-black"
+                className="focusable flex items-center gap-[0.6rem] rounded-[var(--radius)] px-[1.6rem] py-[0.8rem] text-[1.25rem] font-bold text-black shadow-[0_0.6rem_1.6rem_rgba(227,185,107,0.35)]"
+                style={{ background: "var(--gold-grad)" }}
               >
                 <svg className="h-[1.3rem] w-[1.3rem]" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M8 5v14l11-7z" />

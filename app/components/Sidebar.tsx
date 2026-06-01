@@ -70,10 +70,17 @@ export default function Sidebar() {
     <nav
       className="group/nav fixed inset-y-0 left-0 z-50 flex w-[5.5rem] flex-col gap-[0.4rem] bg-gradient-to-r from-black/95 to-black/0 py-[var(--safe-y)] pl-[1.2rem] transition-all duration-200 hover:w-[16rem] hover:bg-[var(--bg)]/95 focus-within:w-[16rem] focus-within:bg-[var(--bg)]/95"
     >
-      <div className="mb-[1.5rem] flex items-center gap-[0.7rem] pl-[0.4rem]">
-        <span className="text-[1.8rem]">👑</span>
-        <span className="whitespace-nowrap text-[1.4rem] font-extrabold tracking-tight text-[var(--gold)] opacity-0 transition-opacity group-hover/nav:opacity-100 group-focus-within/nav:opacity-100">
-          TV King
+      <div className="mb-[1.6rem] flex items-center gap-[0.7rem] pl-[0.3rem]">
+        <span className="flex h-[2.6rem] w-[2.6rem] shrink-0 items-center justify-center rounded-[var(--radius)] text-[1.5rem] shadow-[0_0_1.4rem_rgba(227,185,107,0.45)]" style={{ background: "var(--gold-grad)" }}>
+          👑
+        </span>
+        <span className="flex flex-col whitespace-nowrap opacity-0 transition-opacity group-hover/nav:opacity-100 group-focus-within/nav:opacity-100">
+          <span className="font-display text-gold-grad text-[1.55rem] font-extrabold leading-none">
+            TV King
+          </span>
+          <span className="text-[0.7rem] font-semibold uppercase tracking-[0.35em] text-[var(--text-medium)]">
+            Royal
+          </span>
         </span>
       </div>
 
@@ -84,10 +91,17 @@ export default function Sidebar() {
             key={item.href}
             href={item.href}
             data-focusable
-            className={`focusable flex items-center gap-[1rem] rounded-[var(--radius)] px-[0.7rem] py-[0.7rem] ${
-              active ? "bg-white/10 text-[var(--gold)]" : "text-[var(--text-medium)]"
+            className={`focusable relative flex items-center gap-[1rem] rounded-[var(--radius)] px-[0.7rem] py-[0.7rem] ${
+              active ? "text-[var(--gold-strong)]" : "text-[var(--text-medium)]"
             }`}
+            style={active ? { background: "rgba(227,185,107,0.12)" } : undefined}
           >
+            {active && (
+              <span
+                className="absolute left-0 top-1/2 h-[1.4rem] w-[0.28rem] -translate-y-1/2 rounded-full"
+                style={{ background: "var(--gold-grad)" }}
+              />
+            )}
             <span className="shrink-0"><Icon name={item.icon} /></span>
             <span className="whitespace-nowrap text-[1.15rem] font-semibold opacity-0 transition-opacity group-hover/nav:opacity-100 group-focus-within/nav:opacity-100">
               {item.label}

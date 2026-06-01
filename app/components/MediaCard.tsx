@@ -24,12 +24,15 @@ export default function MediaCard({ item }: { item: MediaItem }) {
     >
       {/* Artwork — gradient stands in for poster art (no binary assets needed). */}
       <div
-        className="relative w-full overflow-hidden rounded-[var(--radius)]"
+        className="relative w-full overflow-hidden rounded-[var(--radius)] ring-1 ring-[var(--hairline)] transition-shadow group-focus-visible:ring-[rgba(244,213,141,0.6)]"
         style={{
           aspectRatio: dims.aspect,
           background: `linear-gradient(140deg, ${item.art.from}, ${item.art.to})`,
         }}
       >
+        {/* Subtle top sheen for a premium, lit feel. */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/12 to-transparent opacity-60" />
+
         {/* Top-row badges: LIVE / replay / upcoming. */}
         {item.live && (
           <div className="absolute left-[0.6rem] top-[0.6rem]">
@@ -37,7 +40,10 @@ export default function MediaCard({ item }: { item: MediaItem }) {
           </div>
         )}
         {item.badge && !item.live && (
-          <div className="absolute left-[0.6rem] top-[0.6rem] rounded-md bg-[var(--gold)] px-[0.5rem] py-[0.15rem] text-[0.75rem] font-bold uppercase tracking-wider text-black">
+          <div
+            className="absolute left-[0.6rem] top-[0.6rem] rounded-md px-[0.5rem] py-[0.15rem] text-[0.75rem] font-bold uppercase tracking-wider text-black"
+            style={{ background: "var(--gold-grad)" }}
+          >
             {item.badge}
           </div>
         )}
@@ -65,8 +71,8 @@ export default function MediaCard({ item }: { item: MediaItem }) {
         {item.progress !== undefined && (
           <div className="absolute inset-x-0 bottom-0 h-[0.35rem] bg-black/50">
             <div
-              className="h-full bg-[var(--gold)]"
-              style={{ width: `${Math.round(item.progress * 100)}%` }}
+              className="h-full"
+              style={{ width: `${Math.round(item.progress * 100)}%`, background: "var(--gold-grad)" }}
             />
           </div>
         )}

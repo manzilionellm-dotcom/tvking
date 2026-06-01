@@ -84,7 +84,7 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
         <p className="text-[1.05rem] font-semibold uppercase tracking-[0.2em] text-[var(--gold)]">
           {item.live === "live" ? "● En direct" : "Lecture"}
         </p>
-        <h1 className="text-[2.4rem] font-extrabold tracking-tight text-white">{item.title}</h1>
+        <h1 className="font-display text-[2.6rem] font-extrabold tracking-tight text-white [text-shadow:0_0.2rem_1rem_rgba(0,0,0,0.6)]">{item.title}</h1>
       </div>
 
       {/* Up Next panel */}
@@ -108,15 +108,16 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
           {/* Countdown fill — the visible "color wipe". */}
           <div className="mt-[0.8rem] h-[0.3rem] overflow-hidden rounded-full bg-white/20">
             <div
-              className="h-full bg-[var(--gold)] transition-all duration-1000 ease-linear"
-              style={{ width: `${((10 - countdown) / 10) * 100}%` }}
+              className="h-full transition-all duration-1000 ease-linear"
+              style={{ width: `${((10 - countdown) / 10) * 100}%`, background: "var(--gold-grad)" }}
             />
           </div>
           <div className="mt-[0.9rem] flex gap-[0.7rem]">
             <Link
               href={`/watch/${next!.id}`}
               data-focusable
-              className="focusable flex-1 rounded-[var(--radius)] bg-[var(--gold)] px-[1rem] py-[0.6rem] text-center text-[1.1rem] font-bold text-black"
+              className="focusable flex-1 rounded-[var(--radius)] px-[1rem] py-[0.6rem] text-center text-[1.1rem] font-bold text-black"
+              style={{ background: "var(--gold-grad)" }}
             >
               Lire maintenant
             </Link>
@@ -136,7 +137,7 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
         <div className="mb-[0.8rem] flex items-center gap-[1rem]">
           <span className="text-[1rem] tabular-nums text-[var(--text-medium)]">{fmt(pos)}</span>
           <div className="h-[0.4rem] flex-1 overflow-hidden rounded-full bg-white/20">
-            <div className="h-full bg-[var(--gold)]" style={{ width: `${(pos / DURATION) * 100}%` }} />
+            <div className="h-full" style={{ width: `${(pos / DURATION) * 100}%`, background: "var(--gold-grad)" }} />
           </div>
           <span className="text-[1rem] tabular-nums text-[var(--text-medium)]">
             {item.live === "live" ? "DIRECT" : fmt(DURATION)}
@@ -155,7 +156,8 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
           <button
             data-focusable
             onClick={toggle}
-            className="focusable flex h-[3.4rem] w-[3.4rem] items-center justify-center rounded-full bg-[var(--gold)] text-black"
+            className="focusable flex h-[3.4rem] w-[3.4rem] items-center justify-center rounded-full text-black"
+            style={{ background: "var(--gold-grad)" }}
             aria-label={playing && !atEnd ? "Pause" : "Lecture"}
           >
             {playing && !atEnd ? (

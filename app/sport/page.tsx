@@ -8,7 +8,7 @@ export default function SportPage() {
         <p className="text-[1rem] font-semibold uppercase tracking-[0.2em] text-[var(--sport)]">
           Sport
         </p>
-        <h1 className="text-[2.6rem] font-extrabold tracking-tight text-[var(--text-high)]">
+        <h1 className="font-display text-[3rem] font-extrabold tracking-tight text-[var(--text-high)]">
           Le direct, à la minute
         </h1>
         <p className="mt-[0.3rem] text-[1.3rem] text-[var(--text-medium)]">

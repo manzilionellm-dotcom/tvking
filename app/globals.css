@@ -25,14 +25,19 @@
   --text-medium: rgba(255, 255, 255, 0.62);
   --text-disabled: rgba(255, 255, 255, 0.38);
 
-  /* ---- Accents: desaturated, "royal" palette — vivid but not fatiguing ---- */
+  /* ---- Accents: a "royal" gold-led palette — rich but not fatiguing ---- */
   --gold: #e3b96b;        /* primary brand (TV King) — soft gold, used sparingly */
-  --gold-strong: #f0c878;
-  --teal: #5fb7c9;        /* calm secondary / focus accent */
-  --focus: #8fd3e0;       /* focus ring — light teal, high visibility, low strain */
+  --gold-strong: #f4d58d; /* highlight gold */
+  --gold-deep: #c9962f;   /* darker gold for gradient depth */
+  --gold-grad: linear-gradient(135deg, #f7e0a3 0%, #e3b96b 42%, #c9962f 100%);
+  --gold-sheen: linear-gradient(135deg, rgba(247, 224, 163, 0.9), rgba(201, 150, 47, 0.9));
+  --royal: #5b4bd6;       /* deep royal violet (ambient only) */
+  --teal: #5fb7c9;        /* calm secondary */
+  --focus: #f4d58d;       /* focus ring — warm gold, high visibility */
   --live: #e5565b;        /* live badge — desaturated red (not #e50914) */
   --sport: #58c9a3;       /* sport accent — calm teal-green */
-  --learn: #9b8cff;       /* formation accent — soft periwinkle */
+  --learn: #b3a4ff;       /* formation accent — soft periwinkle */
+  --hairline: rgba(227, 185, 107, 0.18); /* subtle gold hairline */
 
   /* ---- User-tunable adaptation (Réglages): UI scale + overscan margin ---- */
   --ui-scale: 1;     /* text size multiplier */
@@ -59,11 +64,13 @@
   --color-text-high: var(--text-high);
   --color-text-medium: var(--text-medium);
   --color-gold: var(--gold);
+  --color-gold-strong: var(--gold-strong);
   --color-teal: var(--teal);
   --color-live: var(--live);
   --color-sport: var(--sport);
   --color-learn: var(--learn);
   --font-sans: var(--font-geist-sans);
+  --font-display: var(--font-display);
 }
 
 /*
@@ -78,7 +85,14 @@ html {
 }
 
 body {
-  background: var(--bg);
+  /* Deep "throne-room" ambience: a warm gold glow top-right and a cool royal
+     violet glow bottom-left, both very low luminance over the #121212 base so
+     it stays rich without straining the eyes. */
+  background:
+    radial-gradient(125% 85% at 100% -10%, rgba(227, 185, 107, 0.1), transparent 55%),
+    radial-gradient(110% 75% at -10% 110%, rgba(91, 75, 214, 0.12), transparent 55%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text-high);
   font-family: var(--font-sans), system-ui, sans-serif;
   /* Text floor for 10-foot legibility is ~24px → 1.5rem on the 1920 canvas. */
@@ -87,6 +101,36 @@ body {
   letter-spacing: 0.01em;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+}
+
+/* Soft cinematic vignette to frame the screen. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: radial-gradient(130% 120% at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.45));
+}
+
+/* Royal display voice — elegant serif for large titles only. */
+.font-display {
+  font-family: var(--font-display), Georgia, serif;
+  letter-spacing: 0.005em;
+}
+
+/* Metallic gold text (titles, brand). */
+.text-gold-grad {
+  background: var(--gold-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Thin gold rule used to flank section labels. */
+.gold-rule {
+  height: 2px;
+  background: linear-gradient(90deg, var(--gold), transparent);
 }
 
 /* Hide scrollbars (TV apps are not mouse-scrolled) but keep scrollability. */
@@ -119,9 +163,10 @@ button:focus-visible {
 .focusable:focus-visible {
   transform: scale(var(--focus-scale));
   box-shadow:
-    0 0 0 0.2rem var(--bg),
+    0 0 0 0.18rem var(--bg),
     0 0 0 0.4rem var(--focus),
-    0 1.5rem 3rem rgba(0, 0, 0, 0.6);
+    0 1.4rem 2.8rem rgba(0, 0, 0, 0.6),
+    0 0 2.6rem rgba(227, 185, 107, 0.4); /* warm gold glow */
   z-index: 5;
 }
 
