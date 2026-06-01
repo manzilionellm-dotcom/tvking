@@ -30,6 +30,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/observability/structured_logger.dart';
+
 /// Résultat d'un pré-vol. Tout `null` veut dire "non déterminé".
 @immutable
 class StreamProbeResult {
@@ -122,9 +124,101 @@ class StreamProbe {
   static const String _kUserAgent =
       'VLC/3.0.20 LibVLC/3.0.20 (7 MOTION Cast Probe)';
 
-  /// Probe une URL avec un budget de [timeout]. Toujours synchronisé
-  /// → on attend que le résultat soit disponible avant d'enchaîner.
+  /// Phase 1+ : detecte si une [StreamProbeResult] en echec est due a
+  /// un probleme DNS (resolveur a renvoye NODATA/NXDOMAIN ou DNS server
+  /// injoignable). Pattern typique observe : `errorReason` contient
+  /// "No address associated with hostname" (Android),
+  /// "nodename nor servname provided" (iOS/macOS),
+  /// "Failed host lookup" (Dart cross-platform).
+  ///
+  /// Public + `@visibleForTesting` pour qu'on puisse tester la regle
+  /// sans monter une stack reseau.
+  @visibleForTesting
+  static bool isDnsFailure(StreamProbeResult r) {
+    if (r.success) return false;
+    final String reason = (r.errorReason ?? '').toLowerCase();
+    if (reason.isEmpty) return false;
+    return reason.contains('hostname') ||
+        reason.contains('no address') ||
+        reason.contains('name resolution') ||
+        reason.contains('failed host lookup') ||
+        reason.contains('nodename') ||
+        reason.contains('servname');
+  }
+
+  /// Probe avec retry automatique sur les echecs DNS. Pourquoi :
+  ///
+  /// Diagnostic terrain du 2026-06-01 — 7 sessions cast d'affilee
+  /// failent toutes en 11-15ms avec "No address associated with
+  /// hostname", alors que Chrome teste 6 minutes plus tard resout
+  /// le domaine correctement (ERR_CONNECTION_ABORTED indique IP
+  /// resolue). Conclusion : DNS local hoquete brievement et le
+  /// resolveur Android met le NODATA en cache negatif. Les sessions
+  /// suivantes lisent le cache → echec instantane.
+  ///
+  /// Le retry avec delai (1.5s) laisse le cache negatif expirer
+  /// dans la plupart des cas. Si la 2eme tentative echoue encore en
+  /// DNS, c'est probablement une vraie panne DNS et on remonte
+  /// l'erreur — l'utilisateur verra le message UX dedie ("Internet
+  /// instable").
+  ///
+  /// Pas de retry sur les AUTRES echecs (timeout, 401, 500) — ils
+  /// ont leur propre logique et le retry n'aiderait pas.
   Future<StreamProbeResult> probe(
+    String url, {
+    Duration timeout = const Duration(seconds: 6),
+    int maxRedirects = 5,
+    int dnsRetries = 1,
+    Duration dnsRetryDelay = const Duration(milliseconds: 1500),
+  }) async {
+    StreamProbeResult result = await _probeOnce(
+      url,
+      timeout: timeout,
+      maxRedirects: maxRedirects,
+    );
+
+    int retriesUsed = 0;
+    while (retriesUsed < dnsRetries && isDnsFailure(result)) {
+      retriesUsed++;
+      StructuredLogger.instance.warn(
+        domain: 'cast',
+        event: 'probe.dns_retry',
+        ctx: <String, Object?>{
+          'attempt': retriesUsed,
+          'maxRetries': dnsRetries,
+          'errorReason': result.errorReason,
+          'delayMs': dnsRetryDelay.inMilliseconds,
+        },
+      );
+      await Future<void>.delayed(dnsRetryDelay);
+      result = await _probeOnce(
+        url,
+        timeout: timeout,
+        maxRedirects: maxRedirects,
+      );
+    }
+
+    if (!result.success && isDnsFailure(result)) {
+      // Echec definitif apres retries — probablement une vraie panne
+      // DNS / filtrage / pas d'internet. On log au niveau ERROR pour
+      // que ce pattern soit identifiable dans les rapports.
+      StructuredLogger.instance.error(
+        domain: 'cast',
+        event: 'probe.dns_failure',
+        ctx: <String, Object?>{
+          'attempts': retriesUsed + 1,
+          'errorReason': result.errorReason,
+          // On log le HOSTNAME (pas l'URL complete avec credentials)
+          // pour le diagnostic sans fuiter le token Xtream.
+          'hostname': Uri.tryParse(url)?.host ?? '<invalide>',
+        },
+      );
+    }
+
+    return result;
+  }
+
+  Future<StreamProbeResult> _probeOnce(
     String url, {
     Duration timeout = const Duration(seconds: 6),
     int maxRedirects = 5,

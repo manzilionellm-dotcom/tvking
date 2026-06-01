@@ -389,7 +389,7 @@ class CastManager extends ChangeNotifier {
       final String userMessage = relayPathBlocked
           ? 'Ta TV ne joint pas le téléphone (WiFi invité ou isolation '
               'AP ?). Essaie le mode QR code, il contourne ce blocage.'
-          : _friendlyMessageFor(e);
+          : friendlyMessageFor(e);
       _setProgress(
         CastProgress.failure(
           userMessage,
@@ -677,8 +677,25 @@ class CastManager extends ChangeNotifier {
 
   /// Convertit une Exception interne en message court pour l'UI.
   /// Les libellés évitent tout jargon technique.
-  String _friendlyMessageFor(Exception e) {
+  ///
+  /// `@visibleForTesting` : public uniquement pour tests unitaires
+  /// (cf. test/features/cast/data/friendly_message_test.dart). En
+  /// prod, le seul caller est `_castToInner`.
+  @visibleForTesting
+  String friendlyMessageFor(Exception e) {
     final String s = e.toString().toLowerCase();
+    // Phase 1+ / DNS : branche specifique AVANT le generique 'reseau'
+    // pour ne pas afficher "Connexion impossible avec la TV" quand
+    // en fait c'est le hostname du fournisseur IPTV qui ne resout
+    // pas. Cas terrain 2026-06-01 (diag SHIELD 7/8 failures DNS).
+    if (s.contains('hostname') ||
+        s.contains('no address') ||
+        s.contains('failed host lookup') ||
+        s.contains('name resolution') ||
+        s.contains('nodename') ||
+        s.contains('servname')) {
+      return 'Internet ou DNS instable. Réessaie dans quelques secondes.';
+    }
     if (s.contains('timeout') || s.contains('ne répond pas')) {
       return 'La TV ne répond pas. Vérifie le WiFi.';
     }
