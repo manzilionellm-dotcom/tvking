@@ -113,6 +113,44 @@ void main() {
         'Le cast a échoué. Essaie de relancer.',
       );
     });
+
+    test('B4 — "No route to host" -> TV eteinte / pas sur meme WiFi', () {
+      final Exception e = Exception(
+        'ClientException with SocketException: No route to host (OS Error: '
+        'No route to host, errno = 113), address = 192.168.8.4',
+      );
+      final String msg = mgr.friendlyMessageFor(e);
+      expect(msg, contains('éteinte'));
+      expect(msg, contains('WiFi'));
+      // S'assure qu'on ne tombe PAS sur le message generique socket.
+      expect(msg, isNot('Connexion impossible avec la TV.'));
+    });
+
+    test('B4 — "Network is unreachable" (errno 101) -> meme branche', () {
+      final Exception e = Exception(
+        'SocketException: Connection failed (OS Error: Network is unreachable, errno = 101)',
+      );
+      expect(mgr.friendlyMessageFor(e), contains('éteinte'));
+    });
+
+    test('B4 — "Connection refused" -> meme branche (TV repond pas)', () {
+      final Exception e = Exception(
+        'SocketException: Connection refused (errno = 111)',
+      );
+      expect(mgr.friendlyMessageFor(e), contains('éteinte'));
+    });
+
+    test('B4 — priorite sur la branche socket generique', () {
+      // Le message contient "SocketException" et "No route to host" —
+      // la branche specifique doit gagner sur la generique "réseau /
+      // socket" qui aurait sinon repondu "Connexion impossible avec
+      // la TV." (vague).
+      final Exception e = Exception(
+        'ClientException with SocketException: No route to host',
+      );
+      expect(mgr.friendlyMessageFor(e), contains('éteinte'));
+      expect(mgr.friendlyMessageFor(e), isNot('Connexion impossible avec la TV.'));
+    });
   });
 
   // ============================================================

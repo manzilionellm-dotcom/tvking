@@ -900,6 +900,32 @@ class CastManager extends ChangeNotifier {
           'ou le mode QR code.';
     }
 
+    // --- TV physiquement injoignable au niveau IP (Phase 1+/B4) ---
+    // Cas observe diag LG QNED816QA 2026-06-01 18:33 : "No route to
+    // host (errno=113)" / "Network is unreachable (errno=101)" sur
+    // TOUTES les tentatives SOAP. Signal sans ambiguite : la TV est
+    // physiquement injoignable depuis le phone.
+    //
+    // Causes typiques (par frequence) :
+    //   1. La TV s'est endormie / a ete eteinte pendant que la
+    //      decouverte SSDP gardait son IP en cache.
+    //   2. Phone et TV sur des WiFis differents (frequent quand le
+    //      phone bascule sur 4G ou un WiFi voisin).
+    //   3. Vraie isolation reseau (VLAN, AP isolation guest).
+    //
+    // On donne un message qui couvre les 3 sans accuser une cause
+    // specifique.
+    if (s.contains('no route to host') ||
+        s.contains('network is unreachable') ||
+        s.contains('errno = 113') ||
+        s.contains('errno = 101') ||
+        s.contains('connection refused') ||
+        s.contains('errno = 111')) {
+      return 'Ta TV est éteinte ou plus sur le même WiFi que ton '
+          'téléphone. Vérifie qu\'elle est allumée et connectée au '
+          'même réseau, puis relance le scan.';
+    }
+
     // --- Reseau bas-niveau ---
     if (s.contains('réseau') || s.contains('socket')) {
       return 'Connexion impossible avec la TV.';
