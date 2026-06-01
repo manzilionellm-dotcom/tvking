@@ -1,0 +1,214 @@
+# =========================================================
+#  build-tv-wrapper.yml — APK Android TV / Fire TV
+# =========================================================
+#  Build de l'APK Downloader-ready qui embarque tv-web/dist/
+#  dans une WebView Android TV. Cible : SHIELD, Fire TV Stick
+#  4K Max, Android TV en general.
+#
+#  Le job tourne sur push de claude/* / feature/* / main, OU
+#  manuellement via workflow_dispatch.
+#
+#  Output :
+#    - Artifact `tvking-tv-debug-apk-<sha>` (retention 30j)
+#    - GitHub Release `tv-latest` (re-uploadee a chaque run)
+#
+#  Lien direct Downloader : la release `tv-latest` expose
+#    https://github.com/<owner>/<repo>/releases/download/tv-latest/tv-king-tv.apk
+#  qui pointe TOUJOURS vers le dernier build (URL stable).
+# =========================================================
+
+name: Build Android TV APK
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+      - 'feature/**'
+    # On declenche UNIQUEMENT quand tv-web ou tv-android-wrapper
+    # changent pour eviter les builds inutiles a chaque commit phone.
+    paths:
+      - 'tv-web/**'
+      - 'tv-android-wrapper/**'
+      - '.github/workflows/build-tv-wrapper.yml'
+  workflow_dispatch:
+
+# Annule un run en cours pour la meme branche quand un nouveau
+# push arrive. Evite les races sur la release `tv-latest`.
+concurrency:
+  group: tv-wrapper-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build TV WebView APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # -------- Toolchain --------
+      - name: Setup Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses > /dev/null
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: tv-web/package-lock.json
+
+      - name: ImageMagick already installed (ubuntu-latest)
+        run: convert --version | head -1
+
+      # -------- 1) Build tv-web --------
+      - name: Install tv-web deps
+        working-directory: tv-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint + typecheck + test tv-web
+        working-directory: tv-web
+        run: |
+          npm run typecheck
+          npm run lint
+          npm run test
+
+      - name: Build tv-web (production bundle)
+        working-directory: tv-web
+        run: npm run build
+
+      # -------- 2) Stage tv-web/dist -> tv-android-wrapper assets --------
+      - name: Copy web bundle into APK assets
+        run: |
+          mkdir -p tv-android-wrapper/app/src/main/assets/web
+          rm -rf tv-android-wrapper/app/src/main/assets/web/*
+          cp -r tv-web/dist/* tv-android-wrapper/app/src/main/assets/web/
+          echo "=== Assets web contents ==="
+          ls -la tv-android-wrapper/app/src/main/assets/web/
+          test -f tv-android-wrapper/app/src/main/assets/web/index.html
+
+      # -------- 3) Generate launcher icons + Android TV banner --------
+      # Source : assets/branding/logo_7motion.jpg (1011x965, fond noir).
+      # On regenere a chaque build pour rester aligne avec le branding.
+      - name: Generate launcher icons + TV banner
+        run: |
+          SRC=assets/branding/logo_7motion.jpg
+          test -f "$SRC" || { echo "Source logo introuvable"; exit 1; }
+          RES=tv-android-wrapper/app/src/main/res
+
+          # Icones launcher : densites mdpi (48), hdpi (72), xhdpi (96),
+          # xxhdpi (144), xxxhdpi (192). Carre, fond noir Maison Noir.
+          for entry in "mdpi:48" "hdpi:72" "xhdpi:96" "xxhdpi:144" "xxxhdpi:192"; do
+            DPI="${entry%%:*}"
+            SIZE="${entry##*:}"
+            DEST="$RES/mipmap-$DPI"
+            mkdir -p "$DEST"
+            # Resize + centre + bordure noire pour faire un carre propre
+            convert "$SRC" -resize "${SIZE}x${SIZE}^" -gravity center \
+                    -background '#0A0A0C' -extent "${SIZE}x${SIZE}" \
+                    "$DEST/ic_launcher.png"
+            # round icon = meme image, Android la masque en cercle
+            cp "$DEST/ic_launcher.png" "$DEST/ic_launcher_round.png"
+          done
+
+          # Banner Android TV : 320x180 (16:9). Obligatoire pour
+          # Leanback launcher. On crop le logo carre dans un rect 16:9
+          # avec fond noir + texte "7 MOTION" centre.
+          mkdir -p "$RES/drawable"
+          convert -size 320x180 xc:'#0A0A0C' \
+                  \( "$SRC" -resize 120x120 \) \
+                  -gravity West -geometry +20+0 -composite \
+                  -gravity East -fill '#F0EDE9' \
+                  -font DejaVu-Sans-Bold -pointsize 28 \
+                  -annotate +30+0 '7 MOTION TV' \
+                  "$RES/drawable/tv_banner.png"
+
+          echo "=== Generated assets ==="
+          find "$RES" -name '*.png' -exec ls -la {} \;
+
+      # -------- 4) Build the APK --------
+      - name: Make gradlew executable
+        run: chmod +x tv-android-wrapper/gradlew
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-tv-${{ hashFiles('tv-android-wrapper/**/*.gradle*', 'tv-android-wrapper/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-tv-
+
+      - name: Build debug APK
+        working-directory: tv-android-wrapper
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Rename APK + verify
+        run: |
+          SRC=tv-android-wrapper/app/build/outputs/apk/debug/app-debug.apk
+          DST=tv-android-wrapper/app/build/outputs/apk/debug/tv-king-tv.apk
+          test -f "$SRC" || { echo "APK introuvable"; find tv-android-wrapper -name '*.apk' || true; exit 1; }
+          cp "$SRC" "$DST"
+          ls -lah "$DST"
+
+      # -------- 5) Upload artifact --------
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tvking-tv-debug-apk-${{ github.sha }}
+          path: tv-android-wrapper/app/build/outputs/apk/debug/tv-king-tv.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      # -------- 6) Publish to GitHub Release tv-latest --------
+      - name: Publish tv-latest release
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          APK="tv-android-wrapper/app/build/outputs/apk/debug/tv-king-tv.apk"
+          BODY=$(cat <<EOF
+          7 MOTION TV — derniere version Android TV / Fire TV.
+
+          - Branche : \`${{ github.ref_name }}\`
+          - Commit : \`${{ github.sha }}\`
+          - Run : #${{ github.run_number }}
+
+          **Installation via Downloader** :
+          1. Ouvre Downloader sur ta TV
+          2. Tape l'URL : \`https://github.com/$REPO/releases/download/tv-latest/tv-king-tv.apk\`
+          3. Downloader telecharge -> installe.
+          4. L'icone "7 MOTION TV" apparait sur l'ecran d'accueil Android TV.
+
+          Mode debug. Cible Android 6+ (SHIELD, Fire TV Stick 4K Max, Chromecast Google TV).
+          EOF
+          )
+          if gh release view tv-latest --repo "$REPO" >/dev/null 2>&1; then
+            echo "Updating existing tv-latest release"
+            gh release edit tv-latest --repo "$REPO" \
+              --title "7 MOTION TV — dernier build" \
+              --notes "$BODY" --prerelease
+            gh release upload tv-latest --repo "$REPO" --clobber "$APK"
+          else
+            echo "Creating tv-latest release"
+            gh release create tv-latest --repo "$REPO" \
+              --title "7 MOTION TV — dernier build" \
+              --notes "$BODY" --prerelease "$APK"
+          fi
+          gh release view tv-latest --repo "$REPO"

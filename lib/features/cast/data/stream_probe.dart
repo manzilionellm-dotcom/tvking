@@ -296,7 +296,13 @@ class StreamProbe {
             );
           }
           // Resolve relative vs absolute
-          currentUrl = uri.resolve(loc).toString();
+          // Phase 1+/B3 etendu (2026-06-01) : sanitize aussi le URL
+          // redirige. Cas observe LG QNED816QA : le backend Xtream
+          // renvoie une Location avec `?` orphelin
+          // (http://185.245.1.237/live/u/p/123?) qui se propage au
+          // recepteur. La sanitization du probe initial ne le
+          // couvrait pas — d'ou le strip ici aussi.
+          currentUrl = sanitizeStreamUrl(uri.resolve(loc).toString());
           redirects++;
           continue;
         }

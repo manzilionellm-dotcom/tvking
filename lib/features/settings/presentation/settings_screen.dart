@@ -19,7 +19,6 @@ import '../../about/presentation/about_screen.dart';
 import '../../admin/presentation/admin_pin_screen.dart';
 import '../../cast/presentation/cast_diagnostics_screen.dart';
 import '../../channels/data/recently_watched_repository.dart';
-import '../../device/presentation/device_id_card.dart';
 import '../../player/data/player_settings.dart';
 import '../../playlists/presentation/add_playlist_screen.dart';
 import '../../playlists/presentation/playlists_screen.dart';

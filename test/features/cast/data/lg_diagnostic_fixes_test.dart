@@ -224,5 +224,14 @@ void main() {
       expect(StreamProbe.sanitizeStreamUrl('   '), '');
       expect(StreamProbe.sanitizeStreamUrl('?'), '');
     });
+
+    test('redirige avec ? orphelin -> nettoye (B3 etendu 2026-06-01)', () {
+      // Cas LG QNED816QA : le backend Xtream renvoie une Location
+      // avec ? final orphelin. La sanitize doit s'appliquer aussi
+      // sur les URLs redirigees, pas seulement sur l'input.
+      const String redirected = 'http://185.245.1.237/live/u/p/1601043?';
+      expect(StreamProbe.sanitizeStreamUrl(redirected),
+          'http://185.245.1.237/live/u/p/1601043');
+    });
   });
 }

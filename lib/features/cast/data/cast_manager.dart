@@ -171,7 +171,6 @@ class CastManager extends ChangeNotifier {
   CastState _state = CastState.idle;
   CastDevice? _device;
   CastTransport? _transport;
-  String? _currentStreamUrl;
   String? _currentTitle;
   String? _errorMessage;
 
@@ -493,7 +492,6 @@ class CastManager extends ChangeNotifier {
         }
       }
 
-      _currentStreamUrl = streamUrl;
       _currentTitle = title;
       _selectedDevice = device;
       _state = CastState.casting;
@@ -948,7 +946,6 @@ class CastManager extends ChangeNotifier {
     _transport = null;
     _device = null;
     _selectedDevice = null;
-    _currentStreamUrl = null;
     _currentTitle = null;
     _state = CastState.idle;
     _setProgress(CastProgress.idle);
