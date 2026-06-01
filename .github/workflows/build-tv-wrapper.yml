@@ -71,8 +71,23 @@ jobs:
           cache: 'npm'
           cache-dependency-path: tv-web/package-lock.json
 
-      - name: ImageMagick already installed (ubuntu-latest)
-        run: convert --version | head -1
+      - name: Install ImageMagick (icons + TV banner generation)
+        run: |
+          # ubuntu-latest runners n'incluent plus imagemagick par defaut
+          # depuis 2024 — on installe explicitement. `set -e` + verif
+          # finale qui FAIL HARD si convert manque (au lieu du pipe
+          # `| head -1` precedent qui masquait l'exit 127).
+          # On ajoute fonts-dejavu-core pour avoir DejaVu-Sans-Bold
+          # disponible via fontconfig pour l'overlay texte du banner.
+          set -e
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends imagemagick fonts-dejavu-core
+          command -v convert
+          convert --version | head -1
+          # Verifie qu'au moins UNE font de fallback est utilisable
+          # par ImageMagick. Si DejaVu n'est pas detecte par fontconfig,
+          # on le repere ici pour fallback dans l'etape suivante.
+          fc-list | grep -i dejavu | head -1 || echo "DejaVu pas detecte"
 
       # -------- 1) Build tv-web --------
       - name: Install tv-web deps
@@ -128,11 +143,30 @@ jobs:
           # Leanback launcher. On crop le logo carre dans un rect 16:9
           # avec fond noir + texte "7 MOTION" centre.
           mkdir -p "$RES/drawable"
+          # Detection du chemin de la font DejaVu (font name peut ne
+          # pas etre reconnu par fontconfig dans certains containers).
+          # On essaie d'abord par NAME, fallback sur PATH absolu, et
+          # en dernier on omet le -font (ImageMagick utilise sa default).
+          FONT_FILE="$(fc-list 'DejaVu Sans:bold' file 2>/dev/null | head -1 | sed 's/: *$//')"
+          if [ -z "$FONT_FILE" ]; then
+            for candidate in \
+              /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf \
+              /usr/share/fonts/dejavu/DejaVuSans-Bold.ttf; do
+              if [ -f "$candidate" ]; then FONT_FILE="$candidate"; break; fi
+            done
+          fi
+          FONT_ARG=""
+          if [ -n "$FONT_FILE" ]; then
+            FONT_ARG="-font $FONT_FILE"
+            echo "Banner font: $FONT_FILE"
+          else
+            echo "Banner sans font specifique (default ImageMagick)"
+          fi
           convert -size 320x180 xc:'#0A0A0C' \
                   \( "$SRC" -resize 120x120 \) \
                   -gravity West -geometry +20+0 -composite \
                   -gravity East -fill '#F0EDE9' \
-                  -font DejaVu-Sans-Bold -pointsize 28 \
+                  $FONT_ARG -pointsize 28 \
                   -annotate +30+0 '7 MOTION TV' \
                   "$RES/drawable/tv_banner.png"
 

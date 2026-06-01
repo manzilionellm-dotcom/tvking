@@ -79,6 +79,14 @@ const APK_URL =
 const REDROOM_APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/redroom-latest/redroom.apk';
 
+// Version Android TV / Fire TV (Downloader-friendly). APK Kotlin
+// WebView qui embarque tv-web/dist/. Cible SHIELD, Fire TV Stick
+// 4K Max, Chromecast Google TV. Publiee sur la release `tv-latest`
+// par le workflow CI `build-tv-wrapper.yml`. URL stable courte :
+//   https://99999.7themotion.com/tv  ->  Downloader friendly.
+const TV_APK_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-latest/tv-king-tv.apk';
+
 // ===========================================================
 //  Monétisation — Trial / Subscription / Freeze
 // ===========================================================
@@ -1208,6 +1216,19 @@ export default {
       return Response.redirect(REDROOM_APK_URL, 302);
     }
 
+    // /tv — version Android TV / Fire TV (WebView wrapper de tv-web).
+    // C'est l'URL courte a coller dans Downloader sur la SHIELD :
+    //   "https://99999.7themotion.com/tv"
+    // qui redirige vers le binaire tv-king-tv.apk publie par le
+    // workflow CI build-tv-wrapper.yml sur la release `tv-latest`.
+    // /tv/dl = alias coherent avec les autres flavors.
+    if (
+      (segments.length === 1 && segments[0] === 'tv') ||
+      (segments.length === 2 && segments[0] === 'tv' && segments[1] === 'dl')
+    ) {
+      return Response.redirect(TV_APK_URL, 302);
+    }
+
     // /cast-receiver — page HTML CAF pour Google Cast Custom Receiver.
     // URL a coller dans la Google Cast SDK Developer Console.
     // Query string ?app=redroom bascule le branding sur Red Room ;
@@ -1286,7 +1307,7 @@ export default {
     // 404 final.
     const RESERVED = new Set([
       'admin', 'config', 'dl', 'install', 'api', 'panel',
-      'redroom',
+      'redroom', 'tv',
       'cast-receiver', 'cast-skin.css',
       'favicon.ico', 'robots.txt', 'sitemap.xml',
     ]);
