@@ -35,6 +35,16 @@ export interface MediaItem {
   duration?: string; // e.g. "12 min"
   instructor?: string;
   lessons?: number;
+
+  /** Long synopsis shown on the detail page (optional; a fallback is generated). */
+  description?: string;
+}
+
+/** Discriminates the content kind from its metadata (drives detail-page UI). */
+export type Kind = "sport" | "formation";
+
+export function kindOf(item: MediaItem): Kind {
+  return item.live || item.score || item.clock || item.startsIn ? "sport" : "formation";
 }
 
 export interface Row {
@@ -207,3 +217,28 @@ export const formationRows: Row[] = [
     ],
   },
 ];
+
+/* ------------------------------- Lookups ----------------------------------- */
+
+/** Every unique item across hero + all rows, keyed by id (first occurrence wins). */
+export const allItems: MediaItem[] = (() => {
+  const map = new Map<string, MediaItem>();
+  for (const it of [...heroSlides, ...homeRows, ...sportRows, ...formationRows].flatMap(
+    (x) => ("items" in x ? x.items : [x])
+  )) {
+    if (!map.has(it.id)) map.set(it.id, it);
+  }
+  return [...map.values()];
+})();
+
+export function getItem(id: string): MediaItem | undefined {
+  return allItems.find((it) => it.id === id);
+}
+
+/** Same-kind items as a "More like this" rail (excludes the current item & logos). */
+export function relatedTo(item: MediaItem): MediaItem[] {
+  const kind = kindOf(item);
+  return allItems
+    .filter((it) => it.id !== item.id && it.shape !== "1:1" && kindOf(it) === kind)
+    .slice(0, 8);
+}

@@ -34,9 +34,13 @@
   --sport: #58c9a3;       /* sport accent — calm teal-green */
   --learn: #9b8cff;       /* formation accent — soft periwinkle */
 
+  /* ---- User-tunable adaptation (Réglages): UI scale + overscan margin ---- */
+  --ui-scale: 1;     /* text size multiplier */
+  --safe-scale: 1;   /* overscan-compensation multiplier */
+
   /* ---- 10-foot safe area: ~5% per edge, floored to platform minima ---- */
-  --safe-x: max(48px, 5vw);   /* ~96px @1920 (Android 48dp / tvOS 90pt) */
-  --safe-y: max(27px, 5vh);   /* ~54px @1920 */
+  --safe-x: calc(max(48px, 5vw) * var(--safe-scale));   /* ~96px @1920 (Android 48dp / tvOS 90pt) */
+  --safe-y: calc(max(27px, 5vh) * var(--safe-scale));   /* ~54px @1920 */
 
   /* ---- Fluid spacing / radii (rem so they scale with the canvas) ---- */
   --gap: 1.5rem;
@@ -68,7 +72,7 @@
   stays sane in small dev windows and doesn't over-scale on ultra-wide.
 */
 html {
-  font-size: clamp(11px, calc(100vw / 120), 22px);
+  font-size: calc(clamp(11px, 100vw / 120, 22px) * var(--ui-scale));
   background: var(--bg);
   color-scheme: dark;
 }

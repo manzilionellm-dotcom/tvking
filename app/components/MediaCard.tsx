@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { MediaItem } from "../lib/data";
 import { LevelBadge, LiveBadge } from "./Badge";
 
@@ -14,9 +15,10 @@ export default function MediaCard({ item }: { item: MediaItem }) {
   const dims = SHAPE[shape];
 
   return (
-    <button
+    <Link
+      href={`/title/${item.id}`}
       data-focusable
-      className="card focusable group relative shrink-0 cursor-pointer text-left"
+      className="card focusable group relative block shrink-0 cursor-pointer text-left"
       style={{ width: dims.w }}
       aria-label={item.title}
     >
@@ -87,6 +89,6 @@ export default function MediaCard({ item }: { item: MediaItem }) {
           </div>
         </div>
       )}
-    </button>
+    </Link>
   );
 }

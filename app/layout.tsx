@@ -3,6 +3,7 @@ import { Geist } from "next/font/google";
 import "./globals.css";
 import Sidebar from "./components/Sidebar";
 import SpatialNav from "./components/SpatialNav";
+import Preferences from "./components/Preferences";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,6 +34,7 @@ export default function RootLayout({
   return (
     <html lang="fr" className={`${geistSans.variable} h-full antialiased`}>
       <body className="min-h-full bg-[var(--bg)]">
+        <Preferences />
         <Sidebar />
         <SpatialNav />
         {/* Content is inset past the collapsed nav rail. */}
