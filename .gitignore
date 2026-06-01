@@ -57,3 +57,9 @@ firebase_options.dart
 
 # --- Logs ---------------------------------------------------------
 *.log
+
+# --- Fichiers generes par flutter gen-l10n ------------------------
+# Regeneres automatiquement par `flutter pub get` depuis lib/l10n/*.arb.
+# Eviter de les commiter pour ne pas avoir de conflits a chaque
+# regeneration de classes localisees.
+lib/l10n/generated/
