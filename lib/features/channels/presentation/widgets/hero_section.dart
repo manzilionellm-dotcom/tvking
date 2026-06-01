@@ -41,7 +41,6 @@ import '../../../../core/theme/cinematic_spacing.dart';
 import '../../../../core/widgets/live_badge.dart';
 import '../../../../core/widgets/tv_focusable.dart';
 import '../../domain/channel.dart';
-import 'channel_logo.dart';
 
 class HeroSection extends StatelessWidget {
   const HeroSection({
@@ -76,17 +75,11 @@ class HeroSection extends StatelessWidget {
             // --- Couche 2 : scrim bottom → lisibilité texte ---
             const _BottomScrim(),
 
-            // --- Couche 3 : portrait artwork net (côté gauche) ---
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: const EdgeInsets.only(
-                  left: CinematicSpacing.l,
-                  top: CinematicSpacing.l,
-                ),
-                child: _PortraitArtwork(channel: channel),
-              ),
-            ),
+            // (Ancienne couche 3 "artwork net centré à gauche"
+            //  SUPPRIMÉE 2026-06-01 : elle chevauchait le titre dès
+            //  que celui-ci faisait 2 lignes — "les mots se croisent".
+            //  L'artwork reste visible en fond flou ambiant ; le texte
+            //  habite l'image, à la Netflix. Plus de collision possible.)
 
             // --- Couche 4 : badge LIVE en haut à gauche ---
             if (channel.isLive)
@@ -196,39 +189,6 @@ class _BottomScrim extends StatelessWidget {
             stops: <double>[0.35, 0.65, 1.0],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// =========================================================
-//  COUCHE 3 — Artwork net (logo encadré, taille hero)
-// =========================================================
-//  On garde le logo de la chaîne lisible et net dans un cadre
-//  premium (rayon grand, ombre douce). Le ChannelLogo existant
-//  gère déjà ses fallbacks initiales — on lui demande juste
-//  une taille hero.
-class _PortraitArtwork extends StatelessWidget {
-  const _PortraitArtwork({required this.channel});
-  final Channel channel;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(CinematicSpacing.radiusL),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.45),
-            blurRadius: 32,
-            offset: const Offset(0, 14),
-          ),
-        ],
-      ),
-      child: ChannelLogo(
-        channel: channel,
-        size: ChannelLogoSize.large,
-        borderRadius: BorderRadius.circular(CinematicSpacing.radiusL),
       ),
     );
   }
