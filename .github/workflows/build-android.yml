@@ -302,8 +302,41 @@ jobs:
       - name: Generate launcher icons (7 MOTION ember)
         run: dart run flutter_launcher_icons
 
-      - name: Build debug APK
-        run: flutter build apk --debug --no-tree-shake-icons
+      # Build avec split par ABI (Phase 1+/perf 2026-06-01) :
+      # Sans split, Flutter produit un fat APK ~209 MB qui embarque
+      # libmpv + media_kit pour les 4 architectures CPU (armeabi-v7a,
+      # arm64-v8a, x86, x86_64). Telechargement insupportable depuis
+      # Downloader sur Fire TV / Android TV avec une connexion FR
+      # standard (5-20 Mb/s sur GitHub direct).
+      #
+      # Avec --split-per-abi, on obtient 4 APK de ~60-70 MB chacun.
+      # On COPIE celui arm64-v8a sous le nom canonique `app-debug.apk`
+      # parce que :
+      #   - 99% des Android TV / Fire TV recents sont arm64 (SHIELD,
+      #     Fire TV Stick 4K Max, Chromecast avec Google TV).
+      #   - Les telephones Android depuis 2019 sont tous arm64.
+      #   - Les vieux Fire TV Stick 1ere gen (armv7) ne sont plus
+      #     pertinents pour cette app (manquent de RAM pour libmpv).
+      # On garde les 4 APKs dans les artifacts pour backup si besoin.
+      - name: Build debug APK (split-per-abi)
+        run: flutter build apk --debug --no-tree-shake-icons --split-per-abi
+
+      - name: Pick arm64-v8a as canonical app-debug.apk
+        run: |
+          set -e
+          OUT=build/app/outputs/flutter-apk
+          echo "=== APKs produits par --split-per-abi ==="
+          ls -lah "$OUT" || true
+          # arm64 = cible primaire. Tous les Android TV / phones modernes.
+          ARM64="$OUT/app-arm64-v8a-debug.apk"
+          if [ ! -f "$ARM64" ]; then
+            echo "❌ arm64-v8a APK introuvable apres split."
+            find build -name '*.apk' || true
+            exit 1
+          fi
+          cp "$ARM64" "$OUT/app-debug.apk"
+          ls -lah "$OUT/app-debug.apk"
+          echo "Taille gain : ~70 MB (split arm64) vs ~209 MB (fat APK)"
 
       - name: Check APK exists
         run: |
@@ -539,8 +572,20 @@ jobs:
 
       # CLEF DE VOÛTE : on cible main_redroom.dart, qui pose
       # FlavorConfig.redRoom AVANT le boot commun.
-      - name: Build Red Room debug APK
-        run: flutter build apk --debug --no-tree-shake-icons -t lib/main_redroom.dart
+      # Idem flavor principal : split-per-abi pour reduire la taille
+      # d'APK de ~209 MB (fat 4 ABIs) a ~70 MB (arm64 uniquement).
+      - name: Build Red Room debug APK (split-per-abi)
+        run: flutter build apk --debug --no-tree-shake-icons --split-per-abi -t lib/main_redroom.dart
+
+      - name: Pick arm64-v8a as canonical APK
+        run: |
+          set -e
+          OUT=build/app/outputs/flutter-apk
+          ls -lah "$OUT" || true
+          ARM64="$OUT/app-arm64-v8a-debug.apk"
+          test -f "$ARM64" || { echo "arm64 APK introuvable apres split"; find build -name '*.apk'; exit 1; }
+          cp "$ARM64" "$OUT/app-debug.apk"
+          ls -lah "$OUT/app-debug.apk"
 
       - name: Check APK exists
         run: |
