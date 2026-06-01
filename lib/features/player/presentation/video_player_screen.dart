@@ -812,6 +812,28 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _scheduleHideOverlay();
   }
 
+  /// Cycle direct entre les vitesses au tap du bouton "Vitesse" dans
+  /// l'overlay. Remplace l'ancien comportement (qui ouvrait le menu
+  /// complet) suite a retour user 2026-06-01 : "au cinema on n'a
+  /// pas l'option augmenter/diminuer la vitesse" -> l'option etait
+  /// cachee 1 niveau de profondeur. Maintenant 1 tap = vitesse
+  /// suivante, le menu complet reste accessible via le bouton
+  /// "Reglages".
+  void _cycleSpeed() {
+    const List<double> speeds = <double>[0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+    final double current = _player.state.rate;
+    int idx = speeds.indexWhere((double s) => (s - current).abs() < 0.01);
+    if (idx < 0) idx = 2; // si la rate courante n'est pas dans la liste, on repart de 1.0x
+    final double next = speeds[(idx + 1) % speeds.length];
+    _player.setRate(next);
+    // Persiste pour que la prochaine ouverture du player garde la
+    // meme vitesse (deja le pattern existant ligne 256).
+    PlayerSettings.instance.setLastSpeed(next);
+    setState(() {}); // refresh le label du bouton overlay
+    _toast('Vitesse : ${next.toStringAsFixed(next == next.toInt() ? 0 : 2)}x');
+    _scheduleHideOverlay();
+  }
+
   // ============================================================
   //  Télécommande Android TV / Fire TV — touches média + D-pad
   // ============================================================
@@ -1343,7 +1365,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   _ControlButton(
                     icon: Icons.speed_rounded,
                     label: '${_player.state.rate.toStringAsFixed(_player.state.rate == _player.state.rate.toInt() ? 0 : 2)}x',
-                    onTap: _openSettings,
+                    onTap: _cycleSpeed,
                   ),
                   _ControlButton(
                     icon: _aspectIcon(PlayerSettings.instance.aspectMode),
