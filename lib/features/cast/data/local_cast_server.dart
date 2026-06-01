@@ -115,6 +115,21 @@ class LocalCastServer {
         await _serveCurrentJson(req);
         return;
       }
+      // Phase 1+/HLS Wrapper (2026-06-01) : /hls/<token>.m3u8
+      // genere une playlist HLS minimale pointant vers le segment
+      // .ts. Decouverte clef : Google Cast SDK ne supporte PAS
+      // officiellement MPEG-TS (.ts) en LIVE — seulement HLS et
+      // DASH. Pour faire passer un flux .ts brut a un Chromecast,
+      // on le wrap dans une playlist HLS synthetique. Le segment
+      // sous-jacent est servi tel quel via /hls/<token>.ts.
+      if (path.startsWith('/hls/') && path.endsWith('.m3u8')) {
+        await _serveHlsManifest(req);
+        return;
+      }
+      if (path.startsWith('/hls/') && path.endsWith('.ts')) {
+        await _serveHlsSegment(req);
+        return;
+      }
       if (path.startsWith('/relay/')) {
         await _serveRelay(req);
         return;
@@ -127,6 +142,74 @@ class LocalCastServer {
         await req.response.close();
       } catch (_) {}
     }
+  }
+
+  /// Phase 1+/HLS Wrapper — sert une playlist HLS minimale qui
+  /// reference le segment .ts comme s'il etait un VOD/Event-style
+  /// HLS valide.
+  ///
+  /// Format genere :
+  ///   #EXTM3U
+  ///   #EXT-X-VERSION:3
+  ///   #EXT-X-TARGETDURATION:9
+  ///   #EXT-X-MEDIA-SEQUENCE:0
+  ///   #EXT-X-PLAYLIST-TYPE:EVENT
+  ///   #EXTINF:8.0,
+  ///   /hls/<token>.ts
+  ///   #EXT-X-ENDLIST
+  ///
+  /// L'EXT-X-ENDLIST tag est present meme pour du live IPTV parce
+  /// que le segment unique n'a pas de fin connue cote receveur — le
+  /// Chromecast joue jusqu'a fermeture de la connexion TCP. C'est
+  /// la technique standard "single-segment HLS" utilisee par
+  /// BubbleUPnP / IPTV Proxy / etc.
+  Future<void> _serveHlsManifest(HttpRequest req) async {
+    final String last = req.uri.pathSegments.last; // <token>.m3u8
+    final int dot = last.indexOf('.');
+    final String token = dot > 0 ? last.substring(0, dot) : last;
+    final _RelayEntry? entry = _relays[token];
+    if (entry == null) {
+      req.response.statusCode = HttpStatus.notFound;
+      await req.response.close();
+      return;
+    }
+    final String manifest = '#EXTM3U\n'
+        '#EXT-X-VERSION:3\n'
+        '#EXT-X-TARGETDURATION:9\n'
+        '#EXT-X-MEDIA-SEQUENCE:0\n'
+        '#EXT-X-PLAYLIST-TYPE:EVENT\n'
+        '#EXTINF:8.0,\n'
+        '/hls/$token.ts\n'
+        '#EXT-X-ENDLIST\n';
+    req.response.headers
+      ..set('Content-Type', 'application/vnd.apple.mpegurl')
+      ..set('Cache-Control', 'no-store, no-cache')
+      ..set('Access-Control-Allow-Origin', '*');
+    req.response.write(manifest);
+    await req.response.close();
+  }
+
+  /// Sert le segment .ts pass-through du provider IPTV. Reutilise
+  /// la logique de `_serveRelay` mais avec un Content-Type adapte
+  /// au context HLS (segment HLS = video/mp2t officiellement, c'est
+  /// ce que le Cast attend dans ce contexte).
+  Future<void> _serveHlsSegment(HttpRequest req) async {
+    final String last = req.uri.pathSegments.last; // <token>.ts
+    final int dot = last.indexOf('.');
+    final String token = dot > 0 ? last.substring(0, dot) : last;
+    final _RelayEntry? entry = _relays[token];
+    if (entry == null) {
+      req.response.statusCode = HttpStatus.notFound;
+      await req.response.close();
+      return;
+    }
+    // Reutilise la plomberie de proxy HTTP existante, sauf qu'on
+    // force le Content-Type a video/mp2t (segment HLS standard).
+    await _proxyUpstream(
+      req,
+      entry,
+      forcedContentType: 'video/mp2t',
+    );
   }
 
   // ============================================================
@@ -152,10 +235,19 @@ class LocalCastServer {
   ///
   /// [receiverHost] sert à choisir la BONNE interface réseau quand
   /// le téléphone est sur plusieurs réseaux (WiFi + VPN p.ex.).
+  ///
+  /// [wrapInHls] (Phase 1+/2026-06-01) : si `true`, on renvoie une
+  /// URL HLS `.m3u8` qui pointe vers une playlist synthetique a 1
+  /// segment .ts. Indispensable pour Google Cast (le SDK ne supporte
+  /// PAS MPEG-TS .ts en LIVE officiellement — seulement HLS et DASH).
+  /// Voir la doc Google : developers.google.com/cast/docs/media.
+  /// Pour DLNA on garde le pass-through .ts direct (les renderers
+  /// DLNA conformes attendent `video/mp2t`).
   Future<String?> registerRelay({
     required String upstreamUrl,
     required DlnaProfile profile,
     required String receiverHost,
+    bool wrapInHls = false,
   }) async {
     await start();
 
@@ -179,6 +271,11 @@ class LocalCastServer {
 
     final String? lanIp = await _lanIpFor(receiverHost);
     if (lanIp == null) return null;
+    // Phase 1+/HLS Wrapper : route /hls/<token>.m3u8 pour Google
+    // Cast, /relay/<token>.<ext> pour DLNA legacy.
+    if (wrapInHls) {
+      return 'http://$lanIp:$_port/hls/$token.m3u8';
+    }
     return 'http://$lanIp:$_port/relay/$token.${profile.fileExtension}';
   }
 
@@ -213,7 +310,20 @@ class LocalCastServer {
       await req.response.close();
       return;
     }
+    await _proxyUpstream(req, entry);
+  }
 
+  /// Phase 1+/HLS Wrapper — factorisation du pass-through HTTP pour
+  /// que `_serveRelay` (DLNA) et `_serveHlsSegment` (Google Cast)
+  /// partagent la meme plomberie. Pas de buffer en RAM, addStream
+  /// pur ; les headers DLNA sont injectes sauf si
+  /// [forcedContentType] est fourni (cas HLS ou on veut un MIME
+  /// strict `video/mp2t` pour le segment).
+  Future<void> _proxyUpstream(
+    HttpRequest req,
+    _RelayEntry entry, {
+    String? forcedContentType,
+  }) async {
     final HttpClient client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 8)
       // idleTimeout doit être LARGE — un flux LIVE peut avoir des creux
@@ -232,7 +342,8 @@ class LocalCastServer {
       if (req.method == 'HEAD') {
         final HttpClientRequest probe = await client.headUrl(upstream);
         final HttpClientResponse pResp = await probe.close();
-        _writeRelayHeaders(req.response, pResp, entry);
+        _writeRelayHeaders(req.response, pResp, entry,
+            forcedContentType: forcedContentType);
         await pResp.drain<void>();
         await req.response.close();
         return;
@@ -249,7 +360,8 @@ class LocalCastServer {
       }
       final HttpClientResponse upResp = await up.close();
 
-      _writeRelayHeaders(req.response, upResp, entry);
+      _writeRelayHeaders(req.response, upResp, entry,
+          forcedContentType: forcedContentType);
       // Status code (200 / 206) — recopié de l'upstream
       req.response.statusCode = upResp.statusCode;
 
@@ -274,15 +386,23 @@ class LocalCastServer {
   }
 
   /// Recopie les headers utiles de l'upstream et AJOUTE les headers
-  /// DLNA que les récepteurs exigent.
+  /// DLNA que les récepteurs exigent. Si [forcedContentType] est
+  /// fourni (cas HLS), il remplace le MIME au lieu d'utiliser le
+  /// profile DLNA — necessaire pour annoncer `video/mp2t` aux
+  /// segments HLS attendus par Cast.
   void _writeRelayHeaders(
     HttpResponse out,
     HttpClientResponse up,
-    _RelayEntry entry,
-  ) {
-    // Type MIME du profil — préféré à l'upstream qui renvoie souvent
-    // `application/octet-stream` sur les flux IPTV.
-    out.headers.set(HttpHeaders.contentTypeHeader, entry.profile.mime);
+    _RelayEntry entry, {
+    String? forcedContentType,
+  }) {
+    // Type MIME : si forcedContentType (cas HLS segment) on l'utilise
+    // tel quel ; sinon on prefere le profil DLNA a l'upstream
+    // (souvent `application/octet-stream` sur les flux IPTV).
+    out.headers.set(
+      HttpHeaders.contentTypeHeader,
+      forcedContentType ?? entry.profile.mime,
+    );
 
     // Content-Length / Range
     if (up.contentLength != -1) {

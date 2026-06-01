@@ -26,7 +26,9 @@ import 'package:flutter/foundation.dart';
 
 import '../domain/cast_device.dart';
 import 'cast_transport.dart';
+import 'dlna_profiles.dart';
 import 'google_cast_api.dart';
+import 'local_cast_server.dart';
 
 class GoogleCastTransport implements CastTransport {
   GoogleCastTransport(this.device);
@@ -80,16 +82,53 @@ class GoogleCastTransport implements CastTransport {
     }
 
     // 4) Session OK — on pousse le flux.
-    //    Le SDK Cast natif gère le MediaInfo, le MediaLoadOptions,
-    //    le contentType, la metadata… on lui passe juste l'URL +
-    //    titre + MIME deviné depuis l'URL.
+    //
+    //    Phase 1+/HLS Wrapper (2026-06-01) — DECOUVERTE CLEF :
+    //    Google Cast SDK ne supporte PAS officiellement MPEG-TS (.ts)
+    //    en LIVE (cf. developers.google.com/cast/docs/media). Les
+    //    seuls formats LIVE supportes sont HLS et DASH. Tirer du .ts
+    //    brut au Cast = echec ou comportement aleatoire selon le
+    //    firmware du receveur (ExoPlayer-based comme SHIELD peut
+    //    s'en sortir, vrai Chromecast pur refuse).
+    //
+    //    Solution : si l'URL pointe vers du .ts (cas IPTV typique),
+    //    on la wrap dans une playlist HLS minimale servie par notre
+    //    LocalCastServer. Le Cast voit un HLS standard, accepte, et
+    //    fetch le segment .ts pass-through. Technique standard
+    //    (BubbleUPnP, IPTV Proxy, etc.).
+    //
     //    Phase 1+/G1 : on transmet aussi `imageUrl` (logo de la
-    //    chaine) — la TV l'affiche en idle et en overlay pendant la
-    //    lecture. Sans ca le recepteur tombait sur son placeholder
-    //    generique meme quand on connaissait le logo.
-    final String mime = _guessMime(streamUrl);
+    //    chaine).
+    String urlToCast = streamUrl;
+    String mime = _guessMime(streamUrl);
+    if (_looksLikeRawMpegTs(streamUrl)) {
+      // Wrap dans HLS via le LocalCastServer.
+      final String? wrappedUrl =
+          await LocalCastServer.instance.registerRelay(
+        upstreamUrl: streamUrl,
+        profile: const DlnaProfile(
+          mime: 'video/mp2t',
+          profileName: 'MPEG_TS_SD_NA_ISO',
+          transferMode: DlnaTransferMode.streaming,
+          objectClass: 'object.item.videoItem.videoBroadcast',
+          fileExtension: 'ts',
+        ),
+        receiverHost: device.host,
+        wrapInHls: true,
+      );
+      if (wrappedUrl != null) {
+        urlToCast = wrappedUrl;
+        mime = 'application/x-mpegURL';
+        if (kDebugMode) {
+          debugPrint('[Cast] HLS wrap: $streamUrl -> $urlToCast');
+        }
+      } else if (kDebugMode) {
+        debugPrint('[Cast] HLS wrap failed, falling back to direct .ts');
+      }
+    }
+
     final bool loaded = await api.loadMedia(
-      streamUrl: streamUrl,
+      streamUrl: urlToCast,
       title: title,
       mime: mime,
       imageUrl: imageUrl,
@@ -97,6 +136,22 @@ class GoogleCastTransport implements CastTransport {
     if (!loaded) {
       throw Exception('La TV a refusé le flux.');
     }
+  }
+
+  /// Detecte une URL qui pointe vers du MPEG-TS brut (cas IPTV
+  /// typique) : extension .ts, ou path /live/.../<id>(.ts)? sans
+  /// extension explicite, ou MIME deja typage TS dans le URL.
+  bool _looksLikeRawMpegTs(String url) {
+    final String lower = url.toLowerCase();
+    if (lower.contains('.m3u8') || lower.contains('mpegurl')) return false;
+    if (lower.contains('.mpd') || lower.contains('dash+xml')) return false;
+    if (lower.contains('.mp4')) return false;
+    if (lower.contains('.mkv')) return false;
+    // .ts explicite OU pattern Xtream /live/USER/PASS/ID (sans ext)
+    if (lower.contains('.ts')) return true;
+    if (lower.contains('/live/')) return true;
+    if (lower.contains('mp2t') || lower.contains('mpegts')) return true;
+    return false;
   }
 
   @override
