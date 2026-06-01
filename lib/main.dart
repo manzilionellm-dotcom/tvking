@@ -105,9 +105,12 @@ Future<void> bootApp() async {
     // restees `ended_at IS NULL` parce que le process precedent a
     // ete tue par l'OS pendant l'enregistrement (NOT_STICKY).
     // recoverOrphans est idempotent — si rien a recuperer, no-op.
-    RecordingRepository.instance.initialize().then((_) {
-      return RecordingRepository.instance.recoverOrphans();
-    }),
+    // Le `.then((_) {})` final convertit Future<List<Recording>> en
+    // Future<void> attendu par unawaited (strict-casts ON).
+    RecordingRepository.instance
+        .initialize()
+        .then((_) => RecordingRepository.instance.recoverOrphans())
+        .then((_) {}),
   );
   unawaited(PlayerSettings.instance.load());
 

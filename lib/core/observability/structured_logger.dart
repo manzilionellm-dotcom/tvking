@@ -56,7 +56,6 @@
 //  rotatif ou un upload vers un endpoint diagnostic.
 // =========================================================
 
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
