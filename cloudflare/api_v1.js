@@ -756,7 +756,7 @@ function planToDays(plan, customDays) {
     case 'yearly': return 365;
     case 'lifetime': return null;
     case 'custom': return customDays && customDays > 0 ? customDays : 30;
-    case 'trial': return 10;
+    case 'trial': return 7;
     default: return 30;
   }
 }

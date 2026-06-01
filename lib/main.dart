@@ -120,7 +120,7 @@ Future<void> bootApp() async {
   // premier frame (About, Réglages, etc.).
   unawaited(DeviceIdentity.instance.preload());
 
-  // Essai gratuit de 10 jours + abonnement 13 €/an. Au tout
+  // Essai gratuit de 7 jours + abonnement 5,99 €/an ou 9,99 € à vie. Au tout
   // premier boot, persiste firstLaunchAt = now pour démarrer le
   // compte à rebours local. PUIS sync avec le backend Cloudflare
   // qui est l'autorité finale (l'admin peut geler/débloquer un
@@ -367,7 +367,7 @@ class _AppEntryState extends State<_AppEntry> {
 
     // 3) Gate de monétisation — l'admin peut geler / bannir un
     //    client à distance via le panel web, et le trial expire
-    //    au bout de 10 jours. Si l'une de ces conditions s'applique,
+    //    au bout de 7 jours. Si l'une de ces conditions s'applique,
     //    on affiche un écran bloquant à la place de l'app. L'écran
     //    est listenable au SubscriptionState : dès que l'admin
     //    réactive le client (ou marque payé), l'app débloque

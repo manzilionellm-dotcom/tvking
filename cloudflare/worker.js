@@ -168,7 +168,7 @@ async function proxyApk(upstreamUrl, suggestedFilename) {
 //      automatiquement au 1er lancement.
 // ===========================================================
 
-const TRIAL_DAYS = 10;
+const TRIAL_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /// Calcule l'état de monétisation d'un client à partir de sa fiche

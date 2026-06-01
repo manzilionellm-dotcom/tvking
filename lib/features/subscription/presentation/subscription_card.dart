@@ -187,10 +187,11 @@ class SubscriptionCard extends StatelessWidget {
             'débloquées sur cet appareil et tes autres installations 7 MOTION.';
       case SubscriptionStatus.trialExpired:
         return 'Ton essai gratuit de $kTrialDurationDays jours est terminé. '
-            'Souscris l\'abonnement à 13 €/an sur 7themotion.com pour continuer.';
+            'Souscris l\'abonnement (5,99 € / an ou 9,99 € à vie) sur '
+            '7themotion.com pour continuer.';
       case SubscriptionStatus.trialActive:
         return 'Profite de toutes les fonctions premium pendant ton essai. '
-            'Ensuite 13 €/an sur tous tes appareils.';
+            'Ensuite 5,99 € / an ou 9,99 € à vie sur tous tes appareils.';
       case SubscriptionStatus.frozen:
         return 'Ton compte est en pause. Contacte le support pour réactiver.';
       case SubscriptionStatus.banned:

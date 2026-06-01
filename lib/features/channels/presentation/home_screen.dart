@@ -50,9 +50,11 @@ import 'widgets/empty_state.dart';
 import 'widgets/floating_bottom_nav.dart';
 import 'widgets/hero_section.dart';
 import 'widgets/live_now_favorites_row.dart';
+import 'widgets/paywall_banner.dart';
 import 'widgets/premium_row.dart';
 import 'widgets/poster_row.dart';
 import 'widgets/resume_banner.dart';
+import 'widgets/source_choice_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -265,8 +267,8 @@ class _HomeScreenState extends State<HomeScreen> {
         // M3U / M3U en lot) directement depuis l'accueil, à tout
         // moment — pas seulement quand la liste est vide.
         IconButton(
-          tooltip: 'Ajouter mes codes',
-          onPressed: _openAddPlaylist,
+          tooltip: 'Ajouter mes codes / Activer',
+          onPressed: () => showSourceChoiceSheet(context),
           icon: const Icon(Icons.add_rounded),
         ),
         IconButton(
@@ -339,6 +341,10 @@ class _HomeScreenState extends State<HomeScreen> {
       physics: const BouncingScrollPhysics(),
       slivers: <Widget>[
         const SliverPadding(padding: EdgeInsets.only(top: 64)),
+
+        // ----- Bandeau "App payante" (essai 7 j · 5,99 €/an · 9,99 € à vie) -----
+        const SliverToBoxAdapter(child: PaywallBanner()),
+        const SliverToBoxAdapter(child: SizedBox(height: 8)),
 
         // ----- Bannière "Reprendre où tu t'es arrêté" -----
         //  Hook Model — Continue Watching. Visible seulement si la

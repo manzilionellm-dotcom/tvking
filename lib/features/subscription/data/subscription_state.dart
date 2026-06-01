@@ -2,10 +2,10 @@
 //  subscription_state.dart — État de l'essai/abonnement
 // =========================================================
 //  Modèle commercial 7 MOTION (demande user) :
-//    - 10 jours d'essai gratuit dès le 1er lancement
-//    - Ensuite 13 €/an, paiement sur https://7themotion.com
-//      (PAS d'in-app purchase Google Play → bypass de la
-//       commission 30%)
+//    - 7 jours d'essai gratuit dès le 1er lancement
+//    - Ensuite 5,99 €/an OU 9,99 € à vie, paiement sur
+//      https://7themotion.com (PAS d'in-app purchase Google Play
+//      → bypass de la commission 30%)
 //
 //  Cette classe persiste UNIQUEMENT le timestamp du 1er lancement
 //  via SharedPreferences. Tout le calcul (jours restants, etc.)
@@ -23,7 +23,7 @@ import '../../device/data/device_identity.dart';
 import 'subscription_backend.dart';
 
 /// Durée de l'essai gratuit en jours.
-const int kTrialDurationDays = 10;
+const int kTrialDurationDays = 7;
 
 /// URL du site marchand (paiement externe, modèle TiViMate).
 const String kPurchaseUrl = 'https://7themotion.com';
@@ -124,7 +124,7 @@ class SubscriptionState extends ChangeNotifier {
 
   /// Charge l'état depuis SharedPreferences. Si c'est le 1er
   /// lancement absolu, on écrit `firstLaunchAt = now()` pour
-  /// démarrer le compte à rebours des 10 jours.
+  /// démarrer le compte à rebours de l'essai (kTrialDurationDays).
   Future<void> initialize() async {
     if (_loaded) return;
     try {
