@@ -171,39 +171,42 @@ class _HomeScreenState extends State<HomeScreen> {
     if (FlavorConfig.current.adultOnly) {
       return const SizedBox.shrink();
     }
+    // Phase 1+/2026-06-01 : icones line art (outlined) au lieu des
+    // pleines rondes, pour matcher l'estehique "premium streaming
+    // dashboard" demandee par l'utilisateur.
     return RoundCategoryRow(
       items: <RoundCategoryItem>[
         RoundCategoryItem(
           label: 'Football',
-          icon: Icons.sports_soccer_rounded,
+          icon: Icons.sports_soccer_outlined,
           onTap: _openFootball,
         ),
         RoundCategoryItem(
           label: 'Jeunesse',
-          icon: Icons.child_care_rounded,
+          icon: Icons.child_friendly_outlined,
           onTap: () => _openSection('Jeunesse', ChannelGenre.kids),
         ),
         RoundCategoryItem(
-          label: 'Divertissement',
-          icon: Icons.theater_comedy_rounded,
+          label: 'Cinema',
+          icon: Icons.movie_creation_outlined,
           onTap: () => _openSection(
             'Divertissement',
             ChannelGenre.entertainment,
           ),
         ),
         RoundCategoryItem(
-          label: 'Info',
-          icon: Icons.newspaper_rounded,
+          label: 'Actu',
+          icon: Icons.newspaper_outlined,
           onTap: () => _openSection('Info', ChannelGenre.news),
         ),
         RoundCategoryItem(
           label: 'Docu',
-          icon: Icons.public_rounded,
+          icon: Icons.travel_explore_outlined,
           onTap: () => _openSection('Documentaires', ChannelGenre.documentary),
         ),
         RoundCategoryItem(
           label: 'Musique',
-          icon: Icons.music_note_rounded,
+          icon: Icons.music_note_outlined,
           onTap: () => _openSection('Musique', ChannelGenre.music),
         ),
       ],
