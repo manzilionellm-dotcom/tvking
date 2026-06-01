@@ -8,16 +8,19 @@
 //  plateforme premium. Les utilisateurs de Netflix ou Apple TV+
 //  ne tapent jamais "Sport" en bas d'ecran pour explorer du sport.
 //
-//  Nouveau modele aligne sur les standards OTT :
+//  Modele (demande user 2026-06-01) : la barre du bas donne un
+//  acces direct aux CATEGORIES les plus demandees, en plus de
+//  l'accueil :
 //
-//    Home       — accueil discovery (hero + rails)
-//    Trending   — contenu en vogue
-//    Live       — sport et chaines en direct (Live TV merge)
-//    Favoris    — liste perso (anciennement dans AppBar)
-//    Profil     — compte, reglages, guide TV, cast
-//                  (anciennement icones dans AppBar top right)
+//    Home         — accueil discovery (hero + rails + chips)
+//    Football     — toutes les chaines sport (tous pays)
+//    Information  — toutes les chaines info / actu
+//    Enfant       — toutes les chaines jeunesse
+//    Cinema       — tous les films
 //
-//  Glassmorphism conserve + indicateur de selection subtil.
+//  Favoris et Profil sont accessibles depuis la barre du haut
+//  (icones coeur et profil). Glassmorphism conserve + pill de
+//  selection.
 // =========================================================
 
 import 'dart:ui';
@@ -40,10 +43,10 @@ class FloatingBottomNav extends StatelessWidget {
 
   static const List<_NavItem> _items = <_NavItem>[
     _NavItem(icon: Icons.home_rounded, label: 'Home'),
-    _NavItem(icon: Icons.local_fire_department_rounded, label: 'Trending'),
-    _NavItem(icon: Icons.podcasts_rounded, label: 'Live'),
-    _NavItem(icon: Icons.favorite_rounded, label: 'Favoris'),
-    _NavItem(icon: Icons.person_rounded, label: 'Profil'),
+    _NavItem(icon: Icons.sports_soccer_rounded, label: 'Football'),
+    _NavItem(icon: Icons.newspaper_rounded, label: 'Information'),
+    _NavItem(icon: Icons.child_care_rounded, label: 'Enfant'),
+    _NavItem(icon: Icons.movie_creation_rounded, label: 'Cinéma'),
   ];
 
   @override

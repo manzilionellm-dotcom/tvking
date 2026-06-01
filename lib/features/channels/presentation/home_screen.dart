@@ -277,6 +277,11 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: const Icon(Icons.search_rounded),
         ),
         IconButton(
+          tooltip: 'Favoris',
+          onPressed: _openFavorites,
+          icon: const Icon(Icons.favorite_rounded),
+        ),
+        IconButton(
           tooltip: 'Profil',
           onPressed: _goToProfile,
           icon: const Icon(Icons.person_rounded),
@@ -286,11 +291,16 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Bascule sur l'onglet Profil (index 4) — utilise par l'icone
-  /// profile en haut a droite, qui doit ouvrir la meme vue que le
-  /// tap sur la nav du bas (coherence Apple TV+ / Mubi).
+  /// Ouvre l'écran Profil (compte, réglages, guide TV, cast, about).
+  /// Appelé par l'icône profil en haut à droite. Profil n'est plus un
+  /// onglet de la barre du bas (remplacée par des catégories), il vit
+  /// désormais dans la barre du haut.
   void _goToProfile() {
-    setState(() => _currentNavIndex = 4);
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const ProfileScreen(),
+      ),
+    );
   }
 
   // ============================================================
@@ -594,42 +604,33 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ----- Bottom Nav (Phase 1.0b standards OTT) -----
+  // ----- Bottom Nav (catégories — demande user 2026-06-01) -----
   //
-  //    0 = Home      (l'ecran actuel : hero + rails)
-  //    1 = Trending  (provisoire : Cinema qui contient la VOD)
-  //    2 = Live      (sport et chaines live)
-  //    3 = Favoris   (liste personnelle)
-  //    4 = Profil    (settings + guide TV + cast + about)
+  //    0 = Home        (accueil : hero + chips + rails)
+  //    1 = Football    (genre sports — toutes chaînes, tous pays)
+  //    2 = Information  (genre news)
+  //    3 = Enfant       (genre kids)
+  //    4 = Cinéma       (genre movies)
   //
-  //  Le contenu reel des sections Trending et Live sera retravaille
-  //  en Phase 1.0c (vrais rails de discovery au lieu d'un push de
-  //  grille generique). Pour 1.0b, on garde le pattern push existant
-  //  qui marche deja, pour ne pas mettre le doigt dans le contenu.
+  //  Favoris et Profil ont migré dans la barre du haut (icônes ♥ et
+  //  👤). Chaque onglet catégorie pousse CategorySectionScreen filtré,
+  //  puis on remet le highlight sur Home au retour.
 
   void _onNavTap(int index) {
     setState(() => _currentNavIndex = index);
     switch (index) {
       case 0:
-        break; // deja sur l'accueil
+        break; // déjà sur l'accueil
       case 1:
-        // Trending : provisoire = Cinema (VOD). Sera un vrai rail
-        // de discovery en Phase 1.0c.
-        _openSection('Trending', ChannelGenre.movies).then((_) => _resetNav());
-      case 2:
-        // Live : sport en direct + (a terme) chaines live. Pour
-        // l'instant on route sport, c'est l'usage majoritaire.
-        _openSection('Live', ChannelGenre.sports).then((_) => _resetNav());
-      case 3:
-        _openFavorites().then((_) => _resetNav());
-      case 4:
-        Navigator.of(context)
-            .push<void>(
-              MaterialPageRoute<void>(
-                builder: (_) => const ProfileScreen(),
-              ),
-            )
+        _openSection('Football', ChannelGenre.sports)
             .then((_) => _resetNav());
+      case 2:
+        _openSection('Information', ChannelGenre.news)
+            .then((_) => _resetNav());
+      case 3:
+        _openSection('Enfant', ChannelGenre.kids).then((_) => _resetNav());
+      case 4:
+        _openSection('Cinéma', ChannelGenre.movies).then((_) => _resetNav());
     }
   }
 
