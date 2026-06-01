@@ -1,30 +1,60 @@
 // =========================================================
-//  App.tsx — Ecran unique MVP : input M3U + liste + lecteur
+//  App.tsx — Shell MVP : toggle M3U / Xtream + persistance + lecteur
 // =========================================================
-//  Vue minimale fonctionnelle pour valider la chaine complete :
+//  Evolution v0.2.0 vs v0.1.0 :
+//    - Toggle entre 2 sources : URL M3U directe ou identifiants
+//      Xtream Codes (URL serveur + user + pass).
+//    - Sauvegarde auto de la derniere source utilisee + restauration
+//      au boot (LocalStorage).
+//    - Toggle "favori" sur chaque chaine + persistance.
+//    - Reprend la derniere chaine jouee si dispo dans la nouvelle
+//      liste.
+//    - Logs structures aux transitions principales (boot, source
+//      load, channel play).
 //
-//    1. L'utilisateur colle une URL M3U (ou un blob direct .ts/.m3u8).
-//    2. On fetch + parse via parseM3u().
-//    3. On affiche la liste des chaines (focusable D-pad — Phase 2).
-//    4. Au clic sur une chaine, on instancie WebMediaPlayer et on
-//       joue dans le <video>.
-//
-//  Pas de Xtream Codes, pas d'EPG, pas de TMDB ici — ces briques
-//  arrivent en Phase 2+ (cf. tv-web/README.md). On valide la
-//  fondation (parser + abstraction + lecture HLS/TS) avant d'empiler.
+//  Pas encore : D-pad nav, EPG, multi-piste, TMDB — Phase 3+.
 // =========================================================
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Channel } from './core/models/channel.js';
 import { parseM3u } from './core/parsers/m3u.js';
-import type { MediaPlayer, PlaybackState } from './core/player/player_interface.js';
+import {
+  XtreamClient,
+  XtreamError,
+  type XtreamCredentials,
+} from './core/clients/xtream.js';
+import type {
+  MediaPlayer,
+  PlaybackState,
+} from './core/player/player_interface.js';
 import { WebMediaPlayer } from './core/player/web_media_player.js';
+import {
+  loadLastSource,
+  saveLastSource,
+  loadLastChannelId,
+  saveLastChannelId,
+  loadFavorites,
+  toggleFavorite as storageToggleFavorite,
+  type PlaylistSource,
+} from './core/storage/storage.js';
+import { logger } from './core/observability/structured_logger.js';
 import { colors, spacing, radius, typography } from './branding/tokens.js';
 
+type SourceMode = 'm3u' | 'xtream';
+
 export function App(): JSX.Element {
-  const [playlistInput, setPlaylistInput] = useState('');
+  // ---------- Mode + inputs ----------
+  const [mode, setMode] = useState<SourceMode>('m3u');
+  const [m3uUrl, setM3uUrl] = useState('');
+  const [xtServer, setXtServer] = useState('');
+  const [xtUser, setXtUser] = useState('');
+  const [xtPass, setXtPass] = useState('');
+
+  // ---------- Etat ----------
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [favorites, setFavorites] = useState<readonly string[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadInfo, setLoadInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [playbackState, setPlaybackState] = useState<PlaybackState>('idle');
@@ -32,9 +62,27 @@ export function App(): JSX.Element {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerRef = useRef<MediaPlayer | null>(null);
 
-  // Construit le player une fois le <video> monte. Le dispose() est
-  // appele a l'unmount pour fermer hls.js proprement (sinon fuite
-  // memoire connue de la lib).
+  // ---------- Boot : restore last source ----------
+  useEffect(() => {
+    const last = loadLastSource();
+    setFavorites(loadFavorites());
+    logger.info('tv', 'app.boot', { hasLastSource: last !== null });
+    if (last === null) return;
+    if (last.kind === 'm3u') {
+      setMode('m3u');
+      setM3uUrl(last.url);
+    } else {
+      setMode('xtream');
+      setXtServer(last.serverUrl);
+      setXtUser(last.username);
+      setXtPass(last.password);
+    }
+    // On NE charge PAS automatiquement la playlist au boot — l'utilisateur
+    // garde le controle (peut vouloir changer de source). C'est juste
+    // pre-rempli.
+  }, []);
+
+  // ---------- Player lifecycle ----------
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -57,47 +105,122 @@ export function App(): JSX.Element {
 
   // ---------- Handlers ----------
 
-  async function handleLoadPlaylist(): Promise<void> {
-    const url = playlistInput.trim();
-    if (url.length === 0) {
-      setLoadError('Colle une URL de playlist M3U.');
-      return;
-    }
-    setLoading(true);
+  const handleLoad = useCallback(async (): Promise<void> => {
     setLoadError(null);
+    setLoadInfo(null);
+    setLoading(true);
     try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status} ${response.statusText}`);
-      }
-      const text = await response.text();
-      const parsed = parseM3u(text);
-      if (parsed.length === 0) {
-        setLoadError(
-          'Playlist vide ou format M3U non reconnu (entete #EXTM3U manquante ?)',
+      let parsed: Channel[];
+      let source: PlaylistSource;
+      if (mode === 'm3u') {
+        const url = m3uUrl.trim();
+        if (url.length === 0) {
+          setLoadError('Colle une URL de playlist M3U.');
+          return;
+        }
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status} ${response.statusText}`);
+        }
+        const text = await response.text();
+        parsed = parseM3u(text);
+        if (parsed.length === 0) {
+          setLoadError(
+            "Playlist vide ou format non reconnu (entête #EXTM3U manquante ?)",
+          );
+          setChannels([]);
+          return;
+        }
+        source = { kind: 'm3u', url };
+      } else {
+        const creds: XtreamCredentials = {
+          serverUrl: xtServer.trim(),
+          username: xtUser.trim(),
+          password: xtPass,
+        };
+        if (
+          creds.serverUrl.length === 0 ||
+          creds.username.length === 0 ||
+          creds.password.length === 0
+        ) {
+          setLoadError('Remplis les 3 champs (serveur, utilisateur, mot de passe).');
+          return;
+        }
+        const client = new XtreamClient(creds);
+        // 1) authenticate -> verifie credentials + recupere meta
+        const auth = await client.authenticate();
+        setLoadInfo(
+          auth.isTrial
+            ? `Compte d'essai · ${auth.status}`
+            : `Compte ${auth.status}`,
         );
-        setChannels([]);
-        return;
+        // 2) on tire toutes les chaines Live (pas de filtrage Phase 2)
+        parsed = await client.getLiveStreams();
+        if (parsed.length === 0) {
+          setLoadError(
+            'Le serveur ne renvoie aucune chaîne Live. Vérifie ton abonnement.',
+          );
+          setChannels([]);
+          return;
+        }
+        source = {
+          kind: 'xtream',
+          serverUrl: creds.serverUrl,
+          username: creds.username,
+          password: creds.password,
+        };
       }
       setChannels(parsed);
+      saveLastSource(source);
+      logger.info('tv', 'playlist.loaded', {
+        source: source.kind,
+        channelCount: parsed.length,
+      });
+
+      // Reprise auto de la derniere chaine si elle est dans la liste
+      const lastId = loadLastChannelId();
+      if (lastId !== null && parsed.some((c) => c.id === lastId)) {
+        const target = parsed.find((c) => c.id === lastId);
+        if (target) {
+          void handlePlay(target);
+        }
+      }
     } catch (e) {
-      setLoadError(
-        e instanceof Error
-          ? `Echec du chargement : ${e.message}`
-          : 'Echec du chargement de la playlist.',
-      );
+      const message = errorToUserMessage(e);
+      setLoadError(message);
+      logger.warn('tv', 'playlist.load_failed', {
+        source: mode,
+        message,
+      });
       setChannels([]);
     } finally {
       setLoading(false);
     }
-  }
+    // handlePlay change a chaque render -> on l'exclut du deps (stable
+    // grace au ref-pattern dans handlePlay lui-meme).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, m3uUrl, xtServer, xtUser, xtPass]);
 
-  async function handlePlay(channel: Channel): Promise<void> {
+  const handlePlay = useCallback(async (channel: Channel): Promise<void> => {
     setActiveChannelId(channel.id);
+    saveLastChannelId(channel.id);
+    logger.info('tv', 'channel.play', {
+      id: channel.id,
+      name: channel.name,
+    });
     const player = playerRef.current;
     if (!player) return;
     await player.open(channel.url);
-  }
+  }, []);
+
+  const handleToggleFavorite = useCallback((id: string): void => {
+    const next = storageToggleFavorite(id);
+    setFavorites(next);
+    logger.info('tv', 'favorite.toggle', {
+      id,
+      nowFavorite: next.includes(id),
+    });
+  }, []);
 
   // ---------- Render ----------
 
@@ -105,12 +228,11 @@ export function App(): JSX.Element {
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: 'minmax(320px, 28%) 1fr',
+        gridTemplateColumns: 'minmax(360px, 30%) 1fr',
         height: '100vh',
         background: colors.background,
       }}
     >
-      {/* COLONNE GAUCHE — input + liste */}
       <aside
         style={{
           background: colors.surface,
@@ -122,77 +244,49 @@ export function App(): JSX.Element {
           gap: spacing.md,
         }}
       >
-        <h1
-          style={{
-            margin: 0,
-            color: colors.accent,
-            fontSize: typography.size.heading,
-            fontWeight: typography.weight.bold,
-            letterSpacing: 2,
-          }}
-        >
-          7 MOTION
-        </h1>
-        <p
-          style={{
-            margin: 0,
-            color: colors.textMuted,
-            fontSize: typography.size.caption,
-          }}
-        >
-          MVP TV — v0.1.0. Colle ton URL M3U / M3U8 pour charger ta playlist.
-        </p>
-
-        <div style={{ display: 'flex', gap: spacing.sm }}>
-          <input
-            type="text"
-            placeholder="https://exemple.com/playlist.m3u"
-            value={playlistInput}
-            onChange={(e) => setPlaylistInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void handleLoadPlaylist();
-            }}
+        <header style={{ display: 'flex', alignItems: 'baseline', gap: spacing.sm }}>
+          <h1
             style={{
-              flex: 1,
-              padding: `${spacing.sm}px ${spacing.md}px`,
-              borderRadius: radius.md,
-              border: `1px solid ${colors.border}`,
-              background: colors.background,
-              color: colors.textPrimary,
-              fontSize: typography.size.body,
+              margin: 0,
+              color: colors.accent,
+              fontSize: typography.size.heading,
+              fontWeight: typography.weight.bold,
+              letterSpacing: 2,
             }}
+          >
+            7 MOTION
+          </h1>
+          <span
+            style={{ color: colors.textMuted, fontSize: typography.size.caption }}
+          >
+            TV · v0.2.0
+          </span>
+        </header>
+
+        <SourceToggle mode={mode} onChange={setMode} />
+
+        {mode === 'm3u' ? (
+          <M3uForm
+            url={m3uUrl}
+            setUrl={setM3uUrl}
+            loading={loading}
+            onSubmit={() => void handleLoad()}
           />
-          <button
-            onClick={() => void handleLoadPlaylist()}
-            disabled={loading}
-            style={{
-              padding: `${spacing.sm}px ${spacing.md}px`,
-              borderRadius: radius.md,
-              border: 'none',
-              background: colors.accent,
-              color: colors.textPrimary,
-              fontSize: typography.size.body,
-              fontWeight: typography.weight.semibold,
-              cursor: loading ? 'wait' : 'pointer',
-            }}
-          >
-            {loading ? '…' : 'Charger'}
-          </button>
-        </div>
-
-        {loadError && (
-          <div
-            style={{
-              padding: spacing.sm,
-              borderRadius: radius.md,
-              background: 'rgba(232, 55, 64, 0.15)',
-              color: colors.live,
-              fontSize: typography.size.caption,
-            }}
-          >
-            {loadError}
-          </div>
+        ) : (
+          <XtreamForm
+            server={xtServer}
+            user={xtUser}
+            pass={xtPass}
+            setServer={setXtServer}
+            setUser={setXtUser}
+            setPass={setXtPass}
+            loading={loading}
+            onSubmit={() => void handleLoad()}
+          />
         )}
+
+        {loadError && <Alert kind="error">{loadError}</Alert>}
+        {loadInfo && !loadError && <Alert kind="info">{loadInfo}</Alert>}
 
         <div
           style={{
@@ -203,16 +297,18 @@ export function App(): JSX.Element {
           }}
         >
           {channels.length} chaîne{channels.length > 1 ? 's' : ''}
+          {favorites.length > 0 && ` · ${favorites.length} favori${favorites.length > 1 ? 's' : ''}`}
         </div>
 
         <ChannelList
           channels={channels}
+          favorites={favorites}
           activeId={activeChannelId}
           onPlay={(c) => void handlePlay(c)}
+          onToggleFavorite={handleToggleFavorite}
         />
       </aside>
 
-      {/* COLONNE DROITE — player */}
       <main
         style={{
           background: '#000',
@@ -227,11 +323,7 @@ export function App(): JSX.Element {
           controls
           playsInline
           autoPlay
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain',
-          }}
+          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
         />
         {!activeChannel && (
           <div
@@ -266,16 +358,156 @@ export function App(): JSX.Element {
   );
 }
 
+// ===========================================================
+//  Sous-composants
+// ===========================================================
+
+interface SourceToggleProps {
+  mode: SourceMode;
+  onChange: (m: SourceMode) => void;
+}
+
+function SourceToggle({ mode, onChange }: SourceToggleProps): JSX.Element {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        background: colors.background,
+        borderRadius: radius.md,
+        padding: 4,
+        border: `1px solid ${colors.border}`,
+      }}
+    >
+      {(['m3u', 'xtream'] as const).map((value) => {
+        const active = mode === value;
+        return (
+          <button
+            key={value}
+            onClick={() => onChange(value)}
+            style={{
+              padding: spacing.sm,
+              background: active ? colors.surfaceHigh : 'transparent',
+              border: 'none',
+              borderRadius: radius.sm,
+              color: active ? colors.textPrimary : colors.textSecondary,
+              fontSize: typography.size.caption,
+              fontWeight: active
+                ? typography.weight.semibold
+                : typography.weight.regular,
+              cursor: 'pointer',
+              letterSpacing: 1,
+              textTransform: 'uppercase',
+            }}
+          >
+            {value === 'm3u' ? 'URL M3U' : 'Xtream Codes'}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+interface M3uFormProps {
+  url: string;
+  setUrl: (v: string) => void;
+  loading: boolean;
+  onSubmit: () => void;
+}
+
+function M3uForm({ url, setUrl, loading, onSubmit }: M3uFormProps): JSX.Element {
+  return (
+    <div style={{ display: 'flex', gap: spacing.sm }}>
+      <input
+        type="text"
+        placeholder="https://exemple.com/playlist.m3u"
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') onSubmit();
+        }}
+        style={inputStyle()}
+      />
+      <PrimaryButton loading={loading} onClick={onSubmit}>
+        Charger
+      </PrimaryButton>
+    </div>
+  );
+}
+
+interface XtreamFormProps {
+  server: string;
+  user: string;
+  pass: string;
+  setServer: (v: string) => void;
+  setUser: (v: string) => void;
+  setPass: (v: string) => void;
+  loading: boolean;
+  onSubmit: () => void;
+}
+
+function XtreamForm({
+  server,
+  user,
+  pass,
+  setServer,
+  setUser,
+  setPass,
+  loading,
+  onSubmit,
+}: XtreamFormProps): JSX.Element {
+  const submitOnEnter = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'Enter') onSubmit();
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+      <input
+        type="text"
+        placeholder="http://serveur.com:8080"
+        value={server}
+        onChange={(e) => setServer(e.target.value)}
+        onKeyDown={submitOnEnter}
+        style={inputStyle()}
+      />
+      <input
+        type="text"
+        placeholder="Nom d'utilisateur"
+        value={user}
+        onChange={(e) => setUser(e.target.value)}
+        onKeyDown={submitOnEnter}
+        autoComplete="username"
+        style={inputStyle()}
+      />
+      <input
+        type="password"
+        placeholder="Mot de passe"
+        value={pass}
+        onChange={(e) => setPass(e.target.value)}
+        onKeyDown={submitOnEnter}
+        autoComplete="current-password"
+        style={inputStyle()}
+      />
+      <PrimaryButton loading={loading} onClick={onSubmit}>
+        Connecter
+      </PrimaryButton>
+    </div>
+  );
+}
+
 interface ChannelListProps {
   channels: Channel[];
+  favorites: readonly string[];
   activeId: string | null;
   onPlay: (channel: Channel) => void;
+  onToggleFavorite: (id: string) => void;
 }
 
 function ChannelList({
   channels,
+  favorites,
   activeId,
   onPlay,
+  onToggleFavorite,
 }: ChannelListProps): JSX.Element {
   if (channels.length === 0) {
     return (
@@ -291,6 +523,7 @@ function ChannelList({
       </div>
     );
   }
+  const favSet = new Set(favorites);
   return (
     <ul
       style={{
@@ -304,12 +537,13 @@ function ChannelList({
     >
       {channels.map((c) => {
         const isActive = c.id === activeId;
+        const isFav = favSet.has(c.id);
         return (
-          <li key={c.id}>
+          <li key={c.id} style={{ display: 'flex', alignItems: 'stretch', gap: 4 }}>
             <button
               onClick={() => onPlay(c)}
               style={{
-                width: '100%',
+                flex: 1,
                 textAlign: 'left',
                 padding: `${spacing.sm}px ${spacing.md}px`,
                 borderRadius: radius.md,
@@ -367,9 +601,118 @@ function ChannelList({
                 </span>
               )}
             </button>
+            <button
+              onClick={() => onToggleFavorite(c.id)}
+              title={isFav ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+              aria-label={isFav ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+              style={{
+                width: 40,
+                border: `1px solid transparent`,
+                borderRadius: radius.md,
+                background: 'transparent',
+                color: isFav ? colors.accent : colors.textMuted,
+                cursor: 'pointer',
+                fontSize: 18,
+              }}
+            >
+              {isFav ? '★' : '☆'}
+            </button>
           </li>
         );
       })}
     </ul>
   );
+}
+
+interface AlertProps {
+  kind: 'error' | 'info';
+  children: React.ReactNode;
+}
+
+function Alert({ kind, children }: AlertProps): JSX.Element {
+  const bg = kind === 'error' ? 'rgba(232, 55, 64, 0.15)' : 'rgba(63, 164, 91, 0.15)';
+  const fg = kind === 'error' ? colors.live : colors.success;
+  return (
+    <div
+      style={{
+        padding: spacing.sm,
+        borderRadius: radius.md,
+        background: bg,
+        color: fg,
+        fontSize: typography.size.caption,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+interface PrimaryButtonProps {
+  loading: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}
+
+function PrimaryButton({
+  loading,
+  onClick,
+  children,
+}: PrimaryButtonProps): JSX.Element {
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      style={{
+        padding: `${spacing.sm}px ${spacing.md}px`,
+        borderRadius: radius.md,
+        border: 'none',
+        background: colors.accent,
+        color: colors.textPrimary,
+        fontSize: typography.size.body,
+        fontWeight: typography.weight.semibold,
+        cursor: loading ? 'wait' : 'pointer',
+      }}
+    >
+      {loading ? '…' : children}
+    </button>
+  );
+}
+
+// ===========================================================
+//  Helpers locaux
+// ===========================================================
+
+function inputStyle(): React.CSSProperties {
+  return {
+    flex: 1,
+    padding: `${spacing.sm}px ${spacing.md}px`,
+    borderRadius: radius.md,
+    border: `1px solid ${colors.border}`,
+    background: colors.background,
+    color: colors.textPrimary,
+    fontSize: typography.size.body,
+  };
+}
+
+/**
+ * Mappe une exception en message UX clair. Inspiree de
+ * `friendlyMessageFor` du CastManager phone.
+ */
+function errorToUserMessage(e: unknown): string {
+  if (e instanceof XtreamError) {
+    switch (e.code) {
+      case 'auth_failed':
+        return 'Identifiants Xtream refusés. Vérifie ton login/mot de passe.';
+      case 'network':
+        return 'Connexion impossible au serveur. Vérifie ton internet et l\'URL.';
+      case 'invalid_response':
+        return 'Réponse inattendue du serveur (pas un JSON Xtream valide).';
+      case 'unknown':
+        return `Erreur Xtream : ${e.message}`;
+    }
+  }
+  if (e instanceof Error) {
+    return `Échec du chargement : ${e.message}`;
+  }
+  return 'Échec du chargement de la playlist.';
 }

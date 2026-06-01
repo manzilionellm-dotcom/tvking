@@ -1,7 +1,7 @@
 {
   "name": "tvking-tv-web",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "7 MOTION — version TV multi-plateformes (Android TV / LG webOS / Samsung Tizen / Desktop Electron). Lecteur IPTV web-first qui se package pour chaque plateforme depuis une seule base React.",
   "scripts": {

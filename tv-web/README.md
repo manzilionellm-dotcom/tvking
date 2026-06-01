@@ -8,25 +8,31 @@
 
 ## Statut
 
-**v0.1.0 — Fondation (commit en cours)**.
+**v0.2.0 — Xtream + persistance + favoris**.
 
 | Brique | Statut |
 |---|---|
 | Squelette Vite + React + TS + lint + tests | ✅ |
-| Parser M3U / M3U8 extended | ✅ (13 tests) |
+| Parser M3U / M3U8 extended | ✅ (14 tests) |
 | Modèle `Channel` | ✅ |
 | Abstraction `MediaPlayer` | ✅ |
 | Implémentation `WebMediaPlayer` (hls.js + `<video>`) | ✅ |
 | UI shell minimal (input URL → liste → lecteur) | ✅ |
 | Branding tokens 7 MOTION (palette ember/charcoal) | ✅ |
-| Client Xtream Codes | ⏳ Phase 2 |
-| EPG XMLTV | ⏳ Phase 2 |
-| TMDB enrichissement films/séries | ⏳ Phase 2 |
-| D-pad navigation spatiale | ⏳ Phase 2 |
-| Empaquetage Electron | ⏳ Phase 2 |
-| Empaquetage Tizen `.wgt` | ⏳ Phase 3 |
-| Empaquetage webOS `.ipk` | ⏳ Phase 3 |
-| Empaquetage Android TV WebView wrapper | ⏳ Phase 3 |
+| **Client Xtream Codes** | ✅ (25 tests) |
+| **Persistance LocalStorage** (source + chaîne + favoris) | ✅ (17 tests) |
+| **Logger structuré JSON-Lines** | ✅ (5 tests) |
+| **Toggle M3U / Xtream + restore au boot** | ✅ |
+| **Favoris** (★ toggle + persistance) | ✅ |
+| EPG XMLTV | ⏳ Phase 3 |
+| TMDB enrichissement films/séries | ⏳ Phase 3 |
+| D-pad navigation spatiale | ⏳ Phase 3 |
+| Empaquetage Electron | ⏳ Phase 3 |
+| Empaquetage Tizen `.wgt` | ⏳ Phase 4 |
+| Empaquetage webOS `.ipk` | ⏳ Phase 4 |
+| Empaquetage Android TV WebView wrapper | ⏳ Phase 4 |
+
+**61 tests unitaires** passent (parser M3U + client Xtream + storage + logger).
 
 ---
 
