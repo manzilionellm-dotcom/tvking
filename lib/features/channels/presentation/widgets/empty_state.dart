@@ -197,6 +197,47 @@ class _EmptyStateViewState extends State<EmptyStateView> {
                     height: 1.5,
                   ),
                 ),
+                const SizedBox(height: 16),
+
+                // ----- Mention payante (essai 7 j · 13 €/an) -----
+                //  Le client doit savoir, dès le 1er écran, que l'app
+                //  est payante après l'essai. Style champagne (premium,
+                //  non-agressif) cohérent avec le bandeau de l'accueil.
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.champagneSurface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppColors.champagne.withValues(alpha: 0.28),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(
+                        Icons.auto_awesome_rounded,
+                        size: 16,
+                        color: AppColors.champagne,
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          'Essai gratuit 7 jours · puis 13 € / an',
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.bodyMedium.copyWith(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 22),
 
                 // ----- Champ Identifiant -----
