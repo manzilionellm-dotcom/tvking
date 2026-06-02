@@ -127,7 +127,11 @@ async function proxyApk(upstreamUrl, suggestedFilename) {
     response = await fetch(upstreamUrl, {
       cf: {
         cacheEverything: true,
-        cacheTtl: 300, // 5 min — nouveau build = invalidate via URL
+        // On met en cache l'APK (200) 5 min pour la perf, mais on NE met
+        // PAS en cache les erreurs : un 404 transitoire (release CI pas
+        // encore publiee) doit se resorber DES que l'APK existe, sans
+        // attendre l'expiration du cache. (corrige le "404 colle".)
+        cacheTtlByStatus: { '200-299': 300, '300-399': 10, '400-599': 0 },
       },
     });
   } catch (e) {
