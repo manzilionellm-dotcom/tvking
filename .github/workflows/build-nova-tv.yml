@@ -84,6 +84,9 @@ jobs:
         working-directory: tv-king
         env:
           NOVA_TARGET: tv-apk
+          # Estampille le numero de build dans l'app (visible dans le
+          # diagnostic) -> on sait exactement quel APK tourne sur la TV.
+          NEXT_PUBLIC_BUILD_ID: ${{ github.run_number }}
         run: npm run build
 
       # -------- 2) Stage out/ -> assets/web de l'APK --------

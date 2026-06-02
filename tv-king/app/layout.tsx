@@ -31,18 +31,22 @@ export default function RootLayout({
   // version du navigateur (userAgent) et (3) capture toute erreur JS dans
   // un bandeau visible à l'écran. Objectif : voir SUR LA TV pourquoi
   // l'app ne démarre pas, au lieu de deviner. À retirer une fois réglé.
+  const BUILD = process.env.NEXT_PUBLIC_BUILD_ID || "dev";
   const diag = [
     "(function(){",
-    "try{var h=document.documentElement;h.style.background='#121212';}catch(e){}",
+    "try{document.documentElement.style.background='#121212';}catch(e){}",
     "function show(m){try{var d=document.getElementById('nova-diag');",
     "if(!d){d=document.createElement('div');d.id='nova-diag';",
-    "d.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#1a1a1c;color:#e3b96b;font-family:monospace;font-size:13px;line-height:1.4;padding:8px;white-space:pre-wrap;max-height:60%;overflow:auto;border-top:2px solid #e3b96b';",
+    "d.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#1a1a1c;color:#e3b96b;font-family:monospace;font-size:14px;line-height:1.5;padding:8px;white-space:pre-wrap;max-height:60%;overflow:auto;border-top:2px solid #e3b96b';",
     "var b=document.body||document.documentElement;b.appendChild(d);}",
     "d.appendChild(document.createTextNode(m+'\\n'));}catch(e){}}",
-    "window.onerror=function(msg,src,ln,col){show('JS ERROR: '+msg+' @ '+(src||'')+':'+(ln||0));return false;};",
-    "window.addEventListener&&window.addEventListener('unhandledrejection',function(ev){show('PROMISE: '+(ev&&ev.reason));});",
-    "show('NOVA+ diag');show('UA: '+navigator.userAgent);",
-    "setTimeout(function(){var r=document.querySelector('[data-focusable],main,.app-shell');show(r?('rendu OK: '+(r.tagName||'')) :'RIEN RENDU apres 6s (JS/Next non demarre)');},6000);",
+    "window.onerror=function(msg,src,ln){show('JS ERROR: '+msg+' @ '+(src||'')+':'+(ln||0));return false;};",
+    "show('NOVA+ diag — BUILD " + BUILD + "');",
+    // Sonde un vrai asset _next pour savoir s'il est servi (200) ou
+    // absent (404) — c'est LE test du correctif d'empaquetage.
+    "function probe(){try{var e=document.querySelectorAll('script[src],link[href]');var u=null;for(var i=0;i<e.length;i++){var s=e[i].getAttribute('src')||e[i].getAttribute('href');if(s&&s.indexOf('_next')>=0){u=s;break;}}if(!u){show('AUCUN asset _next reference');return;}show('test: '+u);var x=new XMLHttpRequest();x.open('GET',u,true);x.onreadystatechange=function(){if(x.readyState==4){show('asset _next -> HTTP '+x.status+(x.status==200?'  OK (charge!)':'  NON CHARGE'));}};x.onerror=function(){show('asset _next -> erreur reseau');};x.send();}catch(err){show('probe err '+err);}}",
+    "setTimeout(probe,1500);",
+    "setTimeout(function(){var r=document.querySelector('[data-focusable],.app-shell');show(r?'RENDU OK (app demarree)':'RIEN RENDU apres 6s (JS/Next non demarre)');},6000);",
     "})();",
   ].join("");
 
