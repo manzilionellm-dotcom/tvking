@@ -5,11 +5,11 @@ import {
   getCurrentUser, isOwnerRole,
 } from '@/lib/api';
 import { formatMoney } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
-/// Dashboard : cards de KPI lues en direct depuis /api/v1/stats/overview
-/// qui requete D1 en parallele. Phase 1.A : 6 metriques.
-/// Phase 1.B ajoutera graphiques de revenu, top apps, etc.
+/// Dashboard : cards de KPI lues en direct depuis /api/v1/stats/overview.
 export function DashboardPage({ onLogout }: { onLogout: () => void }) {
+  const t = useT();
   const [stats, setStats] = useState<StatsOverview | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,8 +32,8 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
 
   return (
     <AppLayout
-      title="Dashboard"
-      subtitle="Vue d'ensemble de la plateforme"
+      title={t('nav.dashboard')}
+      subtitle={t('dash.subtitle')}
       onLogout={onLogout}
     >
       {loading && <SkeletonCards />}
@@ -44,26 +44,26 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
       )}
       {stats && (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-          <KpiCard label="Clients"        value={stats.customers} />
-          <KpiCard label="Devices"        value={stats.devices} />
-          <KpiCard label="Licenses"       value={stats.licenses} />
-          <KpiCard label="Actives"        value={stats.active_licenses} accent />
-          <KpiCard label="Expirées"       value={stats.expired_licenses} />
+          <KpiCard label={t('dash.clients')}  value={stats.customers} />
+          <KpiCard label={t('dash.devices')}  value={stats.devices} />
+          <KpiCard label={t('dash.licenses')} value={stats.licenses} />
+          <KpiCard label={t('dash.active')}   value={stats.active_licenses} accent />
+          <KpiCard label={t('dash.expired')}  value={stats.expired_licenses} />
           {isOwnerRole(getCurrentUser()?.role) ? (
             <>
-              <KpiCard label="Apps gérées" value={stats.apps} />
+              <KpiCard label={t('dash.apps')} value={stats.apps} />
               {stats.resellers !== undefined && (
-                <KpiCard label="Revendeurs" value={stats.resellers} />
+                <KpiCard label={t('dash.resellers')} value={stats.resellers} />
               )}
               <KpiCard
-                label="Revenu 30j"
+                label={t('dash.revenue30')}
                 value={formatMoney(stats.revenue_30d_cents ?? 0)}
                 wide
               />
             </>
           ) : (
             <KpiCard
-              label="Mes crédits"
+              label={t('dash.myCredits')}
               value={stats.credit_balance ?? 0}
               accent
             />

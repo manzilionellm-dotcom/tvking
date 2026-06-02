@@ -1,11 +1,12 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { meApi, getCurrentUser, isOwnerRole, type MeUser, ApiError } from '@/lib/api';
+import { useT, LangSelect } from '@/lib/i18n';
 
 /// Page « Mon compte » — accessible a TOUS (admin + revendeurs).
-/// Permet de changer son propre mot de passe. (Le choix de la langue
-/// sera ajoute ici a la vague multilangue.)
+/// Changer son mot de passe + sa langue.
 export function AccountPage({ onLogout }: { onLogout: () => void }) {
+  const t = useT();
   const [me, setMe] = useState<MeUser | null>(getCurrentUser());
 
   useEffect(() => {
@@ -18,18 +19,24 @@ export function AccountPage({ onLogout }: { onLogout: () => void }) {
 
   return (
     <AppLayout
-      title="Mon compte"
+      title={t('nav.account')}
       subtitle={me?.email}
       onLogout={onLogout}
     >
       <div className="max-w-md space-y-6">
         {/* ===== Infos ===== */}
         <div className="rounded-xl border border-white/5 bg-midnight p-5">
-          <Row k="Identifiant" v={me?.email || '—'} />
-          <Row k="Rôle" v={owner ? 'Administrateur' : 'Revendeur'} />
+          <Row k={t('account.identifier')} v={me?.email || '—'} />
+          <Row k={t('account.role')} v={owner ? t('role.adminFull') : t('role.reseller')} />
           {me?.credit_balance !== undefined && (
-            <Row k="Crédits" v={String(me.credit_balance)} last />
+            <Row k={t('common.credits')} v={String(me.credit_balance)} last />
           )}
+        </div>
+
+        {/* ===== Langue ===== */}
+        <div className="flex items-center justify-between rounded-xl border border-white/5 bg-midnight p-5">
+          <span className="text-sm font-semibold tracking-tight">{t('common.language')}</span>
+          <LangSelect />
         </div>
 
         {/* ===== Changer mot de passe ===== */}
@@ -40,6 +47,7 @@ export function AccountPage({ onLogout }: { onLogout: () => void }) {
 }
 
 function PasswordForm() {
+  const t = useT();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -50,17 +58,17 @@ function PasswordForm() {
     e.preventDefault();
     setMsg(null);
     if (next.length < 4) {
-      setMsg({ ok: false, text: 'Le nouveau mot de passe doit faire au moins 4 caractères.' });
+      setMsg({ ok: false, text: t('account.pwdShort') });
       return;
     }
     if (next !== confirm) {
-      setMsg({ ok: false, text: 'La confirmation ne correspond pas.' });
+      setMsg({ ok: false, text: t('account.pwdMismatch') });
       return;
     }
     setBusy(true);
     try {
       await meApi.changePassword(current, next);
-      setMsg({ ok: true, text: 'Mot de passe modifié ✔' });
+      setMsg({ ok: true, text: t('account.pwdOk') });
       setCurrent(''); setNext(''); setConfirm('');
     } catch (e: any) {
       setMsg({ ok: false, text: e instanceof ApiError ? e.message : 'Échec.' });
@@ -71,14 +79,14 @@ function PasswordForm() {
 
   return (
     <form onSubmit={submit} className="space-y-3 rounded-xl border border-white/5 bg-midnight p-5">
-      <h2 className="text-sm font-semibold tracking-tight">Changer mon mot de passe</h2>
-      <Field label="Mot de passe actuel">
+      <h2 className="text-sm font-semibold tracking-tight">{t('account.changePwd')}</h2>
+      <Field label={t('account.current')}>
         <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} className={inputCls} autoComplete="current-password" />
       </Field>
-      <Field label="Nouveau mot de passe">
+      <Field label={t('account.new')}>
         <input type="password" value={next} onChange={(e) => setNext(e.target.value)} className={inputCls} autoComplete="new-password" />
       </Field>
-      <Field label="Confirmer le nouveau">
+      <Field label={t('account.confirm')}>
         <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className={inputCls} autoComplete="new-password" />
       </Field>
       {msg && (
@@ -95,7 +103,7 @@ function PasswordForm() {
         disabled={busy || !current || !next}
         className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-black hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {busy ? 'Modification…' : 'Mettre à jour'}
+        {busy ? t('account.updating') : t('account.update')}
       </button>
     </form>
   );

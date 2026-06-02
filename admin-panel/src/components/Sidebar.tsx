@@ -1,42 +1,42 @@
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { getCurrentUser, isOwnerRole } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 
 // =========================================================
-//  Sidebar — navigation principale du panel
+//  Sidebar — navigation principale du panel (multilangue)
 // =========================================================
-//  Style SaaS premium : fond obsidian, liens minimalistes,
-//  indicateur de selection sur la gauche (barre ember), survol
-//  doux. La navigation s'adapte au role : l'owner voit tout, le
-//  revendeur ne voit que l'activation + ses propres donnees.
+//  La navigation s'adapte au role : l'owner voit tout, le revendeur
+//  ne voit que l'activation + ses propres donnees. Libelles traduits.
 // =========================================================
 
-type NavItem = { label: string; to: string; phase: '1.A' | '1.B' | '2+' };
+type NavItem = { key: string; to: string };
 
 const OWNER_NAV: NavItem[] = [
-  { label: 'Dashboard',           to: '/',            phase: '1.A' },
-  { label: 'Activer un appareil', to: '/activate',    phase: '1.A' },
-  { label: 'Revendeurs',          to: '/resellers',   phase: '1.A' },
-  { label: 'Customers',           to: '/customers',   phase: '1.A' },
-  { label: 'Devices',             to: '/devices',     phase: '1.A' },
-  { label: 'Apps',                to: '/apps',        phase: '1.A' },
-  { label: 'Activations',         to: '/activations', phase: '1.A' },
-  { label: 'Mon compte',          to: '/account',     phase: '1.A' },
+  { key: 'nav.dashboard',   to: '/' },
+  { key: 'nav.activate',    to: '/activate' },
+  { key: 'nav.resellers',   to: '/resellers' },
+  { key: 'nav.customers',   to: '/customers' },
+  { key: 'nav.devices',     to: '/devices' },
+  { key: 'nav.apps',        to: '/apps' },
+  { key: 'nav.activations', to: '/activations' },
+  { key: 'nav.account',     to: '/account' },
 ];
 
 const RESELLER_NAV: NavItem[] = [
-  { label: 'Dashboard',           to: '/',            phase: '1.A' },
-  { label: 'Activer un appareil', to: '/activate',    phase: '1.A' },
-  { label: 'Mes revendeurs',      to: '/resellers',   phase: '1.A' },
-  { label: 'Mes appareils',       to: '/devices',     phase: '1.A' },
-  { label: 'Mes activations',     to: '/activations', phase: '1.A' },
-  { label: 'Mon compte',          to: '/account',     phase: '1.A' },
+  { key: 'nav.dashboard',     to: '/' },
+  { key: 'nav.activate',      to: '/activate' },
+  { key: 'nav.myResellers',   to: '/resellers' },
+  { key: 'nav.myDevices',     to: '/devices' },
+  { key: 'nav.myActivations', to: '/activations' },
+  { key: 'nav.account',       to: '/account' },
 ];
 
 export function Sidebar({
   onLogout,
   onNavigate,
 }: { onLogout: () => void; onNavigate?: () => void }) {
+  const t = useT();
   const user = getCurrentUser();
   const owner = isOwnerRole(user?.role);
   const nav = owner ? OWNER_NAV : RESELLER_NAV;
@@ -49,11 +49,9 @@ export function Sidebar({
           <span className="text-accent font-bold text-sm">A</span>
         </div>
         <div className="flex flex-col">
-          <span className="text-sm font-semibold tracking-tight">
-            Licensing Platform
-          </span>
+          <span className="text-sm font-semibold tracking-tight">{t('brand')}</span>
           <span className="text-[10px] uppercase tracking-widest text-ink-tertiary">
-            {owner ? 'Super Admin' : 'Revendeur'}
+            {owner ? t('role.admin') : t('role.reseller')}
           </span>
         </div>
       </div>
@@ -61,7 +59,7 @@ export function Sidebar({
       {/* ===== Solde credits (revendeur) ===== */}
       {!owner && user?.credit_balance !== undefined && (
         <div className="mx-3 mt-3 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2">
-          <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">Crédits</div>
+          <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">{t('common.credits')}</div>
           <div className="text-lg font-semibold text-accent-bright">{user.credit_balance}</div>
         </div>
       )}
@@ -77,11 +75,10 @@ export function Sidebar({
                 onClick={() => onNavigate?.()}
                 className={({ isActive }) =>
                   cn(
-                    'group relative flex items-center justify-between rounded-md px-3 py-2 text-sm transition-colors',
+                    'group relative flex items-center rounded-md px-3 py-2 text-sm transition-colors',
                     isActive
                       ? 'bg-white/5 text-ink-primary'
                       : 'text-ink-secondary hover:bg-white/[0.03] hover:text-ink-primary',
-                    item.phase !== '1.A' && 'opacity-60',
                   )
                 }
               >
@@ -90,12 +87,7 @@ export function Sidebar({
                     {isActive && (
                       <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-r bg-accent" />
                     )}
-                    <span>{item.label}</span>
-                    {item.phase !== '1.A' && (
-                      <span className="rounded-sm bg-white/5 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-ink-tertiary">
-                        soon
-                      </span>
-                    )}
+                    <span>{t(item.key)}</span>
                   </>
                 )}
               </NavLink>
@@ -110,7 +102,7 @@ export function Sidebar({
           onClick={onLogout}
           className="w-full rounded-md px-3 py-2 text-left text-sm text-ink-secondary hover:bg-white/5 hover:text-ink-primary"
         >
-          Se déconnecter
+          {t('common.logout')}
         </button>
       </div>
     </aside>

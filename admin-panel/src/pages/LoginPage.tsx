@@ -1,11 +1,13 @@
 import { FormEvent, useState } from 'react';
 import { authApi, setToken, ApiError } from '@/lib/api';
+import { useT, LangSelect } from '@/lib/i18n';
 
 /// Ecran login : email + password, JWT en retour.
 /// Bootstrap : si la base D1 est vide, le Worker cree
 /// automatiquement un compte super_admin avec email='admin' et
 /// password=ADMIN_SECRET du Worker (transition seamless).
 export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
+  const t = useT();
   // Lien revendeur dedie : si l'URL contient ?revendeur (ou ?reseller),
   // on n'affiche QUE la connexion revendeur (aucun onglet Admin visible).
   // Ex: https://tvking-admin.pages.dev/?revendeur
@@ -44,9 +46,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
       setToken(res.token);
       onLoggedIn();
     } catch (e: any) {
-      const msg = e instanceof ApiError
-        ? e.message
-        : 'Connexion impossible. Réessaie.';
+      const msg = e instanceof ApiError ? e.message : t('login.fail');
       setErr(msg);
     } finally {
       setBusy(false);
@@ -63,11 +63,9 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
           <div className="mx-auto mb-4 h-12 w-12 rounded-xl bg-accent/15 ring-1 ring-accent/40 grid place-items-center">
             <span className="text-accent font-bold text-lg">A</span>
           </div>
-          <h1 className="text-xl font-semibold tracking-tight">
-            Licensing Platform
-          </h1>
+          <h1 className="text-xl font-semibold tracking-tight">{t('brand')}</h1>
           <p className="mt-1 text-xs uppercase tracking-widest text-ink-tertiary">
-            {mode === 'admin' ? 'Super Admin' : 'Espace revendeur'}
+            {mode === 'admin' ? t('login.subtitleAdmin') : t('login.subtitleReseller')}
           </p>
         </div>
 
@@ -86,7 +84,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
                     : 'text-ink-secondary hover:text-ink-primary')
                 }
               >
-                {m === 'admin' ? 'Admin' : 'Revendeur'}
+                {m === 'admin' ? t('login.tabAdmin') : t('login.tabReseller')}
               </button>
             ))}
           </div>
@@ -95,7 +93,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
         <div className="space-y-3">
           <div>
             <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
-              Identifiant
+              {t('login.identifier')}
             </label>
             <input
               value={email}
@@ -107,7 +105,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
           </div>
           <div>
             <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
-              Mot de passe
+              {t('login.password')}
             </label>
             <input
               type="password"
@@ -130,7 +128,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
           disabled={busy || !password}
           className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-black transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent-bright"
         >
-          {busy ? 'Connexion…' : 'Se connecter'}
+          {busy ? t('login.signing') : t('login.signin')}
         </button>
 
         {!resellerOnly && (
@@ -140,9 +138,14 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
         )}
         {resellerOnly && (
           <p className="text-center text-[11px] text-ink-tertiary">
-            Connecte-toi avec l'email et le mot de passe fournis par ton fournisseur.
+            {t('login.hintReseller')}
           </p>
         )}
+
+        {/* Sélecteur de langue */}
+        <div className="flex justify-center pt-1">
+          <LangSelect />
+        </div>
       </form>
     </div>
   );
