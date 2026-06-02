@@ -55,10 +55,10 @@ compatibility_date = "2025-05-01"
 #  retournent une erreur 500 "db_unbound" — pas de souci, ils ne
 #  sont pas encore utilisés en prod.
 # =========================================================
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "tvking_licensing"
-# database_id = "REMPLACE_MOI_PAR_L_ID_D1"
+[[d1_databases]]
+binding = "DB"
+database_name = "tvking_licensing"
+database_id = "67303737-a50b-4258-86de-662fb9aba6e7"
 
 # Le secret admin n'est PAS dans ce fichier — il se met via
 # `wrangler secret put ADMIN_SECRET` pour ne JAMAIS être commité.
