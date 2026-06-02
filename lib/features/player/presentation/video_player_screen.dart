@@ -881,7 +881,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (target < Duration.zero) target = Duration.zero;
     _player.seek(target);
     final int secs = delta.inSeconds;
-    _toast(secs >= 0 ? '⟳ +${secs}s' : '⟲ ${secs}s');
+    // Affichage friendly : minutes si le saut est ≥ 60s (ex. ±2 min).
+    final String label;
+    if (secs.abs() >= 60) {
+      final int mins = secs ~/ 60;
+      label = mins >= 0 ? '⟳ +$mins min' : '⟲ $mins min';
+    } else {
+      label = secs >= 0 ? '⟳ +${secs}s' : '⟲ ${secs}s';
+    }
+    _toast(label);
   }
 
   /// Handler clavier / télécommande. Branché sur le `Focus` parent
@@ -1338,9 +1346,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         children: _isSeekable
                             ? <Widget>[
                                 _TvDpadButton(
-                                  icon: Icons.replay_10_rounded,
+                                  icon: Icons.fast_rewind_rounded,
                                   onTap: () =>
-                                      _seekBy(const Duration(seconds: -10)),
+                                      _seekBy(const Duration(minutes: -2)),
                                 ),
                                 const SizedBox(width: 32),
                                 _TvDpadButton(
@@ -1353,9 +1361,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                 ),
                                 const SizedBox(width: 32),
                                 _TvDpadButton(
-                                  icon: Icons.forward_10_rounded,
+                                  icon: Icons.fast_forward_rounded,
                                   onTap: () =>
-                                      _seekBy(const Duration(seconds: 10)),
+                                      _seekBy(const Duration(minutes: 2)),
                                 ),
                               ]
                             : <Widget>[
@@ -1392,10 +1400,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: <Widget>[
                               _SeekIconButton(
-                                icon: Icons.replay_10_rounded,
-                                semanticsLabel: 'Reculer 10 secondes',
+                                icon: Icons.fast_rewind_rounded,
+                                semanticsLabel: 'Reculer 2 minutes',
                                 onTap: () =>
-                                    _seekBy(const Duration(seconds: -10)),
+                                    _seekBy(const Duration(minutes: -2)),
                               ),
                               const SizedBox(width: 24),
                               _PlayPauseButton(
@@ -1404,10 +1412,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                               ),
                               const SizedBox(width: 24),
                               _SeekIconButton(
-                                icon: Icons.forward_10_rounded,
-                                semanticsLabel: 'Avancer 10 secondes',
+                                icon: Icons.fast_forward_rounded,
+                                semanticsLabel: 'Avancer 2 minutes',
                                 onTap: () =>
-                                    _seekBy(const Duration(seconds: 10)),
+                                    _seekBy(const Duration(minutes: 2)),
                               ),
                             ],
                           )
