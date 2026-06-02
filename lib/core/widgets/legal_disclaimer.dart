@@ -65,7 +65,7 @@ class LegalDisclaimer extends StatelessWidget {
           Expanded(
             child: Text(
               '7 MOTION ne fournit aucun contenu ni flux IPTV. '
-              'Vous devez apporter votre propre abonnement (M3U / Xtream).',
+              'Vous devez apporter votre propre abonnement Xtream.',
               style: AppTextStyles.bodyMedium.copyWith(
                 fontSize: 11.5,
                 color: AppColors.textSecondary,
@@ -123,8 +123,8 @@ class LegalDisclaimer extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             'Pour utiliser l\'app, vous devez souscrire un abonnement IPTV '
-            'auprès du fournisseur de votre choix et entrer vous-même votre '
-            'URL M3U ou vos identifiants Xtream dans Paramètres › Playlists.',
+            'et saisir vos identifiants Xtream (utilisateur + mot de passe) '
+            'dans l\'écran de connexion.',
             style: AppTextStyles.bodyMedium.copyWith(
               fontSize: 12.5,
               height: 1.45,

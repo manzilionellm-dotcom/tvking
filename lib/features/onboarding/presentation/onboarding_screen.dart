@@ -61,9 +61,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       ),
       const _OnboardingPage(
         icon: Icons.cloud_upload_outlined,
-        title: 'Charge ta playlist',
+        title: 'Charge tes chaînes',
         description:
-            'Ouvre Réglages › Playlists et colle ton URL M3U ou tes identifiants Xtream. Tes chaînes apparaissent en quelques secondes.',
+            'Choisis ton serveur et saisis ton code Xtream (utilisateur + mot de passe). Tes chaînes apparaissent en quelques secondes.',
       ),
       const _OnboardingPage(
         icon: Icons.fingerprint_rounded,

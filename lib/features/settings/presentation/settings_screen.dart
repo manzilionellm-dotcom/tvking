@@ -133,7 +133,7 @@ class SettingsScreen extends StatelessWidget {
               icon: Icons.playlist_play_rounded,
               title: 'Mes playlists',
               subtitle:
-                  'Liste des sources IPTV ajoutées (M3U + Xtream Codes).',
+                  'Liste des sources IPTV ajoutées (Xtream Codes).',
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute<void>(
                   builder: (_) => const PlaylistsScreen(),
@@ -144,7 +144,7 @@ class SettingsScreen extends StatelessWidget {
               icon: Icons.add_circle_outline_rounded,
               title: 'Ajouter une source',
               subtitle:
-                  'Colle une URL M3U ou un compte Xtream Codes (host + user + mdp).',
+                  'Choisis ton serveur et saisis ton code Xtream (utilisateur + mot de passe).',
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute<void>(
                   builder: (_) => const AddPlaylistScreen(),

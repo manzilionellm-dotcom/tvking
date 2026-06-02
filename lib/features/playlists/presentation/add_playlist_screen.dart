@@ -163,9 +163,15 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen> {
                 'le code avant de charger tes chaînes.',
               ),
               const SizedBox(height: 24),
-              _label('Serveur'),
-              _buildServerSelector(),
-              const SizedBox(height: 16),
+              // Sélecteur affiché UNIQUEMENT s'il y a plusieurs serveurs
+              // (ou pendant le chargement). Avec un seul serveur, il est
+              // prédéfini : le client ne choisit rien, il saisit juste
+              // son code.
+              if (_servers == null || _servers!.length > 1) ...<Widget>[
+                _label('Serveur'),
+                _buildServerSelector(),
+                const SizedBox(height: 16),
+              ],
               _label('Utilisateur'),
               _textField(
                 controller: _userCtrl,

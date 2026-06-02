@@ -54,8 +54,8 @@ class EmptyStateView extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Ajoute tes propres codes (Xtream Codes ou M3U) communiqués '
-                  'par ton fournisseur pour charger tes chaînes.',
+                  'Saisis ton code Xtream (utilisateur + mot de passe) '
+                  'communiqué par ton revendeur pour charger tes chaînes.',
                   textAlign: TextAlign.center,
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 14,
@@ -126,7 +126,7 @@ class EmptyStateView extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  'Xtream Codes · M3U / URL · M3U en lot',
+                  'Connexion par code Xtream',
                   textAlign: TextAlign.center,
                   style: AppTextStyles.labelSmall.copyWith(
                     color: AppColors.textTertiary,

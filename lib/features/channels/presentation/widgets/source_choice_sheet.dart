@@ -80,7 +80,7 @@ class _SourceChoiceSheet extends StatelessWidget {
             _SourceTile(
               icon: Icons.vpn_key_rounded,
               title: 'Ajouter mes codes',
-              subtitle: 'Xtream Codes · M3U · M3U en lot',
+              subtitle: 'Connexion avec ton code Xtream',
               onTap: () {
                 Navigator.of(context).pop();
                 Navigator.of(context).push<void>(

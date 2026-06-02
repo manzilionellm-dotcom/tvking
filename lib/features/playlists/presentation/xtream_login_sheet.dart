@@ -187,9 +187,14 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                _label('Serveur'),
-                _buildServerSelector(),
-                const SizedBox(height: 12),
+                // Sélecteur affiché seulement s'il y a plusieurs serveurs
+                // (ou pendant le chargement). Un seul serveur = prédéfini,
+                // le client ne choisit rien.
+                if (_servers == null || _servers!.length > 1) ...<Widget>[
+                  _label('Serveur'),
+                  _buildServerSelector(),
+                  const SizedBox(height: 12),
+                ],
                 _label('Utilisateur'),
                 TextField(
                   controller: _userCtrl,
