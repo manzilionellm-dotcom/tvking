@@ -235,13 +235,21 @@ class RecordingForegroundService : Service() {
                 activeConn = conn
                 val code = conn.responseCode
                 if (code !in 200..299) {
-                    // 401/403 = abonnement/credentials → inutile d'insister.
-                    if (code == 401 || code == 403) {
-                        Log.w(TAG, "HTTP $code — arret recording")
+                    // IMPORTANT : on NE casse PLUS immediatement sur 401/403.
+                    // Juste apres avoir coupe la lecture, un fournisseur
+                    // "1 connexion" renvoie souvent 403 (ou 401) le temps
+                    // que SA connexion precedente (le lecteur) se libere
+                    // cote serveur. On RETENTE donc quelques fois : dans la
+                    // quasi-totalite des cas le creneau se libere en quelques
+                    // secondes et l'enregistrement demarre. On n'abandonne
+                    // qu'apres ~60 s d'echecs consecutifs (vraie erreur
+                    // d'abonnement ou serveur mort).
+                    attempts++
+                    if (attempts > 30) {
+                        Log.w(TAG, "HTTP $code persistant apres $attempts essais — abandon")
                         break
                     }
-                    attempts++
-                    if (attempts > 30) break
+                    Log.w(TAG, "HTTP $code (#$attempts) — creneau pas encore libre, on retente")
                     Thread.sleep(2000)
                     continue
                 }
@@ -417,7 +425,14 @@ class RecordingForegroundService : Service() {
                 // On desactive le suivi auto : on gere TOUTES les redirections
                 // a la main pour couvrir le cas cross-protocole.
                 instanceFollowRedirects = false
-                setRequestProperty("User-Agent", "VLC/3.0.20 LibVLC/3.0.20 (7 MOTION)")
+                // CRITIQUE : on utilise EXACTEMENT le meme User-Agent que le
+                // lecteur (cf. video_player_screen.dart -> mpv 'user-agent').
+                // Beaucoup de serveurs Xtream font du whitelisting strict du
+                // UA : si la lecture passe mais l'enregistrement utilise un UA
+                // different (autre version, ou suffixe "(7 MOTION)"), le
+                // serveur renvoie 403 -> fichier 0 octet ("enregistrement
+                // vide"). Garder ces deux UA identiques est ESSENTIEL.
+                setRequestProperty("User-Agent", "VLC/3.0.18 LibVLC/3.0.18")
                 setRequestProperty("Accept", "*/*")
             }
             val code = conn.responseCode

@@ -287,9 +287,9 @@ class HttpRecordingDownloader {
         // CRITIQUE : sinon dart:io décompresse les bytes en gzip et
         // on enregistre du binaire CASSÉ au lieu du MPEG-TS brut.
         ..autoUncompress = false
-        // User-Agent réaliste — les Xtream filtrent souvent les
-        // 'Dart/...' génériques en les bloquant.
-        ..userAgent = 'VLC/3.0.20 LibVLC/3.0.20';
+        // User-Agent IDENTIQUE à celui du lecteur (mpv user-agent) pour
+        // ne pas se faire bloquer (403) par les Xtream à whitelist stricte.
+        ..userAgent = 'VLC/3.0.18 LibVLC/3.0.18';
 
       final HttpClientRequest req =
           await job.client!.getUrl(Uri.parse(streamUrl));
