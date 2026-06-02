@@ -2,7 +2,7 @@
   "name": "tv-king",
   "version": "0.1.0",
   "private": true,
-  "description": "TV King — application de streaming TV premium et universelle (10-foot UI, accessibilité radicale).",
+  "description": "NOVA+ — application de streaming TV premium et universelle (10-foot UI, accessibilité radicale).",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

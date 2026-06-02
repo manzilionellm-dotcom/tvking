@@ -34,7 +34,7 @@ export function SubscriptionGate({ status }: { status: LicenseStatus }) {
       ? "Cet appareil a été suspendu. Si c'est une erreur, contactez votre revendeur."
       : reason === "frozen"
         ? "L'accès est temporairement en pause. Contactez votre revendeur pour le réactiver."
-        : "Votre essai gratuit est terminé. Activez l'accès pour continuer à profiter de TV King.";
+        : "Votre essai gratuit est terminé. Activez l'accès pour continuer à profiter de NOVA+.";
 
   async function onRefresh() {
     setBusy(true);
@@ -59,7 +59,7 @@ export function SubscriptionGate({ status }: { status: LicenseStatus }) {
       }}
     >
       <div className="font-serif" style={{ fontSize: "2.6rem", color: "var(--gold)" }}>
-        👑 TV King
+        ✦ NOVA+
       </div>
 
       <div

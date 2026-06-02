@@ -1,7 +1,7 @@
 // =========================================================
 //  license.ts — Licence / essai (branchement au panel 7 MOTION)
 // =========================================================
-//  TV King est une app web : elle n'a pas de vraie adresse MAC. On
+//  NOVA+ est une app web : elle n'a pas de vraie adresse MAC. On
 //  génère donc, comme les apps mobiles du projet, un MAC VIRTUEL stable
 //  par installation (format MK:XX:XX:XX:XX:XX), persisté en localStorage.
 //

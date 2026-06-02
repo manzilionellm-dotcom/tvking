@@ -5,7 +5,7 @@
 // =========================================================
 //  Collapsé en icônes (5.5rem), s'élargit au focus/survol pour révéler
 //  les libellés. Liste : Accueil, Rechercher, les 5 univers, Ma liste,
-//  Réglages. Logo « 👑 TV King » avec halo or. L'item actif porte une
+//  Réglages. Logo « ✦ NOVA+ » avec halo or. L'item actif porte une
 //  barre dorée. Tout est focusable et explicitement libellé.
 // =========================================================
 
@@ -66,14 +66,14 @@ export function Sidebar() {
         className="sidebar-logo focusable"
         data-focusable
         data-nav-id="nav-logo"
-        aria-label="TV King, accueil"
+        aria-label="NOVA+, accueil"
         style={{ color: "var(--text-high)", textDecoration: "none" }}
       >
         <span className="crown" aria-hidden>
-          👑
+          ✦
         </span>
         <span className="nav-label">
-          TV <span style={{ color: "var(--gold)" }}>King</span>
+          NOVA<span style={{ color: "var(--gold)" }}>+</span>
         </span>
       </Link>
 

@@ -1,6 +1,6 @@
-# Recherche UX / Accessibilité / Confort visuel — TV King
+# Recherche UX / Accessibilité / Confort visuel — NOVA+
 
-> Document de recherche pour l'interface « 10-foot » (vue à ~3 m) de **TV King**,
+> Document de recherche pour l'interface « 10-foot » (vue à ~3 m) de **NOVA+**,
 > application de streaming premium pour téléviseurs.
 >
 > **Objectif pédagogique** : rassembler des recommandations *sourcées* en
@@ -75,7 +75,7 @@ en retrait des bords.
   > primaire n'a pas pu être cité mot pour mot. On garde donc `[documenté]`
   > pour le principe, en notant la limite de vérification.
 
-### Conséquence pour TV King
+### Conséquence pour NOVA+
 
 On définit **deux jeux de variables de safe-area** (Android vs Apple), exprimées
 en unités de notre canvas logique (voir §3), et on n'y place jamais de bouton,
@@ -110,7 +110,7 @@ tactile/souris.
   sélectionné, et non se réinitialiser. `[pattern observé]` (comportement standard
   des grandes apps TV ; non chiffré par une norme officielle).
 
-### Conséquence pour TV King
+### Conséquence pour NOVA+
 
 Chaque écran maintient un état de « dernier focus » par rangée. On ne masque
 jamais l'indicateur de focus, et on s'assure qu'aucune action de navigation ne
@@ -133,7 +133,7 @@ réelle du téléviseur.
 - Les espacements, tailles de police et cibles sont exprimés en unités du canvas
   logique, puis multipliés par le facteur d'échelle (`ui-scale`).
 
-### Conséquence pour TV King
+### Conséquence pour NOVA+
 
 Une seule maquette source (1920×1080) → un `ui-scale` calculé à partir de la
 taille réelle de l'écran → toutes les dimensions dérivées. Cela simplifie aussi
@@ -164,7 +164,7 @@ est largement reproduit et cohérent entre sources).
   également et passent mal les seuils de contraste. On privilégie des **accents
   désaturés**. `[documenté]`
 
-### Conséquence pour TV King
+### Conséquence pour NOVA+
 
 Surfaces empilées : `#121212` (fond), puis des surfaces légèrement plus claires
 pour l'élévation (ex. `#1a1a1c`, `#222226`). Texte via opacités 87/60/38 %.
@@ -188,7 +188,7 @@ de contraste. Ils sont identiques en 2.2.
   - texte large : **≥ 4.5:1**.
   `[documenté]`
 
-### Conséquence pour TV King
+### Conséquence pour NOVA+
 
 On vise **AA partout** comme plancher, et on prévoit un **mode haut contraste**
 ciblant le **7:1** (AAA texte normal) pour le profil Senior / la déficience
@@ -227,7 +227,7 @@ des conventions d'industrie, pas des normes.
   > `[source secondaire]` / heuristique, et on l'applique comme garde-fou, pas
   > comme règle absolue.
 
-### Conséquence pour TV King
+### Conséquence pour NOVA+
 
 Accueil = hero billboard + « Reprendre la lecture » en première rangée + rails
 thématiques. Navigation principale limitée volontairement (≈ 5–7 entrées) pour
@@ -246,7 +246,7 @@ réduire le temps de décision. Autoplay réglable dans les préférences.
 > devant un écran), pas de la lumière bleue en soi. `[documenté]` — AAO,
 > *Digital Devices and Your Eyes* / *Are Blue Light-Blocking Glasses Worth It?*.
 >
-> **Donc** : les choix « confort visuel » de TV King doivent être présentés
+> **Donc** : les choix « confort visuel » de NOVA+ doivent être présentés
 > comme du **confort perçu** et de la **bonne hygiène visuelle**, **sans
 > promettre** de protection médicale.
 
@@ -283,7 +283,7 @@ Principes de confort appliqués (sans surpromesse) :
   `[source secondaire]` — la valeur **~5000 K** est une **cible de confort
   indicative**, pas un seuil validé par une étude primaire citée ici.
 
-### Conséquence pour TV King
+### Conséquence pour NOVA+
 
 Texte en blanc cassé (opacité ≤ 87 %) sur surfaces gris foncé ; accent doré
 désaturé ; option « ambiance soir » qui réchauffe le point de blanc. Wording
@@ -293,7 +293,7 @@ produit prudent : « confort visuel », jamais « protège vos yeux ».
 
 ## 8. Accessibilité multi-publics
 
-TV King propose trois profils d'expérience : **Senior**, **Enfant**,
+NOVA+ propose trois profils d'expérience : **Senior**, **Enfant**,
 **Standard**. L'objectif est l'**inclusive design** : concevoir pour la diversité
 des capacités.
 
@@ -333,7 +333,7 @@ des capacités.
   généraux** ; les pages exactes n'ont pas été récupérées mot pour mot pour ce
   document, donc on n'attribue aucun chiffre précis à ces sources.
 
-### Conséquence pour TV King
+### Conséquence pour NOVA+
 
 Trois profils → variations de `ui-scale`, de taille de cible et de densité
 d'information. Profil **Senior** : `ui-scale` majoré, mode haut contraste (§5),
@@ -344,7 +344,7 @@ larges, libellés simples, autoplay encadré.
 
 ## 9. Comment ce document guide l'implémentation
 
-Traduction des constats en **tokens de design** concrets pour TV King :
+Traduction des constats en **tokens de design** concrets pour NOVA+ :
 
 ### Surfaces (dark theme — §4)
 - `--surface-0: #121212` (fond principal). `[documenté]`

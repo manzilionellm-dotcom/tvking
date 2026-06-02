@@ -1,4 +1,4 @@
-# 👑 TV King
+# ✦ NOVA+
 
 Application de **streaming TV premium et universelle** (Next.js) pensée pour la
 télévision : utilisable à ~3 m, **à la télécommande**, par **tout le monde** —

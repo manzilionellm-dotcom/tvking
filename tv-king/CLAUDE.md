@@ -1,4 +1,4 @@
-# TV King — guide du dépôt (architecture & conventions)
+# NOVA+ — guide du dépôt (architecture & conventions)
 
 Application de **streaming TV premium et universelle** pensée « 10-foot UI »
 (utilisée à ~3 m avec une télécommande). Objectif : à la fois **futuriste /
@@ -115,7 +115,7 @@ luminance douce), **édition VIP** (or riche, halo, finitions).
 
 ## Branchement au panel 7 MOTION (licence / essai)
 
-TV King est une app **web** : elle génère un **MAC virtuel** stable par
+NOVA+ est une app **web** : elle génère un **MAC virtuel** stable par
 installation (`MK:XX:XX:XX:XX:XX`, persisté en localStorage), exactement comme
 les apps mobiles du projet.
 

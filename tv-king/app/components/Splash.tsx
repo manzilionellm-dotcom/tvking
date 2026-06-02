@@ -16,14 +16,14 @@ export function AppFrameSplash() {
         position: "relative",
         zIndex: 1,
       }}
-      aria-label="Chargement de TV King"
+      aria-label="Chargement de NOVA+"
       role="status"
     >
       <div
         className="font-serif"
         style={{ fontSize: "3rem", color: "var(--gold)", opacity: 0.9 }}
       >
-        👑 TV King
+        ✦ NOVA+
       </div>
     </div>
   );

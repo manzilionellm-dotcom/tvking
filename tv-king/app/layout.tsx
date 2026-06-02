@@ -6,7 +6,7 @@ import { PreferencesProvider } from "./lib/preferences";
 
 // Métadonnées de l'app. Pas de marque réelle, pas de tracking.
 export const metadata: Metadata = {
-  title: "TV King — Streaming premium",
+  title: "NOVA+ — Streaming premium",
   description:
     "Application de streaming TV premium et universelle, pensée pour être utilisée à 3 mètres avec une télécommande, par tout le monde.",
 };

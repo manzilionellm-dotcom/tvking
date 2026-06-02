@@ -72,7 +72,7 @@ export function ProfileGate() {
           className="font-serif"
           style={{ fontSize: "3.4rem", margin: 0 }}
         >
-          <span style={{ color: "var(--gold)" }}>👑 TV King</span>
+          <span style={{ color: "var(--gold)" }}>✦ NOVA+</span>
         </h1>
         <p
           style={{
