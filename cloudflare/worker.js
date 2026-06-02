@@ -964,6 +964,88 @@ function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
+// =========================================================
+//  SIGNATURE DES REPONSES DE LICENCE (anti-faux-serveur)
+// =========================================================
+//  Probleme : l'app fait confiance au JSON renvoye par
+//  /api/heartbeat et /api/status/:mac. Un pirate qui redirige le
+//  domaine (DNS local, fichier hosts, APK repackagee pointant
+//  ailleurs) vers un FAUX serveur repondant {paid:true} debloquerait
+//  l'app gratuitement, a vie, sans jamais te payer.
+//
+//  Parade : on SIGNE chaque reponse avec une cle privee Ed25519 qui
+//  ne quitte JAMAIS le Worker (secret Cloudflare LICENSE_SIGNING_KEY).
+//  L'app embarque uniquement la cle PUBLIQUE et verifie la signature.
+//  Un faux serveur ne peut PAS forger une signature valide sans la
+//  cle privee → l'app refuse de se debloquer. Extraire la cle
+//  publique de l'app ne sert a rien : elle ne permet que de VERIFIER.
+//
+//  La signature lie aussi la MAC demandee et un horodatage `ts` : on
+//  ne peut pas rejouer la reponse "payee" d'un autre appareil ni une
+//  vieille reponse indefiniment (l'app verifie mac + fraicheur).
+//
+//  RETRO-COMPATIBILITE : si le secret LICENSE_SIGNING_KEY n'est pas
+//  configure, on NE signe PAS (champ `sig` absent) et le comportement
+//  reste identique a aujourd'hui. Zero risque de bloquer un client
+//  existant le temps du deploiement. Pour activer :
+//    npx wrangler secret put LICENSE_SIGNING_KEY
+//    (valeur = la "seed" base64url fournie hors-ligne a l'owner)
+// =========================================================
+
+// Cle publique Ed25519 (base64url). CE N'EST PAS un secret : elle est
+// aussi embarquee dans l'app. La cle PRIVEE (seed) vit uniquement dans
+// le secret Cloudflare LICENSE_SIGNING_KEY.
+const LICENSE_PUBKEY_X = 'u-oLAfakoh7GNoF_xWWgR28SEr5HyB42tjcOPIr8L_A';
+const LICENSE_KID = 'v1';
+
+// Import paresseux + mis en cache de la cle de signature pour l'isolate.
+let _signingKeyPromise = null;
+function getSigningKey(env) {
+  if (!env || !env.LICENSE_SIGNING_KEY) return Promise.resolve(null);
+  if (!_signingKeyPromise) {
+    _signingKeyPromise = crypto.subtle
+      .importKey(
+        'jwk',
+        { kty: 'OKP', crv: 'Ed25519', x: LICENSE_PUBKEY_X, d: env.LICENSE_SIGNING_KEY },
+        { name: 'Ed25519' },
+        false,
+        ['sign'],
+      )
+      .catch(() => null);
+  }
+  return _signingKeyPromise;
+}
+
+// Chaine canonique signee. DOIT etre reproduite a l'identique cote app
+// (memes champs, meme ordre, memes separateurs) sinon la verif echoue.
+function licenseCanonical(mac, o, ts) {
+  const b = (v) => (v ? 1 : 0);
+  const n = (v) => Math.trunc(Number(v) || 0);
+  return [
+    'v1', mac, b(o.paid), b(o.expired), b(o.frozen), b(o.banned),
+    n(o.days_left), n(o.trial_until), ts,
+  ].join('|');
+}
+
+// Renvoie une COPIE de l'objet statut enrichie de {ts, kid, sig} si la
+// cle de signature est configuree ; sinon renvoie l'objet inchange.
+// Ne jette jamais : une erreur de signature ne doit pas casser la
+// reponse de licence.
+async function signStatus(env, mac, obj, now = Date.now()) {
+  try {
+    const key = await getSigningKey(env);
+    if (!key) return obj;
+    const ts = now;
+    const msg = new TextEncoder().encode(licenseCanonical(mac, obj, ts));
+    const raw = new Uint8Array(await crypto.subtle.sign({ name: 'Ed25519' }, key, msg));
+    let bin = '';
+    for (let i = 0; i < raw.length; i++) bin += String.fromCharCode(raw[i]);
+    return { ...obj, ts, kid: LICENSE_KID, sig: btoa(bin) };
+  } catch (_) {
+    return obj;
+  }
+}
+
 function notFound(msg = 'Not found') {
   return new Response(msg, { status: 404, headers: TEXT_HEADERS });
 }
@@ -1166,7 +1248,7 @@ async function handleHeartbeat(request, env) {
   if (env.DB) {
     await ensureD1Device(env, mac, now);
     const d1 = await d1StatusForMac(env, mac, now);
-    if (d1) return json({ ok: true, created: true, ...d1 });
+    if (d1) return json({ ok: true, created: true, ...(await signStatus(env, mac, d1, now)) });
   }
 
   // --- Repli KV (si D1 pas branchee) ---
@@ -1178,11 +1260,11 @@ async function handleHeartbeat(request, env) {
       note: '', last_seen_at: now, first_seen_at: now,
     };
     await writeClient(env, mac, fresh);
-    return json({ ok: true, created: true, ...computeStatus(fresh, now) });
+    return json({ ok: true, created: true, ...(await signStatus(env, mac, computeStatus(fresh, now), now)) });
   }
   const updated = { ...existing, last_seen_at: now };
   await writeClient(env, mac, updated);
-  return json({ ok: true, created: false, ...computeStatus(updated, now) });
+  return json({ ok: true, created: false, ...(await signStatus(env, mac, computeStatus(updated, now), now)) });
 }
 
 // =========================================================
@@ -1200,10 +1282,10 @@ async function handlePublicStatus(env, mac) {
       await ensureD1Device(env, mac);
       d1 = await d1StatusForMac(env, mac);
     }
-    if (d1) return json(d1);
+    if (d1) return json(await signStatus(env, mac, d1));
   }
   const data = await readClient(env, mac);
-  return json(computeStatus(data));
+  return json(await signStatus(env, mac, computeStatus(data)));
 }
 
 // =========================================================

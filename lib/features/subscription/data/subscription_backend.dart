@@ -24,6 +24,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'subscription_signature.dart';
+
 /// URL du Worker Cloudflare. À ce jour le custom domain RACINE
 /// `7themotion.com` n'est pas encore branché (des DNS records
 /// Hostinger résiduels bloquaient l'add), donc on tape le custom
@@ -130,11 +132,32 @@ abstract final class SubscriptionBackend {
       }
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
+      if (!_trustResponse(mac, body)) return RemoteSubscriptionStatus.unknown;
       return RemoteSubscriptionStatus.fromJson(body);
     } catch (e) {
       if (kDebugMode) debugPrint('[Subscription] heartbeat error: $e');
       return RemoteSubscriptionStatus.unknown;
     }
+  }
+
+  /// Décide si on FAIT CONFIANCE à la réponse du serveur (anti-piratage).
+  ///
+  /// Tant que [kRequireSignature] est `false` : on accepte toujours
+  /// (comportement historique), mais en debug on logue si la signature
+  /// est présente et valide — pratique pour valider le déploiement.
+  ///
+  /// Quand [kRequireSignature] est `true` : on n'accepte la réponse que
+  /// si elle est signée et que la signature est valide pour cette MAC.
+  /// Sinon on la traite comme injoignable (→ trial local), ce qui
+  /// neutralise tout faux serveur répondant « payé / débloqué ».
+  static bool _trustResponse(String mac, Map<String, dynamic> body) {
+    final bool valid = SubscriptionSignature.verify(mac, body);
+    if (kDebugMode) {
+      debugPrint('[Subscription] signature présente='
+          '${SubscriptionSignature.isPresent(body)} valide=$valid');
+    }
+    if (!kRequireSignature) return true;
+    return valid;
   }
 
   /// Lit l'état courant du serveur sans toucher au `last_seen_at`.
@@ -153,6 +176,7 @@ abstract final class SubscriptionBackend {
       if (resp.statusCode != 200) return RemoteSubscriptionStatus.unknown;
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
+      if (!_trustResponse(mac, body)) return RemoteSubscriptionStatus.unknown;
       return RemoteSubscriptionStatus.fromJson(body);
     } catch (e) {
       if (kDebugMode) debugPrint('[Subscription] getStatus error: $e');
