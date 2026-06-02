@@ -1,0 +1,183 @@
+/* =========================================================
+   globals.css — DESIGN SYSTEM « TV King »
+   =========================================================
+   Toutes les décisions non triviales sont sourcées dans
+   docs/RESEARCH-TV-UX.md. Résumé des principes appliqués ici :
+
+   - Surfaces Material « dark » : JAMAIS de noir pur (#000) — le fond
+     de base est #121212, les surfaces s'éclaircissent par paliers.
+     (Material Design dark theme — [documenté])
+   - Texte : JAMAIS de blanc pur (halation sur fond sombre). On utilise
+     du blanc à 92 / 62 / 38 % d'opacité (high / medium / disabled).
+   - Accents désaturés menés par l'OR : les couleurs très saturées
+     « vibrent » sur fond sombre → inconfort. (Material + confort visuel)
+   - Échelle GLOBALE : tout est dimensionné en rem, et la racine
+     `font-size` se met à l'échelle du viewport (720p → 4K sans zoom)
+     puis est multipliée par --ui-scale (profils d'accessibilité).
+   - Safe-area (overscan TV) : marges latérales/verticales tunables.
+   ========================================================= */
+
+@import "tailwindcss";
+
+:root {
+  /* ----- Surfaces (paliers d'élévation Material, jamais #000) ----- */
+  --bg: #121212;
+  --surface-1: #1a1a1c;
+  --surface-2: #222226;
+  --surface-3: #2c2c31;
+  --surface-4: #36363c;
+  --scrim: rgba(0, 0, 0, 0.6);
+
+  /* ----- Texte (opacités Material, jamais #fff pur) ----- */
+  --text-high: rgba(255, 255, 255, 0.92);
+  --text-medium: rgba(255, 255, 255, 0.62);
+  --text-disabled: rgba(255, 255, 255, 0.38);
+
+  /* ----- Palette « royale » désaturée menée par l'or ----- */
+  --gold: #e3b96b;
+  --gold-strong: #f4d58d;
+  --gold-deep: #c9962f;
+  --gold-grad: linear-gradient(135deg, #f7e0a3, #e3b96b 42%, #c9962f);
+  --gold-sheen: linear-gradient(
+    105deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.35) 48%,
+    rgba(255, 255, 255, 0) 60%
+  );
+  --royal: #5b4bd6;
+  --live: #e5565b; /* rouge ADOUCI (pas le rouge saturé) */
+  --focus: #f4d58d;
+
+  /* ----- Accents par univers (désaturés) ----- */
+  --u-sports: #58c9a3;
+  --u-chaines: #e3b96b;
+  --u-divertissement: #b3a4ff;
+  --u-enfants: #7fc7ff; /* bleu ciel chaleureux */
+  --u-journal: #d8a657; /* ambré sobre */
+
+  /* ----- Variables tunables (profils + modes) ----- */
+  --ui-scale: 1; /* SENIOR=1.3, STANDARD=1, ENFANTS=1.15 */
+  --safe-scale: 1; /* overscan ajustable dans Réglages */
+  --warmth: 0; /* mode « repos des yeux » : 0 → 1 */
+  --brightness: 1; /* mode « repos des yeux » : abaisse la luminance */
+  --motion: 1; /* 1 = animations actives, 0 = réduites */
+
+  /* ----- Safe-area (overscan) — Android TV 48/27dp ----- */
+  --safe-x: calc(max(48px, 5vw) * var(--safe-scale));
+  --safe-y: calc(max(27px, 5vh) * var(--safe-scale));
+
+  /* ----- Rayons / transitions ----- */
+  --radius: 0.75rem;
+  --radius-lg: 1.25rem;
+  --t-fast: calc(180ms * var(--motion));
+  --t-med: calc(320ms * var(--motion));
+  --t-slow: calc(480ms * var(--motion));
+}
+
+/* Mise à l'échelle globale : la racine pilote TOUTES les tailles (rem).
+   clamp(11px … 22px) selon la largeur viewport → 720p lisible, 4K net,
+   sans jamais zoomer le layout. Multiplié par --ui-scale (profils). */
+html {
+  font-size: calc(clamp(11px, 100vw / 120, 22px) * var(--ui-scale));
+  color-scheme: dark;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-size: 1.5rem; /* corps ≥ 1.5rem (lisible à 3 m) */
+  font-family:
+    "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--text-high);
+  background:
+    radial-gradient(
+      60vw 60vw at 88% 8%,
+      rgba(227, 185, 107, calc(0.1 * var(--brightness))),
+      transparent 60%
+    ),
+    radial-gradient(
+      55vw 55vw at 8% 96%,
+      rgba(91, 75, 214, calc(0.12 * var(--brightness))),
+      transparent 60%
+    ),
+    var(--bg);
+  background-attachment: fixed;
+  position: relative;
+  overflow-x: hidden;
+  /* Mode « repos des yeux » : réchauffe + baisse légèrement la luminance.
+     sepia(--warmth) donne la dominante chaude, brightness l'atténuation. */
+  filter: sepia(calc(0.18 * var(--warmth)))
+    brightness(calc(1 - (1 - var(--brightness)) * 0.6));
+}
+
+/* Vignettage léger : concentre l'attention au centre, repose les bords. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+    120vw 120vh at 50% 45%,
+    transparent 60%,
+    rgba(0, 0, 0, 0.35) 100%
+  );
+}
+
+/* Titres : empattement élégant pour le côté « premium ». */
+.font-serif {
+  font-family: "Georgia", "Times New Roman", serif;
+}
+
+/* ----- Focus : UN SEUL élément a le focus, et il est IMPOSSIBLE
+   de le perdre. Anneau or + léger agrandissement + élévation. ----- */
+.focusable {
+  outline: none;
+  transition:
+    transform var(--t-fast) ease,
+    box-shadow var(--t-fast) ease,
+    background-color var(--t-fast) ease;
+  will-change: transform;
+}
+.focusable[data-focused="true"],
+.focusable:focus-visible {
+  transform: scale(1.08);
+  box-shadow:
+    0 0 0 0.18rem var(--focus),
+    0 1.2rem 2.4rem rgba(0, 0, 0, 0.55);
+  z-index: 5;
+}
+
+/* Réduction de mouvement : profil, réglage, ou préférence système.
+   On neutralise transitions + agrandissement (juste l'anneau reste). */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion: 0;
+  }
+}
+[data-reduced-motion="true"] .focusable[data-focused="true"],
+[data-reduced-motion="true"] .focusable:focus-visible {
+  transform: none;
+}
+[data-reduced-motion="true"] * {
+  animation-duration: 0.001ms !important;
+  transition-duration: 0.001ms !important;
+}
+
+/* Mode contraste élevé : opacités texte poussées à 100 % de leur cible
+   AAA pour atteindre ~7:1 sur le texte. */
+[data-high-contrast="true"] {
+  --text-high: rgba(255, 255, 255, 1);
+  --text-medium: rgba(255, 255, 255, 0.86);
+  --text-disabled: rgba(255, 255, 255, 0.62);
+}
+
+/* Barre de défilement discrète (les rails se pilotent au D-pad). */
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+* {
+  scrollbar-width: none;
+}
