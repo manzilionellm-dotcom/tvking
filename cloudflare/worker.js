@@ -206,6 +206,60 @@ function computeStatus(client, now = Date.now()) {
   };
 }
 
+// =========================================================
+//  PONT KV → D1 (panel revendeurs)
+// =========================================================
+//  L'app figee lit son etat via /api/status/:mac et /api/heartbeat,
+//  historiquement servis depuis KV. Quand un revendeur active une MAC
+//  dans le panel, la licence est ecrite en D1 (api_v1.js). Pour que
+//  l'app figee HONORE cette activation SANS la modifier, on consulte
+//  D1 EN PRIORITE ici : si une licence D1 existe pour la MAC, son etat
+//  prime ; sinon on retombe sur l'ancien comportement KV (trial local).
+//
+//  Renvoie un objet au MEME format que computeStatus(), ou null si pas
+//  de licence D1 (ou D1 non deploye → fallback KV transparent).
+// =========================================================
+async function d1StatusForMac(env, mac, now = Date.now()) {
+  if (!env.DB) return null;
+  let row;
+  try {
+    row = await env.DB
+      .prepare(
+        `SELECT l.status AS lstatus, l.expires_at AS expires_at
+         FROM devices d JOIN licenses l ON l.device_id = d.id
+         WHERE d.mac = ?
+         ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC
+         LIMIT 1`,
+      )
+      .bind(mac)
+      .first();
+  } catch (_) {
+    // Table/binding absents (D1 pas encore deploye) → fallback KV.
+    return null;
+  }
+  if (!row) return null;
+
+  const lstatus = row.lstatus || 'active';
+  const lifetime = row.expires_at === null || row.expires_at === undefined;
+  const expiresAt = lifetime ? now + 36500 * DAY_MS : row.expires_at;
+  const expired = !lifetime && expiresAt <= now;
+  const banned = lstatus === 'banned';
+  const frozen = lstatus === 'frozen';
+  const active = lstatus === 'active' && !expired;
+  return {
+    exists: true,
+    status: banned ? 'banned' : frozen ? 'frozen' : (expired ? 'active' : 'active'),
+    // Une licence active (payee via le panel revendeur) debloque l'app.
+    paid: active,
+    trial_until: expiresAt,
+    days_left: lifetime ? 36500 : Math.max(0, Math.ceil((expiresAt - now) / DAY_MS)),
+    expired,
+    frozen,
+    banned,
+    source: 'd1',
+  };
+}
+
 // Landing page HTML servie sur la racine. Style Maison Noir :
 // fond noir, ember rouge, typo sobre. Optimisée pour téléphones
 // ET pour les navigateurs intégrés des Smart TV (pas de JS).
@@ -1039,9 +1093,12 @@ async function handleHeartbeat(request, env) {
 
   const now = Date.now();
   const existing = await readClient(env, mac);
+  // Pont panel revendeur : si une licence D1 existe, son etat prime
+  // sur le trial KV (l'app figee est ainsi debloquee a distance).
+  const d1 = await d1StatusForMac(env, mac, now);
 
   if (!existing) {
-    // 1er heartbeat de ce MAC → on crée sa fiche, trial 10 jours.
+    // 1er heartbeat de ce MAC → on crée sa fiche, trial TRIAL_DAYS.
     const fresh = {
       name: '',
       playlists: [],
@@ -1055,13 +1112,13 @@ async function handleHeartbeat(request, env) {
       first_seen_at: now,
     };
     await writeClient(env, mac, fresh);
-    return json({ ok: true, created: true, ...computeStatus(fresh, now) });
+    return json({ ok: true, created: true, ...(d1 || computeStatus(fresh, now)) });
   }
 
   // Fiche existe : on rafraîchit last_seen_at sans toucher au reste.
   const updated = { ...existing, last_seen_at: now };
   await writeClient(env, mac, updated);
-  return json({ ok: true, created: false, ...computeStatus(updated, now) });
+  return json({ ok: true, created: false, ...(d1 || computeStatus(updated, now)) });
 }
 
 // =========================================================
@@ -1071,6 +1128,9 @@ async function handleHeartbeat(request, env) {
 // =========================================================
 async function handlePublicStatus(env, mac) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  // Priorite au panel revendeur (D1) ; sinon ancien trial KV.
+  const d1 = await d1StatusForMac(env, mac);
+  if (d1) return json(d1);
   const data = await readClient(env, mac);
   return json(computeStatus(data));
 }

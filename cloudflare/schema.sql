@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS resellers (
   password_hash   TEXT NOT NULL,
   name            TEXT,
   credit_balance_cents INTEGER NOT NULL DEFAULT 0,
+  credit_balance  INTEGER NOT NULL DEFAULT 0,  -- solde de CREDITS (compteur) pour activations revendeur
   commission_rate REAL NOT NULL DEFAULT 0.20,
   status          TEXT NOT NULL DEFAULT 'active',  -- 'active' | 'suspended'
   created_at      INTEGER NOT NULL
@@ -103,13 +104,16 @@ CREATE TABLE IF NOT EXISTS devices (
   customer_id     TEXT NOT NULL,
   mac             TEXT NOT NULL UNIQUE,          -- MK:XX:XX:XX:XX:XX
   label           TEXT,                          -- "Salon Fire TV"
+  reseller_id     TEXT,                          -- revendeur "proprietaire" (scoping)
   first_seen_at   INTEGER NOT NULL,
   last_seen_at    INTEGER NOT NULL,
-  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+  FOREIGN KEY (reseller_id) REFERENCES resellers(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_devices_customer ON devices(customer_id);
 CREATE INDEX IF NOT EXISTS idx_devices_mac      ON devices(mac);
+CREATE INDEX IF NOT EXISTS idx_devices_reseller ON devices(reseller_id);
 
 -- ---------------------------------------------------------
 -- licenses : the core. One license = (customer × device × app)
@@ -253,3 +257,47 @@ VALUES
    'http://pro.best-iptvinreviews.com', 'xtream',
    '{"monthly":900,"yearly":2900,"lifetime":14900}',
    1, strftime('%s','now') * 1000, strftime('%s','now') * 1000);
+
+-- =========================================================
+-- RESELLER CREDITS — Phase reseller-panel
+-- =========================================================
+--  credit_ledger : historique de TOUS les mouvements de credits
+--  d'un revendeur (emission par l'admin, debit a chaque activation,
+--  remboursement, ajustement). balance_after = solde apres ce
+--  mouvement, pour audit/affichage sans recalcul.
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS credit_ledger (
+  id              TEXT PRIMARY KEY,
+  reseller_id     TEXT NOT NULL,
+  delta           INTEGER NOT NULL,                 -- +emission / -consommation
+  reason          TEXT NOT NULL,                    -- 'issue'|'activation'|'renew'|'adjust'|'refund'
+  balance_after   INTEGER NOT NULL,
+  ref_license_id  TEXT,
+  ref_device_mac  TEXT,
+  actor_type      TEXT,                             -- 'admin'|'reseller'|'system'
+  actor_id        TEXT,
+  note            TEXT,
+  created_at      INTEGER NOT NULL,
+  FOREIGN KEY (reseller_id) REFERENCES resellers(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ledger_reseller ON credit_ledger(reseller_id);
+CREATE INDEX IF NOT EXISTS idx_ledger_created  ON credit_ledger(created_at);
+
+-- ---------------------------------------------------------
+-- plan_costs : combien de CREDITS coute chaque plan (reglable
+-- par l'admin via PUT /api/v1/plan-costs). trial = 0 (gratuit).
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS plan_costs (
+  plan     TEXT PRIMARY KEY,
+  credits  INTEGER NOT NULL
+);
+
+INSERT OR IGNORE INTO plan_costs (plan, credits) VALUES
+  ('trial', 0),
+  ('monthly', 1),
+  ('quarterly', 3),
+  ('biannual', 5),
+  ('yearly', 10),
+  ('lifetime', 25),
+  ('custom', 1);
