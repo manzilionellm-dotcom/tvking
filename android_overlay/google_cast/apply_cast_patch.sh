@@ -99,7 +99,8 @@ cat "$MANIFEST"
 mkdir -p "$ANDROID_PKG_PATH"
 for kt_file in MainActivity.kt GoogleCastApi.kt CastOptionsProviderImpl.kt \
                GalleryExporter.kt RecordingForegroundService.kt \
-               RecordingServiceBridge.kt MulticastLockBridge.kt; do
+               RecordingServiceBridge.kt MulticastLockBridge.kt \
+               ScreenRecordService.kt; do
   src="$OVERLAY/$kt_file"
   dst="$ANDROID_PKG_PATH/$kt_file"
   # sed rewrite : `package com.manzilionellm.tvking` → `package $DETECTED_PKG`
@@ -211,6 +212,21 @@ else
   NET_PERMS='    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />'
   sed -i "s|<application|${NET_PERMS}\n\n    <application|" "$MANIFEST"
   echo "✅ Patched AndroidManifest (INTERNET + ACCESS_NETWORK_STATE + CHANGE_WIFI_MULTICAST_STATE)"
+fi
+
+# --- 3d. Enregistrement par CAPTURE D'ÉCRAN (MediaProjection) ---------
+# Permissions : FOREGROUND_SERVICE_MEDIA_PROJECTION (Android 14+ pour le
+# type de service "mediaProjection") + RECORD_AUDIO (capture du son via
+# micro, best-effort). Déclaration du ScreenRecordService avec le type
+# mediaProjection. Idempotent (clé : ScreenRecordService).
+if grep -q "ScreenRecordService" "$MANIFEST"; then
+  echo "ScreenRecordService déjà déclaré — skip"
+else
+  SR_PERMS='    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />'
+  sed -i "s|<application|${SR_PERMS}\n\n    <application|" "$MANIFEST"
+  SR_SVC='        <service android:name=".ScreenRecordService" android:foregroundServiceType="mediaProjection" android:exported="false" />'
+  sed -i "s|</application>|${SR_SVC}\n    </application>|" "$MANIFEST"
+  echo "✅ Patched AndroidManifest (ScreenRecordService + permissions)"
 fi
 
 echo "----- AFTER: build.gradle (last 30 lines) -----"

@@ -37,7 +37,7 @@ import '../../channels/domain/channel.dart';
 import '../../onboarding/data/device_class_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
-import '../../recordings/data/recording_service.dart';
+import '../../recordings/data/screen_recorder.dart';
 import '../../recordings/domain/recording.dart';
 import '../data/pip_service.dart';
 import '../data/player_settings.dart';
@@ -380,42 +380,34 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _startRecording() async {
     try {
-      final String path =
-          await RecordingRepository.instance.createFilePath(
+      // ENREGISTREMENT PAR CAPTURE D'ÉCRAN (méthode imblocable) :
+      // au lieu de rouvrir une 2e connexion HTTP vers le flux (que les
+      // serveurs "1 connexion" rejettent → fichier vide), on capture ce
+      // qui est AFFICHÉ à l'écran (MediaProjection). Conséquences :
+      //   - la lecture N'est PAS coupée : on continue de regarder ;
+      //   - ça marche quel que soit le serveur ;
+      //   - jamais "vide" (si ça joue, c'est capturé).
+      // Le fichier est un .mp4 (MediaRecorder côté natif).
+      final String path = await RecordingRepository.instance.createFilePath(
         channelName: _currentChannel.cleanName,
         programTitle: widget.overrideTitle,
+        ext: 'mp4',
       );
 
       final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
-
-      // ENREGISTREMENT EN MODE 1 CONNEXION :
-      // La quasi-totalite des abonnements IPTV/Xtream n'autorisent
-      // qu'UNE connexion simultanee par identifiants. Si on garde la
-      // lecture ouverte (connexion n°1) ET qu'on ouvre une 2e connexion
-      // pour enregistrer, le fournisseur en ejecte une → le fichier
-      // reste a 0 octet (« enregistrement vide »). On SUSPEND donc la
-      // lecture le temps de l'enregistrement pour liberer l'unique
-      // connexion autorisee : un panneau plein ecran « ENREGISTREMENT
-      // EN COURS » s'affiche et la lecture reprend automatiquement a
-      // l'arret. Le telechargement vit cote natif (ForegroundService
-      // Kotlin) → il survit a la fermeture de l'app (wakelock +
-      // wifilock + notif persistante).
-      await _player.stop();
-      if (mounted) setState(() => _recordPausedPlayback = true);
-
       final String title = widget.overrideTitle != null &&
               widget.overrideTitle!.isNotEmpty
           ? '${_currentChannel.cleanName} – ${widget.overrideTitle}'
           : _currentChannel.cleanName;
-      final bool ok = await RecordingService.instance.start(
-        title: title,
-        url: url,
+
+      // Démarre la capture d'écran (affiche la popup système la 1ʳᵉ fois).
+      // La lecture continue pendant ce temps.
+      final bool ok = await ScreenRecorder.instance.start(
         filePath: path,
+        title: title,
       );
       if (!ok) {
-        await RecordingService.instance.stop();
-        _resumePlaybackAfterRecord();
-        _toast('Enregistrement impossible à démarrer. Réessaie.');
+        _toast('Enregistrement annulé ou impossible à démarrer.');
         return;
       }
 
@@ -431,10 +423,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       if (mounted) {
         setState(() => _activeRecording = rec);
-        _toast('Enregistrement démarré — la lecture reprend à l\'arrêt');
+        _toast('Enregistrement démarré — tu peux continuer à regarder');
       }
     } catch (e) {
-      _resumePlaybackAfterRecord();
       _toast('Impossible de démarrer : $e');
     }
   }
@@ -443,10 +434,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     try {
       final Recording? rec = _activeRecording;
 
-      // Arrête le téléchargement natif + le ForegroundService.
-      await RecordingService.instance.stop();
+      // Arrête la capture d'écran + finalise le MP4.
+      await ScreenRecorder.instance.stop();
+      // MediaRecorder finalise le fichier de façon asynchrone : on laisse
+      // un court instant pour que le MP4 soit bien écrit avant d'en lire
+      // la taille.
+      await Future<void>.delayed(const Duration(milliseconds: 600));
 
-      // Taille réelle du fichier écrit par le service natif.
       int bytes = 0;
       if (rec != null) {
         try {
@@ -456,16 +450,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         await RecordingRepository.instance.finishRecording(rec);
       }
 
-      // Connexion libérée → on reprend la lecture.
-      _resumePlaybackAfterRecord();
-
       if (mounted) {
         setState(() => _activeRecording = null);
         final String sizeLabel = _humanSize(bytes);
         if (bytes == 0) {
           _toast(
-            'Enregistrement vide — le serveur n\'a renvoyé aucune donnée '
-            'pour ce flux. Réessaie sur une autre chaîne.',
+            'Enregistrement vide — réessaie (autorise bien la capture '
+            'd\'écran quand l\'app la demande).',
           );
         } else {
           _toast(
@@ -474,7 +465,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         }
       }
     } catch (e) {
-      _resumePlaybackAfterRecord();
       _toast('Erreur arrêt enregistrement : $e');
     }
   }
