@@ -121,17 +121,26 @@ const NOVA_APK_URL =
 //    - Bytes count vers la requete quotidienne Worker (100k/jour
 //      free) mais pas vers la bandwidth.
 //
-async function proxyApk(upstreamUrl, suggestedFilename) {
+async function proxyApk(upstreamUrl, suggestedFilename, bust) {
   let response;
+  // ANTI-CACHE : si un parametre ?v=... est fourni, on contourne le cache
+  // edge — on ajoute un cache-buster a l'URL upstream (nouvelle cle de
+  // cache) ET on ne met (quasi) rien en cache. Utile quand un client a
+  // recu un vieux fichier en cache et qu'on veut le forcer a re-telecharger
+  // la toute derniere version.
+  let target = upstreamUrl;
+  if (bust) {
+    target += (target.indexOf('?') >= 0 ? '&' : '?') + 'cb=' + encodeURIComponent(bust);
+  }
   try {
-    response = await fetch(upstreamUrl, {
+    response = await fetch(target, {
       cf: {
         cacheEverything: true,
-        // On met en cache l'APK (200) 5 min pour la perf, mais on NE met
-        // PAS en cache les erreurs : un 404 transitoire (release CI pas
-        // encore publiee) doit se resorber DES que l'APK existe, sans
-        // attendre l'expiration du cache. (corrige le "404 colle".)
-        cacheTtlByStatus: { '200-299': 300, '300-399': 10, '400-599': 0 },
+        // Sans bust : APK (200) en cache 5 min (perf), erreurs non cachees.
+        // Avec bust : on ne cache (presque) rien -> toujours frais.
+        cacheTtlByStatus: bust
+          ? { '200-299': 1, '300-399': 1, '400-599': 0 }
+          : { '200-299': 300, '300-399': 10, '400-599': 0 },
       },
     });
   } catch (e) {
@@ -1484,13 +1493,13 @@ export default {
       (segments.length === 1 && segments[0] === 'dl') ||
       (segments.length === 2 && segments[0] === 'dl' && segments[1] === 'release')
     ) {
-      return proxyApk(APK_URL, '7motion.apk');
+      return proxyApk(APK_URL, '7motion.apk', url.searchParams.get('v'));
     }
 
     // /install — alias canal alternatif (utile si on veut router
     // par device class plus tard : /install?tv=firetv, etc.)
     if (segments.length === 1 && segments[0] === 'install') {
-      return proxyApk(APK_URL, '7motion.apk');
+      return proxyApk(APK_URL, '7motion.apk', url.searchParams.get('v'));
     }
 
     // /redroom — variante adulte 18+. Pointe vers la release
@@ -1501,7 +1510,7 @@ export default {
       (segments.length === 1 && segments[0] === 'redroom') ||
       (segments.length === 2 && segments[0] === 'redroom' && segments[1] === 'dl')
     ) {
-      return proxyApk(REDROOM_APK_URL, 'redroom.apk');
+      return proxyApk(REDROOM_APK_URL, 'redroom.apk', url.searchParams.get('v'));
     }
 
     // /tv — version Android TV / Fire TV (WebView wrapper de tv-web).
@@ -1514,7 +1523,7 @@ export default {
       (segments.length === 1 && segments[0] === 'tv') ||
       (segments.length === 2 && segments[0] === 'tv' && segments[1] === 'dl')
     ) {
-      return proxyApk(TV_APK_URL, 'tv-king-tv.apk');
+      return proxyApk(TV_APK_URL, 'tv-king-tv.apk', url.searchParams.get('v'));
     }
 
     // /nova — app NOVA+ pour Android TV / Fire TV. URL courte a coller
@@ -1524,7 +1533,7 @@ export default {
       (segments.length === 1 && segments[0] === 'nova') ||
       (segments.length === 2 && segments[0] === 'nova' && segments[1] === 'dl')
     ) {
-      return proxyApk(NOVA_APK_URL, 'nova.apk');
+      return proxyApk(NOVA_APK_URL, 'nova.apk', url.searchParams.get('v'));
     }
 
     // /cast-receiver — page HTML CAF pour Google Cast Custom Receiver.
@@ -1610,7 +1619,7 @@ export default {
       'favicon.ico', 'robots.txt', 'sitemap.xml',
     ]);
     if (segments.length === 1 && !RESERVED.has(segments[0].toLowerCase())) {
-      return proxyApk(APK_URL, '7motion.apk');
+      return proxyApk(APK_URL, '7motion.apk', url.searchParams.get('v'));
     }
 
     return notFound('Unknown route. Try /, /dl, /config/:mac or /admin/clients');
