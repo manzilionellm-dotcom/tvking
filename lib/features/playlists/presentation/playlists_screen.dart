@@ -20,7 +20,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/playlist_repository.dart';
 import '../domain/playlist.dart';
-import 'add_playlist_screen.dart';
+import '../../channels/presentation/widgets/source_choice_sheet.dart';
 
 class PlaylistsScreen extends StatelessWidget {
   const PlaylistsScreen({super.key});
@@ -105,13 +105,10 @@ class PlaylistsScreen extends StatelessWidget {
     );
   }
 
+  // Modèle « tout géré par le revendeur » : plus de saisie de code.
+  // On ouvre la feuille qui montre la MAC + « Vérifier mon abonnement ».
   void _openAdd(BuildContext context) {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => const AddPlaylistScreen(),
-        fullscreenDialog: true,
-      ),
-    );
+    showSourceChoiceSheet(context);
   }
 }
 

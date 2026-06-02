@@ -419,6 +419,17 @@ export async function apiV1(request, env) {
     }
   }
 
+  // /sources/:mac — source IPTV (Xtream/M3U) assignée à un appareil
+  // par sa MAC, poussée à l'app. Admin ET revendeurs (chacun provisionne
+  // ses clients). GET pour relire, PUT pour (ré)assigner, DELETE pour
+  // retirer.
+  if (parts[0] === 'sources' && parts.length === 2) {
+    const mac = parts[1];
+    if (request.method === 'GET') return handleSourceGet(env, mac);
+    if (request.method === 'PUT') return handleSourcePut(request, env, mac, actor);
+    if (request.method === 'DELETE') return handleSourceDelete(request, env, mac, actor);
+  }
+
   // /customers
   if (parts[0] === 'customers') {
     if (parts.length === 1) {
@@ -891,6 +902,117 @@ async function handleCustomerDevices(env, customerId) {
     .bind(customerId)
     .all();
   return jsonResp({ items: rs.results || [] });
+}
+
+// =========================================================
+//  DEVICE SOURCES HANDLERS (source poussée par MAC)
+// =========================================================
+//  Une « source » = l'abonnement IPTV assigné à un appareil par sa
+//  MAC depuis le panel : soit un Xtream (serveur + user + mdp), soit
+//  un M3U (URL). L'app la récupère via la route publique
+//  GET /api/device-source/:mac (worker.js) et la charge automatiquement
+//  — le client n'a RIEN à saisir.
+
+/// Crée la table à la volée (idempotent) pour marcher même sans
+/// migration jouée à la main.
+async function ensureSourcesTable(env) {
+  await env.DB
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS device_sources (
+         mac        TEXT PRIMARY KEY,
+         type       TEXT NOT NULL,
+         label      TEXT,
+         server_url TEXT,
+         username   TEXT,
+         password   TEXT,
+         m3u_url    TEXT,
+         epg_url    TEXT,
+         updated_at INTEGER NOT NULL
+       )`,
+    )
+    .run();
+}
+
+/// Normalise + valide un objet source venant du panel. Retourne
+/// { source } prêt à insérer, ou { error } si invalide.
+function normalizeSource(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return { error: 'source object required' };
+  }
+  const type = (raw.type || '').trim().toLowerCase();
+  const label = (raw.label || '').trim() || null;
+  const epg = (raw.epg_url || '').trim() || null;
+  if (type === 'xtream') {
+    const server = (raw.server_url || '').trim();
+    const user = (raw.username || '').trim();
+    const pass = (raw.password || '').trim();
+    if (!server || !user || !pass) {
+      return { error: 'xtream requires server_url, username, password' };
+    }
+    return { source: { type, label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg } };
+  }
+  if (type === 'm3u') {
+    const m3u = (raw.m3u_url || '').trim();
+    if (!m3u) return { error: 'm3u requires m3u_url' };
+    return { source: { type, label, server_url: null, username: null, password: null, m3u_url: m3u, epg_url: epg } };
+  }
+  return { error: "type must be 'xtream' or 'm3u'" };
+}
+
+/// Upsert (insère ou remplace) la source d'une MAC.
+async function upsertDeviceSource(env, mac, source) {
+  await ensureSourcesTable(env);
+  await env.DB
+    .prepare(
+      `INSERT INTO device_sources
+         (mac, type, label, server_url, username, password, m3u_url, epg_url, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(mac) DO UPDATE SET
+         type=excluded.type, label=excluded.label, server_url=excluded.server_url,
+         username=excluded.username, password=excluded.password,
+         m3u_url=excluded.m3u_url, epg_url=excluded.epg_url,
+         updated_at=excluded.updated_at`,
+    )
+    .bind(mac, source.type, source.label, source.server_url, source.username,
+          source.password, source.m3u_url, source.epg_url, Date.now())
+    .run();
+}
+
+async function handleSourceGet(env, mac) {
+  await ensureSourcesTable(env);
+  const m = mac.trim().toUpperCase();
+  const row = await env.DB
+    .prepare('SELECT * FROM device_sources WHERE mac = ?')
+    .bind(m)
+    .first();
+  return jsonResp({ mac: m, source: row || null });
+}
+
+async function handleSourcePut(request, env, mac, actor) {
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const m = mac.trim().toUpperCase();
+  if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
+    return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
+  }
+  const norm = normalizeSource(body.source || body);
+  if (norm.error) return errResp('bad_source', norm.error, 400);
+  await upsertDeviceSource(env, m, norm.source);
+  await logAudit(env, request, actor, 'source.set',
+    { type: 'device_source', id: m }, null,
+    { type: norm.source.type, label: norm.source.label });
+  return jsonResp({ ok: true, mac: m });
+}
+
+async function handleSourceDelete(request, env, mac, actor) {
+  await ensureSourcesTable(env);
+  const m = mac.trim().toUpperCase();
+  await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run();
+  await logAudit(env, request, actor, 'source.clear',
+    { type: 'device_source', id: m }, null, null);
+  return jsonResp({ ok: true, mac: m });
 }
 
 // =========================================================
@@ -1614,6 +1736,15 @@ async function handleActivate(request, env, user, actor) {
   // primerait sur la licence et l'app resterait bloquee.
   await env.DB.prepare('UPDATE devices SET block_status = NULL WHERE id = ?')
     .bind(deviceId).run();
+
+  // 2c) Source IPTV (Xtream/M3U) optionnelle : si le panel a joint un
+  // objet `source`, on l'assigne à la MAC. L'app la récupèrera via
+  // GET /api/device-source/:mac et la chargera automatiquement.
+  if (body.source) {
+    const norm = normalizeSource(body.source);
+    if (norm.error) return errResp('bad_source', norm.error, 400);
+    await upsertDeviceSource(env, mac, norm.source);
+  }
 
   // 3) Debit credits (revendeur) + ecriture au ledger, atomiquement.
   let balanceAfter = null;

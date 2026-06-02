@@ -368,9 +368,25 @@ export interface ActivateResult {
   credit_balance: number | null;
   renewed: boolean;
 }
+// Source IPTV assignée à un appareil par sa MAC (poussée à l'app).
+export interface DeviceSourceInput {
+  type: 'xtream' | 'm3u';
+  label?: string | null;
+  server_url?: string | null;
+  username?: string | null;
+  password?: string | null;
+  m3u_url?: string | null;
+  epg_url?: string | null;
+}
+export interface DeviceSource extends DeviceSourceInput {
+  mac?: string;
+  updated_at?: number;
+}
+
 export const activateApi = {
   // Active une MAC (owner ou revendeur). Cree/renouvelle la licence et
-  // debite les credits du revendeur selon le cout du plan.
+  // debite les credits du revendeur selon le cout du plan. Si `source`
+  // est fourni, on l'assigne a la MAC (l'app la chargera automatiquement).
   activate: (payload: {
     mac: string;
     plan: string;
@@ -380,8 +396,27 @@ export const activateApi = {
     customer_email?: string;
     custom_days?: number;
     reseller_id?: string;
+    source?: DeviceSourceInput;
   }) =>
     request<ActivateResult>('/api/v1/activate', { method: 'POST', body: payload }),
+};
+
+// Source assignée par MAC (gérée indépendamment de l'activation).
+export const sourcesApi = {
+  get: (mac: string) =>
+    request<{ mac: string; source: DeviceSource | null }>(
+      `/api/v1/sources/${encodeURIComponent(mac)}`,
+    ),
+  set: (mac: string, source: DeviceSourceInput) =>
+    request<{ ok: boolean; mac: string }>(
+      `/api/v1/sources/${encodeURIComponent(mac)}`,
+      { method: 'PUT', body: { source } },
+    ),
+  clear: (mac: string) =>
+    request<{ ok: boolean; mac: string }>(
+      `/api/v1/sources/${encodeURIComponent(mac)}`,
+      { method: 'DELETE' },
+    ),
 };
 
 export interface PlanCost { plan: string; credits: number; }

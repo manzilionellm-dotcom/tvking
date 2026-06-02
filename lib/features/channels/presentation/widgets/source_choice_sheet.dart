@@ -23,7 +23,7 @@ import '../../../../core/support/support_choice_sheet.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../device/data/device_identity.dart';
-import '../../../playlists/presentation/add_playlist_screen.dart';
+import '../../../playlists/data/remote_source_repository.dart';
 
 /// Ouvre la feuille de choix de source depuis l'accueil.
 Future<void> showSourceChoiceSheet(BuildContext context) {
@@ -78,27 +78,37 @@ class _SourceChoiceSheet extends StatelessWidget {
             const SizedBox(height: 18),
 
             _SourceTile(
-              icon: Icons.vpn_key_rounded,
-              title: 'Ajouter mes codes',
-              subtitle: 'Connexion avec ton code Xtream',
+              icon: Icons.support_agent_rounded,
+              title: 'Activer l\'app',
+              subtitle: 'Donne ta MAC à ton revendeur pour qu\'il active',
               onTap: () {
                 Navigator.of(context).pop();
-                Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const AddPlaylistScreen(),
-                    fullscreenDialog: true,
-                  ),
-                );
+                showActivationSheet(context);
               },
             ),
             const SizedBox(height: 12),
             _SourceTile(
-              icon: Icons.support_agent_rounded,
-              title: 'Activer l\'app à la maison',
-              subtitle: 'Activation à distance par ton revendeur',
-              onTap: () {
+              icon: Icons.refresh_rounded,
+              title: 'Vérifier mon abonnement',
+              subtitle: 'Recharger les chaînes activées par ton revendeur',
+              onTap: () async {
+                // On capture le messenger AVANT de fermer la feuille,
+                // car le context de la sheet devient invalide après pop().
+                final ScaffoldMessengerState messenger =
+                    ScaffoldMessenger.of(context);
                 Navigator.of(context).pop();
-                showActivationSheet(context);
+                messenger.showSnackBar(
+                  SnackBar(
+                    behavior: SnackBarBehavior.floating,
+                    content: Text(
+                      'Vérification de ton abonnement…',
+                      style: AppTextStyles.bodyMedium,
+                    ),
+                  ),
+                );
+                // Relance la récupération de la source assignée par MAC.
+                // Si le revendeur vient d'activer, les chaînes arrivent.
+                await RemoteSourceRepository.sync();
               },
             ),
           ],

@@ -48,14 +48,14 @@ class EmptyStateView extends StatelessWidget {
                 const SizedBox(height: 26),
 
                 Text(
-                  'Ajoute ton abonnement',
+                  'Active ton abonnement',
                   textAlign: TextAlign.center,
                   style: AppTextStyles.headlineLarge.copyWith(fontSize: 23),
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Saisis ton code Xtream (utilisateur + mot de passe) '
-                  'communiqué par ton revendeur pour charger tes chaînes.',
+                  'Donne ta MAC à ton revendeur. Dès qu\'il active ton '
+                  'compte, tes chaînes apparaissent automatiquement.',
                   textAlign: TextAlign.center,
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 14,
@@ -103,15 +103,15 @@ class EmptyStateView extends StatelessWidget {
                 ),
                 const SizedBox(height: 28),
 
-                // ----- CTA unique : ajouter ses codes -----
+                // ----- CTA unique : activer / vérifier -----
                 SizedBox(
                   width: double.infinity,
                   height: 54,
                   child: FilledButton.icon(
                     onPressed: onAddPlaylist,
-                    icon: const Icon(Icons.add_rounded, size: 22),
+                    icon: const Icon(Icons.support_agent_rounded, size: 22),
                     label: Text(
-                      'Ajouter mes codes',
+                      'Activer mon abonnement',
                       style: AppTextStyles.button.copyWith(
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
@@ -126,7 +126,7 @@ class EmptyStateView extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  'Connexion par code Xtream',
+                  'Activation à distance par ton revendeur',
                   textAlign: TextAlign.center,
                   style: AppTextStyles.labelSmall.copyWith(
                     color: AppColors.textTertiary,

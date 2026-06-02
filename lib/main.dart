@@ -42,6 +42,7 @@ import 'features/onboarding/data/onboarding_state.dart';
 import 'features/player/data/player_settings.dart';
 import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/playlist_repository.dart';
+import 'features/playlists/data/remote_source_repository.dart';
 import 'core/flavor/flavor.dart';
 import 'features/security/data/age_gate_settings.dart';
 import 'features/security/data/lock_settings.dart';
@@ -95,7 +96,12 @@ Future<void> bootApp() async {
   // Démarre les repos en parallèle — non bloquant pour le first frame.
   // Les écrans qui en dépendent rebuildent via les Streams au fur et
   // à mesure que les données arrivent.
-  unawaited(PlaylistRepository.instance.initialize());
+  unawaited(PlaylistRepository.instance.initialize().then((_) {
+    // Modèle « tout géré par le revendeur » : on récupère la source
+    // IPTV assignée à cet appareil par sa MAC (panel admin) et on la
+    // charge automatiquement. Le client n'a rien à saisir.
+    RemoteSourceRepository.sync();
+  }));
   unawaited(FavoritesRepository.instance.initialize());
   unawaited(RecentlyWatchedRepository.instance.initialize());
   unawaited(RecentSearchesRepository.instance.initialize());

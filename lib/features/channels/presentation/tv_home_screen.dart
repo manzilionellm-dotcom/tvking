@@ -31,7 +31,7 @@ import '../../epg/presentation/tv_guide_screen.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
-import '../../playlists/presentation/add_playlist_screen.dart';
+import 'widgets/source_choice_sheet.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../data/recently_watched_repository.dart';
 import '../domain/channel.dart';
@@ -91,12 +91,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 final List<Channel> channels = snap.data ?? <Channel>[];
                 if (channels.isEmpty) {
                   return EmptyStateView(
-                    onAddPlaylist: () =>
-                        Navigator.of(context).push<void>(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const AddPlaylistScreen(),
-                      ),
-                    ),
+                    onAddPlaylist: () => showSourceChoiceSheet(context),
                   );
                 }
                 return _buildContent(channels);

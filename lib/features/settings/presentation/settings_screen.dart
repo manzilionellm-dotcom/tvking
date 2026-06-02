@@ -20,7 +20,7 @@ import '../../admin/presentation/admin_pin_screen.dart';
 import '../../cast/presentation/cast_diagnostics_screen.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../player/data/player_settings.dart';
-import '../../playlists/presentation/add_playlist_screen.dart';
+import '../../channels/presentation/widgets/source_choice_sheet.dart';
 import '../../playlists/presentation/playlists_screen.dart';
 import '../../recordings/presentation/recordings_screen.dart';
 import '../../security/data/biometric_auth.dart';
@@ -141,15 +141,11 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
             _ActionTile(
-              icon: Icons.add_circle_outline_rounded,
-              title: 'Ajouter une source',
+              icon: Icons.support_agent_rounded,
+              title: 'Activer / vérifier mon abonnement',
               subtitle:
-                  'Choisis ton serveur et saisis ton code Xtream (utilisateur + mot de passe).',
-              onTap: () => Navigator.of(context).push<void>(
-                MaterialPageRoute<void>(
-                  builder: (_) => const AddPlaylistScreen(),
-                ),
-              ),
+                  'Donne ta MAC à ton revendeur, puis recharge tes chaînes.',
+              onTap: () => showSourceChoiceSheet(context),
             ),
 
             // ====== ENREGISTREMENTS ======

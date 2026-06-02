@@ -33,7 +33,6 @@ import '../../cast/presentation/cast_mini_bar.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
-import '../../playlists/presentation/add_playlist_screen.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../../security/data/biometric_auth.dart';
 import '../data/recently_watched_repository.dart';
@@ -111,12 +110,10 @@ class _HomeScreenState extends State<HomeScreen> {
       playChannel(context, ch, zapPlaylist: _zapList());
   void _onChannelLongPress(Channel ch) => showChannelDetail(context, ch);
 
-  Future<void> _openAddPlaylist() => Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => const AddPlaylistScreen(),
-          fullscreenDialog: true,
-        ),
-      );
+  // Modèle « tout géré par le revendeur » : le client ne saisit plus
+  // de code. Le « + » et l'écran vide ouvrent la feuille qui montre la
+  // MAC (à donner au revendeur) + le bouton « Vérifier mon abonnement ».
+  Future<void> _openAddPlaylist() => showSourceChoiceSheet(context);
 
   Future<void> _openSearch() => Navigator.of(context).push<void>(
         MaterialPageRoute<void>(builder: (_) => const SearchScreen()),

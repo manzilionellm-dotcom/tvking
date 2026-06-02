@@ -1386,6 +1386,37 @@ async function handlePublicServers(env) {
   return json({ servers });
 }
 
+// /api/device-source/:mac — public.
+//
+//  Renvoie la source IPTV (Xtream/M3U) assignée à cet appareil par
+//  son admin/revendeur depuis le panel. L'app la charge automatiquement
+//  au démarrage — le client n'a RIEN à saisir.
+//
+//  Réponse :
+//    { "mac": "MK:..", "source": null }                 (rien d'assigné)
+//    { "mac": "MK:..", "source": { type:"xtream", ... }} (Xtream)
+//    { "mac": "MK:..", "source": { type:"m3u", ... }}    (M3U)
+//
+//  Identifiant = la MAC (même modèle public que /config/:mac et
+//  /api/status/:mac). Lecture en D1 (table device_sources).
+async function handlePublicDeviceSource(env, mac) {
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  if (!env.DB) return json({ mac, source: null });
+  try {
+    const row = await env.DB
+      .prepare(
+        `SELECT type, label, server_url, username, password, m3u_url, epg_url, updated_at
+           FROM device_sources WHERE mac = ?`,
+      )
+      .bind(mac.toUpperCase())
+      .first();
+    return json({ mac: mac.toUpperCase(), source: row || null });
+  } catch (_) {
+    // Table absente / D1 indisponible → pas de source assignée.
+    return json({ mac, source: null });
+  }
+}
+
 // ----- Routeur -----
 
 export default {
@@ -1436,6 +1467,14 @@ export default {
         return badRequest('only GET supported on /api/servers');
       }
       return await handlePublicServers(env);
+    }
+
+    // /api/device-source/:mac — public, l'app récupère sa source assignée
+    if (segments[0] === 'api' && segments[1] === 'device-source' && segments.length === 3) {
+      if (request.method !== 'GET') {
+        return badRequest('only GET supported on /api/device-source/:mac');
+      }
+      return await handlePublicDeviceSource(env, segments[2]);
     }
 
     // /admin/panel — page HTML du panel admin (auth via input dans la page)
