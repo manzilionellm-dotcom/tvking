@@ -6,8 +6,22 @@ import { authApi, setToken, ApiError } from '@/lib/api';
 /// automatiquement un compte super_admin avec email='admin' et
 /// password=ADMIN_SECRET du Worker (transition seamless).
 export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
-  const [mode, setMode] = useState<'admin' | 'reseller'>('admin');
-  const [email, setEmail] = useState('admin');
+  // Lien revendeur dedie : si l'URL contient ?revendeur (ou ?reseller),
+  // on n'affiche QUE la connexion revendeur (aucun onglet Admin visible).
+  // Ex: https://tvking-admin.pages.dev/?revendeur
+  const resellerOnly = (() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      return p.has('revendeur') || p.has('reseller') || p.get('mode') === 'reseller';
+    } catch {
+      return false;
+    }
+  })();
+
+  const [mode, setMode] = useState<'admin' | 'reseller'>(
+    resellerOnly ? 'reseller' : 'admin',
+  );
+  const [email, setEmail] = useState(resellerOnly ? '' : 'admin');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -57,24 +71,26 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
           </p>
         </div>
 
-        {/* ===== Bascule Admin / Revendeur ===== */}
-        <div className="grid grid-cols-2 gap-1 rounded-lg border border-white/5 bg-slate p-1">
-          {(['admin', 'reseller'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => switchMode(m)}
-              className={
-                'rounded-md px-3 py-1.5 text-xs font-medium transition ' +
-                (mode === m
-                  ? 'bg-accent text-black'
-                  : 'text-ink-secondary hover:text-ink-primary')
-              }
-            >
-              {m === 'admin' ? 'Admin' : 'Revendeur'}
-            </button>
-          ))}
-        </div>
+        {/* ===== Bascule Admin / Revendeur (cachee sur le lien revendeur) ===== */}
+        {!resellerOnly && (
+          <div className="grid grid-cols-2 gap-1 rounded-lg border border-white/5 bg-slate p-1">
+            {(['admin', 'reseller'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => switchMode(m)}
+                className={
+                  'rounded-md px-3 py-1.5 text-xs font-medium transition ' +
+                  (mode === m
+                    ? 'bg-accent text-black'
+                    : 'text-ink-secondary hover:text-ink-primary')
+                }
+              >
+                {m === 'admin' ? 'Admin' : 'Revendeur'}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="space-y-3">
           <div>
@@ -117,9 +133,16 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
           {busy ? 'Connexion…' : 'Se connecter'}
         </button>
 
-        <p className="text-center text-[11px] text-ink-tertiary">
-          Première connexion : utilise ton <span className="text-ink-secondary">ADMIN_SECRET</span> Worker comme mot de passe.
-        </p>
+        {!resellerOnly && (
+          <p className="text-center text-[11px] text-ink-tertiary">
+            Première connexion : utilise ton <span className="text-ink-secondary">ADMIN_SECRET</span> Worker comme mot de passe.
+          </p>
+        )}
+        {resellerOnly && (
+          <p className="text-center text-[11px] text-ink-tertiary">
+            Connecte-toi avec l'email et le mot de passe fournis par ton fournisseur.
+          </p>
+        )}
       </form>
     </div>
   );
