@@ -27,6 +27,7 @@ import {
   type ReactNode,
 } from "react";
 import { narration } from "./narration";
+import { sound } from "./sound";
 
 export type ProfileId = "senior" | "enfants" | "standard";
 
@@ -40,6 +41,11 @@ export interface Preferences {
   narration: boolean;
   eyeRest: boolean; // mode « repos des yeux »
   vip: boolean; // édition VIP / premium
+  // --- Couche futuriste (chaque option désactivable) ---
+  ambilight: boolean; // lueur de fond adaptative
+  parallax: boolean; // légère profondeur 3D au focus
+  soundCues: boolean; // petits retours sonores (WebAudio)
+  voice: boolean; // recherche / commande vocale
 }
 
 /// Réglages par défaut appliqués QUAND on choisit un profil. Ils restent
@@ -53,6 +59,8 @@ const PROFILE_DEFAULTS: Record<ProfileId, Partial<Preferences>> = {
     reducedMotion: true,
     narration: true,
     eyeRest: true,
+    parallax: false, // moins de mouvement = plus reposant
+    soundCues: true, // un retour sonore aide en basse vision
   },
   // Enfants : un peu plus grand, navigation guidée, narration active.
   enfants: {
@@ -81,6 +89,10 @@ const DEFAULTS: Preferences = {
   narration: false,
   eyeRest: false,
   vip: false,
+  ambilight: true,
+  parallax: true,
+  soundCues: false,
+  voice: true,
 };
 
 const STORAGE_KEY = "tvking.prefs.v1";
@@ -126,9 +138,12 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
     root.setAttribute("data-reduced-motion", String(prefs.reducedMotion));
     root.setAttribute("data-vip", String(prefs.vip));
     root.setAttribute("data-eye-rest", String(prefs.eyeRest));
+    root.setAttribute("data-ambilight", String(prefs.ambilight));
+    root.setAttribute("data-parallax", String(prefs.parallax));
     root.setAttribute("data-profile", prefs.profile ?? "none");
 
     narration.setEnabled(prefs.narration);
+    sound.setEnabled(prefs.soundCues);
 
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));

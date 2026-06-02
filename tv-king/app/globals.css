@@ -337,9 +337,67 @@ body::after {
   font-family: inherit;
 }
 
-/* Fil conducteur doré (édition VIP) : fine ligne dorée sous les titres. */
+/* Transition cinématographique douce à l'arrivée sur une page (coupée
+   en reduced-motion car --t-med tombe à 0). */
+.content {
+  animation: tvk-fade-in var(--t-med) ease both;
+}
+
+/* =========================================================
+   COUCHE FUTURISTE (chaque effet est piloté par un data-* du <html>)
+   ========================================================= */
+
+/* --- Ambilight : lueur de fond qui s'adapte à l'élément focalisé --- */
+:root {
+  --amb-from: transparent;
+  --amb-to: transparent;
+}
+[data-ambilight="true"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: calc(0.22 * var(--brightness));
+  background:
+    radial-gradient(70vw 70vh at 85% 12%, var(--amb-to), transparent 55%),
+    radial-gradient(60vw 60vh at 12% 90%, var(--amb-from), transparent 55%);
+  transition: background var(--t-slow) ease;
+}
+
+/* --- Parallaxe / profondeur : léger soulèvement 3D au focus --- */
+[data-parallax="true"] .focusable[data-focused="true"] {
+  transform: perspective(900px) scale(1.1) translateY(-0.25rem);
+}
+
+/* --- Édition VIP : or plus riche, halo doux, couronne plus lumineuse --- */
 [data-vip="true"] .content h2 {
   text-shadow: 0 0 1.2rem rgba(227, 185, 107, 0.15);
+}
+[data-vip="true"] .focusable[data-focused="true"] {
+  box-shadow:
+    0 0 0 0.18rem var(--gold-strong),
+    0 1.4rem 3rem rgba(0, 0, 0, 0.6),
+    0 0 2.4rem rgba(227, 185, 107, 0.35);
+}
+[data-vip="true"] .sidebar-logo .crown {
+  filter: drop-shadow(0 0 0.9rem rgba(244, 213, 141, 0.85));
+}
+/* Fine ligne dorée « sheen » qui balaie le haut du shell en VIP. */
+[data-vip="true"] .content::before {
+  content: "";
+  display: block;
+  height: 2px;
+  margin-bottom: 1.4rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--gold-strong),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: tvk-sheen 6s linear infinite;
 }
 
 /* Barre de défilement discrète (les rails se pilotent au D-pad). */

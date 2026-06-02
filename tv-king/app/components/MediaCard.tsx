@@ -66,6 +66,8 @@ export function MediaCard({ item }: { item: MediaItem }) {
       className="focusable"
       data-focusable
       data-nav-id={item.id}
+      data-amb-from={item.art.from}
+      data-amb-to={item.art.to}
       aria-label={describe(item)}
       style={{
         display: "inline-block",

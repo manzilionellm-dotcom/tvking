@@ -10,9 +10,33 @@
 //  Les résultats s'affichent en grille de MediaCards (focusables).
 // =========================================================
 
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { MediaCard } from "../components/MediaCard";
+import { VoiceButton } from "../components/VoiceButton";
 import { searchMedia, UNIVERSES } from "../lib/data";
+
+// Interprète une phrase parlée simple. Si elle vise un univers connu
+// (« montre-moi le foot », « ouvre les dessins animés »), on y navigue ;
+// sinon on la traite comme une recherche texte. Repli toujours gracieux.
+const VOICE_ROUTES: { keywords: string[]; href: string }[] = [
+  { keywords: ["sport", "foot", "match", "tennis", "basket"], href: "/sports" },
+  { keywords: ["chaîne", "chaine", "direct", "télé", "tele"], href: "/chaines" },
+  {
+    keywords: ["film", "série", "serie", "spectacle", "divertiss"],
+    href: "/divertissement",
+  },
+  { keywords: ["enfant", "dessin", "animé", "anime"], href: "/enfants" },
+  { keywords: ["journal", "info", "actu", "nouvelles"], href: "/journal" },
+];
+
+function routeForPhrase(text: string): string | null {
+  const t = text.toLowerCase();
+  for (const r of VOICE_ROUTES) {
+    if (r.keywords.some((k) => t.includes(k))) return r.href;
+  }
+  return null;
+}
 
 const SUGGESTIONS = [
   "Direct",
@@ -24,8 +48,17 @@ const SUGGESTIONS = [
 ];
 
 export default function SearchPage() {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const results = useMemo(() => searchMedia(query), [query]);
+
+  // Reçoit une phrase de la recherche vocale : commande de navigation
+  // reconnue → on y va ; sinon → on remplit le champ de recherche.
+  function onVoice(text: string) {
+    const href = routeForPhrase(text);
+    if (href) router.push(href);
+    else setQuery(text);
+  }
 
   return (
     <div>
@@ -33,25 +66,27 @@ export default function SearchPage() {
         🔎 Rechercher
       </h1>
 
-      {/* Champ libre (clavier/souris). */}
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Tapez un titre, une chaîne, un sport…"
-        aria-label="Champ de recherche"
-        style={{
-          width: "100%",
-          maxWidth: "40rem",
-          padding: "1rem 1.2rem",
-          fontSize: "1.3rem",
-          borderRadius: "var(--radius)",
-          border: "1px solid rgba(255,255,255,0.18)",
-          background: "var(--surface-1)",
-          color: "var(--text-high)",
-          outline: "none",
-        }}
-      />
+      {/* Champ libre (clavier/souris) + bouton micro (si pris en charge). */}
+      <div style={{ display: "flex", alignItems: "center", maxWidth: "44rem" }}>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Tapez un titre, une chaîne, un sport…"
+          aria-label="Champ de recherche"
+          style={{
+            flex: 1,
+            padding: "1rem 1.2rem",
+            fontSize: "1.3rem",
+            borderRadius: "var(--radius)",
+            border: "1px solid rgba(255,255,255,0.18)",
+            background: "var(--surface-1)",
+            color: "var(--text-high)",
+            outline: "none",
+          }}
+        />
+        <VoiceButton onText={onVoice} />
+      </div>
 
       {/* Suggestions focusables (télécommande). */}
       <div

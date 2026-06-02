@@ -21,8 +21,8 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
 import { narration } from "../lib/narration";
-
-type Dir = "up" | "down" | "left" | "right";
+import { sound } from "../lib/sound";
+import { bestCandidateIndex, type Dir } from "../lib/spatial";
 
 /// Mémoire (module-level) du dernier élément focalisé par chemin d'URL.
 /// On stocke un identifiant stable (`data-nav-id` ou `id`) pour le
@@ -93,6 +93,16 @@ export function SpatialNav() {
       const id = navId(el);
       if (id) focusMemory.set(pathname, id);
 
+      // Ambilight : la lueur de fond s'adapte à la couleur de l'élément
+      // focalisé (le CSS ne l'affiche que si data-ambilight="true").
+      const from = el.getAttribute("data-amb-from");
+      const to = el.getAttribute("data-amb-to");
+      if (from && to) {
+        const root = document.documentElement.style;
+        root.setProperty("--amb-from", from);
+        root.setProperty("--amb-to", to);
+      }
+
       narration.speak(labelOf(el));
     },
     [pathname],
@@ -108,57 +118,14 @@ export function SpatialNav() {
         if (items[0]) setFocus(items[0]);
         return Boolean(items[0]);
       }
-      const c = cur.getBoundingClientRect();
-      const cx = c.left + c.width / 2;
-      const cy = c.top + c.height / 2;
-
-      let best: HTMLElement | null = null;
-      let bestScore = Number.POSITIVE_INFINITY;
-
-      for (const el of items) {
-        if (el === cur) continue;
-        const r = el.getBoundingClientRect();
-        const x = r.left + r.width / 2;
-        const y = r.top + r.height / 2;
-        const dx = x - cx;
-        const dy = y - cy;
-
-        let along: number;
-        let off: number;
-        const margin = 8; // tolérance pour ignorer le bruit d'alignement
-        switch (dir) {
-          case "left":
-            if (dx >= -margin) continue;
-            along = -dx;
-            off = Math.abs(dy);
-            break;
-          case "right":
-            if (dx <= margin) continue;
-            along = dx;
-            off = Math.abs(dy);
-            break;
-          case "up":
-            if (dy >= -margin) continue;
-            along = -dy;
-            off = Math.abs(dx);
-            break;
-          case "down":
-            if (dy <= margin) continue;
-            along = dy;
-            off = Math.abs(dx);
-            break;
-        }
-        // Pénalise fortement le décalage hors-axe (×2.5) pour garder un
-        // déplacement « droit » et prévisible.
-        const sc = along + off * 2.5;
-        if (sc < bestScore) {
-          bestScore = sc;
-          best = el;
-        }
-      }
-
-      if (best) {
-        setFocus(best);
+      // On exclut l'élément courant, puis on délègue le scoring à la
+      // logique PURE (testable) de lib/spatial.ts.
+      const candidates = items.filter((el) => el !== cur);
+      const rects = candidates.map((el) => el.getBoundingClientRect());
+      const idx = bestCandidateIndex(cur.getBoundingClientRect(), rects, dir);
+      if (idx >= 0) {
+        setFocus(candidates[idx]);
+        sound.play("move");
         return true;
       }
       return false;
@@ -198,6 +165,7 @@ export function SpatialNav() {
           // laisse passer. Sinon OK = activer l'élément focalisé.
           if (isFormField(active)) return;
           e.preventDefault();
+          sound.play("select");
           currentRef.current?.click();
           break;
         case "Backspace":

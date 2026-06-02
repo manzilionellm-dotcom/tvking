@@ -134,6 +134,38 @@ export function Preferences() {
         />
       </Section>
 
+      {/* ----- Effets futuristes (tous désactivables) ----- */}
+      <Section title="Effets">
+        <Toggle
+          label="Éclairage ambiant"
+          hint="La lueur du fond s'adapte au contenu sélectionné"
+          value={prefs.ambilight}
+          onChange={(v) => update({ ambilight: v })}
+          navId="set-ambilight"
+        />
+        <Toggle
+          label="Profondeur (parallaxe)"
+          hint="Léger relief 3D sur l'élément en focus"
+          value={prefs.parallax}
+          onChange={(v) => update({ parallax: v })}
+          navId="set-parallax"
+        />
+        <Toggle
+          label="Retours sonores"
+          hint="Petits sons doux à la navigation"
+          value={prefs.soundCues}
+          onChange={(v) => update({ soundCues: v })}
+          navId="set-sound"
+        />
+        <Toggle
+          label="Recherche vocale"
+          hint="Bouton micro dans la recherche (si pris en charge)"
+          value={prefs.voice}
+          onChange={(v) => update({ voice: v })}
+          navId="set-voice"
+        />
+      </Section>
+
       {/* ----- Édition VIP ----- */}
       <Section title="Édition VIP">
         <Toggle
