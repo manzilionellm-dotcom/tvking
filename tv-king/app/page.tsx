@@ -1,24 +1,53 @@
-// Page d'accueil — version SCAFFOLD (sera remplacée à l'étape 8 par le
-// Hero + les rangées + la sélection de profil). Ici on valide juste que
-// le design system et le build fonctionnent.
+// =========================================================
+//  page.tsx — Accueil
+// =========================================================
+//  Hero « à la une » + rangée « Reprendre » + « En direct maintenant »
+//  + un aperçu de chaque univers (accès direct depuis l'accueil). La
+//  sélection de profil au 1er lancement est gérée en amont par AppFrame.
+// =========================================================
+
+import { Hero } from "./components/Hero";
+import { Row } from "./components/Row";
+import {
+  getByUniverse,
+  getContinueWatching,
+  getHeroItems,
+  getLiveNow,
+  getUniverseMeta,
+  UNIVERSES,
+} from "./lib/data";
+
 export default function HomePage() {
+  const hero = getHeroItems();
+  const resume = getContinueWatching();
+  const live = getLiveNow();
+
   return (
-    <main
-      style={{
-        padding: "var(--safe-y) var(--safe-x)",
-        position: "relative",
-        zIndex: 1,
-      }}
-    >
-      <h1
-        className="font-serif"
-        style={{ fontSize: "4rem", margin: 0, color: "var(--text-high)" }}
-      >
-        <span style={{ color: "var(--gold)" }}>👑 TV King</span>
-      </h1>
-      <p style={{ fontSize: "1.6rem", color: "var(--text-medium)" }}>
-        Échafaudage prêt — design system chargé.
-      </p>
-    </main>
+    <div>
+      <Hero items={hero} />
+
+      {resume.length > 0 && (
+        <Row title="Reprendre" items={resume} accentVar="var(--gold)" />
+      )}
+
+      <Row
+        title="En direct maintenant"
+        items={live}
+        accentVar="var(--live)"
+      />
+
+      {/* Aperçu de chaque univers (3-7 éléments), accès direct. */}
+      {UNIVERSES.map((u) => {
+        const meta = getUniverseMeta(u.id);
+        return (
+          <Row
+            key={u.id}
+            title={`${meta.icon} ${meta.label}`}
+            items={getByUniverse(u.id)}
+            accentVar={meta.accentVar}
+          />
+        );
+      })}
+    </div>
   );
 }

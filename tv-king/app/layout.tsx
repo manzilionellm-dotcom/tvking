@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { AppFrame } from "./components/AppFrame";
+import { PreferencesProvider } from "./lib/preferences";
 
 // Métadonnées de l'app. Pas de marque réelle, pas de tracking.
 export const metadata: Metadata = {
@@ -23,7 +25,11 @@ export default function RootLayout({
   // lang="fr" : narration vocale et lecteurs d'écran utilisent le français.
   return (
     <html lang="fr">
-      <body>{children}</body>
+      <body>
+        <PreferencesProvider>
+          <AppFrame>{children}</AppFrame>
+        </PreferencesProvider>
+      </body>
     </html>
   );
 }
