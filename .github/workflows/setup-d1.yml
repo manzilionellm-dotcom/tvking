@@ -72,3 +72,14 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: 'cloudflare'
           command: d1 execute tvking_licensing --remote --file=migrations/003_reseller_hierarchy.sql
+
+      - name: Apply migration 004 (device block)
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        env:
+          CI: 'true'
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'cloudflare'
+          command: d1 execute tvking_licensing --remote --file=migrations/004_device_block.sql
