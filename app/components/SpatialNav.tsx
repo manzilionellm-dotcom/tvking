@@ -70,9 +70,11 @@ function bestCandidate(current: HTMLElement, dir: Dir): HTMLElement | null {
 
 export default function SpatialNav() {
   useEffect(() => {
-    // Focus the first focusable on mount so a remote has a starting point.
-    const first = focusables()[0];
-    if (first && document.activeElement === document.body) first.focus();
+    // Focus the first content element on mount (not the nav, which would expand
+    // the rail and cover the content). Fall back to the first focusable anywhere.
+    const start =
+      document.querySelector<HTMLElement>("main [data-focusable]") ?? focusables()[0];
+    if (start && document.activeElement === document.body) start.focus();
 
     function onKeyDown(e: KeyboardEvent) {
       const dir = KEY_TO_DIR[e.key];
