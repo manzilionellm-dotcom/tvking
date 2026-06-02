@@ -28,7 +28,7 @@ class PaywallBanner extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
       child: Material(
-        color: AppColors.champagneSurface,
+        color: AppColors.editorialCreamSurface,
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           onTap: () => showSourceChoiceSheet(context),
@@ -38,7 +38,7 @@ class PaywallBanner extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: AppColors.accentEmber.withValues(alpha: 0.28),
+                color: AppColors.editorialCream.withValues(alpha: 0.28),
               ),
             ),
             child: Row(
@@ -46,7 +46,7 @@ class PaywallBanner extends StatelessWidget {
                 Icon(
                   Icons.auto_awesome_rounded,
                   size: 18,
-                  color: AppColors.accentEmber,
+                  color: AppColors.editorialCream,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -78,13 +78,13 @@ class PaywallBanner extends StatelessWidget {
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.emberDeep,
+                    color: AppColors.editorialCreamDeep,
                   ),
                 ),
                 Icon(
                   Icons.chevron_right_rounded,
                   size: 16,
-                  color: AppColors.emberDeep,
+                  color: AppColors.editorialCreamDeep,
                 ),
               ],
             ),

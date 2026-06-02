@@ -137,7 +137,7 @@ class _VipHelpCardState extends State<VipHelpCard>
           decoration: BoxDecoration(
             gradient: AppColors.premiumGradient,
             borderRadius: BorderRadius.circular(14),
-            boxShadow: AppColors.champagneGlow,
+            boxShadow: AppColors.emberGlowShadow,
           ),
           child: const Icon(
             Icons.workspace_premium_rounded,

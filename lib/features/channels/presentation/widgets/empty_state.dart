@@ -72,10 +72,10 @@ class EmptyStateView extends StatelessWidget {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.champagneSurface,
+                    color: AppColors.editorialCreamSurface,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: AppColors.accentEmber.withValues(alpha: 0.28),
+                      color: AppColors.editorialCream.withValues(alpha: 0.28),
                     ),
                   ),
                   child: Row(
@@ -84,7 +84,7 @@ class EmptyStateView extends StatelessWidget {
                       Icon(
                         Icons.auto_awesome_rounded,
                         size: 16,
-                        color: AppColors.accentEmber,
+                        color: AppColors.editorialCream,
                       ),
                       const SizedBox(width: 8),
                       Flexible(

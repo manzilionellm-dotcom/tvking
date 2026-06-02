@@ -98,7 +98,7 @@ class BrandLogo extends StatelessWidget {
         color: AppColors.voidSurface,
         borderRadius: BorderRadius.circular(_radius),
         boxShadow: size == BrandLogoSize.splash || size == BrandLogoSize.medium
-            ? AppColors.champagneGlow
+            ? AppColors.emberGlowShadow
             : null,
         border: isLight
             ? Border.all(color: palette.border, width: 0.8)

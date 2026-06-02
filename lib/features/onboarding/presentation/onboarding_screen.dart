@@ -405,7 +405,7 @@ class _MacHandoffSlideState extends State<_MacHandoffSlide> {
                   color: AppColors.accent.withValues(alpha: 0.5),
                   width: 1.4,
                 ),
-                boxShadow: AppColors.champagneGlow,
+                boxShadow: AppColors.emberGlowShadow,
               ),
               child: Column(
                 children: <Widget>[

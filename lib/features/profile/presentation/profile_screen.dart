@@ -152,7 +152,7 @@ class _Header extends StatelessWidget {
           Text(
             flavor.appTagline,
             style: AppTextStyles.eyebrowEmber.copyWith(
-              color: AppColors.emberDeep,
+              color: AppColors.editorialCreamDeep,
               fontSize: 10,
             ),
           ),
@@ -189,7 +189,7 @@ class _AccountCard extends StatelessWidget {
             children: <Widget>[
               Icon(
                 Icons.workspace_premium_rounded,
-                color: AppColors.accentEmber,
+                color: AppColors.editorialCream,
                 size: 20,
               ),
               const SizedBox(width: 8),

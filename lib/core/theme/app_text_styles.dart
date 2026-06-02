@@ -53,7 +53,7 @@ abstract final class AppTextStyles {
   static TextStyle get eyebrowEmber => GoogleFonts.inter(
         fontSize: 10,
         fontWeight: FontWeight.w700,
-        color: AppColors.accentEmber,
+        color: AppColors.editorialCream,
         letterSpacing: 2.6,
         height: 1.0,
       );

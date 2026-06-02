@@ -85,7 +85,7 @@ abstract final class AppColors {
   /// Variante deep — ember-blood, bordures actives, sélections passives.
   static const Color accentMuted = Color(0xFF8E1F1D);
 
-  /// Halo ember — pour les glows accentEmber sur CTAs primaires.
+  /// Halo ember — pour les glows ember sur CTAs primaires.
   /// (Nom historique conservé pour compat — c'est le même rouge brillant.)
   static const Color emberHalo = Color(0xFFFF5A4A);
 
@@ -94,27 +94,31 @@ abstract final class AppColors {
       const Color(0xFFD63A30).withValues(alpha: 0.14);
 
   // -------------------------------------------------------
-  //  CHAMPAGNE — accent non-critique (Phase 1 redesign)
+  //  CRÈME ÉDITORIAL — accent non-critique (Phase 1 redesign)
   // -------------------------------------------------------
   //  Le brief design dit : réduire l'usage du rouge de 60-70 %.
-  //  Le rouge ne sert PLUS qu'au critique (LIVE, focus actif,
-  //  CTA primaire, sélection navigation). Pour tous les autres
-  //  accents (eyebrows, badges éditoriaux, "VEDETTE",
-  //  séparateurs de catégorie, citations…) on utilise un
-  //  accentEmber désaturé qui donne la sensation premium calme
-  //  d'Apple TV+ ou de Criterion Channel.
+  //  Le rouge (ember) ne sert PLUS qu'au critique (LIVE, focus
+  //  actif, CTA primaire, sélection navigation). Pour tous les
+  //  autres accents (eyebrows, badges éditoriaux, "VEDETTE",
+  //  séparateurs de catégorie, citations…) on utilise un crème
+  //  chaud désaturé (#E8D9C0) qui donne la sensation premium
+  //  calme d'Apple TV+ ou de Criterion Channel.
+  //
+  //  NB : ce crème est DISTINCT de l'accent ember (`accent`).
+  //  Anciennement nommé `champagne` — renommé `editorialCream`
+  //  pour lever l'ambiguïté avec les tokens ember.
 
-  /// Champagne — accent éditorial principal (eyebrows, badges
-  /// "À LA UNE", "RECOMMANDÉ", "NOUVEAU"). Ni or jaune
+  /// Crème éditorial — accent principal non-critique (eyebrows,
+  /// badges "À LA UNE", "RECOMMANDÉ", "NOUVEAU"). Ni or jaune
   /// agressif ni rouge — un crème chaud très tamisé.
-  static const Color accentEmber = Color(0xFFE8D9C0);
+  static const Color editorialCream = Color(0xFFE8D9C0);
 
-  /// Champagne profond — pour les bordures fines et les hovers
-  /// non-critiques. Encore plus discret que `accentEmber`.
-  static const Color emberDeep = Color(0xFFB39B7C);
+  /// Crème éditorial profond — bordures fines et hovers
+  /// non-critiques. Encore plus discret que `editorialCream`.
+  static const Color editorialCreamDeep = Color(0xFFB39B7C);
 
-  /// Voile accentEmber — fond des chips éditoriaux.
-  static Color get champagneSurface =>
+  /// Voile crème — fond des chips éditoriaux.
+  static Color get editorialCreamSurface =>
       const Color(0xFFE8D9C0).withValues(alpha: 0.10);
 
   // -------------------------------------------------------
@@ -179,7 +183,7 @@ abstract final class AppColors {
   );
 
   /// Halo ember — pour les ombres rouge braise sur CTAs primaires.
-  static List<BoxShadow> get champagneGlow => <BoxShadow>[
+  static List<BoxShadow> get emberGlowShadow => <BoxShadow>[
         BoxShadow(
           color: const Color(0xFFFF5A4A).withValues(alpha: 0.32),
           blurRadius: 28,

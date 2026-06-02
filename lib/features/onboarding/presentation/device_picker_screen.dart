@@ -248,7 +248,7 @@ class _DeviceCard extends StatelessWidget {
               color: selected ? AppColors.accent : AppColors.border,
               width: selected ? 1.6 : 1,
             ),
-            boxShadow: selected ? AppColors.champagneGlow : null,
+            boxShadow: selected ? AppColors.emberGlowShadow : null,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

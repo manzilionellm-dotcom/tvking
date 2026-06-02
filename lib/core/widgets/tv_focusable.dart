@@ -165,7 +165,7 @@ class _TvFocusableState extends State<TvFocusable> {
                     width: _focused ? widget.borderWidth : 1,
                   ),
                   boxShadow: (_focused && widget.showGlow)
-                      ? AppColors.champagneGlow
+                      ? AppColors.emberGlowShadow
                       : null,
                 ),
                 child: widget.child,

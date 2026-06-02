@@ -718,7 +718,7 @@ class _ThemeOption extends StatelessWidget {
                       : AppColors.border,
                   width: selected ? 1.4 : 1,
                 ),
-                boxShadow: selected ? AppColors.champagneGlow : null,
+                boxShadow: selected ? AppColors.emberGlowShadow : null,
               ),
               child: Column(
                 children: <Widget>[

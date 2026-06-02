@@ -111,7 +111,7 @@ class _Banner extends StatelessWidget {
       // plays sur Netflix d'après les benchmarks d'industrie. Sur TV
       // il mérite l'autofocus à l'apparition (géré par l'écran parent
       // si présent). On garde showGlow: true par défaut → le halo
-      // ember 0.32 vient s'ajouter au halo champagneGlow déjà présent
+      // ember 0.32 vient s'ajouter au halo emberGlowShadow déjà présent
       // sur le banner = signal très clair "appuie sur OK ici".
       child: TvFocusable(
         onTap: onResume,
@@ -126,7 +126,7 @@ class _Banner extends StatelessWidget {
               color: AppColors.accent.withValues(alpha: 0.45),
               width: 1.3,
             ),
-            boxShadow: AppColors.champagneGlow,
+            boxShadow: AppColors.emberGlowShadow,
           ),
             child: Row(
               children: <Widget>[
