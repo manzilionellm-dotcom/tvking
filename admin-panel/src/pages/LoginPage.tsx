@@ -6,17 +6,27 @@ import { authApi, setToken, ApiError } from '@/lib/api';
 /// automatiquement un compte super_admin avec email='admin' et
 /// password=ADMIN_SECRET du Worker (transition seamless).
 export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
+  const [mode, setMode] = useState<'admin' | 'reseller'>('admin');
   const [email, setEmail] = useState('admin');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  function switchMode(m: 'admin' | 'reseller') {
+    setMode(m);
+    setErr(null);
+    // En mode revendeur on vide l'identifiant 'admin' par defaut.
+    setEmail(m === 'admin' ? 'admin' : '');
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setErr(null);
     try {
-      const res = await authApi.login(email.trim(), password);
+      const res = mode === 'reseller'
+        ? await authApi.resellerLogin(email.trim(), password)
+        : await authApi.login(email.trim(), password);
       setToken(res.token);
       onLoggedIn();
     } catch (e: any) {
@@ -43,8 +53,27 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
             Licensing Platform
           </h1>
           <p className="mt-1 text-xs uppercase tracking-widest text-ink-tertiary">
-            Super Admin
+            {mode === 'admin' ? 'Super Admin' : 'Espace revendeur'}
           </p>
+        </div>
+
+        {/* ===== Bascule Admin / Revendeur ===== */}
+        <div className="grid grid-cols-2 gap-1 rounded-lg border border-white/5 bg-slate p-1">
+          {(['admin', 'reseller'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => switchMode(m)}
+              className={
+                'rounded-md px-3 py-1.5 text-xs font-medium transition ' +
+                (mode === m
+                  ? 'bg-accent text-black'
+                  : 'text-ink-secondary hover:text-ink-primary')
+              }
+            >
+              {m === 'admin' ? 'Admin' : 'Revendeur'}
+            </button>
+          ))}
         </div>
 
         <div className="space-y-3">

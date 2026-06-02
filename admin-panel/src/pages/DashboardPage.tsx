@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { statsApi, type StatsOverview, ApiError } from '@/lib/api';
+import {
+  statsApi, type StatsOverview, ApiError,
+  getCurrentUser, isOwnerRole,
+} from '@/lib/api';
 import { formatMoney } from '@/lib/utils';
 
 /// Dashboard : cards de KPI lues en direct depuis /api/v1/stats/overview
@@ -46,12 +49,25 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
           <KpiCard label="Licenses"       value={stats.licenses} />
           <KpiCard label="Actives"        value={stats.active_licenses} accent />
           <KpiCard label="Expirées"       value={stats.expired_licenses} />
-          <KpiCard label="Apps gérées"    value={stats.apps} />
-          <KpiCard
-            label="Revenu 30j"
-            value={formatMoney(stats.revenue_30d_cents)}
-            wide
-          />
+          {isOwnerRole(getCurrentUser()?.role) ? (
+            <>
+              <KpiCard label="Apps gérées" value={stats.apps} />
+              {stats.resellers !== undefined && (
+                <KpiCard label="Revendeurs" value={stats.resellers} />
+              )}
+              <KpiCard
+                label="Revenu 30j"
+                value={formatMoney(stats.revenue_30d_cents ?? 0)}
+                wide
+              />
+            </>
+          ) : (
+            <KpiCard
+              label="Mes crédits"
+              value={stats.credit_balance ?? 0}
+              accent
+            />
+          )}
         </div>
       )}
 
@@ -68,7 +84,7 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
           <NextActionCard
             title="Activer un client"
             desc="Tape le MAC, choisis l'app et la durée."
-            to="/activations"
+            to="/activate"
           />
           <NextActionCard
             title="Pousser une playlist"

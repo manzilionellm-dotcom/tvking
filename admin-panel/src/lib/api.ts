@@ -87,10 +87,30 @@ async function request<T = unknown>(
 //  Endpoints typees
 // =========================================================
 
+export interface MeUser {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string; // 'super_admin' | 'admin' | 'support' | 'reseller'
+  credit_balance?: number;
+  commission_rate?: number;
+  status?: string;
+}
 export interface AuthLoginResponse {
   token: string;
-  user: { id: string; email: string; name: string | null; role: string };
+  user: MeUser;
 }
+
+/// Cache module de l'utilisateur courant (rempli au bootstrap / login).
+/// Permet a la Sidebar et aux pages de connaitre le role sans contexte
+/// React : la valeur est stable pour la duree de la session.
+let _currentUser: MeUser | null = null;
+export function getCurrentUser(): MeUser | null { return _currentUser; }
+export function setCurrentUser(u: MeUser | null) { _currentUser = u; }
+export function isOwnerRole(role?: string | null): boolean {
+  return role === 'super_admin' || role === 'admin' || role === 'support';
+}
+
 export const authApi = {
   login: (email: string, password: string) =>
     request<AuthLoginResponse>('/api/v1/auth/login', {
@@ -98,7 +118,14 @@ export const authApi = {
       body: { email, password },
       noAuth: true,
     }),
-  me: () => request<{ user: any }>('/api/v1/auth/me'),
+  // Login d'un compte revendeur (table resellers, role 'reseller').
+  resellerLogin: (email: string, password: string) =>
+    request<AuthLoginResponse>('/api/v1/auth/reseller/login', {
+      method: 'POST',
+      body: { email, password },
+      noAuth: true,
+    }),
+  me: () => request<{ user: MeUser }>('/api/v1/auth/me'),
 };
 
 export interface StatsOverview {
@@ -108,7 +135,9 @@ export interface StatsOverview {
   active_licenses: number;
   expired_licenses: number;
   apps: number;
-  revenue_30d_cents: number;
+  revenue_30d_cents?: number;
+  resellers?: number;       // present pour l'owner
+  credit_balance?: number;  // present pour un revendeur
 }
 export const statsApi = {
   overview: () => request<StatsOverview>('/api/v1/stats/overview'),
@@ -202,4 +231,106 @@ export const licensesApi = {
       `/api/v1/licenses/${id}/renew`,
       { method: 'POST', body: { plan, custom_days: customDays } },
     ),
+};
+
+// =========================================================
+//  RESELLERS · CREDITS · ACTIVATION (panel revendeurs)
+// =========================================================
+
+/// Profil de l'acteur courant (avec solde de credits si revendeur).
+export const meApi = {
+  get: () => request<{ user: MeUser }>('/api/v1/me'),
+};
+
+export interface Reseller {
+  id: string;
+  email: string;
+  name: string | null;
+  status: string;            // 'active' | 'suspended'
+  credit_balance: number;
+  commission_rate: number;
+  created_at: number;
+  devices?: number;
+  licenses?: number;
+}
+export const resellersApi = {
+  list: () => request<{ items: Reseller[] }>('/api/v1/resellers'),
+  get: (id: string) => request<Reseller>(`/api/v1/resellers/${id}`),
+  create: (payload: {
+    email: string;
+    password: string;
+    name?: string;
+    credit_balance?: number;
+    commission_rate?: number;
+  }) =>
+    request<{ id: string; credit_balance: number }>('/api/v1/resellers', {
+      method: 'POST',
+      body: payload,
+    }),
+  update: (id: string, payload: Partial<{
+    name: string; status: string; commission_rate: number; password: string;
+  }>) =>
+    request<{ updated: number }>(`/api/v1/resellers/${id}`, {
+      method: 'PATCH',
+      body: payload,
+    }),
+};
+
+export interface CreditEntry {
+  id: string;
+  delta: number;
+  reason: string;            // 'issue'|'activation'|'renew'|'adjust'|'refund'
+  balance_after: number;
+  ref_device_mac: string | null;
+  ref_license_id: string | null;
+  note: string | null;
+  created_at: number;
+}
+export const creditsApi = {
+  // Emettre (montant positif) ou retirer (negatif) des credits a un revendeur.
+  issue: (resellerId: string, amount: number, note?: string) =>
+    request<{ credit_balance: number; delta: number }>(
+      `/api/v1/resellers/${resellerId}/credits`,
+      { method: 'POST', body: { amount, note } },
+    ),
+  history: (resellerId: string) =>
+    request<{ items: CreditEntry[] }>(`/api/v1/resellers/${resellerId}/credits`),
+};
+
+export interface ActivateResult {
+  ok: boolean;
+  license_id: string;
+  device_id: string;
+  customer_id: string;
+  mac: string;
+  plan: string;
+  expires_at: number | null;
+  credits_charged: number;
+  credit_balance: number | null;
+  renewed: boolean;
+}
+export const activateApi = {
+  // Active une MAC (owner ou revendeur). Cree/renouvelle la licence et
+  // debite les credits du revendeur selon le cout du plan.
+  activate: (payload: {
+    mac: string;
+    plan: string;
+    app_id?: string;
+    label?: string;
+    customer_name?: string;
+    customer_email?: string;
+    custom_days?: number;
+    reseller_id?: string;
+  }) =>
+    request<ActivateResult>('/api/v1/activate', { method: 'POST', body: payload }),
+};
+
+export interface PlanCost { plan: string; credits: number; }
+export const planCostsApi = {
+  list: () => request<{ items: PlanCost[] }>('/api/v1/plan-costs'),
+  update: (costs: Record<string, number>) =>
+    request<{ updated: number }>('/api/v1/plan-costs', {
+      method: 'PUT',
+      body: { costs },
+    }),
 };

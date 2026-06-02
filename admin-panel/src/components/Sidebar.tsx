@@ -1,30 +1,40 @@
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { getCurrentUser, isOwnerRole } from '@/lib/api';
 
 // =========================================================
 //  Sidebar — navigation principale du panel
 // =========================================================
 //  Style SaaS premium : fond obsidian, liens minimalistes,
 //  indicateur de selection sur la gauche (barre ember), survol
-//  doux. Aucun emoji ni icone outrancier — style Linear/Stripe.
+//  doux. La navigation s'adapte au role : l'owner voit tout, le
+//  revendeur ne voit que l'activation + ses propres donnees.
 // =========================================================
 
-const NAV: { label: string; to: string; phase: '1.A' | '1.B' | '2+' }[] = [
-  { label: 'Dashboard',     to: '/',            phase: '1.A' },
-  { label: 'Customers',     to: '/customers',   phase: '1.A' },
-  { label: 'Devices',       to: '/devices',     phase: '1.A' },
-  { label: 'Apps',          to: '/apps',        phase: '1.A' },
-  { label: 'Activations',   to: '/activations', phase: '1.A' },
-  { label: 'Playlists',     to: '/playlists',   phase: '1.B' },
-  { label: 'Renewals',      to: '/renewals',    phase: '1.B' },
-  { label: 'Payments',      to: '/payments',    phase: '2+'  },
-  { label: 'Resellers',     to: '/resellers',   phase: '2+'  },
-  { label: 'Notifications', to: '/notifications', phase: '2+' },
-  { label: 'Logs',          to: '/logs',        phase: '2+'  },
-  { label: 'Settings',      to: '/settings',    phase: '2+'  },
+type NavItem = { label: string; to: string; phase: '1.A' | '1.B' | '2+' };
+
+const OWNER_NAV: NavItem[] = [
+  { label: 'Dashboard',           to: '/',            phase: '1.A' },
+  { label: 'Activer un appareil', to: '/activate',    phase: '1.A' },
+  { label: 'Revendeurs',          to: '/resellers',   phase: '1.A' },
+  { label: 'Customers',           to: '/customers',   phase: '1.A' },
+  { label: 'Devices',             to: '/devices',     phase: '1.A' },
+  { label: 'Apps',                to: '/apps',        phase: '1.A' },
+  { label: 'Activations',         to: '/activations', phase: '1.A' },
+];
+
+const RESELLER_NAV: NavItem[] = [
+  { label: 'Dashboard',           to: '/',            phase: '1.A' },
+  { label: 'Activer un appareil', to: '/activate',    phase: '1.A' },
+  { label: 'Mes appareils',       to: '/devices',     phase: '1.A' },
+  { label: 'Mes activations',     to: '/activations', phase: '1.A' },
 ];
 
 export function Sidebar({ onLogout }: { onLogout: () => void }) {
+  const user = getCurrentUser();
+  const owner = isOwnerRole(user?.role);
+  const nav = owner ? OWNER_NAV : RESELLER_NAV;
+
   return (
     <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-white/5 bg-obsidian">
       {/* ===== Brand ===== */}
@@ -37,15 +47,23 @@ export function Sidebar({ onLogout }: { onLogout: () => void }) {
             Licensing Platform
           </span>
           <span className="text-[10px] uppercase tracking-widest text-ink-tertiary">
-            Super Admin
+            {owner ? 'Super Admin' : 'Revendeur'}
           </span>
         </div>
       </div>
 
+      {/* ===== Solde credits (revendeur) ===== */}
+      {!owner && user?.credit_balance !== undefined && (
+        <div className="mx-3 mt-3 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2">
+          <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">Crédits</div>
+          <div className="text-lg font-semibold text-accent-bright">{user.credit_balance}</div>
+        </div>
+      )}
+
       {/* ===== Nav ===== */}
       <nav className="flex-1 overflow-y-auto px-2 py-4">
         <ul className="space-y-0.5">
-          {NAV.map((item) => (
+          {nav.map((item) => (
             <li key={item.to}>
               <NavLink
                 to={item.to}

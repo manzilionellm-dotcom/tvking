@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
-import { authApi, getToken, setToken, ApiError } from '@/lib/api';
+import {
+  authApi, getToken, setToken, setCurrentUser, getCurrentUser, isOwnerRole,
+  ApiError,
+} from '@/lib/api';
 import { LoginPage } from '@/pages/LoginPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { CustomersPage } from '@/pages/CustomersPage';
 import { DevicesPage } from '@/pages/DevicesPage';
 import { AppsPage } from '@/pages/AppsPage';
 import { ActivationsPage } from '@/pages/ActivationsPage';
+import { ResellersPage } from '@/pages/ResellersPage';
+import { ActivatePage } from '@/pages/ActivatePage';
 
 /// Etats possibles de l'app :
 ///   - bootstrapping : on verifie si le token est encore valide
@@ -27,7 +32,7 @@ export default function App() {
       return;
     }
     authApi.me()
-      .then(() => setStatus('logged_in'))
+      .then((r) => { setCurrentUser(r.user); setStatus('logged_in'); })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 401) setToken(null);
         setStatus('logged_out');
@@ -35,12 +40,17 @@ export default function App() {
   }, []);
 
   const handleLoggedIn = useCallback(() => {
-    setStatus('logged_in');
-    nav('/');
+    // On recharge le profil (role + solde) avant d'afficher les pages,
+    // pour que la Sidebar et le routage connaissent owner vs revendeur.
+    authApi.me()
+      .then((r) => { setCurrentUser(r.user); })
+      .catch(() => {})
+      .finally(() => { setStatus('logged_in'); nav('/'); });
   }, [nav]);
 
   const handleLogout = useCallback(() => {
     setToken(null);
+    setCurrentUser(null);
     setStatus('logged_out');
     nav('/login');
   }, [nav]);
@@ -69,10 +79,20 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/"            element={<DashboardPage   onLogout={handleLogout} />} />
+      <Route path="/activate"    element={<ActivatePage    onLogout={handleLogout} />} />
       <Route path="/customers"   element={<CustomersPage   onLogout={handleLogout} />} />
       <Route path="/devices"     element={<DevicesPage     onLogout={handleLogout} />} />
       <Route path="/apps"        element={<AppsPage        onLogout={handleLogout} />} />
       <Route path="/activations" element={<ActivationsPage onLogout={handleLogout} />} />
+      {/* Revendeurs : reserve a l'owner ; un revendeur est redirige. */}
+      <Route
+        path="/resellers"
+        element={
+          isOwnerRole(getCurrentUser()?.role)
+            ? <ResellersPage onLogout={handleLogout} />
+            : <Navigate to="/" replace />
+        }
+      />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
