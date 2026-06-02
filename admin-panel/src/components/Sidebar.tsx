@@ -19,6 +19,7 @@ const OWNER_NAV: NavItem[] = [
   { key: 'nav.customers',   to: '/customers' },
   { key: 'nav.devices',     to: '/devices' },
   { key: 'nav.apps',        to: '/apps' },
+  { key: 'nav.servers',     to: '/servers' },
   { key: 'nav.activations', to: '/activations' },
   { key: 'nav.account',     to: '/account' },
 ];

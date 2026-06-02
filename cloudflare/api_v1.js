@@ -402,6 +402,23 @@ export async function apiV1(request, env) {
     }
   }
 
+  // /servers — serveurs IPTV par défaut proposés dans l'app cliente.
+  // Le client ne saisit jamais d'URL : il choisit « Serveur 1/2/3… »
+  // et tape son code Xtream. Gestion réservée à l'admin (les
+  // revendeurs n'y touchent pas).
+  if (parts[0] === 'servers') {
+    if (isReseller) return errResp('forbidden', 'Admin only', 403);
+    if (parts.length === 1) {
+      if (request.method === 'GET') return handleServersList(env);
+      if (request.method === 'POST') return handleServersCreate(request, env, actor);
+    }
+    if (parts.length === 2) {
+      const sid = parts[1];
+      if (request.method === 'PATCH') return handleServersUpdate(request, env, sid, actor);
+      if (request.method === 'DELETE') return handleServersDelete(request, env, sid, actor);
+    }
+  }
+
   // /customers
   if (parts[0] === 'customers') {
     if (parts.length === 1) {
@@ -660,6 +677,128 @@ async function handleAppsUpdate(request, env, id, actor) {
   await env.DB.prepare(`UPDATE apps SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run();
   await logAudit(env, request, actor, 'app.update', { type: 'app', id }, before, body);
   return jsonResp({ updated: 1 });
+}
+
+// =========================================================
+//  DEFAULT SERVERS HANDLERS
+// =========================================================
+//  Serveurs IPTV par défaut proposés dans l'app cliente. Les URLs
+//  sont gérées ICI (panel admin) et lues par l'app via la route
+//  publique GET /api/servers (cf. worker.js). Le client choisit un
+//  serveur (« Serveur 1 », « Serveur 2 »…) et ne saisit que son code
+//  Xtream — l'URL reste cachée. Conforme AGENTS.md règle n°2 :
+//  aucune URL de flux IPTV n'est en dur dans l'app.
+
+/// Crée la table si besoin (idempotent). On la crée à la volée pour
+/// que la fonctionnalité marche même si la migration SQL n'a pas
+/// encore été jouée à la main sur la D1.
+async function ensureServersTable(env) {
+  await env.DB
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS default_servers (
+         id TEXT PRIMARY KEY,
+         label TEXT NOT NULL,
+         url TEXT NOT NULL,
+         position INTEGER NOT NULL DEFAULT 0,
+         enabled INTEGER NOT NULL DEFAULT 1,
+         created_at INTEGER NOT NULL,
+         updated_at INTEGER NOT NULL
+       )`,
+    )
+    .run();
+}
+
+async function handleServersList(env) {
+  await ensureServersTable(env);
+  const rs = await env.DB
+    .prepare(
+      `SELECT id, label, url, position, enabled, created_at, updated_at
+         FROM default_servers
+        ORDER BY position ASC, created_at ASC`,
+    )
+    .all();
+  return jsonResp({ items: rs.results || [] });
+}
+
+async function handleServersCreate(request, env, actor) {
+  await ensureServersTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const label = (body.label || '').trim();
+  const urlVal = (body.url || '').trim();
+  if (!label || !urlVal) {
+    return errResp('missing_fields', 'label and url required', 400);
+  }
+  // Position auto = max+1 si non fournie (le nouveau serveur arrive
+  // en bas de liste).
+  let position = Number.isFinite(body.position) ? body.position : null;
+  if (position === null) {
+    const row = await env.DB
+      .prepare('SELECT COALESCE(MAX(position), 0) AS m FROM default_servers')
+      .first();
+    position = ((row && row.m) || 0) + 1;
+  }
+  const id = body.id || genId('srv');
+  const now = Date.now();
+  await env.DB
+    .prepare(
+      `INSERT INTO default_servers
+        (id, label, url, position, enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(id, label, urlVal, position, body.enabled === false ? 0 : 1, now, now)
+    .run();
+  await logAudit(env, request, actor, 'server.create',
+    { type: 'server', id }, null, { label, url: urlVal });
+  return jsonResp({ id }, 201);
+}
+
+async function handleServersUpdate(request, env, id, actor) {
+  await ensureServersTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const before = await env.DB
+    .prepare('SELECT * FROM default_servers WHERE id = ?')
+    .bind(id)
+    .first();
+  if (!before) return errResp('not_found', 'Server not found', 404);
+  const fields = ['label', 'url', 'position', 'enabled'];
+  const sets = [];
+  const vals = [];
+  for (const f of fields) {
+    if (body[f] !== undefined) {
+      sets.push(`${f} = ?`);
+      vals.push(f === 'enabled' ? (body[f] ? 1 : 0) : body[f]);
+    }
+  }
+  if (sets.length === 0) return jsonResp({ updated: 0 });
+  sets.push('updated_at = ?');
+  vals.push(Date.now());
+  vals.push(id);
+  await env.DB
+    .prepare(`UPDATE default_servers SET ${sets.join(', ')} WHERE id = ?`)
+    .bind(...vals)
+    .run();
+  await logAudit(env, request, actor, 'server.update',
+    { type: 'server', id }, before, body);
+  return jsonResp({ updated: 1 });
+}
+
+async function handleServersDelete(request, env, id, actor) {
+  await ensureServersTable(env);
+  const before = await env.DB
+    .prepare('SELECT * FROM default_servers WHERE id = ?')
+    .bind(id)
+    .first();
+  if (!before) return errResp('not_found', 'Server not found', 404);
+  await env.DB.prepare('DELETE FROM default_servers WHERE id = ?').bind(id).run();
+  await logAudit(env, request, actor, 'server.delete',
+    { type: 'server', id }, before, null);
+  return jsonResp({ deleted: 1 });
 }
 
 // =========================================================

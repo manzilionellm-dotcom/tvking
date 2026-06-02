@@ -163,6 +163,46 @@ export const appsApi = {
     request<{ id: string }>('/api/v1/apps', { method: 'POST', body: payload }),
 };
 
+// =========================================================
+//  SERVEURS PAR DÉFAUT (proposés dans l'app cliente)
+// =========================================================
+//  Le client ne saisit jamais d'URL : il choisit « Serveur 1 / 2 / 3… »
+//  et tape son code Xtream. On gère ici les URLs (cachées côté app).
+export interface DefaultServer {
+  id: string;
+  label: string;
+  url: string;
+  position: number;
+  enabled: number;
+  created_at: number;
+  updated_at: number;
+}
+export const serversApi = {
+  list: () => request<{ items: DefaultServer[] }>('/api/v1/servers'),
+  create: (payload: {
+    label: string;
+    url: string;
+    position?: number;
+    enabled?: boolean;
+  }) =>
+    request<{ id: string }>('/api/v1/servers', { method: 'POST', body: payload }),
+  update: (
+    id: string,
+    payload: Partial<{
+      label: string;
+      url: string;
+      position: number;
+      enabled: boolean;
+    }>,
+  ) =>
+    request<{ updated: number }>(`/api/v1/servers/${id}`, {
+      method: 'PATCH',
+      body: payload,
+    }),
+  remove: (id: string) =>
+    request<{ deleted: number }>(`/api/v1/servers/${id}`, { method: 'DELETE' }),
+};
+
 export interface Customer {
   id: string;
   email: string | null;

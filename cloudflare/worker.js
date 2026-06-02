@@ -1328,7 +1328,42 @@ async function handlePublicConfig(env, mac) {
 //  `url` = base du serveur Xtream (avec le port si nécessaire), SANS
 //  `/get.php` ni identifiants — l'app les ajoute à partir du code que
 //  le client saisit.
-function handlePublicServers(env) {
+//
+//  Source de vérité :
+//    1. Table D1 `default_servers` — éditée depuis le PANEL ADMIN
+//       (ajouter / changer / supprimer des serveurs « Serveur 1, 2,
+//       3… »). C'est la source normale.
+//    2. Repli sur la variable d'environnement `DEFAULT_SERVERS` si la
+//       base D1 est absente, vide, ou en erreur (ex. migration pas
+//       encore jouée) — ça garantit que l'app a toujours au moins le
+//       serveur par défaut.
+async function handlePublicServers(env) {
+  // --- 1. D1 (panel admin) ---
+  if (env.DB) {
+    try {
+      const rs = await env.DB
+        .prepare(
+          `SELECT id, label, url FROM default_servers
+            WHERE enabled = 1
+            ORDER BY position ASC, created_at ASC`,
+        )
+        .all();
+      const rows = (rs && rs.results) || [];
+      if (rows.length > 0) {
+        return json({
+          servers: rows.map((r) => ({
+            id: String(r.id),
+            label: String(r.label),
+            url: String(r.url).trim(),
+          })),
+        });
+      }
+    } catch (_) {
+      // Table absente / D1 indisponible → on tombe sur le repli env.
+    }
+  }
+
+  // --- 2. Repli : variable d'environnement DEFAULT_SERVERS ---
   let servers = [];
   const raw = env.DEFAULT_SERVERS;
   if (raw) {
@@ -1400,7 +1435,7 @@ export default {
       if (request.method !== 'GET') {
         return badRequest('only GET supported on /api/servers');
       }
-      return handlePublicServers(env);
+      return await handlePublicServers(env);
     }
 
     // /admin/panel — page HTML du panel admin (auth via input dans la page)

@@ -38,6 +38,7 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.devices': { fr: 'Appareils', en: 'Devices', ar: 'الأجهزة' },
   'nav.myDevices': { fr: 'Mes appareils', en: 'My devices', ar: 'أجهزتي' },
   'nav.apps': { fr: 'Applications', en: 'Apps', ar: 'التطبيقات' },
+  'nav.servers': { fr: 'Serveurs', en: 'Servers', ar: 'الخوادم' },
   'nav.activations': { fr: 'Activations', en: 'Activations', ar: 'التفعيلات' },
   'nav.myActivations': { fr: 'Mes activations', en: 'My activations', ar: 'تفعيلاتي' },
   'nav.account': { fr: 'Mon compte', en: 'My account', ar: 'حسابي' },
