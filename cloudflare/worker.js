@@ -878,8 +878,8 @@ const HTML_HEADERS = {
 const JSON_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'X-Admin-Secret, Content-Type',
-  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+  'Access-Control-Allow-Headers': 'Authorization, X-Admin-Secret, Content-Type',
+  'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
   'Cache-Control': 'no-store',
 };
 
