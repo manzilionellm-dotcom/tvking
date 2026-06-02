@@ -51,7 +51,10 @@ jobs:
       - name: Build (point le panel vers le Worker prod)
         working-directory: admin-panel
         env:
-          VITE_API_BASE: 'https://99999.7themotion.com'
+          # Le Worker qui porte l'API revendeurs + la base D1 est deploye
+          # sur ce sous-domaine workers.dev (cf. logs deploy-worker).
+          # 99999.7themotion.com sert un ANCIEN worker -> ne pas l'utiliser.
+          VITE_API_BASE: 'https://seven-motion-backend.manzilionel-lm.workers.dev'
         run: npm run build
 
       # Cree le projet Pages s'il n'existe pas encore (idempotent :
