@@ -138,6 +138,17 @@ jobs:
           find "$RES" -name '*.png' -exec ls -la {} \;
 
       # -------- 4) Build APK --------
+      # Version UNIQUE par build : sinon Android voit le meme versionCode
+      # et REFUSE de mettre a jour (l'ancienne version cassee reste). On
+      # injecte le numero de run comme versionCode + versionName.
+      - name: Set unique version from run number
+        run: |
+          set -e
+          GB=nova-tv-wrapper/app/build.gradle.kts
+          sed -i "s/versionCode = 1/versionCode = ${{ github.run_number }}/" "$GB"
+          sed -i "s/versionName = \"1.0.0\"/versionName = \"1.0.${{ github.run_number }}\"/" "$GB"
+          grep -nE "versionCode|versionName" "$GB"
+
       - name: Make gradlew executable
         run: chmod +x nova-tv-wrapper/gradlew
 
