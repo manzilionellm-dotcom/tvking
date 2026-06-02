@@ -152,6 +152,7 @@ export interface App {
   default_iptv_server: string | null;
   default_playlist_type: string;
   pricing_json: string | null;
+  download_url: string | null;
   is_active: number;
   created_at: number;
   updated_at: number;

@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { CopyLink } from '@/components/CopyLink';
 import { appsApi, type App, ApiError } from '@/lib/api';
 
 export function AppsPage({ onLogout }: { onLogout: () => void }) {
@@ -71,6 +72,14 @@ export function AppsPage({ onLogout }: { onLogout: () => void }) {
                 </span>
               </div>
               {a.tagline && <p className="mt-3 text-xs text-ink-secondary">{a.tagline}</p>}
+              {a.download_url && (
+                <div className="mt-4">
+                  <p className="mb-1.5 text-[10px] uppercase tracking-widest text-ink-tertiary">
+                    Lien de téléchargement (à donner au client)
+                  </p>
+                  <CopyLink url={a.download_url} />
+                </div>
+              )}
             </div>
           ))}
           {items.length === 0 && (
@@ -98,6 +107,7 @@ function CreateAppModal({
   const [pkg, setPkg] = useState('');
   const [tagline, setTagline] = useState('');
   const [color, setColor] = useState('#D63A30');
+  const [download, setDownload] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -114,6 +124,7 @@ function CreateAppModal({
         package_name: pkg.trim(),
         tagline: tagline.trim() || null,
         primary_color: color,
+        download_url: download.trim() || null,
       });
       onCreated();
     } catch (e: any) {
@@ -140,6 +151,9 @@ function CreateAppModal({
               <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-9 w-12 cursor-pointer rounded border border-white/10 bg-slate" />
               <input value={color} onChange={(e) => setColor(e.target.value)} className={`${inputCls} font-mono`} />
             </div>
+          </Field>
+          <Field label="Lien de téléchargement (à donner aux clients)">
+            <input value={download} onChange={(e) => setDownload(e.target.value)} className={`${inputCls} font-mono`} placeholder="https://99999.7themotion.com/dl" />
           </Field>
           {err && <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>}
           <div className="flex justify-end gap-2 pt-2">

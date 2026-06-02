@@ -574,7 +574,7 @@ async function handleAppsList(env) {
     .prepare(
       `SELECT id, name, package_name, primary_color, tagline,
               default_iptv_server, default_playlist_type, pricing_json,
-              is_active, created_at, updated_at
+              download_url, is_active, created_at, updated_at
        FROM apps ORDER BY name ASC`,
     )
     .all();
@@ -606,8 +606,8 @@ async function handleAppsCreate(request, env, actor) {
         `INSERT INTO apps
           (id, name, package_name, logo_url, primary_color, tagline,
            default_iptv_server, default_playlist_type, pricing_json,
-           is_active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           download_url, is_active, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -619,6 +619,7 @@ async function handleAppsCreate(request, env, actor) {
         body.default_iptv_server || null,
         body.default_playlist_type || 'xtream',
         body.pricing_json ? JSON.stringify(body.pricing_json) : null,
+        body.download_url || null,
         body.is_active === false ? 0 : 1,
         now,
         now,

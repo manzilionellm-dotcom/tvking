@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS apps (
   default_iptv_server TEXT,                      -- e.g. "http://pro.best-iptvinreviews.com"
   default_playlist_type TEXT NOT NULL DEFAULT 'xtream',   -- 'xtream' | 'm3u' | 'none'
   pricing_json    TEXT,                          -- '{"monthly":500,"yearly":1300,"lifetime":9900}' (cents)
+  download_url    TEXT,                          -- lien Downloader/APK a donner aux clients
   is_active       INTEGER NOT NULL DEFAULT 1,
   created_at      INTEGER NOT NULL,
   updated_at      INTEGER NOT NULL

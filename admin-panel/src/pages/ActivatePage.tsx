@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { CopyLink } from '@/components/CopyLink';
 import {
   activateApi, appsApi, planCostsApi, meApi,
   getCurrentUser, isOwnerRole,
@@ -127,6 +128,17 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
             </select>
+            {(() => {
+              const dl = apps.find((a) => a.id === appId)?.download_url;
+              return dl ? (
+                <div className="mt-2">
+                  <p className="mb-1 text-[10px] uppercase tracking-widest text-ink-tertiary">
+                    Lien de téléchargement (à donner au client)
+                  </p>
+                  <CopyLink url={dl} />
+                </div>
+              ) : null;
+            })()}
           </div>
 
           <div>
