@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  themes.xml — Theme racine de l'app TV.
+
+  - parent Theme.AppCompat.NoActionBar : pas de toolbar, on est en plein
+    ecran (la WebView gere son propre layout).
+  - windowBackground = void Maison Noir pour que le boot transition (avant
+    que la WebView soit prete) ne flashe pas en blanc.
+-->
+<resources>
+    <style name="Theme.TvKing" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/black_void</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

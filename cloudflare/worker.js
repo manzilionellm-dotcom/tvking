@@ -87,6 +87,13 @@ const REDROOM_APK_URL =
 const TV_APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-latest/tv-king-tv.apk';
 
+// NOVA+ : nouvelle app TV (front Next.js exporte en statique, embarque
+// dans un wrapper WebView). Publiee sur la release `nova-latest` par le
+// workflow CI `build-nova-tv.yml`. Lien court Downloader :
+//   https://99999.7themotion.com/nova
+const NOVA_APK_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/nova-latest/nova.apk';
+
 // ===========================================================
 //  Proxy APK avec cache edge Cloudflare (perf Downloader)
 // ===========================================================
@@ -1504,6 +1511,16 @@ export default {
       (segments.length === 2 && segments[0] === 'tv' && segments[1] === 'dl')
     ) {
       return proxyApk(TV_APK_URL, 'tv-king-tv.apk');
+    }
+
+    // /nova — app NOVA+ pour Android TV / Fire TV. URL courte a coller
+    // dans Downloader : "https://99999.7themotion.com/nova". Proxy via
+    // le cache edge Cloudflare (telechargements rapides cote TV).
+    if (
+      (segments.length === 1 && segments[0] === 'nova') ||
+      (segments.length === 2 && segments[0] === 'nova' && segments[1] === 'dl')
+    ) {
+      return proxyApk(NOVA_APK_URL, 'nova.apk');
     }
 
     // /cast-receiver — page HTML CAF pour Google Cast Custom Receiver.

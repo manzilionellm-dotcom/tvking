@@ -10,7 +10,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AddToListButton } from "../../components/AddToListButton";
 import { LevelBadge, LiveBadge } from "../../components/Badge";
-import { getById, getUniverseMeta } from "../../lib/data";
+import { getById, getUniverseMeta, MEDIA } from "../../lib/data";
+
+// Export statique (APK TV) : on pré-génère une page par contenu connu.
+export function generateStaticParams() {
+  return MEDIA.map((m) => ({ slug: m.id }));
+}
 
 export default async function TitlePage({
   params,

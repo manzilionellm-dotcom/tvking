@@ -7,7 +7,12 @@
 
 import { notFound } from "next/navigation";
 import { Player } from "../../components/Player";
-import { getById, getByUniverse } from "../../lib/data";
+import { getById, getByUniverse, MEDIA } from "../../lib/data";
+
+// Export statique (APK TV) : une page lecteur par contenu connu.
+export function generateStaticParams() {
+  return MEDIA.map((m) => ({ slug: m.id }));
+}
 
 export default async function WatchPage({
   params,

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Localise FR par defaut. La WebView affiche tv-web qui gere sa
+     propre i18n; ces strings ne servent que pour le launcher / le
+     gestionnaire d'apps Android TV. -->
+<resources>
+    <string name="app_name">NOVA+</string>
+</resources>

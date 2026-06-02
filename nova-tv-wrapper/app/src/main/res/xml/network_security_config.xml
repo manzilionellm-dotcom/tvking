@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  network_security_config.xml — Autorise les flux IPTV en HTTP
+
+  Les serveurs Xtream Codes utilisent quasi tous HTTP simple (rarement
+  HTTPS). Depuis Android 9 (Pie), cleartext est bloque par defaut.
+  On autorise globalement parce que :
+    1. L'utilisateur APPORTE l'URL — c'est sa responsabilite de fournir
+       une source legitime (cf. AGENTS.md du repo).
+    2. Bloquer http:// rendrait l'app inutilisable pour 90% des
+       fournisseurs.
+    3. Pas de mot de passe utilisateur en jeu (Xtream user/pass
+       transite deja sur le LAN-WAN en clair quoi qu'il arrive).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
