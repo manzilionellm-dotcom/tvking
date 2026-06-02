@@ -94,3 +94,14 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: 'cloudflare'
           command: d1 execute tvking_licensing --remote --file=migrations/005_app_download.sql
+
+      - name: Apply migration 006 (app NOVA+)
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        env:
+          CI: 'true'
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'cloudflare'
+          command: d1 execute tvking_licensing --remote --file=migrations/006_app_nova.sql
