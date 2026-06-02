@@ -16,6 +16,7 @@
 // =========================================================
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -35,7 +36,6 @@ import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../onboarding/data/device_class_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
-import '../../recordings/data/http_recording_downloader.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
@@ -386,67 +386,34 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         programTitle: widget.overrideTitle,
       );
 
-      // NOUVEAU PIPELINE : on n'utilise PLUS `stream-record` de libmpv
-      // qui s'avère silencieusement inopérant sur les flux IPTV
-      // testés par l'utilisateur (BFM TV 3 min → 0 octets).
-      //
-      // À la place, un downloader HTTP en Dart pur (cf.
-      // http_recording_downloader.dart) ouvre une 2e connexion vers
-      // le même streamUrl et écrit les bytes dans le fichier .ts au
-      // fur et à mesure. Plus aucune dépendance à libmpv pour
-      // l'enregistrement — on contrôle TOUT côté Dart.
-      //
-      // Note : 2 connexions HTTP au serveur Xtream (1 pour le player,
-      // 1 pour le downloader). Certains fournisseurs limitent à 1
-      // connexion/credentials — on verra à l'usage.
-      // ORDRE CRITIQUE POUR L'ENREGISTREMENT EN ARRIÈRE-PLAN :
-      //
-      //   1. Démarrer le ForegroundService EN PREMIER pour qu'il
-      //      acquière le PartialWakeLock + WifiLock AVANT que la
-      //      requête HTTP du downloader ne s'ouvre. Sinon, dès que
-      //      l'user appuie HOME, Android met le CPU en sommeil et
-      //      coupe le WiFi → la socket HTTP est tuée → enregistrement
-      //      s'arrête sans qu'on s'en rende compte.
-      //
-      //   2. PUIS lancer le download HTTP qui hérite du contexte
-      //      'awake' garanti par les locks du service.
-      //
-      // C'était le bug du screenshot 'ADULT: ALBA XXX' du user :
-      // 27 Mo en foreground, 0 octet de plus dès qu'il quittait l'app.
-      await RecordingService.instance.start(
-        title: widget.overrideTitle != null && widget.overrideTitle!.isNotEmpty
-            ? '${_currentChannel.cleanName} – ${widget.overrideTitle}'
-            : _currentChannel.cleanName,
-      );
+      final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
 
-      // MODE ENREGISTREMENT 1 CONNEXION (choix user 2026-06-01) :
-      // On STOPPE la lecture pour liberer l'unique connexion que le
-      // fournisseur autorise — sinon le downloader ouvrirait une 2e
-      // connexion, refusee par le serveur (fichier 0 octet). La
-      // lecture reprend automatiquement dans _stopRecording.
+      // PIPELINE NATIF + MODE 1 CONNEXION (choix user 2026-06-01) :
+      //
+      //   1. On STOPPE la lecture → libère l'unique connexion autorisée
+      //      par le fournisseur. Sinon le téléchargement ouvrirait une
+      //      2e connexion, refusée par le serveur (fichier 0 octet).
       await _player.stop();
       if (mounted) setState(() => _recordPausedPlayback = true);
 
-      final bool ok = await HttpRecordingDownloader.instance.start(
-        streamUrl: _currentChannel.streamUrl,
+      //   2. Le ForegroundService NATIF (Kotlin) télécharge lui-même le
+      //      flux dans le fichier. Comme le download vit côté natif (pas
+      //      en Dart), il SURVIT à la fermeture de l'app par
+      //      l'utilisateur (swipe) pendant des heures — wakelock +
+      //      wifilock + notification persistante inclus.
+      final String title = widget.overrideTitle != null &&
+              widget.overrideTitle!.isNotEmpty
+          ? '${_currentChannel.cleanName} – ${widget.overrideTitle}'
+          : _currentChannel.cleanName;
+      final bool ok = await RecordingService.instance.start(
+        title: title,
+        url: url,
         filePath: path,
-        // Appelé si le job s'arrête de LUI-MÊME : plafond de 6 h
-        // atteint, serveur définitivement injoignable, OU echec disque
-        // consecutif (Phase 1 / F-02). Le second argument indique la
-        // cause precise pour qu'on affiche le bon message.
-        onAutoStopped: _onRecordingAutoStopped,
       );
       if (!ok) {
-        // Si le download n'a pas pu démarrer, on annule aussi le
-        // service pour ne pas garder une notification fantôme, ET on
-        // reprend la lecture qu'on venait de stopper.
         await RecordingService.instance.stop();
         _resumePlaybackAfterRecord();
-        _toast(
-          'Enregistrement impossible : le serveur a refusé la requête. '
-          'Vérifie ton URL ou demande à ton fournisseur d\'autoriser '
-          '2 connexions sur ton compte.',
-        );
+        _toast('Enregistrement impossible à démarrer. Réessaie.');
         return;
       }
 
@@ -457,18 +424,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         programTitle: widget.overrideTitle,
         filePath: path,
         channelLogoUrl: _currentChannel.logoUrl,
-        // Phase 1 / F-04 : on persiste l'URL upstream pour le
-        // diagnostic et pour preparer un futur resume apres kill OS.
-        streamUrl: _currentChannel.streamUrl,
+        streamUrl: url,
       );
 
       if (mounted) {
         setState(() => _activeRecording = rec);
-        _toast(
-          'Enregistrement démarré — continue même hors application',
-        );
+        _toast('Enregistrement démarré — continue même app fermée');
       }
     } catch (e) {
+      _resumePlaybackAfterRecord();
       _toast('Impossible de démarrer : $e');
     }
   }
@@ -477,43 +441,33 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     try {
       final Recording? rec = _activeRecording;
 
-      // Arrête UNIQUEMENT le job de CE recording (par filePath).
-      // Critique pour les recordings parallèles : sinon on tuerait
-      // aussi les autres chaînes que l'user enregistre en même temps
-      // depuis d'autres sessions player.
-      final int bytes = rec != null
-          ? await HttpRecordingDownloader.instance.stop(filePath: rec.filePath)
-          : await HttpRecordingDownloader.instance.stop();
+      // Arrête le téléchargement natif + le ForegroundService.
+      await RecordingService.instance.stop();
 
+      // Taille réelle du fichier écrit par le service natif.
+      int bytes = 0;
       if (rec != null) {
+        try {
+          final File f = File(rec.filePath);
+          if (await f.exists()) bytes = await f.length();
+        } catch (_) {}
         await RecordingRepository.instance.finishRecording(rec);
       }
 
-      // Le ForegroundService natif ne s'arrête QUE si plus AUCUN
-      // recording n'est actif. Sinon on garde le service vivant
-      // pour protéger les autres enregistrements parallèles.
-      if (HttpRecordingDownloader.instance.activeCount == 0) {
-        await RecordingService.instance.stop();
-      }
-
-      // Mode 1 connexion : la connexion est libérée → on reprend la
-      // lecture là où on en était (live) ou au début (VOD).
+      // Connexion libérée → on reprend la lecture.
       _resumePlaybackAfterRecord();
 
       if (mounted) {
         setState(() => _activeRecording = null);
-        // Formatage taille : Bytes / KB / MB / GB selon ordre de grandeur.
         final String sizeLabel = _humanSize(bytes);
         if (bytes == 0) {
           _toast(
-            'Enregistrement vide — le serveur n\'a renvoyé aucune donnée. '
-            'Réessaie ; si ça persiste, ce flux n\'autorise pas '
-            'l\'enregistrement.',
+            'Enregistrement vide — le serveur n\'a renvoyé aucune donnée '
+            'pour ce flux. Réessaie sur une autre chaîne.',
           );
         } else {
           _toast(
-            'Enregistrement sauvegardé ($sizeLabel) — '
-            'exporte depuis Mes enregistrements',
+            'Enregistrement sauvegardé ($sizeLabel) — Mes enregistrements',
           );
         }
       }
@@ -602,54 +556,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     );
   }
 
-  /// Callback déclenché par le downloader quand un enregistrement
-  /// s'arrête TOUT SEUL (plafond de 6 h atteint, serveur devenu
-  /// injoignable après plusieurs reconnexions, OU erreur disque
-  /// consecutive — Phase 1 / F-02). On finalise la fiche en base
-  /// par son chemin (robuste même si l'UI a changé), on coupe le
-  /// ForegroundService s'il ne reste plus aucun job, et on retire le
-  /// badge "REC" si c'est bien l'enregistrement courant.
-  ///
-  /// Le message UX (Phase 1 / F-03) est choisi en fonction de
-  /// [reason] : on ne dit plus "limite de 6 h" quand c'est en fait
-  /// le serveur ou le disque qui a coupe.
-  Future<void> _onRecordingAutoStopped(
-    String filePath,
-    AutoStopReason reason,
-  ) async {
-    try {
-      await RecordingRepository.instance.finishRecordingByPath(
-        filePath,
-        reason: reason.name,
-      );
-      if (HttpRecordingDownloader.instance.activeCount == 0) {
-        await RecordingService.instance.stop();
-      }
-      if (mounted && _activeRecording?.filePath == filePath) {
-        setState(() => _activeRecording = null);
-        _toast(_autoStopMessage(reason));
-      }
-    } catch (e) {
-      if (kDebugMode) debugPrint('[Player] auto-stop finalize KO: $e');
-    }
-  }
-
-  /// Texte court, en francais, accessible — un message different par
-  /// cause (Phase 1 / F-03). Reste sous 130 caracteres pour ne pas
-  /// debordre le toast Material.
-  String _autoStopMessage(AutoStopReason reason) {
-    switch (reason) {
-      case AutoStopReason.maxDurationReached:
-        return 'Enregistrement terminé — '
-            'retrouve-le dans Mes enregistrements';
-      case AutoStopReason.serverUnreachable:
-        return 'Enregistrement arrêté : ton serveur IPTV ne répond plus. '
-            'Le fichier est sauvegardé dans Mes enregistrements.';
-      case AutoStopReason.diskError:
-        return 'Enregistrement arrêté : stockage insuffisant ou écriture '
-            'impossible. Vérifie l\'espace libre.';
-    }
-  }
+  // (Auto-stop callback retiré : l'enregistrement est désormais piloté
+  //  nativement (RecordingForegroundService). La gestion des coupures
+  //  serveur / reconnexions vit côté Kotlin.)
 
   /// Convertit un nombre d'octets en chaîne lisible (KB / MB / GB).
   String _humanSize(int bytes) {

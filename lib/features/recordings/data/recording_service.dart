@@ -31,11 +31,25 @@ class RecordingService {
   /// Best effort : ne throw jamais ; si le service ne démarre pas,
   /// l'enregistrement continue quand même mais sans la garantie
   /// anti-kill (l'OS peut le couper si on quitte l'app).
-  Future<bool> start({required String title}) async {
+  ///
+  /// Si [url] ET [filePath] sont fournis, le service enregistre
+  /// NATIVEMENT (le téléchargement vit dans le service Android) : il
+  /// survit donc à la fermeture de l'app par l'utilisateur (swipe),
+  /// pendant des heures. Sans url/filePath, le service ne fait que
+  /// maintenir le process en vie.
+  Future<bool> start({
+    required String title,
+    String? url,
+    String? filePath,
+  }) async {
     try {
       final bool? ok = await _channel.invokeMethod<bool>(
         'start',
-        <String, dynamic>{'title': title},
+        <String, dynamic>{
+          'title': title,
+          if (url != null) 'url': url,
+          if (filePath != null) 'file': filePath,
+        },
       );
       return ok ?? false;
     } on PlatformException catch (e) {
@@ -46,6 +60,19 @@ class RecordingService {
     } on MissingPluginException {
       // Channel pas câblé côté natif (iOS, ou build sans overlay)
       return false;
+    }
+  }
+
+  /// Octets écrits par l'enregistrement natif en cours (0 si inactif
+  /// ou non supporté). Best effort.
+  Future<int> bytes() async {
+    try {
+      final int? n = await _channel.invokeMethod<int>('bytes');
+      return n ?? 0;
+    } on PlatformException {
+      return 0;
+    } on MissingPluginException {
+      return 0;
     }
   }
 

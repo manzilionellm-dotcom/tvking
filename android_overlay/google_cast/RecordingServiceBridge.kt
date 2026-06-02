@@ -41,8 +41,16 @@ class RecordingServiceBridge(
             when (call.method) {
                 "start" -> {
                     val title = call.argument<String>("title") ?: "7 MOTION"
-                    startService(title)
+                    // url + file optionnels : si fournis, le service
+                    // enregistre NATIVEMENT (survit a la fermeture app).
+                    val url = call.argument<String>("url")
+                    val file = call.argument<String>("file")
+                    startService(title, url, file)
                     result.success(true)
+                }
+                "bytes" -> {
+                    // Octets ecrits par l'enregistrement natif en cours.
+                    result.success(RecordingForegroundService.bytesWritten)
                 }
                 "stop" -> {
                     stopService()
@@ -56,10 +64,12 @@ class RecordingServiceBridge(
         }
     }
 
-    private fun startService(title: String) {
+    private fun startService(title: String, url: String?, file: String?) {
         val intent = Intent(context, RecordingForegroundService::class.java).apply {
             action = RecordingForegroundService.ACTION_START
             putExtra(RecordingForegroundService.EXTRA_TITLE, title)
+            if (url != null) putExtra(RecordingForegroundService.EXTRA_URL, url)
+            if (file != null) putExtra(RecordingForegroundService.EXTRA_FILE, file)
         }
         // Sur Android 8+ il faut startForegroundService(), pas startService().
         // ContextCompat fait le bon choix selon l'API level.

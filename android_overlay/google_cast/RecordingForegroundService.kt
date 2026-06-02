@@ -56,7 +56,27 @@ class RecordingForegroundService : Service() {
         const val ACTION_START = "com.manzilionellm.tvking.recording.START"
         const val ACTION_STOP = "com.manzilionellm.tvking.recording.STOP"
         const val EXTRA_TITLE = "title"
+        const val EXTRA_URL = "url"
+        const val EXTRA_FILE = "file"
+
+        /// Octets écrits par l'enregistrement natif en cours. Lu en
+        /// best-effort par Dart si besoin. 0 = inactif.
+        @Volatile
+        var bytesWritten: Long = 0L
     }
+
+    /// Flag de vie du thread de téléchargement natif. `false` = arrêt
+    /// propre demandé (flush + close du fichier).
+    @Volatile
+    private var recording = false
+    private var downloadThread: Thread? = null
+    // Connexion HTTP en cours : gardee pour pouvoir la couper net
+    // depuis stopDownload() (debloque un read() bloque sur la socket).
+    @Volatile
+    private var activeConn: java.net.HttpURLConnection? = null
+    // Mémorisés pour re-livraison si l'OS redémarre le service.
+    private var currentUrl: String? = null
+    private var currentFile: String? = null
 
     /// PartialWakeLock = garde le CPU actif même quand l'écran s'éteint.
     /// CRITIQUE pour que le Dart isolate continue de tourner et que
@@ -76,13 +96,22 @@ class RecordingForegroundService : Service() {
         when (intent?.action) {
             ACTION_START -> {
                 val title = intent.getStringExtra(EXTRA_TITLE) ?: "7 MOTION"
-                Log.i(TAG, "START foreground: $title")
+                val url = intent.getStringExtra(EXTRA_URL)
+                val file = intent.getStringExtra(EXTRA_FILE)
+                Log.i(TAG, "START foreground: $title (url=${url != null})")
                 createChannelIfNeeded()
                 startForeground(NOTIFICATION_ID, buildNotification(title))
                 acquireLocks()
+                // Si une URL + un fichier sont fournis, on enregistre
+                // NATIVEMENT (le telechargement vit dans CE service, donc
+                // il survit a la fermeture de l'app par l'utilisateur).
+                if (url != null && file != null) {
+                    startDownload(url, file)
+                }
             }
             ACTION_STOP -> {
                 Log.i(TAG, "STOP foreground")
+                stopDownload()
                 releaseLocks()
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
@@ -93,25 +122,145 @@ class RecordingForegroundService : Service() {
                 stopSelf()
             }
             else -> {
-                // Service redémarré par le système après un kill mémoire.
-                // On ne sait plus quel titre était en cours → on s'arrête.
+                // Service redémarré par le système après un kill mémoire
+                // (START_REDELIVER_INTENT re-livre normalement l'intent
+                // d'origine — ici pas d'action exploitable → on s'arrête).
                 Log.w(TAG, "onStartCommand sans action — stop")
+                stopDownload()
                 releaseLocks()
                 stopSelf()
             }
         }
-        // NOT_STICKY = ne pas redémarrer le service si killed. Cohérent
-        // car libmpv aussi sera mort → relancer un foreground sans
-        // enregistrement actif n'a aucun sens.
-        return START_NOT_STICKY
+        // START_REDELIVER_INTENT : si l'OS tue le service par pression
+        // memoire, il le relance avec le DERNIER intent (URL + fichier),
+        // et l'enregistrement reprend (append au fichier). Combine au
+        // foreground + wakelock, ca rend l'enregistrement resilient.
+        return START_REDELIVER_INTENT
+    }
+
+    /// L'utilisateur a "swipe" l'app hors des recents. On NE STOPPE PAS
+    /// l'enregistrement : c'est tout l'interet du natif. Le service
+    /// foreground continue de tourner et d'ecrire le fichier.
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.i(TAG, "onTaskRemoved — app fermee, l'enregistrement CONTINUE")
+        // Volontairement vide (pas de stopSelf) → survie au swipe.
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
         // Sécurité : si le service est détruit sans ACTION_STOP propre
-        // (kill par l'OS, crash, etc.), on libère les locks pour ne
-        // pas laisser le tel surchauffer / vider la batterie.
+        // (kill par l'OS, crash, etc.), on arrête le download + libère
+        // les locks pour ne pas laisser le tel surchauffer.
+        stopDownload()
         releaseLocks()
         super.onDestroy()
+    }
+
+    // =========================================================
+    //  Téléchargement natif (survit a la fermeture de l'app)
+    // =========================================================
+    //  Streaming pur HttpURLConnection -> fichier, avec reconnexion
+    //  automatique : les serveurs IPTV ferment periodiquement la
+    //  socket (idle/keepalive) en envoyant un EOF ; on rouvre et on
+    //  continue d'ecrire (append) au lieu d'arreter. Couvre les flux
+    //  bruts MPEG-TS (.ts) et les fichiers directs (.mp4/.mkv).
+
+    private fun startDownload(url: String, filePath: String) {
+        if (recording) return
+        recording = true
+        currentUrl = url
+        currentFile = filePath
+        bytesWritten = 0L
+        downloadThread = Thread {
+            var out: java.io.FileOutputStream? = null
+            var attempts = 0
+            try {
+                // append=true : si l'OS a redemarre le service, on
+                // continue le meme fichier au lieu de l'ecraser.
+                out = java.io.FileOutputStream(java.io.File(filePath), true)
+                val buf = ByteArray(64 * 1024)
+                while (recording) {
+                    var conn: java.net.HttpURLConnection? = null
+                    try {
+                        conn = (java.net.URL(url).openConnection()
+                                as java.net.HttpURLConnection).apply {
+                            connectTimeout = 15000
+                            readTimeout = 30000
+                            instanceFollowRedirects = true
+                            setRequestProperty(
+                                "User-Agent",
+                                "VLC/3.0.20 LibVLC/3.0.20 (7 MOTION)",
+                            )
+                        }
+                        activeConn = conn
+                        val code = conn.responseCode
+                        if (code !in 200..299) {
+                            // 401/403 = abonnement/credentials → inutile
+                            // d'insister. Autres 4xx/5xx → backoff + retry.
+                            if (code == 401 || code == 403) {
+                                Log.w(TAG, "HTTP $code — arret recording")
+                                break
+                            }
+                            attempts++
+                            if (attempts > 30) break
+                            Thread.sleep(2000)
+                            continue
+                        }
+                        attempts = 0
+                        val input = conn.inputStream
+                        while (recording) {
+                            val n = input.read(buf)
+                            if (n < 0) break // EOF → reconnecter
+                            out.write(buf, 0, n)
+                            bytesWritten += n
+                        }
+                        try { input.close() } catch (_: Throwable) {}
+                        if (!recording) break
+                        // EOF mais on enregistre toujours : le serveur a
+                        // coupe → petite pause puis reconnexion.
+                        Thread.sleep(500)
+                    } catch (e: InterruptedException) {
+                        break
+                    } catch (e: Throwable) {
+                        if (!recording) break
+                        attempts++
+                        if (attempts > 30) break
+                        Log.w(TAG, "reconnect (#$attempts) apres: ${e.message}")
+                        try { Thread.sleep(2000) } catch (_: Throwable) { break }
+                    } finally {
+                        activeConn = null
+                        try { conn?.disconnect() } catch (_: Throwable) {}
+                    }
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "download fatal: $e", e)
+            } finally {
+                try {
+                    out?.flush()
+                    out?.fd?.sync()
+                    out?.close()
+                } catch (_: Throwable) {}
+                Log.i(TAG, "download termine, octets=$bytesWritten")
+            }
+        }.apply {
+            isDaemon = true
+            name = "rec-download"
+            start()
+        }
+    }
+
+    private fun stopDownload() {
+        recording = false
+        // Couper la socket en cours pour debloquer un read() bloque.
+        try { activeConn?.disconnect() } catch (_: Throwable) {}
+        try {
+            downloadThread?.interrupt()
+            downloadThread?.join(3000)
+        } catch (_: Throwable) {}
+        downloadThread = null
+        activeConn = null
+        currentUrl = null
+        currentFile = null
     }
 
     /// Acquiert PartialWakeLock (CPU) + WifiLock (réseau). À appeler
