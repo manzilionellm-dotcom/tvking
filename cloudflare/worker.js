@@ -486,8 +486,8 @@ const LANDING_HTML = `<!doctype html>
       <h2>Installation via Downloader</h2>
       <ol>
         <li>Lance <strong>Downloader</strong> sur ta Fire TV / Android TV</li>
-        <li>Tape l'URL : <code>7themotion.com/dl</code>
-            <br>ou un code court : <code>7themotion.com/1</code>, <code>7themotion.com/666666</code></li>
+        <li>Tape l'URL : <code>__HOST__/dl</code>
+            <br>ou un code court : <code>__HOST__/1</code>, <code>__HOST__/666666</code></li>
         <li>Bouton <strong>GO</strong> &rarr; téléchargement automatique</li>
         <li>Bouton <strong>Install</strong> quand le téléchargement finit</li>
       </ol>
@@ -1524,9 +1524,13 @@ export default {
       }
     }
 
-    // / — landing page HTML (téléchargement + tuto Downloader)
+    // / — landing page HTML (téléchargement + tuto Downloader).
+    // On injecte le DOMAINE réellement utilisé par le visiteur (url.host)
+    // à la place du placeholder __HOST__ : ainsi la page affiche TON
+    // domaine (ex. tondomaine.com/dl) et n'expose jamais 7themotion.com.
     if (segments.length === 0) {
-      return new Response(LANDING_HTML, { headers: HTML_HEADERS });
+      const html = LANDING_HTML.replaceAll('__HOST__', url.host);
+      return new Response(html, { headers: HTML_HEADERS });
     }
 
     // /dl — proxy l'APK GitHub release a travers le cache edge
