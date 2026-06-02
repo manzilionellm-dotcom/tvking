@@ -424,6 +424,13 @@ export async function apiV1(request, env) {
       if (request.method === 'GET') return handleDevicesList(request, env, a.user);
       if (request.method === 'POST') return handleDevicesCreate(request, env, actor);
     }
+    if (parts.length === 2) {
+      const did = parts[1];
+      // Geler / bannir / reactiver (block_status).
+      if (request.method === 'PATCH') return handleDeviceUpdate(request, env, did, actor, a.user);
+      // Supprimer la MAC.
+      if (request.method === 'DELETE') return handleDeviceDelete(env, did, actor, a.user);
+    }
   }
 
   // /licenses
@@ -754,7 +761,7 @@ async function handleDevicesList(request, env, user) {
   const url = new URL(request.url);
   const q = (url.searchParams.get('q') || '').trim();
   let sql = `SELECT d.id, d.customer_id, d.mac, d.label, d.reseller_id,
-                    d.first_seen_at, d.last_seen_at,
+                    d.block_status, d.first_seen_at, d.last_seen_at,
                     c.name as customer_name, c.email as customer_email
              FROM devices d LEFT JOIN customers c ON d.customer_id = c.id`;
   const where = []; const binds = [];
@@ -800,6 +807,52 @@ async function handleDevicesCreate(request, env, actor) {
   }
   await logAudit(env, request, actor, 'device.create', { type: 'device', id }, null, body);
   return jsonResp({ id }, 201);
+}
+
+// Verifie qu'un revendeur a le droit d'agir sur ce device (le sien),
+// ou que c'est l'owner. Renvoie le device, ou une reponse d'erreur.
+async function deviceForActor(env, id, user) {
+  const dev = await env.DB
+    .prepare('SELECT id, mac, reseller_id, block_status FROM devices WHERE id = ?')
+    .bind(id).first();
+  if (!dev) return { error: errResp('not_found', 'Device not found', 404) };
+  if (user && user.role === 'reseller' && dev.reseller_id !== user.sub) {
+    return { error: errResp('forbidden', 'Cet appareil ne vous appartient pas', 403) };
+  }
+  return { dev };
+}
+
+// PATCH /devices/:id { block_status: 'active'|'frozen'|'banned' }
+// Geler (rappel de paiement), bannir (abus), ou reactiver une MAC.
+async function handleDeviceUpdate(request, env, id, actor, user) {
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const r = await deviceForActor(env, id, user);
+  if (r.error) return r.error;
+  const allowed = ['active', 'frozen', 'banned'];
+  const next = body.block_status === 'active' ? null : body.block_status;
+  if (body.block_status !== undefined && !allowed.includes(body.block_status)) {
+    return errResp('bad_status', "block_status doit etre 'active', 'frozen' ou 'banned'", 400);
+  }
+  await env.DB.prepare('UPDATE devices SET block_status = ? WHERE id = ?')
+    .bind(next ?? null, id).run();
+  await logAudit(env, request, actor, 'device.block',
+    { type: 'device', id }, { block_status: r.dev.block_status }, { block_status: next });
+  return jsonResp({ updated: 1, block_status: next });
+}
+
+// DELETE /devices/:id — supprime la MAC (et ses licences en cascade).
+// NB : si l'app reste installee, elle se re-enregistrera au prochain
+// heartbeat (nouvel essai). Pour stopper un abuseur, prefere 'banned'.
+async function handleDeviceDelete(env, id, actor, user) {
+  const r = await deviceForActor(env, id, user);
+  if (r.error) return r.error;
+  await env.DB.prepare('DELETE FROM devices WHERE id = ?').bind(id).run();
+  await logAudit(env, null, actor, 'device.delete',
+    { type: 'device', id }, { mac: r.dev.mac }, null);
+  return jsonResp({ deleted: 1 });
 }
 
 // =========================================================

@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS devices (
   mac             TEXT NOT NULL UNIQUE,          -- MK:XX:XX:XX:XX:XX
   label           TEXT,                          -- "Salon Fire TV"
   reseller_id     TEXT,                          -- revendeur "proprietaire" (scoping)
+  block_status    TEXT,                          -- NULL/'active' | 'frozen' (rappel paiement) | 'banned' (abus)
   first_seen_at   INTEGER NOT NULL,
   last_seen_at    INTEGER NOT NULL,
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,

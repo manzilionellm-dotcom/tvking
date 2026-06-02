@@ -184,6 +184,8 @@ export interface Device {
   customer_id: string;
   mac: string;
   label: string | null;
+  reseller_id?: string | null;
+  block_status?: string | null; // null/'active' | 'frozen' | 'banned'
   first_seen_at: number;
   last_seen_at: number;
   customer_name?: string | null;
@@ -194,6 +196,14 @@ export const devicesApi = {
     request<{ items: Device[] }>(
       `/api/v1/devices${q ? `?q=${encodeURIComponent(q)}` : ''}`,
     ),
+  // Geler ('frozen'), bannir ('banned') ou reactiver ('active') une MAC.
+  setBlock: (id: string, block_status: 'active' | 'frozen' | 'banned') =>
+    request<{ updated: number; block_status: string | null }>(
+      `/api/v1/devices/${id}`,
+      { method: 'PATCH', body: { block_status } },
+    ),
+  remove: (id: string) =>
+    request<{ deleted: number }>(`/api/v1/devices/${id}`, { method: 'DELETE' }),
 };
 
 export interface License {

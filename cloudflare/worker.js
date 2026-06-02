@@ -224,13 +224,31 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
   let dev;
   try {
     dev = await env.DB
-      .prepare('SELECT id, first_seen_at FROM devices WHERE mac = ?')
+      .prepare('SELECT id, first_seen_at, block_status FROM devices WHERE mac = ?')
       .bind(mac).first();
   } catch (_) {
     // Table/binding absents (D1 pas encore deploye) → fallback KV.
     return null;
   }
   if (!dev) return null; // pas connu en D1 → le caller (heartbeat) le creera
+
+  // --- Blocage manuel par l'admin/revendeur (prime sur tout) ---
+  // 'banned' = abus (app affiche "banni") ; 'frozen' = rappel de paiement
+  // (app affiche "compte gele"). Voir endpoint PATCH /devices/:id.
+  if (dev.block_status === 'banned' || dev.block_status === 'frozen') {
+    const banned = dev.block_status === 'banned';
+    return {
+      exists: true,
+      status: dev.block_status,
+      paid: false,
+      trial_until: now,
+      days_left: 0,
+      expired: false,
+      frozen: !banned,
+      banned,
+      source: 'd1-block',
+    };
+  }
 
   // Meilleure licence pour ce device : lifetime d'abord, sinon expiry max.
   const lic = await env.DB
