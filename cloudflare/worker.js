@@ -221,43 +221,92 @@ function computeStatus(client, now = Date.now()) {
 // =========================================================
 async function d1StatusForMac(env, mac, now = Date.now()) {
   if (!env.DB) return null;
-  let row;
+  let dev;
   try {
-    row = await env.DB
-      .prepare(
-        `SELECT l.status AS lstatus, l.expires_at AS expires_at
-         FROM devices d JOIN licenses l ON l.device_id = d.id
-         WHERE d.mac = ?
-         ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC
-         LIMIT 1`,
-      )
-      .bind(mac)
-      .first();
+    dev = await env.DB
+      .prepare('SELECT id, first_seen_at FROM devices WHERE mac = ?')
+      .bind(mac).first();
   } catch (_) {
     // Table/binding absents (D1 pas encore deploye) → fallback KV.
     return null;
   }
-  if (!row) return null;
+  if (!dev) return null; // pas connu en D1 → le caller (heartbeat) le creera
 
-  const lstatus = row.lstatus || 'active';
-  const lifetime = row.expires_at === null || row.expires_at === undefined;
-  const expiresAt = lifetime ? now + 36500 * DAY_MS : row.expires_at;
-  const expired = !lifetime && expiresAt <= now;
-  const banned = lstatus === 'banned';
-  const frozen = lstatus === 'frozen';
-  const active = lstatus === 'active' && !expired;
+  // Meilleure licence pour ce device : lifetime d'abord, sinon expiry max.
+  const lic = await env.DB
+    .prepare(
+      `SELECT status AS lstatus, expires_at FROM licenses
+       WHERE device_id = ?
+       ORDER BY (expires_at IS NULL) DESC, expires_at DESC LIMIT 1`,
+    )
+    .bind(dev.id).first();
+
+  // --- Cas 1 : une licence existe (activee par admin/revendeur) ---
+  if (lic) {
+    const lstatus = lic.lstatus || 'active';
+    const lifetime = lic.expires_at === null || lic.expires_at === undefined;
+    const expiresAt = lifetime ? now + 36500 * DAY_MS : lic.expires_at;
+    const expired = !lifetime && expiresAt <= now;
+    const banned = lstatus === 'banned';
+    const frozen = lstatus === 'frozen';
+    const active = lstatus === 'active' && !expired;
+    return {
+      exists: true,
+      status: banned ? 'banned' : frozen ? 'frozen' : 'active',
+      paid: active,            // licence active = debloque l'app
+      trial_until: expiresAt,
+      days_left: lifetime ? 36500 : Math.max(0, Math.ceil((expiresAt - now) / DAY_MS)),
+      expired: expired && !lifetime,
+      frozen,
+      banned,
+      source: 'd1',
+    };
+  }
+
+  // --- Cas 2 : device connu mais PAS de licence → ESSAI 7 jours ---
+  // L'essai court depuis first_seen_at. Apres TRIAL_DAYS, expired=true →
+  // l'app bloque → le client doit venir te voir pour etre active.
+  const trialUntil = (dev.first_seen_at || now) + TRIAL_DAYS * DAY_MS;
+  const expired = trialUntil <= now;
   return {
     exists: true,
-    status: banned ? 'banned' : frozen ? 'frozen' : (expired ? 'active' : 'active'),
-    // Une licence active (payee via le panel revendeur) debloque l'app.
-    paid: active,
-    trial_until: expiresAt,
-    days_left: lifetime ? 36500 : Math.max(0, Math.ceil((expiresAt - now) / DAY_MS)),
+    status: 'active',
+    paid: false,
+    trial_until: trialUntil,
+    days_left: Math.max(0, Math.ceil((trialUntil - now) / DAY_MS)),
     expired,
-    frozen,
-    banned,
-    source: 'd1',
+    frozen: false,
+    banned: false,
+    source: 'd1-trial',
   };
+}
+
+// Enregistre AUTOMATIQUEMENT une MAC dans la base au 1er heartbeat :
+// cree un client "auto" + le device (l'essai 7 j demarre a first_seen_at).
+// Ainsi TOUTE app installee apparait dans ton panel, sans rien faire.
+async function ensureD1Device(env, mac, now = Date.now()) {
+  if (!env.DB) return;
+  try {
+    const dev = await env.DB
+      .prepare('SELECT id FROM devices WHERE mac = ?').bind(mac).first();
+    if (dev) {
+      await env.DB.prepare('UPDATE devices SET last_seen_at = ? WHERE id = ?')
+        .bind(now, dev.id).run();
+      return;
+    }
+    const cid = 'cus_' + crypto.randomUUID().replace(/-/g, '').slice(0, 18);
+    const did = 'dev_' + crypto.randomUUID().replace(/-/g, '').slice(0, 18);
+    await env.DB.batch([
+      env.DB.prepare(
+        'INSERT INTO customers (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)',
+      ).bind(cid, 'Auto ' + mac, now, now),
+      env.DB.prepare(
+        'INSERT INTO devices (id, customer_id, mac, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)',
+      ).bind(did, cid, mac, now, now),
+    ]);
+  } catch (_) {
+    // Course possible entre 2 heartbeats simultanes (mac UNIQUE) → ignore.
+  }
 }
 
 // Landing page HTML servie sur la racine. Style Maison Noir :
@@ -1092,33 +1141,30 @@ async function handleHeartbeat(request, env) {
   }
 
   const now = Date.now();
-  const existing = await readClient(env, mac);
-  // Pont panel revendeur : si une licence D1 existe, son etat prime
-  // sur le trial KV (l'app figee est ainsi debloquee a distance).
-  const d1 = await d1StatusForMac(env, mac, now);
 
-  if (!existing) {
-    // 1er heartbeat de ce MAC → on crée sa fiche, trial TRIAL_DAYS.
-    const fresh = {
-      name: '',
-      playlists: [],
-      added_at: now,
-      updated_at: now,
-      status: 'active',
-      paid: false,
-      trial_until: now + TRIAL_DAYS * DAY_MS,
-      note: '',
-      last_seen_at: now,
-      first_seen_at: now,
-    };
-    await writeClient(env, mac, fresh);
-    return json({ ok: true, created: true, ...(d1 || computeStatus(fresh, now)) });
+  // --- Chemin D1 (par defaut des que la base est branchee) ---
+  // On enregistre AUTOMATIQUEMENT la MAC (essai 7 j), puis on renvoie son
+  // etat. Toute app installee apparait ainsi dans le panel admin.
+  if (env.DB) {
+    await ensureD1Device(env, mac, now);
+    const d1 = await d1StatusForMac(env, mac, now);
+    if (d1) return json({ ok: true, created: true, ...d1 });
   }
 
-  // Fiche existe : on rafraîchit last_seen_at sans toucher au reste.
+  // --- Repli KV (si D1 pas branchee) ---
+  const existing = await readClient(env, mac);
+  if (!existing) {
+    const fresh = {
+      name: '', playlists: [], added_at: now, updated_at: now,
+      status: 'active', paid: false, trial_until: now + TRIAL_DAYS * DAY_MS,
+      note: '', last_seen_at: now, first_seen_at: now,
+    };
+    await writeClient(env, mac, fresh);
+    return json({ ok: true, created: true, ...computeStatus(fresh, now) });
+  }
   const updated = { ...existing, last_seen_at: now };
   await writeClient(env, mac, updated);
-  return json({ ok: true, created: false, ...(d1 || computeStatus(updated, now)) });
+  return json({ ok: true, created: false, ...computeStatus(updated, now) });
 }
 
 // =========================================================
@@ -1128,9 +1174,16 @@ async function handleHeartbeat(request, env) {
 // =========================================================
 async function handlePublicStatus(env, mac) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
-  // Priorite au panel revendeur (D1) ; sinon ancien trial KV.
-  const d1 = await d1StatusForMac(env, mac);
-  if (d1) return json(d1);
+  // D1 en priorite. Si la MAC n'est pas encore connue (status appele
+  // avant le heartbeat), on la cree pour demarrer l'essai 7 j.
+  if (env.DB) {
+    let d1 = await d1StatusForMac(env, mac);
+    if (!d1) {
+      await ensureD1Device(env, mac);
+      d1 = await d1StatusForMac(env, mac);
+    }
+    if (d1) return json(d1);
+  }
   const data = await readClient(env, mac);
   return json(computeStatus(data));
 }
