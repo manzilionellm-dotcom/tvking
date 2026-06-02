@@ -388,15 +388,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
 
-      // ENREGISTREMENT SANS COUPER LA LECTURE (choix user) :
-      // On NE stoppe PLUS la lecture et on n'affiche plus l'ecran plein
-      // « enregistrement en cours ». Le ForegroundService NATIF (Kotlin)
-      // telecharge le flux EN PARALLELE pendant que l'utilisateur continue
-      // de regarder. Le download vit cote natif → il SURVIT a la fermeture
-      // de l'app (swipe) pendant des heures (wakelock + wifilock + notif).
-      // NB : si le fournisseur n'autorise qu'UNE connexion simultanee,
-      // l'enregistrement peut etre vide — compromis assume pour garder la
-      // lecture a l'ecran.
+      // ENREGISTREMENT EN MODE 1 CONNEXION :
+      // La quasi-totalite des abonnements IPTV/Xtream n'autorisent
+      // qu'UNE connexion simultanee par identifiants. Si on garde la
+      // lecture ouverte (connexion n°1) ET qu'on ouvre une 2e connexion
+      // pour enregistrer, le fournisseur en ejecte une → le fichier
+      // reste a 0 octet (« enregistrement vide »). On SUSPEND donc la
+      // lecture le temps de l'enregistrement pour liberer l'unique
+      // connexion autorisee : un panneau plein ecran « ENREGISTREMENT
+      // EN COURS » s'affiche et la lecture reprend automatiquement a
+      // l'arret. Le telechargement vit cote natif (ForegroundService
+      // Kotlin) → il survit a la fermeture de l'app (wakelock +
+      // wifilock + notif persistante).
+      await _player.stop();
+      if (mounted) setState(() => _recordPausedPlayback = true);
+
       final String title = widget.overrideTitle != null &&
               widget.overrideTitle!.isNotEmpty
           ? '${_currentChannel.cleanName} – ${widget.overrideTitle}'
@@ -425,7 +431,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       if (mounted) {
         setState(() => _activeRecording = rec);
-        _toast('Enregistrement démarré — continue même app fermée');
+        _toast('Enregistrement démarré — la lecture reprend à l\'arrêt');
       }
     } catch (e) {
       _resumePlaybackAfterRecord();
