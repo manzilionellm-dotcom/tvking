@@ -1,0 +1,85 @@
+# =========================================================
+#  rebind-domain.yml — Rebranche 99999.7themotion.com sur le bon worker
+# =========================================================
+#  Le domaine est un "custom domain" Cloudflare deja attache a l'ANCIEN
+#  worker. On le detache puis on l'attache a `seven-motion-backend`
+#  (celui qui a la base + l'API). Rollback auto vers l'ancien si l'attache
+#  echoue, pour ne jamais laisser le domaine orphelin (cast resterait OK).
+#
+#  Lancer manuellement : Actions -> "Rebind domain" -> Run workflow.
+#  Utilise les memes secrets que deploy-worker (CLOUDFLARE_API_TOKEN /
+#  CLOUDFLARE_ACCOUNT_ID).
+# =========================================================
+
+name: Rebind domain
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  rebind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CF_API: 'https://api.cloudflare.com/client/v4'
+      TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      HOST: '99999.7themotion.com'
+      TARGET: 'seven-motion-backend'
+    steps:
+      - name: Detache puis attache le domaine
+        run: |
+          set +e
+          AUTH_H="Authorization: Bearer $TOKEN"
+          JSON_H="Content-Type: application/json"
+
+          echo "== 1) Liste des custom domains du compte =="
+          LIST=$(curl -s -H "$AUTH_H" "$CF_API/accounts/$ACCOUNT/workers/domains")
+          echo "$LIST" | jq '{success, errors, count: (.result|length)}' 2>/dev/null || echo "$LIST"
+
+          REC=$(echo "$LIST" | jq -c --arg h "$HOST" '.result[]? | select(.hostname==$h)')
+          if [ -z "$REC" ]; then
+            echo "❌ Le hostname $HOST n'apparait pas dans les custom domains workers."
+            echo "   (Soit le token n'a pas la permission, soit c'est configure autrement.)"
+            echo "$LIST" | jq -r '.result[]?.hostname' 2>/dev/null
+            exit 1
+          fi
+
+          ZONE=$(echo "$REC" | jq -r '.zone_id')
+          ID=$(echo "$REC" | jq -r '.id')
+          OLD=$(echo "$REC" | jq -r '.service')
+          echo "Trouve : hostname=$HOST  zone_id=$ZONE  id=$ID  worker_actuel=$OLD"
+
+          if [ "$OLD" = "$TARGET" ]; then
+            echo "✅ Deja attache a $TARGET — rien a faire."
+            exit 0
+          fi
+
+          echo "== 2) Detache de l'ancien worker ($OLD) =="
+          DEL=$(curl -s -H "$AUTH_H" -X DELETE "$CF_API/accounts/$ACCOUNT/workers/domains/$ID")
+          echo "$DEL" | jq '{success, errors}' 2>/dev/null || echo "$DEL"
+
+          echo "== 3) Attache a $TARGET =="
+          BODY=$(jq -n --arg h "$HOST" --arg s "$TARGET" --arg z "$ZONE" \
+            '{environment:"production", hostname:$h, service:$s, zone_id:$z}')
+          PUT=$(curl -s -H "$AUTH_H" -H "$JSON_H" -X PUT \
+            "$CF_API/accounts/$ACCOUNT/workers/domains" --data "$BODY")
+          echo "$PUT" | jq '{success, errors, result:{hostname:.result.hostname, service:.result.service}}' 2>/dev/null || echo "$PUT"
+
+          OK=$(echo "$PUT" | jq -r '.success')
+          if [ "$OK" = "true" ]; then
+            echo "✅ SUCCES : $HOST pointe maintenant sur $TARGET"
+            exit 0
+          fi
+
+          echo "⚠️ Echec d'attache a $TARGET — ROLLBACK vers $OLD pour ne rien casser..."
+          RB=$(jq -n --arg h "$HOST" --arg s "$OLD" --arg z "$ZONE" \
+            '{environment:"production", hostname:$h, service:$s, zone_id:$z}')
+          curl -s -H "$AUTH_H" -H "$JSON_H" -X PUT \
+            "$CF_API/accounts/$ACCOUNT/workers/domains" --data "$RB" \
+            | jq '{success, errors}' 2>/dev/null || true
+          echo "Rollback tente. Le domaine reste sur l'ancien worker (cast OK)."
+          exit 1
