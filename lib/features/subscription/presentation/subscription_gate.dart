@@ -47,7 +47,7 @@ class SubscriptionGateScreen extends StatelessWidget {
                 ? 'Compte suspendu'
                 : frozen
                     ? 'Compte temporairement gelé'
-                    : 'Essai gratuit terminé';
+                    : 'Débloque tout 7 MOTION';
             final String message = banned
                 ? 'Ton compte a été suspendu par l\'administrateur. '
                     'Si tu penses que c\'est une erreur, contacte-nous.'
@@ -55,8 +55,8 @@ class SubscriptionGateScreen extends StatelessWidget {
                     ? 'Ton compte est en pause. Contacte le support '
                         'pour réactiver l\'accès.'
                     : 'Ton essai gratuit de $kTrialDurationDays jours est '
-                        'terminé. Abonne-toi à 13 €/an pour continuer à '
-                        'utiliser 7 MOTION sur tous tes appareils.';
+                        'terminé. Active ton accès et profite de TOUT, '
+                        'sans aucune limite :';
 
             return RefreshIndicator(
               color: AppColors.accent,
@@ -125,6 +125,11 @@ class SubscriptionGateScreen extends StatelessWidget {
                       height: 1.5,
                     ),
                   ),
+                  // ----- Arguments de vente (uniquement essai terminé) -----
+                  if (expired) ...<Widget>[
+                    const SizedBox(height: 22),
+                    _benefits(),
+                  ],
                   const SizedBox(height: 28),
 
                   // ----- CTA principal — Acheter (uniquement trial) -----
@@ -186,5 +191,55 @@ class SubscriptionGateScreen extends StatelessWidget {
   Future<void> _openPurchase() async {
     final Uri url = Uri.parse(kPurchaseUrl);
     await launchUrl(url, mode: LaunchMode.externalApplication);
+  }
+
+  /// Liste d'avantages affichee sur l'ecran "essai termine" — des
+  /// arguments concrets pour donner envie de s'abonner.
+  Widget _benefits() {
+    Widget row(IconData icon, String text) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Icon(icon, color: AppColors.accent, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  text,
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    fontSize: 13.5,
+                    color: AppColors.textPrimary,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        children: <Widget>[
+          row(Icons.movie_filter_rounded,
+              'Des milliers de chaînes, films & séries du monde entier'),
+          row(Icons.live_tv_rounded,
+              'Tout le sport en direct, en HD / 4K, sans coupure'),
+          row(Icons.cast_rounded,
+              'Caster sur n\'importe quelle télé (Chromecast & Google TV)'),
+          row(Icons.fiber_manual_record_rounded,
+              'Enregistrer tes émissions, films et matchs préférés'),
+          row(Icons.do_not_disturb_on_rounded,
+              'Zéro publicité — lecture fluide, instantanée'),
+          row(Icons.devices_rounded,
+              'Sur tous tes appareils : téléphone, tablette, TV'),
+        ],
+      ),
+    );
   }
 }
