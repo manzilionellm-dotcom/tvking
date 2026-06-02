@@ -54,8 +54,8 @@ class EmptyStateView extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Donne ta MAC à ton revendeur. Dès qu\'il active ton '
-                  'compte, tes chaînes apparaissent automatiquement.',
+                  'Connecte-toi avec ton code (utilisateur + mot de passe), '
+                  'ou donne ta MAC à ton revendeur pour qu\'il active à distance.',
                   textAlign: TextAlign.center,
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 14,

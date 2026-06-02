@@ -24,6 +24,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../device/data/device_identity.dart';
 import '../../../playlists/data/remote_source_repository.dart';
+import '../../../playlists/presentation/xtream_login_sheet.dart';
 
 /// Ouvre la feuille de choix de source depuis l'accueil.
 Future<void> showSourceChoiceSheet(BuildContext context) {
@@ -77,6 +78,16 @@ class _SourceChoiceSheet extends StatelessWidget {
             ),
             const SizedBox(height: 18),
 
+            _SourceTile(
+              icon: Icons.vpn_key_rounded,
+              title: 'Me connecter avec mon code',
+              subtitle: 'Saisis ton utilisateur + mot de passe',
+              onTap: () {
+                Navigator.of(context).pop();
+                showXtreamLoginSheet(context);
+              },
+            ),
+            const SizedBox(height: 12),
             _SourceTile(
               icon: Icons.support_agent_rounded,
               title: 'Activer l\'app',
