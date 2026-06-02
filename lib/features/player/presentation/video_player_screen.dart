@@ -188,6 +188,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _subs.add(_player.stream.buffering.listen((bool b) {
       if (mounted) setState(() => _isBuffering = b);
     }));
+    // Durée du flux : quand elle devient connue (> 0), c'est de la
+    // VOD/replay seekable → l'OSD doit afficher la barre de progression
+    // et les boutons ±10s. On rafraîchit donc le build à ce moment.
+    _subs.add(_player.stream.duration.listen((Duration _) {
+      if (mounted) setState(() {});
+    }));
     _subs.add(_player.stream.playing.listen((bool p) {
       if (mounted) {
         setState(() {
@@ -263,6 +269,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   bool get _canZap =>
       widget.zapPlaylist != null && widget.zapPlaylist!.length > 1;
+
+  /// `true` si le flux est seekable = il a une durée finie connue
+  /// (film, replay/catch-up). On se base sur la DURÉE RÉELLE du flux,
+  /// pas sur le flag `isLive` de la playlist — en IPTV ce flag est
+  /// souvent faux (des films sont taggués "live"), ce qui privait
+  /// l'utilisateur des boutons d'avance/recul. Avec la durée réelle :
+  /// VOD → durée > 0 → seek dispo ; vrai live → durée 0 → pas de seek.
+  bool get _isSeekable => _player.state.duration > Duration.zero;
 
   /// `true` quand l'écran tourne sur une TV / Android TV / Fire TV
   /// (10-foot UI, télécommande). Le layout du player s'adapte —
@@ -1321,7 +1335,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         // VOD (film / replay) : recul / play / avance.
                         // Live : zap chaîne précédente / play / suivante.
-                        children: !_currentChannel.isLive
+                        children: _isSeekable
                             ? <Widget>[
                                 _TvDpadButton(
                                   icon: Icons.replay_10_rounded,
@@ -1369,10 +1383,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                   ),
                               ],
                       )
-                    // PHONE : pour la VOD on encadre le play/pause de
-                    // deux boutons recul/avance ±10 s. Pour le live,
-                    // seul le play/pause (le seek n'a pas de sens).
-                    : !_currentChannel.isLive
+                    // PHONE : pour un flux seekable (film/replay) on
+                    // encadre le play/pause de deux boutons recul/avance
+                    // ±10 s. Pour le live, seul le play/pause.
+                    : _isSeekable
                         ? Row(
                             mainAxisSize: MainAxisSize.min,
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -1403,6 +1417,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                           ),
               ),
             ),
+
+            // ----- Barre de progression (uniquement VOD seekable) -----
+            //  Permet d'avancer/reculer N'IMPORTE OÙ dans un film en
+            //  faisant glisser. Masquée pour le live (durée inconnue).
+            if (_isSeekable) _SeekBar(player: _player),
 
             // ----- Bas : barre de contrôles -----
             Padding(
@@ -1600,6 +1619,96 @@ class _SeekIconButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Barre de progression scrubable pour la VOD. Affiche position /
+/// durée et permet de sauter n'importe où en faisant glisser le
+/// curseur. Branchée sur les streams media_kit (position en direct ;
+/// durée lue depuis l'état courant). Pendant le drag, on affiche la
+/// valeur locale (_dragMs) pour un retour immédiat, et on ne committe
+/// le seek qu'au relâchement (onChangeEnd) pour ne pas spammer libmpv.
+class _SeekBar extends StatefulWidget {
+  const _SeekBar({required this.player});
+
+  final Player player;
+
+  @override
+  State<_SeekBar> createState() => _SeekBarState();
+}
+
+class _SeekBarState extends State<_SeekBar> {
+  double? _dragMs; // position en cours de glissement (null = pas de drag)
+
+  static String _fmt(Duration d) {
+    final int total = d.inSeconds < 0 ? 0 : d.inSeconds;
+    final int h = total ~/ 3600;
+    final int m = (total % 3600) ~/ 60;
+    final int s = total % 60;
+    String two(int n) => n.toString().padLeft(2, '0');
+    return h > 0 ? '$h:${two(m)}:${two(s)}' : '${two(m)}:${two(s)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<Duration>(
+      stream: widget.player.stream.position,
+      builder: (BuildContext context, AsyncSnapshot<Duration> snap) {
+        final Duration dur = widget.player.state.duration;
+        final double totalMs = dur.inMilliseconds.toDouble();
+        if (totalMs <= 0) return const SizedBox.shrink();
+
+        final Duration pos = snap.data ?? widget.player.state.position;
+        final double posMs = _dragMs ??
+            pos.inMilliseconds.toDouble().clamp(0.0, totalMs).toDouble();
+        final Duration shown = Duration(milliseconds: posMs.round());
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+          child: Row(
+            children: <Widget>[
+              Text(
+                _fmt(shown),
+                style: AppTextStyles.numeric.copyWith(
+                  color: Colors.white,
+                  fontSize: 12,
+                ),
+              ),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 3,
+                    activeTrackColor: AppColors.accent,
+                    inactiveTrackColor: Colors.white.withValues(alpha: 0.25),
+                    thumbColor: AppColors.accent,
+                    overlayColor: AppColors.accent.withValues(alpha: 0.2),
+                    thumbShape:
+                        const RoundSliderThumbShape(enabledThumbRadius: 7),
+                  ),
+                  child: Slider(
+                    min: 0,
+                    max: totalMs,
+                    value: posMs.clamp(0.0, totalMs).toDouble(),
+                    onChanged: (double v) => setState(() => _dragMs = v),
+                    onChangeEnd: (double v) {
+                      widget.player.seek(Duration(milliseconds: v.round()));
+                      setState(() => _dragMs = null);
+                    },
+                  ),
+                ),
+              ),
+              Text(
+                _fmt(dur),
+                style: AppTextStyles.numeric.copyWith(
+                  color: Colors.white,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
