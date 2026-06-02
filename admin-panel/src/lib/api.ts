@@ -240,6 +240,12 @@ export const licensesApi = {
 /// Profil de l'acteur courant (avec solde de credits si revendeur).
 export const meApi = {
   get: () => request<{ user: MeUser }>('/api/v1/me'),
+  // Changer SON propre mot de passe (admin ou revendeur).
+  changePassword: (current_password: string, new_password: string) =>
+    request<{ ok: boolean }>('/api/v1/me/password', {
+      method: 'POST',
+      body: { current_password, new_password },
+    }),
 };
 
 export interface Reseller {

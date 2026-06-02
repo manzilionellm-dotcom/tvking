@@ -339,6 +339,11 @@ export async function apiV1(request, env) {
     return handleMe(env, a.user);
   }
 
+  // /me/password — changer SON PROPRE mot de passe (admin ou revendeur).
+  if (parts[0] === 'me' && parts[1] === 'password' && request.method === 'POST') {
+    return handleChangeOwnPassword(request, env, a.user, actor);
+  }
+
   // /plan-costs — cout en credits de chaque plan
   if (parts[0] === 'plan-costs' && parts.length === 1) {
     if (request.method === 'GET') return handlePlanCostsList(env);
@@ -1002,6 +1007,32 @@ async function handleMe(env, user) {
     return jsonResp({ user: { ...r, role: 'reseller' } });
   }
   return jsonResp({ user });
+}
+
+// ----- Changer SON PROPRE mot de passe (admin OU revendeur) -----
+async function handleChangeOwnPassword(request, env, user, actor) {
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const current = body.current_password || '';
+  const next = body.new_password || '';
+  if (!next || next.length < 4) {
+    return errResp('weak_password', 'Le nouveau mot de passe doit faire au moins 4 caracteres', 400);
+  }
+  const table = user.role === 'reseller' ? 'resellers' : 'admin_users';
+  const row = await env.DB
+    .prepare(`SELECT password_hash FROM ${table} WHERE id = ?`)
+    .bind(user.sub).first();
+  if (!row) return errResp('not_found', 'Compte introuvable', 404);
+  const ok = await verifyPassword(current, row.password_hash);
+  if (!ok) return errResp('bad_current', 'Mot de passe actuel incorrect', 401);
+  const hash = await hashPassword(next);
+  await env.DB.prepare(`UPDATE ${table} SET password_hash = ? WHERE id = ?`)
+    .bind(hash, user.sub).run();
+  await logAudit(env, request, actor, 'password.change_self',
+    { type: user.role === 'reseller' ? 'reseller' : 'admin', id: user.sub }, null, null);
+  return jsonResp({ ok: true });
 }
 
 // ----- plan_costs : cout en credits par plan -----

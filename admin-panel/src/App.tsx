@@ -12,6 +12,7 @@ import { AppsPage } from '@/pages/AppsPage';
 import { ActivationsPage } from '@/pages/ActivationsPage';
 import { ResellersPage } from '@/pages/ResellersPage';
 import { ActivatePage } from '@/pages/ActivatePage';
+import { AccountPage } from '@/pages/AccountPage';
 
 /// Etats possibles de l'app :
 ///   - bootstrapping : on verifie si le token est encore valide
@@ -87,6 +88,7 @@ export default function App() {
       {/* Revendeurs : owner ET revendeurs (qui gerent leurs sous-revendeurs).
           Les permissions/scoping sont appliques cote API. */}
       <Route path="/resellers" element={<ResellersPage onLogout={handleLogout} />} />
+      <Route path="/account" element={<AccountPage onLogout={handleLogout} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

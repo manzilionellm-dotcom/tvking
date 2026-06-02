@@ -21,6 +21,7 @@ const OWNER_NAV: NavItem[] = [
   { label: 'Devices',             to: '/devices',     phase: '1.A' },
   { label: 'Apps',                to: '/apps',        phase: '1.A' },
   { label: 'Activations',         to: '/activations', phase: '1.A' },
+  { label: 'Mon compte',          to: '/account',     phase: '1.A' },
 ];
 
 const RESELLER_NAV: NavItem[] = [
@@ -29,9 +30,13 @@ const RESELLER_NAV: NavItem[] = [
   { label: 'Mes revendeurs',      to: '/resellers',   phase: '1.A' },
   { label: 'Mes appareils',       to: '/devices',     phase: '1.A' },
   { label: 'Mes activations',     to: '/activations', phase: '1.A' },
+  { label: 'Mon compte',          to: '/account',     phase: '1.A' },
 ];
 
-export function Sidebar({ onLogout }: { onLogout: () => void }) {
+export function Sidebar({
+  onLogout,
+  onNavigate,
+}: { onLogout: () => void; onNavigate?: () => void }) {
   const user = getCurrentUser();
   const owner = isOwnerRole(user?.role);
   const nav = owner ? OWNER_NAV : RESELLER_NAV;
@@ -69,6 +74,7 @@ export function Sidebar({ onLogout }: { onLogout: () => void }) {
               <NavLink
                 to={item.to}
                 end={item.to === '/'}
+                onClick={() => onNavigate?.()}
                 className={({ isActive }) =>
                   cn(
                     'group relative flex items-center justify-between rounded-md px-3 py-2 text-sm transition-colors',

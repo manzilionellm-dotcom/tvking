@@ -12,6 +12,7 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [creditFor, setCreditFor] = useState<Reseller | null>(null);
+  const [pwdFor, setPwdFor] = useState<Reseller | null>(null);
 
   function reload() {
     setLoading(true);
@@ -100,6 +101,12 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
                     >
                       {r.status === 'active' ? 'Suspendre' : 'Réactiver'}
                     </button>
+                    <button
+                      onClick={() => setPwdFor(r)}
+                      className="rounded-md border border-white/10 px-2.5 py-1 text-xs hover:border-white/30"
+                    >
+                      Mot de passe
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -119,6 +126,13 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
           reseller={creditFor}
           onClose={() => setCreditFor(null)}
           onDone={() => { setCreditFor(null); reload(); }}
+        />
+      )}
+      {pwdFor && (
+        <PasswordModal
+          reseller={pwdFor}
+          onClose={() => setPwdFor(null)}
+          onDone={() => setPwdFor(null)}
         />
       )}
     </AppLayout>
@@ -217,6 +231,47 @@ function CreditsModal({
         <button disabled={busy} onClick={() => apply(-1)} className="rounded-md border border-white/10 px-4 py-2 text-sm hover:border-warning hover:text-warning disabled:opacity-50">Retirer</button>
         <button disabled={busy} onClick={() => apply(1)} className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black hover:bg-accent-bright disabled:opacity-50">
           {busy ? '…' : 'Ajouter'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function PasswordModal({
+  reseller, onClose, onDone,
+}: { reseller: Reseller; onClose: () => void; onDone: () => void }) {
+  const [pwd, setPwd] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  async function save() {
+    if (pwd.length < 4) { setErr('Au moins 4 caractères.'); return; }
+    setBusy(true); setErr(null);
+    try {
+      await resellersApi.update(reseller.id, { password: pwd });
+      setDone(true);
+      setTimeout(onDone, 900);
+    } catch (e: any) {
+      setErr(e instanceof ApiError ? e.message : 'Échec.');
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Modal title={`Mot de passe — ${reseller.name || reseller.email}`} onClose={onClose}>
+      <p className="mb-3 text-sm text-ink-tertiary">
+        Définis un nouveau mot de passe pour ce revendeur. Communique-le-lui ;
+        il pourra le changer lui-même ensuite dans « Mon compte ».
+      </p>
+      <Field label="Nouveau mot de passe">
+        <input type="text" value={pwd} onChange={(e) => setPwd(e.target.value)} className={inputCls} autoFocus placeholder="••••••••" />
+      </Field>
+      {err && <div className="mt-2 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>}
+      {done && <div className="mt-2 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs text-success">Mot de passe mis à jour ✔</div>}
+      <div className="flex justify-end gap-2 pt-4">
+        <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary">Fermer</button>
+        <button disabled={busy || done} onClick={save} className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black hover:bg-accent-bright disabled:opacity-50">
+          {busy ? '…' : 'Enregistrer'}
         </button>
       </div>
     </Modal>
