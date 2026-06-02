@@ -159,11 +159,17 @@ class RecordingForegroundService : Service() {
     // =========================================================
     //  Téléchargement natif (survit a la fermeture de l'app)
     // =========================================================
-    //  Streaming pur HttpURLConnection -> fichier, avec reconnexion
-    //  automatique : les serveurs IPTV ferment periodiquement la
-    //  socket (idle/keepalive) en envoyant un EOF ; on rouvre et on
-    //  continue d'ecrire (append) au lieu d'arreter. Couvre les flux
-    //  bruts MPEG-TS (.ts) et les fichiers directs (.mp4/.mkv).
+    //  Deux pipelines, choisis automatiquement :
+    //    1. MPEG-TS brut (.ts / .mp4 direct) : streaming pur
+    //       HttpURLConnection -> fichier, avec reconnexion automatique
+    //       (les serveurs IPTV ferment periodiquement la socket en
+    //       envoyant un EOF ; on rouvre et on append au lieu d'arreter).
+    //    2. HLS (.m3u8) : on resout la media playlist (en gerant les
+    //       MASTER playlists via BANDWIDTH), on polle, et on concatene
+    //       les SEGMENTS .ts. CORRECTIF de l'ecran noir : avant, une URL
+    //       .m3u8 faisait ecrire le TEXTE de la playlist dans le fichier
+    //       (illisible). Un sniff #EXTM3U rattrape aussi les playlists
+    //       servies sans extension .m3u8.
 
     private fun startDownload(url: String, filePath: String) {
         if (recording) return
@@ -173,64 +179,25 @@ class RecordingForegroundService : Service() {
         bytesWritten = 0L
         downloadThread = Thread {
             var out: java.io.FileOutputStream? = null
-            var attempts = 0
             try {
                 // append=true : si l'OS a redemarre le service, on
                 // continue le meme fichier au lieu de l'ecraser.
                 out = java.io.FileOutputStream(java.io.File(filePath), true)
-                val buf = ByteArray(64 * 1024)
-                while (recording) {
-                    var conn: java.net.HttpURLConnection? = null
-                    try {
-                        conn = (java.net.URL(url).openConnection()
-                                as java.net.HttpURLConnection).apply {
-                            connectTimeout = 15000
-                            readTimeout = 30000
-                            instanceFollowRedirects = true
-                            setRequestProperty(
-                                "User-Agent",
-                                "VLC/3.0.20 LibVLC/3.0.20 (7 MOTION)",
-                            )
-                        }
-                        activeConn = conn
-                        val code = conn.responseCode
-                        if (code !in 200..299) {
-                            // 401/403 = abonnement/credentials → inutile
-                            // d'insister. Autres 4xx/5xx → backoff + retry.
-                            if (code == 401 || code == 403) {
-                                Log.w(TAG, "HTTP $code — arret recording")
-                                break
-                            }
-                            attempts++
-                            if (attempts > 30) break
-                            Thread.sleep(2000)
-                            continue
-                        }
-                        attempts = 0
-                        val input = conn.inputStream
-                        while (recording) {
-                            val n = input.read(buf)
-                            if (n < 0) break // EOF → reconnecter
-                            out.write(buf, 0, n)
-                            bytesWritten += n
-                        }
-                        try { input.close() } catch (_: Throwable) {}
-                        if (!recording) break
-                        // EOF mais on enregistre toujours : le serveur a
-                        // coupe → petite pause puis reconnexion.
-                        Thread.sleep(500)
-                    } catch (e: InterruptedException) {
-                        break
-                    } catch (e: Throwable) {
-                        if (!recording) break
-                        attempts++
-                        if (attempts > 30) break
-                        Log.w(TAG, "reconnect (#$attempts) apres: ${e.message}")
-                        try { Thread.sleep(2000) } catch (_: Throwable) { break }
-                    } finally {
-                        activeConn = null
-                        try { conn?.disconnect() } catch (_: Throwable) {}
-                    }
+
+                // AIGUILLAGE DU PIPELINE (correctif "ecran noir") :
+                //   - HLS (.m3u8) : on NE telecharge PAS le texte de la
+                //     playlist (= l'ancien bug qui donnait un fichier de
+                //     texte illisible -> ecran noir). On resout la media
+                //     playlist (en gerant les MASTER playlists), on polle
+                //     et on concatene les SEGMENTS .ts -> vraie video.
+                //   - sinon : flux MPEG-TS brut, streaming direct (comme
+                //     avant), avec un sniff de securite au cas ou l'URL
+                //     ne finit pas par .m3u8 mais renvoie quand meme une
+                //     playlist (#EXTM3U).
+                if (looksLikeHls(url)) {
+                    runHlsLoop(url, out)
+                } else {
+                    runRawLoop(url, out)
                 }
             } catch (e: Throwable) {
                 Log.e(TAG, "download fatal: $e", e)
@@ -247,6 +214,255 @@ class RecordingForegroundService : Service() {
             name = "rec-download"
             start()
         }
+    }
+
+    /// Heuristique d'extension. Le sniff de contenu dans runRawLoop
+    /// rattrape les URLs HLS sans extension explicite.
+    private fun looksLikeHls(url: String): Boolean =
+        url.lowercase(java.util.Locale.ROOT).contains(".m3u8")
+
+    // ---------------------------------------------------------------
+    //  Pipeline MPEG-TS brut (inchangé fonctionnellement) + sniff HLS
+    // ---------------------------------------------------------------
+    private fun runRawLoop(url: String, out: java.io.FileOutputStream) {
+        val buf = ByteArray(64 * 1024)
+        var attempts = 0
+        var sniffed = false
+        while (recording) {
+            var conn: java.net.HttpURLConnection? = null
+            try {
+                conn = openConn(url)
+                activeConn = conn
+                val code = conn.responseCode
+                if (code !in 200..299) {
+                    // 401/403 = abonnement/credentials → inutile d'insister.
+                    if (code == 401 || code == 403) {
+                        Log.w(TAG, "HTTP $code — arret recording")
+                        break
+                    }
+                    attempts++
+                    if (attempts > 30) break
+                    Thread.sleep(2000)
+                    continue
+                }
+                attempts = 0
+                val input = conn.inputStream
+                var first = true
+                while (recording) {
+                    val n = input.read(buf)
+                    if (n < 0) break // EOF → reconnecter
+                    // Sniff de securite : si le tout 1er bloc commence par
+                    // "#EXTM3U", l'URL "brute" est en fait une playlist HLS
+                    // → on bascule sur le pipeline HLS (sinon on ecrirait du
+                    // texte = ecran noir). On ne le fait qu'une fois.
+                    if (first && !sniffed) {
+                        sniffed = true
+                        first = false
+                        if (n >= 7 && isM3u8Header(buf, n)) {
+                            try { input.close() } catch (_: Throwable) {}
+                            try { conn.disconnect() } catch (_: Throwable) {}
+                            activeConn = null
+                            Log.i(TAG, "sniff: l'URL brute est une playlist HLS → bascule HLS")
+                            runHlsLoop(url, out)
+                            return
+                        }
+                    }
+                    first = false
+                    out.write(buf, 0, n)
+                    bytesWritten += n
+                }
+                try { input.close() } catch (_: Throwable) {}
+                if (!recording) break
+                // EOF mais on enregistre toujours : le serveur a coupe →
+                // petite pause puis reconnexion.
+                Thread.sleep(500)
+            } catch (e: InterruptedException) {
+                break
+            } catch (e: Throwable) {
+                if (!recording) break
+                attempts++
+                if (attempts > 30) break
+                Log.w(TAG, "reconnect (#$attempts) apres: ${e.message}")
+                try { Thread.sleep(2000) } catch (_: Throwable) { break }
+            } finally {
+                activeConn = null
+                try { conn?.disconnect() } catch (_: Throwable) {}
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------
+    //  Pipeline HLS : master → media playlist → segments concaténés
+    // ---------------------------------------------------------------
+    private fun runHlsLoop(playlistUrl: String, out: java.io.FileOutputStream) {
+        val seen = HashSet<String>()
+        var consecutiveErrors = 0
+        // URL de la media playlist effective (resolue depuis la master
+        // au 1er tour). On la re-resout si jamais la variante pointe
+        // encore vers une master (cas tres rare de master imbriquee).
+        var mediaUrl = playlistUrl
+        var resolved = false
+
+        while (recording) {
+            try {
+                if (!resolved) {
+                    val head = fetchText(playlistUrl)
+                    mediaUrl = if (isMasterPlaylist(head)) {
+                        val v = selectVariant(head, playlistUrl)
+                        Log.i(TAG, "master playlist → variante choisie: $v")
+                        v ?: playlistUrl
+                    } else {
+                        playlistUrl
+                    }
+                    resolved = true
+                }
+
+                val body = fetchText(mediaUrl)
+                if (isMasterPlaylist(body)) {
+                    // La "variante" est elle-meme une master → on descend.
+                    selectVariant(body, mediaUrl)?.let { mediaUrl = it }
+                    Thread.sleep(1000)
+                    continue
+                }
+
+                val segments = parseSegments(body, mediaUrl)
+                var newCount = 0
+                for (seg in segments) {
+                    if (!recording) break
+                    if (seen.contains(seg)) continue
+                    seen.add(seg)
+                    downloadSegment(seg, out)
+                    newCount++
+                }
+                consecutiveErrors = 0
+                // Re-poll au ~demi target-duration (3s si on rattrape, 5s
+                // si rien de neuf), comme ffmpeg/TiviMate.
+                Thread.sleep(if (newCount > 0) 3000L else 5000L)
+            } catch (e: InterruptedException) {
+                break
+            } catch (e: Throwable) {
+                if (!recording) break
+                consecutiveErrors++
+                if (consecutiveErrors > 30) {
+                    Log.w(TAG, "serveur HLS injoignable, abandon")
+                    break
+                }
+                val wait = (2000L * consecutiveErrors).coerceAtMost(16000L)
+                try { Thread.sleep(wait) } catch (_: Throwable) { break }
+            }
+        }
+    }
+
+    /// Telecharge UN segment .ts et l'append au fichier. Une erreur sur
+    /// un segment ne tue pas l'enregistrement (segment perdu ≠ rec perdu).
+    private fun downloadSegment(segUrl: String, out: java.io.FileOutputStream) {
+        var conn: java.net.HttpURLConnection? = null
+        try {
+            conn = openConn(segUrl)
+            activeConn = conn
+            val code = conn.responseCode
+            if (code !in 200..299) return
+            val input = conn.inputStream
+            val buf = ByteArray(64 * 1024)
+            while (recording) {
+                val n = input.read(buf)
+                if (n < 0) break
+                out.write(buf, 0, n)
+                bytesWritten += n
+            }
+            try { input.close() } catch (_: Throwable) {}
+        } catch (e: Throwable) {
+            Log.w(TAG, "segment KO: ${e.message}")
+        } finally {
+            activeConn = null
+            try { conn?.disconnect() } catch (_: Throwable) {}
+        }
+    }
+
+    /// Recupere le corps texte d'une URL (playlist). Utilise pour les
+    /// .m3u8 uniquement (petits fichiers texte).
+    private fun fetchText(urlStr: String): String {
+        var conn: java.net.HttpURLConnection? = null
+        try {
+            conn = openConn(urlStr)
+            activeConn = conn
+            val code = conn.responseCode
+            if (code !in 200..299) throw java.io.IOException("HTTP $code")
+            return conn.inputStream.bufferedReader(Charsets.UTF_8)
+                .use { it.readText() }
+        } finally {
+            activeConn = null
+            try { conn?.disconnect() } catch (_: Throwable) {}
+        }
+    }
+
+    private fun openConn(urlStr: String): java.net.HttpURLConnection =
+        (java.net.URL(urlStr).openConnection() as java.net.HttpURLConnection).apply {
+            connectTimeout = 15000
+            readTimeout = 30000
+            instanceFollowRedirects = true
+            setRequestProperty("User-Agent", "VLC/3.0.20 LibVLC/3.0.20 (7 MOTION)")
+        }
+
+    private fun isM3u8Header(buf: ByteArray, len: Int): Boolean {
+        val n = minOf(len, 16)
+        val head = String(buf, 0, n, Charsets.UTF_8)
+            .trimStart('﻿', ' ', '\n', '\r', '\t')
+        return head.startsWith("#EXTM3U")
+    }
+
+    private fun isMasterPlaylist(body: String): Boolean =
+        body.contains("#EXT-X-STREAM-INF")
+
+    /// Choisit la variante de PLUS HAUTE bande passante (attribut
+    /// BANDWIDTH) d'une master playlist et resout son URL.
+    private fun selectVariant(masterBody: String, baseUrl: String): String? {
+        val lines = masterBody.split("\n")
+        var bestBw = -1L
+        var bestUri: String? = null
+        var i = 0
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("#EXT-X-STREAM-INF")) {
+                val bw = Regex("BANDWIDTH=(\\d+)")
+                    .find(line)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0L
+                // L'URI suit sur la 1re ligne non vide / non commentaire.
+                var j = i + 1
+                while (j < lines.size) {
+                    val cand = lines[j].trim()
+                    if (cand.isNotEmpty() && !cand.startsWith("#")) {
+                        if (bw > bestBw) {
+                            bestBw = bw
+                            bestUri = cand
+                        }
+                        break
+                    }
+                    j++
+                }
+                i = j + 1
+            } else {
+                i++
+            }
+        }
+        return bestUri?.let { resolveUrl(baseUrl, it) }
+    }
+
+    /// Extrait les URLs absolues des segments d'une MEDIA playlist
+    /// (lignes non commentees), en resolvant les chemins relatifs.
+    private fun parseSegments(mediaBody: String, baseUrl: String): List<String> {
+        val out = ArrayList<String>()
+        for (raw in mediaBody.split("\n")) {
+            val line = raw.trim()
+            if (line.isEmpty() || line.startsWith("#")) continue
+            out.add(resolveUrl(baseUrl, line))
+        }
+        return out
+    }
+
+    private fun resolveUrl(baseUrl: String, ref: String): String = try {
+        java.net.URL(java.net.URL(baseUrl), ref).toString()
+    } catch (e: Throwable) {
+        ref
     }
 
     private fun stopDownload() {

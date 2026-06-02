@@ -530,7 +530,13 @@ class HttpRecordingDownloader {
     required String filePath,
     required _Job job,
   }) async {
-    final Uri playlistUri = Uri.parse(streamUrl);
+    final Uri masterUri = Uri.parse(streamUrl);
+    // URL de la media playlist EFFECTIVE. Resolue une fois depuis la
+    // master playlist (correctif bug #1) : sans ca, _parseHlsSegments
+    // prenait les sous-.m3u8 d'une master pour des "segments" et
+    // enregistrait du TEXTE de playlist au lieu de la video -> ecran noir.
+    Uri mediaUri = masterUri;
+    bool resolvedMedia = false;
     int consecutiveErrors = 0;
 
     // Phase 1 / F-03 : on tracke la raison qui fera sortir de la
@@ -549,12 +555,29 @@ class HttpRecordingDownloader {
         break;
       }
       try {
-        final HttpClientResponse resp = await _httpGet(
-          job.client!,
-          playlistUri,
-        );
-        final String body = await resp.transform(_utf8Lenient).join();
-        final List<String> segments = _parseHlsSegments(body, playlistUri);
+        // Resolution de la media playlist (une seule fois), en
+        // descendant la master via la variante de plus haute bande
+        // passante (BANDWIDTH). Pour une media playlist directe, rien
+        // ne change : _isMasterPlaylist renvoie false.
+        if (!resolvedMedia) {
+          final String head = await _fetchPlaylist(job.client!, masterUri);
+          if (_isMasterPlaylist(head)) {
+            final Uri? v = _selectVariant(head, masterUri);
+            if (v != null) mediaUri = v;
+          }
+          resolvedMedia = true;
+        }
+
+        final String body = await _fetchPlaylist(job.client!, mediaUri);
+        // Securite : si la "variante" choisie est elle-meme une master
+        // (master imbriquee, tres rare) on redescend d'un niveau.
+        if (_isMasterPlaylist(body)) {
+          final Uri? v = _selectVariant(body, mediaUri);
+          if (v != null) mediaUri = v;
+          await Future<void>.delayed(const Duration(seconds: 1));
+          continue;
+        }
+        final List<String> segments = _parseHlsSegments(body, mediaUri);
 
         // On télécharge UNIQUEMENT les segments pas encore vus.
         // Beaucoup de duplicates sinon (la playlist live garde
@@ -624,7 +647,56 @@ class HttpRecordingDownloader {
     return req.close();
   }
 
-  /// Parse une playlist HLS .m3u8 et retourne les URLs absolues
+  /// Récupère le corps texte d'une playlist (.m3u8). Suit les
+  /// redirects. Utilisé pour la master ET la media playlist.
+  Future<String> _fetchPlaylist(HttpClient client, Uri uri) async {
+    final HttpClientResponse resp = await _httpGet(client, uri);
+    if (resp.statusCode != 200 && resp.statusCode != 206) {
+      // On draine pour libérer la socket avant de lever.
+      await resp.drain<void>();
+      throw HttpException('HTTP ${resp.statusCode}', uri: uri);
+    }
+    return resp.transform(_utf8Lenient).join();
+  }
+
+  /// Une MASTER playlist contient des `#EXT-X-STREAM-INF` (déclaration
+  /// de variantes par qualité), contrairement à une MEDIA playlist qui
+  /// contient des `#EXTINF` + segments. Le bug #1 venait de l'absence
+  /// totale de cette distinction.
+  bool _isMasterPlaylist(String body) => body.contains('#EXT-X-STREAM-INF');
+
+  /// Choisit la variante de PLUS HAUTE bande passante (attribut
+  /// `BANDWIDTH=`) d'une master playlist et retourne l'URL absolue de
+  /// sa media playlist. `null` si aucune variante exploitable.
+  Uri? _selectVariant(String masterBody, Uri base) {
+    final List<String> lines = masterBody.split('\n');
+    int bestBw = -1;
+    String? bestUri;
+    for (int i = 0; i < lines.length; i++) {
+      final String line = lines[i].trim();
+      if (!line.startsWith('#EXT-X-STREAM-INF')) continue;
+      final Match? m = RegExp(r'BANDWIDTH=(\d+)').firstMatch(line);
+      final int bw = m != null ? (int.tryParse(m.group(1)!) ?? 0) : 0;
+      // L'URI suit sur la 1re ligne non vide / non commentaire.
+      for (int j = i + 1; j < lines.length; j++) {
+        final String cand = lines[j].trim();
+        if (cand.isEmpty || cand.startsWith('#')) continue;
+        if (bw > bestBw) {
+          bestBw = bw;
+          bestUri = cand;
+        }
+        break;
+      }
+    }
+    if (bestUri == null) return null;
+    try {
+      return base.resolve(bestUri);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Parse une MEDIA playlist HLS .m3u8 et retourne les URLs absolues
   /// des segments .ts. Ignore les lignes #EXT*, mais utilise
   /// l'URI courante pour résoudre les chemins relatifs.
   List<String> _parseHlsSegments(String body, Uri base) {
