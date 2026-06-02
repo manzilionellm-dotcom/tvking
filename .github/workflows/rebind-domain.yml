@@ -15,6 +15,11 @@ name: Rebind domain
 
 on:
   workflow_dispatch: {}
+  push:
+    branches:
+      - 'claude/**'
+    paths:
+      - '.github/workflows/rebind-domain.yml'
 
 permissions:
   contents: read
