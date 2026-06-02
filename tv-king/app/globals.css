@@ -17,7 +17,30 @@
    - Safe-area (overscan TV) : marges latérales/verticales tunables.
    ========================================================= */
 
-@import "tailwindcss";
+/* ⚠️ PAS de Tailwind ici. Les WebView des TV (Fire TV / Android TV) sont
+   souvent anciens et ne gèrent pas le CSS « moderne » que génère Tailwind
+   v4 (@layer, @property, color-mix) → la feuille entière serait ignorée et
+   l'app s'afficherait en blanc. On écrit donc un CSS SIMPLE et largement
+   compatible, à la main (tout le style de l'app est déjà fait main + inline).
+
+   Petit reset minimal (ce que fournissait le preflight de Tailwind) : */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+h1,
+h2,
+h3,
+p,
+figure,
+button {
+  margin: 0;
+}
+button {
+  font: inherit;
+  color: inherit;
+}
 
 :root {
   /* ----- Surfaces (paliers d'élévation Material, jamais #000) ----- */
