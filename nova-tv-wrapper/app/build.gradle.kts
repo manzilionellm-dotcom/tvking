@@ -21,6 +21,17 @@ android {
     namespace = "com.manzilionellm.tvkingtv"
     compileSdk = 34
 
+    // CRITIQUE pour empaqueter Next.js : par defaut, aapt IGNORE tout
+    // dossier commencant par « _ » (regle « <dir>_* » du pattern par
+    // defaut). Or Next.js met TOUT son CSS/JS dans le dossier « _next ».
+    // Sans cet override, « _next » n'est PAS inclus dans l'APK -> aucun
+    // asset -> ecran fige (JS/Next ne demarre pas). On reprend le pattern
+    // par defaut SANS le token « <dir>_* » pour conserver « _next ».
+    androidResources {
+        ignoreAssetsPattern =
+            "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~"
+    }
+
     defaultConfig {
         // NOVA+ : applicationId DISTINCT pour cohabiter avec les autres
         // apps du projet sur le meme appareil. (Le namespace Kotlin reste
