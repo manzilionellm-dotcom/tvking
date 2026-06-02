@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { customersApi, type Customer, ApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
@@ -6,6 +7,7 @@ import { formatDateTime } from '@/lib/utils';
 /// Phase 1.A : liste lue de D1 + recherche basique.
 /// Phase 1.B : creation/edition complete + filtres + bulk actions.
 export function CustomersPage({ onLogout }: { onLogout: () => void }) {
+  const navigate = useNavigate();
   const [items, setItems] = useState<Customer[]>([]);
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
@@ -31,8 +33,11 @@ export function CustomersPage({ onLogout }: { onLogout: () => void }) {
       subtitle={`${items.length} clients ${q ? `matching « ${q} »` : ''}`}
       onLogout={onLogout}
       actions={
-        <button className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black opacity-50 cursor-not-allowed">
-          + Nouveau client (1.B)
+        <button
+          onClick={() => navigate('/activate')}
+          className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black hover:bg-accent-bright"
+        >
+          + Activer un client
         </button>
       }
     >

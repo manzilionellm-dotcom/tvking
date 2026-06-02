@@ -1469,6 +1469,12 @@ async function handleActivate(request, env, user, actor) {
     ).bind(licenseId, customerId, deviceId, appId, plan, now, finalExpiry, chargeResellerId, now, now).run();
   }
 
+  // 2b) Activer = degeler : si l'appareil etait gele/banni, l'activation
+  // (le client a paye) le remet en service. Sinon le block_status
+  // primerait sur la licence et l'app resterait bloquee.
+  await env.DB.prepare('UPDATE devices SET block_status = NULL WHERE id = ?')
+    .bind(deviceId).run();
+
   // 3) Debit credits (revendeur) + ecriture au ledger, atomiquement.
   let balanceAfter = null;
   if (chargeResellerId && cost > 0) {

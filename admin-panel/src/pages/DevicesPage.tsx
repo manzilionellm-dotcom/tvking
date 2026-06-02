@@ -1,6 +1,6 @@
 import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { devicesApi, type Device, ApiError } from '@/lib/api';
+import { devicesApi, activateApi, type Device, ApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 
 export function DevicesPage({ onLogout }: { onLogout: () => void }) {
@@ -9,6 +9,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [activateFor, setActivateFor] = useState<Device | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -95,6 +96,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                   <td className="px-4 py-3 text-ink-tertiary">{formatDateTime(d.last_seen_at)}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap justify-end gap-1.5">
+                      <ActionBtn busy={busy} primary onClick={() => setActivateFor(d)} title="Activer / prolonger (le client a payé)">Activer</ActionBtn>
                       {st !== 'frozen' && (
                         <ActionBtn busy={busy} onClick={() => setBlock(d, 'frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>
                       )}
@@ -113,7 +115,81 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
           </tbody>
         </table>
       </div>
+
+      {activateFor && (
+        <ActivatePlanModal
+          device={activateFor}
+          onClose={() => setActivateFor(null)}
+          onDone={() => { setActivateFor(null); load(); }}
+        />
+      )}
     </AppLayout>
+  );
+}
+
+function ActivatePlanModal({
+  device, onClose, onDone,
+}: { device: Device; onClose: () => void; onDone: () => void }) {
+  const [plan, setPlan] = useState('yearly');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  const PLANS = [
+    { id: 'monthly', label: '1 mois' },
+    { id: 'quarterly', label: '3 mois' },
+    { id: 'biannual', label: '6 mois' },
+    { id: 'yearly', label: '1 an' },
+    { id: 'lifetime', label: 'À vie' },
+  ];
+
+  async function go() {
+    setBusy(true); setErr(null);
+    try {
+      await activateApi.activate({ mac: device.mac, plan });
+      setDone(true);
+      setTimeout(onDone, 900);
+    } catch (e: any) {
+      setErr(e instanceof ApiError ? e.message : 'Échec.');
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-midnight p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="mb-1 text-lg font-semibold tracking-tight">Activer / prolonger</h2>
+        <p className="mb-4 font-mono text-xs text-accent">{device.mac}</p>
+        <p className="mb-3 text-sm text-ink-tertiary">
+          Le client a payé ? Choisis la durée — elle s'ajoute au temps restant
+          et débloque l'app immédiatement.
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {PLANS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setPlan(p.id)}
+              className={
+                'rounded-md border px-3 py-2 text-sm transition ' +
+                (plan === p.id
+                  ? 'border-accent bg-accent/10 text-ink-primary'
+                  : 'border-white/5 bg-slate text-ink-secondary hover:border-white/20')
+              }
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        {err && <div className="mt-3 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>}
+        {done && <div className="mt-3 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs text-success">Activé ✔</div>}
+        <div className="flex justify-end gap-2 pt-4">
+          <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary">Annuler</button>
+          <button disabled={busy || done} onClick={go} className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black hover:bg-accent-bright disabled:opacity-50">
+            {busy ? 'Activation…' : 'Activer'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -128,19 +204,19 @@ function DeviceStatus({ status }: { status: string }) {
 }
 
 function ActionBtn({
-  children, onClick, busy, danger, title,
-}: { children: ReactNode; onClick: () => void; busy?: boolean; danger?: boolean; title?: string }) {
+  children, onClick, busy, danger, primary, title,
+}: { children: ReactNode; onClick: () => void; busy?: boolean; danger?: boolean; primary?: boolean; title?: string }) {
+  const cls = primary
+    ? 'bg-accent text-black hover:bg-accent-bright border border-transparent'
+    : danger
+      ? 'border border-white/10 text-ink-secondary hover:border-accent hover:text-accent-bright'
+      : 'border border-white/10 hover:border-white/30';
   return (
     <button
       onClick={onClick}
       disabled={busy}
       title={title}
-      className={
-        'rounded-md border px-2.5 py-1 text-xs disabled:opacity-50 ' +
-        (danger
-          ? 'border-white/10 text-ink-secondary hover:border-accent hover:text-accent-bright'
-          : 'border-white/10 hover:border-white/30')
-      }
+      className={'rounded-md px-2.5 py-1 text-xs font-medium disabled:opacity-50 ' + cls}
     >
       {children}
     </button>

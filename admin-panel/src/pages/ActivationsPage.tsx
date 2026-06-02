@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { licensesApi, type License, ApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 
 export function ActivationsPage({ onLogout }: { onLogout: () => void }) {
+  const navigate = useNavigate();
   const [items, setItems] = useState<License[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -27,8 +29,11 @@ export function ActivationsPage({ onLogout }: { onLogout: () => void }) {
       subtitle="Licences actives, expirées et gelées sur toutes les apps."
       onLogout={onLogout}
       actions={
-        <button className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black opacity-50 cursor-not-allowed">
-          + Activer un MAC (1.B)
+        <button
+          onClick={() => navigate('/activate')}
+          className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black hover:bg-accent-bright"
+        >
+          + Activer un MAC
         </button>
       }
     >
