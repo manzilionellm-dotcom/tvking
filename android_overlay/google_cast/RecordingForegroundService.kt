@@ -396,13 +396,46 @@ class RecordingForegroundService : Service() {
         }
     }
 
-    private fun openConn(urlStr: String): java.net.HttpURLConnection =
-        (java.net.URL(urlStr).openConnection() as java.net.HttpURLConnection).apply {
-            connectTimeout = 15000
-            readTimeout = 30000
-            instanceFollowRedirects = true
-            setRequestProperty("User-Agent", "VLC/3.0.20 LibVLC/3.0.20 (7 MOTION)")
+    /// Ouvre une connexion HTTP en suivant NOUS-MEMES les redirections,
+    /// y compris CROSS-PROTOCOLE (http -> https et inversement).
+    ///
+    /// POURQUOI c'est critique : `HttpURLConnection.instanceFollowRedirects`
+    /// ne suit JAMAIS un redirect qui change de protocole (limitation
+    /// historique de Java, pour raisons de securite). Or les serveurs
+    /// Xtream renvoient tres souvent un `302` d'une URL `.ts` en http vers
+    /// leur CDN en https. Avec l'ancien code (`= true`), la reponse restait
+    /// un 302 jamais suivi -> aucun octet lu -> fichier 0 octet ->
+    /// "Enregistrement vide". On boucle donc a la main sur les en-tetes
+    /// `Location` (jusqu'a 8 sauts) pour atterrir sur la vraie ressource.
+    private fun openConn(urlStr: String): java.net.HttpURLConnection {
+        var current = urlStr
+        var hops = 0
+        while (true) {
+            val conn = (java.net.URL(current).openConnection() as java.net.HttpURLConnection).apply {
+                connectTimeout = 15000
+                readTimeout = 30000
+                // On desactive le suivi auto : on gere TOUTES les redirections
+                // a la main pour couvrir le cas cross-protocole.
+                instanceFollowRedirects = false
+                setRequestProperty("User-Agent", "VLC/3.0.20 LibVLC/3.0.20 (7 MOTION)")
+                setRequestProperty("Accept", "*/*")
+            }
+            val code = conn.responseCode
+            if (code in 300..399 && hops < 8) {
+                val loc = conn.getHeaderField("Location")
+                if (!loc.isNullOrBlank()) {
+                    try { conn.disconnect() } catch (_: Throwable) {}
+                    current = resolveUrl(current, loc)
+                    hops++
+                    continue
+                }
+            }
+            // 2xx, ou 3xx sans Location exploitable, ou plafond de sauts
+            // atteint : on rend la connexion telle quelle. L'appelant lit
+            // `responseCode` et decide (2xx = on lit, sinon retry/abandon).
+            return conn
         }
+    }
 
     private fun isM3u8Header(buf: ByteArray, len: Int): Boolean {
         val n = minOf(len, 16)
