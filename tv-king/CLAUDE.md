@@ -113,6 +113,32 @@ Ambilight (lueur de fond adaptative), parallaxe (relief 3D au focus), recherche
 actif), retours **sonores** WebAudio, mode **repos des yeux** (tons chauds,
 luminance douce), **édition VIP** (or riche, halo, finitions).
 
+## Branchement au panel 7 MOTION (licence / essai)
+
+TV King est une app **web** : elle génère un **MAC virtuel** stable par
+installation (`MK:XX:XX:XX:XX:XX`, persisté en localStorage), exactement comme
+les apps mobiles du projet.
+
+- `app/lib/license.ts` — MAC virtuel + appels `POST /api/heartbeat` et
+  `GET /api/status/:mac` sur le **même backend** que les apps mobiles
+  (`NEXT_PUBLIC_LICENSE_BASE`, défaut `https://99999.7themotion.com`) + logique
+  PURE de blocage (testée).
+- `LicenseProvider` fait un heartbeat au démarrage → l'appareil **apparaît
+  automatiquement** dans le panel admin (Clients / Appareils), démarre un
+  **essai 7 jours**, puis se bloque.
+- `SubscriptionGate` : écran bloquant (essai fini / gelé / banni) qui affiche
+  le **code (MAC)** à communiquer pour l'activation + bouton « J'ai payé —
+  rafraîchir ». `TrialBadge` : rappel discret des jours d'essai restants.
+- **Activation** : depuis le panel, par MAC + plan (crédits) — aucun code panel
+  à modifier (l'auto-enregistrement existe déjà). C'est de l'infra de **licence
+  / accès**, pas de distribution de contenu/flux.
+- Repli **hors-ligne** : si le serveur est injoignable, on ne bloque pas
+  (`shouldBlock` est fail-open) pour ne pas punir un utilisateur légitime.
+
+> Suite possible (comme les apps mobiles) : vérifier la **signature Ed25519**
+> des réponses (anti-faux-serveur) une fois le secret `LICENSE_SIGNING_KEY`
+> posé côté Worker.
+
 ## Conventions
 
 - **Commentaires en français**, abondants et explicatifs (support pédagogique).

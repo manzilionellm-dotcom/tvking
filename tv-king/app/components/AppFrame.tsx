@@ -14,17 +14,33 @@
 // =========================================================
 
 import type { ReactNode } from "react";
+import { shouldBlock } from "../lib/license";
 import { usePreferences } from "../lib/preferences";
 import { AppFrameSplash } from "./Splash";
 import { HelpBar } from "./HelpBar";
+import { useLicense } from "./LicenseProvider";
 import { ProfileGate } from "./ProfileGate";
 import { Sidebar } from "./Sidebar";
 import { SpatialNav } from "./SpatialNav";
+import { SubscriptionGate } from "./SubscriptionGate";
+import { TrialBadge } from "./TrialBadge";
 
 export function AppFrame({ children }: { children: ReactNode }) {
-  const { prefs, ready } = usePreferences();
+  const { prefs, ready: prefsReady } = usePreferences();
+  const { ready: licenseReady, status } = useLicense();
 
-  if (!ready) return <AppFrameSplash />;
+  // On attend la lecture des préférences ET le 1er heartbeat de licence.
+  if (!prefsReady || !licenseReady) return <AppFrameSplash />;
+
+  // Blocage d'accès (essai fini non payé / gelé / banni) — prime sur tout.
+  if (shouldBlock(status)) {
+    return (
+      <>
+        <SpatialNav />
+        <SubscriptionGate status={status} />
+      </>
+    );
+  }
 
   if (!prefs.profile) {
     return (
@@ -38,6 +54,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
   return (
     <>
       <SpatialNav />
+      <TrialBadge />
       <div className="app-shell">
         <Sidebar />
         <main className="content">{children}</main>

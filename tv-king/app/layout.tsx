@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AppFrame } from "./components/AppFrame";
+import { LicenseProvider } from "./components/LicenseProvider";
 import { PreferencesProvider } from "./lib/preferences";
 
 // Métadonnées de l'app. Pas de marque réelle, pas de tracking.
@@ -27,7 +28,9 @@ export default function RootLayout({
     <html lang="fr">
       <body>
         <PreferencesProvider>
-          <AppFrame>{children}</AppFrame>
+          <LicenseProvider>
+            <AppFrame>{children}</AppFrame>
+          </LicenseProvider>
         </PreferencesProvider>
       </body>
     </html>
