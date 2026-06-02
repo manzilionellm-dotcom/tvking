@@ -1,14 +1,19 @@
 // =========================================================
-//  add_playlist_screen.dart — Écran d'ajout de playlist
+//  add_playlist_screen.dart — Connexion client (Xtream)
 // =========================================================
-//  Écran avec 2 onglets (M3U / Xtream Codes), formulaires
-//  propres, validation côté client + côté serveur, et
-//  feedback visuel (loader pendant la sync, message d'erreur
-//  clair en cas de problème).
+//  Écran de connexion simplifié. Le client NE saisit plus d'URL
+//  (ni M3U, ni serveur Xtream libre) : conformément à AGENTS.md
+//  règle n°2, aucune URL de flux IPTV n'est en dur dans l'app.
 //
-//  À la fin d'un ajout réussi → on referme l'écran et le
-//  Stream du repository fait remonter les nouvelles chaînes
-//  sur HomeScreen automatiquement.
+//  À la place :
+//    1. il choisit un serveur (« Serveur 1 », « Serveur 2 »…),
+//       récupéré depuis le Worker via `GET /api/servers`
+//       (cf. default_servers.dart) — l'URL reste cachée ;
+//    2. il saisit son CODE Xtream (utilisateur + mot de passe).
+//
+//  Les anciens onglets « M3U / URL », « M3U en lot » et le champ
+//  serveur libre ont été retirés : le client n'a plus aucun chemin
+//  pour taper une URL lui-même.
 // =========================================================
 
 import 'package:flutter/material.dart';
@@ -16,6 +21,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/legal_disclaimer.dart';
+import '../data/default_servers.dart';
 import '../data/playlist_repository.dart';
 import '../domain/playlist.dart';
 
@@ -26,30 +32,16 @@ class AddPlaylistScreen extends StatefulWidget {
   State<AddPlaylistScreen> createState() => _AddPlaylistScreenState();
 }
 
-class _AddPlaylistScreenState extends State<AddPlaylistScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
+class _AddPlaylistScreenState extends State<AddPlaylistScreen> {
+  final TextEditingController _userCtrl = TextEditingController();
+  final TextEditingController _passCtrl = TextEditingController();
 
-  // Formulaire M3U
-  final TextEditingController _m3uNameCtrl =
-      TextEditingController(text: 'Ma playlist');
-  final TextEditingController _m3uUrlCtrl = TextEditingController();
-  final TextEditingController _m3uEpgCtrl = TextEditingController();
+  /// Serveurs proposés (chargés depuis le Worker). `null` = en cours
+  /// de chargement, liste vide = aucun serveur dispo / réseau KO.
+  List<DefaultServer>? _servers;
 
-  // Formulaire Xtream
-  final TextEditingController _xtNameCtrl =
-      TextEditingController(text: 'Mon Xtream');
-  final TextEditingController _xtServerCtrl = TextEditingController();
-  final TextEditingController _xtUserCtrl = TextEditingController();
-  final TextEditingController _xtPassCtrl = TextEditingController();
-
-  // Formulaire Bulk M3U
-  final TextEditingController _bulkPrefixCtrl =
-      TextEditingController(text: 'Playlist');
-  final TextEditingController _bulkUrlsCtrl = TextEditingController();
-  int _bulkProgressCurrent = 0;
-  int _bulkProgressTotal = 0;
-  List<BatchImportResult> _bulkResults = <BatchImportResult>[];
+  /// Identifiant du serveur sélectionné (par défaut le premier).
+  String? _selectedServerId;
 
   bool _busy = false;
   String? _errorMessage;
@@ -57,157 +49,49 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _loadServers();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
-    _m3uNameCtrl.dispose();
-    _m3uUrlCtrl.dispose();
-    _m3uEpgCtrl.dispose();
-    _xtNameCtrl.dispose();
-    _xtServerCtrl.dispose();
-    _xtUserCtrl.dispose();
-    _xtPassCtrl.dispose();
-    _bulkPrefixCtrl.dispose();
-    _bulkUrlsCtrl.dispose();
+    _userCtrl.dispose();
+    _passCtrl.dispose();
     super.dispose();
   }
 
-  // ============================================================
-  //  Soumissions
-  // ============================================================
-
-  Future<void> _submitM3u() async {
-    final String name = _m3uNameCtrl.text.trim();
-    final String url = _m3uUrlCtrl.text.trim();
-    final String epgUrl = _m3uEpgCtrl.text.trim();
-
-    if (name.isEmpty) {
-      _setError('Donne un nom à ta playlist (ex : "Mon abonnement").');
-      return;
-    }
-    if (url.isEmpty || (!url.startsWith('http://') && !url.startsWith('https://'))) {
-      _setError('URL invalide. Elle doit commencer par http:// ou https://');
-      return;
-    }
-    if (epgUrl.isNotEmpty &&
-        !epgUrl.startsWith('http://') &&
-        !epgUrl.startsWith('https://')) {
-      _setError(
-          'URL EPG invalide. Laisse vide si tu n\'en as pas, ou commence par http(s)://');
-      return;
-    }
-
-    _setBusy(true);
-    try {
-      final Playlist saved = await PlaylistRepository.instance.addM3uPlaylist(
-        name: name,
-        url: url,
-        epgUrl: epgUrl.isEmpty ? null : epgUrl,
-      );
-      if (!mounted) return;
-      _onSuccess(saved);
-    } on Exception catch (e) {
-      _setError(_humanReadable(e));
-    } finally {
-      _setBusy(false);
-    }
-  }
-
-  Future<void> _submitBulk() async {
-    final String prefix = _bulkPrefixCtrl.text.trim();
-    final String raw = _bulkUrlsCtrl.text;
-
-    if (prefix.isEmpty) {
-      _setError('Donne un préfixe (ex: "Mes playlists").');
-      return;
-    }
-
-    // Extraction des URLs : une par ligne, vide ignorée
-    final List<String> urls = raw
-        .split('\n')
-        .map((String l) => l.trim())
-        .where((String l) =>
-            l.isNotEmpty &&
-            (l.startsWith('http://') || l.startsWith('https://')))
-        .toList();
-
-    if (urls.isEmpty) {
-      _setError(
-        'Colle une URL par ligne (chacune doit commencer par http:// ou https://).',
-      );
-      return;
-    }
-    if (urls.length > 10) {
-      _setError(
-        'Max 10 URLs à la fois (tu en as ${urls.length}). Découpe en plusieurs lots.',
-      );
-      return;
-    }
-
-    final List<({String name, String url})> entries = <({String name, String url})>[
-      for (int i = 0; i < urls.length; i++)
-        (name: '$prefix #${i + 1}', url: urls[i]),
-    ];
-
-    _setBusy(true);
-    setState(() {
-      _bulkProgressCurrent = 0;
-      _bulkProgressTotal = entries.length;
-      _bulkResults = <BatchImportResult>[];
-    });
-
-    final List<BatchImportResult> results =
-        await PlaylistRepository.instance.addM3uPlaylistsBatch(
-      entries: entries,
-      onProgress: (int index, int total, String name, BatchImportResult? r) {
-        if (!mounted) return;
-        setState(() {
-          _bulkProgressCurrent = index;
-          _bulkProgressTotal = total;
-          if (r != null) _bulkResults = <BatchImportResult>[..._bulkResults, r];
-        });
-      },
-    );
-
-    _setBusy(false);
-
-    final int ok = results.where((BatchImportResult r) => r.ok).length;
-    final int fail = results.where((BatchImportResult r) => !r.ok).length;
-
+  Future<void> _loadServers() async {
+    final List<DefaultServer> servers = await DefaultServersApi.fetch();
     if (!mounted) return;
-    if (ok > 0 && fail == 0) {
-      // Toutes les playlists ont marché → on ferme
-      Navigator.of(context).pop();
-    } else if (ok == 0) {
-      _setError('Aucune playlist n\'a pu être importée. Vérifie les URLs.');
-    } else {
-      _setError(
-        '$ok importée(s), $fail en erreur. Tu peux fermer ou réessayer.',
-      );
-    }
+    setState(() {
+      _servers = servers;
+      _selectedServerId = servers.isNotEmpty ? servers.first.id : null;
+    });
   }
 
-  Future<void> _submitXtream() async {
-    final String name = _xtNameCtrl.text.trim();
-    final String server = _xtServerCtrl.text.trim();
-    final String user = _xtUserCtrl.text.trim();
-    final String pass = _xtPassCtrl.text;
-
-    if (name.isEmpty) {
-      _setError('Donne un nom à ta playlist (ex : "Mon Xtream").');
-      return;
+  DefaultServer? get _selectedServer {
+    final List<DefaultServer>? servers = _servers;
+    if (servers == null || _selectedServerId == null) return null;
+    for (final DefaultServer s in servers) {
+      if (s.id == _selectedServerId) return s;
     }
-    if (server.isEmpty || (!server.startsWith('http://') && !server.startsWith('https://'))) {
-      _setError(
-        'Serveur invalide. Format attendu : http://server.com:8080',
-      );
+    return null;
+  }
+
+  // ============================================================
+  //  Soumission
+  // ============================================================
+
+  Future<void> _submit() async {
+    final DefaultServer? server = _selectedServer;
+    final String user = _userCtrl.text.trim();
+    final String pass = _passCtrl.text;
+
+    if (server == null) {
+      _setError('Choisis un serveur.');
       return;
     }
     if (user.isEmpty || pass.isEmpty) {
-      _setError('Username et mot de passe sont obligatoires.');
+      _setError('Utilisateur et mot de passe sont obligatoires.');
       return;
     }
 
@@ -215,8 +99,9 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen>
     try {
       final Playlist saved =
           await PlaylistRepository.instance.addXtreamPlaylist(
-        name: name,
-        serverUrl: server,
+        // Nom interne = libellé du serveur (le client n'a rien à nommer).
+        name: server.label,
+        serverUrl: server.url,
         username: user,
         password: pass,
       );
@@ -248,7 +133,6 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen>
 
   String _humanReadable(Object error) {
     final String raw = error.toString();
-    // On retire le préfixe "Exception:" pour un message plus propre.
     return raw.startsWith('Exception: ')
         ? raw.substring('Exception: '.length)
         : raw;
@@ -263,304 +147,138 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen>
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Ajouter une playlist'),
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          tabAlignment: TabAlignment.start,
-          indicatorColor: AppColors.accentPink,
-          labelColor: AppColors.accentPink,
-          unselectedLabelColor: Colors.white60,
-          tabs: const <Widget>[
-            Tab(text: 'M3U / URL'),
-            Tab(text: 'Xtream Codes'),
-            Tab(text: 'M3U en lot'),
-          ],
-        ),
+        title: const Text('Connexion'),
       ),
       body: SafeArea(
-        child: Column(
-          children: <Widget>[
-            // Bandeau légal TiViMate-style — rappelle dès l'arrivée
-            // que 7 MOTION ne fournit pas les flux et que l'user
-            // doit apporter sa propre URL IPTV.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: const LegalDisclaimer.compact(),
-            ),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: <Widget>[
-                  _buildM3uForm(),
-                  _buildXtreamForm(),
-                  _buildBulkForm(),
-                ],
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              const LegalDisclaimer.compact(),
+              const SizedBox(height: 16),
+              _intro(
+                'Choisis ton serveur, puis saisis le code que t\'a donné '
+                'ton revendeur (utilisateur + mot de passe). On vérifie '
+                'le code avant de charger tes chaînes.',
               ),
-            ),
-          ],
+              const SizedBox(height: 24),
+              _label('Serveur'),
+              _buildServerSelector(),
+              const SizedBox(height: 16),
+              _label('Utilisateur'),
+              _textField(
+                controller: _userCtrl,
+                hint: 'identifiant',
+                icon: Icons.person_outline,
+                autocorrect: false,
+              ),
+              const SizedBox(height: 16),
+              _label('Mot de passe'),
+              _textField(
+                controller: _passCtrl,
+                hint: 'mot de passe',
+                icon: Icons.lock_outline,
+                obscureText: true,
+                autocorrect: false,
+              ),
+              const SizedBox(height: 24),
+              if (_errorMessage != null) _errorBanner(_errorMessage!),
+              const SizedBox(height: 8),
+              _primaryButton(
+                label: _busy
+                    ? 'Connexion au serveur...'
+                    : 'Se connecter et charger',
+                icon: _busy ? null : Icons.cloud_download_rounded,
+                onPressed:
+                    (_busy || _selectedServer == null) ? null : _submit,
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildM3uForm() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          _intro(
-            'Colle l\'URL de ton fichier .m3u ou .m3u8.\n'
-            'Ton fournisseur IPTV te la donne (souvent un lien type '
-            'http://serveur.com/get.php?username=X&password=Y).',
-          ),
-          const SizedBox(height: 24),
-          _label('Nom de la playlist'),
-          _textField(
-            controller: _m3uNameCtrl,
-            hint: 'Mon abonnement',
-            icon: Icons.label_outline,
-          ),
-          const SizedBox(height: 16),
-          _label('URL de la playlist M3U'),
-          _textField(
-            controller: _m3uUrlCtrl,
-            hint: 'http://serveur.com/get.php?username=...',
-            icon: Icons.link,
-            keyboardType: TextInputType.url,
-            autocorrect: false,
-          ),
-          const SizedBox(height: 16),
-          _label('URL EPG XMLTV (optionnel)'),
-          _textField(
-            controller: _m3uEpgCtrl,
-            hint: 'http://serveur.com/xmltv.php?username=...',
-            icon: Icons.event_note_rounded,
-            keyboardType: TextInputType.url,
-            autocorrect: false,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(top: 6, left: 4),
-            child: Text(
-              'Optionnel · Active le guide TV et les programmes en cours.',
-              style: AppTextStyles.bodyMedium.copyWith(
-                fontSize: 11,
-                color: AppColors.textMuted,
-              ),
+  /// Sélecteur de serveur. N'affiche QUE les libellés (« Serveur 1 »…),
+  /// jamais les URLs. Trois états : chargement, vide, liste de choix.
+  Widget _buildServerSelector() {
+    final List<DefaultServer>? servers = _servers;
+
+    if (servers == null) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: <Widget>[
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
-          ),
-          const SizedBox(height: 24),
-          if (_errorMessage != null) _errorBanner(_errorMessage!),
-          const SizedBox(height: 8),
-          _primaryButton(
-            label: _busy ? 'Téléchargement en cours...' : 'Charger la playlist',
-            icon: _busy ? null : Icons.download_rounded,
-            onPressed: _busy ? null : _submitM3u,
-          ),
-        ],
+            const SizedBox(width: 12),
+            Text(
+              'Chargement des serveurs…',
+              style: AppTextStyles.bodyMedium.copyWith(fontSize: 13),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (servers.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              'Serveurs indisponibles pour le moment.',
+              style: AppTextStyles.bodyMedium.copyWith(fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: () {
+                setState(() => _servers = null);
+                _loadServers();
+              },
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Réessayer'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
       ),
-    );
-  }
-
-  Widget _buildXtreamForm() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          _intro(
-            'Renseigne les 3 infos que ton fournisseur t\'a données : '
-            'l\'URL du serveur (avec le port), ton identifiant et ton mot de passe. '
-            'On vérifie les identifiants avant de tout télécharger.',
-          ),
-          const SizedBox(height: 24),
-          _label('Nom de la playlist'),
-          _textField(
-            controller: _xtNameCtrl,
-            hint: 'Mon Xtream',
-            icon: Icons.label_outline,
-          ),
-          const SizedBox(height: 16),
-          _label('Serveur'),
-          _textField(
-            controller: _xtServerCtrl,
-            hint: 'http://serveur.com:8080',
-            icon: Icons.dns_rounded,
-            keyboardType: TextInputType.url,
-            autocorrect: false,
-          ),
-          const SizedBox(height: 16),
-          _label('Username'),
-          _textField(
-            controller: _xtUserCtrl,
-            hint: 'identifiant',
-            icon: Icons.person_outline,
-            autocorrect: false,
-          ),
-          const SizedBox(height: 16),
-          _label('Mot de passe'),
-          _textField(
-            controller: _xtPassCtrl,
-            hint: 'mot de passe',
-            icon: Icons.lock_outline,
-            obscureText: true,
-            autocorrect: false,
-          ),
-          const SizedBox(height: 24),
-          if (_errorMessage != null) _errorBanner(_errorMessage!),
-          const SizedBox(height: 8),
-          _primaryButton(
-            label: _busy
-                ? 'Connexion au serveur...'
-                : 'Se connecter et charger',
-            icon: _busy ? null : Icons.cloud_download_rounded,
-            onPressed: _busy ? null : _submitXtream,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBulkForm() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          _intro(
-            'Colle jusqu\'à 10 URLs M3U d\'un coup, une par ligne. '
-            'L\'app va les télécharger en série et créer une playlist '
-            'séparée pour chacune (renommée "Préfixe #1", "Préfixe #2"...).',
-          ),
-          const SizedBox(height: 24),
-          _label('Préfixe des noms'),
-          _textField(
-            controller: _bulkPrefixCtrl,
-            hint: 'Mes playlists',
-            icon: Icons.label_outline,
-          ),
-          const SizedBox(height: 16),
-          _label('URLs M3U (une par ligne, max 10)'),
-          TextField(
-            controller: _bulkUrlsCtrl,
-            enabled: !_busy,
-            keyboardType: TextInputType.multiline,
-            maxLines: 8,
-            minLines: 4,
-            autocorrect: false,
-            style: AppTextStyles.bodyLarge.copyWith(fontSize: 13),
-            decoration: InputDecoration(
-              hintText: 'http://serveur1.com/get.php?...\n'
-                  'http://serveur2.com/playlist.m3u\n'
-                  'https://example.com/list.m3u8',
-              hintStyle: AppTextStyles.bodyMedium.copyWith(
-                color: AppColors.textMuted,
-                fontSize: 12,
-              ),
-              filled: true,
-              fillColor: AppColors.surface,
-              contentPadding: const EdgeInsets.all(14),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.08),
-                ),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.08),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(
-                  color: AppColors.accentPink.withValues(alpha: 0.8),
-                  width: 1.6,
-                ),
+          for (final DefaultServer s in servers)
+            RadioListTile<String>(
+              value: s.id,
+              groupValue: _selectedServerId,
+              onChanged: _busy
+                  ? null
+                  : (String? v) => setState(() => _selectedServerId = v),
+              activeColor: AppColors.accentPink,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+              title: Text(
+                s.label,
+                style: AppTextStyles.bodyLarge.copyWith(fontSize: 15),
               ),
             ),
-          ),
-          const SizedBox(height: 18),
-
-          // Barre de progression pendant l'import
-          if (_busy && _bulkProgressTotal > 0)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Text(
-                    'Import : $_bulkProgressCurrent / $_bulkProgressTotal',
-                    style: AppTextStyles.bodyMedium.copyWith(
-                      color: AppColors.accentCyan,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: _bulkProgressTotal == 0
-                          ? null
-                          : _bulkProgressCurrent / _bulkProgressTotal,
-                      minHeight: 6,
-                      backgroundColor: Colors.white.withValues(alpha: 0.1),
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(AppColors.accentPink),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          // Résultats individuels
-          if (_bulkResults.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Column(
-                children: _bulkResults
-                    .map((BatchImportResult r) => _bulkResultLine(r))
-                    .toList(),
-              ),
-            ),
-
-          if (_errorMessage != null) _errorBanner(_errorMessage!),
-          const SizedBox(height: 8),
-          _primaryButton(
-            label: _busy
-                ? 'Import en cours...'
-                : 'Importer toutes les playlists',
-            icon: _busy ? null : Icons.cloud_download_rounded,
-            onPressed: _busy ? null : _submitBulk,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _bulkResultLine(BatchImportResult r) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        children: <Widget>[
-          Icon(
-            r.ok ? Icons.check_circle : Icons.cancel,
-            color: r.ok ? AppColors.success : AppColors.live,
-            size: 16,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              r.ok
-                  ? '${r.name} — ${r.channelCount} chaînes'
-                  : '${r.name} — ${r.error ?? "échec"}',
-              style: AppTextStyles.bodyMedium.copyWith(fontSize: 12),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
         ],
       ),
     );

@@ -1,24 +1,25 @@
 // =========================================================
-//  xtream_login_sheet.dart — Saisie Xtream Codes côté client
+//  xtream_login_sheet.dart — Connexion Xtream côté client
 // =========================================================
-//  Bottom sheet appelée depuis l'écran "Tes chaînes arrivent
-//  bientôt" pour les utilisateurs qui ont LEUR PROPRE
-//  abonnement Xtream et ne veulent pas passer par un revendeur.
+//  Bottom sheet de connexion. Le client NE saisit PLUS d'URL de
+//  serveur : conformément à AGENTS.md règle n°2, aucune URL de flux
+//  IPTV n'est en dur dans l'app. À la place, on récupère les
+//  serveurs proposés (« Serveur 1 », « Serveur 2 »…) depuis le
+//  Worker via `GET /api/servers` (cf. default_servers.dart) et le
+//  client n'a qu'à :
+//    1. choisir un serveur,
+//    2. saisir son CODE Xtream (utilisateur + mot de passe).
 //
-//  3 champs : Serveur, Utilisateur, Mot de passe.
-//  Validation : URL non vide, user non vide, pass non vide.
-//  Submit → PlaylistRepository.addXtreamPlaylist (vérifie les
-//  credentials côté Xtream avant de polluer la DB locale).
-//
-//  Pas de M3U manuel proposé ici — uniquement Xtream, comme
-//  demandé par l'utilisateur.
+//  L'URL réelle reste cachée et peut être changée côté serveur sans
+//  re-publier l'app.
 // =========================================================
 
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../playlists/data/playlist_repository.dart';
+import '../data/default_servers.dart';
+import '../data/playlist_repository.dart';
 
 Future<void> showXtreamLoginSheet(BuildContext context) {
   return showModalBottomSheet<void>(
@@ -38,32 +39,62 @@ class _XtreamLoginSheet extends StatefulWidget {
 }
 
 class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
-  final TextEditingController _serverCtrl = TextEditingController();
   final TextEditingController _userCtrl = TextEditingController();
   final TextEditingController _passCtrl = TextEditingController();
-  final TextEditingController _nameCtrl = TextEditingController();
+
+  /// Serveurs proposés (chargés depuis le Worker). `null` = en cours
+  /// de chargement, liste vide = aucun serveur configuré / réseau KO.
+  List<DefaultServer>? _servers;
+
+  /// Identifiant du serveur sélectionné (par défaut le premier).
+  String? _selectedServerId;
 
   bool _busy = false;
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    _loadServers();
+  }
+
+  @override
   void dispose() {
-    _serverCtrl.dispose();
     _userCtrl.dispose();
     _passCtrl.dispose();
-    _nameCtrl.dispose();
     super.dispose();
   }
 
+  Future<void> _loadServers() async {
+    final List<DefaultServer> servers = await DefaultServersApi.fetch();
+    if (!mounted) return;
+    setState(() {
+      _servers = servers;
+      _selectedServerId = servers.isNotEmpty ? servers.first.id : null;
+    });
+  }
+
+  DefaultServer? get _selectedServer {
+    final List<DefaultServer>? servers = _servers;
+    if (servers == null || _selectedServerId == null) return null;
+    for (final DefaultServer s in servers) {
+      if (s.id == _selectedServerId) return s;
+    }
+    return null;
+  }
+
   Future<void> _submit() async {
-    final String server = _serverCtrl.text.trim();
+    final DefaultServer? server = _selectedServer;
     final String user = _userCtrl.text.trim();
     final String pass = _passCtrl.text.trim();
-    final String name =
-        _nameCtrl.text.trim().isEmpty ? 'Mon abonnement' : _nameCtrl.text.trim();
 
-    if (server.isEmpty || user.isEmpty || pass.isEmpty) {
-      setState(() => _error = 'Serveur, utilisateur et mot de passe sont obligatoires.');
+    if (server == null) {
+      setState(() => _error = 'Choisis un serveur.');
+      return;
+    }
+    if (user.isEmpty || pass.isEmpty) {
+      setState(
+          () => _error = 'Utilisateur et mot de passe sont obligatoires.');
       return;
     }
     setState(() {
@@ -72,8 +103,9 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
     });
     try {
       await PlaylistRepository.instance.addXtreamPlaylist(
-        name: name,
-        serverUrl: server,
+        // Nom interne = libellé du serveur, le client n'a rien à nommer.
+        name: server.label,
+        serverUrl: server.url,
         username: user,
         password: pass,
       );
@@ -83,7 +115,7 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
         SnackBar(
           behavior: SnackBarBehavior.floating,
           content: Text(
-            'Abonnement ajouté. Tes chaînes arrivent…',
+            'Connecté. Tes chaînes arrivent…',
             style: AppTextStyles.bodyMedium,
           ),
         ),
@@ -138,16 +170,16 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
                     Icon(Icons.vpn_key_rounded,
                         color: AppColors.accent, size: 22),
                     const SizedBox(width: 10),
-                    Text('Xtream Codes',
+                    Text('Connexion',
                         style: AppTextStyles.headlineLarge
                             .copyWith(fontSize: 22)),
                   ],
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Saisis les identifiants Xtream que t\'a donnés ton '
-                  'fournisseur IPTV. Tes chaînes seront chargées en '
-                  'quelques secondes.',
+                  'Choisis ton serveur puis saisis le code que t\'a '
+                  'donné ton revendeur (utilisateur + mot de passe). '
+                  'Tes chaînes seront chargées en quelques secondes.',
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 13,
                     color: AppColors.textSecondary,
@@ -155,15 +187,8 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                _label('Serveur Xtream'),
-                TextField(
-                  controller: _serverCtrl,
-                  keyboardType: TextInputType.url,
-                  autocorrect: false,
-                  decoration: const InputDecoration(
-                    hintText: 'http://serveur.com:8080',
-                  ),
-                ),
+                _label('Serveur'),
+                _buildServerSelector(),
                 const SizedBox(height: 12),
                 _label('Utilisateur'),
                 TextField(
@@ -176,14 +201,6 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
                   controller: _passCtrl,
                   obscureText: true,
                   autocorrect: false,
-                ),
-                const SizedBox(height: 12),
-                _label('Nom de l\'abonnement (optionnel)'),
-                TextField(
-                  controller: _nameCtrl,
-                  decoration: const InputDecoration(
-                    hintText: 'Défaut : "Mon abonnement"',
-                  ),
                 ),
                 if (_error != null) ...<Widget>[
                   const SizedBox(height: 16),
@@ -218,7 +235,9 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
                   width: double.infinity,
                   height: 52,
                   child: FilledButton.icon(
-                    onPressed: _busy ? null : _submit,
+                    onPressed: (_busy || _selectedServer == null)
+                        ? null
+                        : _submit,
                     icon: _busy
                         ? const SizedBox(
                             width: 16,
@@ -228,7 +247,8 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
                             ),
                           )
                         : const Icon(Icons.check_rounded, size: 20),
-                    label: Text(_busy ? 'Vérification…' : 'Charger mes chaînes'),
+                    label:
+                        Text(_busy ? 'Vérification…' : 'Charger mes chaînes'),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -243,6 +263,96 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Sélecteur de serveur. Affiche les libellés (« Serveur 1 »…) —
+  /// jamais les URLs. Trois états : chargement, vide (réseau KO ou
+  /// aucun serveur configuré côté Worker), liste de choix.
+  Widget _buildServerSelector() {
+    final List<DefaultServer>? servers = _servers;
+
+    if (servers == null) {
+      // Chargement en cours.
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: <Widget>[
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'Chargement des serveurs…',
+              style: AppTextStyles.bodyMedium.copyWith(fontSize: 13),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (servers.isEmpty) {
+      // Aucun serveur dispo (réseau KO au 1er lancement, ou rien de
+      // configuré côté Worker). On propose de réessayer.
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              'Serveurs indisponibles pour le moment.',
+              style: AppTextStyles.bodyMedium.copyWith(fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: () {
+                setState(() => _servers = null);
+                _loadServers();
+              },
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Réessayer'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Liste de choix (RadioListTile pour le tactile + télécommande TV).
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: <Widget>[
+          for (final DefaultServer s in servers)
+            RadioListTile<String>(
+              value: s.id,
+              groupValue: _selectedServerId,
+              onChanged: _busy
+                  ? null
+                  : (String? v) => setState(() => _selectedServerId = v),
+              activeColor: AppColors.accent,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12),
+              title: Text(
+                s.label,
+                style: AppTextStyles.bodyLarge.copyWith(fontSize: 15),
+              ),
+            ),
+        ],
       ),
     );
   }

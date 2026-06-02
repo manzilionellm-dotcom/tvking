@@ -1308,6 +1308,49 @@ async function handlePublicConfig(env, mac) {
   });
 }
 
+// /api/servers — public.
+//
+//  Liste des serveurs IPTV par défaut proposés dans l'app
+//  (« Serveur 1 », « Serveur 2 »…). Le client ne saisit JAMAIS d'URL :
+//  il choisit un serveur dans cette liste et ne tape que son code
+//  Xtream (utilisateur + mot de passe).
+//
+//  ⚠️ Conformité AGENTS.md règle n°2 : aucune URL de flux IPTV n'est
+//  écrite en dur dans le code de PRODUCTION de l'app (lib/). Les URLs
+//  vivent UNIQUEMENT côté serveur, dans la variable d'environnement
+//  `DEFAULT_SERVERS` (cf. wrangler.toml [vars]). On peut donc les
+//  changer puis `wrangler deploy` SANS re-publier l'app.
+//
+//  Format attendu de la variable (chaîne JSON) :
+//    [{"id":"srv1","label":"Serveur 1","url":"http://exemple:8080"},
+//     {"id":"srv2","label":"Serveur 2","url":"http://autre:8080"}]
+//
+//  `url` = base du serveur Xtream (avec le port si nécessaire), SANS
+//  `/get.php` ni identifiants — l'app les ajoute à partir du code que
+//  le client saisit.
+function handlePublicServers(env) {
+  let servers = [];
+  const raw = env.DEFAULT_SERVERS;
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        servers = parsed
+          .filter((s) => s && typeof s.url === 'string' && s.url.trim())
+          .map((s, i) => ({
+            id: String(s.id || `srv${i + 1}`),
+            label: String(s.label || `Serveur ${i + 1}`),
+            url: String(s.url).trim(),
+          }));
+      }
+    } catch (_) {
+      // Variable mal formée : on renvoie une liste vide plutôt que
+      // de faire planter l'app. L'admin verra le souci en testant.
+    }
+  }
+  return json({ servers });
+}
+
 // ----- Routeur -----
 
 export default {
@@ -1350,6 +1393,14 @@ export default {
         return badRequest('only GET supported on /api/status/:mac');
       }
       return handlePublicStatus(env, segments[2]);
+    }
+
+    // /api/servers — public, l'app récupère les serveurs par défaut
+    if (segments[0] === 'api' && segments[1] === 'servers' && segments.length === 2) {
+      if (request.method !== 'GET') {
+        return badRequest('only GET supported on /api/servers');
+      }
+      return handlePublicServers(env);
     }
 
     // /admin/panel — page HTML du panel admin (auth via input dans la page)
