@@ -11,7 +11,7 @@
 //  être changé plus tard dans Réglages → Apparence.
 //
 //  Design Maison Noir / 7 MOTION : surfaces charcoal, accents
-//  ember, focus rings champagne-bright. Aucune décoration
+//  ember, focus rings accentEmber-bright. Aucune décoration
 //  superflue — on respire, on choisit, on continue.
 // =========================================================
 

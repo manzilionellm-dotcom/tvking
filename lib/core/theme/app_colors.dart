@@ -85,9 +85,9 @@ abstract final class AppColors {
   /// Variante deep — ember-blood, bordures actives, sélections passives.
   static const Color accentMuted = Color(0xFF8E1F1D);
 
-  /// Halo ember — pour les glows champagne sur CTAs primaires.
+  /// Halo ember — pour les glows accentEmber sur CTAs primaires.
   /// (Nom historique conservé pour compat — c'est le même rouge brillant.)
-  static const Color brassGlow = Color(0xFFFF5A4A);
+  static const Color emberHalo = Color(0xFFFF5A4A);
 
   /// Voile très léger d'accent — fond d'un état sélectionné.
   static Color get accentSurface =>
@@ -101,19 +101,19 @@ abstract final class AppColors {
   //  CTA primaire, sélection navigation). Pour tous les autres
   //  accents (eyebrows, badges éditoriaux, "VEDETTE",
   //  séparateurs de catégorie, citations…) on utilise un
-  //  champagne désaturé qui donne la sensation premium calme
+  //  accentEmber désaturé qui donne la sensation premium calme
   //  d'Apple TV+ ou de Criterion Channel.
 
   /// Champagne — accent éditorial principal (eyebrows, badges
   /// "À LA UNE", "RECOMMANDÉ", "NOUVEAU"). Ni or jaune
   /// agressif ni rouge — un crème chaud très tamisé.
-  static const Color champagne = Color(0xFFE8D9C0);
+  static const Color accentEmber = Color(0xFFE8D9C0);
 
   /// Champagne profond — pour les bordures fines et les hovers
-  /// non-critiques. Encore plus discret que `champagne`.
-  static const Color champagneDeep = Color(0xFFB39B7C);
+  /// non-critiques. Encore plus discret que `accentEmber`.
+  static const Color emberDeep = Color(0xFFB39B7C);
 
-  /// Voile champagne — fond des chips éditoriaux.
+  /// Voile accentEmber — fond des chips éditoriaux.
   static Color get champagneSurface =>
       const Color(0xFFE8D9C0).withValues(alpha: 0.10);
 
@@ -194,7 +194,7 @@ abstract final class AppColors {
   @Deprecated('Use AppColors.accent (ember)')
   static const Color accentPink = accent;
 
-  @Deprecated('Use AppColors.textSecondary or AppColors.brassGlow')
+  @Deprecated('Use AppColors.textSecondary or AppColors.emberHalo')
   static const Color accentCyan = textSecondary;
 
   @Deprecated('Use AppColors.accent (ember)')

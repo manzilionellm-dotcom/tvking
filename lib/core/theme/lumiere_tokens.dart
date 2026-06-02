@@ -36,10 +36,10 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
     required this.elevated,
     required this.glass,
     required this.overcast,
-    required this.champagne,
-    required this.champagneBright,
-    required this.champagneDeep,
-    required this.brassGlow,
+    required this.accentEmber,
+    required this.emberGlow,
+    required this.emberDeep,
+    required this.emberHalo,
     required this.textPrimary,
     required this.textSecondary,
     required this.textTertiary,
@@ -73,21 +73,21 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
   final Color overcast;
 
   // -------- Accent ember (rouge braise) --------
-  /// Le nom du token reste `champagne` pour compatibilité, mais
-  /// la valeur est désormais ember-red 7 MOTION. Le rebranding
-  /// n'a pas à se propager dans 427 références.
-  final Color champagne;
+  /// Accent principal 7 MOTION : l'ember-red (#D63A30 en Cinema Mode).
+  /// Nommé d'après sa valeur réelle (anciennement `champagne`, un nom
+  /// hérité d'un rebranding antérieur qui ne reflétait plus la couleur).
+  final Color accentEmber;
 
   /// Variante claire — ember glow, états focus / hover / brillance.
-  final Color champagneBright;
+  final Color emberGlow;
 
   /// Variante deep — ember-blood, bordures actives, états sélectionnés
   /// passifs et accent principal du Daylight Mode.
-  final Color champagneDeep;
+  final Color emberDeep;
 
   /// Halo ember — utilisé pour les glows / ombres rouges sur les CTAs
   /// primaires et les éléments focus.
-  final Color brassGlow;
+  final Color emberHalo;
 
   // -------- Texte --------
   final Color textPrimary;
@@ -107,7 +107,7 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
   final Color statusWarning;
 
   /// Rouge ember (le même tone que l'accent ; volontairement distinct
-  /// de `champagne` par une variation de saturation pour éviter
+  /// de `accentEmber` par une variation de saturation pour éviter
   /// l'ambiguïté visuelle accent/erreur).
   final Color statusError;
 
@@ -137,10 +137,10 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
     glass: Color(0xFF1C1C24),
     overcast: Color(0xFF28282F),
     // Ember-red — saturé mais profond, pas Netflix-red ni néon
-    champagne: Color(0xFFD63A30),
-    champagneBright: Color(0xFFFF5A4A),
-    champagneDeep: Color(0xFF8E1F1D),
-    brassGlow: Color(0xFFFF5A4A),
+    accentEmber: Color(0xFFD63A30),
+    emberGlow: Color(0xFFFF5A4A),
+    emberDeep: Color(0xFF8E1F1D),
+    emberHalo: Color(0xFFFF5A4A),
     textPrimary: Color(0xFFF0EDE9),
     textSecondary: Color(0xFFB6B0A8),
     textTertiary: Color(0xFF7E7872),
@@ -185,10 +185,10 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
     elevated: Color(0xFFE9E5DC),
     glass: Color(0xFFD9D4C8),
     overcast: Color(0xFFCAC4B5),
-    champagne: Color(0xFF9B2421),
-    champagneBright: Color(0xFFC8302E),
-    champagneDeep: Color(0xFF6E1714),
-    brassGlow: Color(0xFFC8302E),
+    accentEmber: Color(0xFF9B2421),
+    emberGlow: Color(0xFFC8302E),
+    emberDeep: Color(0xFF6E1714),
+    emberHalo: Color(0xFFC8302E),
     textPrimary: Color(0xFF1A0F0E),
     textSecondary: Color(0xFF423835),
     textTertiary: Color(0xFF6E635E),
@@ -233,10 +233,10 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
     Color? elevated,
     Color? glass,
     Color? overcast,
-    Color? champagne,
-    Color? champagneBright,
-    Color? champagneDeep,
-    Color? brassGlow,
+    Color? accentEmber,
+    Color? emberGlow,
+    Color? emberDeep,
+    Color? emberHalo,
     Color? textPrimary,
     Color? textSecondary,
     Color? textTertiary,
@@ -256,10 +256,10 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
       elevated: elevated ?? this.elevated,
       glass: glass ?? this.glass,
       overcast: overcast ?? this.overcast,
-      champagne: champagne ?? this.champagne,
-      champagneBright: champagneBright ?? this.champagneBright,
-      champagneDeep: champagneDeep ?? this.champagneDeep,
-      brassGlow: brassGlow ?? this.brassGlow,
+      accentEmber: accentEmber ?? this.accentEmber,
+      emberGlow: emberGlow ?? this.emberGlow,
+      emberDeep: emberDeep ?? this.emberDeep,
+      emberHalo: emberHalo ?? this.emberHalo,
       textPrimary: textPrimary ?? this.textPrimary,
       textSecondary: textSecondary ?? this.textSecondary,
       textTertiary: textTertiary ?? this.textTertiary,
@@ -284,11 +284,11 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
       elevated: Color.lerp(elevated, other.elevated, t)!,
       glass: Color.lerp(glass, other.glass, t)!,
       overcast: Color.lerp(overcast, other.overcast, t)!,
-      champagne: Color.lerp(champagne, other.champagne, t)!,
-      champagneBright:
-          Color.lerp(champagneBright, other.champagneBright, t)!,
-      champagneDeep: Color.lerp(champagneDeep, other.champagneDeep, t)!,
-      brassGlow: Color.lerp(brassGlow, other.brassGlow, t)!,
+      accentEmber: Color.lerp(accentEmber, other.accentEmber, t)!,
+      emberGlow:
+          Color.lerp(emberGlow, other.emberGlow, t)!,
+      emberDeep: Color.lerp(emberDeep, other.emberDeep, t)!,
+      emberHalo: Color.lerp(emberHalo, other.emberHalo, t)!,
       textPrimary: Color.lerp(textPrimary, other.textPrimary, t)!,
       textSecondary: Color.lerp(textSecondary, other.textSecondary, t)!,
       textTertiary: Color.lerp(textTertiary, other.textTertiary, t)!,

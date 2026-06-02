@@ -618,7 +618,7 @@ class _SliderTile extends StatelessWidget {
 //  _ThemeModePicker — Sélecteur Cinema / Daylight / Système
 // ============================================================
 //  Trois pastilles côte à côte. La sélection active porte la
-//  bordure champagne et un léger halo cuivré.
+//  bordure accentEmber et un léger halo cuivré.
 // ============================================================
 
 class _ThemeModePicker extends StatelessWidget {

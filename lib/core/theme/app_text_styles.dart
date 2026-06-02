@@ -45,15 +45,15 @@ abstract final class AppTextStyles {
         height: 1.05,
       );
 
-  /// Eyebrow champagne — la petite ligne au-dessus d'un titre
+  /// Eyebrow accentEmber — la petite ligne au-dessus d'un titre
   /// hero ("LE PLUS REGARDÉ", "À LA UNE", "NOUVEAUTÉ"). Couleur
-  /// champagne désaturée pour rester premium sans rouge.
+  /// accentEmber désaturée pour rester premium sans rouge.
   /// Remplace `eyebrow` (qui restait en accent rouge) sur les
   /// surfaces où on ne veut PAS du critique.
-  static TextStyle get eyebrowChampagne => GoogleFonts.inter(
+  static TextStyle get eyebrowEmber => GoogleFonts.inter(
         fontSize: 10,
         fontWeight: FontWeight.w700,
-        color: AppColors.champagne,
+        color: AppColors.accentEmber,
         letterSpacing: 2.6,
         height: 1.0,
       );

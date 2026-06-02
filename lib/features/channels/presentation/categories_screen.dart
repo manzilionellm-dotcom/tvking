@@ -90,15 +90,15 @@ class _CategoryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Dégradé déterministe basé sur le nom — chaque catégorie a "sa"
-    // dérivée Maison Noir stable. On reste dans la famille champagne /
+    // dérivée Maison Noir stable. On reste dans la famille accentEmber /
     // surfaces sombres : pas de néons, pas d'arc-en-ciel.
     final int seed = name.hashCode.abs();
     final List<List<Color>> palette = const <List<Color>>[
-      // champagne deep → canvas
+      // accentEmber deep → canvas
       <Color>[Color(0xFF9C8359), Color(0xFF0E0B14)],
       // brass glow → elevated
       <Color>[Color(0xFFB8965E), Color(0xFF16121C)],
-      // champagne → overcast
+      // accentEmber → overcast
       <Color>[Color(0xFFD4B483), Color(0xFF221D2D)],
       // info ash → glass
       <Color>[Color(0xFF8FA8C4), Color(0xFF1C1826)],

@@ -75,7 +75,7 @@ class EmptyStateView extends StatelessWidget {
                     color: AppColors.champagneSurface,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: AppColors.champagne.withValues(alpha: 0.28),
+                      color: AppColors.accentEmber.withValues(alpha: 0.28),
                     ),
                   ),
                   child: Row(
@@ -84,7 +84,7 @@ class EmptyStateView extends StatelessWidget {
                       Icon(
                         Icons.auto_awesome_rounded,
                         size: 16,
-                        color: AppColors.champagne,
+                        color: AppColors.accentEmber,
                       ),
                       const SizedBox(width: 8),
                       Flexible(

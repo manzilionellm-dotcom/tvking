@@ -19,7 +19,7 @@
 //              centrée/à gauche selon proportions,
 //            - un scrim noir-en-bas pour la lisibilité du
 //              texte (style Netflix/HBO),
-//            - eyebrow champagne (PAS rouge — on a réduit
+//            - eyebrow accentEmber (PAS rouge — on a réduit
 //              le red usage de 65 % comme demandé),
 //            - title display cinéma (Inter 600 / -1.0 ls),
 //            - métadonnées discrètes (genre · pays · qualité),
@@ -198,7 +198,7 @@ class _BottomScrim extends StatelessWidget {
 //  COUCHE 5 — Texte + CTAs (bas du hero)
 // =========================================================
 //  Composition typographique :
-//    - eyebrow champagne ("À LA UNE")
+//    - eyebrow accentEmber ("À LA UNE")
 //    - titre display cinéma (38px, w600, ls -1.0)
 //    - row de meta (genre · pays · qualité)
 //    - CTAs flottants : Lecture (ember) + Détails (glass)
@@ -222,12 +222,12 @@ class _HeroCopy extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        // --- Eyebrow champagne ---
+        // --- Eyebrow accentEmber ---
         // Non plus un chip avec fond rouge : juste deux lettres
         // crème espacées, à la Apple TV+ / Criterion.
         Text(
           'À LA UNE',
-          style: AppTextStyles.eyebrowChampagne,
+          style: AppTextStyles.eyebrowEmber,
         ),
         const SizedBox(height: CinematicSpacing.s),
 

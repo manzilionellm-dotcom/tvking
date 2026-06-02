@@ -56,12 +56,12 @@ abstract final class AppTheme {
     // manuellement (paramètres qui sont arrivés à différentes
     // versions du SDK et qui auraient pu casser la compile).
     final ColorScheme colorScheme = ColorScheme.fromSeed(
-      seedColor: palette.champagne,
+      seedColor: palette.accentEmber,
       brightness: brightness,
       surface: palette.elevated,
-      primary: palette.champagne,
+      primary: palette.accentEmber,
       onPrimary: primaryOnAccent,
-      secondary: palette.brassGlow,
+      secondary: palette.emberHalo,
       error: palette.statusError,
     );
 
@@ -126,7 +126,7 @@ abstract final class AppTheme {
         size: 22,
       ),
 
-      // ----- Focus / hover champagne — APIs stables -----
+      // ----- Focus / hover accentEmber — APIs stables -----
       focusColor: AppColors.accent.withValues(alpha: 0.18),
       hoverColor: AppColors.accent.withValues(alpha: 0.10),
       splashColor: AppColors.accent.withValues(alpha: 0.14),

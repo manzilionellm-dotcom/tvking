@@ -10,7 +10,7 @@
 //
 //  Le bandeau est tappable : il ouvre la feuille "Ma source"
 //  (ajouter ses codes / activer l'app) — l'utilisateur choisit le
-//  même chemin que le bouton "+". Style champagne (accent éditorial
+//  même chemin que le bouton "+". Style accentEmber (accent éditorial
 //  non-critique) pour informer sans agresser comme une alerte rouge.
 // =========================================================
 
@@ -38,7 +38,7 @@ class PaywallBanner extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: AppColors.champagne.withValues(alpha: 0.28),
+                color: AppColors.accentEmber.withValues(alpha: 0.28),
               ),
             ),
             child: Row(
@@ -46,7 +46,7 @@ class PaywallBanner extends StatelessWidget {
                 Icon(
                   Icons.auto_awesome_rounded,
                   size: 18,
-                  color: AppColors.champagne,
+                  color: AppColors.accentEmber,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -78,13 +78,13 @@ class PaywallBanner extends StatelessWidget {
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.champagneDeep,
+                    color: AppColors.emberDeep,
                   ),
                 ),
                 Icon(
                   Icons.chevron_right_rounded,
                   size: 16,
-                  color: AppColors.champagneDeep,
+                  color: AppColors.emberDeep,
                 ),
               ],
             ),

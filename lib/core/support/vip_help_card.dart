@@ -2,7 +2,7 @@
 //  vip_help_card.dart — Carte "Aide VIP" très premium
 // =========================================================
 //  Carte de support visuellement luxueuse — gradient ember,
-//  bordure champagne, halo cuivré pulsant, icône couronne,
+//  bordure accentEmber, halo cuivré pulsant, icône couronne,
 //  badge VIP en eyebrow. Tap ouvre WhatsApp avec un message
 //  pré-rempli.
 //
@@ -112,7 +112,7 @@ class _VipHelpCardState extends State<VipHelpCard>
                 ),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
-                    color: AppColors.brassGlow.withValues(alpha: glow),
+                    color: AppColors.emberHalo.withValues(alpha: glow),
                     blurRadius: 32,
                     spreadRadius: 1,
                   ),
@@ -330,7 +330,7 @@ class _VipHelpCardState extends State<VipHelpCard>
                 borderRadius: BorderRadius.circular(28),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
-                    color: AppColors.brassGlow.withValues(alpha: glow),
+                    color: AppColors.emberHalo.withValues(alpha: glow),
                     blurRadius: 24,
                     spreadRadius: 1,
                   ),
