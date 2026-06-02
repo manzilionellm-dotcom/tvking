@@ -59,3 +59,16 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: 'cloudflare'
           command: d1 execute tvking_licensing --remote --file=schema.sql
+
+      # Migration hierarchie revendeurs (parent_reseller_id). continue-on-error
+      # car un 2e passage echoue "duplicate column" (SQLite, sans IF NOT EXISTS).
+      - name: Apply migration 003 (reseller hierarchy)
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        env:
+          CI: 'true'
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'cloudflare'
+          command: d1 execute tvking_licensing --remote --file=migrations/003_reseller_hierarchy.sql

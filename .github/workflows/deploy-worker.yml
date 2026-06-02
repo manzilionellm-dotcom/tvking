@@ -43,6 +43,7 @@ on:
       - 'feature/**'
     paths:
       - 'cloudflare/worker.js'
+      - 'cloudflare/api_v1.js'
       - 'cloudflare/wrangler.toml'
       - '.github/workflows/deploy-worker.yml'
 

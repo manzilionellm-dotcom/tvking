@@ -69,8 +69,11 @@ CREATE TABLE IF NOT EXISTS resellers (
   credit_balance  INTEGER NOT NULL DEFAULT 0,  -- solde de CREDITS (compteur) pour activations revendeur
   commission_rate REAL NOT NULL DEFAULT 0.20,
   status          TEXT NOT NULL DEFAULT 'active',  -- 'active' | 'suspended'
+  parent_reseller_id TEXT,                      -- NULL = cree par l'owner ; sinon revendeur parent (arbre multi-niveaux)
   created_at      INTEGER NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_resellers_parent ON resellers(parent_reseller_id);
 
 -- ---------------------------------------------------------
 -- customers : end users who pay for app access

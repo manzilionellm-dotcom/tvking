@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import {
-  authApi, getToken, setToken, setCurrentUser, getCurrentUser, isOwnerRole,
+  authApi, getToken, setToken, setCurrentUser,
   ApiError,
 } from '@/lib/api';
 import { LoginPage } from '@/pages/LoginPage';
@@ -84,15 +84,9 @@ export default function App() {
       <Route path="/devices"     element={<DevicesPage     onLogout={handleLogout} />} />
       <Route path="/apps"        element={<AppsPage        onLogout={handleLogout} />} />
       <Route path="/activations" element={<ActivationsPage onLogout={handleLogout} />} />
-      {/* Revendeurs : reserve a l'owner ; un revendeur est redirige. */}
-      <Route
-        path="/resellers"
-        element={
-          isOwnerRole(getCurrentUser()?.role)
-            ? <ResellersPage onLogout={handleLogout} />
-            : <Navigate to="/" replace />
-        }
-      />
+      {/* Revendeurs : owner ET revendeurs (qui gerent leurs sous-revendeurs).
+          Les permissions/scoping sont appliques cote API. */}
+      <Route path="/resellers" element={<ResellersPage onLogout={handleLogout} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

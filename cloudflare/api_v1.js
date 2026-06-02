@@ -349,42 +349,22 @@ export async function apiV1(request, env) {
   }
 
   // /resellers — gestion des revendeurs + credits (owner)
+  // /resellers — owner ET revendeurs (un revendeur gere ses sous-revendeurs).
+  // Les permissions fines (parent-enfant) sont verifiees dans les handlers.
   if (parts[0] === 'resellers') {
     if (parts.length === 1) {
-      if (request.method === 'GET') {
-        if (!isOwner(a.user)) return errResp('forbidden', 'Owner only', 403);
-        return handleResellersList(env);
-      }
-      if (request.method === 'POST') {
-        if (!isOwner(a.user)) return errResp('forbidden', 'Owner only', 403);
-        return handleResellersCreate(request, env, actor);
-      }
+      if (request.method === 'GET') return handleResellersList(env, a.user);
+      if (request.method === 'POST') return handleResellersCreate(request, env, actor, a.user);
     }
     if (parts.length === 2) {
       const rid = parts[1];
-      if (request.method === 'GET') {
-        if (!isOwner(a.user) && a.user.sub !== rid) {
-          return errResp('forbidden', 'Forbidden', 403);
-        }
-        return handleResellersGet(env, rid);
-      }
-      if (request.method === 'PATCH') {
-        if (!isOwner(a.user)) return errResp('forbidden', 'Owner only', 403);
-        return handleResellersUpdate(request, env, rid, actor);
-      }
+      if (request.method === 'GET') return handleResellersGet(env, rid, a.user);
+      if (request.method === 'PATCH') return handleResellersUpdate(request, env, rid, actor, a.user);
     }
     if (parts.length === 3 && parts[2] === 'credits') {
       const rid = parts[1];
-      if (request.method === 'POST') {
-        if (!isOwner(a.user)) return errResp('forbidden', 'Owner only', 403);
-        return handleResellerCreditsIssue(request, env, rid, actor);
-      }
-      if (request.method === 'GET') {
-        if (!isOwner(a.user) && a.user.sub !== rid) {
-          return errResp('forbidden', 'Forbidden', 403);
-        }
-        return handleResellerCreditsList(env, rid);
-      }
+      if (request.method === 'POST') return handleResellerCreditsIssue(request, env, rid, actor, a.user);
+      if (request.method === 'GET') return handleResellerCreditsList(env, rid, a.user);
     }
   }
 
@@ -1067,29 +1047,40 @@ async function planCreditCost(env, plan) {
 }
 
 // ----- Resellers CRUD (owner) -----
-async function handleResellersList(env) {
+async function handleResellersList(env, user) {
+  // Owner : tout l'arbre. Revendeur : seulement SES sous-revendeurs directs.
+  const reseller = user && user.role === 'reseller';
+  const where = reseller ? 'WHERE r.parent_reseller_id = ?' : '';
+  const binds = reseller ? [user.sub] : [];
   const rs = await env.DB
     .prepare(
       `SELECT r.id, r.email, r.name, r.status, r.credit_balance,
-              r.commission_rate, r.created_at,
-              (SELECT COUNT(*) FROM devices d  WHERE d.reseller_id = r.id) as devices,
-              (SELECT COUNT(*) FROM licenses l WHERE l.reseller_id = r.id) as licenses
-       FROM resellers r ORDER BY r.created_at DESC LIMIT 500`,
+              r.commission_rate, r.parent_reseller_id, r.created_at,
+              (SELECT COUNT(*) FROM devices d   WHERE d.reseller_id = r.id) as devices,
+              (SELECT COUNT(*) FROM licenses l  WHERE l.reseller_id = r.id) as licenses,
+              (SELECT COUNT(*) FROM resellers s WHERE s.parent_reseller_id = r.id) as sub_resellers
+       FROM resellers r ${where} ORDER BY r.created_at DESC LIMIT 500`,
     )
+    .bind(...binds)
     .all();
   return jsonResp({ items: rs.results || [] });
 }
 
-async function handleResellersGet(env, id) {
+async function handleResellersGet(env, id, user) {
   const row = await env.DB
-    .prepare('SELECT id, email, name, status, credit_balance, commission_rate, created_at FROM resellers WHERE id = ?')
+    .prepare('SELECT id, email, name, status, credit_balance, commission_rate, parent_reseller_id, created_at FROM resellers WHERE id = ?')
     .bind(id)
     .first();
   if (!row) return errResp('not_found', 'Reseller not found', 404);
+  // Un revendeur ne voit que lui-meme ou ses enfants directs.
+  if (user && user.role === 'reseller'
+      && id !== user.sub && row.parent_reseller_id !== user.sub) {
+    return errResp('forbidden', 'Forbidden', 403);
+  }
   return jsonResp(row);
 }
 
-async function handleResellersCreate(request, env, actor) {
+async function handleResellersCreate(request, env, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
@@ -1099,51 +1090,87 @@ async function handleResellersCreate(request, env, actor) {
   if (!email || !password) {
     return errResp('missing_fields', 'email and password required', 400);
   }
-  const id = genId('rsl');
-  const now = Date.now();
-  const hash = await hashPassword(password);
+  const isReseller = user && user.role === 'reseller';
+  const parentId = isReseller ? user.sub : null;
   const initial = Math.max(0, parseInt(body.credit_balance || 0, 10) || 0);
   const commission = Number.isFinite(Number(body.commission_rate))
     ? Number(body.commission_rate) : 0.20;
+
+  // Si c'est un revendeur qui cree un sous-revendeur, les credits
+  // initiaux sont TRANSFERES depuis son propre solde (pas crees).
+  let parentBalanceAfter = null;
+  if (isReseller && initial > 0) {
+    const parent = await env.DB
+      .prepare('SELECT credit_balance FROM resellers WHERE id = ?')
+      .bind(user.sub).first();
+    if (!parent) return errResp('not_found', 'Parent reseller not found', 404);
+    if (parent.credit_balance < initial) {
+      return errResp('insufficient_credits',
+        `Credits insuffisants (besoin ${initial}, solde ${parent.credit_balance})`, 402);
+    }
+    parentBalanceAfter = parent.credit_balance - initial;
+  }
+
+  const id = genId('rsl');
+  const now = Date.now();
+  const hash = await hashPassword(password);
   try {
     await env.DB
       .prepare(
         `INSERT INTO resellers
           (id, email, password_hash, name, credit_balance_cents,
-           credit_balance, commission_rate, status, created_at)
-         VALUES (?, ?, ?, ?, 0, ?, ?, 'active', ?)`,
+           credit_balance, commission_rate, status, parent_reseller_id, created_at)
+         VALUES (?, ?, ?, ?, 0, ?, ?, 'active', ?, ?)`,
       )
-      .bind(id, email, hash, body.name || null, initial, commission, now)
+      .bind(id, email, hash, body.name || null, initial, commission, parentId, now)
       .run();
   } catch (e) {
     return errResp('duplicate_email', 'A reseller with this email already exists', 409);
   }
+
+  // Ecritures de credits (atomiques).
+  const stmts = [];
   if (initial > 0) {
-    await env.DB
-      .prepare(
-        `INSERT INTO credit_ledger
-          (id, reseller_id, delta, reason, balance_after, actor_type, actor_id, note, created_at)
-         VALUES (?, ?, ?, 'issue', ?, ?, ?, ?, ?)`,
-      )
-      .bind(genId('cl'), id, initial, initial, actor.type, actor.id, 'Credits initiaux', now)
-      .run();
+    stmts.push(env.DB.prepare(
+      `INSERT INTO credit_ledger
+        (id, reseller_id, delta, reason, balance_after, actor_type, actor_id, note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(genId('cl'), id, initial, parentId ? 'transfer_in' : 'issue',
+           initial, actor.type, actor.id, 'Credits initiaux', now));
   }
+  if (isReseller && initial > 0) {
+    stmts.push(env.DB.prepare('UPDATE resellers SET credit_balance = ? WHERE id = ?')
+      .bind(parentBalanceAfter, user.sub));
+    stmts.push(env.DB.prepare(
+      `INSERT INTO credit_ledger
+        (id, reseller_id, delta, reason, balance_after, actor_type, actor_id, note, created_at)
+       VALUES (?, ?, ?, 'transfer_out', ?, ?, ?, ?, ?)`,
+    ).bind(genId('cl'), user.sub, -initial, parentBalanceAfter, actor.type, actor.id,
+           'Vers ' + email, now));
+  }
+  if (stmts.length) await env.DB.batch(stmts);
+
   await logAudit(env, request, actor, 'reseller.create',
-    { type: 'reseller', id }, null, { email, name: body.name, initial });
+    { type: 'reseller', id }, null, { email, name: body.name, initial, parent: parentId });
   return jsonResp({ id, credit_balance: initial }, 201);
 }
 
-async function handleResellersUpdate(request, env, id, actor) {
+async function handleResellersUpdate(request, env, id, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
   const before = await env.DB.prepare('SELECT * FROM resellers WHERE id = ?').bind(id).first();
   if (!before) return errResp('not_found', 'Reseller not found', 404);
+  // Un revendeur ne peut modifier que ses propres enfants directs.
+  if (user && user.role === 'reseller' && before.parent_reseller_id !== user.sub) {
+    return errResp('forbidden', 'Forbidden', 403);
+  }
   const sets = []; const vals = [];
   if (body.name !== undefined) { sets.push('name = ?'); vals.push(body.name); }
   if (body.status !== undefined) { sets.push('status = ?'); vals.push(body.status); }
-  if (body.commission_rate !== undefined) {
+  // Seul l'owner peut changer la commission.
+  if (body.commission_rate !== undefined && isOwner(user)) {
     sets.push('commission_rate = ?'); vals.push(Number(body.commission_rate));
   }
   if (body.password) { sets.push('password_hash = ?'); vals.push(await hashPassword(body.password)); }
@@ -1154,8 +1181,8 @@ async function handleResellersUpdate(request, env, id, actor) {
   return jsonResp({ updated: 1 });
 }
 
-// ----- Credits : emission/ajustement (owner) + historique -----
-async function handleResellerCreditsIssue(request, env, id, actor) {
+// ----- Credits : owner emet (mint) ; revendeur TRANSFERE a ses enfants -----
+async function handleResellerCreditsIssue(request, env, id, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
@@ -1164,27 +1191,87 @@ async function handleResellerCreditsIssue(request, env, id, actor) {
   if (!Number.isFinite(amount) || amount === 0) {
     return errResp('bad_amount', 'amount required (positif = ajouter, negatif = retirer)', 400);
   }
-  const r = await env.DB.prepare('SELECT credit_balance FROM resellers WHERE id = ?').bind(id).first();
-  if (!r) return errResp('not_found', 'Reseller not found', 404);
-  const newBalance = r.credit_balance + amount;
-  if (newBalance < 0) {
-    return errResp('insufficient_credits', 'Le solde resultant serait negatif', 400);
-  }
+  const target = await env.DB
+    .prepare('SELECT credit_balance, parent_reseller_id FROM resellers WHERE id = ?')
+    .bind(id).first();
+  if (!target) return errResp('not_found', 'Reseller not found', 404);
   const now = Date.now();
+
+  // --- OWNER : frappe / retire des credits (creation depuis rien) ---
+  if (isOwner(user)) {
+    const newBalance = target.credit_balance + amount;
+    if (newBalance < 0) {
+      return errResp('insufficient_credits', 'Le solde resultant serait negatif', 400);
+    }
+    await env.DB.batch([
+      env.DB.prepare('UPDATE resellers SET credit_balance = ? WHERE id = ?').bind(newBalance, id),
+      env.DB.prepare(
+        `INSERT INTO credit_ledger
+          (id, reseller_id, delta, reason, balance_after, actor_type, actor_id, note, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(genId('cl'), id, amount, amount > 0 ? 'issue' : 'adjust', newBalance,
+             actor.type, actor.id, body.note || null, now),
+    ]);
+    await logAudit(env, request, actor, 'reseller.credits',
+      { type: 'reseller', id }, { balance: target.credit_balance }, { amount, balance: newBalance });
+    return jsonResp({ credit_balance: newBalance, delta: amount });
+  }
+
+  // --- REVENDEUR : transfert depuis SON solde vers un de SES enfants ---
+  if (target.parent_reseller_id !== user.sub) {
+    return errResp('forbidden', 'Ce revendeur n\'est pas votre sous-revendeur', 403);
+  }
+  const parent = await env.DB
+    .prepare('SELECT credit_balance FROM resellers WHERE id = ?').bind(user.sub).first();
+  let parentAfter; let childAfter;
+  if (amount > 0) {
+    // Donner au sous-revendeur.
+    if (parent.credit_balance < amount) {
+      return errResp('insufficient_credits',
+        `Credits insuffisants (besoin ${amount}, solde ${parent.credit_balance})`, 402);
+    }
+    parentAfter = parent.credit_balance - amount;
+    childAfter = target.credit_balance + amount;
+  } else {
+    // Reprendre au sous-revendeur (amount negatif).
+    const take = -amount;
+    if (target.credit_balance < take) {
+      return errResp('insufficient_credits',
+        'Le sous-revendeur n\'a pas assez de credits a reprendre', 400);
+    }
+    childAfter = target.credit_balance + amount; // amount < 0
+    parentAfter = parent.credit_balance + take;
+  }
   await env.DB.batch([
-    env.DB.prepare('UPDATE resellers SET credit_balance = ? WHERE id = ?').bind(newBalance, id),
+    env.DB.prepare('UPDATE resellers SET credit_balance = ? WHERE id = ?').bind(childAfter, id),
+    env.DB.prepare('UPDATE resellers SET credit_balance = ? WHERE id = ?').bind(parentAfter, user.sub),
     env.DB.prepare(
       `INSERT INTO credit_ledger
         (id, reseller_id, delta, reason, balance_after, actor_type, actor_id, note, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(genId('cl'), id, amount, amount > 0 ? 'issue' : 'adjust', newBalance, actor.type, actor.id, body.note || null, now),
+    ).bind(genId('cl'), id, amount, amount > 0 ? 'transfer_in' : 'transfer_out',
+           childAfter, actor.type, actor.id, body.note || null, now),
+    env.DB.prepare(
+      `INSERT INTO credit_ledger
+        (id, reseller_id, delta, reason, balance_after, actor_type, actor_id, note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(genId('cl'), user.sub, -amount, amount > 0 ? 'transfer_out' : 'transfer_in',
+           parentAfter, actor.type, actor.id, body.note || null, now),
   ]);
-  await logAudit(env, request, actor, 'reseller.credits',
-    { type: 'reseller', id }, { balance: r.credit_balance }, { amount, balance: newBalance });
-  return jsonResp({ credit_balance: newBalance, delta: amount });
+  await logAudit(env, request, actor, 'reseller.credits.transfer',
+    { type: 'reseller', id }, { balance: target.credit_balance }, { amount, balance: childAfter });
+  return jsonResp({ credit_balance: childAfter, delta: amount, your_balance: parentAfter });
 }
 
-async function handleResellerCreditsList(env, id) {
+async function handleResellerCreditsList(env, id, user) {
+  // Owner : n'importe lequel. Revendeur : soi-meme ou un enfant direct.
+  if (user && user.role === 'reseller' && id !== user.sub) {
+    const t = await env.DB
+      .prepare('SELECT parent_reseller_id FROM resellers WHERE id = ?').bind(id).first();
+    if (!t || t.parent_reseller_id !== user.sub) {
+      return errResp('forbidden', 'Forbidden', 403);
+    }
+  }
   const rs = await env.DB
     .prepare(
       `SELECT id, delta, reason, balance_after, ref_device_mac, ref_license_id, note, created_at

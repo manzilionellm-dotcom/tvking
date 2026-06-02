@@ -26,6 +26,7 @@ const OWNER_NAV: NavItem[] = [
 const RESELLER_NAV: NavItem[] = [
   { label: 'Dashboard',           to: '/',            phase: '1.A' },
   { label: 'Activer un appareil', to: '/activate',    phase: '1.A' },
+  { label: 'Mes revendeurs',      to: '/resellers',   phase: '1.A' },
   { label: 'Mes appareils',       to: '/devices',     phase: '1.A' },
   { label: 'Mes activations',     to: '/activations', phase: '1.A' },
 ];

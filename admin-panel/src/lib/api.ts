@@ -252,6 +252,8 @@ export interface Reseller {
   created_at: number;
   devices?: number;
   licenses?: number;
+  parent_reseller_id?: string | null;
+  sub_resellers?: number;
 }
 export const resellersApi = {
   list: () => request<{ items: Reseller[] }>('/api/v1/resellers'),
