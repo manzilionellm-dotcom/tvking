@@ -20,6 +20,7 @@ import 'package:flutter/foundation.dart';
 import 'package:multicast_dns/multicast_dns.dart';
 
 import '../domain/cast_device.dart';
+import 'multicast_lock.dart';
 
 class MdnsDiscovery {
   MdnsDiscovery._();
@@ -34,6 +35,12 @@ class MdnsDiscovery {
   }) async* {
     final MDnsClient client = MDnsClient();
     final Set<String> seenTargets = <String>{};
+
+    // INDISPENSABLE sur Android : sans MulticastLock, la puce WiFi
+    // filtre les réponses mDNS (224.0.0.251) et on ne découvre AUCUN
+    // Chromecast / Google TV. On le prend pour la durée du scan et on
+    // le relâche dans le `finally` (ne pas le garder = batterie).
+    await MulticastLock.instance.acquire();
 
     try {
       await client.start();
@@ -93,6 +100,7 @@ class MdnsDiscovery {
       if (kDebugMode) debugPrint('[mDNS] error: $e');
     } finally {
       client.stop();
+      await MulticastLock.instance.release();
     }
   }
 

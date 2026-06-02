@@ -99,7 +99,7 @@ cat "$MANIFEST"
 mkdir -p "$ANDROID_PKG_PATH"
 for kt_file in MainActivity.kt GoogleCastApi.kt CastOptionsProviderImpl.kt \
                GalleryExporter.kt RecordingForegroundService.kt \
-               RecordingServiceBridge.kt; do
+               RecordingServiceBridge.kt MulticastLockBridge.kt; do
   src="$OVERLAY/$kt_file"
   dst="$ANDROID_PKG_PATH/$kt_file"
   # sed rewrite : `package com.manzilionellm.tvking` → `package $DETECTED_PKG`
@@ -185,6 +185,32 @@ else
   SVC='        <service android:name=".RecordingForegroundService" android:foregroundServiceType="mediaPlayback" android:exported="false" />'
   sed -i "s|</application>|${SVC}\n    </application>|" "$MANIFEST"
   echo "✅ Patched AndroidManifest (Service + permissions)"
+fi
+
+# --- 3c. Permissions DÉCOUVERTE RÉSEAU (Cast / DLNA) ----------------
+# Bloc INDÉPENDANT et idempotent (clé : CHANGE_WIFI_MULTICAST_STATE).
+# C'EST LE CORRECTIF du "le cast ne trouve aucune TV" :
+#
+#   - CHANGE_WIFI_MULTICAST_STATE : OBLIGATOIRE pour que
+#     WifiManager.MulticastLock fonctionne. Sans elle, mDNS
+#     (multicast_dns → 224.0.0.251, service _googlecast._tcp) et
+#     SSDP (239.255.255.250, DLNA) n'obtiennent jamais les réponses
+#     des récepteurs → picker vide → aucun cast possible.
+#   - ACCESS_NETWORK_STATE : exigée par le Cast Framework et par
+#     notre détection de connectivité (relais HLS local).
+#   - INTERNET : présente dans le manifest debug généré par Flutter,
+#     mais ABSENTE du manifest "main" → manquerait en build release.
+#     On la déclare explicitement pour être robustes quel que soit
+#     le type de build.
+#
+# `flutter create` ne déclare AUCUNE de ces 3 dans le manifest main ;
+# le bloc 3b n'ajoute qu'ACCESS_WIFI_STATE. On comble le trou ici.
+if grep -q "CHANGE_WIFI_MULTICAST_STATE" "$MANIFEST"; then
+  echo "Permissions découverte réseau déjà présentes — skip"
+else
+  NET_PERMS='    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />'
+  sed -i "s|<application|${NET_PERMS}\n\n    <application|" "$MANIFEST"
+  echo "✅ Patched AndroidManifest (INTERNET + ACCESS_NETWORK_STATE + CHANGE_WIFI_MULTICAST_STATE)"
 fi
 
 echo "----- AFTER: build.gradle (last 30 lines) -----"

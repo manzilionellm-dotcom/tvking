@@ -31,6 +31,7 @@ import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
 
 import '../domain/cast_device.dart';
+import 'multicast_lock.dart';
 import 'roku_ecp_transport.dart';
 
 class SsdpDiscovery {
@@ -58,6 +59,11 @@ class SsdpDiscovery {
     //   qu'UNE seule fois.
     final Set<String> seenRootIds = <String>{};
     final List<RawDatagramSocket> sockets = <RawDatagramSocket>[];
+
+    // Comme pour mDNS : sans MulticastLock, Android filtre les
+    // réponses SSDP (239.255.255.250) et aucune TV DLNA n'est trouvée.
+    // Relâché dans le `finally`.
+    await MulticastLock.instance.acquire();
 
     try {
       // On bind sur 0.0.0.0:0 (port aléatoire), pas en multicast bind,
@@ -112,6 +118,7 @@ class SsdpDiscovery {
         s.close();
       }
       if (!controller.isClosed) await controller.close();
+      await MulticastLock.instance.release();
     }
   }
 

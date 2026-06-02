@@ -42,6 +42,7 @@ class MainActivity : FlutterFragmentActivity() {
     private var castApi: GoogleCastApi? = null
     private var galleryExporter: GalleryExporter? = null
     private var recordingService: RecordingServiceBridge? = null
+    private var multicastLock: MulticastLockBridge? = null
     private var pipChannel: MethodChannel? = null
 
     /// Vrai quand le lecteur vidéo joue actuellement. Mis à jour par
@@ -93,6 +94,21 @@ class MainActivity : FlutterFragmentActivity() {
             Log.i(TAG, "  ✓ RecordingService channel wired")
         } catch (e: Throwable) {
             Log.e(TAG, "  ✗ RecordingService channel failed: $e", e)
+        }
+
+        // MulticastLock — INDISPENSABLE pour la découverte Chromecast /
+        // DLNA. Sans le lock WiFi, la puce filtre les réponses mDNS
+        // (224.0.0.251) et SSDP (239.255.255.250) → le picker liste 0
+        // appareil. Le côté Dart (mdns_discovery.dart / ssdp_discovery.dart)
+        // acquire() au début de chaque scan et release() à la fin.
+        try {
+            multicastLock = MulticastLockBridge(
+                messenger = messenger,
+                context = applicationContext,
+            )
+            Log.i(TAG, "  ✓ MulticastLock channel wired")
+        } catch (e: Throwable) {
+            Log.e(TAG, "  ✗ MulticastLock channel failed: $e", e)
         }
 
         // ========================================================

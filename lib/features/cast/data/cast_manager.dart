@@ -980,6 +980,19 @@ class CastManager extends ChangeNotifier {
   String friendlyMessageFor(Exception e) {
     final String s = e.toString().toLowerCase();
 
+    // --- Google Cast indisponible (pas de Google Play Services) ---
+    // Levé par GoogleCastTransport quand api.isCastAvailable() == false :
+    // téléphones sans GMS (Huawei récents, /e/OS, GrapheneOS, certaines
+    // ROMs custom). Le SDK Cast NE PEUT PAS fonctionner — on oriente
+    // l'utilisateur vers le mode QR qui, lui, marche partout.
+    if (s.contains('google play services') ||
+        s.contains('cast indisponible') ||
+        s.contains('google cast indisponible')) {
+      return 'Le Chromecast officiel a besoin des services Google Play, '
+          'absents sur ce téléphone. Utilise le mode QR code : il '
+          'fonctionne sur toutes les TV (Google TV, Smart TV…).';
+    }
+
     // --- DNS / hostname (Phase 1+) ---
     if (s.contains('hostname') ||
         s.contains('no address') ||
