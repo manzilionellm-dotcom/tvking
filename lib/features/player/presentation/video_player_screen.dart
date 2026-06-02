@@ -539,7 +539,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   String _autoStopMessage(AutoStopReason reason) {
     switch (reason) {
       case AutoStopReason.maxDurationReached:
-        return 'Enregistrement terminé (limite de 6 h atteinte) — '
+        return 'Enregistrement terminé — '
             'retrouve-le dans Mes enregistrements';
       case AutoStopReason.serverUnreachable:
         return 'Enregistrement arrêté : ton serveur IPTV ne répond plus. '

@@ -64,11 +64,12 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/observability/structured_logger.dart';
 
-/// Durée maximale d'un enregistrement. Au-delà, le job s'arrête tout
-/// seul proprement (flush + close + callback) pour ne pas remplir le
-/// stockage si l'utilisateur oublie d'appuyer sur stop. 6 h couvre un
-/// match + prolongations, un marathon de séries, une nuit de docu…
-const Duration kMaxRecordingDuration = Duration(hours: 6);
+/// Durée maximale d'un enregistrement. Demande user : enregistrements
+/// ILLIMITÉS. On garde un garde-fou très haut (30 jours) — purement
+/// anti-fuite si l'utilisateur oublie d'appuyer sur stop ; en pratique
+/// le stockage du téléphone se remplit bien avant. Aucune limite
+/// fonctionnelle ressentie par l'utilisateur.
+const Duration kMaxRecordingDuration = Duration(days: 30);
 
 /// Nombre d'échecs de reconnexion CONSÉCUTIFS tolérés avant
 /// d'abandonner un job. Tant qu'au moins une reconnexion réussit, ce
