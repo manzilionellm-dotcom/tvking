@@ -91,6 +91,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Recording? _activeRecording;
   bool get _isRecording => _activeRecording != null;
 
+  /// Mode enregistrement "1 connexion" (choix user) : quand on
+  /// enregistre, on STOPPE la lecture pour libérer l'unique connexion
+  /// autorisée par le fournisseur IPTV, et on la dédie à
+  /// l'enregistrement. La lecture reprend automatiquement à l'arrêt.
+  /// `true` = lecture suspendue le temps d'enregistrer.
+  bool _recordPausedPlayback = false;
+
   // Picture-in-Picture : implémenté en NATIF Android via
   // MainActivity.kt + MethodChannel `tvking/pip`. Pas de plugin
   // tiers — voir `lib/features/player/data/pip_service.dart` et
@@ -412,6 +419,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             : _currentChannel.cleanName,
       );
 
+      // MODE ENREGISTREMENT 1 CONNEXION (choix user 2026-06-01) :
+      // On STOPPE la lecture pour liberer l'unique connexion que le
+      // fournisseur autorise — sinon le downloader ouvrirait une 2e
+      // connexion, refusee par le serveur (fichier 0 octet). La
+      // lecture reprend automatiquement dans _stopRecording.
+      await _player.stop();
+      if (mounted) setState(() => _recordPausedPlayback = true);
+
       final bool ok = await HttpRecordingDownloader.instance.start(
         streamUrl: _currentChannel.streamUrl,
         filePath: path,
@@ -423,8 +438,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       );
       if (!ok) {
         // Si le download n'a pas pu démarrer, on annule aussi le
-        // service pour ne pas garder une notification fantôme.
+        // service pour ne pas garder une notification fantôme, ET on
+        // reprend la lecture qu'on venait de stopper.
         await RecordingService.instance.stop();
+        _resumePlaybackAfterRecord();
         _toast(
           'Enregistrement impossible : le serveur a refusé la requête. '
           'Vérifie ton URL ou demande à ton fournisseur d\'autoriser '
@@ -479,15 +496,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         await RecordingService.instance.stop();
       }
 
+      // Mode 1 connexion : la connexion est libérée → on reprend la
+      // lecture là où on en était (live) ou au début (VOD).
+      _resumePlaybackAfterRecord();
+
       if (mounted) {
         setState(() => _activeRecording = null);
         // Formatage taille : Bytes / KB / MB / GB selon ordre de grandeur.
         final String sizeLabel = _humanSize(bytes);
         if (bytes == 0) {
           _toast(
-            'Enregistrement vide. Ton fournisseur IPTV n\'autorise '
-            'qu\'une seule connexion à la fois — demande à augmenter '
-            'la limite pour pouvoir enregistrer.',
+            'Enregistrement vide — le serveur n\'a renvoyé aucune donnée. '
+            'Réessaie ; si ça persiste, ce flux n\'autorise pas '
+            'l\'enregistrement.',
           );
         } else {
           _toast(
@@ -497,8 +518,88 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         }
       }
     } catch (e) {
+      _resumePlaybackAfterRecord();
       _toast('Erreur arrêt enregistrement : $e');
     }
+  }
+
+  /// Reprend la lecture après un enregistrement en mode 1 connexion.
+  /// No-op si la lecture n'avait pas été suspendue (ex. provider
+  /// multi-connexions, ou enregistrement parallèle d'une autre source).
+  void _resumePlaybackAfterRecord() {
+    if (!_recordPausedPlayback) return;
+    final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+    _player.open(Media(url));
+    if (mounted) setState(() => _recordPausedPlayback = false);
+  }
+
+  /// Panneau plein écran affiché pendant l'enregistrement en mode
+  /// 1 connexion (la lecture est suspendue). Gros bouton STOP visible
+  /// en permanence (pas besoin de révéler l'overlay).
+  Widget _buildRecordingModePanel() {
+    return ColoredBox(
+      color: AppColors.background,
+      child: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(
+                Icons.fiber_manual_record_rounded,
+                color: AppColors.live,
+                size: 56,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'ENREGISTREMENT EN COURS',
+                style: AppTextStyles.labelSmall.copyWith(
+                  color: AppColors.live,
+                  fontSize: 13,
+                  letterSpacing: 2,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Text(
+                  _currentChannel.cleanName,
+                  textAlign: TextAlign.center,
+                  style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'La lecture reprend automatiquement à l\'arrêt',
+                textAlign: TextAlign.center,
+                style: AppTextStyles.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 28),
+              SizedBox(
+                height: 52,
+                child: FilledButton.icon(
+                  onPressed: _stopRecording,
+                  icon: const Icon(Icons.stop_rounded),
+                  label: Text(
+                    'Arrêter l\'enregistrement',
+                    style:
+                        AppTextStyles.button.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.live,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   /// Callback déclenché par le downloader quand un enregistrement
@@ -721,6 +822,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // et masquerait la vidéo. On bloque le toggle. L'utilisateur
     // pilote la mini-fenêtre via les contrôles natifs Android.
     if (PipService.instance.isInPipMode) return;
+    // Pendant l'enregistrement en mode 1 connexion, la lecture est
+    // suspendue et le panneau dédié (avec STOP) prend tout l'écran :
+    // on ne montre pas l'overlay de lecture (un tap sur Play
+    // relancerait une 2e connexion en conflit avec l'enregistrement).
+    if (_recordPausedPlayback) return;
     setState(() => _overlayVisible = !_overlayVisible);
     if (_overlayVisible) _scheduleHideOverlay();
   }
@@ -1113,8 +1219,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         ),
                 ),
 
+                // ----- 1bis. Panneau "Enregistrement en cours" -----
+                //  Mode 1 connexion : la lecture est stoppée pendant
+                //  l'enregistrement (l'unique connexion sert à
+                //  enregistrer). On couvre la vidéo noire d'un panneau
+                //  clair avec un gros bouton STOP. La lecture reprend
+                //  automatiquement à l'arrêt.
+                if (_recordPausedPlayback)
+                  Positioned.fill(child: _buildRecordingModePanel()),
+
                 // ----- 2. Spinner pendant le buffering -----
-                if (_isBuffering && !_hasError)
+                if (_isBuffering && !_hasError && !_recordPausedPlayback)
                   const Center(
                     child: SizedBox(
                       width: 56,
@@ -1142,6 +1257,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 //  de logo si l'URL est nulle ou casse au load.
                 if (!_hasError &&
                     !_overlayVisible &&
+                    !_recordPausedPlayback &&
                     _currentChannel.logoUrl != null &&
                     _currentChannel.logoUrl!.isNotEmpty)
                   Positioned(
@@ -1176,14 +1292,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 if (_hasError) _buildErrorOverlay(),
 
                 // ----- 5. Overlay contrôles -----
-                AnimatedOpacity(
-                  duration: const Duration(milliseconds: 220),
-                  opacity: _overlayVisible ? 1.0 : 0.0,
-                  child: IgnorePointer(
-                    ignoring: !_overlayVisible,
-                    child: _buildOverlay(),
+                //  Masqué pendant l'enregistrement mode 1 connexion :
+                //  le panneau d'enregistrement (item 1bis) gère le STOP.
+                if (!_recordPausedPlayback)
+                  AnimatedOpacity(
+                    duration: const Duration(milliseconds: 220),
+                    opacity: _overlayVisible ? 1.0 : 0.0,
+                    child: IgnorePointer(
+                      ignoring: !_overlayVisible,
+                      child: _buildOverlay(),
+                    ),
                   ),
-                ),
               ],
             );
           },
