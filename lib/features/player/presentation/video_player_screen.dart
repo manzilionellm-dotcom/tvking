@@ -388,19 +388,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
 
-      // PIPELINE NATIF + MODE 1 CONNEXION (choix user 2026-06-01) :
-      //
-      //   1. On STOPPE la lecture → libère l'unique connexion autorisée
-      //      par le fournisseur. Sinon le téléchargement ouvrirait une
-      //      2e connexion, refusée par le serveur (fichier 0 octet).
-      await _player.stop();
-      if (mounted) setState(() => _recordPausedPlayback = true);
-
-      //   2. Le ForegroundService NATIF (Kotlin) télécharge lui-même le
-      //      flux dans le fichier. Comme le download vit côté natif (pas
-      //      en Dart), il SURVIT à la fermeture de l'app par
-      //      l'utilisateur (swipe) pendant des heures — wakelock +
-      //      wifilock + notification persistante inclus.
+      // ENREGISTREMENT SANS COUPER LA LECTURE (choix user) :
+      // On NE stoppe PLUS la lecture et on n'affiche plus l'ecran plein
+      // « enregistrement en cours ». Le ForegroundService NATIF (Kotlin)
+      // telecharge le flux EN PARALLELE pendant que l'utilisateur continue
+      // de regarder. Le download vit cote natif → il SURVIT a la fermeture
+      // de l'app (swipe) pendant des heures (wakelock + wifilock + notif).
+      // NB : si le fournisseur n'autorise qu'UNE connexion simultanee,
+      // l'enregistrement peut etre vide — compromis assume pour garder la
+      // lecture a l'ecran.
       final String title = widget.overrideTitle != null &&
               widget.overrideTitle!.isNotEmpty
           ? '${_currentChannel.cleanName} – ${widget.overrideTitle}'
