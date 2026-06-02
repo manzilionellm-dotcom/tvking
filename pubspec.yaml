@@ -127,19 +127,6 @@ dependencies:
   # officiel Flutter, fonctionne sur Android et iOS.
   multicast_dns: ^0.3.2+8
 
-  # --- Sécurité : vérification de signature de licence (anti-piratage) ---
-  # ed25519_edwards = implémentation PURE DART (zéro code natif, donc
-  # aucun risque pour le build CI) de la signature Ed25519 (RFC 8032).
-  # Pourquoi : le serveur signe chaque réponse de licence avec sa clé
-  # PRIVÉE ; l'app embarque seulement la clé PUBLIQUE et vérifie la
-  # signature. Un pirate qui monte un FAUX serveur (DNS / fichier hosts
-  # / APK repackagée pointant ailleurs) répondant « payé » ne peut pas
-  # forger une signature valide → l'app refuse de se débloquer. On
-  # choisit Ed25519 plutôt qu'un HMAC parce qu'un HMAC imposerait
-  # d'embarquer un secret EXTRACTIBLE de l'APK ; ici la clé publique
-  # ne permet QUE de vérifier, jamais de signer.
-  ed25519_edwards: ^0.3.1
-
   # Authentification biométrique — empreinte digitale, Face Unlock,
   # ou code PIN/mot de passe système Android en fallback. Plugin
   # officiel Flutter. Sert au "Verrouillage à l'ouverture" de l'app.
