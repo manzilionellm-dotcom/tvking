@@ -93,6 +93,9 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   }
 
   const costFor = (p: string): number | null => {
+    // Les essais sont toujours gratuits (0 crédit), même s'ils ne sont
+    // pas dans la table plan_costs.
+    if (p.startsWith('trial')) return 0;
     const row = costs.find((c) => c.plan === p);
     return row ? row.credits : null;
   };
@@ -136,6 +139,14 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
     { id: 'biannual', label: '6 mois' },
     { id: 'yearly', label: '1 an' },
     { id: 'lifetime', label: 'À vie' },
+  ];
+
+  // Essais GRATUITS (0 crédit) — pour faire tester un prospect qui n'a
+  // pas encore payé. Activables même avec un solde de crédits à zéro.
+  const TRIALS = [
+    { id: 'trial_2h', label: 'Test 2 h' },
+    { id: 'trial_24h', label: 'Test 24 h' },
+    { id: 'trial_48h', label: 'Test 48 h' },
   ];
 
   return (
@@ -223,6 +234,32 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
                         {c} cr.
                       </span>
                     )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Essais gratuits (0 crédit) */}
+            <div className="mt-2 text-[10px] uppercase tracking-widest text-ink-tertiary">
+              Essai gratuit · 0 crédit
+            </div>
+            <div className="mt-1 grid grid-cols-3 gap-2">
+              {TRIALS.map((t) => {
+                const selected = plan === t.id;
+                return (
+                  <button
+                    type="button"
+                    key={t.id}
+                    onClick={() => setPlan(t.id)}
+                    className={
+                      'flex items-center justify-between rounded-md border px-3 py-2 text-sm transition ' +
+                      (selected
+                        ? 'border-success bg-success/10 text-ink-primary'
+                        : 'border-white/5 bg-slate text-ink-secondary hover:border-white/20')
+                    }
+                  >
+                    <span>{t.label}</span>
+                    <span className="text-[11px] text-success">gratuit</span>
                   </button>
                 );
               })}
@@ -330,7 +367,11 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             disabled={busy || mac.trim().length < 8}
             className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? 'Activation…' : `Activer (${costFor(plan) ?? '?'} crédits)`}
+            {busy
+              ? 'Activation…'
+              : costFor(plan) === 0
+                ? 'Activer (gratuit)'
+                : `Activer (${costFor(plan) ?? '?'} crédits)`}
           </button>
         </form>
 

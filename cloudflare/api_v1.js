@@ -1131,6 +1131,11 @@ async function handleDeviceDelete(env, id, actor, user) {
 // =========================================================
 
 function planToDays(plan, customDays) {
+  // Essais courts GRATUITS : 'trial_2h', 'trial_24h', 'trial_48h'…
+  // → fraction de jour (les heures fonctionnent dans le calcul
+  // d'expiration : days * 24h * 60min… donc 2/24 jour = 2 heures pile).
+  const hm = /^trial_(\d+)h$/.exec(plan || '');
+  if (hm) return Number(hm[1]) / 24;
   switch (plan) {
     case '1m':
     case 'monthly': return 30;
@@ -1383,6 +1388,9 @@ async function handlePlanCostsUpdate(request, env, actor) {
 
 /// Cout en credits d'un plan (table plan_costs, avec defauts de secours).
 async function planCreditCost(env, plan) {
+  // Tout essai ('trial', 'trial_2h', 'trial_24h'…) est GRATUIT : 0 crédit.
+  // On peut donc activer un test même avec 0 crédit / sans paiement.
+  if (typeof plan === 'string' && plan.startsWith('trial')) return 0;
   const row = await env.DB
     .prepare('SELECT credits FROM plan_costs WHERE plan = ?')
     .bind(plan)
