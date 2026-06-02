@@ -1,0 +1,61 @@
+# =========================================================
+#  setup-d1.yml — Charge le schema dans la base D1 (auto)
+# =========================================================
+#  Evite a l'utilisateur de copier-coller le SQL a la main dans
+#  la console D1. Utilise les memes secrets Cloudflare que
+#  deploy-worker.yml (deja configures sur le repo).
+#
+#  Prerequis : la base D1 nommee `tvking_licensing` doit exister
+#  (creee via le dashboard Cloudflare). `wrangler d1 execute`
+#  la retrouve par son NOM, independamment du wrangler.toml.
+#
+#  Se declenche :
+#    - automatiquement quand on pousse ce fichier ou schema.sql
+#    - manuellement : onglet Actions -> "Setup D1" -> Run workflow
+# =========================================================
+
+name: Setup D1
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - main
+      - 'claude/**'
+    paths:
+      - 'cloudflare/schema.sql'
+      - 'cloudflare/migrations/**'
+      - '.github/workflows/setup-d1.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  load-schema:
+    name: Load schema.sql into tvking_licensing
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Cloudflare secrets
+        env:
+          API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$API_TOKEN" ]; then echo "❌ CLOUDFLARE_API_TOKEN absent"; exit 1; fi
+          if [ -z "$ACCOUNT_ID" ]; then echo "❌ CLOUDFLARE_ACCOUNT_ID absent"; exit 1; fi
+          echo "✓ Secrets présents."
+
+      # Charge le schema (tables + seed) dans la base REMOTE.
+      # `CI=true` rend wrangler non-interactif (pas de prompt y/n).
+      - name: Execute schema.sql on remote D1
+        uses: cloudflare/wrangler-action@v3
+        env:
+          CI: 'true'
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'cloudflare'
+          command: d1 execute tvking_licensing --remote --file=schema.sql
