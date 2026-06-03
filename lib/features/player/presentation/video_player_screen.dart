@@ -668,6 +668,26 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       //    déclarent ne pas être seekable, libmpv peut zapper
       //    dans le cache → permet le rebobinage des 20s.
       await native?.setProperty('force-seekable', 'yes');
+
+      // === FLUIDITÉ DU RENDU (anti-saccades) ===
+      // 8. video-sync=display-resample : aligne la cadence des images
+      //    sur le rafraîchissement réel de l'écran (resample l'audio
+      //    d'un poil pour rester synchro). C'est LE réglage qui rend
+      //    la lecture "lisse comme Netflix" (supprime le micro-judder
+      //    dû au décalage 50/60 Hz vs 25/30 fps du flux).
+      await native?.setProperty('video-sync', 'display-resample');
+      // 9. interpolation=no : on ne crée pas d'images intermédiaires
+      //    (coûteux en GPU et inutile une fois display-resample actif).
+      await native?.setProperty('interpolation', 'no');
+      // 10. framedrop=vo : si une image est en retard, on la lâche au
+      //     niveau sortie vidéo plutôt que de faire bégayer tout le flux.
+      await native?.setProperty('framedrop', 'vo');
+      // 11. hr-seek=yes : recherche précise et fluide (rebobinage).
+      await native?.setProperty('hr-seek', 'yes');
+      // 12. vd-lavc-threads=0 : décodage logiciel multi-thread (auto =
+      //     tous les cœurs) quand le HW retombe en software → évite les
+      //     saccades sur les flux que le mediacodec ne gère pas.
+      await native?.setProperty('vd-lavc-threads', '0');
     } catch (_) {
       // Pas grave, on continue avec les défauts.
     }
