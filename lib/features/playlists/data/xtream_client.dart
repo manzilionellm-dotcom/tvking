@@ -36,6 +36,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../channels/domain/channel.dart';
+import '../../vod/domain/vod_movie.dart';
 
 /// Exception métier pour signaler une erreur Xtream lisible
 /// (login refusé, serveur HS, réponse non-JSON, etc.).
@@ -171,6 +172,72 @@ class XtreamClient {
       debugPrint('[XtreamClient] ${channels.length} chaînes live récupérées');
     }
     return channels;
+  }
+
+  // ============================================================
+  //  VOD (films à la demande)
+  // ============================================================
+
+  /// Catégories VOD (map id → nom).
+  Future<Map<String, String>> fetchVodCategories() async {
+    final List<dynamic> raw =
+        await _callApiList(action: 'get_vod_categories');
+    final Map<String, String> result = <String, String>{};
+    for (final dynamic item in raw) {
+      if (item is Map<String, dynamic>) {
+        final String id = item['category_id']?.toString() ?? '';
+        final String name = item['category_name']?.toString() ?? 'Sans nom';
+        if (id.isNotEmpty) result[id] = name;
+      }
+    }
+    return result;
+  }
+
+  /// Récupère tous les films VOD et les mappe en [VodMovie] (URL de
+  /// fichier construite, poster, catégorie). Renvoie une liste vide si
+  /// le serveur ne propose pas de VOD.
+  Future<List<VodMovie>> fetchVodMovies({Map<String, String>? categories}) async {
+    final Map<String, String> cats =
+        categories ?? await fetchVodCategories();
+    final List<dynamic> raw = await _callApiList(action: 'get_vod_streams');
+
+    final List<VodMovie> movies = <VodMovie>[];
+    for (final dynamic item in raw) {
+      if (item is! Map<String, dynamic>) continue;
+      final String streamId = item['stream_id']?.toString() ?? '';
+      if (streamId.isEmpty) continue;
+      final String name = item['name']?.toString() ?? '(Sans nom)';
+      final String categoryId = item['category_id']?.toString() ?? '';
+      final String category = cats[categoryId] ?? 'Autres';
+      // Extension du conteneur : mp4 par défaut si non fournie.
+      String ext = (item['container_extension']?.toString() ?? 'mp4').trim();
+      if (ext.isEmpty) ext = 'mp4';
+      final String? poster = item['stream_icon']?.toString();
+      final String? rating = item['rating']?.toString();
+
+      movies.add(
+        VodMovie(
+          id: 'vod-$streamId',
+          name: name,
+          category: category.isEmpty ? 'Autres' : category,
+          streamUrl: _buildVodStreamUrl(streamId, ext),
+          containerExt: ext,
+          posterUrl: (poster == null || poster.isEmpty) ? null : poster,
+          rating: (rating == null || rating.isEmpty || rating == '0')
+              ? null
+              : rating,
+        ),
+      );
+    }
+    if (kDebugMode) {
+      debugPrint('[XtreamClient] ${movies.length} films VOD récupérés');
+    }
+    return movies;
+  }
+
+  /// URL d'un film VOD au format standard Xtream.
+  String _buildVodStreamUrl(String streamId, String ext) {
+    return '$_baseUrl/movie/$username/$password/$streamId.$ext';
   }
 
   /// Ferme proprement le client HTTP. À appeler en fin de cycle.

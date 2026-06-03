@@ -34,6 +34,7 @@ import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
+import '../../vod/presentation/movies_screen.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../../security/data/biometric_auth.dart';
 import '../data/recently_watched_repository.dart';
@@ -671,7 +672,13 @@ class _HomeScreenState extends State<HomeScreen> {
       case 3:
         _openSection('Enfant', ChannelGenre.kids).then((_) => _resetNav());
       case 4:
-        _openSection('Cinéma', ChannelGenre.movies).then((_) => _resetNav());
+        // Cinéma = catalogue VOD (films à la demande) avec lecture en
+        // streaming ET téléchargement hors-ligne (façon Netflix).
+        Navigator.of(context)
+            .push<void>(MaterialPageRoute<void>(
+              builder: (_) => const MoviesScreen(),
+            ))
+            .then((_) => _resetNav());
     }
   }
 
