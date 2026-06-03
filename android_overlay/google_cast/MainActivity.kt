@@ -298,6 +298,16 @@ class MainActivity : FlutterFragmentActivity() {
         pendingScreenRecTitle = title
         pendingScreenRecResult = result
 
+        // AUTORISATION DÉJÀ ACCORDÉE (projection vivante) : on ne
+        // re-demande PAS la popup système — on réutilise la session de
+        // capture existante et on démarre directement l'enregistrement.
+        if (ScreenRecordService.projectionActive) {
+            startRecordingReusingProjection(file, title)
+            pendingScreenRecResult?.success(true)
+            clearPendingScreenRec()
+            return
+        }
+
         // Audio micro : si pas encore accordé, on le demande AVANT la
         // popup de capture (sinon repli vidéo seule côté service). On
         // enchaîne sur la capture dans onRequestPermissionsResult.
@@ -331,6 +341,25 @@ class MainActivity : FlutterFragmentActivity() {
             Log.e(TAG, "createScreenCaptureIntent KO: $e", e)
             pendingScreenRecResult?.success(false)
             clearPendingScreenRec()
+        }
+    }
+
+    /// Démarre un enregistrement en RÉUTILISANT la projection déjà
+    /// autorisée (pas de popup système). Le service est déjà foreground.
+    private fun startRecordingReusingProjection(file: String, title: String) {
+        try {
+            val intent = Intent(this, ScreenRecordService::class.java).apply {
+                action = ScreenRecordService.ACTION_START
+                putExtra(ScreenRecordService.EXTRA_FILE, file)
+                putExtra(ScreenRecordService.EXTRA_TITLE, title)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "reuse projection KO: $e", e)
         }
     }
 
@@ -369,7 +398,7 @@ class MainActivity : FlutterFragmentActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != REQ_SCREEN_CAPTURE) return
         val file = pendingScreenRecFile
-        val title = pendingScreenRecTitle ?: "7 MOTION"
+        val title = pendingScreenRecTitle ?: "BLACK7 ROYAL"
         val pending = pendingScreenRecResult
         clearPendingScreenRec()
 
