@@ -26,6 +26,7 @@ import android.app.Activity
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -278,6 +279,20 @@ class ScreenRecordService : Service() {
     }
 
     private fun buildNotification(title: String, recording: Boolean): Notification {
+        // Bouton discret "Arrêter le partage" DANS la notification : le
+        // client coupe l'autorisation de capture en 1 tap, sans aller
+        // dans les réglages. (Au prochain enregistrement, la popup
+        // redemandera une fois — comportement attendu.)
+        val releaseIntent = Intent(this, ScreenRecordService::class.java).apply {
+            action = ACTION_RELEASE
+        }
+        val piFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val releasePi = PendingIntent.getService(this, 1, releaseIntent, piFlags)
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(
@@ -288,6 +303,11 @@ class ScreenRecordService : Service() {
             .setOngoing(true)
             .setSilent(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Arrêter le partage",
+                releasePi,
+            )
             .setForegroundServiceBehavior(
                 NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE,
             )
