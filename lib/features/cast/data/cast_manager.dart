@@ -1046,20 +1046,38 @@ class CastManager extends ChangeNotifier {
   /// quelques ms), assez court pour ne pas faire patienter sur une TV
   /// réellement injoignable.
   Future<bool> _probeDeviceReachable(CastDevice device) async {
-    try {
-      final Socket socket = await Socket.connect(
-        device.host,
-        device.port,
-        timeout: const Duration(milliseconds: 2500),
-      );
-      socket.destroy();
-      return true;
-    } on Exception {
-      // SocketException (timeout, no route to host, connection refused)
-      // → injoignable. On ne log pas ici : le caller throw un message
-      // dédié qui sera archivé dans le diagnostic.
-      return false;
+    // On RÉESSAIE plusieurs fois : un « no route to host » (EHOSTUNREACH)
+    // juste après une activité réseau est souvent TRANSITOIRE (cache ARP
+    // raté, TV qui sort de veille, WiFi power-save). Échouer au 1ᵉʳ essai
+    // donnait un faux "TV injoignable" alors qu'un retour 600 ms plus tard
+    // suffit. 3 essais × 3 s + petite pause = ~10 s max dans le pire cas,
+    // mais succès quasi immédiat dès que l'ARP se résout.
+    const int maxTries = 3;
+    for (int i = 0; i < maxTries; i++) {
+      try {
+        final Socket socket = await Socket.connect(
+          device.host,
+          device.port,
+          timeout: const Duration(seconds: 3),
+        );
+        socket.destroy();
+        if (i > 0) {
+          StructuredLogger.instance.info(
+            domain: 'cast',
+            event: 'cast.preflight_recovered',
+            ctx: <String, Object?>{'tries': i + 1},
+          );
+        }
+        return true;
+      } on Exception {
+        // Injoignable cette fois. Si ce n'est pas la dernière tentative,
+        // on attend un court instant (laisse l'ARP / la TV se réveiller).
+        if (i < maxTries - 1) {
+          await Future<void>.delayed(const Duration(milliseconds: 700));
+        }
+      }
     }
+    return false;
   }
 
   /// Convertit une Exception interne en message court pour l'UI.
