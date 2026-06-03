@@ -318,29 +318,130 @@ jobs:
       #   - Les vieux Fire TV Stick 1ere gen (armv7) ne sont plus
       #     pertinents pour cette app (manquent de RAM pour libmpv).
       # On garde les 4 APKs dans les artifacts pour backup si besoin.
-      - name: Build debug APK (split-per-abi)
-        run: flutter build apk --debug --no-tree-shake-icons --split-per-abi
+      # ─────────────────────────────────────────────────────────
+      #  SIGNATURE RELEASE (clé stable) — pour distribution client
+      # ─────────────────────────────────────────────────────────
+      #  Pourquoi : un APK signé avec une clé STABLE peut recevoir des
+      #  mises à jour qui s'installent PAR-DESSUS l'ancienne version. Un
+      #  APK debug est re-signé avec une clé jetable à chaque build → les
+      #  mises à jour refuseraient de s'installer chez le client.
+      #
+      #  La clé n'est JAMAIS dans le repo (public). Elle vit dans 2
+      #  secrets GitHub :
+      #    - ANDROID_KEYSTORE_BASE64   : le fichier .jks encodé base64
+      #    - ANDROID_KEYSTORE_PASSWORD : le mot de passe du keystore
+      #
+      #  REPLI : si le secret n'est pas (encore) défini, on NE casse PAS
+      #  le build — on retombe sur la signature debug (cf. condition dans
+      #  build.gradle.kts). Le build reste vert, juste non distribuable.
+      - name: Configure release signing (si secret présent)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -e
+          if [ -z "$KS_B64" ]; then
+            echo "⊙ Pas de secret keystore → build release signé en debug (repli)"
+            exit 0
+          fi
+          echo "$KS_B64" | base64 -d > android/app/release.jks
+          # key.properties à la racine android/ (rootProject), lu par
+          # build.gradle.kts. storeFile est relatif à android/app/.
+          cat > android/key.properties <<EOF
+          storeFile=release.jks
+          storePassword=$KS_PW
+          keyAlias=sevenmotion
+          keyPassword=$KS_PW
+          EOF
+          echo "✓ release.jks + key.properties écrits (build signé release)"
+          ls -la android/app/release.jks android/key.properties
 
-      - name: Pick arm64-v8a as canonical app-debug.apk
+      # Injecte la config de signature dans le build.gradle.kts généré
+      # par `flutter create`. On ajoute :
+      #   1. un chargeur de key.properties (en tête, sans import grâce
+      #      aux noms pleinement qualifiés java.util.Properties) ;
+      #   2. un signingConfigs.create("release") {…} dans android{} ;
+      #   3. on bascule le buildType release sur cette clé SI le fichier
+      #      key.properties existe, sinon on garde debug (repli sûr).
+      - name: Patch build.gradle.kts for release signing
+        run: |
+          set -e
+          F=android/app/build.gradle.kts
+          if [ ! -f "$F" ]; then
+            echo "❌ $F introuvable"; ls -la android/app/ || true; exit 1
+          fi
+          export GRADLE_FILE="$F"
+          python3 << 'PYEOF'
+          import os
+          f = os.environ['GRADLE_FILE']
+          s = open(f).read()
+          if 'signingConfigs.getByName("release")' in s:
+              print('⊙ déjà patché'); raise SystemExit
+          loader = (
+              'val keystoreProperties = java.util.Properties()\n'
+              'val keystorePropertiesFile = rootProject.file("key.properties")\n'
+              'if (keystorePropertiesFile.exists()) {\n'
+              '    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }\n'
+              '}\n\n'
+          )
+          signing = (
+              'android {\n'
+              '    signingConfigs {\n'
+              '        create("release") {\n'
+              '            val sf = keystoreProperties.getProperty("storeFile")\n'
+              '            if (sf != null) {\n'
+              '                storeFile = file(sf)\n'
+              '                storePassword = keystoreProperties.getProperty("storePassword")\n'
+              '                keyAlias = keystoreProperties.getProperty("keyAlias")\n'
+              '                keyPassword = keystoreProperties.getProperty("keyPassword")\n'
+              '            }\n'
+              '        }\n'
+              '    }\n'
+          )
+          if 'android {' not in s:
+              print('❌ pas de bloc android {} — template inattendu'); raise SystemExit(1)
+          s = s.replace('android {', loader + 'android {', 1)
+          s = s.replace('android {', signing, 1)
+          old = 'signingConfig = signingConfigs.getByName("debug")'
+          new = ('signingConfig = if (keystorePropertiesFile.exists()) '
+                 'signingConfigs.getByName("release") else '
+                 'signingConfigs.getByName("debug")')
+          if old in s:
+              s = s.replace(old, new, 1)
+              print('✓ buildType release basculé sur la clé stable (si présente)')
+          else:
+              print('⚠ ligne signingConfig debug non trouvée — release reste en debug')
+          open(f, 'w').write(s)
+          print('✓ build.gradle.kts patché')
+          PYEOF
+          echo "----- build.gradle.kts (tête) -----"
+          sed -n '1,40p' "$F"
+
+      - name: Build release APK (split-per-abi)
+        run: flutter build apk --release --no-tree-shake-icons --split-per-abi
+
+
+      - name: Pick arm64-v8a as canonical 7motion.apk
         run: |
           set -e
           OUT=build/app/outputs/flutter-apk
           echo "=== APKs produits par --split-per-abi ==="
           ls -lah "$OUT" || true
           # arm64 = cible primaire. Tous les Android TV / phones modernes.
-          ARM64="$OUT/app-arm64-v8a-debug.apk"
+          ARM64="$OUT/app-arm64-v8a-release.apk"
           if [ ! -f "$ARM64" ]; then
-            echo "❌ arm64-v8a APK introuvable apres split."
+            echo "❌ arm64-v8a APK release introuvable apres split."
             find build -name '*.apk' || true
             exit 1
           fi
-          cp "$ARM64" "$OUT/app-debug.apk"
-          ls -lah "$OUT/app-debug.apk"
+          # Nom canonique CLIENT : 7motion.apk (lien public propre).
+          cp "$ARM64" "$OUT/7motion.apk"
+          ls -lah "$OUT/7motion.apk"
           echo "Taille gain : ~70 MB (split arm64) vs ~209 MB (fat APK)"
 
       - name: Check APK exists
         run: |
-          if [ ! -f build/app/outputs/flutter-apk/app-debug.apk ]; then
+          if [ ! -f build/app/outputs/flutter-apk/7motion.apk ]; then
             echo "❌ APK introuvable — voir les logs ci-dessus."
             find build -name '*.apk' || true
             exit 1
@@ -350,8 +451,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tvking-debug-apk-${{ github.sha }}
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: tvking-release-apk-${{ github.sha }}
+          path: build/app/outputs/flutter-apk/7motion.apk
           retention-days: 30
           if-no-files-found: error
 
@@ -382,24 +483,24 @@ jobs:
           # de diagnostiquer le problème sans accès aux logs détaillés.
           set -ex
           REPO="${{ github.repository }}"
-          APK="build/app/outputs/flutter-apk/app-debug.apk"
+          APK="build/app/outputs/flutter-apk/7motion.apk"
 
           test -f "$APK"
           ls -lh "$APK"
 
-          NOTES="Dernier build automatique de 7 MOTION.
+          NOTES="Dernier build de 7 MOTION (release signée).
 
-          • Branche : \`${{ github.ref_name }}\`
           • Commit : \`${{ github.sha }}\`
           • Run : #${{ github.run_number }}
 
-          **Pour installer :**
+          **Installer / mettre à jour :**
           1. Ouvre ce lien sur ton téléphone Android
-          2. Télécharge \`app-debug.apk\`
-          3. Si Android refuse → autorise \"Sources inconnues\" dans les Paramètres
+          2. Télécharge \`7motion.apk\`
+          3. Si Android refuse → autorise \"Sources inconnues\"
           4. Lance l'APK pour installer
 
-          ⚠️ Ce build est en mode debug — pour usage de test."
+          Lien direct (à donner aux clients) :
+          https://github.com/$REPO/releases/download/latest/7motion.apk"
 
           gh --version
           gh auth status
@@ -410,6 +511,8 @@ jobs:
               --title "7 MOTION — dernier build" \
               --notes "$NOTES" \
               --prerelease
+            # Retire l'ancien APK debug pour ne laisser QUE le release signé.
+            gh release delete-asset latest app-debug.apk --repo "$REPO" -y || true
             gh release upload latest --repo "$REPO" --clobber "$APK"
           else
             echo ">>> Release latest absente, on la crée"
