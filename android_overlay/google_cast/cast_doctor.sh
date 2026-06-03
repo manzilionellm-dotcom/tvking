@@ -186,6 +186,20 @@ if has "TV a refusé|content.?type.*mp2t|format_decision.*direct"; then
   echo "     (cast.format_decision = hls-wrap attendu pour un Chromecast)."
 fi
 
+# Partie 0 — App ID receiver effectif
+APPID_LINE="$(echo "$LOG" | grep -oE "cast.receiver_app_id=[A-Z0-9]+" | tail -1 || true)"
+if [ -n "$APPID_LINE" ]; then
+  APPID="${APPID_LINE#cast.receiver_app_id=}"
+  if [ "$APPID" = "CC1AD845" ]; then
+    info "Receiver = Default Media Receiver ($APPID) — marche partout, sans branding."
+  else
+    info "Receiver = custom ($APPID) — doit être PUBLIÉ sur la Cast Console,"
+    echo "       sinon : TV trouvée mais lecture qui ne démarre pas."
+  fi
+else
+  info "App ID receiver non capturé (ouvre une session cast pour le voir)."
+fi
+
 # BUG B — relais HLS injoignable par la TV
 if has "cast.relay_unreachable"; then
   fail "La TV ne joint pas le serveur HLS local (isolation AP / WiFi invité)."

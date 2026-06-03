@@ -34,6 +34,7 @@
 package com.manzilionellm.tvking
 
 import android.content.Context
+import android.util.Log
 import com.google.android.gms.cast.framework.CastOptions
 import com.google.android.gms.cast.framework.OptionsProvider
 import com.google.android.gms.cast.framework.SessionProvider
@@ -58,6 +59,8 @@ class CastOptionsProviderImpl : OptionsProvider {
         /// marche avec celui-ci mais pas avec le custom, le problème est
         /// la publication du receiver, pas le réseau.
         private const val DEFAULT_RECEIVER = "CC1AD845"
+
+        private const val TAG = "CastOptions"
     }
 
     override fun getCastOptions(context: Context): CastOptions {
@@ -89,6 +92,14 @@ class CastOptionsProviderImpl : OptionsProvider {
         val isDebuggable = (context.applicationInfo.flags and
             android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
         val appId = if (isDebuggable) DEFAULT_RECEIVER else RECEIVER_APP_ID
+        // Observabilité (Partie 0) : on logue l'App ID receiver effectif
+        // au boot. `cast_doctor.sh` le lit pour dire "custom vs default".
+        Log.i(
+            TAG,
+            "cast.receiver_app_id=$appId " +
+                (if (isDebuggable) "(default media receiver, debug)"
+                 else "(custom receiver, release)"),
+        )
 
         return CastOptions.Builder()
             .setReceiverApplicationId(appId)
