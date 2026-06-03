@@ -24,7 +24,6 @@ import '../../../../core/support/vip_support.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../device/data/device_identity.dart';
-import '../../../playlists/data/remote_source_repository.dart';
 import '../../../playlists/presentation/m3u_login_sheet.dart';
 import '../../../playlists/presentation/xtream_login_sheet.dart';
 
@@ -92,8 +91,8 @@ class _SourceChoiceSheet extends StatelessWidget {
             const SizedBox(height: 12),
             _SourceTile(
               icon: Icons.link_rounded,
-              title: 'J\'ai mon propre M3U',
-              subtitle: 'Colle ton lien M3U / M3U8',
+              title: 'J\'ai ma propre source',
+              subtitle: 'Lien M3U / M3U8 ou codes Xtream',
               onTap: () {
                 Navigator.of(context).pop();
                 showM3uLoginSheet(context);
@@ -121,31 +120,6 @@ class _SourceChoiceSheet extends StatelessWidget {
                 } else {
                   showActivationSheet(context);
                 }
-              },
-            ),
-            const SizedBox(height: 12),
-            _SourceTile(
-              icon: Icons.refresh_rounded,
-              title: 'Vérifier mon abonnement',
-              subtitle: 'Recharger les chaînes activées par ton revendeur',
-              onTap: () async {
-                // On capture le messenger AVANT de fermer la feuille,
-                // car le context de la sheet devient invalide après pop().
-                final ScaffoldMessengerState messenger =
-                    ScaffoldMessenger.of(context);
-                Navigator.of(context).pop();
-                messenger.showSnackBar(
-                  SnackBar(
-                    behavior: SnackBarBehavior.floating,
-                    content: Text(
-                      'Vérification de ton abonnement…',
-                      style: AppTextStyles.bodyMedium,
-                    ),
-                  ),
-                );
-                // Relance la récupération de la source assignée par MAC.
-                // Si le revendeur vient d'activer, les chaînes arrivent.
-                await RemoteSourceRepository.sync();
               },
             ),
           ],
