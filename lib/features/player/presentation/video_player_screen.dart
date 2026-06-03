@@ -630,20 +630,32 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             'reconnect_on_network_error=1',
       );
 
-      // 2. Cache demuxer généreux — absorbe les hoquets réseau
-      //    sans interrompre la lecture. Valeurs élevées car les
-      //    téléphones modernes ont >4 GB RAM.
-      //    - demuxer-max-bytes      : 512 MiB de buffer avant
-      //    - demuxer-max-back-bytes : 128 MiB de back-buffer
-      //    - demuxer-readahead-secs : 20s d'avance bufferisée
-      await native?.setProperty('demuxer-max-bytes', '536870912');
-      await native?.setProperty('demuxer-max-back-bytes', '134217728');
-      await native?.setProperty('demuxer-readahead-secs', '20');
+      // 2. Cache demuxer TRÈS généreux — philosophie "anti-coupure" :
+      //    on préfère prendre du RETARD (jusqu'à ~1 min) et rejouer en
+      //    différé plutôt que de casser quand la connexion faiblit.
+      //    Le lecteur accumule autant d'avance que la bande passante le
+      //    permet ; sur un creux réseau, il puise dans ce buffer au lieu
+      //    de geler. Valeurs élevées OK car les téléphones ont >4 GB RAM.
+      //    - demuxer-max-bytes      : 1 GiB de buffer avant
+      //    - demuxer-max-back-bytes : 256 MiB de back-buffer (rebobinage)
+      //    - demuxer-readahead-secs : jusqu'à 60s d'avance bufferisée
+      await native?.setProperty('demuxer-max-bytes', '1073741824');
+      await native?.setProperty('demuxer-max-back-bytes', '268435456');
+      await native?.setProperty('demuxer-readahead-secs', '60');
 
-      // 3. Ne pas pause sur cache underrun — préfère un micro
-      //    rebuffer transparent qu'un freeze de la lecture.
-      await native?.setProperty('cache-pause', 'no');
-      await native?.setProperty('cache-pause-wait', '1');
+      // 3. Comportement ADAPTATIF sur cache vide (cœur de la demande) :
+      //    quand le buffer se vide (connexion lente), on MET EN PAUSE et
+      //    on attend d'avoir ré-accumulé quelques secondes AVANT de
+      //    reprendre — la lecture prend du retard mais ne SAUTE pas et ne
+      //    casse pas. C'est l'inverse de Netflix/YouTube (toujours au bord
+      //    du direct) : ici on privilégie la continuité sur la fraîcheur.
+      //    - cache-pause=yes          : pause auto si le buffer se vide
+      //    - cache-pause-wait=4       : ré-accumule 4s avant de reprendre
+      //    - cache-pause-initial=yes  : remplit un peu le buffer AVANT de
+      //                                 démarrer (pas de saccade au début)
+      await native?.setProperty('cache-pause', 'yes');
+      await native?.setProperty('cache-pause-wait', '4');
+      await native?.setProperty('cache-pause-initial', 'yes');
 
       // 4. Timeout réseau confortable (60s vs 10s par défaut).
       //    Sur 4G/5G en mobilité, les RTT peuvent piquer >10s.
