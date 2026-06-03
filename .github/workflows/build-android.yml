@@ -377,11 +377,16 @@ jobs:
           s = open(f).read()
           if 'signingConfigs.getByName("release")' in s:
               print('⊙ déjà patché'); raise SystemExit
+          # En Kotlin DSL Gradle, les noms java.* pleinement qualifiés ne
+          # se résolvent pas : il FAUT de vrais imports en tête de fichier
+          # (avant le bloc plugins{}). C'est le snippet de signature Flutter
+          # standard.
+          imports = 'import java.util.Properties\nimport java.io.FileInputStream\n\n'
           loader = (
-              'val keystoreProperties = java.util.Properties()\n'
+              'val keystoreProperties = Properties()\n'
               'val keystorePropertiesFile = rootProject.file("key.properties")\n'
               'if (keystorePropertiesFile.exists()) {\n'
-              '    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }\n'
+              '    keystoreProperties.load(FileInputStream(keystorePropertiesFile))\n'
               '}\n\n'
           )
           signing = (
@@ -400,6 +405,8 @@ jobs:
           )
           if 'android {' not in s:
               print('❌ pas de bloc android {} — template inattendu'); raise SystemExit(1)
+          if 'import java.util.Properties' not in s:
+              s = imports + s
           s = s.replace('android {', loader + 'android {', 1)
           s = s.replace('android {', signing, 1)
           old = 'signingConfig = signingConfigs.getByName("debug")'
