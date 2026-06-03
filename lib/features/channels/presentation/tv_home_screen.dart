@@ -8,13 +8,15 @@
 //    - D-pad : flèches haut/bas naviguent entre rangées, gauche/
 //      droite entre cartes, OK lance la chaîne
 //    - Header transparent qui s'estompe au scroll
-//    - Cast button + Search + Settings dans la rangée du haut,
-//      tous accessibles à la télécommande
+//    - Search + Guide + Settings dans la rangée du haut, tous
+//      accessibles à la télécommande (pas de cast sur TV)
 //
 //  Le contenu (chaînes, sections) est identique au mode téléphone
 //  pour ne pas avoir deux sources de vérité. On réutilise les
 //  mêmes repositories. Seul le LAYOUT change.
 // =========================================================
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -22,11 +24,10 @@ import '../../../core/branding/brand_logo.dart';
 import '../../../core/branding/powered_by_marquee.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/support/vip_help_card.dart';
-import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/theme/tv_palette.dart';
+import '../../../core/widgets/tv_accent_scope.dart';
 import '../../../core/widgets/tv_focusable.dart';
-import '../../cast/presentation/cast_button.dart';
-import '../../cast/presentation/cast_mini_bar.dart';
 import '../../epg/presentation/tv_guide_screen.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
@@ -69,14 +70,20 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Stack(
+    // TvAccentScope : diffuse l'accent VIOLET à tous les TvFocusable
+    // descendants (cartes, boutons d'icône…) sans les paramétrer un par
+    // un. Le téléphone, lui, n'a pas ce scope → focus ember conservé.
+    return TvAccentScope(
+      focusBorderColor: TvRoyal.accent,
+      focusGlow: TvRoyal.focusGlow(),
+      child: Scaffold(
+        backgroundColor: TvRoyal.background,
+        body: Stack(
         children: <Widget>[
           // Fond avec gradient subtil
           const DecoratedBox(
             decoration: BoxDecoration(
-              gradient: AppColors.backgroundGradient,
+              gradient: TvRoyal.backgroundGradient,
             ),
             child: SizedBox.expand(),
           ),
@@ -99,14 +106,12 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             ),
           ),
 
-          // Mini-bar de cast — toujours flottante en haut
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 12,
-            left: 24,
-            right: 24,
-            child: const CastMiniBar(),
-          ),
+          // NB : la mini-bar de cast a été retirée de la version TV —
+          // sur grand écran on regarde directement, pas besoin de
+          // « caster » vers un autre appareil. Le cast reste dispo côté
+          // téléphone uniquement.
         ],
+        ),
       ),
     );
   }
@@ -342,7 +347,50 @@ class _TvTopBar extends StatelessWidget {
               const BrandSignature(),
             ],
           ),
+
+          const SizedBox(width: 44),
+          // ----- Onglets de navigation (style Vu Player Pro) -----
+          //  Raccourcis vers les grandes catégories. Focusables au D-pad.
+          _TvNavChip(
+            icon: Icons.live_tv_rounded,
+            label: 'Direct',
+            onTap: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => const CategorySectionScreen(title: 'Live TV'),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          _TvNavChip(
+            icon: Icons.movie_outlined,
+            label: 'Films',
+            onTap: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => const CategorySectionScreen(
+                  title: 'Films',
+                  genreFilter: ChannelGenre.movies,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          _TvNavChip(
+            icon: Icons.video_library_outlined,
+            label: 'Séries',
+            onTap: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => const CategorySectionScreen(
+                  title: 'Séries',
+                  genreFilter: ChannelGenre.series,
+                ),
+              ),
+            ),
+          ),
+
           const Spacer(),
+          // Horloge — repère temporel discret en haut à droite.
+          const _TvClock(),
+          const SizedBox(width: 18),
           // Bouton Actualiser TV — focusable au D-pad, visible à 3 m.
           _TvIconButton(
             icon: Icons.refresh_rounded,
@@ -364,7 +412,7 @@ class _TvTopBar extends StatelessWidget {
               } catch (e) {
                 m.showSnackBar(SnackBar(
                   behavior: SnackBarBehavior.floating,
-                  backgroundColor: AppColors.live,
+                  backgroundColor: TvRoyal.live,
                   content: Text('Erreur : $e'),
                 ));
               }
@@ -383,10 +431,8 @@ class _TvTopBar extends StatelessWidget {
             onTap: onGuide,
           ),
           const SizedBox(width: 10),
-          // Bouton cast — la version compacte existante marche très
-          // bien en TV (icône + halo focus géré par le thème).
-          const CastButton(),
-          const SizedBox(width: 10),
+          // (Bouton cast retiré de la version TV — cf. note en tête du
+          // build : pas de casting sur grand écran.)
           _TvIconButton(
             icon: Icons.settings_outlined,
             label: 'Réglages',
@@ -401,8 +447,95 @@ class _TvTopBar extends StatelessWidget {
   }
 }
 
+/// Onglet de navigation du top bar (style Vu Player Pro). Pilule
+/// icône + label, focusable au D-pad (anneau violet via TvAccentScope).
+class _TvNavChip extends StatelessWidget {
+  const _TvNavChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusable(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      semanticsLabel: label,
+      ensureVisibleAlignment: 0.5,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+        decoration: BoxDecoration(
+          color: TvRoyal.surface,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, size: 20, color: TvRoyal.textSecondary),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: AppTextStyles.button.copyWith(
+                fontSize: 15,
+                color: TvRoyal.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Horloge du top bar — se met à jour toutes les 20 s (suffisant pour
+/// l'affichage HH:mm, et économe). Format 24 h, chiffres tabulaires.
+class _TvClock extends StatefulWidget {
+  const _TvClock();
+
+  @override
+  State<_TvClock> createState() => _TvClockState();
+}
+
+class _TvClockState extends State<_TvClock> {
+  late final Timer _timer;
+  DateTime _now = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String hh = _now.hour.toString().padLeft(2, '0');
+    final String mm = _now.minute.toString().padLeft(2, '0');
+    return Text(
+      '$hh:$mm',
+      style: AppTextStyles.numeric.copyWith(
+        fontSize: 24,
+        fontWeight: FontWeight.w600,
+        color: TvRoyal.textPrimary,
+      ),
+    );
+  }
+}
+
 /// Bouton icône du top bar TV — focus géré par `TvFocusable`.
-/// Garde une logique propre (fond ember au focus pour signaler la
+/// Garde une logique propre (fond violet au focus pour signaler la
 /// sélection, icône change de teinte) que `TvFocusable` n'a pas
 /// vocation à embarquer (c'est cosmétique de ce widget précis).
 class _TvIconButton extends StatefulWidget {
@@ -459,12 +592,12 @@ class _TvIconButtonState extends State<_TvIconButton> {
         width: 64,
         height: 64,
         decoration: BoxDecoration(
-          color: focused ? AppColors.accentSurface : AppColors.surface,
+          color: focused ? TvRoyal.accentSurface : TvRoyal.surface,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(
           widget.icon,
-          color: focused ? AppColors.accent : AppColors.textSecondary,
+          color: focused ? TvRoyal.accent : TvRoyal.textSecondary,
           size: 28,
         ),
       ),
@@ -494,13 +627,13 @@ class _TvHero extends StatelessWidget {
       child: Container(
         height: 320,
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: TvRoyal.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: TvRoyal.border),
           gradient: LinearGradient(
             colors: <Color>[
-              AppColors.surface,
-              AppColors.surfaceHigh,
+              TvRoyal.surface,
+              TvRoyal.surfaceHigh,
             ],
           ),
         ),
@@ -525,7 +658,11 @@ class _TvHero extends StatelessWidget {
                 children: <Widget>[
                   Text(
                     'À LA UNE',
-                    style: AppTextStyles.eyebrow,
+                    // `eyebrow` est rouge ember par défaut → on le force
+                    // en violet pour rester dans l'identité TV.
+                    style: AppTextStyles.eyebrow.copyWith(
+                      color: TvRoyal.accentGlow,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   Text(
@@ -542,7 +679,7 @@ class _TvHero extends StatelessWidget {
                     channel.prettyCategory,
                     style: AppTextStyles.bodyMedium.copyWith(
                       fontSize: 16,
-                      color: AppColors.textSecondary,
+                      color: TvRoyal.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -555,12 +692,17 @@ class _TvHero extends StatelessWidget {
                       icon: const Icon(Icons.play_arrow_rounded, size: 26),
                       label: const Text('Regarder'),
                       style: FilledButton.styleFrom(
+                        // Bouton Play en VIOLET (pilule claire, label
+                        // sombre pour le contraste — cf. études).
+                        backgroundColor: TvRoyal.accent,
+                        foregroundColor: TvRoyal.voidSurface,
                         padding: const EdgeInsets.symmetric(
                           horizontal: 28,
                           vertical: 14,
                         ),
                         textStyle: AppTextStyles.button.copyWith(
                           fontSize: 17,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
@@ -614,7 +756,7 @@ class _TvRow extends StatelessWidget {
                     '· $subtitle',
                     style: AppTextStyles.bodyMedium.copyWith(
                       fontSize: 14,
-                      color: AppColors.textMuted,
+                      color: TvRoyal.textMuted,
                     ),
                   ),
                 ],
@@ -622,9 +764,15 @@ class _TvRow extends StatelessWidget {
                 if (onSeeAll != null)
                   TextButton(
                     onPressed: onSeeAll,
+                    style: TextButton.styleFrom(
+                      foregroundColor: TvRoyal.accent,
+                    ),
                     child: Text(
                       'Tout voir',
-                      style: AppTextStyles.button.copyWith(fontSize: 14),
+                      style: AppTextStyles.button.copyWith(
+                        fontSize: 14,
+                        color: TvRoyal.accent,
+                      ),
                     ),
                   ),
               ],
@@ -683,7 +831,7 @@ class _TvCard extends StatelessWidget {
     return TvFocusable(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
-      unfocusedBorderColor: AppColors.border,
+      unfocusedBorderColor: TvRoyal.border,
       semanticsLabel: channel.cleanName,
       child: SizedBox(
         width: 200,
@@ -701,7 +849,7 @@ class _TvCard extends StatelessWidget {
               const Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    gradient: AppColors.cardScrim,
+                    gradient: TvRoyal.cardScrim,
                   ),
                 ),
               ),

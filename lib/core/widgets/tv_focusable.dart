@@ -41,6 +41,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../theme/app_colors.dart';
+import 'tv_accent_scope.dart';
 
 /// Wrapper focus-aware pour la télécommande.
 ///
@@ -61,6 +62,7 @@ class TvFocusable extends StatefulWidget {
     this.borderRadius,
     this.borderWidth = 2.4,
     this.unfocusedBorderColor,
+    this.focusedBorderColor,
     this.ensureVisibleAlignment = 0.3,
     this.showGlow = true,
     this.semanticsLabel,
@@ -99,6 +101,12 @@ class TvFocusable extends StatefulWidget {
   /// cadre subtil même au repos.
   final Color? unfocusedBorderColor;
 
+  /// Couleur de la bordure (et teinte du halo) au focus. Ordre de
+  /// priorité : ce paramètre > `TvAccentScope` ambiant > ember par
+  /// défaut. Permet d'imposer ponctuellement une couleur précise sans
+  /// dépendre du scope.
+  final Color? focusedBorderColor;
+
   /// Position visée pour le scroll auto-recentrage. 0.0 = haut
   /// de l'écran, 0.5 = centre, 1.0 = bas. Défaut 0.3 = un peu
   /// au-dessus du centre (confort de lecture).
@@ -126,6 +134,15 @@ class _TvFocusableState extends State<TvFocusable> {
     final Duration animDuration =
         reduceMotion ? Duration.zero : const Duration(milliseconds: 180);
     final BorderRadius radius = widget.borderRadius ?? BorderRadius.circular(14);
+
+    // Résolution de l'accent de focus : override explicite >
+    // TvAccentScope ambiant (TV violet) > ember par défaut (téléphone).
+    final TvAccentScope? scope = TvAccentScope.maybeOf(context);
+    final Color focusColor = widget.focusedBorderColor ??
+        scope?.focusBorderColor ??
+        AppColors.accent;
+    final List<BoxShadow> glow =
+        scope?.focusGlow ?? AppColors.emberGlowShadow;
 
     return FocusableActionDetector(
       focusNode: widget.focusNode,
@@ -160,13 +177,11 @@ class _TvFocusableState extends State<TvFocusable> {
                   borderRadius: radius,
                   border: Border.all(
                     color: _focused
-                        ? AppColors.accent
+                        ? focusColor
                         : (widget.unfocusedBorderColor ?? Colors.transparent),
                     width: _focused ? widget.borderWidth : 1,
                   ),
-                  boxShadow: (_focused && widget.showGlow)
-                      ? AppColors.emberGlowShadow
-                      : null,
+                  boxShadow: (_focused && widget.showGlow) ? glow : null,
                 ),
                 child: widget.child,
               ),

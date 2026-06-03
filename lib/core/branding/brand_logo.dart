@@ -25,18 +25,36 @@ class BrandLogo extends StatelessWidget {
   const BrandLogo({
     super.key,
     this.size = BrandLogoSize.medium,
+    this.glowColor,
   });
 
   /// Variante compacte 28 dp pour les barres du haut.
-  const BrandLogo.compact({super.key}) : size = BrandLogoSize.compact;
+  const BrandLogo.compact({super.key})
+      : size = BrandLogoSize.compact,
+        glowColor = null;
 
   /// Variante moyenne 84 dp pour À propos / onboarding.
-  const BrandLogo.medium({super.key}) : size = BrandLogoSize.medium;
+  const BrandLogo.medium({super.key})
+      : size = BrandLogoSize.medium,
+        glowColor = null;
 
   /// Variante splash 120 dp.
-  const BrandLogo.splash({super.key}) : size = BrandLogoSize.splash;
+  const BrandLogo.splash({super.key})
+      : size = BrandLogoSize.splash,
+        glowColor = null;
+
+  /// Variante hero 160 dp — pour le splash Télévision (lisible à 3 m).
+  /// `glowColor` permet de teinter le halo (ex. violet sur la version
+  /// TV) au lieu du halo ember par défaut.
+  const BrandLogo.hero({super.key, this.glowColor})
+      : size = BrandLogoSize.hero;
 
   final BrandLogoSize size;
+
+  /// Couleur du halo lumineux autour du logo. `null` = halo ember par
+  /// défaut (identité téléphone). Fournir une couleur pour l'adapter à
+  /// une autre palette (ex. `TvRoyal.accentGlow` sur la TV).
+  final Color? glowColor;
 
   /// Asset PNG/JPG selon le flavor courant. Le logo Red Room (R rouge
   /// stylise sur velours noir, livre par l'utilisateur) remplace
@@ -70,6 +88,8 @@ class BrandLogo extends StatelessWidget {
         return 84;
       case BrandLogoSize.splash:
         return 120;
+      case BrandLogoSize.hero:
+        return 160;
     }
   }
 
@@ -81,7 +101,30 @@ class BrandLogo extends StatelessWidget {
         return 18;
       case BrandLogoSize.splash:
         return 22;
+      case BrandLogoSize.hero:
+        return 30;
     }
+  }
+
+  /// Halo autour du logo. Les grandes tailles (medium/splash/hero)
+  /// rayonnent ; les petites (compact) restent plates. Si `glowColor`
+  /// est fourni, on teinte le halo avec cette couleur (ex. violet TV),
+  /// sinon on garde le halo ember de l'identité téléphone.
+  List<BoxShadow>? _resolveGlow() {
+    final bool wantsGlow = size == BrandLogoSize.medium ||
+        size == BrandLogoSize.splash ||
+        size == BrandLogoSize.hero;
+    if (!wantsGlow) return null;
+    if (glowColor != null) {
+      return <BoxShadow>[
+        BoxShadow(
+          color: glowColor!.withValues(alpha: 0.45),
+          blurRadius: 40,
+          spreadRadius: 2,
+        ),
+      ];
+    }
+    return AppColors.emberGlowShadow;
   }
 
   @override
@@ -97,9 +140,7 @@ class BrandLogo extends StatelessWidget {
         // même en Daylight pour préserver le métal et l'ember.
         color: AppColors.voidSurface,
         borderRadius: BorderRadius.circular(_radius),
-        boxShadow: size == BrandLogoSize.splash || size == BrandLogoSize.medium
-            ? AppColors.emberGlowShadow
-            : null,
+        boxShadow: _resolveGlow(),
         border: isLight
             ? Border.all(color: palette.border, width: 0.8)
             : null,
@@ -127,7 +168,7 @@ class BrandLogo extends StatelessWidget {
   }
 }
 
-enum BrandLogoSize { compact, medium, splash }
+enum BrandLogoSize { compact, medium, splash, hero }
 
 /// Constantes de chaîne pour les wordmarks BLACK7 ROYAL.
 abstract final class BrandStrings {

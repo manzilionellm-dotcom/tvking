@@ -30,6 +30,7 @@ import 'features/channels/data/recent_searches_repository.dart';
 import 'features/channels/data/recently_watched_repository.dart';
 import 'features/channels/data/watch_history_repository.dart';
 import 'features/channels/presentation/tv_home_screen.dart';
+import 'features/tv/presentation/tv_splash_screen.dart';
 import 'features/simple_home/presentation/simple_home_screen.dart';
 import 'features/admin/data/admin_credentials.dart';
 import 'features/device/data/device_identity.dart';
@@ -278,6 +279,12 @@ class _AppEntryState extends State<_AppEntry> {
   // que le lock est activé, on affiche `LockScreen` au lieu de l'app.
   bool? _lockEnabled;
   bool _unlocked = false;
+  // Version TV : on affiche d'abord l'écran de démarrage dédié
+  // (logo + MAC en gros, cf. TvSplashScreen) avant l'accueil 10-foot.
+  // `false` au cold start → le splash s'affiche une fois par lancement ;
+  // l'utilisateur a ainsi toujours le temps de lire/photographier sa MAC
+  // pour la donner à son fournisseur. Passe `true` quand il valide ENTRER.
+  bool _tvIntroSeen = false;
   // Confirmation 18+ (utilisée uniquement par le flavor Red Room).
   // `null` = pas encore chargé, `true` = déjà confirmée à un précédent
   // boot. Si le flavor n'exige pas le gate, on saute en posant `true`
@@ -400,8 +407,14 @@ class _AppEntryState extends State<_AppEntry> {
             final bool isTv =
                 DeviceClassRepository.instance.isTvFor(context);
             // Téléphone : nouvel accueil "simple" (pays → catégories).
-            // TV : home 10-foot dédié (inchangé).
-            return isTv ? const TvHomeScreen() : const SimpleHomeScreen();
+            if (!isTv) return const SimpleHomeScreen();
+            // TV : écran de démarrage dédié (logo + MAC) au 1er affichage,
+            // puis l'accueil 10-foot une fois ENTRER validé.
+            return _tvIntroSeen
+                ? const TvHomeScreen()
+                : TvSplashScreen(
+                    onEnter: () => setState(() => _tvIntroSeen = true),
+                  );
           },
         );
       },

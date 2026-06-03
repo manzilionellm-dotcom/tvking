@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" font-family="Inter, Segoe UI, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1B1626"/><stop offset="0.5" stop-color="#14121A"/><stop offset="1" stop-color="#0F0D15"/>
+    </linearGradient>
+    <linearGradient id="hero" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1E1B26"/><stop offset="1" stop-color="#272234"/>
+    </linearGradient>
+    <linearGradient id="cta" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#B794FF"/><stop offset="1" stop-color="#9B6DFF"/>
+    </linearGradient>
+    <linearGradient id="poster" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2A2536"/><stop offset="1" stop-color="#1A1622"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="720" fill="url(#bg)"/>
+
+  <!-- ===== TOP BAR ===== -->
+  <rect x="46" y="34" width="46" height="46" rx="11" fill="#0F0D15" stroke="#9B6DFF" stroke-opacity="0.5"/>
+  <text x="69" y="67" font-size="26" font-weight="800" fill="#9B6DFF" text-anchor="middle">7</text>
+  <text x="104" y="54" font-size="20" font-weight="700" letter-spacing="3" fill="#ECE8F2">BLACK7 ROYAL</text>
+  <text x="104" y="72" font-size="10" letter-spacing="2" fill="#6E6A78">Cinéma sans limites</text>
+
+  <!-- Nav chips -->
+  <g font-size="14" font-weight="600">
+    <rect x="330" y="38" width="108" height="40" rx="13" fill="#1E1B26"/>
+    <text x="372" y="63" fill="#ECE8F2">Direct</text>
+    <circle cx="350" cy="58" r="4" fill="#A39FB0"/>
+    <rect x="446" y="38" width="104" height="40" rx="13" fill="#1E1B26"/>
+    <text x="486" y="63" fill="#ECE8F2">Films</text>
+    <circle cx="466" cy="58" r="4" fill="#A39FB0"/>
+    <rect x="558" y="38" width="108" height="40" rx="13" fill="#1E1B26"/>
+    <text x="600" y="63" fill="#ECE8F2">Séries</text>
+    <circle cx="578" cy="58" r="4" fill="#A39FB0"/>
+  </g>
+
+  <!-- Clock + actions -->
+  <text x="1010" y="65" font-size="24" font-weight="600" fill="#ECE8F2" text-anchor="end" font-family="monospace">20:45</text>
+  <g>
+    <rect x="1030" y="34" width="46" height="46" rx="11" fill="#1E1B26"/>
+    <circle cx="1051" cy="55" r="7" fill="none" stroke="#A39FB0" stroke-width="2"/><line x1="1056" y1="60" x2="1061" y2="65" stroke="#A39FB0" stroke-width="2"/>
+    <rect x="1086" y="34" width="46" height="46" rx="11" fill="#1E1B26"/>
+    <rect x="1098" y="46" width="22" height="18" rx="2" fill="none" stroke="#A39FB0" stroke-width="2"/>
+    <rect x="1142" y="34" width="46" height="46" rx="11" fill="#1E1B26"/>
+    <circle cx="1165" cy="57" r="7" fill="none" stroke="#A39FB0" stroke-width="2"/>
+  </g>
+
+  <!-- ===== HERO ===== -->
+  <rect x="46" y="108" width="1188" height="248" rx="22" fill="url(#hero)" stroke="#9B6DFF" stroke-opacity="0.18"/>
+  <rect x="82" y="142" width="180" height="180" rx="16" fill="#0F0D15"/>
+  <text x="172" y="252" font-size="64" font-weight="800" fill="#9B6DFF" text-anchor="middle">B</text>
+  <text x="300" y="170" font-size="12" font-weight="700" letter-spacing="3" fill="#B794FF">À LA UNE</text>
+  <text x="300" y="222" font-size="44" font-weight="600" fill="#ECE8F2">beIN SPORTS 1</text>
+  <text x="300" y="256" font-size="16" fill="#A39FB0">Sport · Direct · Full HD</text>
+  <!-- Bouton violet Regarder -->
+  <rect x="300" y="282" width="206" height="52" rx="14" fill="url(#cta)"/>
+  <path d="M334 298 l0 20 l17 -10 z" fill="#0F0D15"/>
+  <text x="378" y="315" font-size="17" font-weight="700" fill="#0F0D15">Regarder</text>
+
+  <!-- ===== RAIL ===== -->
+  <text x="46" y="408" font-size="22" font-weight="600" fill="#ECE8F2">En direct maintenant</text>
+  <text x="338" y="408" font-size="14" fill="#6E6A78">· 124 chaînes</text>
+  <text x="1234" y="408" font-size="14" font-weight="600" fill="#9B6DFF" text-anchor="end">Tout voir</text>
+
+  <!-- cartes : la 2e est FOCUSÉE (anneau violet + glow + scale) -->
+  <g>
+    <rect x="46" y="430" width="180" height="252" rx="14" fill="url(#poster)"/>
+    <text x="136" y="566" font-size="40" font-weight="700" fill="#6E6A78" text-anchor="middle">TF1</text>
+    <text x="60" y="668" font-size="15" font-weight="700" fill="#ECE8F2">TF1 HD</text>
+  </g>
+
+  <!-- FOCUS -->
+  <rect x="244" y="424" width="192" height="264" rx="16" fill="#9B6DFF" opacity="0.45" filter="url(#glow)"/>
+  <g transform="translate(248,426) scale(1.03)">
+    <rect x="0" y="0" width="180" height="252" rx="14" fill="url(#poster)" stroke="#9B6DFF" stroke-width="3"/>
+    <text x="90" y="136" font-size="40" font-weight="700" fill="#B794FF" text-anchor="middle">M6</text>
+    <rect x="14" y="200" width="40" height="20" rx="6" fill="#FF4D6D"/>
+    <text x="34" y="215" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">LIVE</text>
+    <text x="14" y="240" font-size="15" font-weight="700" fill="#ECE8F2">M6 HD</text>
+  </g>
+
+  <g>
+    <rect x="458" y="430" width="180" height="252" rx="14" fill="url(#poster)"/>
+    <text x="548" y="566" font-size="36" font-weight="700" fill="#6E6A78" text-anchor="middle">CNEWS</text>
+    <text x="472" y="668" font-size="15" font-weight="700" fill="#ECE8F2">CNews</text>
+  </g>
+  <g>
+    <rect x="658" y="430" width="180" height="252" rx="14" fill="url(#poster)"/>
+    <text x="748" y="566" font-size="34" font-weight="700" fill="#6E6A78" text-anchor="middle">ARTE</text>
+    <text x="672" y="668" font-size="15" font-weight="700" fill="#ECE8F2">Arte</text>
+  </g>
+  <g>
+    <rect x="858" y="430" width="180" height="252" rx="14" fill="url(#poster)"/>
+    <text x="948" y="566" font-size="30" font-weight="700" fill="#6E6A78" text-anchor="middle">CANAL+</text>
+    <text x="872" y="668" font-size="15" font-weight="700" fill="#ECE8F2">Canal+</text>
+  </g>
+  <g>
+    <rect x="1058" y="430" width="176" height="252" rx="14" fill="url(#poster)"/>
+    <text x="1146" y="566" font-size="34" font-weight="700" fill="#6E6A78" text-anchor="middle">RMC</text>
+    <text x="1072" y="668" font-size="15" font-weight="700" fill="#ECE8F2">RMC Sport</text>
+  </g>
+</svg>
