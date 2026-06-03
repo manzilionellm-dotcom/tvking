@@ -24,7 +24,6 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/cast_manager.dart';
 import '../domain/cast_device.dart';
-import 'web_cast_setup_sheet.dart';
 
 /// Ouvre le picker en mode "envoyer ce flux maintenant".
 /// → Tap sur un device = la TV se met à lire `streamUrl` immédiatement.
@@ -293,87 +292,6 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                             ),
                           ],
                         ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // ============================================
-                    //  GROS BOUTON "Cast par QR" — universel.
-                    //  Marche sur N'IMPORTE QUELLE TV avec un browser
-                    //  (LG WebOS, Samsung Tizen, Sony, Hisense...).
-                    //  L'app héberge une page HTML5+hls.js sur le LAN,
-                    //  user scanne le QR sur sa TV → la TV joue le flux.
-                    //  Pas de DLNA capricieux, pas de Cast SDK.
-                    // ============================================
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Material(
-                        color: AppColors.accent.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(14),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(14),
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            showWebCastSetup(context);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: AppColors.accent.withValues(alpha: 0.6),
-                                width: 1.5,
-                              ),
-                            ),
-                            child: Row(
-                              children: <Widget>[
-                                Container(
-                                  width: 44,
-                                  height: 44,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.accent,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Icon(
-                                    Icons.qr_code_rounded,
-                                    color: Colors.white,
-                                    size: 26,
-                                  ),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: <Widget>[
-                                      Text(
-                                        'Cast par QR code',
-                                        style: AppTextStyles.headlineMedium
-                                            .copyWith(
-                                          fontSize: 16,
-                                          color: AppColors.accent,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        'Marche sur TOUTES les TVs avec un navigateur',
-                                        style: AppTextStyles.bodyMedium.copyWith(
-                                          fontSize: 11,
-                                          color: AppColors.textSecondary,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.arrow_forward_ios_rounded,
-                                  color: AppColors.accent,
-                                  size: 16,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
                       ),
                     ),
 
