@@ -1,0 +1,152 @@
+# =========================================================
+#  build-cast-1132.yml — Build EXACT de l'app d'hier 11h32
+# =========================================================
+#  Reconstruit l'APK au commit 5fb48d9 (2026-06-02 09:32 UTC = 11:32
+#  heure locale) — « Cast : MulticastLock + permissions reseau (corrige
+#  aucune TV trouvee) ». Publié sur une release DÉDIÉE `cast-1132` pour
+#  ne PAS toucher à la release `latest` ni à la branche.
+#
+#  But : permettre à l'owner de tester le cast exactement tel qu'il
+#  était à ce moment-là. (Le code cast est identique à aujourd'hui, mais
+#  cette build le prouve sur l'appareil.)
+#
+#  Lancer : Actions → « Build cast 11h32 » → Run workflow. (Ou via le
+#  push de ce fichier.)
+# =========================================================
+
+name: Build cast 11h32
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - 'claude/**'
+    paths:
+      - '.github/workflows/build-cast-1132.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build APK du commit 5fb48d9
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      # On checkout EXACTEMENT le commit d'hier 11h32.
+      - name: Checkout 5fb48d9 (hier 11h32)
+        uses: actions/checkout@v4
+        with:
+          ref: 5fb48d9475e885ed8c4f854c3ea1c017f06e0982
+          fetch-depth: 1
+
+      - name: Setup Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Generate native Android folder
+        run: flutter create . --platforms=android --org com.manzilionellm.tvking --project-name tv_king
+
+      - name: Brand AndroidManifest (TEST 11h32)
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ -f "$MANIFEST" ]; then
+            sed -i 's|android:label="tv_king"|android:label="CAST 11H32"|g' "$MANIFEST"
+          fi
+
+      - name: Patch AndroidManifest for Android TV (leanback)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'android.software.leanback' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-feature android:name="android.software.leanback" android:required="false"/>\n    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>' "$MANIFEST"
+          fi
+          if ! grep -q 'LEANBACK_LAUNCHER' "$MANIFEST"; then
+            sed -i 's|<category android:name="android.intent.category.LAUNCHER"/>|<category android:name="android.intent.category.LAUNCHER"/>\n                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>|' "$MANIFEST"
+          fi
+          if ! grep -q 'android:banner' "$MANIFEST"; then
+            sed -i 's|android:icon="@mipmap/ic_launcher"|android:icon="@mipmap/ic_launcher"\n        android:banner="@mipmap/ic_launcher"|' "$MANIFEST"
+          fi
+
+      - name: Apply Google Cast SDK overlay (version 11h32)
+        run: bash android_overlay/google_cast/apply_cast_patch.sh
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Patch screen_brightness_android build.gradle
+        run: |
+          set -e
+          FILE=$(find ~/.pub-cache/hosted/pub.dev -path "*/screen_brightness_android-*/android/build.gradle" 2>/dev/null | head -1)
+          [ -z "$FILE" ] && exit 0
+          export PATCH_FILE="$FILE"
+          python3 << 'PYEOF'
+          import os, re
+          file = os.environ['PATCH_FILE']
+          lines = open(file).readlines()
+          out, in_k, depth, removed = [], False, 0, 0
+          kre = re.compile(r'^\s*kotlin\s*\{')
+          for line in lines:
+              if not in_k:
+                  if kre.match(line):
+                      in_k = True; depth = line.count('{') - line.count('}'); removed += 1
+                      if depth <= 0: in_k = False
+                      continue
+                  out.append(line)
+              else:
+                  depth += line.count('{') - line.count('}'); removed += 1
+                  if depth <= 0: in_k = False
+          if removed: open(file,'w').writelines(out)
+          PYEOF
+
+      - name: Generate AppLocalizations
+        run: flutter gen-l10n || true
+
+      - name: Generate launcher icons
+        run: dart run flutter_launcher_icons || true
+
+      - name: Build debug APK (split-per-abi)
+        run: flutter build apk --debug --no-tree-shake-icons --split-per-abi
+
+      - name: Pick arm64-v8a
+        run: |
+          set -e
+          OUT=build/app/outputs/flutter-apk
+          cp "$OUT/app-arm64-v8a-debug.apk" "$OUT/app-1132.apk"
+          ls -lah "$OUT/app-1132.apk"
+
+      - name: Publish release cast-1132
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -ex
+          REPO="${{ github.repository }}"
+          APK="build/app/outputs/flutter-apk/app-1132.apk"
+          NOTES="App EXACTE du 2026-06-02 11h32 (commit 5fb48d9) — cast MulticastLock + permissions reseau.
+
+          Installer via Downloader :
+            https://github.com/$REPO/releases/download/cast-1132/app-1132.apk
+
+          Desinstalle d'abord BLACK7 ROYAL avant d'installer (versions differentes)."
+          if gh release view cast-1132 --repo "$REPO"; then
+            gh release edit cast-1132 --repo "$REPO" --title "Cast 11h32 (5fb48d9)" --notes "$NOTES" --prerelease
+            gh release upload cast-1132 --repo "$REPO" --clobber "$APK"
+          else
+            gh release create cast-1132 --repo "$REPO" --title "Cast 11h32 (5fb48d9)" --notes "$NOTES" --prerelease "$APK"
+          fi
+          gh release view cast-1132 --repo "$REPO"
