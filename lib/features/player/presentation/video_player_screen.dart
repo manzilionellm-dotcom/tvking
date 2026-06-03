@@ -137,6 +137,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // en mini-fenêtre, on cache d'autorité l'overlay des contrôles —
     // ses boutons seraient illisibles à 300×170 et masqueraient la vidéo.
     PipService.instance.addListener(_onPipChanged);
+    // ANTI MULTI-VIEW (cast) : on écoute le CastManager. Dès qu'un cast
+    // démarre, on coupe le flux du TÉLÉPHONE (sinon téléphone + TV = 2
+    // connexions = faux multi-view). On reprend à la fin du cast.
+    CastManager.instance.addListener(_onCastConnChanged);
     // Aspect ratio par défaut — la plupart des flux IPTV sont 16:9.
     PipService.instance.setAspectRatio(numerator: 16, denominator: 9);
 
@@ -374,12 +378,44 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// libmpv → la socket de l'ancienne chaîne est fermée immédiatement.
   /// C'est ce que font TiviMate & co. On accepte ~0,3 s de zap en plus.
   Future<void> _openMedia(String url) async {
+    // Pendant un cast, le téléphone NE doit PAS rejouer le flux (la TV
+    // tient déjà la connexion) — sinon 2 connexions = multi-view. On
+    // ferme juste, sans rouvrir localement.
+    if (_castConnActive) {
+      try {
+        await _player.stop();
+      } catch (_) {}
+      return;
+    }
     try {
       await _player.stop();
     } catch (_) {
       // stop sur un player au repos = no-op, on continue.
     }
     await _player.open(Media(url));
+  }
+
+  /// ANTI MULTI-VIEW côté CAST. Le Chromecast/la TV ouvre SA propre
+  /// connexion au serveur IPTV (mêmes identifiants). Si le téléphone
+  /// continue de jouer en parallèle → 2 connexions → le serveur croit à
+  /// du multi-view et bloque. Donc : dès qu'un cast est en cours
+  /// (connexion ou lecture sur la TV), on COUPE le flux du téléphone ;
+  /// quand le cast se termine, on reprend la lecture localement.
+  bool _castConnActive = false;
+  void _onCastConnChanged() {
+    final CastManager cm = CastManager.instance;
+    final bool active =
+        cm.isCasting || cm.state == CastState.connecting;
+    if (active == _castConnActive) return;
+    _castConnActive = active;
+    if (active) {
+      // La TV prend le relais → on ferme la socket du téléphone.
+      _player.stop();
+    } else if (!_recordPausedPlayback) {
+      // Cast fini (et pas en train d'enregistrer) → reprise locale.
+      final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+      _openMedia(url);
+    }
   }
 
   /// Callback du `PageView` quand l'utilisateur a fini un swipe vertical.
@@ -776,6 +812,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       WatchHistoryRepository.instance.endSession(_watchSessionId);
     }
     PlayerSettings.instance.removeListener(_onSettingsChanged);
+    CastManager.instance.removeListener(_onCastConnChanged);
     _zapPageController?.dispose();
     _player.dispose();
     WakelockPlus.disable();
