@@ -197,6 +197,12 @@ class DownloadsRepository {
       await job.sub?.cancel();
       try { await job.sink?.flush(); await job.sink?.close(); } catch (_) {}
       job.client?.close(force: true);
+      // Débloque la coroutine _download (qui attend `done.future`) :
+      // annuler la souscription ne déclenche ni onDone ni onError, donc
+      // sans ça elle resterait bloquée à jamais (fuite).
+      if (job.completer != null && !job.completer!.isCompleted) {
+        job.completer!.complete();
+      }
       _jobs.remove(id);
     }
     final Download? d = byId(id);
@@ -285,6 +291,7 @@ class DownloadsRepository {
       ));
 
       final Completer<void> done = Completer<void>();
+      job.completer = done;
       DateTime lastUi = DateTime.now();
       job.sub = resp.listen(
         (List<int> chunk) {
@@ -320,8 +327,11 @@ class DownloadsRepository {
       if (job.cancelled) return; // mis en pause par l'utilisateur
 
       // Terminé : on marque "done".
+      // (Parenthèses indispensables : `await` est moins prioritaire que
+      // le ternaire — sans elles, le Future<bool> serait pris comme
+      // condition → erreur de type.)
       final int finalSize =
-          await file.exists() ? await file.length() : received;
+          (await file.exists()) ? (await file.length()) : received;
       await _upsert(d.copyWith(
         status: DownloadStatus.done,
         receivedBytes: finalSize,
@@ -366,4 +376,7 @@ class _Job {
   StreamSubscription<List<int>>? sub;
   IOSink? sink;
   bool cancelled = false;
+  /// Complété quand le téléchargement se termine OU est mis en pause,
+  /// pour débloquer la coroutine _download.
+  Completer<void>? completer;
 }
