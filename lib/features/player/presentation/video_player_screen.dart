@@ -38,6 +38,8 @@ import '../../onboarding/data/device_class_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/data/screen_recorder.dart';
+import '../../vod/data/download_repository.dart';
+import '../../vod/domain/vod_movie.dart';
 import '../../recordings/domain/recording.dart';
 import '../data/pip_service.dart';
 import '../data/player_settings.dart';
@@ -366,6 +368,37 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _zapNext() => _zapTo(_zapIndex + 1);
   void _zapPrev() => _zapTo(_zapIndex - 1);
+
+  // ----- Téléchargement hors-ligne -----
+
+  /// Télécharge le contenu en cours pour le regarder hors-ligne.
+  /// Réservé aux contenus à DURÉE FINIE (films/VOD) : un vrai direct
+  /// n'a pas de fin, on téléchargerait à l'infini → on renvoie alors
+  /// vers le bouton REC (capture d'écran).
+  void _downloadCurrent() {
+    final Duration dur = _player.state.duration;
+    if (dur <= Duration.zero) {
+      _toast('Direct sans fin — utilise REC (rond blanc) pour capturer.');
+      return;
+    }
+    final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+    // On devine l'extension depuis l'URL (mp4/mkv…), défaut mp4.
+    String ext = 'mp4';
+    final RegExpMatch? m =
+        RegExp(r'\.([a-z0-9]{2,4})(?:\?|$)').firstMatch(url.toLowerCase());
+    if (m != null) ext = m.group(1)!;
+    DownloadsRepository.instance.start(
+      VodMovie(
+        id: _currentChannel.id,
+        name: _currentChannel.cleanName,
+        category: 'Téléchargé',
+        streamUrl: url,
+        containerExt: ext,
+        posterUrl: _currentChannel.logoUrl,
+      ),
+    );
+    _toast('Téléchargement démarré — voir Cinéma › Téléchargés');
+  }
 
   // ----- Enregistrement -----
 
@@ -1365,6 +1398,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         onPressed: _openCastPicker,
                       );
                     },
+                  ),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.download_rounded,
+                      color: Colors.white,
+                    ),
+                    tooltip: 'Télécharger (hors-ligne)',
+                    onPressed: _downloadCurrent,
                   ),
                   IconButton(
                     icon: const Icon(
