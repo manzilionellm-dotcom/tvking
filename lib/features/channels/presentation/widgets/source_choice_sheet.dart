@@ -24,6 +24,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../device/data/device_identity.dart';
 import '../../../playlists/data/remote_source_repository.dart';
+import '../../../playlists/presentation/m3u_login_sheet.dart';
 import '../../../playlists/presentation/xtream_login_sheet.dart';
 
 /// Ouvre la feuille de choix de source depuis l'accueil.
@@ -85,6 +86,16 @@ class _SourceChoiceSheet extends StatelessWidget {
               onTap: () {
                 Navigator.of(context).pop();
                 showXtreamLoginSheet(context);
+              },
+            ),
+            const SizedBox(height: 12),
+            _SourceTile(
+              icon: Icons.link_rounded,
+              title: 'J\'ai mon propre M3U',
+              subtitle: 'Colle ton lien M3U / M3U8',
+              onTap: () {
+                Navigator.of(context).pop();
+                showM3uLoginSheet(context);
               },
             ),
             const SizedBox(height: 12),
