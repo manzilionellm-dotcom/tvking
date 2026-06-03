@@ -442,8 +442,12 @@ jobs:
             exit 1
           fi
           # Nom canonique CLIENT : 7motion.apk (lien public propre).
+          # On garde AUSSI app-debug.apk (même binaire) pour que le Worker
+          # Cloudflare déjà déployé (/dl → app-debug.apk) continue de
+          # fonctionner pendant la transition, sans dépendre d'un redéploiement.
           cp "$ARM64" "$OUT/7motion.apk"
-          ls -lah "$OUT/7motion.apk"
+          cp "$ARM64" "$OUT/app-debug.apk"
+          ls -lah "$OUT/7motion.apk" "$OUT/app-debug.apk"
           echo "Taille gain : ~70 MB (split arm64) vs ~209 MB (fat APK)"
 
       - name: Check APK exists
@@ -491,9 +495,11 @@ jobs:
           set -ex
           REPO="${{ github.repository }}"
           APK="build/app/outputs/flutter-apk/7motion.apk"
+          APK_COMPAT="build/app/outputs/flutter-apk/app-debug.apk"
 
           test -f "$APK"
-          ls -lh "$APK"
+          test -f "$APK_COMPAT"
+          ls -lh "$APK" "$APK_COMPAT"
 
           NOTES="Dernier build de 7 MOTION (release signée).
 
@@ -518,16 +524,16 @@ jobs:
               --title "7 MOTION — dernier build" \
               --notes "$NOTES" \
               --prerelease
-            # Retire l'ancien APK debug pour ne laisser QUE le release signé.
-            gh release delete-asset latest app-debug.apk --repo "$REPO" -y || true
-            gh release upload latest --repo "$REPO" --clobber "$APK"
+            # Publie le nom propre 7motion.apk ET garde app-debug.apk
+            # (même binaire) pour compat Worker/anciens liens.
+            gh release upload latest --repo "$REPO" --clobber "$APK" "$APK_COMPAT"
           else
             echo ">>> Release latest absente, on la crée"
             gh release create latest --repo "$REPO" \
               --title "7 MOTION — dernier build" \
               --notes "$NOTES" \
               --prerelease --latest \
-              "$APK"
+              "$APK" "$APK_COMPAT"
           fi
 
           echo ">>> État final"

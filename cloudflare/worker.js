@@ -68,8 +68,11 @@ import { castReceiverHtml } from './cast_receiver.js';
 // URL du GitHub release qui pointe TOUJOURS vers le dernier APK
 // (le tag "latest" est overwrite à chaque push du workflow CI,
 //  donc le binaire qui répond à cette URL est toujours à jour).
+// Depuis la release SIGNÉE, l'APK canonique s'appelle `7motion.apk`.
+// `app-debug.apk` (même binaire) reste publié en parallèle comme
+// filet de sécurité, mais on sert le nom propre par défaut.
 const APK_URL =
-  'https://github.com/manzilionellm-dotcom/tvking/releases/download/latest/app-debug.apk';
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/latest/7motion.apk';
 
 // Variante Red Room (flavor adulte 18+ du MÊME repo). Publiée sur
 // une release dédiée `redroom-latest` par le job CI `build_redroom`.
