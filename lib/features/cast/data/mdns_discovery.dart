@@ -19,7 +19,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:multicast_dns/multicast_dns.dart';
 
-import '../../../core/observability/structured_logger.dart';
 import '../domain/cast_device.dart';
 import 'multicast_lock.dart';
 
@@ -41,17 +40,7 @@ class MdnsDiscovery {
     // filtre les réponses mDNS (224.0.0.251) et on ne découvre AUCUN
     // Chromecast / Google TV. On le prend pour la durée du scan et on
     // le relâche dans le `finally` (ne pas le garder = batterie).
-    final bool lockOk = await MulticastLock.instance.acquire();
-    if (!lockOk) {
-      // On NE fait PAS échouer la découverte (certains constructeurs ne
-      // filtrent pas le multicast), mais on TRACE : c'est la cause n°1
-      // d'un picker vide sur Android.
-      StructuredLogger.instance.warn(
-        domain: 'cast',
-        event: 'discovery.multicast_lock_failed',
-        ctx: const <String, Object?>{'transport': 'mdns'},
-      );
-    }
+    await MulticastLock.instance.acquire();
 
     try {
       await client.start();

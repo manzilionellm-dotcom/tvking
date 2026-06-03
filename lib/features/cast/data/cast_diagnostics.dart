@@ -211,7 +211,7 @@ class DiagnosticBatchRunner extends ChangeNotifier {
     final Map<String, dynamic> report = <String, dynamic>{
       'meta': <String, dynamic>{
         'generatedAt': DateTime.now().toIso8601String(),
-        'app': 'BLACK7 ROYAL',
+        'app': '7 MOTION',
         'device': <String, dynamic>{
           'name': device.name,
           'kind': device.kind.name,

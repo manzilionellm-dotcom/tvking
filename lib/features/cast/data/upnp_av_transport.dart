@@ -125,7 +125,7 @@ class UpnpAvTransport implements CastTransport {
   @override
   Future<void> playStream({
     required String streamUrl,
-    String title = 'BLACK7 ROYAL',
+    String title = '7 MOTION',
     String? imageUrl,
   }) async {
     // Phase 1+/G1 : DLNA pourrait porter `imageUrl` dans le DIDL-Lite

@@ -27,7 +27,6 @@ import 'dlna_profiles.dart';
 import 'google_cast_api.dart';
 import 'local_cast_server.dart';
 import 'mdns_discovery.dart';
-import 'multicast_lock.dart';
 import 'ssdp_discovery.dart';
 import 'stream_probe.dart';
 import 'upnp_av_transport.dart';
@@ -50,22 +49,6 @@ class _CastSessionCancelled implements Exception {
   final String message;
   @override
   String toString() => 'CastSessionCancelled: $message';
-}
-
-/// Règle d'ajout d'un device découvert (correctif #1, extraite pour être
-/// testable). Renvoie `true` si [d] doit être ajouté à [existing] :
-///   - la fenêtre de découverte est OUVERTE ([windowOpen]) — on ignore
-///     les arrivées tardives après le timeout ;
-///   - [d] n'est pas déjà présent (dédup par `id` OU par `host:port`).
-@visibleForTesting
-bool castShouldAddDevice(
-  List<CastDevice> existing,
-  CastDevice d, {
-  required bool windowOpen,
-}) {
-  if (!windowOpen) return false;
-  return !existing.any((CastDevice e) =>
-      e.id == d.id || (e.host == d.host && e.port == d.port));
 }
 
 enum CastState {
@@ -279,31 +262,7 @@ class CastManager extends ChangeNotifier {
   Timer? _discoveryTimer;
   Timer? _warmupTimer;
 
-  /// Fenêtre de découverte ouverte ? Hors fenêtre, `onDevice` ignore
-  /// les arrivées tardives (un device émis après le timeout ne doit ni
-  /// être ajouté ni notifier — sinon l'UI "ment" : état idle mais la
-  /// liste change encore).
-  bool _discoveryWindowOpen = false;
-
   // ----- Getters -----
-
-  /// `true` si le dernier `MulticastLock.acquire()` a réussi. Sert au
-  /// diagnostic : picker vide + lock KO = problème de permission/réseau.
-  bool get lastMulticastLockOk => MulticastLock.instance.lastAcquireOk;
-
-  /// Message UX actionnable quand la découverte n'a rien trouvé. Si le
-  /// MulticastLock n'a pas pu être pris, c'est presque toujours la cause
-  /// (permissions WiFi / réseau). `null` s'il y a des appareils.
-  String? get emptyPickerHint {
-    if (_discovered.isNotEmpty) return null;
-    if (!lastMulticastLockOk) {
-      return 'Aucune TV trouvée. Vérifie que le téléphone et la TV sont '
-          'sur le MÊME WiFi (pas un WiFi invité) et que l\'app a accès '
-          'au réseau local.';
-    }
-    return 'Aucune TV trouvée. Vérifie que la TV est allumée et sur le '
-        'même WiFi que le téléphone.';
-  }
 
   CastState get state => _state;
   CastDevice? get device => _device;
@@ -339,30 +298,21 @@ class CastManager extends ChangeNotifier {
     if (_state == CastState.discovering) return;
     if (!keepExisting) _discovered.clear();
     _state = CastState.discovering;
-    _discoveryWindowOpen = true;
     notifyListeners();
 
-    // On annule proprement un éventuel scan résiduel.
     _discoverySub?.cancel();
     _mdnsSub?.cancel();
     _discoveryTimer?.cancel();
 
-    StructuredLogger.instance.info(
-      domain: 'cast',
-      event: 'discovery.start',
-      ctx: <String, Object?>{
-        'timeoutMs': timeout.inMilliseconds,
-        'keepExisting': keepExisting,
-        'preCount': _discovered.length,
-      },
-    );
-
     void onDevice(CastDevice d) {
-      // Règle centralisée + testable (fenêtre + dédup). Cf. correctif #1.
-      if (!castShouldAddDevice(_discovered, d,
-          windowOpen: _discoveryWindowOpen)) {
-        return;
-      }
+      // Double dédup : par id ET par host+port pour ne jamais lister
+      // la même TV plusieurs fois même si SSDP et mDNS la renvoient
+      // tous les deux (cas typique des Google TV qui font SSDP +
+      // Chromecast en même temps).
+      final bool already = _discovered.any((CastDevice e) =>
+          e.id == d.id ||
+          (e.host == d.host && e.port == d.port));
+      if (already) return;
       _discovered.add(d);
       notifyListeners();
     }
@@ -375,51 +325,26 @@ class CastManager extends ChangeNotifier {
     _mdnsSub =
         MdnsDiscovery.instance.discover(timeout: timeout).listen(onDevice);
 
-    // À l'échéance : terminaison COMPLÈTE (cancel subs + timer, état).
-    _discoveryTimer = Timer(timeout, _finishDiscovery);
+    _discoveryTimer = Timer(timeout, () {
+      if (_state == CastState.discovering) {
+        _state = isCasting ? CastState.casting : CastState.idle;
+        notifyListeners();
+      }
+    });
   }
 
-  /// Termine proprement la fenêtre de découverte : ferme la fenêtre,
-  /// annule les souscriptions + le timer, recalcule l'état, et trace le
-  /// résultat (nb de devices + état du MulticastLock). Idempotent.
-  void _finishDiscovery() {
-    final bool wasOpen = _discoveryWindowOpen;
-    _discoveryWindowOpen = false;
+  void stopDiscovery() {
     _discoverySub?.cancel();
     _mdnsSub?.cancel();
     _discoveryTimer?.cancel();
     _discoverySub = null;
     _mdnsSub = null;
     _discoveryTimer = null;
-
-    if (wasOpen) {
-      StructuredLogger.instance.info(
-        domain: 'cast',
-        event: 'discovery.finish',
-        ctx: <String, Object?>{
-          'devices': _discovered.length,
-          'multicastLockOk': lastMulticastLockOk,
-        },
-      );
-      // Picker vide + lock KO = on remonte un warn actionnable.
-      if (_discovered.isEmpty && !lastMulticastLockOk) {
-        StructuredLogger.instance.warn(
-          domain: 'cast',
-          event: 'discovery.empty_lock_failed',
-          ctx: const <String, Object?>{
-            'hint': 'multicast lock non acquis — vérifier permissions/réseau',
-          },
-        );
-      }
-    }
-
     if (_state == CastState.discovering) {
       _state = isCasting ? CastState.casting : CastState.idle;
       notifyListeners();
     }
   }
-
-  void stopDiscovery() => _finishDiscovery();
 
   /// Démarre un cycle de scan silencieux en arrière-plan : un premier
   /// scan rapide après [initialDelay], puis un re-scan toutes les
@@ -594,33 +519,10 @@ class CastManager extends ChangeNotifier {
         }
       }
 
-      // (1) Pré-vol URL : on résout redirects + mime AVANT de pousser.
-      //     MAIS on BORNE ce probe (≤ 8 s) : certains serveurs IPTV
-      //     mettent 30-50 s à envoyer le 1er octet, ce qui bloquait le
-      //     cast et faisait « superseder » la session au moindre re-tap.
-      //     En DLNA, c'est la TV qui télécharge le flux (pas le
-      //     téléphone) → si le probe traîne, on envoie l'URL d'origine
-      //     et on laisse la TV résoudre elle-même.
+      // (1) Pré-vol : on vérifie l'URL avant de la pousser au récepteur.
       _checkCancelled(mySeq);
-      StreamProbeResult probe;
-      try {
-        probe = await StreamProbe.instance
-            .probe(streamUrl, timeout: const Duration(seconds: 7))
-            .timeout(const Duration(seconds: 8));
-      } catch (_) {
-        StructuredLogger.instance.warn(
-          domain: 'cast',
-          event: 'cast.probe_timeout',
-          ctx: const <String, Object?>{'fallback': 'send_original_url'},
-        );
-        probe = StreamProbeResult(
-          originalUrl: streamUrl,
-          finalUrl: streamUrl,
-          success: true, // on laisse la TV tenter (surtout en DLNA)
-          mime: 'video/mp2t',
-          errorReason: 'probe_timeout',
-        );
-      }
+      final StreamProbeResult probe =
+          await StreamProbe.instance.probe(streamUrl);
       diag.probe = ProbeSummary(
         success: probe.success,
         finalUrl: probe.finalUrl, // redacté à l'export JSON
@@ -1046,38 +948,20 @@ class CastManager extends ChangeNotifier {
   /// quelques ms), assez court pour ne pas faire patienter sur une TV
   /// réellement injoignable.
   Future<bool> _probeDeviceReachable(CastDevice device) async {
-    // On RÉESSAIE plusieurs fois : un « no route to host » (EHOSTUNREACH)
-    // juste après une activité réseau est souvent TRANSITOIRE (cache ARP
-    // raté, TV qui sort de veille, WiFi power-save). Échouer au 1ᵉʳ essai
-    // donnait un faux "TV injoignable" alors qu'un retour 600 ms plus tard
-    // suffit. 3 essais × 3 s + petite pause = ~10 s max dans le pire cas,
-    // mais succès quasi immédiat dès que l'ARP se résout.
-    const int maxTries = 3;
-    for (int i = 0; i < maxTries; i++) {
-      try {
-        final Socket socket = await Socket.connect(
-          device.host,
-          device.port,
-          timeout: const Duration(seconds: 3),
-        );
-        socket.destroy();
-        if (i > 0) {
-          StructuredLogger.instance.info(
-            domain: 'cast',
-            event: 'cast.preflight_recovered',
-            ctx: <String, Object?>{'tries': i + 1},
-          );
-        }
-        return true;
-      } on Exception {
-        // Injoignable cette fois. Si ce n'est pas la dernière tentative,
-        // on attend un court instant (laisse l'ARP / la TV se réveiller).
-        if (i < maxTries - 1) {
-          await Future<void>.delayed(const Duration(milliseconds: 700));
-        }
-      }
+    try {
+      final Socket socket = await Socket.connect(
+        device.host,
+        device.port,
+        timeout: const Duration(milliseconds: 2500),
+      );
+      socket.destroy();
+      return true;
+    } on Exception {
+      // SocketException (timeout, no route to host, connection refused)
+      // → injoignable. On ne log pas ici : le caller throw un message
+      // dédié qui sera archivé dans le diagnostic.
+      return false;
     }
-    return false;
   }
 
   /// Convertit une Exception interne en message court pour l'UI.
@@ -1183,26 +1067,21 @@ class CastManager extends ChangeNotifier {
         s.contains('connection refused') ||
         s.contains('errno = 111')) {
       // La TV apparaît dans la liste (découverte multicast) mais ne
-      // répond pas en TCP direct → 3 causes possibles, sans en accuser
-      // une seule (correctif #6). Log structuré centralisé.
-      StructuredLogger.instance.warn(
-        domain: 'cast',
-        event: 'cast.network_unreachable',
-        ctx: <String, Object?>{
-          'error': s,
-          'possibleCauses': <String>[
-            'tv_sleeping_or_off',
-            'phone_and_tv_on_different_wifi',
-            'ap_isolation_or_vlan',
-          ],
-        },
-      );
+      // répond pas en TCP direct → 3 causes possibles, de la plus
+      // simple à la plus probable quand ça persiste :
+      //   1. TV endormie / éteinte
+      //   2. Téléphone et TV sur des WiFi différents (invité, 4G…)
+      //   3. « Isolation client / AP isolation » activée sur la box —
+      //      le routeur bloque la communication entre appareils. C'est
+      //      LA cause quand la TV est bien listée mais qu'aucun cast ne
+      //      passe (cf. errno 113 répété).
       return 'Ta TV ne répond pas sur le réseau. Vérifie : '
           '(1) qu\'elle est allumée, '
           '(2) qu\'elle est sur le MÊME WiFi que ton téléphone '
           '(pas le réseau "invité"), '
           '(3) que l\'option « Isolation client / AP isolation » est '
-          'DÉSACTIVÉE dans les réglages de ta box internet.';
+          'DÉSACTIVÉE dans les réglages de ta box internet. '
+          'En attendant, le mode QR code contourne ce blocage.';
     }
 
     // --- Reseau bas-niveau ---

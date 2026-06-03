@@ -113,9 +113,6 @@ class RecordingRepository {
   Future<String> createFilePath({
     required String channelName,
     String? programTitle,
-    // Extension du fichier : 'ts' pour l'enregistrement HTTP (flux brut),
-    // 'mp4' pour la capture d'écran (MediaRecorder).
-    String ext = 'ts',
   }) async {
     final Directory dir = await getRecordingsDir();
     final DateTime now = DateTime.now();
@@ -126,7 +123,7 @@ class RecordingRepository {
     final String slug = programTitle == null || programTitle.isEmpty
         ? safe(channelName)
         : '${safe(channelName)}-${safe(programTitle)}';
-    return p.join(dir.path, '$slug-$stamp.$ext');
+    return p.join(dir.path, '$slug-$stamp.ts');
   }
 
   // ----- CRUD -----

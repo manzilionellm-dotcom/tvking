@@ -37,8 +37,7 @@ import '../../channels/domain/channel.dart';
 import '../../onboarding/data/device_class_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
-import '../../vod/data/download_repository.dart';
-import '../../vod/domain/vod_movie.dart';
+import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
 import '../data/pip_service.dart';
 import '../data/player_settings.dart';
@@ -89,12 +88,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   late Channel _currentChannel;
 
   // Enregistrement en cours (null si pas d'enregistrement actif).
-  // L'enregistrement se fait via mpv `stream-record` : il dédouble le
-  // flux DÉJÀ ouvert vers un fichier, sur la MÊME connexion réseau. La
-  // lecture continue donc normalement pendant l'enregistrement (vraie
-  // box PVR) — plus besoin de suspendre la lecture.
   Recording? _activeRecording;
   bool get _isRecording => _activeRecording != null;
+
+  /// Mode enregistrement "1 connexion" (choix user) : quand on
+  /// enregistre, on STOPPE la lecture pour libérer l'unique connexion
+  /// autorisée par le fournisseur IPTV, et on la dédie à
+  /// l'enregistrement. La lecture reprend automatiquement à l'arrêt.
+  /// `true` = lecture suspendue le temps d'enregistrer.
+  bool _recordPausedPlayback = false;
 
   // Picture-in-Picture : implémenté en NATIF Android via
   // MainActivity.kt + MethodChannel `tvking/pip`. Pas de plugin
@@ -133,10 +135,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // en mini-fenêtre, on cache d'autorité l'overlay des contrôles —
     // ses boutons seraient illisibles à 300×170 et masqueraient la vidéo.
     PipService.instance.addListener(_onPipChanged);
-    // ANTI MULTI-VIEW (cast) : on écoute le CastManager. Dès qu'un cast
-    // démarre, on coupe le flux du TÉLÉPHONE (sinon téléphone + TV = 2
-    // connexions = faux multi-view). On reprend à la fin du cast.
-    CastManager.instance.addListener(_onCastConnChanged);
     // Aspect ratio par défaut — la plupart des flux IPTV sont 16:9.
     PipService.instance.setAspectRatio(numerator: 16, denominator: 9);
 
@@ -264,7 +262,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     // URL effective : overrideUrl (catch-up) sinon stream live
     final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
-    _openMedia(url);
+    _player.open(Media(url));
 
     // Restaure la dernière vitesse
     if (PlayerSettings.instance.lastSpeed != 1.0) {
@@ -341,12 +339,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // Ignore si on est déjà sur cette chaîne (évite un `_player.open`
     // redondant qui re-démarrerait le buffering pour rien).
     if (next.id == _currentChannel.id) return;
-    // L'enregistrement dédouble le flux EN COURS (mpv stream-record).
-    // Changer de chaîne fermerait ce flux → on clôt d'abord proprement
-    // l'enregistrement de la chaîne qu'on quitte (il est sauvegardé).
-    if (_isRecording) {
-      _stopRecording();
-    }
     setState(() {
       _currentChannel = next;
       _hasError = false;
@@ -365,60 +357,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           channelName: next.cleanName,
         )
         .then((int id) => _watchSessionId = id);
-    _openMedia(next.streamUrl);
+    _player.open(Media(next.streamUrl));
     _scheduleHideOverlay();
-  }
-
-  /// Ouvre une URL en FERMANT d'abord la connexion en cours.
-  ///
-  /// ANTI MULTI-VIEW (correctif critique) : quand on change de chaîne,
-  /// il faut couper l'ancien flux AVANT d'ouvrir le nouveau. Sinon, le
-  /// temps que le nouveau démarre, l'ancienne connexion HTTP est encore
-  /// ouverte → le serveur IPTV voit 2 connexions simultanées et croit à
-  /// du "multi-view" (la plupart des abonnements n'autorisent qu'UNE
-  /// connexion → blocage / bannissement). `stop()` détruit le démuxeur
-  /// libmpv → la socket de l'ancienne chaîne est fermée immédiatement.
-  /// C'est ce que font TiviMate & co. On accepte ~0,3 s de zap en plus.
-  Future<void> _openMedia(String url) async {
-    // Pendant un cast, le téléphone NE doit PAS rejouer le flux (la TV
-    // tient déjà la connexion) — sinon 2 connexions = multi-view. On
-    // ferme juste, sans rouvrir localement.
-    if (_castConnActive) {
-      try {
-        await _player.stop();
-      } catch (_) {}
-      return;
-    }
-    try {
-      await _player.stop();
-    } catch (_) {
-      // stop sur un player au repos = no-op, on continue.
-    }
-    await _player.open(Media(url));
-  }
-
-  /// ANTI MULTI-VIEW côté CAST. Le Chromecast/la TV ouvre SA propre
-  /// connexion au serveur IPTV (mêmes identifiants). Si le téléphone
-  /// continue de jouer en parallèle → 2 connexions → le serveur croit à
-  /// du multi-view et bloque. Donc : dès qu'un cast est en cours
-  /// (connexion ou lecture sur la TV), on COUPE le flux du téléphone ;
-  /// quand le cast se termine, on reprend la lecture localement.
-  bool _castConnActive = false;
-  void _onCastConnChanged() {
-    final CastManager cm = CastManager.instance;
-    final bool active =
-        cm.isCasting || cm.state == CastState.connecting;
-    if (active == _castConnActive) return;
-    _castConnActive = active;
-    if (active) {
-      // La TV prend le relais → on ferme la socket du téléphone.
-      _player.stop();
-    } else {
-      // Cast fini → reprise locale. (L'enregistrement, lui, ne coupe
-      // plus la lecture : il dédouble le flux via mpv `stream-record`.)
-      final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
-      _openMedia(url);
-    }
   }
 
   /// Callback du `PageView` quand l'utilisateur a fini un swipe vertical.
@@ -426,37 +366,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _zapNext() => _zapTo(_zapIndex + 1);
   void _zapPrev() => _zapTo(_zapIndex - 1);
-
-  // ----- Téléchargement hors-ligne -----
-
-  /// Télécharge le contenu en cours pour le regarder hors-ligne.
-  /// Réservé aux contenus à DURÉE FINIE (films/VOD) : un vrai direct
-  /// n'a pas de fin, on téléchargerait à l'infini → on renvoie alors
-  /// vers le bouton REC (capture d'écran).
-  void _downloadCurrent() {
-    final Duration dur = _player.state.duration;
-    if (dur <= Duration.zero) {
-      _toast('Direct sans fin — utilise REC (rond blanc) pour capturer.');
-      return;
-    }
-    final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
-    // On devine l'extension depuis l'URL (mp4/mkv…), défaut mp4.
-    String ext = 'mp4';
-    final RegExpMatch? m =
-        RegExp(r'\.([a-z0-9]{2,4})(?:\?|$)').firstMatch(url.toLowerCase());
-    if (m != null) ext = m.group(1)!;
-    DownloadsRepository.instance.start(
-      VodMovie(
-        id: _currentChannel.id,
-        name: _currentChannel.cleanName,
-        category: 'Téléchargé',
-        streamUrl: url,
-        containerExt: ext,
-        posterUrl: _currentChannel.logoUrl,
-      ),
-    );
-    _toast('Téléchargement démarré — voir Cinéma › Téléchargés');
-  }
 
   // ----- Enregistrement -----
 
@@ -471,30 +380,36 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _startRecording() async {
     try {
-      // ENREGISTREMENT « LE VRAI SECRET DE TIVIMATE » : on n'ouvre PAS
-      // une 2e connexion vers le serveur (ça serait du multi-view, le
-      // serveur 1-connexion couperait tout). À la place, on demande à
-      // mpv (le moteur du lecteur) de DÉDOUBLER le flux DÉJÀ ouvert vers
-      // un fichier : c'est la propriété `stream-record`. Un seul socket
-      // réseau sert donc à LA FOIS à la lecture ET à l'écriture disque.
-      //   → On enregistre EXACTEMENT ce qui passe à l'écran (vidéo +
-      //     audio du flux, JAMAIS le micro/la voix).
-      //   → La lecture NE S'ARRÊTE PAS : on continue à regarder pendant
-      //     que ça enregistre, comme une vraie box PVR.
-      //   → Zéro connexion supplémentaire = invisible pour le serveur.
-      final String path = await RecordingRepository.instance.createFilePath(
+      final String path =
+          await RecordingRepository.instance.createFilePath(
         channelName: _currentChannel.cleanName,
         programTitle: widget.overrideTitle,
-      ); // .ts par défaut (flux brut MPEG-TS, conteneur natif du live)
+      );
 
       final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
 
-      // Active le dédoublement vers le fichier sur le flux en cours.
-      // Si la plateforme n'expose pas libmpv (ex. web), on échoue
-      // proprement sans rien casser.
-      final bool ok = await _setMpvProperty('stream-record', path);
+      // ENREGISTREMENT SANS COUPER LA LECTURE (choix user) :
+      // On NE stoppe PLUS la lecture et on n'affiche plus l'ecran plein
+      // « enregistrement en cours ». Le ForegroundService NATIF (Kotlin)
+      // telecharge le flux EN PARALLELE pendant que l'utilisateur continue
+      // de regarder. Le download vit cote natif → il SURVIT a la fermeture
+      // de l'app (swipe) pendant des heures (wakelock + wifilock + notif).
+      // NB : si le fournisseur n'autorise qu'UNE connexion simultanee,
+      // l'enregistrement peut etre vide — compromis assume pour garder la
+      // lecture a l'ecran.
+      final String title = widget.overrideTitle != null &&
+              widget.overrideTitle!.isNotEmpty
+          ? '${_currentChannel.cleanName} – ${widget.overrideTitle}'
+          : _currentChannel.cleanName;
+      final bool ok = await RecordingService.instance.start(
+        title: title,
+        url: url,
+        filePath: path,
+      );
       if (!ok) {
-        _toast('Enregistrement indisponible sur cet appareil.');
+        await RecordingService.instance.stop();
+        _resumePlaybackAfterRecord();
+        _toast('Enregistrement impossible à démarrer. Réessaie.');
         return;
       }
 
@@ -510,12 +425,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       if (mounted) {
         setState(() => _activeRecording = rec);
-        _toast('● Enregistrement — continue à regarder, le flux est gardé');
+        _toast('Enregistrement démarré — continue même app fermée');
       }
     } catch (e) {
-      // En cas de pépin, on coupe le dédoublement pour ne pas laisser
-      // un enregistrement fantôme actif.
-      await _setMpvProperty('stream-record', '');
+      _resumePlaybackAfterRecord();
       _toast('Impossible de démarrer : $e');
     }
   }
@@ -524,13 +437,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     try {
       final Recording? rec = _activeRecording;
 
-      // Coupe le dédoublement du flux : une valeur vide referme le
-      // fichier proprement (mpv flush le buffer restant sur disque).
-      await _setMpvProperty('stream-record', '');
+      // Arrête le téléchargement natif + le ForegroundService.
+      await RecordingService.instance.stop();
 
-      // Laisse mpv finaliser l'écriture du conteneur avant de mesurer.
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-
+      // Taille réelle du fichier écrit par le service natif.
       int bytes = 0;
       if (rec != null) {
         try {
@@ -540,13 +450,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         await RecordingRepository.instance.finishRecording(rec);
       }
 
+      // Connexion libérée → on reprend la lecture.
+      _resumePlaybackAfterRecord();
+
       if (mounted) {
         setState(() => _activeRecording = null);
         final String sizeLabel = _humanSize(bytes);
         if (bytes == 0) {
           _toast(
-            'Enregistrement vide — réessaie en laissant tourner '
-            'quelques secondes.',
+            'Enregistrement vide — le serveur n\'a renvoyé aucune donnée '
+            'pour ce flux. Réessaie sur une autre chaîne.',
           );
         } else {
           _toast(
@@ -555,54 +468,84 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         }
       }
     } catch (e) {
+      _resumePlaybackAfterRecord();
       _toast('Erreur arrêt enregistrement : $e');
     }
   }
 
-  /// Badge discret « ● REC » affiché en haut pendant l'enregistrement.
-  /// La lecture continue normalement derrière (l'enregistrement dédouble
-  /// le flux via mpv `stream-record`). Tap sur le badge = arrêt rapide.
-  Widget _buildRecordingIndicator() {
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
+  /// Reprend la lecture après un enregistrement en mode 1 connexion.
+  /// No-op si la lecture n'avait pas été suspendue (ex. provider
+  /// multi-connexions, ou enregistrement parallèle d'une autre source).
+  void _resumePlaybackAfterRecord() {
+    if (!_recordPausedPlayback) return;
+    final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+    _player.open(Media(url));
+    if (mounted) setState(() => _recordPausedPlayback = false);
+  }
+
+  /// Panneau plein écran affiché pendant l'enregistrement en mode
+  /// 1 connexion (la lecture est suspendue). Gros bouton STOP visible
+  /// en permanence (pas besoin de révéler l'overlay).
+  Widget _buildRecordingModePanel() {
+    return ColoredBox(
+      color: AppColors.background,
       child: SafeArea(
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(20),
-                onTap: _stopRecording,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.55),
-                    borderRadius: BorderRadius.circular(20),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(
+                Icons.fiber_manual_record_rounded,
+                color: AppColors.live,
+                size: 56,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'ENREGISTREMENT EN COURS',
+                style: AppTextStyles.labelSmall.copyWith(
+                  color: AppColors.live,
+                  fontSize: 13,
+                  letterSpacing: 2,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Text(
+                  _currentChannel.cleanName,
+                  textAlign: TextAlign.center,
+                  style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'La lecture reprend automatiquement à l\'arrêt',
+                textAlign: TextAlign.center,
+                style: AppTextStyles.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 28),
+              SizedBox(
+                height: 52,
+                child: FilledButton.icon(
+                  onPressed: _stopRecording,
+                  icon: const Icon(Icons.stop_rounded),
+                  label: Text(
+                    'Arrêter l\'enregistrement',
+                    style:
+                        AppTextStyles.button.copyWith(fontWeight: FontWeight.w700),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Icon(Icons.fiber_manual_record_rounded,
-                          color: AppColors.live, size: 14),
-                      const SizedBox(width: 6),
-                      Text(
-                        'REC · appuie pour arrêter',
-                        style: AppTextStyles.labelSmall.copyWith(
-                          color: Colors.white,
-                          fontSize: 12,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                    ],
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.live,
+                    foregroundColor: Colors.white,
                   ),
                 ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -691,32 +634,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             'reconnect_on_network_error=1',
       );
 
-      // 2. Cache demuxer TRÈS généreux — philosophie "anti-coupure" :
-      //    on préfère prendre du RETARD (jusqu'à ~1 min) et rejouer en
-      //    différé plutôt que de casser quand la connexion faiblit.
-      //    Le lecteur accumule autant d'avance que la bande passante le
-      //    permet ; sur un creux réseau, il puise dans ce buffer au lieu
-      //    de geler. Valeurs élevées OK car les téléphones ont >4 GB RAM.
-      //    - demuxer-max-bytes      : 1 GiB de buffer avant
-      //    - demuxer-max-back-bytes : 256 MiB de back-buffer (rebobinage)
-      //    - demuxer-readahead-secs : jusqu'à 60s d'avance bufferisée
-      await native?.setProperty('demuxer-max-bytes', '1073741824');
-      await native?.setProperty('demuxer-max-back-bytes', '268435456');
-      await native?.setProperty('demuxer-readahead-secs', '60');
+      // 2. Cache demuxer généreux — absorbe les hoquets réseau
+      //    sans interrompre la lecture. Valeurs élevées car les
+      //    téléphones modernes ont >4 GB RAM.
+      //    - demuxer-max-bytes      : 512 MiB de buffer avant
+      //    - demuxer-max-back-bytes : 128 MiB de back-buffer
+      //    - demuxer-readahead-secs : 20s d'avance bufferisée
+      await native?.setProperty('demuxer-max-bytes', '536870912');
+      await native?.setProperty('demuxer-max-back-bytes', '134217728');
+      await native?.setProperty('demuxer-readahead-secs', '20');
 
-      // 3. Comportement ADAPTATIF sur cache vide (cœur de la demande) :
-      //    quand le buffer se vide (connexion lente), on MET EN PAUSE et
-      //    on attend d'avoir ré-accumulé quelques secondes AVANT de
-      //    reprendre — la lecture prend du retard mais ne SAUTE pas et ne
-      //    casse pas. C'est l'inverse de Netflix/YouTube (toujours au bord
-      //    du direct) : ici on privilégie la continuité sur la fraîcheur.
-      //    - cache-pause=yes          : pause auto si le buffer se vide
-      //    - cache-pause-wait=4       : ré-accumule 4s avant de reprendre
-      //    - cache-pause-initial=yes  : remplit un peu le buffer AVANT de
-      //                                 démarrer (pas de saccade au début)
-      await native?.setProperty('cache-pause', 'yes');
-      await native?.setProperty('cache-pause-wait', '4');
-      await native?.setProperty('cache-pause-initial', 'yes');
+      // 3. Ne pas pause sur cache underrun — préfère un micro
+      //    rebuffer transparent qu'un freeze de la lecture.
+      await native?.setProperty('cache-pause', 'no');
+      await native?.setProperty('cache-pause-wait', '1');
 
       // 4. Timeout réseau confortable (60s vs 10s par défaut).
       //    Sur 4G/5G en mobilité, les RTT peuvent piquer >10s.
@@ -741,26 +672,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       //    déclarent ne pas être seekable, libmpv peut zapper
       //    dans le cache → permet le rebobinage des 20s.
       await native?.setProperty('force-seekable', 'yes');
-
-      // === FLUIDITÉ DU RENDU (anti-saccades) ===
-      // 8. video-sync=display-resample : aligne la cadence des images
-      //    sur le rafraîchissement réel de l'écran (resample l'audio
-      //    d'un poil pour rester synchro). C'est LE réglage qui rend
-      //    la lecture "lisse comme Netflix" (supprime le micro-judder
-      //    dû au décalage 50/60 Hz vs 25/30 fps du flux).
-      await native?.setProperty('video-sync', 'display-resample');
-      // 9. interpolation=no : on ne crée pas d'images intermédiaires
-      //    (coûteux en GPU et inutile une fois display-resample actif).
-      await native?.setProperty('interpolation', 'no');
-      // 10. framedrop=vo : si une image est en retard, on la lâche au
-      //     niveau sortie vidéo plutôt que de faire bégayer tout le flux.
-      await native?.setProperty('framedrop', 'vo');
-      // 11. hr-seek=yes : recherche précise et fluide (rebobinage).
-      await native?.setProperty('hr-seek', 'yes');
-      // 12. vd-lavc-threads=0 : décodage logiciel multi-thread (auto =
-      //     tous les cœurs) quand le HW retombe en software → évite les
-      //     saccades sur les flux que le mediacodec ne gère pas.
-      await native?.setProperty('vd-lavc-threads', '0');
     } catch (_) {
       // Pas grave, on continue avec les défauts.
     }
@@ -785,14 +696,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       WatchHistoryRepository.instance.endSession(_watchSessionId);
     }
     PlayerSettings.instance.removeListener(_onSettingsChanged);
-    CastManager.instance.removeListener(_onCastConnChanged);
-    // Si un enregistrement tourne encore, on le clôt côté base (le flux
-    // sur disque est fermé par `_player.dispose()` juste après). On ne
-    // touche pas au setState ici (le widget se démonte).
-    final Recording? rec = _activeRecording;
-    if (rec != null) {
-      RecordingRepository.instance.finishRecording(rec);
-    }
     _zapPageController?.dispose();
     _player.dispose();
     WakelockPlus.disable();
@@ -824,6 +727,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // et masquerait la vidéo. On bloque le toggle. L'utilisateur
     // pilote la mini-fenêtre via les contrôles natifs Android.
     if (PipService.instance.isInPipMode) return;
+    // Pendant l'enregistrement en mode 1 connexion, la lecture est
+    // suspendue et le panneau dédié (avec STOP) prend tout l'écran :
+    // on ne montre pas l'overlay de lecture (un tap sur Play
+    // relancerait une 2e connexion en conflit avec l'enregistrement).
+    if (_recordPausedPlayback) return;
     setState(() => _overlayVisible = !_overlayVisible);
     if (_overlayVisible) _scheduleHideOverlay();
   }
@@ -853,7 +761,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _isBuffering = true;
     });
     final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
-    _openMedia(url);
+    _player.open(Media(url));
   }
 
   Future<void> _openTracks() async {
@@ -906,7 +814,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           content: Text(
             'Mini-fenêtre indisponible sur cet appareil (requiert Android 8+). '
             'Active aussi la permission Picture-in-picture dans : '
-            'Paramètres → Apps → BLACK7 ROYAL → Permissions.',
+            'Paramètres → Apps → 7 MOTION → Permissions.',
             style: AppTextStyles.bodyMedium,
           ),
           duration: const Duration(seconds: 6),
@@ -1216,14 +1124,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         ),
                 ),
 
-                // ----- 1bis. Badge discret "● REC" -----
-                //  L'enregistrement dédouble le flux (mpv stream-record)
-                //  sans couper la lecture : on garde la vidéo visible et
-                //  on signale juste l'enregistrement par un petit badge.
-                if (_isRecording) _buildRecordingIndicator(),
+                // ----- 1bis. Panneau "Enregistrement en cours" -----
+                //  Mode 1 connexion : la lecture est stoppée pendant
+                //  l'enregistrement (l'unique connexion sert à
+                //  enregistrer). On couvre la vidéo noire d'un panneau
+                //  clair avec un gros bouton STOP. La lecture reprend
+                //  automatiquement à l'arrêt.
+                if (_recordPausedPlayback)
+                  Positioned.fill(child: _buildRecordingModePanel()),
 
                 // ----- 2. Spinner pendant le buffering -----
-                if (_isBuffering && !_hasError)
+                if (_isBuffering && !_hasError && !_recordPausedPlayback)
                   const Center(
                     child: SizedBox(
                       width: 56,
@@ -1251,6 +1162,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 //  de logo si l'URL est nulle ou casse au load.
                 if (!_hasError &&
                     !_overlayVisible &&
+                    !_recordPausedPlayback &&
                     _currentChannel.logoUrl != null &&
                     _currentChannel.logoUrl!.isNotEmpty)
                   Positioned(
@@ -1285,14 +1197,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 if (_hasError) _buildErrorOverlay(),
 
                 // ----- 5. Overlay contrôles -----
-                AnimatedOpacity(
-                  duration: const Duration(milliseconds: 220),
-                  opacity: _overlayVisible ? 1.0 : 0.0,
-                  child: IgnorePointer(
-                    ignoring: !_overlayVisible,
-                    child: _buildOverlay(),
+                //  Masqué pendant l'enregistrement mode 1 connexion :
+                //  le panneau d'enregistrement (item 1bis) gère le STOP.
+                if (!_recordPausedPlayback)
+                  AnimatedOpacity(
+                    duration: const Duration(milliseconds: 220),
+                    opacity: _overlayVisible ? 1.0 : 0.0,
+                    child: IgnorePointer(
+                      ignoring: !_overlayVisible,
+                      child: _buildOverlay(),
+                    ),
                   ),
-                ),
               ],
             );
           },
@@ -1422,14 +1337,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         onPressed: _openCastPicker,
                       );
                     },
-                  ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.download_rounded,
-                      color: Colors.white,
-                    ),
-                    tooltip: 'Télécharger (hors-ligne)',
-                    onPressed: _downloadCurrent,
                   ),
                   IconButton(
                     icon: const Icon(

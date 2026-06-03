@@ -176,22 +176,6 @@ class GoogleCastApi {
     }
   }
 
-  /// BUG C — Statut FIN de disponibilité du Cast SDK :
-  ///   'available' | 'no_gms' | 'init_error' | 'no_bridge'
-  /// Permet un message UX honnête (ne pas dire "Play Services requis"
-  /// quand le vrai problème est une init Cast SDK ratée).
-  Future<String> castAvailability() async {
-    try {
-      final String? r =
-          await _channel.invokeMethod<String>('castAvailability');
-      return r ?? 'init_error';
-    } on PlatformException {
-      return 'init_error';
-    } on MissingPluginException {
-      return 'no_bridge';
-    }
-  }
-
   /// Ouvre le dialog natif de sélection de récepteur Cast
   /// (la "ChromeCast route picker dialog" qu'on connaît dans
   /// YouTube / Netflix). L'utilisateur tape sur sa TV, le SDK

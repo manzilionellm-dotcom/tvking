@@ -24,7 +24,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import '../../../core/observability/structured_logger.dart';
 import '../domain/cast_device.dart';
 import 'cast_transport.dart';
 import 'dlna_profiles.dart';
@@ -39,37 +38,21 @@ class GoogleCastTransport implements CastTransport {
   @override
   Future<void> playStream({
     required String streamUrl,
-    String title = 'BLACK7 ROYAL',
+    String title = '7 MOTION',
     String? imageUrl,
   }) async {
     final GoogleCastApi api = GoogleCastApi.instance;
 
-    // 1) Disponibilité FINE du SDK Cast (BUG C) — on ne ment plus :
-    //    on distingue "Play Services absent" d'une "init Cast ratée"
-    //    (meta-data/OptionsProvider) sur un téléphone qui a pourtant GMS.
-    final String availability = await api.castAvailability();
-    if (availability != 'available') {
-      StructuredLogger.instance.warn(
-        domain: 'cast',
-        event: 'cast.sdk_init_failed',
-        ctx: <String, Object?>{'reason': availability},
+    // 1) Le SDK Cast est-il disponible sur ce device ?
+    //    Faux sur les phones sans Google Play Services (Huawei récents,
+    //    custom ROMs). Dans ce cas on lève — le CastManager retombera
+    //    sur le fallback navigateur ou affichera un message friendly.
+    final bool available = await api.isCastAvailable();
+    if (!available) {
+      throw Exception(
+        'Google Cast indisponible sur ce téléphone — '
+        'Google Play Services requis.',
       );
-      switch (availability) {
-        case 'no_gms':
-          throw Exception(
-            'Google Cast indisponible : ce téléphone n\'a pas Google Play '
-            'Services. Utilise le mode QR code pour caster.',
-          );
-        case 'no_bridge':
-          throw Exception(
-            'Module Cast non disponible dans cette version de l\'app.',
-          );
-        default: // init_error
-          throw Exception(
-            'Le Cast n\'a pas pu démarrer (configuration). Réessaie, ou '
-            'utilise le mode QR code en attendant.',
-          );
-      }
     }
 
     // 2) Y a-t-il déjà une session active ? (l'utilisateur a déjà
@@ -79,16 +62,13 @@ class GoogleCastTransport implements CastTransport {
     // 3) Pas de session → on demande au SDK d'ouvrir SON dialog natif.
     //    L'utilisateur sélectionne sa TV. Le SDK gère la négociation,
     //    le pairing, etc. — c'est exactement le flow Netflix / YouTube.
-    //
-    //    BUG E — Pour les Chromecast/Google TV, le SDK natif est la
-    //    SEULE source fiable de sélection (notre picker mDNS sert juste
-    //    à afficher). On garde donc CE dialog comme unique sélecteur, et
-    //    on abaisse le timeout (30s → 12s) avec un message clair en cas
-    //    d'annulation, pour ne pas laisser l'utilisateur attendre.
     if (!hasSession) {
       await api.showRoutePicker();
+      // Le dialog est asynchrone côté utilisateur (il doit tap sa TV).
+      // On poll hasActiveSession pendant 30s max — au-delà on suppose
+      // que l'utilisateur a annulé.
       final DateTime deadline =
-          DateTime.now().add(const Duration(seconds: 12));
+          DateTime.now().add(const Duration(seconds: 30));
       while (DateTime.now().isBefore(deadline)) {
         await Future<void>.delayed(const Duration(milliseconds: 500));
         if (await api.hasActiveSession()) {
@@ -97,10 +77,7 @@ class GoogleCastTransport implements CastTransport {
         }
       }
       if (!hasSession) {
-        throw Exception(
-          'Aucune TV sélectionnée dans le sélecteur Chromecast. '
-          'Réessaie et tape ta TV dans la liste.',
-        );
+        throw Exception('Aucune TV sélectionnée.');
       }
     }
 
@@ -124,30 +101,8 @@ class GoogleCastTransport implements CastTransport {
     //    chaine).
     String urlToCast = streamUrl;
     String mime = _guessMime(streamUrl);
-
-    // BUG A — DÉCISION DE FORMAT.
-    // Un Chromecast PUR ne lit pas le MPEG-TS brut (video/mp2t) en live.
-    // Règle : on wrappe en HLS TOUT flux qui n'est PAS déjà adaptatif
-    // (HLS/DASH), SAUF si le récepteur est de type ExoPlayer (SHIELD &
-    // co.) qui, lui, sait lire le .ts direct. → on n'envoie JAMAIS de
-    // mp2t direct à un Chromecast pur.
-    final bool alreadyAdaptive = _isHlsOrDash(streamUrl);
-    final bool exoReceiver = _isExoPlayerReceiver(device);
-    final bool shouldWrap = !alreadyAdaptive && !exoReceiver;
-
-    StructuredLogger.instance.info(
-      domain: 'cast',
-      event: 'cast.format_decision',
-      ctx: <String, Object?>{
-        'alreadyAdaptive': alreadyAdaptive,
-        'exoReceiver': exoReceiver,
-        'decision': shouldWrap ? 'hls-wrap' : 'direct',
-        'mime': mime,
-        'model': device.model,
-      },
-    );
-
-    if (shouldWrap) {
+    if (_looksLikeRawMpegTs(streamUrl)) {
+      // Wrap dans HLS via le LocalCastServer.
       final String? wrappedUrl =
           await LocalCastServer.instance.registerRelay(
         upstreamUrl: streamUrl,
@@ -162,38 +117,13 @@ class GoogleCastTransport implements CastTransport {
         wrapInHls: true,
       );
       if (wrappedUrl != null) {
-        // BUG B — la TV doit pouvoir JOINDRE le serveur HLS local (le
-        // téléphone). Le pairing Cast passe par le cloud Google et
-        // réussit même en isolation AP, mais le fetch HLS téléphone→TV,
-        // lui, échoue en silence si TV et téléphone ne sont pas sur le
-        // même sous-réseau. On vérifie ça AVANT d'envoyer (au minimum :
-        // même /24).
-        if (!_sameSubnet(wrappedUrl, device.host)) {
-          StructuredLogger.instance.warn(
-            domain: 'cast',
-            event: 'cast.relay_unreachable',
-            ctx: <String, Object?>{'tvHost': device.host},
-          );
-          throw Exception(
-            'Ta TV ne peut pas joindre ton téléphone (WiFi invité / '
-            'isolation AP probable). Mets les deux sur le même WiFi, ou '
-            'utilise le mode QR code.',
-          );
-        }
         urlToCast = wrappedUrl;
         mime = 'application/x-mpegURL';
-      } else {
-        // Le wrap a échoué : plutôt que d'envoyer du mp2t direct (que
-        // le Chromecast refusera), on remonte une erreur claire.
-        StructuredLogger.instance.warn(
-          domain: 'cast',
-          event: 'cast.hls_wrap_failed',
-          ctx: <String, Object?>{'upstream': streamUrl},
-        );
-        throw Exception(
-          'Impossible de préparer le flux pour ta TV. Essaie le mode '
-          'QR code (lecture via le navigateur de la TV).',
-        );
+        if (kDebugMode) {
+          debugPrint('[Cast] HLS wrap: $streamUrl -> $urlToCast');
+        }
+      } else if (kDebugMode) {
+        debugPrint('[Cast] HLS wrap failed, falling back to direct .ts');
       }
     }
 
@@ -208,59 +138,21 @@ class GoogleCastTransport implements CastTransport {
     }
   }
 
-  /// `true` si l'URL est DÉJÀ un format adaptatif (HLS ou DASH) que le
-  /// Chromecast accepte nativement → pas besoin de wrap.
-  @visibleForTesting
-  static bool isHlsOrDash(String url) {
+  /// Detecte une URL qui pointe vers du MPEG-TS brut (cas IPTV
+  /// typique) : extension .ts, ou path /live/.../<id>(.ts)? sans
+  /// extension explicite, ou MIME deja typage TS dans le URL.
+  bool _looksLikeRawMpegTs(String url) {
     final String lower = url.toLowerCase();
-    return lower.contains('.m3u8') ||
-        lower.contains('mpegurl') ||
-        lower.contains('.mpd') ||
-        lower.contains('dash+xml');
+    if (lower.contains('.m3u8') || lower.contains('mpegurl')) return false;
+    if (lower.contains('.mpd') || lower.contains('dash+xml')) return false;
+    if (lower.contains('.mp4')) return false;
+    if (lower.contains('.mkv')) return false;
+    // .ts explicite OU pattern Xtream /live/USER/PASS/ID (sans ext)
+    if (lower.contains('.ts')) return true;
+    if (lower.contains('/live/')) return true;
+    if (lower.contains('mp2t') || lower.contains('mpegts')) return true;
+    return false;
   }
-
-  bool _isHlsOrDash(String url) => isHlsOrDash(url);
-
-  /// `true` si le récepteur est de type ExoPlayer (NVIDIA SHIELD,
-  /// certains Android TV) qui sait lire le MPEG-TS brut direct. On
-  /// reste CONSERVATEUR : seuls les modèles clairement ExoPlayer sont
-  /// reconnus ; tout le reste est wrappé par défaut (Chromecast pur).
-  @visibleForTesting
-  static bool isExoPlayerReceiver(CastDevice device) {
-    final String s =
-        '${device.model ?? ''} ${device.manufacturer ?? ''} ${device.name}'
-            .toLowerCase();
-    return s.contains('shield') || s.contains('nvidia');
-  }
-
-  bool _isExoPlayerReceiver(CastDevice device) =>
-      isExoPlayerReceiver(device);
-
-  /// `true` si l'IP du serveur local ([localUrl]) et la TV ([tvHost])
-  /// sont sur le même sous-réseau /24 (heuristique). En cas de doute
-  /// (parse impossible, non-IPv4), on renvoie `true` pour ne pas
-  /// bloquer un cast qui marcherait.
-  @visibleForTesting
-  static bool sameSubnet(String localUrl, String tvHost) {
-    try {
-      final String phoneIp = Uri.parse(localUrl).host;
-      String net(String ip) {
-        final List<String> p = ip.split('.');
-        return p.length == 4 ? '${p[0]}.${p[1]}.${p[2]}' : ip;
-      }
-      // Si l'un des deux n'est pas une IPv4 littérale, on ne tranche pas.
-      if (!RegExp(r'^\d+\.\d+\.\d+\.\d+$').hasMatch(phoneIp) ||
-          !RegExp(r'^\d+\.\d+\.\d+\.\d+$').hasMatch(tvHost)) {
-        return true;
-      }
-      return net(phoneIp) == net(tvHost);
-    } catch (_) {
-      return true;
-    }
-  }
-
-  bool _sameSubnet(String localUrl, String tvHost) =>
-      sameSubnet(localUrl, tvHost);
 
   @override
   Future<void> pause() => GoogleCastApi.instance.pause();

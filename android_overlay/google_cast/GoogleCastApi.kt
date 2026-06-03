@@ -57,38 +57,21 @@ class GoogleCastApi(
     }
 
     /**
-     * Raison de disponibilité du Cast SDK (BUG C). On NE réduit plus
-     * tout échec à "false" : on distingue
-     *   - "available"  : SDK prêt,
-     *   - "no_gms"     : Google Play Services réellement absent,
-     *   - "init_error" : GMS présent mais l'init du SDK a échoué
-     *                    (souvent : meta-data OPTIONS_PROVIDER fausse →
-     *                    classe introuvable par réflexion).
-     * Le côté Dart lit ce statut pour ne PAS afficher "Play Services
-     * requis" à tort.
+     * Init lazy du Cast SDK. On wrap en try/catch parce que sur les
+     * phones sans Google Play Services (Huawei récents, custom ROMs
+     * sans GMS), `getSharedInstance` lève. Dans ce cas castContext
+     * reste null et isCastAvailable() renvoie false côté Dart.
      */
-    private var castInitReason: String = "available"
-
-    private val castContext: CastContext? = initCastContext()
-
-    private fun initCastContext(): CastContext? {
-        return try {
-            if (!isGmsAvailable(activity)) {
-                castInitReason = "no_gms"
-                Log.w(TAG, "Google Play Services indisponibles — Cast désactivé")
-                return null
-            }
-            // getSharedInstance charge par RÉFLEXION le FQCN de la
-            // meta-data OPTIONS_PROVIDER_CLASS_NAME : si ce FQCN est faux
-            // (package détecté ≠ package réel), ça lève ici.
-            val ctx = CastContext.getSharedInstance(activity)
-            castInitReason = "available"
-            ctx
-        } catch (e: Throwable) {
-            castInitReason = "init_error"
-            Log.e(TAG, "cast.sdk_init_failed (GMS présent mais init KO) : $e", e)
+    private val castContext: CastContext? = try {
+        if (isGmsAvailable(activity)) {
+            CastContext.getSharedInstance(activity)
+        } else {
+            Log.w(TAG, "Google Play Services indisponibles — Cast SDK désactivé")
             null
         }
+    } catch (e: Exception) {
+        Log.w(TAG, "Cast SDK init failed: ${e.message}")
+        null
     }
 
     private val sessionManager: SessionManager? = castContext?.sessionManager
@@ -232,8 +215,6 @@ class GoogleCastApi(
         try {
             when (call.method) {
                 "isCastAvailable" -> result.success(castContext != null)
-                // BUG C : statut fin pour un message UX honnête.
-                "castAvailability" -> result.success(castInitReason)
                 "hasActiveSession" -> result.success(
                     sessionManager?.currentCastSession?.isConnected == true,
                 )

@@ -20,17 +20,11 @@
 
 package com.manzilionellm.tvking
 
-import android.app.Activity
 import android.app.PictureInPictureParams
-import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
 import android.content.res.Configuration
-import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.util.Log
 import android.util.Rational
-import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -43,13 +37,6 @@ class MainActivity : FlutterFragmentActivity() {
         /// Channel Dart ↔ natif pour le Picture-in-Picture.
         /// Doit matcher EXACTEMENT côté lib/features/player/data/pip_service.dart
         private const val PIP_CHANNEL = "com.manzilionellm.tvking/pip"
-
-        /// Channel Dart ↔ natif pour l'enregistrement par capture d'écran.
-        /// Doit matcher lib/features/recordings/data/screen_recorder.dart
-        private const val SCREENREC_CHANNEL =
-            "com.manzilionellm.tvking/screen_recorder"
-        private const val REQ_SCREEN_CAPTURE = 7021
-        private const val REQ_RECORD_AUDIO = 7022
     }
 
     private var castApi: GoogleCastApi? = null
@@ -57,14 +44,6 @@ class MainActivity : FlutterFragmentActivity() {
     private var recordingService: RecordingServiceBridge? = null
     private var multicastLock: MulticastLockBridge? = null
     private var pipChannel: MethodChannel? = null
-    private var screenRecChannel: MethodChannel? = null
-
-    /// Contexte d'une demande de capture d'écran en attente (le temps
-    /// que l'utilisateur réponde aux popups système). On mémorise le
-    /// fichier de sortie + le titre + la Result Dart à compléter.
-    private var pendingScreenRecFile: String? = null
-    private var pendingScreenRecTitle: String? = null
-    private var pendingScreenRecResult: MethodChannel.Result? = null
 
     /// Vrai quand le lecteur vidéo joue actuellement. Mis à jour par
     /// `lib/features/player/data/pip_service.dart` à chaque play/pause.
@@ -130,40 +109,6 @@ class MainActivity : FlutterFragmentActivity() {
             Log.i(TAG, "  ✓ MulticastLock channel wired")
         } catch (e: Throwable) {
             Log.e(TAG, "  ✗ MulticastLock channel failed: $e", e)
-        }
-
-        // Enregistrement par CAPTURE D'ÉCRAN (MediaProjection).
-        // start(title, file) : demande la popup système de capture puis
-        //   lance ScreenRecordService (vidéo écran + audio micro best-effort).
-        //   La lecture N'est PAS coupée → le client continue de regarder.
-        // stop() : arrête le service. isSupported()/isRecording() utilitaires.
-        try {
-            screenRecChannel = MethodChannel(messenger, SCREENREC_CHANNEL)
-            screenRecChannel!!.setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "isSupported" -> result.success(
-                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP,
-                    )
-                    "isRecording" -> result.success(ScreenRecordService.isRecording)
-                    "start" -> {
-                        val file = call.argument<String>("file")
-                        val title = call.argument<String>("title") ?: "7 MOTION"
-                        if (file == null) {
-                            result.error("no_file", "file manquant", null)
-                        } else {
-                            startScreenCapture(file, title, result)
-                        }
-                    }
-                    "stop" -> {
-                        stopScreenCapture()
-                        result.success(true)
-                    }
-                    else -> result.notImplemented()
-                }
-            }
-            Log.i(TAG, "  ✓ ScreenRecorder channel wired")
-        } catch (e: Throwable) {
-            Log.e(TAG, "  ✗ ScreenRecorder channel failed: $e", e)
         }
 
         // ========================================================
@@ -280,150 +225,5 @@ class MainActivity : FlutterFragmentActivity() {
             "onPipModeChanged",
             mapOf("inPip" to isInPip),
         )
-    }
-
-    // =========================================================
-    //  Enregistrement par capture d'écran (MediaProjection)
-    // =========================================================
-
-    /// Démarre une capture : on demande d'abord l'audio (micro, best
-    /// effort), puis la popup système de capture d'écran. Le résultat
-    /// revient dans onActivityResult / onRequestPermissionsResult.
-    private fun startScreenCapture(
-        file: String,
-        title: String,
-        result: MethodChannel.Result,
-    ) {
-        pendingScreenRecFile = file
-        pendingScreenRecTitle = title
-        pendingScreenRecResult = result
-
-        // AUTORISATION DÉJÀ ACCORDÉE (projection vivante) : on ne
-        // re-demande PAS la popup système — on réutilise la session de
-        // capture existante et on démarre directement l'enregistrement.
-        if (ScreenRecordService.projectionActive) {
-            startRecordingReusingProjection(file, title)
-            pendingScreenRecResult?.success(true)
-            clearPendingScreenRec()
-            return
-        }
-
-        // Audio micro : si pas encore accordé, on le demande AVANT la
-        // popup de capture (sinon repli vidéo seule côté service). On
-        // enchaîne sur la capture dans onRequestPermissionsResult.
-        val micGranted = ContextCompat.checkSelfPermission(
-            this, android.Manifest.permission.RECORD_AUDIO,
-        ) == PackageManager.PERMISSION_GRANTED
-        if (!micGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            try {
-                requestPermissions(
-                    arrayOf(android.Manifest.permission.RECORD_AUDIO),
-                    REQ_RECORD_AUDIO,
-                )
-                return // la suite se fait dans onRequestPermissionsResult
-            } catch (_: Throwable) {
-                // si la demande échoue, on continue quand même (vidéo seule)
-            }
-        }
-        launchScreenCaptureIntent()
-    }
-
-    /// Lance la popup système "Autoriser la capture d'écran ?".
-    private fun launchScreenCaptureIntent() {
-        try {
-            val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE)
-                as MediaProjectionManager
-            startActivityForResult(
-                mpm.createScreenCaptureIntent(),
-                REQ_SCREEN_CAPTURE,
-            )
-        } catch (e: Throwable) {
-            Log.e(TAG, "createScreenCaptureIntent KO: $e", e)
-            pendingScreenRecResult?.success(false)
-            clearPendingScreenRec()
-        }
-    }
-
-    /// Démarre un enregistrement en RÉUTILISANT la projection déjà
-    /// autorisée (pas de popup système). Le service est déjà foreground.
-    private fun startRecordingReusingProjection(file: String, title: String) {
-        try {
-            val intent = Intent(this, ScreenRecordService::class.java).apply {
-                action = ScreenRecordService.ACTION_START
-                putExtra(ScreenRecordService.EXTRA_FILE, file)
-                putExtra(ScreenRecordService.EXTRA_TITLE, title)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
-        } catch (e: Throwable) {
-            Log.e(TAG, "reuse projection KO: $e", e)
-        }
-    }
-
-    private fun stopScreenCapture() {
-        try {
-            val intent = Intent(this, ScreenRecordService::class.java).apply {
-                action = ScreenRecordService.ACTION_STOP
-            }
-            startService(intent)
-        } catch (e: Throwable) {
-            Log.w(TAG, "stopScreenCapture: $e")
-        }
-    }
-
-    private fun clearPendingScreenRec() {
-        pendingScreenRecFile = null
-        pendingScreenRecTitle = null
-        pendingScreenRecResult = null
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray,
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQ_RECORD_AUDIO) {
-            // Qu'il soit accordé ou non, on enchaîne sur la capture
-            // (le service fera vidéo seule si l'audio manque).
-            launchScreenCaptureIntent()
-        }
-    }
-
-    @Deprecated("startActivityForResult flow")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != REQ_SCREEN_CAPTURE) return
-        val file = pendingScreenRecFile
-        val title = pendingScreenRecTitle ?: "BLACK7 ROYAL"
-        val pending = pendingScreenRecResult
-        clearPendingScreenRec()
-
-        if (resultCode == Activity.RESULT_OK && data != null && file != null) {
-            try {
-                val intent = Intent(this, ScreenRecordService::class.java).apply {
-                    action = ScreenRecordService.ACTION_START
-                    putExtra(ScreenRecordService.EXTRA_RESULT_CODE, resultCode)
-                    putExtra(ScreenRecordService.EXTRA_RESULT_DATA, data)
-                    putExtra(ScreenRecordService.EXTRA_FILE, file)
-                    putExtra(ScreenRecordService.EXTRA_TITLE, title)
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(intent)
-                } else {
-                    startService(intent)
-                }
-                pending?.success(true)
-            } catch (e: Throwable) {
-                Log.e(TAG, "démarrage ScreenRecordService KO: $e", e)
-                pending?.success(false)
-            }
-        } else {
-            // L'utilisateur a refusé la capture.
-            pending?.success(false)
-        }
     }
 }
