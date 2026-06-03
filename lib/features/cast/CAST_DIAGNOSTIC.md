@@ -1,5 +1,22 @@
 # 📡 Diagnostic du Cast — comment lire les logs
 
+## 🩺 Outil automatique : `cast_doctor.sh`
+Le plus simple : un script qui **dit en clair** pourquoi le cast échoue
+(lecture seule, ne modifie rien sur l'appareil).
+
+```bash
+# téléphone branché en USB (débogage activé) :
+./android_overlay/google_cast/cast_doctor.sh
+# ou en précisant l'applicationId :
+./android_overlay/google_cast/cast_doctor.sh com.manzilionellm.tvking.tv_king
+```
+Il vérifie : appareil connecté + app installée → permissions réseau
+(INTERNET / ACCESS_NETWORK_STATE / **CHANGE_WIFI_MULTICAST_STATE** /
+ACCESS_WIFI_STATE) → meta-data OptionsProvider → capture ~15 s de logs
+pendant que tu ouvres le picker → même sous-réseau (heuristique). Puis un
+**VERDICT** symptôme → cause → action. Code de sortie 0 = vert.
+
+## 🔬 Manuel (logcat brut)
 Une session de cast émet une trace **corrélable** de bout en bout
 (domaine `cast` côté Dart + tag `MulticastLock`/`MainActivity` côté natif).
 
