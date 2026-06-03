@@ -29,8 +29,8 @@ import 'features/cast/data/cast_manager.dart';
 import 'features/channels/data/recent_searches_repository.dart';
 import 'features/channels/data/recently_watched_repository.dart';
 import 'features/channels/data/watch_history_repository.dart';
-import 'features/channels/presentation/home_screen.dart';
 import 'features/channels/presentation/tv_home_screen.dart';
+import 'features/simple_home/presentation/simple_home_screen.dart';
 import 'features/admin/data/admin_credentials.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/epg/data/epg_repository.dart';
@@ -399,7 +399,9 @@ class _AppEntryState extends State<_AppEntry> {
           builder: (BuildContext context, _) {
             final bool isTv =
                 DeviceClassRepository.instance.isTvFor(context);
-            return isTv ? const TvHomeScreen() : const HomeScreen();
+            // Téléphone : nouvel accueil "simple" (pays → catégories).
+            // TV : home 10-foot dédié (inchangé).
+            return isTv ? const TvHomeScreen() : const SimpleHomeScreen();
           },
         );
       },
