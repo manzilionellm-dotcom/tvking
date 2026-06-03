@@ -594,10 +594,33 @@ class CastManager extends ChangeNotifier {
         }
       }
 
-      // (1) Pré-vol : on vérifie l'URL avant de la pousser au récepteur.
+      // (1) Pré-vol URL : on résout redirects + mime AVANT de pousser.
+      //     MAIS on BORNE ce probe (≤ 8 s) : certains serveurs IPTV
+      //     mettent 30-50 s à envoyer le 1er octet, ce qui bloquait le
+      //     cast et faisait « superseder » la session au moindre re-tap.
+      //     En DLNA, c'est la TV qui télécharge le flux (pas le
+      //     téléphone) → si le probe traîne, on envoie l'URL d'origine
+      //     et on laisse la TV résoudre elle-même.
       _checkCancelled(mySeq);
-      final StreamProbeResult probe =
-          await StreamProbe.instance.probe(streamUrl);
+      StreamProbeResult probe;
+      try {
+        probe = await StreamProbe.instance
+            .probe(streamUrl, timeout: const Duration(seconds: 7))
+            .timeout(const Duration(seconds: 8));
+      } catch (_) {
+        StructuredLogger.instance.warn(
+          domain: 'cast',
+          event: 'cast.probe_timeout',
+          ctx: const <String, Object?>{'fallback': 'send_original_url'},
+        );
+        probe = StreamProbeResult(
+          originalUrl: streamUrl,
+          finalUrl: streamUrl,
+          success: true, // on laisse la TV tenter (surtout en DLNA)
+          mime: 'video/mp2t',
+          errorReason: 'probe_timeout',
+        );
+      }
       diag.probe = ProbeSummary(
         success: probe.success,
         finalUrl: probe.finalUrl, // redacté à l'export JSON
