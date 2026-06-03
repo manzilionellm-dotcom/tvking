@@ -103,12 +103,37 @@ for kt_file in MainActivity.kt GoogleCastApi.kt CastOptionsProviderImpl.kt \
                ScreenRecordService.kt; do
   src="$OVERLAY/$kt_file"
   dst="$ANDROID_PKG_PATH/$kt_file"
-  # sed rewrite : `package com.manzilionellm.tvking` → `package $DETECTED_PKG`
-  sed "s|^package com\.manzilionellm\.tvking\$|package $DETECTED_PKG|" "$src" > "$dst"
+  # sed rewrite du package. On gère les deux styles Kotlin : `package X`
+  # AVEC ou SANS point-virgule final.
+  sed -E "s|^package com\.manzilionellm\.tvking;?[[:space:]]*\$|package $DETECTED_PKG|" "$src" > "$dst"
   echo "  ✓ $kt_file → $dst (package: $DETECTED_PKG)"
+  # POST-CONDITION (BUG D / Partie 2.3) : le package DOIT avoir été
+  # réécrit, sinon la classe n'est pas chargée au runtime (MethodChannels
+  # jamais câblés → MissingPluginException).
+  if ! grep -qE "^package ${DETECTED_PKG}\$" "$dst"; then
+    echo "❌ Package non réécrit dans $kt_file (attendu: ${DETECTED_PKG})"
+    grep -n '^package' "$dst" || true
+    exit 1
+  fi
 done
 
 ls -la "$ANDROID_PKG_PATH/"
+
+# --- 1b. ASSERTION CRITIQUE (BUG D) ---------------------------------
+# showRoutePicker fait `activity as? FragmentActivity` : si le
+# MainActivity installé n'étend PAS FlutterFragmentActivity, le dialog
+# Cast natif est introuvable (ACTIVITY_TYPE) → cast impossible. On vérifie
+# que notre overlay a bien remplacé le MainActivity généré par Flutter.
+MAIN_DST="$ANDROID_PKG_PATH/MainActivity.kt"
+if [ ! -f "$MAIN_DST" ]; then
+  echo "❌ MainActivity.kt absent de $ANDROID_PKG_PATH après copie"; exit 1
+fi
+if ! grep -q "FlutterFragmentActivity" "$MAIN_DST"; then
+  echo "❌ MainActivity n'étend PAS FlutterFragmentActivity — cast cassé."
+  head -45 "$MAIN_DST" | grep -E 'class MainActivity|FlutterActivity' || true
+  exit 1
+fi
+echo "✅ MainActivity = FlutterFragmentActivity (dialog Cast OK)"
 
 # --- 2. Patch build.gradle (dependencies) -----------
 if grep -q "play-services-cast-framework" "$BUILD_GRADLE"; then

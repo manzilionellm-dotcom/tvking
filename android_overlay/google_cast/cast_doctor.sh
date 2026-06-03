@@ -163,6 +163,35 @@ if has "MissingPluginException"; then
   echo "   → Fix : vérifier DETECTED_PKG dans apply_cast_patch.sh."
 fi
 
+# BUG D — MainActivity pas en FlutterFragmentActivity
+if has "ACTIVITY_TYPE|not a FragmentActivity|as\? FragmentActivity"; then
+  fail "ACTIVITY_TYPE → MainActivity n'étend pas FlutterFragmentActivity."
+  echo "   → Le dialog Cast natif est introuvable. Relancer apply_cast_patch.sh"
+  echo "     (l'assertion FlutterFragmentActivity doit passer)."
+fi
+
+# BUG C — init Cast SDK échouée (vs GMS absent)
+if has "cast.sdk_init_failed|CAST_UNAVAILABLE"; then
+  REASON="$(echo "$LOG" | grep -oE "reason[\": ]+[a-z_]+" | tail -1 || true)"
+  fail "Init Cast SDK échouée (${REASON:-init_error})."
+  echo "   → Si 'no_gms' : téléphone sans Play Services (normal)."
+  echo "   → Sinon 'init_error' : meta-data OPTIONS_PROVIDER fausse → classe"
+  echo "     introuvable. Vérifier la cohérence du package (apply_cast_patch.sh)."
+fi
+
+# BUG A — flux non wrappé envoyé en mp2t → TV refuse
+if has "TV a refusé|content.?type.*mp2t|format_decision.*direct"; then
+  warn "Flux possiblement envoyé en MPEG-TS direct (BUG A)."
+  echo "   → Un Chromecast pur refuse le mp2t. Le wrap HLS doit s'activer"
+  echo "     (cast.format_decision = hls-wrap attendu pour un Chromecast)."
+fi
+
+# BUG B — relais HLS injoignable par la TV
+if has "cast.relay_unreachable"; then
+  fail "La TV ne joint pas le serveur HLS local (isolation AP / WiFi invité)."
+  echo "   → Mettre TV et téléphone sur le MÊME WiFi, ou mode QR code."
+fi
+
 # MulticastLock
 if has "multicast_lock.acquire_failed|discovery.multicast_lock_failed"; then
   fail "MulticastLock NON acquis pendant le scan."
