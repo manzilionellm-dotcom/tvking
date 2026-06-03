@@ -1,6 +1,6 @@
 {
   "@@locale": "nb",
-  "appName": "7 MOTION",
+  "appName": "BLACK7 ROYAL",
   "appTagline": "Kino uten grenser",
 
   "navHome": "Hjem",
@@ -92,7 +92,7 @@
   "deviceAutoSubtitle": "Autodeteksjon",
   "deviceAutoDesc": "Appen gjetter ut fra skjermen din. Bra valg hvis du er usikker eller bruker flere enheter.",
 
-  "onboardingWelcomeTitle": "Velkommen til 7 MOTION",
+  "onboardingWelcomeTitle": "Velkommen til BLACK7 ROYAL",
   "onboardingWelcomeDesc": "Kino uten grenser. Bygd for TV, optimalisert for telefonen din, vakker overalt.",
   "onboardingLoadTitle": "Last inn spillelisten din",
   "onboardingLoadDesc": "Lim inn en M3U-URL eller Xtream-innloggingen din. Kanalene dukker opp på sekunder.",

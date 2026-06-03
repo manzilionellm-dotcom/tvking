@@ -830,7 +830,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           content: Text(
             'Mini-fenêtre indisponible sur cet appareil (requiert Android 8+). '
             'Active aussi la permission Picture-in-picture dans : '
-            'Paramètres → Apps → 7 MOTION → Permissions.',
+            'Paramètres → Apps → BLACK7 ROYAL → Permissions.',
             style: AppTextStyles.bodyMedium,
           ),
           duration: const Duration(seconds: 6),

@@ -33,7 +33,7 @@ abstract class CastTransport {
   /// affichera son placeholder).
   Future<void> playStream({
     required String streamUrl,
-    String title = '7 MOTION',
+    String title = 'BLACK7 ROYAL',
     String? imageUrl,
   });
 

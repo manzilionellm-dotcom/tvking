@@ -3,7 +3,7 @@
 // =========================================================
 //  Brief design : CHAQUE écran doit traiter ses 4 états — loading
 //  (squelette shimmer, cf. shimmer_box.dart), vide, erreur, hors-ligne.
-//  Ce widget couvre les 3 états « message » avec un rendu 7 MOTION
+//  Ce widget couvre les 3 états « message » avec un rendu BLACK7 ROYAL
 //  cohérent : icône cerclée, titre, message, et un bouton d'action
 //  optionnel pleinement utilisable à la télécommande (TvFocusable).
 //

@@ -1,5 +1,5 @@
 // =========================================================
-//  7 MOTION — Cloudflare Worker (backend admin + clients)
+//  BLACK7 ROYAL — Cloudflare Worker (backend admin + clients)
 // =========================================================
 //
 //  Mini backend serverless qui remplace le hack GitHub Gist.
@@ -74,7 +74,7 @@ const APK_URL =
 // Variante Red Room (flavor adulte 18+ du MÊME repo). Publiée sur
 // une release dédiée `redroom-latest` par le job CI `build_redroom`.
 // Le binaire a un applicationId différent (`com.redroom.player`),
-// donc l'installation NE remplace PAS l'app 7 MOTION sur le téléphone
+// donc l'installation NE remplace PAS l'app BLACK7 ROYAL sur le téléphone
 // du client — les deux peuvent cohabiter.
 const REDROOM_APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/redroom-latest/redroom.apk';
@@ -355,8 +355,8 @@ const LANDING_HTML = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>7 MOTION — Téléchargement</title>
-  <meta name="description" content="Lecteur IPTV premium 7 MOTION. Téléchargez l'APK Android/Fire TV/Android TV.">
+  <title>BLACK7 ROYAL — Téléchargement</title>
+  <meta name="description" content="Lecteur IPTV premium BLACK7 ROYAL. Téléchargez l'APK Android/Fire TV/Android TV.">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -472,7 +472,7 @@ const LANDING_HTML = `<!doctype html>
 <body>
   <div class="card">
     <div class="brand">
-      <h1>7 MOTION</h1>
+      <h1>BLACK7 ROYAL</h1>
       <span class="badge">&check;</span>
     </div>
     <p class="tagline">THE FEW &middot; NOT FOR EVERYONE</p>
@@ -494,7 +494,7 @@ const LANDING_HTML = `<!doctype html>
     </div>
 
     <p class="legal">
-      7 MOTION ne vend, ne distribue et ne fournit aucun flux IPTV,
+      BLACK7 ROYAL ne vend, ne distribue et ne fournit aucun flux IPTV,
       aucune chaîne ni aucun contenu. Apportez votre propre
       abonnement auprès du fournisseur de votre choix.
     </p>
@@ -522,7 +522,7 @@ const ADMIN_PANEL_HTML = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>7 MOTION — Panel admin</title>
+  <title>BLACK7 ROYAL — Panel admin</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -683,7 +683,7 @@ const ADMIN_PANEL_HTML = `<!doctype html>
   </style>
 </head>
 <body>
-  <h1>7 MOTION</h1>
+  <h1>BLACK7 ROYAL</h1>
   <div class="tagline">PANEL ADMIN</div>
 
   <!-- ===== ÉCRAN LOGIN ===== -->
@@ -975,7 +975,7 @@ const TEXT_HEADERS = {
   'Access-Control-Allow-Origin': '*',
 };
 
-// Regex MAC virtuelle 7 MOTION : MK:XX:XX:XX:XX:XX en hex.
+// Regex MAC virtuelle BLACK7 ROYAL : MK:XX:XX:XX:XX:XX en hex.
 const MAC_RX = /^MK(?::[0-9A-F]{2}){5}$/i;
 
 // ----- Helpers réponse -----
@@ -1551,8 +1551,8 @@ export default {
 
     // /redroom — variante adulte 18+. Pointe vers la release
     // dédiée `redroom-latest`. Le binaire a son propre applicationId
-    // donc il s'installe à côté de 7 MOTION sans collision.
-    // /redroom/dl est un alias pour cohérence avec /dl du 7 MOTION.
+    // donc il s'installe à côté de BLACK7 ROYAL sans collision.
+    // /redroom/dl est un alias pour cohérence avec /dl du BLACK7 ROYAL.
     if (
       (segments.length === 1 && segments[0] === 'redroom') ||
       (segments.length === 2 && segments[0] === 'redroom' && segments[1] === 'dl')
@@ -1586,7 +1586,7 @@ export default {
     // /cast-receiver — page HTML CAF pour Google Cast Custom Receiver.
     // URL a coller dans la Google Cast SDK Developer Console.
     // Query string ?app=redroom bascule le branding sur Red Room ;
-    // sans query string, c'est le branding 7 MOTION par defaut.
+    // sans query string, c'est le branding BLACK7 ROYAL par defaut.
     if (segments.length === 1 && segments[0] === 'cast-receiver') {
       const flavor = url.searchParams.get('app') || '7motion';
       return new Response(castReceiverHtml(flavor), {

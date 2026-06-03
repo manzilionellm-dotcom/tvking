@@ -47,7 +47,7 @@ class SubscriptionGateScreen extends StatelessWidget {
                 ? 'Compte suspendu'
                 : frozen
                     ? 'Compte temporairement gelé'
-                    : 'Débloque tout 7 MOTION';
+                    : 'Débloque tout BLACK7 ROYAL';
             final String message = banned
                 ? 'Ton compte a été suspendu par l\'administrateur. '
                     'Si tu penses que c\'est une erreur, contacte-nous.'
@@ -72,7 +72,7 @@ class SubscriptionGateScreen extends StatelessWidget {
                       children: <Widget>[
                         const BrandLogo.compact(),
                         const SizedBox(height: 14),
-                        Text('7 MOTION',
+                        Text('BLACK7 ROYAL',
                             style: AppTextStyles.headlineLarge.copyWith(
                               fontSize: 22,
                               letterSpacing: 4,

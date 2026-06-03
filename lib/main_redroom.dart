@@ -4,7 +4,7 @@
 //  Cet entrypoint ne contient PRESQUE rien : tout le code
 //  d'init (libmpv, repos, locale, theme…) reste partagé avec
 //  `main.dart` via `bootApp()` réexporté depuis la version
-//  7 MOTION. La SEULE différence : on pose `FlavorConfig.redRoom`
+//  BLACK7 ROYAL. La SEULE différence : on pose `FlavorConfig.redRoom`
 //  avant d'appeler le boot commun, ce qui suffit pour activer :
 //
 //    - filtre `adultOnly` sur le repo de chaînes (le repo lit

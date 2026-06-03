@@ -1,6 +1,6 @@
 {
   "@@locale": "ar",
-  "appName": "7 MOTION",
+  "appName": "BLACK7 ROYAL",
   "appTagline": "سينما بلا حدود",
 
   "navHome": "الرئيسية",
@@ -92,7 +92,7 @@
   "deviceAutoSubtitle": "اكتشاف تلقائي",
   "deviceAutoDesc": "يخمّن التطبيق وفق شاشتك. خيار جيّد إذا لم تكن متأكّداً أو تستعمل عدة أجهزة.",
 
-  "onboardingWelcomeTitle": "مرحباً بك في 7 MOTION",
+  "onboardingWelcomeTitle": "مرحباً بك في BLACK7 ROYAL",
   "onboardingWelcomeDesc": "سينما بلا حدود. مصمَّمة للتلفاز، محسَّنة لهاتفك، جميلة في كل مكان.",
   "onboardingLoadTitle": "حمِّل قائمتك",
   "onboardingLoadDesc": "الصِق رابط M3U أو بيانات Xtream. تظهر قنواتك في ثوانٍ.",

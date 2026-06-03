@@ -2,7 +2,7 @@
 //  verified_badge.dart — Badge "Compte vérifié" style Instagram
 // =========================================================
 //  Petit cercle bleu Instagram avec une coche blanche, à afficher
-//  à côté du nom "7 MOTION" pour signifier que c'est l'app
+//  à côté du nom "BLACK7 ROYAL" pour signifier que c'est l'app
 //  officielle / authentifiée.
 //
 //  Le user a explicitement demandé : "tu mets un titre qui est

@@ -27,7 +27,7 @@ class WebBrowserTransport implements CastTransport {
   @override
   Future<void> playStream({
     required String streamUrl,
-    String title = '7 MOTION',
+    String title = 'BLACK7 ROYAL',
     String? imageUrl,
   }) async {
     // Le serveur est déjà démarré par la sélection du device. Ici on

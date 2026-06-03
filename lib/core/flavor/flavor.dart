@@ -1,9 +1,9 @@
 // =========================================================
-//  flavor.dart — Aiguillage produit 7 MOTION / Red Room
+//  flavor.dart — Aiguillage produit BLACK7 ROYAL / Red Room
 // =========================================================
 //  Le repo héberge DEUX produits qui partagent le même code :
 //
-//    - 7 MOTION  : lecteur IPTV premium, toutes catégories,
+//    - BLACK7 ROYAL  : lecteur IPTV premium, toutes catégories,
 //                  biométrie OPTIONNELLE, pas de gate âge.
 //    - Red Room  : lecteur adulte premium, UNIQUEMENT le
 //                  contenu 18+, biométrie OBLIGATOIRE,
@@ -11,7 +11,7 @@
 //
 //  Plutôt que de forker le repo (double maintenance garantie
 //  + drift en 3 mois), on garde UN seul codebase avec deux
-//  entrypoints `main.dart` (7 MOTION) et `main_redroom.dart`
+//  entrypoints `main.dart` (BLACK7 ROYAL) et `main_redroom.dart`
 //  (Red Room). Chacun initialise [FlavorConfig] avant `runApp`
 //  et toute l'app lit ses paramètres via `FlavorConfig.current`.
 //
@@ -50,13 +50,13 @@ class FlavorConfig {
   final Flavor flavor;
 
   /// Nom affiché à l'utilisateur (titre de l'app, barre, splash).
-  ///   - 7 MOTION  → "7 MOTION"
+  ///   - BLACK7 ROYAL  → "BLACK7 ROYAL"
   ///   - Red Room  → "Red Room"
   final String appName;
 
   /// Tagline courte affichée sous le wordmark sur le splash et
   /// les écrans vitrine.
-  ///   - 7 MOTION  → "THE FEW · NOT FOR EVERYONE"
+  ///   - BLACK7 ROYAL  → "THE FEW · NOT FOR EVERYONE"
   ///   - Red Room  → "STRICTLY 18+ · AFTER HOURS"
   final String appTagline;
 
@@ -82,7 +82,7 @@ class FlavorConfig {
   /// code secret) — c'est l'app qui fournit le serveur implicitement.
   /// Strategie revendeur : tous les clients de cette app pointent
   /// vers le meme serveur central, identifie par leurs credentials.
-  /// Si un jour 7 MOTION et Red Room ont des serveurs differents,
+  /// Si un jour BLACK7 ROYAL et Red Room ont des serveurs differents,
   /// il suffit de changer cette ligne sur la variante concernee.
   final String iptvServerUrl;
 
@@ -126,10 +126,10 @@ class FlavorConfig {
   //  Configurations canoniques (utilisées par les mains)
   // -------------------------------------------------------
 
-  /// 7 MOTION — lecteur IPTV premium grand public.
+  /// BLACK7 ROYAL — lecteur IPTV premium grand public.
   static const FlavorConfig sevenMotion = FlavorConfig(
     flavor: Flavor.sevenMotion,
-    appName: '7 MOTION',
+    appName: 'BLACK7 ROYAL',
     appTagline: 'THE FEW · NOT FOR EVERYONE',
     adultOnly: false,
     biometricMandatory: false,
@@ -152,7 +152,7 @@ class FlavorConfig {
   /// l'utilisateur peut toujours activer un verrou bio + PIN manuelle-
   /// ment via Reglages > Securite s'il le souhaite.
   ///
-  /// Serveur IPTV : meme URL que 7 MOTION pour l'instant (decision
+  /// Serveur IPTV : meme URL que BLACK7 ROYAL pour l'instant (decision
   /// utilisateur "un seul serveur partage"). Si on veut splitter
   /// adulte / grand public sur des serveurs differents plus tard,
   /// il suffit de changer cette ligne — aucune autre modif d'app.
@@ -163,7 +163,7 @@ class FlavorConfig {
     adultOnly: true,
     biometricMandatory: false,
     requireAgeGate: true,
-    // Idem 7 MOTION : bascule 2026-06-01 vers le nouveau revendeur.
+    // Idem BLACK7 ROYAL : bascule 2026-06-01 vers le nouveau revendeur.
     iptvServerUrl: 'http://yzrgxcat.getpremiumiptv.fr',
   );
 }

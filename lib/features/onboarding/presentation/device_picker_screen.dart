@@ -10,7 +10,7 @@
 //  Le choix est persisté dans `DeviceClassRepository`. Il peut
 //  être changé plus tard dans Réglages → Apparence.
 //
-//  Design Maison Noir / 7 MOTION : surfaces charcoal, accents
+//  Design Maison Noir / BLACK7 ROYAL : surfaces charcoal, accents
 //  ember, focus rings accentEmber-bright. Aucune décoration
 //  superflue — on respire, on choisit, on continue.
 // =========================================================

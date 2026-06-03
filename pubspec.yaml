@@ -173,10 +173,10 @@ flutter_launcher_icons:
   # finalement demandé que le badge "vérifié" reste UNIQUEMENT
   # dans l'interface après le texte "MOTION", pas sur l'image
   # de l'icône launcher Android).
-  image_path: "assets/branding/logo_7motion.jpg"
+  image_path: "assets/branding/logo_black7royal.png"
   min_sdk_android: 21
   adaptive_icon_background: "#0A0A0C"
-  adaptive_icon_foreground: "assets/branding/logo_7motion.jpg"
+  adaptive_icon_foreground: "assets/branding/logo_black7royal.png"
 
 flutter:
   uses-material-design: true
@@ -190,5 +190,6 @@ flutter:
   # Logo officiel 7 MOTION, utilisé dans le splash, l'AppBar de
   # l'accueil et l'écran "À propos".
   assets:
+    - assets/branding/logo_black7royal.png
     - assets/branding/logo_7motion.jpg
     - assets/branding/logo_redroom.png

@@ -1,5 +1,5 @@
 // =========================================================
-//  app_colors.dart — Facade Cinema Mode du système 7 MOTION
+//  app_colors.dart — Facade Cinema Mode du système BLACK7 ROYAL
 // =========================================================
 //  IMPORTANT — Cette classe n'est PAS la source de vérité.
 //  C'est une façade statique qui réplique le `LumiereColors.cinema`
@@ -21,7 +21,7 @@ import 'lumiere_tokens.dart';
 
 abstract final class AppColors {
   // -------------------------------------------------------
-  //  FONDS / SURFACES (Cinema Mode 7 MOTION)
+  //  FONDS / SURFACES (Cinema Mode BLACK7 ROYAL)
   // -------------------------------------------------------
 
   /// Fond principal — charbon presque noir avec une trace de chaleur.
@@ -73,7 +73,7 @@ abstract final class AppColors {
       const Color(0xFFF0EDE9).withValues(alpha: 0.06);
 
   // -------------------------------------------------------
-  //  ACCENT EMBER (rouge braise 7 MOTION)
+  //  ACCENT EMBER (rouge braise BLACK7 ROYAL)
   // -------------------------------------------------------
 
   /// Accent principal — ember-red. Saturé mais profond, jamais Netflix-red.

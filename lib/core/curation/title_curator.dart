@@ -1,5 +1,5 @@
 // =========================================================
-//  title_curator.dart — Couche d'abstraction cinéma 7 MOTION
+//  title_curator.dart — Couche d'abstraction cinéma BLACK7 ROYAL
 // =========================================================
 //
 //  Mission : transformer les noms de chaînes IPTV bruts —

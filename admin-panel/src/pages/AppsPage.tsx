@@ -138,7 +138,7 @@ function CreateAppModal({
         <h2 className="mb-4 text-lg font-semibold tracking-tight">Nouvelle application</h2>
         <form onSubmit={submit} className="space-y-3">
           <Field label="Nom de l'app">
-            <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Ex. 7 MOTION" autoFocus />
+            <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Ex. BLACK7 ROYAL" autoFocus />
           </Field>
           <Field label="Package (identifiant Android)">
             <input value={pkg} onChange={(e) => setPkg(e.target.value)} className={`${inputCls} font-mono`} placeholder="com.exemple.monapp" />

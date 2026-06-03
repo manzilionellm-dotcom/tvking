@@ -184,7 +184,7 @@ class SubscriptionCard extends StatelessWidget {
     switch (s) {
       case SubscriptionStatus.paid:
         return 'Merci pour ton soutien — toutes les fonctions sont '
-            'débloquées sur cet appareil et tes autres installations 7 MOTION.';
+            'débloquées sur cet appareil et tes autres installations BLACK7 ROYAL.';
       case SubscriptionStatus.trialExpired:
         return 'Ton essai gratuit de $kTrialDurationDays jours est terminé. '
             'Souscris l\'abonnement à 13 €/an sur 7themotion.com pour continuer.';

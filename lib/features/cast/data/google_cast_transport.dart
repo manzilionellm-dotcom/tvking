@@ -38,7 +38,7 @@ class GoogleCastTransport implements CastTransport {
   @override
   Future<void> playStream({
     required String streamUrl,
-    String title = '7 MOTION',
+    String title = 'BLACK7 ROYAL',
     String? imageUrl,
   }) async {
     final GoogleCastApi api = GoogleCastApi.instance;

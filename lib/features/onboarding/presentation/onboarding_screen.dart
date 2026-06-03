@@ -3,7 +3,7 @@
 // =========================================================
 //  4 slides avec PageView :
 //    1. Bienvenue + identité de marque
-//    2. Identifiant 7 MOTION (MAC) + envoi WhatsApp au revendeur
+//    2. Identifiant BLACK7 ROYAL (MAC) + envoi WhatsApp au revendeur
 //       — c'est LA slide critique pour les utilisateurs qui
 //       passent par un revendeur. Ils voient leur ID, l'envoient
 //       par WhatsApp en 2 taps, puis attendent que leurs chaînes
@@ -41,7 +41,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   /// Slides d'onboarding.
   ///
   /// Note : on PASSE de `static const` a un getter parce que la
-  /// premiere slide doit afficher le nom du flavor courant (7 MOTION
+  /// premiere slide doit afficher le nom du flavor courant (BLACK7 ROYAL
   /// ou Red Room) lu via `FlavorConfig.current.appName` qui n'est
   /// pas connu a la compilation. La perf reste OK : 5 elements
   /// crees a chaque acces du getter, negligeable.
@@ -340,7 +340,7 @@ class _MacHandoffSlideState extends State<_MacHandoffSlide> {
     if (_mac == null) return;
     // Message d'activation a destination du support — le nom du
     // flavor est injecte dynamiquement pour que Red Room ne signe
-    // pas 'Bonjour 7 MOTION' a tes clients.
+    // pas 'Bonjour BLACK7 ROYAL' a tes clients.
     final String appName = FlavorConfig.current.appName;
     final String msg =
         'Bonjour $appName, voici mon identifiant pour activer mes chaînes :\n\n$_mac';

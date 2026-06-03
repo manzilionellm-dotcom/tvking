@@ -330,7 +330,7 @@ class LocalCastServer {
       // de quelques secondes entre les segments. À 30s on coupait après
       // ~5s sur certaines TVs LG (popup natif "périphérique déconnecté").
       ..idleTimeout = const Duration(minutes: 10)
-      ..userAgent = 'VLC/3.0.20 LibVLC/3.0.20 (7 MOTION Relay)'
+      ..userAgent = 'VLC/3.0.20 LibVLC/3.0.20 (BLACK7 ROYAL Relay)'
       ..autoUncompress = false;
 
     try {
@@ -497,7 +497,7 @@ class LocalCastServer {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <title>7 MOTION — Cast</title>
+  <title>BLACK7 ROYAL — Cast</title>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.min.js"></script>
   <style>
@@ -552,7 +552,7 @@ class LocalCastServer {
 <div id="stage">
   <div id="empty">
     <div id="logo">7</div>
-    <h1>7 MOTION</h1>
+    <h1>BLACK7 ROYAL</h1>
     <p>En attente d'une chaîne… Lance n'importe quelle chaîne depuis ton téléphone, elle apparaîtra ici dans 2 secondes.</p>
   </div>
   <video id="v" playsinline autoplay controls></video>

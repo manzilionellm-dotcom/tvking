@@ -53,7 +53,7 @@ import 'features/subscription/data/subscription_state.dart';
 import 'features/subscription/presentation/subscription_gate.dart';
 
 Future<void> main() async {
-  // Identité du build 7 MOTION grand public. Doit être posée AVANT
+  // Identité du build BLACK7 ROYAL grand public. Doit être posée AVANT
   // `bootApp()` (qui touche aux repos, lesquels lisent `FlavorConfig`).
   // La variante Red Room a son propre entrypoint `main_redroom.dart`
   // qui pose `FlavorConfig.redRoom` puis appelle le MÊME `bootApp()`.
@@ -139,7 +139,7 @@ Future<void> bootApp() async {
 
   // NB : la "fixation à distance" (RemoteConfigRepository qui
   // fetchait des playlists depuis un Gist toutes les 30 min) a
-  // été RETIRÉE à la demande user. 7 MOTION ne fournit aucun
+  // été RETIRÉE à la demande user. BLACK7 ROYAL ne fournit aucun
   // contenu — l'utilisateur apporte sa propre URL IPTV en local.
 
   // Credentials du mode admin (PIN + GitHub PAT + gist ID). Chargés
@@ -313,7 +313,7 @@ class _AppEntryState extends State<_AppEntry> {
       });
     }
 
-    // Gate âge : uniquement Red Room. Sur 7 MOTION, on by-pass
+    // Gate âge : uniquement Red Room. Sur BLACK7 ROYAL, on by-pass
     // directement avec `true` pour ne pas bloquer le boot.
     if (flavor.requireAgeGate) {
       AgeGateSettings.instance.isConfirmed().then((bool ok) {
@@ -407,7 +407,7 @@ class _AppEntryState extends State<_AppEntry> {
   }
 }
 
-/// Splash 7 MOTION — apparaît max 50 ms le temps que le flag
+/// Splash BLACK7 ROYAL — apparaît max 50 ms le temps que le flag
 /// onboarding soit lu depuis SharedPreferences. Toujours en Cinema
 /// Mode : c'est l'identité du produit qui s'affiche en premier.
 class _Splash extends StatelessWidget {
@@ -427,13 +427,13 @@ class _Splash extends StatelessWidget {
                   children: <Widget>[
                     const BrandLogo.splash(),
                     const SizedBox(height: 18),
-                    // Ligne "7 MOTION ✓" — le badge bleu vérifié à côté
+                    // Ligne "BLACK7 ROYAL ✓" — le badge bleu vérifié à côté
                     // du wordmark, comme sur les profils Instagram /
                     // WhatsApp / Twitter officiels.
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        Text('7 MOTION', style: AppTextStyles.headlineLarge),
+                        Text('BLACK7 ROYAL', style: AppTextStyles.headlineLarge),
                         const SizedBox(width: 8),
                         const VerifiedBadge.large(),
                       ],

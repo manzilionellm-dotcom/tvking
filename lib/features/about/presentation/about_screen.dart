@@ -92,7 +92,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 children: <Widget>[
                   const BrandLogo.medium(),
                   const SizedBox(height: 16),
-                  // "7 MOTION ✓" — badge bleu Instagram-style APRÈS
+                  // "BLACK7 ROYAL ✓" — badge bleu Instagram-style APRÈS
                   // le wordmark, comme l'a demandé l'user. Pas sur
                   // l'image du logo ni sur l'icône launcher.
                   Row(
@@ -142,7 +142,7 @@ class _AboutScreenState extends State<AboutScreen> {
 
             // ----- Mention légale TiViMate-style — affichée en TOP
             //       pour que tout nouveau user comprenne dès la 1re
-            //       visite que 7 MOTION ne vend AUCUN flux IPTV.
+            //       visite que BLACK7 ROYAL ne vend AUCUN flux IPTV.
             const LegalDisclaimer.full(),
 
             const SizedBox(height: 20),
@@ -316,7 +316,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 border: Border.all(color: AppColors.border),
               ),
               child: Text(
-                '7 MOTION est un lecteur média générique. Aucun contenu n\'est '
+                'BLACK7 ROYAL est un lecteur média générique. Aucun contenu n\'est '
                 'inclus avec l\'app. Tu es responsable des sources que tu '
                 'ajoutes et de leur conformité aux lois en vigueur dans '
                 'ton pays.',

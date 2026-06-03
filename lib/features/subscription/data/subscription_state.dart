@@ -1,7 +1,7 @@
 // =========================================================
 //  subscription_state.dart — État de l'essai/abonnement
 // =========================================================
-//  Modèle commercial 7 MOTION (demande user) :
+//  Modèle commercial BLACK7 ROYAL (demande user) :
 //    - 7 jours d'essai gratuit dès le 1er lancement
 //    - Ensuite 13 €/an, paiement sur https://7themotion.com
 //      (PAS d'in-app purchase Google Play → bypass de la

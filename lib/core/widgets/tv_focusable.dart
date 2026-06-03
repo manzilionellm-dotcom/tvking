@@ -30,7 +30,7 @@
 //    - `FocusableActionDetector` est le widget Flutter standard
 //      qui mappe les intents (ActivateIntent = touche OK/Enter)
 //      à des callbacks. On surcouche dessus pour ajouter le
-//      visuel ember 7 MOTION.
+//      visuel ember BLACK7 ROYAL.
 //    - `Scrollable.ensureVisible` cherche en remontant l'arbre
 //      le Scrollable le plus proche et anime son scroll. Si on
 //      n'est pas dans un Scrollable, il ne fait rien — donc
@@ -87,7 +87,7 @@ class TvFocusable extends StatefulWidget {
   final double focusedScale;
 
   /// Rayon de coupe (border + clip). Défaut 14 px = cohérence
-  /// avec le reste du design 7 MOTION.
+  /// avec le reste du design BLACK7 ROYAL.
   final BorderRadius? borderRadius;
 
   /// Épaisseur de la bordure au focus.

@@ -119,7 +119,7 @@ class _DeviceIdCardState extends State<DeviceIdCard> {
           if (widget.showCaption) ...<Widget>[
             const SizedBox(height: 6),
             Text(
-              'Identifie ton installation 7 MOTION. Garde ce code '
+              'Identifie ton installation BLACK7 ROYAL. Garde ce code '
               'pour le support technique de l\'app. Pour toute '
               'question sur les chaînes, contacte ton fournisseur IPTV.',
               style: AppTextStyles.bodyMedium.copyWith(

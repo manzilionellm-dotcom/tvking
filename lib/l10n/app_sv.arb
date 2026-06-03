@@ -1,6 +1,6 @@
 {
   "@@locale": "sv",
-  "appName": "7 MOTION",
+  "appName": "BLACK7 ROYAL",
   "appTagline": "Bio utan gränser",
 
   "navHome": "Hem",
@@ -92,7 +92,7 @@
   "deviceAutoSubtitle": "Auto-detektering",
   "deviceAutoDesc": "Appen gissar utifrån din skärm. Bra val om du är osäker eller använder flera enheter.",
 
-  "onboardingWelcomeTitle": "Välkommen till 7 MOTION",
+  "onboardingWelcomeTitle": "Välkommen till BLACK7 ROYAL",
   "onboardingWelcomeDesc": "Bio utan gränser. Byggd för TV, optimerad för din telefon, vacker överallt.",
   "onboardingLoadTitle": "Ladda din spellista",
   "onboardingLoadDesc": "Klistra in en M3U-URL eller dina Xtream-uppgifter. Dina kanaler dyker upp på sekunder.",

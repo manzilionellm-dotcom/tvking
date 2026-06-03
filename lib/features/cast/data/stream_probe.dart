@@ -122,7 +122,7 @@ class StreamProbe {
   /// player connu pour ne pas se faire bloquer par les filtres anti-bot
   /// de certains serveurs Xtream Codes.
   static const String _kUserAgent =
-      'VLC/3.0.20 LibVLC/3.0.20 (7 MOTION Cast Probe)';
+      'VLC/3.0.20 LibVLC/3.0.20 (BLACK7 ROYAL Cast Probe)';
 
   /// Phase 1+ : detecte si une [StreamProbeResult] en echec est due a
   /// un probleme DNS (resolveur a renvoye NODATA/NXDOMAIN ou DNS server

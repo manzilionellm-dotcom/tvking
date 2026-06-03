@@ -96,11 +96,11 @@ jobs:
       # bureau Android soit le bon. Note : on garde l'org Java
       # `com.manzilionellm.tvking` pour ne pas casser les installs
       # existantes (changer l'applicationId = nouvelle app séparée).
-      - name: Brand AndroidManifest with 7 MOTION label
+      - name: Brand AndroidManifest with BLACK7 ROYAL label
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
           if [ -f "$MANIFEST" ]; then
-            sed -i 's|android:label="tv_king"|android:label="7 MOTION"|g' "$MANIFEST"
+            sed -i 's|android:label="tv_king"|android:label="BLACK7 ROYAL"|g' "$MANIFEST"
             echo "--- Patched manifest ---"
             grep 'android:label' "$MANIFEST" || true
           fi

@@ -396,6 +396,6 @@ class PlaylistHealthChecker {
     return HttpClient()
       ..connectionTimeout = _kHealthCheckTimeout
       ..idleTimeout = _kHealthCheckTimeout
-      ..userAgent = 'VLC/3.0.20 LibVLC/3.0.20 (7 MOTION HealthChecker)';
+      ..userAgent = 'VLC/3.0.20 LibVLC/3.0.20 (BLACK7 ROYAL HealthChecker)';
   }
 }

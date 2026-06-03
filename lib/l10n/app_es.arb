@@ -1,6 +1,6 @@
 {
   "@@locale": "es",
-  "appName": "7 MOTION",
+  "appName": "BLACK7 ROYAL",
   "appTagline": "Cine sin límites",
 
   "navHome": "Inicio",
@@ -92,7 +92,7 @@
   "deviceAutoSubtitle": "Detección automática",
   "deviceAutoDesc": "La app adivina según tu pantalla. Buena opción si no estás seguro o usas varios dispositivos.",
 
-  "onboardingWelcomeTitle": "Bienvenido a 7 MOTION",
+  "onboardingWelcomeTitle": "Bienvenido a BLACK7 ROYAL",
   "onboardingWelcomeDesc": "Cine sin límites. Diseñado para TV, optimizado para tu teléfono, bonito en todas partes.",
   "onboardingLoadTitle": "Carga tu lista",
   "onboardingLoadDesc": "Pega una URL M3U o tus credenciales Xtream. Tus canales aparecen en segundos.",

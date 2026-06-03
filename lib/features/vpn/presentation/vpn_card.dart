@@ -12,7 +12,7 @@
 //    - Statut "Bientôt disponible" pour ne pas mentir au client
 //    - Propose un workflow alternatif IMMÉDIAT : utiliser un VPN
 //      tiers (Mullvad, NordVPN, ProtonVPN) au niveau système
-//      Android — 7 MOTION fonctionne au-dessus comme tout app
+//      Android — BLACK7 ROYAL fonctionne au-dessus comme tout app
 //
 //  V2 (hors scope ce sprint) :
 //    - Intégration WireGuard via flutter_wireguard_dart ou bridge
@@ -126,7 +126,7 @@ class VpnCard extends StatelessWidget {
                   child: Text(
                     'En attendant : utilise un VPN tiers (Mullvad, '
                     'ProtonVPN, NordVPN…) au niveau Android. '
-                    '7 MOTION fonctionne dessus sans config.',
+                    'BLACK7 ROYAL fonctionne dessus sans config.',
                     style: AppTextStyles.bodyMedium.copyWith(
                       fontSize: 11,
                       color: AppColors.textSecondary,

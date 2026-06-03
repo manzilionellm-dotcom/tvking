@@ -1,9 +1,9 @@
 // =========================================================
-//  legal_disclaimer.dart — Mention légale 7 MOTION
+//  legal_disclaimer.dart — Mention légale BLACK7 ROYAL
 // =========================================================
 //  Bandeau réutilisable à afficher PARTOUT où l'utilisateur
 //  pourrait s'interroger sur la légalité de l'app et confondre
-//  "7 MOTION" avec un fournisseur IPTV :
+//  "BLACK7 ROYAL" avec un fournisseur IPTV :
 //
 //    - À propos (en haut, avant Aide VIP)
 //    - Onboarding (1er lancement, avant choix appareil)
@@ -64,7 +64,7 @@ class LegalDisclaimer extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              '7 MOTION ne fournit aucun contenu ni flux IPTV. '
+              'BLACK7 ROYAL ne fournit aucun contenu ni flux IPTV. '
               'Vous devez apporter votre propre abonnement Xtream.',
               style: AppTextStyles.bodyMedium.copyWith(
                 fontSize: 11.5,
@@ -112,7 +112,7 @@ class LegalDisclaimer extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            '7 MOTION est un lecteur IPTV. '
+            'BLACK7 ROYAL est un lecteur IPTV. '
             'Nous ne vendons, ne distribuons et ne fournissons aucun flux, '
             'aucune chaîne et aucun contenu vidéo.',
             style: AppTextStyles.bodyMedium.copyWith(
@@ -133,7 +133,7 @@ class LegalDisclaimer extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             'Toute question sur les flux, chaînes ou abonnements doit être '
-            'adressée à votre fournisseur — pas à 7 MOTION. Voir la section '
+            'adressée à votre fournisseur — pas à BLACK7 ROYAL. Voir la section '
             'Aide pour les ressources et la FAQ.',
             style: AppTextStyles.bodyMedium.copyWith(
               fontSize: 12.5,
