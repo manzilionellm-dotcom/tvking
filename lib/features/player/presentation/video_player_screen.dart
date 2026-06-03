@@ -264,7 +264,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     // URL effective : overrideUrl (catch-up) sinon stream live
     final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
-    _player.open(Media(url));
+    _openMedia(url);
 
     // Restaure la dernière vitesse
     if (PlayerSettings.instance.lastSpeed != 1.0) {
@@ -359,8 +359,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           channelName: next.cleanName,
         )
         .then((int id) => _watchSessionId = id);
-    _player.open(Media(next.streamUrl));
+    _openMedia(next.streamUrl);
     _scheduleHideOverlay();
+  }
+
+  /// Ouvre une URL en FERMANT d'abord la connexion en cours.
+  ///
+  /// ANTI MULTI-VIEW (correctif critique) : quand on change de chaîne,
+  /// il faut couper l'ancien flux AVANT d'ouvrir le nouveau. Sinon, le
+  /// temps que le nouveau démarre, l'ancienne connexion HTTP est encore
+  /// ouverte → le serveur IPTV voit 2 connexions simultanées et croit à
+  /// du "multi-view" (la plupart des abonnements n'autorisent qu'UNE
+  /// connexion → blocage / bannissement). `stop()` détruit le démuxeur
+  /// libmpv → la socket de l'ancienne chaîne est fermée immédiatement.
+  /// C'est ce que font TiviMate & co. On accepte ~0,3 s de zap en plus.
+  Future<void> _openMedia(String url) async {
+    try {
+      await _player.stop();
+    } catch (_) {
+      // stop sur un player au repos = no-op, on continue.
+    }
+    await _player.open(Media(url));
   }
 
   /// Callback du `PageView` quand l'utilisateur a fini un swipe vertical.
@@ -508,7 +527,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _resumePlaybackAfterRecord() {
     if (!_recordPausedPlayback) return;
     final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
-    _player.open(Media(url));
+    _openMedia(url);
     if (mounted) setState(() => _recordPausedPlayback = false);
   }
 
@@ -822,7 +841,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _isBuffering = true;
     });
     final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
-    _player.open(Media(url));
+    _openMedia(url);
   }
 
   Future<void> _openTracks() async {
