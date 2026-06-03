@@ -361,7 +361,11 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
               child: Text(
                 searching
                     ? 'Recherche en cours...'
-                    : 'Aucun récepteur. Vérifie que ton TV est sur le même WiFi et que DLNA est activé.',
+                    // Message ADAPTÉ (correctif #2) : si le MulticastLock
+                    // n'a pas pu être pris, on le dit explicitement au
+                    // lieu d'un "aucun récepteur" muet.
+                    : (CastManager.instance.emptyPickerHint ??
+                        'Aucun récepteur. Vérifie que ton TV est sur le même WiFi et que DLNA est activé.'),
                 style: AppTextStyles.bodyMedium,
               ),
             ),

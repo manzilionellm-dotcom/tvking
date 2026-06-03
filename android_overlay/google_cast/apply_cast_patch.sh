@@ -157,6 +157,15 @@ else
   sed -i "s|</application>|${META}\n    </application>|" "$MANIFEST"
   echo "✅ Patched AndroidManifest (Cast → ${DETECTED_PKG}.CastOptionsProviderImpl)"
 fi
+# POST-CONDITION (correctif #5) : la meta-data DOIT etre presente ET
+# pointer vers le package REELLEMENT detecte (sinon MissingPlugin /
+# OptionsProvider introuvable au runtime → cast cassé en silence).
+grep -q "OPTIONS_PROVIDER_CLASS_NAME" "$MANIFEST" || {
+  echo "❌ OPTIONS_PROVIDER_CLASS_NAME absent du manifest après patch"; exit 1; }
+grep -q "${DETECTED_PKG}.CastOptionsProviderImpl" "$MANIFEST" || {
+  echo "❌ OPTIONS_PROVIDER ne pointe pas vers le package détecté (${DETECTED_PKG})"
+  grep "OPTIONS_PROVIDER" "$MANIFEST" || true
+  exit 1; }
 
 # --- 3b. Patch AndroidManifest pour RecordingForegroundService ---
 # Permissions + déclaration du service. Idempotent.
@@ -213,6 +222,13 @@ else
   sed -i "s|<application|${NET_PERMS}\n\n    <application|" "$MANIFEST"
   echo "✅ Patched AndroidManifest (INTERNET + ACCESS_NETWORK_STATE + CHANGE_WIFI_MULTICAST_STATE)"
 fi
+# POST-CONDITION (correctif #5) : sans CHANGE_WIFI_MULTICAST_STATE, le
+# MulticastLock n'a AUCUN effet → picker cast toujours vide. On echoue
+# fort si le sed n'a pas pris.
+grep -q "CHANGE_WIFI_MULTICAST_STATE" "$MANIFEST" || {
+  echo "❌ CHANGE_WIFI_MULTICAST_STATE absent — découverte cast impossible"; exit 1; }
+grep -q "android.permission.INTERNET" "$MANIFEST" || {
+  echo "❌ INTERNET absent du manifest"; exit 1; }
 
 # --- 3d. Enregistrement par CAPTURE D'ÉCRAN (MediaProjection) ---------
 # Permissions : FOREGROUND_SERVICE_MEDIA_PROJECTION (Android 14+ pour le
@@ -228,11 +244,39 @@ else
   sed -i "s|</application>|${SR_SVC}\n    </application>|" "$MANIFEST"
   echo "✅ Patched AndroidManifest (ScreenRecordService + permissions)"
 fi
+# POST-CONDITION (correctif #5) : services declares ?
+grep -q "RecordingForegroundService" "$MANIFEST" || {
+  echo "❌ RecordingForegroundService non déclaré"; exit 1; }
+grep -q "ScreenRecordService" "$MANIFEST" || {
+  echo "❌ ScreenRecordService non déclaré"; exit 1; }
+
+# --- 4. COHÉRENCE DU PACKAGE (correctif #4/#5) -----------------------
+# Les .kt copiés ont leur `package` réécrit en $DETECTED_PKG, ils sont
+# copiés dans $ANDROID_PKG_PATH (dérivé de $DETECTED_PKG), et le manifest
+# référence ${DETECTED_PKG}.CastOptionsProviderImpl. Si l'un diverge, les
+# MethodChannels ne sont jamais câblés (MissingPluginException malgré "✓"
+# au wiring). On assert que les 3 dérivent bien de la même variable.
+EXPECTED_KT="$ANDROID_PKG_PATH/CastOptionsProviderImpl.kt"
+if [ ! -f "$EXPECTED_KT" ]; then
+  echo "❌ CastOptionsProviderImpl.kt absent de $ANDROID_PKG_PATH"; exit 1
+fi
+if ! grep -q "^package ${DETECTED_PKG}\$" "$EXPECTED_KT"; then
+  echo "❌ Le package du .kt copié ne correspond pas à ${DETECTED_PKG}"
+  head -40 "$EXPECTED_KT" | grep '^package' || true
+  exit 1
+fi
+echo "✅ Cohérence package OK : ${DETECTED_PKG} (kt + path + manifest)"
 
 echo "----- AFTER: build.gradle (last 30 lines) -----"
 tail -30 "$BUILD_GRADLE"
-echo "----- AFTER: AndroidManifest.xml -----"
-cat "$MANIFEST"
+
+# --- 5. RÉCAP "MANIFEST FINAL" (correctif #5/#7) ---------------------
+echo "============================================="
+echo "  MANIFEST FINAL — permissions réseau / cast"
+echo "============================================="
+grep -E "uses-permission" "$MANIFEST" | sed 's/^/  • /' || true
+echo "  --- meta-data / services cast & médias ---"
+grep -E "OPTIONS_PROVIDER_CLASS_NAME|RecordingForegroundService|ScreenRecordService" "$MANIFEST" | sed 's/^/  • /' || true
 
 echo "============================================="
 echo "  ✅ Cast SDK overlay applied"

@@ -34,8 +34,9 @@
 //  certains environnements qui ne filtrent pas le multicast).
 // =========================================================
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
+import '../../../core/observability/structured_logger.dart';
 
 class MulticastLock {
   MulticastLock._();
@@ -45,6 +46,12 @@ class MulticastLock {
   static const MethodChannel _channel =
       MethodChannel('com.manzilionellm.tvking/multicast');
 
+  /// Résultat de la DERNIÈRE tentative `acquire()`. Lu par le
+  /// CastManager : si la découverte ne trouve rien ET que ce flag est
+  /// `false`, on affiche un message UX actionnable (permissions WiFi /
+  /// réseau) au lieu d'un échec muet.
+  bool lastAcquireOk = false;
+
   /// Prend le lock multicast. Retourne `true` si le lock a bien été
   /// acquis côté natif, `false` sinon (pas de bridge, pas de WiFi,
   /// permission absente). On NE lève PAS : l'appelant continue la
@@ -52,15 +59,36 @@ class MulticastLock {
   Future<bool> acquire() async {
     try {
       final bool? ok = await _channel.invokeMethod<bool>('acquire');
-      return ok ?? false;
+      lastAcquireOk = ok ?? false;
+      if (!lastAcquireOk) {
+        StructuredLogger.instance.warn(
+          domain: 'cast',
+          event: 'multicast_lock.acquire_failed',
+          ctx: const <String, Object?>{'reason': 'native_returned_false'},
+        );
+      }
+      return lastAcquireOk;
     } on MissingPluginException {
       // Pas d'implémentation native (iOS / Web / test) — on laisse
       // la découverte tenter sa chance.
+      lastAcquireOk = false;
+      StructuredLogger.instance.warn(
+        domain: 'cast',
+        event: 'multicast_lock.acquire_failed',
+        ctx: const <String, Object?>{'reason': 'missing_plugin'},
+      );
       return false;
     } on PlatformException catch (e) {
-      if (kDebugMode) {
-        debugPrint('[MulticastLock] acquire échoué: ${e.message}');
-      }
+      lastAcquireOk = false;
+      StructuredLogger.instance.warn(
+        domain: 'cast',
+        event: 'multicast_lock.acquire_failed',
+        ctx: <String, Object?>{
+          'reason': 'platform_exception',
+          'code': e.code,
+          'message': e.message,
+        },
+      );
       return false;
     }
   }
@@ -74,9 +102,11 @@ class MulticastLock {
     } on MissingPluginException {
       // rien à faire
     } on PlatformException catch (e) {
-      if (kDebugMode) {
-        debugPrint('[MulticastLock] release échoué: ${e.message}');
-      }
+      StructuredLogger.instance.warn(
+        domain: 'cast',
+        event: 'multicast_lock.release_failed',
+        ctx: <String, Object?>{'code': e.code, 'message': e.message},
+      );
     }
   }
 }

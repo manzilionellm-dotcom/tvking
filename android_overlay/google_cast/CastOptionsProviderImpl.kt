@@ -42,6 +42,24 @@ import com.google.android.gms.cast.framework.media.NotificationOptions
 
 class CastOptionsProviderImpl : OptionsProvider {
 
+    companion object {
+        /// Custom Styled Media Receiver "BLACK7 ROYAL" enregistré sur la
+        /// Google Cast SDK Developer Console (compte
+        /// manzilionel.lm@gmail.com). ⚠️ STATUT "UNPUBLISHED" : tant
+        /// qu'il n'est pas PUBLIÉ sur la Console, il ne fonctionne que
+        /// sur les Chromecast déclarées comme appareils de test. Sur les
+        /// autres TV → découverte OK mais SESSION QUI ÉCHOUE. Pour le
+        /// grand public, il FAUT "Publish" cet App ID sur la Console.
+        private const val RECEIVER_APP_ID = "46F815A5"
+
+        /// Default Media Receiver de Google — TOUJOURS disponible, sans
+        /// branding. Sert de fallback pour ISOLER une panne de receiver
+        /// custom (non publié) d'une panne de découverte : si le cast
+        /// marche avec celui-ci mais pas avec le custom, le problème est
+        /// la publication du receiver, pas le réseau.
+        private const val DEFAULT_RECEIVER = "CC1AD845"
+    }
+
     override fun getCastOptions(context: Context): CastOptions {
         // Notification persistante quand un cast est actif. Style
         // YouTube : "Lecture sur Salon LG ⏯".
@@ -59,14 +77,21 @@ class CastOptionsProviderImpl : OptionsProvider {
             .setNotificationOptions(notificationOptions)
             .build()
 
+        // Choix du receiver :
+        //   - Build DEBUG  → Default Media Receiver (CC1AD845), TOUJOURS
+        //     disponible → le cast MARCHE même si le receiver custom
+        //     n'est pas publié. Permet d'isoler les pannes.
+        //   - Build RELEASE → receiver custom brandé (RECEIVER_APP_ID).
+        // ⚠️ NB : les APK actuels sont buildés en DEBUG (flutter build
+        // apk --debug), donc ils utilisent le Default Receiver. Quand le
+        // receiver custom sera PUBLIÉ sur la Cast Console, on pourra
+        // passer en release ou forcer RECEIVER_APP_ID.
+        val isDebuggable = (context.applicationInfo.flags and
+            android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        val appId = if (isDebuggable) DEFAULT_RECEIVER else RECEIVER_APP_ID
+
         return CastOptions.Builder()
-            // App ID = Custom Styled Media Receiver "7 MOTION"
-            // enregistre sur la Google Cast SDK Developer Console
-            // (compte manzilionel.lm@gmail.com, statut Unpublished
-            // au 2026-05-31). Skin URL pointe vers
-            // https://99999.7themotion.com/cast-skin.css → logo
-            // 7 MOTION, fond charbon, accent ember sur la TV.
-            .setReceiverApplicationId("46F815A5")
+            .setReceiverApplicationId(appId)
             .setCastMediaOptions(mediaOptions)
             // Resume la session si l'app est tuée puis relancée
             // dans les 30 min — l'utilisateur ne se reconnecte pas
