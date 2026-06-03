@@ -122,6 +122,19 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
                       ),
                       const SizedBox(height: 22),
 
+                      // ----- Anti-coupure (anti-buffering) -----
+                      _toggle(
+                        label: 'Anti-coupure',
+                        sublabel:
+                            'Si la connexion faiblit, le lecteur puise dans '
+                            'le tampon au lieu de couper l\'image. Démarrage '
+                            'un peu plus long, mais lecture sans coupure.',
+                        value: PlayerSettings.instance.antiFreeze,
+                        onChanged: (bool v) =>
+                            PlayerSettings.instance.setAntiFreeze(v),
+                      ),
+                      const SizedBox(height: 14),
+
                       // ----- Décodage hardware -----
                       _toggle(
                         label: 'Décodage matériel',

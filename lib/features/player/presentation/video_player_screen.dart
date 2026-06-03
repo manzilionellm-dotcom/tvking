@@ -619,8 +619,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       final dynamic native = (_player.platform as dynamic);
       await native?.setProperty('hwdec', hwdec);
       await native?.setProperty('cache', 'yes');
-      // Maximum 4 secondes de retour en arrière à mettre en cache
-      await native?.setProperty('cache-secs', s.bufferSeconds.toString());
+      // Secondes de cache conservées. En mode anti-coupure on garde une
+      // longue avance bufferisée (>=60s) ; sinon on s'aligne sur le
+      // buffer réglé par l'utilisateur.
+      final int cacheSecs =
+          s.antiFreeze ? s.antiFreezeReadaheadSeconds : s.bufferSeconds;
+      await native?.setProperty('cache-secs', cacheSecs.toString());
 
       // === STABILITÉ LONGUE DURÉE (fix bug "lit 2 min et recommence") ===
       //
@@ -647,20 +651,53 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             'reconnect_on_network_error=1',
       );
 
-      // 2. Cache demuxer généreux — absorbe les hoquets réseau
-      //    sans interrompre la lecture. Valeurs élevées car les
-      //    téléphones modernes ont >4 GB RAM.
-      //    - demuxer-max-bytes      : 512 MiB de buffer avant
-      //    - demuxer-max-back-bytes : 128 MiB de back-buffer
-      //    - demuxer-readahead-secs : 20s d'avance bufferisée
-      await native?.setProperty('demuxer-max-bytes', '536870912');
-      await native?.setProperty('demuxer-max-back-bytes', '134217728');
-      await native?.setProperty('demuxer-readahead-secs', '20');
+      // 2. TAMPON DEMUXER + STRATÉGIE DE REBUFFER
+      //    Deux profils selon le réglage "Anti-coupure" :
+      if (s.antiFreeze) {
+        // --- Mode ANTI-COUPURE ("anti-buffering") ---
+        //  Objectif : l'image ne se coupe JAMAIS. On pré-charge un gros
+        //  matelas de vidéo et, si le tampon se vide (réseau qui
+        //  faiblit), on met en pause + recharge PROPREMENT au lieu
+        //  d'afficher des images saccadées / cassées. Tant qu'il reste
+        //  de l'avance, la lecture continue même sur connexion pourrie.
+        //    - demuxer-max-bytes      : 1 GiB de tampon devant (gros
+        //      matelas ; les box/TV modernes ont assez de RAM)
+        //    - demuxer-max-back-bytes : 256 MiB de back-buffer (rewind)
+        //    - demuxer-readahead-secs : on lit loin devant (>=60 s)
+        await native?.setProperty('demuxer-max-bytes', '1073741824');
+        await native?.setProperty('demuxer-max-back-bytes', '268435456');
+        await native?.setProperty(
+          'demuxer-readahead-secs',
+          s.antiFreezeReadaheadSeconds.toString(),
+        );
 
-      // 3. Ne pas pause sur cache underrun — préfère un micro
-      //    rebuffer transparent qu'un freeze de la lecture.
-      await native?.setProperty('cache-pause', 'no');
-      await native?.setProperty('cache-pause-wait', '1');
+        // cache-pause=yes : sur tampon vide, on PAUSE et on recharge
+        // (image figée nette + reprise propre) plutôt que de jouer
+        // saccadé ou de couper.
+        await native?.setProperty('cache-pause', 'yes');
+        // cache-pause-initial=yes : au démarrage, on ATTEND d'avoir
+        // rempli le matelas avant de lancer la lecture. C'est le
+        // "délai" qu'on accepte en échange du zéro-coupure.
+        await native?.setProperty('cache-pause-initial', 'yes');
+        // cache-pause-wait : secondes à (re)bufferiser avant de
+        // (re)démarrer = la taille du coussin anti-coupure.
+        await native?.setProperty(
+          'cache-pause-wait',
+          s.antiFreezePrerollSeconds.toString(),
+        );
+      } else {
+        // --- Mode FAIBLE LATENCE (au plus près du direct) ---
+        //  Plus réactif, mais plus sensible aux hoquets réseau.
+        //    - demuxer-max-bytes      : 512 MiB
+        //    - demuxer-max-back-bytes : 128 MiB
+        //    - demuxer-readahead-secs : 20 s d'avance
+        await native?.setProperty('demuxer-max-bytes', '536870912');
+        await native?.setProperty('demuxer-max-back-bytes', '134217728');
+        await native?.setProperty('demuxer-readahead-secs', '20');
+        // Micro-rebuffer transparent plutôt qu'un freeze.
+        await native?.setProperty('cache-pause', 'no');
+        await native?.setProperty('cache-pause-wait', '1');
+      }
 
       // 4. Timeout réseau confortable (60s vs 10s par défaut).
       //    Sur 4G/5G en mobilité, les RTT peuvent piquer >10s.

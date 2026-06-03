@@ -44,6 +44,7 @@ class PlayerSettings extends ChangeNotifier {
   static const String _kHwdecKey = 'player.hardware_decode';
   static const String _kStatsKey = 'player.show_stats';
   static const String _kSpeedKey = 'player.last_speed';
+  static const String _kAntiFreezeKey = 'player.anti_freeze';
 
   /// Buffer en secondes (5 à 60). Plus c'est haut, plus
   /// la lecture résiste aux coupures réseau, mais plus
@@ -58,6 +59,19 @@ class PlayerSettings extends ChangeNotifier {
   /// Affiche l'overlay de statistiques (FPS, bitrate, etc.).
   bool _showStats = false;
 
+  /// Mode ANTI-COUPURE ("anti-buffering"). Quand activé, le lecteur
+  /// privilégie une image qui ne se coupe JAMAIS, quitte à accepter un
+  /// démarrage plus long et une latence "live" plus élevée :
+  ///   - il pré-remplit un gros tampon AVANT de lancer la lecture,
+  ///   - si le tampon se vide (réseau qui faiblit), il met en pause et
+  ///     recharge proprement au lieu d'afficher des images saccadées /
+  ///     cassées,
+  ///   - tant qu'il reste de l'avance bufferisée, la lecture continue
+  ///     même si la connexion est mauvaise.
+  /// Désactivé = mode "faible latence" (plus proche du direct, mais
+  /// plus sensible aux hoquets réseau).
+  bool _antiFreeze = true;
+
   /// Dernière vitesse choisie (pour la restaurer entre flux).
   double _lastSpeed = 1.0;
 
@@ -68,7 +82,20 @@ class PlayerSettings extends ChangeNotifier {
   AspectRatioMode get aspectMode => _aspectMode;
   bool get hardwareDecode => _hardwareDecode;
   bool get showStats => _showStats;
+  bool get antiFreeze => _antiFreeze;
   double get lastSpeed => _lastSpeed;
+
+  /// Nombre de secondes de vidéo à pré-charger avant de (re)démarrer la
+  /// lecture en mode anti-coupure. C'est le "matelas" dans lequel le
+  /// lecteur puise quand le réseau faiblit. On le dérive du buffer
+  /// configuré, borné entre 8 et 45 s pour rester raisonnable au
+  /// démarrage tout en offrant un vrai coussin.
+  int get antiFreezePrerollSeconds => _bufferSeconds.clamp(8, 45);
+
+  /// Secondes d'avance à lire (readahead) en mode anti-coupure. On vise
+  /// large (au moins 60 s) pour absorber de longues faiblesses réseau.
+  int get antiFreezeReadaheadSeconds =>
+      _bufferSeconds < 60 ? 60 : _bufferSeconds;
 
   /// Taille du buffer en octets pour la config de media_kit.
   /// On vise ~1 Mo/s pour du HD, ~5 Mo/s pour du 4K, ~20 Mo/s
@@ -84,6 +111,7 @@ class PlayerSettings extends ChangeNotifier {
     _aspectMode = AspectRatioMode.fromCode(prefs.getString(_kAspectKey));
     _hardwareDecode = prefs.getBool(_kHwdecKey) ?? true;
     _showStats = prefs.getBool(_kStatsKey) ?? false;
+    _antiFreeze = prefs.getBool(_kAntiFreezeKey) ?? true;
     _lastSpeed = prefs.getDouble(_kSpeedKey) ?? 1.0;
     _loaded = true;
     notifyListeners();
@@ -122,6 +150,14 @@ class PlayerSettings extends ChangeNotifier {
     notifyListeners();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kStatsKey, enabled);
+  }
+
+  Future<void> setAntiFreeze(bool enabled) async {
+    if (enabled == _antiFreeze) return;
+    _antiFreeze = enabled;
+    notifyListeners();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kAntiFreezeKey, enabled);
   }
 
   Future<void> setLastSpeed(double speed) async {
