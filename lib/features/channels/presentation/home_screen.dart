@@ -33,6 +33,7 @@ import '../../cast/presentation/cast_mini_bar.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/data/remote_source_repository.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../../security/data/biometric_auth.dart';
 import '../data/recently_watched_repository.dart';
@@ -69,6 +70,8 @@ class _HomeScreenState extends State<HomeScreen> {
   // l'ancienne nav). Voir floating_bottom_nav.dart pour la liste
   // des onglets : Home, Trending, Live, Favoris, Profil.
   int _currentNavIndex = 0;
+  /// `true` pendant une actualisation manuelle de la liste (bouton ↻).
+  bool _refreshing = false;
   final FavoritesRepoSnapshot _favSnap = FavoritesRepoSnapshot();
 
   /// Cache mémoïsé du bucketing par genre. La home se rebuild à
@@ -114,6 +117,35 @@ class _HomeScreenState extends State<HomeScreen> {
   // de code. Le « + » et l'écran vide ouvrent la feuille qui montre la
   // MAC (à donner au revendeur) + le bouton « Vérifier mon abonnement ».
   Future<void> _openAddPlaylist() => showSourceChoiceSheet(context);
+
+  /// Actualise la liste des chaînes à la demande (bouton ↻ en haut).
+  /// Recharge toutes les playlists (le fournisseur a pu ajouter du
+  /// contenu) ET re-vérifie une éventuelle source poussée par MAC.
+  Future<void> _refreshList() async {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    setState(() => _refreshing = true);
+    int n = 0;
+    try {
+      // Source assignée par le revendeur (au cas où elle a changé).
+      await RemoteSourceRepository.sync();
+      // Recharge toutes les playlists → nouvelles chaînes via le Stream.
+      n = await PlaylistRepository.instance.refreshAll();
+    } catch (_) {
+      // best-effort
+    }
+    if (!mounted) return;
+    setState(() => _refreshing = false);
+    messenger.showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text(
+          n > 0
+              ? 'Liste actualisée — chaînes rechargées'
+              : 'Liste à jour',
+        ),
+      ),
+    );
+  }
 
   Future<void> _openSearch() => Navigator.of(context).push<void>(
         MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
@@ -260,11 +292,23 @@ class _HomeScreenState extends State<HomeScreen> {
       title: const BrandLogo.compact(),
       titleSpacing: CinematicSpacing.l,
       actions: <Widget>[
-        // "+" toujours visible : ajouter ses propres codes (Xtream /
-        // M3U / M3U en lot) directement depuis l'accueil, à tout
-        // moment — pas seulement quand la liste est vide.
+        // Actualiser la liste : recharge les chaînes (utile quand le
+        // fournisseur a ajouté du contenu). La liste s'aussi auto-
+        // actualise toute seule toutes les 24 h (cf. main.dart).
         IconButton(
-          tooltip: 'Ajouter mes codes / Activer',
+          tooltip: 'Actualiser la liste',
+          onPressed: _refreshing ? null : _refreshList,
+          icon: _refreshing
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.refresh_rounded),
+        ),
+        // "+" toujours visible : se connecter / activer à tout moment.
+        IconButton(
+          tooltip: 'Me connecter / Activer',
           onPressed: () => showSourceChoiceSheet(context),
           icon: const Icon(Icons.add_rounded),
         ),

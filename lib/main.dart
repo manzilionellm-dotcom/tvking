@@ -160,6 +160,15 @@ Future<void> bootApp() async {
     PlaylistRepository.instance.refreshStale();
   });
 
+  // AUTO-ACTUALISATION toutes les 24 h tant que l'app tourne : recharge
+  // les playlists pour récupérer le contenu que le fournisseur a ajouté,
+  // et re-vérifie la source poussée par MAC. (À l'ouverture de l'app, le
+  // refreshStale ci-dessus couvre déjà le cas "app relancée".) Silencieux.
+  Timer.periodic(const Duration(hours: 24), (_) {
+    RemoteSourceRepository.sync();
+    PlaylistRepository.instance.refreshAll();
+  });
+
   // Choix Cinema / Daylight / System — chargé avant runApp pour
   // éviter un flash de mauvais thème au démarrage.
   await ThemeModeRepository.instance.initialize();
