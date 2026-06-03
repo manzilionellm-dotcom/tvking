@@ -10,6 +10,7 @@
 // =========================================================
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -449,16 +450,49 @@ class _RecordingPlayerState extends State<_RecordingPlayer> {
   late final Player _player;
   late final VideoController _controller;
 
+  /// Message d'erreur lisible (null = lecture OK). Évite l'écran NOIR
+  /// muet quand le fichier est vide, manquant ou illisible.
+  String? _errorMsg;
+  StreamSubscription<String>? _errSub;
+
   @override
   void initState() {
     super.initState();
     _player = Player();
     _controller = VideoController(_player);
-    _player.open(Media(widget.recording.filePath));
+    _errSub = _player.stream.error.listen((String e) {
+      if (mounted && _errorMsg == null) {
+        setState(() => _errorMsg = 'Lecture impossible : enregistrement '
+            'illisible ou incomplet.');
+      }
+    });
+    _openOrFail();
+  }
+
+  /// Vérifie que le fichier existe ET n'est pas vide AVANT d'ouvrir, pour
+  /// donner un message clair plutôt qu'un écran noir.
+  Future<void> _openOrFail() async {
+    try {
+      final File f = File(widget.recording.filePath);
+      final bool ok = await f.exists();
+      final int size = ok ? await f.length() : 0;
+      if (!ok || size == 0) {
+        if (mounted) {
+          setState(() => _errorMsg = ok
+              ? 'Enregistrement vide (0 octet) — rien n\'a été capturé.'
+              : 'Fichier introuvable — il a peut-être été supprimé.');
+        }
+        return;
+      }
+      await _player.open(Media(widget.recording.filePath));
+    } catch (e) {
+      if (mounted) setState(() => _errorMsg = 'Lecture impossible : $e');
+    }
   }
 
   @override
   void dispose() {
+    _errSub?.cancel();
     _player.dispose();
     super.dispose();
   }
@@ -481,6 +515,27 @@ class _RecordingPlayerState extends State<_RecordingPlayer> {
           Center(
             child: Video(controller: _controller),
           ),
+          // Message clair en cas de fichier vide / illisible (au lieu
+          // d'un écran noir muet).
+          if (_errorMsg != null)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    const Icon(Icons.error_outline_rounded,
+                        color: Colors.white70, size: 48),
+                    const SizedBox(height: 12),
+                    Text(
+                      _errorMsg!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           // Logo flottant de la chaîne — style "France 2 en bas-droite".
           // Affiché si le Recording avait stocké un logoUrl (recordings
           // créés APRÈS la migration DB ; pour les anciens, pas de logo).
