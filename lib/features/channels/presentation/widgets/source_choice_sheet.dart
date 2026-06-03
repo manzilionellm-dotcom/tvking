@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../core/support/support_choice_sheet.dart';
+import '../../../../core/support/vip_support.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../device/data/device_identity.dart';
@@ -102,10 +103,24 @@ class _SourceChoiceSheet extends StatelessWidget {
             _SourceTile(
               icon: Icons.support_agent_rounded,
               title: 'Activer l\'app',
-              subtitle: 'Donne ta MAC à ton revendeur pour qu\'il active',
-              onTap: () {
-                Navigator.of(context).pop();
-                showActivationSheet(context);
+              subtitle: 'Contacte-nous (ta MAC est déjà jointe au message)',
+              onTap: () async {
+                // Redirige DIRECTEMENT vers le contact (WhatsApp) avec la
+                // MAC pré-remplie : le client n'a qu'à envoyer. Si WhatsApp
+                // n'est pas dispo, on retombe sur l'écran MAC classique
+                // (copier + autres canaux).
+                final String mac = await DeviceIdentity.instance.mac;
+                final bool ok = await VipSupport.openWhatsApp(
+                  customMessage:
+                      'Bonjour, je veux activer 7 MOTION. '
+                      'Mon identifiant (MAC) : $mac',
+                );
+                if (!context.mounted) return;
+                if (ok) {
+                  Navigator.of(context).pop();
+                } else {
+                  showActivationSheet(context);
+                }
               },
             ),
             const SizedBox(height: 12),
