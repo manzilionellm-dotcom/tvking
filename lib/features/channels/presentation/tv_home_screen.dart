@@ -28,6 +28,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/tv_palette.dart';
 import '../../../core/widgets/tv_accent_scope.dart';
 import '../../../core/widgets/tv_focusable.dart';
+import '../../../core/widgets/tv_route.dart';
 import '../../epg/presentation/tv_guide_screen.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
@@ -163,13 +164,13 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           // ----- Top bar avec brand + actions -----
           _TvTopBar(
             onSearch: () => Navigator.of(context).push<void>(
-              MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
+              tvRoute<void>(const SearchScreen()),
             ),
             onGuide: () => Navigator.of(context).push<void>(
-              MaterialPageRoute<void>(builder: (_) => const TvGuideScreen()),
+              tvRoute<void>(const TvGuideScreen()),
             ),
             onSettings: () => Navigator.of(context).push<void>(
-              MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+              tvRoute<void>(const SettingsScreen()),
             ),
           ),
 
@@ -228,8 +229,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 channels: favs,
                 onTap: _onChannelTap,
                 onSeeAll: () => Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const FavoritesScreen(),
+                  tvRoute<void>(
+                    const FavoritesScreen(),
                   ),
                 ),
               );
@@ -243,8 +244,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               channels: sports.take(20).toList(),
               onTap: _onChannelTap,
               onSeeAll: () => Navigator.of(context).push<void>(
-                MaterialPageRoute<void>(
-                  builder: (_) => const CategorySectionScreen(
+                tvRoute<void>(
+                  const CategorySectionScreen(
                     title: 'Sports',
                     genreFilter: ChannelGenre.sports,
                   ),
@@ -258,9 +259,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             channels: live.take(20).toList(),
             onTap: _onChannelTap,
             onSeeAll: () => Navigator.of(context).push<void>(
-              MaterialPageRoute<void>(
-                builder: (_) =>
-                    const CategorySectionScreen(title: 'Live TV'),
+              tvRoute<void>(
+                const CategorySectionScreen(title: 'Live TV'),
               ),
             ),
           ),
@@ -272,8 +272,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               channels: movies.take(20).toList(),
               onTap: _onChannelTap,
               onSeeAll: () => Navigator.of(context).push<void>(
-                MaterialPageRoute<void>(
-                  builder: (_) => const CategorySectionScreen(
+                tvRoute<void>(
+                  const CategorySectionScreen(
                     title: 'Films',
                     genreFilter: ChannelGenre.movies,
                   ),
@@ -288,8 +288,8 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               channels: series.take(20).toList(),
               onTap: _onChannelTap,
               onSeeAll: () => Navigator.of(context).push<void>(
-                MaterialPageRoute<void>(
-                  builder: (_) => const CategorySectionScreen(
+                tvRoute<void>(
+                  const CategorySectionScreen(
                     title: 'Séries',
                     genreFilter: ChannelGenre.series,
                   ),
@@ -355,8 +355,8 @@ class _TvTopBar extends StatelessWidget {
             icon: Icons.live_tv_rounded,
             label: 'Direct',
             onTap: () => Navigator.of(context).push<void>(
-              MaterialPageRoute<void>(
-                builder: (_) => const CategorySectionScreen(title: 'Live TV'),
+              tvRoute<void>(
+                const CategorySectionScreen(title: 'Live TV'),
               ),
             ),
           ),
@@ -365,8 +365,8 @@ class _TvTopBar extends StatelessWidget {
             icon: Icons.movie_outlined,
             label: 'Films',
             onTap: () => Navigator.of(context).push<void>(
-              MaterialPageRoute<void>(
-                builder: (_) => const CategorySectionScreen(
+              tvRoute<void>(
+                const CategorySectionScreen(
                   title: 'Films',
                   genreFilter: ChannelGenre.movies,
                 ),
@@ -378,8 +378,8 @@ class _TvTopBar extends StatelessWidget {
             icon: Icons.video_library_outlined,
             label: 'Séries',
             onTap: () => Navigator.of(context).push<void>(
-              MaterialPageRoute<void>(
-                builder: (_) => const CategorySectionScreen(
+              tvRoute<void>(
+                const CategorySectionScreen(
                   title: 'Séries',
                   genreFilter: ChannelGenre.series,
                 ),

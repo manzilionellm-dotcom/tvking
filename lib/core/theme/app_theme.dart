@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import 'app_colors.dart';
 import 'app_text_styles.dart';
 import 'lumiere_tokens.dart';
+import 'tv_palette.dart';
 
 abstract final class AppTheme {
   /// Cinema Mode (dark) — identité Maison Noir, défaut.
@@ -40,6 +41,46 @@ abstract final class AppTheme {
 
   /// Alias historique — l'ancien code consomme `AppTheme.dark`.
   static ThemeData get dark => cinema;
+
+  /// Thème VIOLET ROYAL — réservé à la version Télévision. Dérivé des
+  /// tokens `TvRoyal`, il sert à recoloriser les composants Material
+  /// (interrupteurs, sliders, sélections…) quand on enveloppe un écran
+  /// secondaire poussé depuis la TV (cf. `tvRoute`). On réutilise le
+  /// même constructeur que l'ember : on lui passe juste une palette
+  /// `LumiereColors` dont les "ember*" portent en réalité des violets.
+  static ThemeData get tvViolet => _buildTheme(
+        brightness: Brightness.dark,
+        palette: _violetPalette,
+        primaryOnAccent: TvRoyal.voidSurface,
+      );
+
+  /// Palette LumiereColors peuplée avec les valeurs violettes de TvRoyal.
+  /// Les champs gardent leur nom historique ("accentEmber"…) mais
+  /// transportent des violets — l'API reste stable, seules les valeurs
+  /// changent (même principe que `LumiereColors.daylight`).
+  static final LumiereColors _violetPalette = LumiereColors(
+    canvas: TvRoyal.background,
+    voidSurface: TvRoyal.voidSurface,
+    elevated: TvRoyal.surface,
+    glass: TvRoyal.surfaceHigh,
+    overcast: TvRoyal.surfaceOverlay,
+    accentEmber: TvRoyal.accent,
+    emberGlow: TvRoyal.accentGlow,
+    emberDeep: TvRoyal.accentDeep,
+    emberHalo: TvRoyal.accentGlow,
+    textPrimary: TvRoyal.textPrimary,
+    textSecondary: TvRoyal.textSecondary,
+    textTertiary: TvRoyal.textTertiary,
+    textMuted: TvRoyal.textMuted,
+    statusSuccess: TvRoyal.success,
+    statusWarning: TvRoyal.warning,
+    statusError: TvRoyal.live,
+    statusInfo: TvRoyal.secondary,
+    border: TvRoyal.border,
+    scrim: const Color(0xCC0F0D15),
+    canvasGradient: TvRoyal.backgroundGradient,
+    heroScrim: TvRoyal.heroScrim,
+  );
 
   // ============================================================
   //  Constructeur partagé — APIs Flutter 3.16+ uniquement
