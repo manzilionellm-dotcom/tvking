@@ -77,7 +77,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         icon: Icons.workspace_premium_rounded,
         title: 'Tout ce qu\'il te faut',
         description:
-            'Sans publicité. Cast vers TV, ordi, tablette. Enregistrement en parallèle. VPN intégré. Lecteur 4K/8K. QR-cast. Recherche instantanée.',
+            'Sans publicité. Cast vers TV, ordi, tablette. Enregistrement en parallèle. Lecteur 4K/8K. QR-cast. Recherche instantanée.',
       ),
       const _OnboardingPage(
         icon: Icons.celebration_outlined,
