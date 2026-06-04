@@ -20,6 +20,7 @@ import '../../../core/branding/brand_logo.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../channels/domain/channel.dart';
+import '../../channels/presentation/favorites_screen.dart';
 import '../../channels/presentation/search_screen.dart';
 import '../../channels/presentation/widgets/empty_state.dart';
 import '../../channels/presentation/widgets/source_choice_sheet.dart';
@@ -55,7 +56,11 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
+      // Fond dégradé subtil (même profondeur "cinéma" que la TV), en
+      // gardant l'identité rouge ember du mobile.
+      body: DecoratedBox(
+        decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+        child: SafeArea(
         child: StreamBuilder<List<Channel>>(
           stream: PlaylistRepository.instance.channelsStream,
           initialData: PlaylistRepository.instance.currentChannels,
@@ -77,6 +82,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
               ],
             );
           },
+        ),
         ),
       ),
     );
@@ -390,30 +396,92 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
   }
 
   // ----- Barre du bas -----
+  //  4 destinations claires avec libellés et état actif. "Accueil" est
+  //  l'onglet courant (mis en avant ember). Avant, l'icône cœur ouvrait
+  //  par erreur l'ajout de source — corrigé : Favoris ouvre les favoris,
+  //  et un bouton "Ajouter" dédié gère l'ajout de playlist.
   Widget _buildBottomBar() {
     return Container(
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: AppColors.surface)),
+      decoration: BoxDecoration(
+        color: AppColors.surface.withValues(alpha: 0.35),
+        border: const Border(top: BorderSide(color: AppColors.surface)),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.only(top: 6, bottom: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: <Widget>[
-          IconButton(
-            icon: Icon(Icons.home_rounded, color: AppColors.accent, size: 28),
-            onPressed: () => setState(() => _countryCode = null),
+          _BottomNavItem(
+            icon: Icons.home_rounded,
+            label: 'Accueil',
+            active: true,
+            onTap: () => setState(() => _countryCode = null),
           ),
-          IconButton(
-            icon: const Icon(Icons.search_rounded, size: 28),
-            onPressed: () => Navigator.of(context).push<void>(
+          _BottomNavItem(
+            icon: Icons.search_rounded,
+            label: 'Recherche',
+            active: false,
+            onTap: () => Navigator.of(context).push<void>(
               MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.favorite_rounded, size: 28),
-            onPressed: () => showSourceChoiceSheet(context),
+          _BottomNavItem(
+            icon: Icons.favorite_rounded,
+            label: 'Favoris',
+            active: false,
+            onTap: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(builder: (_) => const FavoritesScreen()),
+            ),
+          ),
+          _BottomNavItem(
+            icon: Icons.add_circle_outline_rounded,
+            label: 'Ajouter',
+            active: false,
+            onTap: () => showSourceChoiceSheet(context),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Élément de la barre de navigation du bas (mobile) — icône + libellé,
+/// teinté ember quand actif, estompé sinon.
+class _BottomNavItem extends StatelessWidget {
+  const _BottomNavItem({
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color color = active ? AppColors.accent : AppColors.textTertiary;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, color: color, size: 26),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: AppTextStyles.labelSmall.copyWith(
+                color: color,
+                fontSize: 10,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
