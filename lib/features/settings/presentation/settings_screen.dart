@@ -156,17 +156,6 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
 
-            // ====== SÉCURITÉ ======
-            //  Verrouillage biométrique à l'ouverture. Demande
-            //  l'empreinte digitale (ou le PIN/pattern système en
-            //  fallback) au démarrage à froid. Aucun re-lock quand
-            //  l'app revient du background — choix UX déclaré par
-            //  le client. Si le device n'a aucune méthode d'auth
-            //  configurée, le toggle n'a aucun effet (Android refuse
-            //  de bloquer un device sans verrouillage).
-            _SectionTitle('Sécurité'),
-            const _LockToggleTile(),
-
             // ====== STOCKAGE ======
             _SectionTitle(context.l10n.settingsStorage),
             _ActionTile(

@@ -311,21 +311,13 @@ class _AppEntryState extends State<_AppEntry> {
       }
     });
 
-    // Charge le réglage lock_on_open en parallèle. L'app n'attend pas
-    // ce flag pour montrer le splash, mais on en a besoin avant le
-    // premier rendu d'écran fonctionnel pour décider lock vs app.
-    // Sur Red Room (biometricMandatory = true), on FORCE le lock à
-    // ON quoi qu'ait choisi l'utilisateur dans Réglages.
+    // Verrouillage TOUJOURS actif au démarrage (demande client) : comme
+    // une app bancaire, on exige l'authentification au lancement, quel
+    // que soit le flavor — on ne lit plus de réglage optionnel. Le
+    // LockScreen propose empreinte + code PIN de secours, donc aucun
+    // risque de blocage même sur un appareil sans biométrie configurée.
     final FlavorConfig flavor = FlavorConfig.current;
-    if (flavor.biometricMandatory) {
-      _lockEnabled = true;
-    } else {
-      LockSettings.instance.isLockEnabled().then((bool enabled) {
-        if (mounted) {
-          setState(() => _lockEnabled = enabled);
-        }
-      });
-    }
+    _lockEnabled = true;
 
     // Gate âge : uniquement Red Room. Sur BLACK7 ROYAL, on by-pass
     // directement avec `true` pour ne pas bloquer le boot.
