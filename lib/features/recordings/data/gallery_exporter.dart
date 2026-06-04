@@ -11,14 +11,15 @@
 //    - Est INVISIBLE dans la Galerie photo du téléphone
 //    - Est PERDU à la désinstallation de l'app
 //
-//  Cette classe copie le .ts (en le re-baptisant .mp4) vers
-//  `Movies/7MOTION/` via MediaStore — accessible à toutes les apps
-//  (Galerie, YouTube, WhatsApp upload, etc.) et survit à la
-//  désinstallation.
+//  Cette classe copie l'enregistrement vers `Movies/` via MediaStore —
+//  accessible à toutes les apps (Galerie, YouTube, WhatsApp upload, etc.)
+//  et survit à la désinstallation.
 //
-//  Stratégie : on RENOMME en .mp4 sans transcoder. La plupart des
-//  players acceptent un MPEG-TS dans un container .mp4 — mismatch
-//  MIME bénin, évite d'embarquer ffmpeg (50 MB de plus dans l'APK).
+//  Stratégie : côté natif (GalleryExporter.kt), on REMUXE le MPEG-TS
+//  dans un VRAI conteneur MP4 (MediaExtractor + MediaMuxer, copie des
+//  pistes sans ré-encodage) → fichier accepté par la galerie de la
+//  plupart des téléphones. Repli sur copie brute si un codec n'est pas
+//  muxable. Pas de ffmpeg embarqué, pas de perte de qualité.
 // =========================================================
 
 import 'package:flutter/foundation.dart';
