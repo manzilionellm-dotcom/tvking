@@ -10,6 +10,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
 import '../../../core/support/vip_help_card.dart';
 import '../../../core/theme/app_colors.dart';
@@ -36,7 +37,7 @@ class SettingsScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Réglages'),
+        title: Text(context.l10n.settingsTitle),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
@@ -63,15 +64,15 @@ class SettingsScreen extends StatelessWidget {
             // ====== APPARENCE ======
             //  Cinema (Maison Noir) = défaut, identité du produit.
             //  Daylight = version claire dérivée pour usage diurne.
-            _SectionTitle('Apparence'),
+            _SectionTitle(context.l10n.settingsAppearance),
             const _ThemeModePicker(),
 
             // ====== LANGUE ======
-            _SectionTitle('Langue'),
+            _SectionTitle(context.l10n.settingsLanguage),
             const _LanguagePicker(),
 
             // ====== LECTEUR ======
-            _SectionTitle('Lecteur vidéo'),
+            _SectionTitle(context.l10n.settingsPlayer),
             ListenableBuilder(
               listenable: PlayerSettings.instance,
               builder: (BuildContext context, _) {
@@ -149,7 +150,7 @@ class SettingsScreen extends StatelessWidget {
             ),
 
             // ====== ENREGISTREMENTS ======
-            _SectionTitle('Enregistrements'),
+            _SectionTitle(context.l10n.settingsRecordings),
             _ActionTile(
               icon: Icons.movie_filter_outlined,
               title: 'Mes enregistrements',
@@ -176,7 +177,7 @@ class SettingsScreen extends StatelessWidget {
             const VpnCard(),
 
             // ====== STOCKAGE ======
-            _SectionTitle('Stockage'),
+            _SectionTitle(context.l10n.settingsStorage),
             _ActionTile(
               icon: Icons.history_rounded,
               title: 'Vider l\'historique de visionnage',
@@ -223,10 +224,10 @@ class SettingsScreen extends StatelessWidget {
             ),
 
             // ====== À PROPOS ======
-            _SectionTitle('Application'),
+            _SectionTitle(context.l10n.settingsApp),
             _ActionTile(
               icon: Icons.info_outline_rounded,
-              title: 'À propos',
+              title: context.l10n.settingsAbout,
               subtitle: 'Version, mises à jour, crédits, légal.',
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute<void>(
@@ -268,12 +269,12 @@ class SettingsScreen extends StatelessWidget {
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Annuler'),
+            child: Text(context.l10n.buttonCancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: TextButton.styleFrom(foregroundColor: AppColors.live),
-            child: const Text('Continuer'),
+            child: Text(context.l10n.buttonContinue),
           ),
         ],
       ),
@@ -638,24 +639,24 @@ class _ThemeModePicker extends StatelessWidget {
             children: <Widget>[
               _ThemeOption(
                 icon: Icons.nightlight_round,
-                label: 'Cinema',
-                subtitle: 'Maison Noir',
+                label: context.l10n.themeCinema,
+                subtitle: context.l10n.themeCinemaSubtitle,
                 selected: current == ThemeMode.dark,
                 onTap: () =>
                     ThemeModeRepository.instance.setMode(ThemeMode.dark),
               ),
               _ThemeOption(
                 icon: Icons.wb_sunny_outlined,
-                label: 'Daylight',
-                subtitle: 'Lumière du jour',
+                label: context.l10n.themeDaylight,
+                subtitle: context.l10n.themeDaylightSubtitle,
                 selected: current == ThemeMode.light,
                 onTap: () =>
                     ThemeModeRepository.instance.setMode(ThemeMode.light),
               ),
               _ThemeOption(
                 icon: Icons.brightness_auto_outlined,
-                label: 'Auto',
-                subtitle: 'Suit l\'OS',
+                label: context.l10n.themeAuto,
+                subtitle: context.l10n.themeAutoSubtitle,
                 selected: current == ThemeMode.system,
                 onTap: () =>
                     ThemeModeRepository.instance.setMode(ThemeMode.system),
@@ -771,7 +772,7 @@ class _LanguagePicker extends StatelessWidget {
       builder: (BuildContext context, _) {
         final Locale? current = LocaleRepository.instance.locale;
         final String label = current == null
-            ? 'Système'
+            ? context.l10n.settingsLanguageSystem
             : LocaleRepository.localeLabels[current.languageCode] ??
                 current.languageCode;
         return _ActionTile(
@@ -810,14 +811,14 @@ class _LanguagePicker extends StatelessWidget {
                         Icon(Icons.translate_rounded,
                             color: AppColors.accent, size: 20),
                         const SizedBox(width: 10),
-                        Text('Langue',
+                        Text(context.l10n.settingsLanguage,
                             style: AppTextStyles.headlineMedium),
                       ],
                     ),
                   ),
                   // ----- Option Système -----
                   _LanguageTile(
-                    label: 'Système',
+                    label: context.l10n.settingsLanguageSystem,
                     sublabel: 'Suit la langue de l\'OS',
                     selected: current == null,
                     onTap: () async {

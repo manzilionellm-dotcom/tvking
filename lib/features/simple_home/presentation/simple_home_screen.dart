@@ -17,6 +17,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/branding/brand_logo.dart';
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../channels/domain/channel.dart';
@@ -412,13 +413,13 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
         children: <Widget>[
           _BottomNavItem(
             icon: Icons.home_rounded,
-            label: 'Accueil',
+            label: context.l10n.navHome,
             active: true,
             onTap: () => setState(() => _countryCode = null),
           ),
           _BottomNavItem(
             icon: Icons.search_rounded,
-            label: 'Recherche',
+            label: context.l10n.navSearch,
             active: false,
             onTap: () => Navigator.of(context).push<void>(
               MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
@@ -426,7 +427,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
           ),
           _BottomNavItem(
             icon: Icons.favorite_rounded,
-            label: 'Favoris',
+            label: context.l10n.navFavorites,
             active: false,
             onTap: () => Navigator.of(context).push<void>(
               MaterialPageRoute<void>(builder: (_) => const FavoritesScreen()),
