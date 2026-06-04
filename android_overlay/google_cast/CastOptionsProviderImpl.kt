@@ -5,24 +5,24 @@
 //  `OptionsProvider` et fournit le CAST APP ID — l'identifiant
 //  du receiver-side à charger sur le Chromecast.
 //
-//  Receiver utilisé : Custom Styled Media Receiver enregistré
-//  sur la Google Cast SDK Developer Console (compte
-//  manzilionel.lm@gmail.com) sous l'App ID `46F815A5`.
+//  Receiver utilisé : DEFAULT MEDIA RECEIVER public de Google
+//  (App ID `CC1AD845`). Public et toujours actif → le cast marche
+//  sur TOUTES les Chromecast / Google TV, chez n'importe qui.
 //
-//  Le receiver est skinné via le CSS hébergé sur notre Worker
-//  Cloudflare :
-//    https://99999.7themotion.com/cast-skin.css
-//  Couleurs : fond charbon (#0A0A0C), accent ember (#D63A30),
-//  logo 7 MOTION en idle / splash.
+//  Historique : on utilisait le Custom Styled Media Receiver brandé
+//  "7 MOTION" (App ID `46F815A5`, compte manzilionel.lm@gmail.com,
+//  skin https://99999.7themotion.com/cast-skin.css). Mais il était
+//  resté "Unpublished" sur la Console → utilisable UNIQUEMENT sur
+//  les Chromecast inscrites comme appareils de test du compte dev.
+//  D'où le symptôme "le cast ne marche pas sur la plupart des TV".
+//  On bascule donc sur le receiver public par défaut (cf. getCastOptions).
 //
-//  Statut : "Unpublished" sur la Console = utilisable uniquement
-//  sur les Chromecast enregistrées comme appareils de test sur
-//  le compte développeur. Pour distribution grand public, il
-//  faudra "Publish" l'application sur la Console (séparément).
+//  Pour retrouver le branding : publier `46F815A5` sur la Console
+//  ("Published"), puis remettre cet App ID dans getCastOptions().
 //
 //  Comportement : tap sur la TV depuis le dialog Cast → la TV
-//  charge notre receiver brandé → joue notre stream avec le
-//  logo 7 MOTION sur l'idle screen.
+//  charge le Default Media Receiver → joue notre stream (lecteur
+//  Google standard, sans le logo 7 MOTION sur l'idle screen).
 //
 //  Ce fichier est référencé dans AndroidManifest.xml :
 //    <meta-data
@@ -60,13 +60,27 @@ class CastOptionsProviderImpl : OptionsProvider {
             .build()
 
         return CastOptions.Builder()
-            // App ID = Custom Styled Media Receiver "7 MOTION"
-            // enregistre sur la Google Cast SDK Developer Console
-            // (compte manzilionel.lm@gmail.com, statut Unpublished
-            // au 2026-05-31). Skin URL pointe vers
-            // https://99999.7themotion.com/cast-skin.css → logo
-            // 7 MOTION, fond charbon, accent ember sur la TV.
-            .setReceiverApplicationId("46F815A5")
+            // App ID = DEFAULT MEDIA RECEIVER public de Google
+            // (CC1AD845). Choisi volontairement a la place du receiver
+            // brande "7 MOTION" (46F815A5) parce que ce dernier est
+            // reste "Unpublished" sur la Cast Developer Console : un
+            // receiver non publie ne charge QUE sur les Chromecast
+            // inscrites comme appareils de test du compte dev. Resultat
+            // cote utilisateur : "le cast ne marche pas sur la plupart
+            // des TV / telephones". Le Default Media Receiver, lui, est
+            // public et toujours actif → le cast fonctionne sur TOUTES
+            // les Chromecast / Google TV, sans inscription.
+            //
+            // Aucune perte de compatibilite de format : le Styled Media
+            // Receiver et le Default Media Receiver partagent le MEME
+            // moteur de lecture web — seule la peau CSS differe. On perd
+            // donc uniquement le branding (logo 7 MOTION sur l'idle
+            // screen), pas la lecture HLS/IPTV.
+            //
+            // POUR RETROUVER LE BRANDING plus tard : publier l'app
+            // 46F815A5 dans la Cast Developer Console (statut
+            // "Published"), puis remettre cet App ID ci-dessous.
+            .setReceiverApplicationId("CC1AD845")
             .setCastMediaOptions(mediaOptions)
             // Resume la session si l'app est tuée puis relancée
             // dans les 30 min — l'utilisateur ne se reconnecte pas
