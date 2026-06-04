@@ -28,6 +28,7 @@ import 'dart:collection';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../player/presentation/play_channel.dart';
@@ -89,7 +90,7 @@ class FocusedCategoryScreen extends StatelessWidget {
                 SliverToBoxAdapter(
                   child: PremiumRow(
                     title: entry.key,
-                    subtitle: '${entry.value.length} chaînes',
+                    subtitle: context.l10n.channelCount(entry.value.length),
                     channels: entry.value,
                     onChannelTap: (Channel ch) => playChannel(context, ch),
                     // "Voir tout" → ouvre la grille intégrale des
@@ -100,7 +101,7 @@ class FocusedCategoryScreen extends StatelessWidget {
                       MaterialPageRoute<void>(
                         builder: (_) => ChannelsGridScreen(
                           title: '$title · ${entry.key}',
-                          subtitle: '${entry.value.length} chaînes',
+                          subtitle: context.l10n.channelCount(entry.value.length),
                           channels: entry.value,
                         ),
                       ),
@@ -173,7 +174,7 @@ class _ResultsHeader extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
       child: Text(
-        '$total chaînes · $countries pays',
+        context.l10n.focusedResultsCount(total, countries),
         style: AppTextStyles.labelSmall.copyWith(
           color: AppColors.textMuted,
           letterSpacing: 1.4,
@@ -203,7 +204,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Aucune chaîne $title trouvée dans tes playlists.',
+              context.l10n.focusedNoChannelFound(title),
               style: AppTextStyles.bodyMedium.copyWith(
                 color: AppColors.textSecondary,
               ),

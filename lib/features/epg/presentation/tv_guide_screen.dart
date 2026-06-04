@@ -17,6 +17,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../cast/presentation/cast_button.dart';
@@ -121,18 +122,18 @@ class _TvGuideScreenState extends State<TvGuideScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Guide TV'),
+        title: Text(context.l10n.guideTitle),
         actions: <Widget>[
           const CastButton(),
           IconButton(
             icon: const Icon(Icons.my_location_rounded),
-            tooltip: 'Aller à maintenant',
+            tooltip: context.l10n.guideGoToNow,
             onPressed: _scrollToNow,
           ),
         ],
       ),
       body: _channels.isEmpty
-          ? _empty('Aucune chaîne')
+          ? _empty(context.l10n.guideNoChannel)
           : Column(
               children: <Widget>[
                 _TimeRuler(
@@ -173,7 +174,7 @@ class _TvGuideScreenState extends State<TvGuideScreen> {
             Text(msg, style: AppTextStyles.bodyLarge),
             const SizedBox(height: 6),
             Text(
-              'Ajoute une playlist avec un EPG XMLTV pour voir le guide.',
+              context.l10n.guideEmptyHint,
               textAlign: TextAlign.center,
               style: AppTextStyles.bodyMedium,
             ),
@@ -220,7 +221,7 @@ class _TimeRuler extends StatelessWidget {
                 Icon(Icons.access_time, size: 14, color: AppColors.accent),
                 const SizedBox(width: 6),
                 Text(
-                  'Horaires',
+                  context.l10n.guideSchedule,
                   style: AppTextStyles.labelSmall.copyWith(
                     color: AppColors.accent,
                     fontSize: 11,
@@ -406,7 +407,8 @@ class _GuideBody extends StatelessWidget {
                                 backgroundColor: AppColors.surfaceHigh,
                                 behavior: SnackBarBehavior.floating,
                                 content: Text(
-                                  'Catch-up indisponible pour ${ch.cleanName}',
+                                  context.l10n
+                                      .guideCatchupUnavailable(ch.cleanName),
                                   style: AppTextStyles.bodyMedium,
                                 ),
                               ),

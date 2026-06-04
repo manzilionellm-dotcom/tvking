@@ -29,6 +29,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../cast/presentation/cast_button.dart';
@@ -255,7 +256,7 @@ class _ViewModeToggle extends StatelessWidget {
             icon: Icons.view_list_rounded,
             selected: current == SectionViewMode.compact,
             onTap: () => onChanged(SectionViewMode.compact),
-            tooltip: 'Liste',
+            tooltip: context.l10n.viewModeList,
           ),
           Container(
             width: 1,
@@ -266,7 +267,7 @@ class _ViewModeToggle extends StatelessWidget {
             icon: Icons.grid_view_rounded,
             selected: current == SectionViewMode.grid,
             onTap: () => onChanged(SectionViewMode.grid),
-            tooltip: 'Grille',
+            tooltip: context.l10n.viewModeGrid,
           ),
         ],
       ),
@@ -321,7 +322,7 @@ class _SearchBar extends StatelessWidget {
         onChanged: onChanged,
         style: AppTextStyles.bodyLarge.copyWith(fontSize: 14),
         decoration: InputDecoration(
-          hintText: 'Filtrer dans cette section...',
+          hintText: context.l10n.sectionFilterHint,
           hintStyle: AppTextStyles.bodyMedium.copyWith(
             color: AppColors.textMuted,
             fontSize: 13,
@@ -389,7 +390,7 @@ class _FilterChipsBar extends StatelessWidget {
               child: Row(
                 children: <Widget>[
                   _chip(
-                    label: 'LIVE',
+                    label: context.l10n.badgeLive,
                     selected: liveOnly,
                     onTap: onLiveToggle,
                   ),
@@ -493,7 +494,7 @@ class _SubCategoriesBar extends StatelessWidget {
         itemBuilder: (BuildContext context, int index) {
           if (index == 0) {
             return _categoryChip(
-              label: 'Toutes',
+              label: context.l10n.filterAll,
               selected: selected == null,
               onTap: () => onSelected(null),
             );
@@ -645,14 +646,14 @@ class _EmptyResult extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               query.isEmpty
-                  ? 'Aucune chaîne dans cette section'
-                  : 'Aucun résultat pour "$query"',
+                  ? context.l10n.sectionEmptyNoChannel
+                  : context.l10n.searchNoResult(query),
               textAlign: TextAlign.center,
               style: AppTextStyles.bodyLarge,
             ),
             const SizedBox(height: 6),
             Text(
-              'Essaie d\'ajuster les filtres ou la recherche.',
+              context.l10n.sectionEmptyAdjustFilters,
               textAlign: TextAlign.center,
               style: AppTextStyles.bodyMedium,
             ),

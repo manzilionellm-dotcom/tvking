@@ -25,6 +25,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/branding/brand_logo.dart';
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -141,8 +142,8 @@ class _HomeScreenState extends State<HomeScreen> {
         behavior: SnackBarBehavior.floating,
         content: Text(
           n > 0
-              ? 'Liste actualisée — chaînes rechargées'
-              : 'Liste à jour',
+              ? context.l10n.homeListRefreshed
+              : context.l10n.homeListUpToDate,
         ),
       ),
     );
@@ -158,7 +159,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _openLiveTV() => Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
-          builder: (_) => const CategorySectionScreen(title: 'Live TV'),
+          builder: (_) => CategorySectionScreen(title: context.l10n.navLive),
         ),
       );
 
@@ -195,34 +196,35 @@ class _HomeScreenState extends State<HomeScreen> {
     return RoundCategoryRow(
       items: <RoundCategoryItem>[
         RoundCategoryItem(
-          label: 'Sport',
+          label: context.l10n.catSport,
           icon: Icons.sports_soccer_outlined,
-          onTap: () => _openSection('Sport', ChannelGenre.sports),
+          onTap: () => _openSection(context.l10n.catSport, ChannelGenre.sports),
         ),
         RoundCategoryItem(
-          label: 'Info',
+          label: context.l10n.catInfo,
           icon: Icons.newspaper_outlined,
-          onTap: () => _openSection('Info', ChannelGenre.news),
+          onTap: () => _openSection(context.l10n.catInfo, ChannelGenre.news),
         ),
         RoundCategoryItem(
-          label: 'Enfants',
+          label: context.l10n.catKids,
           icon: Icons.child_friendly_outlined,
-          onTap: () => _openSection('Enfants', ChannelGenre.kids),
+          onTap: () => _openSection(context.l10n.catKids, ChannelGenre.kids),
         ),
         RoundCategoryItem(
-          label: 'Sciences',
+          label: context.l10n.catScience,
           icon: Icons.science_outlined,
-          onTap: () => _openSection('Sciences', ChannelGenre.documentary),
+          onTap: () =>
+              _openSection(context.l10n.catScience, ChannelGenre.documentary),
         ),
         RoundCategoryItem(
-          label: 'Films',
+          label: context.l10n.catMovies,
           icon: Icons.movie_creation_outlined,
-          onTap: () => _openSection('Films', ChannelGenre.movies),
+          onTap: () => _openSection(context.l10n.catMovies, ChannelGenre.movies),
         ),
         RoundCategoryItem(
-          label: 'Musique',
+          label: context.l10n.catMusic,
           icon: Icons.music_note_outlined,
-          onTap: () => _openSection('Musique', ChannelGenre.music),
+          onTap: () => _openSection(context.l10n.catMusic, ChannelGenre.music),
         ),
       ],
     );
@@ -297,7 +299,7 @@ class _HomeScreenState extends State<HomeScreen> {
         // fournisseur a ajouté du contenu). La liste s'aussi auto-
         // actualise toute seule toutes les 24 h (cf. main.dart).
         IconButton(
-          tooltip: 'Actualiser la liste',
+          tooltip: context.l10n.tooltipRefreshList,
           onPressed: _refreshing ? null : _refreshList,
           icon: _refreshing
               ? const SizedBox(
@@ -309,22 +311,22 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         // "+" toujours visible : se connecter / activer à tout moment.
         IconButton(
-          tooltip: 'Me connecter / Activer',
+          tooltip: context.l10n.tooltipConnectActivate,
           onPressed: () => showSourceChoiceSheet(context),
           icon: const Icon(Icons.add_rounded),
         ),
         IconButton(
-          tooltip: 'Recherche',
+          tooltip: context.l10n.tooltipSearch,
           onPressed: _openSearch,
           icon: const Icon(Icons.search_rounded),
         ),
         IconButton(
-          tooltip: 'Favoris',
+          tooltip: context.l10n.tooltipFavorites,
           onPressed: _openFavorites,
           icon: const Icon(Icons.favorite_rounded),
         ),
         IconButton(
-          tooltip: 'Profil',
+          tooltip: context.l10n.tooltipProfile,
           onPressed: _goToProfile,
           icon: const Icon(Icons.person_rounded),
         ),
@@ -431,7 +433,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Padding(
               padding: const EdgeInsets.only(bottom: 18),
               child: PosterRow(
-                title: 'Top 10 aujourd\'hui',
+                title: context.l10n.sectionTop10Today,
                 numbered: true,
                 channels: topTenSafe,
                 onChannelTap: _onChannelTap,
@@ -455,7 +457,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 18),
                 child: PremiumRow(
-                  title: 'Reprendre',
+                  title: context.l10n.sectionResume,
                   channels: recent,
                   onChannelTap: _onChannelTap,
                   onChannelLongPress: _onChannelLongPress,
@@ -479,8 +481,8 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Padding(
             padding: const EdgeInsets.only(bottom: 18),
             child: PremiumRow(
-              title: 'En direct maintenant',
-              subtitle: '${live.length} chaînes',
+              title: context.l10n.sectionLiveNow,
+              subtitle: context.l10n.channelCount(live.length),
               channels: live.take(20).toList(),
               onChannelTap: _onChannelTap,
               onChannelLongPress: _onChannelLongPress,
@@ -507,7 +509,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Padding(
             padding: const EdgeInsets.only(bottom: 18),
             child: PremiumRow(
-              title: 'À découvrir',
+              title: context.l10n.sectionDiscover,
               channels: all.reversed.take(20).toList(),
               onChannelTap: _onChannelTap,
               onChannelLongPress: _onChannelLongPress,
@@ -571,7 +573,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _genreRow(ChannelGenre g, List<Channel> channels) {
     final List<Channel> top = channels.take(20).toList();
     final String label = _genreLabel(g);
-    final String subtitle = '${channels.length} chaînes';
+    final String subtitle = context.l10n.channelCount(channels.length);
     final bool poster = g == ChannelGenre.movies ||
         g == ChannelGenre.series ||
         g == ChannelGenre.documentary;
@@ -598,27 +600,27 @@ class _HomeScreenState extends State<HomeScreen> {
   String _genreLabel(ChannelGenre g) {
     switch (g) {
       case ChannelGenre.sports:
-        return 'Sports en direct';
+        return context.l10n.sectionSportsLive;
       case ChannelGenre.movies:
-        return 'Films';
+        return context.l10n.sectionMovies;
       case ChannelGenre.series:
-        return 'Séries';
+        return context.l10n.sectionSeries;
       case ChannelGenre.kids:
-        return 'Jeunesse';
+        return context.l10n.sectionKids;
       case ChannelGenre.news:
-        return 'Info & Actualités';
+        return context.l10n.sectionNews;
       case ChannelGenre.music:
-        return 'Musique';
+        return context.l10n.sectionMusic;
       case ChannelGenre.documentary:
-        return 'Documentaires';
+        return context.l10n.sectionDocs;
       case ChannelGenre.entertainment:
-        return 'Divertissement';
+        return context.l10n.sectionEntertainment;
       case ChannelGenre.international:
-        return 'International';
+        return context.l10n.sectionInternational;
       case ChannelGenre.adult:
-        return 'Adulte';
+        return context.l10n.sectionAdult;
       case ChannelGenre.other:
-        return 'Autres';
+        return context.l10n.sectionOthers;
     }
   }
 
@@ -634,8 +636,8 @@ class _HomeScreenState extends State<HomeScreen> {
         return Padding(
           padding: const EdgeInsets.only(bottom: 18),
           child: PremiumRow(
-            title: 'Favoris',
-            subtitle: '${favs.length} chaînes',
+            title: context.l10n.sectionFavorites,
+            subtitle: context.l10n.channelCount(favs.length),
             channels: favs.take(20).toList(),
             onChannelTap: _onChannelTap,
             onChannelLongPress: _onChannelLongPress,
@@ -692,11 +694,11 @@ class _HomeScreenState extends State<HomeScreen> {
       // défaut. À l'usage, sur tous les Android récents l'auth
       // est disponible et bloquera.
       if (!mounted) return;
-      await _openSection('Adulte', ChannelGenre.adult);
+      await _openSection(context.l10n.sectionAdult, ChannelGenre.adult);
       return;
     }
     final bool authed = await BiometricAuth.instance.authenticate(
-      reason: 'Accède à la section Adulte',
+      reason: context.l10n.adultAuthReason,
     );
     if (!authed) {
       if (!mounted) return;
@@ -708,7 +710,7 @@ class _HomeScreenState extends State<HomeScreen> {
           margin: const EdgeInsets.all(16),
           duration: const Duration(seconds: 2),
           content: Text(
-            'Authentification annulée — section Adulte verrouillée',
+            context.l10n.adultAuthCancelled,
             style: AppTextStyles.bodyMedium,
           ),
         ),
@@ -716,7 +718,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     if (!mounted) return;
-    await _openSection('Adulte', ChannelGenre.adult);
+    await _openSection(context.l10n.sectionAdult, ChannelGenre.adult);
   }
 
   void _resetNav() {

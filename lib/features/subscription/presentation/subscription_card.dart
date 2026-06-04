@@ -14,6 +14,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/subscription_state.dart';
@@ -53,7 +54,7 @@ class SubscriptionCard extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      _titleFor(status, s),
+                      _titleFor(context, status, s),
                       style: AppTextStyles.headlineMedium.copyWith(
                         fontSize: 15,
                       ),
@@ -63,7 +64,7 @@ class SubscriptionCard extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                _subtitleFor(status),
+                _subtitleFor(context, status),
                 style: AppTextStyles.bodyMedium.copyWith(
                   fontSize: 12.5,
                   color: AppColors.textSecondary,
@@ -78,8 +79,8 @@ class SubscriptionCard extends StatelessWidget {
                   icon: const Icon(Icons.open_in_new_rounded, size: 18),
                   label: Text(
                     status == SubscriptionStatus.trialExpired
-                        ? 'Acheter sur 7themotion.com'
-                        : 'Voir les offres sur 7themotion.com',
+                        ? context.l10n.subCardBuyExpired
+                        : context.l10n.subCardSeeOffers,
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: status == SubscriptionStatus.trialExpired
@@ -95,8 +96,7 @@ class SubscriptionCard extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                'Paiement sécurisé sur le site officiel — '
-                'jamais via Google Play.',
+                context.l10n.subCardSecurePayment,
                 style: AppTextStyles.bodyMedium.copyWith(
                   fontSize: 10.5,
                   color: AppColors.textMuted,
@@ -118,7 +118,7 @@ class SubscriptionCard extends StatelessWidget {
         SnackBar(
           backgroundColor: AppColors.live,
           content: Text(
-            'Impossible d\'ouvrir $kPurchaseUrl',
+            context.l10n.subCantOpenUrl(kPurchaseUrl),
             style: AppTextStyles.bodyMedium,
           ),
         ),
@@ -158,43 +158,41 @@ class SubscriptionCard extends StatelessWidget {
     }
   }
 
-  String _titleFor(SubscriptionStatus s, SubscriptionState state) {
+  String _titleFor(
+      BuildContext context, SubscriptionStatus s, SubscriptionState state) {
     switch (s) {
       case SubscriptionStatus.paid:
         final DateTime? until = state.paidUntil;
-        if (until == null) return 'Abonnement actif';
+        if (until == null) return context.l10n.subActiveTitle;
         final String d = '${until.day}/${until.month}/${until.year}';
-        return 'Abonnement actif · expire le $d';
+        return context.l10n.subActiveUntil(d);
       case SubscriptionStatus.trialExpired:
-        return 'Essai gratuit terminé';
+        return context.l10n.subTrialEnded;
       case SubscriptionStatus.trialActive:
         final int n = state.trialDaysRemaining;
-        if (n == 1) return 'Essai gratuit · 1 jour restant';
-        return 'Essai gratuit · $n jours restants';
+        if (n == 1) return context.l10n.subTrialOneDayLeft;
+        return context.l10n.subTrialDaysLeft(n);
       case SubscriptionStatus.frozen:
-        return 'Compte temporairement gelé';
+        return context.l10n.subAccountFrozen;
       case SubscriptionStatus.banned:
-        return 'Compte suspendu';
+        return context.l10n.subAccountSuspended;
       case SubscriptionStatus.unknown:
-        return 'Chargement…';
+        return context.l10n.subLoading;
     }
   }
 
-  String _subtitleFor(SubscriptionStatus s) {
+  String _subtitleFor(BuildContext context, SubscriptionStatus s) {
     switch (s) {
       case SubscriptionStatus.paid:
-        return 'Merci pour ton soutien — toutes les fonctions sont '
-            'débloquées sur cet appareil et tes autres installations BLACK7 ROYAL.';
+        return context.l10n.subCardSubPaid;
       case SubscriptionStatus.trialExpired:
-        return 'Ton essai gratuit de $kTrialDurationDays jours est terminé. '
-            'Souscris l\'abonnement à 13 €/an sur 7themotion.com pour continuer.';
+        return context.l10n.subCardSubExpired(kTrialDurationDays);
       case SubscriptionStatus.trialActive:
-        return 'Profite de toutes les fonctions premium pendant ton essai. '
-            'Ensuite 13 €/an sur tous tes appareils.';
+        return context.l10n.subCardSubTrial;
       case SubscriptionStatus.frozen:
-        return 'Ton compte est en pause. Contacte le support pour réactiver.';
+        return context.l10n.subCardSubFrozen;
       case SubscriptionStatus.banned:
-        return 'Ton compte a été suspendu par l\'administrateur.';
+        return context.l10n.subCardSubBanned;
       case SubscriptionStatus.unknown:
         return '';
     }

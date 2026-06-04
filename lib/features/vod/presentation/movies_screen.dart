@@ -10,6 +10,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../channels/domain/channel.dart';
@@ -81,16 +82,16 @@ class _MoviesScreenState extends State<MoviesScreen> {
         backgroundColor: AppColors.background,
         appBar: AppBar(
           backgroundColor: AppColors.background,
-          title: const Text('Films'),
-          bottom: const TabBar(
+          title: Text(context.l10n.moviesTitle),
+          bottom: TabBar(
             tabs: <Widget>[
-              Tab(text: 'Films'),
-              Tab(text: 'Téléchargés'),
+              Tab(text: context.l10n.moviesTabMovies),
+              Tab(text: context.l10n.moviesTabDownloads),
             ],
           ),
           actions: <Widget>[
             IconButton(
-              tooltip: 'Recharger le catalogue',
+              tooltip: context.l10n.moviesReloadTooltip,
               onPressed: _reloadCatalogue,
               icon: const Icon(Icons.refresh_rounded),
             ),
@@ -120,8 +121,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
             child: Padding(
               padding: const EdgeInsets.all(32),
               child: Text(
-                'Aucun film disponible.\nTon serveur ne propose peut-être '
-                'pas de VOD, ou tu n\'es pas connecté en Xtream.',
+                context.l10n.moviesEmptyCatalogue,
                 textAlign: TextAlign.center,
                 style: AppTextStyles.bodyMedium
                     .copyWith(color: AppColors.textSecondary),
@@ -165,8 +165,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
             child: Padding(
               padding: const EdgeInsets.all(32),
               child: Text(
-                'Aucun téléchargement.\nTélécharge un film depuis l\'onglet '
-                '« Films » pour le regarder hors-ligne.',
+                context.l10n.moviesEmptyDownloads,
                 textAlign: TextAlign.center,
                 style: AppTextStyles.bodyMedium
                     .copyWith(color: AppColors.textSecondary),
@@ -237,17 +236,17 @@ class _MovieRow extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             IconButton(
-              tooltip: 'Lire',
+              tooltip: context.l10n.moviesPlayTooltip,
               onPressed: onPlay,
               icon: const Icon(Icons.play_circle_fill_rounded),
               color: AppColors.accent,
             ),
             IconButton(
               tooltip: done
-                  ? 'Téléchargé'
+                  ? context.l10n.moviesDownloaded
                   : busy
-                      ? 'Téléchargement…'
-                      : 'Télécharger',
+                      ? context.l10n.moviesDownloading
+                      : context.l10n.moviesDownload,
               onPressed: (done || busy) ? null : onDownload,
               icon: Icon(
                 done
@@ -300,18 +299,18 @@ class _DownloadRow extends StatelessWidget {
     final String status;
     switch (d.status) {
       case DownloadStatus.done:
-        status = 'Téléchargé · ${_human(d.receivedBytes)}';
+        status = context.l10n.moviesStatusDownloaded(_human(d.receivedBytes));
         break;
       case DownloadStatus.downloading:
         status = d.totalBytes > 0
             ? '${(d.progress * 100).toStringAsFixed(0)}% · ${_human(d.receivedBytes)} / ${_human(d.totalBytes)}'
-            : 'Téléchargement… ${_human(d.receivedBytes)}';
+            : context.l10n.moviesStatusDownloading(_human(d.receivedBytes));
         break;
       case DownloadStatus.paused:
-        status = 'En pause · ${_human(d.receivedBytes)}';
+        status = context.l10n.moviesStatusPaused(_human(d.receivedBytes));
         break;
       case DownloadStatus.error:
-        status = 'Erreur — appuie pour reprendre';
+        status = context.l10n.moviesStatusError;
         break;
     }
     return Card(
@@ -332,25 +331,25 @@ class _DownloadRow extends StatelessWidget {
                 ),
                 if (d.isDone)
                   IconButton(
-                    tooltip: 'Lire hors-ligne',
+                    tooltip: context.l10n.moviesPlayOfflineTooltip,
                     onPressed: onPlay,
                     icon: const Icon(Icons.play_circle_fill_rounded),
                     color: AppColors.accent,
                   )
                 else if (d.status == DownloadStatus.downloading)
                   IconButton(
-                    tooltip: 'Pause',
+                    tooltip: context.l10n.moviesPauseTooltip,
                     onPressed: onPause,
                     icon: const Icon(Icons.pause_circle_filled_rounded),
                   )
                 else
                   IconButton(
-                    tooltip: 'Reprendre',
+                    tooltip: context.l10n.moviesResumeTooltip,
                     onPressed: onResume,
                     icon: const Icon(Icons.play_arrow_rounded),
                   ),
                 IconButton(
-                  tooltip: 'Supprimer',
+                  tooltip: context.l10n.moviesDeleteTooltip,
                   onPressed: onDelete,
                   icon: const Icon(Icons.delete_outline_rounded),
                   color: AppColors.live,

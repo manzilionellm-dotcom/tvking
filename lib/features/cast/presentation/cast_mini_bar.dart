@@ -11,6 +11,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/cast_manager.dart';
@@ -59,8 +60,8 @@ class CastMiniBar extends StatelessWidget {
                   children: <Widget>[
                     Text(
                       mgr.state == CastState.connecting
-                          ? 'Connexion...'
-                          : 'Cast en cours',
+                          ? context.l10n.castConnecting
+                          : context.l10n.castInProgressTitle,
                       style: AppTextStyles.labelSmall.copyWith(
                         color: AppColors.accent,
                         fontSize: 10,
@@ -98,8 +99,9 @@ class CastMiniBar extends StatelessWidget {
                       : Icons.pause_rounded,
                   color: Colors.white,
                 ),
-                tooltip:
-                    mgr.state == CastState.paused ? 'Reprendre' : 'Pause',
+                tooltip: mgr.state == CastState.paused
+                    ? context.l10n.buttonResume
+                    : context.l10n.playerPause,
                 onPressed: () {
                   if (mgr.state == CastState.paused) {
                     mgr.resume();
@@ -113,7 +115,7 @@ class CastMiniBar extends StatelessWidget {
                   Icons.close_rounded,
                   color: AppColors.live,
                 ),
-                tooltip: 'Arrêter le cast',
+                tooltip: context.l10n.castStopTooltip,
                 onPressed: () => mgr.disconnect(),
               ),
             ],

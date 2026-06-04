@@ -16,6 +16,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/playlist_repository.dart';
@@ -30,11 +31,11 @@ class PlaylistsScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Mes playlists'),
+        title: Text(context.l10n.playlistsTitle),
         actions: <Widget>[
           IconButton(
             icon: const Icon(Icons.add_rounded),
-            tooltip: 'Ajouter une playlist',
+            tooltip: context.l10n.playlistsAddTooltip,
             onPressed: () => _openAdd(context),
           ),
         ],
@@ -76,12 +77,12 @@ class PlaylistsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             Text(
-              'Aucune playlist',
+              context.l10n.playlistsEmptyTitle,
               style: AppTextStyles.bodyLarge,
             ),
             const SizedBox(height: 6),
             Text(
-              'Ajoute ta première playlist pour commencer.',
+              context.l10n.playlistsEmptySubtitle,
               style: AppTextStyles.bodyMedium,
             ),
             const SizedBox(height: 22),
@@ -97,7 +98,7 @@ class PlaylistsScreen extends StatelessWidget {
                 ),
               ),
               icon: const Icon(Icons.add_rounded),
-              label: const Text('Ajouter une playlist'),
+              label: Text(context.l10n.playlistsAddTooltip),
             ),
           ],
         ),
@@ -117,8 +118,9 @@ class _PlaylistTile extends StatelessWidget {
 
   final Playlist playlist;
 
-  String get _typeLabel =>
-      playlist.type == PlaylistType.m3u ? 'M3U / URL' : 'Xtream Codes';
+  String _typeLabel(BuildContext context) => playlist.type == PlaylistType.m3u
+      ? context.l10n.playlistTypeM3u
+      : context.l10n.playlistTypeXtream;
 
   String get _sourceLine {
     if (playlist.type == PlaylistType.m3u) {
@@ -127,9 +129,9 @@ class _PlaylistTile extends StatelessWidget {
     return '${playlist.xtreamServer ?? ''} · ${playlist.xtreamUsername ?? ''}';
   }
 
-  String get _lastSyncLabel {
+  String _lastSyncLabel(BuildContext context) {
     final int? ts = playlist.lastSyncedAt;
-    if (ts == null) return 'Jamais synchronisée';
+    if (ts == null) return context.l10n.playlistNeverSynced;
     final DateTime dt = DateTime.fromMillisecondsSinceEpoch(ts);
     return 'Synchro : ${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}h${dt.minute.toString().padLeft(2, '0')}';
   }
@@ -191,7 +193,7 @@ class _PlaylistTile extends StatelessWidget {
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        _typeLabel,
+                        _typeLabel(context),
                         style: AppTextStyles.labelSmall.copyWith(
                           color: AppColors.accentCyan,
                           fontSize: 10,
@@ -212,7 +214,7 @@ class _PlaylistTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${playlist.channelCount} chaîne${playlist.channelCount > 1 ? 's' : ''} · $_lastSyncLabel',
+                  '${context.l10n.channelCount(playlist.channelCount)} · ${_lastSyncLabel(context)}',
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 11,
                   ),
@@ -227,7 +229,7 @@ class _PlaylistTile extends StatelessWidget {
               Icons.refresh_rounded,
               color: AppColors.accent,
             ),
-            tooltip: 'Re-synchroniser',
+            tooltip: context.l10n.playlistResyncTooltip,
             onPressed: () => _refresh(context),
           ),
           IconButton(
@@ -235,7 +237,7 @@ class _PlaylistTile extends StatelessWidget {
               Icons.delete_outline,
               color: AppColors.live,
             ),
-            tooltip: 'Supprimer',
+            tooltip: context.l10n.playlistDeleteTooltip,
             onPressed: () => _confirmDelete(context),
           ),
         ],
@@ -245,9 +247,9 @@ class _PlaylistTile extends StatelessWidget {
 
   Future<void> _refresh(BuildContext context) async {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Re-synchronisation en cours...'),
-        duration: Duration(seconds: 30),
+      SnackBar(
+        content: Text(context.l10n.playlistResyncing),
+        duration: const Duration(seconds: 30),
       ),
     );
     try {
@@ -260,8 +262,8 @@ class _PlaylistTile extends StatelessWidget {
           backgroundColor: ok ? AppColors.success : AppColors.live,
           content: Text(
             ok
-                ? 'Playlist "${playlist.name}" à jour'
-                : 'Re-synchronisation impossible',
+                ? context.l10n.playlistUpToDate(playlist.name)
+                : context.l10n.playlistResyncFailed,
           ),
         ),
       );
@@ -283,20 +285,19 @@ class _PlaylistTile extends StatelessWidget {
       builder: (BuildContext ctx) {
         return AlertDialog(
           backgroundColor: AppColors.surfaceHigh,
-          title: const Text('Supprimer cette playlist ?'),
+          title: Text(context.l10n.playlistDeleteConfirmTitle),
           content: Text(
-            'Toutes les chaînes liées à "${playlist.name}" '
-            'seront retirées de l\'app.',
+            context.l10n.playlistDeleteConfirmBody(playlist.name),
           ),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Annuler'),
+              child: Text(context.l10n.buttonCancel),
             ),
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(true),
               style: TextButton.styleFrom(foregroundColor: AppColors.live),
-              child: const Text('Supprimer'),
+              child: Text(context.l10n.buttonDelete),
             ),
           ],
         );

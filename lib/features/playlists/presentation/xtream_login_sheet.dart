@@ -16,6 +16,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/default_servers.dart';
@@ -89,12 +90,11 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
     final String pass = _passCtrl.text.trim();
 
     if (server == null) {
-      setState(() => _error = 'Choisis un serveur.');
+      setState(() => _error = context.l10n.loginServerRequired);
       return;
     }
     if (user.isEmpty || pass.isEmpty) {
-      setState(
-          () => _error = 'Utilisateur et mot de passe sont obligatoires.');
+      setState(() => _error = context.l10n.loginCredsRequired);
       return;
     }
     setState(() {
@@ -115,7 +115,7 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
         SnackBar(
           behavior: SnackBarBehavior.floating,
           content: Text(
-            'Connecté. Tes chaînes arrivent…',
+            context.l10n.loginConnected,
             style: AppTextStyles.bodyMedium,
           ),
         ),
@@ -130,7 +130,7 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = 'Erreur : $e';
+        _error = context.l10n.errorWithMessage('$e');
       });
     }
   }
@@ -170,16 +170,14 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
                     Icon(Icons.vpn_key_rounded,
                         color: AppColors.accent, size: 22),
                     const SizedBox(width: 10),
-                    Text('Connexion',
+                    Text(context.l10n.loginTitle,
                         style: AppTextStyles.headlineLarge
                             .copyWith(fontSize: 22)),
                   ],
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Choisis ton serveur puis saisis le code que t\'a '
-                  'donné ton revendeur (utilisateur + mot de passe). '
-                  'Tes chaînes seront chargées en quelques secondes.',
+                  context.l10n.loginXtreamIntro,
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 13,
                     color: AppColors.textSecondary,
@@ -191,17 +189,17 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
                 // (ou pendant le chargement). Un seul serveur = prédéfini,
                 // le client ne choisit rien.
                 if (_servers == null || _servers!.length > 1) ...<Widget>[
-                  _label('Serveur'),
+                  _label(context.l10n.loginServer),
                   _buildServerSelector(),
                   const SizedBox(height: 12),
                 ],
-                _label('Utilisateur'),
+                _label(context.l10n.loginUsername),
                 TextField(
                   controller: _userCtrl,
                   autocorrect: false,
                 ),
                 const SizedBox(height: 12),
-                _label('Mot de passe'),
+                _label(context.l10n.loginPassword),
                 TextField(
                   controller: _passCtrl,
                   obscureText: true,
@@ -252,8 +250,9 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
                             ),
                           )
                         : const Icon(Icons.check_rounded, size: 20),
-                    label:
-                        Text(_busy ? 'Vérification…' : 'Charger mes chaînes'),
+                    label: Text(_busy
+                        ? context.l10n.loginVerifying
+                        : context.l10n.loginLoadChannels),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -261,7 +260,7 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
                   width: double.infinity,
                   child: TextButton(
                     onPressed: _busy ? null : () => Navigator.of(context).pop(),
-                    child: const Text('Annuler'),
+                    child: Text(context.l10n.buttonCancel),
                   ),
                 ),
               ],
@@ -295,7 +294,7 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
             ),
             const SizedBox(width: 12),
             Text(
-              'Chargement des serveurs…',
+              context.l10n.loginLoadingServers,
               style: AppTextStyles.bodyMedium.copyWith(fontSize: 13),
             ),
           ],
@@ -317,7 +316,7 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text(
-              'Serveurs indisponibles pour le moment.',
+              context.l10n.loginServersUnavailable,
               style: AppTextStyles.bodyMedium.copyWith(fontSize: 13),
             ),
             const SizedBox(height: 8),
@@ -327,7 +326,7 @@ class _XtreamLoginSheetState extends State<_XtreamLoginSheet> {
                 _loadServers();
               },
               icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Réessayer'),
+              label: Text(context.l10n.buttonRetry),
             ),
           ],
         ),

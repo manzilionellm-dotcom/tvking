@@ -26,6 +26,7 @@ import 'package:flutter/services.dart';
 
 import '../../../core/branding/verified_badge.dart';
 import '../../../core/flavor/flavor.dart';
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/app_pin_settings.dart';
@@ -74,7 +75,7 @@ class _LockScreenState extends State<LockScreen> {
     if (_authenticating) return;
     setState(() => _authenticating = true);
     final bool ok = await BiometricAuth.instance.authenticate(
-      reason: 'Deverrouille ${FlavorConfig.current.appName}',
+      reason: context.l10n.lockUnlockReason(FlavorConfig.current.appName),
     );
     if (!mounted) return;
     if (ok) {
@@ -87,7 +88,7 @@ class _LockScreenState extends State<LockScreen> {
   Future<void> _tryPin() async {
     final String pin = _pinCtrl.text.trim();
     if (pin.length < 4) {
-      setState(() => _pinError = 'Tape au moins 4 chiffres.');
+      setState(() => _pinError = context.l10n.lockPinTooShort);
       return;
     }
     final bool ok = await AppPinSettings.instance.verify(pin);
@@ -97,7 +98,7 @@ class _LockScreenState extends State<LockScreen> {
       return;
     }
     setState(() {
-      _pinError = 'Code incorrect.';
+      _pinError = context.l10n.lockPinWrong;
       _pinCtrl.clear();
     });
   }
@@ -152,7 +153,7 @@ class _LockScreenState extends State<LockScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Application verrouillee',
+                  context.l10n.lockAppLocked,
                   style: AppTextStyles.bodyMedium.copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -173,8 +174,8 @@ class _LockScreenState extends State<LockScreen> {
                         )
                       : const Icon(Icons.fingerprint),
                   label: Text(_authenticating
-                      ? 'Authentification...'
-                      : 'Empreinte digitale'),
+                      ? context.l10n.lockAuthenticating
+                      : context.l10n.lockFingerprint),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.accent,
                     foregroundColor: AppColors.background,
@@ -260,7 +261,7 @@ class _LockScreenState extends State<LockScreen> {
                     ),
                     minimumSize: const Size(220, 44),
                   ),
-                  child: const Text('Valider le code'),
+                  child: Text(context.l10n.lockValidateCode),
                 ),
 
                 // ===== HELPER PIN PAR DEFAUT =====
@@ -269,8 +270,7 @@ class _LockScreenState extends State<LockScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
-                      'Code par defaut : ${AppPinSettings.defaultPin}\n'
-                      'Modifiable dans Reglages > Securite.',
+                      context.l10n.lockDefaultPin(AppPinSettings.defaultPin),
                       textAlign: TextAlign.center,
                       style: AppTextStyles.bodyMedium.copyWith(
                         color: AppColors.textTertiary,

@@ -13,6 +13,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/playlist_repository.dart';
@@ -60,15 +61,14 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
 
   Future<void> _submit() async {
     final String name =
-        _nameCtrl.text.trim().isEmpty ? 'Ma source' : _nameCtrl.text.trim();
+        _nameCtrl.text.trim().isEmpty ? context.l10n.mySource : _nameCtrl.text.trim();
     setState(() => _error = null);
 
     if (_mode == 'm3u') {
       final String url = _urlCtrl.text.trim();
       if (url.isEmpty ||
           (!url.startsWith('http://') && !url.startsWith('https://'))) {
-        setState(() => _error =
-            'URL invalide. Elle doit commencer par http:// ou https://');
+        setState(() => _error = context.l10n.loginInvalidUrl);
         return;
       }
       await _run(() =>
@@ -79,13 +79,11 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
       final String pass = _passCtrl.text.trim();
       if (server.isEmpty ||
           (!server.startsWith('http://') && !server.startsWith('https://'))) {
-        setState(() => _error =
-            'Serveur invalide. Format : http://serveur.com:8080');
+        setState(() => _error = context.l10n.loginInvalidServer);
         return;
       }
       if (user.isEmpty || pass.isEmpty) {
-        setState(() =>
-            _error = 'Utilisateur et mot de passe sont obligatoires.');
+        setState(() => _error = context.l10n.loginCredsRequired);
         return;
       }
       await _run(() => PlaylistRepository.instance.addXtreamPlaylist(
@@ -109,7 +107,7 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           behavior: SnackBarBehavior.floating,
-          content: Text('Source ajoutée. Tes chaînes arrivent…',
+          content: Text(context.l10n.loginSourceAdded,
               style: AppTextStyles.bodyMedium),
         ),
       );
@@ -123,7 +121,7 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = 'Erreur : $e';
+        _error = context.l10n.errorWithMessage('$e');
       });
     }
   }
@@ -162,7 +160,7 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
                   children: <Widget>[
                     Icon(Icons.link_rounded, color: AppColors.accent, size: 22),
                     const SizedBox(width: 10),
-                    Text('Ma source perso',
+                    Text(context.l10n.loginMySourcePerso,
                         style:
                             AppTextStyles.headlineLarge.copyWith(fontSize: 22)),
                   ],
@@ -179,7 +177,7 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
                 const SizedBox(height: 16),
 
                 if (_mode == 'm3u') ...<Widget>[
-                  _label('URL M3U'),
+                  _label(context.l10n.loginUrlM3u),
                   TextField(
                     controller: _urlCtrl,
                     keyboardType: TextInputType.url,
@@ -189,7 +187,7 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
                     ),
                   ),
                 ] else ...<Widget>[
-                  _label('Serveur Xtream'),
+                  _label(context.l10n.loginServerXtream),
                   TextField(
                     controller: _serverCtrl,
                     keyboardType: TextInputType.url,
@@ -199,10 +197,10 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  _label('Utilisateur'),
+                  _label(context.l10n.loginUsername),
                   TextField(controller: _userCtrl, autocorrect: false),
                   const SizedBox(height: 12),
-                  _label('Mot de passe'),
+                  _label(context.l10n.loginPassword),
                   TextField(
                     controller: _passCtrl,
                     obscureText: true,
@@ -210,11 +208,11 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
                   ),
                 ],
                 const SizedBox(height: 12),
-                _label('Nom (optionnel)'),
+                _label(context.l10n.loginNameOptional),
                 TextField(
                   controller: _nameCtrl,
-                  decoration: const InputDecoration(
-                    hintText: 'Défaut : "Ma source"',
+                  decoration: InputDecoration(
+                    hintText: context.l10n.loginNameHint,
                   ),
                 ),
                 if (_error != null) ...<Widget>[
@@ -256,7 +254,9 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.check_rounded, size: 20),
-                    label: Text(_busy ? 'Vérification…' : 'Charger mes chaînes'),
+                    label: Text(_busy
+                        ? context.l10n.loginVerifying
+                        : context.l10n.loginLoadChannels),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -264,7 +264,7 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
                   width: double.infinity,
                   child: TextButton(
                     onPressed: _busy ? null : () => Navigator.of(context).pop(),
-                    child: const Text('Annuler'),
+                    child: Text(context.l10n.buttonCancel),
                   ),
                 ),
               ],

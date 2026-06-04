@@ -15,6 +15,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/tv_focusable.dart';
@@ -99,7 +100,7 @@ class PosterRow extends StatelessWidget {
                   onTap: onSeeAll!,
                   borderRadius: BorderRadius.circular(8),
                   showGlow: false,
-                  semanticsLabel: 'Voir tout $title',
+                  semanticsLabel: context.l10n.seeAllOf(title),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
@@ -109,7 +110,7 @@ class PosterRow extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
                         Text(
-                          'Voir tout',
+                          context.l10n.buttonSeeAll,
                           style: AppTextStyles.bodyMedium.copyWith(
                             color: AppColors.accent,
                             fontSize: 12,

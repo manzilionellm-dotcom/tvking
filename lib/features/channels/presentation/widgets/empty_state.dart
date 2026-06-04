@@ -20,6 +20,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/branding/brand_logo.dart';
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 
@@ -48,14 +49,13 @@ class EmptyStateView extends StatelessWidget {
                 const SizedBox(height: 26),
 
                 Text(
-                  'Active ton abonnement',
+                  context.l10n.activateSubTitle,
                   textAlign: TextAlign.center,
                   style: AppTextStyles.headlineLarge.copyWith(fontSize: 23),
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Connecte-toi avec ton code (utilisateur + mot de passe), '
-                  'ou donne ta MAC à ton revendeur pour qu\'il active à distance.',
+                  context.l10n.activateSubDesc,
                   textAlign: TextAlign.center,
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 14,
@@ -89,7 +89,7 @@ class EmptyStateView extends StatelessWidget {
                       const SizedBox(width: 8),
                       Flexible(
                         child: Text(
-                          'Essai gratuit 7 jours · puis 13 € / an',
+                          context.l10n.freeTrialBadge,
                           textAlign: TextAlign.center,
                           style: AppTextStyles.bodyMedium.copyWith(
                             fontSize: 12.5,
@@ -111,7 +111,7 @@ class EmptyStateView extends StatelessWidget {
                     onPressed: onAddPlaylist,
                     icon: const Icon(Icons.support_agent_rounded, size: 22),
                     label: Text(
-                      'Activer mon abonnement',
+                      context.l10n.activateMySub,
                       style: AppTextStyles.button.copyWith(
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
@@ -126,7 +126,7 @@ class EmptyStateView extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  'Activation à distance par ton revendeur',
+                  context.l10n.remoteActivationByReseller,
                   textAlign: TextAlign.center,
                   style: AppTextStyles.labelSmall.copyWith(
                     color: AppColors.textTertiary,

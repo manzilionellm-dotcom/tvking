@@ -25,6 +25,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/live_badge.dart';
@@ -447,7 +448,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         );
       }
       if (!ok) {
-        _toast('Enregistrement impossible à démarrer. Réessaie.');
+        _toast(context.l10n.recStartFailed);
         return;
       }
 
@@ -463,10 +464,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       if (mounted) {
         setState(() => _activeRecording = rec);
-        _toast('● Enregistrement — continue à regarder, le flux est gardé');
+        _toast(context.l10n.recInProgress);
       }
     } catch (e) {
-      _toast('Impossible de démarrer : $e');
+      _toast(context.l10n.startFailedWithError('$e'));
     }
   }
 
@@ -500,18 +501,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         setState(() => _activeRecording = null);
         final String sizeLabel = _humanSize(bytes);
         if (bytes == 0) {
-          _toast(
-            'Enregistrement vide — réessaie en laissant tourner '
-            'quelques secondes.',
-          );
+          _toast(context.l10n.recEmpty);
         } else {
-          _toast(
-            'Enregistrement sauvegardé ($sizeLabel) — Mes enregistrements',
-          );
+          _toast(context.l10n.recSaved(sizeLabel));
         }
       }
     } catch (e) {
-      _toast('Erreur arrêt enregistrement : $e');
+      _toast(context.l10n.recStopError('$e'));
     }
   }
 
@@ -546,7 +542,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                           color: AppColors.live, size: 14),
                       const SizedBox(width: 6),
                       Text(
-                        'REC · appuie pour arrêter',
+                        context.l10n.recTapToStop,
                         style: AppTextStyles.labelSmall.copyWith(
                           color: Colors.white,
                           fontSize: 12,
@@ -870,9 +866,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         SnackBar(
           behavior: SnackBarBehavior.floating,
           content: Text(
-            'Mini-fenêtre indisponible sur cet appareil (requiert Android 8+). '
-            'Active aussi la permission Picture-in-picture dans : '
-            'Paramètres → Apps → 7 MOTION → Permissions.',
+            context.l10n.pipUnavailable,
             style: AppTextStyles.bodyMedium,
           ),
           duration: const Duration(seconds: 6),
@@ -913,7 +907,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // meme vitesse (deja le pattern existant ligne 256).
     PlayerSettings.instance.setLastSpeed(next);
     setState(() {}); // refresh le label du bouton overlay
-    _toast('Vitesse : ${next.toStringAsFixed(next == next.toInt() ? 0 : 2)}x');
+    _toast(context.l10n
+        .speedToast(next.toStringAsFixed(next == next.toInt() ? 0 : 2)));
     _scheduleHideOverlay();
   }
 
@@ -1359,7 +1354,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       Icons.picture_in_picture_alt_rounded,
                       color: Colors.white,
                     ),
-                    tooltip: 'Mini-fenêtre',
+                    tooltip: context.l10n.tooltipMiniWindow,
                     onPressed: _enterPipManually,
                   ),
                   // NB : le bouton "Cast par QR Code" a été retiré du
@@ -1383,8 +1378,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                               : Colors.white,
                         ),
                         tooltip: casting
-                            ? 'Casting en cours — tap pour gérer'
-                            : 'Envoyer vers une TV',
+                            ? context.l10n.tooltipCastingManage
+                            : context.l10n.tooltipSendToTv,
                         onPressed: _openCastPicker,
                       );
                     },
@@ -1394,7 +1389,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       Icons.refresh_rounded,
                       color: Colors.white,
                     ),
-                    tooltip: 'Recharger le flux',
+                    tooltip: context.l10n.tooltipReloadStream,
                     onPressed: _retry,
                   ),
                 ],
@@ -1476,7 +1471,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                             children: <Widget>[
                               _SeekIconButton(
                                 icon: Icons.fast_rewind_rounded,
-                                semanticsLabel: 'Reculer 2 minutes',
+                                semanticsLabel: context.l10n.seekRewind,
                                 onTap: () =>
                                     _seekBy(const Duration(minutes: -2)),
                               ),
@@ -1488,7 +1483,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                               const SizedBox(width: 24),
                               _SeekIconButton(
                                 icon: Icons.fast_forward_rounded,
-                                semanticsLabel: 'Avancer 2 minutes',
+                                semanticsLabel: context.l10n.seekForward,
                                 onTap: () =>
                                     _seekBy(const Duration(minutes: 2)),
                               ),
@@ -1514,7 +1509,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 children: <Widget>[
                   _ControlButton(
                     icon: Icons.subtitles_outlined,
-                    label: 'Pistes',
+                    label: context.l10n.playerTracks,
                     onTap: _openTracks,
                   ),
                   _ControlButton(
@@ -1531,7 +1526,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     icon: _isRecording
                         ? Icons.stop_circle_rounded
                         : Icons.fiber_manual_record_rounded,
-                    label: _isRecording ? 'STOP' : 'REC',
+                    label: _isRecording
+                        ? context.l10n.playerStop
+                        : context.l10n.playerRec,
                     iconColor: _isRecording ? AppColors.live : null,
                     onTap: _toggleRecording,
                   ),
@@ -1540,7 +1537,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   // CI). À rétablir quand on a un plugin compatible.
                   _ControlButton(
                     icon: Icons.tune_rounded,
-                    label: 'Réglages',
+                    label: context.l10n.playerSettings,
                     onTap: _openSettings,
                   ),
                 ],
@@ -1582,7 +1579,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             ),
             const SizedBox(height: 14),
             Text(
-              'Impossible de lire ce flux',
+              context.l10n.playerCantPlay,
               style: AppTextStyles.headlineMedium,
             ),
             const SizedBox(height: 8),
@@ -1610,7 +1607,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     side: const BorderSide(color: Colors.white30),
                   ),
                   icon: const Icon(Icons.arrow_back_rounded),
-                  label: const Text('Retour'),
+                  label: Text(context.l10n.buttonBack),
                 ),
                 const SizedBox(width: 12),
                 ElevatedButton.icon(
@@ -1620,7 +1617,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     foregroundColor: Colors.white,
                   ),
                   icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('Réessayer'),
+                  label: Text(context.l10n.buttonRetry),
                 ),
               ],
             ),
@@ -1854,7 +1851,9 @@ class _FavoriteToggle extends StatelessWidget {
             isFav ? Icons.favorite : Icons.favorite_outline,
             color: isFav ? AppColors.accentPink : Colors.white,
           ),
-          tooltip: isFav ? 'Retirer des favoris' : 'Ajouter aux favoris',
+          tooltip: isFav
+              ? context.l10n.tooltipRemoveFavorite
+              : context.l10n.tooltipAddFavorite,
           onPressed: () => FavoritesRepository.instance.toggle(channelId),
         );
       },

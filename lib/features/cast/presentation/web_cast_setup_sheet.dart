@@ -19,6 +19,7 @@ import 'package:flutter/services.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/cast_manager.dart';
@@ -59,8 +60,7 @@ class _WebCastSetupSheetState extends State<_WebCastSetupSheet> {
       if (!mounted) return;
       if (ip == null) {
         setState(() {
-          _error = 'Impossible de détecter ton IP WiFi. Vérifie que '
-              'tu es bien connecté à un WiFi (pas en données mobiles).';
+          _error = context.l10n.webCastIpError;
         });
         return;
       }
@@ -86,7 +86,7 @@ class _WebCastSetupSheetState extends State<_WebCastSetupSheet> {
       CastManager.instance.selectDevice(virtual);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Erreur : $e');
+      setState(() => _error = context.l10n.errorWithMessage('$e'));
     }
   }
 
@@ -134,7 +134,7 @@ class _WebCastSetupSheetState extends State<_WebCastSetupSheet> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('URL copiée : $_url'),
+        content: Text(context.l10n.urlCopied(_url!)),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -178,15 +178,13 @@ class _WebCastSetupSheetState extends State<_WebCastSetupSheet> {
                       Icon(Icons.qr_code_rounded,
                           color: AppColors.accent, size: 22),
                       const SizedBox(width: 10),
-                      Text('Cast via navigateur',
+                      Text(context.l10n.webCastTitle,
                           style: AppTextStyles.headlineMedium),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Marche sur n\'importe quelle TV qui a un navigateur web '
-                    '— Google TV, Samsung, LG, Hisense, vieilles smart TVs. '
-                    'Ta TV doit être sur le même WiFi que le téléphone.',
+                    context.l10n.webCastDesc,
                     style: AppTextStyles.bodyMedium.copyWith(
                       fontSize: 12,
                       color: AppColors.textMuted,
@@ -214,7 +212,7 @@ class _WebCastSetupSheetState extends State<_WebCastSetupSheet> {
                               ? null
                               : () => Navigator.of(context).pop(),
                           icon: const Icon(Icons.check_rounded, size: 18),
-                          label: const Text('OK, la TV est connectée'),
+                          label: Text(context.l10n.webCastTvConnected),
                           style: FilledButton.styleFrom(
                             backgroundColor: AppColors.accent,
                             foregroundColor: Colors.black,
@@ -272,7 +270,7 @@ class _WebCastSetupSheetState extends State<_WebCastSetupSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  'Ou tape cette URL dans le navigateur de la TV :',
+                  context.l10n.webCastUrlLabel,
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 11,
                     color: AppColors.textMuted,
@@ -292,7 +290,7 @@ class _WebCastSetupSheetState extends State<_WebCastSetupSheet> {
             ),
           ),
           IconButton(
-            tooltip: 'Copier',
+            tooltip: context.l10n.buttonCopy,
             icon: const Icon(Icons.copy_rounded),
             onPressed: _copyUrl,
           ),
@@ -314,13 +312,10 @@ class _WebCastSetupSheetState extends State<_WebCastSetupSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          _step('1', 'Sur ta TV, ouvre son navigateur web'),
-          _step('2', 'Scanne le QR code ci-dessus (ou tape l\'URL)'),
-          _step('3', 'Garde cet onglet ouvert sur la TV'),
-          _step(
-            '4',
-            'Reviens ici, tape une chaîne → elle apparaît sur la TV en 2s',
-          ),
+          _step('1', context.l10n.webCastStep1),
+          _step('2', context.l10n.webCastStep2),
+          _step('3', context.l10n.webCastStep3),
+          _step('4', context.l10n.webCastStep4),
         ],
       ),
     );

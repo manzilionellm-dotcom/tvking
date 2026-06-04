@@ -34,6 +34,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../cast/presentation/cast_button.dart';
@@ -294,7 +295,7 @@ class _SearchHeader extends StatelessWidget {
         children: <Widget>[
           IconButton(
             icon: const Icon(Icons.arrow_back_rounded),
-            tooltip: 'Retour',
+            tooltip: context.l10n.buttonBack,
             onPressed: onBack,
           ),
           Expanded(
@@ -330,7 +331,7 @@ class _SearchHeader extends StatelessWidget {
                         isCollapsed: true,
                         contentPadding: EdgeInsets.zero,
                         border: InputBorder.none,
-                        hintText: 'Chercher une chaîne, un sport, un film…',
+                        hintText: context.l10n.searchHint,
                         hintStyle: AppTextStyles.bodyMedium.copyWith(
                           fontSize: 14,
                           color: AppColors.textMuted,
@@ -399,7 +400,7 @@ class _IdleDiscovery extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 _SectionHeader(
-                  title: 'Récent',
+                  title: context.l10n.searchRecent,
                   trailing: TextButton(
                     onPressed: () =>
                         RecentSearchesRepository.instance.clearAll(),
@@ -409,7 +410,7 @@ class _IdleDiscovery extends StatelessWidget {
                       minimumSize: const Size(0, 28),
                     ),
                     child: Text(
-                      'Effacer',
+                      context.l10n.buttonClear,
                       style: AppTextStyles.bodyMedium.copyWith(
                         fontSize: 11,
                         color: AppColors.textMuted,
@@ -443,7 +444,7 @@ class _IdleDiscovery extends StatelessWidget {
         ),
 
         // ----- Chips par genre -----
-        _SectionHeader(title: 'Explorer par catégorie'),
+        _SectionHeader(title: context.l10n.searchExploreByCategory),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Wrap(
@@ -469,7 +470,7 @@ class _IdleDiscovery extends StatelessWidget {
         const SizedBox(height: 24),
 
         // ----- À découvrir : 6 chaînes random avec logo -----
-        _SectionHeader(title: 'À découvrir'),
+        _SectionHeader(title: context.l10n.sectionDiscover),
         _DiscoveryRow(
           channels: _pickDiscovery(allChannels),
           onTap: onSubmitQuery,
@@ -644,7 +645,7 @@ class _DiscoveryRow extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Text(
-          'Charge ta première playlist pour découvrir des chaînes.',
+          context.l10n.searchDiscoveryEmpty,
           style: AppTextStyles.bodyMedium.copyWith(fontSize: 12),
         ),
       );
@@ -773,7 +774,7 @@ class _ResultsGrid extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
               child: Text(
-                '${results.length} résultat${results.length > 1 ? "s" : ""} pour "$query"',
+                context.l10n.searchResultsCount(results.length, query),
                 style: AppTextStyles.bodyMedium.copyWith(
                   fontSize: 12,
                   color: AppColors.textMuted,
@@ -832,14 +833,13 @@ class _NoResults extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         Text(
-          'Aucun résultat pour "$query"',
+          context.l10n.searchNoResult(query),
           textAlign: TextAlign.center,
           style: AppTextStyles.headlineMedium.copyWith(fontSize: 16),
         ),
         const SizedBox(height: 6),
         Text(
-          'Vérifie l\'orthographe ou essaye un autre mot. Si la chaîne '
-          'devrait être là, demande à ton revendeur de la rajouter.',
+          context.l10n.searchNoResultHelp,
           textAlign: TextAlign.center,
           style: AppTextStyles.bodyMedium.copyWith(
             fontSize: 12,
@@ -849,7 +849,7 @@ class _NoResults extends StatelessWidget {
         ),
         const SizedBox(height: 24),
         Text(
-          'PISTES À ESSAYER',
+          context.l10n.searchTipsToTry,
           textAlign: TextAlign.center,
           style: AppTextStyles.labelSmall.copyWith(
             color: AppColors.textSecondary,
@@ -899,14 +899,13 @@ class _EmptyCatalog extends StatelessWidget {
                 size: 56, color: AppColors.textMuted),
             const SizedBox(height: 14),
             Text(
-              'Aucune chaîne pour l\'instant',
+              context.l10n.searchEmptyCatalogTitle,
               style: AppTextStyles.headlineMedium.copyWith(fontSize: 16),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 6),
             Text(
-              'Ton revendeur doit activer ton abonnement avant que tu '
-              'puisses chercher. Reviens dans quelques minutes.',
+              context.l10n.searchEmptyCatalogHelp,
               style: AppTextStyles.bodyMedium.copyWith(
                 fontSize: 12,
                 color: AppColors.textMuted,

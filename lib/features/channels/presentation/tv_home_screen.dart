@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/branding/brand_logo.dart';
 import '../../../core/branding/powered_by_marquee.dart';
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/support/vip_help_card.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -206,7 +207,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               }
               if (recent.isEmpty) return const SizedBox.shrink();
               return _TvRow(
-                title: 'Reprendre',
+                title: context.l10n.sectionResume,
                 channels: recent,
                 onTap: _onChannelTap,
               );
@@ -225,7 +226,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
               }
               if (favs.isEmpty) return const SizedBox.shrink();
               return _TvRow(
-                title: 'Favoris',
+                title: context.l10n.sectionFavorites,
                 channels: favs,
                 onTap: _onChannelTap,
                 onSeeAll: () => Navigator.of(context).push<void>(
@@ -239,14 +240,14 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
           if (sports.isNotEmpty)
             _TvRow(
-              title: 'Sports en direct',
-              subtitle: '${sports.length} chaînes',
+              title: context.l10n.sectionSportsLive,
+              subtitle: context.l10n.channelCount(sports.length),
               channels: sports.take(20).toList(),
               onTap: _onChannelTap,
               onSeeAll: () => Navigator.of(context).push<void>(
                 tvRoute<void>(
-                  const CategorySectionScreen(
-                    title: 'Sports',
+                  CategorySectionScreen(
+                    title: context.l10n.sectionSportsLive,
                     genreFilter: ChannelGenre.sports,
                   ),
                 ),
@@ -254,27 +255,27 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             ),
 
           _TvRow(
-            title: 'En direct maintenant',
-            subtitle: '${live.length} chaînes',
+            title: context.l10n.sectionLiveNow,
+            subtitle: context.l10n.channelCount(live.length),
             channels: live.take(20).toList(),
             onTap: _onChannelTap,
             onSeeAll: () => Navigator.of(context).push<void>(
               tvRoute<void>(
-                const CategorySectionScreen(title: 'Live TV'),
+                CategorySectionScreen(title: context.l10n.navLive),
               ),
             ),
           ),
 
           if (movies.isNotEmpty)
             _TvRow(
-              title: 'Films',
-              subtitle: '${movies.length} chaînes',
+              title: context.l10n.sectionMovies,
+              subtitle: context.l10n.channelCount(movies.length),
               channels: movies.take(20).toList(),
               onTap: _onChannelTap,
               onSeeAll: () => Navigator.of(context).push<void>(
                 tvRoute<void>(
-                  const CategorySectionScreen(
-                    title: 'Films',
+                  CategorySectionScreen(
+                    title: context.l10n.sectionMovies,
                     genreFilter: ChannelGenre.movies,
                   ),
                 ),
@@ -283,14 +284,14 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
 
           if (series.isNotEmpty)
             _TvRow(
-              title: 'Séries',
-              subtitle: '${series.length} chaînes',
+              title: context.l10n.sectionSeries,
+              subtitle: context.l10n.channelCount(series.length),
               channels: series.take(20).toList(),
               onTap: _onChannelTap,
               onSeeAll: () => Navigator.of(context).push<void>(
                 tvRoute<void>(
-                  const CategorySectionScreen(
-                    title: 'Séries',
+                  CategorySectionScreen(
+                    title: context.l10n.sectionSeries,
                     genreFilter: ChannelGenre.series,
                   ),
                 ),
@@ -353,21 +354,21 @@ class _TvTopBar extends StatelessWidget {
           //  Raccourcis vers les grandes catégories. Focusables au D-pad.
           _TvNavChip(
             icon: Icons.live_tv_rounded,
-            label: 'Direct',
+            label: context.l10n.navDirect,
             onTap: () => Navigator.of(context).push<void>(
               tvRoute<void>(
-                const CategorySectionScreen(title: 'Live TV'),
+                CategorySectionScreen(title: context.l10n.navLive),
               ),
             ),
           ),
           const SizedBox(width: 8),
           _TvNavChip(
             icon: Icons.movie_outlined,
-            label: 'Films',
+            label: context.l10n.sectionMovies,
             onTap: () => Navigator.of(context).push<void>(
               tvRoute<void>(
-                const CategorySectionScreen(
-                  title: 'Films',
+                CategorySectionScreen(
+                  title: context.l10n.sectionMovies,
                   genreFilter: ChannelGenre.movies,
                 ),
               ),
@@ -376,11 +377,11 @@ class _TvTopBar extends StatelessWidget {
           const SizedBox(width: 8),
           _TvNavChip(
             icon: Icons.video_library_outlined,
-            label: 'Séries',
+            label: context.l10n.sectionSeries,
             onTap: () => Navigator.of(context).push<void>(
               tvRoute<void>(
-                const CategorySectionScreen(
-                  title: 'Séries',
+                CategorySectionScreen(
+                  title: context.l10n.sectionSeries,
                   genreFilter: ChannelGenre.series,
                 ),
               ),
@@ -394,7 +395,7 @@ class _TvTopBar extends StatelessWidget {
           // Bouton Actualiser TV — focusable au D-pad, visible à 3 m.
           _TvIconButton(
             icon: Icons.refresh_rounded,
-            label: 'Actualiser',
+            label: context.l10n.navRefresh,
             onTap: () async {
               final ScaffoldMessengerState m =
                   ScaffoldMessenger.of(context);
@@ -405,15 +406,15 @@ class _TvTopBar extends StatelessWidget {
                   behavior: SnackBarBehavior.floating,
                   content: Text(
                     ok == 0
-                        ? 'Aucune playlist actualisée.'
-                        : 'Actualisé : $ok playlist(s).',
+                        ? context.l10n.refreshNoPlaylist
+                        : context.l10n.refreshDoneCount(ok),
                   ),
                 ));
               } catch (e) {
                 m.showSnackBar(SnackBar(
                   behavior: SnackBarBehavior.floating,
                   backgroundColor: TvRoyal.live,
-                  content: Text('Erreur : $e'),
+                  content: Text(context.l10n.errorWithMessage('$e')),
                 ));
               }
             },
@@ -421,13 +422,13 @@ class _TvTopBar extends StatelessWidget {
           const SizedBox(width: 10),
           _TvIconButton(
             icon: Icons.search_rounded,
-            label: 'Recherche',
+            label: context.l10n.navSearch,
             onTap: onSearch,
           ),
           const SizedBox(width: 10),
           _TvIconButton(
             icon: Icons.event_note_rounded,
-            label: 'Guide',
+            label: context.l10n.navGuide,
             onTap: onGuide,
           ),
           const SizedBox(width: 10),
@@ -435,7 +436,7 @@ class _TvTopBar extends StatelessWidget {
           // build : pas de casting sur grand écran.)
           _TvIconButton(
             icon: Icons.settings_outlined,
-            label: 'Réglages',
+            label: context.l10n.settingsTitle,
             onTap: onSettings,
           ),
           const SizedBox(width: 16),
@@ -657,7 +658,7 @@ class _TvHero extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
                   Text(
-                    'À LA UNE',
+                    context.l10n.tvFeatured,
                     // `eyebrow` est rouge ember par défaut → on le force
                     // en violet pour rester dans l'identité TV.
                     style: AppTextStyles.eyebrow.copyWith(
@@ -690,7 +691,7 @@ class _TvHero extends StatelessWidget {
                       autofocus: true,
                       onPressed: onWatch,
                       icon: const Icon(Icons.play_arrow_rounded, size: 26),
-                      label: const Text('Regarder'),
+                      label: Text(context.l10n.buttonWatch),
                       style: FilledButton.styleFrom(
                         // Bouton Play en VIOLET (pilule claire, label
                         // sombre pour le contraste — cf. études).
@@ -768,7 +769,7 @@ class _TvRow extends StatelessWidget {
                       foregroundColor: TvRoyal.accent,
                     ),
                     child: Text(
-                      'Tout voir',
+                      context.l10n.buttonSeeAll,
                       style: AppTextStyles.button.copyWith(
                         fontSize: 14,
                         color: TvRoyal.accent,

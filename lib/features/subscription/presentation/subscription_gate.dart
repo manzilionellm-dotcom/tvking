@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/branding/brand_logo.dart';
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/support/support_choice_sheet.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -44,19 +45,15 @@ class SubscriptionGateScreen extends StatelessWidget {
             final bool expired = status == SubscriptionStatus.trialExpired;
 
             final String title = banned
-                ? 'Compte suspendu'
+                ? context.l10n.subAccountSuspended
                 : frozen
-                    ? 'Compte temporairement gelé'
-                    : 'Débloque tout BLACK7 ROYAL';
+                    ? context.l10n.subAccountFrozen
+                    : context.l10n.subUnlockAll;
             final String message = banned
-                ? 'Ton compte a été suspendu par l\'administrateur. '
-                    'Si tu penses que c\'est une erreur, contacte-nous.'
+                ? context.l10n.subBannedMsg
                 : frozen
-                    ? 'Ton compte est en pause. Contacte le support '
-                        'pour réactiver l\'accès.'
-                    : 'Ton essai gratuit de $kTrialDurationDays jours est '
-                        'terminé. Active ton accès et profite de TOUT, '
-                        'sans aucune limite :';
+                    ? context.l10n.subFrozenMsg
+                    : context.l10n.subTrialExpiredMsg(kTrialDurationDays);
 
             return RefreshIndicator(
               color: AppColors.accent,
@@ -128,7 +125,7 @@ class SubscriptionGateScreen extends StatelessWidget {
                   // ----- Arguments de vente (uniquement essai terminé) -----
                   if (expired) ...<Widget>[
                     const SizedBox(height: 22),
-                    _benefits(),
+                    _benefits(context),
                   ],
                   const SizedBox(height: 28),
 
@@ -139,7 +136,7 @@ class SubscriptionGateScreen extends StatelessWidget {
                       child: FilledButton.icon(
                         onPressed: () => _openPurchase(),
                         icon: const Icon(Icons.shopping_bag_rounded, size: 22),
-                        label: const Text('M\'abonner — 13 €/an'),
+                        label: Text(context.l10n.subSubscribePrice),
                         style: FilledButton.styleFrom(
                           backgroundColor: AppColors.accent,
                           foregroundColor: AppColors.voidSurface,
@@ -158,7 +155,7 @@ class SubscriptionGateScreen extends StatelessWidget {
                     child: OutlinedButton.icon(
                       onPressed: () => showSupportChoiceSheet(context),
                       icon: const Icon(Icons.support_agent_rounded, size: 20),
-                      label: const Text('Contacter le support'),
+                      label: Text(context.l10n.subContactSupport),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.accent,
                         side: BorderSide(
@@ -171,7 +168,7 @@ class SubscriptionGateScreen extends StatelessWidget {
 
                   // ----- Pull-to-refresh hint -----
                   Text(
-                    'Tu viens de payer ? Tire vers le bas pour rafraîchir.',
+                    context.l10n.subPullToRefresh,
                     textAlign: TextAlign.center,
                     style: AppTextStyles.bodyMedium.copyWith(
                       fontSize: 11,
@@ -195,7 +192,7 @@ class SubscriptionGateScreen extends StatelessWidget {
 
   /// Liste d'avantages affichee sur l'ecran "essai termine" — des
   /// arguments concrets pour donner envie de s'abonner.
-  Widget _benefits() {
+  Widget _benefits(BuildContext context) {
     Widget row(IconData icon, String text) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 7),
           child: Row(
@@ -226,18 +223,12 @@ class SubscriptionGateScreen extends StatelessWidget {
       ),
       child: Column(
         children: <Widget>[
-          row(Icons.movie_filter_rounded,
-              'Des milliers de chaînes, films & séries du monde entier'),
-          row(Icons.live_tv_rounded,
-              'Tout le sport en direct, en HD / 4K, sans coupure'),
-          row(Icons.cast_rounded,
-              'Caster sur n\'importe quelle télé (Chromecast & Google TV)'),
-          row(Icons.fiber_manual_record_rounded,
-              'Enregistrer tes émissions, films et matchs préférés'),
-          row(Icons.do_not_disturb_on_rounded,
-              'Zéro publicité — lecture fluide, instantanée'),
-          row(Icons.devices_rounded,
-              'Sur tous tes appareils : téléphone, tablette, TV'),
+          row(Icons.movie_filter_rounded, context.l10n.subBenefitChannels),
+          row(Icons.live_tv_rounded, context.l10n.subBenefitSports),
+          row(Icons.cast_rounded, context.l10n.subBenefitCast),
+          row(Icons.fiber_manual_record_rounded, context.l10n.subBenefitRecord),
+          row(Icons.do_not_disturb_on_rounded, context.l10n.subBenefitNoAds),
+          row(Icons.devices_rounded, context.l10n.subBenefitDevices),
         ],
       ),
     );

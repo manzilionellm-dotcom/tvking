@@ -19,6 +19,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/support/support_choice_sheet.dart';
 import '../../../../core/support/vip_support.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -66,12 +67,12 @@ class _SourceChoiceSheet extends StatelessWidget {
             ),
             const SizedBox(height: 18),
             Text(
-              'Ma source',
+              context.l10n.mySource,
               style: AppTextStyles.headlineMedium.copyWith(fontSize: 19),
             ),
             const SizedBox(height: 4),
             Text(
-              'Comment veux-tu accéder à tes chaînes ?',
+              context.l10n.sourceQuestion,
               style: AppTextStyles.bodyMedium.copyWith(
                 fontSize: 13,
                 color: AppColors.textSecondary,
@@ -81,8 +82,8 @@ class _SourceChoiceSheet extends StatelessWidget {
 
             _SourceTile(
               icon: Icons.vpn_key_rounded,
-              title: 'Me connecter avec mon code',
-              subtitle: 'Saisis ton utilisateur + mot de passe',
+              title: context.l10n.sourceLoginCode,
+              subtitle: context.l10n.sourceLoginCodeSub,
               onTap: () {
                 Navigator.of(context).pop();
                 showXtreamLoginSheet(context);
@@ -91,8 +92,8 @@ class _SourceChoiceSheet extends StatelessWidget {
             const SizedBox(height: 12),
             _SourceTile(
               icon: Icons.link_rounded,
-              title: 'J\'ai ma propre source',
-              subtitle: 'Lien M3U / M3U8 ou codes Xtream',
+              title: context.l10n.sourceOwn,
+              subtitle: context.l10n.sourceOwnSub,
               onTap: () {
                 Navigator.of(context).pop();
                 showM3uLoginSheet(context);
@@ -101,8 +102,8 @@ class _SourceChoiceSheet extends StatelessWidget {
             const SizedBox(height: 12),
             _SourceTile(
               icon: Icons.support_agent_rounded,
-              title: 'Activer l\'app',
-              subtitle: 'Contacte-nous (ta MAC est déjà jointe au message)',
+              title: context.l10n.sourceActivate,
+              subtitle: context.l10n.sourceActivateSub,
               onTap: () async {
                 // Redirige DIRECTEMENT vers le contact (WhatsApp) avec la
                 // MAC pré-remplie : le client n'a qu'à envoyer. Si WhatsApp
@@ -248,13 +249,12 @@ class _ActivationSheet extends StatelessWidget {
                 ),
                 const SizedBox(height: 18),
                 Text(
-                  'Activer l\'app à la maison',
+                  context.l10n.activateAtHomeTitle,
                   style: AppTextStyles.headlineMedium.copyWith(fontSize: 19),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Communique cet identifiant à ton revendeur pour qu\'il '
-                  'active tes chaînes à distance.',
+                  context.l10n.activateAtHomeDesc,
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 13,
                     color: AppColors.textSecondary,
@@ -298,14 +298,14 @@ class _ActivationSheet extends StatelessWidget {
                                   SnackBar(
                                     behavior: SnackBarBehavior.floating,
                                     content: Text(
-                                      'Identifiant copié : $mac',
+                                      context.l10n.idCopied(mac),
                                       style: AppTextStyles.bodyMedium,
                                     ),
                                   ),
                                 );
                               },
                         icon: const Icon(Icons.copy_rounded, size: 16),
-                        label: const Text('Copier'),
+                        label: Text(context.l10n.buttonCopy),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -320,7 +320,7 @@ class _ActivationSheet extends StatelessWidget {
                                       'activer mes chaînes :\n\n$mac',
                                 ),
                         icon: const Icon(Icons.send_rounded, size: 16),
-                        label: const Text('Envoyer'),
+                        label: Text(context.l10n.buttonSend),
                         style: FilledButton.styleFrom(
                           backgroundColor: AppColors.accent,
                           foregroundColor: AppColors.voidSurface,

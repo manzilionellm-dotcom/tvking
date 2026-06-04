@@ -24,6 +24,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/branding/brand_logo.dart';
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/cinematic_spacing.dart';
@@ -93,7 +94,7 @@ class AgeGateScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
                         Text(
-                          'Contenu réservé aux adultes',
+                          context.l10n.ageGateTitle,
                           style: AppTextStyles.headlineMedium.copyWith(
                             fontSize: 17,
                             color: AppColors.textPrimary,
@@ -101,11 +102,7 @@ class AgeGateScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: CinematicSpacing.xs),
                         Text(
-                          'Cette application diffuse des programmes '
-                          'à caractère explicite réservés aux personnes '
-                          'majeures. En continuant, vous déclarez sur '
-                          'l\'honneur avoir atteint l\'âge légal de '
-                          'majorité dans votre pays.',
+                          context.l10n.ageGateBody,
                           style: AppTextStyles.bodyLarge.copyWith(
                             fontSize: 14,
                             color: AppColors.textSecondary,
@@ -120,12 +117,12 @@ class AgeGateScreen extends StatelessWidget {
 
                   // CTA principal — j'ai 18+
                   _PrimaryButton(
-                    label: "J'AI 18 ANS OU PLUS — ENTRER",
+                    label: context.l10n.ageGateEnter,
                     onPressed: _confirm,
                   ),
                   const SizedBox(height: CinematicSpacing.s),
                   _GhostButton(
-                    label: 'Quitter',
+                    label: context.l10n.ageGateQuit,
                     onPressed: _decline,
                   ),
 
@@ -133,8 +130,7 @@ class AgeGateScreen extends StatelessWidget {
 
                   // Note légale en pied
                   Text(
-                    'En cas de fausse déclaration, la responsabilité '
-                    'incombe exclusivement à l\'utilisateur.',
+                    context.l10n.ageGateLegal,
                     textAlign: TextAlign.center,
                     style: AppTextStyles.labelSmall.copyWith(
                       color: AppColors.textMuted,

@@ -17,6 +17,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../cast/presentation/cast_button.dart';
@@ -63,7 +64,7 @@ class ChannelsGridScreen extends StatelessWidget {
         ],
       ),
       body: channels.isEmpty
-          ? _buildEmpty()
+          ? _buildEmpty(context)
           : LayoutBuilder(
               builder: (BuildContext context, BoxConstraints cons) {
                 final double w = cons.maxWidth;
@@ -106,7 +107,7 @@ class ChannelsGridScreen extends StatelessWidget {
     playChannel(context, channel);
   }
 
-  Widget _buildEmpty() {
+  Widget _buildEmpty(BuildContext context) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -120,12 +121,12 @@ class ChannelsGridScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Aucune chaîne ici',
+              context.l10n.gridEmptyTitle,
               style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
             ),
             const SizedBox(height: 6),
             Text(
-              'Ajoute une playlist ou ajuste tes filtres.',
+              context.l10n.gridEmptySubtitle,
               style: AppTextStyles.bodyMedium,
               textAlign: TextAlign.center,
             ),

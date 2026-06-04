@@ -21,6 +21,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../i18n/l10n_extension.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/tv_focusable.dart';
@@ -77,12 +78,11 @@ class _SupportChoiceSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 18),
-            Text('Comment veux-tu nous joindre ?',
+            Text(context.l10n.supportHowToReach,
                 style: AppTextStyles.headlineMedium.copyWith(fontSize: 18)),
             const SizedBox(height: 4),
             Text(
-              'Choisis le canal qui te convient. Notre équipe '
-              'répond 7j/7.',
+              context.l10n.supportPickChannel,
               style: AppTextStyles.bodyMedium.copyWith(
                 fontSize: 12.5,
                 color: AppColors.textMuted,
@@ -93,19 +93,15 @@ class _SupportChoiceSheet extends StatelessWidget {
             // ===== Option 1 — Message instantané =====
             _ChoiceCard(
               icon: Icons.forum_rounded,
-              title: 'Message instantané',
-              subtitle: 'Conversation écrite · Réponse moyenne 15 min.',
+              title: context.l10n.supportInstantMessage,
+              subtitle: context.l10n.supportInstantMessageSub,
               onTap: () async {
                 Navigator.of(context).pop();
                 final bool ok = await VipSupport.openWhatsApp(
                   customMessage: customMessage,
                 );
                 if (!ok && context.mounted) {
-                  _toast(
-                    context,
-                    'Impossible d\'ouvrir la messagerie. '
-                    'Essaie l\'appel.',
-                  );
+                  _toast(context, context.l10n.supportMessageError);
                 }
               },
             ),
@@ -114,18 +110,14 @@ class _SupportChoiceSheet extends StatelessWidget {
             // ===== Option 2 — Appel téléphonique =====
             _ChoiceCard(
               icon: Icons.phone_in_talk_rounded,
-              title: 'Appel téléphonique',
+              title: context.l10n.supportPhoneCall,
               subtitle:
-                  'Parle à un conseiller · ${VipSupport.displayNumber}',
+                  context.l10n.supportPhoneCallSub(VipSupport.displayNumber),
               onTap: () async {
                 Navigator.of(context).pop();
                 final bool ok = await VipSupport.openPhoneCall();
                 if (!ok && context.mounted) {
-                  _toast(
-                    context,
-                    'Cet appareil ne peut pas appeler. '
-                    'Utilise le message à la place.',
-                  );
+                  _toast(context, context.l10n.supportCallError);
                 }
               },
             ),
@@ -135,7 +127,7 @@ class _SupportChoiceSheet extends StatelessWidget {
               child: TextButton(
                 onPressed: () => Navigator.of(context).pop(),
                 child: Text(
-                  'Annuler',
+                  context.l10n.buttonCancel,
                   style: AppTextStyles.button.copyWith(
                     color: AppColors.textSecondary,
                   ),

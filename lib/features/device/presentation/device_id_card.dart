@@ -17,6 +17,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/device_identity.dart';
@@ -53,7 +54,7 @@ class _DeviceIdCardState extends State<DeviceIdCard> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Identifiant copié : $_mac'),
+        content: Text(context.l10n.idCopied(_mac!)),
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
       ),
@@ -84,7 +85,7 @@ class _DeviceIdCardState extends State<DeviceIdCard> {
               ),
               const SizedBox(width: 8),
               Text(
-                'IDENTIFIANT APPAREIL',
+                context.l10n.deviceIdLabel,
                 style: AppTextStyles.labelSmall.copyWith(
                   color: AppColors.textSecondary,
                   fontSize: 11,
@@ -110,7 +111,7 @@ class _DeviceIdCardState extends State<DeviceIdCard> {
               ),
               IconButton(
                 onPressed: _mac == null ? null : _copy,
-                tooltip: 'Copier',
+                tooltip: context.l10n.buttonCopy,
                 icon: const Icon(Icons.copy_rounded),
                 color: AppColors.textPrimary,
               ),
@@ -119,9 +120,7 @@ class _DeviceIdCardState extends State<DeviceIdCard> {
           if (widget.showCaption) ...<Widget>[
             const SizedBox(height: 6),
             Text(
-              'Identifie ton installation BLACK7 ROYAL. Garde ce code '
-              'pour le support technique de l\'app. Pour toute '
-              'question sur les chaînes, contacte ton fournisseur IPTV.',
+              context.l10n.deviceIdCaption,
               style: AppTextStyles.bodyMedium.copyWith(
                 fontSize: 11,
                 color: AppColors.textMuted,

@@ -21,6 +21,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/cast_manager.dart';
@@ -81,8 +82,9 @@ class CastButton extends StatelessWidget {
 
         return IconButton(
           tooltip: hasTarget
-              ? 'Cast vers ${mgr.selectedDevice?.name ?? mgr.device?.name ?? "TV"}'
-              : 'Cast vers une TV',
+              ? context.l10n.castToDevice(
+                  mgr.selectedDevice?.name ?? mgr.device?.name ?? 'TV')
+              : context.l10n.castIdle,
           icon: child,
           onPressed: () => _onTap(context, mgr),
         );
@@ -184,8 +186,8 @@ void showCastFailedToast(BuildContext context, Object error) {
       behavior: SnackBarBehavior.floating,
       backgroundColor: AppColors.live,
       content: Text(
-        'Cast impossible — lecture en local. '
-        '(${error.toString().replaceFirst("Exception: ", "")})',
+        context.l10n.castFailedLocal(
+            error.toString().replaceFirst('Exception: ', '')),
         style: AppTextStyles.bodyMedium,
       ),
     ),

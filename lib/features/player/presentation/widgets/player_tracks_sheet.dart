@@ -15,6 +15,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 
@@ -58,16 +59,17 @@ class PlayerTracksSheet extends StatelessWidget {
                     children: <Widget>[
                       _grabber(),
                       const SizedBox(height: 18),
-                      Text('Pistes', style: AppTextStyles.headlineMedium),
+                      Text(context.l10n.tracksTitle,
+                          style: AppTextStyles.headlineMedium),
                       const SizedBox(height: 18),
 
                       // ----- Audio -----
-                      _section('Audio', tracks.audio),
+                      _section(context.l10n.tracksAudio, tracks.audio),
                       _audioList(context, tracks),
                       const SizedBox(height: 22),
 
                       // ----- Sous-titres -----
-                      _section('Sous-titres', tracks.subtitle),
+                      _section(context.l10n.tracksSubtitles, tracks.subtitle),
                       _subtitleList(context, tracks),
                     ],
                   ),
@@ -128,7 +130,7 @@ class PlayerTracksSheet extends StatelessWidget {
 
   Widget _audioList(BuildContext context, Tracks tracks) {
     if (tracks.audio.isEmpty) {
-      return _empty('Aucune piste audio détectée.');
+      return _empty(context.l10n.tracksNoAudio);
     }
     return Column(
       children: tracks.audio.map((AudioTrack t) {
@@ -145,10 +147,7 @@ class PlayerTracksSheet extends StatelessWidget {
 
   Widget _subtitleList(BuildContext context, Tracks tracks) {
     if (tracks.subtitle.isEmpty) {
-      return _empty(
-        'Aucun sous-titre. Astuce : sur certains flux, ils sont '
-        'embarqués mais détectés tardivement.',
-      );
+      return _empty(context.l10n.tracksNoSubtitles);
     }
     return Column(
       children: tracks.subtitle.map((SubtitleTrack t) {

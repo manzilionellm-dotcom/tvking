@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 import '../../../core/branding/brand_logo.dart';
 import '../../../core/branding/verified_badge.dart';
 import '../../../core/flavor/flavor.dart';
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/device_class_repository.dart';
@@ -101,7 +102,7 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
 
                   // ----- Question -----
                   Text(
-                    'Tu es sur quoi ?',
+                    context.l10n.deviceQuestion,
                     style: AppTextStyles.displayLarge.copyWith(
                       fontSize: 36,
                       height: 1.05,
@@ -109,8 +110,7 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'On adapte l\'expérience à ton appareil. Tu pourras '
-                    'changer ce choix dans les Réglages.',
+                    context.l10n.deviceHelp,
                     style: AppTextStyles.bodyMedium.copyWith(
                       fontSize: 14,
                       height: 1.5,
@@ -163,7 +163,9 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
                       onPressed:
                           (_selected == null || _saving) ? null : _confirm,
                       child: Text(
-                        _saving ? 'Préparation…' : 'Continuer',
+                        _saving
+                            ? context.l10n.devicePreparing
+                            : context.l10n.buttonContinue,
                         style: AppTextStyles.button.copyWith(fontSize: 16),
                       ),
                     ),
@@ -179,33 +181,27 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
 
   Widget _phoneCard() => _DeviceCard(
         icon: Icons.smartphone_rounded,
-        title: 'Téléphone',
-        subtitle: 'Smartphone, tablette',
-        description:
-            'Interface tactile compacte. Navigation au doigt, '
-            'mini-player et écran plein écran fluides.',
+        title: context.l10n.devicePhone,
+        subtitle: context.l10n.devicePhoneSubtitle,
+        description: context.l10n.devicePhoneDesc,
         selected: _selected == DeviceClass.phone,
         onTap: () => setState(() => _selected = DeviceClass.phone),
       );
 
   Widget _tvCard() => _DeviceCard(
         icon: Icons.tv_rounded,
-        title: 'Télévision',
-        subtitle: 'Android TV, Fire TV, Google TV',
-        description:
-            'Layout XL pour télécommande. Focus rings visibles à 3 m, '
-            'tailles cinéma, raccourcis D-pad.',
+        title: context.l10n.deviceTv,
+        subtitle: context.l10n.deviceTvSubtitle,
+        description: context.l10n.deviceTvDesc,
         selected: _selected == DeviceClass.tv,
         onTap: () => setState(() => _selected = DeviceClass.tv),
       );
 
   Widget _autoCard() => _DeviceCard(
         icon: Icons.auto_awesome_rounded,
-        title: 'Auto',
-        subtitle: 'Détection automatique',
-        description:
-            'L\'app devine d\'après ton écran. Bon choix si tu ne sais '
-            'pas, ou si tu utilises plusieurs appareils.',
+        title: context.l10n.deviceAuto,
+        subtitle: context.l10n.deviceAutoSubtitle,
+        description: context.l10n.deviceAutoDesc,
         selected: _selected == DeviceClass.auto,
         onTap: () => setState(() => _selected = DeviceClass.auto),
       );

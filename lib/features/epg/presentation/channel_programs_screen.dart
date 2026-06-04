@@ -10,6 +10,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../cast/presentation/cast_button.dart';
@@ -59,7 +60,7 @@ class _ChannelProgramsScreenState extends State<ChannelProgramsScreen> {
               overflow: TextOverflow.ellipsis,
             ),
             Text(
-              'Programmes d\'aujourd\'hui',
+              context.l10n.programsToday,
               style: AppTextStyles.bodyMedium.copyWith(
                 fontSize: 12,
                 color: AppColors.textMuted,
@@ -117,14 +118,13 @@ class _ChannelProgramsScreenState extends State<ChannelProgramsScreen> {
             ChannelLogo(channel: widget.channel),
             const SizedBox(height: 14),
             Text(
-              'Pas de programmes pour aujourd\'hui',
+              context.l10n.programsNoneToday,
               style: AppTextStyles.bodyLarge,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 6),
             Text(
-              'L\'EPG XMLTV de ce fournisseur n\'a pas cette chaîne, '
-              'ou il n\'a pas encore été synchronisé.',
+              context.l10n.programsNoneHelp,
               textAlign: TextAlign.center,
               style: AppTextStyles.bodyMedium,
             ),
@@ -263,7 +263,7 @@ class _ProgramTile extends StatelessWidget {
               backgroundColor: AppColors.surfaceHigh,
               behavior: SnackBarBehavior.floating,
               content: Text(
-                'Catch-up indisponible pour cette chaîne.',
+                context.l10n.programsCatchupUnavailable,
                 style: AppTextStyles.bodyMedium,
               ),
             ),
@@ -276,7 +276,8 @@ class _ProgramTile extends StatelessWidget {
             backgroundColor: AppColors.surfaceHigh,
             behavior: SnackBarBehavior.floating,
             content: Text(
-              '${program.title} commence à ${program.timeRangeShort.split(' – ').first}.',
+              context.l10n.programStartsAt(
+                  program.title, program.timeRangeShort.split(' – ').first),
               style: AppTextStyles.bodyMedium,
             ),
           ),
@@ -299,17 +300,17 @@ class _StateBadge extends StatelessWidget {
       case _ProgramState.live:
         bg = AppColors.live;
         fg = Colors.white;
-        text = 'LIVE';
+        text = context.l10n.badgeLive;
         icon = Icons.fiber_manual_record_rounded;
       case _ProgramState.past:
         bg = AppColors.accent;
         fg = Colors.black;
-        text = 'REPLAY';
+        text = context.l10n.badgeReplay;
         icon = Icons.replay_rounded;
       case _ProgramState.future:
         bg = AppColors.surfaceHigh;
         fg = AppColors.textSecondary;
-        text = 'BIENTÔT';
+        text = context.l10n.badgeSoon;
         icon = Icons.schedule_rounded;
     }
     return Container(

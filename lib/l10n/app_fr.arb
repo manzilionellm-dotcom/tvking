@@ -2,19 +2,19 @@
   "@@locale": "fr",
   "@@x-template": true,
   "@@x-description": "Template canonique — toutes les autres langues s'alignent sur ces clefs.",
-
   "appName": "BLACK7 ROYAL",
-  "@appName": { "description": "Nom de la marque — ne pas traduire." },
-
+  "@appName": {
+    "description": "Nom de la marque — ne pas traduire."
+  },
   "appTagline": "Cinéma sans limites",
-  "@appTagline": { "description": "Phrase signature affichée sous le logo." },
-
+  "@appTagline": {
+    "description": "Phrase signature affichée sous le logo."
+  },
   "navHome": "Accueil",
   "navLive": "Live TV",
   "navSearch": "Recherche",
   "navFavorites": "Favoris",
   "navProfile": "Profil",
-
   "sectionResume": "Reprendre",
   "sectionFavorites": "Favoris",
   "sectionSportsLive": "Sports en direct",
@@ -29,12 +29,14 @@
   "sectionLiveOnFavorites": "Live maintenant sur tes favoris",
   "sectionTonight": "Découvre ce soir",
   "sectionResumeWhereYouLeftOff": "Reprendre où tu t'es arrêté",
-
   "channelCount": "{count, plural, =0{Aucune chaîne} =1{1 chaîne} other{{count} chaînes}}",
   "@channelCount": {
-    "placeholders": { "count": { "type": "int" } }
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
-
   "buttonContinue": "Continuer",
   "buttonNext": "Suivant",
   "buttonSkip": "Passer",
@@ -48,7 +50,6 @@
   "buttonWatch": "Regarder",
   "buttonSeeAll": "Tout voir",
   "buttonSyncNow": "Synchroniser",
-
   "playerPause": "Pause",
   "playerPlay": "Lecture",
   "playerRec": "REC",
@@ -58,7 +59,6 @@
   "playerRatio": "Format",
   "playerSettings": "Réglages",
   "playerRecording": "Enregistrement en cours",
-
   "castIdle": "Cast vers une TV",
   "castSearching": "Recherche sur ton WiFi…",
   "castDevicesHint": "DLNA · Roku · navigateur web.",
@@ -67,7 +67,6 @@
   "castStop": "Arrêter",
   "castViaBrowser": "Cast via navigateur",
   "castViaBrowserSubtitle": "Marche sur N'IMPORTE quelle TV avec un navigateur web. QR code à scanner avec la TV.",
-
   "settingsTitle": "Réglages",
   "settingsAppearance": "Apparence",
   "settingsLanguage": "Langue",
@@ -80,14 +79,12 @@
   "settingsAbout": "À propos",
   "settingsProvisioning": "Provisioning à distance",
   "settingsClearHistory": "Vider l'historique de visionnage",
-
   "themeCinema": "Cinema",
   "themeCinemaSubtitle": "Maison Noir",
   "themeDaylight": "Daylight",
   "themeDaylightSubtitle": "Lumière du jour",
   "themeAuto": "Auto",
   "themeAutoSubtitle": "Suit l'OS",
-
   "deviceQuestion": "Tu es sur quoi ?",
   "deviceHelp": "On adapte l'expérience à ton appareil. Tu pourras changer ce choix dans les Réglages.",
   "devicePhone": "Téléphone",
@@ -99,25 +96,1650 @@
   "deviceAuto": "Auto",
   "deviceAutoSubtitle": "Détection automatique",
   "deviceAutoDesc": "L'app devine d'après ton écran. Bon choix si tu ne sais pas, ou si tu utilises plusieurs appareils.",
-
   "onboardingWelcomeTitle": "Bienvenue sur BLACK7 ROYAL",
   "onboardingWelcomeDesc": "Cinéma sans limites. Conçu pour la TV, optimisé pour ton téléphone, beau partout.",
   "onboardingLoadTitle": "Charge ta playlist",
   "onboardingLoadDesc": "Colle une URL M3U, ou tes identifiants Xtream. Tes chaînes apparaissent en quelques secondes.",
   "onboardingVipTitle": "Profite de la signature VIP",
   "onboardingVipDesc": "Logos haute qualité, navigation Apple TV, recherche instantanée, lecteur 4K/8K.",
-
   "emptyNoPlaylist": "Aucune playlist",
   "emptyAddYourFirst": "Ajoute ta première playlist M3U ou tes identifiants Xtream pour commencer.",
   "addPlaylist": "Ajouter une playlist",
-
   "resumeBannerTitle": "Reprendre {channel}",
   "@resumeBannerTitle": {
-    "placeholders": { "channel": { "type": "String" } }
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
   },
   "resumeBannerSubtitle": "Tu regardais il y a {minutes} min",
   "@resumeBannerSubtitle": {
-    "placeholders": { "minutes": { "type": "int" } }
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
   },
-  "resumeBannerDismiss": "Plus tard"
+  "resumeBannerDismiss": "Plus tard",
+  "detailProgram": "Programme",
+  "@detailProgram": {
+    "description": "Texte UI : detailProgram"
+  },
+  "detailNowPlaying": "En cours",
+  "@detailNowPlaying": {
+    "description": "Texte UI : detailNowPlaying"
+  },
+  "detailUpNext": "Après",
+  "@detailUpNext": {
+    "description": "Texte UI : detailUpNext"
+  },
+  "detailDetails": "Détails",
+  "@detailDetails": {
+    "description": "Texte UI : detailDetails"
+  },
+  "detailCategory": "Catégorie",
+  "@detailCategory": {
+    "description": "Texte UI : detailCategory"
+  },
+  "detailCountry": "Pays",
+  "@detailCountry": {
+    "description": "Texte UI : detailCountry"
+  },
+  "detailQuality": "Qualité",
+  "@detailQuality": {
+    "description": "Texte UI : detailQuality"
+  },
+  "detailCatchup": "Catch-up",
+  "@detailCatchup": {
+    "description": "Texte UI : detailCatchup"
+  },
+  "detailCatchupAvailable": "Disponible · {days} j",
+  "@detailCatchupAvailable": {
+    "description": "Texte UI : detailCatchupAvailable",
+    "placeholders": {
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "detailCatchupUnavailable": "Indisponible",
+  "@detailCatchupUnavailable": {
+    "description": "Texte UI : detailCatchupUnavailable"
+  },
+  "detailProgramsAndReplay": "Programmes du jour & Replay",
+  "@detailProgramsAndReplay": {
+    "description": "Texte UI : detailProgramsAndReplay"
+  },
+  "badgeLive": "LIVE",
+  "@badgeLive": {
+    "description": "Texte UI : badgeLive"
+  },
+  "badgeReplay": "REPLAY",
+  "@badgeReplay": {
+    "description": "Texte UI : badgeReplay"
+  },
+  "badgeSoon": "BIENTÔT",
+  "@badgeSoon": {
+    "description": "Texte UI : badgeSoon"
+  },
+  "viewModeList": "Liste",
+  "@viewModeList": {
+    "description": "Texte UI : viewModeList"
+  },
+  "viewModeGrid": "Grille",
+  "@viewModeGrid": {
+    "description": "Texte UI : viewModeGrid"
+  },
+  "sectionFilterHint": "Filtrer dans cette section...",
+  "@sectionFilterHint": {
+    "description": "Texte UI : sectionFilterHint"
+  },
+  "filterAll": "Toutes",
+  "@filterAll": {
+    "description": "Texte UI : filterAll"
+  },
+  "sectionEmptyNoChannel": "Aucune chaîne dans cette section",
+  "@sectionEmptyNoChannel": {
+    "description": "Texte UI : sectionEmptyNoChannel"
+  },
+  "searchNoResult": "Aucun résultat pour \"{query}\"",
+  "@searchNoResult": {
+    "description": "Texte UI : searchNoResult",
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "sectionEmptyAdjustFilters": "Essaie d'ajuster les filtres ou la recherche.",
+  "@sectionEmptyAdjustFilters": {
+    "description": "Texte UI : sectionEmptyAdjustFilters"
+  },
+  "sectionTop10Today": "Top 10 aujourd'hui",
+  "@sectionTop10Today": {
+    "description": "Texte UI : sectionTop10Today"
+  },
+  "sectionEntertainment": "Divertissement",
+  "@sectionEntertainment": {
+    "description": "Texte UI : sectionEntertainment"
+  },
+  "sectionInternational": "International",
+  "@sectionInternational": {
+    "description": "Texte UI : sectionInternational"
+  },
+  "sectionAdult": "Adulte",
+  "@sectionAdult": {
+    "description": "Texte UI : sectionAdult"
+  },
+  "sectionOthers": "Autres",
+  "@sectionOthers": {
+    "description": "Texte UI : sectionOthers"
+  },
+  "catSport": "Sport",
+  "@catSport": {
+    "description": "Texte UI : catSport"
+  },
+  "catInfo": "Info",
+  "@catInfo": {
+    "description": "Texte UI : catInfo"
+  },
+  "catKids": "Enfants",
+  "@catKids": {
+    "description": "Texte UI : catKids"
+  },
+  "catScience": "Sciences",
+  "@catScience": {
+    "description": "Texte UI : catScience"
+  },
+  "catMovies": "Films",
+  "@catMovies": {
+    "description": "Texte UI : catMovies"
+  },
+  "catMusic": "Musique",
+  "@catMusic": {
+    "description": "Texte UI : catMusic"
+  },
+  "homeListRefreshed": "Liste actualisée — chaînes rechargées",
+  "@homeListRefreshed": {
+    "description": "Texte UI : homeListRefreshed"
+  },
+  "homeListUpToDate": "Liste à jour",
+  "@homeListUpToDate": {
+    "description": "Texte UI : homeListUpToDate"
+  },
+  "tooltipRefreshList": "Actualiser la liste",
+  "@tooltipRefreshList": {
+    "description": "Texte UI : tooltipRefreshList"
+  },
+  "tooltipConnectActivate": "Me connecter / Activer",
+  "@tooltipConnectActivate": {
+    "description": "Texte UI : tooltipConnectActivate"
+  },
+  "tooltipSearch": "Recherche",
+  "@tooltipSearch": {
+    "description": "Texte UI : tooltipSearch"
+  },
+  "tooltipFavorites": "Favoris",
+  "@tooltipFavorites": {
+    "description": "Texte UI : tooltipFavorites"
+  },
+  "tooltipProfile": "Profil",
+  "@tooltipProfile": {
+    "description": "Texte UI : tooltipProfile"
+  },
+  "adultAuthCancelled": "Authentification annulée — section Adulte verrouillée",
+  "@adultAuthCancelled": {
+    "description": "Texte UI : adultAuthCancelled"
+  },
+  "adultAuthReason": "Accède à la section Adulte",
+  "@adultAuthReason": {
+    "description": "Texte UI : adultAuthReason"
+  },
+  "navDirect": "Direct",
+  "@navDirect": {
+    "description": "Texte UI : navDirect"
+  },
+  "navGuide": "Guide",
+  "@navGuide": {
+    "description": "Texte UI : navGuide"
+  },
+  "navRefresh": "Actualiser",
+  "@navRefresh": {
+    "description": "Texte UI : navRefresh"
+  },
+  "tvFeatured": "À LA UNE",
+  "@tvFeatured": {
+    "description": "Texte UI : tvFeatured"
+  },
+  "refreshNoPlaylist": "Aucune playlist actualisée.",
+  "@refreshNoPlaylist": {
+    "description": "Texte UI : refreshNoPlaylist"
+  },
+  "refreshDoneCount": "Actualisé : {count} playlist(s).",
+  "@refreshDoneCount": {
+    "description": "Texte UI : refreshDoneCount",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "errorWithMessage": "Erreur : {error}",
+  "@errorWithMessage": {
+    "description": "Texte UI : errorWithMessage",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "gridEmptyTitle": "Aucune chaîne ici",
+  "@gridEmptyTitle": {
+    "description": "Texte UI : gridEmptyTitle"
+  },
+  "gridEmptySubtitle": "Ajoute une playlist ou ajuste tes filtres.",
+  "@gridEmptySubtitle": {
+    "description": "Texte UI : gridEmptySubtitle"
+  },
+  "categoriesTitle": "Catégories",
+  "@categoriesTitle": {
+    "description": "Texte UI : categoriesTitle"
+  },
+  "categoriesEmpty": "Aucune chaîne — ajoute d'abord une playlist.",
+  "@categoriesEmpty": {
+    "description": "Texte UI : categoriesEmpty"
+  },
+  "focusedNoChannelFound": "Aucune chaîne {title} trouvée dans tes playlists.",
+  "@focusedNoChannelFound": {
+    "description": "Texte UI : focusedNoChannelFound",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "searchHint": "Chercher une chaîne, un sport, un film…",
+  "@searchHint": {
+    "description": "Texte UI : searchHint"
+  },
+  "buttonBack": "Retour",
+  "@buttonBack": {
+    "description": "Texte UI : buttonBack"
+  },
+  "searchRecent": "Récent",
+  "@searchRecent": {
+    "description": "Texte UI : searchRecent"
+  },
+  "buttonClear": "Effacer",
+  "@buttonClear": {
+    "description": "Texte UI : buttonClear"
+  },
+  "searchExploreByCategory": "Explorer par catégorie",
+  "@searchExploreByCategory": {
+    "description": "Texte UI : searchExploreByCategory"
+  },
+  "searchDiscoveryEmpty": "Charge ta première playlist pour découvrir des chaînes.",
+  "@searchDiscoveryEmpty": {
+    "description": "Texte UI : searchDiscoveryEmpty"
+  },
+  "searchNoResultHelp": "Vérifie l'orthographe ou essaye un autre mot. Si la chaîne devrait être là, demande à ton revendeur de la rajouter.",
+  "@searchNoResultHelp": {
+    "description": "Texte UI : searchNoResultHelp"
+  },
+  "searchTipsToTry": "PISTES À ESSAYER",
+  "@searchTipsToTry": {
+    "description": "Texte UI : searchTipsToTry"
+  },
+  "searchEmptyCatalogTitle": "Aucune chaîne pour l'instant",
+  "@searchEmptyCatalogTitle": {
+    "description": "Texte UI : searchEmptyCatalogTitle"
+  },
+  "searchEmptyCatalogHelp": "Ton revendeur doit activer ton abonnement avant que tu puisses chercher. Reviens dans quelques minutes.",
+  "@searchEmptyCatalogHelp": {
+    "description": "Texte UI : searchEmptyCatalogHelp"
+  },
+  "navCategories": "Catégories",
+  "@navCategories": {
+    "description": "Texte UI : navCategories"
+  },
+  "mySource": "Ma source",
+  "@mySource": {
+    "description": "Texte UI : mySource"
+  },
+  "sourceQuestion": "Comment veux-tu accéder à tes chaînes ?",
+  "@sourceQuestion": {
+    "description": "Texte UI : sourceQuestion"
+  },
+  "sourceLoginCode": "Me connecter avec mon code",
+  "@sourceLoginCode": {
+    "description": "Texte UI : sourceLoginCode"
+  },
+  "sourceLoginCodeSub": "Saisis ton utilisateur + mot de passe",
+  "@sourceLoginCodeSub": {
+    "description": "Texte UI : sourceLoginCodeSub"
+  },
+  "sourceOwn": "J'ai ma propre source",
+  "@sourceOwn": {
+    "description": "Texte UI : sourceOwn"
+  },
+  "sourceOwnSub": "Lien M3U / M3U8 ou codes Xtream",
+  "@sourceOwnSub": {
+    "description": "Texte UI : sourceOwnSub"
+  },
+  "sourceActivate": "Activer l'app",
+  "@sourceActivate": {
+    "description": "Texte UI : sourceActivate"
+  },
+  "sourceActivateSub": "Contacte-nous (ta MAC est déjà jointe au message)",
+  "@sourceActivateSub": {
+    "description": "Texte UI : sourceActivateSub"
+  },
+  "activateAtHomeTitle": "Activer l'app à la maison",
+  "@activateAtHomeTitle": {
+    "description": "Texte UI : activateAtHomeTitle"
+  },
+  "activateAtHomeDesc": "Communique cet identifiant à ton revendeur pour qu'il active tes chaînes à distance.",
+  "@activateAtHomeDesc": {
+    "description": "Texte UI : activateAtHomeDesc"
+  },
+  "buttonCopy": "Copier",
+  "@buttonCopy": {
+    "description": "Texte UI : buttonCopy"
+  },
+  "buttonSend": "Envoyer",
+  "@buttonSend": {
+    "description": "Texte UI : buttonSend"
+  },
+  "idCopied": "Identifiant copié : {id}",
+  "@idCopied": {
+    "description": "Texte UI : idCopied",
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "resumeEyebrow": "REPRENDRE",
+  "@resumeEyebrow": {
+    "description": "Texte UI : resumeEyebrow"
+  },
+  "resumeAgoNow": "à l'instant",
+  "@resumeAgoNow": {
+    "description": "Texte UI : resumeAgoNow"
+  },
+  "resumeAgoMinutes": "il y a {minutes} min",
+  "@resumeAgoMinutes": {
+    "description": "Texte UI : resumeAgoMinutes",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "resumeWatchingAgo": "Tu regardais {ago}",
+  "@resumeWatchingAgo": {
+    "description": "Texte UI : resumeWatchingAgo",
+    "placeholders": {
+      "ago": {
+        "type": "String"
+      }
+    }
+  },
+  "activateSubTitle": "Active ton abonnement",
+  "@activateSubTitle": {
+    "description": "Texte UI : activateSubTitle"
+  },
+  "activateSubDesc": "Connecte-toi avec ton code (utilisateur + mot de passe), ou donne ta MAC à ton revendeur pour qu'il active à distance.",
+  "@activateSubDesc": {
+    "description": "Texte UI : activateSubDesc"
+  },
+  "freeTrialBadge": "Essai gratuit 7 jours · puis 13 € / an",
+  "@freeTrialBadge": {
+    "description": "Texte UI : freeTrialBadge"
+  },
+  "activateMySub": "Activer mon abonnement",
+  "@activateMySub": {
+    "description": "Texte UI : activateMySub"
+  },
+  "remoteActivationByReseller": "Activation à distance par ton revendeur",
+  "@remoteActivationByReseller": {
+    "description": "Texte UI : remoteActivationByReseller"
+  },
+  "recStartFailed": "Enregistrement impossible à démarrer. Réessaie.",
+  "@recStartFailed": {
+    "description": "Texte UI : recStartFailed"
+  },
+  "startFailedWithError": "Impossible de démarrer : {error}",
+  "@startFailedWithError": {
+    "description": "Texte UI : startFailedWithError",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "recInProgress": "● Enregistrement — continue à regarder, le flux est gardé",
+  "@recInProgress": {
+    "description": "Texte UI : recInProgress"
+  },
+  "recEmpty": "Enregistrement vide — réessaie en laissant tourner quelques secondes.",
+  "@recEmpty": {
+    "description": "Texte UI : recEmpty"
+  },
+  "recSaved": "Enregistrement sauvegardé ({size}) — Mes enregistrements",
+  "@recSaved": {
+    "description": "Texte UI : recSaved",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "recStopError": "Erreur arrêt enregistrement : {error}",
+  "@recStopError": {
+    "description": "Texte UI : recStopError",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "recTapToStop": "REC · appuie pour arrêter",
+  "@recTapToStop": {
+    "description": "Texte UI : recTapToStop"
+  },
+  "pipUnavailable": "Mini-fenêtre indisponible sur cet appareil (requiert Android 8+). Active aussi la permission Picture-in-picture dans : Paramètres → Apps → 7 MOTION → Permissions.",
+  "@pipUnavailable": {
+    "description": "Texte UI : pipUnavailable"
+  },
+  "speedToast": "Vitesse : {speed}x",
+  "@speedToast": {
+    "description": "Texte UI : speedToast",
+    "placeholders": {
+      "speed": {
+        "type": "String"
+      }
+    }
+  },
+  "tooltipMiniWindow": "Mini-fenêtre",
+  "@tooltipMiniWindow": {
+    "description": "Texte UI : tooltipMiniWindow"
+  },
+  "tooltipCastingManage": "Casting en cours — tap pour gérer",
+  "@tooltipCastingManage": {
+    "description": "Texte UI : tooltipCastingManage"
+  },
+  "tooltipSendToTv": "Envoyer vers une TV",
+  "@tooltipSendToTv": {
+    "description": "Texte UI : tooltipSendToTv"
+  },
+  "tooltipReloadStream": "Recharger le flux",
+  "@tooltipReloadStream": {
+    "description": "Texte UI : tooltipReloadStream"
+  },
+  "seekRewind": "Reculer 2 minutes",
+  "@seekRewind": {
+    "description": "Texte UI : seekRewind"
+  },
+  "seekForward": "Avancer 2 minutes",
+  "@seekForward": {
+    "description": "Texte UI : seekForward"
+  },
+  "playerCantPlay": "Impossible de lire ce flux",
+  "@playerCantPlay": {
+    "description": "Texte UI : playerCantPlay"
+  },
+  "tooltipRemoveFavorite": "Retirer des favoris",
+  "@tooltipRemoveFavorite": {
+    "description": "Texte UI : tooltipRemoveFavorite"
+  },
+  "tooltipAddFavorite": "Ajouter aux favoris",
+  "@tooltipAddFavorite": {
+    "description": "Texte UI : tooltipAddFavorite"
+  },
+  "playerSettingsTitle": "Réglages du lecteur",
+  "@playerSettingsTitle": {
+    "description": "Texte UI : playerSettingsTitle"
+  },
+  "playerSpeedSection": "Vitesse de lecture",
+  "@playerSpeedSection": {
+    "description": "Texte UI : playerSpeedSection"
+  },
+  "playerDisplayMode": "Mode d'affichage",
+  "@playerDisplayMode": {
+    "description": "Texte UI : playerDisplayMode"
+  },
+  "playerBufferSize": "Taille du buffer",
+  "@playerBufferSize": {
+    "description": "Texte UI : playerBufferSize"
+  },
+  "playerBufferSeconds": "{seconds} secondes",
+  "@playerBufferSeconds": {
+    "description": "Texte UI : playerBufferSeconds",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "playerBufferHelp": "Plus c'est haut, mieux la lecture résiste aux coupures réseau (mais plus de latence sur le live).",
+  "@playerBufferHelp": {
+    "description": "Texte UI : playerBufferHelp"
+  },
+  "playerAntiFreeze": "Anti-coupure",
+  "@playerAntiFreeze": {
+    "description": "Texte UI : playerAntiFreeze"
+  },
+  "playerAntiFreezeHelp": "Si la connexion faiblit, le lecteur puise dans le tampon au lieu de couper l'image. Démarrage un peu plus long, mais lecture sans coupure.",
+  "@playerAntiFreezeHelp": {
+    "description": "Texte UI : playerAntiFreezeHelp"
+  },
+  "playerHwDecode": "Décodage matériel",
+  "@playerHwDecode": {
+    "description": "Texte UI : playerHwDecode"
+  },
+  "playerHwDecodeHelp": "Utilise le GPU pour décoder la vidéo. Indispensable pour 4K / 8K.",
+  "@playerHwDecodeHelp": {
+    "description": "Texte UI : playerHwDecodeHelp"
+  },
+  "playerShowStats": "Afficher les statistiques",
+  "@playerShowStats": {
+    "description": "Texte UI : playerShowStats"
+  },
+  "playerShowStatsHelp": "FPS, débit, résolution, codec, frames perdues.",
+  "@playerShowStatsHelp": {
+    "description": "Texte UI : playerShowStatsHelp"
+  },
+  "tracksTitle": "Pistes",
+  "@tracksTitle": {
+    "description": "Texte UI : tracksTitle"
+  },
+  "tracksAudio": "Audio",
+  "@tracksAudio": {
+    "description": "Texte UI : tracksAudio"
+  },
+  "tracksSubtitles": "Sous-titres",
+  "@tracksSubtitles": {
+    "description": "Texte UI : tracksSubtitles"
+  },
+  "tracksNoAudio": "Aucune piste audio détectée.",
+  "@tracksNoAudio": {
+    "description": "Texte UI : tracksNoAudio"
+  },
+  "tracksNoSubtitles": "Aucun sous-titre. Astuce : sur certains flux, ils sont embarqués mais détectés tardivement.",
+  "@tracksNoSubtitles": {
+    "description": "Texte UI : tracksNoSubtitles"
+  },
+  "castToDevice": "Cast vers {device}",
+  "@castToDevice": {
+    "description": "Texte UI : castToDevice",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castFailedLocal": "Cast impossible — lecture en local. ({error})",
+  "@castFailedLocal": {
+    "description": "Texte UI : castFailedLocal",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "castConnectedTapChannel": "Connecté à {device}. Tape une chaîne pour l'envoyer.",
+  "@castConnectedTapChannel": {
+    "description": "Texte UI : castConnectedTapChannel",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castSendingTo": "Envoi vers {device}",
+  "@castSendingTo": {
+    "description": "Texte UI : castSendingTo",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castFailedRetry": "Le cast a échoué. Réessaie.",
+  "@castFailedRetry": {
+    "description": "Texte UI : castFailedRetry"
+  },
+  "castSessionStopped": "Session de cast arrêtée",
+  "@castSessionStopped": {
+    "description": "Texte UI : castSessionStopped"
+  },
+  "castRefresh": "Rafraîchir",
+  "@castRefresh": {
+    "description": "Texte UI : castRefresh"
+  },
+  "castByQr": "Cast par QR code",
+  "@castByQr": {
+    "description": "Texte UI : castByQr"
+  },
+  "castByQrSub": "Marche sur TOUTES les TVs avec un navigateur",
+  "@castByQrSub": {
+    "description": "Texte UI : castByQrSub"
+  },
+  "castSearchingShort": "Recherche en cours...",
+  "@castSearchingShort": {
+    "description": "Texte UI : castSearchingShort"
+  },
+  "castNoReceiver": "Aucun récepteur. Vérifie que ton TV est sur le même WiFi et que DLNA est activé.",
+  "@castNoReceiver": {
+    "description": "Texte UI : castNoReceiver"
+  },
+  "castInProgress": "EN COURS",
+  "@castInProgress": {
+    "description": "Texte UI : castInProgress"
+  },
+  "castConnecting": "Connexion...",
+  "@castConnecting": {
+    "description": "Texte UI : castConnecting"
+  },
+  "castInProgressTitle": "Cast en cours",
+  "@castInProgressTitle": {
+    "description": "Texte UI : castInProgressTitle"
+  },
+  "castStopTooltip": "Arrêter le cast",
+  "@castStopTooltip": {
+    "description": "Texte UI : castStopTooltip"
+  },
+  "castPlayDefault": "Lecture",
+  "@castPlayDefault": {
+    "description": "Texte UI : castPlayDefault"
+  },
+  "webCastTitle": "Cast via navigateur",
+  "@webCastTitle": {
+    "description": "Texte UI : webCastTitle"
+  },
+  "webCastDesc": "Marche sur n'importe quelle TV qui a un navigateur web — Google TV, Samsung, LG, Hisense, vieilles smart TVs. Ta TV doit être sur le même WiFi que le téléphone.",
+  "@webCastDesc": {
+    "description": "Texte UI : webCastDesc"
+  },
+  "webCastIpError": "Impossible de détecter ton IP WiFi. Vérifie que tu es bien connecté à un WiFi (pas en données mobiles).",
+  "@webCastIpError": {
+    "description": "Texte UI : webCastIpError"
+  },
+  "urlCopied": "URL copiée : {url}",
+  "@urlCopied": {
+    "description": "Texte UI : urlCopied",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "webCastTvConnected": "OK, la TV est connectée",
+  "@webCastTvConnected": {
+    "description": "Texte UI : webCastTvConnected"
+  },
+  "webCastUrlLabel": "Ou tape cette URL dans le navigateur de la TV :",
+  "@webCastUrlLabel": {
+    "description": "Texte UI : webCastUrlLabel"
+  },
+  "webCastStep1": "Sur ta TV, ouvre son navigateur web",
+  "@webCastStep1": {
+    "description": "Texte UI : webCastStep1"
+  },
+  "webCastStep2": "Scanne le QR code ci-dessus (ou tape l'URL)",
+  "@webCastStep2": {
+    "description": "Texte UI : webCastStep2"
+  },
+  "webCastStep3": "Garde cet onglet ouvert sur la TV",
+  "@webCastStep3": {
+    "description": "Texte UI : webCastStep3"
+  },
+  "webCastStep4": "Reviens ici, tape une chaîne → elle apparaît sur la TV en 2s",
+  "@webCastStep4": {
+    "description": "Texte UI : webCastStep4"
+  },
+  "qrCastTitle": "Cast par QR Code",
+  "@qrCastTitle": {
+    "description": "Texte UI : qrCastTitle"
+  },
+  "qrCastDesc": "Scanne ce code depuis n'importe quel appareil (TV, ordi, tablette, autre téléphone) — la chaîne s'ouvre directement dans le navigateur.",
+  "@qrCastDesc": {
+    "description": "Texte UI : qrCastDesc"
+  },
+  "qrCastCopied": "Lien copié — colle dans le navigateur ou VLC",
+  "@qrCastCopied": {
+    "description": "Texte UI : qrCastCopied"
+  },
+  "qrCastCopyLink": "Copier le lien",
+  "@qrCastCopyLink": {
+    "description": "Texte UI : qrCastCopyLink"
+  },
+  "qrCastTip": "Astuce : ouvre l'appareil photo de ton autre device, pointe vers ce QR — un lien apparaît. Tape dessus, le navigateur lance la chaîne automatiquement.",
+  "@qrCastTip": {
+    "description": "Texte UI : qrCastTip"
+  },
+  "qrCastDegraded": "Mode dégradé : ouvre dans VLC ou un lecteur natif.",
+  "@qrCastDegraded": {
+    "description": "Texte UI : qrCastDegraded"
+  },
+  "playlistsTitle": "Mes playlists",
+  "@playlistsTitle": {
+    "description": "Texte UI : playlistsTitle"
+  },
+  "playlistsAddTooltip": "Ajouter une playlist",
+  "@playlistsAddTooltip": {
+    "description": "Texte UI : playlistsAddTooltip"
+  },
+  "playlistsEmptyTitle": "Aucune playlist",
+  "@playlistsEmptyTitle": {
+    "description": "Texte UI : playlistsEmptyTitle"
+  },
+  "playlistsEmptySubtitle": "Ajoute ta première playlist pour commencer.",
+  "@playlistsEmptySubtitle": {
+    "description": "Texte UI : playlistsEmptySubtitle"
+  },
+  "playlistTypeM3u": "M3U / URL",
+  "@playlistTypeM3u": {
+    "description": "Texte UI : playlistTypeM3u"
+  },
+  "playlistTypeXtream": "Xtream Codes",
+  "@playlistTypeXtream": {
+    "description": "Texte UI : playlistTypeXtream"
+  },
+  "playlistNeverSynced": "Jamais synchronisée",
+  "@playlistNeverSynced": {
+    "description": "Texte UI : playlistNeverSynced"
+  },
+  "playlistResyncTooltip": "Re-synchroniser",
+  "@playlistResyncTooltip": {
+    "description": "Texte UI : playlistResyncTooltip"
+  },
+  "playlistDeleteTooltip": "Supprimer",
+  "@playlistDeleteTooltip": {
+    "description": "Texte UI : playlistDeleteTooltip"
+  },
+  "playlistResyncing": "Re-synchronisation en cours...",
+  "@playlistResyncing": {
+    "description": "Texte UI : playlistResyncing"
+  },
+  "playlistUpToDate": "Playlist \"{name}\" à jour",
+  "@playlistUpToDate": {
+    "description": "Texte UI : playlistUpToDate",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistResyncFailed": "Re-synchronisation impossible",
+  "@playlistResyncFailed": {
+    "description": "Texte UI : playlistResyncFailed"
+  },
+  "playlistDeleteConfirmTitle": "Supprimer cette playlist ?",
+  "@playlistDeleteConfirmTitle": {
+    "description": "Texte UI : playlistDeleteConfirmTitle"
+  },
+  "playlistDeleteConfirmBody": "Toutes les chaînes liées à \"{name}\" seront retirées de l'app.",
+  "@playlistDeleteConfirmBody": {
+    "description": "Texte UI : playlistDeleteConfirmBody",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingsTitle": "Mes enregistrements",
+  "@recordingsTitle": {
+    "description": "Texte UI : recordingsTitle"
+  },
+  "recordingsEmptyTitle": "Aucun enregistrement",
+  "@recordingsEmptyTitle": {
+    "description": "Texte UI : recordingsEmptyTitle"
+  },
+  "recordingsEmptySubtitle": "Pendant la lecture, appuie sur REC pour capturer le flux en direct.",
+  "@recordingsEmptySubtitle": {
+    "description": "Texte UI : recordingsEmptySubtitle"
+  },
+  "recordingStopped": "Enregistrement arrêté — exporte-le vers la Galerie",
+  "@recordingStopped": {
+    "description": "Texte UI : recordingStopped"
+  },
+  "recordingStopError": "Erreur arrêt : {error}",
+  "@recordingStopError": {
+    "description": "Texte UI : recordingStopError",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingExported": "Exporté dans Galerie › Movies sous \"7MOTION_{name}\"",
+  "@recordingExported": {
+    "description": "Texte UI : recordingExported",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingExportFailed": "Export échec : {error}",
+  "@recordingExportFailed": {
+    "description": "Texte UI : recordingExportFailed",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingStopTooltip": "Arrêter l'enregistrement",
+  "@recordingStopTooltip": {
+    "description": "Texte UI : recordingStopTooltip"
+  },
+  "recordingSaveTooltip": "Sauvegarder dans la Galerie",
+  "@recordingSaveTooltip": {
+    "description": "Texte UI : recordingSaveTooltip"
+  },
+  "recordingDeleteConfirmTitle": "Supprimer cet enregistrement ?",
+  "@recordingDeleteConfirmTitle": {
+    "description": "Texte UI : recordingDeleteConfirmTitle"
+  },
+  "recordingDeleteConfirmBody": "Le fichier \"{name}\" sera effacé.",
+  "@recordingDeleteConfirmBody": {
+    "description": "Texte UI : recordingDeleteConfirmBody",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingUnreadable": "Lecture impossible : enregistrement illisible ou incomplet.",
+  "@recordingUnreadable": {
+    "description": "Texte UI : recordingUnreadable"
+  },
+  "recordingEmpty": "Enregistrement vide (0 octet) — rien n'a été capturé.",
+  "@recordingEmpty": {
+    "description": "Texte UI : recordingEmpty"
+  },
+  "recordingNotFound": "Fichier introuvable — il a peut-être été supprimé.",
+  "@recordingNotFound": {
+    "description": "Texte UI : recordingNotFound"
+  },
+  "recordingPlayError": "Lecture impossible : {error}",
+  "@recordingPlayError": {
+    "description": "Texte UI : recordingPlayError",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "subAccountSuspended": "Compte suspendu",
+  "@subAccountSuspended": {
+    "description": "Texte UI : subAccountSuspended"
+  },
+  "subAccountFrozen": "Compte temporairement gelé",
+  "@subAccountFrozen": {
+    "description": "Texte UI : subAccountFrozen"
+  },
+  "subUnlockAll": "Débloque tout BLACK7 ROYAL",
+  "@subUnlockAll": {
+    "description": "Texte UI : subUnlockAll"
+  },
+  "subBannedMsg": "Ton compte a été suspendu par l'administrateur. Si tu penses que c'est une erreur, contacte-nous.",
+  "@subBannedMsg": {
+    "description": "Texte UI : subBannedMsg"
+  },
+  "subFrozenMsg": "Ton compte est en pause. Contacte le support pour réactiver l'accès.",
+  "@subFrozenMsg": {
+    "description": "Texte UI : subFrozenMsg"
+  },
+  "subTrialExpiredMsg": "Ton essai gratuit de {days} jours est terminé. Active ton accès et profite de TOUT, sans aucune limite :",
+  "@subTrialExpiredMsg": {
+    "description": "Texte UI : subTrialExpiredMsg",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "subSubscribePrice": "M'abonner — 13 €/an",
+  "@subSubscribePrice": {
+    "description": "Texte UI : subSubscribePrice"
+  },
+  "subContactSupport": "Contacter le support",
+  "@subContactSupport": {
+    "description": "Texte UI : subContactSupport"
+  },
+  "subPullToRefresh": "Tu viens de payer ? Tire vers le bas pour rafraîchir.",
+  "@subPullToRefresh": {
+    "description": "Texte UI : subPullToRefresh"
+  },
+  "subBenefitChannels": "Des milliers de chaînes, films & séries du monde entier",
+  "@subBenefitChannels": {
+    "description": "Texte UI : subBenefitChannels"
+  },
+  "subBenefitSports": "Tout le sport en direct, en HD / 4K, sans coupure",
+  "@subBenefitSports": {
+    "description": "Texte UI : subBenefitSports"
+  },
+  "subBenefitCast": "Caster sur n'importe quelle télé (Chromecast & Google TV)",
+  "@subBenefitCast": {
+    "description": "Texte UI : subBenefitCast"
+  },
+  "subBenefitRecord": "Enregistrer tes émissions, films et matchs préférés",
+  "@subBenefitRecord": {
+    "description": "Texte UI : subBenefitRecord"
+  },
+  "subBenefitNoAds": "Zéro publicité — lecture fluide, instantanée",
+  "@subBenefitNoAds": {
+    "description": "Texte UI : subBenefitNoAds"
+  },
+  "subBenefitDevices": "Sur tous tes appareils : téléphone, tablette, TV",
+  "@subBenefitDevices": {
+    "description": "Texte UI : subBenefitDevices"
+  },
+  "subCardBuyExpired": "Acheter sur 7themotion.com",
+  "@subCardBuyExpired": {
+    "description": "Texte UI : subCardBuyExpired"
+  },
+  "subCardSeeOffers": "Voir les offres sur 7themotion.com",
+  "@subCardSeeOffers": {
+    "description": "Texte UI : subCardSeeOffers"
+  },
+  "subCardSecurePayment": "Paiement sécurisé sur le site officiel — jamais via Google Play.",
+  "@subCardSecurePayment": {
+    "description": "Texte UI : subCardSecurePayment"
+  },
+  "subCantOpenUrl": "Impossible d'ouvrir {url}",
+  "@subCantOpenUrl": {
+    "description": "Texte UI : subCantOpenUrl",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "subActiveTitle": "Abonnement actif",
+  "@subActiveTitle": {
+    "description": "Texte UI : subActiveTitle"
+  },
+  "subActiveUntil": "Abonnement actif · expire le {date}",
+  "@subActiveUntil": {
+    "description": "Texte UI : subActiveUntil",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "subTrialEnded": "Essai gratuit terminé",
+  "@subTrialEnded": {
+    "description": "Texte UI : subTrialEnded"
+  },
+  "subTrialOneDayLeft": "Essai gratuit · 1 jour restant",
+  "@subTrialOneDayLeft": {
+    "description": "Texte UI : subTrialOneDayLeft"
+  },
+  "subTrialDaysLeft": "Essai gratuit · {days} jours restants",
+  "@subTrialDaysLeft": {
+    "description": "Texte UI : subTrialDaysLeft",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "subLoading": "Chargement…",
+  "@subLoading": {
+    "description": "Texte UI : subLoading"
+  },
+  "subCardSubPaid": "Merci pour ton soutien — toutes les fonctions sont débloquées sur cet appareil et tes autres installations BLACK7 ROYAL.",
+  "@subCardSubPaid": {
+    "description": "Texte UI : subCardSubPaid"
+  },
+  "subCardSubExpired": "Ton essai gratuit de {days} jours est terminé. Souscris l'abonnement à 13 €/an sur 7themotion.com pour continuer.",
+  "@subCardSubExpired": {
+    "description": "Texte UI : subCardSubExpired",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "subCardSubTrial": "Profite de toutes les fonctions premium pendant ton essai. Ensuite 13 €/an sur tous tes appareils.",
+  "@subCardSubTrial": {
+    "description": "Texte UI : subCardSubTrial"
+  },
+  "subCardSubFrozen": "Ton compte est en pause. Contacte le support pour réactiver.",
+  "@subCardSubFrozen": {
+    "description": "Texte UI : subCardSubFrozen"
+  },
+  "subCardSubBanned": "Ton compte a été suspendu par l'administrateur.",
+  "@subCardSubBanned": {
+    "description": "Texte UI : subCardSubBanned"
+  },
+  "aboutTitle": "À propos",
+  "@aboutTitle": {
+    "description": "Texte UI : aboutTitle"
+  },
+  "aboutPremiumPlayer": "Lecteur IPTV premium",
+  "@aboutPremiumPlayer": {
+    "description": "Texte UI : aboutPremiumPlayer"
+  },
+  "aboutUpdateError": "Impossible de contacter le serveur de mises à jour. Vérifie ta connexion.",
+  "@aboutUpdateError": {
+    "description": "Texte UI : aboutUpdateError"
+  },
+  "aboutMyDevice": "Mon appareil",
+  "@aboutMyDevice": {
+    "description": "Texte UI : aboutMyDevice"
+  },
+  "aboutUpdates": "Mises à jour",
+  "@aboutUpdates": {
+    "description": "Texte UI : aboutUpdates"
+  },
+  "aboutNewVersion": "Nouvelle version disponible",
+  "@aboutNewVersion": {
+    "description": "Texte UI : aboutNewVersion"
+  },
+  "aboutSeeReleaseNotes": "Voir les notes de version",
+  "@aboutSeeReleaseNotes": {
+    "description": "Texte UI : aboutSeeReleaseNotes"
+  },
+  "aboutLatestVersion": "Tu as la dernière version (v{version}).",
+  "@aboutLatestVersion": {
+    "description": "Texte UI : aboutLatestVersion",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "aboutChecking": "Vérification...",
+  "@aboutChecking": {
+    "description": "Texte UI : aboutChecking"
+  },
+  "aboutCheckUpdates": "Vérifier les mises à jour",
+  "@aboutCheckUpdates": {
+    "description": "Texte UI : aboutCheckUpdates"
+  },
+  "aboutUsefulLinks": "Liens utiles",
+  "@aboutUsefulLinks": {
+    "description": "Texte UI : aboutUsefulLinks"
+  },
+  "aboutPrivacyPolicy": "Politique de confidentialité",
+  "@aboutPrivacyPolicy": {
+    "description": "Texte UI : aboutPrivacyPolicy"
+  },
+  "aboutBuiltWith": "Construit avec",
+  "@aboutBuiltWith": {
+    "description": "Texte UI : aboutBuiltWith"
+  },
+  "aboutCreditFlutter": "Framework UI multiplateforme",
+  "@aboutCreditFlutter": {
+    "description": "Texte UI : aboutCreditFlutter"
+  },
+  "aboutCreditMediaKit": "Moteur vidéo (HLS, MPEG-TS, MP4)",
+  "@aboutCreditMediaKit": {
+    "description": "Texte UI : aboutCreditMediaKit"
+  },
+  "aboutCreditSqflite": "Stockage local des playlists",
+  "@aboutCreditSqflite": {
+    "description": "Texte UI : aboutCreditSqflite"
+  },
+  "aboutCreditCache": "Cache disque des logos",
+  "@aboutCreditCache": {
+    "description": "Texte UI : aboutCreditCache"
+  },
+  "aboutCreditFonts": "Typographie premium",
+  "@aboutCreditFonts": {
+    "description": "Texte UI : aboutCreditFonts"
+  },
+  "aboutLegalNotice": "BLACK7 ROYAL est un lecteur média générique. Aucun contenu n'est inclus avec l'app. Tu es responsable des sources que tu ajoutes et de leur conformité aux lois en vigueur dans ton pays.",
+  "@aboutLegalNotice": {
+    "description": "Texte UI : aboutLegalNotice"
+  },
+  "lockPinTooShort": "Tape au moins 4 chiffres.",
+  "@lockPinTooShort": {
+    "description": "Texte UI : lockPinTooShort"
+  },
+  "lockPinWrong": "Code incorrect.",
+  "@lockPinWrong": {
+    "description": "Texte UI : lockPinWrong"
+  },
+  "lockUnlockReason": "Déverrouille {app}",
+  "@lockUnlockReason": {
+    "description": "Texte UI : lockUnlockReason",
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "lockAppLocked": "Application verrouillée",
+  "@lockAppLocked": {
+    "description": "Texte UI : lockAppLocked"
+  },
+  "lockAuthenticating": "Authentification...",
+  "@lockAuthenticating": {
+    "description": "Texte UI : lockAuthenticating"
+  },
+  "lockFingerprint": "Empreinte digitale",
+  "@lockFingerprint": {
+    "description": "Texte UI : lockFingerprint"
+  },
+  "lockValidateCode": "Valider le code",
+  "@lockValidateCode": {
+    "description": "Texte UI : lockValidateCode"
+  },
+  "lockDefaultPin": "Code par défaut : {pin}\nModifiable dans Réglages > Sécurité.",
+  "@lockDefaultPin": {
+    "description": "Texte UI : lockDefaultPin",
+    "placeholders": {
+      "pin": {
+        "type": "String"
+      }
+    }
+  },
+  "ageGateTitle": "Contenu réservé aux adultes",
+  "@ageGateTitle": {
+    "description": "Texte UI : ageGateTitle"
+  },
+  "ageGateBody": "Cette application diffuse des programmes à caractère explicite réservés aux personnes majeures. En continuant, vous déclarez sur l'honneur avoir atteint l'âge légal de majorité dans votre pays.",
+  "@ageGateBody": {
+    "description": "Texte UI : ageGateBody"
+  },
+  "ageGateEnter": "J'AI 18 ANS OU PLUS — ENTRER",
+  "@ageGateEnter": {
+    "description": "Texte UI : ageGateEnter"
+  },
+  "ageGateQuit": "Quitter",
+  "@ageGateQuit": {
+    "description": "Texte UI : ageGateQuit"
+  },
+  "ageGateLegal": "En cas de fausse déclaration, la responsabilité incombe exclusivement à l'utilisateur.",
+  "@ageGateLegal": {
+    "description": "Texte UI : ageGateLegal"
+  },
+  "onboardingSkip": "Passer",
+  "@onboardingSkip": {
+    "description": "Texte UI : onboardingSkip"
+  },
+  "onboardingStart": "Commencer",
+  "@onboardingStart": {
+    "description": "Texte UI : onboardingStart"
+  },
+  "onboardingNext": "Suivant",
+  "@onboardingNext": {
+    "description": "Texte UI : onboardingNext"
+  },
+  "onboardingYourId": "TON IDENTIFIANT",
+  "@onboardingYourId": {
+    "description": "Texte UI : onboardingYourId"
+  },
+  "onboardingActivateChannels": "Activer mes chaînes",
+  "@onboardingActivateChannels": {
+    "description": "Texte UI : onboardingActivateChannels"
+  },
+  "onboardingCopyId": "Copier l'identifiant",
+  "@onboardingCopyId": {
+    "description": "Texte UI : onboardingCopyId"
+  },
+  "devicePreparing": "Préparation…",
+  "@devicePreparing": {
+    "description": "Texte UI : devicePreparing"
+  },
+  "simpleChooseCountry": "Choisis un pays",
+  "@simpleChooseCountry": {
+    "description": "Texte UI : simpleChooseCountry"
+  },
+  "simpleMyAccount": "Mon compte",
+  "@simpleMyAccount": {
+    "description": "Texte UI : simpleMyAccount"
+  },
+  "simpleRecentlyWatched": "Récemment regardé",
+  "@simpleRecentlyWatched": {
+    "description": "Texte UI : simpleRecentlyWatched"
+  },
+  "simpleMyFavorites": "Mes favoris",
+  "@simpleMyFavorites": {
+    "description": "Texte UI : simpleMyFavorites"
+  },
+  "simpleSport": "Sport",
+  "@simpleSport": {
+    "description": "Texte UI : simpleSport"
+  },
+  "simpleEntertainment": "Divertissement",
+  "@simpleEntertainment": {
+    "description": "Texte UI : simpleEntertainment"
+  },
+  "simpleInfo": "Info",
+  "@simpleInfo": {
+    "description": "Texte UI : simpleInfo"
+  },
+  "simpleKids": "Enfants",
+  "@simpleKids": {
+    "description": "Texte UI : simpleKids"
+  },
+  "simpleGeneral": "Général",
+  "@simpleGeneral": {
+    "description": "Texte UI : simpleGeneral"
+  },
+  "simpleLockedTitle": "Cinéma & Séries",
+  "@simpleLockedTitle": {
+    "description": "Texte UI : simpleLockedTitle"
+  },
+  "simpleLockedHint": "Touche pour déverrouiller (empreinte ou code)",
+  "@simpleLockedHint": {
+    "description": "Texte UI : simpleLockedHint"
+  },
+  "simpleUnlockReason": "Déverrouiller Cinéma & Séries",
+  "@simpleUnlockReason": {
+    "description": "Texte UI : simpleUnlockReason"
+  },
+  "simpleAccessCode": "Code d'accès",
+  "@simpleAccessCode": {
+    "description": "Texte UI : simpleAccessCode"
+  },
+  "buttonAdd": "Ajouter",
+  "@buttonAdd": {
+    "description": "Texte UI : buttonAdd"
+  },
+  "moviesTitle": "Films",
+  "@moviesTitle": {
+    "description": "Texte UI : moviesTitle"
+  },
+  "moviesTabMovies": "Films",
+  "@moviesTabMovies": {
+    "description": "Texte UI : moviesTabMovies"
+  },
+  "moviesTabDownloads": "Téléchargés",
+  "@moviesTabDownloads": {
+    "description": "Texte UI : moviesTabDownloads"
+  },
+  "moviesReloadTooltip": "Recharger le catalogue",
+  "@moviesReloadTooltip": {
+    "description": "Texte UI : moviesReloadTooltip"
+  },
+  "moviesEmptyCatalogue": "Aucun film disponible.\nTon serveur ne propose peut-être pas de VOD, ou tu n'es pas connecté en Xtream.",
+  "@moviesEmptyCatalogue": {
+    "description": "Texte UI : moviesEmptyCatalogue"
+  },
+  "moviesEmptyDownloads": "Aucun téléchargement.\nTélécharge un film depuis l'onglet « Films » pour le regarder hors-ligne.",
+  "@moviesEmptyDownloads": {
+    "description": "Texte UI : moviesEmptyDownloads"
+  },
+  "moviesPlayTooltip": "Lire",
+  "@moviesPlayTooltip": {
+    "description": "Texte UI : moviesPlayTooltip"
+  },
+  "moviesDownloaded": "Téléchargé",
+  "@moviesDownloaded": {
+    "description": "Texte UI : moviesDownloaded"
+  },
+  "moviesDownloading": "Téléchargement…",
+  "@moviesDownloading": {
+    "description": "Texte UI : moviesDownloading"
+  },
+  "moviesDownload": "Télécharger",
+  "@moviesDownload": {
+    "description": "Texte UI : moviesDownload"
+  },
+  "moviesPlayOfflineTooltip": "Lire hors-ligne",
+  "@moviesPlayOfflineTooltip": {
+    "description": "Texte UI : moviesPlayOfflineTooltip"
+  },
+  "moviesPauseTooltip": "Pause",
+  "@moviesPauseTooltip": {
+    "description": "Texte UI : moviesPauseTooltip"
+  },
+  "moviesResumeTooltip": "Reprendre",
+  "@moviesResumeTooltip": {
+    "description": "Texte UI : moviesResumeTooltip"
+  },
+  "moviesDeleteTooltip": "Supprimer",
+  "@moviesDeleteTooltip": {
+    "description": "Texte UI : moviesDeleteTooltip"
+  },
+  "moviesStatusDownloaded": "Téléchargé · {size}",
+  "@moviesStatusDownloaded": {
+    "description": "Texte UI : moviesStatusDownloaded",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "moviesStatusDownloading": "Téléchargement… {size}",
+  "@moviesStatusDownloading": {
+    "description": "Texte UI : moviesStatusDownloading",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "moviesStatusPaused": "En pause · {size}",
+  "@moviesStatusPaused": {
+    "description": "Texte UI : moviesStatusPaused",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "moviesStatusError": "Erreur — appuie pour reprendre",
+  "@moviesStatusError": {
+    "description": "Texte UI : moviesStatusError"
+  },
+  "guideTitle": "Guide TV",
+  "@guideTitle": {
+    "description": "Texte UI : guideTitle"
+  },
+  "guideGoToNow": "Aller à maintenant",
+  "@guideGoToNow": {
+    "description": "Texte UI : guideGoToNow"
+  },
+  "guideNoChannel": "Aucune chaîne",
+  "@guideNoChannel": {
+    "description": "Texte UI : guideNoChannel"
+  },
+  "guideEmptyHint": "Ajoute une playlist avec un EPG XMLTV pour voir le guide.",
+  "@guideEmptyHint": {
+    "description": "Texte UI : guideEmptyHint"
+  },
+  "guideSchedule": "Horaires",
+  "@guideSchedule": {
+    "description": "Texte UI : guideSchedule"
+  },
+  "guideCatchupUnavailable": "Catch-up indisponible pour {channel}",
+  "@guideCatchupUnavailable": {
+    "description": "Texte UI : guideCatchupUnavailable",
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "programsToday": "Programmes d'aujourd'hui",
+  "@programsToday": {
+    "description": "Texte UI : programsToday"
+  },
+  "programsNoneToday": "Pas de programmes pour aujourd'hui",
+  "@programsNoneToday": {
+    "description": "Texte UI : programsNoneToday"
+  },
+  "programsNoneHelp": "L'EPG XMLTV de ce fournisseur n'a pas cette chaîne, ou il n'a pas encore été synchronisé.",
+  "@programsNoneHelp": {
+    "description": "Texte UI : programsNoneHelp"
+  },
+  "programsCatchupUnavailable": "Catch-up indisponible pour cette chaîne.",
+  "@programsCatchupUnavailable": {
+    "description": "Texte UI : programsCatchupUnavailable"
+  },
+  "programStartsAt": "{title} commence à {time}.",
+  "@programStartsAt": {
+    "description": "Texte UI : programStartsAt",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "deviceIdLabel": "IDENTIFIANT APPAREIL",
+  "@deviceIdLabel": {
+    "description": "Texte UI : deviceIdLabel"
+  },
+  "deviceIdCaption": "Identifie ton installation BLACK7 ROYAL. Garde ce code pour le support technique de l'app. Pour toute question sur les chaînes, contacte ton fournisseur IPTV.",
+  "@deviceIdCaption": {
+    "description": "Texte UI : deviceIdCaption"
+  },
+  "profileDiscovery": "Découverte",
+  "@profileDiscovery": {
+    "description": "Texte UI : profileDiscovery"
+  },
+  "profileTvGuide": "Guide TV",
+  "@profileTvGuide": {
+    "description": "Texte UI : profileTvGuide"
+  },
+  "profileTvGuideSub": "Programme en cours et à venir",
+  "@profileTvGuideSub": {
+    "description": "Texte UI : profileTvGuideSub"
+  },
+  "profileRecordings": "Mes enregistrements",
+  "@profileRecordings": {
+    "description": "Texte UI : profileRecordings"
+  },
+  "profileRecordingsSub": "Tes captures de direct",
+  "@profileRecordingsSub": {
+    "description": "Texte UI : profileRecordingsSub"
+  },
+  "profileAccount": "Compte",
+  "@profileAccount": {
+    "description": "Texte UI : profileAccount"
+  },
+  "profileSettings": "Réglages",
+  "@profileSettings": {
+    "description": "Texte UI : profileSettings"
+  },
+  "profileSettingsSub": "Lecture, sécurité, langue, thème",
+  "@profileSettingsSub": {
+    "description": "Texte UI : profileSettingsSub"
+  },
+  "profileAbout": "À propos",
+  "@profileAbout": {
+    "description": "Texte UI : profileAbout"
+  },
+  "profileAboutSub": "Version, équipe, mentions légales",
+  "@profileAboutSub": {
+    "description": "Texte UI : profileAboutSub"
+  },
+  "profilePremiumAccount": "Compte premium",
+  "@profilePremiumAccount": {
+    "description": "Texte UI : profilePremiumAccount"
+  },
+  "profileCastConnected": "Connecté à {device}",
+  "@profileCastConnected": {
+    "description": "Texte UI : profileCastConnected",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "profileCastTo": "Diffuser sur un téléviseur",
+  "@profileCastTo": {
+    "description": "Texte UI : profileCastTo"
+  },
+  "profileCast": "Cast",
+  "@profileCast": {
+    "description": "Texte UI : profileCast"
+  },
+  "profileDeviceFallback": "appareil",
+  "@profileDeviceFallback": {
+    "description": "Texte UI : profileDeviceFallback"
+  },
+  "supportHowToReach": "Comment veux-tu nous joindre ?",
+  "@supportHowToReach": {
+    "description": "Texte UI : supportHowToReach"
+  },
+  "supportPickChannel": "Choisis le canal qui te convient. Notre équipe répond 7j/7.",
+  "@supportPickChannel": {
+    "description": "Texte UI : supportPickChannel"
+  },
+  "supportInstantMessage": "Message instantané",
+  "@supportInstantMessage": {
+    "description": "Texte UI : supportInstantMessage"
+  },
+  "supportInstantMessageSub": "Conversation écrite · Réponse moyenne 15 min.",
+  "@supportInstantMessageSub": {
+    "description": "Texte UI : supportInstantMessageSub"
+  },
+  "supportPhoneCall": "Appel téléphonique",
+  "@supportPhoneCall": {
+    "description": "Texte UI : supportPhoneCall"
+  },
+  "supportPhoneCallSub": "Parle à un conseiller · {number}",
+  "@supportPhoneCallSub": {
+    "description": "Texte UI : supportPhoneCallSub",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "supportMessageError": "Impossible d'ouvrir la messagerie. Essaie l'appel.",
+  "@supportMessageError": {
+    "description": "Texte UI : supportMessageError"
+  },
+  "supportCallError": "Cet appareil ne peut pas appeler. Utilise le message à la place.",
+  "@supportCallError": {
+    "description": "Texte UI : supportCallError"
+  },
+  "favoritesEmptyTitle": "Aucun favori pour l'instant",
+  "@favoritesEmptyTitle": {
+    "description": "Texte UI : favoritesEmptyTitle"
+  },
+  "favoritesEmptyHint": "Appuie sur ♥ dans le menu d'une chaîne pour la garder ici.",
+  "@favoritesEmptyHint": {
+    "description": "Texte UI : favoritesEmptyHint"
+  },
+  "focusedResultsCount": "{channels} chaînes · {countries} pays",
+  "@focusedResultsCount": {
+    "description": "Texte UI : focusedResultsCount",
+    "placeholders": {
+      "channels": {
+        "type": "int"
+      },
+      "countries": {
+        "type": "int"
+      }
+    }
+  },
+  "searchResultsCount": "{count} résultats pour \"{query}\"",
+  "@searchResultsCount": {
+    "description": "Texte UI : searchResultsCount",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "loginInvalidUrl": "URL invalide. Elle doit commencer par http:// ou https://",
+  "@loginInvalidUrl": {
+    "description": "Texte UI : loginInvalidUrl"
+  },
+  "loginInvalidServer": "Serveur invalide. Format : http://serveur.com:8080",
+  "@loginInvalidServer": {
+    "description": "Texte UI : loginInvalidServer"
+  },
+  "loginCredsRequired": "Utilisateur et mot de passe sont obligatoires.",
+  "@loginCredsRequired": {
+    "description": "Texte UI : loginCredsRequired"
+  },
+  "loginServerRequired": "Choisis un serveur.",
+  "@loginServerRequired": {
+    "description": "Texte UI : loginServerRequired"
+  },
+  "loginSourceAdded": "Source ajoutée. Tes chaînes arrivent…",
+  "@loginSourceAdded": {
+    "description": "Texte UI : loginSourceAdded"
+  },
+  "loginConnected": "Connecté. Tes chaînes arrivent…",
+  "@loginConnected": {
+    "description": "Texte UI : loginConnected"
+  },
+  "loginMySourcePerso": "Ma source perso",
+  "@loginMySourcePerso": {
+    "description": "Texte UI : loginMySourcePerso"
+  },
+  "loginUrlM3u": "URL M3U",
+  "@loginUrlM3u": {
+    "description": "Texte UI : loginUrlM3u"
+  },
+  "loginServerXtream": "Serveur Xtream",
+  "@loginServerXtream": {
+    "description": "Texte UI : loginServerXtream"
+  },
+  "loginUsername": "Utilisateur",
+  "@loginUsername": {
+    "description": "Texte UI : loginUsername"
+  },
+  "loginPassword": "Mot de passe",
+  "@loginPassword": {
+    "description": "Texte UI : loginPassword"
+  },
+  "loginNameOptional": "Nom (optionnel)",
+  "@loginNameOptional": {
+    "description": "Texte UI : loginNameOptional"
+  },
+  "loginNameHint": "Défaut : \"Ma source\"",
+  "@loginNameHint": {
+    "description": "Texte UI : loginNameHint"
+  },
+  "loginVerifying": "Vérification…",
+  "@loginVerifying": {
+    "description": "Texte UI : loginVerifying"
+  },
+  "loginLoadChannels": "Charger mes chaînes",
+  "@loginLoadChannels": {
+    "description": "Texte UI : loginLoadChannels"
+  },
+  "loginTitle": "Connexion",
+  "@loginTitle": {
+    "description": "Texte UI : loginTitle"
+  },
+  "loginXtreamIntro": "Choisis ton serveur puis saisis le code que t'a donné ton revendeur.\nTes chaînes seront chargées en quelques secondes.",
+  "@loginXtreamIntro": {
+    "description": "Texte UI : loginXtreamIntro"
+  },
+  "loginServer": "Serveur",
+  "@loginServer": {
+    "description": "Texte UI : loginServer"
+  },
+  "loginConnecting": "Connexion au serveur...",
+  "@loginConnecting": {
+    "description": "Texte UI : loginConnecting"
+  },
+  "loginConnectLoad": "Se connecter et charger",
+  "@loginConnectLoad": {
+    "description": "Texte UI : loginConnectLoad"
+  },
+  "loginLoadingServers": "Chargement des serveurs…",
+  "@loginLoadingServers": {
+    "description": "Texte UI : loginLoadingServers"
+  },
+  "loginServersUnavailable": "Serveurs indisponibles pour le moment.",
+  "@loginServersUnavailable": {
+    "description": "Texte UI : loginServersUnavailable"
+  },
+  "loginAddIntro": "Choisis ton serveur, puis saisis le code que t'a donné ton revendeur (utilisateur + mot de passe). On vérifie le code avant de charger tes chaînes.",
+  "@loginAddIntro": {
+    "description": "Texte UI : loginAddIntro"
+  },
+  "loginUsernameHint": "identifiant",
+  "@loginUsernameHint": {
+    "description": "Texte UI : loginUsernameHint"
+  },
+  "loginPasswordHint": "mot de passe",
+  "@loginPasswordHint": {
+    "description": "Texte UI : loginPasswordHint"
+  },
+  "seeAllOf": "Voir tout {title}",
+  "@seeAllOf": {
+    "description": "Texte UI : seeAllOf",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  }
 }

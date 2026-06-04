@@ -7,6 +7,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../cast/presentation/cast_button.dart';
@@ -24,7 +25,7 @@ class FavoritesScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Favoris'),
+        title: Text(context.l10n.navFavorites),
         actions: const <Widget>[
           CastButton(),
           SizedBox(width: 6),
@@ -56,14 +57,14 @@ class FavoritesScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 14),
                       Text(
-                        'Aucun favori pour l\'instant',
+                        context.l10n.favoritesEmptyTitle,
                         style: AppTextStyles.bodyLarge,
                       ),
                       const SizedBox(height: 6),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 32),
                         child: Text(
-                          'Appuie sur ♥ dans le menu d\'une chaîne pour la garder ici.',
+                          context.l10n.favoritesEmptyHint,
                           textAlign: TextAlign.center,
                           style: AppTextStyles.bodyMedium,
                         ),

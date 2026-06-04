@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/gallery_exporter.dart';
@@ -33,7 +34,7 @@ class RecordingsScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Mes enregistrements'),
+        title: Text(context.l10n.recordingsTitle),
       ),
       body: StreamBuilder<List<Recording>>(
         stream: RecordingRepository.instance.stream,
@@ -41,7 +42,7 @@ class RecordingsScreen extends StatelessWidget {
         builder:
             (BuildContext context, AsyncSnapshot<List<Recording>> snap) {
           final List<Recording> recs = snap.data ?? <Recording>[];
-          if (recs.isEmpty) return _empty();
+          if (recs.isEmpty) return _empty(context);
           return ListView.separated(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
             physics: const BouncingScrollPhysics(),
@@ -57,7 +58,7 @@ class RecordingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _empty() {
+  Widget _empty(BuildContext context) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -71,12 +72,12 @@ class RecordingsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             Text(
-              'Aucun enregistrement',
+              context.l10n.recordingsEmptyTitle,
               style: AppTextStyles.bodyLarge,
             ),
             const SizedBox(height: 6),
             Text(
-              'Pendant la lecture, appuie sur REC pour capturer le flux en direct.',
+              context.l10n.recordingsEmptySubtitle,
               textAlign: TextAlign.center,
               style: AppTextStyles.bodyMedium,
             ),
@@ -161,7 +162,7 @@ class _RecordingTileState extends State<_RecordingTile> {
           margin: const EdgeInsets.all(16),
           duration: const Duration(seconds: 3),
           content: Text(
-            'Enregistrement arrêté — exporte-le vers la Galerie',
+            context.l10n.recordingStopped,
             style: AppTextStyles.bodyMedium,
           ),
         ),
@@ -169,7 +170,7 @@ class _RecordingTileState extends State<_RecordingTile> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur arrêt : $e')),
+        SnackBar(content: Text(context.l10n.recordingStopError('$e'))),
       );
     } finally {
       if (mounted) setState(() => _stopping = false);
@@ -198,8 +199,8 @@ class _RecordingTileState extends State<_RecordingTile> {
         duration: Duration(seconds: res.success ? 4 : 8),
         content: Text(
           res.success
-              ? 'Exporté dans Galerie › Movies sous "7MOTION_$displayName"'
-              : 'Export échec : ${res.userFacingError}',
+              ? context.l10n.recordingExported(displayName)
+              : context.l10n.recordingExportFailed(res.userFacingError),
           style: AppTextStyles.bodyMedium,
         ),
       ),
@@ -272,7 +273,7 @@ class _RecordingTileState extends State<_RecordingTile> {
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
-                              'EN COURS',
+                              context.l10n.castInProgress,
                               style: AppTextStyles.labelSmall.copyWith(
                                 color: Colors.white,
                                 fontSize: 9,
@@ -324,7 +325,7 @@ class _RecordingTileState extends State<_RecordingTile> {
                             size: 20,
                           ),
                         ),
-                  tooltip: 'Arrêter l\'enregistrement',
+                  tooltip: context.l10n.recordingStopTooltip,
                   onPressed: _stopping ? null : _stopRecording,
                 ),
               // Bouton "Exporter vers Galerie" — appelle MediaStore pour
@@ -347,7 +348,7 @@ class _RecordingTileState extends State<_RecordingTile> {
                           color: AppColors.accent,
                           size: 22,
                         ),
-                  tooltip: 'Sauvegarder dans la Galerie',
+                  tooltip: context.l10n.recordingSaveTooltip,
                   onPressed: _exporting ? null : _exportToGallery,
                 ),
               IconButton(
@@ -356,7 +357,7 @@ class _RecordingTileState extends State<_RecordingTile> {
                   color: AppColors.textMuted,
                   size: 20,
                 ),
-                tooltip: 'Supprimer',
+                tooltip: context.l10n.buttonDelete,
                 onPressed: () => _confirmDelete(context),
               ),
             ],
@@ -406,19 +407,20 @@ class _RecordingTileState extends State<_RecordingTile> {
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
         backgroundColor: AppColors.surfaceHigh,
-        title: const Text('Supprimer cet enregistrement ?'),
+        title: Text(context.l10n.recordingDeleteConfirmTitle),
         content: Text(
-          'Le fichier "${recording.filePath.split('/').last}" sera effacé.',
+          context.l10n.recordingDeleteConfirmBody(
+              recording.filePath.split('/').last),
         ),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Annuler'),
+            child: Text(context.l10n.buttonCancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: TextButton.styleFrom(foregroundColor: AppColors.live),
-            child: const Text('Supprimer'),
+            child: Text(context.l10n.buttonDelete),
           ),
         ],
       ),
@@ -462,8 +464,7 @@ class _RecordingPlayerState extends State<_RecordingPlayer> {
     _controller = VideoController(_player);
     _errSub = _player.stream.error.listen((String e) {
       if (mounted && _errorMsg == null) {
-        setState(() => _errorMsg = 'Lecture impossible : enregistrement '
-            'illisible ou incomplet.');
+        setState(() => _errorMsg = context.l10n.recordingUnreadable);
       }
     });
     _openOrFail();
@@ -479,14 +480,14 @@ class _RecordingPlayerState extends State<_RecordingPlayer> {
       if (!ok || size == 0) {
         if (mounted) {
           setState(() => _errorMsg = ok
-              ? 'Enregistrement vide (0 octet) — rien n\'a été capturé.'
-              : 'Fichier introuvable — il a peut-être été supprimé.');
+              ? context.l10n.recordingEmpty
+              : context.l10n.recordingNotFound);
         }
         return;
       }
       await _player.open(Media(widget.recording.filePath));
     } catch (e) {
-      if (mounted) setState(() => _errorMsg = 'Lecture impossible : $e');
+      if (mounted) setState(() => _errorMsg = context.l10n.recordingPlayError('$e'));
     }
   }
 

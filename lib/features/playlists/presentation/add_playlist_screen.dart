@@ -18,6 +18,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/legal_disclaimer.dart';
@@ -87,11 +88,11 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen> {
     final String pass = _passCtrl.text;
 
     if (server == null) {
-      _setError('Choisis un serveur.');
+      _setError(context.l10n.loginServerRequired);
       return;
     }
     if (user.isEmpty || pass.isEmpty) {
-      _setError('Utilisateur et mot de passe sont obligatoires.');
+      _setError(context.l10n.loginCredsRequired);
       return;
     }
 
@@ -147,7 +148,7 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Connexion'),
+        title: Text(context.l10n.loginTitle),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -157,33 +158,29 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen> {
             children: <Widget>[
               const LegalDisclaimer.compact(),
               const SizedBox(height: 16),
-              _intro(
-                'Choisis ton serveur, puis saisis le code que t\'a donné '
-                'ton revendeur (utilisateur + mot de passe). On vérifie '
-                'le code avant de charger tes chaînes.',
-              ),
+              _intro(context.l10n.loginAddIntro),
               const SizedBox(height: 24),
               // Sélecteur affiché UNIQUEMENT s'il y a plusieurs serveurs
               // (ou pendant le chargement). Avec un seul serveur, il est
               // prédéfini : le client ne choisit rien, il saisit juste
               // son code.
               if (_servers == null || _servers!.length > 1) ...<Widget>[
-                _label('Serveur'),
+                _label(context.l10n.loginServer),
                 _buildServerSelector(),
                 const SizedBox(height: 16),
               ],
-              _label('Utilisateur'),
+              _label(context.l10n.loginUsername),
               _textField(
                 controller: _userCtrl,
-                hint: 'identifiant',
+                hint: context.l10n.loginUsernameHint,
                 icon: Icons.person_outline,
                 autocorrect: false,
               ),
               const SizedBox(height: 16),
-              _label('Mot de passe'),
+              _label(context.l10n.loginPassword),
               _textField(
                 controller: _passCtrl,
-                hint: 'mot de passe',
+                hint: context.l10n.loginPasswordHint,
                 icon: Icons.lock_outline,
                 obscureText: true,
                 autocorrect: false,
@@ -193,8 +190,8 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen> {
               const SizedBox(height: 8),
               _primaryButton(
                 label: _busy
-                    ? 'Connexion au serveur...'
-                    : 'Se connecter et charger',
+                    ? context.l10n.loginConnecting
+                    : context.l10n.loginConnectLoad,
                 icon: _busy ? null : Icons.cloud_download_rounded,
                 onPressed:
                     (_busy || _selectedServer == null) ? null : _submit,
@@ -227,7 +224,7 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen> {
             ),
             const SizedBox(width: 12),
             Text(
-              'Chargement des serveurs…',
+              context.l10n.loginLoadingServers,
               style: AppTextStyles.bodyMedium.copyWith(fontSize: 13),
             ),
           ],
@@ -247,7 +244,7 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text(
-              'Serveurs indisponibles pour le moment.',
+              context.l10n.loginServersUnavailable,
               style: AppTextStyles.bodyMedium.copyWith(fontSize: 13),
             ),
             const SizedBox(height: 8),
@@ -257,7 +254,7 @@ class _AddPlaylistScreenState extends State<AddPlaylistScreen> {
                 _loadServers();
               },
               icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Réessayer'),
+              label: Text(context.l10n.buttonRetry),
             ),
           ],
         ),

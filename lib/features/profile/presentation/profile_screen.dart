@@ -24,6 +24,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/branding/brand_logo.dart';
 import '../../../core/flavor/flavor.dart';
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/cinematic_spacing.dart';
@@ -75,12 +76,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: CinematicSpacing.xl),
 
             // ===== Groupe Decouverte =====
-            _SectionLabel('Decouverte'),
+            _SectionLabel(context.l10n.profileDiscovery),
             const SizedBox(height: CinematicSpacing.s),
             _MenuTile(
               icon: Icons.event_note_rounded,
-              title: 'Guide TV',
-              subtitle: 'Programme en cours et a venir',
+              title: context.l10n.profileTvGuide,
+              subtitle: context.l10n.profileTvGuideSub,
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute<void>(
                   builder: (_) => const TvGuideScreen(),
@@ -89,8 +90,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             _MenuTile(
               icon: Icons.fiber_manual_record_rounded,
-              title: 'Mes enregistrements',
-              subtitle: 'Tes captures de direct',
+              title: context.l10n.profileRecordings,
+              subtitle: context.l10n.profileRecordingsSub,
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute<void>(
                   builder: (_) => const RecordingsScreen(),
@@ -101,12 +102,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: CinematicSpacing.xl),
 
             // ===== Groupe Compte =====
-            _SectionLabel('Compte'),
+            _SectionLabel(context.l10n.profileAccount),
             const SizedBox(height: CinematicSpacing.s),
             _MenuTile(
               icon: Icons.settings_outlined,
-              title: 'Reglages',
-              subtitle: 'Lecture, securite, langue, theme',
+              title: context.l10n.profileSettings,
+              subtitle: context.l10n.profileSettingsSub,
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute<void>(
                   builder: (_) => const SettingsScreen(),
@@ -115,8 +116,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             _MenuTile(
               icon: Icons.info_outline_rounded,
-              title: 'A propos',
-              subtitle: 'Version, equipe, mentions legales',
+              title: context.l10n.profileAbout,
+              subtitle: context.l10n.profileAboutSub,
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute<void>(
                   builder: (_) => const AboutScreen(),
@@ -194,7 +195,7 @@ class _AccountCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                'Compte premium',
+                context.l10n.profilePremiumAccount,
                 style: AppTextStyles.bodyLarge.copyWith(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -204,7 +205,7 @@ class _AccountCard extends StatelessWidget {
           ),
           const SizedBox(height: CinematicSpacing.s),
           Text(
-            'IDENTIFIANT APPAREIL',
+            context.l10n.deviceIdLabel,
             style: AppTextStyles.labelSmall.copyWith(
               color: AppColors.textTertiary,
               fontSize: 10,
@@ -323,11 +324,12 @@ class _CastTile extends StatelessWidget {
         final bool connected = mgr.hasTarget;
         final CastDevice? dev = mgr.selectedDevice;
         final String subtitle = connected
-            ? 'Connecte a ${dev?.name ?? "appareil"}'
-            : 'Diffuser sur un televiseur';
+            ? context.l10n.profileCastConnected(
+                dev?.name ?? context.l10n.profileDeviceFallback)
+            : context.l10n.profileCastTo;
         return _MenuTile(
           icon: connected ? Icons.cast_connected_rounded : Icons.cast_rounded,
-          title: 'Cast',
+          title: context.l10n.profileCast,
           subtitle: subtitle,
           onTap: () => showCastPickerGlobal(context),
         );

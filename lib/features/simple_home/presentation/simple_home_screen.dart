@@ -108,7 +108,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
           Expanded(
             child: Text(
               _countryCode == null
-                  ? 'Choisis un pays'
+                  ? context.l10n.simpleChooseCountry
                   : '$_countryFlag  $_countryName',
               textAlign: TextAlign.center,
               style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
@@ -117,7 +117,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
             ),
           ),
           IconButton(
-            tooltip: 'Mon compte',
+            tooltip: context.l10n.simpleMyAccount,
             icon: const Icon(Icons.person_rounded),
             onPressed: () => Navigator.of(context).push<void>(
               MaterialPageRoute<void>(builder: (_) => const ProfileScreen()),
@@ -182,7 +182,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
-                Text('${c.count} chaînes',
+                Text(context.l10n.channelCount(c.count),
                     style: AppTextStyles.bodyMedium.copyWith(
                         fontSize: 11, color: AppColors.textTertiary)),
               ],
@@ -231,12 +231,14 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
               padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
               physics: const BouncingScrollPhysics(),
               children: <Widget>[
-                _section('🕐 Récemment regardé', AppColors.info, recent, favs),
-                _section('⭐ Mes favoris', AppColors.warning, favList, favs),
-                _section('⚽ Sport', AppColors.success,
+                _section('🕐 ${context.l10n.simpleRecentlyWatched}',
+                    AppColors.info, recent, favs),
+                _section('⭐ ${context.l10n.simpleMyFavorites}',
+                    AppColors.warning, favList, favs),
+                _section('⚽ ${context.l10n.simpleSport}', AppColors.success,
                     byGenre(<ChannelGenre>{ChannelGenre.sports}), favs),
                 _section(
-                    '🎬 Divertissement',
+                    '🎬 ${context.l10n.simpleEntertainment}',
                     AppColors.warning,
                     byGenre(<ChannelGenre>{
                       ChannelGenre.entertainment,
@@ -244,12 +246,12 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                       ChannelGenre.documentary,
                     }),
                     favs),
-                _section('📰 Info', AppColors.info,
+                _section('📰 ${context.l10n.simpleInfo}', AppColors.info,
                     byGenre(<ChannelGenre>{ChannelGenre.news}), favs),
-                _section('🧸 Enfants', AppColors.accent,
+                _section('🧸 ${context.l10n.simpleKids}', AppColors.accent,
                     byGenre(<ChannelGenre>{ChannelGenre.kids}), favs),
                 _section(
-                    '📡 Général',
+                    '📡 ${context.l10n.simpleGeneral}',
                     AppColors.textSecondary,
                     byGenre(<ChannelGenre>{
                       ChannelGenre.other,
@@ -300,10 +302,10 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
             children: <Widget>[
               const Text('🔒', style: TextStyle(fontSize: 36)),
               const SizedBox(height: 8),
-              Text('🍿 Cinéma & 📺 Séries',
+              Text('🍿 ${context.l10n.simpleLockedTitle}',
                   style: AppTextStyles.headlineMedium.copyWith(fontSize: 17)),
               const SizedBox(height: 4),
-              Text('Touche pour déverrouiller (empreinte ou code)',
+              Text(context.l10n.simpleLockedHint,
                   style: AppTextStyles.bodyMedium.copyWith(
                       fontSize: 12, color: AppColors.textSecondary)),
             ],
@@ -314,10 +316,12 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
 
     return Column(
       children: <Widget>[
-        _section('🍿 Cinéma', AppColors.live, cine, favs),
-        _section('📺 Séries', AppColors.accentBright, series, favs),
+        _section('🍿 ${context.l10n.sectionMovies}', AppColors.live, cine, favs),
+        _section('📺 ${context.l10n.sectionSeries}', AppColors.accentBright,
+            series, favs),
         if (adult.isNotEmpty)
-          _section('🔞 Adulte', AppColors.accentMuted, adult, favs),
+          _section('🔞 ${context.l10n.sectionAdult}', AppColors.accentMuted,
+              adult, favs),
       ],
     );
   }
@@ -328,7 +332,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     try {
       if (await BiometricAuth.instance.isSupported()) {
         ok = await BiometricAuth.instance.authenticate(
-          reason: 'Déverrouiller Cinéma & Séries',
+          reason: context.l10n.simpleUnlockReason,
         );
       }
     } catch (_) {}
@@ -435,7 +439,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
           ),
           _BottomNavItem(
             icon: Icons.add_circle_outline_rounded,
-            label: 'Ajouter',
+            label: context.l10n.buttonAdd,
             active: false,
             onTap: () => showSourceChoiceSheet(context),
           ),
@@ -628,7 +632,7 @@ class _PinPadState extends State<_PinPad> {
               ),
             ),
             const SizedBox(height: 18),
-            Text('🔒 Code d\'accès',
+            Text('🔒 ${context.l10n.simpleAccessCode}',
                 style: AppTextStyles.headlineMedium.copyWith(fontSize: 18)),
             const SizedBox(height: 16),
             Row(
@@ -695,7 +699,7 @@ class _PinPadState extends State<_PinPad> {
             const SizedBox(height: 8),
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Annuler'),
+              child: Text(context.l10n.buttonCancel),
             ),
           ],
         ),

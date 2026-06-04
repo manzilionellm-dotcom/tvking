@@ -18,6 +18,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../epg/data/epg_repository.dart';
@@ -126,14 +127,14 @@ class ChannelDetailSheet extends StatelessWidget {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          _sectionLabel('Programme'),
+                          _sectionLabel(context.l10n.detailProgram),
                           const SizedBox(height: 6),
                           if (cur != null)
                             _programTile(
                               icon: Icons.play_circle_filled_rounded,
                               title: cur.title,
                               subtitle:
-                                  '${cur.timeRangeShort} · En cours',
+                                  '${cur.timeRangeShort} · ${context.l10n.detailNowPlaying}',
                               accent: true,
                             ),
                           if (next != null) ...<Widget>[
@@ -142,7 +143,7 @@ class ChannelDetailSheet extends StatelessWidget {
                               icon: Icons.schedule_rounded,
                               title: next.title,
                               subtitle:
-                                  '${next.timeRangeShort} · Après',
+                                  '${next.timeRangeShort} · ${context.l10n.detailUpNext}',
                               accent: false,
                             ),
                           ],
@@ -153,20 +154,20 @@ class ChannelDetailSheet extends StatelessWidget {
                   ),
 
                   // ----- Détails techniques -----
-                  _sectionLabel('Détails'),
+                  _sectionLabel(context.l10n.detailDetails),
                   const SizedBox(height: 6),
-                  _detailRow('Catégorie', channel.prettyCategory),
+                  _detailRow(context.l10n.detailCategory, channel.prettyCategory),
                   if (channel.country != null)
                     _detailRow(
-                      'Pays',
+                      context.l10n.detailCountry,
                       '${channel.country!.flag} ${channel.country!.name}',
                     ),
-                  _detailRow('Qualité', channel.quality.badge),
+                  _detailRow(context.l10n.detailQuality, channel.quality.badge),
                   _detailRow(
-                    'Catch-up',
+                    context.l10n.detailCatchup,
                     channel.catchupSupported
-                        ? 'Disponible · ${channel.catchupDays ?? '?'} j'
-                        : 'Indisponible',
+                        ? context.l10n.detailCatchupAvailable('${channel.catchupDays ?? '?'}')
+                        : context.l10n.detailCatchupUnavailable,
                   ),
 
                   const SizedBox(height: 24),
@@ -198,7 +199,7 @@ class ChannelDetailSheet extends StatelessWidget {
                             ),
                           ),
                           icon: const Icon(Icons.play_arrow_rounded, size: 22),
-                          label: const Text('Lecture'),
+                          label: Text(context.l10n.playerPlay),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -232,8 +233,8 @@ class ChannelDetailSheet extends StatelessWidget {
                         ),
                       ),
                       icon: const Icon(Icons.event_note_rounded, size: 20),
-                      label: const Text(
-                        'Programmes du jour & Replay',
+                      label: Text(
+                        context.l10n.detailProgramsAndReplay,
                       ),
                     ),
                   ),
@@ -350,7 +351,7 @@ class _MetaBadges extends StatelessWidget {
       children: <Widget>[
         if (channel.isLive)
           _badge(
-            text: 'LIVE',
+            text: context.l10n.badgeLive,
             color: AppColors.live,
             textColor: Colors.white,
           ),

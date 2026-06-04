@@ -14,6 +14,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../data/player_settings.dart';
@@ -70,17 +71,17 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
                     children: <Widget>[
                       _grabber(),
                       const SizedBox(height: 18),
-                      Text('Réglages du lecteur',
+                      Text(context.l10n.playerSettingsTitle,
                           style: AppTextStyles.headlineMedium),
                       const SizedBox(height: 18),
 
                       // ----- Vitesse -----
-                      _sectionTitle('Vitesse de lecture'),
+                      _sectionTitle(context.l10n.playerSpeedSection),
                       _speedSelector(),
                       const SizedBox(height: 22),
 
                       // ----- Mode d'affichage -----
-                      _sectionTitle('Mode d\'affichage'),
+                      _sectionTitle(context.l10n.playerDisplayMode),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
@@ -91,9 +92,10 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
                       const SizedBox(height: 22),
 
                       // ----- Buffer -----
-                      _sectionTitle('Taille du buffer'),
+                      _sectionTitle(context.l10n.playerBufferSize),
                       Text(
-                        '${PlayerSettings.instance.bufferSeconds} secondes',
+                        context.l10n.playerBufferSeconds(
+                            PlayerSettings.instance.bufferSeconds),
                         style: AppTextStyles.bodyLarge.copyWith(
                           color: AppColors.accentCyan,
                           fontWeight: FontWeight.w600,
@@ -113,8 +115,7 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
                             PlayerSettings.instance.setBufferSeconds(v.toInt()),
                       ),
                       Text(
-                        'Plus c\'est haut, mieux la lecture résiste aux '
-                        'coupures réseau (mais plus de latence sur le live).',
+                        context.l10n.playerBufferHelp,
                         style: AppTextStyles.bodyMedium.copyWith(
                           fontSize: 11,
                           color: AppColors.textMuted,
@@ -124,11 +125,8 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
 
                       // ----- Anti-coupure (anti-buffering) -----
                       _toggle(
-                        label: 'Anti-coupure',
-                        sublabel:
-                            'Si la connexion faiblit, le lecteur puise dans '
-                            'le tampon au lieu de couper l\'image. Démarrage '
-                            'un peu plus long, mais lecture sans coupure.',
+                        label: context.l10n.playerAntiFreeze,
+                        sublabel: context.l10n.playerAntiFreezeHelp,
                         value: PlayerSettings.instance.antiFreeze,
                         onChanged: (bool v) =>
                             PlayerSettings.instance.setAntiFreeze(v),
@@ -137,9 +135,8 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
 
                       // ----- Décodage hardware -----
                       _toggle(
-                        label: 'Décodage matériel',
-                        sublabel:
-                            'Utilise le GPU pour décoder la vidéo. Indispensable pour 4K / 8K.',
+                        label: context.l10n.playerHwDecode,
+                        sublabel: context.l10n.playerHwDecodeHelp,
                         value: PlayerSettings.instance.hardwareDecode,
                         onChanged: (bool v) =>
                             PlayerSettings.instance.setHardwareDecode(v),
@@ -148,9 +145,8 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
 
                       // ----- Affichage des stats -----
                       _toggle(
-                        label: 'Afficher les statistiques',
-                        sublabel:
-                            'FPS, débit, résolution, codec, frames perdues.',
+                        label: context.l10n.playerShowStats,
+                        sublabel: context.l10n.playerShowStatsHelp,
                         value: PlayerSettings.instance.showStats,
                         onChanged: (bool v) =>
                             PlayerSettings.instance.setShowStats(v),

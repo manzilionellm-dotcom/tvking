@@ -9,6 +9,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/tv_focusable.dart';
@@ -36,7 +37,7 @@ class QuickChipsRow extends StatelessWidget {
           Expanded(
             child: _Chip(
               icon: Icons.grid_view_rounded,
-              label: 'Catégories',
+              label: context.l10n.navCategories,
               onTap: onCategories,
             ),
           ),
@@ -44,7 +45,7 @@ class QuickChipsRow extends StatelessWidget {
           Expanded(
             child: _Chip(
               icon: Icons.favorite_outline,
-              label: 'Favoris',
+              label: context.l10n.navFavorites,
               onTap: onFavorites,
             ),
           ),
@@ -52,7 +53,7 @@ class QuickChipsRow extends StatelessWidget {
           Expanded(
             child: _Chip(
               icon: Icons.search_rounded,
-              label: 'Recherche',
+              label: context.l10n.navSearch,
               onTap: onSearch,
             ),
           ),
@@ -60,7 +61,7 @@ class QuickChipsRow extends StatelessWidget {
           Expanded(
             child: _Chip(
               icon: Icons.tune_rounded,
-              label: 'Réglages',
+              label: context.l10n.settingsTitle,
               onTap: onSettings,
             ),
           ),

@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/branding/brand_logo.dart';
 import '../../../core/branding/verified_badge.dart';
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/support/vip_help_card.dart';
 import '../../../core/theme/app_colors.dart';
@@ -54,8 +55,7 @@ class _AboutScreenState extends State<AboutScreen> {
       _checking = false;
       _update = info;
       if (info == null) {
-        _checkError =
-            'Impossible de contacter le serveur de mises à jour. Vérifie ta connexion.';
+        _checkError = context.l10n.aboutUpdateError;
       }
     });
   }
@@ -72,7 +72,7 @@ class _AboutScreenState extends State<AboutScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('À propos'),
+        title: Text(context.l10n.aboutTitle),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
@@ -112,7 +112,7 @@ class _AboutScreenState extends State<AboutScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Lecteur IPTV premium',
+                    context.l10n.aboutPremiumPlayer,
                     style: AppTextStyles.bodyMedium,
                   ),
                   const SizedBox(height: 12),
@@ -156,7 +156,7 @@ class _AboutScreenState extends State<AboutScreen> {
             //  Sert à associer l'appareil à un abonnement côté admin.
             _section(
               icon: Icons.fingerprint_rounded,
-              title: 'Mon appareil',
+              title: context.l10n.aboutMyDevice,
               child: const DeviceIdCard(),
             ),
 
@@ -165,7 +165,7 @@ class _AboutScreenState extends State<AboutScreen> {
             // ----- Update checker -----
             _section(
               icon: Icons.system_update_rounded,
-              title: 'Mises à jour',
+              title: context.l10n.aboutUpdates,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
@@ -190,7 +190,7 @@ class _AboutScreenState extends State<AboutScreen> {
                                   color: AppColors.accent, size: 18),
                               const SizedBox(width: 8),
                               Text(
-                                'Nouvelle version disponible',
+                                context.l10n.aboutNewVersion,
                                 style: AppTextStyles.bodyLarge.copyWith(
                                   color: AppColors.accent,
                                   fontWeight: FontWeight.w700,
@@ -210,7 +210,7 @@ class _AboutScreenState extends State<AboutScreen> {
                                 _openUrl(_update!.releaseUrl),
                             icon: const Icon(Icons.open_in_new_rounded,
                                 size: 16),
-                            label: const Text('Voir les notes de version'),
+                            label: Text(context.l10n.aboutSeeReleaseNotes),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: AppColors.accent,
                               side: BorderSide(
@@ -231,7 +231,8 @@ class _AboutScreenState extends State<AboutScreen> {
                               color: AppColors.success, size: 18),
                           const SizedBox(width: 8),
                           Text(
-                            'Tu as la dernière version (v${_update!.latestVersion}).',
+                            context.l10n
+                                .aboutLatestVersion(_update!.latestVersion),
                             style: AppTextStyles.bodyMedium,
                           ),
                         ],
@@ -258,8 +259,8 @@ class _AboutScreenState extends State<AboutScreen> {
                           )
                         : const Icon(Icons.refresh_rounded, size: 18),
                     label: Text(_checking
-                        ? 'Vérification...'
-                        : 'Vérifier les mises à jour'),
+                        ? context.l10n.aboutChecking
+                        : context.l10n.aboutCheckUpdates),
                   ),
                 ],
               ),
@@ -270,12 +271,12 @@ class _AboutScreenState extends State<AboutScreen> {
             // ----- Liens -----
             _section(
               icon: Icons.link_rounded,
-              title: 'Liens utiles',
+              title: context.l10n.aboutUsefulLinks,
               child: Column(
                 children: <Widget>[
                   _linkTile(
                     icon: Icons.privacy_tip_outlined,
-                    label: 'Politique de confidentialité',
+                    label: context.l10n.aboutPrivacyPolicy,
                     onTap: () => _openUrl(
                       'https://7motion.app/privacy',
                     ),
@@ -289,18 +290,18 @@ class _AboutScreenState extends State<AboutScreen> {
             // ----- Crédits -----
             _section(
               icon: Icons.favorite_outline_rounded,
-              title: 'Construit avec',
+              title: context.l10n.aboutBuiltWith,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  _creditLine('Flutter', 'Framework UI multiplateforme'),
-                  _creditLine('media_kit · libmpv',
-                      'Moteur vidéo (HLS, MPEG-TS, MP4)'),
-                  _creditLine('sqflite', 'Stockage local des playlists'),
-                  _creditLine('cached_network_image',
-                      'Cache disque des logos'),
+                  _creditLine('Flutter', context.l10n.aboutCreditFlutter),
                   _creditLine(
-                      'Google Fonts (Inter)', 'Typographie premium'),
+                      'media_kit · libmpv', context.l10n.aboutCreditMediaKit),
+                  _creditLine('sqflite', context.l10n.aboutCreditSqflite),
+                  _creditLine(
+                      'cached_network_image', context.l10n.aboutCreditCache),
+                  _creditLine(
+                      'Google Fonts (Inter)', context.l10n.aboutCreditFonts),
                 ],
               ),
             ),
@@ -316,10 +317,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 border: Border.all(color: AppColors.border),
               ),
               child: Text(
-                'BLACK7 ROYAL est un lecteur média générique. Aucun contenu n\'est '
-                'inclus avec l\'app. Tu es responsable des sources que tu '
-                'ajoutes et de leur conformité aux lois en vigueur dans '
-                'ton pays.',
+                context.l10n.aboutLegalNotice,
                 style: AppTextStyles.bodyMedium.copyWith(
                   fontSize: 12,
                   color: AppColors.textMuted,

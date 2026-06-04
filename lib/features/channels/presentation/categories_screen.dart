@@ -12,6 +12,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -26,7 +27,7 @@ class CategoriesScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Catégories'),
+        title: Text(context.l10n.categoriesTitle),
       ),
       body: StreamBuilder<List<Channel>>(
         stream: PlaylistRepository.instance.channelsStream,
@@ -36,7 +37,7 @@ class CategoriesScreen extends StatelessWidget {
           if (channels.isEmpty) {
             return Center(
               child: Text(
-                'Aucune chaîne — ajoute d\'abord une playlist.',
+                context.l10n.categoriesEmpty,
                 style: AppTextStyles.bodyMedium,
               ),
             );
@@ -171,7 +172,7 @@ class _CategoryTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '$count chaîne${count > 1 ? 's' : ''}',
+                      context.l10n.channelCount(count),
                       style: AppTextStyles.bodyMedium.copyWith(fontSize: 12),
                     ),
                   ],

@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/flavor/flavor.dart';
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/support/support_choice_sheet.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -140,7 +141,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       TextButton(
                         onPressed: _finish,
                         child: Text(
-                          'Passer',
+                          context.l10n.onboardingSkip,
                           style: AppTextStyles.bodyLarge.copyWith(
                             color: AppColors.textSecondary,
                           ),
@@ -200,8 +201,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       onPressed: _next,
                       child: Text(
                         _page == _pages.length - 1
-                            ? 'Commencer'
-                            : 'Suivant',
+                            ? context.l10n.onboardingStart
+                            : context.l10n.onboardingNext,
                         style: AppTextStyles.bodyLarge.copyWith(
                           fontWeight: FontWeight.w700,
                           fontSize: 16,
@@ -327,7 +328,7 @@ class _MacHandoffSlideState extends State<_MacHandoffSlide> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
-        content: Text('Identifiant copié : $_mac',
+        content: Text(context.l10n.idCopied(_mac!),
             style: AppTextStyles.bodyMedium),
       ),
     );
@@ -410,7 +411,7 @@ class _MacHandoffSlideState extends State<_MacHandoffSlide> {
               child: Column(
                 children: <Widget>[
                   Text(
-                    'TON IDENTIFIANT',
+                    context.l10n.onboardingYourId,
                     style: AppTextStyles.eyebrow,
                   ),
                   const SizedBox(height: 8),
@@ -449,7 +450,7 @@ class _MacHandoffSlideState extends State<_MacHandoffSlide> {
               child: FilledButton.icon(
                 onPressed: _mac == null ? null : _activate,
                 icon: const Icon(Icons.bolt_rounded, size: 22),
-                label: const Text('Activer mes chaînes'),
+                label: Text(context.l10n.onboardingActivateChannels),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.accent,
                   foregroundColor: AppColors.voidSurface,
@@ -470,7 +471,7 @@ class _MacHandoffSlideState extends State<_MacHandoffSlide> {
               child: OutlinedButton.icon(
                 onPressed: _mac == null ? null : _copy,
                 icon: const Icon(Icons.copy_rounded, size: 18),
-                label: const Text('Copier l\'identifiant'),
+                label: Text(context.l10n.onboardingCopyId),
               ),
             ),
             const SizedBox(height: 8),

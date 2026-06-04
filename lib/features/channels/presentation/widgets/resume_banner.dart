@@ -19,6 +19,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/tv_focusable.dart';
@@ -102,8 +103,8 @@ class _Banner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String agoText = minutesAgo <= 1
-        ? 'à l\'instant'
-        : 'il y a $minutesAgo min';
+        ? context.l10n.resumeAgoNow
+        : context.l10n.resumeAgoMinutes(minutesAgo);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -147,7 +148,7 @@ class _Banner extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
                       Text(
-                        'REPRENDRE',
+                        context.l10n.resumeEyebrow,
                         style: AppTextStyles.eyebrow,
                       ),
                       const SizedBox(height: 4),
@@ -162,7 +163,7 @@ class _Banner extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Tu regardais $agoText',
+                        context.l10n.resumeWatchingAgo(agoText),
                         style: AppTextStyles.bodyMedium.copyWith(
                           fontSize: 12,
                           color: AppColors.textMuted,
@@ -175,13 +176,13 @@ class _Banner extends StatelessWidget {
                 FilledButton.icon(
                   onPressed: onResume,
                   icon: const Icon(Icons.play_arrow_rounded, size: 22),
-                  label: const Text('Reprendre'),
+                  label: Text(context.l10n.buttonResume),
                 ),
                 // Dismiss discret
                 IconButton(
                   icon: Icon(Icons.close_rounded,
                       color: AppColors.textMuted, size: 20),
-                  tooltip: 'Plus tard',
+                  tooltip: context.l10n.resumeBannerDismiss,
                   onPressed: onDismiss,
                 ),
               ],

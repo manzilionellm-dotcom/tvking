@@ -20,6 +20,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/cast_manager.dart';
@@ -120,7 +121,7 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
       Navigator.of(context).pop();
       _toast(
         context,
-        'Connecté à ${device.displayName}. Tape une chaîne pour l\'envoyer.',
+        context.l10n.castConnectedTapChannel(device.displayName),
         accent: true,
       );
       return;
@@ -135,19 +136,20 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
       await mgr.castTo(
         device,
         streamUrl: widget.streamUrl!,
-        title: widget.title ?? 'Lecture',
+        title: widget.title ?? context.l10n.castPlayDefault,
         imageUrl: widget.imageUrl,
       );
       if (!mounted) return;
       Navigator.of(context).pop();
-      _toast(context, 'Envoi vers ${device.displayName}', accent: true);
+      _toast(context, context.l10n.castSendingTo(device.displayName),
+          accent: true);
     } on Exception catch (_) {
       if (!mounted) return;
       // Le CastManager a déjà transformé l'exception en message friendly
       // français (via _friendlyMessageFor) et l'expose via `progress`.
       final String friendly = mgr.progress.message.isNotEmpty
           ? mgr.progress.message
-          : 'Le cast a échoué. Réessaie.';
+          : context.l10n.castFailedRetry;
       _toast(context, friendly, error: true);
     }
   }
@@ -160,14 +162,14 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
         mgr.progress.message.isNotEmpty) {
       return mgr.progress.message;
     }
-    if (discovering) return 'Recherche sur ton WiFi…';
+    if (discovering) return context.l10n.castSearching;
     return null;
   }
 
   Future<void> _disconnect() async {
     await CastManager.instance.disconnect();
     if (!mounted) return;
-    _toast(context, 'Session de cast arrêtée');
+    _toast(context, context.l10n.castSessionStopped);
   }
 
   void _toast(BuildContext context, String message,
@@ -248,7 +250,7 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                               Icon(Icons.cast_rounded,
                                   color: AppColors.accent, size: 22),
                               const SizedBox(width: 10),
-                              Text('Envoyer vers...',
+                              Text(context.l10n.castSendTo,
                                   style: AppTextStyles.headlineMedium),
                               const Spacer(),
                               IconButton(
@@ -258,7 +260,7 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                                       ? AppColors.accent
                                       : AppColors.textSecondary,
                                 ),
-                                tooltip: 'Rafraîchir',
+                                tooltip: context.l10n.castRefresh,
                                 onPressed: discovering
                                     ? null
                                     : () => CastManager.instance
@@ -347,7 +349,7 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: <Widget>[
                                       Text(
-                                        'Cast par QR code',
+                                        context.l10n.castByQr,
                                         style: AppTextStyles.headlineMedium
                                             .copyWith(
                                           fontSize: 16,
@@ -356,7 +358,7 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        'Marche sur TOUTES les TVs avec un navigateur',
+                                        context.l10n.castByQrSub,
                                         style: AppTextStyles.bodyMedium.copyWith(
                                           fontSize: 11,
                                           color: AppColors.textSecondary,
@@ -442,8 +444,8 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
             Expanded(
               child: Text(
                 searching
-                    ? 'Recherche en cours...'
-                    : 'Aucun récepteur. Vérifie que ton TV est sur le même WiFi et que DLNA est activé.',
+                    ? context.l10n.castSearchingShort
+                    : context.l10n.castNoReceiver,
                 style: AppTextStyles.bodyMedium,
               ),
             ),
@@ -543,7 +545,7 @@ class _DeviceTile extends StatelessWidget {
                           color: Colors.black, size: 14),
                       const SizedBox(width: 4),
                       Text(
-                        'EN COURS',
+                        context.l10n.castInProgress,
                         style: AppTextStyles.labelSmall.copyWith(
                           color: Colors.black,
                           fontSize: 9,
@@ -646,7 +648,7 @@ class _ActiveSessionBanner extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 Text(
-                  'Cast en cours sur',
+                  context.l10n.castConnected,
                   style: AppTextStyles.labelSmall.copyWith(
                     color: AppColors.accent,
                     fontSize: 10,
@@ -674,7 +676,7 @@ class _ActiveSessionBanner extends StatelessWidget {
               minimumSize: const Size(0, 32),
             ),
             icon: const Icon(Icons.stop_circle_outlined, size: 16),
-            label: const Text('Arrêter'),
+            label: Text(context.l10n.castStop),
           ),
         ],
       ),

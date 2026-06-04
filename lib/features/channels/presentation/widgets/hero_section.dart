@@ -35,6 +35,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/cinematic_spacing.dart';
@@ -226,7 +227,7 @@ class _HeroCopy extends StatelessWidget {
         // Non plus un chip avec fond rouge : juste deux lettres
         // crème espacées, à la Apple TV+ / Criterion.
         Text(
-          'À LA UNE',
+          context.l10n.tvFeatured,
           style: AppTextStyles.eyebrowEmber,
         ),
         const SizedBox(height: CinematicSpacing.s),
@@ -311,7 +312,7 @@ class _PlayCta extends StatelessWidget {
     return TvFocusable(
       onTap: onPressed,
       borderRadius: BorderRadius.circular(CinematicSpacing.radiusM),
-      semanticsLabel: 'Lecture',
+      semanticsLabel: context.l10n.playerPlay,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
         decoration: BoxDecoration(
@@ -324,7 +325,7 @@ class _PlayCta extends StatelessWidget {
             const Icon(Icons.play_arrow_rounded, size: 20, color: Colors.black),
             const SizedBox(width: 6),
             Text(
-              'Lecture',
+              context.l10n.playerPlay,
               style: AppTextStyles.button.copyWith(
                 color: Colors.black,
                 fontWeight: FontWeight.w700,
@@ -354,7 +355,7 @@ class _InfoCta extends StatelessWidget {
       onTap: onPressed,
       borderRadius: BorderRadius.circular(CinematicSpacing.radiusM),
       showGlow: false,
-      semanticsLabel: 'Détails',
+      semanticsLabel: context.l10n.detailDetails,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(CinematicSpacing.radiusM),
         child: BackdropFilter(
@@ -379,7 +380,7 @@ class _InfoCta extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  'Détails',
+                  context.l10n.detailDetails,
                   style: AppTextStyles.button.copyWith(
                     color: AppColors.textPrimary,
                     fontWeight: FontWeight.w600,

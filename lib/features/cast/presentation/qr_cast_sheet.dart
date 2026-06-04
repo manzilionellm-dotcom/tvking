@@ -34,6 +34,7 @@ import 'package:flutter/services.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/local_cast_server.dart';
@@ -123,7 +124,7 @@ class _QrCastBodyState extends State<_QrCastBody> {
       // l'URL brute — au moins l'option "Copier dans VLC" marche.
       setState(() {
         _qrPayload = widget.streamUrl;
-        _error = 'Mode dégradé : ouvre dans VLC ou un lecteur natif.';
+        _error = context.l10n.qrCastDegraded;
       });
     }
   }
@@ -187,7 +188,7 @@ class _QrCastBodyState extends State<_QrCastBody> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Cast par QR Code',
+                  context.l10n.qrCastTitle,
                   style: AppTextStyles.headlineMedium,
                 ),
               ),
@@ -195,9 +196,7 @@ class _QrCastBodyState extends State<_QrCastBody> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Scanne ce code depuis n\'importe quel appareil '
-            '(TV, ordi, tablette, autre téléphone) — la chaîne '
-            's\'ouvre directement dans le navigateur.',
+            context.l10n.qrCastDesc,
             style: AppTextStyles.bodyMedium.copyWith(
               fontSize: 12.5,
               color: AppColors.textSecondary,
@@ -286,15 +285,14 @@ class _QrCastBodyState extends State<_QrCastBody> {
                         margin: const EdgeInsets.all(16),
                         duration: const Duration(seconds: 2),
                         content: Text(
-                          'Lien copié — colle dans le navigateur '
-                          'ou VLC',
+                          context.l10n.qrCastCopied,
                           style: AppTextStyles.bodyMedium,
                         ),
                       ),
                     );
                   },
             icon: const Icon(Icons.copy_rounded, size: 18),
-            label: const Text('Copier le lien'),
+            label: Text(context.l10n.qrCastCopyLink),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.accent,
               side: BorderSide(
@@ -310,10 +308,7 @@ class _QrCastBodyState extends State<_QrCastBody> {
 
           // ----- Tip d'usage -----
           Text(
-            _error ??
-                'Astuce : ouvre l\'appareil photo de ton autre device, '
-                    'pointe vers ce QR — un lien apparaît. Tape dessus, '
-                    'le navigateur lance la chaîne automatiquement.',
+            _error ?? context.l10n.qrCastTip,
             textAlign: TextAlign.center,
             style: AppTextStyles.bodyMedium.copyWith(
               fontSize: 10.5,
