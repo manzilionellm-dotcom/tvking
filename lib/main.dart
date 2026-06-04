@@ -207,9 +207,16 @@ class TvKingApp extends StatelessWidget {
           // dans le recent-apps switcher. Reflet du flavor courant.
           title: FlavorConfig.current.appName,
           debugShowCheckedModeBanner: false,
-          theme: AppTheme.daylight,
+          // Thème VERROUILLÉ en Cinema (sombre). L'app est conçue
+          // « Maison Noir » : ses ~900 couleurs sont des constantes
+          // sombres (AppColors). Un thème clair Material laissait ces
+          // couleurs sombres en place → textes par défaut sombres sur
+          // fonds restés sombres = contenu invisible. On force donc le
+          // mode sombre quoi qu'il arrive (y compris si l'OS est en
+          // clair) ; le sélecteur Apparence a été retiré des Réglages.
+          theme: AppTheme.cinema,
           darkTheme: AppTheme.cinema,
-          themeMode: ThemeModeRepository.instance.mode,
+          themeMode: ThemeMode.dark,
 
           // Internationalisation — la liste des langues supportées
           // sort de `LocaleRepository`. Quand l'utilisateur choisit

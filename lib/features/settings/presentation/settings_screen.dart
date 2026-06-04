@@ -61,12 +61,6 @@ class SettingsScreen extends StatelessWidget {
             const SubscriptionCard(),
             const SizedBox(height: 4),
 
-            // ====== APPARENCE ======
-            //  Cinema (Maison Noir) = défaut, identité du produit.
-            //  Daylight = version claire dérivée pour usage diurne.
-            _SectionTitle(context.l10n.settingsAppearance),
-            const _ThemeModePicker(),
-
             // ====== LANGUE ======
             _SectionTitle(context.l10n.settingsLanguage),
             const _LanguagePicker(),
