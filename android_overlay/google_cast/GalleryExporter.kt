@@ -275,19 +275,44 @@ class GalleryExporter(
             for (srcIndex in indexMap.keys) extractor.selectTrack(srcIndex)
 
             muxer.start()
-            val buffer = ByteBuffer.allocate(maxInputSize)
+            var buffer = ByteBuffer.allocate(maxInputSize)
             val bufferInfo = MediaCodec.BufferInfo()
+            // Dernier PTS écrit par piste — garantit un horodatage
+            // strictement non-décroissant (exigence MediaMuxer). Les flux
+            // IPTV (MPEG-TS) ont fréquemment des discontinuités de PTS
+            // (coupures pub, resets de flux) : sans ce garde-fou, le 1er
+            // recul de PTS faisait lever writeSampleData → tout le remux
+            // échouait et on retombait sur le .ts cassé.
+            val lastPts = HashMap<Int, Long>()
             while (true) {
-                val sampleSize = extractor.readSampleData(buffer, 0)
+                // Lecture de l'échantillon. Si le tampon est trop petit pour
+                // cette frame (grosse I-frame 4K), readSampleData lève
+                // IllegalArgumentException → on double le tampon et on relit
+                // le MÊME échantillon (advance() n'a pas encore été appelé).
+                var sampleSize: Int
+                while (true) {
+                    try {
+                        sampleSize = extractor.readSampleData(buffer, 0)
+                        break
+                    } catch (e: IllegalArgumentException) {
+                        val newCap = buffer.capacity() * 2
+                        Log.w(TAG, "Tampon trop petit (${buffer.capacity()}) → $newCap")
+                        buffer = ByteBuffer.allocate(newCap)
+                    }
+                }
                 if (sampleSize < 0) break
                 val dstTrack = indexMap[extractor.sampleTrackIndex]
                 if (dstTrack != null) {
-                    val pts = extractor.sampleTime
+                    var pts = extractor.sampleTime
+                    if (pts < 0) pts = 0
+                    // Force la monotonie : si le PTS recule ou stagne, on le
+                    // repousse d'1 µs au-dessus du précédent sur cette piste.
+                    val prev = lastPts[dstTrack]
+                    if (prev != null && pts <= prev) pts = prev + 1
+                    lastPts[dstTrack] = pts
                     bufferInfo.offset = 0
                     bufferInfo.size = sampleSize
-                    // PTS inconnu (-1) sur de rares échantillons → 0 pour
-                    // rester monotone non-décroissant (exigence MediaMuxer).
-                    bufferInfo.presentationTimeUs = if (pts < 0) 0 else pts
+                    bufferInfo.presentationTimeUs = pts
                     bufferInfo.flags = sampleFlagsToBufferFlags(extractor.sampleFlags)
                     muxer.writeSampleData(dstTrack, buffer, bufferInfo)
                 }
