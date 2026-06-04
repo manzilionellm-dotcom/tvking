@@ -1741,5 +1741,22 @@
         "type": "String"
       }
     }
+  },
+  "playlistActiveBadge": "Active",
+  "@playlistActiveBadge": {
+    "description": "Badge sur la playlist actuellement active"
+  },
+  "playlistTapToActivate": "Activer cette playlist",
+  "@playlistTapToActivate": {
+    "description": "Action pour activer une playlist"
+  },
+  "playlistNowActive": "« {name} » est maintenant la playlist active",
+  "@playlistNowActive": {
+    "description": "Confirmation de bascule de playlist active",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
   }
 }

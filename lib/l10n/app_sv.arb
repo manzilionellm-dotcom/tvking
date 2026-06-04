@@ -462,5 +462,8 @@
   "loginAddIntro": "Välj din server och ange sedan koden din återförsäljare gav dig (användarnamn + lösenord). Vi verifierar koden innan dina kanaler laddas.",
   "loginUsernameHint": "användarnamn",
   "loginPasswordHint": "lösenord",
-  "seeAllOf": "Visa alla {title}"
+  "seeAllOf": "Visa alla {title}",
+  "playlistActiveBadge": "Aktiv",
+  "playlistTapToActivate": "Använd denna spellista",
+  "playlistNowActive": "\"{name}\" är nu den aktiva spellistan"
 }

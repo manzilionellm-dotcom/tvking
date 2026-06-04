@@ -462,5 +462,8 @@
   "loginAddIntro": "Elige tu servidor y luego introduce el código que te dio tu distribuidor (usuario + contraseña). Verificamos el código antes de cargar tus canales.",
   "loginUsernameHint": "usuario",
   "loginPasswordHint": "contraseña",
-  "seeAllOf": "Ver todo {title}"
+  "seeAllOf": "Ver todo {title}",
+  "playlistActiveBadge": "Activa",
+  "playlistTapToActivate": "Usar esta lista",
+  "playlistNowActive": "«{name}» es ahora la lista activa"
 }

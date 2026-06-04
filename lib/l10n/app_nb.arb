@@ -462,5 +462,8 @@
   "loginAddIntro": "Velg serveren din, og skriv inn koden forhandleren ga deg (brukernavn + passord). Vi verifiserer koden før kanalene lastes inn.",
   "loginUsernameHint": "brukernavn",
   "loginPasswordHint": "passord",
-  "seeAllOf": "Se alle {title}"
+  "seeAllOf": "Se alle {title}",
+  "playlistActiveBadge": "Aktiv",
+  "playlistTapToActivate": "Bruk denne spillelisten",
+  "playlistNowActive": "\"{name}\" er nå den aktive spillelisten"
 }

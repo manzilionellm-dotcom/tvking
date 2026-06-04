@@ -8,10 +8,10 @@
 //    - bouton ➕ Ajouter une autre playlist
 //    - swipe-to-delete ou bouton 🗑 par playlist
 //
-//  Phase 1 : on s'autorise UNE seule playlist active à la
-//  fois côté UI (les chaînes affichées sur l'accueil sont
-//  la fusion de toutes). On ajoutera le toggle "active/
-//  inactive" plus tard.
+//  Plusieurs playlists peuvent coexister : une seule est ACTIVE à la
+//  fois (ses chaînes alimentent l'accueil). On peut basculer d'une
+//  playlist à l'autre en touchant le bouton d'activation — pratique
+//  pour jongler entre plusieurs abonnements et revenir au premier.
 // =========================================================
 
 import 'package:flutter/material.dart';
@@ -143,8 +143,12 @@ class _PlaylistTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(14),
+        // Bordure accent + glow quand cette playlist est l'active.
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.06),
+          color: playlist.isActive
+              ? AppColors.accent
+              : Colors.white.withValues(alpha: 0.06),
+          width: playlist.isActive ? 1.4 : 1,
         ),
       ),
       child: Row(
@@ -224,6 +228,23 @@ class _PlaylistTile extends StatelessWidget {
           ),
 
           // Actions
+          // Activation : coche pleine (verte) si déjà active, sinon
+          // cercle vide qui bascule cette playlist en active au tap.
+          IconButton(
+            icon: Icon(
+              playlist.isActive
+                  ? Icons.check_circle_rounded
+                  : Icons.radio_button_unchecked_rounded,
+              color: playlist.isActive
+                  ? AppColors.success
+                  : AppColors.textTertiary,
+            ),
+            tooltip: playlist.isActive
+                ? context.l10n.playlistActiveBadge
+                : context.l10n.playlistTapToActivate,
+            onPressed:
+                playlist.isActive ? null : () => _activate(context),
+          ),
           IconButton(
             icon: Icon(
               Icons.refresh_rounded,
@@ -241,6 +262,20 @@ class _PlaylistTile extends StatelessWidget {
             onPressed: () => _confirmDelete(context),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Bascule cette playlist en active (les autres passent inactives via
+  /// `setActivePlaylist`, qui recharge aussi les chaînes de l'accueil).
+  Future<void> _activate(BuildContext context) async {
+    if (playlist.id == null) return;
+    await PlaylistRepository.instance.setActivePlaylist(playlist.id!);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: AppColors.success,
+        content: Text(context.l10n.playlistNowActive(playlist.name)),
       ),
     );
   }

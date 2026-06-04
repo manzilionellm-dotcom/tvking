@@ -462,5 +462,8 @@
   "loginAddIntro": "Chagua seva yako, kisha weka msimbo aliokupa muuzaji (jina la mtumiaji + nenosiri). Tunathibitisha msimbo kabla ya kupakia chaneli zako.",
   "loginUsernameHint": "jina la mtumiaji",
   "loginPasswordHint": "nenosiri",
-  "seeAllOf": "Tazama zote {title}"
+  "seeAllOf": "Tazama zote {title}",
+  "playlistActiveBadge": "Inatumika",
+  "playlistTapToActivate": "Tumia orodha hii",
+  "playlistNowActive": "\"{name}\" sasa ndiyo orodha inayotumika"
 }

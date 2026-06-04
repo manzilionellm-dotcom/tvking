@@ -462,5 +462,8 @@
   "loginAddIntro": "Choose your server, then enter the code your reseller gave you (username + password). We verify the code before loading your channels.",
   "loginUsernameHint": "username",
   "loginPasswordHint": "password",
-  "seeAllOf": "See all {title}"
+  "seeAllOf": "See all {title}",
+  "playlistActiveBadge": "Active",
+  "playlistTapToActivate": "Use this playlist",
+  "playlistNowActive": "\"{name}\" is now the active playlist"
 }
