@@ -13,6 +13,7 @@ import { ServersPage } from '@/pages/ServersPage';
 import { ActivationsPage } from '@/pages/ActivationsPage';
 import { ResellersPage } from '@/pages/ResellersPage';
 import { ActivatePage } from '@/pages/ActivatePage';
+import { PushSourcePage } from '@/pages/PushSourcePage';
 import { AccountPage } from '@/pages/AccountPage';
 
 /// Etats possibles de l'app :
@@ -82,6 +83,7 @@ export default function App() {
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/"            element={<DashboardPage   onLogout={handleLogout} />} />
       <Route path="/activate"    element={<ActivatePage    onLogout={handleLogout} />} />
+      <Route path="/playlists"   element={<PushSourcePage  onLogout={handleLogout} />} />
       <Route path="/customers"   element={<CustomersPage   onLogout={handleLogout} />} />
       <Route path="/devices"     element={<DevicesPage     onLogout={handleLogout} />} />
       <Route path="/apps"        element={<AppsPage        onLogout={handleLogout} />} />

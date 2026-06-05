@@ -88,9 +88,8 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
           />
           <NextActionCard
             title="Pousser une playlist"
-            desc="Mettre à jour les credentials Xtream à distance."
+            desc="Assigner / mettre à jour la source Xtream ou M3U d'une MAC."
             to="/playlists"
-            soon
           />
         </div>
       </div>

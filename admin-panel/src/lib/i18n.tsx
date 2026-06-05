@@ -32,6 +32,7 @@ const STR: Record<string, Record<Lang, string>> = {
   // --- Navigation ---
   'nav.dashboard': { fr: 'Tableau de bord', en: 'Dashboard', ar: 'لوحة التحكم' },
   'nav.activate': { fr: 'Activer un appareil', en: 'Activate a device', ar: 'تفعيل جهاز' },
+  'nav.pushSource': { fr: 'Pousser une playlist', en: 'Push a playlist', ar: 'إرسال قائمة تشغيل' },
   'nav.resellers': { fr: 'Revendeurs', en: 'Resellers', ar: 'الموزّعون' },
   'nav.myResellers': { fr: 'Mes revendeurs', en: 'My resellers', ar: 'موزّعوني' },
   'nav.customers': { fr: 'Clients', en: 'Customers', ar: 'العملاء' },

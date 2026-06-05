@@ -15,6 +15,7 @@ type NavItem = { key: string; to: string };
 const OWNER_NAV: NavItem[] = [
   { key: 'nav.dashboard',   to: '/' },
   { key: 'nav.activate',    to: '/activate' },
+  { key: 'nav.pushSource',  to: '/playlists' },
   { key: 'nav.resellers',   to: '/resellers' },
   { key: 'nav.customers',   to: '/customers' },
   { key: 'nav.devices',     to: '/devices' },
@@ -27,6 +28,7 @@ const OWNER_NAV: NavItem[] = [
 const RESELLER_NAV: NavItem[] = [
   { key: 'nav.dashboard',     to: '/' },
   { key: 'nav.activate',      to: '/activate' },
+  { key: 'nav.pushSource',    to: '/playlists' },
   { key: 'nav.myResellers',   to: '/resellers' },
   { key: 'nav.myDevices',     to: '/devices' },
   { key: 'nav.myActivations', to: '/activations' },
