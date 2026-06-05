@@ -228,14 +228,33 @@ class _SyncNowButtonState extends State<_SyncNowButton> {
         PlaylistRepository.instance.currentChannels.isNotEmpty;
     if (!mounted) return;
     messenger.clearSnackBars();
+    // Message PRÉCIS selon ce que le serveur sait de cette MAC, pour que
+    // le revendeur sache exactement quoi corriger :
+    //   - chaînes chargées            → succès
+    //   - abonnement payé mais 0 src  → il manque la Source à l'activation
+    //   - appareil connu (essai)      → pas encore activé
+    //   - appareil inconnu            → souci de connexion / mauvaise MAC
+    final r = SubscriptionState.instance.remote;
+    final String msg;
+    final Color bg;
+    if (hasChannels) {
+      msg = context.l10n.activationSuccess;
+      bg = AppColors.success;
+    } else if (r.paid) {
+      msg = context.l10n.activationActiveNoSource;
+      bg = AppColors.warning;
+    } else if (r.exists) {
+      msg = context.l10n.activationDeviceKnownNoSub;
+      bg = AppColors.warning;
+    } else {
+      msg = context.l10n.activationDeviceUnknown;
+      bg = AppColors.live;
+    }
     messenger.showSnackBar(
       SnackBar(
-        backgroundColor: hasChannels ? AppColors.success : AppColors.warning,
-        content: Text(
-          hasChannels
-              ? context.l10n.activationSuccess
-              : context.l10n.activationNoSourceYet,
-        ),
+        duration: const Duration(seconds: 6),
+        backgroundColor: bg,
+        content: Text(msg),
       ),
     );
     setState(() => _busy = false);
