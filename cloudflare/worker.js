@@ -1580,20 +1580,69 @@ async function handlePublicServers(env) {
 //  /api/status/:mac). Lecture en D1 (table device_sources).
 async function handlePublicDeviceSource(env, mac) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
-  if (!env.DB) return json({ mac, source: null });
-  try {
-    const row = await env.DB
-      .prepare(
-        `SELECT type, label, server_url, username, password, m3u_url, epg_url, updated_at
-           FROM device_sources WHERE mac = ?`,
-      )
-      .bind(mac.toUpperCase())
-      .first();
-    return json({ mac: mac.toUpperCase(), source: row || null });
-  } catch (_) {
-    // Table absente / D1 indisponible → pas de source assignée.
-    return json({ mac, source: null });
+  const MAC = mac.toUpperCase();
+
+  // 1) D1 `device_sources` — sources assignées via le portail api_v1
+  //    (activation avec source). Source prioritaire.
+  if (env.DB) {
+    try {
+      const row = await env.DB
+        .prepare(
+          `SELECT type, label, server_url, username, password, m3u_url, epg_url, updated_at
+             FROM device_sources WHERE mac = ?`,
+        )
+        .bind(MAC)
+        .first();
+      if (row) return json({ mac: MAC, source: row });
+    } catch (_) {
+      // Table absente / D1 indisponible → on tente le repli KV ci-dessous.
+    }
   }
+
+  // 2) REPLI KV (client.playlists) — CORRECTIF "l'app ne se connecte pas
+  //    avec mon panel" : le PANEL intégré (/admin/panel) enregistre les
+  //    playlists dans le KV, pas dans device_sources. Sans ce repli,
+  //    l'app (qui lit device_sources) ne voyait jamais la source assignée
+  //    via le panel. On convertit la 1ère playlist KV au format `source`
+  //    attendu par l'app → la source est livrée quel que soit l'outil.
+  try {
+    const client = await readClient(env, MAC);
+    const pls = client && Array.isArray(client.playlists) ? client.playlists : [];
+    if (pls.length > 0) {
+      const p = pls[0] || {};
+      const label = p.name || (client && client.name) || 'Mon abonnement';
+      const updatedAt = (client && client.updated_at) || 0;
+      let source = null;
+      if (p.type === 'xtream' && p.server && p.username && p.password) {
+        source = {
+          type: 'xtream',
+          label,
+          server_url: p.server,
+          username: p.username,
+          password: p.password,
+          m3u_url: null,
+          epg_url: p.epg_url || null,
+          updated_at: updatedAt,
+        };
+      } else if (p.type === 'm3u' && p.url) {
+        source = {
+          type: 'm3u',
+          label,
+          server_url: null,
+          username: null,
+          password: null,
+          m3u_url: p.url,
+          epg_url: p.epg_url || null,
+          updated_at: updatedAt,
+        };
+      }
+      if (source) return json({ mac: MAC, source });
+    }
+  } catch (_) {
+    // KV indisponible → pas de source.
+  }
+
+  return json({ mac: MAC, source: null });
 }
 
 // ----- Routeur -----
