@@ -20,8 +20,10 @@
 //       communiquer à son revendeur
 // =========================================================
 
+import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class DeviceIdentity {
@@ -31,19 +33,67 @@ class DeviceIdentity {
   static const String _kKey = 'device.virtual_mac.v1';
   static const String _kPrefix = 'MK';
 
+  /// Channel natif qui expose l'ANDROID_ID (cf. MainActivity.kt). Sert
+  /// à dériver une MAC STABLE entre réinstallations.
+  static const MethodChannel _deviceChannel =
+      MethodChannel('com.manzilionellm.tvking/device');
+
   String? _cached;
 
-  /// Renvoie le MAC virtuel — génère et persiste s'il n'existe pas.
+  /// Renvoie le MAC virtuel.
+  ///
+  /// Priorité :
+  ///   1. MAC déjà stockée en local (on ne la change JAMAIS — un client
+  ///      existant garde son identifiant, donc son abonnement).
+  ///   2. Sinon (1er lancement OU réinstallation = SharedPreferences
+  ///      effacé), on DÉRIVE une MAC déterministe depuis l'ANDROID_ID :
+  ///      même appareil → même MAC, MÊME APRÈS RÉINSTALLATION. C'est ce
+  ///      qui évite que le client perde son activation en réinstallant.
+  ///   3. Si l'ANDROID_ID est indisponible (erreur, plateforme non
+  ///      Android), repli sur une MAC aléatoire (ancien comportement).
   Future<String> get mac async {
     if (_cached != null) return _cached!;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    String? stored = prefs.getString(_kKey);
-    if (stored == null || !_isValid(stored)) {
-      stored = _generate();
-      await prefs.setString(_kKey, stored);
+    final String? stored = prefs.getString(_kKey);
+    if (stored != null && _isValid(stored)) {
+      _cached = stored;
+      return stored;
     }
-    _cached = stored;
-    return stored;
+    final String? androidId = await _stableDeviceId();
+    final String derived = (androidId != null && androidId.trim().isNotEmpty)
+        ? _macFromSeed(androidId.trim())
+        : _generate();
+    await prefs.setString(_kKey, derived);
+    _cached = derived;
+    return derived;
+  }
+
+  /// Lit l'ANDROID_ID via le channel natif. `null` si indisponible.
+  Future<String?> _stableDeviceId() async {
+    try {
+      return await _deviceChannel.invokeMethod<String>('getAndroidId');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Dérive 5 octets DÉTERMINISTES d'une graine (l'ANDROID_ID) via un
+  /// hash FNV-1a (sans dépendance externe), puis formate en MK:XX:..:XX.
+  /// Déterministe ⇒ même appareil = même MAC à chaque (ré)installation.
+  String _macFromSeed(String seed) {
+    int h = 0x811C9DC5; // FNV-1a 32-bit — offset basis
+    for (final int b in utf8.encode('blackroyal:$seed')) {
+      h = (h ^ b) & 0xFFFFFFFF;
+      h = (h * 0x01000193) & 0xFFFFFFFF;
+    }
+    final List<String> octets = <String>[];
+    for (int i = 0; i < 5; i++) {
+      // Re-mixe entre chaque octet pour bien étaler les bits.
+      h = (h ^ (h >> 13)) & 0xFFFFFFFF;
+      h = (h * 0x01000193) & 0xFFFFFFFF;
+      octets.add((h & 0xFF).toRadixString(16).padLeft(2, '0').toUpperCase());
+    }
+    return '$_kPrefix:${octets.join(':')}';
   }
 
   /// Valeur synchrone si déjà chargée, sinon "MK:??:??:??:??:??".

@@ -37,6 +37,12 @@ class MainActivity : FlutterFragmentActivity() {
         /// Channel Dart ↔ natif pour le Picture-in-Picture.
         /// Doit matcher EXACTEMENT côté lib/features/player/data/pip_service.dart
         private const val PIP_CHANNEL = "com.manzilionellm.tvking/pip"
+
+        /// Channel pour l'identité STABLE de l'appareil (ANDROID_ID).
+        /// Doit matcher lib/features/device/data/device_identity.dart.
+        /// Sert à dériver une MAC virtuelle qui SURVIT aux
+        /// réinstallations (sinon le client perdrait son abonnement).
+        private const val DEVICE_CHANNEL = "com.manzilionellm.tvking/device"
     }
 
     private var castApi: GoogleCastApi? = null
@@ -74,6 +80,32 @@ class MainActivity : FlutterFragmentActivity() {
             Log.i(TAG, "  ✓ Cast channel wired")
         } catch (e: Throwable) {
             Log.e(TAG, "  ✗ Cast channel failed: $e", e)
+        }
+
+        // Identité stable de l'appareil : expose ANDROID_ID à Dart pour
+        // dériver une MAC virtuelle DÉTERMINISTE (identique après une
+        // réinstallation de l'app), au lieu d'une MAC aléatoire perdue à
+        // chaque désinstallation.
+        try {
+            MethodChannel(messenger, DEVICE_CHANNEL).setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getAndroidId" -> {
+                        try {
+                            val id = android.provider.Settings.Secure.getString(
+                                contentResolver,
+                                android.provider.Settings.Secure.ANDROID_ID,
+                            )
+                            result.success(id)
+                        } catch (e: Exception) {
+                            result.success(null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+            Log.i(TAG, "  ✓ Device channel wired")
+        } catch (e: Throwable) {
+            Log.e(TAG, "  ✗ Device channel failed: $e", e)
         }
 
         try {
