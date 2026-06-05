@@ -1758,5 +1758,9 @@
         "type": "String"
       }
     }
+  },
+  "subActiveLifetime": "Abonnement à vie",
+  "@subActiveLifetime": {
+    "description": "Titre carte abonnement quand le plan est à vie"
   }
 }

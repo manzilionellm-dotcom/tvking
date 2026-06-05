@@ -465,5 +465,6 @@
   "seeAllOf": "عرض الكل {title}",
   "playlistActiveBadge": "نشطة",
   "playlistTapToActivate": "استخدم قائمة التشغيل هذه",
-  "playlistNowActive": "«{name}» هي الآن قائمة التشغيل النشطة"
+  "playlistNowActive": "«{name}» هي الآن قائمة التشغيل النشطة",
+  "subActiveLifetime": "اشتراك مدى الحياة"
 }

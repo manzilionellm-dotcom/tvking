@@ -465,5 +465,6 @@
   "seeAllOf": "Tazama zote {title}",
   "playlistActiveBadge": "Inatumika",
   "playlistTapToActivate": "Tumia orodha hii",
-  "playlistNowActive": "\"{name}\" sasa ndiyo orodha inayotumika"
+  "playlistNowActive": "\"{name}\" sasa ndiyo orodha inayotumika",
+  "subActiveLifetime": "Usajili wa maisha"
 }

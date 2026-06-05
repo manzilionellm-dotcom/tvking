@@ -465,5 +465,6 @@
   "seeAllOf": "See all {title}",
   "playlistActiveBadge": "Active",
   "playlistTapToActivate": "Use this playlist",
-  "playlistNowActive": "\"{name}\" is now the active playlist"
+  "playlistNowActive": "\"{name}\" is now the active playlist",
+  "subActiveLifetime": "Lifetime subscription"
 }

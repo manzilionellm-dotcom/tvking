@@ -66,8 +66,27 @@ class SubscriptionState extends ChangeNotifier {
 
   bool get isLoaded => _loaded;
   DateTime? get firstLaunchAt => _firstLaunchAt;
-  DateTime? get paidUntil => _paidUntil;
   RemoteSubscriptionStatus get remote => _remote;
+
+  /// `true` si l'abonnement est À VIE (priorité au serveur). Permet à
+  /// la carte d'afficher « Abonnement à vie » plutôt qu'une date.
+  bool get isLifetime {
+    if (_remote.exists && _remote.paid) return _remote.plan == 'lifetime';
+    return false; // fallback local : pas d'info de plan
+  }
+
+  /// Date de fin de l'abonnement payant, ou `null` si à vie (ou pas
+  /// d'info). PRIORITÉ au serveur (`paid_until`), repli sur le cache
+  /// local. Utilisée par la carte pour afficher « expire le … ».
+  DateTime? get paidUntil {
+    if (_remote.exists && _remote.paid) {
+      if (_remote.plan == 'lifetime') return null; // à vie → pas de date
+      if (_remote.paidUntil > 0) {
+        return DateTime.fromMillisecondsSinceEpoch(_remote.paidUntil);
+      }
+    }
+    return _paidUntil;
+  }
 
   /// Status calculé. PRIORITÉ AU SERVEUR si on a reçu une réponse
   /// fraîche du backend ; sinon on retombe sur le calcul local.

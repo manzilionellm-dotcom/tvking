@@ -465,5 +465,6 @@
   "seeAllOf": "Ver todo {title}",
   "playlistActiveBadge": "Activa",
   "playlistTapToActivate": "Usar esta lista",
-  "playlistNowActive": "«{name}» es ahora la lista activa"
+  "playlistNowActive": "«{name}» es ahora la lista activa",
+  "subActiveLifetime": "Suscripción de por vida"
 }

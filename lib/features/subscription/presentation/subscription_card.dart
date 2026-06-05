@@ -162,6 +162,9 @@ class SubscriptionCard extends StatelessWidget {
       BuildContext context, SubscriptionStatus s, SubscriptionState state) {
     switch (s) {
       case SubscriptionStatus.paid:
+        // À vie → libellé dédié (pas de date). Sinon « expire le … »
+        // si on a une date, ou « Abonnement actif » à défaut.
+        if (state.isLifetime) return context.l10n.subActiveLifetime;
         final DateTime? until = state.paidUntil;
         if (until == null) return context.l10n.subActiveTitle;
         final String d = '${until.day}/${until.month}/${until.year}';

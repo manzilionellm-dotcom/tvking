@@ -217,10 +217,17 @@ function computeStatus(client, now = Date.now()) {
     client.trial_until || (client.added_at || now) + TRIAL_DAYS * DAY_MS;
   const daysLeft = Math.ceil((trialUntil - now) / DAY_MS);
   const expired = !paid && trialUntil <= now;
+  // plan = type d'abonnement pour l'affichage app ('lifetime' = à vie,
+  // '1y'/'custom' = durée limitée, 'trial' = essai, 'expired' = fini).
+  // paid_until = date de fin (ms epoch) ; null = à vie.
+  const plan = client.plan || (paid ? 'lifetime' : (expired ? 'expired' : 'trial'));
+  const paidUntil = client.paid_until !== undefined ? client.paid_until : null;
   return {
     exists: true,
     status,
     paid,
+    plan,
+    paid_until: paidUntil,
     trial_until: trialUntil,
     days_left: Math.max(0, daysLeft),
     expired,
@@ -264,6 +271,8 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
       exists: true,
       status: dev.block_status,
       paid: false,
+      plan: banned ? 'banned' : 'frozen',
+      paid_until: null,
       trial_until: now,
       days_left: 0,
       expired: false,
@@ -295,6 +304,10 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
       exists: true,
       status: banned ? 'banned' : frozen ? 'frozen' : 'active',
       paid: active,            // licence active = debloque l'app
+      // plan pour l'affichage app : 'lifetime' (à vie, expires_at NULL)
+      // sinon 'paid' (abonnement à durée) ; paid_until = fin (null=à vie).
+      plan: lifetime ? 'lifetime' : 'paid',
+      paid_until: lifetime ? null : expiresAt,
       trial_until: expiresAt,
       days_left: lifetime ? 36500 : Math.max(0, Math.ceil((expiresAt - now) / DAY_MS)),
       expired: expired && !lifetime,
@@ -313,6 +326,8 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
     exists: true,
     status: 'active',
     paid: false,
+    plan: expired ? 'expired' : 'trial',
+    paid_until: null,
     trial_until: trialUntil,
     days_left: Math.max(0, Math.ceil((trialUntil - now) / DAY_MS)),
     expired,
@@ -1254,10 +1269,155 @@ async function handleAdminAction(request, env, mac) {
     return badRequest('invalid JSON body');
   }
   const action = body?.action;
+  const now = Date.now();
+
+  // ===============================================================
+  //  CHEMIN D1 — la SOURCE DE VÉRITÉ que l'app LIT (/api/status).
+  //
+  //  CORRECTIF "l'activation à distance ne marche plus" : avant, ces
+  //  actions n'écrivaient que dans le KV (client:mac), alors que
+  //  l'app lit l'état dans D1 (table `licenses`/`devices`). Les
+  //  appareils récents n'existent QUE dans D1 (créés au heartbeat),
+  //  donc le panel ne pouvait plus rien activer. On écrit désormais
+  //  directement en D1 (licence + block_status), exactement comme
+  //  l'endpoint d'activation /api/v1. app_id par défaut 'app_7motion'
+  //  (d1StatusForMac ignore l'app_id, il prend la meilleure licence).
+  // ===============================================================
+  if (env.DB) {
+    await ensureD1Device(env, mac, now);
+    const dev = await env.DB
+      .prepare('SELECT id, customer_id FROM devices WHERE mac = ?')
+      .bind(mac).first();
+    if (!dev) return notFound(`Device ${mac} introuvable`);
+    const APP_ID = 'app_7motion';
+
+    // Crée ou renouvelle la licence active du device. expiresAt=null
+    // → abonnement À VIE. Activer = on dégèle aussi le device (sinon
+    // un block_status résiduel primerait sur la licence).
+    async function setLicense(plan, expiresAt) {
+      const lic = await env.DB
+        .prepare(
+          `SELECT id FROM licenses WHERE device_id = ?
+           ORDER BY (expires_at IS NULL) DESC, expires_at DESC LIMIT 1`,
+        ).bind(dev.id).first();
+      if (lic) {
+        await env.DB.prepare(
+          `UPDATE licenses SET status='active', plan=?, expires_at=?, updated_at=? WHERE id=?`,
+        ).bind(plan, expiresAt, now, lic.id).run();
+      } else {
+        const lid = 'lic_' + crypto.randomUUID().replace(/-/g, '').slice(0, 18);
+        await env.DB.prepare(
+          `INSERT INTO licenses
+            (id, customer_id, device_id, app_id, status, plan, started_at,
+             expires_at, auto_renew, reseller_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'active', ?, ?, ?, 0, ?, ?, ?)`,
+        ).bind(lid, dev.customer_id, dev.id, APP_ID, plan, now, expiresAt, null, now, now).run();
+      }
+      await env.DB.prepare('UPDATE devices SET block_status = NULL WHERE id = ?')
+        .bind(dev.id).run();
+    }
+
+    switch (action) {
+      case 'freeze':
+        await env.DB.prepare('UPDATE devices SET block_status=? WHERE id=?')
+          .bind('frozen', dev.id).run();
+        break;
+      case 'unfreeze':
+        await env.DB.prepare('UPDATE devices SET block_status=NULL WHERE id=?')
+          .bind(dev.id).run();
+        break;
+      case 'ban':
+        await env.DB.prepare('UPDATE devices SET block_status=? WHERE id=?')
+          .bind('banned', dev.id).run();
+        break;
+      // « Marquer payé » historique = activation À VIE (comportement
+      // attendu par le revendeur). Alias explicite : activate_lifetime.
+      case 'mark_paid':
+      case 'activate_lifetime':
+        await setLicense('lifetime', null);
+        break;
+      case 'activate_year':
+        await setLicense('1y', now + 365 * DAY_MS);
+        break;
+      case 'renew': {
+        const days = Number(body?.days) > 0 ? Number(body.days) : 365;
+        const cur = await env.DB
+          .prepare(
+            `SELECT expires_at FROM licenses WHERE device_id = ?
+             ORDER BY (expires_at IS NULL) DESC, expires_at DESC LIMIT 1`,
+          ).bind(dev.id).first();
+        if (cur && cur.expires_at === null) {
+          await setLicense('lifetime', null); // déjà à vie → reste à vie
+        } else {
+          const base = cur && cur.expires_at && cur.expires_at > now ? cur.expires_at : now;
+          await setLicense(days >= 365 ? '1y' : 'custom', base + days * DAY_MS);
+        }
+        break;
+      }
+      case 'mark_unpaid':
+        await env.DB.prepare(
+          `UPDATE licenses SET status='inactive', updated_at=? WHERE device_id=?`,
+        ).bind(now, dev.id).run();
+        break;
+      case 'note': {
+        // La note est une métadonnée admin → conservée en KV (sans
+        // effet sur le statut lu par l'app).
+        const ex = (await readClient(env, mac)) || { mac, added_at: now };
+        await writeClient(env, mac, { ...ex, note: String(body?.note || ''), updated_at: now });
+        break;
+      }
+      default:
+        return badRequest(
+          'action must be one of: freeze, unfreeze, ban, mark_paid, '
+          + 'activate_lifetime, activate_year, mark_unpaid, renew, note',
+        );
+    }
+
+    // Miroir KV : le PANEL liste/affiche depuis le KV
+    // (handleGetClientsList). Pour qu'il continue d'afficher le bon
+    // statut SANS rien changer à son UI, on reflète l'action dans le
+    // client KV (l'app, elle, lit le D1 ci-dessus). La 'note' a déjà
+    // été écrite dans le switch. Best-effort : un échec du miroir ne
+    // compromet pas l'écriture D1 (qui, elle, débloque l'app).
+    if (action !== 'note') {
+      try {
+        const ex = (await readClient(env, mac)) || { mac, added_at: now, name: '' };
+        const m = { ...ex, updated_at: now };
+        switch (action) {
+          case 'freeze': m.status = 'frozen'; break;
+          case 'unfreeze': m.status = 'active'; break;
+          case 'ban': m.status = 'banned'; break;
+          case 'mark_paid':
+          case 'activate_lifetime':
+            m.status = 'active'; m.paid = true; m.plan = 'lifetime'; m.paid_until = null;
+            break;
+          case 'activate_year':
+            m.status = 'active'; m.paid = true; m.plan = '1y';
+            m.paid_until = now + 365 * DAY_MS; m.trial_until = m.paid_until;
+            break;
+          case 'renew': {
+            const days = Number(body?.days) > 0 ? Number(body.days) : 365;
+            const base = m.paid_until && m.paid_until > now ? m.paid_until : now;
+            m.status = 'active'; m.paid = true; m.plan = days >= 365 ? '1y' : 'custom';
+            m.paid_until = base + days * DAY_MS; m.trial_until = m.paid_until;
+            break;
+          }
+          case 'mark_unpaid': m.paid = false; m.plan = null; m.paid_until = null; break;
+        }
+        await writeClient(env, mac, m);
+      } catch (_) { /* miroir best-effort */ }
+    }
+
+    const fresh = await d1StatusForMac(env, mac, now);
+    return json({ ok: true, mac, action, ...(fresh || {}) });
+  }
+
+  // ===============================================================
+  //  CHEMIN KV (legacy, seulement si D1 indisponible). On enrichit
+  //  du plan (à vie / 1 an) pour l'affichage côté app.
+  // ===============================================================
   const existing = await readClient(env, mac);
   if (!existing) return notFound(`Client ${mac} introuvable`);
-
-  const now = Date.now();
   const updated = { ...existing, updated_at: now };
 
   switch (action) {
@@ -1271,14 +1431,29 @@ async function handleAdminAction(request, env, mac) {
       updated.status = 'banned';
       break;
     case 'mark_paid':
+    case 'activate_lifetime':
       updated.paid = true;
+      updated.plan = 'lifetime';
+      updated.paid_until = null;
+      break;
+    case 'activate_year':
+      updated.paid = true;
+      updated.plan = '1y';
+      updated.paid_until = now + 365 * DAY_MS;
+      updated.trial_until = updated.paid_until;
       break;
     case 'mark_unpaid':
       updated.paid = false;
+      updated.plan = null;
+      updated.paid_until = null;
       break;
     case 'renew': {
       const days = Number(body?.days) > 0 ? Number(body.days) : 365;
-      updated.trial_until = now + days * DAY_MS;
+      const base = updated.paid_until && updated.paid_until > now ? updated.paid_until : now;
+      updated.paid = true;
+      updated.plan = days >= 365 ? '1y' : 'custom';
+      updated.paid_until = base + days * DAY_MS;
+      updated.trial_until = updated.paid_until;
       break;
     }
     case 'note':
@@ -1286,7 +1461,8 @@ async function handleAdminAction(request, env, mac) {
       break;
     default:
       return badRequest(
-        'action must be one of: freeze, unfreeze, ban, mark_paid, mark_unpaid, renew, note',
+        'action must be one of: freeze, unfreeze, ban, mark_paid, '
+        + 'activate_lifetime, activate_year, mark_unpaid, renew, note',
       );
   }
 

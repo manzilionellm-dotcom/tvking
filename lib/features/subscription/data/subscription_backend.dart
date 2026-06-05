@@ -40,6 +40,8 @@ class RemoteSubscriptionStatus {
     required this.exists,
     required this.status,
     required this.paid,
+    required this.plan,
+    required this.paidUntil,
     required this.daysLeft,
     required this.expired,
     required this.frozen,
@@ -56,6 +58,18 @@ class RemoteSubscriptionStatus {
 
   /// Abonnement payant valide.
   final bool paid;
+
+  /// Type d'abonnement pour l'affichage :
+  /// `'lifetime'` (à vie) | `'paid'`/`'1y'`/`'custom'` (durée limitée) |
+  /// `'trial'` | `'expired'` | `'frozen'` | `'banned'` | `'unknown'`.
+  final String plan;
+
+  /// Fin de l'abonnement payant (ms epoch). `0` = aucune date connue
+  /// (essai, ou abonnement à vie → voir `plan == 'lifetime'`).
+  final int paidUntil;
+
+  /// `true` si l'abonnement est à vie.
+  bool get isLifetime => plan == 'lifetime';
 
   /// Jours d'essai restants (0 si épuisé ou inconnu).
   final int daysLeft;
@@ -83,6 +97,8 @@ class RemoteSubscriptionStatus {
       exists: json['exists'] == true,
       status: (json['status'] as String?) ?? 'unknown',
       paid: json['paid'] == true,
+      plan: (json['plan'] as String?) ?? 'unknown',
+      paidUntil: (json['paid_until'] as num?)?.toInt() ?? 0,
       daysLeft: (json['days_left'] as num?)?.toInt() ?? 0,
       expired: json['expired'] == true,
       frozen: json['frozen'] == true,
@@ -97,6 +113,8 @@ class RemoteSubscriptionStatus {
     exists: false,
     status: 'unknown',
     paid: false,
+    plan: 'unknown',
+    paidUntil: 0,
     daysLeft: 0,
     expired: false,
     frozen: false,
