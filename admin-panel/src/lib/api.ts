@@ -161,6 +161,11 @@ export const appsApi = {
   list: () => request<{ items: App[] }>('/api/v1/apps'),
   create: (payload: Partial<App>) =>
     request<{ id: string }>('/api/v1/apps', { method: 'POST', body: payload }),
+  update: (id: string, payload: Partial<App>) =>
+    request<{ updated: number }>(
+      `/api/v1/apps/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: payload },
+    ),
 };
 
 // =========================================================

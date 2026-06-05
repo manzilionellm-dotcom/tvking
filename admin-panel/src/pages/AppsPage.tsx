@@ -8,6 +8,8 @@ export function AppsPage({ onLogout }: { onLogout: () => void }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  // App en cours d'édition (null = aucune). Réutilise la même modale.
+  const [editApp, setEditApp] = useState<App | null>(null);
 
   function reload() {
     setLoading(true);
@@ -80,6 +82,14 @@ export function AppsPage({ onLogout }: { onLogout: () => void }) {
                   <CopyLink url={a.download_url} />
                 </div>
               )}
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={() => setEditApp(a)}
+                  className="rounded-md border border-white/10 px-3 py-1.5 text-xs font-medium text-ink-secondary transition hover:border-accent hover:text-ink-primary"
+                >
+                  ✎ Modifier
+                </button>
+              </div>
             </div>
           ))}
           {items.length === 0 && (
@@ -90,24 +100,29 @@ export function AppsPage({ onLogout }: { onLogout: () => void }) {
         </div>
       )}
 
-      {showCreate && (
-        <CreateAppModal
-          onClose={() => setShowCreate(false)}
-          onCreated={() => { setShowCreate(false); reload(); }}
+      {(showCreate || editApp) && (
+        <AppModal
+          app={editApp}
+          onClose={() => { setShowCreate(false); setEditApp(null); }}
+          onSaved={() => { setShowCreate(false); setEditApp(null); reload(); }}
         />
       )}
     </AppLayout>
   );
 }
 
-function CreateAppModal({
-  onClose, onCreated,
-}: { onClose: () => void; onCreated: () => void }) {
-  const [name, setName] = useState('');
-  const [pkg, setPkg] = useState('');
-  const [tagline, setTagline] = useState('');
-  const [color, setColor] = useState('#D63A30');
-  const [download, setDownload] = useState('');
+/// Modale CRÉATION ou ÉDITION d'app. Si `app` est fourni → édition
+/// (PATCH), sinon création (POST). Sert notamment à corriger le LIEN
+/// DE TÉLÉCHARGEMENT donné aux clients.
+function AppModal({
+  app, onClose, onSaved,
+}: { app: App | null; onClose: () => void; onSaved: () => void }) {
+  const editing = !!app;
+  const [name, setName] = useState(app?.name ?? '');
+  const [pkg, setPkg] = useState(app?.package_name ?? '');
+  const [tagline, setTagline] = useState(app?.tagline ?? '');
+  const [color, setColor] = useState(app?.primary_color ?? '#D63A30');
+  const [download, setDownload] = useState(app?.download_url ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -118,24 +133,31 @@ function CreateAppModal({
       return;
     }
     setBusy(true); setErr(null);
+    const payload = {
+      name: name.trim(),
+      package_name: pkg.trim(),
+      tagline: tagline.trim() || null,
+      primary_color: color,
+      download_url: download.trim() || null,
+    };
     try {
-      await appsApi.create({
-        name: name.trim(),
-        package_name: pkg.trim(),
-        tagline: tagline.trim() || null,
-        primary_color: color,
-        download_url: download.trim() || null,
-      });
-      onCreated();
+      if (editing && app) {
+        await appsApi.update(app.id, payload);
+      } else {
+        await appsApi.create(payload);
+      }
+      onSaved();
     } catch (e: any) {
-      setErr(e instanceof ApiError ? e.message : 'Création impossible.');
+      setErr(e instanceof ApiError ? e.message : 'Enregistrement impossible.');
     } finally { setBusy(false); }
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-2xl border border-white/10 bg-midnight p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <h2 className="mb-4 text-lg font-semibold tracking-tight">Nouvelle application</h2>
+        <h2 className="mb-4 text-lg font-semibold tracking-tight">
+          {editing ? 'Modifier l\'application' : 'Nouvelle application'}
+        </h2>
         <form onSubmit={submit} className="space-y-3">
           <Field label="Nom de l'app">
             <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Ex. BLACK7 ROYAL" autoFocus />
@@ -153,13 +175,13 @@ function CreateAppModal({
             </div>
           </Field>
           <Field label="Lien de téléchargement (à donner aux clients)">
-            <input value={download} onChange={(e) => setDownload(e.target.value)} className={`${inputCls} font-mono`} placeholder="https://99999.7themotion.com/dl" />
+            <input value={download} onChange={(e) => setDownload(e.target.value)} className={`${inputCls} font-mono`} placeholder="https://github.com/manzilionellm-dotcom/tvking/releases/download/latest/7motion.apk" />
           </Field>
           {err && <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary">Annuler</button>
             <button type="submit" disabled={busy || !name || !pkg} className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black hover:bg-accent-bright disabled:opacity-50">
-              {busy ? 'Création…' : 'Créer l\'app'}
+              {busy ? 'Enregistrement…' : (editing ? 'Enregistrer' : 'Créer l\'app')}
             </button>
           </div>
         </form>
