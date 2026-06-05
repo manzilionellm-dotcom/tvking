@@ -466,5 +466,9 @@
   "playlistActiveBadge": "نشطة",
   "playlistTapToActivate": "استخدم قائمة التشغيل هذه",
   "playlistNowActive": "«{name}» هي الآن قائمة التشغيل النشطة",
-  "subActiveLifetime": "اشتراك مدى الحياة"
+  "subActiveLifetime": "اشتراك مدى الحياة",
+  "activationCheckButton": "تحقق من اشتراكي",
+  "activationChecking": "جارٍ التحقق…",
+  "activationSuccess": "تم التحقق من الاشتراك — تم تحميل قنواتك!",
+  "activationNoSourceYet": "لا توجد قنوات بعد. إذا قام موزّعك بالتفعيل للتو، انتظر لحظة وأعد المحاولة، أو أعد تشغيل التطبيق."
 }

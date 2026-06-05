@@ -25,8 +25,11 @@ import '../../../../core/support/vip_support.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../device/data/device_identity.dart';
+import '../../../playlists/data/playlist_repository.dart';
+import '../../../playlists/data/remote_source_repository.dart';
 import '../../../playlists/presentation/m3u_login_sheet.dart';
 import '../../../playlists/presentation/xtream_login_sheet.dart';
+import '../../../subscription/data/subscription_state.dart';
 
 /// Ouvre la feuille de choix de source depuis l'accueil.
 Future<void> showSourceChoiceSheet(BuildContext context) {
@@ -329,11 +332,72 @@ class _ActivationSheet extends StatelessWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: 10),
+                // « Vérifier mon abonnement » : une fois que le revendeur a
+                // activé la MAC à distance, ce bouton refait la synchro
+                // (statut d'abonnement + source IPTV poussée) SANS avoir à
+                // redémarrer l'app. Corrige le « j'ai activé mais ça ne
+                // change pas » : avant, l'app ne resynchronisait qu'au boot.
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: mac == null
+                        ? null
+                        : () => _verifyActivation(context),
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: Text(context.l10n.activationCheckButton),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.surfaceHigh,
+                      foregroundColor: AppColors.textPrimary,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
               ],
             );
           },
         ),
       ),
     );
+  }
+
+  /// Re-synchronise immédiatement l'état du device avec le backend :
+  ///   1. statut d'abonnement (paid / à vie / 1 an / trial),
+  ///   2. source IPTV assignée à la MAC par le revendeur.
+  /// Puis informe l'utilisateur du résultat. Si des chaînes sont
+  /// chargées, on ferme la feuille pour révéler l'accueil rempli.
+  Future<void> _verifyActivation(BuildContext context) async {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 25),
+        content: Text(context.l10n.activationChecking),
+      ),
+    );
+    // 1) Statut d'abonnement (débloque / met à jour la carte).
+    await SubscriptionState.instance.syncWithBackend();
+    // 2) Source IPTV poussée par le revendeur (charge les chaînes).
+    await RemoteSourceRepository.sync();
+
+    final bool hasChannels =
+        PlaylistRepository.instance.currentChannels.isNotEmpty;
+    if (!context.mounted) return;
+    messenger.clearSnackBars();
+    if (hasChannels) {
+      Navigator.of(context).pop(); // ferme la feuille → accueil rempli
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.success,
+          content: Text(context.l10n.activationSuccess),
+        ),
+      );
+    } else {
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.warning,
+          content: Text(context.l10n.activationNoSourceYet),
+        ),
+      );
+    }
   }
 }

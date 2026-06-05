@@ -466,5 +466,9 @@
   "playlistActiveBadge": "Inatumika",
   "playlistTapToActivate": "Tumia orodha hii",
   "playlistNowActive": "\"{name}\" sasa ndiyo orodha inayotumika",
-  "subActiveLifetime": "Usajili wa maisha"
+  "subActiveLifetime": "Usajili wa maisha",
+  "activationCheckButton": "Angalia usajili wangu",
+  "activationChecking": "Inaangalia…",
+  "activationSuccess": "Usajili umethibitishwa — chaneli zako zimepakiwa!",
+  "activationNoSourceYet": "Bado hakuna chaneli. Kama muuzaji wako amewasha sasa hivi, subiri kidogo ujaribu tena, au anzisha upya programu."
 }

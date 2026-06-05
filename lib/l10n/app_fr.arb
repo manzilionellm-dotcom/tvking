@@ -1762,5 +1762,21 @@
   "subActiveLifetime": "Abonnement à vie",
   "@subActiveLifetime": {
     "description": "Titre carte abonnement quand le plan est à vie"
+  },
+  "activationCheckButton": "Vérifier mon abonnement",
+  "@activationCheckButton": {
+    "description": "Bouton pour revérifier l’abonnement et charger la source"
+  },
+  "activationChecking": "Vérification en cours…",
+  "@activationChecking": {
+    "description": "Snackbar pendant la vérification d’abonnement"
+  },
+  "activationSuccess": "Abonnement vérifié — tes chaînes sont chargées !",
+  "@activationSuccess": {
+    "description": "Snackbar succès vérification (chaînes chargées)"
+  },
+  "activationNoSourceYet": "Pas encore de chaînes. Si ton revendeur vient d'activer, patiente un instant puis réessaie, ou redémarre l'app.",
+  "@activationNoSourceYet": {
+    "description": "Snackbar : aucune source encore assignée"
   }
 }

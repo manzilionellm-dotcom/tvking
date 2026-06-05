@@ -466,5 +466,9 @@
   "playlistActiveBadge": "Active",
   "playlistTapToActivate": "Use this playlist",
   "playlistNowActive": "\"{name}\" is now the active playlist",
-  "subActiveLifetime": "Lifetime subscription"
+  "subActiveLifetime": "Lifetime subscription",
+  "activationCheckButton": "Check my subscription",
+  "activationChecking": "Checking…",
+  "activationSuccess": "Subscription verified — your channels are loaded!",
+  "activationNoSourceYet": "No channels yet. If your reseller just activated, wait a moment and retry, or restart the app."
 }

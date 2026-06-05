@@ -466,5 +466,9 @@
   "playlistActiveBadge": "Aktiv",
   "playlistTapToActivate": "Brug denne spilleliste",
   "playlistNowActive": "\"{name}\" er nu den aktive spilleliste",
-  "subActiveLifetime": "Livstidsabonnement"
+  "subActiveLifetime": "Livstidsabonnement",
+  "activationCheckButton": "Tjek abonnement",
+  "activationChecking": "Tjekker…",
+  "activationSuccess": "Abonnement bekræftet – dine kanaler er indlæst!",
+  "activationNoSourceYet": "Ingen kanaler endnu. Hvis din forhandler lige har aktiveret, vent lidt og prøv igen, eller genstart appen."
 }
