@@ -23,6 +23,9 @@ import '../../../../core/branding/brand_logo.dart';
 import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../playlists/data/playlist_repository.dart';
+import '../../../playlists/data/remote_source_repository.dart';
+import '../../../subscription/data/subscription_state.dart';
 
 class EmptyStateView extends StatelessWidget {
   const EmptyStateView({
@@ -124,6 +127,15 @@ class EmptyStateView extends StatelessWidget {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                // ----- « C'est bon, mets à jour » -----
+                // Quand le revendeur a dit « c'est activé », le client tape
+                // ce bouton : l'app interroge le serveur et récupère TOUT
+                // (statut d'abonnement + source IPTV / codes assignés à la
+                // MAC), puis charge les chaînes — sans redémarrer l'app.
+                // Dès que les chaînes arrivent, l'accueil se remplit seul
+                // (le StreamBuilder parent remplace cet écran).
+                const _SyncNowButton(),
                 const SizedBox(height: 14),
                 Text(
                   context.l10n.remoteActivationByReseller,
@@ -137,6 +149,86 @@ class EmptyStateView extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bouton « Vérifier mon abonnement » : re-synchronise avec le serveur
+/// (statut d'abonnement + source IPTV assignée à la MAC) et charge les
+/// chaînes. Stateful pour afficher un spinner pendant l'appel réseau.
+class _SyncNowButton extends StatefulWidget {
+  const _SyncNowButton();
+
+  @override
+  State<_SyncNowButton> createState() => _SyncNowButtonState();
+}
+
+class _SyncNowButtonState extends State<_SyncNowButton> {
+  bool _busy = false;
+
+  Future<void> _sync() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 25),
+        content: Text(context.l10n.activationChecking),
+      ),
+    );
+    try {
+      // 1) Statut d'abonnement (paid / à vie / 1 an / trial).
+      await SubscriptionState.instance.syncWithBackend();
+      // 2) Source IPTV (codes/playlist) poussée par le revendeur.
+      await RemoteSourceRepository.sync();
+    } catch (_) {
+      // Réseau capricieux : on retombe sur le message « pas encore ».
+    }
+    final bool hasChannels =
+        PlaylistRepository.instance.currentChannels.isNotEmpty;
+    if (!mounted) return;
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        backgroundColor: hasChannels ? AppColors.success : AppColors.warning,
+        content: Text(
+          hasChannels
+              ? context.l10n.activationSuccess
+              : context.l10n.activationNoSourceYet,
+        ),
+      ),
+    );
+    setState(() => _busy = false);
+    // Si des chaînes sont arrivées, le StreamBuilder de l'accueil
+    // remplace automatiquement cet écran — rien d'autre à faire.
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: OutlinedButton.icon(
+        onPressed: _busy ? null : _sync,
+        icon: _busy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.refresh_rounded, size: 20),
+        label: Text(
+          _busy ? context.l10n.activationChecking : context.l10n.activationCheckButton,
+          style: AppTextStyles.button.copyWith(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.textPrimary,
+          side: BorderSide(color: AppColors.accent.withValues(alpha: 0.6)),
         ),
       ),
     );
