@@ -475,5 +475,6 @@
   "activationDeviceKnownNoSub": "تم التعرّف على الجهاز من الخادم، بانتظار التفعيل من موزّعك.",
   "activationDeviceUnknown": "لم يتعرّف الخادم على الجهاز بعد — تحقّق من اتصالك بالإنترنت.",
   "emptyPremiumTitle": "حساب مميّز",
-  "emptyPremiumWaiting": "الاشتراك مُفعّل — بانتظار قنواتك. يجب أن يُسند موزّعك مصدرك (Xtream/M3U)."
+  "emptyPremiumWaiting": "الاشتراك مُفعّل — بانتظار قنواتك. يجب أن يُسند موزّعك مصدرك (Xtream/M3U).",
+  "activationSourceFailed": "تم استلام المصدر لكن 0 قناة. تحقّق من رابط/بيانات المزوّد (رابط M3U كامل مع get.php، أو استخدم وضع Xtream)."
 }

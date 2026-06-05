@@ -475,5 +475,6 @@
   "activationDeviceKnownNoSub": "Enheten känns igen av servern, väntar på aktivering av din återförsäljare.",
   "activationDeviceUnknown": "Servern ser inte enheten ännu – kontrollera din internetanslutning.",
   "emptyPremiumTitle": "Premiumkonto",
-  "emptyPremiumWaiting": "Abonnemang aktivt – väntar på dina kanaler. Din återförsäljare måste tilldela din källa (Xtream/M3U)."
+  "emptyPremiumWaiting": "Abonnemang aktivt – väntar på dina kanaler. Din återförsäljare måste tilldela din källa (Xtream/M3U).",
+  "activationSourceFailed": "Källa mottagen men 0 kanaler. Kontrollera leverantörens URL / uppgifter (fullständig M3U-URL med get.php, eller använd Xtream-läge)."
 }

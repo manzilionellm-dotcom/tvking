@@ -268,11 +268,12 @@ class _SyncNowButtonState extends State<_SyncNowButton> {
         content: Text(context.l10n.activationChecking),
       ),
     );
+    RemoteSyncResult srcResult = RemoteSyncResult.noSource;
     try {
       // 1) Statut d'abonnement (paid / à vie / 1 an / trial).
       await SubscriptionState.instance.syncWithBackend();
       // 2) Source IPTV (codes/playlist) poussée par le revendeur.
-      await RemoteSourceRepository.sync();
+      srcResult = await RemoteSourceRepository.sync();
     } catch (_) {
       // Réseau capricieux : on retombe sur le message « pas encore ».
     }
@@ -283,6 +284,7 @@ class _SyncNowButtonState extends State<_SyncNowButton> {
     // Message PRÉCIS selon ce que le serveur sait de cette MAC, pour que
     // le revendeur sache exactement quoi corriger :
     //   - chaînes chargées            → succès
+    //   - source reçue mais 0 chaîne  → URL/identifiants provider à vérifier
     //   - abonnement payé mais 0 src  → il manque la Source à l'activation
     //   - appareil connu (essai)      → pas encore activé
     //   - appareil inconnu            → souci de connexion / mauvaise MAC
@@ -292,6 +294,9 @@ class _SyncNowButtonState extends State<_SyncNowButton> {
     if (hasChannels) {
       msg = context.l10n.activationSuccess;
       bg = AppColors.success;
+    } else if (srcResult == RemoteSyncResult.sourceFailed) {
+      msg = context.l10n.activationSourceFailed;
+      bg = AppColors.live;
     } else if (r.paid) {
       msg = context.l10n.activationActiveNoSource;
       bg = AppColors.warning;

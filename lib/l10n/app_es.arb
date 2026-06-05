@@ -475,5 +475,6 @@
   "activationDeviceKnownNoSub": "Dispositivo reconocido por el servidor, esperando activación de tu distribuidor.",
   "activationDeviceUnknown": "El servidor aún no ve el dispositivo: comprueba tu conexión a internet.",
   "emptyPremiumTitle": "Cuenta premium",
-  "emptyPremiumWaiting": "Suscripción activa: esperando tus canales. Tu distribuidor debe asignar tu fuente (Xtream/M3U)."
+  "emptyPremiumWaiting": "Suscripción activa: esperando tus canales. Tu distribuidor debe asignar tu fuente (Xtream/M3U).",
+  "activationSourceFailed": "Fuente recibida pero 0 canales. Verifica la URL / credenciales del proveedor (URL M3U completa con get.php, o usa el modo Xtream)."
 }

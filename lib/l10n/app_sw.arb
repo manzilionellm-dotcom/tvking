@@ -475,5 +475,6 @@
   "activationDeviceKnownNoSub": "Kifaa kimetambuliwa na seva, kinasubiri kuwashwa na muuzaji wako.",
   "activationDeviceUnknown": "Seva bado haijaona kifaa — angalia muunganisho wako wa intaneti.",
   "emptyPremiumTitle": "Akaunti premium",
-  "emptyPremiumWaiting": "Usajili hai — inasubiri chaneli zako. Muuzaji wako anapaswa kukabidhi chanzo chako (Xtream/M3U)."
+  "emptyPremiumWaiting": "Usajili hai — inasubiri chaneli zako. Muuzaji wako anapaswa kukabidhi chanzo chako (Xtream/M3U).",
+  "activationSourceFailed": "Chanzo kimepokelewa lakini chaneli 0. Angalia URL/taarifa za mtoa huduma (URL kamili ya M3U yenye get.php, au tumia hali ya Xtream)."
 }

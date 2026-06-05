@@ -1798,5 +1798,9 @@
   "emptyPremiumWaiting": "Abonnement actif — en attente de tes chaînes. Ton revendeur doit assigner ta source (Xtream/M3U).",
   "@emptyPremiumWaiting": {
     "description": "Ecran vide quand abonnement actif"
+  },
+  "activationSourceFailed": "Source reçue mais 0 chaîne chargée. Vérifie l'URL / les identifiants du provider (URL M3U complète avec get.php, ou utilise le mode Xtream).",
+  "@activationSourceFailed": {
+    "description": "Diagnostic : source assignee mais 0 chaine"
   }
 }

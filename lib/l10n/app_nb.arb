@@ -475,5 +475,6 @@
   "activationDeviceKnownNoSub": "Enheten gjenkjennes av serveren, venter på aktivering fra forhandleren.",
   "activationDeviceUnknown": "Serveren ser ikke enheten ennå – sjekk internettforbindelsen.",
   "emptyPremiumTitle": "Premium-konto",
-  "emptyPremiumWaiting": "Abonnement aktivt – venter på kanalene dine. Forhandleren må tildele kilden din (Xtream/M3U)."
+  "emptyPremiumWaiting": "Abonnement aktivt – venter på kanalene dine. Forhandleren må tildele kilden din (Xtream/M3U).",
+  "activationSourceFailed": "Kilde mottatt, men 0 kanaler. Sjekk leverandørens URL / innlogging (full M3U-URL med get.php, eller bruk Xtream-modus)."
 }

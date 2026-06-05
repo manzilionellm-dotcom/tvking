@@ -31,13 +31,31 @@ import '../../subscription/data/subscription_backend.dart'
 import '../domain/playlist.dart';
 import 'playlist_repository.dart';
 
+/// Résultat d'une synchro de source distante — sert à afficher un
+/// message PRÉCIS côté UI au lieu d'un vague « pas de chaînes ».
+enum RemoteSyncResult {
+  /// Aucune source assignée à cette MAC (ou MAC inconnue du serveur).
+  noSource,
+
+  /// Source reçue et chargée (ou déjà présente) avec des chaînes.
+  loaded,
+
+  /// Source reçue mais le chargement a échoué (0 chaîne, identifiants/
+  /// URL invalides, provider injoignable…). → message « vérifie l'URL ».
+  sourceFailed,
+
+  /// Problème réseau (serveur injoignable / réponse non 200).
+  networkError,
+}
+
 abstract final class RemoteSourceRepository {
   /// Récupère la source assignée à cet appareil et la charge si besoin.
   /// Best effort, idempotent (la dédup évite de réimporter à chaque boot).
-  static Future<void> sync() async {
+  /// Renvoie un [RemoteSyncResult] pour permettre un diagnostic précis.
+  static Future<RemoteSyncResult> sync() async {
     try {
       final String mac = await DeviceIdentity.instance.mac;
-      if (!mac.startsWith('MK:')) return;
+      if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
 
       final http.Response resp = await http
           .get(
@@ -45,21 +63,24 @@ abstract final class RemoteSourceRepository {
             headers: const <String, String>{'Accept': 'application/json'},
           )
           .timeout(const Duration(seconds: 8));
-      if (resp.statusCode != 200) return;
+      if (resp.statusCode != 200) return RemoteSyncResult.networkError;
 
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
       final Object? src = body['source'];
-      if (src is! Map<String, dynamic>) return; // null = rien d'assigné
+      if (src is! Map<String, dynamic>) {
+        return RemoteSyncResult.noSource; // null = rien d'assigné
+      }
 
-      await _applySource(src);
+      return await _applySource(src);
     } catch (e) {
       if (kDebugMode) debugPrint('[RemoteSource] sync error: $e');
+      return RemoteSyncResult.networkError;
     }
   }
 
   /// Charge la source en base locale si elle n'y est pas déjà.
-  static Future<void> _applySource(Map<String, dynamic> src) async {
+  static Future<RemoteSyncResult> _applySource(Map<String, dynamic> src) async {
     final String type = (src['type'] as String?)?.trim().toLowerCase() ?? '';
     final String label =
         (src['label'] as String?)?.trim().isNotEmpty == true
@@ -75,35 +96,52 @@ abstract final class RemoteSourceRepository {
       final String server = (src['server_url'] as String?)?.trim() ?? '';
       final String user = (src['username'] as String?)?.trim() ?? '';
       final String pass = (src['password'] as String?)?.trim() ?? '';
-      if (server.isEmpty || user.isEmpty || pass.isEmpty) return;
+      if (server.isEmpty || user.isEmpty || pass.isEmpty) {
+        return RemoteSyncResult.sourceFailed;
+      }
 
       final bool already = existing.any((Playlist p) =>
           p.type == PlaylistType.xtream &&
           p.xtreamServer == server &&
           p.xtreamUsername == user);
-      if (already) return;
+      if (already) return RemoteSyncResult.loaded;
 
-      await PlaylistRepository.instance.addXtreamPlaylist(
-        name: label,
-        serverUrl: server,
-        username: user,
-        password: pass,
-      );
-      if (kDebugMode) debugPrint('[RemoteSource] Xtream poussé chargé ($server)');
+      try {
+        await PlaylistRepository.instance.addXtreamPlaylist(
+          name: label,
+          serverUrl: server,
+          username: user,
+          password: pass,
+        );
+        if (kDebugMode) debugPrint('[RemoteSource] Xtream chargé ($server)');
+        return RemoteSyncResult.loaded;
+      } catch (e) {
+        // Identifiants/serveur invalides, 0 chaîne… → le repo a rejeté.
+        if (kDebugMode) debugPrint('[RemoteSource] Xtream KO: $e');
+        return RemoteSyncResult.sourceFailed;
+      }
     } else if (type == 'm3u') {
       final String m3u = (src['m3u_url'] as String?)?.trim() ?? '';
-      if (m3u.isEmpty) return;
+      if (m3u.isEmpty) return RemoteSyncResult.sourceFailed;
 
       final bool already = existing.any((Playlist p) =>
           p.type == PlaylistType.m3u && p.m3uUrl == m3u);
-      if (already) return;
+      if (already) return RemoteSyncResult.loaded;
 
-      await PlaylistRepository.instance.addM3uPlaylist(
-        name: label,
-        url: m3u,
-        epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,
-      );
-      if (kDebugMode) debugPrint('[RemoteSource] M3U poussé chargé');
+      try {
+        await PlaylistRepository.instance.addM3uPlaylist(
+          name: label,
+          url: m3u,
+          epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,
+        );
+        if (kDebugMode) debugPrint('[RemoteSource] M3U chargé');
+        return RemoteSyncResult.loaded;
+      } catch (e) {
+        // URL M3U incomplète / provider injoignable / 0 chaîne.
+        if (kDebugMode) debugPrint('[RemoteSource] M3U KO: $e');
+        return RemoteSyncResult.sourceFailed;
+      }
     }
+    return RemoteSyncResult.noSource;
   }
 }

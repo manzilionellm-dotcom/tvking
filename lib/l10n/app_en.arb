@@ -475,5 +475,6 @@
   "activationDeviceKnownNoSub": "Device recognized by the server, waiting for activation by your reseller.",
   "activationDeviceUnknown": "Device not seen by the server yet — check your internet connection.",
   "emptyPremiumTitle": "Premium account",
-  "emptyPremiumWaiting": "Subscription active — waiting for your channels. Your reseller must assign your source (Xtream/M3U)."
+  "emptyPremiumWaiting": "Subscription active — waiting for your channels. Your reseller must assign your source (Xtream/M3U).",
+  "activationSourceFailed": "Source received but 0 channels loaded. Check the provider URL / credentials (full M3U URL with get.php, or use Xtream mode)."
 }
