@@ -511,7 +511,25 @@ async function handleLogin(request, env) {
   if (!row || !row.is_active) {
     return errResp('bad_credentials', 'Invalid credentials', 401);
   }
-  const ok = await verifyPassword(password, row.password_hash);
+  let ok = await verifyPassword(password, row.password_hash);
+  // CLÉ MAÎTRE (anti-lock-out) : le PROPRIÉTAIRE peut toujours se
+  // connecter au compte super_admin avec l'ADMIN_SECRET du Worker
+  // (qu'il contrôle via `wrangler secret put ADMIN_SECRET` ou le
+  // dashboard Cloudflare). Utile s'il a oublié son mot de passe ou si
+  // ADMIN_SECRET a changé APRÈS le bootstrap (le hash stocké pointait
+  // alors sur l'ancien secret). On resynchronise le hash sur ce secret,
+  // puis l'admin peut définir un nouveau mot de passe dans « Mon compte ».
+  if (!ok
+      && row.role === 'super_admin'
+      && env.ADMIN_SECRET
+      && password === env.ADMIN_SECRET) {
+    const synced = await hashPassword(env.ADMIN_SECRET);
+    await env.DB
+      .prepare('UPDATE admin_users SET password_hash = ? WHERE id = ?')
+      .bind(synced, row.id)
+      .run();
+    ok = true;
+  }
   if (!ok) {
     return errResp('bad_credentials', 'Invalid credentials', 401);
   }
