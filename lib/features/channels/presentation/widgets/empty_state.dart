@@ -17,6 +17,8 @@
 //    le premier écran que voit un nouvel utilisateur.
 // =========================================================
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/branding/brand_logo.dart';
@@ -167,6 +169,42 @@ class _SyncNowButton extends StatefulWidget {
 
 class _SyncNowButtonState extends State<_SyncNowButton> {
   bool _busy = false;
+  // Sondage automatique : tant que cet écran (aucune chaîne) est affiché,
+  // on interroge le serveur toutes les 6 s. Dès que le revendeur active +
+  // pousse une source, les chaînes se chargent TOUTES SEULES (le
+  // StreamBuilder de l'accueil remplace alors cet écran et dispose ce
+  // widget → le timer s'arrête). Rend l'activation « instantanée » sans
+  // que le client ait à toucher au bouton.
+  Timer? _autoTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // 1er sondage rapide (2 s après l'affichage), puis toutes les 6 s.
+    Future<void>.delayed(const Duration(seconds: 2), _autoSync);
+    _autoTimer = Timer.periodic(
+      const Duration(seconds: 6),
+      (_) => _autoSync(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _autoTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Sondage SILENCIEUX (sans snackbar ni spinner) lancé par le timer.
+  /// Si une source apparaît, l'accueil se remplit automatiquement.
+  Future<void> _autoSync() async {
+    if (_busy || !mounted) return;
+    try {
+      await SubscriptionState.instance.syncWithBackend();
+      await RemoteSourceRepository.sync();
+    } catch (_) {
+      // Réseau capricieux → on réessaiera au prochain tick.
+    }
+  }
 
   Future<void> _sync() async {
     if (_busy) return;
