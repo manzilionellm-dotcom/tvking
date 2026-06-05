@@ -473,5 +473,7 @@
   "activationNoSourceYet": "Bado hakuna chaneli. Kama muuzaji wako amewasha sasa hivi, subiri kidogo ujaribu tena, au anzisha upya programu.",
   "activationActiveNoSource": "Usajili hai ✅ lakini hakuna orodha iliyounganishwa na MAC yako. Muuzaji wako anapaswa kuongeza Chanzo (Xtream/M3U).",
   "activationDeviceKnownNoSub": "Kifaa kimetambuliwa na seva, kinasubiri kuwashwa na muuzaji wako.",
-  "activationDeviceUnknown": "Seva bado haijaona kifaa — angalia muunganisho wako wa intaneti."
+  "activationDeviceUnknown": "Seva bado haijaona kifaa — angalia muunganisho wako wa intaneti.",
+  "emptyPremiumTitle": "Akaunti premium",
+  "emptyPremiumWaiting": "Usajili hai — inasubiri chaneli zako. Muuzaji wako anapaswa kukabidhi chanzo chako (Xtream/M3U)."
 }

@@ -41,118 +41,170 @@ class EmptyStateView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-        child: Center(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                const BrandLogo.splash(),
-                const SizedBox(height: 26),
+    // Écran ADAPTATIF : on écoute le statut d'abonnement pour afficher la
+    // bonne chose selon la situation (pro), au lieu de toujours montrer
+    // « Active ton abonnement / essai » même quand le client est déjà
+    // premium.
+    return ListenableBuilder(
+      listenable: SubscriptionState.instance,
+      builder: (BuildContext context, _) {
+        final SubscriptionState sub = SubscriptionState.instance;
+        final bool active = sub.status == SubscriptionStatus.paid;
 
-                Text(
-                  context.l10n.activateSubTitle,
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.headlineLarge.copyWith(fontSize: 23),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  context.l10n.activateSubDesc,
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.bodyMedium.copyWith(
-                    fontSize: 14,
-                    color: AppColors.textSecondary,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 18),
+        // Libellé du plan pour la pastille premium : à vie, ou « expire
+        // le JJ/MM/AAAA » (1 an / durée), ou « abonnement actif » à défaut.
+        final String planLabel;
+        if (sub.isLifetime) {
+          planLabel = context.l10n.subActiveLifetime;
+        } else if (sub.paidUntil != null) {
+          final DateTime d = sub.paidUntil!;
+          planLabel =
+              context.l10n.subActiveUntil('${d.day}/${d.month}/${d.year}');
+        } else {
+          planLabel = context.l10n.subActiveTitle;
+        }
 
-                // ----- Mention payante (essai 7 j · 13 €/an) -----
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.editorialCreamSurface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: AppColors.editorialCream.withValues(alpha: 0.28),
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+            child: Center(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    const BrandLogo.splash(),
+                    const SizedBox(height: 26),
+
+                    Text(
+                      active
+                          ? context.l10n.emptyPremiumTitle
+                          : context.l10n.activateSubTitle,
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.headlineLarge.copyWith(fontSize: 23),
                     ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Icon(
-                        Icons.auto_awesome_rounded,
-                        size: 16,
-                        color: AppColors.editorialCream,
+                    const SizedBox(height: 10),
+                    Text(
+                      active
+                          ? context.l10n.emptyPremiumWaiting
+                          : context.l10n.activateSubDesc,
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        fontSize: 14,
+                        color: AppColors.textSecondary,
+                        height: 1.5,
                       ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          context.l10n.freeTrialBadge,
-                          textAlign: TextAlign.center,
-                          style: AppTextStyles.bodyMedium.copyWith(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Pastille : plan premium (à vie / expire le …) si actif,
+                    // sinon la mention d'essai (7 j · 13 €/an).
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: active
+                            ? AppColors.accentSurface
+                            : AppColors.editorialCreamSurface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: active
+                              ? AppColors.accent.withValues(alpha: 0.5)
+                              : AppColors.editorialCream.withValues(alpha: 0.28),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Icon(
+                            active
+                                ? Icons.workspace_premium_rounded
+                                : Icons.auto_awesome_rounded,
+                            size: 16,
+                            color: active
+                                ? AppColors.accent
+                                : AppColors.editorialCream,
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              active ? planLabel : context.l10n.freeTrialBadge,
+                              textAlign: TextAlign.center,
+                              style: AppTextStyles.bodyMedium.copyWith(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+
+                    // « Activer mon abonnement » seulement si PAS encore
+                    // actif (sinon incohérent).
+                    if (!active) ...<Widget>[
+                      SizedBox(
+                        width: double.infinity,
+                        height: 54,
+                        child: FilledButton.icon(
+                          onPressed: onAddPlaylist,
+                          icon: const Icon(
+                            Icons.support_agent_rounded,
+                            size: 22,
+                          ),
+                          label: Text(
+                            context.l10n.activateMySub,
+                            style: AppTextStyles.button.copyWith(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.accent,
+                            foregroundColor: AppColors.voidSurface,
                           ),
                         ),
                       ),
+                      const SizedBox(height: 12),
                     ],
-                  ),
-                ),
-                const SizedBox(height: 28),
 
-                // ----- CTA unique : activer / vérifier -----
-                SizedBox(
-                  width: double.infinity,
-                  height: 54,
-                  child: FilledButton.icon(
-                    onPressed: onAddPlaylist,
-                    icon: const Icon(Icons.support_agent_rounded, size: 22),
-                    label: Text(
-                      context.l10n.activateMySub,
-                      style: AppTextStyles.button.copyWith(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.3,
+                    // « Vérifier mon abonnement » + sondage auto (toujours).
+                    const _SyncNowButton(),
+                    const SizedBox(height: 14),
+
+                    // Actif → bouton discret pour revoir son identifiant.
+                    // Inactif → mention « activation à distance ».
+                    if (active)
+                      TextButton.icon(
+                        onPressed: onAddPlaylist,
+                        icon: const Icon(Icons.badge_outlined, size: 16),
+                        label: Text(context.l10n.simpleMyAccount),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.textTertiary,
+                        ),
+                      )
+                    else
+                      Text(
+                        context.l10n.remoteActivationByReseller,
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.labelSmall.copyWith(
+                          color: AppColors.textTertiary,
+                          fontSize: 11,
+                          letterSpacing: 1.2,
+                        ),
                       ),
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.accent,
-                      foregroundColor: AppColors.voidSurface,
-                    ),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                // ----- « C'est bon, mets à jour » -----
-                // Quand le revendeur a dit « c'est activé », le client tape
-                // ce bouton : l'app interroge le serveur et récupère TOUT
-                // (statut d'abonnement + source IPTV / codes assignés à la
-                // MAC), puis charge les chaînes — sans redémarrer l'app.
-                // Dès que les chaînes arrivent, l'accueil se remplit seul
-                // (le StreamBuilder parent remplace cet écran).
-                const _SyncNowButton(),
-                const SizedBox(height: 14),
-                Text(
-                  context.l10n.remoteActivationByReseller,
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.labelSmall.copyWith(
-                    color: AppColors.textTertiary,
-                    fontSize: 11,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

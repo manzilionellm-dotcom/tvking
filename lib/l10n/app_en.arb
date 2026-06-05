@@ -473,5 +473,7 @@
   "activationNoSourceYet": "No channels yet. If your reseller just activated, wait a moment and retry, or restart the app.",
   "activationActiveNoSource": "Subscription active ✅ but no playlist assigned to your MAC. Your reseller must add a Source (Xtream/M3U).",
   "activationDeviceKnownNoSub": "Device recognized by the server, waiting for activation by your reseller.",
-  "activationDeviceUnknown": "Device not seen by the server yet — check your internet connection."
+  "activationDeviceUnknown": "Device not seen by the server yet — check your internet connection.",
+  "emptyPremiumTitle": "Premium account",
+  "emptyPremiumWaiting": "Subscription active — waiting for your channels. Your reseller must assign your source (Xtream/M3U)."
 }

@@ -473,5 +473,7 @@
   "activationNoSourceYet": "Ingen kanaler endnu. Hvis din forhandler lige har aktiveret, vent lidt og prøv igen, eller genstart appen.",
   "activationActiveNoSource": "Abonnement aktivt ✅ men ingen spilleliste tildelt din MAC. Din forhandler skal tilføje en kilde (Xtream/M3U).",
   "activationDeviceKnownNoSub": "Enheden genkendes af serveren, venter på aktivering fra din forhandler.",
-  "activationDeviceUnknown": "Serveren ser ikke enheden endnu – tjek din internetforbindelse."
+  "activationDeviceUnknown": "Serveren ser ikke enheden endnu – tjek din internetforbindelse.",
+  "emptyPremiumTitle": "Premium-konto",
+  "emptyPremiumWaiting": "Abonnement aktivt – venter på dine kanaler. Din forhandler skal tildele din kilde (Xtream/M3U)."
 }

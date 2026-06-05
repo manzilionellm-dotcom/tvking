@@ -1790,5 +1790,13 @@
   "activationDeviceUnknown": "Appareil pas encore vu par le serveur — vérifie ta connexion internet.",
   "@activationDeviceUnknown": {
     "description": "Message de diagnostic activation"
+  },
+  "emptyPremiumTitle": "Compte premium",
+  "@emptyPremiumTitle": {
+    "description": "Ecran vide quand abonnement actif"
+  },
+  "emptyPremiumWaiting": "Abonnement actif — en attente de tes chaînes. Ton revendeur doit assigner ta source (Xtream/M3U).",
+  "@emptyPremiumWaiting": {
+    "description": "Ecran vide quand abonnement actif"
   }
 }
