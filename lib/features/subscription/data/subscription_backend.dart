@@ -24,14 +24,17 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-/// URL du Worker Cloudflare. À ce jour le custom domain RACINE
-/// `7themotion.com` n'est pas encore branché (des DNS records
-/// Hostinger résiduels bloquaient l'add), donc on tape le custom
-/// domain `99999.7themotion.com` qui est actif et pointe vers le
-/// même Worker. Tu pourras switcher vers `https://7themotion.com`
-/// dès que tu auras viré les records DNS Hostinger résiduels —
-/// c'est une seule ligne à modifier ici, l'API ne change pas.
-const String kSubscriptionBaseUrl = 'https://99999.7themotion.com';
+/// URL du Worker Cloudflare — DOIT être le MÊME backend que celui
+/// utilisé par le panneau admin (admin-panel, `VITE_API_BASE`), sinon
+/// l'app lit un autre serveur que celui où le panel écrit les
+/// activations/sources → « l'app ne se connecte pas avec le panel ».
+///
+/// Historique du bug : l'app pointait sur `https://99999.7themotion.com`
+/// qui sert un ANCIEN worker, alors que le panel et les déploiements
+/// (`wrangler` → worker `seven-motion-backend`) vivent sur le domaine
+/// `*.workers.dev`. On aligne donc l'app sur ce worker.
+const String kSubscriptionBaseUrl =
+    'https://seven-motion-backend.manzilionel-lm.workers.dev';
 
 /// Snapshot de l'état renvoyé par le serveur. Immuable.
 @immutable
