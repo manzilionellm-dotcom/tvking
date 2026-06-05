@@ -56,6 +56,8 @@ const STR: Record<string, Record<Lang, string>> = {
   'login.subtitleReseller': { fr: 'Espace revendeur', en: 'Reseller area', ar: 'مساحة الموزّع' },
   'login.tabAdmin': { fr: 'Admin', en: 'Admin', ar: 'المشرف' },
   'login.tabReseller': { fr: 'Revendeur', en: 'Reseller', ar: 'موزّع' },
+  'login.adminDesc': { fr: 'Propriétaire — accès total : revendeurs, apps, clients, serveurs.', en: 'Owner — full access: resellers, apps, customers, servers.', ar: 'المالك — وصول كامل: الموزّعون والتطبيقات والعملاء والخوادم.' },
+  'login.resellerDesc': { fr: 'Revendeur — active tes clients avec tes crédits.', en: 'Reseller — activate your clients with your credits.', ar: 'الموزّع — فعّل عملاءك باستخدام رصيدك.' },
   'login.identifier': { fr: 'Identifiant', en: 'Username', ar: 'المعرّف' },
   'login.password': { fr: 'Mot de passe', en: 'Password', ar: 'كلمة المرور' },
   'login.signin': { fr: 'Se connecter', en: 'Sign in', ar: 'تسجيل الدخول' },

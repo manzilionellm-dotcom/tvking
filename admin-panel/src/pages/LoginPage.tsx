@@ -69,24 +69,44 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
           </p>
         </div>
 
-        {/* ===== Bascule Admin / Revendeur (cachee sur le lien revendeur) ===== */}
+        {/* ===== Choix du rôle : 2 cartes distinctes (Propriétaire vs
+             Revendeur), pour bien DIFFÉRENCIER les 2 connexions. Cachées
+             sur le lien dédié revendeur (?revendeur). ===== */}
         {!resellerOnly && (
-          <div className="grid grid-cols-2 gap-1 rounded-lg border border-white/5 bg-slate p-1">
-            {(['admin', 'reseller'] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => switchMode(m)}
-                className={
-                  'rounded-md px-3 py-1.5 text-xs font-medium transition ' +
-                  (mode === m
-                    ? 'bg-accent text-black'
-                    : 'text-ink-secondary hover:text-ink-primary')
-                }
-              >
-                {m === 'admin' ? t('login.tabAdmin') : t('login.tabReseller')}
-              </button>
-            ))}
+          <div className="grid grid-cols-2 gap-2">
+            {(['admin', 'reseller'] as const).map((m) => {
+              const active = mode === m;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => switchMode(m)}
+                  className={
+                    'flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition ' +
+                    (active
+                      ? 'border-accent bg-accent/10 ring-1 ring-accent'
+                      : 'border-white/5 bg-slate hover:border-white/20')
+                  }
+                >
+                  <span className="text-lg leading-none">
+                    {m === 'admin' ? '👑' : '🛒'}
+                  </span>
+                  <span
+                    className={
+                      'text-sm font-semibold ' +
+                      (active ? 'text-accent' : 'text-ink-primary')
+                    }
+                  >
+                    {m === 'admin' ? t('login.tabAdmin') : t('login.tabReseller')}
+                  </span>
+                  <span className="text-[10px] leading-snug text-ink-tertiary">
+                    {m === 'admin'
+                      ? t('login.adminDesc')
+                      : t('login.resellerDesc')}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
 
