@@ -51,7 +51,12 @@ abstract final class M3uFetcher {
         headers: <String, String>{
           'User-Agent': _userAgent,
           'Accept': '*/*',
-          'Accept-Encoding': 'gzip, deflate',
+          // NB : on ne force PAS d'en-tête Accept-Encoding. dart:io
+          // ajoute « gzip » tout seul et décompresse automatiquement.
+          // Si on annonçait « deflate », certains serveurs (Node/Next…)
+          // pouvaient répondre en deflate — que dart:io NE décompresse
+          // PAS → corps compressé illisible → « playlist vide ». On
+          // laisse la plateforme négocier la compression qu'elle décode.
         },
       ).timeout(_timeout);
 
@@ -59,7 +64,33 @@ abstract final class M3uFetcher {
         throw Exception('HTTP ${resp.statusCode} sur $url');
       }
 
-      return _decodeBody(resp);
+      final String body = _decodeBody(resp);
+
+      // Garde-fou « ce n'est pas un M3U » : beaucoup d'endpoints
+      // (mauvaise URL, page de login, redirection vers un portail,
+      // proxy local renvoyant une erreur) répondent 200 avec du HTML
+      // ou du JSON au lieu d'une playlist. Sans #EXTM3U/#EXTINF ni la
+      // moindre URL de flux, on lève un message clair plutôt que de
+      // laisser le parser renvoyer un vague « playlist vide ».
+      final String head = body.trimLeft();
+      final String headUpper = head.toUpperCase();
+      final bool looksHtml = head.startsWith('<');
+      final bool looksM3u = headUpper.contains('#EXTM3U') ||
+          headUpper.contains('#EXTINF') ||
+          head.contains('://');
+      if (head.isEmpty) {
+        throw Exception('Le serveur a renvoyé une réponse vide pour $url');
+      }
+      if (looksHtml && !looksM3u) {
+        throw Exception(
+          'Le serveur a renvoyé une page web (HTML), pas une playlist '
+          'M3U. Vérifie que l\'URL pointe directement sur la playlist '
+          'et que l\'appareil peut y accéder (un lien « localhost » ne '
+          'marche PAS depuis le téléphone — utilise l\'adresse IP du PC).',
+        );
+      }
+
+      return body;
     } finally {
       if (owns) client.close();
     }
