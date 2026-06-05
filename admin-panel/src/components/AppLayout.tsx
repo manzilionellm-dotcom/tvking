@@ -1,5 +1,6 @@
 import { ReactNode, useState } from 'react';
 import { Sidebar } from './Sidebar';
+import { useT } from '@/lib/i18n';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -22,6 +23,7 @@ export function AppLayout({
   onLogout,
 }: AppLayoutProps) {
   const [navOpen, setNavOpen] = useState(false);
+  const t = useT();
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-obsidian text-ink-primary">
@@ -69,9 +71,26 @@ export function AppLayout({
               )}
             </div>
           </div>
-          {actions && (
-            <div className="flex shrink-0 items-center gap-2">{actions}</div>
-          )}
+          {/* Actions de page + bouton DÉCONNEXION (visible partout, y
+              compris mobile, sans avoir à ouvrir le menu latéral). */}
+          <div className="flex shrink-0 items-center gap-2">
+            {actions}
+            <button
+              onClick={onLogout}
+              aria-label={t('common.logout')}
+              title={t('common.logout')}
+              className="flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 text-xs font-medium text-ink-secondary transition hover:border-accent hover:text-accent-bright"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                   strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              <span className="hidden sm:inline">{t('common.logout')}</span>
+            </button>
+          </div>
         </header>
 
         {/* ===== Contenu ===== */}
