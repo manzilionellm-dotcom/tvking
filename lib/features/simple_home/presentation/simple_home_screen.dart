@@ -231,14 +231,15 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
               padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
               physics: const BouncingScrollPhysics(),
               children: <Widget>[
-                _section('🕐 ${context.l10n.simpleRecentlyWatched}',
+                _section('🕐', context.l10n.simpleRecentlyWatched,
                     AppColors.info, recent, favs),
-                _section('⭐ ${context.l10n.simpleMyFavorites}',
+                _section('⭐', context.l10n.simpleMyFavorites,
                     AppColors.warning, favList, favs),
-                _section('⚽ ${context.l10n.simpleSport}', AppColors.success,
+                _section('⚽', context.l10n.simpleSport, AppColors.success,
                     byGenre(<ChannelGenre>{ChannelGenre.sports}), favs),
                 _section(
-                    '🎬 ${context.l10n.simpleEntertainment}',
+                    '🎬',
+                    context.l10n.simpleEntertainment,
                     AppColors.warning,
                     byGenre(<ChannelGenre>{
                       ChannelGenre.entertainment,
@@ -246,12 +247,13 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                       ChannelGenre.documentary,
                     }),
                     favs),
-                _section('📰 ${context.l10n.simpleInfo}', AppColors.info,
+                _section('📰', context.l10n.simpleInfo, AppColors.info,
                     byGenre(<ChannelGenre>{ChannelGenre.news}), favs),
-                _section('🧸 ${context.l10n.simpleKids}', AppColors.accent,
+                _section('🧸', context.l10n.simpleKids, AppColors.accent,
                     byGenre(<ChannelGenre>{ChannelGenre.kids}), favs),
                 _section(
-                    '📡 ${context.l10n.simpleGeneral}',
+                    '📡',
+                    context.l10n.simpleGeneral,
                     AppColors.textSecondary,
                     byGenre(<ChannelGenre>{
                       ChannelGenre.other,
@@ -316,11 +318,11 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
 
     return Column(
       children: <Widget>[
-        _section('🍿 ${context.l10n.sectionMovies}', AppColors.live, cine, favs),
-        _section('📺 ${context.l10n.sectionSeries}', AppColors.accentBright,
+        _section('🍿', context.l10n.sectionMovies, AppColors.live, cine, favs),
+        _section('📺', context.l10n.sectionSeries, AppColors.accentBright,
             series, favs),
         if (adult.isNotEmpty)
-          _section('🔞 ${context.l10n.sectionAdult}', AppColors.accentMuted,
+          _section('🔞', context.l10n.sectionAdult, AppColors.accentMuted,
               adult, favs),
       ],
     );
@@ -354,8 +356,12 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
   }
 
   // ----- Une section (rangée horizontale de tuiles) -----
+  //  En-tête « joyeux » : gros emoji ANIMÉ (balancement + pulsation, style
+  //  Duolingo) dans une pastille teintée à la couleur de la catégorie, +
+  //  titre. Puis une rangée de cartes de chaînes compactes et modernes.
   Widget _section(
-      String title, Color accent, List<Channel> items, Set<String> favs) {
+      String emoji, String title, Color accent, List<Channel> items,
+      Set<String> favs) {
     if (items.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
@@ -363,28 +369,45 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Padding(
-            padding: const EdgeInsets.only(left: 2, bottom: 10),
+            padding: const EdgeInsets.only(left: 2, bottom: 12),
             child: Row(
               children: <Widget>[
+                // Pastille emoji géant + animé.
                 Container(
-                  width: 10,
-                  height: 10,
-                  decoration:
-                      BoxDecoration(color: accent, shape: BoxShape.circle),
+                  width: 48,
+                  height: 48,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(
+                      color: accent.withValues(alpha: 0.45),
+                      width: 1.2,
+                    ),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.22),
+                        blurRadius: 12,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: _WiggleEmoji(emoji, size: 26),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 12),
                 Text(title,
-                    style: AppTextStyles.headlineMedium.copyWith(fontSize: 17)),
+                    style: AppTextStyles.headlineMedium
+                        .copyWith(fontSize: 18, fontWeight: FontWeight.w800)),
               ],
             ),
           ),
           SizedBox(
-            height: 100,
+            height: 96,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
               itemCount: items.length > 40 ? 40 : items.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
               itemBuilder: (BuildContext context, int i) => _ChannelTile(
                 channel: items[i],
                 accent: accent,
@@ -517,56 +540,71 @@ class _ChannelTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Carte COMPACTE et MODERNE : plus petite (80 px), coins très
+    // arrondis, liseré accent discret (alpha) + ombre douce colorée, et
+    // le logo posé sur une vignette arrondie claire (look « app store »).
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 96,
+        width: 80,
+        padding: const EdgeInsets.fromLTRB(7, 8, 7, 7),
         decoration: BoxDecoration(
           color: AppColors.surface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: accent, width: 2),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: accent.withValues(alpha: 0.55),
+            width: 1.3,
+          ),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: accent.withValues(alpha: 0.12),
+              blurRadius: 9,
+              offset: const Offset(0, 3),
+            ),
+          ],
         ),
         child: Stack(
           children: <Widget>[
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  SizedBox(
-                    width: 38,
-                    height: 38,
-                    child: channel.hasLogo
-                        ? Image.network(
-                            channel.logoUrl!,
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) =>
-                                Icon(channel.genre.icon, color: accent),
-                          )
-                        : Icon(channel.genre.icon, color: accent, size: 30),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                // Vignette logo arrondie.
+                Container(
+                  width: 46,
+                  height: 36,
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(11),
                   ),
-                  const SizedBox(height: 6),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Text(
-                      channel.cleanName,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.bodyMedium
-                          .copyWith(fontSize: 11, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ],
-              ),
+                  child: channel.hasLogo
+                      ? Image.network(
+                          channel.logoUrl!,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) =>
+                              Icon(channel.genre.icon, color: accent, size: 22),
+                        )
+                      : Icon(channel.genre.icon, color: accent, size: 24),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  channel.cleanName,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.bodyMedium
+                      .copyWith(fontSize: 10, fontWeight: FontWeight.w700),
+                ),
+              ],
             ),
             Positioned(
-              top: 2,
-              right: 4,
+              top: -2,
+              right: -2,
               child: GestureDetector(
                 onTap: onFav,
                 child: Icon(
                   isFav ? Icons.favorite : Icons.favorite_border,
-                  size: 18,
+                  size: 16,
                   color: isFav ? AppColors.live : AppColors.textTertiary,
                 ),
               ),
@@ -574,6 +612,66 @@ class _ChannelTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Emoji « vivant » : balancement (rotation) + légère pulsation en boucle,
+/// style mascotte Duolingo — ça donne envie de sourire même de mauvaise
+/// humeur. Désynchronisé d'un emoji à l'autre (durée/phase dérivées de
+/// l'emoji) pour éviter l'effet « tout bouge en même temps ». Respecte le
+/// réglage système « réduire les animations ».
+class _WiggleEmoji extends StatefulWidget {
+  const _WiggleEmoji(this.emoji, {this.size = 26});
+
+  final String emoji;
+  final double size;
+
+  @override
+  State<_WiggleEmoji> createState() => _WiggleEmojiState();
+}
+
+class _WiggleEmojiState extends State<_WiggleEmoji>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    final int seed = widget.emoji.hashCode.abs();
+    _c = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: 1450 + seed % 750),
+    );
+    _c.value = (seed % 100) / 100; // phase de départ variable
+    _c.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget emoji = Text(
+      widget.emoji,
+      style: TextStyle(fontSize: widget.size, height: 1.0),
+    );
+    if (MediaQuery.disableAnimationsOf(context)) return emoji;
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (BuildContext context, Widget? child) {
+        final double t = Curves.easeInOut.transform(_c.value);
+        final double angle = (t - 0.5) * 0.30; // ±0.15 rad ≈ ±8,5°
+        final double scale = 1.0 + t * 0.16; // pulse 1.0 → 1.16
+        return Transform.rotate(
+          angle: angle,
+          child: Transform.scale(scale: scale, child: child),
+        );
+      },
+      child: emoji,
     );
   }
 }
