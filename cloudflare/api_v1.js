@@ -996,9 +996,21 @@ async function upsertDeviceSource(env, mac, source) {
     .run();
 }
 
+// Décode une MAC reçue dans le PATH : le front encode les « : » en
+// %3A (encodeURIComponent), or `url.pathname` n'est PAS décodé → sans
+// ça, la MAC arrive « MK%3A5C%3A… » et échoue la validation
+// (« mac must be MK:XX:XX:XX:XX:XX »). Tolérant si déjà décodée.
+function decodeMac(mac) {
+  try {
+    return decodeURIComponent(mac);
+  } catch (_) {
+    return mac;
+  }
+}
+
 async function handleSourceGet(env, mac) {
   await ensureSourcesTable(env);
-  const m = mac.trim().toUpperCase();
+  const m = decodeMac(mac).trim().toUpperCase();
   const row = await env.DB
     .prepare('SELECT * FROM device_sources WHERE mac = ?')
     .bind(m)
@@ -1011,7 +1023,7 @@ async function handleSourcePut(request, env, mac, actor) {
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
-  const m = mac.trim().toUpperCase();
+  const m = decodeMac(mac).trim().toUpperCase();
   if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
     return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
   }
@@ -1026,7 +1038,7 @@ async function handleSourcePut(request, env, mac, actor) {
 
 async function handleSourceDelete(request, env, mac, actor) {
   await ensureSourcesTable(env);
-  const m = mac.trim().toUpperCase();
+  const m = decodeMac(mac).trim().toUpperCase();
   await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run();
   await logAudit(env, request, actor, 'source.clear',
     { type: 'device_source', id: m }, null, null);
