@@ -1,16 +1,19 @@
+"use client";
+
 import Link from "next/link";
 import ChannelBrowser from "./components/ChannelBrowser";
-import { getBrowseView } from "./lib/server-views";
+import { useSource, nowNextMap } from "./lib/client-source";
 
-// Live data depends on the user's configured source, so render per request.
-export const dynamic = "force-dynamic";
+export default function Home() {
+  const { status, playlist, error } = useSource();
 
-export default async function Home() {
-  const { groups, nowNext, total, error } = await getBrowseView();
+  if (status === "loading" || status === "idle") {
+    return <Center>Chargement des chaînes…</Center>;
+  }
 
-  if (total === 0) {
+  if (playlist.total === 0) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-[1.2rem] pl-[6.5rem] pr-[var(--safe-x)] text-center">
+      <Center>
         <h1 className="font-display text-[2.6rem] font-extrabold">
           <span className="text-accent-grad">NOVA</span>
           <span className="text-[var(--accent)]">+</span>
@@ -19,9 +22,7 @@ export default async function Home() {
           Aucune chaîne chargée. Ajoutez l’URL de votre playlist (M3U ou Xtream) et,
           si vous en avez une, votre guide XMLTV.
         </p>
-        {error && (
-          <p className="text-[1rem] text-[var(--live)]">Erreur de chargement : {error}</p>
-        )}
+        {error && <p className="text-[1rem] text-[var(--live)]">Erreur : {error}</p>}
         <Link
           href="/settings"
           data-focusable
@@ -30,9 +31,17 @@ export default async function Home() {
         >
           Configurer ma source
         </Link>
-      </div>
+      </Center>
     );
   }
 
-  return <ChannelBrowser groups={groups} nowNext={nowNext} />;
+  return <ChannelBrowser groups={playlist.groups} nowNext={nowNextMap()} />;
+}
+
+function Center({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-[1.2rem] pl-[6.5rem] pr-[var(--safe-x)] text-center">
+      {children}
+    </div>
+  );
 }

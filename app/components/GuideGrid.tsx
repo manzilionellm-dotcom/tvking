@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import ChannelLogo from "./ChannelLogo";
-import type { GuideRow } from "../lib/server-views";
+
+/** One channel's row in the guide grid (programmes clipped to the window). */
+export interface GuideRow {
+  id: string;
+  name: string;
+  number: number;
+  logo?: string;
+  programmes: { start: number; stop: number; title: string }[];
+}
 
 /*
  * EPG grid (TiViMate-style): rows = channels, X axis = time. Programme blocks
@@ -56,7 +64,7 @@ export default function GuideGrid({
             <div key={row.id} className="flex items-stretch gap-0 border-b border-[var(--hairline)]/60">
               {/* Channel label */}
               <Link
-                href={`/watch/${row.id}`}
+                href={`/watch?c=${encodeURIComponent(row.id)}`}
                 data-focusable
                 className="focusable sticky left-0 z-[6] flex w-[13rem] shrink-0 items-center gap-[0.5rem] bg-[var(--surface-1)] px-[0.6rem] py-[0.5rem]"
               >
@@ -83,7 +91,7 @@ export default function GuideGrid({
                     return (
                       <Link
                         key={i}
-                        href={`/watch/${row.id}`}
+                        href={`/watch?c=${encodeURIComponent(row.id)}`}
                         data-focusable
                         className="focusable absolute inset-y-[0.2rem] overflow-hidden rounded-[0.4rem] px-[0.5rem] py-[0.35rem]"
                         style={{

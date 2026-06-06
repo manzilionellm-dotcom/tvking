@@ -1,42 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import ChannelCard from "./ChannelCard";
 import { useFavorites } from "../lib/favorites";
+import { useSource, channelsByIds, nowNextFor } from "../lib/client-source";
 import type { Channel } from "../lib/iptv-types";
-import type { NowNextMap } from "../lib/view-types";
 
 /*
- * Favorites live in localStorage (per device); we resolve those ids to channel
- * details via /api/channels so we don't ship the whole catalog to the client.
- * State is only set inside the async callback (loading is derived) to keep the
- * effect pure.
+ * Favorites live in localStorage (per device). We resolve those ids to channel
+ * details from the loaded client source — no server round-trip.
  */
-interface Loaded {
-  forKey: string;
-  channels: Channel[];
-  nowNext: NowNextMap;
-}
-
 export default function FavoritesList() {
   const { favorites } = useFavorites();
-  const [data, setData] = useState<Loaded>({ forKey: "", channels: [], nowNext: {} });
+  const { status } = useSource();
 
-  const key = favorites.join(",");
-  useEffect(() => {
-    if (!key) return;
-    let cancelled = false;
-    fetch(`/api/channels?ids=${encodeURIComponent(key)}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled) setData({ forKey: key, channels: d.channels ?? [], nowNext: d.nowNext ?? {} });
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [key]);
+  if (status === "loading" || status === "idle") {
+    return <p className="text-[1.1rem] text-[var(--text-medium)]">Chargement…</p>;
+  }
 
   if (favorites.length === 0) {
     return (
@@ -58,14 +38,12 @@ export default function FavoritesList() {
     );
   }
 
-  if (data.forKey !== key) {
-    return <p className="text-[1.1rem] text-[var(--text-medium)]">Chargement…</p>;
-  }
+  const channels = channelsByIds(favorites) as Channel[];
 
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(20rem,1fr))] gap-[0.7rem] pb-[4rem]">
-      {data.channels.map((c) => (
-        <ChannelCard key={c.id} channel={c} nowNext={data.nowNext[c.id]} />
+      {channels.map((c) => (
+        <ChannelCard key={c.id} channel={c} nowNext={nowNextFor(c.id) ?? undefined} />
       ))}
     </div>
   );

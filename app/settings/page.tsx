@@ -1,30 +1,50 @@
-import DisplaySettings from "../components/DisplaySettings";
-import { loadSource } from "../lib/source";
-import { saveSource, resetSource } from "./actions";
+"use client";
 
-export const dynamic = "force-dynamic";
+import { useState } from "react";
+import DisplaySettings from "../components/DisplaySettings";
+import {
+  useSource,
+  getConfig,
+  setConfig,
+  clearConfig,
+} from "../lib/client-source";
+
+/*
+ * Source + display settings. The "Add playlist" step (à la TiViMate): a direct
+ * M3U/XMLTV pair, or Xtream credentials we convert to get.php / xmltv.php. The
+ * choice is stored per device (localStorage) and the source reloads immediately.
+ */
+function xtreamUrls(server: string, user: string, pass: string) {
+  const base = server.replace(/\/+$/, "");
+  const u = encodeURIComponent(user);
+  const p = encodeURIComponent(pass);
+  return {
+    playlistUrl: `${base}/get.php?username=${u}&password=${p}&type=m3u_plus&output=ts`,
+    epgUrl: `${base}/xmltv.php?username=${u}&password=${p}`,
+  };
+}
 
 function Field({
   label,
-  name,
+  value,
+  onChange,
   placeholder,
-  defaultValue,
   type = "text",
 }: {
   label: string;
-  name: string;
+  value: string;
+  onChange: (v: string) => void;
   placeholder?: string;
-  defaultValue?: string;
   type?: string;
 }) {
   return (
     <label className="flex flex-col gap-[0.3rem]">
       <span className="text-[0.95rem] font-semibold text-[var(--text-medium)]">{label}</span>
       <input
-        name={name}
         type={type}
+        value={value}
         placeholder={placeholder}
-        defaultValue={defaultValue}
+        onChange={(e) => onChange(e.target.value)}
         data-focusable
         className="focusable rounded-[var(--radius)] bg-[var(--surface-2)] px-[1rem] py-[0.7rem] text-[1.1rem] text-[var(--text-high)] placeholder:text-[var(--text-disabled)]"
       />
@@ -32,8 +52,17 @@ function Field({
   );
 }
 
-export default async function SettingsPage() {
-  const { playlist, config, error } = await loadSource();
+export default function SettingsPage() {
+  const { status, playlist, config, error } = useSource();
+
+  const init = typeof window !== "undefined" ? getConfig() : { playlistUrl: "", epgUrl: "" };
+  const [playlistUrl, setPlaylistUrl] = useState(init.playlistUrl);
+  const [epgUrl, setEpgUrl] = useState(init.epgUrl);
+  const [server, setServer] = useState("");
+  const [user, setUser] = useState("");
+  const [pass, setPass] = useState("");
+
+  const loading = status === "loading" || status === "idle";
 
   return (
     <div className="min-h-screen pl-[6.5rem] pr-[var(--safe-x)] py-[var(--safe-y)]">
@@ -49,12 +78,18 @@ export default async function SettingsPage() {
         <div className="flex items-center gap-[0.7rem]">
           <span
             className="h-[0.8rem] w-[0.8rem] rounded-full"
-            style={{ background: playlist.total > 0 ? "var(--ok)" : "var(--live)" }}
+            style={{ background: loading ? "var(--accent)" : playlist.total > 0 ? "var(--ok)" : "var(--live)" }}
           />
           <span className="text-[1.15rem] font-bold text-[var(--text-high)]">
-            {playlist.total > 0 ? `${playlist.total} chaînes chargées` : "Aucune chaîne"}
+            {loading
+              ? "Chargement…"
+              : playlist.total > 0
+                ? `${playlist.total} chaînes chargées`
+                : "Aucune chaîne"}
           </span>
-          <span className="text-[1rem] text-[var(--text-medium)]">· {playlist.groups.length} catégories</span>
+          {!loading && (
+            <span className="text-[1rem] text-[var(--text-medium)]">· {playlist.groups.length} catégories</span>
+          )}
         </div>
         <p className="mt-[0.5rem] break-all text-[0.9rem] text-[var(--text-disabled)]">
           Playlist : {config.playlistUrl || "—"}
@@ -66,62 +101,68 @@ export default async function SettingsPage() {
 
       <div className="grid max-w-[80rem] gap-[1.4rem] lg:grid-cols-2">
         {/* M3U / XMLTV */}
-        <form action={saveSource} className="flex flex-col gap-[0.8rem] rounded-[var(--radius-lg)] bg-[var(--surface-1)] p-[1.2rem]">
-          <input type="hidden" name="mode" value="m3u" />
+        <div className="flex flex-col gap-[0.8rem] rounded-[var(--radius-lg)] bg-[var(--surface-1)] p-[1.2rem]">
           <h2 className="text-[1.3rem] font-bold text-[var(--text-high)]">M3U / XMLTV direct</h2>
           <Field
             label="URL de la playlist (M3U)"
-            name="playlistUrl"
+            value={playlistUrl}
+            onChange={setPlaylistUrl}
             placeholder="http://exemple.com/get.php?...type=m3u_plus"
-            defaultValue={config.playlistUrl}
           />
           <Field
             label="URL du guide (XMLTV) — optionnel"
-            name="epgUrl"
+            value={epgUrl}
+            onChange={setEpgUrl}
             placeholder="http://exemple.com/xmltv.php?..."
-            defaultValue={config.epgUrl}
           />
           <button
             data-focusable
-            type="submit"
+            onClick={() => setConfig({ playlistUrl: playlistUrl.trim(), epgUrl: epgUrl.trim() })}
             className="focusable mt-[0.4rem] rounded-[var(--radius)] px-[1.4rem] py-[0.8rem] text-[1.1rem] font-bold text-black"
             style={{ background: "var(--accent-grad)" }}
           >
             Enregistrer
           </button>
-        </form>
+        </div>
 
         {/* Xtream Codes */}
-        <form action={saveSource} className="flex flex-col gap-[0.8rem] rounded-[var(--radius-lg)] bg-[var(--surface-1)] p-[1.2rem]">
-          <input type="hidden" name="mode" value="xtream" />
+        <div className="flex flex-col gap-[0.8rem] rounded-[var(--radius-lg)] bg-[var(--surface-1)] p-[1.2rem]">
           <h2 className="text-[1.3rem] font-bold text-[var(--text-high)]">Xtream Codes</h2>
-          <Field label="Serveur" name="server" placeholder="http://serveur:8080" />
-          <Field label="Identifiant" name="username" placeholder="utilisateur" />
-          <Field label="Mot de passe" name="password" placeholder="••••••••" />
+          <Field label="Serveur" value={server} onChange={setServer} placeholder="http://serveur:8080" />
+          <Field label="Identifiant" value={user} onChange={setUser} placeholder="utilisateur" />
+          <Field label="Mot de passe" value={pass} onChange={setPass} type="password" placeholder="••••••••" />
           <button
             data-focusable
-            type="submit"
+            onClick={() => {
+              if (!server || !user || !pass) return;
+              const urls = xtreamUrls(server.trim(), user.trim(), pass.trim());
+              setPlaylistUrl(urls.playlistUrl);
+              setEpgUrl(urls.epgUrl);
+              setConfig(urls);
+            }}
             className="focusable mt-[0.4rem] rounded-[var(--radius)] px-[1.4rem] py-[0.8rem] text-[1.1rem] font-bold text-black"
             style={{ background: "var(--accent-grad)" }}
           >
             Connecter
           </button>
-        </form>
+        </div>
       </div>
 
       {/* Display */}
       <h2 className="mb-[0.8rem] mt-[2rem] text-[1.3rem] font-bold text-[var(--text-high)]">Affichage</h2>
       <DisplaySettings />
 
-      <form action={resetSource} className="mt-[2rem]">
-        <button
-          data-focusable
-          type="submit"
-          className="focusable rounded-[var(--radius)] bg-[var(--surface-2)] px-[1.3rem] py-[0.7rem] text-[1.05rem] font-semibold text-[var(--text-medium)]"
-        >
-          Réinitialiser la source
-        </button>
-      </form>
+      <button
+        data-focusable
+        onClick={() => {
+          clearConfig();
+          setPlaylistUrl("");
+          setEpgUrl("");
+        }}
+        className="focusable mt-[2rem] rounded-[var(--radius)] bg-[var(--surface-2)] px-[1.3rem] py-[0.7rem] text-[1.05rem] font-semibold text-[var(--text-medium)]"
+      >
+        Réinitialiser la source
+      </button>
     </div>
   );
 }

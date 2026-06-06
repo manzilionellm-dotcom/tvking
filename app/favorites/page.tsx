@@ -1,7 +1,5 @@
 import FavoritesList from "../components/FavoritesList";
 
-export const dynamic = "force-dynamic";
-
 export default function FavoritesPage() {
   return (
     <div className="min-h-screen pl-[6.5rem] pr-[var(--safe-x)] py-[var(--safe-y)]">

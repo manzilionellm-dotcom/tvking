@@ -1,7 +1,5 @@
 import ChannelSearch from "../components/ChannelSearch";
 
-export const dynamic = "force-dynamic";
-
 export default function SearchPage() {
   return (
     <div className="min-h-screen pl-[6.5rem] pr-[var(--safe-x)] py-[var(--safe-y)]">

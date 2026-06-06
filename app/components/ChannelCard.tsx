@@ -33,7 +33,7 @@ export default function ChannelCard({
 
   return (
     <Link
-      href={`/watch/${channel.id}`}
+      href={`/watch?c=${encodeURIComponent(channel.id)}`}
       data-focusable
       onKeyDown={(e) => {
         if (e.key === "f" || e.key === "F") {

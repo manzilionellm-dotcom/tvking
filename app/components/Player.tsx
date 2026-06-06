@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ChannelLogo from "./ChannelLogo";
 import { pushRecent, useFavorites } from "../lib/favorites";
+import { nowNextFor } from "../lib/client-source";
 import type { Channel } from "../lib/iptv-types";
 import type { NowNextLite } from "../lib/view-types";
 
@@ -48,13 +49,18 @@ export default function Player({
 
   const startIndex = Math.max(0, channels.findIndex((c) => c.id === startId));
   const [index, setIndex] = useState(startIndex);
-  const [nn, setNn] = useState<NowNextLite | null>(initialNowNext);
   const [showInfo, setShowInfo] = useState(true);
   const [showList, setShowList] = useState(false);
   const [loading, setLoading] = useState(true);
   const infoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const channel = channels[index];
+
+  // now/next is a pure sync read of the loaded EPG store — derive, don't store.
+  const nn: NowNextLite | null = useMemo(
+    () => (channel ? nowNextFor(channel.id) ?? initialNowNext : null),
+    [channel, initialNowNext]
+  );
 
   const flashInfo = useCallback(() => {
     setShowInfo(true);
@@ -101,24 +107,6 @@ export default function Player({
       video.load();
     };
   }, [channel]);
-
-  // Refresh now/next from the EPG when the channel changes.
-  useEffect(() => {
-    if (!channel) return;
-    let cancelled = false;
-    setNn(channel.id === startId ? initialNowNext : null);
-    fetch(`/api/nownext?channel=${encodeURIComponent(channel.id)}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled) setNn(d.current ?? null);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-    // initialNowNext/startId only matter on first mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channel?.id]);
 
   const zap = useCallback(
     (delta: number) => {
