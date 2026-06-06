@@ -19,7 +19,10 @@
       pour les hostnames IPTV (defense en profondeur).
 =========================================================
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<!-- installLocation=auto : laisse Android installer sur le stockage externe si
+     l'interne est plein (utile sur les box bas de gamme à faible mémoire). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    android:installLocation="auto">
 
     <!-- Permissions reseau (les flux IPTV passent par HTTP). -->
     <uses-permission android:name="android.permission.INTERNET" />

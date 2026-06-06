@@ -37,10 +37,15 @@ android {
         // apps du projet sur le meme appareil. (Le namespace Kotlin reste
         // com.manzilionellm.tvkingtv — interne, sans impact.)
         applicationId = "com.nova.plus"
-        // minSdk 23 = Android 6.0 (Marshmallow, oct 2015) — MSE WebView
-        // disponible, hls.js fonctionne. Fire TV Stick 1st gen (API 22)
-        // EST EXCLU sciemment — son WebView est trop ancien pour MSE.
-        minSdk = 23
+        // minSdk 21 = Android 5.0 (Lollipop, 2014) — c'est le PLANCHER des
+        // AndroidX récents (appcompat/webkit) et ça couvre la quasi-totalité
+        // des box/TV Android en circulation. Abaissé depuis 23 pour corriger
+        // les « Application non installée » sur les box plus anciennes
+        // (l'install échoue quand minSdk > version de la box).
+        // NB : sur ces appareils, hls.js a besoin d'un System WebView à jour
+        // (Chromium, mis à jour via le Play Store) — l'install passe, et la
+        // lecture marche dès que le WebView est récent.
+        minSdk = 21
         targetSdk = 34
         versionCode = 1
         versionName = "1.0.0"
