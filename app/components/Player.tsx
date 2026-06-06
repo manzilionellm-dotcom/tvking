@@ -1,191 +1,340 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MediaItem } from "../lib/data";
+import ChannelLogo from "./ChannelLogo";
+import { pushRecent, useFavorites } from "../lib/favorites";
+import type { Channel } from "../lib/iptv-types";
+import type { NowNextLite } from "../lib/view-types";
 
 /*
- * Mock player. The transport and the "À suivre" (Up Next) panel implement the
- * documented engagement pattern — autoplay of the next item with a visible
- * countdown — but with explicit user control (cancel / play now), per NN/g
- * guidance that video is only useful when the user stays in control, and the
- * critique that a too-short auto-advance is a dark pattern. Auto-advance is
- * disabled when the user prefers reduced motion.
+ * NOVA+ live player — the heart of the TiViMate experience, TV-only.
+ *
+ * Remote (D-pad) behaviour, when no overlay is open:
+ *   Up / Down ............ zap to previous / next channel (instant)
+ *   OK / Enter ........... toggle the now/next info bar
+ *   Left / Right / "L" ... open the channel-list overlay
+ *   "F" .................. toggle favorite for the current channel
+ *   Back / Esc ........... close overlay, else leave the player
+ *
+ * Playback uses hls.js for HLS (Android-TV WebView / Chromium have no native
+ * HLS), native HLS where the browser supports it, and a direct <video src> for
+ * progressive/TS streams.
  */
 
-const DURATION = 40; // seconds (mock)
-const UPNEXT_AT = 30; // show Up Next in the last 10s
+const INFO_TIMEOUT = 5000;
 
-function fmt(s: number) {
-  const m = Math.floor(s / 60);
-  const r = Math.floor(s % 60);
-  return `${m}:${r.toString().padStart(2, "0")}`;
+function progress(nn: NowNextLite | null): number {
+  if (!nn || nn.stop <= nn.start) return 0;
+  return Math.min(1, Math.max(0, (Date.now() - nn.start) / (nn.stop - nn.start)));
+}
+function hhmm(ms: number) {
+  const d = new Date(ms);
+  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
 }
 
-export default function Player({ item, next }: { item: MediaItem; next: MediaItem | null }) {
+export default function Player({
+  channels,
+  startId,
+  initialNowNext,
+}: {
+  channels: Channel[];
+  startId: string;
+  initialNowNext: NowNextLite | null;
+}) {
   const router = useRouter();
-  const [pos, setPos] = useState(item.progress ? Math.floor(item.progress * DURATION) : 0);
-  const [playing, setPlaying] = useState(true);
-  const [autoCancelled, setAutoCancelled] = useState(false);
-  const reduceRef = useRef(false);
-  const navigatedRef = useRef(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const { favoriteSet, toggle } = useFavorites();
 
-  useEffect(() => {
-    reduceRef.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const startIndex = Math.max(0, channels.findIndex((c) => c.id === startId));
+  const [index, setIndex] = useState(startIndex);
+  const [nn, setNn] = useState<NowNextLite | null>(initialNowNext);
+  const [showInfo, setShowInfo] = useState(true);
+  const [showList, setShowList] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const infoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const channel = channels[index];
+
+  const flashInfo = useCallback(() => {
+    setShowInfo(true);
+    if (infoTimer.current) clearTimeout(infoTimer.current);
+    infoTimer.current = setTimeout(() => setShowInfo(false), INFO_TIMEOUT);
   }, []);
 
-  // Advance the mock playhead one tick at a time; stops itself at the end.
+  // Load the stream whenever the channel changes (hls.js with fallbacks).
   useEffect(() => {
-    if (!playing || pos >= DURATION) return;
-    const t = setTimeout(() => setPos((p) => Math.min(p + 1, DURATION)), 1000);
-    return () => clearTimeout(t);
-  }, [playing, pos]);
+    const video = videoRef.current;
+    if (!video || !channel) return;
+    setLoading(true);
+    pushRecent(channel.id);
 
-  // At the end, auto-advance to the next item unless cancelled / reduced-motion.
-  useEffect(() => {
-    if (pos < DURATION || navigatedRef.current) return;
-    if (next && !autoCancelled && !reduceRef.current) {
-      navigatedRef.current = true;
-      router.push(`/watch/${next.id}`);
+    let destroyed = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let hls: any = null;
+    const url = channel.url;
+    const isHls = /\.m3u8(\?|$)/i.test(url);
+    const canNative = video.canPlayType("application/vnd.apple.mpegurl") !== "";
+
+    async function attach(el: HTMLVideoElement) {
+      if (isHls && !canNative) {
+        const mod = await import("hls.js");
+        const Hls = mod.default;
+        if (destroyed) return;
+        if (Hls.isSupported()) {
+          hls = new Hls({ enableWorker: true, lowLatencyMode: true, backBufferLength: 30 });
+          hls.loadSource(url);
+          hls.attachMedia(el);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => el.play().catch(() => {}));
+          return;
+        }
+      }
+      el.src = url;
+      el.play().catch(() => {});
     }
-  }, [pos, next, autoCancelled, router]);
+    attach(video);
 
-  const atEnd = pos >= DURATION;
+    return () => {
+      destroyed = true;
+      if (hls) hls.destroy();
+      video.removeAttribute("src");
+      video.load();
+    };
+  }, [channel]);
 
-  const toggle = useCallback(() => setPlaying((p) => !p), []);
+  // Refresh now/next from the EPG when the channel changes.
+  useEffect(() => {
+    if (!channel) return;
+    let cancelled = false;
+    setNn(channel.id === startId ? initialNowNext : null);
+    fetch(`/api/nownext?channel=${encodeURIComponent(channel.id)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setNn(d.current ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // initialNowNext/startId only matter on first mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channel?.id]);
 
-  // Space / Enter toggles play (k is the YouTube convention).
+  const zap = useCallback(
+    (delta: number) => {
+      setIndex((i) => (i + delta + channels.length) % channels.length);
+      flashInfo();
+    },
+    [channels.length, flashInfo]
+  );
+
+  const goTo = useCallback(
+    (i: number) => {
+      setIndex(i);
+      setShowList(false);
+      flashInfo();
+    },
+    [flashInfo]
+  );
+
+  // Remote key handling (capture phase so we can pre-empt the global SpatialNav
+  // when zapping with no overlay open).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.key === " " || e.key === "k") && document.activeElement === document.body) {
-        e.preventDefault();
-        toggle();
+      const overlayOpen = showList;
+      switch (e.key) {
+        case "ArrowUp":
+          if (!overlayOpen) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            zap(-1);
+          }
+          break;
+        case "ArrowDown":
+          if (!overlayOpen) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            zap(1);
+          }
+          break;
+        case "ArrowRight":
+        case "ArrowLeft":
+        case "l":
+        case "L":
+          if (!overlayOpen) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            setShowList(true);
+          }
+          break;
+        case "Enter":
+        case " ":
+          if (!overlayOpen) {
+            e.preventDefault();
+            setShowInfo((s) => !s);
+            flashInfo();
+          }
+          break;
+        case "f":
+        case "F":
+          if (channel) toggle(channel.id);
+          break;
+        case "Backspace":
+        case "Escape":
+          e.preventDefault();
+          if (showList) setShowList(false);
+          else router.push("/");
+          break;
       }
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [toggle]);
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () => window.removeEventListener("keydown", onKey, { capture: true });
+  }, [showList, zap, flashInfo, toggle, channel, router]);
 
-  const showUpNext = next && pos >= UPNEXT_AT && !autoCancelled;
-  const countdown = Math.max(0, DURATION - pos);
+  // Show the info bar briefly on mount / channel change.
+  useEffect(() => {
+    flashInfo();
+    return () => {
+      if (infoTimer.current) clearTimeout(infoTimer.current);
+    };
+  }, [flashInfo]);
+
+  if (!channel) {
+    return (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black text-[var(--text-medium)]">
+        Chaîne introuvable.
+      </div>
+    );
+  }
+
+  const fav = favoriteSet.has(channel.id);
+  const pct = progress(nn);
 
   return (
     <div className="fixed inset-0 z-[60] overflow-hidden bg-black">
-      {/* "Video" surface */}
-      <div
-        className="absolute inset-0"
-        style={{ background: `linear-gradient(120deg, ${item.art.from}, ${item.art.to})` }}
+      <video
+        ref={videoRef}
+        className="absolute inset-0 h-full w-full bg-black object-contain"
+        autoPlay
+        playsInline
+        onPlaying={() => setLoading(false)}
+        onWaiting={() => setLoading(true)}
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/40" />
 
-      {/* Title (top) */}
-      <div className="absolute left-[var(--safe-x)] top-[var(--safe-y)] right-[var(--safe-x)]">
-        <p className="text-[1.05rem] font-semibold uppercase tracking-[0.2em] text-[var(--gold)]">
-          {item.live === "live" ? "● En direct" : "Lecture"}
-        </p>
-        <h1 className="font-display text-[2.6rem] font-extrabold tracking-tight text-white [text-shadow:0_0.2rem_1rem_rgba(0,0,0,0.6)]">{item.title}</h1>
-      </div>
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="h-[3rem] w-[3rem] animate-spin rounded-full border-[0.3rem] border-white/20 border-t-[var(--accent)]" />
+        </div>
+      )}
 
-      {/* Up Next panel */}
-      {showUpNext && (
-        <div className="absolute bottom-[7rem] right-[var(--safe-x)] w-[24rem] rounded-[var(--radius-lg)] bg-[var(--surface-2)]/95 p-[1.2rem] shadow-2xl backdrop-blur">
-          <p className="mb-[0.6rem] text-[1rem] font-semibold uppercase tracking-wider text-[var(--text-medium)]">
-            À suivre · dans {countdown}s
-          </p>
-          <div className="flex gap-[0.9rem]">
-            <div
-              className="h-[4.5rem] w-[8rem] shrink-0 rounded-[var(--radius)]"
-              style={{ background: `linear-gradient(140deg, ${next!.art.from}, ${next!.art.to})` }}
-            />
-            <div className="min-w-0">
-              <h3 className="truncate text-[1.2rem] font-bold text-[var(--text-high)]">{next!.title}</h3>
-              {next!.league && (
-                <p className="truncate text-[1rem] text-[var(--text-medium)]">{next!.league}</p>
+      {/* now/next info bar */}
+      {showInfo && (
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/55 to-transparent px-[var(--safe-x)] pb-[var(--safe-y)] pt-[6rem]">
+          <div className="flex items-end gap-[1.2rem]">
+            <ChannelLogo src={channel.logo} name={channel.name} size="4.4rem" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-[0.8rem]">
+                <span className="rounded-[0.35rem] bg-[var(--live)] px-[0.5rem] py-[0.1rem] text-[0.85rem] font-bold tracking-wide text-white">
+                  ● DIRECT
+                </span>
+                <span className="text-[1rem] font-bold tabular-nums text-[var(--text-medium)]">
+                  {channel.number}
+                </span>
+                <h1 className="truncate text-[1.7rem] font-extrabold text-white">{channel.name}</h1>
+                {fav && <span className="text-[1.2rem] text-[var(--accent-strong)]">★</span>}
+              </div>
+              {nn ? (
+                <>
+                  <p className="mt-[0.2rem] truncate text-[1.2rem] text-[var(--text-high)]">
+                    {hhmm(nn.start)} · {nn.title}
+                  </p>
+                  <div className="mt-[0.5rem] h-[0.3rem] w-[min(40rem,60%)] overflow-hidden rounded-full bg-white/20">
+                    <div className="h-full" style={{ width: `${pct * 100}%`, background: "var(--accent-grad)" }} />
+                  </div>
+                  {nn.nextTitle && (
+                    <p className="mt-[0.4rem] truncate text-[1rem] text-[var(--text-medium)]">
+                      À suivre · {nn.nextTitle}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="mt-[0.2rem] text-[1.05rem] text-[var(--text-medium)]">{channel.group}</p>
               )}
             </div>
-          </div>
-          {/* Countdown fill — the visible "color wipe". */}
-          <div className="mt-[0.8rem] h-[0.3rem] overflow-hidden rounded-full bg-white/20">
-            <div
-              className="h-full transition-all duration-1000 ease-linear"
-              style={{ width: `${((10 - countdown) / 10) * 100}%`, background: "var(--gold-grad)" }}
-            />
-          </div>
-          <div className="mt-[0.9rem] flex gap-[0.7rem]">
-            <Link
-              href={`/watch/${next!.id}`}
-              data-focusable
-              className="focusable flex-1 rounded-[var(--radius)] px-[1rem] py-[0.6rem] text-center text-[1.1rem] font-bold text-black"
-              style={{ background: "var(--gold-grad)" }}
-            >
-              Lire maintenant
-            </Link>
-            <button
-              data-focusable
-              onClick={() => setAutoCancelled(true)}
-              className="focusable rounded-[var(--radius)] bg-white/15 px-[1rem] py-[0.6rem] text-[1.1rem] font-semibold text-[var(--text-high)]"
-            >
-              Annuler
-            </button>
+            <p className="hidden shrink-0 text-right text-[0.9rem] leading-relaxed text-[var(--text-disabled)] lg:block">
+              ▲▼ Chaîne · ◀▶ Liste<br />
+              OK Infos · F Favori · Retour Quitter
+            </p>
           </div>
         </div>
       )}
 
-      {/* Transport bar */}
-      <div className="absolute inset-x-0 bottom-0 px-[var(--safe-x)] pb-[var(--safe-y)] pt-[3rem]">
-        <div className="mb-[0.8rem] flex items-center gap-[1rem]">
-          <span className="text-[1rem] tabular-nums text-[var(--text-medium)]">{fmt(pos)}</span>
-          <div className="h-[0.4rem] flex-1 overflow-hidden rounded-full bg-white/20">
-            <div className="h-full" style={{ width: `${(pos / DURATION) * 100}%`, background: "var(--gold-grad)" }} />
-          </div>
-          <span className="text-[1rem] tabular-nums text-[var(--text-medium)]">
-            {item.live === "live" ? "DIRECT" : fmt(DURATION)}
-          </span>
-        </div>
+      {/* Channel list overlay */}
+      {showList && (
+        <ChannelListOverlay
+          channels={channels}
+          currentIndex={index}
+          favoriteSet={favoriteSet}
+          onPick={goTo}
+          onClose={() => setShowList(false)}
+        />
+      )}
+    </div>
+  );
+}
 
-        <div className="flex items-center gap-[1rem]">
+function ChannelListOverlay({
+  channels,
+  currentIndex,
+  favoriteSet,
+  onPick,
+  onClose,
+}: {
+  channels: Channel[];
+  currentIndex: number;
+  favoriteSet: Set<string>;
+  onPick: (i: number) => void;
+  onClose: () => void;
+}) {
+  // Focus the current channel when the overlay opens.
+  useEffect(() => {
+    const el = document.getElementById(`ov-${currentIndex}`);
+    el?.focus();
+  }, [currentIndex]);
+
+  return (
+    <div className="absolute inset-y-0 left-0 z-10 flex w-[30rem] max-w-[80vw] flex-col bg-[var(--bg)]/96 py-[var(--safe-y)] pl-[var(--safe-x)] pr-[1rem] backdrop-blur">
+      <div className="mb-[0.8rem] flex items-center justify-between pr-[0.4rem]">
+        <h2 className="text-[1.2rem] font-bold text-[var(--text-high)]">Chaînes</h2>
+        <span className="text-[0.9rem] text-[var(--text-disabled)]">{channels.length}</span>
+      </div>
+      <div className="no-scrollbar flex flex-1 flex-col gap-[0.25rem] overflow-y-auto pr-[0.4rem]">
+        {channels.map((c, i) => (
           <button
+            key={c.id}
+            id={`ov-${i}`}
             data-focusable
-            onClick={() => setPos((p) => Math.max(0, p - 10))}
-            className="focusable rounded-full bg-white/12 px-[1rem] py-[0.6rem] text-[1.1rem] font-semibold text-white"
-            aria-label="Reculer de 10 secondes"
+            onClick={() => onPick(i)}
+            onKeyDown={(e) => {
+              if (e.key === "Backspace" || e.key === "Escape") {
+                e.preventDefault();
+                onClose();
+              }
+            }}
+            className={`focusable flex items-center gap-[0.7rem] rounded-[var(--radius)] px-[0.7rem] py-[0.55rem] text-left ${
+              i === currentIndex ? "bg-[rgba(61,169,252,0.14)]" : ""
+            }`}
           >
-            ⟲ 10s
+            <span className="w-[2rem] shrink-0 text-right text-[0.9rem] font-bold tabular-nums text-[var(--text-disabled)]">
+              {c.number}
+            </span>
+            <ChannelLogo src={c.logo} name={c.name} size="2.4rem" />
+            <span className="min-w-0 flex-1 truncate text-[1.05rem] font-semibold text-[var(--text-high)]">
+              {c.name}
+            </span>
+            {favoriteSet.has(c.id) && <span className="text-[0.95rem] text-[var(--accent-strong)]">★</span>}
           </button>
-          <button
-            data-focusable
-            onClick={toggle}
-            className="focusable flex h-[3.4rem] w-[3.4rem] items-center justify-center rounded-full text-black"
-            style={{ background: "var(--gold-grad)" }}
-            aria-label={playing && !atEnd ? "Pause" : "Lecture"}
-          >
-            {playing && !atEnd ? (
-              <svg className="h-[1.5rem] w-[1.5rem]" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
-              </svg>
-            ) : (
-              <svg className="h-[1.5rem] w-[1.5rem]" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            )}
-          </button>
-          <button
-            data-focusable
-            onClick={() => setPos((p) => Math.min(DURATION, p + 10))}
-            className="focusable rounded-full bg-white/12 px-[1rem] py-[0.6rem] text-[1.1rem] font-semibold text-white"
-            aria-label="Avancer de 10 secondes"
-          >
-            10s ⟳
-          </button>
-          <Link
-            href={`/title/${item.id}`}
-            data-focusable
-            className="focusable ml-auto rounded-[var(--radius)] bg-white/12 px-[1.3rem] py-[0.7rem] text-[1.1rem] font-semibold text-white"
-          >
-            ✕ Quitter
-          </Link>
-        </div>
+        ))}
       </div>
     </div>
   );

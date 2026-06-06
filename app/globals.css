@@ -1,59 +1,57 @@
 @import "tailwindcss";
 
 /*
-  TV King — Design system for the 10-foot UI.
-  Values are grounded in docs/RESEARCH-TV-UX.md (sourced research).
+  NOVA+ — Design system for the 10-foot IPTV UI (TV only).
+  Grounded in docs/RESEARCH-IPTV-NOVA.md + docs/RESEARCH-TV-UX.md.
   - Canvas: 1920x1080, 16:9. The whole app scales with viewport width so it
-    adapts to any TV (720p / 1080p / 4K) without "zoom" artefacts: every size is
-    in rem, and the root font-size is a function of 100vw (1920 / 16 = 120).
-  - Colors: base #121212 (never pure black), text via opacity (87/60/38 %),
-    desaturated accents (Material dark-theme guidance).
+    adapts to any TV (720p / 1080p / 4K) without "zoom": every size is in rem and
+    the root font-size is a function of 100vw (1920 / 16 = 120).
+  - Colors: restful for the eyes — base #101418 (never pure black, slight blue
+    tint), text via opacity (never pure #fff), desaturated cool accent. Vivid
+    red is reserved for the small LIVE badge only.
   - Safe area: ~5% per edge (Android TV 48dp/27dp, tvOS 90pt/60pt).
 */
 
 :root {
-  /* ---- Surfaces (Material dark theme; #121212 base, lighter = more elevated) ---- */
-  --bg: #121212;
-  --surface-1: #1a1a1c;
-  --surface-2: #222226;
-  --surface-3: #2c2c31;
-  --surface-4: #36363c;
-  --scrim: rgba(0, 0, 0, 0.65);
+  /* ---- Surfaces (dark, slightly blue-tinted; lighter = more elevated) ---- */
+  --bg: #101418;
+  --surface-1: #171c22;
+  --surface-2: #1e242b;
+  --surface-3: #28303a;
+  --surface-4: #323c47;
+  --scrim: rgba(0, 0, 0, 0.66);
 
-  /* ---- Text (white at Material emphasis opacities; never pure #fff) ---- */
-  --text-high: rgba(255, 255, 255, 0.92);
-  --text-medium: rgba(255, 255, 255, 0.62);
-  --text-disabled: rgba(255, 255, 255, 0.38);
+  /* ---- Text (off-white at Material emphasis opacities; never pure #fff) ---- */
+  --text-high: rgba(232, 234, 237, 0.94);
+  --text-medium: rgba(232, 234, 237, 0.62);
+  --text-disabled: rgba(232, 234, 237, 0.38);
 
-  /* ---- Accents: a "royal" gold-led palette — rich but not fatiguing ---- */
-  --gold: #e3b96b;        /* primary brand (TV King) — soft gold, used sparingly */
-  --gold-strong: #f4d58d; /* highlight gold */
-  --gold-deep: #c9962f;   /* darker gold for gradient depth */
-  --gold-grad: linear-gradient(135deg, #f7e0a3 0%, #e3b96b 42%, #c9962f 100%);
-  --gold-sheen: linear-gradient(135deg, rgba(247, 224, 163, 0.9), rgba(201, 150, 47, 0.9));
-  --royal: #5b4bd6;       /* deep royal violet (ambient only) */
-  --teal: #5fb7c9;        /* calm secondary */
-  --focus: #f4d58d;       /* focus ring — warm gold, high visibility */
-  --live: #e5565b;        /* live badge — desaturated red (not #e50914) */
-  --sport: #58c9a3;       /* sport accent — calm teal-green */
-  --learn: #b3a4ff;       /* formation accent — soft periwinkle */
-  --hairline: rgba(227, 185, 107, 0.18); /* subtle gold hairline */
+  /* ---- Accents: desaturated, cool — vivid colors only as small focal hits --- */
+  --accent: #3da9fc;        /* primary brand — soft sky blue */
+  --accent-strong: #6fc2ff; /* highlight */
+  --accent-deep: #2b7fd0;   /* gradient depth */
+  --accent-grad: linear-gradient(135deg, #6fc2ff 0%, #3da9fc 48%, #2b7fd0 100%);
+  --accent-2: #7c5cfc;      /* secondary — soft violet (chips, categories) */
+  --ok: #3ddc97;            /* success / progress / "recorded" */
+  --focus: #6fc2ff;         /* focus ring — bright, high visibility */
+  --live: #ff4d4f;          /* LIVE badge ONLY (vivid red, small + focal) */
+  --hairline: rgba(232, 234, 237, 0.12); /* subtle dividers/outlines */
 
   /* ---- User-tunable adaptation (Réglages): UI scale + overscan margin ---- */
   --ui-scale: 1;     /* text size multiplier */
   --safe-scale: 1;   /* overscan-compensation multiplier */
 
   /* ---- 10-foot safe area: ~5% per edge, floored to platform minima ---- */
-  --safe-x: calc(max(48px, 5vw) * var(--safe-scale));   /* ~96px @1920 (Android 48dp / tvOS 90pt) */
+  --safe-x: calc(max(48px, 5vw) * var(--safe-scale));   /* ~96px @1920 */
   --safe-y: calc(max(27px, 5vh) * var(--safe-scale));   /* ~54px @1920 */
 
   /* ---- Fluid spacing / radii (rem so they scale with the canvas) ---- */
   --gap: 1.5rem;
-  --radius: 0.75rem;
-  --radius-lg: 1.25rem;
+  --radius: 0.7rem;
+  --radius-lg: 1.2rem;
 
   /* ---- Focus motion ---- */
-  --focus-scale: 1.08;
+  --focus-scale: 1.07;
 }
 
 @theme inline {
@@ -61,22 +59,22 @@
   --color-surface-1: var(--surface-1);
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
+  --color-surface-4: var(--surface-4);
   --color-text-high: var(--text-high);
   --color-text-medium: var(--text-medium);
-  --color-gold: var(--gold);
-  --color-gold-strong: var(--gold-strong);
-  --color-teal: var(--teal);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-2: var(--accent-2);
+  --color-ok: var(--ok);
   --color-live: var(--live);
-  --color-sport: var(--sport);
-  --color-learn: var(--learn);
   --font-sans: var(--font-geist-sans);
   --font-display: var(--font-display);
 }
 
 /*
-  Root scaling: 1rem == 16px on a 1920px-wide canvas, and scales with the
-  viewport so the layout keeps its 16:9 proportions on any TV. Clamped so it
-  stays sane in small dev windows and doesn't over-scale on ultra-wide.
+  Root scaling: 1rem == 16px on a 1920px-wide canvas, scaling with the viewport
+  so the layout keeps its 16:9 proportions on any TV. Clamped so it stays sane
+  in small dev windows and doesn't over-scale on ultra-wide.
 */
 html {
   font-size: calc(clamp(11px, 100vw / 120, 22px) * var(--ui-scale));
@@ -85,12 +83,10 @@ html {
 }
 
 body {
-  /* Deep "throne-room" ambience: a warm gold glow top-right and a cool royal
-     violet glow bottom-left, both very low luminance over the #121212 base so
-     it stays rich without straining the eyes. */
+  /* A calm, very low-luminance accent glow over the base — depth without strain. */
   background:
-    radial-gradient(125% 85% at 100% -10%, rgba(227, 185, 107, 0.1), transparent 55%),
-    radial-gradient(110% 75% at -10% 110%, rgba(91, 75, 214, 0.12), transparent 55%),
+    radial-gradient(120% 80% at 100% -10%, rgba(61, 169, 252, 0.08), transparent 55%),
+    radial-gradient(110% 75% at -10% 110%, rgba(124, 92, 252, 0.08), transparent 55%),
     var(--bg);
   background-attachment: fixed;
   color: var(--text-high);
@@ -98,39 +94,23 @@ body {
   /* Text floor for 10-foot legibility is ~24px → 1.5rem on the 1920 canvas. */
   font-size: 1.5rem;
   line-height: 1.4;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.005em;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
 
-/* Soft cinematic vignette to frame the screen. */
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1;
-  background: radial-gradient(130% 120% at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.45));
-}
-
-/* Royal display voice — elegant serif for large titles only. */
+/* Elegant display voice for large titles only. */
 .font-display {
   font-family: var(--font-display), Georgia, serif;
   letter-spacing: 0.005em;
 }
 
-/* Metallic gold text (titles, brand). */
-.text-gold-grad {
-  background: var(--gold-grad);
+/* Accent gradient text (brand, key titles). */
+.text-accent-grad {
+  background: var(--accent-grad);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-}
-
-/* Thin gold rule used to flank section labels. */
-.gold-rule {
-  height: 2px;
-  background: linear-gradient(90deg, var(--gold), transparent);
 }
 
 /* Hide scrollbars (TV apps are not mouse-scrolled) but keep scrollability. */
@@ -144,8 +124,8 @@ body::after {
 
 /*
   Focus is the primary navigation affordance on a D-pad. Every focusable element
-  gets a clear, distance-legible state: a light ring + scale-up + lift.
-  We use :focus-visible so pointer clicks don't trigger the big TV treatment.
+  gets a clear, distance-legible state: a bright ring + scale-up + lift.
+  :focus-visible so pointer clicks don't trigger the big TV treatment.
 */
 [data-focusable]:focus-visible,
 a:focus-visible,
@@ -155,8 +135,8 @@ button:focus-visible {
 
 .focusable {
   border-radius: var(--radius);
-  transition: transform 160ms cubic-bezier(0.2, 0.7, 0.2, 1),
-    box-shadow 160ms ease, background-color 160ms ease;
+  transition: transform 150ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    box-shadow 150ms ease, background-color 150ms ease;
   outline: none;
 }
 
@@ -164,14 +144,13 @@ button:focus-visible {
   transform: scale(var(--focus-scale));
   box-shadow:
     0 0 0 0.18rem var(--bg),
-    0 0 0 0.4rem var(--focus),
-    0 1.4rem 2.8rem rgba(0, 0, 0, 0.6),
-    0 0 2.6rem rgba(227, 185, 107, 0.4); /* warm gold glow */
+    0 0 0 0.38rem var(--focus),
+    0 1.2rem 2.6rem rgba(0, 0, 0, 0.6),
+    0 0 2.2rem rgba(61, 169, 252, 0.35);
   z-index: 5;
 }
 
-/* Cards scale from their edge nearest the screen centre feels better, but a
-   uniform scale is predictable for D-pad users. Keep label visible on focus. */
+/* Reveal a card's metadata on focus. */
 .card:focus-visible .card-meta {
   opacity: 1;
 }

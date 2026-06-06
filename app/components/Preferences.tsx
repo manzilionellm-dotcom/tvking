@@ -1,23 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
+import { applyPrefs } from "../lib/prefs";
 
-/** Keys + appliance for user display preferences (persisted across sessions). */
-export const PREFS = {
-  uiScale: "tvking:uiScale",
-  safeScale: "tvking:safeScale",
-} as const;
+export { PREF_KEYS as PREFS } from "../lib/prefs";
 
-export function applyPrefs() {
-  if (typeof window === "undefined") return;
-  const root = document.documentElement;
-  const ui = window.localStorage.getItem(PREFS.uiScale);
-  const safe = window.localStorage.getItem(PREFS.safeScale);
-  if (ui) root.style.setProperty("--ui-scale", ui);
-  if (safe) root.style.setProperty("--safe-scale", safe);
-}
-
-/** Mounted once in the layout so saved preferences apply on every page. */
+/** Mounted once in the layout so saved display preferences apply on every page. */
 export default function Preferences() {
   useEffect(() => {
     applyPrefs();

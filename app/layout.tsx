@@ -10,8 +10,8 @@ const geistSans = Geist({
   subsets: ["latin"],
 });
 
-// Elegant high-contrast serif for display titles — the "royal" voice. Used only
-// at large sizes (legible at TV distance); body stays in the sans for clarity.
+// Elegant high-contrast serif for display titles. Used only at large sizes
+// (legible at TV distance); body stays in the sans for clarity.
 const playfair = Playfair_Display({
   variable: "--font-display",
   subsets: ["latin"],
@@ -19,9 +19,9 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: "TV King — Sport & Formation",
+  title: "NOVA+ — Live TV",
   description:
-    "Application de streaming pensée pour la télévision : sport en direct et formation, en grand écran.",
+    "NOVA+ : la télévision en direct pensée pour le grand écran — chaînes, guide TV et favoris, en un coup de télécommande.",
 };
 
 // Lock the layout to the device width (1:1 device pixels) so our viewport-based
@@ -31,7 +31,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#121212",
+  themeColor: "#101418",
 };
 
 export default function RootLayout({
@@ -45,8 +45,8 @@ export default function RootLayout({
         <Preferences />
         <Sidebar />
         <SpatialNav />
-        {/* Content is inset past the collapsed nav rail. */}
-        <main className="min-h-screen pl-[5.5rem]">{children}</main>
+        {/* Content is inset past the collapsed nav rail (player pages opt out). */}
+        <main className="min-h-screen">{children}</main>
       </body>
     </html>
   );
