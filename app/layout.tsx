@@ -4,6 +4,7 @@ import "./globals.css";
 import Sidebar from "./components/Sidebar";
 import SpatialNav from "./components/SpatialNav";
 import Preferences from "./components/Preferences";
+import ActivationGate from "./components/ActivationGate";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -43,10 +44,15 @@ export default function RootLayout({
     <html lang="fr" className={`${geistSans.variable} ${playfair.variable} h-full antialiased`}>
       <body className="min-h-full bg-[var(--bg)]">
         <Preferences />
-        <Sidebar />
+        {/* SpatialNav stays outside the gate so the D-pad also drives the
+            activation/lock screen. The gate blocks the app (sidebar + content)
+            until this device is activated. */}
         <SpatialNav />
-        {/* Content is inset past the collapsed nav rail (player pages opt out). */}
-        <main className="min-h-screen">{children}</main>
+        <ActivationGate>
+          <Sidebar />
+          {/* Content is inset past the collapsed nav rail (player pages opt out). */}
+          <main className="min-h-screen">{children}</main>
+        </ActivationGate>
       </body>
     </html>
   );

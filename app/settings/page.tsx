@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import DisplaySettings from "../components/DisplaySettings";
+import DeviceCard from "../components/DeviceCard";
 import {
   useSource,
   getConfig,
@@ -147,6 +148,9 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+
+      {/* Activation à distance — code de l'appareil + état */}
+      <DeviceCard />
 
       {/* Display */}
       <h2 className="mb-[0.8rem] mt-[2rem] text-[1.3rem] font-bold text-[var(--text-high)]">Affichage</h2>
