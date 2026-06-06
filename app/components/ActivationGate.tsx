@@ -9,6 +9,7 @@
 
 import { useEffect, useRef } from "react";
 import { useActivation, refreshActivation, type ActivationState } from "../lib/activation";
+import QrCode from "./QrCode";
 
 const LOCK_COPY: Partial<Record<ActivationState, { title: string; body: string }>> = {
   expired: {
@@ -72,14 +73,16 @@ function LockScreen({
         <p className="text-[1.2rem] leading-relaxed text-[var(--text-medium)]">{copy.body}</p>
       </div>
 
-      {/* Code d'activation de cet appareil — grand et lisible à 3 mètres. */}
-      <div className="rounded-[var(--radius-lg)] border border-[var(--hairline)] bg-[var(--surface-1)] px-[2rem] py-[1.3rem]">
-        <p className="mb-[0.5rem] text-[0.95rem] font-semibold uppercase tracking-[0.18em] text-[var(--text-disabled)]">
-          Code d’activation de cet appareil
-        </p>
-        <p className="font-mono text-[2.4rem] font-bold tracking-[0.15em] text-accent-grad">
-          {mac || "—"}
-        </p>
+      {/* Code d'activation de cet appareil — grand et lisible à 3 mètres,
+          + QR pour le scanner au téléphone. */}
+      <div className="flex flex-wrap items-center justify-center gap-[1.4rem]">
+        <div className="rounded-[var(--radius-lg)] border border-[var(--hairline)] bg-[var(--surface-1)] px-[2rem] py-[1.3rem]">
+          <p className="mb-[0.5rem] text-[0.95rem] font-semibold uppercase tracking-[0.18em] text-[var(--text-disabled)]">
+            Code d’activation de cet appareil
+          </p>
+          <p className="font-mono text-[2.4rem] font-bold tracking-[0.15em] text-accent-grad">{mac || "—"}</p>
+        </div>
+        {mac && <QrCode text={mac} size="11rem" />}
       </div>
 
       <button

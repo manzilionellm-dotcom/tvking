@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Miroir minimal des tokens 7 MOTION (palette Maison Noir).
+     Utilise uniquement pour la transition au boot ; le reste vient
+     de la WebView. -->
+<resources>
+    <color name="black_void">#0A0A0C</color>
+</resources>

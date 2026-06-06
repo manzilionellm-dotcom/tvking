@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { useActivation, refreshActivation, activationEnabled, type ActivationState } from "../lib/activation";
 import { getDeviceMac, regenerateDeviceMac } from "../lib/device";
+import QrCode from "./QrCode";
 
 const STATE_LABEL: Record<ActivationState, string> = {
   active: "Activé",
@@ -50,11 +51,14 @@ export default function DeviceCard() {
         Communiquez ce code à votre support pour activer NOVA+ à distance.
       </p>
 
-      <div className="flex flex-col gap-[0.3rem]">
-        <span className="text-[0.9rem] font-semibold uppercase tracking-[0.16em] text-[var(--text-disabled)]">
-          Code d’activation
-        </span>
-        <span className="font-mono text-[1.7rem] font-bold tracking-[0.12em] text-accent-grad">{mac || "—"}</span>
+      <div className="flex flex-wrap items-center gap-[1.2rem]">
+        <div className="flex flex-col gap-[0.3rem]">
+          <span className="text-[0.9rem] font-semibold uppercase tracking-[0.16em] text-[var(--text-disabled)]">
+            Code d’activation
+          </span>
+          <span className="font-mono text-[1.7rem] font-bold tracking-[0.12em] text-accent-grad">{mac || "—"}</span>
+        </div>
+        {mac && <QrCode text={mac} size="7.5rem" />}
       </div>
 
       <div className="mt-[0.9rem] flex items-center gap-[0.7rem]">

@@ -72,3 +72,42 @@ npm run dev      # http://localhost:3000
 npm run build    # build de production
 npm run lint
 ```
+
+## Activation à distance
+
+Chaque appareil génère au 1er lancement un **MAC virtuel** stable
+(`MK:XX:XX:XX:XX:XX`, persisté localement) — le vrai MAC matériel étant
+illisible sur Android 6+ et inaccessible depuis une WebView. L'app le signale
+au **Worker Cloudflare** existant (`POST /api/heartbeat` puis `GET /api/status/:mac`),
+ouvre un **essai gratuit** (durée fixée côté serveur), puis **bloque l'écran**
+tant que l'appareil n'est pas activé à distance depuis le panel admin.
+
+- Le client voit son code (écran de blocage **ou** Réglages → **Mon appareil**),
+  affiché en grand **+ QR** à scanner, et le communique au support.
+- L'admin active ce `MK:…` dans le panel → l'écran se déverrouille en ~30 s.
+- Hors-ligne : on retombe sur le dernier état connu (jamais de blocage sur une
+  simple coupure réseau).
+
+Format `MK:` conservé pour rester **compatible avec le Worker déployé** (aucune
+modif serveur). Réglages :
+
+```bash
+NEXT_PUBLIC_NOVA_LICENSE_API=https://99999.7themotion.com  # défaut
+NEXT_PUBLIC_NOVA_ACTIVATION=off                            # désactive la porte
+```
+
+## Résilience réseau du lecteur
+
+Le lecteur (hls.js) est réglé pour **prendre du retard plutôt que casser** sur
+les connexions lentes/instables : pas de basse latence, buffer généreux (~60 s),
+tolérance de retard sur le direct jusqu'à ~60 s, réessais réseau agressifs et
+récupération automatique sur erreur (réseau → `startLoad`, média →
+`recoverMediaError`). L'image gèle un instant puis repart.
+
+## Build de l'APK Android TV / Fire TV
+
+Le workflow `.github/workflows/build-nova-tv.yml` exporte l'app en statique,
+l'empaquette dans `nova-tv-wrapper/` (WebView, `applicationId com.nova.plus`) et
+publie l'APK sur la release **`nova-latest`** (servie par
+`https://99999.7themotion.com/nova` dans Downloader). Déclenché à chaque push de
+cette branche, ou manuellement (`workflow_dispatch`).
