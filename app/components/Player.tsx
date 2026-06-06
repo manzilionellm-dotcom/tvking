@@ -69,6 +69,13 @@ export default function Player({
   }, []);
 
   // Load the stream whenever the channel changes (hls.js with fallbacks).
+  //
+  // Réseaux difficiles (ex. connexions lentes ou instables) : on PRÉFÈRE le
+  // RETARD à la COUPURE. On bufferise généreusement pour se constituer de
+  // l'avance, on autorise le direct à prendre du retard (jusqu'à ~60 s) au lieu
+  // de coller au bord et de caler, et on réessaie / restaure automatiquement
+  // sur erreur réseau ou média. Résultat : l'image gèle un instant puis repart,
+  // au lieu de "casser" — utilisable même là où la connexion est mauvaise.
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !channel) return;
@@ -78,6 +85,9 @@ export default function Player({
     let destroyed = false;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let hls: any = null;
+    let recover = 0; // récupérations "dernier recours" en cours (borné)
+    let srcTries = 0; // rechargements de la source en lecture native (borné)
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const url = channel.url;
     const isHls = /\.m3u8(\?|$)/i.test(url);
     const canNative = video.canPlayType("application/vnd.apple.mpegurl") !== "";
@@ -88,21 +98,86 @@ export default function Player({
         const Hls = mod.default;
         if (destroyed) return;
         if (Hls.isSupported()) {
-          hls = new Hls({ enableWorker: true, lowLatencyMode: true, backBufferLength: 30 });
+          hls = new Hls({
+            enableWorker: true,
+            // On NE colle PAS au direct : la basse latence cale dès que ça faiblit.
+            lowLatencyMode: false,
+            // --- Buffer généreux : de l'avance pour absorber les coupures ---
+            maxBufferLength: 60, // vise ~60 s d'avance quand le débit le permet
+            maxMaxBufferLength: 120, // plafond dur
+            backBufferLength: 30,
+            // --- Direct : tolère de prendre du retard plutôt que de caler ---
+            liveSyncDuration: 10, // démarre ~10 s derrière le bord du direct
+            liveMaxLatencyDuration: 60, // tolère jusqu'à ~60 s de retard
+            liveDurationInfinity: true,
+            // --- Réessais réseau agressifs (fragments + playlists) ---
+            fragLoadingMaxRetry: 8,
+            fragLoadingRetryDelay: 1000,
+            fragLoadingMaxRetryTimeout: 64000,
+            manifestLoadingMaxRetry: 6,
+            manifestLoadingRetryDelay: 1000,
+            levelLoadingMaxRetry: 6,
+            levelLoadingRetryDelay: 1000,
+          });
           hls.loadSource(url);
           hls.attachMedia(el);
           hls.on(Hls.Events.MANIFEST_PARSED, () => el.play().catch(() => {}));
+          // Un fragment vient d'être mis en buffer → on est reparti : on remet
+          // le compteur de récupération à zéro.
+          hls.on(Hls.Events.FRAG_BUFFERED, () => {
+            recover = 0;
+          });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          hls.on(Hls.Events.ERROR, (_evt: unknown, data: any) => {
+            if (destroyed || !data?.fatal) return; // non-fatal : hls gère seul
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+              // Playlist/segment injoignable : on relance le chargement (petit
+              // délai) au lieu d'abandonner.
+              if (retryTimer) clearTimeout(retryTimer);
+              retryTimer = setTimeout(() => {
+                if (!destroyed && hls) hls.startLoad();
+              }, 1500);
+            } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+              hls.recoverMediaError();
+            } else if (recover++ < 4) {
+              // Dernier recours, borné + back-off : on recrée depuis la source.
+              if (retryTimer) clearTimeout(retryTimer);
+              retryTimer = setTimeout(() => {
+                if (destroyed) return;
+                try {
+                  hls.destroy();
+                } catch {
+                  /* déjà détruit */
+                }
+                hls = null;
+                void attach(el);
+              }, 2000 * recover);
+            }
+          });
           return;
         }
       }
+      // Lecture native (HLS Safari/iOS) ou flux progressif : on recharge la
+      // source sur erreur transitoire, avec un nombre d'essais borné + back-off.
       el.src = url;
       el.play().catch(() => {});
+      el.onerror = () => {
+        if (destroyed || srcTries++ >= 4) return;
+        if (retryTimer) clearTimeout(retryTimer);
+        retryTimer = setTimeout(() => {
+          if (destroyed) return;
+          el.src = url;
+          el.play().catch(() => {});
+        }, 1500 * srcTries);
+      };
     }
     attach(video);
 
     return () => {
       destroyed = true;
+      if (retryTimer) clearTimeout(retryTimer);
       if (hls) hls.destroy();
+      video.onerror = null;
       video.removeAttribute("src");
       video.load();
     };
