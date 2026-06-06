@@ -50,19 +50,32 @@ android {
         // packer (juste du Kotlin + WebView).
     }
 
+    // Clé de signature STABLE (committée) pour le sideload via Downloader.
+    // Sans clé fixe, chaque build CI utilise un debug.keystore régénéré -> la
+    // signature change à chaque build -> Android refuse la MISE À JOUR par-dessus
+    // ("Application non installée"). Avec cette clé constante, toutes les
+    // versions s'installent les unes par-dessus les autres sans désinstaller.
+    // (Clé debug-grade : OK pour un sideload ; un vrai keystore secret serait
+    // requis pour une publication Play Store.)
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("../nova-release.keystore")
+            storePassword = "novapass"
+            keyAlias = "nova"
+            keyPassword = "novapass"
+        }
+    }
+
     buildTypes {
         getByName("debug") {
-            // Signature debug auto par Gradle.
+            // Signée avec la clé stable ci-dessus (signingConfigs.debug).
             isMinifyEnabled = false
             isDebuggable = true
         }
         getByName("release") {
             isMinifyEnabled = false
             isShrinkResources = false
-            // On signe en debug.keystore aussi pour la release dans cette
-            // premiere version — pas de Play Store immediatement, c'est
-            // un sideload via Downloader. Si on publie un jour au store
-            // il faudra un vrai keystore.
+            // Même clé stable que debug — sideload Downloader, pas de Play Store.
             signingConfig = signingConfigs.getByName("debug")
         }
     }
