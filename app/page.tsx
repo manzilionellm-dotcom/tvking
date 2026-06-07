@@ -1,20 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import ChannelBrowser from "./components/ChannelBrowser";
+import HomeRails from "./components/HomeRails";
 import ResumeOnLaunch from "./components/ResumeOnLaunch";
-import { useSource, nowNextMap } from "./lib/client-source";
+import { useSource } from "./lib/client-source";
 import { useT } from "./lib/i18n";
 
 export default function Home() {
   const { status, playlist, error } = useSource();
   const t = useT();
-  // now/next pour toute la grille : recalculé seulement quand la source change.
-  const nowNext = useMemo(() => {
-    void playlist; // recompute quand la playlist/EPG change (lecture via le store)
-    return nowNextMap();
-  }, [playlist]);
 
   let content: React.ReactNode;
   if (status === "loading" || status === "idle") {
@@ -43,7 +37,7 @@ export default function Home() {
       </Center>
     );
   } else {
-    content = <ChannelBrowser groups={playlist.groups} nowNext={nowNext} />;
+    content = <HomeRails />;
   }
 
   return (
