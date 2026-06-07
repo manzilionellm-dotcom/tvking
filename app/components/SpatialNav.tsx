@@ -24,8 +24,14 @@ const KEY_TO_DIR: Record<string, Dir> = {
 };
 
 function focusables(): HTMLElement[] {
+  // Si une fenêtre modale est ouverte (clavier à l'écran, dialogue…), on PIÈGE
+  // la navigation à l'intérieur : on ne propose que ses éléments focalisables,
+  // pour ne pas « passer derrière » sur la page sous-jacente. On prend le
+  // dernier piège (le plus au-dessus) s'il y en a plusieurs.
+  const traps = document.querySelectorAll<HTMLElement>("[data-focus-trap]");
+  const root: ParentNode = traps.length ? traps[traps.length - 1] : document;
   return Array.from(
-    document.querySelectorAll<HTMLElement>("[data-focusable]")
+    root.querySelectorAll<HTMLElement>("[data-focusable]")
   ).filter((el) => el.offsetParent !== null && !el.hasAttribute("disabled"));
 }
 

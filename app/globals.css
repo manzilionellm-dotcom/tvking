@@ -140,6 +140,13 @@ button:focus-visible {
   outline: none;
 }
 
+/*
+  On déclenche aussi sur :focus (pas seulement :focus-visible). Sur une TV pilotée
+  à la télécommande, le focus est posé PROGRAMMATIQUEMENT (SpatialNav.focus()) et
+  :focus-visible n'est pas garanti selon la WebView — l'anneau DOIT toujours se
+  voir, sinon on « perd » le curseur à l'écran.
+*/
+.focusable:focus,
 .focusable:focus-visible {
   transform: scale(var(--focus-scale));
   box-shadow:

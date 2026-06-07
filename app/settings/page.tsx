@@ -3,6 +3,7 @@
 import { useState } from "react";
 import DisplaySettings from "../components/DisplaySettings";
 import DeviceCard from "../components/DeviceCard";
+import { useKeyboard } from "../components/Keyboard";
 import { useSource, setConfig, clearConfig } from "../lib/client-source";
 import { useT } from "../lib/i18n";
 
@@ -35,19 +36,24 @@ function Field({
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
-  type?: string;
+  type?: "text" | "password";
 }) {
+  const kb = useKeyboard();
+  // Champ en LECTURE SEULE : le clavier système d'Android TV ne s'ouvre donc
+  // jamais. Sélectionner le champ (OK télécommande = clic) ouvre notre clavier
+  // à l'écran, piloté à la télécommande.
+  const display = type === "password" ? "•".repeat(value.length) : value;
   return (
     <label className="flex flex-col gap-[0.3rem]">
       <span className="text-[0.95rem] font-semibold text-[var(--text-medium)]">{label}</span>
-      <input
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
+      <button
+        type="button"
         data-focusable
-        className="focusable rounded-[var(--radius)] bg-[var(--surface-2)] px-[1rem] py-[0.7rem] text-[1.1rem] text-[var(--text-high)] placeholder:text-[var(--text-disabled)]"
-      />
+        onClick={() => kb.open({ title: label, value, type, onCommit: onChange })}
+        className="focusable rounded-[var(--radius)] bg-[var(--surface-2)] px-[1rem] py-[0.7rem] text-left text-[1.1rem] text-[var(--text-high)]"
+      >
+        {display || <span className="text-[var(--text-disabled)]">{placeholder}</span>}
+      </button>
     </label>
   );
 }

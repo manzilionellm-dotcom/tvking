@@ -307,14 +307,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Telecommande Android TV : on intercepte BACK pour permettre
-     * une navigation interne React. Si la WebView n'a pas
-     * d'historique, on laisse le BACK quitter l'Activity (comportement
-     * standard attendu par l'utilisateur).
+     * Telecommande Android TV : la touche BACK est d'abord proposee a l'app web
+     * (window.__novaBack) qui peut la consommer — fermer le clavier a l'ecran,
+     * fermer une fenetre, ou revenir a l'accueil. C'est ce qui evite de
+     * "sortir de l'app" par surprise. Si le web NE gere PAS (resultat != true),
+     * on recule dans l'historique WebView, et a defaut on quitte l'Activity.
+     *
+     * evaluateJavascript est asynchrone : on consomme TOUJOURS l'appui ici
+     * (return true) et on applique le repli dans le callback.
      */
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK && webView.canGoBack()) {
-            webView.goBack()
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            webView.evaluateJavascript(
+                "(window.__novaBack && window.__novaBack()) === true",
+            ) { handled ->
+                if (handled != "true") {
+                    runOnUiThread {
+                        if (webView.canGoBack()) webView.goBack() else finish()
+                    }
+                }
+            }
             return true
         }
         return super.onKeyDown(keyCode, event)

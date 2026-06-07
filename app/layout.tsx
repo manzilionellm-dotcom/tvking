@@ -8,6 +8,8 @@ import ActivationGate from "./components/ActivationGate";
 import TrialBanner from "./components/TrialBanner";
 import LiveAlerts from "./components/LiveAlerts";
 import LocaleSetup from "./components/LocaleSetup";
+import { KeyboardProvider } from "./components/Keyboard";
+import BackController from "./components/BackController";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -52,13 +54,20 @@ export default function RootLayout({
             activation/lock screen. The gate blocks the app (sidebar + content)
             until this device is activated. */}
         <SpatialNav />
-        <ActivationGate>
-          <TrialBanner />
-          <LiveAlerts />
-          <Sidebar />
-          {/* Content is inset past the collapsed nav rail (player pages opt out). */}
-          <main className="min-h-screen">{children}</main>
-        </ActivationGate>
+        {/* BackController : la touche BACK ferme d'abord clavier/fenêtres, puis
+            revient à l'accueil, et ne quitte l'app que depuis l'accueil. */}
+        <BackController />
+        {/* KeyboardProvider englobe l'app : tout champ texte ouvre le clavier
+            à l'écran intégré (plus de clavier système « mobile device »). */}
+        <KeyboardProvider>
+          <ActivationGate>
+            <TrialBanner />
+            <LiveAlerts />
+            <Sidebar />
+            {/* Content is inset past the collapsed nav rail (player pages opt out). */}
+            <main className="min-h-screen">{children}</main>
+          </ActivationGate>
+        </KeyboardProvider>
       </body>
     </html>
   );
