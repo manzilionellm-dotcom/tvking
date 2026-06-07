@@ -1548,6 +1548,16 @@
   "@themeChooseSub": {
     "description": "Sous-titre du sélecteur de thème"
   },
+  "forceUpdateTitle": "Nouvelle version disponible",
+  "@forceUpdateTitle": { "description": "Titre ecran mise a jour forcee" },
+  "forceUpdateBody": "Cette version n'est plus à jour. Télécharge la dernière version pour continuer à utiliser l'application.",
+  "@forceUpdateBody": { "description": "Corps ecran mise a jour forcee" },
+  "forceUpdateDownloaderHint": "SUR TV / BOX : OUVRE DOWNLOADER ET TAPE CE CODE",
+  "@forceUpdateDownloaderHint": { "description": "Aide code Downloader" },
+  "forceUpdateDownloadBtn": "Télécharger maintenant",
+  "@forceUpdateDownloadBtn": { "description": "Bouton telecharger" },
+  "forceUpdateRetry": "J'ai mis à jour — Réessayer",
+  "@forceUpdateRetry": { "description": "Bouton reessayer apres MAJ" },
   "profileAbout": "À propos",
   "@profileAbout": {
     "description": "Texte UI : profileAbout"

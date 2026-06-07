@@ -25,6 +25,9 @@ import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/accent_controller.dart';
 import 'core/theme/theme_mode_repository.dart';
+import 'core/app/build_info.dart';
+import 'features/about/data/update_checker.dart';
+import 'features/about/presentation/forced_update_screen.dart';
 import 'l10n/generated/app_localizations.dart';
 import 'features/about/data/update_checker.dart';
 import 'features/cast/data/cast_manager.dart';
@@ -337,10 +340,33 @@ class _AppEntryState extends State<_AppEntry> {
   // boot. Si le flavor n'exige pas le gate, on saute en posant `true`
   // directement dans initState.
   bool? _ageGateConfirmed;
+  // Mise à jour FORCÉE : passe à true si la version installée est jugée
+  // obsolète (cf. _checkForcedUpdate). Tant que false, l'app fonctionne
+  // normalement (fail-open : si la vérif réseau échoue, on ne bloque pas).
+  bool _forceUpdate = false;
+
+  /// Vérifie si une version nettement plus récente est publiée. Si oui,
+  /// on bloque l'app sur l'écran de mise à jour. Silencieux/non bloquant
+  /// en cas d'erreur réseau ou de build local (kBuildTs == 0).
+  Future<void> _checkForcedUpdate() async {
+    if (kBuildTs <= 0) return; // build local → jamais de blocage
+    try {
+      final UpdateInfo? info = await UpdateChecker.instance.check();
+      if (info == null || info.latestTs <= 0) return;
+      final bool obsolete =
+          info.latestTs - kBuildTs > kForceUpdateGraceSeconds;
+      if (obsolete && mounted) {
+        setState(() => _forceUpdate = true);
+      }
+    } catch (_) {
+      // fail-open : on ne bloque jamais sur une erreur de vérification.
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    _checkForcedUpdate();
     OnboardingState.instance.hasCompleted().then((bool done) {
       if (mounted) {
         setState(() {
@@ -379,6 +405,18 @@ class _AppEntryState extends State<_AppEntry> {
         _lockEnabled == null ||
         _ageGateConfirmed == null) {
       return const _Splash();
+    }
+
+    // 0) MISE À JOUR FORCÉE — prioritaire sur tout le reste. Si la version
+    //    installée est obsolète, on ne laisse RIEN d'autre s'afficher.
+    //    "Réessayer" relance la vérif (utile après réinstallation).
+    if (_forceUpdate) {
+      return ForcedUpdateScreen(
+        onRetry: () {
+          setState(() => _forceUpdate = false);
+          _checkForcedUpdate();
+        },
+      );
     }
 
     // 0a) Gate "j'ai 18 ans" — Red Room uniquement. Le flavor sevenMotion
