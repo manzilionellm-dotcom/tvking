@@ -190,6 +190,10 @@ function normalize(mac: string, d: WorkerStatus, offline: boolean): Activation {
  * ------------------------------------------------------------------ */
 let lastDiagKeys: string[] = [];
 let lastAppliedSource = "";
+// Empreinte de la dernière source POUSSÉE par le serveur. Persistée pour ne
+// réappliquer la source que lorsque le PANEL en change — et ainsi ne jamais
+// écraser, à chaque poll, une source que l'utilisateur aurait saisie à la main.
+const K_SERVER_SOURCE = "nova:serverSource";
 
 /** Diagnostic : clés renvoyées par le serveur + source effectivement appliquée. */
 export function getSourceDiag(): { keys: string[]; applied: string } {
@@ -248,12 +252,38 @@ function applyServerSource(d: WorkerStatus, act: Activation): void {
 
   const src = extractSource(d);
   if (!src || !/^https?:\/\//i.test(src.playlistUrl)) {
+    // « Aucune » source poussée : on n'efface rien — la saisie manuelle reste le
+    // secours. On oublie juste l'empreinte serveur pour qu'une source repoussée
+    // plus tard (même identique) soit bien (ré)appliquée.
     lastAppliedSource = "";
+    try {
+      window.localStorage.removeItem(K_SERVER_SOURCE);
+    } catch {
+      /* sans gravité */
+    }
     return;
   }
   lastAppliedSource = src.playlistUrl;
 
-  // Déjà en place → ne pas recharger (évite toute boucle de rechargement).
+  // On n'agit que si le SERVEUR a changé de source depuis la dernière fois
+  // (empreinte persistée) : anti-boucle ET respect d'un choix manuel ultérieur.
+  // Tant que le panel pousse la même source, on laisse l'utilisateur libre de la
+  // remplacer dans Réglages ; seul un CHANGEMENT côté panel reprend la main.
+  const key = `${src.playlistUrl}\n${src.epgUrl || ""}`;
+  let prev = "";
+  try {
+    prev = window.localStorage.getItem(K_SERVER_SOURCE) || "";
+  } catch {
+    /* mode privé — on retombe sur la comparaison de config ci-dessous */
+  }
+  if (key === prev) return;
+  try {
+    window.localStorage.setItem(K_SERVER_SOURCE, key);
+  } catch {
+    /* sans gravité */
+  }
+
+  // Déjà exactement en place → inutile de relancer un chargement.
   const cur = getConfig();
   if (cur.playlistUrl === src.playlistUrl && cur.epgUrl === (src.epgUrl || "")) return;
 
