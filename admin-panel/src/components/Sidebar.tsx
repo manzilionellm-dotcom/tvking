@@ -19,6 +19,7 @@ const OWNER_NAV: NavItem[] = [
   { key: 'nav.activate',    to: '/activate' },
   { key: 'nav.pushSource',  to: '/playlists' },
   { key: 'nav.notifications', to: '/notifications' },
+  { key: 'nav.forceUpdate', to: '/force-update' },
   { key: 'nav.resellers',   to: '/resellers' },
   { key: 'nav.customers',   to: '/customers' },
   { key: 'nav.devices',     to: '/devices' },

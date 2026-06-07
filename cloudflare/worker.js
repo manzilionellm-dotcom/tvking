@@ -1173,6 +1173,53 @@ async function handleGetHomeLayout(env) {
   }
 }
 
+// Table clé/valeur générique (mise à jour forcée, etc.). Idempotente.
+async function ensureAppConfigTable(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT)'
+  ).run();
+}
+
+// GET /api/app-version (public) — mise à jour forcée pilotée par le panel.
+// Renvoie {minBuildTs, latestBuildTs} (secondes epoch). Si `?build=<sec>`
+// est fourni et plus récent que le dernier connu, on le mémorise → le
+// bouton « Forcer » du panel sait quel build exiger.
+async function handleGetAppVersion(request, env) {
+  if (!env.DB) return json({ minBuildTs: 0, latestBuildTs: 0 });
+  try {
+    await ensureAppConfigTable(env);
+    const url = new URL(request.url);
+    const build = parseInt(url.searchParams.get('build') || '0', 10);
+    if (Number.isFinite(build) && build > 0) {
+      const row = await env.DB
+        .prepare("SELECT value FROM app_config WHERE key = 'latest_build_ts'")
+        .first();
+      const cur = row ? parseInt(row.value, 10) || 0 : 0;
+      if (build > cur) {
+        await env.DB
+          .prepare(
+            "INSERT INTO app_config (key, value) VALUES ('latest_build_ts', ?) " +
+              'ON CONFLICT(key) DO UPDATE SET value = excluded.value'
+          )
+          .bind(String(build))
+          .run();
+      }
+    }
+    const minRow = await env.DB
+      .prepare("SELECT value FROM app_config WHERE key = 'min_build_ts'")
+      .first();
+    const latRow = await env.DB
+      .prepare("SELECT value FROM app_config WHERE key = 'latest_build_ts'")
+      .first();
+    return json({
+      minBuildTs: minRow ? parseInt(minRow.value, 10) || 0 : 0,
+      latestBuildTs: latRow ? parseInt(latRow.value, 10) || 0 : 0,
+    });
+  } catch (_) {
+    return json({ minBuildTs: 0, latestBuildTs: 0 });
+  }
+}
+
 // POST /api/announcement (admin) — crée une annonce. Body {title, body, url?}.
 async function handlePostAnnouncement(request, env) {
   if (!env.DB) return json({ error: 'db_unbound' }, 500);
@@ -2143,6 +2190,17 @@ export default {
         return await handleGetHomeLayout(env);
       }
       return badRequest('only GET supported on /api/home-layout');
+    }
+
+    // /api/app-version — mise a jour forcee (pilotee depuis le panel).
+    //   GET public ?build=<sec> : l'app lit minBuildTs et signale son
+    //   propre build (pour memoriser le dernier build en circulation).
+    //   L'admin pose le seuil via /api/v1/force-update (api_v1.js).
+    if (segments[0] === 'api' && segments[1] === 'app-version' && segments.length === 2) {
+      if (request.method === 'GET') {
+        return await handleGetAppVersion(request, env);
+      }
+      return badRequest('only GET supported on /api/app-version');
     }
 
     // /admin/panel — page HTML du panel admin (auth via input dans la page)

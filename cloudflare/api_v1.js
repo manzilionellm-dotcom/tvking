@@ -458,6 +458,17 @@ export async function apiV1(request, env) {
     }
   }
 
+  // /force-update — mise à jour forcée (bouton du panel). Owner uniquement.
+  if (parts[0] === 'force-update') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (parts.length === 1) {
+      if (request.method === 'GET') return handleForceUpdateGet(env);
+      if (request.method === 'POST') return handleForceUpdatePost(request, env, actor);
+    }
+  }
+
   // /sources/:mac — source IPTV (Xtream/M3U) assignée à un appareil
   // par sa MAC, poussée à l'app. Admin ET revendeurs (chacun provisionne
   // ses clients). GET pour relire, PUT pour (ré)assigner, DELETE pour
@@ -1027,6 +1038,72 @@ async function handleHomeLayoutRestore(request, env, actor) {
     body: JSON.stringify({ items, label: 'Restauration #' + snapId }),
   });
   return handleHomeLayoutSave(fakeReq, env, actor);
+}
+
+// =========================================================
+//  MISE À JOUR FORCÉE — pilotée par le bouton du panel
+// =========================================================
+//  Stocke `min_build_ts` (seconds) dans app_config. L'app bloque si son
+//  kBuildTs < min_build_ts. « Forcer » pose min = dernier build connu
+//  (latest_build_ts, alimenté par les apps via GET /api/app-version),
+//  donc les versions ANTÉRIEURES sont bloquées mais PAS la dernière.
+async function ensureAppConfigTable(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT)'
+  ).run();
+}
+
+async function _cfgGet(env, key) {
+  const row = await env.DB
+    .prepare('SELECT value FROM app_config WHERE key = ?')
+    .bind(key).first();
+  return row ? parseInt(row.value, 10) || 0 : 0;
+}
+
+async function _cfgSet(env, key, value) {
+  await env.DB
+    .prepare(
+      'INSERT INTO app_config (key, value) VALUES (?, ?) ' +
+        'ON CONFLICT(key) DO UPDATE SET value = excluded.value'
+    )
+    .bind(key, String(value))
+    .run();
+}
+
+async function handleForceUpdateGet(env) {
+  await ensureAppConfigTable(env);
+  return jsonResp({
+    minBuildTs: await _cfgGet(env, 'min_build_ts'),
+    latestBuildTs: await _cfgGet(env, 'latest_build_ts'),
+  });
+}
+
+async function handleForceUpdatePost(request, env, actor) {
+  await ensureAppConfigTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const action = (body.action || '').toString();
+  if (action === 'force') {
+    const latest = await _cfgGet(env, 'latest_build_ts');
+    if (!latest) {
+      return errResp('no_build',
+        'Aucun build récent détecté. Ouvre la dernière app une fois '
+        + 'pour qu\'elle se signale, puis réessaie.', 400);
+    }
+    await _cfgSet(env, 'min_build_ts', latest);
+    await logAudit(env, request, actor, 'force_update.on',
+      { type: 'app_config', id: null }, null, { min_build_ts: latest });
+    return jsonResp({ ok: true, minBuildTs: latest });
+  }
+  if (action === 'disable') {
+    await _cfgSet(env, 'min_build_ts', 0);
+    await logAudit(env, request, actor, 'force_update.off',
+      { type: 'app_config', id: null }, null, null);
+    return jsonResp({ ok: true, minBuildTs: 0 });
+  }
+  return errResp('bad_action', "action doit être 'force' ou 'disable'", 400);
 }
 
 async function handleServersList(env) {

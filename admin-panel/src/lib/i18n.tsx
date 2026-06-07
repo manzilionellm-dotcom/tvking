@@ -34,6 +34,7 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.activate': { fr: 'Activer un appareil', en: 'Activate a device', ar: 'تفعيل جهاز' },
   'nav.pushSource': { fr: 'Pousser une playlist', en: 'Push a playlist', ar: 'إرسال قائمة تشغيل' },
   'nav.controlCenter': { fr: 'Centre de contrôle', en: 'Control center', ar: 'مركز التحكم' },
+  'nav.forceUpdate': { fr: 'Mise à jour forcée', en: 'Force update', ar: 'تحديث إجباري' },
   'nav.homeManager': { fr: 'Accueil', en: 'Home', ar: 'الرئيسية' },
   'nav.notifications': { fr: 'Annonces', en: 'Announcements', ar: 'الإعلانات' },
   'nav.resellers': { fr: 'Revendeurs', en: 'Resellers', ar: 'الموزّعون' },

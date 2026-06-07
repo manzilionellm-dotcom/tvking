@@ -513,6 +513,27 @@ export const homeLayoutApi = {
     }),
 };
 
+// =========================================================
+//  MISE À JOUR FORCÉE (bouton du panel)
+// =========================================================
+//  « Forcer » bloque toutes les apps PLUS ANCIENNES que le dernier
+//  build connu, jusqu'à ce qu'elles se mettent à jour. minBuildTs en
+//  secondes ; 0 = désactivé.
+export const forceUpdateApi = {
+  get: () =>
+    request<{ minBuildTs: number; latestBuildTs: number }>('/api/v1/force-update'),
+  force: () =>
+    request<{ ok: boolean; minBuildTs: number }>('/api/v1/force-update', {
+      method: 'POST',
+      body: { action: 'force' },
+    }),
+  disable: () =>
+    request<{ ok: boolean; minBuildTs: number }>('/api/v1/force-update', {
+      method: 'POST',
+      body: { action: 'disable' },
+    }),
+};
+
 export interface PlanCost { plan: string; credits: number; }
 export const planCostsApi = {
   list: () => request<{ items: PlanCost[] }>('/api/v1/plan-costs'),
