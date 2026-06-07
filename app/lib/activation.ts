@@ -25,6 +25,7 @@
 
 import { useSyncExternalStore } from "react";
 import { getDeviceMac } from "./device";
+import { getConfig, setConfig, type SourceConfig } from "./client-source";
 
 // Domaine du Worker (surchargeable au build via NEXT_PUBLIC_NOVA_LICENSE_API).
 const API_BASE = (process.env.NEXT_PUBLIC_NOVA_LICENSE_API ?? "https://99999.7themotion.com").replace(
@@ -177,6 +178,88 @@ function normalize(mac: string, d: WorkerStatus, offline: boolean): Activation {
   };
 }
 
+/* ------------------------------------------------------------------ *
+ * Source POUSSÉE par le panel (« source du client, chargée automatiquement »).
+ *
+ * En activant un appareil, l'admin lui assigne une source (M3U ou Xtream) :
+ * l'app doit la CHARGER toute seule — le client ne tape rien sur sa TV. La
+ * réponse de l'API de licence porte donc (selon le backend) des champs de
+ * source dont les NOMS exacts varient. On les lit de façon défensive (objet
+ * `source` OU champs à plat ; type m3u/xtream) et on mémorise les clés reçues
+ * pour diagnostic (DeviceCard) afin de confirmer le format réel.
+ * ------------------------------------------------------------------ */
+let lastDiagKeys: string[] = [];
+let lastAppliedSource = "";
+
+/** Diagnostic : clés renvoyées par le serveur + source effectivement appliquée. */
+export function getSourceDiag(): { keys: string[]; applied: string } {
+  return { keys: lastDiagKeys, applied: lastAppliedSource };
+}
+
+/** Xtream (serveur + identifiants) → URLs get.php (HLS) + xmltv.php. */
+function xtreamToUrls(server: string, user: string, pass: string): SourceConfig {
+  const base = server.replace(/\/+$/, "");
+  const u = encodeURIComponent(user);
+  const p = encodeURIComponent(pass);
+  return {
+    playlistUrl: `${base}/get.php?username=${u}&password=${p}&type=m3u_plus&output=m3u8`,
+    epgUrl: `${base}/xmltv.php?username=${u}&password=${p}`,
+  };
+}
+
+/** Extrait une source chargeable de la réponse serveur, sinon null. */
+function extractSource(d: WorkerStatus): SourceConfig | null {
+  const root = d as unknown as Record<string, unknown>;
+  const srcObj =
+    root.source && typeof root.source === "object" ? (root.source as Record<string, unknown>) : root;
+  const get = (...keys: string[]): string => {
+    for (const k of keys) {
+      const v = srcObj[k] ?? root[k];
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+    return "";
+  };
+
+  const type = get("type", "source_type").toLowerCase();
+  const server = get("server", "host", "xtream_server", "dns");
+  const user = get("username", "user", "xtream_username", "login");
+  const pass = get("password", "pass", "xtream_password");
+  if ((type === "xtream" || (server && user && pass)) && server && user && pass) {
+    return xtreamToUrls(server, user, pass);
+  }
+
+  const m3u = get(
+    "url", "m3u_url", "m3u", "playlist_url", "playlistUrl", "source_url", "playlist",
+  );
+  const epg = get("epg_url", "epgUrl", "xmltv_url", "xmltv", "epg");
+  if (/^https?:\/\//i.test(m3u)) return { playlistUrl: m3u, epgUrl: epg };
+
+  return null;
+}
+
+/** Applique la source poussée par le serveur (si présente) — charge la playlist. */
+function applyServerSource(d: WorkerStatus, act: Activation): void {
+  try {
+    lastDiagKeys = Object.keys((d as unknown as Record<string, unknown>) ?? {});
+  } catch {
+    lastDiagKeys = [];
+  }
+  if (act.state === "banned") return; // appareil bloqué : on ne charge rien
+
+  const src = extractSource(d);
+  if (!src || !/^https?:\/\//i.test(src.playlistUrl)) {
+    lastAppliedSource = "";
+    return;
+  }
+  lastAppliedSource = src.playlistUrl;
+
+  // Déjà en place → ne pas recharger (évite toute boucle de rechargement).
+  const cur = getConfig();
+  if (cur.playlistUrl === src.playlistUrl && cur.epgUrl === (src.epgUrl || "")) return;
+
+  setConfig({ playlistUrl: src.playlistUrl, epgUrl: src.epgUrl || "" });
+}
+
 async function fetchJson(url: string, init?: RequestInit, timeoutMs = 12_000): Promise<WorkerStatus | null> {
   // Android TV : pont natif (corps POST préservé). Sinon (dev) : window.fetch.
   if (getNativeApiFetch()) {
@@ -224,6 +307,8 @@ export async function refreshActivation(): Promise<void> {
     if (data) {
       current = normalize(mac, data, false);
       writeCache(current);
+      // Source poussée par le panel → chargement automatique (zéro saisie).
+      applyServerSource(data, current);
     } else {
       // Hors-ligne : on garde le dernier état connu ; sinon on laisse passer.
       const cached = readCache();

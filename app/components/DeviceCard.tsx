@@ -6,7 +6,13 @@
  */
 
 import { useState } from "react";
-import { useActivation, refreshActivation, activationEnabled, type ActivationState } from "../lib/activation";
+import {
+  useActivation,
+  refreshActivation,
+  activationEnabled,
+  getSourceDiag,
+  type ActivationState,
+} from "../lib/activation";
 import { getDeviceMac, regenerateDeviceMac, hasNativeDeviceId } from "../lib/device";
 import { useT } from "../lib/i18n";
 import QrCode from "./QrCode";
@@ -25,6 +31,8 @@ export default function DeviceCard() {
 
   const state = activation?.state ?? "unknown";
   const enabled = activationEnabled();
+  // Diagnostic source : recalculé à chaque réponse serveur (via useActivation).
+  const diag = getSourceDiag();
   // Identité ancrée au matériel : le code ne change jamais (même après réinstall).
   const hardwareBound = typeof window !== "undefined" && hasNativeDeviceId();
 
@@ -63,6 +71,17 @@ export default function DeviceCard() {
 
       {!enabled && (
         <p className="mt-[0.6rem] text-[0.9rem] text-[var(--text-disabled)]">{t("activation_disabled")}</p>
+      )}
+
+      {/* Diagnostic « source poussée par le panel » : la source détectée +, à
+          défaut, les clés brutes renvoyées par le serveur (pour confirmer le
+          format réel de la source assignée à cet appareil). */}
+      {diag.keys.length > 0 && (
+        <p className="mt-[0.7rem] break-all text-[0.8rem] text-[var(--text-disabled)]">
+          📡 {diag.applied ? diag.applied.replace(/(password=)[^&]*/i, "$1•••") : "—"}
+          {"  ·  "}
+          {diag.keys.join(", ")}
+        </p>
       )}
 
       <div className="mt-[1.1rem] flex flex-wrap gap-[0.8rem]">
