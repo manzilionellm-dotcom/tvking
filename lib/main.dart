@@ -25,8 +25,6 @@ import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/accent_controller.dart';
 import 'core/theme/theme_mode_repository.dart';
-import 'core/app/build_info.dart';
-import 'features/about/data/update_checker.dart';
 import 'features/about/presentation/forced_update_screen.dart';
 import 'l10n/generated/app_localizations.dart';
 import 'features/about/data/update_checker.dart';
@@ -345,22 +343,18 @@ class _AppEntryState extends State<_AppEntry> {
   // normalement (fail-open : si la vérif réseau échoue, on ne bloque pas).
   bool _forceUpdate = false;
 
-  /// Vérifie si une version nettement plus récente est publiée. Si oui,
-  /// on bloque l'app sur l'écran de mise à jour. Silencieux/non bloquant
-  /// en cas d'erreur réseau ou de build local (kBuildTs == 0).
+  /// MISE À JOUR FORCÉE — DÉSACTIVÉE.
+  ///
+  /// Cette vérification est volontairement neutralisée : elle restait
+  /// affichée en permanence à cause d'un bug d'unités (kBuildTs est en
+  /// SECONDES via `date +%s`, alors que `info.latestTs` est en
+  /// MILLISECONDES → la différence dépassait toujours la marge, donc
+  /// l'écran « Nouvelle version disponible » bloquait l'app à chaque
+  /// lancement). On laisse le code de l'écran (ForcedUpdateScreen) en
+  /// place mais on ne déclenche plus jamais le blocage. À ré-activer
+  /// plus tard avec une comparaison correcte + un interrupteur distant.
   Future<void> _checkForcedUpdate() async {
-    if (kBuildTs <= 0) return; // build local → jamais de blocage
-    try {
-      final UpdateInfo? info = await UpdateChecker.instance.check();
-      if (info == null || info.latestTs <= 0) return;
-      final bool obsolete =
-          info.latestTs - kBuildTs > kForceUpdateGraceSeconds;
-      if (obsolete && mounted) {
-        setState(() => _forceUpdate = true);
-      }
-    } catch (_) {
-      // fail-open : on ne bloque jamais sur une erreur de vérification.
-    }
+    return; // désactivé
   }
 
   @override
