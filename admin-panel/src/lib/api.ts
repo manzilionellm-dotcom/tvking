@@ -462,6 +462,57 @@ export const announcementsApi = {
     }),
 };
 
+// =========================================================
+//  ACCUEIL DYNAMIQUE (Centre de contrôle, Module 1/8)
+// =========================================================
+//  Pilote l'ordre / visibilité / ruban / vedette des sections de
+//  l'accueil de l'app, en temps réel et sans mise à jour de store.
+export interface HomeSection {
+  key: string;
+  position: number;
+  enabled: number;
+  ribbon: string;
+  featured: number;
+  updated_at?: number;
+}
+export interface HomeLayoutSnapshot {
+  id: number;
+  label: string;
+  created_at: number;
+}
+/** Rubans disponibles ('' = aucun). Aligné avec HOME_RIBBONS (worker). */
+export const HOME_RIBBONS: string[] = [
+  '', 'NOUVEAU', 'POPULAIRE', 'EXCLUSIF', 'EN DIRECT', 'VIP',
+  'COUPE DU MONDE', 'EURO 2028', 'UFC', 'CHAMPIONS LEAGUE',
+];
+/** Libellés lisibles des sections connues (clé → nom affiché). */
+export const HOME_SECTION_LABELS: Record<string, string> = {
+  recent: 'Récemment regardé',
+  favorites: 'Favoris',
+  sport: 'Sport',
+  entertainment: 'Divertissement',
+  info: 'Info',
+  kids: 'Enfants',
+  general: 'Général',
+  cinema: 'Cinéma & Séries (verrouillé)',
+};
+export const homeLayoutApi = {
+  get: () =>
+    request<{ items: HomeSection[]; version: number }>('/api/v1/home-layout'),
+  save: (items: HomeSection[], label?: string) =>
+    request<{ ok: boolean; items: HomeSection[]; version: number }>(
+      '/api/v1/home-layout',
+      { method: 'PUT', body: { items, label } },
+    ),
+  history: () =>
+    request<{ items: HomeLayoutSnapshot[] }>('/api/v1/home-layout/history'),
+  restore: (id: number) =>
+    request<{ ok: boolean }>('/api/v1/home-layout/restore', {
+      method: 'POST',
+      body: { id },
+    }),
+};
+
 export interface PlanCost { plan: string; credits: number; }
 export const planCostsApi = {
   list: () => request<{ items: PlanCost[] }>('/api/v1/plan-costs'),

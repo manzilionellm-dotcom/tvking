@@ -1145,6 +1145,34 @@ async function handleGetAnnouncement(env) {
   }
 }
 
+// GET /api/home-layout (public) — disposition de l'accueil pilotée par
+// l'admin (Module 1/8). Renvoie {items, version}. Items vide → l'app
+// garde son ordre par défaut (dégradation gracieuse).
+async function handleGetHomeLayout(env) {
+  if (!env.DB) return json({ items: [], version: 0 });
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS home_layout (' +
+        'key TEXT PRIMARY KEY, position INTEGER, enabled INTEGER DEFAULT 1, ' +
+        "ribbon TEXT DEFAULT '', featured INTEGER DEFAULT 0, updated_at INTEGER)"
+    ).run();
+    const rs = await env.DB
+      .prepare(
+        'SELECT key, position, enabled, ribbon, featured, updated_at ' +
+          'FROM home_layout ORDER BY position ASC, key ASC'
+      )
+      .all();
+    const items = rs.results || [];
+    let version = 0;
+    for (const it of items) {
+      if ((it.updated_at || 0) > version) version = it.updated_at;
+    }
+    return json({ items, version });
+  } catch (_) {
+    return json({ items: [], version: 0 });
+  }
+}
+
 // POST /api/announcement (admin) — crée une annonce. Body {title, body, url?}.
 async function handlePostAnnouncement(request, env) {
   if (!env.DB) return json({ error: 'db_unbound' }, 500);
@@ -2105,6 +2133,16 @@ export default {
         return await handleClearAnnouncements(env);
       }
       return badRequest('only GET/POST/DELETE supported on /api/announcement');
+    }
+
+    // /api/home-layout — accueil dynamique (Centre de controle, Module 1/8).
+    //   GET public : l'app lit l'ordre / visibilite / rubans des sections.
+    //   L'ecriture se fait cote panel via /api/v1/home-layout (api_v1.js).
+    if (segments[0] === 'api' && segments[1] === 'home-layout' && segments.length === 2) {
+      if (request.method === 'GET') {
+        return await handleGetHomeLayout(env);
+      }
+      return badRequest('only GET supported on /api/home-layout');
     }
 
     // /admin/panel — page HTML du panel admin (auth via input dans la page)

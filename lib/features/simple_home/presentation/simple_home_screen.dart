@@ -32,6 +32,7 @@ import '../../player/presentation/play_channel.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../../security/data/biometric_auth.dart';
 import '../data/cinema_lock.dart';
+import '../data/home_layout_repository.dart';
 import 'widgets/announcement_banner.dart';
 
 class SimpleHomeScreen extends StatefulWidget {
@@ -52,6 +53,9 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     super.initState();
     FavoritesRepository.instance.initialize();
     RecentlyWatchedRepository.instance.initialize();
+    // Accueil dynamique (Centre de contrôle) : charge la disposition
+    // pilotée à distance (cache immédiat puis rafraîchissement réseau).
+    HomeLayoutRepository.instance.initialize();
   }
 
   @override
@@ -81,7 +85,11 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                         )
                       : (_countryCode == null
                           ? _buildCountryGrid(channels)
-                          : _buildCountryDetail(channels)),
+                          : ListenableBuilder(
+                              listenable: HomeLayoutRepository.instance,
+                              builder: (BuildContext context, _) =>
+                                  _buildCountryDetail(channels),
+                            )),
                 ),
                 _buildBottomBar(),
               ],
@@ -231,42 +239,66 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                 if (favs.contains(c.id)) c,
             ];
 
+            // Centre de contrôle : on construit chaque section par CLÉ,
+            // puis on les affiche dans l'ORDRE piloté à distance (ordre
+            // par défaut si rien n'est configuré). Ruban + vedette sont
+            // appliqués par section selon la config.
+            final HomeLayoutRepository layout =
+                HomeLayoutRepository.instance;
+            String rib(String k) => layout.config(k)?.ribbon ?? '';
+            bool feat(String k) => layout.config(k)?.featured ?? false;
+
+            final Map<String, Widget> sections = <String, Widget>{
+              HomeSectionKey.recent: _section(
+                  '🕐', context.l10n.simpleRecentlyWatched, AppColors.info,
+                  recent, favs,
+                  ribbon: rib('recent'), featured: feat('recent')),
+              HomeSectionKey.favorites: _section(
+                  '⭐', context.l10n.simpleMyFavorites, AppColors.warning,
+                  favList, favs,
+                  ribbon: rib('favorites'), featured: feat('favorites')),
+              HomeSectionKey.sport: _section(
+                  '⚽', context.l10n.simpleSport, AppColors.success,
+                  byGenre(<ChannelGenre>{ChannelGenre.sports}), favs,
+                  ribbon: rib('sport'), featured: feat('sport')),
+              HomeSectionKey.entertainment: _section(
+                  '🎬', context.l10n.simpleEntertainment, AppColors.warning,
+                  byGenre(<ChannelGenre>{
+                    ChannelGenre.entertainment,
+                    ChannelGenre.music,
+                    ChannelGenre.documentary,
+                  }),
+                  favs,
+                  ribbon: rib('entertainment'),
+                  featured: feat('entertainment')),
+              HomeSectionKey.info: _section(
+                  '📰', context.l10n.simpleInfo, AppColors.info,
+                  byGenre(<ChannelGenre>{ChannelGenre.news}), favs,
+                  ribbon: rib('info'), featured: feat('info')),
+              HomeSectionKey.kids: _section(
+                  '🧸', context.l10n.simpleKids, AppColors.accent,
+                  byGenre(<ChannelGenre>{ChannelGenre.kids}), favs,
+                  ribbon: rib('kids'), featured: feat('kids')),
+              HomeSectionKey.general: _section(
+                  '📡', context.l10n.simpleGeneral, AppColors.textSecondary,
+                  byGenre(<ChannelGenre>{
+                    ChannelGenre.other,
+                    ChannelGenre.international,
+                  }),
+                  favs,
+                  ribbon: rib('general'), featured: feat('general')),
+              // Zone verrouillée : Cinéma & Séries (+ Adulte).
+              HomeSectionKey.cinema: _buildLockedZone(channels, favs),
+            };
+
+            final List<String> order =
+                layout.orderedVisibleKeys(kDefaultHomeOrder);
             return ListView(
               padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
               physics: const BouncingScrollPhysics(),
               children: <Widget>[
-                _section('🕐', context.l10n.simpleRecentlyWatched,
-                    AppColors.info, recent, favs),
-                _section('⭐', context.l10n.simpleMyFavorites,
-                    AppColors.warning, favList, favs),
-                _section('⚽', context.l10n.simpleSport, AppColors.success,
-                    byGenre(<ChannelGenre>{ChannelGenre.sports}), favs),
-                _section(
-                    '🎬',
-                    context.l10n.simpleEntertainment,
-                    AppColors.warning,
-                    byGenre(<ChannelGenre>{
-                      ChannelGenre.entertainment,
-                      ChannelGenre.music,
-                      ChannelGenre.documentary,
-                    }),
-                    favs),
-                _section('📰', context.l10n.simpleInfo, AppColors.info,
-                    byGenre(<ChannelGenre>{ChannelGenre.news}), favs),
-                _section('🧸', context.l10n.simpleKids, AppColors.accent,
-                    byGenre(<ChannelGenre>{ChannelGenre.kids}), favs),
-                _section(
-                    '📡',
-                    context.l10n.simpleGeneral,
-                    AppColors.textSecondary,
-                    byGenre(<ChannelGenre>{
-                      ChannelGenre.other,
-                      ChannelGenre.international,
-                    }),
-                    favs),
-
-                // ----- Zone verrouillée : Cinéma & Séries (+ Adulte) -----
-                _buildLockedZone(channels, favs),
+                for (final String k in order)
+                  if (sections[k] != null) sections[k]!,
               ],
             );
           },
@@ -365,7 +397,8 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
   //  titre. Puis une rangée de cartes de chaînes compactes et modernes.
   Widget _section(
       String emoji, String title, Color accent, List<Channel> items,
-      Set<String> favs) {
+      Set<String> favs,
+      {String ribbon = '', bool featured = false}) {
     if (items.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
@@ -399,9 +432,24 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                   child: _WiggleEmoji(emoji, size: 26),
                 ),
                 const SizedBox(width: 12),
-                Text(title,
-                    style: AppTextStyles.headlineMedium
-                        .copyWith(fontSize: 18, fontWeight: FontWeight.w800)),
+                Flexible(
+                  child: Text(title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.headlineMedium.copyWith(
+                          fontSize: 18, fontWeight: FontWeight.w800)),
+                ),
+                // Ruban piloté à distance (NOUVEAU / EN DIRECT / …).
+                if (ribbon.isNotEmpty) ...<Widget>[
+                  const SizedBox(width: 8),
+                  _RibbonBadge(ribbon),
+                ],
+                // Étoile "mis en vedette".
+                if (featured) ...<Widget>[
+                  const SizedBox(width: 6),
+                  const Icon(Icons.star_rounded,
+                      color: AppColors.warning, size: 18),
+                ],
               ],
             ),
           ),
@@ -554,6 +602,54 @@ class _Country {
   final String name;
   final String flag;
   int count = 0;
+}
+
+/// Petit ruban coloré affiché à côté du titre d'une section (piloté à
+/// distance par le Centre de contrôle : NOUVEAU, EN DIRECT, UFC, …).
+class _RibbonBadge extends StatelessWidget {
+  const _RibbonBadge(this.label);
+  final String label;
+
+  Color get _color {
+    switch (label) {
+      case 'NOUVEAU':
+        return AppColors.success;
+      case 'EXCLUSIF':
+      case 'VIP':
+        return AppColors.warning;
+      case 'EN DIRECT':
+      case 'COUPE DU MONDE':
+      case 'EURO 2028':
+      case 'UFC':
+      case 'CHAMPIONS LEAGUE':
+        return AppColors.live;
+      case 'POPULAIRE':
+      default:
+        return AppColors.accent;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Color c = _color;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: c.withValues(alpha: 0.6)),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.labelSmall.copyWith(
+          fontSize: 9.5,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.6,
+          color: c,
+        ),
+      ),
+    );
+  }
 }
 
 class _ChannelTile extends StatelessWidget {

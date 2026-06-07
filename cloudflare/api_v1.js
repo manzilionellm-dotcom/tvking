@@ -441,6 +441,23 @@ export async function apiV1(request, env) {
     }
   }
 
+  // /home-layout — accueil dynamique (Module 1/8). Owner uniquement.
+  if (parts[0] === 'home-layout') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (parts.length === 1) {
+      if (request.method === 'GET') return handleHomeLayoutGet(env);
+      if (request.method === 'PUT') return handleHomeLayoutSave(request, env, actor);
+    }
+    if (parts.length === 2 && parts[1] === 'history' && request.method === 'GET') {
+      return handleHomeLayoutHistory(env);
+    }
+    if (parts.length === 2 && parts[1] === 'restore' && request.method === 'POST') {
+      return handleHomeLayoutRestore(request, env, actor);
+    }
+  }
+
   // /sources/:mac — source IPTV (Xtream/M3U) assignée à un appareil
   // par sa MAC, poussée à l'app. Admin ET revendeurs (chacun provisionne
   // ses clients). GET pour relire, PUT pour (ré)assigner, DELETE pour
@@ -847,6 +864,169 @@ async function handleAnnouncementsDelete(env, id, actor, request) {
   await logAudit(env, request, actor, 'announcement.delete',
     { type: 'announcement', id }, null, null);
   return jsonResp({ ok: true });
+}
+
+// =========================================================
+//  CENTRE DE CONTRÔLE — Module 1/8 : Accueil dynamique (home_layout)
+// =========================================================
+//  Pilote l'accueil de l'app SANS mise à jour de store : ordre des
+//  sections, visibilité, ruban (NOUVEAU/POPULAIRE/…), mise en vedette.
+//  Les sections ont des CLÉS STABLES connues de l'app (cf.
+//  HOME_SECTION_KEYS). L'app lit /api/home-layout (worker public) et
+//  applique ; en l'absence de config elle garde son ordre par défaut.
+//
+//  Versionnage + rollback : chaque PUT archive l'état précédent dans
+//  home_layout_history → restauration en un clic depuis le panel.
+
+// Sections connues de l'app (ordre par défaut). DOIT rester aligné avec
+// HomeSectionKey côté Flutter (home_layout_repository.dart).
+const HOME_SECTION_KEYS = [
+  'recent', 'favorites', 'sport', 'entertainment',
+  'info', 'kids', 'general', 'cinema',
+];
+
+// Rubans autorisés ('' = aucun).
+const HOME_RIBBONS = [
+  '', 'NOUVEAU', 'POPULAIRE', 'EXCLUSIF', 'EN DIRECT', 'VIP',
+  'COUPE DU MONDE', 'EURO 2028', 'UFC', 'CHAMPIONS LEAGUE',
+];
+
+async function ensureHomeLayoutTable(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS home_layout (' +
+      'key TEXT PRIMARY KEY, position INTEGER, enabled INTEGER DEFAULT 1, ' +
+      "ribbon TEXT DEFAULT '', featured INTEGER DEFAULT 0, updated_at INTEGER)"
+  ).run();
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS home_layout_history (' +
+      'id INTEGER PRIMARY KEY AUTOINCREMENT, ' +
+      'payload_json TEXT, label TEXT, created_at INTEGER)'
+  ).run();
+  // Seed initial (ordre par défaut) si la table est vide → le panel a
+  // tout de suite la liste à manipuler.
+  const row = await env.DB
+    .prepare('SELECT COUNT(*) AS n FROM home_layout').first();
+  if (!row || !row.n) {
+    const now = Date.now();
+    for (let i = 0; i < HOME_SECTION_KEYS.length; i++) {
+      await env.DB
+        .prepare(
+          'INSERT INTO home_layout ' +
+            "(key, position, enabled, ribbon, featured, updated_at) " +
+            "VALUES (?, ?, 1, '', 0, ?)"
+        )
+        .bind(HOME_SECTION_KEYS[i], i, now)
+        .run();
+    }
+  }
+}
+
+async function readHomeLayout(env) {
+  await ensureHomeLayoutTable(env);
+  const rs = await env.DB
+    .prepare(
+      'SELECT key, position, enabled, ribbon, featured, updated_at ' +
+        'FROM home_layout ORDER BY position ASC, key ASC'
+    )
+    .all();
+  const items = rs.results || [];
+  let version = 0;
+  for (const it of items) {
+    if ((it.updated_at || 0) > version) version = it.updated_at;
+  }
+  return { items, version };
+}
+
+async function handleHomeLayoutGet(env) {
+  const data = await readHomeLayout(env);
+  return jsonResp(data);
+}
+
+async function handleHomeLayoutSave(request, env, actor) {
+  await ensureHomeLayoutTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const items = Array.isArray(body.items) ? body.items : null;
+  if (!items) return errResp('missing_fields', 'items[] required', 400);
+
+  // 1) Archive l'état courant (rollback).
+  const current = await readHomeLayout(env);
+  await env.DB
+    .prepare(
+      'INSERT INTO home_layout_history (payload_json, label, created_at) ' +
+        'VALUES (?, ?, ?)'
+    )
+    .bind(
+      JSON.stringify(current.items),
+      (body.label || 'Modification accueil').toString().slice(0, 80),
+      Date.now(),
+    )
+    .run();
+
+  // 2) Applique la nouvelle disposition (upsert par clé connue).
+  const now = Date.now();
+  let pos = 0;
+  for (const it of items) {
+    const key = (it.key || '').toString();
+    if (!HOME_SECTION_KEYS.includes(key)) continue; // ignore clés inconnues
+    const ribbonRaw = (it.ribbon || '').toString();
+    const ribbon = HOME_RIBBONS.includes(ribbonRaw) ? ribbonRaw : '';
+    const enabled = it.enabled ? 1 : 0;
+    const featured = it.featured ? 1 : 0;
+    await env.DB
+      .prepare(
+        'INSERT INTO home_layout ' +
+          '(key, position, enabled, ribbon, featured, updated_at) ' +
+          'VALUES (?, ?, ?, ?, ?, ?) ' +
+          'ON CONFLICT(key) DO UPDATE SET ' +
+          'position=excluded.position, enabled=excluded.enabled, ' +
+          'ribbon=excluded.ribbon, featured=excluded.featured, ' +
+          'updated_at=excluded.updated_at'
+      )
+      .bind(key, pos, enabled, ribbon, featured, now)
+      .run();
+    pos++;
+  }
+
+  await logAudit(env, request, actor, 'home_layout.save',
+    { type: 'home_layout', id: null }, current.items, items);
+  const data = await readHomeLayout(env);
+  return jsonResp({ ok: true, ...data });
+}
+
+async function handleHomeLayoutHistory(env) {
+  await ensureHomeLayoutTable(env);
+  const rs = await env.DB
+    .prepare(
+      'SELECT id, label, created_at FROM home_layout_history ' +
+        'ORDER BY id DESC LIMIT 20'
+    )
+    .all();
+  return jsonResp({ items: rs.results || [] });
+}
+
+async function handleHomeLayoutRestore(request, env, actor) {
+  await ensureHomeLayoutTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const snapId = body.id;
+  if (!snapId) return errResp('missing_fields', 'id required', 400);
+  const snap = await env.DB
+    .prepare('SELECT payload_json FROM home_layout_history WHERE id = ?')
+    .bind(snapId).first();
+  if (!snap) return errResp('not_found', 'Snapshot introuvable', 404);
+  let items;
+  try { items = JSON.parse(snap.payload_json); } catch (_) { items = []; }
+  // Réapplique via la même logique (qui archivera l'état courant aussi).
+  const fakeReq = new Request('https://x/', {
+    method: 'PUT',
+    body: JSON.stringify({ items, label: 'Restauration #' + snapId }),
+  });
+  return handleHomeLayoutSave(fakeReq, env, actor);
 }
 
 async function handleServersList(env) {
