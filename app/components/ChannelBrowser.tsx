@@ -3,6 +3,9 @@
 import { useMemo, useState } from "react";
 import ChannelCard from "./ChannelCard";
 import { useFavorites, useRecents } from "../lib/favorites";
+import { useSource } from "../lib/client-source";
+import { useNow } from "../lib/use-now";
+import { liveEvents } from "../lib/events";
 import { useT } from "../lib/i18n";
 import type { Channel, ChannelGroup } from "../lib/iptv-types";
 import type { NowNextMap } from "../lib/view-types";
@@ -27,6 +30,8 @@ export default function ChannelBrowser({
 }) {
   const { favorites } = useFavorites();
   const recents = useRecents();
+  const { epg } = useSource();
+  const now = useNow();
   const t = useT();
 
   const byId = useMemo(() => {
@@ -38,9 +43,13 @@ export default function ChannelBrowser({
   const favChannels = favorites.map((id) => byId.get(id)).filter(Boolean) as Channel[];
   const recentChannels = recents.map((id) => byId.get(id)).filter(Boolean) as Channel[];
 
-  // Build the full group list: virtual groups first, then the real ones.
+  // Build the full group list: virtual groups first (live events → favorites →
+  // recents), then the real ones.
   const allGroups: ChannelGroup[] = useMemo(() => {
     const list: ChannelGroup[] = [];
+    // « En direct » : chaînes dont le programme EN COURS est un événement sportif.
+    const live = liveEvents([...byId.values()], epg, now, 30).map((e) => e.channel);
+    if (live.length) list.push({ id: "@live", name: `🔴 ${t("live_events")}`, channels: live });
     if (favChannels.length) list.push({ id: "@fav", name: `★ ${t("nav_favorites")}`, channels: favChannels });
     if (recentChannels.length)
       list.push({ id: "@recent", name: t("recently_viewed"), channels: recentChannels });
@@ -48,7 +57,7 @@ export default function ChannelBrowser({
     // favChannels/recentChannels derive from favorites/recents ; t rerend les
     // noms des groupes virtuels quand la langue change :
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, favorites, recents, t]);
+  }, [groups, favorites, recents, t, epg, now, byId]);
 
   const [activeId, setActiveId] = useState<string>(groups[0]?.id ?? "");
   const active = allGroups.find((g) => g.id === activeId) ?? allGroups[0];

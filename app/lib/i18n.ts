@@ -95,6 +95,9 @@ const en: Dict = {
   gate_auto_unlock: "This screen unlocks automatically as soon as your device is activated.",
   trial_banner: "Trial — {n} days left",
   trial_activate_hint: "Activate in Settings → My device",
+  live_events: "Live now",
+  watch: "Watch",
+  starting_soon: "Starting soon",
 };
 
 const fr: Dict = {
@@ -175,6 +178,9 @@ const fr: Dict = {
   gate_auto_unlock: "Cet écran se déverrouille automatiquement dès que votre appareil est activé.",
   trial_banner: "Essai — {n} j restants",
   trial_activate_hint: "Activez dans Réglages → Mon appareil",
+  live_events: "En direct",
+  watch: "Regarder",
+  starting_soon: "Bientôt",
 };
 
 const es: Dict = {
@@ -255,6 +261,9 @@ const es: Dict = {
   gate_auto_unlock: "Esta pantalla se desbloquea automáticamente en cuanto se activa tu dispositivo.",
   trial_banner: "Prueba — {n} días restantes",
   trial_activate_hint: "Activa en Ajustes → Mi dispositivo",
+  live_events: "En directo",
+  watch: "Ver",
+  starting_soon: "Próximamente",
 };
 
 const pt: Dict = {
@@ -335,6 +344,9 @@ const pt: Dict = {
   gate_auto_unlock: "Este ecrã desbloqueia automaticamente assim que o seu aparelho for ativado.",
   trial_banner: "Teste — {n} dias restantes",
   trial_activate_hint: "Ative em Definições → O meu aparelho",
+  live_events: "Em direto",
+  watch: "Ver",
+  starting_soon: "Em breve",
 };
 
 const de: Dict = {
@@ -415,6 +427,9 @@ const de: Dict = {
   gate_auto_unlock: "Dieser Bildschirm entsperrt sich automatisch, sobald dein Gerät aktiviert ist.",
   trial_banner: "Test — noch {n} Tage",
   trial_activate_hint: "Aktiviere unter Einstellungen → Mein Gerät",
+  live_events: "Jetzt live",
+  watch: "Ansehen",
+  starting_soon: "Beginnt gleich",
 };
 
 const it: Dict = {
@@ -495,6 +510,9 @@ const it: Dict = {
   gate_auto_unlock: "Questa schermata si sblocca automaticamente non appena il dispositivo viene attivato.",
   trial_banner: "Prova — {n} giorni rimasti",
   trial_activate_hint: "Attiva in Impostazioni → Il mio dispositivo",
+  live_events: "In diretta",
+  watch: "Guarda",
+  starting_soon: "A breve",
 };
 
 const ar: Dict = {
@@ -575,6 +593,9 @@ const ar: Dict = {
   gate_auto_unlock: "تُفتح هذه الشاشة تلقائيًا فور تفعيل جهازك.",
   trial_banner: "تجربة — {n} يوم متبقٍّ",
   trial_activate_hint: "فعّل من الإعدادات ← جهازي",
+  live_events: "مباشر الآن",
+  watch: "مشاهدة",
+  starting_soon: "يبدأ قريبًا",
 };
 
 const zh: Dict = {
@@ -655,6 +676,9 @@ const zh: Dict = {
   gate_auto_unlock: "一旦你的设备被激活，此界面将自动解锁。",
   trial_banner: "试用 — 剩余 {n} 天",
   trial_activate_hint: "在 设置 → 我的设备 中激活",
+  live_events: "正在直播",
+  watch: "观看",
+  starting_soon: "即将开始",
 };
 
 const ru: Dict = {
@@ -735,6 +759,9 @@ const ru: Dict = {
   gate_auto_unlock: "Этот экран разблокируется автоматически, как только устройство будет активировано.",
   trial_banner: "Пробный период — осталось дней: {n}",
   trial_activate_hint: "Активируйте в Настройки → Моё устройство",
+  live_events: "В эфире",
+  watch: "Смотреть",
+  starting_soon: "Скоро",
 };
 
 const tr: Dict = {
@@ -815,6 +842,9 @@ const tr: Dict = {
   gate_auto_unlock: "Cihazınız etkinleştirilir etkinleştirilmez bu ekran otomatik olarak açılır.",
   trial_banner: "Deneme — {n} gün kaldı",
   trial_activate_hint: "Ayarlar → Cihazım'dan etkinleştirin",
+  live_events: "Canlı",
+  watch: "İzle",
+  starting_soon: "Birazdan",
 };
 
 const DICT: Record<string, Dict> = { en, fr, es, pt, de, it, ar, zh, ru, tr };

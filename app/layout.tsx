@@ -6,6 +6,7 @@ import SpatialNav from "./components/SpatialNav";
 import Preferences from "./components/Preferences";
 import ActivationGate from "./components/ActivationGate";
 import TrialBanner from "./components/TrialBanner";
+import LiveAlerts from "./components/LiveAlerts";
 import LocaleSetup from "./components/LocaleSetup";
 
 const geistSans = Geist({
@@ -53,6 +54,7 @@ export default function RootLayout({
         <SpatialNav />
         <ActivationGate>
           <TrialBanner />
+          <LiveAlerts />
           <Sidebar />
           {/* Content is inset past the collapsed nav rail (player pages opt out). */}
           <main className="min-h-screen">{children}</main>
