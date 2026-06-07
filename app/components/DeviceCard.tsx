@@ -79,6 +79,8 @@ export default function DeviceCard() {
       {diag.keys.length > 0 && (
         <p className="mt-[0.7rem] break-all text-[0.8rem] text-[var(--text-disabled)]">
           📡 {diag.applied ? diag.applied.replace(/(password=)[^&]*/i, "$1•••") : "—"}
+          {"  ·  source = "}
+          {diag.raw ? JSON.stringify(diag.raw) : "(vide)"}
           {"  ·  "}
           {diag.keys.join(", ")}
         </p>

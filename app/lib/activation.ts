@@ -190,14 +190,15 @@ function normalize(mac: string, d: WorkerStatus, offline: boolean): Activation {
  * ------------------------------------------------------------------ */
 let lastDiagKeys: string[] = [];
 let lastAppliedSource = "";
+let lastSourceRaw = ""; // valeur brute du champ `source` renvoyé (diagnostic à l'écran)
 // Empreinte de la dernière source POUSSÉE par le serveur. Persistée pour ne
 // réappliquer la source que lorsque le PANEL en change — et ainsi ne jamais
 // écraser, à chaque poll, une source que l'utilisateur aurait saisie à la main.
 const K_SERVER_SOURCE = "nova:serverSource";
 
-/** Diagnostic : clés renvoyées par le serveur + source effectivement appliquée. */
-export function getSourceDiag(): { keys: string[]; applied: string } {
-  return { keys: lastDiagKeys, applied: lastAppliedSource };
+/** Diagnostic : clés renvoyées + valeur brute de `source` + source appliquée. */
+export function getSourceDiag(): { keys: string[]; applied: string; raw: string } {
+  return { keys: lastDiagKeys, applied: lastAppliedSource, raw: lastSourceRaw };
 }
 
 /** Xtream (serveur + identifiants) → URLs get.php (HLS) + xmltv.php. */
@@ -232,21 +233,29 @@ function extractSource(d: WorkerStatus): SourceConfig | null {
     return xtreamToUrls(server, user, pass);
   }
 
+  // `source` peut aussi être DIRECTEMENT l'URL M3U (ex. { source: "http://.../get.php..." }).
   const m3u = get(
-    "url", "m3u_url", "m3u", "playlist_url", "playlistUrl", "source_url", "playlist",
+    "url", "m3u_url", "m3u", "playlist_url", "playlistUrl", "source_url", "playlist", "source",
   );
   const epg = get("epg_url", "epgUrl", "xmltv_url", "xmltv", "epg");
   if (/^https?:\/\//i.test(m3u)) return { playlistUrl: m3u, epgUrl: epg };
 
+  // Sinon (ex. source = "d1", une simple étiquette non résoluble côté app) : rien
+  // à charger. On retourne null → l'app garde la saisie manuelle en secours et le
+  // diagnostic « Mon appareil » montre la valeur reçue.
   return null;
 }
 
 /** Applique la source poussée par le serveur (si présente) — charge la playlist. */
 function applyServerSource(d: WorkerStatus, act: Activation): void {
   try {
-    lastDiagKeys = Object.keys((d as unknown as Record<string, unknown>) ?? {});
+    const root = (d as unknown as Record<string, unknown>) ?? {};
+    lastDiagKeys = Object.keys(root);
+    const s = root.source;
+    lastSourceRaw = s == null ? "" : typeof s === "string" ? s : JSON.stringify(s);
   } catch {
     lastDiagKeys = [];
+    lastSourceRaw = "";
   }
   if (act.state === "banned") return; // appareil bloqué : on ne charge rien
 
