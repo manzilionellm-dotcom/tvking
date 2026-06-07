@@ -439,6 +439,7 @@ export interface Announcement {
   url: string;
   kind?: string;
   cta?: string;
+  country?: string;
   created_at: number;
 }
 export const announcementsApi = {
@@ -449,6 +450,7 @@ export const announcementsApi = {
     url?: string;
     kind?: string;
     cta?: string;
+    country?: string;
   }) =>
     request<{ ok: boolean; id: number | null }>('/api/v1/announcements', {
       method: 'POST',
@@ -533,6 +535,56 @@ export const forceUpdateApi = {
       body: { action: 'disable' },
     }),
 };
+
+// =========================================================
+//  APPS EN LIGNE (présence : IP + pays via Cloudflare)
+// =========================================================
+export interface OnlineDevice {
+  mac: string;
+  ip: string;
+  country: string;
+  lastSeen: number;
+}
+export interface OnlineSnapshot {
+  onlineCount: number;
+  todayCount: number;
+  byCountry: Record<string, number>;
+  items: OnlineDevice[];
+}
+export const onlineApi = {
+  get: () => request<OnlineSnapshot>('/api/v1/online'),
+};
+
+// Liste de pays (ISO2 → nom FR) pour le ciblage des annonces. Drapeau
+// dérivé du code ISO via flagEmoji(). Liste volontairement large mais
+// non exhaustive ; '' = tout le monde.
+export const COUNTRIES: { code: string; name: string }[] = [
+  { code: 'SE', name: 'Suède' }, { code: 'NO', name: 'Norvège' },
+  { code: 'DK', name: 'Danemark' }, { code: 'FI', name: 'Finlande' },
+  { code: 'FR', name: 'France' }, { code: 'BE', name: 'Belgique' },
+  { code: 'CH', name: 'Suisse' }, { code: 'DE', name: 'Allemagne' },
+  { code: 'NL', name: 'Pays-Bas' }, { code: 'GB', name: 'Royaume-Uni' },
+  { code: 'ES', name: 'Espagne' }, { code: 'IT', name: 'Italie' },
+  { code: 'PT', name: 'Portugal' }, { code: 'IE', name: 'Irlande' },
+  { code: 'US', name: 'États-Unis' }, { code: 'CA', name: 'Canada' },
+  { code: 'MA', name: 'Maroc' }, { code: 'DZ', name: 'Algérie' },
+  { code: 'TN', name: 'Tunisie' }, { code: 'SN', name: 'Sénégal' },
+  { code: 'CI', name: "Côte d'Ivoire" }, { code: 'TR', name: 'Turquie' },
+  { code: 'SA', name: 'Arabie saoudite' }, { code: 'AE', name: 'Émirats' },
+  { code: 'QA', name: 'Qatar' }, { code: 'EG', name: 'Égypte' },
+  { code: 'AU', name: 'Australie' }, { code: 'BR', name: 'Brésil' },
+];
+
+/** Drapeau emoji à partir d'un code ISO2 (ex. 'SE' → 🇸🇪). */
+export function flagEmoji(code: string): string {
+  if (!code || code.length !== 2) return '🏳️';
+  const A = 0x1f1e6;
+  const up = code.toUpperCase();
+  return String.fromCodePoint(
+    A + (up.charCodeAt(0) - 65),
+    A + (up.charCodeAt(1) - 65),
+  );
+}
 
 export interface PlanCost { plan: string; credits: number; }
 export const planCostsApi = {

@@ -458,6 +458,14 @@ export async function apiV1(request, env) {
     }
   }
 
+  // /online — apps actuellement en ligne (présence). Owner uniquement.
+  if (parts[0] === 'online' && parts.length === 1 && request.method === 'GET') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    return handleOnlineGet(env);
+  }
+
   // /force-update — mise à jour forcée (bouton du panel). Owner uniquement.
   if (parts[0] === 'force-update') {
     if (a.user.role !== 'super_admin') {
@@ -805,7 +813,7 @@ async function ensureAnnouncementsTable(env) {
   //            l'icône + la couleur du bandeau dans l'app.
   //   - cta  : libellé du bouton d'action (ex. « En profiter ») associé à url.
   // SQLite lève si la colonne existe déjà → on ignore silencieusement.
-  for (const col of ['kind TEXT', 'cta TEXT']) {
+  for (const col of ['kind TEXT', 'cta TEXT', 'country TEXT']) {
     try {
       await env.DB.prepare(
         'ALTER TABLE app_broadcasts ADD COLUMN ' + col
@@ -821,8 +829,8 @@ async function handleAnnouncementsList(env) {
   await ensureAnnouncementsTable(env);
   const rs = await env.DB
     .prepare(
-      'SELECT id, title, body, url, kind, cta, created_at FROM app_broadcasts ' +
-        'ORDER BY id DESC LIMIT 20'
+      'SELECT id, title, body, url, kind, cta, country, created_at ' +
+        'FROM app_broadcasts ORDER BY id DESC LIMIT 20'
     )
     .all();
   return jsonResp({ items: rs.results || [] });
@@ -842,20 +850,24 @@ async function handleAnnouncementsCreate(request, env, actor) {
   const kindRaw = (body.kind || '').toString().trim().toLowerCase();
   const kind = ANNOUNCEMENT_KINDS.includes(kindRaw) ? kindRaw : '';
   const cta = (body.cta || '').toString().trim().slice(0, 40);
+  // Ciblage géo : '' = tout le monde, sinon code ISO pays (2 lettres, maj).
+  const countryRaw = (body.country || '').toString().trim().toUpperCase();
+  const country = /^[A-Z]{2}$/.test(countryRaw) ? countryRaw : '';
   if (!title && !msg) {
     return errResp('missing_fields', 'title or body required', 400);
   }
   const now = Date.now();
   const res = await env.DB
     .prepare(
-      'INSERT INTO app_broadcasts (title, body, url, kind, cta, created_at) ' +
-        'VALUES (?, ?, ?, ?, ?, ?)'
+      'INSERT INTO app_broadcasts ' +
+        '(title, body, url, kind, cta, country, created_at) ' +
+        'VALUES (?, ?, ?, ?, ?, ?, ?)'
     )
-    .bind(title, msg, urlVal, kind, cta, now)
+    .bind(title, msg, urlVal, kind, cta, country, now)
     .run();
   const id = (res.meta && res.meta.last_row_id) || null;
   await logAudit(env, request, actor, 'announcement.create',
-    { type: 'announcement', id }, null, { title, body: msg, kind });
+    { type: 'announcement', id }, null, { title, body: msg, kind, country });
   return jsonResp({ ok: true, id }, 201);
 }
 
@@ -1104,6 +1116,48 @@ async function handleForceUpdatePost(request, env, actor) {
     return jsonResp({ ok: true, minBuildTs: 0 });
   }
   return errResp('bad_action', "action doit être 'force' ou 'disable'", 400);
+}
+
+// =========================================================
+//  APPS EN LIGNE — présence par MAC (IP + pays via Cloudflare)
+// =========================================================
+//  Lit la table `presence` alimentée par /api/heartbeat (worker.js).
+//  « En ligne » = vu il y a < 15 min ; « aujourd'hui » = < 24 h.
+async function handleOnlineGet(env) {
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS presence (' +
+        'mac TEXT PRIMARY KEY, ip TEXT, country TEXT, last_seen INTEGER)'
+    ).run();
+  } catch (_) { /* déjà créée par le worker */ }
+  const now = Date.now();
+  const ONLINE_MS = 15 * 60 * 1000;
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const rs = await env.DB
+    .prepare(
+      'SELECT mac, ip, country, last_seen FROM presence ' +
+        'WHERE last_seen > ? ORDER BY last_seen DESC LIMIT 1000'
+    )
+    .bind(now - DAY_MS)
+    .all();
+  const rows = rs.results || [];
+  const online = rows.filter((r) => (r.last_seen || 0) > now - ONLINE_MS);
+  const byCountry = {};
+  for (const r of online) {
+    const c = (r.country || '??').toUpperCase();
+    byCountry[c] = (byCountry[c] || 0) + 1;
+  }
+  return jsonResp({
+    onlineCount: online.length,
+    todayCount: rows.length,
+    byCountry,
+    items: online.slice(0, 500).map((r) => ({
+      mac: r.mac,
+      ip: r.ip || '',
+      country: (r.country || '').toUpperCase(),
+      lastSeen: r.last_seen || 0,
+    })),
+  });
 }
 
 async function handleServersList(env) {

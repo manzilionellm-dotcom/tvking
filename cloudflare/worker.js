@@ -337,6 +337,29 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
   };
 }
 
+// Présence « en ligne » : table séparée (on ne touche PAS au schéma
+// `devices`). On garde la dernière IP + pays + horodatage par MAC. Le
+// panel considère « en ligne » = vu il y a moins de quelques minutes.
+async function recordPresence(env, mac, ip, country, now) {
+  if (!env.DB) return;
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS presence (' +
+        'mac TEXT PRIMARY KEY, ip TEXT, country TEXT, last_seen INTEGER)'
+    ).run();
+    await env.DB
+      .prepare(
+        'INSERT INTO presence (mac, ip, country, last_seen) VALUES (?, ?, ?, ?) ' +
+          'ON CONFLICT(mac) DO UPDATE SET ip = excluded.ip, ' +
+          'country = excluded.country, last_seen = excluded.last_seen'
+      )
+      .bind(mac, ip, country, now)
+      .run();
+  } catch (_) {
+    // best-effort : la présence ne doit jamais faire échouer un heartbeat.
+  }
+}
+
 // Enregistre AUTOMATIQUEMENT une MAC dans la base au 1er heartbeat :
 // cree un client "auto" + le device (l'essai 7 j demarre a first_seen_at).
 // Ainsi TOUTE app installee apparait dans ton panel, sans rien faire.
@@ -1108,9 +1131,10 @@ async function ensureAnnouncementsTable(env) {
       'title TEXT, body TEXT, url TEXT, created_at INTEGER)'
   ).run();
   // Migrations additives (idempotentes), alignées sur api_v1.js :
-  // `kind` (catégorie) et `cta` (libellé bouton). SQLite lève si la
+  // `kind` (catégorie), `cta` (libellé bouton), `country` (ciblage géo :
+  // '' = tout le monde, sinon code ISO type 'SE'). SQLite lève si la
   // colonne existe déjà → on ignore.
-  for (const col of ['kind TEXT', 'cta TEXT']) {
+  for (const col of ['kind TEXT', 'cta TEXT', 'country TEXT']) {
     try {
       await env.DB.prepare(
         'ALTER TABLE app_broadcasts ADD COLUMN ' + col
@@ -1119,16 +1143,24 @@ async function ensureAnnouncementsTable(env) {
   }
 }
 
-// GET /api/announcement (public) — dernière annonce, ou {} si aucune.
-async function handleGetAnnouncement(env) {
+// GET /api/announcement (public) — dernière annonce CIBLÉE pour le pays
+// de l'app qui demande (Cloudflare fournit le pays), ou globale. {} si
+// aucune. Une annonce avec country='' part à tout le monde ; sinon elle
+// n'est servie qu'aux apps de ce pays.
+async function handleGetAnnouncement(env, request) {
   if (!env.DB) return json({});
   try {
     await ensureAnnouncementsTable(env);
+    const reqCountry =
+        (request && request.headers.get('CF-IPCountry')) || '';
     const row = await env.DB
       .prepare(
-        'SELECT id, title, body, url, kind, cta, created_at FROM app_broadcasts ' +
+        'SELECT id, title, body, url, kind, cta, country, created_at ' +
+          'FROM app_broadcasts ' +
+          "WHERE country IS NULL OR country = '' OR country = ? " +
           'ORDER BY id DESC LIMIT 1'
       )
+      .bind(reqCountry)
       .first();
     if (!row) return json({});
     return json({
@@ -1138,6 +1170,7 @@ async function handleGetAnnouncement(env) {
       url: row.url || '',
       kind: row.kind || '',
       cta: row.cta || '',
+      country: row.country || '',
       created_at: row.created_at || 0,
     });
   } catch (_) {
@@ -1418,6 +1451,13 @@ async function handleHeartbeat(request, env) {
   }
 
   const now = Date.now();
+
+  // Présence « en ligne » : on mémorise IP + pays (fournis GRATUITEMENT
+  // par Cloudflare) + l'instant. Sert au panel « En ligne » et au ciblage
+  // géographique des annonces. Best-effort, ne bloque jamais le heartbeat.
+  const ip = request.headers.get('CF-Connecting-IP') || '';
+  const country = request.headers.get('CF-IPCountry') || '';
+  await recordPresence(env, mac, ip, country, now);
 
   // --- Chemin D1 (par defaut des que la base est branchee) ---
   // On enregistre AUTOMATIQUEMENT la MAC (essai 7 j), puis on renvoie son
@@ -2169,7 +2209,7 @@ export default {
     //   DELETE : admin, efface toutes les annonces ("couper").
     if (segments[0] === 'api' && segments[1] === 'announcement' && segments.length === 2) {
       if (request.method === 'GET') {
-        return await handleGetAnnouncement(env);
+        return await handleGetAnnouncement(env, request);
       }
       if (request.method === 'POST') {
         if (!checkAdmin(request, env)) return unauthorized();

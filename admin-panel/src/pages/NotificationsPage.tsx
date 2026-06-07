@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import {
   announcementsApi, type Announcement, ApiError,
+  COUNTRIES, flagEmoji,
 } from '@/lib/api';
 
 /// Page « Annonces » (owner uniquement) — publie une nouveauté / promo /
@@ -38,6 +39,8 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
   const [body, setBody] = useState('');
   const [url, setUrl] = useState('');
   const [cta, setCta] = useState('');
+  // Ciblage géographique : '' = tout le monde, sinon code ISO (ex. 'SE').
+  const [country, setCountry] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -67,10 +70,14 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
         url: url.trim(),
         kind,
         cta: cta.trim(),
+        country,
       });
       setOk(
-        'Annonce publiée. Tes utilisateurs la verront à la prochaine '
-        + "ouverture de l'app.",
+        country
+          ? `Annonce publiée pour ${flagEmoji(country)} ${country}. Les `
+            + 'utilisateurs de ce pays la verront à la prochaine ouverture.'
+          : 'Annonce publiée pour TOUT LE MONDE. Visible à la prochaine '
+            + "ouverture de l'app.",
       );
       setTitle('');
       setBody('');
@@ -161,6 +168,28 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
                 );
               })}
             </div>
+          </div>
+
+          {/* Ciblage par pays */}
+          <div>
+            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+              Cible (pays)
+            </label>
+            <select
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              className={inputCls}
+            >
+              <option value="">🌍 Tout le monde</option>
+              {COUNTRIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {flagEmoji(c.code)} {c.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[10px] text-ink-tertiary">
+              Ex. choisis « Suède » → seuls les utilisateurs en Suède la verront.
+            </p>
           </div>
 
           <div>
@@ -327,6 +356,9 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
                     )}
                     <div className="mt-1 text-[10px] text-ink-tertiary">
                       {new Date(aRow.created_at).toLocaleString()}
+                      {aRow.country
+                        ? ` · ${flagEmoji(aRow.country)} ${aRow.country}`
+                        : ' · 🌍 tous'}
                       {aRow.url ? ' · 🔗 lien' : ''}
                     </div>
                   </div>

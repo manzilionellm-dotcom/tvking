@@ -15,6 +15,7 @@ type NavItem = { key: string; to: string };
 const OWNER_NAV: NavItem[] = [
   { key: 'nav.dashboard',     to: '/' },
   { key: 'nav.controlCenter', to: '/control-center' },
+  { key: 'nav.online',        to: '/online' },
   { key: 'nav.homeManager',   to: '/home-manager' },
   { key: 'nav.activate',    to: '/activate' },
   { key: 'nav.pushSource',  to: '/playlists' },
