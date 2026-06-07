@@ -43,7 +43,10 @@ const UNGROUPED = "Autres";
  * Channels without a usable URL are skipped.
  */
 export function parseM3U(text: string): Playlist {
-  const lines = text.split(/\r?\n/);
+  // Tolérance maximale : on retire un éventuel BOM UTF-8 en tête (sinon la
+  // 1re ligne "﻿#EXTINF" n'est pas reconnue) et on découpe sur tout type
+  // de fin de ligne (\n, \r\n, \r seul que certains exports utilisent).
+  const lines = text.replace(/^﻿/, "").split(/\r\n|\r|\n/);
   const channels: Channel[] = [];
   const seenId = new Map<string, number>();
 

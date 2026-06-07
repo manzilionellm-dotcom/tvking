@@ -259,6 +259,8 @@ class MainActivity : AppCompatActivity() {
             // En-tetes de reponse : CORS d'abord, puis ceux du serveur — en
             // ECARTANT ceux qui fausseraient la lecture du flux par le WebView.
             val headers = corsHeaders().toMutableMap()
+            // Le vrai code HTTP du serveur (avant bornage) -> diagnostic cote JS.
+            headers["X-Upstream-Status"] = status.toString()
             for ((k, vs) in conn.headerFields) {
                 if (k == null || k.lowercase() in DROP_RESPONSE_HEADERS) continue
                 headers[k] = vs.joinToString(", ")

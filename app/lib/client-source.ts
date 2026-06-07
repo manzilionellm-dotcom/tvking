@@ -93,10 +93,23 @@ export function clearConfig() {
 }
 
 async function fetchText(url: string, timeoutMs = 25000): Promise<string> {
+  return (await fetchDiag(url, timeoutMs)).text;
+}
+
+/**
+ * Fetch avec diagnostic : renvoie le corps, le code HTTP réel du serveur
+ * (exposé par le proxy natif via X-Upstream-Status, avant bornage à 599) et
+ * le code vu côté fetch. Sert à expliquer précisément un échec à l'écran.
+ */
+async function fetchDiag(
+  url: string,
+  timeoutMs = 25000,
+): Promise<{ text: string; upstream: string }> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(url, { signal: ctrl.signal });
+    const upstream = res.headers.get("x-upstream-status") || String(res.status);
     if (!res.ok) {
       // Le proxy natif (WebView) place la vraie cause dans le corps de sa
       // réponse 502 (ex. « Unable to resolve host », « Failed to connect …:80 »).
@@ -107,9 +120,9 @@ async function fetchText(url: string, timeoutMs = 25000): Promise<string> {
       } catch {
         /* corps illisible — on garde juste le code */
       }
-      throw new Error(`HTTP ${res.status}${detail ? ` — ${detail}` : ""}`);
+      throw new Error(`HTTP ${upstream}${detail ? ` — ${detail}` : ""}`);
     }
-    return await res.text();
+    return { text: await res.text(), upstream };
   } finally {
     clearTimeout(t);
   }
@@ -126,10 +139,31 @@ async function doLoad(config: SourceConfig): Promise<void> {
     return;
   }
 
+  let rawPlaylist = "";
+  let upstream = "";
   try {
-    playlist = parseM3U(await fetchText(config.playlistUrl));
+    const diag = await fetchDiag(config.playlistUrl);
+    rawPlaylist = diag.text;
+    upstream = diag.upstream;
+    playlist = parseM3U(rawPlaylist);
   } catch (e) {
     state = { status: "error", playlist: EMPTY_PLAYLIST, epg, config, error: `Playlist: ${(e as Error).message}` };
+    emit();
+    return;
+  }
+
+  // 0 chaîne malgré une réponse reçue : on montre le code HTTP réel du
+  // serveur + le début du corps. Ça révèle d'un coup d'œil si le serveur a
+  // renvoyé une page d'erreur / un refus plutôt qu'un vrai M3U.
+  if (playlist.channels.length === 0) {
+    const head = rawPlaylist.replace(/\s+/g, " ").trim().slice(0, 160) || "(réponse vide)";
+    state = {
+      status: "error",
+      playlist: EMPTY_PLAYLIST,
+      epg,
+      config,
+      error: `Playlist: 0 chaîne (HTTP réel ${upstream}) — reçu : ${head}`,
+    };
     emit();
     return;
   }
