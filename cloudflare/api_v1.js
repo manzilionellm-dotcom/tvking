@@ -436,6 +436,9 @@ export async function apiV1(request, env) {
         return handleAnnouncementsClear(env, actor, request);
       }
     }
+    if (parts.length === 2 && request.method === 'DELETE') {
+      return handleAnnouncementsDelete(env, parts[1], actor, request);
+    }
   }
 
   // /sources/:mac — source IPTV (Xtream/M3U) assignée à un appareil
@@ -768,13 +771,29 @@ async function ensureAnnouncementsTable(env) {
       'id INTEGER PRIMARY KEY AUTOINCREMENT, ' +
       'title TEXT, body TEXT, url TEXT, created_at INTEGER)'
   ).run();
+  // Migrations ADDITIVES (idempotentes) : colonnes ajoutées après coup
+  // pour enrichir les annonces SANS casser les bases existantes.
+  //   - kind : catégorie (nouveaute | promo | info | maintenance) → pilote
+  //            l'icône + la couleur du bandeau dans l'app.
+  //   - cta  : libellé du bouton d'action (ex. « En profiter ») associé à url.
+  // SQLite lève si la colonne existe déjà → on ignore silencieusement.
+  for (const col of ['kind TEXT', 'cta TEXT']) {
+    try {
+      await env.DB.prepare(
+        'ALTER TABLE app_broadcasts ADD COLUMN ' + col
+      ).run();
+    } catch (_) { /* colonne déjà présente */ }
+  }
 }
+
+// Catégories d'annonce autorisées (whitelist côté serveur).
+const ANNOUNCEMENT_KINDS = ['nouveaute', 'promo', 'info', 'maintenance'];
 
 async function handleAnnouncementsList(env) {
   await ensureAnnouncementsTable(env);
   const rs = await env.DB
     .prepare(
-      'SELECT id, title, body, url, created_at FROM app_broadcasts ' +
+      'SELECT id, title, body, url, kind, cta, created_at FROM app_broadcasts ' +
         'ORDER BY id DESC LIMIT 20'
     )
     .all();
@@ -792,20 +811,23 @@ async function handleAnnouncementsCreate(request, env, actor) {
   const title = (body.title || '').toString().trim().slice(0, 120);
   const msg = (body.body || '').toString().trim().slice(0, 500);
   const urlVal = (body.url || '').toString().trim().slice(0, 300);
+  const kindRaw = (body.kind || '').toString().trim().toLowerCase();
+  const kind = ANNOUNCEMENT_KINDS.includes(kindRaw) ? kindRaw : '';
+  const cta = (body.cta || '').toString().trim().slice(0, 40);
   if (!title && !msg) {
     return errResp('missing_fields', 'title or body required', 400);
   }
   const now = Date.now();
   const res = await env.DB
     .prepare(
-      'INSERT INTO app_broadcasts (title, body, url, created_at) ' +
-        'VALUES (?, ?, ?, ?)'
+      'INSERT INTO app_broadcasts (title, body, url, kind, cta, created_at) ' +
+        'VALUES (?, ?, ?, ?, ?, ?)'
     )
-    .bind(title, msg, urlVal, now)
+    .bind(title, msg, urlVal, kind, cta, now)
     .run();
   const id = (res.meta && res.meta.last_row_id) || null;
   await logAudit(env, request, actor, 'announcement.create',
-    { type: 'announcement', id }, null, { title, body: msg });
+    { type: 'announcement', id }, null, { title, body: msg, kind });
   return jsonResp({ ok: true, id }, 201);
 }
 
@@ -814,6 +836,16 @@ async function handleAnnouncementsClear(env, actor, request) {
   await env.DB.prepare('DELETE FROM app_broadcasts').run();
   await logAudit(env, request, actor, 'announcement.clear',
     { type: 'announcement', id: null }, null, null);
+  return jsonResp({ ok: true });
+}
+
+// DELETE /api/v1/announcements/:id — retire UNE annonce précise.
+async function handleAnnouncementsDelete(env, id, actor, request) {
+  await ensureAnnouncementsTable(env);
+  await env.DB.prepare('DELETE FROM app_broadcasts WHERE id = ?')
+    .bind(id).run();
+  await logAudit(env, request, actor, 'announcement.delete',
+    { type: 'announcement', id }, null, null);
   return jsonResp({ ok: true });
 }
 

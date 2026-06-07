@@ -1,12 +1,19 @@
 // =========================================================
-//  announcement_banner.dart — Bandeau « message à tous »
+//  announcement_banner.dart — Bandeau « annonce à tous »
 // =========================================================
 //  Affiche en haut de l'accueil la dernière annonce admin
 //  (cf. AnnouncementRepository). Non bloquant, refermable d'un tap sur
 //  la croix : l'id fermé est mémorisé pour ne pas réafficher la même.
 //
-//  Si un lien est fourni dans l'annonce, tout le bandeau devient
-//  cliquable et l'ouvre dans le navigateur.
+//  La CATÉGORIE de l'annonce (kind) pilote l'icône, la couleur et le
+//  libellé du badge :
+//    - nouveaute  → étincelle, couleur accent
+//    - promo      → flamme, couleur « warning » (or)
+//    - info       → info, couleur « info » (bleu)
+//    - maintenance→ clé, couleur « live » (rouge)
+//
+//  Si un lien est fourni, un bouton d'action (libellé `cta`, ou « Ouvrir »
+//  par défaut) l'ouvre dans le navigateur. Tout le bandeau reste cliquable.
 //
 //  Couleurs/typo : uniquement AppColors / AppTextStyles (convention).
 //  Aucune dépendance au cast.
@@ -18,6 +25,31 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../data/announcement_repository.dart';
+
+/// Style visuel résolu depuis la catégorie d'une annonce.
+class _KindStyle {
+  const _KindStyle(this.color, this.icon, this.label);
+  final Color color;
+  final IconData icon;
+  final String label; // '' = pas de badge (catégorie inconnue/vide)
+}
+
+_KindStyle _styleFor(String kind) {
+  switch (kind) {
+    case 'nouveaute':
+      return _KindStyle(
+          AppColors.accent, Icons.auto_awesome_rounded, 'Nouveauté');
+    case 'promo':
+      return _KindStyle(
+          AppColors.warning, Icons.local_fire_department_rounded, 'Promo');
+    case 'info':
+      return _KindStyle(AppColors.info, Icons.info_rounded, 'Info');
+    case 'maintenance':
+      return _KindStyle(AppColors.live, Icons.build_rounded, 'Maintenance');
+    default:
+      return _KindStyle(AppColors.accent, Icons.campaign_rounded, '');
+  }
+}
 
 /// Bandeau auto-géré : il va chercher l'annonce tout seul au montage,
 /// ne s'affiche que s'il y en a une NON déjà fermée, et disparaît une
@@ -73,6 +105,8 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
     if (a == null) return const SizedBox.shrink();
 
     final bool hasLink = a.url.isNotEmpty;
+    final _KindStyle style = _styleFor(a.kind);
+    final Color color = style.color;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
@@ -85,29 +119,46 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
             padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              color: AppColors.accent.withValues(alpha: 0.12),
+              color: color.withValues(alpha: 0.12),
               border: Border.all(
-                color: AppColors.accent.withValues(alpha: 0.5),
+                color: color.withValues(alpha: 0.5),
                 width: 1.2,
               ),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                // Pastille mégaphone.
+                // Pastille catégorie.
                 Padding(
                   padding: const EdgeInsets.only(top: 1, right: 12),
-                  child: Icon(
-                    Icons.campaign_rounded,
-                    color: AppColors.accent,
-                    size: 24,
-                  ),
+                  child: Icon(style.icon, color: color, size: 24),
                 ),
-                // Titre + corps.
+                // Badge + titre + corps + bouton.
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
+                      // Badge catégorie (si connue).
+                      if (style.label.isNotEmpty) ...<Widget>[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            style.label.toUpperCase(),
+                            style: AppTextStyles.labelSmall.copyWith(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8,
+                              color: color,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                      ],
                       if (a.title.isNotEmpty)
                         Text(
                           a.title,
@@ -126,16 +177,26 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
                             color: AppColors.textSecondary,
                           ),
                         ),
+                      // Bouton d'action (si lien fourni).
                       if (hasLink) ...<Widget>[
-                        const SizedBox(height: 4),
-                        Text(
-                          a.url,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTextStyles.labelSmall.copyWith(
-                            fontSize: 11,
-                            color: AppColors.accent,
-                            decoration: TextDecoration.underline,
+                        const SizedBox(height: 8),
+                        GestureDetector(
+                          onTap: _openLink,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: color,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              a.cta.isNotEmpty ? a.cta : 'Ouvrir',
+                              style: AppTextStyles.button.copyWith(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.voidSurface,
+                              ),
+                            ),
                           ),
                         ),
                       ],

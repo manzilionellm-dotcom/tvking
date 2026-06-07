@@ -33,7 +33,7 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.dashboard': { fr: 'Tableau de bord', en: 'Dashboard', ar: 'لوحة التحكم' },
   'nav.activate': { fr: 'Activer un appareil', en: 'Activate a device', ar: 'تفعيل جهاز' },
   'nav.pushSource': { fr: 'Pousser une playlist', en: 'Push a playlist', ar: 'إرسال قائمة تشغيل' },
-  'nav.notifications': { fr: 'Notifications', en: 'Notifications', ar: 'الإشعارات' },
+  'nav.notifications': { fr: 'Annonces', en: 'Announcements', ar: 'الإعلانات' },
   'nav.resellers': { fr: 'Revendeurs', en: 'Resellers', ar: 'الموزّعون' },
   'nav.myResellers': { fr: 'Mes revendeurs', en: 'My resellers', ar: 'موزّعوني' },
   'nav.customers': { fr: 'Clients', en: 'Customers', ar: 'العملاء' },

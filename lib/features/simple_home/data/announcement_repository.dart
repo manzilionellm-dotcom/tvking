@@ -32,6 +32,8 @@ class Announcement {
     required this.title,
     required this.body,
     required this.url,
+    required this.kind,
+    required this.cta,
     required this.createdAt,
   });
 
@@ -43,6 +45,14 @@ class Announcement {
 
   /// Lien optionnel (ex. page promo). Vide si absent.
   final String url;
+
+  /// Catégorie : `nouveaute` | `promo` | `info` | `maintenance` (ou vide).
+  /// Pilote l'icône + la couleur du bandeau (cf. AnnouncementBanner).
+  final String kind;
+
+  /// Libellé du bouton d'action associé à [url] (ex. « En profiter »).
+  /// Vide → bouton générique « Ouvrir » si un lien est présent.
+  final String cta;
 
   /// Timestamp epoch (ms) de création côté serveur.
   final int createdAt;
@@ -65,6 +75,8 @@ class Announcement {
       title: title,
       body: body,
       url: (json['url'] ?? '').toString(),
+      kind: (json['kind'] ?? '').toString(),
+      cta: (json['cta'] ?? '').toString(),
       createdAt: createdAt,
     );
   }

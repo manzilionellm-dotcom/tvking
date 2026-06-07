@@ -429,22 +429,37 @@ export const sourcesApi = {
 // =========================================================
 //  L'owner écrit un message → toutes les apps l'affichent comme une
 //  notification douce à leur prochaine ouverture. Réservé super_admin.
+/** Catégories d'annonce (pilotent icône + couleur dans l'app). */
+export type AnnouncementKind = 'nouveaute' | 'promo' | 'info' | 'maintenance';
+
 export interface Announcement {
   id: number;
   title: string;
   body: string;
   url: string;
+  kind?: string;
+  cta?: string;
   created_at: number;
 }
 export const announcementsApi = {
   list: () => request<{ items: Announcement[] }>('/api/v1/announcements'),
-  create: (payload: { title: string; body: string; url?: string }) =>
+  create: (payload: {
+    title: string;
+    body: string;
+    url?: string;
+    kind?: string;
+    cta?: string;
+  }) =>
     request<{ ok: boolean; id: number | null }>('/api/v1/announcements', {
       method: 'POST',
       body: payload,
     }),
   clear: () =>
     request<{ ok: boolean }>('/api/v1/announcements', { method: 'DELETE' }),
+  remove: (id: number) =>
+    request<{ ok: boolean }>(`/api/v1/announcements/${id}`, {
+      method: 'DELETE',
+    }),
 };
 
 export interface PlanCost { plan: string; credits: number; }

@@ -1107,6 +1107,16 @@ async function ensureAnnouncementsTable(env) {
       'id INTEGER PRIMARY KEY AUTOINCREMENT, ' +
       'title TEXT, body TEXT, url TEXT, created_at INTEGER)'
   ).run();
+  // Migrations additives (idempotentes), alignées sur api_v1.js :
+  // `kind` (catégorie) et `cta` (libellé bouton). SQLite lève si la
+  // colonne existe déjà → on ignore.
+  for (const col of ['kind TEXT', 'cta TEXT']) {
+    try {
+      await env.DB.prepare(
+        'ALTER TABLE app_broadcasts ADD COLUMN ' + col
+      ).run();
+    } catch (_) { /* déjà présente */ }
+  }
 }
 
 // GET /api/announcement (public) — dernière annonce, ou {} si aucune.
@@ -1116,7 +1126,7 @@ async function handleGetAnnouncement(env) {
     await ensureAnnouncementsTable(env);
     const row = await env.DB
       .prepare(
-        'SELECT id, title, body, url, created_at FROM app_broadcasts ' +
+        'SELECT id, title, body, url, kind, cta, created_at FROM app_broadcasts ' +
           'ORDER BY id DESC LIMIT 1'
       )
       .first();
@@ -1126,6 +1136,8 @@ async function handleGetAnnouncement(env) {
       title: row.title || '',
       body: row.body || '',
       url: row.url || '',
+      kind: row.kind || '',
+      cta: row.cta || '',
       created_at: row.created_at || 0,
     });
   } catch (_) {
