@@ -3,24 +3,22 @@
 import { useState } from "react";
 import DisplaySettings from "../components/DisplaySettings";
 import DeviceCard from "../components/DeviceCard";
-import {
-  useSource,
-  getConfig,
-  setConfig,
-  clearConfig,
-} from "../lib/client-source";
+import { useSource, setConfig, clearConfig } from "../lib/client-source";
 
 /*
- * Source + display settings. The "Add playlist" step (à la TiViMate): a direct
- * M3U/XMLTV pair, or Xtream credentials we convert to get.php / xmltv.php. The
- * choice is stored per device (localStorage) and the source reloads immediately.
+ * Réglages source + affichage. La source se configure UNIQUEMENT en Xtream
+ * Codes (serveur / utilisateur / mot de passe) — convertis en get.php / xmltv.php.
+ * Les flux sont demandés en HLS (`output=m3u8`) pour qu'ils jouent dans la
+ * WebView de l'APK (le MPEG-TS brut n'y est pas décodé nativement). Le choix
+ * est mémorisé par appareil (localStorage) et la source recharge aussitôt.
  */
 function xtreamUrls(server: string, user: string, pass: string) {
   const base = server.replace(/\/+$/, "");
   const u = encodeURIComponent(user);
   const p = encodeURIComponent(pass);
   return {
-    playlistUrl: `${base}/get.php?username=${u}&password=${p}&type=m3u_plus&output=ts`,
+    // output=m3u8 → URLs de chaînes en HLS (lisibles par hls.js dans la WebView).
+    playlistUrl: `${base}/get.php?username=${u}&password=${p}&type=m3u_plus&output=m3u8`,
     epgUrl: `${base}/xmltv.php?username=${u}&password=${p}`,
   };
 }
@@ -56,9 +54,6 @@ function Field({
 export default function SettingsPage() {
   const { status, playlist, config, error } = useSource();
 
-  const init = typeof window !== "undefined" ? getConfig() : { playlistUrl: "", epgUrl: "" };
-  const [playlistUrl, setPlaylistUrl] = useState(init.playlistUrl);
-  const [epgUrl, setEpgUrl] = useState(init.epgUrl);
   const [server, setServer] = useState("");
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
@@ -71,7 +66,7 @@ export default function SettingsPage() {
         Réglages
       </h1>
       <p className="mb-[1.6rem] text-[1.05rem] text-[var(--text-medium)]">
-        Configurez votre source IPTV (M3U/Xtream + guide XMLTV) et l’affichage.
+        Configurez votre source IPTV (Xtream Codes) et l’affichage.
       </p>
 
       {/* Source status */}
@@ -92,61 +87,34 @@ export default function SettingsPage() {
             <span className="text-[1rem] text-[var(--text-medium)]">· {playlist.groups.length} catégories</span>
           )}
         </div>
-        <p className="mt-[0.5rem] break-all text-[0.9rem] text-[var(--text-disabled)]">
-          Playlist : {config.playlistUrl || "—"}
-          <br />
-          EPG : {config.epgUrl || "(aucun)"}
-        </p>
+        {config.playlistUrl && (
+          <p className="mt-[0.5rem] break-all text-[0.9rem] text-[var(--text-disabled)]">
+            Serveur connecté : {config.playlistUrl.replace(/(password=)[^&]*/i, "$1•••")}
+          </p>
+        )}
         {error && <p className="mt-[0.5rem] text-[0.95rem] text-[var(--live)]">⚠ {error}</p>}
       </div>
 
-      <div className="grid max-w-[80rem] gap-[1.4rem] lg:grid-cols-2">
-        {/* M3U / XMLTV */}
-        <div className="flex flex-col gap-[0.8rem] rounded-[var(--radius-lg)] bg-[var(--surface-1)] p-[1.2rem]">
-          <h2 className="text-[1.3rem] font-bold text-[var(--text-high)]">M3U / XMLTV direct</h2>
-          <Field
-            label="URL de la playlist (M3U)"
-            value={playlistUrl}
-            onChange={setPlaylistUrl}
-            placeholder="http://exemple.com/get.php?...type=m3u_plus"
-          />
-          <Field
-            label="URL du guide (XMLTV) — optionnel"
-            value={epgUrl}
-            onChange={setEpgUrl}
-            placeholder="http://exemple.com/xmltv.php?..."
-          />
-          <button
-            data-focusable
-            onClick={() => setConfig({ playlistUrl: playlistUrl.trim(), epgUrl: epgUrl.trim() })}
-            className="focusable mt-[0.4rem] rounded-[var(--radius)] px-[1.4rem] py-[0.8rem] text-[1.1rem] font-bold text-black"
-            style={{ background: "var(--accent-grad)" }}
-          >
-            Enregistrer
-          </button>
-        </div>
-
-        {/* Xtream Codes */}
-        <div className="flex flex-col gap-[0.8rem] rounded-[var(--radius-lg)] bg-[var(--surface-1)] p-[1.2rem]">
-          <h2 className="text-[1.3rem] font-bold text-[var(--text-high)]">Xtream Codes</h2>
-          <Field label="Serveur" value={server} onChange={setServer} placeholder="http://serveur:8080" />
-          <Field label="Identifiant" value={user} onChange={setUser} placeholder="utilisateur" />
-          <Field label="Mot de passe" value={pass} onChange={setPass} type="password" placeholder="••••••••" />
-          <button
-            data-focusable
-            onClick={() => {
-              if (!server || !user || !pass) return;
-              const urls = xtreamUrls(server.trim(), user.trim(), pass.trim());
-              setPlaylistUrl(urls.playlistUrl);
-              setEpgUrl(urls.epgUrl);
-              setConfig(urls);
-            }}
-            className="focusable mt-[0.4rem] rounded-[var(--radius)] px-[1.4rem] py-[0.8rem] text-[1.1rem] font-bold text-black"
-            style={{ background: "var(--accent-grad)" }}
-          >
-            Connecter
-          </button>
-        </div>
+      {/* Xtream Codes — seule méthode de connexion */}
+      <div className="flex max-w-[52rem] flex-col gap-[0.8rem] rounded-[var(--radius-lg)] bg-[var(--surface-1)] p-[1.2rem]">
+        <h2 className="text-[1.3rem] font-bold text-[var(--text-high)]">Xtream Codes</h2>
+        <p className="text-[0.95rem] text-[var(--text-medium)]">
+          Entrez les identifiants fournis par votre fournisseur IPTV.
+        </p>
+        <Field label="Serveur" value={server} onChange={setServer} placeholder="http://serveur:8080" />
+        <Field label="Identifiant" value={user} onChange={setUser} placeholder="utilisateur" />
+        <Field label="Mot de passe" value={pass} onChange={setPass} type="password" placeholder="••••••••" />
+        <button
+          data-focusable
+          onClick={() => {
+            if (!server || !user || !pass) return;
+            setConfig(xtreamUrls(server.trim(), user.trim(), pass.trim()));
+          }}
+          className="focusable mt-[0.4rem] rounded-[var(--radius)] px-[1.4rem] py-[0.8rem] text-[1.1rem] font-bold text-black"
+          style={{ background: "var(--accent-grad)" }}
+        >
+          Connecter
+        </button>
       </div>
 
       {/* Activation à distance — code de l'appareil + état */}
@@ -160,8 +128,9 @@ export default function SettingsPage() {
         data-focusable
         onClick={() => {
           clearConfig();
-          setPlaylistUrl("");
-          setEpgUrl("");
+          setServer("");
+          setUser("");
+          setPass("");
         }}
         className="focusable mt-[2rem] rounded-[var(--radius)] bg-[var(--surface-2)] px-[1.3rem] py-[0.7rem] text-[1.05rem] font-semibold text-[var(--text-medium)]"
       >

@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 import { useActivation, refreshActivation, activationEnabled, type ActivationState } from "../lib/activation";
-import { getDeviceMac, regenerateDeviceMac } from "../lib/device";
+import { getDeviceMac, regenerateDeviceMac, hasNativeDeviceId } from "../lib/device";
 import QrCode from "./QrCode";
 
 const STATE_LABEL: Record<ActivationState, string> = {
@@ -32,6 +32,8 @@ export default function DeviceCard() {
 
   const state = activation?.state ?? "unknown";
   const enabled = activationEnabled();
+  // Identité ancrée au matériel : le code ne change jamais (même après réinstall).
+  const hardwareBound = typeof window !== "undefined" && hasNativeDeviceId();
 
   function onRegenerate() {
     if (
@@ -49,6 +51,7 @@ export default function DeviceCard() {
       <h2 className="mb-[0.4rem] text-[1.3rem] font-bold text-[var(--text-high)]">Mon appareil</h2>
       <p className="mb-[1rem] text-[1rem] text-[var(--text-medium)]">
         Communiquez ce code à votre support pour activer NOVA+ à distance.
+        {hardwareBound && " Ce code est lié à cet appareil : il ne change pas, même après réinstallation."}
       </p>
 
       <div className="flex flex-wrap items-center gap-[1.2rem]">
@@ -84,13 +87,17 @@ export default function DeviceCard() {
         >
           Vérifier maintenant
         </button>
-        <button
-          data-focusable
-          onClick={onRegenerate}
-          className="focusable rounded-[var(--radius)] bg-[var(--surface-2)] px-[1.3rem] py-[0.7rem] text-[1.05rem] font-semibold text-[var(--text-medium)]"
-        >
-          Régénérer le code
-        </button>
+        {/* Régénérer n'a de sens que sur le repli navigateur : sur un appareil
+            réel le code est ancré au matériel et reste fixe. */}
+        {!hardwareBound && (
+          <button
+            data-focusable
+            onClick={onRegenerate}
+            className="focusable rounded-[var(--radius)] bg-[var(--surface-2)] px-[1.3rem] py-[0.7rem] text-[1.05rem] font-semibold text-[var(--text-medium)]"
+          >
+            Régénérer le code
+          </button>
+        )}
       </div>
     </div>
   );

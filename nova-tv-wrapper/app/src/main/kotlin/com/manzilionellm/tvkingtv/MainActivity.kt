@@ -24,15 +24,19 @@
 package com.manzilionellm.tvkingtv
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
@@ -91,6 +95,17 @@ class MainActivity : AppCompatActivity() {
             // Le viewport vient du <meta viewport> de index.html.
             settings.useWideViewPort = true
             settings.loadWithOverviewMode = true
+            // CRITIQUE : la page est servie en https:// (appassets) mais les
+            // flux IPTV (Xtream/M3U) sont en http://. Sans ceci, la WebView
+            // BLOQUE le "contenu mixte" -> "Failed to fetch" sur la playlist
+            // et les segments. On autorise le mixte pour que l'IPTV charge.
+            settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+
+            // Pont natif : expose à l'app web un identifiant d'appareil STABLE
+            // (ANDROID_ID). Il survit à la désinstallation/réinstallation tant
+            // que la clé de signature ne change pas -> le MAC virtuel reste le
+            // MÊME -> le client ne "rachète" pas l'app après une réinstall.
+            addJavascriptInterface(NovaBridge(this@MainActivity), "NovaNative")
 
             // Intercepter les requetes pour servir /assets/web/ via
             // l'AssetLoader (sinon WebView fait du 404 sur l'URL HTTPS
@@ -161,5 +176,23 @@ class MainActivity : AppCompatActivity() {
         webView.removeAllViews()
         webView.destroy()
         super.onDestroy()
+    }
+}
+
+/**
+ * Pont JS exposé sous `window.NovaNative`. Fournit l'identifiant matériel
+ * STABLE de l'appareil (ANDROID_ID) dont l'app web dérive son MAC virtuel.
+ * ANDROID_ID est constant pour un (appareil + clé de signature) donné : il
+ * survit à la désinstallation/réinstallation, donc le code d'activation ne
+ * change pas et le client n'a pas à réactiver / racheter.
+ */
+class NovaBridge(private val ctx: Context) {
+    @JavascriptInterface
+    fun getDeviceId(): String {
+        return try {
+            Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
+        } catch (_: Exception) {
+            ""
+        }
     }
 }
