@@ -243,6 +243,14 @@ class MainActivity : AppCompatActivity() {
             val status = conn.responseCode
             if (status < 100) return errorResponse("Bad status $status")
 
+            // CRITIQUE : WebResourceResponse n'accepte QU'UN code dans [100, 599]
+            // (sinon IllegalArgumentException -> 502 a l'ecran). Or certains
+            // panels/CDN IPTV repondent avec un code HORS-NORME (> 599) tout en
+            // servant une playlist parfaitement valide. Un vrai lecteur ignore
+            // le code et lit le flux : on fait pareil -> > 599 ramene a 200 pour
+            // laisser le corps (la playlist) remonter au parseur.
+            val safeStatus = if (status in 100..599) status else 200
+
             // Content-Type -> mime + charset (le constructeur les veut separes).
             val ct = conn.contentType
             val mime = ct?.substringBefore(";")?.trim()?.ifBlank { null } ?: "application/octet-stream"
@@ -256,13 +264,15 @@ class MainActivity : AppCompatActivity() {
                 headers[k] = vs.joinToString(", ")
             }
 
+            // Choix du flux : base sur le code REEL (HttpURLConnection expose le
+            // corps des erreurs >= 400 via errorStream, pas inputStream).
             val noBody = status == 204 || status == 304 || method == "HEAD"
             val body: InputStream =
                 if (noBody) ByteArrayInputStream(ByteArray(0))
                 else if (status >= 400) (conn.errorStream ?: conn.inputStream)
                 else conn.inputStream
 
-            WebResourceResponse(mime, enc, status, reasonFor(status, conn.responseMessage), headers, body)
+            WebResourceResponse(mime, enc, safeStatus, reasonFor(safeStatus, conn.responseMessage), headers, body)
         } catch (e: Exception) {
             // Message detaille (classe + cause) -> remonte dans le corps du 502,
             // que l'app affiche a l'ecran : "Unable to resolve host",
