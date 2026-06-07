@@ -175,12 +175,11 @@ class HomeLayoutRepository extends ChangeNotifier {
   ///   - en retirant celles désactivées (`enabled == false`).
   List<String> orderedVisibleKeys(List<String> defaults) {
     if (_byKey.isEmpty) return List<String>.from(defaults);
-    final List<String> known = _byKey.values
+    final List<HomeSectionConfig> known = _byKey.values
         .where((HomeSectionConfig c) => c.enabled)
         .toList()
       ..sort((HomeSectionConfig a, HomeSectionConfig b) =>
-          a.position.compareTo(b.position))
-        ;
+          a.position.compareTo(b.position));
     final List<String> result =
         known.map((HomeSectionConfig c) => c.key).toList();
     // Ajoute les clés par défaut jamais vues par le serveur (à la fin).
