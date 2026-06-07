@@ -791,30 +791,33 @@ jobs:
       # FlavorConfig.redRoom AVANT le boot commun.
       # Idem flavor principal : split-per-abi pour reduire la taille
       # d'APK de ~209 MB (fat 4 ABIs) a ~70 MB (arm64 uniquement).
-      - name: Build Red Room debug APK (split-per-abi)
-        run: flutter build apk --debug --no-tree-shake-icons --split-per-abi -t lib/main_redroom.dart
+      # RELEASE obfusqué (comme 7 MOTION) au lieu de --debug : le debug
+      # embarque la VM Dart + JIT + symboles → APK ~114 MB. Le release AOT
+      # obfusqué tombe à ~40 MB. Même config exacte que le flavor principal
+      # (qui caste très bien) → aucun risque sur le cast, juste plus léger.
+      - name: Build Red Room release APK (split-per-abi, obfusqué)
+        run: >-
+          flutter build apk --release --no-tree-shake-icons --split-per-abi
+          --obfuscate --split-debug-info=build/symbols -t lib/main_redroom.dart
 
-      - name: Pick arm64-v8a as canonical APK
+      - name: Pick arm64-v8a as canonical redroom.apk
         run: |
           set -e
           OUT=build/app/outputs/flutter-apk
           ls -lah "$OUT" || true
-          ARM64="$OUT/app-arm64-v8a-debug.apk"
+          ARM64="$OUT/app-arm64-v8a-release.apk"
           test -f "$ARM64" || { echo "arm64 APK introuvable apres split"; find build -name '*.apk'; exit 1; }
-          cp "$ARM64" "$OUT/app-debug.apk"
-          ls -lah "$OUT/app-debug.apk"
+          cp "$ARM64" "$OUT/redroom.apk"
+          ls -lah "$OUT/redroom.apk"
 
       - name: Check APK exists
         run: |
-          if [ ! -f build/app/outputs/flutter-apk/app-debug.apk ]; then
+          if [ ! -f build/app/outputs/flutter-apk/redroom.apk ]; then
             echo "❌ APK Red Room introuvable"
             find build -name '*.apk' || true
             exit 1
           fi
           ls -lah build/app/outputs/flutter-apk/
-
-      - name: Rename APK to redroom.apk
-        run: cp build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/redroom.apk
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -847,7 +850,7 @@ jobs:
           **Installation** : usage exclusivement réservé aux personnes majeures.
           Sideload via le domaine Cloudflare (/redroom).
 
-          ⚠️ Mode debug — non destiné à la distribution publique."
+          Build release obfusqué (~40 MB, AOT) — réservé aux majeurs (18+)."
 
           if gh release view redroom-latest --repo "$REPO"; then
             gh release edit redroom-latest --repo "$REPO" \
