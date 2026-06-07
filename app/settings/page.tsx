@@ -4,7 +4,7 @@ import { useState } from "react";
 import DisplaySettings from "../components/DisplaySettings";
 import DeviceCard from "../components/DeviceCard";
 import { useKeyboard } from "../components/Keyboard";
-import { useSource, setConfig, clearConfig } from "../lib/client-source";
+import { useSource, setConfig, clearConfig, reload } from "../lib/client-source";
 import { useT } from "../lib/i18n";
 
 /*
@@ -101,6 +101,25 @@ export default function SettingsPage() {
           </p>
         )}
         {error && <p className="mt-[0.5rem] text-[0.95rem] text-[var(--live)]">⚠ {error}</p>}
+
+        {/* Mettre à jour : re-télécharge la playlist depuis la source DÉJÀ
+            configurée (utile quand le fournisseur a ajouté/changé des chaînes,
+            ou pour retenter après une coupure). */}
+        {config.playlistUrl && (
+          <button
+            data-focusable
+            disabled={loading}
+            onClick={() => void reload()}
+            className="focusable mt-[0.9rem] flex items-center gap-[0.5rem] rounded-[var(--radius)] px-[1.2rem] py-[0.6rem] text-[1.05rem] font-bold text-black disabled:opacity-60"
+            style={{ background: "var(--accent-grad)" }}
+          >
+            <svg className="h-[1.2rem] w-[1.2rem]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+              <path d="M20 11A8 8 0 1 0 12 20" strokeLinecap="round" />
+              <path d="M20 5v6h-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {loading ? t("updating") : t("update_channels")}
+          </button>
+        )}
       </div>
 
       {/* Xtream Codes — seule méthode de connexion */}
