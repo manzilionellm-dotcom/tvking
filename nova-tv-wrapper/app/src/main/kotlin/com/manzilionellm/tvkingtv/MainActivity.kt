@@ -67,6 +67,13 @@ class MainActivity : AppCompatActivity() {
         private const val APP_URL = "https://appassets.androidplatform.net/assets/web/index.html"
 
         /**
+         * User-Agent "lecteur" pour les requetes IPTV proxifiees. Beaucoup de
+         * panels/CDN n'acceptent que des UA de lecteur (et bloquent les UA de
+         * navigateur). VLC est le plus universellement accepte.
+         */
+        private const val PLAYER_UA = "VLC/3.0.20 LibVLC/3.0.20"
+
+        /**
          * En-tetes de reponse a NE PAS reporter au WebView via le proxy :
          *  - content-type : passe separement au constructeur (mime+charset).
          *  - content-encoding/content-length/transfer-encoding : HttpURLConnection
@@ -218,16 +225,17 @@ class MainActivity : AppCompatActivity() {
                 instanceFollowRedirects = true
                 connectTimeout = 20_000
                 readTimeout = 30_000
-                // On reporte les en-tetes du WebView (Range pour la video, etc.)
-                // SAUF Host (calcule par la connexion) et Accept-Encoding (laisse
-                // HttpURLConnection gerer gzip de maniere transparente).
+                // CRITIQUE : on se presente comme un LECTEUR, pas un navigateur.
+                // Les CDN IPTV (souvent derriere Cloudflare) RESET/refusent les
+                // requetes au profil "navigateur" (UA Chrome + en-tetes Origin /
+                // Sec-Fetch-* / sec-ch-ua que le WebView ajoute), ce qui remonte
+                // en 502 cote app. Une vraie app IPTV envoie un UA de lecteur et
+                // des en-tetes minimaux -> on imite ce comportement : UA lecteur,
+                // Accept */*, et on ne reporte QUE Range (utile aux segments video).
+                setRequestProperty("User-Agent", PLAYER_UA)
+                setRequestProperty("Accept", "*/*")
                 for ((k, v) in request.requestHeaders) {
-                    if (k.equals("Host", true) || k.equals("Accept-Encoding", true)) continue
-                    setRequestProperty(k, v)
-                }
-                // Beaucoup de panneaux IPTV exigent un User-Agent "lecteur".
-                if (getRequestProperty("User-Agent") == null) {
-                    setRequestProperty("User-Agent", "VLC/3.0.20 LibVLC/3.0.20")
+                    if (k.equals("Range", true)) setRequestProperty("Range", v)
                 }
             }
             conn.connect()
