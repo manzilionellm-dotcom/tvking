@@ -7,7 +7,7 @@ import LazyRow from "./LazyRow";
 import { useSource, nowNextMap } from "../lib/client-source";
 import { useFavorites, useRecents } from "../lib/favorites";
 import { useNow } from "../lib/use-now";
-import { liveEvents } from "../lib/events";
+import { liveEvents, tonightEvents } from "../lib/events";
 import { useT } from "../lib/i18n";
 import type { Channel } from "../lib/iptv-types";
 
@@ -58,6 +58,15 @@ export default function HomeRails() {
     return out;
   }, [playlist, favoriteSet, nowNext]);
 
+  const tonight = useMemo(
+    () => tonightEvents(playlist.channels, epg, favoriteSet, now, 20),
+    [playlist, epg, favoriteSet, now],
+  );
+
+  // Heure locale courte pour la pastille du rail « Pour ce soir ».
+  const hhmm = (ms: number) =>
+    new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
   return (
     <div className="no-scrollbar h-screen overflow-y-auto pl-[6.5rem] pr-[var(--safe-x)] py-[var(--safe-y)]">
       {resume && (
@@ -83,6 +92,19 @@ export default function HomeRails() {
         <Rail title={t("rail_fav_live")}>
           {favLive.map((c) => (
             <RailCard key={c.id} channel={c} nowNext={nowNext[c.id]} />
+          ))}
+        </Rail>
+      )}
+
+      {tonight.length > 0 && (
+        <Rail title={t("rail_tonight")}>
+          {tonight.map((e) => (
+            <RailCard
+              key={`${e.channel.id}@${e.programme.start}`}
+              channel={e.channel}
+              subtitle={e.programme.title}
+              badge={hhmm(e.programme.start)}
+            />
           ))}
         </Rail>
       )}

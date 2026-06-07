@@ -92,6 +92,32 @@ export function upcomingAlerts(
   return out.slice(0, limit);
 }
 
+/** Fin de la journée locale (23:59:59.999) en ms epoch. */
+function endOfLocalDay(now: number): number {
+  const d = new Date(now);
+  d.setHours(23, 59, 59, 999);
+  return d.getTime();
+}
+
+/**
+ * Événements de la SOIRÉE : prochain programme de chaque chaîne démarrant entre
+ * maintenant et la fin de la journée locale (sport sur toute chaîne, ou tout
+ * programme sur une chaîne favorite). Donne une raison de rallumer chaque jour.
+ * Triés par heure de début. C'est `upcomingAlerts` avec une fenêtre = reste de
+ * la journée.
+ */
+export function tonightEvents(
+  channels: Channel[],
+  epg: EpgIndex,
+  favoriteIds: Set<string>,
+  now: number,
+  limit = 20,
+): LiveEvent[] {
+  const windowMs = endOfLocalDay(now) - now;
+  if (windowMs <= 0) return [];
+  return upcomingAlerts(channels, epg, favoriteIds, now, windowMs, limit);
+}
+
 /** Clé stable d'un événement (pour ne pas notifier deux fois). */
 export function eventKey(e: LiveEvent): string {
   return `${e.channel.id}@${e.programme.start}`;
