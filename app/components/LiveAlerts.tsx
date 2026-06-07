@@ -20,6 +20,10 @@ import { useT } from "../lib/i18n";
 import ChannelLogo from "./ChannelLogo";
 
 const TOAST_MS = 15_000;
+// Fenêtre du « moment match » : on alerte quand l'événement suivi est sur le
+// point de commencer (≤ 2 min). Le tick de 30 s garantit qu'on l'attrape avant
+// le coup d'envoi (au moins un passage dans la fenêtre).
+const START_LEAD_MS = 2 * 60_000;
 
 export default function LiveAlerts() {
   const { playlist, epg } = useSource();
@@ -37,7 +41,7 @@ export default function LiveAlerts() {
   // événement non encore notifié et on l'affiche un court instant.
   useEffect(() => {
     if (toast || epg.size === 0) return;
-    const next = upcomingAlerts(playlist.channels, epg, favoriteSet, now).find(
+    const next = upcomingAlerts(playlist.channels, epg, favoriteSet, now, START_LEAD_MS).find(
       (e) => !shown.current.has(eventKey(e)),
     );
     if (!next) return;
@@ -67,7 +71,7 @@ export default function LiveAlerts() {
         <ChannelLogo src={channel.logo} name={channel.name} size="2.8rem" />
         <div className="min-w-0 flex-1">
           <p className="text-[0.8rem] font-bold uppercase tracking-[0.15em] text-[var(--accent-strong)]">
-            🔴 {t("starting_soon")}
+            🔴 {t("starting_now")}
           </p>
           <p className="truncate text-[1.1rem] font-bold text-[var(--text-high)]">{programme.title}</p>
           <p className="truncate text-[0.95rem] text-[var(--text-medium)]">{channel.name}</p>
