@@ -1,0 +1,95 @@
+# =========================================================
+#  deploy-worker.yml — Déploiement auto du Worker Cloudflare
+# =========================================================
+#  Problème historique : le code du Worker (`cloudflare/worker.js`)
+#  vivait dans le repo, mais aucun pipeline ne le poussait
+#  sur Cloudflare. Du coup, modifier ce fichier en local ne
+#  changeait STRICTEMENT RIEN en production — il fallait
+#  ouvrir le dashboard Cloudflare, coller le nouveau code,
+#  cliquer "Save and Deploy". Source d'oublis silencieux
+#  (notre route /redroom était dans le code source mais
+#  jamais en ligne pendant 24h).
+#
+#  Solution : ce workflow déploie automatiquement le Worker
+#  dès qu'on push une modif de `cloudflare/worker.js` (ou
+#  de `cloudflare/wrangler.toml`). Plus jamais de drift entre
+#  ce qui est dans Git et ce qui répond en production.
+#
+#  PRÉREQUIS — secrets à configurer sur le repo GitHub
+#  ───────────────────────────────────────────────────
+#    Settings → Secrets and variables → Actions → New secret
+#
+#    CLOUDFLARE_API_TOKEN : token créé sur
+#      dash.cloudflare.com → My Profile → API Tokens →
+#      Create Token → modèle "Edit Cloudflare Workers".
+#
+#    CLOUDFLARE_ACCOUNT_ID : visible sur la page d'accueil
+#      du dashboard Cloudflare (sidebar de droite), ou via
+#      dash.cloudflare.com/profile/api-tokens (en bas).
+#
+#  Le déploiement utilise `cloudflare/wrangler-action@v3`,
+#  l'action officielle maintenue par Cloudflare. Elle fait
+#  `wrangler deploy` avec le bon `wrangler.toml` et le
+#  `worker.js` du repo.
+# =========================================================
+
+name: Deploy Cloudflare Worker
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+      - 'feature/**'
+    paths:
+      - 'cloudflare/worker.js'
+      - 'cloudflare/api_v1.js'
+      - 'cloudflare/wrangler.toml'
+      - '.github/workflows/deploy-worker.yml'
+
+  # Permet aussi le déploiement manuel depuis l'onglet Actions
+  # (utile pour redéployer la même version sans toucher au code,
+  # ex: si Cloudflare a fait une rotation interne).
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy worker.js → Cloudflare
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Sanity check : on échoue tôt et fort si les secrets manquent,
+      # plutôt que de laisser wrangler renvoyer une erreur cryptique.
+      - name: Verify secrets are configured
+        env:
+          API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$API_TOKEN" ]; then
+            echo "❌ Secret CLOUDFLARE_API_TOKEN absent."
+            echo "   Voir l'en-tête de ce workflow pour la procédure."
+            exit 1
+          fi
+          if [ -z "$ACCOUNT_ID" ]; then
+            echo "❌ Secret CLOUDFLARE_ACCOUNT_ID absent."
+            exit 1
+          fi
+          echo "✓ Secrets présents."
+
+      - name: Deploy worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Le wrangler.toml est dans cloudflare/, donc on
+          # passe workingDirectory pour que wrangler trouve la
+          # config + le worker.js référencé en `main = "worker.js"`.
+          workingDirectory: 'cloudflare'
+          command: deploy

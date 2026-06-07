@@ -1,0 +1,65 @@
+# =========================================================
+#  .gitignore — Projet Flutter "TV King" (IPTV VIP)
+# =========================================================
+#  Ce fichier indique à Git ce qu'il ne doit JAMAIS suivre.
+#  En Flutter, on ignore tout ce qui est généré (build),
+#  ce qui est local (configs IDE), et ce qui est sensible
+#  (clés de signature, secrets Firebase).
+# =========================================================
+
+# --- Flutter / Dart -----------------------------------------------
+# Caches et outils Dart : régénérés à chaque `flutter pub get`
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+
+# Sorties de build (APK, bundle, web, desktop)
+/build/
+
+# Fichiers générés automatiquement par Flutter
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+pubspec.lock
+
+# --- IDE / Éditeurs -----------------------------------------------
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# --- Plateformes natives (regénérables via `flutter create .`) ----
+android/.gradle/
+android/captures/
+android/gradlew
+android/gradlew.bat
+android/local.properties
+android/key.properties        # SECRET — keystore signature
+android/app/key.jks           # SECRET — keystore
+android/app/upload-keystore.jks
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+**/Generated.xcconfig
+**/flutter_export_environment.sh
+
+# --- Système ------------------------------------------------------
+.DS_Store
+Thumbs.db
+
+# --- Secrets Firebase (à ne JAMAIS commiter) ----------------------
+google-services.json
+GoogleService-Info.plist
+firebase_options.dart
+
+# --- Logs ---------------------------------------------------------
+*.log
+
+# --- Fichiers generes par flutter gen-l10n ------------------------
+# Regeneres automatiquement par `flutter pub get` depuis lib/l10n/*.arb.
+# Eviter de les commiter pour ne pas avoir de conflits a chaque
+# regeneration de classes localisees.
+lib/l10n/generated/

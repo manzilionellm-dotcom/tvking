@@ -1,0 +1,104 @@
+# =========================================================
+#  add-download-domain.yml — Branche dl.7themotion.com sur le worker
+# =========================================================
+#  But : avoir un lien de telechargement 100% anonyme
+#        https://dl.7themotion.com/royal  (-> derniere APK BLACK7 ROYAL)
+#        https://dl.7themotion.com/redroom (-> derniere APK Red Room)
+#
+#  Le worker `seven-motion-backend` sert deja les redirections /royal,
+#  /redroom, /get, /rr (cf. worker.js). Il suffit donc d'attacher un
+#  "custom domain" Cloudflare a ce worker. Cloudflare cree alors le DNS
+#  + le certificat SSL tout seul (comme le bouton "Add Custom Domain"
+#  du dashboard), et le lien GitHub n'apparait JAMAIS cote utilisateur.
+#
+#  Securite : operation ADDITIVE et isolee. On NE touche PAS au domaine
+#  existant 99999.7themotion.com ni au deploiement du worker. Idempotent :
+#  si dl.7themotion.com est deja branche sur le bon worker, on ne fait
+#  rien. On recupere le zone_id depuis un domaine *.7themotion.com deja
+#  present (donc pas besoin de permission "Zone read" supplementaire :
+#  on reutilise exactement ce que le token sait deja faire dans
+#  rebind-domain.yml).
+#
+#  Lancer : Actions -> "Add download domain" -> Run workflow.
+#  (Se declenche aussi automatiquement quand ce fichier est pousse.)
+# =========================================================
+
+name: Add download domain
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - 'claude/**'
+    paths:
+      - '.github/workflows/add-download-domain.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  add-domain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CF_API: 'https://api.cloudflare.com/client/v4'
+      TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      HOST: 'dl.7themotion.com'
+      ZONE_NAME: '7themotion.com'
+      TARGET: 'seven-motion-backend'
+    steps:
+      - name: Attache le custom domain au worker
+        run: |
+          set +e
+          AUTH_H="Authorization: Bearer $TOKEN"
+          JSON_H="Content-Type: application/json"
+
+          echo "== 1) Liste des custom domains workers du compte =="
+          LIST=$(curl -s -H "$AUTH_H" "$CF_API/accounts/$ACCOUNT/workers/domains")
+          echo "$LIST" | jq '{success, errors, count: (.result|length)}' 2>/dev/null || echo "$LIST"
+
+          # Deja branche sur le bon worker ? -> rien a faire.
+          EXIST=$(echo "$LIST" | jq -c --arg h "$HOST" '.result[]? | select(.hostname==$h)')
+          if [ -n "$EXIST" ]; then
+            CUR=$(echo "$EXIST" | jq -r '.service')
+            if [ "$CUR" = "$TARGET" ]; then
+              echo "✅ $HOST est deja branche sur $TARGET — rien a faire."
+              echo "   Lien actif : https://$HOST/royal"
+              exit 0
+            fi
+            echo "ℹ️ $HOST existe mais pointe sur '$CUR' — on le repointe sur $TARGET."
+          fi
+
+          # Recupere le zone_id depuis un domaine *.7themotion.com deja present.
+          ZONE=$(echo "$LIST" | jq -r --arg z "$ZONE_NAME" \
+            '.result[]? | select(.hostname|endswith($z)) | .zone_id' | head -n1)
+          if [ -z "$ZONE" ] || [ "$ZONE" = "null" ]; then
+            echo "❌ Impossible de trouver le zone_id de $ZONE_NAME via les"
+            echo "   custom domains existants. Verifie qu'un domaine"
+            echo "   *.7themotion.com est bien deja attache a un worker"
+            echo "   (ex. 99999.7themotion.com), ou ajoute le domaine a la main."
+            echo "$LIST" | jq -r '.result[]?.hostname' 2>/dev/null
+            exit 1
+          fi
+          echo "Zone trouvee pour $ZONE_NAME : zone_id=$ZONE"
+
+          echo "== 2) Attache $HOST -> $TARGET =="
+          BODY=$(jq -n --arg h "$HOST" --arg s "$TARGET" --arg z "$ZONE" \
+            '{environment:"production", hostname:$h, service:$s, zone_id:$z}')
+          PUT=$(curl -s -H "$AUTH_H" -H "$JSON_H" -X PUT \
+            "$CF_API/accounts/$ACCOUNT/workers/domains" --data "$BODY")
+          echo "$PUT" | jq '{success, errors, result:{hostname:.result.hostname, service:.result.service}}' 2>/dev/null || echo "$PUT"
+
+          OK=$(echo "$PUT" | jq -r '.success')
+          if [ "$OK" = "true" ]; then
+            echo "✅ SUCCES : https://$HOST/royal redirige vers la derniere APK."
+            echo "   (Le DNS + SSL sont provisionnes par Cloudflare, ~1 min.)"
+            exit 0
+          fi
+
+          echo "❌ Echec de l'attache. Aucune autre ressource n'a ete modifiee."
+          echo "   Tu peux le faire a la main : dash.cloudflare.com -> Workers"
+          echo "   & Pages -> seven-motion-backend -> Settings -> Domains &"
+          echo "   Routes -> Add -> Custom Domain -> $HOST"
+          exit 1

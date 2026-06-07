@@ -1,0 +1,77 @@
+# =========================================================
+#  deploy-admin-panel.yml — Build + deploie le panel admin sur
+#  Cloudflare Pages (sans toucher au dashboard)
+# =========================================================
+#  Le panel React (admin-panel/) est builde puis publie sur
+#  Cloudflare Pages via wrangler. L'URL de prod sera du type
+#  https://tvking-admin.pages.dev
+#
+#  Le panel parle a l'API du Worker (CORS = *), donc on injecte
+#  VITE_API_BASE = https://99999.7themotion.com au build pour
+#  qu'il tape le bon backend depuis le domaine Pages.
+#
+#  Utilise les memes secrets que deploy-worker.yml. Le token doit
+#  avoir la permission "Cloudflare Pages: Edit" (en plus de Workers).
+#  Si le deploy echoue en permission, ajouter ce scope au token.
+# =========================================================
+
+name: Deploy Admin Panel
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - main
+      - 'claude/**'
+    paths:
+      - 'admin-panel/**'
+      - '.github/workflows/deploy-admin-panel.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build + deploy admin-panel → Cloudflare Pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        working-directory: admin-panel
+        run: npm ci
+
+      - name: Build (point le panel vers le Worker prod)
+        working-directory: admin-panel
+        env:
+          # Le Worker qui porte l'API revendeurs + la base D1 est deploye
+          # sur ce sous-domaine workers.dev (cf. logs deploy-worker).
+          # 99999.7themotion.com sert un ANCIEN worker -> ne pas l'utiliser.
+          VITE_API_BASE: 'https://seven-motion-backend.manzilionel-lm.workers.dev'
+        run: npm run build
+
+      # Cree le projet Pages s'il n'existe pas encore (idempotent :
+      # ignore l'erreur si deja cree).
+      - name: Ensure Pages project exists
+        uses: cloudflare/wrangler-action@v3
+        continue-on-error: true
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'admin-panel'
+          command: pages project create tvking-admin --production-branch=main
+
+      - name: Deploy to Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'admin-panel'
+          command: pages deploy dist --project-name=tvking-admin --branch=main

@@ -1,0 +1,39 @@
+# =========================================================
+#  verify-app-link.yml — Prouve que l'app (99999) enregistre les MAC
+# =========================================================
+#  Simule un appareil : POST /api/heartbeat sur 99999.7themotion.com
+#  (l'adresse que l'app appelle). Si le nouveau worker repond et que la
+#  MAC s'enregistre, elle apparaitra dans le panel (onglet Appareils).
+# =========================================================
+
+name: Verify app link
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: ['claude/**']
+    paths: ['.github/workflows/verify-app-link.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE: 'https://99999.7themotion.com'
+      MAC: 'MK:0A:0A:0A:0A:0A'
+    steps:
+      - name: Heartbeat + status via 99999
+        run: |
+          echo "== 1) Heartbeat (simule l'app) =="
+          curl -s -m 20 -X POST "$BASE/api/heartbeat" \
+            -H "Content-Type: application/json" \
+            -d "{\"mac\":\"$MAC\"}" -w "\n__HTTP__%{http_code}\n"
+          echo ""
+          echo "== 2) Status de cette MAC =="
+          curl -s -m 20 "$BASE/api/status/$MAC" -w "\n__HTTP__%{http_code}\n"
+          echo ""
+          echo "== 3) Auth API (doit etre no_auth = bon worker) =="
+          curl -s -m 20 "$BASE/api/v1/auth/me" -w "\n__HTTP__%{http_code}\n"

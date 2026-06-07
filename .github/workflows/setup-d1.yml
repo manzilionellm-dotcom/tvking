@@ -1,0 +1,143 @@
+# =========================================================
+#  setup-d1.yml — Charge le schema dans la base D1 (auto)
+# =========================================================
+#  Evite a l'utilisateur de copier-coller le SQL a la main dans
+#  la console D1. Utilise les memes secrets Cloudflare que
+#  deploy-worker.yml (deja configures sur le repo).
+#
+#  Prerequis : la base D1 nommee `tvking_licensing` doit exister
+#  (creee via le dashboard Cloudflare). `wrangler d1 execute`
+#  la retrouve par son NOM, independamment du wrangler.toml.
+#
+#  Se declenche :
+#    - automatiquement quand on pousse ce fichier ou schema.sql
+#    - manuellement : onglet Actions -> "Setup D1" -> Run workflow
+# =========================================================
+
+name: Setup D1
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - main
+      - 'claude/**'
+    paths:
+      - 'cloudflare/schema.sql'
+      - 'cloudflare/migrations/**'
+      - '.github/workflows/setup-d1.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  load-schema:
+    name: Load schema.sql into tvking_licensing
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Cloudflare secrets
+        env:
+          API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$API_TOKEN" ]; then echo "❌ CLOUDFLARE_API_TOKEN absent"; exit 1; fi
+          if [ -z "$ACCOUNT_ID" ]; then echo "❌ CLOUDFLARE_ACCOUNT_ID absent"; exit 1; fi
+          echo "✓ Secrets présents."
+
+      # Charge le schema (tables + seed) dans la base REMOTE.
+      # `CI=true` rend wrangler non-interactif (pas de prompt y/n).
+      - name: Execute schema.sql on remote D1
+        uses: cloudflare/wrangler-action@v3
+        env:
+          CI: 'true'
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'cloudflare'
+          command: d1 execute tvking_licensing --remote --file=schema.sql
+
+      # Migration hierarchie revendeurs (parent_reseller_id). continue-on-error
+      # car un 2e passage echoue "duplicate column" (SQLite, sans IF NOT EXISTS).
+      - name: Apply migration 003 (reseller hierarchy)
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        env:
+          CI: 'true'
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'cloudflare'
+          command: d1 execute tvking_licensing --remote --file=migrations/003_reseller_hierarchy.sql
+
+      - name: Apply migration 004 (device block)
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        env:
+          CI: 'true'
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'cloudflare'
+          command: d1 execute tvking_licensing --remote --file=migrations/004_device_block.sql
+
+      - name: Apply migration 005 (app download_url)
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        env:
+          CI: 'true'
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'cloudflare'
+          command: d1 execute tvking_licensing --remote --file=migrations/005_app_download.sql
+
+      - name: Apply migration 006 (app NOVA+)
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        env:
+          CI: 'true'
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'cloudflare'
+          command: d1 execute tvking_licensing --remote --file=migrations/006_app_nova.sql
+
+      - name: Apply migration 007 (default servers)
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        env:
+          CI: 'true'
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'cloudflare'
+          command: d1 execute tvking_licensing --remote --file=migrations/007_default_servers.sql
+
+      - name: Apply migration 008 (device sources)
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        env:
+          CI: 'true'
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'cloudflare'
+          command: d1 execute tvking_licensing --remote --file=migrations/008_device_sources.sql
+
+      # Modèle de crédits : 1 crédit = 1 an, 2 crédits = à vie.
+      # UPSERT (ON CONFLICT DO UPDATE) → met bien à jour les lignes
+      # plan_costs existantes (l'ancien seed valait 10 / 25).
+      - name: Apply migration 009 (credit model 1an=1cr / avie=2cr)
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        env:
+          CI: 'true'
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'cloudflare'
+          command: d1 execute tvking_licensing --remote --file=migrations/009_credit_model.sql
