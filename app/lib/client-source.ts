@@ -7,10 +7,12 @@
  * no Node server: the WebView fetches and parses the playlist (M3U/Xtream) and
  * EPG (XMLTV) directly. The pure parsers (m3u.ts / xmltv.ts) are reused as-is.
  *
- * Cross-origin note: inside the APK the WebView enables universal access from
- * the file origin, so these fetches reach the provider without CORS. In a plain
- * browser (dev) third-party hosts may block CORS — use a same-origin/proxied URL
- * or the bundled demo for dev.
+ * Cross-origin note: IPTV/Xtream servers send no CORS headers, so a browser
+ * fetch to them is blocked by the SOP. Inside the APK this is solved natively:
+ * the WebView's shouldInterceptRequest proxies every external request through
+ * HttpURLConnection (no SOP) and injects Access-Control-Allow-Origin, so these
+ * fetches succeed transparently. In a plain browser (dev) the same hosts will
+ * block CORS — use a same-origin/proxied URL or the bundled demo for dev.
  *
  * State is exposed via useSyncExternalStore so components stay pure and all
  * readers update together when the source loads or the config changes.

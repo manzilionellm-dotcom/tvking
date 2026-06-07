@@ -6,12 +6,21 @@
 //  reste (lecteur, navigation, EPG, etc.).
 //
 //  Pourquoi WebViewAssetLoader plutot que file:///android_asset/ ?
-//    - Les flux IPTV (XHR vers serveur Xtream HTTP) sont bloques
-//      par la SOP (Same Origin Policy) si la page est sur le
-//      scheme `file:`. WebViewAssetLoader sert les memes assets
-//      sous `https://appassets.androidplatform.net/` -> la SOP
-//      voit du HTTPS et n'interfere pas avec les XHR cross-origin
-//      (controlees par les en-tetes CORS du serveur IPTV).
+//    - Une page sur le scheme `file:` est traitee en origine "null",
+//      ce qui casse localStorage / modules / fetch. WebViewAssetLoader
+//      sert les memes assets sous `https://appassets.androidplatform.net/`
+//      -> origine HTTPS stable, tout le web standard fonctionne.
+//
+//  Pourquoi un PROXY natif dans shouldInterceptRequest ? (CRITIQUE)
+//    - Les serveurs Xtream/M3U ne renvoient JAMAIS d'en-tetes CORS
+//      (Access-Control-Allow-Origin). Un `fetch()` du WebView (origine
+//      https://appassets...) vers `http://serveur-iptv/get.php` est donc
+//      BLOQUE par la Same-Origin Policy -> "Failed to fetch", 0 chaine.
+//    - La couche reseau NATIVE (HttpURLConnection) n'a pas de SOP. On
+//      intercepte donc chaque requete externe, on la rejoue nativement,
+//      et on RENVOIE la reponse en y AJOUTANT `Access-Control-Allow-Origin: *`.
+//      Le WebView voit alors une reponse "CORS-autorisee" -> playlist, EPG
+//      ET segments video (hls.js) passent. C'est LE correctif du chargement.
 //
 //  Pourquoi onKeyDown override ?
 //    - La telecommande Android TV envoie KEYCODE_BACK = bouton
@@ -41,6 +50,10 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
 import androidx.webkit.WebViewAssetLoader
+import java.io.ByteArrayInputStream
+import java.io.InputStream
+import java.net.HttpURLConnection
+import java.net.URL
 
 class MainActivity : AppCompatActivity() {
 
@@ -52,6 +65,22 @@ class MainActivity : AppCompatActivity() {
          * depuis tv-web/dist/.
          */
         private const val APP_URL = "https://appassets.androidplatform.net/assets/web/index.html"
+
+        /**
+         * En-tetes de reponse a NE PAS reporter au WebView via le proxy :
+         *  - content-type : passe separement au constructeur (mime+charset).
+         *  - content-encoding/content-length/transfer-encoding : HttpURLConnection
+         *    a deja decompresse/normalise le flux ; les reporter ferait attendre
+         *    au WebView des octets gzip/une longueur fausse -> flux casse.
+         *  - connection : hop-by-hop, sans objet ici.
+         *  - access-control-* : on impose les notres (corsHeaders).
+         */
+        private val DROP_RESPONSE_HEADERS = setOf(
+            "content-type", "content-encoding", "content-length",
+            "transfer-encoding", "connection",
+            "access-control-allow-origin", "access-control-allow-methods",
+            "access-control-allow-headers", "access-control-expose-headers",
+        )
     }
 
     private lateinit var webView: WebView
@@ -107,16 +136,24 @@ class MainActivity : AppCompatActivity() {
             // MÊME -> le client ne "rachète" pas l'app après une réinstall.
             addJavascriptInterface(NovaBridge(this@MainActivity), "NovaNative")
 
-            // Intercepter les requetes pour servir /assets/web/ via
-            // l'AssetLoader (sinon WebView fait du 404 sur l'URL HTTPS
-            // synthetique). Toute autre requete (XHR vers IPTV) passe
-            // a travers normalement.
+            // Intercepter les requetes :
+            //  - host appassets -> servir /assets/web/ via l'AssetLoader.
+            //  - http(s) externe -> PROXY natif (ajoute le CORS) cf. proxyRequest().
+            //  - autre (data:, blob:, ...) -> laisser passer (null).
             webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(
                     view: WebView,
                     request: WebResourceRequest,
                 ): WebResourceResponse? {
-                    return assetLoader.shouldInterceptRequest(request.url)
+                    val url = request.url
+                    if (url.host == "appassets.androidplatform.net") {
+                        return assetLoader.shouldInterceptRequest(url)
+                    }
+                    val scheme = url.scheme?.lowercase()
+                    if (scheme == "http" || scheme == "https") {
+                        return proxyRequest(request)
+                    }
+                    return null
                 }
 
                 override fun onReceivedError(
@@ -153,6 +190,96 @@ class MainActivity : AppCompatActivity() {
         setContentView(webView)
         webView.loadUrl(APP_URL)
         Log.i(TAG, "Loaded $APP_URL")
+    }
+
+    /**
+     * Proxy natif d'une requete externe : rejoue la requete via
+     * HttpURLConnection (aucune Same-Origin Policy cote natif) et renvoie la
+     * reponse au WebView en y AJOUTANT les en-tetes CORS. C'est ce qui debloque
+     * playlist / EPG / segments video servis par des serveurs IPTV sans CORS.
+     *
+     * Tourne sur un thread de travail du WebView (pas l'UI) -> l'I/O bloquante
+     * est autorisee ici.
+     */
+    private fun proxyRequest(request: WebResourceRequest): WebResourceResponse? {
+        val method = (request.method ?: "GET").uppercase()
+
+        // Pre-vol CORS : on repond OK sans toucher au reseau.
+        if (method == "OPTIONS") {
+            return WebResourceResponse(
+                "text/plain", "utf-8", 200, "OK",
+                corsHeaders(), ByteArrayInputStream(ByteArray(0)),
+            )
+        }
+
+        return try {
+            val conn = (URL(request.url.toString()).openConnection() as HttpURLConnection).apply {
+                requestMethod = method
+                instanceFollowRedirects = true
+                connectTimeout = 20_000
+                readTimeout = 30_000
+                // On reporte les en-tetes du WebView (Range pour la video, etc.)
+                // SAUF Host (calcule par la connexion) et Accept-Encoding (laisse
+                // HttpURLConnection gerer gzip de maniere transparente).
+                for ((k, v) in request.requestHeaders) {
+                    if (k.equals("Host", true) || k.equals("Accept-Encoding", true)) continue
+                    setRequestProperty(k, v)
+                }
+                // Beaucoup de panneaux IPTV exigent un User-Agent "lecteur".
+                if (getRequestProperty("User-Agent") == null) {
+                    setRequestProperty("User-Agent", "VLC/3.0.20 LibVLC/3.0.20")
+                }
+            }
+            conn.connect()
+
+            val status = conn.responseCode
+            if (status < 100) return errorResponse("Bad status $status")
+
+            // Content-Type -> mime + charset (le constructeur les veut separes).
+            val ct = conn.contentType
+            val mime = ct?.substringBefore(";")?.trim()?.ifBlank { null } ?: "application/octet-stream"
+            val enc = ct?.substringAfter("charset=", "")?.trim()?.ifBlank { null }
+
+            // En-tetes de reponse : CORS d'abord, puis ceux du serveur — en
+            // ECARTANT ceux qui fausseraient la lecture du flux par le WebView.
+            val headers = corsHeaders().toMutableMap()
+            for ((k, vs) in conn.headerFields) {
+                if (k == null || k.lowercase() in DROP_RESPONSE_HEADERS) continue
+                headers[k] = vs.joinToString(", ")
+            }
+
+            val noBody = status == 204 || status == 304 || method == "HEAD"
+            val body: InputStream =
+                if (noBody) ByteArrayInputStream(ByteArray(0))
+                else if (status >= 400) (conn.errorStream ?: conn.inputStream)
+                else conn.inputStream
+
+            WebResourceResponse(mime, enc, status, reasonFor(status, conn.responseMessage), headers, body)
+        } catch (e: Exception) {
+            Log.w(TAG, "proxy fail ${request.url}: ${e.message}")
+            // 502 (avec CORS) plutot que null : le fetch JS se resout en "HTTP 502"
+            // au lieu d'un "Failed to fetch" opaque -> diagnostic plus clair.
+            errorResponse(e.message ?: "proxy error")
+        }
+    }
+
+    private fun corsHeaders(): MutableMap<String, String> = mutableMapOf(
+        "Access-Control-Allow-Origin" to "*",
+        "Access-Control-Allow-Methods" to "GET, POST, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers" to "*",
+        "Access-Control-Expose-Headers" to "*",
+    )
+
+    private fun errorResponse(msg: String): WebResourceResponse =
+        WebResourceResponse(
+            "text/plain", "utf-8", 502, "Proxy Error",
+            corsHeaders(), ByteArrayInputStream(msg.toByteArray()),
+        )
+
+    /** Reason phrase non vide et sans retour ligne (exige par WebResourceResponse). */
+    private fun reasonFor(status: Int, raw: String?): String {
+        val clean = raw?.replace(Regex("[\\r\\n]"), " ")?.trim()
+        return if (!clean.isNullOrBlank()) clean else "Status $status"
     }
 
     /**
