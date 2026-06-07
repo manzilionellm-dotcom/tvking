@@ -33,10 +33,12 @@ android {
     }
 
     defaultConfig {
-        // NOVA+ : applicationId DISTINCT pour cohabiter avec les autres
-        // apps du projet sur le meme appareil. (Le namespace Kotlin reste
-        // com.manzilionellm.tvkingtv — interne, sans impact.)
-        applicationId = "com.nova.plus"
+        // NOVA+ : identifiant de paquet NEUF (`.tv`) — l'ancien `com.nova.plus`
+        // restait installé sur certaines box avec une AUTRE clé de signature, ce
+        // qui bloquait l'install ("Application non installée"). Avec un nouvel
+        // applicationId, Android voit une app neuve et l'installe SANS conflit
+        // (elle cohabite avec l'ancienne ; tu peux supprimer l'ancienne après).
+        applicationId = "com.nova.plus.tv"
         // minSdk 21 = Android 5.0 (Lollipop, 2014) — c'est le PLANCHER des
         // AndroidX récents (appcompat/webkit) et ça couvre la quasi-totalité
         // des box/TV Android en circulation. Abaissé depuis 23 pour corriger
