@@ -131,6 +131,52 @@ abstract final class AppTextStyles {
         height: 1.0,
       );
 
+  // =======================================================
+  //  MAISON NOIR — accueil pays refondu (country_home)
+  //  Display : Bricolage Grotesque (caractérielle). Corps : Manrope.
+  //  Chargées via GoogleFonts.getFont (robuste : marche quelle que
+  //  soit la version du package). Tailles ≥ 16 px (lisibilité seniors).
+  // =======================================================
+  static TextStyle _display(double size, FontWeight w,
+          {Color? color, double spacing = -0.5, double height = 1.05}) =>
+      GoogleFonts.getFont('Bricolage Grotesque',
+          fontSize: size,
+          fontWeight: w,
+          color: color ?? AppColors.maisonInk,
+          letterSpacing: spacing,
+          height: height);
+
+  static TextStyle _body(double size, FontWeight w,
+          {Color? color, double spacing = 0, double height = 1.3}) =>
+      GoogleFonts.getFont('Manrope',
+          fontSize: size,
+          fontWeight: w,
+          color: color ?? AppColors.maisonInk,
+          letterSpacing: spacing,
+          height: height);
+
+  /// Titre du HERO "Pour vous" (~26 px, gras).
+  static TextStyle get maisonHeroTitle => _display(26, FontWeight.w800);
+  /// Titre de section ("Populaires en ce moment").
+  static TextStyle get maisonSection => _display(20, FontWeight.w700);
+  /// Grand chiffre de rang en filigrane (1, 2, 3…).
+  static TextStyle get maisonRank => _display(64, FontWeight.w800,
+      color: AppColors.maisonInk, spacing: -2);
+  /// Nom de chaîne (liste) — 17 px gras, lisible.
+  static TextStyle get maisonChannelName => _body(17, FontWeight.w700);
+  /// Programme EPG "en ce moment" — 14.5 px.
+  static TextStyle get maisonProgram => _body(14.5, FontWeight.w500,
+      color: AppColors.textSecondary, height: 1.25);
+  /// Texte du gros bouton "Regarder".
+  static TextStyle get maisonCta =>
+      _body(17, FontWeight.w800, color: AppColors.maisonBg, spacing: 0.2);
+  /// Petit label (badges POUR VOUS / LIVE / compteurs).
+  static TextStyle get maisonLabel => _body(11.5, FontWeight.w800,
+      spacing: 0.8, height: 1.0);
+  /// Initiales sur vignette sans logo (Maison Noir).
+  static TextStyle get maisonInitials =>
+      _display(22, FontWeight.w800, spacing: -0.5, height: 1.0);
+
   /// Texte numérique tabulaire — durées, horaires, statistiques.
   /// `tabular figures` = chiffres de largeur fixe (pas de saut visuel).
   static TextStyle get numeric => GoogleFonts.inter(

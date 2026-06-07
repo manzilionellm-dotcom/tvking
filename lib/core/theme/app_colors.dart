@@ -160,6 +160,27 @@ abstract final class AppColors {
   static const Color info = Color(0xFF6A8DB0);
 
   // -------------------------------------------------------
+  //  MAISON NOIR — palette dédiée à l'accueil pays refondu
+  //  (country_home). Noir vrai OLED + or champagne. Fixe (non
+  //  pilotée par l'AccentController) pour une identité premium
+  //  cohérente. Centralisée ici → jamais de Color(0xFF…) dans l'UI.
+  // -------------------------------------------------------
+  /// Fond noir vrai (économie batterie OLED).
+  static const Color maisonBg = Color(0xFF060607);
+  /// Surface de carte.
+  static const Color maisonSurface = Color(0xFF101015);
+  /// Surface surélevée (hover / hero).
+  static const Color maisonSurfaceHigh = Color(0xFF191920);
+  /// Texte quasi-blanc (contraste fort seniors).
+  static const Color maisonInk = Color(0xFFF7F7F5);
+  /// Accent or champagne (chrome premium).
+  static const Color champagne = Color(0xFFE6BD7E);
+  /// Rouge réservé au badge LIVE (Maison Noir).
+  static const Color liveRed = Color(0xFFFF4D4F);
+  /// Bordure subtile (blanc 8 %).
+  static const Color maisonBorder = Color(0x14FFFFFF);
+
+  // -------------------------------------------------------
   //  GRADIENTS RÉUTILISÉS
   // -------------------------------------------------------
 
