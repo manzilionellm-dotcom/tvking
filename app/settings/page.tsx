@@ -51,6 +51,16 @@ function Field({
         type="button"
         data-focusable
         onClick={() => kb.open({ title: label, value, type, onCommit: onChange })}
+        // Secours TV : certaines WebView Android ne synthétisent pas de clic à
+        // l'appui OK (DPAD_CENTER) → on ouvre le clavier explicitement sur
+        // Entrée/Espace. preventDefault évite un éventuel double déclenchement
+        // (sans gravité : rouvrir le clavier est idempotent).
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+            e.preventDefault();
+            kb.open({ title: label, value, type, onCommit: onChange });
+          }
+        }}
         className="focusable rounded-[var(--radius)] bg-[var(--surface-2)] px-[1rem] py-[0.7rem] text-left text-[1.1rem] text-[var(--text-high)]"
       >
         {display || <span className="text-[var(--text-disabled)]">{placeholder}</span>}
@@ -108,7 +118,10 @@ export default function SettingsPage() {
   const loading = status === "loading" || status === "idle";
 
   return (
-    <div className="min-h-screen pl-[6.5rem] pr-[var(--safe-x)] py-[var(--safe-y)]">
+    /* pl ≥ largeur du menu déployé (15rem) : sur une page de formulaire, le menu
+       latéral qui s'étend au focus ne doit jamais recouvrir les champs
+       (contrairement à l'accueil en rails, qui glisse volontiers dessous). */
+    <div className="min-h-screen pl-[16rem] pr-[var(--safe-x)] py-[var(--safe-y)]">
       <h1 className="mb-[0.4rem] font-display text-[2.4rem] font-extrabold text-[var(--text-high)]">
         {t("nav_settings")}
       </h1>
