@@ -30,6 +30,9 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../profile/presentation/profile_screen.dart';
+import '../../country_home/data/popularity_repository.dart';
+import '../../country_home/data/text_scale_repository.dart';
+import '../../country_home/presentation/country_home_view.dart';
 import '../../security/data/biometric_auth.dart';
 import '../data/cinema_lock.dart';
 import '../data/home_layout_repository.dart';
@@ -56,6 +59,9 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     // Accueil dynamique (Centre de contrôle) : charge la disposition
     // pilotée à distance (cache immédiat puis rafraîchissement réseau).
     HomeLayoutRepository.instance.initialize();
+    // Accueil "Maison Noir" : score de popularité + réglage texte.
+    PopularityRepository.instance.initialize();
+    TextScaleRepository.instance.initialize();
   }
 
   @override
@@ -85,11 +91,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                         )
                       : (_countryCode == null
                           ? _buildCountryGrid(channels)
-                          : ListenableBuilder(
-                              listenable: HomeLayoutRepository.instance,
-                              builder: (BuildContext context, _) =>
-                                  _buildCountryDetail(channels),
-                            )),
+                          : _buildCountryDetail(channels)),
                 ),
                 _buildBottomBar(),
               ],
@@ -205,105 +207,24 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     );
   }
 
-  // ----- Niveau 2 : détail d'un pays -----
+  // ----- Niveau 2 : détail d'un pays (accueil "Maison Noir" refondu) -----
   Widget _buildCountryDetail(List<Channel> allChannels) {
     // Chaînes de ce pays uniquement.
     final List<Channel> channels = allChannels
         .where((Channel c) => (c.country?.code ?? 'intl') == _countryCode)
         .toList();
-
-    List<Channel> byGenre(Set<ChannelGenre> genres) =>
-        channels.where((Channel c) => genres.contains(c.genre)).toList();
-
-    return StreamBuilder<Set<String>>(
-      stream: FavoritesRepository.instance.favoritesStream,
-      initialData: FavoritesRepository.instance.current,
-      builder: (BuildContext context, AsyncSnapshot<Set<String>> favSnap) {
-        final Set<String> favs = favSnap.data ?? <String>{};
-        return StreamBuilder<List<String>>(
-          stream: RecentlyWatchedRepository.instance.stream,
-          initialData: RecentlyWatchedRepository.instance.current,
-          builder: (BuildContext context, AsyncSnapshot<List<String>> recSnap) {
-            final List<String> recentIds = recSnap.data ?? const <String>[];
-
-            // Récents/favoris filtrés à ce pays, en gardant l'ordre.
-            final Map<String, Channel> byId = <String, Channel>{
-              for (final Channel c in channels) c.id: c,
-            };
-            final List<Channel> recent = <Channel>[
-              for (final String id in recentIds)
-                if (byId[id] != null) byId[id]!,
-            ];
-            final List<Channel> favList = <Channel>[
-              for (final Channel c in channels)
-                if (favs.contains(c.id)) c,
-            ];
-
-            // Centre de contrôle : on construit chaque section par CLÉ,
-            // puis on les affiche dans l'ORDRE piloté à distance (ordre
-            // par défaut si rien n'est configuré). Ruban + vedette sont
-            // appliqués par section selon la config.
-            final HomeLayoutRepository layout =
-                HomeLayoutRepository.instance;
-            String rib(String k) => layout.config(k)?.ribbon ?? '';
-            bool feat(String k) => layout.config(k)?.featured ?? false;
-
-            final Map<String, Widget> sections = <String, Widget>{
-              HomeSectionKey.recent: _section(
-                  '🕐', context.l10n.simpleRecentlyWatched, AppColors.info,
-                  recent, favs,
-                  ribbon: rib('recent'), featured: feat('recent')),
-              HomeSectionKey.favorites: _section(
-                  '⭐', context.l10n.simpleMyFavorites, AppColors.warning,
-                  favList, favs,
-                  ribbon: rib('favorites'), featured: feat('favorites')),
-              HomeSectionKey.sport: _section(
-                  '⚽', context.l10n.simpleSport, AppColors.success,
-                  byGenre(<ChannelGenre>{ChannelGenre.sports}), favs,
-                  ribbon: rib('sport'), featured: feat('sport')),
-              HomeSectionKey.entertainment: _section(
-                  '🎬', context.l10n.simpleEntertainment, AppColors.warning,
-                  byGenre(<ChannelGenre>{
-                    ChannelGenre.entertainment,
-                    ChannelGenre.music,
-                    ChannelGenre.documentary,
-                  }),
-                  favs,
-                  ribbon: rib('entertainment'),
-                  featured: feat('entertainment')),
-              HomeSectionKey.info: _section(
-                  '📰', context.l10n.simpleInfo, AppColors.info,
-                  byGenre(<ChannelGenre>{ChannelGenre.news}), favs,
-                  ribbon: rib('info'), featured: feat('info')),
-              HomeSectionKey.kids: _section(
-                  '🧸', context.l10n.simpleKids, AppColors.accent,
-                  byGenre(<ChannelGenre>{ChannelGenre.kids}), favs,
-                  ribbon: rib('kids'), featured: feat('kids')),
-              HomeSectionKey.general: _section(
-                  '📡', context.l10n.simpleGeneral, AppColors.textSecondary,
-                  byGenre(<ChannelGenre>{
-                    ChannelGenre.other,
-                    ChannelGenre.international,
-                  }),
-                  favs,
-                  ribbon: rib('general'), featured: feat('general')),
-              // Zone verrouillée : Cinéma & Séries (+ Adulte).
-              HomeSectionKey.cinema: _buildLockedZone(channels, favs),
-            };
-
-            final List<String> order =
-                layout.orderedVisibleKeys(kDefaultHomeOrder);
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
-              physics: const BouncingScrollPhysics(),
-              children: <Widget>[
-                for (final String k in order)
-                  if (sections[k] != null) sections[k]!,
-              ],
-            );
-          },
-        );
-      },
+    // Nouvel accueil curé (HERO "Pour vous", Populaires, Reprendre,
+    // sections par genre pilotées par le panel). La zone Cinéma & Séries
+    // VERROUILLÉE est conservée en `trailing` — le verrou adulte /
+    // biométrie reste géré ici, dans SimpleHomeScreen.
+    return CountryHomeView(
+      channels: channels,
+      trailing: StreamBuilder<Set<String>>(
+        stream: FavoritesRepository.instance.favoritesStream,
+        initialData: FavoritesRepository.instance.current,
+        builder: (BuildContext context, AsyncSnapshot<Set<String>> favSnap) =>
+            _buildLockedZone(channels, favSnap.data ?? <String>{}),
+      ),
     );
   }
 

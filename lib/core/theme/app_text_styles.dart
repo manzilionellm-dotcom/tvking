@@ -137,23 +137,32 @@ abstract final class AppTextStyles {
   //  Chargées via GoogleFonts.getFont (robuste : marche quelle que
   //  soit la version du package). Tailles ≥ 16 px (lisibilité seniors).
   // =======================================================
+  /// Charge une Google Font par NOM, avec repli sûr : si la police n'est
+  /// pas dans le catalogue de la version installée, `getFont` lèverait —
+  /// on retombe alors sur un TextStyle standard (mêmes métriques).
+  static TextStyle _gf(String family, double size, FontWeight w,
+      Color? color, double spacing, double height) {
+    final TextStyle base = TextStyle(
+      fontSize: size,
+      fontWeight: w,
+      color: color ?? AppColors.maisonInk,
+      letterSpacing: spacing,
+      height: height,
+    );
+    try {
+      return GoogleFonts.getFont(family, textStyle: base);
+    } catch (_) {
+      return base;
+    }
+  }
+
   static TextStyle _display(double size, FontWeight w,
           {Color? color, double spacing = -0.5, double height = 1.05}) =>
-      GoogleFonts.getFont('Bricolage Grotesque',
-          fontSize: size,
-          fontWeight: w,
-          color: color ?? AppColors.maisonInk,
-          letterSpacing: spacing,
-          height: height);
+      _gf('Bricolage Grotesque', size, w, color, spacing, height);
 
   static TextStyle _body(double size, FontWeight w,
           {Color? color, double spacing = 0, double height = 1.3}) =>
-      GoogleFonts.getFont('Manrope',
-          fontSize: size,
-          fontWeight: w,
-          color: color ?? AppColors.maisonInk,
-          letterSpacing: spacing,
-          height: height);
+      _gf('Manrope', size, w, color, spacing, height);
 
   /// Titre du HERO "Pour vous" (~26 px, gras).
   static TextStyle get maisonHeroTitle => _display(26, FontWeight.w800);
