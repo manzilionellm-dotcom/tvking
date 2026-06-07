@@ -100,6 +100,14 @@ const en: Dict = {
   live_events: "Live now",
   watch: "Watch",
   starting_soon: "Starting soon",
+  starting_now: "Starting now",
+  playback: "Playback",
+  resume_on_launch: "Resume last channel on startup",
+  resume_on_launch_hint: "Open NOVA+ straight on the channel you were watching.",
+  rail_resume: "Resume",
+  rail_live_now: "Live now",
+  rail_fav_live: "Your favorites, live",
+  rail_tonight: "Tonight",
 };
 
 const fr: Dict = {
@@ -185,6 +193,14 @@ const fr: Dict = {
   live_events: "En direct",
   watch: "Regarder",
   starting_soon: "Bientôt",
+  starting_now: "Ça commence",
+  playback: "Lecture",
+  resume_on_launch: "Reprendre la dernière chaîne au démarrage",
+  resume_on_launch_hint: "Ouvre NOVA+ directement sur la chaîne que tu regardais.",
+  rail_resume: "Reprendre",
+  rail_live_now: "En direct maintenant",
+  rail_fav_live: "Tes favoris en direct",
+  rail_tonight: "Pour ce soir",
 };
 
 const es: Dict = {
@@ -268,6 +284,14 @@ const es: Dict = {
   live_events: "En directo",
   watch: "Ver",
   starting_soon: "Próximamente",
+  starting_now: "Empieza ahora",
+  playback: "Reproducción",
+  resume_on_launch: "Reanudar el último canal al iniciar",
+  resume_on_launch_hint: "Abre NOVA+ directamente en el canal que estabas viendo.",
+  rail_resume: "Continuar",
+  rail_live_now: "En directo ahora",
+  rail_fav_live: "Tus favoritos en directo",
+  rail_tonight: "Esta noche",
 };
 
 const pt: Dict = {
@@ -351,6 +375,14 @@ const pt: Dict = {
   live_events: "Em direto",
   watch: "Ver",
   starting_soon: "Em breve",
+  starting_now: "Está a começar",
+  playback: "Reprodução",
+  resume_on_launch: "Retomar o último canal ao iniciar",
+  resume_on_launch_hint: "Abre o NOVA+ diretamente no canal que estavas a ver.",
+  rail_resume: "Retomar",
+  rail_live_now: "Ao vivo agora",
+  rail_fav_live: "Os teus favoritos ao vivo",
+  rail_tonight: "Esta noite",
 };
 
 const de: Dict = {
@@ -434,6 +466,14 @@ const de: Dict = {
   live_events: "Jetzt live",
   watch: "Ansehen",
   starting_soon: "Beginnt gleich",
+  starting_now: "Beginnt jetzt",
+  playback: "Wiedergabe",
+  resume_on_launch: "Letzten Sender beim Start fortsetzen",
+  resume_on_launch_hint: "Öffnet NOVA+ direkt mit dem zuletzt gesehenen Sender.",
+  rail_resume: "Fortsetzen",
+  rail_live_now: "Jetzt live",
+  rail_fav_live: "Deine Favoriten live",
+  rail_tonight: "Heute Abend",
 };
 
 const it: Dict = {
@@ -517,6 +557,14 @@ const it: Dict = {
   live_events: "In diretta",
   watch: "Guarda",
   starting_soon: "A breve",
+  starting_now: "Inizia ora",
+  playback: "Riproduzione",
+  resume_on_launch: "Riprendi l'ultimo canale all'avvio",
+  resume_on_launch_hint: "Apre NOVA+ direttamente sul canale che stavi guardando.",
+  rail_resume: "Riprendi",
+  rail_live_now: "Ora in diretta",
+  rail_fav_live: "I tuoi preferiti in diretta",
+  rail_tonight: "Stasera",
 };
 
 const ar: Dict = {
@@ -600,6 +648,14 @@ const ar: Dict = {
   live_events: "مباشر الآن",
   watch: "مشاهدة",
   starting_soon: "يبدأ قريبًا",
+  starting_now: "يبدأ الآن",
+  playback: "التشغيل",
+  resume_on_launch: "استئناف آخر قناة عند بدء التشغيل",
+  resume_on_launch_hint: "يفتح NOVA+ مباشرة على القناة التي كنت تشاهدها.",
+  rail_resume: "استئناف",
+  rail_live_now: "مباشر الآن",
+  rail_fav_live: "مفضّلاتك مباشرة",
+  rail_tonight: "هذا المساء",
 };
 
 const zh: Dict = {
@@ -683,6 +739,14 @@ const zh: Dict = {
   live_events: "正在直播",
   watch: "观看",
   starting_soon: "即将开始",
+  starting_now: "即将开始",
+  playback: "播放",
+  resume_on_launch: "启动时恢复上次频道",
+  resume_on_launch_hint: "打开 NOVA+ 时直接进入你上次观看的频道。",
+  rail_resume: "继续观看",
+  rail_live_now: "正在直播",
+  rail_fav_live: "你的收藏正在直播",
+  rail_tonight: "今晚",
 };
 
 const ru: Dict = {
@@ -766,6 +830,14 @@ const ru: Dict = {
   live_events: "В эфире",
   watch: "Смотреть",
   starting_soon: "Скоро",
+  starting_now: "Начинается",
+  playback: "Воспроизведение",
+  resume_on_launch: "Возобновлять последний канал при запуске",
+  resume_on_launch_hint: "NOVA+ откроется сразу на канале, который вы смотрели.",
+  rail_resume: "Продолжить",
+  rail_live_now: "Сейчас в эфире",
+  rail_fav_live: "Избранное в эфире",
+  rail_tonight: "Сегодня вечером",
 };
 
 const tr: Dict = {
@@ -849,6 +921,14 @@ const tr: Dict = {
   live_events: "Canlı",
   watch: "İzle",
   starting_soon: "Birazdan",
+  starting_now: "Şimdi başlıyor",
+  playback: "Oynatma",
+  resume_on_launch: "Başlangıçta son kanaldan devam et",
+  resume_on_launch_hint: "NOVA+'ı doğrudan izlediğin kanalda açar.",
+  rail_resume: "Devam et",
+  rail_live_now: "Şu an canlı",
+  rail_fav_live: "Favorilerin canlı",
+  rail_tonight: "Bu akşam",
 };
 
 const DICT: Record<string, Dict> = { en, fr, es, pt, de, it, ar, zh, ru, tr };

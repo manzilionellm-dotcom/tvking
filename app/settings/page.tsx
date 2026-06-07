@@ -5,6 +5,7 @@ import DisplaySettings from "../components/DisplaySettings";
 import DeviceCard from "../components/DeviceCard";
 import { useKeyboard } from "../components/Keyboard";
 import { useSource, setConfig, clearConfig, reload } from "../lib/client-source";
+import { useBoolPref, setBoolPref, type BoolPrefName } from "../lib/prefs";
 import { useT } from "../lib/i18n";
 
 /*
@@ -55,6 +56,44 @@ function Field({
         {display || <span className="text-[var(--text-disabled)]">{placeholder}</span>}
       </button>
     </label>
+  );
+}
+
+/* Bascule on/off pilotée à la télécommande (réglages de comportement). */
+function Toggle({
+  label,
+  hint,
+  name,
+}: {
+  label: string;
+  hint?: string;
+  name: BoolPrefName;
+}) {
+  const on = useBoolPref(name, true);
+  return (
+    <button
+      type="button"
+      data-focusable
+      role="switch"
+      aria-checked={on}
+      onClick={() => setBoolPref(name, !on)}
+      className="focusable flex w-full items-center justify-between gap-[1rem] rounded-[var(--radius)] bg-[var(--surface-1)] px-[1.1rem] py-[0.9rem] text-left"
+    >
+      <span className="flex min-w-0 flex-col">
+        <span className="text-[1.1rem] font-semibold text-[var(--text-high)]">{label}</span>
+        {hint && <span className="text-[0.95rem] text-[var(--text-medium)]">{hint}</span>}
+      </span>
+      <span
+        aria-hidden
+        className="relative h-[1.6rem] w-[3rem] shrink-0 rounded-full transition-colors duration-150"
+        style={{ background: on ? "var(--accent)" : "var(--surface-3)" }}
+      >
+        <span
+          className="absolute top-1/2 h-[1.2rem] w-[1.2rem] -translate-y-1/2 rounded-full bg-white transition-all duration-150"
+          style={{ insetInlineStart: on ? "calc(100% - 1.4rem)" : "0.2rem" }}
+        />
+      </span>
+    </button>
   );
 }
 
@@ -144,6 +183,16 @@ export default function SettingsPage() {
 
       {/* Activation à distance — code de l'appareil + état */}
       <DeviceCard />
+
+      {/* Lecture — comportements de démarrage */}
+      <h2 className="mb-[0.8rem] mt-[2rem] text-[1.3rem] font-bold text-[var(--text-high)]">{t("playback")}</h2>
+      <div className="flex max-w-[52rem] flex-col gap-[0.7rem]">
+        <Toggle
+          label={t("resume_on_launch")}
+          hint={t("resume_on_launch_hint")}
+          name="resumeLast"
+        />
+      </div>
 
       {/* Display */}
       <h2 className="mb-[0.8rem] mt-[2rem] text-[1.3rem] font-bold text-[var(--text-high)]">{t("display")}</h2>

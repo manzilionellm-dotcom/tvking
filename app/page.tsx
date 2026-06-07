@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import ChannelBrowser from "./components/ChannelBrowser";
+import ResumeOnLaunch from "./components/ResumeOnLaunch";
 import { useSource, nowNextMap } from "./lib/client-source";
 import { useT } from "./lib/i18n";
 
@@ -15,12 +16,11 @@ export default function Home() {
     return nowNextMap();
   }, [playlist]);
 
+  let content: React.ReactNode;
   if (status === "loading" || status === "idle") {
-    return <Center>{t("loading_channels")}</Center>;
-  }
-
-  if (playlist.total === 0) {
-    return (
+    content = <Center>{t("loading_channels")}</Center>;
+  } else if (playlist.total === 0) {
+    content = (
       <Center>
         <h1 className="font-display text-[2.6rem] font-extrabold">
           <span className="text-accent-grad">NOVA</span>
@@ -42,9 +42,17 @@ export default function Home() {
         </Link>
       </Center>
     );
+  } else {
+    content = <ChannelBrowser groups={playlist.groups} nowNext={nowNext} />;
   }
 
-  return <ChannelBrowser groups={playlist.groups} nowNext={nowNext} />;
+  return (
+    <>
+      {/* Reprise instantanée de la dernière chaîne (une fois par session). */}
+      <ResumeOnLaunch />
+      {content}
+    </>
+  );
 }
 
 function Center({ children }: { children: React.ReactNode }) {
