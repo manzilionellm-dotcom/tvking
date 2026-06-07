@@ -4,6 +4,7 @@ import Link from "next/link";
 import ChannelCard from "./ChannelCard";
 import { useFavorites } from "../lib/favorites";
 import { useSource, channelsByIds, nowNextFor } from "../lib/client-source";
+import { useT } from "../lib/i18n";
 import type { Channel } from "../lib/iptv-types";
 
 /*
@@ -13,18 +14,19 @@ import type { Channel } from "../lib/iptv-types";
 export default function FavoritesList() {
   const { favorites } = useFavorites();
   const { status } = useSource();
+  const t = useT();
 
   if (status === "loading" || status === "idle") {
-    return <p className="text-[1.1rem] text-[var(--text-medium)]">Chargement…</p>;
+    return <p className="text-[1.1rem] text-[var(--text-medium)]">{t("loading")}</p>;
   }
 
   if (favorites.length === 0) {
     return (
       <div className="max-w-[44rem] rounded-[var(--radius-lg)] bg-[var(--surface-1)] p-[1.4rem]">
-        <p className="text-[1.15rem] text-[var(--text-high)]">Aucun favori pour l’instant.</p>
+        <p className="text-[1.15rem] text-[var(--text-high)]">{t("favorites_empty_title")}</p>
         <p className="mt-[0.5rem] text-[1.05rem] text-[var(--text-medium)]">
-          Sur une chaîne (Accueil ou pendant la lecture), appuyez sur{" "}
-          <kbd className="rounded bg-[var(--surface-3)] px-[0.4rem]">F</kbd> pour l’ajouter.
+          {t("fav_body_pre")}{" "}
+          <kbd className="rounded bg-[var(--surface-3)] px-[0.4rem]">F</kbd> {t("fav_body_post")}
         </p>
         <Link
           href="/"
@@ -32,7 +34,7 @@ export default function FavoritesList() {
           className="focusable mt-[1rem] inline-block rounded-[var(--radius)] px-[1.2rem] py-[0.7rem] text-[1.05rem] font-bold text-black"
           style={{ background: "var(--accent-grad)" }}
         >
-          Parcourir les chaînes
+          {t("browse_channels")}
         </Link>
       </div>
     );

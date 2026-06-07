@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import ChannelLogo from "./ChannelLogo";
+import { useT } from "../lib/i18n";
 
 /** One channel's row in the guide grid (programmes clipped to the window). */
 export interface GuideRow {
@@ -35,6 +36,7 @@ export default function GuideGrid({
   /** Server's "now" (epoch ms) — passed in so render stays pure. */
   now: number;
 }) {
+  const tr = useT();
   const span = windowEnd - windowStart;
   const pct = (t: number) => ((Math.min(Math.max(t, windowStart), windowEnd) - windowStart) / span) * 100;
 
@@ -81,7 +83,7 @@ export default function GuideGrid({
               <div className="relative h-[3.4rem] flex-1">
                 {row.programmes.length === 0 ? (
                   <div className="flex h-full items-center px-[0.6rem] text-[0.9rem] text-[var(--text-disabled)]">
-                    Aucune information
+                    {tr("no_info")}
                   </div>
                 ) : (
                   row.programmes.map((p, i) => {

@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo } from "react";
 import GuideGrid from "../components/GuideGrid";
 import type { GuideRow } from "../components/GuideGrid";
 import { useSource } from "../lib/client-source";
 import { useNow } from "../lib/use-now";
+import { useT } from "../lib/i18n";
 
 const GUIDE_MAX_CHANNELS = 150;
 const WINDOW_HOURS = 4;
@@ -13,6 +13,7 @@ const WINDOW_HOURS = 4;
 export default function GuidePage() {
   const { status, playlist, epg } = useSource();
   const now = useNow();
+  const t = useT();
 
   const { rows, windowStart, windowEnd } = useMemo(() => {
     const half = 30 * 60_000;
@@ -36,25 +37,20 @@ export default function GuidePage() {
   return (
     <div className="min-h-screen pl-[6.5rem] pr-[var(--safe-x)] py-[var(--safe-y)]">
       <div className="mb-[1.2rem] flex items-baseline gap-[0.9rem]">
-        <h1 className="font-display text-[2.4rem] font-extrabold text-[var(--text-high)]">Guide TV</h1>
-        <span className="text-[1rem] text-[var(--text-medium)]">{playlist.total} chaînes</span>
+        <h1 className="font-display text-[2.4rem] font-extrabold text-[var(--text-high)]">{t("guide_title")}</h1>
+        <span className="text-[1rem] text-[var(--text-medium)]">
+          {playlist.total} {t("channels")}
+        </span>
       </div>
 
       {status === "loading" || status === "idle" ? (
-        <p className="text-[1.1rem] text-[var(--text-medium)]">Chargement…</p>
+        <p className="text-[1.1rem] text-[var(--text-medium)]">{t("loading")}</p>
       ) : playlist.total === 0 ? (
-        <p className="text-[1.1rem] text-[var(--text-medium)]">
-          Aucune chaîne. Configurez votre source dans{" "}
-          <Link href="/settings" className="text-[var(--accent)] underline">Réglages</Link>.
-        </p>
+        <p className="text-[1.1rem] text-[var(--text-medium)]">{t("guide_no_channels")}</p>
       ) : !hasEpg ? (
         <div className="max-w-[44rem] rounded-[var(--radius-lg)] bg-[var(--surface-1)] p-[1.4rem]">
-          <p className="text-[1.15rem] text-[var(--text-high)]">Pas de guide (EPG) chargé.</p>
-          <p className="mt-[0.5rem] text-[1.05rem] text-[var(--text-medium)]">
-            Ajoutez l’URL XMLTV de votre fournisseur dans{" "}
-            <Link href="/settings" className="text-[var(--accent)] underline">Réglages</Link>{" "}
-            pour afficher les programmes.
-          </p>
+          <p className="text-[1.15rem] text-[var(--text-high)]">{t("guide_no_epg_title")}</p>
+          <p className="mt-[0.5rem] text-[1.05rem] text-[var(--text-medium)]">{t("guide_no_epg_body")}</p>
         </div>
       ) : (
         <GuideGrid rows={rows} windowStart={windowStart} windowEnd={windowEnd} now={now} />

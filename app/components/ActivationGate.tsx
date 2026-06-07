@@ -9,21 +9,14 @@
 
 import { useEffect, useRef } from "react";
 import { useActivation, refreshActivation, type ActivationState } from "../lib/activation";
+import { useT } from "../lib/i18n";
 import QrCode from "./QrCode";
 
-const LOCK_COPY: Partial<Record<ActivationState, { title: string; body: string }>> = {
-  expired: {
-    title: "Essai terminé",
-    body: "Votre période d’essai NOVA+ est terminée. Communiquez le code ci-dessous à votre support pour activer cet appareil.",
-  },
-  frozen: {
-    title: "Compte suspendu",
-    body: "Votre accès NOVA+ est temporairement suspendu. Communiquez le code ci-dessous à votre support pour le réactiver.",
-  },
-  banned: {
-    title: "Appareil bloqué",
-    body: "Cet appareil a été bloqué. Contactez votre support en indiquant le code ci-dessous.",
-  },
+// Titre/corps de l'écran de blocage selon l'état (clés i18n).
+const LOCK_KEYS: Partial<Record<ActivationState, { title: string; body: string }>> = {
+  expired: { title: "gate_expired_title", body: "gate_expired_body" },
+  frozen: { title: "gate_frozen_title", body: "gate_frozen_body" },
+  banned: { title: "gate_banned_title", body: "gate_banned_body" },
 };
 
 function Wordmark() {
@@ -54,7 +47,8 @@ function LockScreen({
   state: ActivationState;
   offline: boolean;
 }) {
-  const copy = LOCK_COPY[state] ?? LOCK_COPY.expired!;
+  const t = useT();
+  const keys = LOCK_KEYS[state] ?? LOCK_KEYS.expired!;
   const btnRef = useRef<HTMLButtonElement>(null);
 
   // La télécommande a besoin d'un point de départ : on focalise « Réessayer ».
@@ -68,9 +62,9 @@ function LockScreen({
 
       <div className="max-w-[44rem]">
         <h1 className="mb-[0.6rem] font-display text-[2.4rem] font-extrabold text-[var(--text-high)]">
-          {copy.title}
+          {t(keys.title)}
         </h1>
-        <p className="text-[1.2rem] leading-relaxed text-[var(--text-medium)]">{copy.body}</p>
+        <p className="text-[1.2rem] leading-relaxed text-[var(--text-medium)]">{t(keys.body)}</p>
       </div>
 
       {/* Code d'activation de cet appareil — grand et lisible à 3 mètres,
@@ -78,7 +72,7 @@ function LockScreen({
       <div className="flex flex-wrap items-center justify-center gap-[1.4rem]">
         <div className="rounded-[var(--radius-lg)] border border-[var(--hairline)] bg-[var(--surface-1)] px-[2rem] py-[1.3rem]">
           <p className="mb-[0.5rem] text-[0.95rem] font-semibold uppercase tracking-[0.18em] text-[var(--text-disabled)]">
-            Code d’activation de cet appareil
+            {t("gate_code_label")}
           </p>
           <p className="font-mono text-[2.4rem] font-bold tracking-[0.15em] text-accent-grad">{mac || "—"}</p>
         </div>
@@ -92,23 +86,26 @@ function LockScreen({
         className="focusable rounded-[var(--radius)] px-[1.8rem] py-[0.9rem] text-[1.15rem] font-bold text-black"
         style={{ background: "var(--accent-grad)" }}
       >
-        Réessayer
+        {t("gate_retry")}
       </button>
 
       <p className="max-w-[40rem] text-[0.95rem] text-[var(--text-disabled)]">
-        {offline
-          ? "Connexion au serveur impossible — vérifiez le réseau, puis Réessayer."
-          : "Cet écran se déverrouille automatiquement dès que votre appareil est activé."}
+        {offline ? t("gate_offline_hint") : t("gate_auto_unlock")}
       </p>
     </div>
   );
+}
+
+function GateSplash() {
+  const t = useT();
+  return <Splash sub={t("gate_checking")} />;
 }
 
 export default function ActivationGate({ children }: { children: React.ReactNode }) {
   const { phase, activation } = useActivation();
 
   if (phase === "unlocked") return <>{children}</>;
-  if (phase === "checking") return <Splash sub="Vérification de l’activation…" />;
+  if (phase === "checking") return <GateSplash />;
 
   return (
     <LockScreen

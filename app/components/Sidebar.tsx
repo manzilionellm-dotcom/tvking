@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useT } from "../lib/i18n";
 
 /*
  * Left vertical navigation — the convergent TV shell. Collapsed to an icon rail;
@@ -10,11 +11,11 @@ import { usePathname } from "next/navigation";
  */
 
 const NAV = [
-  { href: "/search", label: "Rechercher", icon: "search" },
-  { href: "/", label: "Accueil", icon: "home" },
-  { href: "/guide", label: "Guide TV", icon: "guide" },
-  { href: "/favorites", label: "Favoris", icon: "star" },
-  { href: "/settings", label: "Réglages", icon: "settings" },
+  { href: "/search", key: "nav_search", icon: "search" },
+  { href: "/", key: "nav_home", icon: "home" },
+  { href: "/guide", key: "nav_guide", icon: "guide" },
+  { href: "/favorites", key: "nav_favorites", icon: "star" },
+  { href: "/settings", key: "nav_settings", icon: "settings" },
 ] as const;
 
 function Icon({ name }: { name: string }) {
@@ -58,6 +59,7 @@ function Icon({ name }: { name: string }) {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const t = useT();
   // The full-screen player owns the whole screen; hide the rail there.
   if (pathname.startsWith("/watch")) return null;
 
@@ -76,7 +78,7 @@ export default function Sidebar() {
             <span className="text-[var(--accent)]">+</span>
           </span>
           <span className="text-[0.7rem] font-semibold uppercase tracking-[0.35em] text-[var(--text-medium)]">
-            Live TV
+            {t("tagline")}
           </span>
         </span>
       </div>
@@ -101,7 +103,7 @@ export default function Sidebar() {
             )}
             <span className="shrink-0"><Icon name={item.icon} /></span>
             <span className="whitespace-nowrap text-[1.15rem] font-semibold opacity-0 transition-opacity group-hover/nav:opacity-100 group-focus-within/nav:opacity-100">
-              {item.label}
+              {t(item.key)}
             </span>
           </Link>
         );

@@ -3,12 +3,14 @@
 import Link from "next/link";
 import ChannelBrowser from "./components/ChannelBrowser";
 import { useSource, nowNextMap } from "./lib/client-source";
+import { useT } from "./lib/i18n";
 
 export default function Home() {
   const { status, playlist, error } = useSource();
+  const t = useT();
 
   if (status === "loading" || status === "idle") {
-    return <Center>Chargement des chaînes…</Center>;
+    return <Center>{t("loading_channels")}</Center>;
   }
 
   if (playlist.total === 0) {
@@ -18,18 +20,19 @@ export default function Home() {
           <span className="text-accent-grad">NOVA</span>
           <span className="text-[var(--accent)]">+</span>
         </h1>
-        <p className="max-w-[40rem] text-[1.2rem] text-[var(--text-medium)]">
-          Aucune chaîne chargée. Ajoutez l’URL de votre playlist (M3U ou Xtream) et,
-          si vous en avez une, votre guide XMLTV.
-        </p>
-        {error && <p className="text-[1rem] text-[var(--live)]">Erreur : {error}</p>}
+        <p className="max-w-[40rem] text-[1.2rem] text-[var(--text-medium)]">{t("home_empty")}</p>
+        {error && (
+          <p className="text-[1rem] text-[var(--live)]">
+            {t("error")} : {error}
+          </p>
+        )}
         <Link
           href="/settings"
           data-focusable
           className="focusable rounded-[var(--radius)] px-[1.6rem] py-[0.9rem] text-[1.15rem] font-bold text-black"
           style={{ background: "var(--accent-grad)" }}
         >
-          Configurer ma source
+          {t("configure_source")}
         </Link>
       </Center>
     );

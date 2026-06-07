@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ChannelLogo from "./ChannelLogo";
 import { pushRecent, useFavorites } from "../lib/favorites";
 import { nowNextFor } from "../lib/client-source";
+import { useT } from "../lib/i18n";
 import type { Channel } from "../lib/iptv-types";
 import type { NowNextLite } from "../lib/view-types";
 
@@ -46,6 +47,7 @@ export default function Player({
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
   const { favoriteSet, toggle } = useFavorites();
+  const t = useT();
 
   const startIndex = Math.max(0, channels.findIndex((c) => c.id === startId));
   const [index, setIndex] = useState(startIndex);
@@ -265,7 +267,7 @@ export default function Player({
   if (!channel) {
     return (
       <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black text-[var(--text-medium)]">
-        Chaîne introuvable.
+        {t("channel_not_found")}
       </div>
     );
   }
@@ -298,7 +300,7 @@ export default function Player({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-[0.8rem]">
                 <span className="rounded-[0.35rem] bg-[var(--live)] px-[0.5rem] py-[0.1rem] text-[0.85rem] font-bold tracking-wide text-white">
-                  ● DIRECT
+                  ● {t("live")}
                 </span>
                 <span className="text-[1rem] font-bold tabular-nums text-[var(--text-medium)]">
                   {channel.number}
@@ -316,7 +318,7 @@ export default function Player({
                   </div>
                   {nn.nextTitle && (
                     <p className="mt-[0.4rem] truncate text-[1rem] text-[var(--text-medium)]">
-                      À suivre · {nn.nextTitle}
+                      {t("next_up")} · {nn.nextTitle}
                     </p>
                   )}
                 </>
@@ -325,8 +327,8 @@ export default function Player({
               )}
             </div>
             <p className="hidden shrink-0 text-right text-[0.9rem] leading-relaxed text-[var(--text-disabled)] lg:block">
-              ▲▼ Chaîne · ◀▶ Liste<br />
-              OK Infos · F Favori · Retour Quitter
+              {t("player_hint1")}<br />
+              {t("player_hint2")}
             </p>
           </div>
         </div>
@@ -359,6 +361,7 @@ function ChannelListOverlay({
   onPick: (i: number) => void;
   onClose: () => void;
 }) {
+  const t = useT();
   // Focus the current channel when the overlay opens.
   useEffect(() => {
     const el = document.getElementById(`ov-${currentIndex}`);
@@ -368,7 +371,7 @@ function ChannelListOverlay({
   return (
     <div className="absolute inset-y-0 left-0 z-10 flex w-[30rem] max-w-[80vw] flex-col bg-[var(--bg)]/96 py-[var(--safe-y)] pl-[var(--safe-x)] pr-[1rem] backdrop-blur">
       <div className="mb-[0.8rem] flex items-center justify-between pr-[0.4rem]">
-        <h2 className="text-[1.2rem] font-bold text-[var(--text-high)]">Chaînes</h2>
+        <h2 className="text-[1.2rem] font-bold text-[var(--text-high)]">{t("channels_title")}</h2>
         <span className="text-[0.9rem] text-[var(--text-disabled)]">{channels.length}</span>
       </div>
       <div className="no-scrollbar flex flex-1 flex-col gap-[0.25rem] overflow-y-auto pr-[0.4rem]">

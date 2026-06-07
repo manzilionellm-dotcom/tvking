@@ -1,6 +1,7 @@
 "use client";
 
 import { setPref, usePref } from "../lib/prefs";
+import { useT } from "../lib/i18n";
 
 /*
  * Viewer-tunable display: text size + overscan compensation, persisted and
@@ -33,6 +34,7 @@ function Stepper({
   name: "uiScale" | "safeScale";
 }) {
   const value = usePref(name);
+  const t = useT();
   const i = nearestStep(value);
   return (
     <div className="flex items-center justify-between gap-[1rem] rounded-[var(--radius)] bg-[var(--surface-1)] px-[1.1rem] py-[0.9rem]">
@@ -42,7 +44,7 @@ function Stepper({
           data-focusable
           onClick={() => setPref(name, STEPS[Math.max(0, i - 1)])}
           className="focusable h-[2.6rem] w-[2.6rem] rounded-full bg-[var(--surface-3)] text-[1.3rem] font-bold text-[var(--text-high)]"
-          aria-label={`Diminuer ${label}`}
+          aria-label={t("decrease", { label })}
         >
           −
         </button>
@@ -53,7 +55,7 @@ function Stepper({
           data-focusable
           onClick={() => setPref(name, STEPS[Math.min(STEPS.length - 1, i + 1)])}
           className="focusable h-[2.6rem] w-[2.6rem] rounded-full bg-[var(--surface-3)] text-[1.3rem] font-bold text-[var(--text-high)]"
-          aria-label={`Augmenter ${label}`}
+          aria-label={t("increase", { label })}
         >
           +
         </button>
@@ -63,10 +65,11 @@ function Stepper({
 }
 
 export default function DisplaySettings() {
+  const t = useT();
   return (
     <div className="flex max-w-[44rem] flex-col gap-[0.7rem]">
-      <Stepper label="Taille du texte" name="uiScale" />
-      <Stepper label="Marge (overscan)" name="safeScale" />
+      <Stepper label={t("text_size")} name="uiScale" />
+      <Stepper label={t("overscan")} name="safeScale" />
     </div>
   );
 }

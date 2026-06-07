@@ -8,16 +8,8 @@
 import { useState } from "react";
 import { useActivation, refreshActivation, activationEnabled, type ActivationState } from "../lib/activation";
 import { getDeviceMac, regenerateDeviceMac, hasNativeDeviceId } from "../lib/device";
+import { useT } from "../lib/i18n";
 import QrCode from "./QrCode";
-
-const STATE_LABEL: Record<ActivationState, string> = {
-  active: "Activé",
-  trial: "Essai en cours",
-  expired: "Essai terminé",
-  frozen: "Compte suspendu",
-  banned: "Appareil bloqué",
-  unknown: "Non vérifié",
-};
 
 function stateColor(s: ActivationState): string {
   if (s === "active" || s === "trial") return "var(--ok)";
@@ -27,6 +19,7 @@ function stateColor(s: ActivationState): string {
 
 export default function DeviceCard() {
   const { activation } = useActivation();
+  const t = useT();
   // MAC affiché même avant la 1re réponse serveur (lecture directe locale).
   const [mac, setMac] = useState<string>(() => (typeof window !== "undefined" ? getDeviceMac() : ""));
 
@@ -36,28 +29,23 @@ export default function DeviceCard() {
   const hardwareBound = typeof window !== "undefined" && hasNativeDeviceId();
 
   function onRegenerate() {
-    if (
-      !window.confirm(
-        "Régénérer le code créera un NOUVEL appareil : l’activation actuelle sera perdue et il faudra réactiver ce nouveau code. Continuer ?",
-      )
-    )
-      return;
+    if (!window.confirm(t("regenerate_confirm"))) return;
     setMac(regenerateDeviceMac());
     void refreshActivation();
   }
 
   return (
     <div className="mt-[2rem] max-w-[52rem] rounded-[var(--radius-lg)] bg-[var(--surface-1)] p-[1.2rem]">
-      <h2 className="mb-[0.4rem] text-[1.3rem] font-bold text-[var(--text-high)]">Mon appareil</h2>
+      <h2 className="mb-[0.4rem] text-[1.3rem] font-bold text-[var(--text-high)]">{t("my_device")}</h2>
       <p className="mb-[1rem] text-[1rem] text-[var(--text-medium)]">
-        Communiquez ce code à votre support pour activer NOVA+ à distance.
-        {hardwareBound && " Ce code est lié à cet appareil : il ne change pas, même après réinstallation."}
+        {t("device_intro")}
+        {hardwareBound && ` ${t("device_hw_bound")}`}
       </p>
 
       <div className="flex flex-wrap items-center gap-[1.2rem]">
         <div className="flex flex-col gap-[0.3rem]">
           <span className="text-[0.9rem] font-semibold uppercase tracking-[0.16em] text-[var(--text-disabled)]">
-            Code d’activation
+            {t("activation_code")}
           </span>
           <span className="font-mono text-[1.7rem] font-bold tracking-[0.12em] text-accent-grad">{mac || "—"}</span>
         </div>
@@ -66,17 +54,15 @@ export default function DeviceCard() {
 
       <div className="mt-[0.9rem] flex items-center gap-[0.7rem]">
         <span className="h-[0.7rem] w-[0.7rem] rounded-full" style={{ background: stateColor(state) }} />
-        <span className="text-[1.1rem] font-bold text-[var(--text-high)]">{STATE_LABEL[state]}</span>
+        <span className="text-[1.1rem] font-bold text-[var(--text-high)]">{t(`state_${state}`)}</span>
         {(state === "trial" || state === "active") && activation && activation.daysLeft > 0 && !activation.paid && (
-          <span className="text-[1rem] text-[var(--text-medium)]">· {activation.daysLeft} j restants</span>
+          <span className="text-[1rem] text-[var(--text-medium)]">· {t("days_left", { n: activation.daysLeft })}</span>
         )}
-        {activation?.offline && <span className="text-[0.95rem] text-[var(--text-disabled)]">· hors-ligne</span>}
+        {activation?.offline && <span className="text-[0.95rem] text-[var(--text-disabled)]">· {t("offline")}</span>}
       </div>
 
       {!enabled && (
-        <p className="mt-[0.6rem] text-[0.9rem] text-[var(--text-disabled)]">
-          Activation désactivée pour ce build.
-        </p>
+        <p className="mt-[0.6rem] text-[0.9rem] text-[var(--text-disabled)]">{t("activation_disabled")}</p>
       )}
 
       <div className="mt-[1.1rem] flex flex-wrap gap-[0.8rem]">
@@ -85,7 +71,7 @@ export default function DeviceCard() {
           onClick={() => void refreshActivation()}
           className="focusable rounded-[var(--radius)] bg-[var(--surface-2)] px-[1.3rem] py-[0.7rem] text-[1.05rem] font-semibold text-[var(--text-high)]"
         >
-          Vérifier maintenant
+          {t("check_now")}
         </button>
         {/* Régénérer n'a de sens que sur le repli navigateur : sur un appareil
             réel le code est ancré au matériel et reste fixe. */}
@@ -95,7 +81,7 @@ export default function DeviceCard() {
             onClick={onRegenerate}
             className="focusable rounded-[var(--radius)] bg-[var(--surface-2)] px-[1.3rem] py-[0.7rem] text-[1.05rem] font-semibold text-[var(--text-medium)]"
           >
-            Régénérer le code
+            {t("regenerate")}
           </button>
         )}
       </div>

@@ -6,6 +6,7 @@ import SpatialNav from "./components/SpatialNav";
 import Preferences from "./components/Preferences";
 import ActivationGate from "./components/ActivationGate";
 import TrialBanner from "./components/TrialBanner";
+import LocaleSetup from "./components/LocaleSetup";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -45,6 +46,7 @@ export default function RootLayout({
     <html lang="fr" className={`${geistSans.variable} ${playfair.variable} h-full antialiased`}>
       <body className="min-h-full bg-[var(--bg)]">
         <Preferences />
+        <LocaleSetup />
         {/* SpatialNav stays outside the gate so the D-pad also drives the
             activation/lock screen. The gate blocks the app (sidebar + content)
             until this device is activated. */}

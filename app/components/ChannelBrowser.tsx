@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import ChannelCard from "./ChannelCard";
 import { useFavorites, useRecents } from "../lib/favorites";
+import { useT } from "../lib/i18n";
 import type { Channel, ChannelGroup } from "../lib/iptv-types";
 import type { NowNextMap } from "../lib/view-types";
 
@@ -26,6 +27,7 @@ export default function ChannelBrowser({
 }) {
   const { favorites } = useFavorites();
   const recents = useRecents();
+  const t = useT();
 
   const byId = useMemo(() => {
     const m = new Map<string, Channel>();
@@ -39,13 +41,14 @@ export default function ChannelBrowser({
   // Build the full group list: virtual groups first, then the real ones.
   const allGroups: ChannelGroup[] = useMemo(() => {
     const list: ChannelGroup[] = [];
-    if (favChannels.length) list.push({ id: "@fav", name: "★ Favoris", channels: favChannels });
+    if (favChannels.length) list.push({ id: "@fav", name: `★ ${t("nav_favorites")}`, channels: favChannels });
     if (recentChannels.length)
-      list.push({ id: "@recent", name: "Récemment vues", channels: recentChannels });
+      list.push({ id: "@recent", name: t("recently_viewed"), channels: recentChannels });
     return [...list, ...groups];
-    // favChannels/recentChannels derive from favorites/recents:
+    // favChannels/recentChannels derive from favorites/recents ; t rerend les
+    // noms des groupes virtuels quand la langue change :
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, favorites, recents]);
+  }, [groups, favorites, recents, t]);
 
   const [activeId, setActiveId] = useState<string>(groups[0]?.id ?? "");
   const active = allGroups.find((g) => g.id === activeId) ?? allGroups[0];
@@ -56,7 +59,7 @@ export default function ChannelBrowser({
       {/* Group column */}
       <aside className="no-scrollbar flex w-[16rem] shrink-0 flex-col gap-[0.3rem] overflow-y-auto">
         <h2 className="mb-[0.6rem] px-[0.6rem] text-[0.85rem] font-bold uppercase tracking-[0.25em] text-[var(--text-disabled)]">
-          Catégories
+          {t("categories")}
         </h2>
         {allGroups.map((g) => {
           const sel = g.id === active?.id;
@@ -84,17 +87,15 @@ export default function ChannelBrowser({
       <section className="no-scrollbar flex-1 overflow-y-auto">
         <div className="mb-[1rem] flex items-baseline gap-[0.8rem]">
           <h1 className="font-display text-[2.2rem] font-extrabold text-[var(--text-high)]">
-            {active?.name ?? "Chaînes"}
+            {active?.name ?? t("channels_title")}
           </h1>
           <span className="text-[1rem] text-[var(--text-medium)]">
-            {active?.channels.length ?? 0} chaînes
+            {active?.channels.length ?? 0} {t("channels")}
           </span>
         </div>
 
         {channels.length === 0 ? (
-          <p className="text-[1.1rem] text-[var(--text-medium)]">
-            Aucune chaîne. Ajoutez votre playlist dans <strong>Réglages</strong>.
-          </p>
+          <p className="text-[1.1rem] text-[var(--text-medium)]">{t("guide_no_channels")}</p>
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(20rem,1fr))] gap-[0.7rem] pb-[4rem]">
             {channels.map((c) => (

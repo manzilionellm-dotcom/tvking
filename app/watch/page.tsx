@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import Player from "../components/Player";
 import { useSource, nowNextFor } from "../lib/client-source";
+import { useT } from "../lib/i18n";
 
 /*
  * Live player route. We use a query param (?c=<id>) rather than a dynamic
@@ -12,29 +13,35 @@ import { useSource, nowNextFor } from "../lib/client-source";
  */
 export default function WatchPage() {
   return (
-    <Suspense fallback={<Splash>Chargement…</Splash>}>
+    <Suspense fallback={<Splash><LoadingText /></Splash>}>
       <WatchInner />
     </Suspense>
   );
 }
 
+function LoadingText() {
+  const t = useT();
+  return <>{t("loading")}</>;
+}
+
 function WatchInner() {
   const id = useSearchParams().get("c") ?? "";
   const { status, playlist } = useSource();
+  const t = useT();
 
-  if (status === "loading" || status === "idle") return <Splash>Chargement…</Splash>;
+  if (status === "loading" || status === "idle") return <Splash><LoadingText /></Splash>;
 
   const channel = playlist.channels.find((c) => c.id === id);
   if (!channel) {
     return (
       <Splash>
-        <p>Chaîne introuvable.</p>
+        <p>{t("channel_not_found")}</p>
         <Link
           href="/"
           data-focusable
           className="focusable rounded-[var(--radius)] bg-[var(--surface-2)] px-[1.2rem] py-[0.7rem] text-[var(--text-high)]"
         >
-          Retour à l’accueil
+          {t("back_home")}
         </Link>
       </Splash>
     );
