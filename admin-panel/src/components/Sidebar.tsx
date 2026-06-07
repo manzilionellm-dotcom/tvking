@@ -13,8 +13,9 @@ import { useT } from '@/lib/i18n';
 type NavItem = { key: string; to: string };
 
 const OWNER_NAV: NavItem[] = [
-  { key: 'nav.dashboard',   to: '/' },
-  { key: 'nav.homeManager', to: '/home-manager' },
+  { key: 'nav.dashboard',     to: '/' },
+  { key: 'nav.controlCenter', to: '/control-center' },
+  { key: 'nav.homeManager',   to: '/home-manager' },
   { key: 'nav.activate',    to: '/activate' },
   { key: 'nav.pushSource',  to: '/playlists' },
   { key: 'nav.notifications', to: '/notifications' },
