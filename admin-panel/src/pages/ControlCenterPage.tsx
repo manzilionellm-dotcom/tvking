@@ -23,9 +23,13 @@ const MODULES: Mod[] = [
   { n: 8, emoji: '🎛️', title: 'Live Control', status: 'active', to: '/home-manager',
     desc: 'Activer / masquer / réordonner une section instantanément.' },
   { n: 4, emoji: '📣', title: 'Annonces & Notifications', status: 'active', to: '/notifications',
-    desc: 'Nouveautés, promos, infos diffusées à toutes les apps.' },
+    desc: 'Nouveautés, promos, infos — diffusées à tous ou ciblées par pays.' },
+  { n: 5, emoji: '📊', title: 'Analytics — En ligne', status: 'active', to: '/online',
+    desc: 'Utilisateurs connectés, pays et IP en temps réel.' },
   { n: 10, emoji: '🛡️', title: 'Admin Experience', status: 'partial', phase: 'En partie',
     desc: 'Multilingue, dark mode, historique des modifications (rollback).' },
+  { n: 11, emoji: '⬆️', title: 'Mise à jour forcée', status: 'active', to: '/force-update',
+    desc: 'Oblige tous les utilisateurs à installer la dernière version.' },
   { n: 2, emoji: '🖼️', title: 'Bannières', status: 'soon', phase: 'Phase 2',
     desc: 'Carrousel image / vidéo, dates de diffusion, bouton et lien.' },
   { n: 3, emoji: '🎨', title: 'Thèmes dynamiques', status: 'soon', phase: 'Phase 3',
@@ -34,8 +38,6 @@ const MODULES: Mod[] = [
     desc: 'Film / série / chaîne mis en avant (héros, rails « à la une »).' },
   { n: 7, emoji: '⚙️', title: 'Automatisation', status: 'soon', phase: 'Phase 5',
     desc: '« Si Coupe du Monde → Sport #1 », « si décembre → thème Noël ».' },
-  { n: 5, emoji: '📊', title: 'Analytics', status: 'soon', phase: 'Phase 5',
-    desc: 'Connectés, pays, temps de visionnage, top contenus, erreurs.' },
   { n: 9, emoji: '🧪', title: 'A/B Testing', status: 'soon', phase: 'Phase 5',
     desc: 'Tester accueils, couleurs, bannières — mesurer clics / conversion.' },
 ];
@@ -101,8 +103,8 @@ export function ControlCenterPage({ onLogout }: { onLogout: () => void }) {
     >
       <div className="mb-5 rounded-xl border border-accent/20 bg-accent/[0.06] px-4 py-3 text-xs text-ink-secondary">
         <span className="font-semibold text-ink-primary">{active} modules actifs</span>{' '}
-        sur 10. Les modifications sont instantanées et réversibles. Les modules
-        « Bientôt » arrivent par phases (voir la feuille de route du projet).
+        sur {MODULES.length}. Les modifications sont instantanées et réversibles.
+        Les modules « Bientôt » arrivent par phases (voir la feuille de route).
       </div>
 
       <div className="grid auto-rows-fr gap-3 sm:grid-cols-2 lg:grid-cols-3">
