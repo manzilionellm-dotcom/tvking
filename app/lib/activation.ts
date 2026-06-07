@@ -68,6 +68,61 @@ function emit() {
   for (const l of listeners) l();
 }
 
+/* ------------------------------------------------------------------ *
+ * Pont natif (Android TV) : requêtes API DIRECTES côté natif.
+ *
+ * Le proxy WebView (shouldInterceptRequest) n'a pas accès au corps des POST :
+ * le heartbeat `{mac, app}` y perdait son corps → serveur sans MAC → appareil
+ * jamais enregistré (absent du panel). On route donc l'API d'activation par
+ * window.NovaNative.apiFetch (asynchrone, corps préservé). En navigateur/dev
+ * (pas de pont), on retombe sur window.fetch.
+ * ------------------------------------------------------------------ */
+interface NovaNativeApi {
+  apiFetch?: (method: string, url: string, body: string | null, callbackId: string) => void;
+}
+const apiPending = new Map<string, (text: string) => void>();
+let apiSeq = 0;
+
+function getNativeApiFetch(): NonNullable<NovaNativeApi["apiFetch"]> | null {
+  if (typeof window === "undefined") return null;
+  const n = (window as unknown as { NovaNative?: NovaNativeApi }).NovaNative;
+  return n && typeof n.apiFetch === "function" ? n.apiFetch.bind(n) : null;
+}
+
+if (typeof window !== "undefined") {
+  (window as unknown as { __novaApiResolve: (id: string, text: string) => void }).__novaApiResolve = (
+    id,
+    text,
+  ) => {
+    const r = apiPending.get(id);
+    if (r) r(text);
+  };
+}
+
+/** Appel API via le pont natif (corps POST garanti). Résout "" sur échec/timeout. */
+function nativeApiFetch(method: string, url: string, body: string | null, timeoutMs: number): Promise<string> {
+  const apiFetch = getNativeApiFetch();
+  if (!apiFetch) return Promise.resolve("");
+  return new Promise((resolve) => {
+    const id = `a${++apiSeq}`;
+    let done = false;
+    const finish = (t: string) => {
+      if (done) return;
+      done = true;
+      apiPending.delete(id);
+      clearTimeout(to);
+      resolve(t);
+    };
+    const to = setTimeout(() => finish(""), timeoutMs);
+    apiPending.set(id, finish);
+    try {
+      apiFetch(method, url, body, id);
+    } catch {
+      finish("");
+    }
+  });
+}
+
 function readCache(): Activation | null {
   try {
     const raw = window.localStorage.getItem(K_CACHE);
@@ -123,6 +178,19 @@ function normalize(mac: string, d: WorkerStatus, offline: boolean): Activation {
 }
 
 async function fetchJson(url: string, init?: RequestInit, timeoutMs = 12_000): Promise<WorkerStatus | null> {
+  // Android TV : pont natif (corps POST préservé). Sinon (dev) : window.fetch.
+  if (getNativeApiFetch()) {
+    const method = (init?.method ?? "GET").toUpperCase();
+    const body = typeof init?.body === "string" ? init.body : null;
+    const txt = await nativeApiFetch(method, url, body, timeoutMs + 3_000);
+    if (!txt) return null;
+    try {
+      return JSON.parse(txt) as WorkerStatus;
+    } catch {
+      return null;
+    }
+  }
+
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {

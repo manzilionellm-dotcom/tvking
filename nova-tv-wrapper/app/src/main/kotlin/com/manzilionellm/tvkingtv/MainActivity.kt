@@ -50,6 +50,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
 import androidx.webkit.WebViewAssetLoader
+import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
@@ -142,6 +143,10 @@ class MainActivity : AppCompatActivity() {
             // que la clé de signature ne change pas -> le MAC virtuel reste le
             // MÊME -> le client ne "rachète" pas l'app après une réinstall.
             addJavascriptInterface(NovaBridge(this@MainActivity), "NovaNative")
+            // La WebView doit pouvoir recevoir le focus du D-pad pour que les
+            // fleches/OK arrivent bien a l'app web (navigation telecommande).
+            isFocusable = true
+            isFocusableInTouchMode = true
 
             // Intercepter les requetes :
             //  - host appassets -> servir /assets/web/ via l'AssetLoader.
@@ -332,6 +337,11 @@ class MainActivity : AppCompatActivity() {
         return super.onKeyDown(keyCode, event)
     }
 
+    /** Exécute du JS dans la WebView, depuis n'importe quel thread (poste sur l'UI). */
+    fun evalJs(script: String) {
+        runOnUiThread { webView.evaluateJavascript(script, null) }
+    }
+
     override fun onDestroy() {
         // Nettoie la WebView pour ne pas garder une session live audio
         // si l'utilisateur a coupe l'app brutalement.
@@ -349,13 +359,66 @@ class MainActivity : AppCompatActivity() {
  * survit à la désinstallation/réinstallation, donc le code d'activation ne
  * change pas et le client n'a pas à réactiver / racheter.
  */
-class NovaBridge(private val ctx: Context) {
+class NovaBridge(private val activity: MainActivity) {
     @JavascriptInterface
     fun getDeviceId(): String {
         return try {
-            Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
+            Settings.Secure.getString(activity.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
         } catch (_: Exception) {
             ""
+        }
+    }
+
+    /**
+     * Requete HTTP NATIVE (asynchrone) pour l'API de licence/activation.
+     *
+     * POURQUOI cote natif et pas via fetch() ? Le proxy WebView
+     * (shouldInterceptRequest) n'a PAS acces au CORPS d'une requete POST :
+     * le heartbeat `{mac, app}` y perdait son corps -> le serveur recevait un
+     * heartbeat SANS MAC -> l'appareil ne s'enregistrait jamais (absent du
+     * panel). Ici on maitrise corps + en-tetes et on parle directement au
+     * serveur (comme l'app native), donc l'enregistrement fonctionne.
+     *
+     * Asynchrone : on travaille sur un thread dedie (l'I/O ne doit pas bloquer
+     * le thread JS) puis on rend le resultat via window.__novaApiResolve(id, txt).
+     * `txt` = corps de la reponse en cas de succes (2xx), sinon chaine vide.
+     */
+    @JavascriptInterface
+    fun apiFetch(method: String, url: String, body: String?, callbackId: String) {
+        Thread {
+            val result = doApiFetch(method, url, body)
+            // JSONObject.quote -> chaine JS sure (echappe guillemets, retours ligne…).
+            val js = "window.__novaApiResolve && window.__novaApiResolve(" +
+                "${JSONObject.quote(callbackId)}, ${JSONObject.quote(result)})"
+            activity.evalJs(js)
+        }.start()
+    }
+
+    private fun doApiFetch(method: String, url: String, body: String?): String {
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = method.uppercase()
+                connectTimeout = 12_000
+                readTimeout = 12_000
+                setRequestProperty("Accept", "application/json")
+                if (!body.isNullOrEmpty()) {
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json")
+                }
+            }
+            if (!body.isNullOrEmpty()) {
+                conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
+            if (code in 200..299) text else ""
+        } catch (e: Exception) {
+            Log.w("NovaTV", "apiFetch fail $url: ${e.message}")
+            ""
+        } finally {
+            conn?.disconnect()
         }
     }
 }
