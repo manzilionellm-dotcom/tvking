@@ -32,6 +32,7 @@ export default function ChannelLogo({
           alt=""
           className="h-full w-full object-contain"
           loading="lazy"
+          decoding="async"
           onError={() => setFailed(true)}
         />
       ) : (

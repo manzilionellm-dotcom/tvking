@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
 import ChannelCard from "./ChannelCard";
 import { useSource, searchChannels, nowNextFor } from "../lib/client-source";
 import { useT } from "../lib/i18n";
@@ -20,7 +20,10 @@ export default function ChannelSearch() {
     inputRef.current?.focus();
   }, []);
 
-  const term = q.trim();
+  // useDeferredValue : la frappe reste fluide, le calcul des résultats suit
+  // sans bloquer l'input (utile sur une box TV avec de longues playlists).
+  const deferredQ = useDeferredValue(q);
+  const term = deferredQ.trim();
   const results = status === "ready" && term.length >= 2 ? searchChannels(term) : [];
 
   return (

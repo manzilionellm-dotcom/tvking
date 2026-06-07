@@ -20,6 +20,7 @@ import { useSyncExternalStore } from "react";
 import { parseM3U } from "./m3u";
 import { parseXmltv } from "./xmltv";
 import { nowNext as computeNowNext } from "./epg";
+import { smartSearch } from "./search";
 import type { EpgIndex, Playlist } from "./iptv-types";
 import type { NowNextLite, NowNextMap } from "./view-types";
 
@@ -188,9 +189,9 @@ export function channelsByIds(ids: string[]) {
 }
 
 export function searchChannels(q: string, limit = 80) {
-  const term = q.trim().toLowerCase();
-  if (term.length < 2) return [];
-  return state.playlist.channels.filter((c) => c.name.toLowerCase().includes(term)).slice(0, limit);
+  if (q.trim().length < 2) return [];
+  // Recherche intelligente : synonymes multilingues + score de pertinence.
+  return smartSearch(state.playlist.channels, q, limit);
 }
 
 export function nowNextFor(id: string): NowNextLite | null {
