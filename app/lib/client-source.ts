@@ -97,7 +97,18 @@ async function fetchText(url: string, timeoutMs = 25000): Promise<string> {
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(url, { signal: ctrl.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      // Le proxy natif (WebView) place la vraie cause dans le corps de sa
+      // réponse 502 (ex. « Unable to resolve host », « Failed to connect …:80 »).
+      // On la fait remonter pour un diagnostic clair à l'écran.
+      let detail = "";
+      try {
+        detail = (await res.text()).slice(0, 180).trim();
+      } catch {
+        /* corps illisible — on garde juste le code */
+      }
+      throw new Error(`HTTP ${res.status}${detail ? ` — ${detail}` : ""}`);
+    }
     return await res.text();
   } finally {
     clearTimeout(t);

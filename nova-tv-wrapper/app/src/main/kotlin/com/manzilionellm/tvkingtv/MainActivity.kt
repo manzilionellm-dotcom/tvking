@@ -256,10 +256,14 @@ class MainActivity : AppCompatActivity() {
 
             WebResourceResponse(mime, enc, status, reasonFor(status, conn.responseMessage), headers, body)
         } catch (e: Exception) {
-            Log.w(TAG, "proxy fail ${request.url}: ${e.message}")
+            // Message detaille (classe + cause) -> remonte dans le corps du 502,
+            // que l'app affiche a l'ecran : "Unable to resolve host",
+            // "Failed to connect to .../X.X.X.X:80", "timeout", etc.
+            val detail = "${e.javaClass.simpleName}: ${e.message ?: "?"}"
+            Log.w(TAG, "proxy fail ${request.url}: $detail")
             // 502 (avec CORS) plutot que null : le fetch JS se resout en "HTTP 502"
             // au lieu d'un "Failed to fetch" opaque -> diagnostic plus clair.
-            errorResponse(e.message ?: "proxy error")
+            errorResponse(detail)
         }
     }
 
