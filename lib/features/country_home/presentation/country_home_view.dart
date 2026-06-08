@@ -25,6 +25,7 @@ import '../../channels/domain/channel.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../simple_home/data/home_layout_repository.dart';
+import '../data/channel_health_repository.dart';
 import '../data/popularity_repository.dart';
 import '../data/text_scale_repository.dart';
 import 'widgets/channel_list_row.dart';
@@ -84,7 +85,12 @@ class CountryHomeView extends StatelessWidget {
               builder:
                   (BuildContext context, AsyncSnapshot<List<String>> recSnap) {
                 return ListenableBuilder(
-                  listenable: HomeLayoutRepository.instance,
+                  // Re-trie quand la disposition (panel) OU la santé des
+                  // chaînes (sondes) change → les mortes reculent en direct.
+                  listenable: Listenable.merge(<Listenable>[
+                    HomeLayoutRepository.instance,
+                    ChannelHealthRepository.instance,
+                  ]),
                   builder: (BuildContext context, _) => _build(
                     context,
                     scale,
@@ -102,8 +108,9 @@ class CountryHomeView extends StatelessWidget {
 
   Widget _build(BuildContext context, double scale, Set<String> favs,
       List<String> recentIds) {
-    final List<Channel> popular =
-        PopularityRepository.instance.getPopularChannels(channels, top: 12);
+    // Populaires, puis on pousse les chaînes mortes au fond (santé).
+    final List<Channel> popular = ChannelHealthRepository.instance.sortByHealth(
+        PopularityRepository.instance.getPopularChannels(channels, top: 12));
     final Map<String, Channel> byId = <String, Channel>{
       for (final Channel c in channels) c.id: c,
     };
@@ -180,8 +187,8 @@ class CountryHomeView extends StatelessWidget {
           .where((Channel c) => def.$2.contains(c.genre))
           .toList();
       if (inGenre.isEmpty) continue;
-      final List<Channel> top =
-          PopularityRepository.instance.getPopularChannels(inGenre, top: 12);
+      final List<Channel> top = ChannelHealthRepository.instance.sortByHealth(
+          PopularityRepository.instance.getPopularChannels(inGenre, top: 12));
       final String ribbon =
           HomeLayoutRepository.instance.config(key)?.ribbon ?? '';
       items.add(_sectionTitle(def.$1, scale, ribbon: ribbon));

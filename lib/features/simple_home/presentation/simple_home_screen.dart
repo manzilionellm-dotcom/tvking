@@ -30,6 +30,7 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../profile/presentation/profile_screen.dart';
+import '../../country_home/data/channel_health_repository.dart';
 import '../../country_home/data/country_history_repository.dart';
 import '../../country_home/data/popularity_repository.dart';
 import '../../country_home/data/text_scale_repository.dart';
@@ -65,7 +66,14 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     TextScaleRepository.instance.initialize();
     // "Vos pays" (récents) pour l'écran de choix de pays.
     CountryHistoryRepository.instance.initialize();
+    // Santé des chaînes : charge le cache (la sonde démarre au 1er
+    // affichage des chaînes, cf. build → _healthKicked).
+    ChannelHealthRepository.instance.initialize();
   }
+
+  // Sonde de santé déclenchée une seule fois par session, dès que les
+  // chaînes sont chargées (en arrière-plan, ne bloque pas l'UI).
+  bool _healthKicked = false;
 
   /// Ouvre un pays + le mémorise dans "Vos pays" (récents).
   void _openCountry(_Country c) {
@@ -102,6 +110,14 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
           initialData: PlaylistRepository.instance.currentChannels,
           builder: (BuildContext context, AsyncSnapshot<List<Channel>> snap) {
             final List<Channel> channels = snap.data ?? const <Channel>[];
+            // Au 1er chargement des chaînes : lance la sonde de santé en
+            // arrière-plan (top popularité, bornée → pas de risque de ban).
+            if (!_healthKicked && channels.isNotEmpty) {
+              _healthKicked = true;
+              WidgetsBinding.instance.addPostFrameCallback(
+                (_) => ChannelHealthRepository.instance.probeTop(channels),
+              );
+            }
             return Column(
               children: <Widget>[
                 _buildHeader(channels.isNotEmpty),
