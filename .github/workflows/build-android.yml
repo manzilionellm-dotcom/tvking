@@ -867,3 +867,181 @@ jobs:
           fi
 
           gh release view redroom-latest --repo "$REPO"
+
+  # =========================================================
+  #  build_tv_flutter — APK 7 MOTION dédié TÉLÉVISION (Flutter)
+  # =========================================================
+  #  Le VRAI app (pas un wrapper WebView), verrouillé en mode TV via
+  #  lib/main_tv.dart (DeviceClassRepository.forceTv). Leanback activé
+  #  (apparaît comme app TV). Cast déjà absent de l'UI TV. Publié sur
+  #  la release `seventv-latest` (asset seven-tv.apk) → code Downloader
+  #  dédié. applicationId distinct (com.sevenmotion.tv) pour coexister.
+  build_tv_flutter:
+    name: Build 7 MOTION TV APK (Flutter)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Generate native Android folder (TV org)
+        run: flutter create . --platforms=android --org com.sevenmotion.tv --project-name seven_tv
+
+      - name: Brand AndroidManifest with 7 MOTION TV label
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ -f "$MANIFEST" ]; then
+            sed -i 's|android:label="seven_tv"|android:label="7 MOTION TV"|g' "$MANIFEST"
+            grep 'android:label' "$MANIFEST" || true
+          fi
+
+      - name: Patch AndroidManifest for Android TV (leanback)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'android.software.leanback' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-feature android:name="android.software.leanback" android:required="false"/>\n    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>' "$MANIFEST"
+          fi
+          if ! grep -q 'LEANBACK_LAUNCHER' "$MANIFEST"; then
+            sed -i 's|<category android:name="android.intent.category.LAUNCHER"/>|<category android:name="android.intent.category.LAUNCHER"/>\n                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>|' "$MANIFEST"
+          fi
+          if ! grep -q 'android:banner' "$MANIFEST"; then
+            sed -i 's|android:icon="@mipmap/ic_launcher"|android:icon="@mipmap/ic_launcher"\n        android:banner="@mipmap/ic_launcher"|' "$MANIFEST"
+          fi
+
+      - name: Apply Google Cast SDK overlay (TV)
+        run: bash android_overlay/google_cast/apply_cast_patch.sh
+
+      - name: Patch AndroidManifest for Picture-in-Picture (TV)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'supportsPictureInPicture' "$MANIFEST"; then
+            sed -i 's|android:name=".MainActivity"|android:name=".MainActivity"\n            android:supportsPictureInPicture="true"\n            android:resizeableActivity="true"|' "$MANIFEST"
+          fi
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Patch screen_brightness_android build.gradle (TV)
+        run: |
+          set -e
+          FILE=$(find ~/.pub-cache/hosted/pub.dev -path "*/screen_brightness_android-*/android/build.gradle" 2>/dev/null | head -1)
+          if [ -z "$FILE" ]; then echo "skip"; exit 0; fi
+          export PATCH_FILE="$FILE"
+          python3 << 'PYEOF'
+          import os, re
+          file = os.environ['PATCH_FILE']
+          s = open(file).read()
+          n = re.sub(r'^kotlin\s*\{[^{}]*\}\s*\n', '', s, flags=re.MULTILINE)
+          if n != s:
+              open(file, 'w').write(n); print('patched')
+          else:
+              print('nothing')
+          PYEOF
+
+      - name: Generate AppLocalizations from .arb files
+        run: flutter gen-l10n || true
+
+      - name: Generate launcher icons (7 MOTION logo)
+        run: dart run flutter_launcher_icons || true
+
+      - name: Patch build.gradle.kts for notifications (desugaring, TV)
+        run: |
+          set -e
+          python3 << 'PYEOF'
+          f = "android/app/build.gradle.kts"
+          s = open(f).read()
+          if 'isCoreLibraryDesugaringEnabled' not in s:
+              s = s.replace('compileOptions {',
+                  'compileOptions {\n        isCoreLibraryDesugaringEnabled = true', 1)
+          if 'desugar_jdk_libs' not in s:
+              s = s.rstrip() + ('\n\ndependencies {\n'
+                  '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n')
+          open(f, 'w').write(s); print('desugaring patché (TV)')
+          PYEOF
+
+      - name: Patch AndroidManifest for notifications (TV)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'POST_NOTIFICATIONS' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>' "$MANIFEST"
+          fi
+
+      - name: Build 7 MOTION TV release APK (split-per-abi, obfusqué)
+        run: |
+          BUILD_TS=$(date +%s)
+          echo "APP_BUILD_TS=$BUILD_TS"
+          flutter build apk --release --no-tree-shake-icons --split-per-abi \
+            --obfuscate --split-debug-info=build/symbols \
+            -t lib/main_tv.dart --dart-define=APP_BUILD_TS=$BUILD_TS
+
+      - name: Pick arm64-v8a as canonical seven-tv.apk
+        run: |
+          set -e
+          OUT=build/app/outputs/flutter-apk
+          ls -lah "$OUT" || true
+          ARM64="$OUT/app-arm64-v8a-release.apk"
+          test -f "$ARM64" || { echo "arm64 APK introuvable"; find build -name '*.apk'; exit 1; }
+          cp "$ARM64" "$OUT/seven-tv.apk"
+          ls -lah "$OUT/seven-tv.apk"
+
+      - name: Check APK exists
+        run: |
+          if [ ! -f build/app/outputs/flutter-apk/seven-tv.apk ]; then
+            echo "❌ APK TV introuvable"; find build -name '*.apk' || true; exit 1
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: seven-tv-apk-${{ github.sha }}
+          path: build/app/outputs/flutter-apk/seven-tv.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publish "seventv-latest" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -ex
+          REPO="${{ github.repository }}"
+          APK="build/app/outputs/flutter-apk/seven-tv.apk"
+          test -f "$APK"
+          NOTES="7 MOTION — version TÉLÉVISION (Android TV / Fire TV / Google TV).
+
+          • Commit : \`${{ github.sha }}\`
+          • Run : #${{ github.run_number }}
+
+          Verrouillé en mode télécommande (10-foot UI), sans cast.
+          Sideload via Downloader (route /7tv)."
+          if gh release view seventv-latest --repo "$REPO"; then
+            gh release edit seventv-latest --repo "$REPO" \
+              --title "7 MOTION TV — dernier build" --notes "$NOTES" --prerelease
+            gh release upload seventv-latest --repo "$REPO" --clobber "$APK"
+          else
+            gh release create seventv-latest --repo "$REPO" \
+              --title "7 MOTION TV — dernier build" --notes "$NOTES" --prerelease "$APK"
+          fi
+          gh release view seventv-latest --repo "$REPO"

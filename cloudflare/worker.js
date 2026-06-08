@@ -97,6 +97,13 @@ const TV_APK_URL =
 const NOVA_APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/nova-latest/nova.apk';
 
+// 7 MOTION TV : le VRAI app Flutter verrouille en mode television
+// (lib/main_tv.dart), pas un wrapper WebView. Sans cast, 10-foot UI.
+// Publie sur la release `seventv-latest` par le job CI `build_tv_flutter`.
+// Lien court Downloader : https://99999.7themotion.com/7tv
+const SEVEN_TV_APK_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/seventv-latest/seven-tv.apk';
+
 // ===========================================================
 //  Proxy APK avec cache edge Cloudflare (perf Downloader)
 // ===========================================================
@@ -2337,6 +2344,15 @@ export default {
       (segments.length === 2 && segments[0] === 'tv' && segments[1] === 'dl')
     ) {
       return proxyApk(TV_APK_URL, 'tv-king-tv.apk', url.searchParams.get('v'));
+    }
+
+    // /7tv et /seventv — VRAI app 7 MOTION Flutter en mode TV (sans cast).
+    // Code Downloader dedie. URL courte : "https://99999.7themotion.com/7tv".
+    if (
+      (segments.length === 1 && (segments[0] === '7tv' || segments[0] === 'seventv')) ||
+      (segments.length === 2 && (segments[0] === '7tv' || segments[0] === 'seventv') && segments[1] === 'dl')
+    ) {
+      return proxyApk(SEVEN_TV_APK_URL, 'seven-tv.apk', url.searchParams.get('v'));
     }
 
     // /nova — app NOVA+ pour Android TV / Fire TV. URL courte a coller

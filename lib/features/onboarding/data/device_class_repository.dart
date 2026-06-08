@@ -37,6 +37,22 @@ class DeviceClassRepository extends ChangeNotifier {
 
   DeviceClass _choice = DeviceClass.auto;
 
+  /// Forçage permanent du mode TV (build TV dédié, `main_tv.dart`). Quand
+  /// `true`, l'app est TOUJOURS en mode télévision, quel que soit l'écran
+  /// ou la préférence persistée. Posé AVANT le boot et jamais écrasé par
+  /// `initialize()`.
+  bool _forcedTv = false;
+
+  /// Verrouille l'app en mode TV (utilisé par l'entrypoint TV dédié).
+  void forceTv() {
+    _forcedTv = true;
+    _choice = DeviceClass.tv;
+    notifyListeners();
+  }
+
+  /// `true` si le build est verrouillé en mode TV.
+  bool get isForcedTv => _forcedTv;
+
   /// Le choix brut de l'utilisateur — ce qui a été coché à
   /// l'onboarding. `auto` veut dire "laisse l'app décider".
   DeviceClass get choice => _choice;
@@ -45,6 +61,7 @@ class DeviceClassRepository extends ChangeNotifier {
   /// les écrans regardent pour décider de leur layout. Toujours
   /// `phone` ou `tv`, jamais `auto`.
   DeviceClass effectiveFor(BuildContext context) {
+    if (_forcedTv) return DeviceClass.tv;
     if (_choice != DeviceClass.auto) return _choice;
     return _autoDetect(context);
   }
