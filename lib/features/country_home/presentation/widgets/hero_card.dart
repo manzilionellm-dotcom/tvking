@@ -23,6 +23,8 @@ class HeroCard extends StatefulWidget {
     required this.onWatch,
     required this.onFav,
     this.scale = 1.0,
+    this.label = 'POUR VOUS',
+    this.note,
   });
 
   final Channel channel;
@@ -30,6 +32,12 @@ class HeroCard extends StatefulWidget {
   final VoidCallback onWatch;
   final VoidCallback onFav;
   final double scale;
+
+  /// Libellé du badge (ex. 'POUR VOUS' ou 'FAVORI DU JOUR').
+  final String label;
+
+  /// Sous-titre forcé (ex. la note du favori du jour). Sinon EPG.
+  final String? note;
 
   @override
   State<HeroCard> createState() => _HeroCardState();
@@ -55,6 +63,11 @@ class _HeroCardState extends State<HeroCard>
     final Color base = logoFallbackColor(ch.name);
     final String? prog = ch.currentProgram;
     final bool hasEpg = prog != null && prog.trim().isNotEmpty;
+    // Sous-titre : la note (favori du jour) prime sur l'EPG.
+    final String? subtitle =
+        (widget.note != null && widget.note!.trim().isNotEmpty)
+            ? widget.note!.trim()
+            : (hasEpg ? prog.trim() : null);
 
     return Container(
       height: 220 * s,
@@ -91,7 +104,7 @@ class _HeroCardState extends State<HeroCard>
                 Row(
                   children: <Widget>[
                     _Badge(
-                      label: 'POUR VOUS',
+                      label: widget.label,
                       fg: AppColors.maisonBg,
                       bg: AppColors.black7Red,
                       scale: s,
@@ -109,10 +122,10 @@ class _HeroCardState extends State<HeroCard>
                   overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.maisonHeroTitle.copyWith(fontSize: 26 * s),
                 ),
-                if (hasEpg) ...<Widget>[
+                if (subtitle != null) ...<Widget>[
                   SizedBox(height: 4 * s),
                   Text(
-                    prog.trim(),
+                    subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppTextStyles.maisonProgram.copyWith(fontSize: 16 * s),

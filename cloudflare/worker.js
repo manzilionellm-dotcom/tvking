@@ -1223,6 +1223,28 @@ async function ensureAppConfigTable(env) {
   ).run();
 }
 
+// GET /api/featured (public) — "Favori du jour" piloté par le panel.
+// Renvoie {name, note} : la chaîne mise en avant du jour + une note.
+// '' = rien (l'app affiche son HERO normal).
+async function handleGetFeatured(env) {
+  if (!env.DB) return json({ name: '', note: '' });
+  try {
+    await ensureAppConfigTable(env);
+    const n = await env.DB
+      .prepare("SELECT value FROM app_config WHERE key = 'featured_name'")
+      .first();
+    const note = await env.DB
+      .prepare("SELECT value FROM app_config WHERE key = 'featured_note'")
+      .first();
+    return json({
+      name: (n && n.value) || '',
+      note: (note && note.value) || '',
+    });
+  } catch (_) {
+    return json({ name: '', note: '' });
+  }
+}
+
 // GET /api/app-version (public) — mise à jour forcée pilotée par le panel.
 // Renvoie {minBuildTs, latestBuildTs} (secondes epoch). Si `?build=<sec>`
 // est fourni et plus récent que le dernier connu, on le mémorise → le
@@ -2251,6 +2273,14 @@ export default {
         return await handleGetAppVersion(request, env);
       }
       return badRequest('only GET supported on /api/app-version');
+    }
+
+    // /api/featured — "Favori du jour" (chaîne mise en avant). GET public.
+    if (segments[0] === 'api' && segments[1] === 'featured' && segments.length === 2) {
+      if (request.method === 'GET') {
+        return await handleGetFeatured(env);
+      }
+      return badRequest('only GET supported on /api/featured');
     }
 
     // /admin/panel — page HTML du panel admin (auth via input dans la page)

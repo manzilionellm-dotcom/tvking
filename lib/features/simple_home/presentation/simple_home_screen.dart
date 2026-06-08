@@ -32,6 +32,7 @@ import '../../player/presentation/play_channel.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../../country_home/data/channel_health_repository.dart';
 import '../../country_home/data/country_history_repository.dart';
+import '../../country_home/data/featured_repository.dart';
 import '../../country_home/data/popularity_repository.dart';
 import '../../country_home/data/text_scale_repository.dart';
 import '../../country_home/presentation/country_home_view.dart';
@@ -69,6 +70,8 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     // Santé des chaînes : charge le cache (la sonde démarre au 1er
     // affichage des chaînes, cf. build → _healthKicked).
     ChannelHealthRepository.instance.initialize();
+    // "Favori du jour" piloté depuis le panel.
+    FeaturedRepository.instance.initialize();
   }
 
   // Sonde de santé déclenchée une seule fois par session, dès que les

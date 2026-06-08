@@ -539,6 +539,18 @@ export const forceUpdateApi = {
 };
 
 // =========================================================
+//  FAVORI DU JOUR (chaîne mise en avant)
+// =========================================================
+export const featuredApi = {
+  get: () => request<{ name: string; note: string }>('/api/v1/featured'),
+  set: (name: string, note: string) =>
+    request<{ ok: boolean; name: string; note: string }>('/api/v1/featured', {
+      method: 'POST',
+      body: { name, note },
+    }),
+};
+
+// =========================================================
 //  APPS EN LIGNE (présence : IP + pays via Cloudflare)
 // =========================================================
 export interface OnlineDevice {

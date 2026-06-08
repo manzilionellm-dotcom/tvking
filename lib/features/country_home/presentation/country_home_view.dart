@@ -26,6 +26,7 @@ import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../simple_home/data/home_layout_repository.dart';
 import '../data/channel_health_repository.dart';
+import '../data/featured_repository.dart';
 import '../data/popularity_repository.dart';
 import '../data/text_scale_repository.dart';
 import 'widgets/channel_list_row.dart';
@@ -90,6 +91,7 @@ class CountryHomeView extends StatelessWidget {
                   listenable: Listenable.merge(<Listenable>[
                     HomeLayoutRepository.instance,
                     ChannelHealthRepository.instance,
+                    FeaturedRepository.instance,
                   ]),
                   builder: (BuildContext context, _) => _build(
                     context,
@@ -124,21 +126,40 @@ class CountryHomeView extends StatelessWidget {
     // 1) Réglage accessibilité.
     items.add(_textScaleToggle(scale));
 
-    // 2) HERO "Pour vous".
-    if (popular.isNotEmpty) {
-      final Channel hero = popular.firstWhere(
-        (Channel c) => c.isLive,
-        orElse: () => popular.first,
-      );
-      items.add(_eyebrow('POUR VOUS', scale));
+    // 2) HERO : "Favori du jour" (piloté panel) s'il correspond à une
+    //    chaîne d'ici, sinon le #1 populaire ("Pour vous").
+    Channel? hero;
+    String heroLabel = 'POUR VOUS';
+    String? heroNote;
+    final FeaturedRepository feat = FeaturedRepository.instance;
+    if (feat.hasFeatured) {
+      final String q = feat.name.trim().toLowerCase();
+      for (final Channel c in channels) {
+        if (c.name.toLowerCase().contains(q)) {
+          hero = c;
+          heroLabel = 'FAVORI DU JOUR';
+          heroNote = feat.note.trim().isEmpty ? null : feat.note.trim();
+          break;
+        }
+      }
+    }
+    hero ??= popular.isNotEmpty
+        ? popular.firstWhere((Channel c) => c.isLive,
+            orElse: () => popular.first)
+        : null;
+    if (hero != null) {
+      final Channel heroCh = hero;
+      items.add(_eyebrow(heroLabel, scale));
       items.add(Padding(
         padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
         child: HeroCard(
-          channel: hero,
-          isFav: favs.contains(hero.id),
+          channel: heroCh,
+          label: heroLabel,
+          note: heroNote,
+          isFav: favs.contains(heroCh.id),
           scale: scale,
-          onWatch: () => _play(context, hero, channels),
-          onFav: () => FavoritesRepository.instance.toggle(hero.id),
+          onWatch: () => _play(context, heroCh, channels),
+          onFav: () => FavoritesRepository.instance.toggle(heroCh.id),
         ),
       ));
     }

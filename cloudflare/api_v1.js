@@ -477,6 +477,17 @@ export async function apiV1(request, env) {
     }
   }
 
+  // /featured — "Favori du jour" (chaîne mise en avant). Owner uniquement.
+  if (parts[0] === 'featured') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (parts.length === 1) {
+      if (request.method === 'GET') return handleFeaturedGet(env);
+      if (request.method === 'POST') return handleFeaturedPost(request, env, actor);
+    }
+  }
+
   // /sources/:mac — source IPTV (Xtream/M3U) assignée à un appareil
   // par sa MAC, poussée à l'app. Admin ET revendeurs (chacun provisionne
   // ses clients). GET pour relire, PUT pour (ré)assigner, DELETE pour
@@ -1127,6 +1138,41 @@ async function handleForceUpdatePost(request, env, actor) {
     return jsonResp({ ok: true, minBuildTs: 0 });
   }
   return errResp('bad_action', "action doit être 'force' ou 'disable'", 400);
+}
+
+// =========================================================
+//  FAVORI DU JOUR — chaîne mise en avant (Module 6, allégé)
+// =========================================================
+//  Stocke featured_name + featured_note dans app_config. L'app lit
+//  /api/featured et met cette chaîne dans son HERO « Favori du jour ».
+async function _cfgGetStr(env, key) {
+  const row = await env.DB
+    .prepare('SELECT value FROM app_config WHERE key = ?')
+    .bind(key).first();
+  return row ? (row.value || '') : '';
+}
+
+async function handleFeaturedGet(env) {
+  await ensureAppConfigTable(env);
+  return jsonResp({
+    name: await _cfgGetStr(env, 'featured_name'),
+    note: await _cfgGetStr(env, 'featured_note'),
+  });
+}
+
+async function handleFeaturedPost(request, env, actor) {
+  await ensureAppConfigTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const name = (body.name || '').toString().trim().slice(0, 80);
+  const note = (body.note || '').toString().trim().slice(0, 120);
+  await _cfgSet(env, 'featured_name', name);
+  await _cfgSet(env, 'featured_note', note);
+  await logAudit(env, request, actor, 'featured.set',
+    { type: 'app_config', id: null }, null, { name, note });
+  return jsonResp({ ok: true, name, note });
 }
 
 // =========================================================

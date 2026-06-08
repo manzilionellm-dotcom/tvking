@@ -19,6 +19,7 @@ import { HomeManagerPage } from '@/pages/HomeManagerPage';
 import { ControlCenterPage } from '@/pages/ControlCenterPage';
 import { ForceUpdatePage } from '@/pages/ForceUpdatePage';
 import { OnlinePage } from '@/pages/OnlinePage';
+import { FeaturedPage } from '@/pages/FeaturedPage';
 import { AccountPage } from '@/pages/AccountPage';
 
 /// Etats possibles de l'app :
@@ -94,6 +95,7 @@ export default function App() {
       <Route path="/home-manager" element={<HomeManagerPage onLogout={handleLogout} />} />
       <Route path="/force-update" element={<ForceUpdatePage onLogout={handleLogout} />} />
       <Route path="/online" element={<OnlinePage onLogout={handleLogout} />} />
+      <Route path="/featured" element={<FeaturedPage onLogout={handleLogout} />} />
       <Route path="/customers"   element={<CustomersPage   onLogout={handleLogout} />} />
       <Route path="/devices"     element={<DevicesPage     onLogout={handleLogout} />} />
       <Route path="/apps"        element={<AppsPage        onLogout={handleLogout} />} />
