@@ -160,22 +160,25 @@ abstract final class AppColors {
   static const Color info = Color(0xFF6A8DB0);
 
   // -------------------------------------------------------
-  //  MAISON NOIR — palette dédiée à l'accueil pays refondu
-  //  (country_home). Noir vrai OLED + or champagne. Fixe (non
-  //  pilotée par l'AccentController) pour une identité premium
-  //  cohérente. Centralisée ici → jamais de Color(0xFF…) dans l'UI.
+  //  MAISON NOIR / BLACK7 — palette dédiée à l'accueil refondu
+  //  (country_home). Charte Black7 : noir vrai OLED + ROUGE de marque
+  //  (#E4202E), AUCUN or. Fixe (non pilotée par l'AccentController) pour
+  //  une identité premium cohérente. Centralisée ici → jamais de
+  //  Color(0xFF…) dans l'UI.
   // -------------------------------------------------------
-  /// Fond noir vrai (économie batterie OLED).
-  static const Color maisonBg = Color(0xFF060607);
+  /// Fond noir vrai (économie batterie OLED). Charte Black7 #08080A.
+  static const Color maisonBg = Color(0xFF08080A);
   /// Surface de carte.
-  static const Color maisonSurface = Color(0xFF101015);
+  static const Color maisonSurface = Color(0xFF15151B);
   /// Surface surélevée (hover / hero).
-  static const Color maisonSurfaceHigh = Color(0xFF191920);
+  static const Color maisonSurfaceHigh = Color(0xFF1D1D25);
   /// Texte quasi-blanc (contraste fort seniors).
   static const Color maisonInk = Color(0xFFF7F7F5);
-  /// Accent or champagne (chrome premium).
-  static const Color champagne = Color(0xFFE6BD7E);
-  /// Rouge réservé au badge LIVE (Maison Noir).
+  /// ROUGE de marque Black7 (accent principal — remplace l'or).
+  static const Color black7Red = Color(0xFFE4202E);
+  /// Rouge foncé Black7 (dégradés, états).
+  static const Color black7RedDeep = Color(0xFF8F1019);
+  /// Rouge réservé au badge LIVE (Maison Noir / Black7).
   static const Color liveRed = Color(0xFFFF4D4F);
   /// Bordure subtile (blanc 8 %).
   static const Color maisonBorder = Color(0x14FFFFFF);

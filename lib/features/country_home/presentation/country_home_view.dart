@@ -225,7 +225,7 @@ class CountryHomeView extends StatelessWidget {
       child: Align(
         alignment: Alignment.centerRight,
         child: Material(
-          color: big ? AppColors.champagne : AppColors.maisonSurfaceHigh,
+          color: big ? AppColors.black7Red : AppColors.maisonSurfaceHigh,
           borderRadius: BorderRadius.circular(12),
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
@@ -259,7 +259,7 @@ class CountryHomeView extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
         child: Text(text,
             style: AppTextStyles.maisonLabel.copyWith(
-                color: AppColors.champagne, fontSize: 12 * scale)),
+                color: AppColors.black7Red, fontSize: 12 * scale)),
       );
 
   Widget _sectionTitle(String text, double scale, {String ribbon = ''}) =>

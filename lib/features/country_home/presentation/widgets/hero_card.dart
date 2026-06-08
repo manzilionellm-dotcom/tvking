@@ -93,7 +93,7 @@ class _HeroCardState extends State<HeroCard>
                     _Badge(
                       label: 'POUR VOUS',
                       fg: AppColors.maisonBg,
-                      bg: AppColors.champagne,
+                      bg: AppColors.black7Red,
                       scale: s,
                     ),
                     if (ch.isLive) ...<Widget>[

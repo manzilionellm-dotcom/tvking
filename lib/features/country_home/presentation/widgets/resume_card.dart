@@ -88,7 +88,7 @@ class ResumeCard extends StatelessWidget {
                           backgroundColor:
                               AppColors.maisonInk.withValues(alpha: 0.18),
                           valueColor: const AlwaysStoppedAnimation<Color>(
-                              AppColors.champagne),
+                              AppColors.black7Red),
                         ),
                       ),
                     ),

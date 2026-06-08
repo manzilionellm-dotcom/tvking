@@ -67,7 +67,7 @@ class PopularCard extends StatelessWidget {
                         '$rank',
                         style: AppTextStyles.maisonRank.copyWith(
                           fontSize: 52 * s,
-                          color: AppColors.champagne.withValues(alpha: 0.28),
+                          color: AppColors.black7Red.withValues(alpha: 0.28),
                         ),
                       ),
                     ),
