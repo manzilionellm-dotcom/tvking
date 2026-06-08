@@ -440,6 +440,7 @@ export interface Announcement {
   kind?: string;
   cta?: string;
   country?: string;
+  expires_at?: number;
   created_at: number;
 }
 export const announcementsApi = {
@@ -451,6 +452,7 @@ export const announcementsApi = {
     kind?: string;
     cta?: string;
     country?: string;
+    durationMin?: number;
   }) =>
     request<{ ok: boolean; id: number | null }>('/api/v1/announcements', {
       method: 'POST',

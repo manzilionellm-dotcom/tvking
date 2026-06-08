@@ -1141,7 +1141,8 @@ async function ensureAnnouncementsTable(env) {
   // `kind` (catégorie), `cta` (libellé bouton), `country` (ciblage géo :
   // '' = tout le monde, sinon code ISO type 'SE'). SQLite lève si la
   // colonne existe déjà → on ignore.
-  for (const col of ['kind TEXT', 'cta TEXT', 'country TEXT']) {
+  for (const col of ['kind TEXT', 'cta TEXT', 'country TEXT',
+      'expires_at INTEGER']) {
     try {
       await env.DB.prepare(
         'ALTER TABLE app_broadcasts ADD COLUMN ' + col
@@ -1151,23 +1152,25 @@ async function ensureAnnouncementsTable(env) {
 }
 
 // GET /api/announcement (public) — dernière annonce CIBLÉE pour le pays
-// de l'app qui demande (Cloudflare fournit le pays), ou globale. {} si
-// aucune. Une annonce avec country='' part à tout le monde ; sinon elle
-// n'est servie qu'aux apps de ce pays.
+// de l'app qui demande (Cloudflare fournit le pays), ou globale, ET non
+// expirée. {} si aucune. country='' = tout le monde ; expires_at = 0/NULL
+// = pas d'expiration ; sinon l'annonce disparaît d'elle-même passé ce ms.
 async function handleGetAnnouncement(env, request) {
   if (!env.DB) return json({});
   try {
     await ensureAnnouncementsTable(env);
     const reqCountry =
         (request && request.headers.get('CF-IPCountry')) || '';
+    const nowMs = Date.now();
     const row = await env.DB
       .prepare(
         'SELECT id, title, body, url, kind, cta, country, created_at ' +
           'FROM app_broadcasts ' +
-          "WHERE country IS NULL OR country = '' OR country = ? " +
+          "WHERE (country IS NULL OR country = '' OR country = ?) " +
+          'AND (expires_at IS NULL OR expires_at = 0 OR expires_at > ?) ' +
           'ORDER BY id DESC LIMIT 1'
       )
-      .bind(reqCountry)
+      .bind(reqCountry, nowMs)
       .first();
     if (!row) return json({});
     return json({

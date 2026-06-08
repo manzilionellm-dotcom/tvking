@@ -41,6 +41,8 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
   const [cta, setCta] = useState('');
   // Ciblage géographique : '' = tout le monde, sinon code ISO (ex. 'SE').
   const [country, setCountry] = useState('');
+  // Durée d'affichage (minutes) avant disparition auto. 0 = toujours.
+  const [durationMin, setDurationMin] = useState(30);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -71,6 +73,7 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
         kind,
         cta: cta.trim(),
         country,
+        durationMin,
       });
       setOk(
         country
@@ -189,6 +192,29 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
             </select>
             <p className="mt-1 text-[10px] text-ink-tertiary">
               Ex. choisis « Suède » → seuls les utilisateurs en Suède la verront.
+            </p>
+          </div>
+
+          {/* Durée d'affichage (disparition auto) */}
+          <div>
+            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+              Durée d'affichage
+            </label>
+            <select
+              value={durationMin}
+              onChange={(e) => setDurationMin(parseInt(e.target.value, 10))}
+              className={inputCls}
+            >
+              <option value={15}>15 minutes</option>
+              <option value={30}>30 minutes</option>
+              <option value={60}>1 heure</option>
+              <option value={180}>3 heures</option>
+              <option value={1440}>24 heures</option>
+              <option value={0}>Toujours (jusqu'à suppression)</option>
+            </select>
+            <p className="mt-1 text-[10px] text-ink-tertiary">
+              L'annonce disparaît d'elle-même de tous les téléphones et TV
+              passé ce délai (au plus tard à la prochaine ouverture).
             </p>
           </div>
 
@@ -359,6 +385,11 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
                       {aRow.country
                         ? ` · ${flagEmoji(aRow.country)} ${aRow.country}`
                         : ' · 🌍 tous'}
+                      {aRow.expires_at
+                        ? (aRow.expires_at > Date.now()
+                            ? ` · ⏱ expire ${new Date(aRow.expires_at).toLocaleTimeString()}`
+                            : ' · ⏱ expiré')
+                        : ' · ⏱ permanent'}
                       {aRow.url ? ' · 🔗 lien' : ''}
                     </div>
                   </div>

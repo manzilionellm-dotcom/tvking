@@ -813,7 +813,11 @@ async function ensureAnnouncementsTable(env) {
   //            l'icône + la couleur du bandeau dans l'app.
   //   - cta  : libellé du bouton d'action (ex. « En profiter ») associé à url.
   // SQLite lève si la colonne existe déjà → on ignore silencieusement.
-  for (const col of ['kind TEXT', 'cta TEXT', 'country TEXT']) {
+  //   - country : ciblage géo ('' = tous, sinon ISO).
+  //   - expires_at : ms epoch d'expiration (0/NULL = jamais). Passé ce
+  //     temps, l'annonce disparaît d'elle-même de toutes les apps.
+  for (const col of ['kind TEXT', 'cta TEXT', 'country TEXT',
+      'expires_at INTEGER']) {
     try {
       await env.DB.prepare(
         'ALTER TABLE app_broadcasts ADD COLUMN ' + col
@@ -829,8 +833,8 @@ async function handleAnnouncementsList(env) {
   await ensureAnnouncementsTable(env);
   const rs = await env.DB
     .prepare(
-      'SELECT id, title, body, url, kind, cta, country, created_at ' +
-        'FROM app_broadcasts ORDER BY id DESC LIMIT 20'
+      'SELECT id, title, body, url, kind, cta, country, expires_at, ' +
+        'created_at FROM app_broadcasts ORDER BY id DESC LIMIT 20'
     )
     .all();
   return jsonResp({ items: rs.results || [] });
@@ -857,17 +861,24 @@ async function handleAnnouncementsCreate(request, env, actor) {
     return errResp('missing_fields', 'title or body required', 400);
   }
   const now = Date.now();
+  // Expiration auto : durationMin minutes après la publication (0 = jamais).
+  // Plafonné à 24 h. L'annonce disparaît d'elle-même de toutes les apps.
+  let durationMin = parseInt(body.durationMin, 10);
+  if (!Number.isFinite(durationMin) || durationMin < 0) durationMin = 0;
+  if (durationMin > 1440) durationMin = 1440;
+  const expiresAt = durationMin > 0 ? now + durationMin * 60000 : 0;
   const res = await env.DB
     .prepare(
       'INSERT INTO app_broadcasts ' +
-        '(title, body, url, kind, cta, country, created_at) ' +
-        'VALUES (?, ?, ?, ?, ?, ?, ?)'
+        '(title, body, url, kind, cta, country, expires_at, created_at) ' +
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     )
-    .bind(title, msg, urlVal, kind, cta, country, now)
+    .bind(title, msg, urlVal, kind, cta, country, expiresAt, now)
     .run();
   const id = (res.meta && res.meta.last_row_id) || null;
   await logAudit(env, request, actor, 'announcement.create',
-    { type: 'announcement', id }, null, { title, body: msg, kind, country });
+    { type: 'announcement', id }, null,
+    { title, body: msg, kind, country, durationMin });
   return jsonResp({ ok: true, id }, 201);
 }
 
