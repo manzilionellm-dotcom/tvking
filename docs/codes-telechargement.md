@@ -10,6 +10,7 @@
 |-----|-----------------|-----------|----------------------------------------|
 | **7 MOTION** (BLACK7 ROYAL) | **5640874** | aftv.news/5640874 | https://99999.7themotion.com/royal |
 | **Red Room** (18+) | **7213154** | aftv.news/7213154 | https://99999.7themotion.com/redroom |
+| **7 MOTION TV** (Android TV / Fire TV) | **4796978** | aftv.news/4796978 | https://99999.7themotion.com/7tv |
 
 ## Notes
 - Le code Downloader → ouvre `aftv.news/<code>` → redirige vers la short
