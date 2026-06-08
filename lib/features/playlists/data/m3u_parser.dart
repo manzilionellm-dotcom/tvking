@@ -212,21 +212,28 @@ abstract final class M3uParser {
   //  Helpers
   // ============================================================
 
-  /// Vérifie qu'une ligne ressemble à une URL (schéma reconnu).
+  /// Vérifie qu'une ligne ressemble à une URL.
+  ///
+  /// On accepte MAINTENANT n'importe quel schéma `xxx://` (RFC 3986) —
+  /// pas seulement une liste fixe. Ainsi srt://, rist://, et tout autre
+  /// protocole que libmpv/FFmpeg sait ouvrir passent aussi → aucune
+  /// entrée de playlist valide n'est écartée.
+  static final RegExp _schemeRx =
+      RegExp(r'^[a-zA-Z][a-zA-Z0-9+.\-]*://');
+
   static bool _looksLikeUrl(String line) {
+    if (_schemeRx.hasMatch(line)) return true;
+    // Repli : certaines playlists mettent des chemins SANS schéma mais
+    // pointant clairement vers un média (extension connue) → on accepte.
     final String lower = line.toLowerCase();
-    return lower.startsWith('http://') ||
-        lower.startsWith('https://') ||
-        lower.startsWith('rtmp://') ||
-        lower.startsWith('rtmps://') ||
-        lower.startsWith('rtsp://') ||
-        lower.startsWith('udp://') ||
-        lower.startsWith('rtp://') ||
-        lower.startsWith('mms://') ||
-        lower.startsWith('mmsh://') ||
-        lower.startsWith('file://') ||
-        lower.startsWith('plugin://') ||
-        lower.startsWith('hls://');
+    const List<String> mediaExt = <String>[
+      '.m3u8', '.ts', '.mp4', '.mkv', '.mpd', '.flv', '.avi', '.mov',
+      '.webm', '.m4v', '.aac', '.mp3',
+    ];
+    for (final String ext in mediaExt) {
+      if (lower.contains(ext)) return true;
+    }
+    return false;
   }
 
   /// Extrait les attributs et le nom de chaîne d'une ligne #EXTINF.
