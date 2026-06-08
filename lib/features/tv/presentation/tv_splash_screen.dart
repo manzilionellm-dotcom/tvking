@@ -32,6 +32,7 @@ import '../../../core/flavor/flavor.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/tv_palette.dart';
 import '../../device/data/device_identity.dart';
+import 'tv_add_source_screen.dart';
 
 /// Écran de démarrage TV. `onEnter` est appelé quand l'utilisateur
 /// valide le bouton ENTRER (OK de la télécommande) — c'est l'appelant
@@ -168,6 +169,25 @@ class _TvSplashScreenState extends State<TvSplashScreen>
                             primary: true,
                             autofocus: true,
                             onPressed: widget.onEnter,
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // Ajouter SA propre source (Xtream / M3U) à la
+                          // télécommande — le client n'est plus dépendant du
+                          // fournisseur pour activer son abonnement.
+                          Builder(
+                            builder: (BuildContext context) => _TvButton(
+                              label: 'Ajouter ma playlist / mon code',
+                              icon: Icons.add_link_rounded,
+                              primary: false,
+                              autofocus: false,
+                              onPressed: () => Navigator.of(context).push<bool>(
+                                MaterialPageRoute<bool>(
+                                  builder: (_) => const TvAddSourceScreen(),
+                                ),
+                              ),
+                            ),
                           ),
                         ],
                       ),
