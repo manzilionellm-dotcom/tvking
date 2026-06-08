@@ -423,12 +423,14 @@ class _AppEntryState extends State<_AppEntry> {
       );
     }
 
-    // 0b) Verrouillage biométrique — AVANT tout autre écran. L'utilisateur
-    //     doit s'authentifier (empreinte ou PIN système) si le réglage
-    //     `security.lock_on_open` est activé OU si le flavor exige
-    //     biometricMandatory (Red Room). Ne s'applique qu'au cold start ;
-    //     pas de re-lock sur retour de background (choix UX).
-    if (_lockEnabled == true && !_unlocked) {
+    // 0b) Verrouillage biométrique — TÉLÉPHONE UNIQUEMENT. Sur TV (Android
+    //     TV / Fire TV) il n'y a NI capteur d'empreinte NI clavier tactile
+    //     pratique : l'écran de verrouillage n'a aucun sens et bloque
+    //     l'utilisateur. On le saute donc complètement sur les téléviseurs.
+    //     Ne s'applique qu'au cold start ; pas de re-lock au retour de
+    //     background (choix UX).
+    final bool isTvDevice = DeviceClassRepository.instance.isTvFor(context);
+    if (_lockEnabled == true && !_unlocked && !isTvDevice) {
       return LockScreen(
         onUnlocked: () => setState(() => _unlocked = true),
       );
