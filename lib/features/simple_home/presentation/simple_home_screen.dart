@@ -30,6 +30,7 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../profile/presentation/profile_screen.dart';
+import '../../country_home/data/country_history_repository.dart';
 import '../../country_home/data/popularity_repository.dart';
 import '../../country_home/data/text_scale_repository.dart';
 import '../../country_home/presentation/country_home_view.dart';
@@ -62,6 +63,29 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     // Accueil "Maison Noir" : score de popularité + réglage texte.
     PopularityRepository.instance.initialize();
     TextScaleRepository.instance.initialize();
+    // "Vos pays" (récents) pour l'écran de choix de pays.
+    CountryHistoryRepository.instance.initialize();
+  }
+
+  /// Ouvre un pays + le mémorise dans "Vos pays" (récents).
+  void _openCountry(_Country c) {
+    CountryHistoryRepository.instance.record(c.code);
+    setState(() {
+      _countryCode = c.code;
+      _countryFlag = c.flag;
+      _countryName = c.name;
+    });
+  }
+
+  /// Formate un nombre avec séparateur de milliers FR (12 000).
+  String _fmtThousands(int n) {
+    final String s = n.toString();
+    final StringBuffer b = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) b.write(' ');
+      b.write(s[i]);
+    }
+    return b.toString();
   }
 
   @override
@@ -162,48 +186,130 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     final List<_Country> countries = byCode.values.toList()
       ..sort((a, b) => b.count.compareTo(a.count));
 
-    return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 14,
-        crossAxisSpacing: 14,
-        childAspectRatio: 1,
-      ),
-      itemCount: countries.length,
-      itemBuilder: (BuildContext context, int i) {
-        final _Country c = countries[i];
-        return Material(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(22),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(22),
-            onTap: () => setState(() {
-              _countryCode = c.code;
-              _countryFlag = c.flag;
-              _countryName = c.name;
-            }),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Text(c.flag, style: const TextStyle(fontSize: 50)),
-                const SizedBox(height: 8),
-                Text(
-                  c.name,
-                  style: AppTextStyles.bodyLarge
-                      .copyWith(fontSize: 16, fontWeight: FontWeight.w700),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+    // "Vos pays" : récents persistés (CountryHistoryRepository), filtrés
+    // à ceux encore présents dans la playlist actuelle.
+    return ListenableBuilder(
+      listenable: CountryHistoryRepository.instance,
+      builder: (BuildContext context, _) {
+        final List<String> recentCodes =
+            CountryHistoryRepository.instance.getRecentCountries();
+        final List<_Country> recent = <_Country>[
+          for (final String code in recentCodes)
+            if (byCode[code] != null) byCode[code]!,
+        ];
+        return ColoredBox(
+          color: AppColors.maisonBg,
+          child: CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: <Widget>[
+              if (recent.isNotEmpty) ...<Widget>[
+                _countrySectionTitle('Vos pays'),
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 120,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      itemCount: recent.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 10),
+                      itemBuilder: (_, int i) => SizedBox(
+                        width: 108,
+                        child: _countryCard(recent[i]),
+                      ),
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 2),
-                Text(context.l10n.channelCount(c.count),
-                    style: AppTextStyles.bodyMedium.copyWith(
-                        fontSize: 11, color: AppColors.textTertiary)),
               ],
-            ),
+              _countrySectionTitle('Tous les pays'),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 18),
+                sliver: SliverGrid(
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 1,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (BuildContext context, int i) =>
+                        _countryCard(countries[i], popular: i < 3),
+                    childCount: countries.length,
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       },
+    );
+  }
+
+  Widget _countrySectionTitle(String text) => SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+          child: Text(
+            text,
+            style: AppTextStyles.maisonSection.copyWith(fontSize: 19),
+          ),
+        ),
+      );
+
+  // Carte pays (drapeau + nom + "X chaînes"), badge POPULAIRE (rouge) sur
+  // les plus fournies. Charte Black7.
+  Widget _countryCard(_Country c, {bool popular = false}) {
+    return Material(
+      color: AppColors.maisonSurface,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => _openCountry(c),
+        child: Stack(
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Text(c.flag, style: const TextStyle(fontSize: 42)),
+                  const SizedBox(height: 6),
+                  Text(
+                    c.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.maisonChannelName.copyWith(fontSize: 15),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${_fmtThousands(c.count)} chaînes',
+                    style: AppTextStyles.maisonProgram.copyWith(
+                        fontSize: 11.5, color: AppColors.textTertiary),
+                  ),
+                ],
+              ),
+            ),
+            if (popular)
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.black7Red,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'POPULAIRE',
+                    style: AppTextStyles.maisonLabel.copyWith(
+                        color: AppColors.maisonInk, fontSize: 8.5),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
