@@ -42,6 +42,7 @@ import '../domain/channel_genre.dart';
 import 'category_section_screen.dart';
 import 'favorites_screen.dart';
 import 'search_screen.dart';
+import 'tv_live_tv_screen.dart';
 import 'widgets/channel_logo.dart';
 import 'widgets/empty_state.dart';
 import 'widgets/resume_banner.dart';
@@ -355,10 +356,11 @@ class _TvTopBar extends StatelessWidget {
           _TvNavChip(
             icon: Icons.live_tv_rounded,
             label: context.l10n.navDirect,
+            // « En direct » ouvre désormais l'écran DIRECT / LIVE TV :
+            // liste de chaînes à gauche + aperçu vidéo live à droite,
+            // navigation 100 % télécommande (style box IPTV / IBO).
             onTap: () => Navigator.of(context).push<void>(
-              tvRoute<void>(
-                CategorySectionScreen(title: context.l10n.navLive),
-              ),
+              tvRoute<void>(const LiveTvScreen()),
             ),
           ),
           const SizedBox(width: 8),

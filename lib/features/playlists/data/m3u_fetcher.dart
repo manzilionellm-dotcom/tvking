@@ -28,6 +28,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/observability/structured_logger.dart';
 import '../../player/data/player_settings.dart';
 
 abstract final class M3uFetcher {
@@ -40,6 +41,12 @@ abstract final class M3uFetcher {
       'Chrome/124.0.0.0 Mobile Safari/537.36 7MOTION/1.0';
 
   static const Duration _timeout = Duration(seconds: 90);
+
+  /// Budget GLOBAL pour l'ensemble de la rotation de signatures. Garde-fou
+  /// contre l'empilement de N tentatives lentes (consigne : « ne PAS
+  /// cumuler N×90s si l'hôte est injoignable »). Si on dépasse ce budget,
+  /// on arrête d'essayer de nouvelles signatures et on renvoie l'erreur.
+  static const Duration _totalBudget = Duration(seconds: 150);
 
   /// Construit la liste ORDONNÉE des signatures (User-Agent) à essayer,
   /// sans doublon. Ordre : d'abord la signature CONFIGURÉE par
@@ -86,28 +93,65 @@ abstract final class M3uFetcher {
       final List<String> userAgents = _candidateUserAgents(preferredUserAgent);
       // Mémorise la dernière erreur la plus parlante pour le message final.
       Object? lastError;
+      // Chronomètre global pour le garde-fou de budget (cf. _totalBudget).
+      final Stopwatch elapsed = Stopwatch()..start();
 
       for (int i = 0; i < userAgents.length; i++) {
+        // Garde-fou budget global : on n'enchaîne pas indéfiniment des
+        // tentatives lentes si l'hôte traîne (évite N×90s cumulés).
+        if (elapsed.elapsed > _totalBudget) {
+          lastError ??= Exception('Délai global dépassé ($url)');
+          break;
+        }
         final String ua = userAgents[i];
         try {
-          final http.Response resp = await client.get(
-            Uri.parse(url),
-            headers: <String, String>{
-              'User-Agent': ua,
-              'Accept': '*/*',
-              // En-têtes « complets » façon navigateur. Beaucoup de
-              // pare-feux anti-bot de fronts CDN bloquent les requêtes
-              // « trop nues » (sans Accept-Language ni Connection) avec
-              // un code maison (ex. « 884 »), MÊME avec un User-Agent de
-              // navigateur. En envoyant le même jeu d'en-têtes qu'un vrai
-              // navigateur, on passe ces filtres (cas confirmé : l'URL
-              // marche dans un navigateur, pas avec un client « nu »).
-              'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
-              'Connection': 'keep-alive',
-              // NB : on ne force PAS d'en-tête Accept-Encoding. dart:io
-              // ajoute « gzip » tout seul et décompresse automatiquement.
+          // En-têtes « complets » façon navigateur. Beaucoup de pare-feux
+          // anti-bot de fronts CDN bloquent les requêtes « trop nues »
+          // (sans Accept-Language ni Connection) avec un code maison
+          // (ex. « 884 »), MÊME avec un User-Agent de navigateur.
+          final Map<String, String> headers = <String, String>{
+            'User-Agent': ua,
+            'Accept': '*/*',
+            'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection': 'keep-alive',
+            // NB : on ne force PAS d'en-tête Accept-Encoding. dart:io
+            // ajoute « gzip » tout seul et décompresse automatiquement.
+          };
+
+          // PREUVE / DIAGNOSTIC 884 : on journalise la requête EXACTE
+          // envoyée (URL + en-têtes + n° de signature). C'est cette trace
+          // qu'on compare à la capture d'une requête qui MARCHE (navigateur
+          // / IBO Player) pour isoler l'élément discriminant. Voir
+          // docs/DIAGNOSTIC_HTTP_884.md. (En release, le sink par défaut du
+          // logger est silencieux ; brancher un sink pour capturer.)
+          StructuredLogger.instance.info(
+            domain: 'net',
+            event: 'm3u.request',
+            ctx: <String, Object?>{
+              'url': url,
+              'uaIndex': i + 1,
+              'ua': ua,
+              'headers': headers,
             },
-          ).timeout(_timeout);
+          );
+
+          final http.Response resp = await client
+              .get(Uri.parse(url), headers: headers)
+              .timeout(_timeout);
+
+          // Trace de la réponse reçue (statut + taille + content-type) :
+          // l'autre moitié de la preuve (« ce que le serveur nous renvoie »,
+          // ex. le fameux 884).
+          StructuredLogger.instance.info(
+            domain: 'net',
+            event: 'm3u.response',
+            ctx: <String, Object?>{
+              'uaIndex': i + 1,
+              'status': resp.statusCode,
+              'bytes': resp.bodyBytes.length,
+              'contentType': resp.headers['content-type'],
+            },
+          );
 
           if (resp.statusCode != 200) {
             // Serveur qui refuse cette signature (souvent 403 / 401 /

@@ -35,6 +35,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/observability/structured_logger.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/data/player_settings.dart';
 import '../../vod/domain/vod_movie.dart';
@@ -291,17 +292,44 @@ class XtreamClient {
     Object? lastError;
     for (final String ua in _candidateUserAgents()) {
       try {
-        final http.Response resp = await _http.get(
-          uri,
-          headers: <String, String>{
-            'Accept': 'application/json',
-            'User-Agent': ua,
-            // En-têtes « complets » façon navigateur — certains fronts
-            // CDN bloquent les requêtes trop nues (cf. m3u_fetcher).
-            'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Connection': 'keep-alive',
+        final Map<String, String> headers = <String, String>{
+          'Accept': 'application/json',
+          'User-Agent': ua,
+          // En-têtes « complets » façon navigateur — certains fronts
+          // CDN bloquent les requêtes trop nues (cf. m3u_fetcher).
+          'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Connection': 'keep-alive',
+        };
+
+        // PREUVE / DIAGNOSTIC 884 : trace de la requête EXACTE envoyée à
+        // player_api.php (cf. docs/DIAGNOSTIC_HTTP_884.md). On masque le
+        // mot de passe dans le log (sécurité) tout en gardant l'URL utile.
+        StructuredLogger.instance.info(
+          domain: 'net',
+          event: 'xtream.request',
+          ctx: <String, Object?>{
+            'host': uri.host,
+            'path': uri.path,
+            'action': uri.queryParameters['action'],
+            'ua': ua,
+            'headers': headers,
           },
-        ).timeout(_timeout);
+        );
+
+        final http.Response resp =
+            await _http.get(uri, headers: headers).timeout(_timeout);
+
+        StructuredLogger.instance.info(
+          domain: 'net',
+          event: 'xtream.response',
+          ctx: <String, Object?>{
+            'host': uri.host,
+            'status': resp.statusCode,
+            'bytes': resp.bodyBytes.length,
+            'contentType': resp.headers['content-type'],
+          },
+        );
+
         if (resp.statusCode == 200) {
           _workingUserAgent = ua;
           return resp;
