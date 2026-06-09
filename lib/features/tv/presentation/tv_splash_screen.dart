@@ -113,17 +113,31 @@ class _TvSplashScreenState extends State<TvSplashScreen>
             ),
 
             // ----- Contenu central -----
+            //  ADAPTATION TV (12″ → 100″) : on enveloppe tout le bloc
+            //  dans un `FittedBox(BoxFit.contain)`. Le bloc est dessiné à
+            //  sa taille « naturelle » (largeur ≤ 860 dp), puis mis à
+            //  l'échelle pour REMPLIR l'écran tout en TENANT entièrement
+            //  dedans — sans jamais couper le bouton ENTRER en bas, et
+            //  sans déformation (ratio préservé). Sur une grande TV il
+            //  grandit ; sur un petit écran il rétrécit. `SizedBox.expand`
+            //  fournit au FittedBox des contraintes PLEINES (sinon il ne
+            //  saurait pas qu'il a le droit de grandir), et un `Padding`
+            //  garde une marge de respiration loin des bords (overscan).
             SafeArea(
-              child: Center(
-                child: FadeTransition(
-                  opacity: _fade,
-                  child: SlideTransition(
-                    position: _slide,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 860),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
+              child: SizedBox.expand(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: FadeTransition(
+                    opacity: _fade,
+                    child: SlideTransition(
+                      position: _slide,
+                      child: FittedBox(
+                        fit: BoxFit.contain,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 860),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
                           // Logo géant à halo violet (lisible à 3 m).
                           const BrandLogo.hero(glowColor: TvRoyal.accentGlow),
                           const SizedBox(height: 26),
@@ -189,7 +203,10 @@ class _TvSplashScreenState extends State<TvSplashScreen>
                               ),
                             ),
                           ),
-                        ],
+
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
