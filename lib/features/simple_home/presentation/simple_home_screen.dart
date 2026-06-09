@@ -36,10 +36,34 @@ import '../../country_home/data/featured_repository.dart';
 import '../../country_home/data/popularity_repository.dart';
 import '../../country_home/data/text_scale_repository.dart';
 import '../../country_home/presentation/country_home_view.dart';
-import '../../security/data/biometric_auth.dart';
-import '../data/cinema_lock.dart';
 import '../data/home_layout_repository.dart';
 import 'widgets/announcement_banner.dart';
+import 'widgets/media_grid_view.dart';
+
+/// Les 4 écosystèmes du haut, STRICTEMENT séparés (jamais mélangés) :
+/// LIVE TV (chaînes), FILMS (VOD), SÉRIES (épisodes), PPV (événements).
+enum _Section { liveTv, movies, series, ppv }
+
+// --- Règles de classification (séparation stricte) ---
+bool _isMovie(Channel c) => c.genre == ChannelGenre.movies;
+bool _isSeries(Channel c) => c.genre == ChannelGenre.series;
+bool _isAdult(Channel c) => c.genre == ChannelGenre.adult;
+
+/// PPV / événements : détecté par mot-clé (pas de genre dédié dans les
+/// playlists). Conservateur pour éviter les faux positifs.
+bool _isPpv(Channel c) {
+  final String s = '${c.name} ${c.category}'.toLowerCase();
+  return s.contains('ppv') ||
+      s.contains('ufc') ||
+      s.contains('wwe') ||
+      s.contains('wrestl') ||
+      s.contains('boxing');
+}
+
+/// LIVE TV = tout ce qui n'est NI film, NI série, NI adulte, NI PPV.
+/// (Les "chaînes cinéma" live restent en LIVE TV — ce sont des chaînes.)
+bool _isLiveTv(Channel c) =>
+    !_isMovie(c) && !_isSeries(c) && !_isAdult(c) && !_isPpv(c);
 
 class SimpleHomeScreen extends StatefulWidget {
   const SimpleHomeScreen({super.key});
@@ -50,6 +74,9 @@ class SimpleHomeScreen extends StatefulWidget {
 
 class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
   /// Code pays sélectionné (`null` = on est sur la grille des pays).
+  /// Écosystème courant (haut de l'écran). Défaut : LIVE TV.
+  _Section _section = _Section.liveTv;
+
   String? _countryCode;
   String _countryFlag = '';
   String _countryName = '';
@@ -127,14 +154,14 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                 // Bandeau « message à tous » (annonce admin). Auto-géré :
                 // ne prend aucune place s'il n'y a rien à montrer.
                 const AnnouncementBanner(),
+                // Navigation principale : les 4 écosystèmes (jamais mélangés).
+                if (channels.isNotEmpty) _buildSectionTabs(),
                 Expanded(
                   child: channels.isEmpty
                       ? EmptyStateView(
                           onAddPlaylist: () => showSourceChoiceSheet(context),
                         )
-                      : (_countryCode == null
-                          ? _buildCountryGrid(channels)
-                          : _buildCountryDetail(channels)),
+                      : _buildSectionBody(channels),
                 ),
                 _buildBottomBar(),
               ],
@@ -164,9 +191,14 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
             ),
           Expanded(
             child: Text(
-              _countryCode == null
-                  ? context.l10n.simpleChooseCountry
-                  : '$_countryFlag  $_countryName',
+              switch (_section) {
+                _Section.liveTv => _countryCode == null
+                    ? context.l10n.simpleChooseCountry
+                    : '$_countryFlag  $_countryName',
+                _Section.movies => 'Films',
+                _Section.series => 'Séries',
+                _Section.ppv => 'PPV / Événements',
+              },
               textAlign: TextAlign.center,
               style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
               maxLines: 1,
@@ -183,6 +215,93 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
         ],
       ),
     );
+  }
+
+  // ----- Barre des 4 écosystèmes (séparation stricte) -----
+  Widget _buildSectionTabs() {
+    const List<(_Section, String, IconData)> items =
+        <(_Section, String, IconData)>[
+      (_Section.liveTv, 'LIVE TV', Icons.live_tv_rounded),
+      (_Section.movies, 'FILMS', Icons.movie_rounded),
+      (_Section.series, 'SÉRIES', Icons.video_library_rounded),
+      (_Section.ppv, 'PPV', Icons.sports_mma_rounded),
+    ];
+    return Container(
+      height: 44,
+      margin: const EdgeInsets.fromLTRB(12, 2, 12, 6),
+      child: Row(
+        children: <Widget>[
+          for (final (_Section s, String label, IconData icon) in items)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: _sectionTab(s, label, icon),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionTab(_Section s, String label, IconData icon) {
+    final bool active = _section == s;
+    return Material(
+      color: active ? AppColors.black7Red : AppColors.surface,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => setState(() {
+          _section = s;
+          _countryCode = null; // on revient à la racine de l'écosystème
+        }),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Icon(icon,
+                size: 16,
+                color: active ? Colors.white : AppColors.textTertiary),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.maisonLabel.copyWith(
+                    fontSize: 11,
+                    color: active ? Colors.white : AppColors.textSecondary),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Corps selon l'écosystème courant. Séparation stricte : chaque section
+  // ne reçoit QUE les contenus de son type.
+  Widget _buildSectionBody(List<Channel> channels) {
+    switch (_section) {
+      case _Section.liveTv:
+        final List<Channel> live = channels.where(_isLiveTv).toList();
+        return _countryCode == null
+            ? _buildCountryGrid(live)
+            : _buildCountryDetail(live);
+      case _Section.movies:
+        return MediaGridView(
+          channels: channels.where(_isMovie).toList(),
+          emptyLabel: 'Aucun film dans ta playlist.',
+        );
+      case _Section.series:
+        return MediaGridView(
+          channels: channels.where(_isSeries).toList(),
+          emptyLabel: 'Aucune série dans ta playlist.',
+        );
+      case _Section.ppv:
+        return MediaGridView(
+          channels: channels.where(_isPpv).toList(),
+          emptyLabel: 'Aucun événement PPV pour le moment.',
+        );
+    }
   }
 
   // ----- Niveau 1 : grille des pays -----
@@ -334,108 +453,19 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
 
   // ----- Niveau 2 : détail d'un pays (accueil "Maison Noir" refondu) -----
   Widget _buildCountryDetail(List<Channel> allChannels) {
-    // Chaînes de ce pays uniquement.
+    // Chaînes LIVE de ce pays (allChannels est déjà filtré "live" par
+    // _buildSectionBody → ni films, ni séries, ni adulte, ni PPV).
     final List<Channel> channels = allChannels
         .where((Channel c) => (c.country?.code ?? 'intl') == _countryCode)
         .toList();
-    // Nouvel accueil curé (HERO "Pour vous", Populaires, Reprendre,
-    // sections par genre pilotées par le panel). La zone Cinéma & Séries
-    // VERROUILLÉE est conservée en `trailing` — le verrou adulte /
-    // biométrie reste géré ici, dans SimpleHomeScreen.
-    return CountryHomeView(
-      channels: channels,
-      trailing: StreamBuilder<Set<String>>(
-        stream: FavoritesRepository.instance.favoritesStream,
-        initialData: FavoritesRepository.instance.current,
-        builder: (BuildContext context, AsyncSnapshot<Set<String>> favSnap) =>
-            _buildLockedZone(channels, favSnap.data ?? <String>{}),
-      ),
-    );
+    // Accueil curé LIVE TV (HERO, Populaires, Reprendre, sections). Plus
+    // aucune zone verrouillée : Films/Séries ont désormais leurs propres
+    // écosystèmes (onglets FILMS / SÉRIES). Le verrou Cinéma est supprimé.
+    return CountryHomeView(channels: channels);
   }
 
-  Widget _buildLockedZone(List<Channel> channels, Set<String> favs) {
-    List<Channel> byGenre(Set<ChannelGenre> genres) =>
-        channels.where((Channel c) => genres.contains(c.genre)).toList();
-
-    final List<Channel> cine =
-        byGenre(<ChannelGenre>{ChannelGenre.movies});
-    final List<Channel> series =
-        byGenre(<ChannelGenre>{ChannelGenre.series});
-    final List<Channel> adult =
-        byGenre(<ChannelGenre>{ChannelGenre.adult});
-    if (cine.isEmpty && series.isEmpty && adult.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    if (!CinemaLock.unlockedThisSession) {
-      return GestureDetector(
-        onTap: _tryUnlockCinema,
-        child: Container(
-          width: double.infinity,
-          margin: const EdgeInsets.only(top: 4, bottom: 18),
-          padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: AppColors.live.withValues(alpha: 0.6),
-              width: 1.5,
-            ),
-            color: AppColors.live.withValues(alpha: 0.08),
-          ),
-          child: Column(
-            children: <Widget>[
-              const Text('🔒', style: TextStyle(fontSize: 36)),
-              const SizedBox(height: 8),
-              Text('🍿 ${context.l10n.simpleLockedTitle}',
-                  style: AppTextStyles.headlineMedium.copyWith(fontSize: 17)),
-              const SizedBox(height: 4),
-              Text(context.l10n.simpleLockedHint,
-                  style: AppTextStyles.bodyMedium.copyWith(
-                      fontSize: 12, color: AppColors.textSecondary)),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      children: <Widget>[
-        _section('🍿', context.l10n.sectionMovies, AppColors.live, cine, favs),
-        _section('📺', context.l10n.sectionSeries, AppColors.accentBright,
-            series, favs),
-        if (adult.isNotEmpty)
-          _section('🔞', context.l10n.sectionAdult, AppColors.accentMuted,
-              adult, favs),
-      ],
-    );
-  }
-
-  Future<void> _tryUnlockCinema() async {
-    // 1) Empreinte / Face ID en priorité.
-    bool ok = false;
-    try {
-      if (await BiometricAuth.instance.isSupported()) {
-        ok = await BiometricAuth.instance.authenticate(
-          reason: context.l10n.simpleUnlockReason,
-        );
-      }
-    } catch (_) {}
-    if (ok) {
-      CinemaLock.unlockedThisSession = true;
-      if (mounted) setState(() {});
-      return;
-    }
-    // 2) Sinon, pavé PIN.
-    if (!mounted) return;
-    final bool pinOk = await showModalBottomSheet<bool>(
-          context: context,
-          backgroundColor: Colors.transparent,
-          isScrollControlled: true,
-          builder: (_) => const _PinPad(),
-        ) ??
-        false;
-    if (pinOk && mounted) setState(() {});
-  }
+  // (Zone Cinéma VERROUILLÉE supprimée — Films/Séries ont leurs propres
+  //  écosystèmes, plus aucun code/PIN/biométrie côté cinéma.)
 
   // ----- Une section (rangée horizontale de tuiles) -----
   //  En-tête « joyeux » : gros emoji ANIMÉ (balancement + pulsation, style
@@ -851,132 +881,4 @@ class _WiggleEmojiState extends State<_WiggleEmoji>
   }
 }
 
-/// Pavé numérique pour le code Cinéma & Séries.
-class _PinPad extends StatefulWidget {
-  const _PinPad();
-
-  @override
-  State<_PinPad> createState() => _PinPadState();
-}
-
-class _PinPadState extends State<_PinPad> {
-  String _pin = '';
-  bool _wrong = false;
-
-  Future<void> _push(String d) async {
-    if (_pin.length >= 8) return;
-    setState(() {
-      _wrong = false;
-      _pin += d;
-    });
-    // On valide automatiquement à partir de 5 chiffres (code par défaut).
-    if (_pin.length >= 5) {
-      final bool ok = await CinemaLock.verifyPin(_pin);
-      if (ok) {
-        if (mounted) Navigator.of(context).pop(true);
-      } else if (_pin.length >= 8) {
-        setState(() {
-          _wrong = true;
-          _pin = '';
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 18),
-            Text('🔒 ${context.l10n.simpleAccessCode}',
-                style: AppTextStyles.headlineMedium.copyWith(fontSize: 18)),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List<Widget>.generate(8, (int i) {
-                final bool filled = _pin.length > i;
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 5),
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _wrong
-                        ? AppColors.live
-                        : (filled ? AppColors.textPrimary : Colors.transparent),
-                    border: Border.all(
-                      color: _wrong ? AppColors.live : AppColors.border,
-                    ),
-                  ),
-                );
-              }),
-            ),
-            const SizedBox(height: 20),
-            ...<List<String>>[
-              <String>['1', '2', '3'],
-              <String>['4', '5', '6'],
-              <String>['7', '8', '9'],
-              <String>['', '0', '⌫'],
-            ].map((List<String> row) => Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: row.map((String k) {
-                    if (k.isEmpty) {
-                      return const SizedBox(width: 76, height: 64);
-                    }
-                    return Padding(
-                      padding: const EdgeInsets.all(6),
-                      child: SizedBox(
-                        width: 64,
-                        height: 56,
-                        child: k == '⌫'
-                            ? TextButton(
-                                onPressed: () => setState(() {
-                                  if (_pin.isNotEmpty) {
-                                    _pin = _pin.substring(0, _pin.length - 1);
-                                  }
-                                }),
-                                child: const Text('⌫',
-                                    style: TextStyle(fontSize: 20)),
-                              )
-                            : FilledButton(
-                                onPressed: () => _push(k),
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: AppColors.surface,
-                                  foregroundColor: AppColors.textPrimary,
-                                ),
-                                child: Text(k,
-                                    style: AppTextStyles.headlineMedium
-                                        .copyWith(fontSize: 20)),
-                              ),
-                      ),
-                    );
-                  }).toList(),
-                )),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(context.l10n.buttonCancel),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// (Pavé PIN Cinéma supprimé — plus de verrou côté Films/Séries.)
