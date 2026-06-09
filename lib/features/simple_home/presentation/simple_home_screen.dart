@@ -4,9 +4,11 @@
 //  Refonte « Black7 » demandée par le client : on RESPECTE l'organisation
 //  d'origine de la playlist, sans aucune reclassification maison.
 //
-//    • ACCUEIL VIDE (pas de playlist) → uniquement le formulaire de
-//      connexion Xtream Codes (serveur poussé en ligne OU code saisi par
-//      le client), avec une petite marque en haut. Rien d'autre.
+//    • ACCUEIL VIDE (pas de playlist) → uniquement l'activation par
+//      CODE MAC : le client ne saisit RIEN (ni M3U, ni serveur, ni
+//      identifiant). Il voit son code, l'envoie au revendeur qui active
+//      à distance, puis « Vérifier mon abonnement » charge la source.
+//      Une petite marque en haut. Rien d'autre.
 //
 //    • ACCUEIL REMPLI → navigation à deux niveaux :
 //        1. la LISTE DES CATÉGORIES de la playlist (group-title), avec le
@@ -29,12 +31,11 @@ import '../../../core/widgets/legal_disclaimer.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/presentation/favorites_screen.dart';
 import '../../channels/presentation/search_screen.dart';
+import '../../channels/presentation/widgets/mac_activation_view.dart';
 import '../../channels/presentation/widgets/source_choice_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
-import '../../playlists/presentation/m3u_login_sheet.dart';
-import '../../playlists/presentation/widgets/xtream_login_form.dart';
 import '../../profile/presentation/profile_screen.dart';
 import 'widgets/announcement_banner.dart';
 import 'widgets/category_browser_view.dart';
@@ -68,8 +69,8 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                 (BuildContext context, AsyncSnapshot<List<Channel>> snap) {
               final List<Channel> channels = snap.data ?? const <Channel>[];
 
-              // Pas de playlist → écran de connexion Xtream épuré.
-              if (channels.isEmpty) return _buildXtreamEntry(context);
+              // Pas de playlist → écran d'activation par code MAC.
+              if (channels.isEmpty) return _buildActivationEntry(context);
 
               // Playlist chargée → catégories → chaînes.
               return Column(
@@ -89,8 +90,12 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     );
   }
 
-  // ----- Accueil VIDE : connexion Xtream uniquement -----
-  Widget _buildXtreamEntry(BuildContext context) {
+  // ----- Accueil VIDE : activation par code MAC uniquement -----
+  //  Le client ne saisit RIEN (ni M3U, ni serveur, ni identifiant). Il
+  //  voit son code, l'envoie au revendeur, puis « Vérifier mon
+  //  abonnement » charge la source poussée. Au succès, le StreamBuilder
+  //  se reconstruit tout seul et révèle la liste des catégories.
+  Widget _buildActivationEntry(BuildContext context) {
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(22, 18, 22, 28),
@@ -108,20 +113,8 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
             ),
           ),
           const SizedBox(height: 30),
-          // Le formulaire de connexion (serveur poussé en ligne + code
-          // client). Au succès, le StreamBuilder ci-dessus se reconstruit
-          // tout seul et révèle la liste des catégories.
-          const XtreamLoginForm(),
+          const MacActivationView(),
           const SizedBox(height: 14),
-          // Échappatoire discrète pour les clients qui n'ont qu'un lien M3U.
-          Center(
-            child: TextButton.icon(
-              onPressed: () => showM3uLoginSheet(context),
-              icon: const Icon(Icons.link_rounded, size: 18),
-              label: const Text('J’ai plutôt un lien M3U'),
-            ),
-          ),
-          const SizedBox(height: 8),
           const LegalDisclaimer.compact(),
         ],
       ),
@@ -194,11 +187,12 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
               MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
             ),
           ),
+          // « Ajouter » = activation par code MAC (pas de M3U/Xtream).
           _BottomNavItem(
             icon: Icons.add_circle_outline_rounded,
             label: context.l10n.buttonAdd,
             active: false,
-            onTap: () => showSourceChoiceSheet(context),
+            onTap: () => showActivationSheet(context),
           ),
         ],
       ),

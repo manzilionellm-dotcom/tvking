@@ -17,20 +17,16 @@
 // =========================================================
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../../core/i18n/l10n_extension.dart';
-import '../../../../core/support/support_choice_sheet.dart';
 import '../../../../core/support/vip_support.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/legal_disclaimer.dart';
 import '../../../device/data/device_identity.dart';
-import '../../../playlists/data/playlist_repository.dart';
-import '../../../playlists/data/remote_source_repository.dart';
 import '../../../playlists/presentation/m3u_login_sheet.dart';
 import '../../../playlists/presentation/xtream_login_sheet.dart';
-import '../../../subscription/data/subscription_state.dart';
+import 'mac_activation_view.dart';
 
 /// Ouvre la feuille de choix de source depuis l'accueil.
 Future<void> showSourceChoiceSheet(BuildContext context) {
@@ -237,173 +233,29 @@ class _ActivationSheet extends StatelessWidget {
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-        child: FutureBuilder<String>(
-          future: DeviceIdentity.instance.mac,
-          builder: (BuildContext context, AsyncSnapshot<String> snap) {
-            final String? mac = snap.data;
-            final String macDisplay = mac ?? 'MK:??:??:??:??:??';
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.border,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                const SizedBox(height: 18),
-                Text(
-                  context.l10n.activateAtHomeTitle,
-                  style: AppTextStyles.headlineMedium.copyWith(fontSize: 19),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  context.l10n.activateAtHomeDesc,
-                  style: AppTextStyles.bodyMedium.copyWith(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceHigh,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: SelectableText(
-                    macDisplay,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.2,
-                      color: AppColors.accent,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: mac == null
-                            ? null
-                            : () async {
-                                await Clipboard.setData(
-                                  ClipboardData(text: mac),
-                                );
-                                if (!context.mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    behavior: SnackBarBehavior.floating,
-                                    content: Text(
-                                      context.l10n.idCopied(mac),
-                                      style: AppTextStyles.bodyMedium,
-                                    ),
-                                  ),
-                                );
-                              },
-                        icon: const Icon(Icons.copy_rounded, size: 16),
-                        label: Text(context.l10n.buttonCopy),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: mac == null
-                            ? null
-                            : () => showSupportChoiceSheet(
-                                  context,
-                                  customMessage:
-                                      'Bonjour, voici mon identifiant pour '
-                                      'activer mes chaînes :\n\n$mac',
-                                ),
-                        icon: const Icon(Icons.send_rounded, size: 16),
-                        label: Text(context.l10n.buttonSend),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.accent,
-                          foregroundColor: AppColors.voidSurface,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                // « Vérifier mon abonnement » : une fois que le revendeur a
-                // activé la MAC à distance, ce bouton refait la synchro
-                // (statut d'abonnement + source IPTV poussée) SANS avoir à
-                // redémarrer l'app. Corrige le « j'ai activé mais ça ne
-                // change pas » : avant, l'app ne resynchronisait qu'au boot.
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: mac == null
-                        ? null
-                        : () => _verifyActivation(context),
-                    icon: const Icon(Icons.refresh_rounded, size: 18),
-                    label: Text(context.l10n.activationCheckButton),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.surfaceHigh,
-                      foregroundColor: AppColors.textPrimary,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
+              ),
+            ),
+            const SizedBox(height: 18),
+            // Toute la logique (code MAC + copier + envoyer + vérifier) vit
+            // dans MacActivationView, partagé avec l'écran d'accueil vide.
+            MacActivationView(
+              onActivated: () => Navigator.of(context).pop(),
+            ),
+          ],
         ),
       ),
     );
-  }
-
-  /// Re-synchronise immédiatement l'état du device avec le backend :
-  ///   1. statut d'abonnement (paid / à vie / 1 an / trial),
-  ///   2. source IPTV assignée à la MAC par le revendeur.
-  /// Puis informe l'utilisateur du résultat. Si des chaînes sont
-  /// chargées, on ferme la feuille pour révéler l'accueil rempli.
-  Future<void> _verifyActivation(BuildContext context) async {
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(
-      SnackBar(
-        duration: const Duration(seconds: 25),
-        content: Text(context.l10n.activationChecking),
-      ),
-    );
-    // 1) Statut d'abonnement (débloque / met à jour la carte).
-    await SubscriptionState.instance.syncWithBackend();
-    // 2) Source IPTV poussée par le revendeur (charge les chaînes).
-    await RemoteSourceRepository.sync();
-
-    final bool hasChannels =
-        PlaylistRepository.instance.currentChannels.isNotEmpty;
-    if (!context.mounted) return;
-    messenger.clearSnackBars();
-    if (hasChannels) {
-      Navigator.of(context).pop(); // ferme la feuille → accueil rempli
-      messenger.showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.success,
-          content: Text(context.l10n.activationSuccess),
-        ),
-      );
-    } else {
-      messenger.showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.warning,
-          content: Text(context.l10n.activationNoSourceYet),
-        ),
-      );
-    }
   }
 }
