@@ -24,6 +24,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/legal_disclaimer.dart';
 import '../../../device/data/device_identity.dart';
+import '../../../onboarding/data/device_class_repository.dart';
 import '../../../playlists/presentation/m3u_login_sheet.dart';
 import '../../../playlists/presentation/xtream_login_sheet.dart';
 import 'mac_activation_view.dart';
@@ -46,6 +47,41 @@ class _SourceChoiceSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // TÉLÉPHONE : activation par code MAC UNIQUEMENT (ni M3U, ni serveur,
+    // ni identifiant) — demande explicite et répétée du client. La TV
+    // garde ses options d'ajout (elle a son propre écran dédié,
+    // TvAddSourceScreen) : on n'y touche pas.
+    final bool isTv = DeviceClassRepository.instance.isTvFor(context);
+    if (!isTv) {
+      return SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              MacActivationView(
+                onActivated: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // TV : les chemins d'ajout d'origine (inchangés).
     return SafeArea(
       top: false,
       child: Padding(
