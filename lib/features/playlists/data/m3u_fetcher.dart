@@ -95,6 +95,15 @@ abstract final class M3uFetcher {
             headers: <String, String>{
               'User-Agent': ua,
               'Accept': '*/*',
+              // En-têtes « complets » façon navigateur. Beaucoup de
+              // pare-feux anti-bot de fronts CDN bloquent les requêtes
+              // « trop nues » (sans Accept-Language ni Connection) avec
+              // un code maison (ex. « 884 »), MÊME avec un User-Agent de
+              // navigateur. En envoyant le même jeu d'en-têtes qu'un vrai
+              // navigateur, on passe ces filtres (cas confirmé : l'URL
+              // marche dans un navigateur, pas avec un client « nu »).
+              'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+              'Connection': 'keep-alive',
               // NB : on ne force PAS d'en-tête Accept-Encoding. dart:io
               // ajoute « gzip » tout seul et décompresse automatiquement.
             },

@@ -296,6 +296,10 @@ class XtreamClient {
           headers: <String, String>{
             'Accept': 'application/json',
             'User-Agent': ua,
+            // En-têtes « complets » façon navigateur — certains fronts
+            // CDN bloquent les requêtes trop nues (cf. m3u_fetcher).
+            'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Connection': 'keep-alive',
           },
         ).timeout(_timeout);
         if (resp.statusCode == 200) {
