@@ -36,6 +36,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../channels/domain/channel.dart';
+import '../../player/data/player_settings.dart';
 import '../../vod/domain/vod_movie.dart';
 
 /// Exception métier pour signaler une erreur Xtream lisible
@@ -255,18 +256,72 @@ class XtreamClient {
     return '$_baseUrl/$username/$password/$streamId.ts';
   }
 
+  /// Signature (User-Agent) qui a fonctionné pour ce serveur. Mémorisée
+  /// au 1er appel réussi pour ne pas re-tester toute la liste à chaque
+  /// endpoint (catégories, chaînes, VOD…).
+  String? _workingUserAgent;
+
+  /// Liste ORDONNÉE des signatures de lecteur à essayer (sans doublon).
+  /// Beaucoup de serveurs Xtream ne répondent (player_api.php) QU'aux UA
+  /// de lecteurs connus et renvoient 403/401/code maison aux autres. On
+  /// les essaie en cascade, exactement comme pour le M3U.
+  List<String> _candidateUserAgents() {
+    final List<String> list = <String>[];
+    void add(String? ua) {
+      if (ua == null) return;
+      final String v = ua.trim();
+      if (v.isEmpty || list.contains(v)) return;
+      list.add(v);
+    }
+
+    add(_workingUserAgent);
+    add(PlayerSettings.instance.userAgent);
+    for (final String v in PlayerSettings.userAgentPresets.values) {
+      add(v);
+    }
+    add('Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 '
+        '(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36');
+    return list;
+  }
+
+  /// GET avec rotation de signatures : renvoie la 1ʳᵉ réponse 200, en
+  /// mémorisant la signature gagnante. Lève une [XtreamException] claire
+  /// si AUCUNE signature n'obtient 200.
+  Future<http.Response> _get(Uri uri) async {
+    Object? lastError;
+    for (final String ua in _candidateUserAgents()) {
+      try {
+        final http.Response resp = await _http.get(
+          uri,
+          headers: <String, String>{
+            'Accept': 'application/json',
+            'User-Agent': ua,
+          },
+        ).timeout(_timeout);
+        if (resp.statusCode == 200) {
+          _workingUserAgent = ua;
+          return resp;
+        }
+        lastError = XtreamException(
+          'Erreur HTTP ${resp.statusCode} sur ${uri.host}',
+        );
+      } on TimeoutException catch (e) {
+        // Serveur injoignable/trop lent : pas un souci d'UA → on arrête
+        // pour ne pas cumuler les timeouts sur chaque signature.
+        lastError = e;
+        break;
+      } on Exception catch (e) {
+        lastError = e;
+      }
+    }
+    throw lastError ??
+        XtreamException('Serveur Xtream injoignable (${uri.host}).');
+  }
+
   /// Appel API qui retourne une Map JSON (cas verifyCredentials).
   Future<Map<String, dynamic>> _callApi({required String? action}) async {
     final Uri uri = _buildUri(action: action);
-    final http.Response response = await _http
-        .get(uri, headers: <String, String>{'Accept': 'application/json'})
-        .timeout(_timeout);
-
-    if (response.statusCode != 200) {
-      throw XtreamException(
-        'Erreur HTTP ${response.statusCode} sur ${uri.host}',
-      );
-    }
+    final http.Response response = await _get(uri);
     try {
       final dynamic decoded = jsonDecode(response.body);
       if (decoded is Map<String, dynamic>) return decoded;
@@ -283,15 +338,7 @@ class XtreamClient {
   /// Appel API qui retourne une List JSON (cas get_live_streams, etc.).
   Future<List<dynamic>> _callApiList({required String action}) async {
     final Uri uri = _buildUri(action: action);
-    final http.Response response = await _http
-        .get(uri, headers: <String, String>{'Accept': 'application/json'})
-        .timeout(_timeout);
-
-    if (response.statusCode != 200) {
-      throw XtreamException(
-        'Erreur HTTP ${response.statusCode} sur ${uri.host}',
-      );
-    }
+    final http.Response response = await _get(uri);
     try {
       // Décodage dans un ISOLATE (compute) : sur un gros bouquet la réponse
       // pèse plusieurs Mo et un jsonDecode synchrone gèlerait l'UI (ANR).
