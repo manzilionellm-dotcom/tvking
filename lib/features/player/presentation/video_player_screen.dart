@@ -417,23 +417,51 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// contenu est seekable (avance/recul) et le relais live ne gère pas
   /// les requêtes Range.
   Future<void> _openMedia(String realUrl) async {
+    // En-têtes HTTP envoyés au serveur pour CE flux (User-Agent par défaut
+    // + surcharge éventuelle imposée par la chaîne). Voir _effectiveHeaders.
+    final Map<String, String> headers = _effectiveHeaders();
+
     // Direct dès qu'on n'a pas besoin du relais (VOD/catch-up, ou live
     // sans enregistrement en cours).
     if (widget.overrideUrl != null || !_wantRelay) {
-      _player.open(Media(realUrl));
+      _player.open(Media(realUrl, httpHeaders: headers));
       return;
     }
     try {
       final String localUrl =
           await LocalStreamRelay.instance.playUrlFor(realUrl);
       if (!mounted) return;
-      _player.open(Media(localUrl));
+      _player.open(Media(localUrl, httpHeaders: headers));
     } catch (e) {
       // Si le relais ne démarre pas (cas improbable), on retombe sur la
       // lecture directe pour ne jamais priver l'utilisateur de l'image.
       debugPrint('[Player] relais indisponible, lecture directe: $e');
-      _player.open(Media(realUrl));
+      _player.open(Media(realUrl, httpHeaders: headers));
     }
+  }
+
+  /// User-Agent par défaut, façon VLC. Beaucoup de panels IPTV REJETTENT
+  /// l'UA par défaut de libmpv/FFmpeg (« Lavf/… ») et répondent 403 ou
+  /// coupent la connexion → c'est une cause majeure de « la moitié des
+  /// chaînes ne marchent pas ». VLC est universellement accepté.
+  static const String _kDefaultUserAgent = 'VLC/3.0.18 LibVLC/3.0.18';
+
+  /// Construit les en-têtes HTTP de lecture. On part du User-Agent VLC,
+  /// puis la chaîne peut SURCHARGER (UA/Referer/Origin/Cookie imposés par
+  /// le panel via le M3U — cf. Channel.httpHeaders). En passant ces en-têtes
+  /// directement sur le `Media`, ils sont appliqués DÈS LE PREMIER OCTET
+  /// (plus de course avec _applyMpvOptions), exactement comme IBO Player /
+  /// TiviMate. C'est aussi ce qui répare le cas Xtream (avant, le tout
+  /// premier flux partait avec l'UA « Lavf » bloqué par le serveur).
+  Map<String, String> _effectiveHeaders() {
+    final Map<String, String> headers = <String, String>{
+      'User-Agent': _kDefaultUserAgent,
+    };
+    final Map<String, String>? channelHeaders = _currentChannel.httpHeaders;
+    if (channelHeaders != null && channelHeaders.isNotEmpty) {
+      headers.addAll(channelHeaders);
+    }
+    return headers;
   }
 
   /// Callback du `PageView` quand l'utilisateur a fini un swipe vertical.

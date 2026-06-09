@@ -25,7 +25,9 @@ class PlaylistDatabase {
 
   static const String _kDbFileName = 'tv_king.db';
   // v2 ajoute la colonne `epg_url` à la table playlists.
-  static const int _kDbVersion = 4;
+  // v5 ajoute `http_headers` à la table channels (User-Agent/Referer par
+  // chaîne, imposés par certains panels IPTV — sinon 403 à la lecture).
+  static const int _kDbVersion = 5;
 
   Database? _db;
 
@@ -85,6 +87,7 @@ class PlaylistDatabase {
         catchup_supported INTEGER NOT NULL DEFAULT 0,
         catchup_days INTEGER,
         catchup_source TEXT,
+        http_headers TEXT,
         FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
       )
     ''');
@@ -174,6 +177,15 @@ class PlaylistDatabase {
       await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_playlists_active ON playlists(is_active)',
       );
+    }
+    if (oldVersion < 5) {
+      // v5 (2026-06-09) : en-têtes HTTP par chaîne (User-Agent / Referer /
+      // Origin / Cookie). Certains panels IPTV exigent un UA/Referer précis
+      // par chaîne ; sans lui le serveur répond 403 et « la chaîne ne marche
+      // pas ». Le parser M3U les remplit désormais ; ils sont stockés ici en
+      // JSON. Colonne ajoutée NULL → les chaînes déjà en base la rempliront
+      // au prochain rafraîchissement de la playlist.
+      await db.execute('ALTER TABLE channels ADD COLUMN http_headers TEXT');
     }
   }
 }
