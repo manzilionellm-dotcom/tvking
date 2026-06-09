@@ -1,36 +1,31 @@
 // =========================================================
-//  flavor.dart — Aiguillage produit BLACK7 ROYAL / Red Room
+//  flavor.dart — Configuration produit BLACK7 ROYAL (mobile)
 // =========================================================
-//  Le repo héberge DEUX produits qui partagent le même code :
+//  Le projet ne contient plus qu'UN seul produit : l'application
+//  MOBILE BLACK7 ROYAL (7 MOTION). Les anciennes variantes TV
+//  (Android TV / Fire TV) et Red Room (édition adulte) ont été
+//  retirées du projet.
 //
-//    - BLACK7 ROYAL  : lecteur IPTV premium, toutes catégories,
-//                  biométrie OPTIONNELLE, pas de gate âge.
-//    - Red Room  : édition ADULTE premium — accès COMPLET et SANS
-//                  restriction après une simple confirmation "j'ai 18+"
-//                  au 1er lancement (aucun filtrage, aucun verrou imposé).
+//  [FlavorConfig] reste en place (un seul flavor `sevenMotion`) pour
+//  centraliser le nom de l'app, sa tagline et l'URL serveur, et pour
+//  ne pas casser les nombreux lecteurs de `FlavorConfig.current`.
 //
-//  Plutôt que de forker le repo (double maintenance garantie
-//  + drift en 3 mois), on garde UN seul codebase avec deux
-//  entrypoints `main.dart` (BLACK7 ROYAL) et `main_redroom.dart`
-//  (Red Room). Chacun initialise [FlavorConfig] avant `runApp`
-//  et toute l'app lit ses paramètres via `FlavorConfig.current`.
+//  Règle d'or : le flavor est explicite, posé une fois par `main()`
+//  via `FlavorConfig.setCurrent(...)` AVANT `runApp`, et il NE BOUGE
+//  PLUS jusqu'à la mort du processus.
 //
-//  Règle d'or : aucune `if (kReleaseMode)` ou autre détection
-//  implicite. Le flavor est explicite, posé une fois au boot,
-//  et il NE BOUGE PLUS jusqu'à la mort du processus.
-//
-//  Côté CI, on compile deux APKs :
-//    flutter build apk -t lib/main.dart           → 7motion.apk
-//    flutter build apk -t lib/main_redroom.dart   → redroom.apk
-//  avec deux applicationId différents (cf. workflow Android).
+//  Côté CI, on compile un seul APK :
+//    flutter build apk -t lib/main.dart   → 7motion.apk
 // =========================================================
 
 import 'package:flutter/foundation.dart';
 
-/// Identité du produit lancé.
+/// Identité du produit lancé. Le projet ne contient plus qu'un seul
+/// produit : l'application mobile BLACK7 ROYAL (7 MOTION). Les variantes
+/// TV et Red Room ont été retirées. L'enum est conservé (un seul membre)
+/// pour ne pas casser les lecteurs de `FlavorConfig.current.flavor`.
 enum Flavor {
   sevenMotion,
-  redRoom,
 }
 
 @immutable
@@ -96,7 +91,7 @@ class FlavorConfig {
     if (c == null) {
       throw StateError(
         'FlavorConfig.current accédé avant initialisation. '
-        'Vérifie que main()/main_redroom() appelle '
+        'Vérifie que main() appelle '
         'FlavorConfig.setCurrent(...) avant runApp().',
       );
     }
@@ -139,36 +134,6 @@ class FlavorConfig {
     // nouveau revendeur `yzrgxcat.getpremiumiptv.fr`. URL choisie
     // par l'utilisateur, credentials individuels saisis au login
     // (Identifiant + code secret) — pas hardcodes.
-    iptvServerUrl: 'http://yzrgxcat.getpremiumiptv.fr',
-  );
-
-  /// Red Room — variante adulte stricte.
-  ///
-  /// Choix utilisateur post-test : on a desactive `biometricMandatory`.
-  /// La premiere version forcait la biometrie a chaque cold start,
-  /// mais sur les telephones sans verrouillage d'ecran configure cote
-  /// OS, l'utilisateur se retrouvait bloque sans pouvoir entrer.
-  /// L'age gate "j'ai 18+" reste obligatoire (legal minimum), et
-  /// l'utilisateur peut toujours activer un verrou bio + PIN manuelle-
-  /// ment via Reglages > Securite s'il le souhaite.
-  ///
-  /// Serveur IPTV : meme URL que BLACK7 ROYAL pour l'instant (decision
-  /// utilisateur "un seul serveur partage"). Si on veut splitter
-  /// adulte / grand public sur des serveurs differents plus tard,
-  /// il suffit de changer cette ligne — aucune autre modif d'app.
-  static const FlavorConfig redRoom = FlavorConfig(
-    flavor: Flavor.redRoom,
-    appName: 'Red Room',
-    appTagline: 'STRICTLY 18+ · AFTER HOURS',
-    // NON restrictif (demande user 2026-06-06) : après le gate « j'ai 18 ans »
-    // au 1er lancement, l'adulte accède à TOUT le catalogue, sans filtrage ni
-    // verrou (`adultOnly = false` → le repo ne filtre plus rien). Seule la
-    // confirmation d'âge subsiste. Ne change RIEN à Seven (config distincte),
-    // ni au cast, ni à l'enregistrement.
-    adultOnly: false,
-    biometricMandatory: false,
-    requireAgeGate: true,
-    // Idem BLACK7 ROYAL : bascule 2026-06-01 vers le nouveau revendeur.
     iptvServerUrl: 'http://yzrgxcat.getpremiumiptv.fr',
   );
 }

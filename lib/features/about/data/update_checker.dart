@@ -29,8 +29,6 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../../core/flavor/flavor.dart';
-
 class UpdateInfo {
   const UpdateInfo({
     required this.currentVersion,
@@ -77,11 +75,9 @@ class UpdateChecker {
       final PackageInfo pkg = await PackageInfo.fromPlatform();
       final String current = pkg.version;
 
-      // Cible selon le flavor courant.
-      final bool isRedRoom =
-          FlavorConfig.current.flavor == Flavor.redRoom;
-      final String tag = isRedRoom ? 'redroom-latest' : 'latest';
-      final String apk = isRedRoom ? 'redroom.apk' : '7motion.apk';
+      // Produit unique (mobile 7 MOTION) : release « latest », APK 7motion.apk.
+      const String tag = 'latest';
+      const String apk = '7motion.apk';
 
       final Uri uri = Uri.parse(
         'https://api.github.com/repos/$_owner/$_repo/releases/tags/$tag',

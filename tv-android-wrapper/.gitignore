@@ -1,6 +1,0 @@
-
-# Gradle build cache local (genere par chaque build)
-.gradle/
-app/build/
-build/
-local.properties

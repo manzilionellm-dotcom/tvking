@@ -74,35 +74,9 @@ import { castReceiverHtml } from './cast_receiver.js';
 const APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/latest/7motion.apk';
 
-// Variante Red Room (flavor adulte 18+ du MÊME repo). Publiée sur
-// une release dédiée `redroom-latest` par le job CI `build_redroom`.
-// Le binaire a un applicationId différent (`com.redroom.player`),
-// donc l'installation NE remplace PAS l'app BLACK7 ROYAL sur le téléphone
-// du client — les deux peuvent cohabiter.
-const REDROOM_APK_URL =
-  'https://github.com/manzilionellm-dotcom/tvking/releases/download/redroom-latest/redroom.apk';
-
-// Version Android TV / Fire TV (Downloader-friendly). APK Kotlin
-// WebView qui embarque tv-web/dist/. Cible SHIELD, Fire TV Stick
-// 4K Max, Chromecast Google TV. Publiee sur la release `tv-latest`
-// par le workflow CI `build-tv-wrapper.yml`. URL stable courte :
-//   https://99999.7themotion.com/tv  ->  Downloader friendly.
-const TV_APK_URL =
-  'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-latest/tv-king-tv.apk';
-
-// NOVA+ : nouvelle app TV (front Next.js exporte en statique, embarque
-// dans un wrapper WebView). Publiee sur la release `nova-latest` par le
-// workflow CI `build-nova-tv.yml`. Lien court Downloader :
-//   https://99999.7themotion.com/nova
-const NOVA_APK_URL =
-  'https://github.com/manzilionellm-dotcom/tvking/releases/download/nova-latest/nova.apk';
-
-// 7 MOTION TV : le VRAI app Flutter verrouille en mode television
-// (lib/main_tv.dart), pas un wrapper WebView. Sans cast, 10-foot UI.
-// Publie sur la release `seventv-latest` par le job CI `build_tv_flutter`.
-// Lien court Downloader : https://99999.7themotion.com/7tv
-const SEVEN_TV_APK_URL =
-  'https://github.com/manzilionellm-dotcom/tvking/releases/download/seventv-latest/seven-tv.apk';
+// NB : les variantes TV (Android TV / Fire TV, wrappers WebView, NOVA+)
+// et Red Room ont été RETIRÉES du projet. Seule l'app mobile 7 MOTION
+// (`APK_URL` ci-dessus) est encore construite et distribuée.
 
 // ===========================================================
 //  Proxy APK avec cache edge Cloudflare (perf Downloader)
@@ -2152,7 +2126,6 @@ export default {
     //
     //  Liens disponibles (insensibles à la casse) :
     //    /royal    et /get   → BLACK7 ROYAL (7motion.apk)
-    //    /redroom  et /rr     → Red Room    (redroom.apk)
     {
       const slug = url.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
       const GH = 'https://github.com/manzilionellm-dotcom/tvking/releases/download';
@@ -2160,8 +2133,6 @@ export default {
         royal: `${GH}/latest/7motion.apk`,
         get: `${GH}/latest/7motion.apk`,
         black7: `${GH}/latest/7motion.apk`,
-        redroom: `${GH}/redroom-latest/redroom.apk`,
-        rr: `${GH}/redroom-latest/redroom.apk`,
       };
       if (DOWNLOADS[slug]) {
         if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -2355,48 +2326,9 @@ export default {
       return proxyApk(APK_URL, '7motion.apk', url.searchParams.get('v'));
     }
 
-    // /redroom — variante adulte 18+. Pointe vers la release
-    // dédiée `redroom-latest`. Le binaire a son propre applicationId
-    // donc il s'installe à côté de BLACK7 ROYAL sans collision.
-    // /redroom/dl est un alias pour cohérence avec /dl du BLACK7 ROYAL.
-    if (
-      (segments.length === 1 && segments[0] === 'redroom') ||
-      (segments.length === 2 && segments[0] === 'redroom' && segments[1] === 'dl')
-    ) {
-      return proxyApk(REDROOM_APK_URL, 'redroom.apk', url.searchParams.get('v'));
-    }
-
-    // /tv — version Android TV / Fire TV (WebView wrapper de tv-web).
-    // C'est l'URL courte a coller dans Downloader sur la SHIELD :
-    //   "https://99999.7themotion.com/tv"
-    // Proxy via cache edge Cloudflare pour des telechargements
-    // rapides cote SHIELD (vs 302 vers GitHub release direct qui
-    // est lent depuis l'Europe).
-    if (
-      (segments.length === 1 && segments[0] === 'tv') ||
-      (segments.length === 2 && segments[0] === 'tv' && segments[1] === 'dl')
-    ) {
-      return proxyApk(TV_APK_URL, 'tv-king-tv.apk', url.searchParams.get('v'));
-    }
-
-    // /7tv et /seventv — VRAI app 7 MOTION Flutter en mode TV (sans cast).
-    // Code Downloader dedie. URL courte : "https://99999.7themotion.com/7tv".
-    if (
-      (segments.length === 1 && (segments[0] === '7tv' || segments[0] === 'seventv')) ||
-      (segments.length === 2 && (segments[0] === '7tv' || segments[0] === 'seventv') && segments[1] === 'dl')
-    ) {
-      return proxyApk(SEVEN_TV_APK_URL, 'seven-tv.apk', url.searchParams.get('v'));
-    }
-
-    // /nova — app NOVA+ pour Android TV / Fire TV. URL courte a coller
-    // dans Downloader : "https://99999.7themotion.com/nova". Proxy via
-    // le cache edge Cloudflare (telechargements rapides cote TV).
-    if (
-      (segments.length === 1 && segments[0] === 'nova') ||
-      (segments.length === 2 && segments[0] === 'nova' && segments[1] === 'dl')
-    ) {
-      return proxyApk(NOVA_APK_URL, 'nova.apk', url.searchParams.get('v'));
-    }
+    // (Routes TV et Red Room retirées : /redroom, /tv, /7tv, /seventv,
+    //  /nova n'existent plus — ces variantes ont été supprimées du projet.
+    //  Seule l'app mobile 7 MOTION est distribuée, via /royal /get /install.)
 
     // /cast-receiver — page HTML CAF pour Google Cast Custom Receiver.
     // URL a coller dans la Google Cast SDK Developer Console.

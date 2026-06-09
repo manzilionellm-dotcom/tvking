@@ -62,8 +62,6 @@ class BrandLogo extends StatelessWidget {
   /// celui de Red Room.
   static String get _assetPath {
     switch (FlavorConfig.current.flavor) {
-      case Flavor.redRoom:
-        return 'assets/branding/logo_redroom.png';
       case Flavor.sevenMotion:
         return 'assets/branding/logo_black7royal.png';
     }
@@ -73,8 +71,6 @@ class BrandLogo extends StatelessWidget {
   /// mais on prefere une lettre qu'un widget casse).
   static String get _fallbackLetter {
     switch (FlavorConfig.current.flavor) {
-      case Flavor.redRoom:
-        return 'R';
       case Flavor.sevenMotion:
         return '7';
     }
