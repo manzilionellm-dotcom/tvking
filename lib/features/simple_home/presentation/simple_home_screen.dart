@@ -75,7 +75,9 @@ class SimpleHomeScreen extends StatefulWidget {
 class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
   /// Code pays sélectionné (`null` = on est sur la grille des pays).
   /// Écosystème courant (haut de l'écran). Défaut : LIVE TV.
-  _Section _section = _Section.liveTv;
+  /// (Nommé `_activeSection` pour ne pas entrer en collision avec
+  /// l'ancienne méthode `_section(...)` encore présente plus bas.)
+  _Section _activeSection = _Section.liveTv;
 
   String? _countryCode;
   String _countryFlag = '';
@@ -191,7 +193,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
             ),
           Expanded(
             child: Text(
-              switch (_section) {
+              switch (_activeSection) {
                 _Section.liveTv => _countryCode == null
                     ? context.l10n.simpleChooseCountry
                     : '$_countryFlag  $_countryName',
@@ -244,14 +246,14 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
   }
 
   Widget _sectionTab(_Section s, String label, IconData icon) {
-    final bool active = _section == s;
+    final bool active = _activeSection == s;
     return Material(
       color: active ? AppColors.black7Red : AppColors.surface,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => setState(() {
-          _section = s;
+          _activeSection = s;
           _countryCode = null; // on revient à la racine de l'écosystème
         }),
         child: Row(
@@ -280,28 +282,30 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
   // Corps selon l'écosystème courant. Séparation stricte : chaque section
   // ne reçoit QUE les contenus de son type.
   Widget _buildSectionBody(List<Channel> channels) {
-    switch (_section) {
-      case _Section.liveTv:
-        final List<Channel> live = channels.where(_isLiveTv).toList();
-        return _countryCode == null
-            ? _buildCountryGrid(live)
-            : _buildCountryDetail(live);
-      case _Section.movies:
-        return MediaGridView(
+    // `return switch` = exhaustif et retour garanti par le compilateur.
+    return switch (_activeSection) {
+      _Section.liveTv => _buildLiveBody(channels),
+      _Section.movies => MediaGridView(
           channels: channels.where(_isMovie).toList(),
           emptyLabel: 'Aucun film dans ta playlist.',
-        );
-      case _Section.series:
-        return MediaGridView(
+        ),
+      _Section.series => MediaGridView(
           channels: channels.where(_isSeries).toList(),
           emptyLabel: 'Aucune série dans ta playlist.',
-        );
-      case _Section.ppv:
-        return MediaGridView(
+        ),
+      _Section.ppv => MediaGridView(
           channels: channels.where(_isPpv).toList(),
           emptyLabel: 'Aucun événement PPV pour le moment.',
-        );
-    }
+        ),
+    };
+  }
+
+  // LIVE TV : navigation par pays, filtrée aux chaînes live uniquement.
+  Widget _buildLiveBody(List<Channel> channels) {
+    final List<Channel> live = channels.where(_isLiveTv).toList();
+    return _countryCode == null
+        ? _buildCountryGrid(live)
+        : _buildCountryDetail(live);
   }
 
   // ----- Niveau 1 : grille des pays -----
