@@ -100,6 +100,15 @@ class SettingsScreen extends StatelessWidget {
                       value: s.showStats,
                       onChanged: s.setShowStats,
                     ),
+                    _ActionTile(
+                      icon: Icons.badge_outlined,
+                      title: 'Signature de lecture (User-Agent)',
+                      subtitle:
+                          'Si une source affiche une PUB du serveur au lieu '
+                          'des chaînes, change la signature. '
+                          'Actuel : ${_shortUserAgent(s.userAgent)}',
+                      onTap: () => _openUserAgentSheet(context),
+                    ),
                   ],
                 );
               },
@@ -262,7 +271,24 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
   }
+
+  /// Ouvre la feuille de choix du User-Agent (préréglages + champ libre).
+  Future<void> _openUserAgentSheet(BuildContext context) {
+    return showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => const _UserAgentSheet(),
+    );
+  }
 }
+
+/// Tronque un User-Agent pour l'affichage en sous-titre.
+String _shortUserAgent(String ua) =>
+    ua.length <= 26 ? ua : '${ua.substring(0, 26)}…';
 
 // ============================================================
 //  Composants internes
@@ -890,6 +916,214 @@ class _LanguageTile extends StatelessWidget {
                     color: AppColors.accent, size: 20),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+//  _UserAgentSheet — Choix du User-Agent (signature de lecture)
+// ============================================================
+//  Préréglages (VLC, ExoPlayer/IBO, OkHttp, Smarters…) + champ
+//  libre. Sert à débloquer les serveurs IPTV qui n'autorisent le
+//  vrai flux qu'aux signatures de lecteurs connus (sinon : pub).
+// ============================================================
+
+class _UserAgentSheet extends StatefulWidget {
+  const _UserAgentSheet();
+
+  @override
+  State<_UserAgentSheet> createState() => _UserAgentSheetState();
+}
+
+class _UserAgentSheetState extends State<_UserAgentSheet> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller =
+        TextEditingController(text: PlayerSettings.instance.userAgent);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _apply(String value) async {
+    await PlayerSettings.instance.setUserAgent(value);
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Signature changée. Rouvre une chaîne pour tester.',
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: ListenableBuilder(
+          listenable: PlayerSettings.instance,
+          builder: (BuildContext context, _) {
+            final String current = PlayerSettings.instance.userAgent;
+            return SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+                    child: Row(
+                      children: <Widget>[
+                        Icon(Icons.badge_outlined,
+                            color: AppColors.accent, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Signature de lecture',
+                            style: AppTextStyles.headlineMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                    child: Text(
+                      'Certains serveurs IPTV ne diffusent les vraies chaînes '
+                      'qu\'aux lecteurs reconnus et affichent une pub aux '
+                      'autres. Choisis la signature qui marche pour ta source '
+                      '(souvent IBO / ExoPlayer), ou saisis la tienne.',
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ),
+                  ...PlayerSettings.userAgentPresets.entries
+                      .map<Widget>((MapEntry<String, String> entry) {
+                    final bool selected = entry.value == current;
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => _apply(entry.value),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 12),
+                          child: Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Text(
+                                      entry.key,
+                                      style: AppTextStyles.bodyLarge.copyWith(
+                                        fontSize: 14,
+                                        fontWeight: selected
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                        color: selected
+                                            ? AppColors.accent
+                                            : AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      entry.value,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style:
+                                          AppTextStyles.bodyMedium.copyWith(
+                                        fontSize: 11,
+                                        color: AppColors.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (selected)
+                                Icon(Icons.check_rounded,
+                                    color: AppColors.accent, size: 20),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+                    child: Text(
+                      'PERSONNALISÉ',
+                      style: AppTextStyles.labelSmall.copyWith(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                    child: TextField(
+                      controller: _controller,
+                      minLines: 1,
+                      maxLines: 3,
+                      style:
+                          AppTextStyles.bodyMedium.copyWith(fontSize: 12),
+                      decoration: InputDecoration(
+                        hintText: 'Colle ici le User-Agent exact…',
+                        filled: true,
+                        fillColor: AppColors.surfaceHigh,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: AppColors.border),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: AppColors.border),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () =>
+                                _apply(PlayerSettings.kDefaultUserAgent),
+                            child: const Text('Réinitialiser'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () => _apply(_controller.text),
+                            child: const Text('Appliquer'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );

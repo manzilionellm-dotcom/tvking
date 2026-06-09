@@ -724,12 +724,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await native?.setProperty('keep-open', 'yes');
       await native?.setProperty('keep-open-pause', 'no');
 
-      // 6. User-Agent mimant VLC — certains Xtream bloquent
-      //    les UA "libmpv" ou "Dart" et coupent la connexion
-      //    après le timeout par défaut côté serveur (~120s).
+      // 6. User-Agent configurable (défaut façon VLC). Certains serveurs
+      //    bloquent les UA "libmpv"/"Dart", d'autres ne servent le vrai
+      //    flux qu'aux signatures de lecteurs connus (sinon : pub/
+      //    placeholder). Réglable dans Réglages → Lecteur.
       await native?.setProperty(
         'user-agent',
-        'VLC/3.0.18 LibVLC/3.0.18',
+        PlayerSettings.instance.userAgent,
       );
 
       // 7. force-seekable=yes : même sur des flux live qui

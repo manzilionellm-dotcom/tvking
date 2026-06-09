@@ -52,6 +52,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/observability/structured_logger.dart';
+import 'player_settings.dart';
 
 /// Nombre d'échecs de reconnexion CONSÉCUTIFS tolérés avant d'abandonner
 /// l'upstream. Tant qu'une reconnexion réussit, le compteur repart à 0,
@@ -257,7 +258,10 @@ class LocalStreamRelay {
         ..connectionTimeout = const Duration(seconds: 30)
         ..idleTimeout = const Duration(minutes: 10)
         ..autoUncompress = false
-        ..userAgent = 'VLC/3.0.18 LibVLC/3.0.18';
+        // User-Agent configurable : certains serveurs IPTV n'autorisent le
+        // vrai flux QU'AUX signatures de lecteurs connus (sinon ils servent
+        // une pub/placeholder). Modifiable dans Réglages → Lecteur.
+        ..userAgent = PlayerSettings.instance.userAgent;
 
       final HttpClientRequest cReq =
           await session.client!.getUrl(Uri.parse(url));

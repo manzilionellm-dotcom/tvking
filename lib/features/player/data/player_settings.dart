@@ -45,6 +45,31 @@ class PlayerSettings extends ChangeNotifier {
   static const String _kStatsKey = 'player.show_stats';
   static const String _kSpeedKey = 'player.last_speed';
   static const String _kAntiFreezeKey = 'player.anti_freeze';
+  static const String _kUserAgentKey = 'player.user_agent';
+
+  /// User-Agent par défaut (façon VLC). Beaucoup de serveurs IPTV
+  /// n'acceptent le VRAI flux QUE pour des signatures de lecteurs connus
+  /// et servent une pub/placeholder aux autres. Modifiable par
+  /// l'utilisateur pour matcher ce que son fournisseur attend.
+  static const String kDefaultUserAgent = 'VLC/3.0.18 LibVLC/3.0.18';
+
+  /// Présets prêts à l'emploi (label → valeur). L'utilisateur peut aussi
+  /// saisir le sien. Si une source affiche une « pub du serveur » au lieu
+  /// du flux, c'est souvent qu'il faut basculer sur la signature du lecteur
+  /// que le fournisseur autorise (souvent ExoPlayer/IBO).
+  static const Map<String, String> userAgentPresets = <String, String>{
+    'VLC (défaut)': kDefaultUserAgent,
+    'ExoPlayer (souvent IBO)':
+        'ExoPlayerLib/2.19.1 (Linux;Android 13) ExoPlayerLib/2.19.1',
+    'OkHttp (Android)': 'okhttp/4.12.0',
+    'IPTV Smarters': 'IPTVSmartersPlayer',
+    'TiviMate': 'TiviMate/4.7.0',
+    'Kodi': 'Kodi/20.2',
+    'Lavf / FFmpeg': 'Lavf/61.7.100',
+    'Chrome (mobile)':
+        'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
+            '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+  };
 
   /// Buffer en secondes (5 à 60). Plus c'est haut, plus
   /// la lecture résiste aux coupures réseau, mais plus
@@ -75,6 +100,9 @@ class PlayerSettings extends ChangeNotifier {
   /// Dernière vitesse choisie (pour la restaurer entre flux).
   double _lastSpeed = 1.0;
 
+  /// User-Agent envoyé au serveur IPTV pour récupérer les flux.
+  String _userAgent = kDefaultUserAgent;
+
   bool _loaded = false;
 
   // ----- Getters -----
@@ -84,6 +112,10 @@ class PlayerSettings extends ChangeNotifier {
   bool get showStats => _showStats;
   bool get antiFreeze => _antiFreeze;
   double get lastSpeed => _lastSpeed;
+
+  /// User-Agent effectif (jamais vide → repli sur le défaut VLC).
+  String get userAgent =>
+      _userAgent.trim().isEmpty ? kDefaultUserAgent : _userAgent;
 
   /// Nombre de secondes de vidéo à pré-charger avant de (re)démarrer la
   /// lecture en mode anti-coupure. C'est le "matelas" dans lequel le
@@ -113,6 +145,7 @@ class PlayerSettings extends ChangeNotifier {
     _showStats = prefs.getBool(_kStatsKey) ?? false;
     _antiFreeze = prefs.getBool(_kAntiFreezeKey) ?? true;
     _lastSpeed = prefs.getDouble(_kSpeedKey) ?? 1.0;
+    _userAgent = prefs.getString(_kUserAgentKey) ?? kDefaultUserAgent;
     _loaded = true;
     notifyListeners();
   }
@@ -166,5 +199,16 @@ class PlayerSettings extends ChangeNotifier {
     notifyListeners();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_kSpeedKey, speed);
+  }
+
+  /// Change le User-Agent. Vide → repli sur le défaut. Persisté.
+  Future<void> setUserAgent(String value) async {
+    final String v =
+        value.trim().isEmpty ? kDefaultUserAgent : value.trim();
+    if (v == _userAgent) return;
+    _userAgent = v;
+    notifyListeners();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kUserAgentKey, v);
   }
 }
