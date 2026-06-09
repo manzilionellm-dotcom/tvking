@@ -23,8 +23,6 @@
 //  importer les 19 999 autres chaînes.
 // =========================================================
 
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
 
 import '../../channels/domain/channel.dart';
@@ -89,10 +87,6 @@ abstract final class M3uParser {
     Map<String, String>? pendingAttrs;
     String? pendingName;
     String? pendingGroup; // #EXTGRP: hors EXTINF
-    // En-têtes HTTP de la prochaine chaîne (User-Agent / Referer / Origin /
-    // Cookie), collectés depuis #EXTVLCOPT, #EXTHTTP, #KODIPROP ou le
-    // suffixe d'URL. Vidés après chaque chaîne (cf. helpers en bas).
-    final Map<String, String> pendingHeaders = <String, String>{};
 
     for (int i = 0; i < lines.length; i++) {
       final String raw = lines[i];
@@ -122,56 +116,22 @@ abstract final class M3uParser {
         continue;
       }
 
-      // ----- En-têtes HTTP par chaîne -----
-      // Beaucoup de panels IPTV imposent un User-Agent / Referer précis
-      // par chaîne. On les collecte ici pour les rejouer à la lecture
-      // (sinon : 403 → « la chaîne ne marche pas »). Comme VLC / IBO Player.
-      final String upper = line.toUpperCase();
-      if (upper.startsWith('#EXTVLCOPT:')) {
-        _absorbKeyValueHeader(line.substring('#EXTVLCOPT:'.length),
-            pendingHeaders);
-        continue;
-      }
-      if (upper.startsWith('#EXTHTTP:')) {
-        _absorbExtHttp(line.substring('#EXTHTTP:'.length), pendingHeaders);
-        continue;
-      }
-      if (upper.startsWith('#KODIPROP:')) {
-        _absorbKodiProp(line.substring('#KODIPROP:'.length), pendingHeaders);
-        continue;
-      }
-
       // Ignorer silencieusement toutes les autres directives
-      // (#EXT-X-*, commentaires, etc.).
+      // (#EXTVLCOPT, #KODIPROP, #EXT-X-*, commentaires).
       if (line.startsWith('#')) {
         continue;
       }
 
       // ----- Ligne URL -----
 
-      // Suffixe d'en-têtes éventuel : URL|User-Agent=…|Referer=… (convention
-      // VLC/Kodi répandue). On isole l'URL réelle et on absorbe les en-têtes.
-      String urlPart = line;
-      final int pipe = line.indexOf('|');
-      if (pipe > 0) {
-        urlPart = line.substring(0, pipe).trim();
-        _absorbPipeHeaders(line.substring(pipe + 1), pendingHeaders);
-      }
-
       // On accepte tout schéma — l'utilisateur sait ce qu'il met
       // dans sa playlist. media_kit gère http/https/rtmp/udp.
-      final bool looksLikeUrl = _looksLikeUrl(urlPart);
+      final bool looksLikeUrl = _looksLikeUrl(line);
       if (!looksLikeUrl) {
         warnings.add('Ligne ignorée (pas une URL valide) : '
-            '${urlPart.length > 80 ? "${urlPart.substring(0, 80)}…" : urlPart}');
-        pendingHeaders.clear();
+            '${line.length > 80 ? "${line.substring(0, 80)}…" : line}');
         continue;
       }
-
-      // Instantané des en-têtes collectés pour CETTE chaîne (null si aucun).
-      final Map<String, String>? headers = pendingHeaders.isEmpty
-          ? null
-          : Map<String, String>.of(pendingHeaders);
 
       // Si on a une URL SANS #EXTINF avant, on l'accepte quand
       // même : c'est un M3U "simple" (juste des URLs). On génère
@@ -183,15 +143,13 @@ abstract final class M3uParser {
             playlistId: playlistId,
             name: 'Chaîne ${channels.length + 1}',
             category: pendingGroup ?? 'Autres',
-            streamUrl: urlPart,
+            streamUrl: line,
             isLive: true,
             logoUrl: null,
             catchupSupported: false,
-            httpHeaders: headers,
           ),
         );
         pendingGroup = null;
-        pendingHeaders.clear();
         continue;
       }
 
@@ -224,14 +182,13 @@ abstract final class M3uParser {
           playlistId: playlistId,
           name: name,
           category: groupTitle.isEmpty ? 'Autres' : groupTitle,
-          streamUrl: urlPart,
+          streamUrl: line,
           isLive: true,
           logoUrl: logoUrl.isEmpty ? null : logoUrl,
           catchupSupported:
               catchupRaw.isNotEmpty || catchupSource.isNotEmpty,
           catchupDays: int.tryParse(catchupDaysRaw),
           catchupSource: catchupSource.isEmpty ? null : catchupSource,
-          httpHeaders: headers,
         ),
       );
 
@@ -239,7 +196,6 @@ abstract final class M3uParser {
       pendingAttrs = null;
       pendingName = null;
       pendingGroup = null;
-      pendingHeaders.clear();
     }
 
     if (kDebugMode) {
@@ -333,103 +289,6 @@ abstract final class M3uParser {
       if (c == ',' && !inDouble && !inSingle) return i;
     }
     return -1;
-  }
-
-  // ============================================================
-  //  En-têtes HTTP par chaîne (User-Agent / Referer / Origin…)
-  // ============================================================
-
-  /// Normalise un nom d'en-tête vers sa forme HTTP canonique. Renvoie
-  /// `null` pour les clés qu'on ne veut pas propager (on se limite aux
-  /// en-têtes utiles à l'accès au flux, pas aux options de décodage).
-  static String? _canonHeaderKey(String raw) {
-    // On retire un éventuel préfixe `http-` (convention #EXTVLCOPT).
-    final String k = raw.trim().toLowerCase().replaceFirst('http-', '');
-    switch (k) {
-      case 'user-agent':
-      case 'useragent':
-      case 'user_agent':
-        return 'User-Agent';
-      case 'referer':
-      case 'referrer': // VLC écrit "referrer" (2 r)
-        return 'Referer';
-      case 'origin':
-        return 'Origin';
-      case 'cookie':
-      case 'cookies':
-        return 'Cookie';
-      default:
-        return null;
-    }
-  }
-
-  /// Nettoie une valeur d'en-tête : trim + retrait de guillemets entourants.
-  static String _cleanHeaderValue(String raw) {
-    String v = raw.trim();
-    if (v.length >= 2 &&
-        ((v.startsWith('"') && v.endsWith('"')) ||
-            (v.startsWith("'") && v.endsWith("'")))) {
-      v = v.substring(1, v.length - 1);
-    }
-    return v;
-  }
-
-  /// Absorbe une directive `clé=valeur` (cas #EXTVLCOPT). Exemples :
-  ///   http-user-agent=Mozilla/5.0      |  http-referrer="http://x"
-  static void _absorbKeyValueHeader(String body, Map<String, String> out) {
-    final int eq = body.indexOf('=');
-    if (eq <= 0) return;
-    final String? canon = _canonHeaderKey(body.substring(0, eq));
-    if (canon == null) return;
-    final String val = _cleanHeaderValue(body.substring(eq + 1));
-    if (val.isNotEmpty) out[canon] = val;
-  }
-
-  /// Absorbe une directive #EXTHTTP, dont le corps est un objet JSON :
-  ///   #EXTHTTP:{"User-Agent":"…","Referer":"…","Cookie":"…"}
-  static void _absorbExtHttp(String body, Map<String, String> out) {
-    try {
-      final dynamic j = jsonDecode(body.trim());
-      if (j is Map) {
-        j.forEach((dynamic k, dynamic v) {
-          final String? canon = _canonHeaderKey('$k');
-          if (canon != null && v != null) {
-            final String val = _cleanHeaderValue('$v');
-            if (val.isNotEmpty) out[canon] = val;
-          }
-        });
-      }
-    } catch (_) {
-      // JSON malformé → on ignore (on ne casse jamais le parsing).
-    }
-  }
-
-  /// Absorbe une directive #KODIPROP. Deux formes gérées :
-  ///   inputstream.adaptive.stream_headers=User-Agent=…&Referer=…
-  ///   http-user-agent=…
-  static void _absorbKodiProp(String body, Map<String, String> out) {
-    final int eq = body.indexOf('=');
-    if (eq <= 0) return;
-    final String key = body.substring(0, eq).trim().toLowerCase();
-    final String val = body.substring(eq + 1);
-    if (key.endsWith('stream_headers') || key.endsWith('manifest_headers')) {
-      _absorbPipeHeaders(val, out); // liste k=v séparée par & ou |
-    } else {
-      _absorbKeyValueHeader(body, out);
-    }
-  }
-
-  /// Absorbe une liste d'en-têtes `clé=valeur` séparés par `|` ou `&`
-  /// (suffixe d'URL `…|User-Agent=…|Referer=…` ou stream_headers Kodi).
-  static void _absorbPipeHeaders(String body, Map<String, String> out) {
-    for (final String part in body.split(RegExp(r'[|&]'))) {
-      final int eq = part.indexOf('=');
-      if (eq <= 0) continue;
-      final String? canon = _canonHeaderKey(part.substring(0, eq));
-      if (canon == null) continue;
-      final String val = _cleanHeaderValue(part.substring(eq + 1));
-      if (val.isNotEmpty) out[canon] = val;
-    }
   }
 }
 

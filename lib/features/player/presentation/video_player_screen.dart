@@ -97,18 +97,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Recording? _activeRecording;
   bool get _isRecording => _activeRecording != null;
 
-  // Routage de la lecture LIVE.
-  //   false (défaut) = lecture DIRECTE : mpv/libmpv ouvre l'URL réelle et
-  //                    gère nativement aussi bien le MPEG-TS brut que le
-  //                    HLS (.m3u8).
-  //   true           = lecture via le MINI-RELAIS local. On n'y bascule
-  //                    QUE le temps d'un enregistrement (le relais permet
-  //                    de regarder + enregistrer sur une seule connexion).
-  // Le relais recopiant des octets bruts, il ne sait pas parler HLS : s'en
-  // servir pour la simple lecture casserait toutes les chaînes livrées en
-  // HLS. Voir _openMedia.
-  bool _wantRelay = false;
-
   // Picture-in-Picture : implémenté en NATIF Android via
   // MainActivity.kt + MethodChannel `tvking/pip`. Pas de plugin
   // tiers — voir `lib/features/player/data/pip_service.dart` et
@@ -368,9 +356,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // l'enregistrement AVANT de changer : l'enregistrement est lié au
     // flux en cours dans le relais (1 connexion). Le fichier est sauvé.
     if (_isRecording) {
-      // Pas de réouverture directe ici : on ouvre déjà la nouvelle chaîne
-      // juste après (toujours en lecture directe).
-      _stopRecording(reopenDirect: false);
+      _stopRecording();
     }
     setState(() {
       _currentChannel = next;
@@ -396,72 +382,31 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   /// Ouvre une URL dans le lecteur.
   ///
-  /// LIVE sans enregistrement (cas par défaut) → lecture DIRECTE : mpv
-  /// ouvre l'URL réelle et gère nativement le MPEG-TS brut ET le HLS
-  /// (.m3u8). C'est ce que font TiviMate / VLC, et c'est ce qui permet à
-  /// TOUTES les chaînes de marcher.
-  ///
-  /// LIVE pendant un enregistrement (`_wantRelay` == true) → on passe par
-  /// le MINI-RELAIS LOCAL : mpv lit depuis 127.0.0.1, le relais ouvre UNE
-  /// seule connexion vers le serveur IPTV et recopie les octets vers le
-  /// lecteur ET vers le fichier → regarder + enregistrer sur une seule
-  /// connexion (pas de multi-view, enregistrement jamais vide).
-  ///
-  /// On NE relaye JAMAIS la simple lecture car le relais recopie des
-  /// octets bruts en `video/mp2t` et ne sait pas parler HLS : il casserait
-  /// toutes les chaînes livrées en HLS (manifeste recopié tel quel → écran
-  /// noir). Beaucoup de fournisseurs redirigent même les URLs Xtream `.ts`
-  /// vers un edge HLS, d'où « la majorité des chaînes ne marchent pas ».
+  /// LIVE (pas d'overrideUrl) → on passe par le MINI-RELAIS LOCAL : mpv
+  /// lit depuis 127.0.0.1, le relais ouvre UNE seule connexion vers le
+  /// serveur IPTV et recopie les octets vers le lecteur ET (si REC est
+  /// actif) vers le fichier. Résultat : regarder + enregistrer sur une
+  /// seule connexion (pas de multi-view, enregistrement jamais vide).
   ///
   /// VOD / catch-up (overrideUrl présent) → lecture DIRECTE, car ce
   /// contenu est seekable (avance/recul) et le relais live ne gère pas
   /// les requêtes Range.
   Future<void> _openMedia(String realUrl) async {
-    // En-têtes HTTP envoyés au serveur pour CE flux (User-Agent par défaut
-    // + surcharge éventuelle imposée par la chaîne). Voir _effectiveHeaders.
-    final Map<String, String> headers = _effectiveHeaders();
-
-    // Direct dès qu'on n'a pas besoin du relais (VOD/catch-up, ou live
-    // sans enregistrement en cours).
-    if (widget.overrideUrl != null || !_wantRelay) {
-      _player.open(Media(realUrl, httpHeaders: headers));
+    if (widget.overrideUrl != null) {
+      _player.open(Media(realUrl));
       return;
     }
     try {
       final String localUrl =
           await LocalStreamRelay.instance.playUrlFor(realUrl);
       if (!mounted) return;
-      _player.open(Media(localUrl, httpHeaders: headers));
+      _player.open(Media(localUrl));
     } catch (e) {
       // Si le relais ne démarre pas (cas improbable), on retombe sur la
       // lecture directe pour ne jamais priver l'utilisateur de l'image.
       debugPrint('[Player] relais indisponible, lecture directe: $e');
-      _player.open(Media(realUrl, httpHeaders: headers));
+      _player.open(Media(realUrl));
     }
-  }
-
-  /// User-Agent par défaut, façon VLC. Beaucoup de panels IPTV REJETTENT
-  /// l'UA par défaut de libmpv/FFmpeg (« Lavf/… ») et répondent 403 ou
-  /// coupent la connexion → c'est une cause majeure de « la moitié des
-  /// chaînes ne marchent pas ». VLC est universellement accepté.
-  static const String _kDefaultUserAgent = 'VLC/3.0.18 LibVLC/3.0.18';
-
-  /// Construit les en-têtes HTTP de lecture. On part du User-Agent VLC,
-  /// puis la chaîne peut SURCHARGER (UA/Referer/Origin/Cookie imposés par
-  /// le panel via le M3U — cf. Channel.httpHeaders). En passant ces en-têtes
-  /// directement sur le `Media`, ils sont appliqués DÈS LE PREMIER OCTET
-  /// (plus de course avec _applyMpvOptions), exactement comme IBO Player /
-  /// TiviMate. C'est aussi ce qui répare le cas Xtream (avant, le tout
-  /// premier flux partait avec l'UA « Lavf » bloqué par le serveur).
-  Map<String, String> _effectiveHeaders() {
-    final Map<String, String> headers = <String, String>{
-      'User-Agent': _kDefaultUserAgent,
-    };
-    final Map<String, String>? channelHeaders = _currentChannel.httpHeaders;
-    if (channelHeaders != null && channelHeaders.isNotEmpty) {
-      headers.addAll(channelHeaders);
-    }
-    return headers;
   }
 
   /// Callback du `PageView` quand l'utilisateur a fini un swipe vertical.
@@ -498,15 +443,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       bool ok;
       if (_liveViaRelay) {
         // ENREGISTREMENT VIA LE MINI-RELAIS (1 connexion) :
-        // En lecture normale on lit en DIRECT (pas de relais). Pour
-        // enregistrer sans ouvrir une 2e connexion (que le serveur IPTV
-        // refuserait = multi-view → fichier vide), on bascule d'abord la
-        // LECTURE sur le relais : il ouvre l'unique connexion vers le
-        // serveur, alimente le lecteur ET recopie les octets vers le
-        // fichier. On continue donc à regarder ET on enregistre sur une
-        // seule connexion (pas de multi-view, fichier non vide).
-        _wantRelay = true;
-        await _openMedia(url);
+        // Le relais ouvre DÉJÀ l'unique connexion vers le serveur pour la
+        // lecture. On lui demande juste de recopier AUSSI les octets vers
+        // le fichier. Donc : on continue à regarder, l'enregistrement
+        // capture EXACTEMENT ce qui passe à l'écran, et le serveur ne voit
+        // toujours qu'UNE connexion (pas de multi-view, fichier non vide).
         ok = await LocalStreamRelay.instance.startRecording(
           realUrl: url,
           filePath: path,
@@ -525,12 +466,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         );
       }
       if (!ok) {
-        if (_liveViaRelay) {
-          // Échec de l'enregistrement → on quitte le relais et on revient
-          // en lecture directe pour ne pas dégrader la lecture en cours.
-          _wantRelay = false;
-          await _openMedia(url);
-        }
         _toast(context.l10n.recStartFailed);
         return;
       }
@@ -554,17 +489,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  Future<void> _stopRecording({bool reopenDirect = true}) async {
+  Future<void> _stopRecording() async {
     try {
       final Recording? rec = _activeRecording;
       final String url = rec?.streamUrl ??
           (widget.overrideUrl ?? _currentChannel.streamUrl);
-
-      // La lecture ne doit plus passer par le relais dès qu'on arrête
-      // d'enregistrer. On le met à false TOUT DE SUITE, avant le moindre
-      // await, pour qu'un _openMedia concurrent (ex. zapping) reparte bien
-      // en lecture directe.
-      if (_liveViaRelay) _wantRelay = false;
 
       // On arrête le bon moteur selon le mode.
       int bytes = 0;
@@ -584,13 +513,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           } catch (_) {}
         }
         await RecordingRepository.instance.finishRecording(rec);
-      }
-
-      // On quitte le relais : on rouvre la chaîne en lecture DIRECTE.
-      // Sauté pendant un zapping (`reopenDirect: false`), car l'appelant
-      // ouvre déjà la nouvelle chaîne juste après.
-      if (reopenDirect && _liveViaRelay && mounted) {
-        await _openMedia(url);
       }
 
       if (mounted) {

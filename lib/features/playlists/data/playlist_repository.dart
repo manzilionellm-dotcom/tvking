@@ -22,7 +22,6 @@
 // =========================================================
 
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -732,9 +731,6 @@ class PlaylistRepository {
       'catchup_supported': ch.catchupSupported ? 1 : 0,
       'catchup_days': ch.catchupDays,
       'catchup_source': ch.catchupSource,
-      // En-têtes HTTP par chaîne (User-Agent/Referer…) sérialisés en JSON.
-      'http_headers':
-          ch.httpHeaders == null ? null : jsonEncode(ch.httpHeaders),
     };
   }
 
@@ -750,25 +746,6 @@ class PlaylistRepository {
       catchupSupported: (map['catchup_supported'] as int? ?? 0) == 1,
       catchupDays: map['catchup_days'] as int?,
       catchupSource: map['catchup_source'] as String?,
-      httpHeaders: _decodeHeaders(map['http_headers'] as String?),
     );
-  }
-
-  /// Décode la colonne `http_headers` (JSON) en Map<String,String>.
-  /// Tolérant : renvoie null si vide ou malformé (on ne casse jamais le
-  /// chargement des chaînes pour un en-tête mal stocké).
-  static Map<String, String>? _decodeHeaders(String? raw) {
-    if (raw == null || raw.isEmpty) return null;
-    try {
-      final dynamic j = jsonDecode(raw);
-      if (j is Map && j.isNotEmpty) {
-        final Map<String, String> out = <String, String>{};
-        j.forEach((dynamic k, dynamic v) {
-          if (v != null) out['$k'] = '$v';
-        });
-        return out.isEmpty ? null : out;
-      }
-    } catch (_) {/* ignore */}
-    return null;
   }
 }

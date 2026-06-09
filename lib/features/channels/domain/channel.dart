@@ -38,7 +38,6 @@ class Channel {
     this.catchupSupported = false,
     this.catchupDays,
     this.catchupSource,
-    this.httpHeaders,
   });
 
   /// Identifiant unique de la chaîne (tvg-id côté M3U,
@@ -78,18 +77,6 @@ class Channel {
 
   /// Template d'URL catch-up (spec M3U).
   final String? catchupSource;
-
-  /// En-têtes HTTP à envoyer au serveur pour LIRE ce flux précis
-  /// (User-Agent, Referer, Origin, Cookie…). Renseigné par le parser M3U
-  /// à partir des directives `#EXTVLCOPT:http-user-agent=`, `#EXTHTTP:`,
-  /// `#KODIPROP:` ou du suffixe d'URL `…|User-Agent=…|Referer=…`.
-  ///
-  /// POURQUOI C'EST CRUCIAL : beaucoup de panels IPTV (revendeurs type
-  /// « M Trio ») EXIGENT un User-Agent / Referer précis par chaîne. Sans
-  /// lui, le serveur répond 403 et la chaîne « ne marche pas » — alors
-  /// qu'elle marche dans VLC / IBO Player qui, eux, honorent ces en-têtes.
-  /// null = on envoie juste le User-Agent par défaut (VLC).
-  final Map<String, String>? httpHeaders;
 
   // ============================================================
   //  Helpers de présentation
