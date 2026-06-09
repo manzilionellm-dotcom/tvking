@@ -23,6 +23,7 @@ import 'core/theme/app_text_styles.dart' show AppTextStyles;
 import 'core/i18n/locale_repository.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/tv_canvas.dart';
 import 'core/theme/accent_controller.dart';
 import 'core/theme/theme_mode_repository.dart';
 import 'features/about/data/force_update_checker.dart';
@@ -282,17 +283,31 @@ class TvKingApp extends StatelessWidget {
           //     les yeux fatigués, mais pas au point de casser les
           //     mesures de boutons / lignes / icônes.
           // S'applique partout — phone comme TV — pour cohérence.
+          //
+          // PUIS, EN MODE TV UNIQUEMENT : on enveloppe toute l'app dans
+          // un canevas de mise à l'échelle (cf. `TvCanvas`). Sans ça,
+          // les boîtiers qui annoncent une grande largeur logique (1920
+          // dp…) affichent l'UI minuscule et tassée au centre. Le canevas
+          // dessine l'app sur une largeur de référence constante (960 dp)
+          // et la met à l'échelle pour REMPLIR l'écran — proportions
+          // identiques de la 12″ à la 100″. Réservé au build TV forcé
+          // (`main_tv.dart`) : le téléphone garde son rendu natif 1:1.
           builder: (BuildContext context, Widget? child) {
             final MediaQueryData mq = MediaQuery.of(context);
-            return MediaQuery(
-              data: mq.copyWith(
-                textScaler: mq.textScaler.clamp(
-                  minScaleFactor: 0.9,
-                  maxScaleFactor: 1.25,
-                ),
+            final MediaQueryData clamped = mq.copyWith(
+              textScaler: mq.textScaler.clamp(
+                minScaleFactor: 0.9,
+                maxScaleFactor: 1.25,
               ),
-              child: child ?? const SizedBox.shrink(),
             );
+            final Widget content = child ?? const SizedBox.shrink();
+
+            // Hors build TV → rendu natif inchangé (téléphone, etc.).
+            if (!DeviceClassRepository.instance.isForcedTv) {
+              return MediaQuery(data: clamped, child: content);
+            }
+            // Build TV → canevas 960 dp mis à l'échelle plein écran.
+            return TvCanvas(mediaQuery: clamped, child: content);
           },
 
           home: const _AppEntry(),
