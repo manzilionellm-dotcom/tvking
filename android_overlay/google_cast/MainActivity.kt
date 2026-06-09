@@ -49,6 +49,7 @@ class MainActivity : FlutterFragmentActivity() {
     private var galleryExporter: GalleryExporter? = null
     private var recordingService: RecordingServiceBridge? = null
     private var multicastLock: MulticastLockBridge? = null
+    private var nativeHttp: NativeHttpBridge? = null
     private var pipChannel: MethodChannel? = null
 
     /// Vrai quand le lecteur vidéo joue actuellement. Mis à jour par
@@ -141,6 +142,18 @@ class MainActivity : FlutterFragmentActivity() {
             Log.i(TAG, "  ✓ MulticastLock channel wired")
         } catch (e: Throwable) {
             Log.e(TAG, "  ✗ MulticastLock channel failed: $e", e)
+        }
+
+        // Pont réseau natif (correctif « HTTP 884 ») : expose un GET via
+        // la pile TLS SYSTÈME d'Android (Conscrypt), pour que les sources
+        // bloquées sur l'empreinte TLS de dart:io passent enfin. Côté Dart,
+        // M3uFetcher / XtreamClient l'essaient en premier puis retombent sur
+        // dart:io. Voir NativeHttpBridge.kt + docs/DIAGNOSTIC_HTTP_884.md.
+        try {
+            nativeHttp = NativeHttpBridge(messenger)
+            Log.i(TAG, "  ✓ NativeHttp channel wired")
+        } catch (e: Throwable) {
+            Log.e(TAG, "  ✗ NativeHttp channel failed: $e", e)
         }
 
         // ========================================================

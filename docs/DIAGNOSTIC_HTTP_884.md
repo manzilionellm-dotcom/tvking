@@ -1,9 +1,9 @@
 # Diagnostic — « HTTP 884 » au chargement des sources M3U / Xtream
 
-> Statut : **diagnostic + instrumentation livrés**. Le correctif réseau
-> définitif (pile TLS native) est **documenté et prêt à brancher**, mais
-> volontairement **non embarqué tel quel** dans ce build de production —
-> voir la section « Pourquoi pas tout de suite » plus bas.
+> Statut : **CORRECTIF LIVRÉ**. La requête passe désormais par un **pont
+> réseau natif Android** (`HttpURLConnection` = pile TLS SYSTÈME, la même
+> que le navigateur et IBO Player), avec **repli automatique sur `dart:io`**.
+> Diagnostic, instrumentation et garde-fous restent en place (ci-dessous).
 
 ---
 
@@ -176,36 +176,60 @@ générée par la CI (via `android_overlay/`).
 
 ---
 
-## 6. Pourquoi pas tout de suite (décision d'ingénierie)
+## 6. Le correctif RETENU : pont natif `HttpURLConnection` (Option C)
 
-`cronet_http` (1.8.0) repose sur **`package:jni`** et exige **compileSdk 35**.
-Surtout, il existe un **crash JNI documenté en build `--release`/`--profile`
-avec obfuscation** (dart-lang/http #1241) — or **c'est exactement le mode de
-build de cette app** (`flutter build apk --release --obfuscate`).
+Plutôt que `cronet_http` (Option A) — qui repose sur **`package:jni`**, exige
+**compileSdk 35**, et a un **crash JNI documenté en build `--release`
+obfusqué** (dart-lang/http #1241), or c'est **exactement** notre mode de build
+(`flutter build apk --release --obfuscate`) — on a retenu une voie **plus
+sûre et sans dépendance** :
 
-Embarquer cette dépendance **sans pouvoir la tester sur device** dans cette
-session ferait courir le risque de transformer un bug **« aucune chaîne
-importée »** en **« l'app crashe au lancement »** pour **tous** les
-utilisateurs en production — un échange défavorable, et contraire au principe
-« on teste avant de livrer ».
+**Un pont `MethodChannel` natif qui fait le GET avec
+`java.net.HttpURLConnection`.** Sur Android, `HttpURLConnection` s'appuie sur
+la pile TLS **système (Conscrypt)** — **la même que le navigateur et IBO
+Player**, ceux qui marchent. L'empreinte TLS redevient « normale » → le front
+laisse passer.
 
-**Donc, dans cette branche :**
-- ✅ diagnostic écrit + raisonnement sur le discriminant ;
-- ✅ **instrumentation** de la requête exacte (pour enfin la capturer) ;
-- ✅ garde-fou de **budget temps global** (plus de N×90s empilés) ;
-- ✅ architecture **déjà prête** (client HTTP injectable) + ce mode d'emploi ;
-- ⏭️ **à brancher avec un device de test** : `cronet_http` embarqué
-  (Option A) ou pont OkHttp (Option B), puis valider qu'un APK release
-  obfusqué **ne crashe pas** AVANT distribution.
+Pourquoi c'est le bon choix ici :
+- **Zéro dépendance** ajoutée (`HttpURLConnection` est dans le framework
+  Android) → **zéro patch Gradle**, rien à télécharger au build.
+- **Aucune réflexion / JNI** → **compatible avec l'obfuscation R8** du build
+  release (contrairement à `cronet_http`).
+- **Repli automatique sur `dart:io`** : si le pont est absent (iOS, vieil
+  APK) ou échoue, on reprend l'ancien chemin → **aucune régression possible**.
+- Fonctionne **avec ou sans Google Play Services** (Fire TV inclus), car
+  Conscrypt est présent sur **tout** Android.
+
+### Fichiers du correctif
+
+| Fichier | Rôle |
+|---|---|
+| `android_overlay/google_cast/NativeHttpBridge.kt` | Pont natif : channel `com.manzilionellm.tvking/native_http`, méthode `get(url, headers)` → GET `HttpURLConnection` (suit les redirections cross-protocole http↔https), renvoie `{status, body, finalUrl, contentType}`. Tourne hors du thread UI. |
+| `android_overlay/google_cast/MainActivity.kt` | Câble `NativeHttpBridge` dans `configureFlutterEngine` (try/catch isolé). |
+| `android_overlay/google_cast/apply_cast_patch.sh` | Copie `NativeHttpBridge.kt` au bon package au build CI. |
+| `lib/core/net/native_http.dart` | Façade Dart `NativeHttp.get(...)` → `NativeHttpResponse`. Détecte l'indisponibilité (MissingPluginException) et renvoie `null` (repli). |
+| `lib/features/playlists/data/m3u_fetcher.dart` | Tente le pont natif EN PREMIER (toutes signatures), repli dart:io. |
+| `lib/features/playlists/data/xtream_client.dart` | Idem pour `player_api.php` (reconstruit une `http.Response` standard). |
+
+### Limite (honnêteté)
+
+Si le front bloque **aussi** sur un critère post-TLS (rare : géo-IP, token,
+ordre d'en-têtes spécifique), `HttpURLConnection` ne suffira pas et le pont
+renverra le même code. Dans ce cas, la **capture** (§4) reste l'outil pour
+isoler le critère restant. Mais pour le cas décrit (marche en navigateur +
+IBO, échoue seulement chez nous), la pile TLS système est la cause la plus
+probable et ce pont la corrige.
 
 ---
 
-## 7. Ce que change concrètement ce commit
+## 7. Ce que change concrètement ce travail
 
-- `m3u_fetcher.dart` : log `net/m3u.request` + `net/m3u.response` (requête
-  exacte + statut), et **budget temps global** (`_totalBudget = 150 s`) pour
+- **Correctif réseau** : pont natif `HttpURLConnection` (§6) tenté en premier
+  pour le M3U **et** l'Xtream, repli `dart:io` automatique.
+- **Instrumentation** : logs `net/m3u.request[.native]` + `.response[.native]`
+  et `net/xtream.*` (requête exacte + statut, ex. 884 ; mot de passe non
+  journalisé) — pour capturer/diffuser la requête.
+- **Garde-fou** : budget temps global (`_totalBudget = 150 s`) côté M3U pour
   ne pas cumuler les tentatives lentes.
-- `xtream_client.dart` : log `net/xtream.request` + `net/xtream.response`
-  (mot de passe non journalisé).
-- Aucune dépendance ajoutée, aucun changement de pile réseau → **build
-  inchangé et sûr**.
+- Robustesse conservée : rotation d'User-Agent, UTF-8 → Latin-1, strip BOM,
+  suppression de la source orpheline si elle ne charge pas.

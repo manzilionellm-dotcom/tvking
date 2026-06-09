@@ -28,6 +28,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/net/native_http.dart';
 import '../../../core/observability/structured_logger.dart';
 import '../../player/data/player_settings.dart';
 
@@ -91,6 +92,16 @@ abstract final class M3uFetcher {
 
     try {
       final List<String> userAgents = _candidateUserAgents(preferredUserAgent);
+
+      // ----- PHASE NATIVE (pile TLS SYSTÈME) — correctif « 884 » -----
+      // On tente d'ABORD le pont natif HttpURLConnection : sa pile TLS est
+      // celle du système Android (comme le navigateur / IBO), donc les
+      // fronts anti-bot qui rejettent l'empreinte TLS de dart:io la
+      // laissent passer. S'il est indisponible (iOS, vieil APK) ou échoue,
+      // on retombe sur la pile dart:io ci-dessous → aucune régression.
+      final String? nativeBody = await _fetchViaNative(url, userAgents);
+      if (nativeBody != null) return nativeBody;
+
       // Mémorise la dernière erreur la plus parlante pour le message final.
       Object? lastError;
       // Chronomètre global pour le garde-fou de budget (cf. _totalBudget).
@@ -240,11 +251,85 @@ abstract final class M3uFetcher {
         'depuis cet appareil.$detail';
   }
 
+  /// Tente le téléchargement via le PONT NATIF (pile TLS système Android),
+  /// en réutilisant la même rotation de signatures. Renvoie le corps de la
+  /// 1ʳᵉ playlist valide, ou `null` si le pont est indisponible / si aucune
+  /// signature n'aboutit (→ l'appelant retombe sur dart:io).
+  static Future<String?> _fetchViaNative(
+    String url,
+    List<String> userAgents,
+  ) async {
+    if (!NativeHttp.isAvailable) return null;
+    final Stopwatch elapsed = Stopwatch()..start();
+    for (int i = 0; i < userAgents.length; i++) {
+      if (elapsed.elapsed > _totalBudget) break;
+      final String ua = userAgents[i];
+      final Map<String, String> headers = <String, String>{
+        'User-Agent': ua,
+        'Accept': '*/*',
+        'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Connection': 'keep-alive',
+      };
+      StructuredLogger.instance.info(
+        domain: 'net',
+        event: 'm3u.request.native',
+        ctx: <String, Object?>{
+          'url': url,
+          'uaIndex': i + 1,
+          'ua': ua,
+          'headers': headers,
+        },
+      );
+      final NativeHttpResponse? resp =
+          await NativeHttp.get(url, headers: headers);
+      // Pont indisponible / erreur réseau native → on abandonne la phase
+      // native et on laisse dart:io tenter sa chance.
+      if (resp == null) return null;
+      StructuredLogger.instance.info(
+        domain: 'net',
+        event: 'm3u.response.native',
+        ctx: <String, Object?>{
+          'uaIndex': i + 1,
+          'status': resp.statusCode,
+          'bytes': resp.bodyBytes.length,
+          'contentType': resp.contentType,
+        },
+      );
+      if (resp.statusCode != 200) continue;
+      final String body = _decodeBytes(resp.bodyBytes);
+      if (!_looksLikePlaylist(body)) continue;
+      if (kDebugMode) {
+        debugPrint(
+          '[M3uFetcher] playlist obtenue via le pont NATIF (signature '
+          '#${i + 1}) — empreinte TLS système, le « 884 » est contourné.',
+        );
+      }
+      return body;
+    }
+    return null;
+  }
+
+  /// `true` si [body] ressemble à une vraie playlist M3U (et pas à une
+  /// page HTML d'erreur ni à un JSON applicatif). Mutualisé entre la phase
+  /// native et la phase dart:io.
+  static bool _looksLikePlaylist(String body) {
+    final String head = body.trimLeft();
+    if (head.isEmpty) return false;
+    final String headUpper = head.toUpperCase();
+    final bool looksHtml = head.startsWith('<');
+    final bool looksM3u = headUpper.contains('#EXTM3U') ||
+        headUpper.contains('#EXTINF') ||
+        head.contains('://');
+    if (looksHtml && !looksM3u) return false;
+    return looksM3u;
+  }
+
   /// Décodage UTF-8 → Latin-1 fallback + BOM strip.
-  /// On travaille sur `bodyBytes` (jamais `body`) pour avoir le
+  /// On travaille sur les `bodyBytes` (jamais `body`) pour avoir le
   /// contrôle total de l'encoding.
-  static String _decodeBody(http.Response resp) {
-    final List<int> bytes = resp.bodyBytes;
+  static String _decodeBody(http.Response resp) => _decodeBytes(resp.bodyBytes);
+
+  static String _decodeBytes(List<int> bytes) {
     if (bytes.isEmpty) return '';
 
     // Strip BOM UTF-8 (EF BB BF) si présent

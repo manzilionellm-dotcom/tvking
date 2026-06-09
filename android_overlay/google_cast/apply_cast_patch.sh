@@ -99,7 +99,8 @@ cat "$MANIFEST"
 mkdir -p "$ANDROID_PKG_PATH"
 for kt_file in MainActivity.kt GoogleCastApi.kt CastOptionsProviderImpl.kt \
                GalleryExporter.kt RecordingForegroundService.kt \
-               RecordingServiceBridge.kt MulticastLockBridge.kt; do
+               RecordingServiceBridge.kt MulticastLockBridge.kt \
+               NativeHttpBridge.kt; do
   src="$OVERLAY/$kt_file"
   dst="$ANDROID_PKG_PATH/$kt_file"
   # sed rewrite : `package com.manzilionellm.tvking` → `package $DETECTED_PKG`

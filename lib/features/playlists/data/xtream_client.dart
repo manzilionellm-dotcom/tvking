@@ -35,6 +35,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/net/native_http.dart';
 import '../../../core/observability/structured_logger.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/data/player_settings.dart';
@@ -290,6 +291,61 @@ class XtreamClient {
   /// si AUCUNE signature n'obtient 200.
   Future<http.Response> _get(Uri uri) async {
     Object? lastError;
+
+    // ----- PHASE NATIVE (pile TLS SYSTÈME) — correctif « 884 » -----
+    // On essaie d'abord le pont natif HttpURLConnection (empreinte TLS
+    // système Android = navigateur / IBO). S'il est indisponible ou
+    // renvoie une erreur réseau native (resp == null), on retombe sur la
+    // pile dart:io ci-dessous → aucune régression.
+    if (NativeHttp.isAvailable) {
+      for (final String ua in _candidateUserAgents()) {
+        final Map<String, String> headers = <String, String>{
+          'Accept': 'application/json',
+          'User-Agent': ua,
+          'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Connection': 'keep-alive',
+        };
+        StructuredLogger.instance.info(
+          domain: 'net',
+          event: 'xtream.request.native',
+          ctx: <String, Object?>{
+            'host': uri.host,
+            'action': uri.queryParameters['action'],
+            'ua': ua,
+          },
+        );
+        final NativeHttpResponse? r =
+            await NativeHttp.get(uri.toString(), headers: headers);
+        // Pont indisponible / erreur réseau native → on bascule sur dart:io.
+        if (r == null) break;
+        StructuredLogger.instance.info(
+          domain: 'net',
+          event: 'xtream.response.native',
+          ctx: <String, Object?>{
+            'host': uri.host,
+            'status': r.statusCode,
+            'bytes': r.bodyBytes.length,
+          },
+        );
+        if (r.statusCode == 200) {
+          _workingUserAgent = ua;
+          // On reconstruit une http.Response standard pour que le reste du
+          // client (jsonDecode sur response.body) ne change pas d'un poil.
+          return http.Response.bytes(
+            r.bodyBytes,
+            200,
+            headers: <String, String>{
+              if (r.contentType != null) 'content-type': r.contentType!,
+            },
+          );
+        }
+        lastError = XtreamException(
+          'Erreur HTTP ${r.statusCode} (pont natif) sur ${uri.host}',
+        );
+      }
+    }
+
+    // ----- PHASE dart:io (repli) -----
     for (final String ua in _candidateUserAgents()) {
       try {
         final Map<String, String> headers = <String, String>{
