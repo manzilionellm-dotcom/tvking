@@ -21,6 +21,8 @@
 //  (PlaylistRepository). Aucune dépendance au cast.
 // =========================================================
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/branding/brand_config.dart';
@@ -38,7 +40,9 @@ import '../../channels/presentation/widgets/source_choice_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/data/remote_source_repository.dart';
 import '../../profile/presentation/profile_screen.dart';
+import '../../subscription/data/subscription_state.dart';
 import 'widgets/announcement_banner.dart';
 import 'widgets/category_browser_view.dart';
 
@@ -50,6 +54,21 @@ class SimpleHomeScreen extends StatefulWidget {
 }
 
 class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+  /// Sondage SILENCIEUX de la source assignée par le revendeur. Tant que
+  /// l'app n'a pas de chaînes (écran d'activation affiché), on interroge
+  /// le backend toutes les 6 s. Dès que le revendeur a poussé la MAC dans
+  /// le panel, l'app charge la source TOUTE SEULE — le client n'a rien à
+  /// taper. Le timer s'arrête net dès que des chaînes sont chargées.
+  Timer? _activationPoll;
+
+  /// Évite deux sondages simultanés (réseau lent).
+  bool _polling = false;
+
+  /// Affiche brièvement un écran « Activation réussie — redémarrage… »
+  /// quand la source vient d'arriver automatiquement, pour que le client
+  /// perçoive un redémarrage propre plutôt qu'un changement brusque.
+  bool _restarting = false;
+
   @override
   void initState() {
     super.initState();
@@ -62,6 +81,59 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
       Future<void>.delayed(const Duration(seconds: 8), () {
         if (mounted) maybeShowFeedbackSheet(context);
       });
+    });
+    // Démarre le sondage auto SEULEMENT si on est sur l'écran vide. Si des
+    // chaînes sont déjà là (client qui revient), inutile de sonder.
+    if (PlaylistRepository.instance.currentChannels.isEmpty) {
+      // 1er essai rapide (2 s) puis toutes les 6 s.
+      Future<void>.delayed(const Duration(seconds: 2), _pollActivation);
+      _activationPoll = Timer.periodic(
+        const Duration(seconds: 6),
+        (_) => _pollActivation(),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _activationPoll?.cancel();
+    super.dispose();
+  }
+
+  /// Un tick du sondage : resynchronise l'abonnement + la source poussée.
+  /// Si une source vient d'être chargée (chaînes passées de 0 à >0), on
+  /// déclenche la transition « redémarrage » et on coupe le timer.
+  Future<void> _pollActivation() async {
+    if (_polling || !mounted) return;
+    // Déjà des chaînes ? on arrête le sondage (cas course / retour écran).
+    if (PlaylistRepository.instance.currentChannels.isNotEmpty) {
+      _activationPoll?.cancel();
+      return;
+    }
+    _polling = true;
+    try {
+      await SubscriptionState.instance.syncWithBackend();
+      await RemoteSourceRepository.sync();
+    } catch (_) {
+      // Réseau capricieux : on réessaiera au prochain tick.
+    } finally {
+      _polling = false;
+    }
+    if (!mounted) return;
+    // La source a-t-elle chargé des chaînes ?
+    if (PlaylistRepository.instance.currentChannels.isNotEmpty) {
+      _activationPoll?.cancel();
+      _enterRestart();
+    }
+  }
+
+  /// Joue la transition « redémarrage » ~1,8 s puis révèle les catégories.
+  /// Le StreamBuilder a déjà les chaînes en main : on ne fait que retarder
+  /// l'affichage pour un effet de redémarrage propre et rassurant.
+  void _enterRestart() {
+    setState(() => _restarting = true);
+    Future<void>.delayed(const Duration(milliseconds: 1800), () {
+      if (mounted) setState(() => _restarting = false);
     });
   }
 
@@ -78,6 +150,12 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
             builder:
                 (BuildContext context, AsyncSnapshot<List<Channel>> snap) {
               final List<Channel> channels = snap.data ?? const <Channel>[];
+
+              // Transition « redémarrage » : la source vient d'arriver
+              // automatiquement, on l'annonce en douceur avant de révéler
+              // les catégories (le client a juste l'impression que l'app
+              // redémarre, sans rien avoir tapé).
+              if (_restarting) return _buildRestartSplash(context);
 
               // Pas de playlist → écran d'activation par code MAC.
               if (channels.isEmpty) return _buildActivationEntry(context);
@@ -126,6 +204,42 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
           const MacActivationView(),
           const SizedBox(height: 14),
           const LegalDisclaimer.compact(),
+        ],
+      ),
+    );
+  }
+
+  // ----- Transition « redémarrage » (source poussée reçue) -----
+  //  Plein écran, centré : logo + spinner + texte rassurant. Affiché
+  //  ~1,8 s par _enterRestart() quand le sondage auto a chargé la source.
+  Widget _buildRestartSplash(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const BrandLogo.medium(),
+          const SizedBox(height: 28),
+          SizedBox(
+            width: 26,
+            height: 26,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.4,
+              color: AppColors.accent,
+            ),
+          ),
+          const SizedBox(height: 22),
+          Text(
+            'Activation réussie',
+            style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Redémarrage en cours…',
+            style: AppTextStyles.bodyMedium.copyWith(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+            ),
+          ),
         ],
       ),
     );
