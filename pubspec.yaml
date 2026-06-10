@@ -46,6 +46,16 @@ dependencies:
   #   - causer avec l'API Xtream Codes (player_api.php)
   http: ^1.2.2
 
+  # ffmpeg (fork maintenu — le paquet officiel ffmpeg_kit_flutter a été
+  # retiré début 2025). UTILISÉ UNIQUEMENT à l'export d'un enregistrement
+  # vers la galerie : on remuxe le .ts capturé en VRAI .mp4 (`-c copy`,
+  # sans ré-encodage → sans perte ; audio ré-encodé en AAC seulement si le
+  # codec source n'est pas muxable en MP4). C'est ce qui rend les vidéos
+  # exportées lisibles par TOUTES les galeries (le remux natif
+  # MediaExtractor échouait sur le MPEG-TS live). Ne touche PAS au moteur
+  # d'enregistrement ni de lecture.
+  ffmpeg_kit_flutter_new: ^1.6.1
+
   # SQLite pour Flutter. Permet de stocker localement :
   #   - la liste des playlists ajoutées
   #   - toutes les chaînes parsées, par playlist
