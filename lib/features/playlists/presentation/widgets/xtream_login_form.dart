@@ -1,17 +1,17 @@
 // =========================================================
 //  xtream_login_form.dart — Formulaire de connexion Xtream
 // =========================================================
-//  Le CŒUR de la connexion Xtream, extrait pour être réutilisé à
-//  deux endroits :
-//    1. l'écran d'accueil VIDE (mobile) — affiché directement, ouvert ;
-//    2. la feuille `xtream_login_sheet.dart` (bouton « Ajouter »).
+//  Le CŒUR de la connexion Xtream, réutilisé à deux endroits :
+//    1. l'écran d'activation (bouton « J'ai un code Xtream ») ;
+//    2. la feuille `xtream_login_sheet.dart`.
 //
-//  Conforme AGENTS.md règle n°2 : aucune URL de flux en dur. Les
-//  serveurs proposés (« Serveur 1 »…) viennent du Worker via
-//  `GET /api/servers` (cf. default_servers.dart). Le client choisit un
-//  serveur (ou il est prédéfini s'il n'y en a qu'un) puis saisit son
-//  CODE Xtream (identifiant + mot de passe). L'URL réelle reste cachée.
+//  Le client saisit LUI-MÊME ses 3 informations Xtream Codes :
+//    - le LIEN du serveur (URL) ;
+//    - son IDENTIFIANT ;
+//    - son MOT DE PASSE.
 //
+//  Pas de M3U. Conforme AGENTS.md règle n°2 : aucune URL de flux n'est
+//  écrite EN DUR dans le code — c'est l'utilisateur qui fournit la sienne.
 //  Aucune dépendance au cast.
 // =========================================================
 
@@ -20,7 +20,6 @@ import 'package:flutter/material.dart';
 import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../data/default_servers.dart';
 import '../../data/playlist_repository.dart';
 
 class XtreamLoginForm extends StatefulWidget {
@@ -44,59 +43,39 @@ class XtreamLoginForm extends StatefulWidget {
 }
 
 class _XtreamLoginFormState extends State<XtreamLoginForm> {
+  final TextEditingController _serverCtrl = TextEditingController();
   final TextEditingController _userCtrl = TextEditingController();
   final TextEditingController _passCtrl = TextEditingController();
-
-  /// Serveurs proposés (chargés depuis le Worker). `null` = en cours de
-  /// chargement, liste vide = aucun serveur configuré / réseau KO.
-  List<DefaultServer>? _servers;
-
-  /// Identifiant du serveur sélectionné (par défaut le premier).
-  String? _selectedServerId;
 
   bool _busy = false;
   String? _error;
 
   @override
-  void initState() {
-    super.initState();
-    _loadServers();
-  }
-
-  @override
   void dispose() {
+    _serverCtrl.dispose();
     _userCtrl.dispose();
     _passCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _loadServers() async {
-    final List<DefaultServer> servers = await DefaultServersApi.fetch();
-    if (!mounted) return;
-    setState(() {
-      _servers = servers;
-      _selectedServerId = servers.isNotEmpty ? servers.first.id : null;
-    });
-  }
-
-  DefaultServer? get _selectedServer {
-    final List<DefaultServer>? servers = _servers;
-    if (servers == null || _selectedServerId == null) return null;
-    for (final DefaultServer s in servers) {
-      if (s.id == _selectedServerId) return s;
-    }
-    return null;
+  /// Normalise l'URL serveur : si l'utilisateur n'a pas mis de schéma,
+  /// on préfixe `http://` (la majorité des panels Xtream sont en http).
+  String _normalizeServer(String raw) {
+    final String s = raw.trim();
+    if (s.isEmpty) return s;
+    if (s.startsWith('http://') || s.startsWith('https://')) return s;
+    return 'http://$s';
   }
 
   Future<void> _submit() async {
     // On capture le messenger AVANT le `await` (le contexte peut être
     // démonté si le parent — une feuille — se ferme via onConnected).
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    final DefaultServer? server = _selectedServer;
+    final String server = _normalizeServer(_serverCtrl.text);
     final String user = _userCtrl.text.trim();
     final String pass = _passCtrl.text.trim();
 
-    if (server == null) {
+    if (server.isEmpty) {
       setState(() => _error = context.l10n.loginServerRequired);
       return;
     }
@@ -110,9 +89,8 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
     });
     try {
       await PlaylistRepository.instance.addXtreamPlaylist(
-        // Nom interne = libellé du serveur, le client n'a rien à nommer.
-        name: server.label,
-        serverUrl: server.url,
+        name: 'Mon abonnement',
+        serverUrl: server,
         username: user,
         password: pass,
       );
@@ -168,17 +146,22 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
           ),
         ),
         const SizedBox(height: 18),
-        // Sélecteur affiché seulement s'il y a plusieurs serveurs (ou
-        // pendant le chargement). Un seul serveur = prédéfini, le client
-        // ne choisit rien.
-        if (_servers == null || _servers!.length > 1) ...<Widget>[
-          _label(context.l10n.loginServer),
-          _buildServerSelector(),
-          const SizedBox(height: 12),
-        ],
+        // Lien du serveur (URL).
+        _label(context.l10n.loginServer),
+        TextField(
+          controller: _serverCtrl,
+          autocorrect: false,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(
+            hintText: 'http://exemple.com:8080',
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Identifiant.
         _label(context.l10n.loginUsername),
         TextField(controller: _userCtrl, autocorrect: false),
         const SizedBox(height: 12),
+        // Mot de passe.
         _label(context.l10n.loginPassword),
         TextField(controller: _passCtrl, obscureText: true, autocorrect: false),
         if (_error != null) ...<Widget>[
@@ -211,7 +194,7 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
           width: double.infinity,
           height: 52,
           child: FilledButton.icon(
-            onPressed: (_busy || _selectedServer == null) ? null : _submit,
+            onPressed: _busy ? null : _submit,
             icon: _busy
                 ? const SizedBox(
                     width: 16,
@@ -235,91 +218,6 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
           ),
         ],
       ],
-    );
-  }
-
-  /// Sélecteur de serveur. Affiche les libellés (« Serveur 1 »…) —
-  /// jamais les URLs. Trois états : chargement, vide (réseau KO ou aucun
-  /// serveur configuré côté Worker), liste de choix.
-  Widget _buildServerSelector() {
-    final List<DefaultServer>? servers = _servers;
-
-    if (servers == null) {
-      return Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: <Widget>[
-            const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              context.l10n.loginLoadingServers,
-              style: AppTextStyles.bodyMedium.copyWith(fontSize: 13),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (servers.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              context.l10n.loginServersUnavailable,
-              style: AppTextStyles.bodyMedium.copyWith(fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            TextButton.icon(
-              onPressed: () {
-                setState(() => _servers = null);
-                _loadServers();
-              },
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: Text(context.l10n.buttonRetry),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: <Widget>[
-          for (final DefaultServer s in servers)
-            RadioListTile<String>(
-              value: s.id,
-              groupValue: _selectedServerId,
-              onChanged: _busy
-                  ? null
-                  : (String? v) => setState(() => _selectedServerId = v),
-              activeColor: AppColors.accent,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-              title: Text(
-                s.label,
-                style: AppTextStyles.bodyLarge.copyWith(fontSize: 15),
-              ),
-            ),
-        ],
-      ),
     );
   }
 
