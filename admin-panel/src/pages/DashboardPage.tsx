@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import {
-  statsApi, type StatsOverview, ApiError,
+  statsApi, backupApi, type StatsOverview, ApiError,
   getCurrentUser, isOwnerRole,
 } from '@/lib/api';
 import { formatMoney } from '@/lib/utils';
@@ -13,6 +13,32 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
   const [stats, setStats] = useState<StatsOverview | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const owner = isOwnerRole(getCurrentUser()?.role);
+
+  // Télécharge un dump JSON complet de la base (filet de sécurité).
+  async function downloadBackup() {
+    setBackupBusy(true);
+    try {
+      const dump = await backupApi.get();
+      const blob = new Blob([JSON.stringify(dump, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `7motion-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) onLogout();
+      else setErr(e instanceof ApiError ? e.message : 'Sauvegarde impossible.');
+    } finally {
+      setBackupBusy(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -35,6 +61,16 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
       title={t('nav.dashboard')}
       subtitle={t('dash.subtitle')}
       onLogout={onLogout}
+      actions={owner ? (
+        <button
+          onClick={downloadBackup}
+          disabled={backupBusy}
+          title="Exporter toute la base en JSON (filet de sécurité)"
+          className="rounded-md border border-white/10 px-3 py-1.5 text-xs font-semibold text-ink-secondary transition hover:border-accent/40 hover:text-ink-primary disabled:opacity-50"
+        >
+          {backupBusy ? 'Sauvegarde…' : '⬇ Télécharger une sauvegarde'}
+        </button>
+      ) : undefined}
     >
       {loading && <SkeletonCards />}
       {err && (
@@ -49,6 +85,7 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
           <KpiCard label={t('dash.licenses')} value={stats.licenses} />
           <KpiCard label={t('dash.active')}   value={stats.active_licenses} accent />
           <KpiCard label={t('dash.expired')}  value={stats.expired_licenses} />
+          <KpiCard label="Expirent (7 j)" value={stats.expiring_7d ?? 0} accent />
           {isOwnerRole(getCurrentUser()?.role) ? (
             <>
               <KpiCard label={t('dash.apps')} value={stats.apps} />

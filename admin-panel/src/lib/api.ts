@@ -134,6 +134,7 @@ export interface StatsOverview {
   licenses: number;
   active_licenses: number;
   expired_licenses: number;
+  expiring_7d?: number;     // abonnements actifs qui expirent sous 7 jours
   apps: number;
   revenue_30d_cents?: number;
   resellers?: number;       // present pour l'owner
@@ -141,6 +142,21 @@ export interface StatsOverview {
 }
 export const statsApi = {
   overview: () => request<StatsOverview>('/api/v1/stats/overview'),
+};
+
+// =========================================================
+//  SAUVEGARDE DE LA BASE (export JSON — owner uniquement)
+// =========================================================
+//  Filet de sécurité : si la base D1 est perdue, on peut restaurer
+//  depuis ce dump. Le panel propose un bouton « Télécharger une
+//  sauvegarde » qui récupère ce JSON et le sauvegarde en fichier.
+export interface BackupDump {
+  generatedAt: number;
+  version: number;
+  tables: Record<string, unknown[]>;
+}
+export const backupApi = {
+  get: () => request<BackupDump>('/api/v1/backup'),
 };
 
 export interface App {

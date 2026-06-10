@@ -334,6 +334,14 @@ export async function apiV1(request, env) {
     return handleStatsOverview(env, a.user);
   }
 
+  // /backup — export JSON de toute la base (filet de sécurité). Owner only.
+  if (parts[0] === 'backup' && parts.length === 1) {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (request.method === 'GET') return handleBackup(env);
+  }
+
   // /me — profil de l'acteur courant (+ solde de credits si revendeur)
   if (parts[0] === 'me' && parts.length === 1 && request.method === 'GET') {
     return handleMe(env, a.user);
@@ -679,6 +687,36 @@ async function handleLogin(request, env) {
 //  STATS / DASHBOARD
 // =========================================================
 
+// Export JSON de toute la base (sauvegarde téléchargeable depuis le
+// panel). Filet de sécurité : si la D1 est perdue, on peut restaurer.
+// On EXCLUT le hash de mot de passe des admins (sécurité).
+async function handleBackup(env) {
+  const tables = [
+    'apps', 'resellers', 'customers', 'devices', 'licenses', 'playlists',
+    'payments', 'credit_ledger', 'plan_costs', 'app_config',
+    'app_broadcasts', 'default_servers', 'feedback', 'home_layout',
+    'home_layout_history', 'presence',
+  ];
+  const dump = {};
+  for (const tbl of tables) {
+    try {
+      const rs = await env.DB.prepare('SELECT * FROM ' + tbl).all();
+      dump[tbl] = (rs && rs.results) || [];
+    } catch (_) {
+      dump[tbl] = []; // table absente sur cette base → on ignore
+    }
+  }
+  try {
+    const rs = await env.DB
+      .prepare('SELECT id, email, name, role, status, created_at FROM admin_users')
+      .all();
+    dump.admin_users = (rs && rs.results) || [];
+  } catch (_) {
+    dump.admin_users = [];
+  }
+  return jsonResp({ generatedAt: Date.now(), version: 1, tables: dump });
+}
+
 async function handleStatsOverview(env, user) {
   const now = Date.now();
   const month = 30 * 24 * 60 * 60 * 1000;
@@ -714,6 +752,13 @@ async function handleStatsOverview(env, user) {
     expired_licenses: expiredLicenses.n,
     apps: apps.n,
   };
+
+  // Abonnements ACTIFS qui expirent dans les 7 jours → relance/renouvellement.
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const expSoon = isReseller
+    ? await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND expires_at IS NOT NULL AND expires_at > ? AND expires_at <= ? AND reseller_id = ?`).bind(now, now + week, rid).first()
+    : await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND expires_at IS NOT NULL AND expires_at > ? AND expires_at <= ?`).bind(now, now + week).first();
+  out.expiring_7d = expSoon.n;
 
   if (isReseller) {
     const r = await env.DB
