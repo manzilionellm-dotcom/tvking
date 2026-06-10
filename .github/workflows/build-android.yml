@@ -597,6 +597,7 @@ jobs:
           REPO="${{ github.repository }}"
           APK="build/app/outputs/flutter-apk/7motion.apk"
           APK_COMPAT="build/app/outputs/flutter-apk/app-debug.apk"
+          AAB="build/app/outputs/bundle/release/7motion.aab"
 
           test -f "$APK"
           test -f "$APK_COMPAT"
@@ -635,6 +636,14 @@ jobs:
               --notes "$NOTES" \
               --prerelease --latest \
               "$APK" "$APK_COMPAT"
+          fi
+
+          # Bonus Google Play : publie aussi l'App Bundle (.aab) signé sur
+          # la release latest → lien direct stable pour le télécharger.
+          # Non bloquant (si absent, on n'échoue pas le build).
+          if [ -f "$AAB" ]; then
+            echo ">>> Upload AAB (Google Play)"
+            gh release upload latest --repo "$REPO" --clobber "$AAB" || true
           fi
 
           echo ">>> État final"
