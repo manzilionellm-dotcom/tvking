@@ -459,30 +459,6 @@ jobs:
       #  - POST_NOTIFICATIONS  : afficher une notif (Android 13+).
       #  - RECEIVE_BOOT_COMPLETED : reprogrammer les rappels après reboot
       #    (le boot-receiver du plugin en a besoin).
-      # ffmpeg_kit_flutter_new exige minSdk 24. Le défaut Flutter peut être
-      # plus bas → la fusion de manifeste échouerait. On force minSdk 24
-      # (idempotent). N'affecte pas les appareils : Android 7+ (API 24) est
-      # quasi universel aujourd'hui.
-      - name: Patch build.gradle.kts minSdk (ffmpeg)
-        run: |
-          set -e
-          F=android/app/build.gradle.kts
-          python3 << 'PYEOF'
-          f = "android/app/build.gradle.kts"
-          s = open(f).read()
-          import re
-          before = s
-          s = s.replace("minSdk = flutter.minSdkVersion", "minSdk = 24")
-          # Cas où une valeur littérale < 24 serait déjà posée.
-          s = re.sub(r"minSdk\s*=\s*(1[0-9]|2[0-3])\b", "minSdk = 24", s)
-          if s != before:
-              open(f, "w").write(s)
-              print("minSdk forcé à 24")
-          else:
-              print("minSdk déjà OK (>=24) ou motif non trouvé")
-          PYEOF
-          grep -n "minSdk" "$F" || true
-
       - name: Patch AndroidManifest for notifications
         run: |
           set -e
