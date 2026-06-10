@@ -44,6 +44,10 @@ on:
     paths:
       - 'cloudflare/worker.js'
       - 'cloudflare/api_v1.js'
+      # cast_receiver.js est IMPORTÉ par worker.js (bundlé par wrangler) :
+      # il faut redéployer le worker quand il change, sinon le nouveau
+      # receiver Cast (mpegts.js) ne part jamais en production.
+      - 'cloudflare/cast_receiver.js'
       - 'cloudflare/wrangler.toml'
       - '.github/workflows/deploy-worker.yml'
 
