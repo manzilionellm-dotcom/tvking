@@ -369,6 +369,35 @@ async function ensureD1Device(env, mac, now = Date.now()) {
   }
 }
 
+// Enrichit la fiche device avec le modèle + le numéro de build Android +
+// le build de l'app (envoyés par le heartbeat). Colonnes additives
+// (idempotentes). On n'écrase JAMAIS avec du vide.
+async function updateDeviceInfo(env, mac, body) {
+  if (!env.DB || !body) return;
+  try {
+    for (const col of ['device_model TEXT', 'android_build TEXT',
+        'android_release TEXT', 'app_build INTEGER']) {
+      try {
+        await env.DB.prepare('ALTER TABLE devices ADD COLUMN ' + col).run();
+      } catch (_) { /* déjà présente */ }
+    }
+    const model = (body.model ? String(body.model) : '').slice(0, 80);
+    const build = (body.build ? String(body.build) : '').slice(0, 120);
+    const release = (body.android ? String(body.android) : '').slice(0, 20);
+    const appBuild = parseInt(body.appBuild, 10) || 0;
+    if (!model && !build && !release && !appBuild) return;
+    await env.DB
+      .prepare(
+        'UPDATE devices SET device_model = ?, android_build = ?, ' +
+          'android_release = ?, app_build = ? WHERE mac = ?'
+      )
+      .bind(model, build, release, appBuild, mac)
+      .run();
+  } catch (_) {
+    // best-effort : ne jamais faire échouer un heartbeat.
+  }
+}
+
 // Landing page HTML servie sur la racine. Style Maison Noir :
 // fond noir, ember rouge, typo sobre. Optimisée pour téléphones
 // ET pour les navigateurs intégrés des Smart TV (pas de JS).
@@ -1591,6 +1620,8 @@ async function handleHeartbeat(request, env) {
   // etat. Toute app installee apparait ainsi dans le panel admin.
   if (env.DB) {
     await ensureD1Device(env, mac, now);
+    // Enrichit la fiche avec le modèle + numéro de build Android.
+    await updateDeviceInfo(env, mac, body);
     const d1 = await d1StatusForMac(env, mac, now);
     if (d1) return json({ ok: true, created: true, ...d1 });
   }

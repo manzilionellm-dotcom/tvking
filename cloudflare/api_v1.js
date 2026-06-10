@@ -1748,8 +1748,10 @@ async function handleSourceDelete(request, env, mac, actor) {
 async function handleDevicesList(request, env, user) {
   const url = new URL(request.url);
   const q = (url.searchParams.get('q') || '').trim();
-  let sql = `SELECT d.id, d.customer_id, d.mac, d.label, d.reseller_id,
-                    d.block_status, d.first_seen_at, d.last_seen_at,
+  // `d.*` inclut automatiquement les colonnes enrichies par le heartbeat
+  // (device_model, android_build, android_release, app_build) quand elles
+  // existent — sans casser si elles n'ont pas encore été créées.
+  let sql = `SELECT d.*,
                     c.name as customer_name, c.email as customer_email
              FROM devices d LEFT JOIN customers c ON d.customer_id = c.id`;
   const where = []; const binds = [];

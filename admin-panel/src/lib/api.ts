@@ -236,6 +236,11 @@ export interface Device {
   last_seen_at: number;
   customer_name?: string | null;
   customer_email?: string | null;
+  // Infos appareil remontées par le heartbeat (recensement parc).
+  device_model?: string | null;
+  android_build?: string | null;
+  android_release?: string | null;
+  app_build?: number | null;
 }
 export const devicesApi = {
   list: (q?: string) =>

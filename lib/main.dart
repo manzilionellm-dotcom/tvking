@@ -106,8 +106,12 @@ Future<void> bootApp() async {
   unawaited(PlaylistRepository.instance.initialize().then((_) {
     // Modèle « tout géré par le revendeur » : on récupère la source
     // IPTV assignée à cet appareil par sa MAC (panel admin) et on la
-    // charge automatiquement. Le client n'a rien à saisir.
-    RemoteSourceRepository.sync();
+    // charge automatiquement. Le client n'a rien à saisir. Puis on purge
+    // toute source qui n'a pas marché (0 chaîne) pour ne rien laisser
+    // traîner.
+    RemoteSourceRepository.sync().then((_) {
+      PlaylistRepository.instance.pruneEmptyPlaylists();
+    });
 
     // Sauvegarde cloud par MAC : démarre l'upload automatique (à chaque
     // changement de playlists/favoris) et tente une restauration SI

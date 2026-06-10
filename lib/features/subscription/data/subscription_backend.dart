@@ -24,6 +24,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/build_info.dart';
+import '../../device/data/device_identity.dart';
+
 /// URL du Worker Cloudflare — DOIT être le MÊME backend que celui
 /// utilisé par le panneau admin (admin-panel, `VITE_API_BASE`), sinon
 /// l'app lit un autre serveur que celui où le panel écrit les
@@ -133,6 +136,19 @@ abstract final class SubscriptionBackend {
   /// que l'app traîne au boot si le réseau est nase.
   static Future<RemoteSubscriptionStatus> heartbeat(String mac) async {
     try {
+      // Infos appareil → le panel recense chaque Android où l'app tourne
+      // (même partagée via WhatsApp), avec son modèle + numéro de build.
+      final Map<String, String> info =
+          await DeviceIdentity.instance.deviceInfo();
+      final Map<String, Object?> payload = <String, Object?>{
+        'mac': mac,
+        'model': info['model'] ?? '',
+        'manufacturer': info['manufacturer'] ?? '',
+        'android': info['release'] ?? '',
+        'sdk': info['sdk'] ?? '',
+        'build': info['build'] ?? '',
+        'appBuild': kBuildTs,
+      };
       final http.Response resp = await http
           .post(
             Uri.parse('$kSubscriptionBaseUrl/api/heartbeat'),
@@ -140,7 +156,7 @@ abstract final class SubscriptionBackend {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
             },
-            body: jsonEncode(<String, String>{'mac': mac}),
+            body: jsonEncode(payload),
           )
           .timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) {

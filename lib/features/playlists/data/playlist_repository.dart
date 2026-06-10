@@ -488,7 +488,32 @@ class PlaylistRepository {
         // suivante (on ne veut pas bloquer les autres).
       }
     }
+    // Nettoyage : retire toute source qui s'est vidée (code qui n'a
+    // plus de chaîne) pour ne pas laisser de playlist morte traîner.
+    await pruneEmptyPlaylists();
     return ok;
+  }
+
+  /// Supprime les playlists DÉJÀ synchronisées qui n'ont AUCUNE chaîne
+  /// (un code/stream qui « n'a pas marché »). Évite qu'une source morte
+  /// reste et embrouille l'app. On IGNORE les playlists jamais
+  /// synchronisées (last_synced_at NULL = ajout en cours), et on ne
+  /// touche pas à une source temporairement injoignable (elle garde son
+  /// dernier `channel_count` > 0). Renvoie le nombre supprimé.
+  Future<int> pruneEmptyPlaylists() async {
+    final Database db = await PlaylistDatabase.instance.database;
+    final List<Map<String, Object?>> rows = await db.query(
+      'playlists',
+      columns: <String>['id'],
+      where: 'last_synced_at IS NOT NULL '
+          'AND (channel_count IS NULL OR channel_count = 0)',
+    );
+    if (rows.isEmpty) return 0;
+    for (final Map<String, Object?> r in rows) {
+      await _deletePlaylist(r['id'] as int);
+    }
+    await _emitCurrentState();
+    return rows.length;
   }
 
   /// Variante "soft" pour l'auto-refresh au démarrage : ne rafraîchit

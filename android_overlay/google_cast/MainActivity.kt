@@ -100,6 +100,24 @@ class MainActivity : FlutterFragmentActivity() {
                             result.success(null)
                         }
                     }
+                    // Infos appareil : modèle + fabricant + version Android +
+                    // numéro de build. Sert au panel à RECENSER tous les
+                    // Android où l'app est installée (même partagée).
+                    "getDeviceInfo" -> {
+                        try {
+                            result.success(
+                                hashMapOf(
+                                    "model" to Build.MODEL,
+                                    "manufacturer" to Build.MANUFACTURER,
+                                    "release" to Build.VERSION.RELEASE,
+                                    "sdk" to Build.VERSION.SDK_INT.toString(),
+                                    "build" to Build.DISPLAY,
+                                ),
+                            )
+                        } catch (e: Exception) {
+                            result.success(null)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }

@@ -104,6 +104,29 @@ class DeviceIdentity {
     await mac;
   }
 
+  /// Cache des infos appareil (modèle, build Android…).
+  Map<String, String>? _info;
+
+  /// Infos de l'appareil Android (modèle, fabricant, version, numéro de
+  /// build) via le channel natif. Sert au heartbeat pour que le panel
+  /// recense chaque Android où l'app est installée. Map vide si indispo.
+  Future<Map<String, String>> deviceInfo() async {
+    if (_info != null) return _info!;
+    try {
+      final Object? raw =
+          await _deviceChannel.invokeMethod<Object?>('getDeviceInfo');
+      if (raw is Map) {
+        _info = raw.map<String, String>((Object? k, Object? v) =>
+            MapEntry<String, String>('$k', '${v ?? ''}'));
+      } else {
+        _info = <String, String>{};
+      }
+    } catch (_) {
+      _info = <String, String>{};
+    }
+    return _info!;
+  }
+
   /// Régénère un nouveau MAC (à utiliser uniquement en réglages
   /// avancés, prévenir l'utilisateur que ses associations admin
   /// seront perdues).
