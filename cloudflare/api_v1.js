@@ -1159,12 +1159,7 @@ async function handleForceUpdatePost(request, env, actor) {
 //  lit /api/theme (worker public) au démarrage et applique le nom + la
 //  couleur (et plus tard le fond clair). Vide = l'app garde ses défauts.
 
-async function _cfgGetStr(env, key) {
-  const row = await env.DB
-    .prepare('SELECT value FROM app_config WHERE key = ?')
-    .bind(key).first();
-  return row && row.value != null ? String(row.value) : '';
-}
+// (Réutilise `_cfgGetStr` déjà défini plus bas — pas de redéclaration.)
 
 async function handleThemeGet(env) {
   await ensureAppConfigTable(env);
