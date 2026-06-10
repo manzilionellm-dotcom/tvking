@@ -1549,15 +1549,25 @@
     "description": "Sous-titre du sélecteur de thème"
   },
   "forceUpdateTitle": "Nouvelle version disponible",
-  "@forceUpdateTitle": { "description": "Titre ecran mise a jour forcee" },
+  "@forceUpdateTitle": {
+    "description": "Titre ecran mise a jour forcee"
+  },
   "forceUpdateBody": "Cette version n'est plus à jour. Télécharge la dernière version pour continuer à utiliser l'application.",
-  "@forceUpdateBody": { "description": "Corps ecran mise a jour forcee" },
+  "@forceUpdateBody": {
+    "description": "Corps ecran mise a jour forcee"
+  },
   "forceUpdateDownloaderHint": "SUR TV / BOX : OUVRE DOWNLOADER ET TAPE CE CODE",
-  "@forceUpdateDownloaderHint": { "description": "Aide code Downloader" },
+  "@forceUpdateDownloaderHint": {
+    "description": "Aide code Downloader"
+  },
   "forceUpdateDownloadBtn": "Télécharger maintenant",
-  "@forceUpdateDownloadBtn": { "description": "Bouton telecharger" },
+  "@forceUpdateDownloadBtn": {
+    "description": "Bouton telecharger"
+  },
   "forceUpdateRetry": "J'ai mis à jour — Réessayer",
-  "@forceUpdateRetry": { "description": "Bouton reessayer apres MAJ" },
+  "@forceUpdateRetry": {
+    "description": "Bouton reessayer apres MAJ"
+  },
   "profileAbout": "À propos",
   "@profileAbout": {
     "description": "Texte UI : profileAbout"
@@ -1829,5 +1839,53 @@
   "activationSourceFailed": "Source reçue mais 0 chaîne chargée. Vérifie l'URL / les identifiants du provider (URL M3U complète avec get.php, ou utilise le mode Xtream).",
   "@activationSourceFailed": {
     "description": "Diagnostic : source assignee mais 0 chaine"
+  },
+  "catFilterAll": "Tout",
+  "@catFilterAll": {
+    "description": "Filtre catégories : tout"
+  },
+  "catFilterTv": "TV",
+  "@catFilterTv": {
+    "description": "Filtre catégories : direct/TV"
+  },
+  "catFilterAdult": "Adultes",
+  "@catFilterAdult": {
+    "description": "Filtre catégories : adulte"
+  },
+  "catNoneInPlaylist": "Aucune catégorie dans ta playlist.",
+  "@catNoneInPlaylist": {
+    "description": "Aucune catégorie dans la playlist"
+  },
+  "catEmptyShelf": "Rien dans ce rayon.",
+  "@catEmptyShelf": {
+    "description": "Rien dans ce rayon"
+  },
+  "recordingOpenWith": "Ouvrir avec…",
+  "@recordingOpenWith": {
+    "description": "Enregistrements : ouvrir avec"
+  },
+  "recordingShare": "Partager",
+  "@recordingShare": {
+    "description": "Enregistrements : partager"
+  },
+  "recordingNoPlayer": "Aucun lecteur compatible. Installe VLC pour lire ce fichier.",
+  "@recordingNoPlayer": {
+    "description": "Enregistrements : aucun lecteur compatible"
+  },
+  "activationRestartTitle": "Activation réussie",
+  "@activationRestartTitle": {
+    "description": "Splash activation : titre"
+  },
+  "activationRestartSubtitle": "Redémarrage en cours…",
+  "@activationRestartSubtitle": {
+    "description": "Splash activation : sous-titre"
+  },
+  "orSeparator": "ou",
+  "@orSeparator": {
+    "description": "Séparateur « ou »"
+  },
+  "xtreamHaveCode": "J'ai un code Xtream",
+  "@xtreamHaveCode": {
+    "description": "Bouton : j’ai un code Xtream"
   }
 }

@@ -242,7 +242,7 @@ class _RecordingTileState extends State<_RecordingTile> {
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.all(16),
             content: Text(
-              'Aucun lecteur compatible. Installe VLC pour lire ce fichier.',
+              context.l10n.recordingNoPlayer,
               style: AppTextStyles.bodyMedium,
             ),
           ),
@@ -400,7 +400,7 @@ class _RecordingTileState extends State<_RecordingTile> {
                           color: AppColors.accent,
                           size: 22,
                         ),
-                  tooltip: 'Ouvrir avec…',
+                  tooltip: context.l10n.recordingOpenWith,
                   onPressed: _opening ? null : () => _openExternally(context),
                 ),
               // Bouton "Partager" — feuille de partage Android pour
@@ -412,7 +412,7 @@ class _RecordingTileState extends State<_RecordingTile> {
                     color: AppColors.textMuted,
                     size: 20,
                   ),
-                  tooltip: 'Partager',
+                  tooltip: context.l10n.recordingShare,
                   onPressed: _shareRecording,
                 ),
               // Bouton "Exporter vers Galerie" — appelle MediaStore pour

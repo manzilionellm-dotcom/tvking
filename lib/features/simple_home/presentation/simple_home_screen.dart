@@ -229,12 +229,12 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
           ),
           const SizedBox(height: 22),
           Text(
-            'Activation réussie',
+            context.l10n.activationRestartTitle,
             style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
           ),
           const SizedBox(height: 6),
           Text(
-            'Redémarrage en cours…',
+            context.l10n.activationRestartSubtitle,
             style: AppTextStyles.bodyMedium.copyWith(
               fontSize: 13,
               color: AppColors.textSecondary,

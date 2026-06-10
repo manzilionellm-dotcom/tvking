@@ -27,6 +27,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../channels/domain/channel.dart';
@@ -37,14 +38,28 @@ import '../../../player/presentation/play_channel.dart';
 /// Tout ce qui n'est ni film, ni série, ni adulte tombe dans [tv]
 /// (le direct : chaînes, sport, info, jeunesse, musique…).
 enum _Bucket {
-  tv('TV', Icons.live_tv_rounded),
-  films('Films', Icons.movie_outlined),
-  series('Séries', Icons.video_library_outlined),
-  adult('Adultes', Icons.no_adult_content_rounded);
+  tv(Icons.live_tv_rounded),
+  films(Icons.movie_outlined),
+  series(Icons.video_library_outlined),
+  adult(Icons.no_adult_content_rounded);
 
-  const _Bucket(this.label, this.icon);
-  final String label;
+  const _Bucket(this.icon);
   final IconData icon;
+
+  /// Libellé traduit. On réutilise les clés de section déjà traduites
+  /// pour Films/Séries ; TV et Adultes ont leurs propres clés.
+  String label(BuildContext context) {
+    switch (this) {
+      case _Bucket.tv:
+        return context.l10n.catFilterTv;
+      case _Bucket.films:
+        return context.l10n.sectionMovies;
+      case _Bucket.series:
+        return context.l10n.sectionSeries;
+      case _Bucket.adult:
+        return context.l10n.catFilterAdult;
+    }
+  }
 }
 
 /// Range une catégorie dans un rayon à partir de son genre détecté.
@@ -86,17 +101,16 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
   /// Filtre de rayon actif (`null` = « Tout »).
   _Bucket? _bucket;
 
-  /// Libellé utilisé pour les chaînes sans catégorie dans la playlist.
-  static const String _kNoCategory = 'Autres';
-
   /// Regroupe les chaînes par catégorie BRUTE (group-title) en
   /// CONSERVANT l'ordre d'apparition — des catégories ET des chaînes.
   /// (LinkedHashMap : l'ordre des clés = ordre de 1re apparition.)
   Map<String, List<Channel>> _grouped() {
+    // Libellé traduit pour les chaînes sans catégorie dans la playlist.
+    final String noCat = context.l10n.sectionOthers;
     final Map<String, List<Channel>> map = <String, List<Channel>>{};
     for (final Channel c in widget.channels) {
       final String raw = c.category.trim();
-      final String cat = raw.isEmpty ? _kNoCategory : raw;
+      final String cat = raw.isEmpty ? noCat : raw;
       (map[cat] ??= <Channel>[]).add(c);
     }
     return map;
@@ -126,7 +140,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
     if (grouped.isEmpty) {
       return Center(
         child: Text(
-          'Aucune catégorie dans ta playlist.',
+          context.l10n.catNoneInPlaylist,
           style: AppTextStyles.bodyMedium.copyWith(
               fontSize: 14, color: AppColors.textSecondary),
         ),
@@ -158,7 +172,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
           child: cats.isEmpty
               ? Center(
                   child: Text(
-                    'Rien dans ce rayon.',
+                    context.l10n.catEmptyShelf,
                     style: AppTextStyles.bodyMedium.copyWith(
                         fontSize: 14, color: AppColors.textSecondary),
                   ),
@@ -202,7 +216,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
           final _Bucket? b = tabs[i];
           final bool active = b == _bucket;
           return _FilterChip(
-            label: b?.label ?? 'Tout',
+            label: b?.label(context) ?? context.l10n.catFilterAll,
             icon: b?.icon ?? Icons.apps_rounded,
             active: active,
             onTap: () => setState(() => _bucket = b),

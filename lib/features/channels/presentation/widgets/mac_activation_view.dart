@@ -176,7 +176,7 @@ class MacActivationView extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Text(
-                    'ou',
+                    context.l10n.orSeparator,
                     style: AppTextStyles.bodyMedium.copyWith(
                         fontSize: 12, color: AppColors.textTertiary),
                   ),
@@ -193,7 +193,7 @@ class MacActivationView extends StatelessWidget {
               child: OutlinedButton.icon(
                 onPressed: () => showXtreamLoginSheet(context),
                 icon: const Icon(Icons.vpn_key_rounded, size: 18),
-                label: const Text('J’ai un code Xtream'),
+                label: Text(context.l10n.xtreamHaveCode),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.accent,
                   side: BorderSide(

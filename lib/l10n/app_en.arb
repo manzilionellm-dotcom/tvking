@@ -486,5 +486,17 @@
   "activationDeviceUnknown": "Device not seen by the server yet — check your internet connection.",
   "emptyPremiumTitle": "Premium account",
   "emptyPremiumWaiting": "Subscription active — waiting for your channels. Your reseller must assign your source (Xtream/M3U).",
-  "activationSourceFailed": "Source received but 0 channels loaded. Check the provider URL / credentials (full M3U URL with get.php, or use Xtream mode)."
+  "activationSourceFailed": "Source received but 0 channels loaded. Check the provider URL / credentials (full M3U URL with get.php, or use Xtream mode).",
+  "catFilterAll": "All",
+  "catFilterTv": "TV",
+  "catFilterAdult": "Adults",
+  "catNoneInPlaylist": "No categories in your playlist.",
+  "catEmptyShelf": "Nothing in this section.",
+  "recordingOpenWith": "Open with…",
+  "recordingShare": "Share",
+  "recordingNoPlayer": "No compatible player. Install VLC to play this file.",
+  "activationRestartTitle": "Activation successful",
+  "activationRestartSubtitle": "Restarting…",
+  "orSeparator": "or",
+  "xtreamHaveCode": "I have an Xtream code"
 }
