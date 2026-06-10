@@ -537,6 +537,37 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+      # ===== Google Play : App Bundle (.aab) SIGNÉ =====
+      # Google Play n'accepte PAS l'APK : il faut un Android App Bundle
+      # (.aab), signé avec la même clé stable (alias sevenmotion). On le
+      # construit en plus de l'APK (qui reste le canal sideload/Aptoide/
+      # Huawei). Récupère le .aab dans les Artifacts du run pour l'uploader
+      # dans la Play Console (Play App Signing re-signe ensuite).
+      - name: Build release AAB (Google Play)
+        run: |
+          BUILD_TS=$(date +%s)
+          ok=
+          for attempt in 1 2 3 4; do
+            echo "=== AAB build attempt $attempt ==="
+            flutter build appbundle --release --no-tree-shake-icons \
+              --obfuscate --split-debug-info=build/symbols \
+              --dart-define=APP_BUILD_TS=$BUILD_TS && { ok=1; break; }
+            echo "Attempt $attempt failed; retry in 25s"; sleep 25
+          done
+          [ "$ok" = 1 ] || { echo "AAB build failed after retries"; exit 1; }
+          OUT=build/app/outputs/bundle/release
+          ls -lah "$OUT" || true
+          cp "$OUT/app-release.aab" "$OUT/7motion.aab"
+          ls -lah "$OUT/7motion.aab"
+
+      - name: Upload AAB artifact (Google Play)
+        uses: actions/upload-artifact@v4
+        with:
+          name: 7motion-playstore-aab-${{ github.sha }}
+          path: build/app/outputs/bundle/release/7motion.aab
+          retention-days: 30
+          if-no-files-found: error
+
       # Toujours mettre à jour la release "latest" pour que le lien
       # direct https://github.com/.../releases/latest/download/
       # pointe vers le dernier APK. Ainsi l'utilisateur peut
