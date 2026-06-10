@@ -16,7 +16,7 @@
 | **Huawei AppGallery** | `7motion.apk` (ou `.aab`) | idem APK ci-dessus |
 
 **Politique de confidentialité (URL à coller dans les 3) :**
-`https://99999.7themotion.com/privacy`
+`https://seven-motion-backend.manzilionel-lm.workers.dev/privacy`
 
 ---
 
@@ -48,7 +48,7 @@ IMPORTANT : 7 MOTION NE fournit AUCUN contenu, chaîne, flux ni abonnement.
 L'application est un simple lecteur : vous apportez votre propre source et
 restez seul responsable de son contenu et de sa légalité.
 
-Politique de confidentialité : https://99999.7themotion.com/privacy
+Politique de confidentialité : https://seven-motion-backend.manzilionel-lm.workers.dev/privacy
 ```
 
 **Catégorie** : Outils / Lecteurs et éditeurs vidéo (PAS « Divertissement TV »).
@@ -63,7 +63,7 @@ Politique de confidentialité : https://99999.7themotion.com/privacy
 1. Compte développeur Google Play (25 $ une fois) : play.google.com/console.
 2. Créer l'app → uploader `7motion.aab` (Play App Signing activé par défaut).
 3. Fiche : nom, descriptions ci-dessus, icône, 2–8 captures, bannière 1024×500.
-4. **Politique de confidentialité** : `https://99999.7themotion.com/privacy`.
+4. **Politique de confidentialité** : `https://seven-motion-backend.manzilionel-lm.workers.dev/privacy`.
 5. **Data safety** : déclarer — identifiant d'appareil + IP/pays (sécurité/
    fonctionnement), pas de vente de données. (Cf. la page /privacy.)
 6. **Content rating** : remplir le questionnaire (PEGI 3 / Tout public si pas

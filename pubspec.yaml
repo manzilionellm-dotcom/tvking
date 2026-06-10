@@ -147,6 +147,21 @@ dependencies:
   # pas besoin de détecter le fuseau de l'appareil.
   timezone: ^0.9.4
 
+  # --- Enregistrements : Ouvrir / Partager ---
+  # open_filex : ouvre un fichier local avec l'app externe choisie par
+  # l'utilisateur (VLC, MX Player…). Sert à LIRE un enregistrement .ts
+  # de façon fiable — on délègue le décodage MPEG-TS au lecteur système
+  # au lieu de dépendre d'un export ou du player interne. Le plugin
+  # enregistre tout seul son FileProvider Android (partage sécurisé du
+  # fichier privé de l'app), donc rien à configurer côté manifeste.
+  open_filex: ^4.5.0
+
+  # share_plus : feuille de partage native Android (« Partager via… »).
+  # Permet d'envoyer le fichier d'enregistrement vers une autre app
+  # (Drive, WhatsApp, Gmail…). Fournit aussi le type XFile pour joindre
+  # le fichier. Plugin officiel de l'écosystème Flutter Community.
+  share_plus: ^10.1.4
+
 # Pin de screen_brightness_android pour eviter la 2.1.5 qui a un
 # build.gradle cassé (bloc kotlin{} top-level inutilisable par notre
 # config Flutter CI). 2.1.4 (juste avant la cassée) est compatible

@@ -16,6 +16,15 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+// Ouvre un fichier avec l'app externe choisie par l'utilisateur
+// (ex. VLC, MX Player). C'est le moyen le plus fiable de LIRE un
+// enregistrement .ts : on délègue au lecteur système qui sait
+// décoder le MPEG-TS, sans rien ré-encoder côté app.
+import 'package:open_filex/open_filex.dart';
+// Feuille de partage Android (« Partager via… ») : envoie le fichier
+// d'enregistrement vers WhatsApp, Drive, Gmail, etc. Fournit aussi
+// le type XFile utilisé pour joindre le fichier.
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
@@ -102,6 +111,9 @@ class _RecordingTile extends StatefulWidget {
 class _RecordingTileState extends State<_RecordingTile> {
   bool _exporting = false;
   bool _stopping = false;
+  // Garde anti double-tap pendant qu'on ouvre le sélecteur d'app
+  // externe (l'appel natif peut prendre une fraction de seconde).
+  bool _opening = false;
 
   /// Timer qui ticke chaque seconde sur les recordings EN COURS pour
   /// rafraîchir l'affichage du compteur de bytes live. Null sur les
@@ -205,6 +217,46 @@ class _RecordingTileState extends State<_RecordingTile> {
         ),
       ),
     );
+  }
+
+  /// Ouvre l'enregistrement avec une app externe (VLC, MX Player…).
+  /// C'est LA solution fiable pour lire un .ts : le lecteur système
+  /// sait décoder le MPEG-TS nativement. On force le type MIME
+  /// `video/mp2t` pour que VLC & co. se proposent dans la liste.
+  Future<void> _openExternally(BuildContext context) async {
+    if (_opening) return;
+    setState(() => _opening = true);
+    try {
+      final OpenResult res = await OpenFilex.open(
+        recording.filePath,
+        type: 'video/mp2t',
+      );
+      if (!mounted) return;
+      // ResultType.done = une app a pris le relais. Sinon (aucune app
+      // capable / fichier introuvable) on prévient l'utilisateur.
+      if (res.type != ResultType.done) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.surfaceHigh,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            content: Text(
+              'Aucun lecteur compatible. Installe VLC pour lire ce fichier.',
+              style: AppTextStyles.bodyMedium,
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
+  }
+
+  /// Ouvre la feuille de partage Android pour envoyer le fichier
+  /// d'enregistrement vers une autre app (Drive, WhatsApp, Gmail…).
+  Future<void> _shareRecording() async {
+    await Share.shareXFiles(<XFile>[XFile(recording.filePath)]);
   }
 
   @override
@@ -327,6 +379,41 @@ class _RecordingTileState extends State<_RecordingTile> {
                         ),
                   tooltip: context.l10n.recordingStopTooltip,
                   onPressed: _stopping ? null : _stopRecording,
+                ),
+              // Bouton "Ouvrir" — délègue la lecture à une app externe
+              // (VLC, MX Player…) qui sait décoder le MPEG-TS. C'est la
+              // façon la plus sûre de LIRE un enregistrement, sans
+              // dépendre du player interne ni d'un export.
+              if (!inProgress)
+                IconButton(
+                  icon: _opening
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.accent,
+                          ),
+                        )
+                      : Icon(
+                          Icons.open_in_new,
+                          color: AppColors.accent,
+                          size: 22,
+                        ),
+                  tooltip: 'Ouvrir avec…',
+                  onPressed: _opening ? null : () => _openExternally(context),
+                ),
+              // Bouton "Partager" — feuille de partage Android pour
+              // envoyer le fichier vers une autre app.
+              if (!inProgress)
+                IconButton(
+                  icon: Icon(
+                    Icons.share_outlined,
+                    color: AppColors.textMuted,
+                    size: 20,
+                  ),
+                  tooltip: 'Partager',
+                  onPressed: _shareRecording,
                 ),
               // Bouton "Exporter vers Galerie" — appelle MediaStore pour
               // copier le .ts (rebaptisé .mp4) dans Movies/. Visible
