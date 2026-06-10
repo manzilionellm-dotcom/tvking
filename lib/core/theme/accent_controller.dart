@@ -154,6 +154,28 @@ class AccentController extends ChangeNotifier {
     }
   }
 
+  /// Applique une couleur d'accent ARBITRAIRE, pilotée à distance par le
+  /// panel « Thème » (ex. blanc, or, vert Coupe du Monde…). On dérive les
+  /// variantes claire (glows/focus) et profonde (bordures) par HSL pour
+  /// garder une famille cohérente. NON persistée : le panel est la source
+  /// de vérité, relue à chaque démarrage. Sans effet si identique.
+  void applyCustom(Color accent) {
+    final HSLColor hsl = HSLColor.fromColor(accent);
+    final Color bright =
+        hsl.withLightness((hsl.lightness + 0.15).clamp(0.0, 1.0)).toColor();
+    final Color muted =
+        hsl.withLightness((hsl.lightness - 0.22).clamp(0.0, 1.0)).toColor();
+    if (_current.id == 'remote' && _current.accent == accent) return;
+    _current = AccentTheme(
+      id: 'remote',
+      label: 'Personnalisé',
+      accent: accent,
+      bright: bright,
+      muted: muted,
+    );
+    notifyListeners();
+  }
+
   /// Applique un thème (instantané) et le persiste.
   Future<void> select(AccentTheme theme) async {
     if (theme.id == _current.id) return;

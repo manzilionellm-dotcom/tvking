@@ -24,6 +24,13 @@ export function AppsPage({ onLogout }: { onLogout: () => void }) {
 
   useEffect(reload, [onLogout]);
 
+  // Les variantes retirées du projet (Red Room, TV) ne doivent plus
+  // apparaître : on ne garde que l'app mobile 7 MOTION.
+  const REMOVED = /redroom|red\s*room|sevenmotion\.tv|tvking\.tv|\.tv$|seven-?tv/i;
+  const visible = items.filter(
+    (a) => !REMOVED.test(a.package_name || '') && !REMOVED.test(a.name || ''),
+  );
+
   return (
     <AppLayout
       title="Applications"
@@ -52,7 +59,7 @@ export function AppsPage({ onLogout }: { onLogout: () => void }) {
 
       {!loading && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {items.map((a) => (
+          {visible.map((a) => (
             <div key={a.id} className="rounded-xl border border-white/5 bg-midnight p-5">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
@@ -92,7 +99,7 @@ export function AppsPage({ onLogout }: { onLogout: () => void }) {
               </div>
             </div>
           ))}
-          {items.length === 0 && (
+          {visible.length === 0 && (
             <div className="col-span-full rounded-xl border border-dashed border-white/10 p-8 text-center text-sm text-ink-tertiary">
               Aucune app. Clique « + Nouvelle app » pour en créer une.
             </div>

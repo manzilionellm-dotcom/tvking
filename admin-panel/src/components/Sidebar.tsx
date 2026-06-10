@@ -18,6 +18,7 @@ const OWNER_NAV: NavItem[] = [
   { key: 'nav.online',        to: '/online' },
   { key: 'nav.homeManager',   to: '/home-manager' },
   { key: 'nav.featured',      to: '/featured' },
+  { key: 'nav.theme',         to: '/theme' },
   { key: 'nav.activate',    to: '/activate' },
   { key: 'nav.pushSource',  to: '/playlists' },
   { key: 'nav.notifications', to: '/notifications' },

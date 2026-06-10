@@ -1219,6 +1219,34 @@ async function handleGetFeatured(env) {
   }
 }
 
+// GET /api/theme (public) — thème de l'app piloté par le panel.
+// Renvoie {appName, accent, bg} : nom affiché + couleur d'accent (hex
+// #RRGGBB) + mode de fond ('dark'|'light'). Valeurs vides = l'app garde
+// ses défauts (BLACK7 ROYAL, braise, sombre).
+async function handleGetTheme(env) {
+  const empty = { appName: '', accent: '', bg: '' };
+  if (!env.DB) return json(empty);
+  try {
+    await ensureAppConfigTable(env);
+    const name = await env.DB
+      .prepare("SELECT value FROM app_config WHERE key = 'theme_name'")
+      .first();
+    const accent = await env.DB
+      .prepare("SELECT value FROM app_config WHERE key = 'theme_accent'")
+      .first();
+    const bg = await env.DB
+      .prepare("SELECT value FROM app_config WHERE key = 'theme_bg'")
+      .first();
+    return json({
+      appName: (name && name.value) || '',
+      accent: (accent && accent.value) || '',
+      bg: (bg && bg.value) || '',
+    });
+  } catch (_) {
+    return json(empty);
+  }
+}
+
 // GET /api/app-version (public) — mise à jour forcée pilotée par le panel.
 // Renvoie {minBuildTs, latestBuildTs} (secondes epoch). Si `?build=<sec>`
 // est fourni et plus récent que le dernier connu, on le mémorise → le
@@ -2244,6 +2272,16 @@ export default {
         return await handleGetAppVersion(request, env);
       }
       return badRequest('only GET supported on /api/app-version');
+    }
+
+    // /api/theme — thème de l'app (nom + couleur) piloté depuis le panel.
+    //   GET public : l'app lit le nom affiché + la couleur d'accent.
+    //   L'ecriture se fait cote panel via /api/v1/theme (api_v1.js).
+    if (segments[0] === 'api' && segments[1] === 'theme' && segments.length === 2) {
+      if (request.method === 'GET') {
+        return await handleGetTheme(env);
+      }
+      return badRequest('only GET supported on /api/theme');
     }
 
     // /api/featured — "Favori du jour" (chaîne mise en avant). GET public.

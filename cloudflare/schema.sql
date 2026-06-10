@@ -257,12 +257,8 @@ VALUES
    '#D63A30', 'THE FEW · NOT FOR EVERYONE',
    'http://pro.best-iptvinreviews.com', 'xtream',
    '{"monthly":500,"yearly":1300,"lifetime":9900}',
-   1, strftime('%s','now') * 1000, strftime('%s','now') * 1000),
-  ('app_redroom', 'Red Room', 'com.redroom.player',
-   '#D63A30', 'STRICTLY 18+ · AFTER HOURS',
-   'http://pro.best-iptvinreviews.com', 'xtream',
-   '{"monthly":900,"yearly":2900,"lifetime":14900}',
    1, strftime('%s','now') * 1000, strftime('%s','now') * 1000);
+  -- (Variante Red Room retirée du projet : plus de seed.)
 
 -- =========================================================
 -- RESELLER CREDITS — Phase reseller-panel

@@ -23,6 +23,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/branding/brand_config.dart';
 import '../../../core/branding/brand_logo.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
@@ -108,7 +109,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
           const SizedBox(height: 12),
           Center(
             child: Text(
-              BrandStrings.appName,
+              BrandConfig.instance.appName,
               style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
             ),
           ),
@@ -133,7 +134,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
           ),
           Expanded(
             child: Text(
-              BrandStrings.appName,
+              BrandConfig.instance.appName,
               textAlign: TextAlign.center,
               style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
               maxLines: 1,

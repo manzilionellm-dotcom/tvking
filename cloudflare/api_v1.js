@@ -488,6 +488,18 @@ export async function apiV1(request, env) {
     }
   }
 
+  // /theme — thème de l'app (nom affiché + couleur d'accent + fond).
+  // Owner uniquement. GET pour relire, PUT pour enregistrer.
+  if (parts[0] === 'theme') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (parts.length === 1) {
+      if (request.method === 'GET') return handleThemeGet(env);
+      if (request.method === 'PUT') return handleThemePut(request, env, actor);
+    }
+  }
+
   // /sources/:mac — source IPTV (Xtream/M3U) assignée à un appareil
   // par sa MAC, poussée à l'app. Admin ET revendeurs (chacun provisionne
   // ses clients). GET pour relire, PUT pour (ré)assigner, DELETE pour
@@ -1138,6 +1150,53 @@ async function handleForceUpdatePost(request, env, actor) {
     return jsonResp({ ok: true, minBuildTs: 0 });
   }
   return errResp('bad_action', "action doit être 'force' ou 'disable'", 400);
+}
+
+// =========================================================
+//  THÈME DE L'APP (nom + couleur d'accent + fond) — owner
+// =========================================================
+//  Stocke theme_name / theme_accent / theme_bg dans app_config. L'app
+//  lit /api/theme (worker public) au démarrage et applique le nom + la
+//  couleur (et plus tard le fond clair). Vide = l'app garde ses défauts.
+
+async function _cfgGetStr(env, key) {
+  const row = await env.DB
+    .prepare('SELECT value FROM app_config WHERE key = ?')
+    .bind(key).first();
+  return row && row.value != null ? String(row.value) : '';
+}
+
+async function handleThemeGet(env) {
+  await ensureAppConfigTable(env);
+  return jsonResp({
+    appName: await _cfgGetStr(env, 'theme_name'),
+    accent: await _cfgGetStr(env, 'theme_accent'),
+    bg: await _cfgGetStr(env, 'theme_bg'),
+  });
+}
+
+async function handleThemePut(request, env, actor) {
+  await ensureAppConfigTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const appName = (body.appName == null ? '' : String(body.appName))
+    .trim().slice(0, 40);
+  let accent = (body.accent == null ? '' : String(body.accent)).trim();
+  const bg = body.bg === 'light' ? 'light' : (body.bg === 'dark' ? 'dark' : '');
+  // Valide la couleur : #RRGGBB (sinon refus). Vide = pas de couleur custom.
+  if (accent && !/^#?[0-9a-fA-F]{6}$/.test(accent)) {
+    return errResp('bad_color', 'Couleur invalide (format #RRGGBB)', 400);
+  }
+  if (accent && accent[0] !== '#') accent = '#' + accent;
+  accent = accent.toUpperCase();
+  await _cfgSet(env, 'theme_name', appName);
+  await _cfgSet(env, 'theme_accent', accent);
+  await _cfgSet(env, 'theme_bg', bg);
+  await logAudit(env, request, actor, 'theme.save',
+    { type: 'app_config', id: null }, null, { appName, accent, bg });
+  return jsonResp({ ok: true, appName, accent, bg });
 }
 
 // =========================================================

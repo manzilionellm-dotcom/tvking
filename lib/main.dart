@@ -15,8 +15,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:media_kit/media_kit.dart';
 
+import 'core/branding/brand_config.dart';
 import 'core/branding/brand_logo.dart';
 import 'core/branding/powered_by_marquee.dart';
+import 'features/theme/data/remote_theme_repository.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/branding/verified_badge.dart';
 import 'core/theme/app_text_styles.dart' show AppTextStyles;
@@ -194,6 +196,12 @@ Future<void> bootApp() async {
   // avant runApp pour éviter un flash de la couleur par défaut.
   await AccentController.instance.initialize();
 
+  // Thème DISTANT (nom de l'app + couleur d'accent) piloté par le panel
+  // « Thème ». Non bloquant : s'applique dès que la réponse arrive et
+  // RECONSTRUIT toute l'app (BrandConfig + AccentController sont dans le
+  // Listenable racine). Si rien n'est configuré ou réseau KO → défauts.
+  unawaited(RemoteThemeRepository.fetchAndApply());
+
   // Classe d'appareil (Téléphone / TV / Auto). Chargée tôt pour que
   // `_AppEntry` puisse décider immédiatement quel home afficher.
   await DeviceClassRepository.instance.initialize();
@@ -237,12 +245,14 @@ class TvKingApp extends StatelessWidget {
         ThemeModeRepository.instance,
         LocaleRepository.instance,
         AccentController.instance,
+        BrandConfig.instance,
       ]),
       builder: (BuildContext context, _) {
         return MaterialApp(
           // Titre Material — utilisé par Android pour le label de l'app
-          // dans le recent-apps switcher. Reflet du flavor courant.
-          title: FlavorConfig.current.appName,
+          // dans le recent-apps switcher. Reflet du nom (surchargeable
+          // à distance via le panel « Thème »).
+          title: BrandConfig.instance.appName,
           debugShowCheckedModeBanner: false,
           // Thème VERROUILLÉ en Cinema (sombre). L'app est conçue
           // « Maison Noir » : ses ~900 couleurs sont des constantes
@@ -499,7 +509,8 @@ class _Splash extends StatelessWidget {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        Text('BLACK7 ROYAL', style: AppTextStyles.headlineLarge),
+                        Text(BrandConfig.instance.appName,
+                            style: AppTextStyles.headlineLarge),
                         const SizedBox(width: 8),
                         const VerifiedBadge.large(),
                       ],

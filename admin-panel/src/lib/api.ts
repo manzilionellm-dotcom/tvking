@@ -551,6 +551,26 @@ export const featuredApi = {
 };
 
 // =========================================================
+//  THÈME DE L'APP (nom affiché + couleur d'accent + fond)
+// =========================================================
+//  L'owner personnalise l'app à distance : son NOM (ex. « WorldCup2026 »)
+//  et sa COULEUR d'accent. L'app lit /api/theme au démarrage et s'adapte
+//  sans mise à jour de store. Valeurs vides = défauts (BLACK7 ROYAL, braise).
+export interface ThemeConfig {
+  appName: string;
+  accent: string; // '#RRGGBB' ou '' (défaut braise)
+  bg: string;     // 'dark' | 'light' | '' (défaut sombre)
+}
+export const themeApi = {
+  get: () => request<ThemeConfig>('/api/v1/theme'),
+  save: (cfg: { appName: string; accent: string; bg: string }) =>
+    request<{ ok: boolean } & ThemeConfig>('/api/v1/theme', {
+      method: 'PUT',
+      body: cfg,
+    }),
+};
+
+// =========================================================
 //  APPS EN LIGNE (présence : IP + pays via Cloudflare)
 // =========================================================
 export interface OnlineDevice {
