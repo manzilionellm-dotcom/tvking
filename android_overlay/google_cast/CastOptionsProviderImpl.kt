@@ -77,10 +77,20 @@ class CastOptionsProviderImpl : OptionsProvider {
             // donc uniquement le branding (logo 7 MOTION sur l'idle
             // screen), pas la lecture HLS/IPTV.
             //
-            // POUR RETROUVER LE BRANDING plus tard : publier l'app
-            // 46F815A5 dans la Cast Developer Console (statut
-            // "Published"), puis remettre cet App ID ci-dessous.
-            .setReceiverApplicationId("CC1AD845")
+            // 2026 — On REVIENT au receiver custom 46F815A5 : c'est le
+            // SEUL moyen de lire le MPEG-TS brut (IPTV .ts) sur les
+            // appareils Google (Chromecast / Google TV / SHIELD). Le
+            // Default Media Receiver CC1AD845 NE décode PAS le .ts →
+            // écran « cast » sans image (constaté sur SHIELD). Notre
+            // receiver (cloudflare/cast_receiver.js) embarque mpegts.js
+            // qui décode le TS live via MSE.
+            //
+            // PRÉREQUIS CÔTÉ CONSOLE : l'app 46F815A5 doit être PUBLIÉE
+            // (statut "Published") dans la Google Cast SDK Developer
+            // Console, avec l'URL receiver = https://…/cast-receiver.
+            // Tant qu'elle est "Unpublished", elle ne charge que sur les
+            // Chromecast inscrites comme appareils de test du compte dev.
+            .setReceiverApplicationId("46F815A5")
             .setCastMediaOptions(mediaOptions)
             // Resume la session si l'app est tuée puis relancée
             // dans les 30 min — l'utilisateur ne se reconnecte pas

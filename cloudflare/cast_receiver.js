@@ -1,47 +1,36 @@
 // =========================================================
-//  cast_receiver.js — HTML du Cast Receiver custom 7 MOTION / Red Room
+//  cast_receiver.js — Cast Receiver custom 7 MOTION (mpegts.js)
 // =========================================================
-//  Exposee par worker.js sur la route GET /cast-receiver.
-//  URL publique a coller dans la Google Cast SDK Developer
-//  Console pour obtenir un Receiver Application ID.
+//  Exposé par worker.js sur la route GET /cast-receiver.
+//  URL à coller dans la Google Cast SDK Developer Console pour obtenir
+//  un Receiver Application ID (le nôtre : 46F815A5).
 //
-//  ARCHITECTURE :
-//    - Page HTML autonome, hebergee par notre Worker
-//    - Charge le CAF (Cast Application Framework) Receiver SDK v3
-//      depuis le CDN officiel Google
-//    - Utilise <cast-media-player> qui fournit GRATUITEMENT :
-//        - Lecture HLS / DASH / MPEG-TS / MP4 (autoplay quand le
-//          sender envoie une LoadRequest)
-//        - Bare controls : play/pause, seek, volume, qualite
-//        - Sous-titres si presents
-//        - Idle screen avec notre logo quand rien ne joue
-//    - On customize via les CSS variables documentees par Google :
-//        --background-color, --logo-image, --splash-image,
-//        --progress-color, etc.
+//  POURQUOI CE RECEIVER CUSTOM (et pas le Default Media Receiver) :
+//    Google Cast (Chromecast / Google TV / SHIELD) ne décode PAS le
+//    MPEG-TS brut (`.ts` / `video/mp2t`) — le format IPTV le plus
+//    courant. Le receiver par défaut affiche alors l'écran « cast »
+//    SANS image (constaté sur SHIELD). On ajoute donc :
+//      - mpegts.js : décode le MPEG-TS LIVE via Media Source Extensions
+//        directement dans le receiver → la TV Google joue enfin le flux.
+//      - hls.js    : pour les flux HLS (.m3u8) si jamais.
+//      - lecture native <video> pour le MP4.
 //
-//  BRANDING :
-//    Comme on a 2 apps (7 MOTION + Red Room), on differencie via
-//    un query param ?app=redroom dans l'URL receiver. La Console
-//    Google accepte une URL avec query strings.
-//    → 7 MOTION inscrira `https://99999.7themotion.com/cast-receiver`
-//    → Red Room inscrira `https://99999.7themotion.com/cast-receiver?app=redroom`
-//    Chacun aura son propre Application ID, et le sender Android
-//    enverra a l'ID correspondant a son flavor.
+//  TECHNIQUE ANTI-CLOBBER : on intercepte le LOAD du CAF. Pour le TS/HLS,
+//  on attache mpegts.js/hls.js à NOTRE <video> (ce qui pose un src=blob:
+//  MSE), PUIS on récrit `contentUrl` du LOAD avec ce blob et le type
+//  video/mp4 → le CAF « charge » le même blob (pas d'écrasement) et
+//  rapporte correctement l'état PLAYING au téléphone.
 //
-//  REFERENCE :
-//    https://developers.google.com/cast/docs/web_receiver/styled_media_receiver
+//  LG / Samsung passent par le DLNA (autre chemin, non concerné ici).
 // =========================================================
 
 export function castReceiverHtml(flavor) {
-  // Par defaut on prend le branding 7 MOTION ; ?app=redroom bascule
-  // sur le velours / le R rouge.
   const isRedRoom = flavor === 'redroom';
   const appName = isRedRoom ? 'Red Room' : '7 MOTION';
-  const accent = '#D63A30'; // ember partage
+  const accent = '#D63A30';
   const bg = isRedRoom ? '#08060A' : '#0A0A0C';
-  const logoUrl = isRedRoom
-    ? 'https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/main/assets/branding/logo_redroom.png'
-    : 'https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/main/assets/branding/logo_7motion.jpg';
+  const logoUrl =
+    'https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/main/assets/branding/logo_7motion.jpg';
 
   return `<!doctype html>
 <html lang="fr">
@@ -49,109 +38,129 @@ export function castReceiverHtml(flavor) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${appName} · Cast</title>
-  <!--
-    CAF Receiver SDK v3 (Cast Application Framework).
-    C'est ce qui transforme cette page en receiver Cast officiel.
-    Sans ce script, le Chromecast ne sait pas quoi faire.
-  -->
+  <!-- CAF Receiver SDK v3 -->
   <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+  <!-- mpegts.js : lecture MPEG-TS live via MSE (le cœur du fix). -->
+  <script src="//cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
+  <!-- hls.js : lecture HLS (.m3u8) si le flux en est. -->
+  <script src="//cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
   <style>
     html, body {
-      margin: 0;
-      padding: 0;
-      background: ${bg};
-      color: #F2F2F4;
+      margin: 0; padding: 0; background: ${bg}; color: #F2F2F4;
+      width: 100%; height: 100%; overflow: hidden;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
     }
-
-    /* ===== <cast-media-player> : le composant officiel CAF =====
-       Toutes ces variables sont documentees par Google et stylent
-       l'idle screen + les controles overlay pendant la lecture.   */
-    cast-media-player {
-      --theme-hue: 0;
-      --background-color: ${bg};
-      --logo-image: url('${logoUrl}');
-      --logo-background-color: ${bg};
-      --splash-image: url('${logoUrl}');
-      --splash-background-color: ${bg};
-      --progress-color: ${accent};
-      --break-color: ${accent};
-      --play-icon-color: #F2F2F4;
-      --buffer-color: rgba(255, 90, 74, 0.45);
-      width: 100%;
-      height: 100%;
+    #v { position: fixed; inset: 0; width: 100%; height: 100%;
+         background: ${bg}; object-fit: contain; z-index: 1; }
+    /* Splash logo affiché tant que rien ne joue. */
+    #splash {
+      position: fixed; inset: 0; z-index: 3; display: flex;
+      align-items: center; justify-content: center; flex-direction: column;
+      background: ${bg}; transition: opacity .35s ease;
     }
-
-    /* ===== Watermark coin bas-droite pendant la lecture =====
-       Discret, comme un logo de chaine TV. Apparait par dessus la
-       video sans la masquer.                                       */
+    #splash.hidden { opacity: 0; pointer-events: none; }
+    #splash img { width: 160px; height: 160px; border-radius: 28px;
+                  object-fit: cover; box-shadow: 0 0 60px rgba(214,58,48,.45); }
+    #splash .name { margin-top: 18px; font-size: 22px; font-weight: 800;
+                    letter-spacing: 1px; }
+    #splash .sub { margin-top: 6px; font-size: 12px; letter-spacing: 3px;
+                   color: rgba(255,255,255,.55); text-transform: uppercase; }
     .brand-watermark {
-      position: fixed;
-      right: 24px;
-      bottom: 24px;
-      z-index: 2;
-      opacity: 0.55;
-      pointer-events: none;
-      font-size: 11px;
-      letter-spacing: 3px;
-      font-weight: 700;
-      color: rgba(255, 255, 255, 0.85);
-      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+      position: fixed; right: 24px; bottom: 24px; z-index: 2; opacity: .55;
+      pointer-events: none; font-size: 11px; letter-spacing: 3px;
+      font-weight: 700; color: rgba(255,255,255,.85);
+      text-shadow: 0 2px 8px rgba(0,0,0,.8);
     }
     .brand-watermark::before {
-      content: '';
-      display: inline-block;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: ${accent};
-      margin-right: 8px;
+      content: ''; display: inline-block; width: 6px; height: 6px;
+      border-radius: 50%; background: ${accent}; margin-right: 8px;
       vertical-align: middle;
     }
   </style>
 </head>
 <body>
-  <!-- Le composant principal CAF qui gere la lecture video et
-       affiche le splash screen avec notre logo quand rien ne joue. -->
-  <cast-media-player></cast-media-player>
-
-  <!-- Watermark de marque, visible en transparence sur la video. -->
+  <video id="v" autoplay playsinline></video>
+  <div id="splash">
+    <img src="${logoUrl}" alt="${appName}">
+    <div class="name">${appName}</div>
+    <div class="sub">Prêt à diffuser</div>
+  </div>
   <div class="brand-watermark">${appName}</div>
 
   <script>
-    // ===== Boot du receiver =====
-    // Recupere l'instance CastReceiverContext (singleton fourni
-    // par le CAF SDK) et la demarre. Sans .start() le Chromecast
-    // affiche un ecran d'erreur generique apres ~10s.
-    const context = cast.framework.CastReceiverContext.getInstance();
-    const playerManager = context.getPlayerManager();
+    (function () {
+      var video = document.getElementById('v');
+      var splash = document.getElementById('splash');
+      var tsPlayer = null;
+      var hls = null;
 
-    // ===== Diagnostic console (utile pour debug remote) =====
-    // L'app Cast Connect debug du Chrome permet d'inspecter cette
-    // console depuis l'ordi. Aide a savoir ce que le sender envoie.
-    playerManager.addEventListener(
-      cast.framework.events.EventType.MEDIA_INFORMATION_CHANGED,
-      function(event) {
-        console.log('[${appName} cast] media info :', event.mediaInformation);
+      function showSplash(s) {
+        if (s) splash.classList.remove('hidden');
+        else splash.classList.add('hidden');
       }
-    );
+      // Dès que la vidéo joue vraiment, on cache le splash.
+      video.addEventListener('playing', function () { showSplash(false); });
+      video.addEventListener('emptied', function () { showSplash(true); });
+      video.addEventListener('ended', function () { showSplash(true); });
 
-    playerManager.addEventListener(
-      cast.framework.events.EventType.ERROR,
-      function(event) {
-        console.error('[${appName} cast] error :', event);
+      function teardown() {
+        if (tsPlayer) { try { tsPlayer.destroy(); } catch (e) {} tsPlayer = null; }
+        if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
       }
-    );
 
-    // ===== Options de demarrage =====
-    // STATUS_TEXT visible en haut de l'idle screen avec le logo.
-    const options = new cast.framework.CastReceiverOptions();
-    options.disableIdleTimeout = false;   // ferme apres 5 min d'inactivite (defaut)
-    options.statusText = '${appName}';
-    context.start(options);
+      var context = cast.framework.CastReceiverContext.getInstance();
+      var playerManager = context.getPlayerManager();
+
+      // ===== Interception du LOAD : c'est ICI qu'on décode le MPEG-TS. =====
+      playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.LOAD,
+        function (request) {
+          try {
+            var media = request.media || {};
+            var url = media.contentUrl || media.contentId || '';
+            var ct = (media.contentType || '').toLowerCase();
+            var isHls = ct.indexOf('mpegurl') >= 0 || /\\.m3u8(\\?|$)/i.test(url);
+            var isTs = !isHls && (
+              ct.indexOf('mp2t') >= 0 || ct.indexOf('mpegts') >= 0 ||
+              /\\.ts(\\?|$)/i.test(url) || /\\/live\\//i.test(url)
+            );
+            teardown();
+
+            if (isTs && window.mpegts && mpegts.isSupported()) {
+              tsPlayer = mpegts.createPlayer(
+                { type: 'mpegts', isLive: true, url: url },
+                { liveBufferLatencyChasing: true, lazyLoad: false }
+              );
+              tsPlayer.attachMediaElement(video);
+              tsPlayer.load();
+              // Anti-clobber : le CAF chargera le MÊME blob MSE.
+              request.media.contentUrl = video.src;
+              request.media.contentType = 'video/mp4';
+            } else if (isHls && window.Hls && Hls.isSupported()) {
+              hls = new Hls({ lowLatencyMode: true });
+              hls.loadSource(url);
+              hls.attachMedia(video);
+              request.media.contentUrl = video.src;
+              request.media.contentType = 'video/mp4';
+            }
+            // MP4 / autres : on laisse le CAF gérer nativement.
+          } catch (e) {
+            // En cas de pépin, on laisse le LOAD passer tel quel au CAF.
+          }
+          return request;
+        }
+      );
+
+      playerManager.addEventListener(
+        cast.framework.events.EventType.ERROR,
+        function (event) { console.error('[${appName} cast] error', event); }
+      );
+
+      var options = new cast.framework.CastReceiverOptions();
+      options.disableIdleTimeout = false;
+      options.statusText = '${appName}';
+      context.start(options);
+    })();
   </script>
 </body>
 </html>`;
