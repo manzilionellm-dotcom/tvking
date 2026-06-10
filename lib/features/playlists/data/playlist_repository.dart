@@ -118,13 +118,18 @@ class PlaylistRepository {
         'channels',
         where: 'playlist_id = ?',
         whereArgs: <Object>[activeId],
-        orderBy: 'name COLLATE NOCASE ASC',
+        // ORDRE NATIF DE LA PLAYLIST : on trie par local_id (= ordre
+        // d'insertion = ordre exact du M3U / Xtream). Le client a
+        // demandé que l'app respecte CE que la source lui donne — si la
+        // playlist commence par l'Afrique, l'app commence par l'Afrique.
+        // (Avant : tri alphabétique sur le nom, qui cassait cet ordre.)
+        orderBy: 'local_id ASC',
       );
     } else {
       // Fallback : aucune playlist active explicitement -> tout
       rows = await db.query(
         'channels',
-        orderBy: 'name COLLATE NOCASE ASC',
+        orderBy: 'local_id ASC',
       );
     }
     final List<Channel> all = rows.map(_channelFromMap).toList();

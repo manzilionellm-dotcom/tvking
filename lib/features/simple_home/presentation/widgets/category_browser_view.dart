@@ -3,20 +3,24 @@
 // =========================================================
 //  Le client navigue EXACTEMENT comme dans sa playlist : on respecte
 //  les catégories d'origine (`group-title` M3U / `category_name`
-//  Xtream), sans aucune reclassification maison. Deux niveaux, propres
-//  et évidents (façon TiviMate) :
+//  Xtream) ET LEUR ORDRE D'ORIGINE — aucune reclassification ni tri
+//  maison. Si le M3U commence par l'Afrique, l'app commence par
+//  l'Afrique. Trois niveaux, propres et évidents (façon TiviMate) :
 //
-//    Niveau 1 — LISTE DES CATÉGORIES
+//    Niveau 0 — FILTRES (barre du haut)
+//      « Tout · TV · Films · Séries · Adultes »
+//      Sépare proprement le direct, le cinéma, les séries et l'adulte
+//      (détection auto via ChannelClassifier). La barre n'affiche que
+//      les onglets réellement présents dans la playlist.
+//
+//    Niveau 1 — LISTE DES CATÉGORIES (dans l'ordre de la playlist)
 //      « FR| FRANCE SPORT VIP » … 161
 //      « FR| CINÉMA HD/4K »     …  40
-//      « IT| AMAZON PRIME PP. » …   6
 //      (le chiffre = nombre de chaînes dans la catégorie)
 //
 //    Niveau 2 — LISTE DES CHAÎNES de la catégorie choisie
 //      logo + nom propre, on tape → lecture.
 //
-//  Tri des catégories : alphabétique (ça regroupe naturellement les
-//  préfixes pays « FR| … », « IT| … » ensemble, comme sur ta TV).
 //  Virtualisé (ListView.builder) → fluide même avec des milliers de
 //  catégories/chaînes. Aucune dépendance au cast.
 // =========================================================
@@ -29,11 +33,46 @@ import '../../../channels/domain/channel.dart';
 import '../../../country_home/presentation/widgets/channel_logo.dart';
 import '../../../player/presentation/play_channel.dart';
 
+/// Grands « rayons » de contenu, pour la barre de filtres du haut.
+/// Tout ce qui n'est ni film, ni série, ni adulte tombe dans [tv]
+/// (le direct : chaînes, sport, info, jeunesse, musique…).
+enum _Bucket {
+  tv('TV', Icons.live_tv_rounded),
+  films('Films', Icons.movie_outlined),
+  series('Séries', Icons.video_library_outlined),
+  adult('Adultes', Icons.no_adult_content_rounded);
+
+  const _Bucket(this.label, this.icon);
+  final String label;
+  final IconData icon;
+}
+
+/// Range une catégorie dans un rayon à partir de son genre détecté.
+/// On s'appuie sur le classifier partagé, puis on rattrape le cas très
+/// courant des rayons « VOD » (que le classifier ne capte pas) : on les
+/// met en Séries s'ils mentionnent une série, sinon en Films.
+_Bucket _bucketOf(String category) {
+  switch (ChannelClassifier.classifyGenre('', category)) {
+    case ChannelGenre.movies:
+      return _Bucket.films;
+    case ChannelGenre.series:
+      return _Bucket.series;
+    case ChannelGenre.adult:
+      return _Bucket.adult;
+    default:
+      final String t = category.toLowerCase();
+      if (t.contains('vod')) {
+        return t.contains('seri') ? _Bucket.series : _Bucket.films;
+      }
+      return _Bucket.tv;
+  }
+}
+
 class CategoryBrowserView extends StatefulWidget {
   const CategoryBrowserView({super.key, required this.channels});
 
-  /// Toutes les chaînes de la playlist active (déjà filtrées par flavor
-  /// au niveau du repository — ex. Red Room ne reçoit que l'adulte).
+  /// Toutes les chaînes de la playlist active, DANS L'ORDRE de la
+  /// playlist (le repository les renvoie triées par ordre d'insertion).
   final List<Channel> channels;
 
   @override
@@ -44,11 +83,15 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
   /// Catégorie ouverte (`null` = on est sur la liste des catégories).
   String? _selected;
 
+  /// Filtre de rayon actif (`null` = « Tout »).
+  _Bucket? _bucket;
+
   /// Libellé utilisé pour les chaînes sans catégorie dans la playlist.
   static const String _kNoCategory = 'Autres';
 
   /// Regroupe les chaînes par catégorie BRUTE (group-title) en
-  /// conservant l'ordre d'apparition à l'intérieur de chaque catégorie.
+  /// CONSERVANT l'ordre d'apparition — des catégories ET des chaînes.
+  /// (LinkedHashMap : l'ordre des clés = ordre de 1re apparition.)
   Map<String, List<Channel>> _grouped() {
     final Map<String, List<Channel>> map = <String, List<Channel>>{};
     for (final Channel c in widget.channels) {
@@ -78,7 +121,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
     );
   }
 
-  // ----- Niveau 1 : la liste des catégories -----
+  // ----- Niveau 1 : la liste des catégories (+ barre de filtres) -----
   Widget _buildCategoryList(Map<String, List<Channel>> grouped) {
     if (grouped.isEmpty) {
       return Center(
@@ -89,25 +132,83 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
         ),
       );
     }
-    // Tri alphabétique insensible à la casse → regroupe les préfixes
-    // pays ensemble (« FR| … » puis « IT| … »), comme sur ta TV.
-    final List<String> cats = grouped.keys.toList()
-      ..sort((String a, String b) =>
-          a.toLowerCase().compareTo(b.toLowerCase()));
 
-    return ListView.separated(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
-      itemCount: cats.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (BuildContext context, int i) {
-        final String cat = cats[i];
-        return _CategoryRow(
-          title: cat,
-          count: grouped[cat]!.length,
-          onTap: () => setState(() => _selected = cat),
-        );
-      },
+    // ORDRE NATIF : on garde l'ordre d'apparition des catégories dans la
+    // playlist (PAS de tri alphabétique). On calcule le rayon de chaque
+    // catégorie une seule fois, et les rayons réellement présents.
+    final List<String> allCats = grouped.keys.toList();
+    final Map<String, _Bucket> catBucket = <String, _Bucket>{
+      for (final String c in allCats) c: _bucketOf(c),
+    };
+    final Set<_Bucket> present =
+        catBucket.values.toSet();
+
+    // Catégories visibles selon le filtre actif.
+    final List<String> cats = _bucket == null
+        ? allCats
+        : allCats.where((String c) => catBucket[c] == _bucket).toList();
+
+    return Column(
+      children: <Widget>[
+        // Barre de filtres : affichée seulement s'il y a plus d'un rayon
+        // (sinon elle ne sert à rien). « Tout » + les rayons présents,
+        // dans un ordre fixe et lisible.
+        if (present.length > 1) _buildFilterBar(present),
+        Expanded(
+          child: cats.isEmpty
+              ? Center(
+                  child: Text(
+                    'Rien dans ce rayon.',
+                    style: AppTextStyles.bodyMedium.copyWith(
+                        fontSize: 14, color: AppColors.textSecondary),
+                  ),
+                )
+              : ListView.separated(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
+                  itemCount: cats.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (BuildContext context, int i) {
+                    final String cat = cats[i];
+                    return _CategoryRow(
+                      title: cat,
+                      count: grouped[cat]!.length,
+                      onTap: () => setState(() => _selected = cat),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  /// Barre horizontale de filtres (« Tout » + rayons présents).
+  Widget _buildFilterBar(Set<_Bucket> present) {
+    // Ordre fixe et logique des onglets, on ne garde que ceux présents.
+    final List<_Bucket?> tabs = <_Bucket?>[
+      null, // « Tout »
+      for (final _Bucket b in _Bucket.values)
+        if (present.contains(b)) b,
+    ];
+    return SizedBox(
+      height: 46,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+        itemCount: tabs.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (BuildContext context, int i) {
+          final _Bucket? b = tabs[i];
+          final bool active = b == _bucket;
+          return _FilterChip(
+            label: b?.label ?? 'Tout',
+            icon: b?.icon ?? Icons.apps_rounded,
+            active: active,
+            onTap: () => setState(() => _bucket = b),
+          );
+        },
+      ),
     );
   }
 
@@ -168,6 +269,59 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
 }
 
 // ---- Sous-widgets ----
+
+/// Puce de filtre (rayon). Teintée ember quand active.
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.icon,
+    required this.active,
+    required this.onTap,
+  });
+  final String label;
+  final IconData icon;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color fg = active ? AppColors.accent : AppColors.textSecondary;
+    return Material(
+      color: active ? AppColors.accentSurface : AppColors.surface,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: active
+                  ? AppColors.accent.withValues(alpha: 0.6)
+                  : AppColors.border,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(icon, size: 16, color: fg),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: AppTextStyles.labelSmall.copyWith(
+                  fontSize: 13,
+                  color: fg,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Ligne de catégorie : dossier + nom + pastille « nombre de chaînes ».
 class _CategoryRow extends StatelessWidget {
