@@ -172,7 +172,7 @@ class MacActivationView extends StatelessWidget {
             const SizedBox(height: 18),
             Row(
               children: <Widget>[
-                const Expanded(child: Divider(color: AppColors.border)),
+                Expanded(child: Divider(color: AppColors.border)),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Text(
@@ -181,7 +181,7 @@ class MacActivationView extends StatelessWidget {
                         fontSize: 12, color: AppColors.textTertiary),
                   ),
                 ),
-                const Expanded(child: Divider(color: AppColors.border)),
+                Expanded(child: Divider(color: AppColors.border)),
               ],
             ),
             const SizedBox(height: 18),
