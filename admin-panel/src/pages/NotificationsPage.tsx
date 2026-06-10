@@ -47,6 +47,8 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [recent, setRecent] = useState<Announcement[]>([]);
+  // Interrupteur GLOBAL : coupe / réactive toutes les notifications.
+  const [notifsOn, setNotifsOn] = useState(true);
 
   function load() {
     announcementsApi.list()
@@ -54,7 +56,35 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
       .catch(() => {});
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    announcementsApi.getSettings()
+      .then((r) => setNotifsOn(r.enabled))
+      .catch(() => {});
+  }, []);
+
+  async function toggleGlobal() {
+    const next = !notifsOn;
+    setNotifsOn(next);
+    try {
+      await announcementsApi.setSettings(next);
+    } catch (e: any) {
+      setNotifsOn(!next);
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      setErr('Échec du changement.');
+    }
+  }
+
+  async function toggleActive(id: number, active: boolean) {
+    try {
+      await announcementsApi.setActive(id, active);
+      setRecent((list) =>
+        list.map((x) => (x.id === id ? { ...x, active: active ? 1 : 0 } : x)));
+    } catch (e: any) {
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      setErr('Échec du changement.');
+    }
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -137,6 +167,28 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
       subtitle="Annonce tes nouveautés, promos et infos à tous tes clients — elles s'affichent dans l'app"
       onLogout={onLogout}
     >
+      {/* ===== Interrupteur global ===== */}
+      <div className="mb-5 flex max-w-2xl items-center justify-between gap-4 rounded-xl border border-white/5 bg-midnight px-5 py-4">
+        <div>
+          <div className="text-sm font-semibold">
+            Notifications {notifsOn ? 'activées' : 'désactivées'}
+          </div>
+          <div className="text-[11px] text-ink-tertiary">
+            {notifsOn
+              ? "Les annonces actives s'affichent dans l'app."
+              : "Coupées : AUCUNE annonce ne s'affiche, peu importe lesquelles sont actives."}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={toggleGlobal}
+          title={notifsOn ? 'Tout désactiver' : 'Réactiver'}
+          className={'relative h-7 w-12 shrink-0 rounded-full transition ' + (notifsOn ? 'bg-accent' : 'bg-white/15')}
+        >
+          <span className={'absolute top-0.5 h-6 w-6 rounded-full bg-white transition ' + (notifsOn ? 'left-[22px]' : 'left-0.5')} />
+        </button>
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* ===== Formulaire ===== */}
         <form
@@ -360,7 +412,8 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
               return (
                 <li
                   key={aRow.id}
-                  className="flex items-start gap-3 rounded-lg border border-white/5 bg-midnight px-4 py-3"
+                  className={'flex items-start gap-3 rounded-lg border border-white/5 bg-midnight px-4 py-3 '
+                    + (aRow.active === 0 ? 'opacity-50' : '')}
                 >
                   <span
                     className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs"
@@ -393,6 +446,17 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
                       {aRow.url ? ' · 🔗 lien' : ''}
                     </div>
                   </div>
+                  {/* Activer / désactiver (sans supprimer) */}
+                  <button
+                    type="button"
+                    onClick={() => toggleActive(aRow.id, aRow.active === 0)}
+                    title={aRow.active === 0 ? 'Activer' : 'Désactiver'}
+                    className={'relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition '
+                      + (aRow.active === 0 ? 'bg-white/15' : 'bg-accent')}
+                  >
+                    <span className={'absolute top-0.5 h-4 w-4 rounded-full bg-white transition '
+                      + (aRow.active === 0 ? 'left-0.5' : 'left-[18px]')} />
+                  </button>
                   <button
                     type="button"
                     onClick={() => removeOne(aRow.id)}

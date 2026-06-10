@@ -436,8 +436,22 @@ export async function apiV1(request, env) {
         return handleAnnouncementsClear(env, actor, request);
       }
     }
-    if (parts.length === 2 && request.method === 'DELETE') {
-      return handleAnnouncementsDelete(env, parts[1], actor, request);
+    if (parts.length === 2) {
+      // /announcements/settings → interrupteur global ON/OFF.
+      if (parts[1] === 'settings') {
+        if (request.method === 'GET') return handleAnnouncementsSettingsGet(env);
+        if (request.method === 'PUT') {
+          return handleAnnouncementsSettingsPut(request, env, actor);
+        }
+      } else {
+        // /announcements/:id → supprimer ou activer/désactiver.
+        if (request.method === 'DELETE') {
+          return handleAnnouncementsDelete(env, parts[1], actor, request);
+        }
+        if (request.method === 'PATCH') {
+          return handleAnnouncementsUpdate(request, env, parts[1], actor);
+        }
+      }
     }
   }
 
@@ -872,7 +886,7 @@ async function ensureAnnouncementsTable(env) {
   //   - expires_at : ms epoch d'expiration (0/NULL = jamais). Passé ce
   //     temps, l'annonce disparaît d'elle-même de toutes les apps.
   for (const col of ['kind TEXT', 'cta TEXT', 'country TEXT',
-      'expires_at INTEGER']) {
+      'expires_at INTEGER', 'active INTEGER DEFAULT 1']) {
     try {
       await env.DB.prepare(
         'ALTER TABLE app_broadcasts ADD COLUMN ' + col
@@ -889,10 +903,52 @@ async function handleAnnouncementsList(env) {
   const rs = await env.DB
     .prepare(
       'SELECT id, title, body, url, kind, cta, country, expires_at, ' +
-        'created_at FROM app_broadcasts ORDER BY id DESC LIMIT 20'
+        'active, created_at FROM app_broadcasts ORDER BY id DESC LIMIT 20'
     )
     .all();
   return jsonResp({ items: rs.results || [] });
+}
+
+// PATCH /api/v1/announcements/:id — active/désactive une annonce SANS la
+// supprimer. Body {active: bool}.
+async function handleAnnouncementsUpdate(request, env, id, actor) {
+  await ensureAnnouncementsTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const active = body.active ? 1 : 0;
+  const r = await env.DB
+    .prepare('UPDATE app_broadcasts SET active = ? WHERE id = ?')
+    .bind(active, id).run();
+  await logAudit(env, request, actor, 'announcement.toggle',
+    { type: 'app_broadcasts', id }, null, { active });
+  return jsonResp({
+    ok: true,
+    updated: (r.meta && r.meta.changes) || 0,
+    active: active === 1,
+  });
+}
+
+// GET /api/v1/announcements/settings — interrupteur global des notifs.
+async function handleAnnouncementsSettingsGet(env) {
+  await ensureAppConfigTable(env);
+  const v = await _cfgGetStr(env, 'announcements_enabled');
+  return jsonResp({ enabled: v !== '0' }); // absent = activé
+}
+
+// PUT /api/v1/announcements/settings — coupe/active TOUTES les notifs.
+async function handleAnnouncementsSettingsPut(request, env, actor) {
+  await ensureAppConfigTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const enabled = body.enabled === false ? '0' : '1';
+  await _cfgSet(env, 'announcements_enabled', enabled);
+  await logAudit(env, request, actor, 'announcements.settings',
+    { type: 'app_config', id: null }, null, { enabled });
+  return jsonResp({ ok: true, enabled: enabled === '1' });
 }
 
 async function handleAnnouncementsCreate(request, env, actor) {

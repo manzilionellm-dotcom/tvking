@@ -441,6 +441,7 @@ export interface Announcement {
   cta?: string;
   country?: string;
   expires_at?: number;
+  active?: number; // 1 = active (affichée), 0 = désactivée
   created_at: number;
 }
 export const announcementsApi = {
@@ -463,6 +464,20 @@ export const announcementsApi = {
   remove: (id: number) =>
     request<{ ok: boolean }>(`/api/v1/announcements/${id}`, {
       method: 'DELETE',
+    }),
+  // Active / désactive une annonce sans la supprimer.
+  setActive: (id: number, active: boolean) =>
+    request<{ ok: boolean; active: boolean }>(`/api/v1/announcements/${id}`, {
+      method: 'PATCH',
+      body: { active },
+    }),
+  // Interrupteur GLOBAL : coupe / réactive toutes les notifications.
+  getSettings: () =>
+    request<{ enabled: boolean }>('/api/v1/announcements/settings'),
+  setSettings: (enabled: boolean) =>
+    request<{ ok: boolean; enabled: boolean }>('/api/v1/announcements/settings', {
+      method: 'PUT',
+      body: { enabled },
     }),
 };
 

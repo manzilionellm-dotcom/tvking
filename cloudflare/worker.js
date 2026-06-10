@@ -1116,7 +1116,7 @@ async function ensureAnnouncementsTable(env) {
   // '' = tout le monde, sinon code ISO type 'SE'). SQLite lève si la
   // colonne existe déjà → on ignore.
   for (const col of ['kind TEXT', 'cta TEXT', 'country TEXT',
-      'expires_at INTEGER']) {
+      'expires_at INTEGER', 'active INTEGER DEFAULT 1']) {
     try {
       await env.DB.prepare(
         'ALTER TABLE app_broadcasts ADD COLUMN ' + col
@@ -1133,6 +1133,14 @@ async function handleGetAnnouncement(env, request) {
   if (!env.DB) return json({});
   try {
     await ensureAnnouncementsTable(env);
+    // Interrupteur GLOBAL (panel) : si les notifications sont coupées, on
+    // ne renvoie RIEN — aucune app n'affiche ni ne notifie d'annonce.
+    await ensureAppConfigTable(env);
+    const sw = await env.DB
+      .prepare("SELECT value FROM app_config WHERE key = 'announcements_enabled'")
+      .first();
+    if (sw && sw.value === '0') return json({});
+
     const reqCountry =
         (request && request.headers.get('CF-IPCountry')) || '';
     const nowMs = Date.now();
@@ -1142,6 +1150,7 @@ async function handleGetAnnouncement(env, request) {
           'FROM app_broadcasts ' +
           "WHERE (country IS NULL OR country = '' OR country = ?) " +
           'AND (expires_at IS NULL OR expires_at = 0 OR expires_at > ?) ' +
+          'AND (active IS NULL OR active = 1) ' +
           'ORDER BY id DESC LIMIT 1'
       )
       .bind(reqCountry, nowMs)
