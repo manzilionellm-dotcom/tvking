@@ -256,7 +256,14 @@ class PlaylistRepository {
       );
       await _updatePlaylistMetrics(saved);
 
-      await _emitCurrentState();
+      // CORRECTIF « les chaînes n'arrivent jamais » : on ACTIVE la
+      // playlist qu'on vient d'ajouter. Sans ça, seule la TOUTE 1re
+      // playlist était auto-active (cf. _insertPlaylist) ; un 2e ajout
+      // (nouveau code, nouvelle tentative, source poussée…) restait
+      // `is_active=0` → `getAllChannels` filtrait ses chaînes et l'accueil
+      // affichait l'ancienne source (ou rien) malgré le « connecté ».
+      // setActivePlaylist ré-émet l'état → l'accueil bascule aussitôt.
+      await setActivePlaylist(playlistId);
 
       // Si une URL EPG est fournie → on déclenche la sync en
       // arrière-plan (non bloquant : l'utilisateur peut déjà
@@ -413,7 +420,11 @@ class PlaylistRepository {
       );
       await _updatePlaylistMetrics(saved);
 
-      await _emitCurrentState();
+      // CORRECTIF « les chaînes n'arrivent jamais » : on ACTIVE la
+      // playlist Xtream qu'on vient d'ajouter (même raison que pour le
+      // M3U). Sans ça, un 2e compte ajouté restait invisible car
+      // `getAllChannels` ne renvoie que les chaînes de la playlist active.
+      await setActivePlaylist(playlistId);
 
       // EPG auto en arrière-plan (Xtream a sa propre URL XMLTV)
       if (newPlaylist.epgUrl != null) {

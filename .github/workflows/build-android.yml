@@ -105,6 +105,56 @@ jobs:
             grep 'android:label' "$MANIFEST" || true
           fi
 
+      # =====================================================================
+      #  Réseau : INTERNET + HTTP en clair (cleartext)
+      # ---------------------------------------------------------------------
+      #  CAUSE DU BUG « les chaînes ne viennent jamais » :
+      #  La quasi-TOTALITÉ des serveurs IPTV (Xtream / M3U) sont en
+      #  `http://` (pas https). Or, pour une app qui cible Android 9+
+      #  (API 28+), le système BLOQUE par défaut tout trafic HTTP en clair
+      #  (`usesCleartextTraffic` = false). Résultat : le téléchargement de
+      #  la playlist M3U et les appels à l'API Xtream échouent
+      #  silencieusement → l'app affiche « chaînes en route » mais ne reçoit
+      #  jamais rien. `flutter create` régénère le manifeste SANS ce flag, il
+      #  faut donc le réinjecter à CHAQUE build.
+      #
+      #  On force aussi la permission INTERNET sur <manifest> : le manifeste
+      #  principal généré par Flutter ne la contient pas (elle n'est présente
+      #  que dans les variantes debug/profile). En release, sans elle, AUCUN
+      #  accès réseau. On l'ajoute donc explicitement (idempotent : sans
+      #  effet si déjà fusionnée depuis un plugin).
+      #
+      #  Implémentation : sed pur, idempotent (grep de garde avant chaque
+      #  injection → re-run sans effet).
+      # =====================================================================
+      - name: Patch AndroidManifest for network (cleartext HTTP + INTERNET)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ ! -f "$MANIFEST" ]; then
+            echo "❌ Manifest manquant — flutter create a-t-il tourné ?"
+            exit 1
+          fi
+
+          # 1. Permission INTERNET — enfant de <manifest>
+          if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST"
+            echo "✓ permission INTERNET ajoutée"
+          else
+            echo "⊙ permission INTERNET déjà présente"
+          fi
+
+          # 2. usesCleartextTraffic="true" — attribut de <application>
+          if ! grep -q 'usesCleartextTraffic' "$MANIFEST"; then
+            sed -i 's|<application|<application\n        android:usesCleartextTraffic="true"|' "$MANIFEST"
+            echo "✓ android:usesCleartextTraffic=\"true\" ajouté (HTTP IPTV en clair autorisé)"
+          else
+            echo "⊙ usesCleartextTraffic déjà présent"
+          fi
+
+          echo "--- Manifest réseau patché ---"
+          grep -nE 'INTERNET|usesCleartextTraffic|<application' "$MANIFEST" || true
+
       # Active le mode Android TV / Fire TV / Google TV :
       #
       #   1. <uses-feature android.software.leanback required=false>
