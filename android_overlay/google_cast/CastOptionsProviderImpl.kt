@@ -77,20 +77,20 @@ class CastOptionsProviderImpl : OptionsProvider {
             // donc uniquement le branding (logo 7 MOTION sur l'idle
             // screen), pas la lecture HLS/IPTV.
             //
-            // 2026 — On REVIENT au receiver custom 46F815A5 : c'est le
-            // SEUL moyen de lire le MPEG-TS brut (IPTV .ts) sur les
-            // appareils Google (Chromecast / Google TV / SHIELD). Le
-            // Default Media Receiver CC1AD845 NE décode PAS le .ts →
-            // écran « cast » sans image (constaté sur SHIELD). Notre
-            // receiver (cloudflare/cast_receiver.js) embarque mpegts.js
-            // qui décode le TS live via MSE.
+            // 2026 — CUSTOM RECEIVER « 7 MOTION TS » (App ID 5BDFD969).
+            // C'est le SEUL moyen de lire le MPEG-TS brut (IPTV .ts) sur
+            // les appareils Google (Chromecast / Google TV / SHIELD) : ce
+            // receiver (cloudflare/cast_receiver.js, URL
+            // https://99999.7themotion.com/cast-receiver) embarque
+            // mpegts.js qui décode le TS live via MSE. Le Default Media
+            // Receiver (CC1AD845) et l'ancien Styled Receiver (46F815A5)
+            // ne décodent PAS le .ts → écran « cast » sans image.
             //
-            // PRÉREQUIS CÔTÉ CONSOLE : l'app 46F815A5 doit être PUBLIÉE
-            // (statut "Published") dans la Google Cast SDK Developer
-            // Console, avec l'URL receiver = https://…/cast-receiver.
-            // Tant qu'elle est "Unpublished", elle ne charge que sur les
-            // Chromecast inscrites comme appareils de test du compte dev.
-            .setReceiverApplicationId("46F815A5")
+            // PRÉREQUIS CONSOLE : 5BDFD969 doit être "Published" pour
+            // marcher chez tous les clients. Tant qu'il est "Unpublished",
+            // il ne charge QUE sur les appareils inscrits en "test
+            // devices" du compte dev (suffisant pour valider sur la SHIELD).
+            .setReceiverApplicationId("5BDFD969")
             .setCastMediaOptions(mediaOptions)
             // Resume la session si l'app est tuée puis relancée
             // dans les 30 min — l'utilisateur ne se reconnecte pas
