@@ -27,6 +27,7 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../device/data/device_identity.dart';
 import '../../../playlists/data/playlist_repository.dart';
 import '../../../playlists/data/remote_source_repository.dart';
+import '../../../playlists/presentation/xtream_login_sheet.dart';
 import '../../../subscription/data/subscription_state.dart';
 
 class MacActivationView extends StatelessWidget {
@@ -162,6 +163,41 @@ class MacActivationView extends StatelessWidget {
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.surfaceHigh,
                   foregroundColor: AppColors.textPrimary,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+            // Séparateur « ou » entre l'activation à distance (MAC) et la
+            // saisie directe d'un code Xtream.
+            const SizedBox(height: 18),
+            Row(
+              children: <Widget>[
+                const Expanded(child: Divider(color: AppColors.border)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    'ou',
+                    style: AppTextStyles.bodyMedium.copyWith(
+                        fontSize: 12, color: AppColors.textTertiary),
+                  ),
+                ),
+                const Expanded(child: Divider(color: AppColors.border)),
+              ],
+            ),
+            const SizedBox(height: 18),
+            // Saisie directe d'un code Xtream (serveur choisi en ligne +
+            // identifiant + mot de passe). PAS de M3U, PAS d'URL serveur à
+            // taper — c'est l'app qui fournit le serveur.
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => showXtreamLoginSheet(context),
+                icon: const Icon(Icons.vpn_key_rounded, size: 18),
+                label: const Text('J’ai un code Xtream'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.accent,
+                  side: BorderSide(
+                      color: AppColors.accent.withValues(alpha: 0.6)),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
