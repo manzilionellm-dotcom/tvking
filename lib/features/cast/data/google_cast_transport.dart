@@ -28,7 +28,9 @@ import '../../../core/observability/structured_logger.dart';
 import '../domain/cast_device.dart';
 import 'cast_session_diagnostic.dart' show redactStreamUrl;
 import 'cast_transport.dart';
+import 'dlna_profiles.dart';
 import 'google_cast_api.dart';
+import 'local_cast_server.dart';
 
 class GoogleCastTransport implements CastTransport {
   GoogleCastTransport(this.device);
@@ -99,20 +101,49 @@ class GoogleCastTransport implements CastTransport {
     //
     //    Phase 1+/G1 : on transmet aussi `imageUrl` (logo de la
     //    chaine).
-    // 2026 — FIX CAST GOOGLE : on n'enveloppe PLUS le .ts en HLS local.
+    String urlToCast = streamUrl;
+    String mime = _guessMime(streamUrl);
+    String castPath = 'direct';
+
+    // Decision de wrap HLS :
+    //   1. On ne wrappe PAS un flux deja adaptatif (HLS/DASH). (BUG A)
+    //   2. On wrappe le MPEG-TS brut (.ts / Xtream /live/).
     //
-    // Le wrap HLS ne marchait pas pour un MPEG-TS LIVE continu (HLS exige
-    // des segments, pas un flux infini) et imposait que la TV joigne l'IP
-    // LAN du téléphone. À la place, l'app pointe désormais sur NOTRE
-    // receiver custom (App ID 46F815A5, cf. CastOptionsProviderImpl) qui
-    // embarque mpegts.js : il décode le MPEG-TS brut directement côté TV.
-    // On envoie donc le flux TEL QUEL, avec son vrai MIME (video/mp2t).
-    // Le DLNA (LG/Samsung) n'est pas concerné — autre transport.
-    final String urlToCast = streamUrl;
-    final String mime = _guessMime(streamUrl);
-    final String castPath = isHlsOrDash(streamUrl)
-        ? 'direct_adaptive'
-        : (_looksLikeRawMpegTs(streamUrl) ? 'direct_ts_mpegtsjs' : 'direct');
+    // IMPORTANT (2026-06-06) : meme une NVIDIA SHIELD, quand on lui
+    // CASTE via le SDK Google Cast, charge le RECEIVER WEB (Default
+    // Media Receiver CC1AD845) — PAS son ExoPlayer natif. Or ce
+    // receiver ne decode PAS le MPEG-TS brut : on obtient l'ecran
+    // "cast" bleu SANS image alors meme que loadMedia est accepte
+    // (constate sur la SHIELD de l'utilisateur). On wrappe donc le .ts
+    // en HLS pour TOUS les recepteurs Cast, SHIELD comprise.
+    final bool shouldWrap =
+        !isHlsOrDash(streamUrl) && _looksLikeRawMpegTs(streamUrl);
+
+    if (shouldWrap) {
+      final String? wrappedUrl =
+          await LocalCastServer.instance.registerRelay(
+        upstreamUrl: streamUrl,
+        profile: const DlnaProfile(
+          mime: 'video/mp2t',
+          profileName: 'MPEG_TS_SD_NA_ISO',
+          transferMode: DlnaTransferMode.streaming,
+          objectClass: 'object.item.videoItem.videoBroadcast',
+          fileExtension: 'ts',
+        ),
+        receiverHost: device.host,
+        wrapInHls: true,
+      );
+      // L'URL wrappee pointe vers l'IP LAN du telephone. Si la TV est
+      // sur un autre /24 (VLAN invite, isolation AP), elle ne peut pas
+      // joindre le relais → on retombe sur l'URL directe. (BUG B)
+      if (wrappedUrl != null && sameSubnet(wrappedUrl, device.host)) {
+        urlToCast = wrappedUrl;
+        mime = 'application/x-mpegURL';
+        castPath = 'hls_wrap';
+      } else {
+        castPath = wrappedUrl == null ? 'wrap_failed' : 'wrap_unreachable';
+      }
+    }
 
     // DIAGNOSTIC (brief §4.3) — tracer EXACTEMENT l'URL et le MIME
     // pousses au recepteur (URL redactee, pas de fuite credentials).

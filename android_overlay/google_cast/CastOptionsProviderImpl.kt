@@ -77,20 +77,10 @@ class CastOptionsProviderImpl : OptionsProvider {
             // donc uniquement le branding (logo 7 MOTION sur l'idle
             // screen), pas la lecture HLS/IPTV.
             //
-            // 2026 — CUSTOM RECEIVER « 7 MOTION TS » (App ID 5BDFD969).
-            // C'est le SEUL moyen de lire le MPEG-TS brut (IPTV .ts) sur
-            // les appareils Google (Chromecast / Google TV / SHIELD) : ce
-            // receiver (cloudflare/cast_receiver.js, URL
-            // https://99999.7themotion.com/cast-receiver) embarque
-            // mpegts.js qui décode le TS live via MSE. Le Default Media
-            // Receiver (CC1AD845) et l'ancien Styled Receiver (46F815A5)
-            // ne décodent PAS le .ts → écran « cast » sans image.
-            //
-            // PRÉREQUIS CONSOLE : 5BDFD969 doit être "Published" pour
-            // marcher chez tous les clients. Tant qu'il est "Unpublished",
-            // il ne charge QUE sur les appareils inscrits en "test
-            // devices" du compte dev (suffisant pour valider sur la SHIELD).
-            .setReceiverApplicationId("5BDFD969")
+            // POUR RETROUVER LE BRANDING plus tard : publier l'app
+            // 46F815A5 dans la Cast Developer Console (statut
+            // "Published"), puis remettre cet App ID ci-dessous.
+            .setReceiverApplicationId("CC1AD845")
             .setCastMediaOptions(mediaOptions)
             // Resume la session si l'app est tuée puis relancée
             // dans les 30 min — l'utilisateur ne se reconnecte pas
