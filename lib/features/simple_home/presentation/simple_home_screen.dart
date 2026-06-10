@@ -33,6 +33,7 @@ import '../../channels/domain/channel.dart';
 import '../../channels/presentation/favorites_screen.dart';
 import '../../channels/presentation/search_screen.dart';
 import '../../channels/presentation/widgets/mac_activation_view.dart';
+import '../../feedback/presentation/feedback_sheet.dart';
 import '../../channels/presentation/widgets/source_choice_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
@@ -54,6 +55,14 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     super.initState();
     FavoritesRepository.instance.initialize();
     RecentlyWatchedRepository.instance.initialize();
+    // Invitation à laisser un avis (pilotée par le panel) : affichée en
+    // douceur quelques secondes après l'arrivée sur l'accueil, une seule
+    // fois par message. Sans effet si désactivée ou déjà répondue.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(seconds: 8), () {
+        if (mounted) maybeShowFeedbackSheet(context);
+      });
+    });
   }
 
   @override

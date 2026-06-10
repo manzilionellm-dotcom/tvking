@@ -1247,6 +1247,90 @@ async function handleGetTheme(env) {
   }
 }
 
+// GET /api/ad (public) — vidéo publicitaire jouée au démarrage de l'app.
+// Renvoie {enabled, url, skip, freq}. enabled=false → l'app ne montre rien.
+async function handleGetAd(env) {
+  const empty = { enabled: false, url: '', skip: 5, freq: 'always' };
+  if (!env.DB) return json(empty);
+  try {
+    await ensureAppConfigTable(env);
+    const get = async (k) => {
+      const r = await env.DB
+        .prepare('SELECT value FROM app_config WHERE key = ?')
+        .bind(k).first();
+      return r && r.value != null ? String(r.value) : '';
+    };
+    const url = await get('ad_url');
+    const enabled = (await get('ad_enabled')) === '1' && url.length > 0;
+    const skipRaw = parseInt(await get('ad_skip'), 10);
+    const freq = (await get('ad_freq')) || 'always';
+    return json({
+      enabled,
+      url,
+      skip: Number.isFinite(skipRaw) && skipRaw >= 0 ? skipRaw : 5,
+      freq,
+    });
+  } catch (_) {
+    return json(empty);
+  }
+}
+
+// GET /api/feedback-prompt (public) — invitation à laisser un avis.
+// Renvoie {enabled, message}. L'app affiche un message doux invitant le
+// client à écrire son avis / ses idées d'amélioration.
+async function handleGetFeedbackPrompt(env) {
+  const empty = { enabled: false, message: '' };
+  if (!env.DB) return json(empty);
+  try {
+    await ensureAppConfigTable(env);
+    const e = await env.DB
+      .prepare("SELECT value FROM app_config WHERE key = 'feedback_enabled'")
+      .first();
+    const m = await env.DB
+      .prepare("SELECT value FROM app_config WHERE key = 'feedback_msg'")
+      .first();
+    return json({
+      enabled: !!(e && e.value === '1'),
+      message: (m && m.value) || '',
+    });
+  } catch (_) {
+    return json(empty);
+  }
+}
+
+// POST /api/feedback (public) — le client envoie son avis. Body
+// {mac?, rating?, message}. Stocké en base, lisible depuis le panel.
+async function ensureFeedbackTable(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, ' +
+      'mac TEXT, country TEXT, rating INTEGER, message TEXT, created_at INTEGER)'
+  ).run();
+}
+async function handlePostFeedback(request, env) {
+  if (!env.DB) return json({ ok: false }, 503);
+  let body;
+  try { body = await request.json(); } catch (_) { return badRequest('bad json'); }
+  const message = (body && body.message ? String(body.message) : '')
+    .trim().slice(0, 2000);
+  if (!message) return badRequest('message vide');
+  const mac = (body && body.mac ? String(body.mac) : '').slice(0, 64);
+  let rating = parseInt(body && body.rating, 10);
+  if (!Number.isFinite(rating) || rating < 0 || rating > 5) rating = 0;
+  const country = (request.cf && request.cf.country)
+    ? String(request.cf.country) : '';
+  try {
+    await ensureFeedbackTable(env);
+    await env.DB
+      .prepare('INSERT INTO feedback (mac, country, rating, message, created_at) ' +
+        'VALUES (?, ?, ?, ?, ?)')
+      .bind(mac, country, rating, message, Date.now())
+      .run();
+    return json({ ok: true });
+  } catch (_) {
+    return json({ ok: false }, 500);
+  }
+}
+
 // GET /api/app-version (public) — mise à jour forcée pilotée par le panel.
 // Renvoie {minBuildTs, latestBuildTs} (secondes epoch). Si `?build=<sec>`
 // est fourni et plus récent que le dernier connu, on le mémorise → le
@@ -2282,6 +2366,24 @@ export default {
         return await handleGetTheme(env);
       }
       return badRequest('only GET supported on /api/theme');
+    }
+
+    // /api/ad — vidéo pub au démarrage (GET public). Réglée via le panel.
+    if (segments[0] === 'api' && segments[1] === 'ad' && segments.length === 2) {
+      if (request.method === 'GET') return await handleGetAd(env);
+      return badRequest('only GET supported on /api/ad');
+    }
+
+    // /api/feedback-prompt — invitation à laisser un avis (GET public).
+    if (segments[0] === 'api' && segments[1] === 'feedback-prompt' && segments.length === 2) {
+      if (request.method === 'GET') return await handleGetFeedbackPrompt(env);
+      return badRequest('only GET supported on /api/feedback-prompt');
+    }
+
+    // /api/feedback — le client envoie son avis (POST public).
+    if (segments[0] === 'api' && segments[1] === 'feedback' && segments.length === 2) {
+      if (request.method === 'POST') return await handlePostFeedback(request, env);
+      return badRequest('only POST supported on /api/feedback');
     }
 
     // /api/featured — "Favori du jour" (chaîne mise en avant). GET public.

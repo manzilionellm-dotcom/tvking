@@ -571,6 +571,46 @@ export const themeApi = {
 };
 
 // =========================================================
+//  PUB VIDÉO AU DÉMARRAGE (jouée quand le client ouvre l'app)
+// =========================================================
+export interface AdConfig {
+  enabled: boolean;
+  url: string;
+  skip: number;   // secondes avant que « Passer » apparaisse
+  freq: string;   // 'always' | 'daily'
+}
+export const adApi = {
+  get: () => request<AdConfig>('/api/v1/ad'),
+  save: (cfg: { enabled: boolean; url: string; skip: number; freq: string }) =>
+    request<{ ok: boolean } & AdConfig>('/api/v1/ad', { method: 'PUT', body: cfg }),
+};
+
+// =========================================================
+//  AVIS CLIENTS (invitation + avis reçus)
+// =========================================================
+export interface FeedbackPrompt {
+  enabled: boolean;
+  message: string;
+}
+export interface FeedbackItem {
+  id: number;
+  mac: string | null;
+  country: string | null;
+  rating: number;
+  message: string;
+  created_at: number;
+}
+export const feedbackApi = {
+  getPrompt: () => request<FeedbackPrompt>('/api/v1/feedback-prompt'),
+  savePrompt: (cfg: { enabled: boolean; message: string }) =>
+    request<{ ok: boolean } & FeedbackPrompt>('/api/v1/feedback-prompt', {
+      method: 'PUT',
+      body: cfg,
+    }),
+  list: () => request<{ items: FeedbackItem[] }>('/api/v1/feedback'),
+};
+
+// =========================================================
 //  APPS EN LIGNE (présence : IP + pays via Cloudflare)
 // =========================================================
 export interface OnlineDevice {

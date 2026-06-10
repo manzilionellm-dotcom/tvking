@@ -500,6 +500,38 @@ export async function apiV1(request, env) {
     }
   }
 
+  // /ad — vidéo publicitaire jouée au démarrage de l'app. Owner.
+  if (parts[0] === 'ad') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (parts.length === 1) {
+      if (request.method === 'GET') return handleAdGet(env);
+      if (request.method === 'PUT') return handleAdPut(request, env, actor);
+    }
+  }
+
+  // /feedback-prompt — invitation à laisser un avis (message + on/off). Owner.
+  if (parts[0] === 'feedback-prompt') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (parts.length === 1) {
+      if (request.method === 'GET') return handleFeedbackPromptGet(env);
+      if (request.method === 'PUT') return handleFeedbackPromptPut(request, env, actor);
+    }
+  }
+
+  // /feedback — liste des avis reçus des clients (lecture). Owner.
+  if (parts[0] === 'feedback') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (parts.length === 1 && request.method === 'GET') {
+      return handleFeedbackList(env);
+    }
+  }
+
   // /sources/:mac — source IPTV (Xtream/M3U) assignée à un appareil
   // par sa MAC, poussée à l'app. Admin ET revendeurs (chacun provisionne
   // ses clients). GET pour relire, PUT pour (ré)assigner, DELETE pour
@@ -1192,6 +1224,80 @@ async function handleThemePut(request, env, actor) {
   await logAudit(env, request, actor, 'theme.save',
     { type: 'app_config', id: null }, null, { appName, accent, bg });
   return jsonResp({ ok: true, appName, accent, bg });
+}
+
+// =========================================================
+//  PUB VIDÉO AU DÉMARRAGE (ad) — owner
+// =========================================================
+async function handleAdGet(env) {
+  await ensureAppConfigTable(env);
+  const skip = parseInt(await _cfgGetStr(env, 'ad_skip'), 10);
+  return jsonResp({
+    enabled: (await _cfgGetStr(env, 'ad_enabled')) === '1',
+    url: await _cfgGetStr(env, 'ad_url'),
+    skip: Number.isFinite(skip) ? skip : 5,
+    freq: (await _cfgGetStr(env, 'ad_freq')) || 'always',
+  });
+}
+
+async function handleAdPut(request, env, actor) {
+  await ensureAppConfigTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const url = (body.url == null ? '' : String(body.url)).trim().slice(0, 500);
+  const enabled = body.enabled ? '1' : '0';
+  let skip = parseInt(body.skip, 10);
+  if (!Number.isFinite(skip) || skip < 0) skip = 5;
+  if (skip > 60) skip = 60;
+  const freq = body.freq === 'daily' ? 'daily' : 'always';
+  await _cfgSet(env, 'ad_url', url);
+  await _cfgSet(env, 'ad_enabled', enabled);
+  await _cfgSet(env, 'ad_skip', String(skip));
+  await _cfgSet(env, 'ad_freq', freq);
+  await logAudit(env, request, actor, 'ad.save',
+    { type: 'app_config', id: null }, null, { url, enabled, skip, freq });
+  return jsonResp({ ok: true, enabled: enabled === '1', url, skip, freq });
+}
+
+// =========================================================
+//  AVIS CLIENTS (feedback) — owner
+// =========================================================
+async function handleFeedbackPromptGet(env) {
+  await ensureAppConfigTable(env);
+  return jsonResp({
+    enabled: (await _cfgGetStr(env, 'feedback_enabled')) === '1',
+    message: await _cfgGetStr(env, 'feedback_msg'),
+  });
+}
+
+async function handleFeedbackPromptPut(request, env, actor) {
+  await ensureAppConfigTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const message = (body.message == null ? '' : String(body.message))
+    .trim().slice(0, 500);
+  const enabled = body.enabled ? '1' : '0';
+  await _cfgSet(env, 'feedback_enabled', enabled);
+  await _cfgSet(env, 'feedback_msg', message);
+  await logAudit(env, request, actor, 'feedback_prompt.save',
+    { type: 'app_config', id: null }, null, { enabled, message });
+  return jsonResp({ ok: true, enabled: enabled === '1', message });
+}
+
+async function handleFeedbackList(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, ' +
+      'mac TEXT, country TEXT, rating INTEGER, message TEXT, created_at INTEGER)'
+  ).run();
+  const rows = await env.DB.prepare(
+    'SELECT id, mac, country, rating, message, created_at FROM feedback ' +
+      'ORDER BY created_at DESC LIMIT 500'
+  ).all();
+  return jsonResp({ items: (rows && rows.results) || [] });
 }
 
 // =========================================================

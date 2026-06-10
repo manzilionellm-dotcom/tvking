@@ -18,6 +18,9 @@ import 'package:media_kit/media_kit.dart';
 import 'core/branding/brand_config.dart';
 import 'core/branding/brand_logo.dart';
 import 'core/branding/powered_by_marquee.dart';
+import 'features/ads/data/startup_ad_repository.dart';
+import 'features/ads/presentation/startup_ad_screen.dart';
+import 'features/feedback/data/feedback_repository.dart';
 import 'features/theme/data/remote_theme_repository.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/branding/verified_badge.dart';
@@ -202,6 +205,10 @@ Future<void> bootApp() async {
   // Listenable racine). Si rien n'est configuré ou réseau KO → défauts.
   unawaited(RemoteThemeRepository.fetchAndApply());
 
+  // Invitation à laisser un avis (message piloté par le panel). Non
+  // bloquant : l'accueil affichera la feuille plus tard si elle est active.
+  unawaited(FeedbackRepository.instance.initialize());
+
   // Classe d'appareil (Téléphone / TV / Auto). Chargée tôt pour que
   // `_AppEntry` puisse décider immédiatement quel home afficher.
   await DeviceClassRepository.instance.initialize();
@@ -345,6 +352,28 @@ class _AppEntryState extends State<_AppEntry> {
   // normalement (fail-open : si la vérif réseau échoue, on ne bloque pas).
   bool _forceUpdate = false;
 
+  // Pub vidéo de démarrage (pilotée par le panel). `_adResolved` = on sait
+  // s'il y a une pub (fetch terminé ou court délai de secours) ; `_adShow`
+  // = on doit la jouer ; `_adDone` = terminée/passée.
+  bool _adResolved = false;
+  bool _adShow = false;
+  bool _adDone = false;
+
+  /// Résout la pub de démarrage SANS jamais bloquer l'accueil plus de 2,5 s.
+  Future<void> _resolveAd() async {
+    Timer(const Duration(milliseconds: 2500), () {
+      if (mounted && !_adResolved) setState(() => _adResolved = true);
+    });
+    await StartupAdRepository.instance.fetch();
+    final bool show = await StartupAdRepository.instance.shouldShow();
+    if (mounted) {
+      setState(() {
+        _adShow = show;
+        _adResolved = true;
+      });
+    }
+  }
+
   /// MISE À JOUR FORCÉE — pilotée à distance depuis le panel.
   ///
   /// Désactivée par défaut (le serveur renvoie minBuildTs=0). Ne bloque
@@ -362,6 +391,7 @@ class _AppEntryState extends State<_AppEntry> {
   void initState() {
     super.initState();
     _checkForcedUpdate();
+    _resolveAd();
     OnboardingState.instance.hasCompleted().then((bool done) {
       if (mounted) {
         setState(() {
@@ -474,6 +504,20 @@ class _AppEntryState extends State<_AppEntry> {
         if (SubscriptionState.instance.shouldBlockUser) {
           return const SubscriptionGateScreen();
         }
+        // 3b) PUB VIDÉO de démarrage (pilotée par le panel), juste avant
+        //     l'accueil. Tant qu'on ne sait pas encore (réseau), bref
+        //     splash pour éviter un flash d'accueil avant la pub.
+        if (!_adResolved) return const _Splash();
+        if (_adShow && !_adDone) {
+          return StartupAdScreen(
+            config: StartupAdRepository.instance.config,
+            onDone: () {
+              StartupAdRepository.instance.markShown();
+              if (mounted) setState(() => _adDone = true);
+            },
+          );
+        }
+
         // 4) Home — application MOBILE (7 MOTION). Les variantes TV et
         //    Red Room ont été retirées du projet : il ne reste que le
         //    mobile, piloté par le panel.

@@ -38,6 +38,8 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.online': { fr: 'En ligne', en: 'Online', ar: 'متصل' },
   'nav.featured': { fr: 'Favori du jour', en: 'Daily pick', ar: 'مختار اليوم' },
   'nav.theme': { fr: 'Thème', en: 'Theme', ar: 'السمة' },
+  'nav.ad': { fr: 'Pub vidéo', en: 'Video ad', ar: 'إعلان فيديو' },
+  'nav.reviews': { fr: 'Avis clients', en: 'Reviews', ar: 'آراء العملاء' },
   'nav.homeManager': { fr: 'Accueil', en: 'Home', ar: 'الرئيسية' },
   'nav.notifications': { fr: 'Annonces', en: 'Announcements', ar: 'الإعلانات' },
   'nav.resellers': { fr: 'Revendeurs', en: 'Resellers', ar: 'الموزّعون' },
