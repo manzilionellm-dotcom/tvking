@@ -10,20 +10,16 @@ main = "worker.js"
 compatibility_date = "2025-05-01"
 
 # =========================================================
-#  Domaine personnalisé — lien VIP propre (7themotion.com)
+#  Domaine personnalisé — lien VIP propre
 # =========================================================
-#  EN ATTENTE D'UNE DÉCISION (cf. déploiement du 2026-06-11) :
-#  attacher l'APEX `7themotion.com` en Custom Domain a échoué car le
-#  domaine a DÉJÀ des enregistrements DNS (A/CNAME) — Cloudflare refuse
-#  d'écraser. Deux options :
-#    A) Sous-domaine dédié (ex. app.7themotion.com) → aucun risque,
-#       on décommente la ligne ci-dessous avec le sous-domaine choisi.
-#    B) Apex `7themotion.com` → il faut d'abord SUPPRIMER les
-#       enregistrements DNS existants de la racine dans Cloudflare,
-#       puis remettre { pattern = "7themotion.com", custom_domain = true }.
-# routes = [
-#   { pattern = "app.7themotion.com", custom_domain = true },
-# ]
+#  Sous-domaine dédié `app.7themotion.com` branché en Custom Domain sur
+#  ce Worker (custom_domain = true → Cloudflare crée le DNS tout seul).
+#  Ne touche PAS à la racine 7themotion.com (qui a déjà ses propres DNS).
+#  Lien VIP final : https://app.7themotion.com/vip
+#  (la racine de app.7themotion.com sert la page d'accueil du worker).
+routes = [
+  { pattern = "app.7themotion.com", custom_domain = true },
+]
 
 # Workers KV namespace pour stocker les configs clients.
 #
