@@ -9,6 +9,26 @@ name = "seven-motion-backend"
 main = "worker.js"
 compatibility_date = "2025-05-01"
 
+# =========================================================
+#  Domaine personnalisé — lien VIP propre (7themotion.com)
+# =========================================================
+#  Branche l'APEX 7themotion.com directement sur ce Worker. Avec
+#  custom_domain = true, Cloudflare crée AUTOMATIQUEMENT le DNS et
+#  route TOUT le domaine vers le Worker :
+#     7themotion.com/        → page d'accueil
+#     7themotion.com/vip     → téléchargement de l'app (lien VIP)
+#     7themotion.com/privacy → politique de confidentialité
+#     7themotion.com/api/... → API
+#  PRÉREQUIS : la zone 7themotion.com est active dans le même compte
+#  Cloudflare (confirmé). Le token de déploiement doit pouvoir éditer
+#  le DNS de la zone. Si le deploy échoue ICI faute de permission DNS,
+#  ajouter le domaine à la main (2 clics) : Workers & Pages →
+#  seven-motion-backend → Settings → Domains & Routes → Add → Custom
+#  Domain → 7themotion.com.
+routes = [
+  { pattern = "7themotion.com", custom_domain = true },
+]
+
 # Workers KV namespace pour stocker les configs clients.
 #
 # TEMPORAIREMENT DÉSACTIVÉ — verification au 2026-05-31 :
