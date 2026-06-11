@@ -26,6 +26,21 @@ const SWATCHES: { hex: string; label: string }[] = [
   { hex: '#FFFFFF', label: 'Blanc' },
 ];
 
+// PRESETS : un « look » complet (couleur + fond) appliqué en 1 clic. Pilotés
+// par le panel → l'app les applique au prochain démarrage, AUCUN nouvel APK.
+const PRESETS: {
+  key: string; label: string; emoji: string; accent: string; bg: 'dark' | 'light';
+}[] = [
+  { key: 'braise', label: 'Braise', emoji: '🔥', accent: '#D63A30', bg: 'dark' },
+  { key: 'gold', label: 'Gold', emoji: '🏆', accent: '#D6A030', bg: 'dark' },
+  { key: 'platinum', label: 'Platinum', emoji: '💎', accent: '#AEB6C2', bg: 'dark' },
+  { key: 'noel', label: 'Noël', emoji: '🎄', accent: '#1E8E4E', bg: 'dark' },
+  { key: 'worldcup', label: 'World Cup', emoji: '⚽', accent: '#2E7DD6', bg: 'dark' },
+  { key: 'halloween', label: 'Halloween', emoji: '🎃', accent: '#E8722B', bg: 'dark' },
+  { key: 'neon', label: 'Néon', emoji: '⚡', accent: '#2EC4C6', bg: 'dark' },
+  { key: 'light', label: 'Light', emoji: '☀️', accent: '#2E7DD6', bg: 'light' },
+];
+
 export function ThemePage({ onLogout }: { onLogout: () => void }) {
   const [appName, setAppName] = useState('');
   const [accent, setAccent] = useState('');
@@ -111,6 +126,37 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
         <div className="grid max-w-4xl grid-cols-1 gap-6 md:grid-cols-2">
           {/* ===== Réglages ===== */}
           <form onSubmit={save} className="space-y-5 rounded-xl border border-white/5 bg-midnight p-6">
+            {/* ===== Presets : look complet en 1 clic ===== */}
+            <div>
+              <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+                Presets — look complet en 1 clic
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {PRESETS.map((p) => {
+                  const active =
+                    effAccent.toUpperCase() === p.accent.toUpperCase() && bg === p.bg;
+                  return (
+                    <button
+                      type="button"
+                      key={p.key}
+                      onClick={() => { setAccent(p.accent); setBg(p.bg); }}
+                      className={
+                        'flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs transition ' +
+                        (active
+                          ? 'border-accent bg-accent/15 text-accent-bright'
+                          : 'border-white/10 text-ink-secondary hover:bg-white/5')
+                      }
+                    >
+                      <span>{p.emoji}</span>{p.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1 text-[10px] text-ink-tertiary">
+                Applique couleur + fond d'un coup. Ajuste si besoin, puis « Enregistrer ».
+              </p>
+            </div>
+
             <div>
               <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
                 Nom de l'application
