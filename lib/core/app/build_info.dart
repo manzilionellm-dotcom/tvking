@@ -24,8 +24,8 @@ const int kBuildTs = int.fromEnvironment('APP_BUILD_TS', defaultValue: 0);
 const int kForceUpdateGraceSeconds = 6 * 3600;
 
 /// Code Downloader (aftv.news) à taper sur TV / Fire TV / box.
-const String kDownloaderCode = '5640874';
+const String kDownloaderCode = '7988141';
 
 /// Lien de téléchargement anonyme (domaine de marque, proxy de l'APK).
 /// Affiché pour le téléphone (ouverture navigateur).
-const String kDownloadUrl = 'https://dl.7themotion.com/royal';
+const String kDownloadUrl = 'https://app.7themotion.com/vip';

@@ -32,12 +32,14 @@ import '../../device/data/device_identity.dart';
 /// l'app lit un autre serveur que celui où le panel écrit les
 /// activations/sources → « l'app ne se connecte pas avec le panel ».
 ///
-/// Historique du bug : l'app pointait sur `https://99999.7themotion.com`
-/// qui sert un ANCIEN worker, alors que le panel et les déploiements
-/// (`wrangler` → worker `seven-motion-backend`) vivent sur le domaine
-/// `*.workers.dev`. On aligne donc l'app sur ce worker.
+/// Historique du bug : l'app a pointé sur `99999.7themotion.com` (ancien
+/// worker) PUIS sur `seven-motion-backend.manzilionel-lm.workers.dev`
+/// (sous-domaine workers.dev INJOIGNABLE → l'activation du panel ne
+/// descendait jamais dans l'app). On aligne désormais sur le Custom
+/// Domain FIABLE `app.7themotion.com` (= le worker que le panel utilise
+/// aussi). Résultat : l'activation panel → app redevient automatique.
 const String kSubscriptionBaseUrl =
-    'https://seven-motion-backend.manzilionel-lm.workers.dev';
+    'https://app.7themotion.com';
 
 /// Snapshot de l'état renvoyé par le serveur. Immuable.
 @immutable
