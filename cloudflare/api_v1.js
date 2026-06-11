@@ -1440,11 +1440,12 @@ async function handlePricingPut(request, env, actor) {
 // =========================================================
 //  +7 JOURS À TOUS (lancement du modèle payant) — owner
 // =========================================================
-//  Met TOUS les appareils ACTIFS à `days` jours (7 par défaut) à partir de
-//  maintenant. Passé ce délai, l'app repasse « expiré » → l'écran de
-//  paiement revient automatiquement. Forçe tout le monde (y compris « à
-//  vie »/payés) — choix explicite du client (uniquement des tests pour
-//  l'instant). Irréversible : c'est une action ponctuelle de bascule.
+//  PROLONGE (sans jamais couper) : chaque appareil actif obtient AU MOINS
+//  `days` jours (7 par défaut) à partir de maintenant. On ne touche QUE les
+//  licences dont l'expiration est AVANT now+days → personne qui a déjà plus
+//  de temps ne perd quoi que ce soit, et les « à vie » (expires_at NULL)
+//  sont laissés intacts. Passé le délai, l'app repasse « expiré » → l'écran
+//  de paiement revient automatiquement. Action ponctuelle de bascule.
 async function handleGrantTrialAll(request, env, actor) {
   let body;
   try { body = await request.json(); } catch (_) { body = {}; }
@@ -1453,9 +1454,14 @@ async function handleGrantTrialAll(request, env, actor) {
   if (days > 365) days = 365;
   const now = Date.now();
   const newExpiry = now + days * 24 * 60 * 60 * 1000;
+  // expires_at IS NOT NULL  → on ne touche pas les « à vie ».
+  // expires_at < newExpiry  → on ne raccourcit jamais ceux qui ont plus.
   const res = await env.DB
-    .prepare("UPDATE licenses SET expires_at = ?, updated_at = ? WHERE status = 'active'")
-    .bind(newExpiry, now)
+    .prepare(
+      "UPDATE licenses SET expires_at = ?, updated_at = ? " +
+      "WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at < ?"
+    )
+    .bind(newExpiry, now, newExpiry)
     .run();
   const updated = (res && res.meta && res.meta.changes) || 0;
   await logAudit(env, request, actor, 'licenses.grant_trial_all',

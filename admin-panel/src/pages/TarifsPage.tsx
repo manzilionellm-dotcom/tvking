@@ -228,9 +228,10 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
           Lancer le modèle payant
         </h3>
         <p className="mt-1 text-xs text-ink-secondary">
-          Donne 7 jours (modifiable) à TOUS les appareils actifs. Passé ce
-          délai, l'écran de paiement revient automatiquement chez chaque
-          client. Action ponctuelle — à utiliser au moment de basculer.
+          Donne AU MOINS 7 jours (modifiable) à tous les appareils actifs,
+          à partir de maintenant. Ne coupe jamais ceux qui ont déjà plus de
+          temps, et n'affecte pas les « à vie ». Passé le délai, l'écran de
+          paiement revient automatiquement. Action ponctuelle de bascule.
         </p>
         <button
           type="button"
