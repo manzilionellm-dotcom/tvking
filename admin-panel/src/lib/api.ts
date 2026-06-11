@@ -674,6 +674,24 @@ export const themeApi = {
 };
 
 // =========================================================
+//  HISTORIQUE DES MODIFICATIONS (audit log) — owner
+// =========================================================
+export interface AuditLog {
+  id: string;
+  actor_type: string;
+  actor_id: string;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  before_json: string | null;
+  after_json: string | null;
+  created_at: number;
+}
+export const auditApi = {
+  list: () => request<{ items: AuditLog[] }>('/api/v1/audit-logs'),
+};
+
+// =========================================================
 //  PUB VIDÉO AU DÉMARRAGE (jouée quand le client ouvre l'app)
 // =========================================================
 export interface AdConfig {

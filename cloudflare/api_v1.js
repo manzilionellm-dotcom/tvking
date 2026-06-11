@@ -231,6 +231,23 @@ async function requireAuth(request, env) {
 //  admin_users est vide, on cree un compte avec email = "admin"
 //  et password = env.ADMIN_SECRET. Permet de demarrer sans setup
 //  hors-bande (l'admin se connecte avec le secret qu'il a deja).
+// ----- Historique des modifications (lecture seule) -----
+async function handleAuditLogsList(env) {
+  try {
+    const rs = await env.DB
+      .prepare(
+        `SELECT id, actor_type, actor_id, action, target_type, target_id,
+                before_json, after_json, created_at
+         FROM audit_logs ORDER BY created_at DESC LIMIT 200`,
+      )
+      .all();
+    return jsonResp({ items: rs.results || [] });
+  } catch (_) {
+    // Table absente (jamais écrit encore) → liste vide, pas d'erreur.
+    return jsonResp({ items: [] });
+  }
+}
+
 async function bootstrapSuperAdminIfNeeded(env) {
   // Filet de sécurité : si la migration schema.sql n'a jamais tourné sur
   // la base D1, la table `admin_users` n'existe pas → le SELECT plante →
@@ -373,6 +390,14 @@ async function apiV1Inner(request, env) {
       return errResp('forbidden', 'Owner only', 403);
     }
     if (request.method === 'GET') return handleBackup(env);
+  }
+
+  // /audit-logs — historique des modifications (qui/quoi/quand). Owner.
+  if (parts[0] === 'audit-logs' && parts.length === 1 && request.method === 'GET') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    return handleAuditLogsList(env);
   }
 
   // /me — profil de l'acteur courant (+ solde de credits si revendeur)

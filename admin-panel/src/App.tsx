@@ -24,6 +24,7 @@ import { AdPage } from '@/pages/AdPage';
 import { TarifsPage } from '@/pages/TarifsPage';
 import { ReviewsPage } from '@/pages/ReviewsPage';
 import { AccountPage } from '@/pages/AccountPage';
+import { HistoryPage } from '@/pages/HistoryPage';
 
 /// Etats possibles de l'app :
 ///   - bootstrapping : on verifie si le token est encore valide
@@ -113,6 +114,7 @@ export default function App() {
           Les permissions/scoping sont appliques cote API. */}
       <Route path="/resellers" element={<ResellersPage onLogout={handleLogout} />} />
       <Route path="/account" element={<AccountPage onLogout={handleLogout} />} />
+      <Route path="/history" element={<HistoryPage onLogout={handleLogout} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
