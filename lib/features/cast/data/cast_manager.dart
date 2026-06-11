@@ -849,7 +849,38 @@ class CastManager extends ChangeNotifier {
     // que la TV elle-même a accès Internet et pourrait fetch Xtream
     // directement. Le probe est conservateur, mais ça n'aide pas pour
     // les TVs qui rejettent le relay.
-    const int totalStrategies = 5;
+    // VARIANTES DE MIME (universalité TV) — le MÊME flux MPEG-TS doit
+    // parfois être étiqueté différemment selon la marque : Samsung accepte
+    // souvent `video/mpeg`, LG `video/vnd.dlna.mpeg-tts`, la norme étant
+    // `video/mp2t`. Si les 5 stratégies de base (toutes sur le MIME
+    // d'origine) échouent par REFUS DE FORMAT, on RE-tente en DIRECT avec
+    // ces étiquettes alternatives. 100 % ADDITIF : une TV qui caste déjà
+    // réussit en stratégie 0-4 et ne touche jamais ces variantes.
+    final List<DlnaProfile> altProfiles = <DlnaProfile>[];
+    {
+      final bool isTs = profile.mime == 'video/mp2t' ||
+          profile.mime == 'video/vnd.dlna.mpeg-tts' ||
+          profile.mime == 'video/mpeg';
+      if (isTs) {
+        for (final String m in const <String>[
+          'video/vnd.dlna.mpeg-tts',
+          'video/mpeg',
+          'video/mp2t',
+        ]) {
+          if (m != profile.mime &&
+              !altProfiles.any((DlnaProfile p) => p.mime == m)) {
+            altProfiles.add(DlnaProfile(
+              mime: m,
+              profileName: null, // sans PN : étiquette MIME nue
+              transferMode: profile.transferMode,
+              objectClass: profile.objectClass,
+              fileExtension: profile.fileExtension,
+            ));
+          }
+        }
+      }
+    }
+    final int totalStrategies = 5 + altProfiles.length;
     final int startStrategy = 0;
     final int budget = totalStrategies;
 
@@ -863,7 +894,8 @@ class CastManager extends ChangeNotifier {
       final int displayAttempt = s + 1;
       final Stopwatch attemptSw = Stopwatch()..start();
       final String strategyName = _strategyName(s);
-      final String urlKind = s < 3 ? 'direct' : 'relay';
+      // s>=5 = variantes de MIME, toujours en DIRECT + métadonnée complète.
+      final String urlKind = (s < 3 || s >= 5) ? 'direct' : 'relay';
       final String metaName = (s == 1 || s == 4) ? 'minimal' : (s == 2 ? 'none' : 'full');
 
       try {
@@ -893,13 +925,18 @@ class CastManager extends ChangeNotifier {
             );
             transport.metadataMode = MetadataMode.full;
             break;
-          default: // 4
+          case 4:
             urlToCast = await _ensureRelayUrl(
               upstreamUrl: probe.finalUrl,
               profile: profile,
               receiverHost: transport.device.host,
             );
             transport.metadataMode = MetadataMode.minimal;
+            break;
+          default: // s >= 5 : même flux, étiquette MIME alternative (direct)
+            transport.profile = altProfiles[s - 5];
+            urlToCast = probe.finalUrl;
+            transport.metadataMode = MetadataMode.full;
             break;
         }
 
@@ -982,7 +1019,7 @@ class CastManager extends ChangeNotifier {
       case 4:
         return 'relay+minimal';
       default:
-        return 'unknown';
+        return 'direct+altmime'; // variantes de MIME (s >= 5)
     }
   }
 
