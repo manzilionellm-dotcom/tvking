@@ -232,6 +232,21 @@ async function requireAuth(request, env) {
 //  et password = env.ADMIN_SECRET. Permet de demarrer sans setup
 //  hors-bande (l'admin se connecte avec le secret qu'il a deja).
 async function bootstrapSuperAdminIfNeeded(env) {
+  // Filet de sécurité : si la migration schema.sql n'a jamais tourné sur
+  // la base D1, la table `admin_users` n'existe pas → le SELECT plante →
+  // login impossible. On la crée à l'identique du schéma au besoin.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS admin_users (
+       id TEXT PRIMARY KEY,
+       email TEXT NOT NULL UNIQUE,
+       password_hash TEXT NOT NULL,
+       name TEXT,
+       role TEXT NOT NULL DEFAULT 'admin',
+       is_active INTEGER NOT NULL DEFAULT 1,
+       last_login_at INTEGER,
+       created_at INTEGER NOT NULL
+     )`,
+  ).run();
   const count = await env.DB.prepare(
     'SELECT COUNT(*) as n FROM admin_users',
   ).first();
@@ -288,10 +303,24 @@ async function logAudit(env, request, actor, action, target, before, after) {
 //  On parse ici la suite du path et on dispatch.
 // =========================================================
 
+// Point d'entrée /api/v1/* — enveloppe TOUT dans un try/catch afin que
+// la moindre exception renvoie une réponse JSON AVEC les en-têtes CORS.
+// Sinon, un crash (ex. table D1 absente) renvoie un 500 BRUT sans CORS →
+// le navigateur le voit comme une panne réseau et le panel affiche
+// "Connexion impossible" au lieu du vrai message. Avec ce filet, on voit
+// l'erreur réelle (ex. "no such table: admin_users") et on peut la régler.
 export async function apiV1(request, env) {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: JSON_HEADERS });
   }
+  try {
+    return await apiV1Inner(request, env);
+  } catch (e) {
+    return errResp('internal_error', (e && e.message) || String(e), 500);
+  }
+}
+
+async function apiV1Inner(request, env) {
   if (!env.DB) {
     return errResp(
       'db_unbound',
