@@ -12,22 +12,18 @@ compatibility_date = "2025-05-01"
 # =========================================================
 #  Domaine personnalisé — lien VIP propre (7themotion.com)
 # =========================================================
-#  Branche l'APEX 7themotion.com directement sur ce Worker. Avec
-#  custom_domain = true, Cloudflare crée AUTOMATIQUEMENT le DNS et
-#  route TOUT le domaine vers le Worker :
-#     7themotion.com/        → page d'accueil
-#     7themotion.com/vip     → téléchargement de l'app (lien VIP)
-#     7themotion.com/privacy → politique de confidentialité
-#     7themotion.com/api/... → API
-#  PRÉREQUIS : la zone 7themotion.com est active dans le même compte
-#  Cloudflare (confirmé). Le token de déploiement doit pouvoir éditer
-#  le DNS de la zone. Si le deploy échoue ICI faute de permission DNS,
-#  ajouter le domaine à la main (2 clics) : Workers & Pages →
-#  seven-motion-backend → Settings → Domains & Routes → Add → Custom
-#  Domain → 7themotion.com.
-routes = [
-  { pattern = "7themotion.com", custom_domain = true },
-]
+#  EN ATTENTE D'UNE DÉCISION (cf. déploiement du 2026-06-11) :
+#  attacher l'APEX `7themotion.com` en Custom Domain a échoué car le
+#  domaine a DÉJÀ des enregistrements DNS (A/CNAME) — Cloudflare refuse
+#  d'écraser. Deux options :
+#    A) Sous-domaine dédié (ex. app.7themotion.com) → aucun risque,
+#       on décommente la ligne ci-dessous avec le sous-domaine choisi.
+#    B) Apex `7themotion.com` → il faut d'abord SUPPRIMER les
+#       enregistrements DNS existants de la racine dans Cloudflare,
+#       puis remettre { pattern = "7themotion.com", custom_domain = true }.
+# routes = [
+#   { pattern = "app.7themotion.com", custom_domain = true },
+# ]
 
 # Workers KV namespace pour stocker les configs clients.
 #
