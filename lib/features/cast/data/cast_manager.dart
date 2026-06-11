@@ -795,14 +795,30 @@ class CastManager extends ChangeNotifier {
     );
 
     // Profil retenu pour ce flux (informé par MIME + LIVE/VOD heuristique).
-    // RESTAURATION cast LG : on garde le profil D'ORIGINE (video/mp2t +
-    // DLNA.ORG_PN). L'adaptation vers `video/vnd.dlna.mpeg-tts` (commit
-    // e49be67) est annulée — elle avait cassé le cast LG.
-    final DlnaProfile profile = DlnaProfiles.select(
+    DlnaProfile profile = DlnaProfiles.select(
       url: probe.finalUrl,
       finalMime: probe.mime,
       isLive: probe.isLive,
     );
+
+    // Adaptation MIME selon la sink réelle de la TV. Cas constaté
+    // empiriquement sur LG QNED816QA : sa sink annonce
+    // `video/vnd.dlna.mpeg-tts` (MIME DLNA-standard pour MPEG-TS) mais
+    // PAS `video/mp2t`. Quand on envoie un DIDL-Lite avec `video/mp2t`,
+    // la TV refuse avec "Resource not found". On rewrite le MIME (et on
+    // drop le profileName DLNA qui n'est pas dans sa sink non plus).
+    if (profile.mime == 'video/mp2t' &&
+        sink.entries.isNotEmpty &&
+        !sink.mimeTypes.contains('video/mp2t') &&
+        sink.mimeTypes.contains('video/vnd.dlna.mpeg-tts')) {
+      profile = DlnaProfile(
+        mime: 'video/vnd.dlna.mpeg-tts',
+        profileName: null, // pas de PN MPEG_TS_* dans la sink LG
+        transferMode: profile.transferMode,
+        objectClass: profile.objectClass,
+        fileExtension: profile.fileExtension,
+      );
+    }
 
     diag.profile = ProfileSummary.from(profile);
 
