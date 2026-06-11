@@ -498,5 +498,7 @@
   "profileTheme": "السمة",
   "profileThemeSub": "اختر لونك",
   "themeChooseSub": "يتغير اللون فورًا في كل أنحاء التطبيق",
-  "themeChooseTitle": "اختر سمتك"
+  "themeChooseTitle": "اختر سمتك",
+  "catFilterMovies": "سينما",
+  "catFilterSeries": "مسلسلات"
 }

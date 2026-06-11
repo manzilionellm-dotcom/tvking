@@ -498,5 +498,7 @@
   "profileTheme": "Tema",
   "profileThemeSub": "Vælg din farve",
   "themeChooseSub": "Farven ændres øjeblikkeligt i hele appen",
-  "themeChooseTitle": "Vælg dit tema"
+  "themeChooseTitle": "Vælg dit tema",
+  "catFilterMovies": "Film",
+  "catFilterSeries": "Serier"
 }

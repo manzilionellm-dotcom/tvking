@@ -498,5 +498,7 @@
   "profileTheme": "Tema",
   "profileThemeSub": "Elige tu color",
   "themeChooseSub": "El color cambia al instante en toda la app",
-  "themeChooseTitle": "Elige tu tema"
+  "themeChooseTitle": "Elige tu tema",
+  "catFilterMovies": "Cine",
+  "catFilterSeries": "Series"
 }

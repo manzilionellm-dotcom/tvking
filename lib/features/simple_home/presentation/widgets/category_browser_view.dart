@@ -46,16 +46,15 @@ enum _Bucket {
   const _Bucket(this.icon);
   final IconData icon;
 
-  /// Libellé traduit. On réutilise les clés de section déjà traduites
-  /// pour Films/Séries ; TV et Adultes ont leurs propres clés.
+  /// Libellé traduit du rayon (TV · Cinéma · Série · Adulte).
   String label(BuildContext context) {
     switch (this) {
       case _Bucket.tv:
         return context.l10n.catFilterTv;
       case _Bucket.films:
-        return context.l10n.sectionMovies;
+        return context.l10n.catFilterMovies;
       case _Bucket.series:
-        return context.l10n.sectionSeries;
+        return context.l10n.catFilterSeries;
       case _Bucket.adult:
         return context.l10n.catFilterAdult;
     }
@@ -98,7 +97,10 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
   /// Catégorie ouverte (`null` = on est sur la liste des catégories).
   String? _selected;
 
-  /// Filtre de rayon actif (`null` = « Tout »).
+  /// Rayon actif (TV / Cinéma / Série / Adulte). `null` au tout début
+  /// = pas encore choisi → on prend le 1er rayon présent (plus de bouton
+  /// « Tout » : il embrouillait, demande client). Toujours un rayon
+  /// sélectionné, bien séparé et lisible.
   _Bucket? _bucket;
 
   /// Regroupe les chaînes par catégorie BRUTE (group-title) en
@@ -154,20 +156,27 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
     final Map<String, _Bucket> catBucket = <String, _Bucket>{
       for (final String c in allCats) c: _bucketOf(c),
     };
-    final Set<_Bucket> present =
-        catBucket.values.toSet();
+    final Set<_Bucket> present = catBucket.values.toSet();
 
-    // Catégories visibles selon le filtre actif.
-    final List<String> cats = _bucket == null
-        ? allCats
-        : allCats.where((String c) => catBucket[c] == _bucket).toList();
+    // Rayons présents, dans un ordre fixe et lisible (TV → Cinéma →
+    // Série → Adulte). L'adulte reste un rayon À PART, jamais mélangé
+    // au cinéma (demande client).
+    final List<_Bucket> ordered =
+        _Bucket.values.where(present.contains).toList();
+
+    // Rayon effectif : celui choisi s'il est présent, sinon le 1er.
+    final _Bucket effective =
+        (_bucket != null && present.contains(_bucket)) ? _bucket! : ordered.first;
+
+    // Catégories visibles = celles du rayon actif (plus de « Tout »).
+    final List<String> cats =
+        allCats.where((String c) => catBucket[c] == effective).toList();
 
     return Column(
       children: <Widget>[
         // Barre de filtres : affichée seulement s'il y a plus d'un rayon
-        // (sinon elle ne sert à rien). « Tout » + les rayons présents,
-        // dans un ordre fixe et lisible.
-        if (present.length > 1) _buildFilterBar(present),
+        // (sinon inutile, on n'affiche que ce rayon unique).
+        if (ordered.length > 1) _buildFilterBar(ordered, effective),
         Expanded(
           child: cats.isEmpty
               ? Center(
@@ -196,29 +205,24 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
     );
   }
 
-  /// Barre horizontale de filtres (« Tout » + rayons présents).
-  Widget _buildFilterBar(Set<_Bucket> present) {
-    // Ordre fixe et logique des onglets, on ne garde que ceux présents.
-    final List<_Bucket?> tabs = <_Bucket?>[
-      null, // « Tout »
-      for (final _Bucket b in _Bucket.values)
-        if (present.contains(b)) b,
-    ];
+  /// Barre horizontale de filtres : uniquement les rayons présents
+  /// (TV · Cinéma · Série · Adulte). PAS de bouton « Tout » — il
+  /// embrouillait (demande client). Un rayon est toujours actif.
+  Widget _buildFilterBar(List<_Bucket> ordered, _Bucket effective) {
     return SizedBox(
       height: 46,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-        itemCount: tabs.length,
+        itemCount: ordered.length,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (BuildContext context, int i) {
-          final _Bucket? b = tabs[i];
-          final bool active = b == _bucket;
+          final _Bucket b = ordered[i];
           return _FilterChip(
-            label: b?.label(context) ?? context.l10n.catFilterAll,
-            icon: b?.icon ?? Icons.apps_rounded,
-            active: active,
+            label: b.label(context),
+            icon: b.icon,
+            active: b == effective,
             onTap: () => setState(() => _bucket = b),
           );
         },

@@ -1848,7 +1848,7 @@
   "@catFilterTv": {
     "description": "Filtre catégories : direct/TV"
   },
-  "catFilterAdult": "Adultes",
+  "catFilterAdult": "Adulte",
   "@catFilterAdult": {
     "description": "Filtre catégories : adulte"
   },
@@ -1887,5 +1887,13 @@
   "xtreamHaveCode": "J'ai un code Xtream",
   "@xtreamHaveCode": {
     "description": "Bouton : j’ai un code Xtream"
+  },
+  "catFilterMovies": "Cinéma",
+  "catFilterSeries": "Série",
+  "@catFilterMovies": {
+    "description": "Filtre catégories : cinéma"
+  },
+  "@catFilterSeries": {
+    "description": "Filtre catégories : série"
   }
 }
