@@ -126,7 +126,16 @@ class PlaylistRepository {
         orderBy: 'local_id ASC',
       );
     } else {
-      // Fallback : aucune playlist active explicitement -> tout
+      // Aucune playlist active. AVANT de tout renvoyer, on PURGE les
+      // chaînes orphelines (dont la playlist a été supprimée) : sur les
+      // bases créées avant l'activation des clés étrangères, le CASCADE
+      // n'avait pas joué et ces chaînes « fantômes » réapparaissaient
+      // après suppression de toutes les listes. Cette purge guérit ces
+      // bases au premier passage → l'écran se vide vraiment.
+      await db.delete(
+        'channels',
+        where: 'playlist_id NOT IN (SELECT id FROM playlists)',
+      );
       rows = await db.query(
         'channels',
         orderBy: 'local_id ASC',
@@ -673,7 +682,13 @@ class PlaylistRepository {
       whereArgs: <Object>[id],
       limit: 1,
     );
-    // ON DELETE CASCADE → les chaînes liées tombent automatiquement
+    // Suppression EXPLICITE des chaînes de cette liste AVANT la liste.
+    // On ne se repose pas sur le seul `ON DELETE CASCADE` : il exige que
+    // `PRAGMA foreign_keys = ON` soit actif (ce qui est désormais le cas,
+    // cf. PlaylistDatabase._onConfigure), mais ce delete direct garantit
+    // le nettoyage même sur d'anciennes bases et purge toute chaîne déjà
+    // orpheline. Sans ça, les chaînes réapparaissaient après suppression.
+    await db.delete('channels', where: 'playlist_id = ?', whereArgs: <Object>[id]);
     await db.delete('playlists', where: 'id = ?', whereArgs: <Object>[id]);
     if (wasActive.isNotEmpty) {
       final List<Map<String, Object?>> next = await db.query(

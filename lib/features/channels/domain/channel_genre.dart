@@ -196,8 +196,19 @@ abstract final class ChannelClassifier {
   //  Tables de mots-clés
   // -------------------------------------------------------
 
+  // Marqueurs « adulte ». Liste élargie pour que le rayon « Adulte »
+  // apparaisse vraiment : les fournisseurs étiquettent l'adulte de mille
+  // façons (« +18 », « XXX », « PORN », marques connues…). On reste sur
+  // des termes À HAUTE PRÉCISION (recherchés comme tokens, donc bornés
+  // par des non-lettres) pour ne PAS classer par erreur des chaînes
+  // normales. Tous ces mots envoient la chaîne dans le rayon Adulte.
   static const List<String> _kAdultKeywords = <String>[
-    'xxx', 'adult', 'adulte', 'porn', '18+', 'erotic',
+    'xxx', 'adult', 'adulte', 'adultes', 'porn', 'porno',
+    '18+', '+18', 'x-rated', 'xrated',
+    'erotic', 'erotik', 'erotica', 'erotique',
+    'sex', 'sexe', 'sexy', 'sexo',
+    'playboy', 'penthouse', 'hustler', 'brazzers', 'dorcel',
+    'vixen', 'vivid', 'redlight', 'colmax', 'pinko', 'naughty', 'nubile',
   ];
 
   static const List<String> _kSportsKeywords = <String>[

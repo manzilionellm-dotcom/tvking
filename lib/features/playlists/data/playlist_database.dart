@@ -48,9 +48,19 @@ class PlaylistDatabase {
     return openDatabase(
       dbPath,
       version: _kDbVersion,
+      onConfigure: _onConfigure,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
+  }
+
+  /// Active les clés étrangères SUR CHAQUE connexion. SQLite les
+  /// désactive par défaut : sans ce PRAGMA, le `ON DELETE CASCADE` de la
+  /// table `channels` ne se déclenche JAMAIS → en supprimant une liste,
+  /// ses chaînes restaient orphelines en base et réapparaissaient à
+  /// l'écran (bug « les listes effacées ne s'effacent pas »).
+  Future<void> _onConfigure(Database db) async {
+    await db.execute('PRAGMA foreign_keys = ON');
   }
 
   Future<void> _onCreate(Database db, int version) async {
