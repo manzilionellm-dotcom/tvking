@@ -1916,5 +1916,9 @@
         "type": "int"
       }
     }
+  },
+  "simpleSwitchSource": "Changer de source",
+  "@simpleSwitchSource": {
+    "description": "Bouton : changer de source (trio)"
   }
 }

@@ -504,5 +504,6 @@
   "pricingOffersTitle": "Our plans",
   "pricingLifetime": "Lifetime",
   "pricingYearly": "1 year",
-  "pricingTrialDays": "{days}-day free trial"
+  "pricingTrialDays": "{days}-day free trial",
+  "simpleSwitchSource": "Switch source"
 }

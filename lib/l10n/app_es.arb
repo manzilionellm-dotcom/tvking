@@ -504,5 +504,6 @@
   "pricingOffersTitle": "Nuestras ofertas",
   "pricingLifetime": "De por vida",
   "pricingYearly": "1 año",
-  "pricingTrialDays": "Prueba gratis de {days} días"
+  "pricingTrialDays": "Prueba gratis de {days} días",
+  "simpleSwitchSource": "Cambiar de fuente"
 }

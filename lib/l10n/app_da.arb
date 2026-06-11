@@ -504,5 +504,6 @@
   "pricingOffersTitle": "Vores tilbud",
   "pricingLifetime": "Livstid",
   "pricingYearly": "1 år",
-  "pricingTrialDays": "{days} dages gratis prøve"
+  "pricingTrialDays": "{days} dages gratis prøve",
+  "simpleSwitchSource": "Skift kilde"
 }

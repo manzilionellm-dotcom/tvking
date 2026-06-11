@@ -1797,6 +1797,15 @@ async function ensureSourcesTable(env) {
        )`,
     )
     .run();
+  // TRIO (jusqu'à 3 sources sur une même MAC) : colonne additive qui
+  // stocke le tableau JSON des sources. Les colonnes simples ci-dessus
+  // gardent la 1re source (compat ascendante avec l'ancien app). ALTER
+  // idempotent : ignore l'erreur si la colonne existe déjà.
+  try {
+    await env.DB.prepare('ALTER TABLE device_sources ADD COLUMN sources_json TEXT').run();
+  } catch (_) {
+    /* colonne déjà présente */
+  }
 }
 
 /// Normalise + valide un objet source venant du panel. Retourne
@@ -1825,22 +1834,27 @@ function normalizeSource(raw) {
   return { error: "type must be 'xtream' or 'm3u'" };
 }
 
-/// Upsert (insère ou remplace) la source d'une MAC.
-async function upsertDeviceSource(env, mac, source) {
+/// Upsert (insère ou remplace) le TRIO de sources d'une MAC.
+/// `sources` = tableau de 1 à 3 sources normalisées. On stocke le tableau
+/// complet en JSON (sources_json) ET la 1re dans les colonnes simples
+/// (compat avec l'ancienne app qui ne lit qu'une source).
+async function upsertDeviceSource(env, mac, sources) {
   await ensureSourcesTable(env);
+  const first = sources[0];
+  const json = JSON.stringify(sources);
   await env.DB
     .prepare(
       `INSERT INTO device_sources
-         (mac, type, label, server_url, username, password, m3u_url, epg_url, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(mac) DO UPDATE SET
          type=excluded.type, label=excluded.label, server_url=excluded.server_url,
          username=excluded.username, password=excluded.password,
          m3u_url=excluded.m3u_url, epg_url=excluded.epg_url,
-         updated_at=excluded.updated_at`,
+         sources_json=excluded.sources_json, updated_at=excluded.updated_at`,
     )
-    .bind(mac, source.type, source.label, source.server_url, source.username,
-          source.password, source.m3u_url, source.epg_url, Date.now())
+    .bind(mac, first.type, first.label, first.server_url, first.username,
+          first.password, first.m3u_url, first.epg_url, json, Date.now())
     .run();
 }
 
@@ -1863,7 +1877,17 @@ async function handleSourceGet(env, mac) {
     .prepare('SELECT * FROM device_sources WHERE mac = ?')
     .bind(m)
     .first();
-  return jsonResp({ mac: m, source: row || null });
+  // Renvoie le TRIO (sources_json) si présent, sinon la source simple
+  // historique. `source` reste la 1re (compat panel existant).
+  let sources = [];
+  if (row && row.sources_json) {
+    try { sources = JSON.parse(row.sources_json) || []; } catch (_) { sources = []; }
+  }
+  if (!sources.length && row) {
+    const { sources_json, mac: _mac, updated_at, ...single } = row;
+    sources = [single];
+  }
+  return jsonResp({ mac: m, source: sources[0] || null, sources });
 }
 
 async function handleSourcePut(request, env, mac, actor) {
@@ -1875,13 +1899,24 @@ async function handleSourcePut(request, env, mac, actor) {
   if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
     return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
   }
-  const norm = normalizeSource(body.source || body);
-  if (norm.error) return errResp('bad_source', norm.error, 400);
-  await upsertDeviceSource(env, m, norm.source);
+  // TRIO : on accepte un tableau `sources` (1 à 3) OU une source unique
+  // historique (`source` / corps direct). Chaque entrée est validée.
+  let rawList = Array.isArray(body.sources) ? body.sources : [body.source || body];
+  rawList = rawList.slice(0, 3); // garde-fou : 3 sources maximum
+  const sources = [];
+  for (const raw of rawList) {
+    const norm = normalizeSource(raw);
+    if (norm.error) return errResp('bad_source', norm.error, 400);
+    sources.push(norm.source);
+  }
+  if (sources.length === 0) {
+    return errResp('bad_source', 'at least one source required', 400);
+  }
+  await upsertDeviceSource(env, m, sources);
   await logAudit(env, request, actor, 'source.set',
     { type: 'device_source', id: m }, null,
-    { type: norm.source.type, label: norm.source.label });
-  return jsonResp({ ok: true, mac: m });
+    { count: sources.length, types: sources.map((s) => s.type) });
+  return jsonResp({ ok: true, mac: m, count: sources.length });
 }
 
 async function handleSourceDelete(request, env, mac, actor) {

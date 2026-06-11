@@ -264,6 +264,15 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          // Sélecteur de SOURCE — visible seulement si le client a un
+          // TRIO (≥ 2 sources poussées par le revendeur sur sa MAC). Tape
+          // → feuille pour basculer d'un abonnement à l'autre.
+          if (PlaylistRepository.instance.currentPlaylists.length >= 2)
+            IconButton(
+              tooltip: context.l10n.simpleSwitchSource,
+              icon: const Icon(Icons.layers_rounded),
+              onPressed: () => _showSourceSwitcher(context),
+            ),
           IconButton(
             tooltip: context.l10n.simpleMyAccount,
             icon: const Icon(Icons.person_rounded),
@@ -273,6 +282,65 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Feuille de bascule entre les sources du TRIO. Liste les playlists
+  /// chargées ; tape l'une d'elles → elle devient active (ses catégories
+  /// s'affichent aussitôt). Pas de saisie : tout vient du revendeur.
+  void _showSourceSwitcher(BuildContext context) {
+    final List<dynamic> playlists =
+        PlaylistRepository.instance.currentPlaylists;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext sheetCtx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Text(
+                  context.l10n.simpleSwitchSource,
+                  style: AppTextStyles.headlineMedium.copyWith(fontSize: 16),
+                ),
+              ),
+              for (final dynamic p in playlists)
+                ListTile(
+                  leading: Icon(
+                    p.isActive == true
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    color: p.isActive == true
+                        ? AppColors.accent
+                        : AppColors.textTertiary,
+                  ),
+                  title: Text(
+                    (p.name as String?)?.isNotEmpty == true
+                        ? p.name as String
+                        : 'Source',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.bodyLarge.copyWith(fontSize: 14),
+                  ),
+                  onTap: () async {
+                    Navigator.of(sheetCtx).pop();
+                    final int? id = p.id as int?;
+                    if (id != null && p.isActive != true) {
+                      await PlaylistRepository.instance.setActivePlaylist(id);
+                    }
+                  },
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
     );
   }
 

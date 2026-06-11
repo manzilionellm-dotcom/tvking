@@ -504,5 +504,6 @@
   "pricingOffersTitle": "Våra erbjudanden",
   "pricingLifetime": "Livstid",
   "pricingYearly": "1 år",
-  "pricingTrialDays": "{days} dagars gratis prov"
+  "pricingTrialDays": "{days} dagars gratis prov",
+  "simpleSwitchSource": "Byt källa"
 }

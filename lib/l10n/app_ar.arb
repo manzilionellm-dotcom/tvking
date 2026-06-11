@@ -504,5 +504,6 @@
   "pricingOffersTitle": "عروضنا",
   "pricingLifetime": "مدى الحياة",
   "pricingYearly": "سنة",
-  "pricingTrialDays": "تجربة مجانية {days} يوم"
+  "pricingTrialDays": "تجربة مجانية {days} يوم",
+  "simpleSwitchSource": "تبديل المصدر"
 }

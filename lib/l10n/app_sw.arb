@@ -504,5 +504,6 @@
   "pricingOffersTitle": "Ofa zetu",
   "pricingLifetime": "Maisha",
   "pricingYearly": "Mwaka 1",
-  "pricingTrialDays": "Jaribio la bure la siku {days}"
+  "pricingTrialDays": "Jaribio la bure la siku {days}",
+  "simpleSwitchSource": "Badilisha chanzo"
 }

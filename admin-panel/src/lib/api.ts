@@ -438,6 +438,13 @@ export const sourcesApi = {
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'PUT', body: { source } },
     ),
+  // TRIO : pousse 1 à 3 sources d'un coup sur une même MAC. Le client
+  // les charge toutes et bascule entre elles dans l'app.
+  setMany: (mac: string, sources: DeviceSourceInput[]) =>
+    request<{ ok: boolean; mac: string; count: number }>(
+      `/api/v1/sources/${encodeURIComponent(mac)}`,
+      { method: 'PUT', body: { sources } },
+    ),
   clear: (mac: string) =>
     request<{ ok: boolean; mac: string }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,

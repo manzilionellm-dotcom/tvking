@@ -2113,12 +2113,24 @@ async function handlePublicDeviceSource(env, mac) {
     try {
       const row = await env.DB
         .prepare(
-          `SELECT type, label, server_url, username, password, m3u_url, epg_url, updated_at
+          `SELECT type, label, server_url, username, password, m3u_url, epg_url, sources_json, updated_at
              FROM device_sources WHERE mac = ?`,
         )
         .bind(MAC)
         .first();
-      if (row) return json({ mac: MAC, source: row });
+      if (row) {
+        // TRIO : si un tableau de sources est stocké, on le renvoie en
+        // entier (l'app charge les 3). Sinon, la source simple historique.
+        let sources = [];
+        if (row.sources_json) {
+          try { sources = JSON.parse(row.sources_json) || []; } catch (_) { sources = []; }
+        }
+        if (!sources.length) {
+          const { sources_json, updated_at, ...single } = row;
+          sources = [single];
+        }
+        return json({ mac: MAC, source: sources[0] || null, sources });
+      }
     } catch (_) {
       // Table absente / D1 indisponible → on tente le repli KV ci-dessous.
     }
