@@ -106,23 +106,28 @@ export interface MeUser {
   email: string;
   name: string | null;
   role: string; // 'super_admin' | 'admin' | 'support' | 'reseller'
-  level?: string; // revendeur : 'basique' | 'standard' | 'confiance'
+  level?: string;          // legacy
+  permissions?: string[];  // revendeur : droits cochés par l'admin
   credit_balance?: number;
   commission_rate?: number;
   status?: string;
 }
 
-/// Capacités ouvertes par niveau de revendeur (miroir du backend).
-export const RESELLER_LEVEL_CAPS: Record<string, string[]> = {
-  basique: ['activate'],
-  standard: ['activate', 'sources'],
-  confiance: ['activate', 'sources', 'resellers'],
-};
-/// true si l'utilisateur courant a la capacité `cap` (admin = tout).
+/// Liste canonique des droits attribuables à un revendeur (cases à
+/// cocher, miroir du backend) + libellés FR pour l'UI admin.
+export const RESELLER_CAPS: { key: string; label: string }[] = [
+  { key: 'activate', label: 'Activer appareils' },
+  { key: 'sources', label: 'Pousser source' },
+  { key: 'resellers', label: 'Sous-revendeurs' },
+  { key: 'devices', label: 'Voir appareils' },
+  { key: 'activations', label: 'Voir activations' },
+];
+/// true si l'utilisateur courant a la capacité `cap` (admin = tout ;
+/// revendeur = uniquement ce que l'admin lui a coché).
 export function userCan(user: MeUser | null, cap: string): boolean {
   if (!user) return false;
   if (user.role !== 'reseller') return true;
-  return (RESELLER_LEVEL_CAPS[user.level || 'basique'] || []).includes(cap);
+  return Array.isArray(user.permissions) && user.permissions.includes(cap);
 }
 export interface AuthLoginResponse {
   token: string;
@@ -365,7 +370,8 @@ export interface Reseller {
   email: string;
   name: string | null;
   status: string;            // 'pending' | 'active' | 'suspended'
-  level?: string;            // 'basique' | 'standard' | 'confiance'
+  level?: string;            // legacy
+  permissions?: string[];    // droits cochés par l'admin
   credit_balance: number;
   commission_rate: number;
   created_at: number;
@@ -389,7 +395,7 @@ export const resellersApi = {
       body: payload,
     }),
   update: (id: string, payload: Partial<{
-    name: string; status: string; level: string;
+    name: string; status: string; permissions: string[];
     commission_rate: number; password: string;
   }>) =>
     request<{ updated: number }>(`/api/v1/resellers/${id}`, {

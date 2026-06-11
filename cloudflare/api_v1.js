@@ -422,6 +422,9 @@ async function apiV1Inner(request, env) {
   // /activate — activer un appareil par sa MAC (owner OU revendeur).
   // Cree client+device+licence et debite les credits du revendeur.
   if (parts[0] === 'activate' && parts.length === 1 && request.method === 'POST') {
+    if (!resellerCan(a.user, 'activate')) {
+      return errResp('forbidden', 'Ton compte n\'a pas le droit d\'activer des appareils.', 403);
+    }
     return handleActivate(request, env, a.user, actor);
   }
 
@@ -2248,44 +2251,67 @@ function isOwner(user) {
 
 // ----- Login revendeur (table `resellers`, role JWT 'reseller') -----
 // =========================================================
-//  REVENDEURS — niveaux de permission + auto-inscription
+//  REVENDEURS — droits À LA CARTE (cases à cocher) + inscription
 // =========================================================
-//  3 niveaux prédéfinis. Chaque niveau ouvre un ensemble de
-//  capacités. L'admin choisit le niveau de chaque revendeur.
-//    - basique   : activer des appareils, c'est tout.
-//    - standard  : + pousser des sources (playlists) aux clients.
-//    - confiance  : + gérer ses propres sous-revendeurs.
-//  (apps/tarifs en lecture, et le solde de crédits, restent communs.)
-const RESELLER_CAPS = {
+//  L'admin coche EXACTEMENT les droits qu'il accorde à chaque revendeur
+//  (pas de niveaux figés). Liste canonique des droits attribuables :
+const RESELLER_CAPS_ALL = [
+  'activate',    // activer un appareil
+  'sources',     // pousser une source (playlist) aux clients
+  'resellers',   // gérer ses propres sous-revendeurs
+  'devices',     // voir ses appareils
+  'activations', // voir ses activations
+];
+
+//  Ancien modèle « niveaux » — gardé UNIQUEMENT pour dériver les droits
+//  des comptes créés avant les cases à cocher (rétro-compat).
+const RESELLER_LEGACY_LEVEL = {
   basique: ['activate'],
   standard: ['activate', 'sources'],
-  confiance: ['activate', 'sources', 'resellers'],
+  confiance: ['activate', 'sources', 'resellers', 'devices', 'activations'],
 };
-function resellerLevelCaps(level) {
-  return RESELLER_CAPS[level] || RESELLER_CAPS.basique;
-}
-/// true si l'acteur a le droit `cap`. L'admin (super_admin) a TOUT.
-function resellerCan(user, cap) {
-  if (!user || user.role !== 'reseller') return true;
-  return resellerLevelCaps(user.level || 'basique').includes(cap);
+
+/// Normalise les droits d'un revendeur en tableau. Priorité au champ
+/// `permissions` (JSON). Sinon on dérive de l'ancien `level`. Sinon, le
+/// minimum vital : activer des appareils.
+function resellerPerms(permissionsVal, level) {
+  if (Array.isArray(permissionsVal)) return permissionsVal;
+  if (typeof permissionsVal === 'string' && permissionsVal) {
+    try { const a = JSON.parse(permissionsVal); if (Array.isArray(a)) return a; } catch (_) {}
+  }
+  return RESELLER_LEGACY_LEVEL[level] || ['activate'];
 }
 
-/// Ajoute la colonne `level` à la table resellers si absente (idempotent).
+/// Ne garde que les droits connus (anti-injection) avant stockage.
+function sanitizePerms(arr) {
+  if (!Array.isArray(arr)) return [];
+  return RESELLER_CAPS_ALL.filter((c) => arr.includes(c));
+}
+
+/// true si l'acteur a le droit `cap`. L'admin (super_admin) a TOUT ;
+/// un revendeur n'a que ce que l'admin lui a coché.
+function resellerCan(user, cap) {
+  if (!user || user.role !== 'reseller') return true;
+  return resellerPerms(user.permissions, user.level).includes(cap);
+}
+
+/// Ajoute les colonnes `level` (legacy) et `permissions` si absentes.
 async function ensureResellerLevel(env) {
   try {
     await env.DB
       .prepare("ALTER TABLE resellers ADD COLUMN level TEXT NOT NULL DEFAULT 'basique'")
       .run();
-  } catch (_) {
-    /* colonne déjà présente */
-  }
+  } catch (_) { /* colonne déjà présente */ }
+  try {
+    await env.DB.prepare('ALTER TABLE resellers ADD COLUMN permissions TEXT').run();
+  } catch (_) { /* colonne déjà présente */ }
 }
 
 // ----- Auto-inscription revendeur (PUBLIC, via le lien unique) -----
 //  Le revendeur ouvre le lien, choisit identifiant + mot de passe. Le
-//  compte est créé en statut 'pending' (niveau 'basique', 0 crédit) :
-//  il n'a AUCUN accès tant que l'admin ne l'a pas activé et ne lui a pas
-//  donné un niveau + des crédits. C'est l'admin qui garde la main.
+//  compte est créé en statut 'pending' (0 crédit, droit 'activate' par
+//  défaut) : il n'a AUCUN accès tant que l'admin ne l'a pas activé et ne
+//  lui a pas coché ses droits + donné des crédits. L'admin garde la main.
 async function handleResellerSignup(request, env) {
   await ensureResellerLevel(env);
   let body;
@@ -2312,10 +2338,10 @@ async function handleResellerSignup(request, env) {
     .prepare(
       `INSERT INTO resellers
         (id, email, password_hash, name, credit_balance_cents, credit_balance,
-         commission_rate, status, level, created_at)
-       VALUES (?, ?, ?, ?, 0, 0, 0.20, 'pending', 'basique', ?)`,
+         commission_rate, status, level, permissions, created_at)
+       VALUES (?, ?, ?, ?, 0, 0, 0.20, 'pending', 'basique', ?, ?)`,
     )
-    .bind(id, email, hash, name, now)
+    .bind(id, email, hash, name, JSON.stringify(['activate']), now)
     .run();
   return jsonResp({ ok: true, pending: true }, 201);
 }
@@ -2332,7 +2358,7 @@ async function handleResellerLogin(request, env) {
   }
   await ensureResellerLevel(env);
   const row = await env.DB
-    .prepare('SELECT id, email, password_hash, name, status, level, credit_balance FROM resellers WHERE email = ?')
+    .prepare('SELECT id, email, password_hash, name, status, level, permissions, credit_balance FROM resellers WHERE email = ?')
     .bind(email)
     .first();
   if (!row) return errResp('bad_credentials', 'Invalid credentials', 401);
@@ -2347,15 +2373,16 @@ async function handleResellerLogin(request, env) {
     return errResp('suspended', 'Compte suspendu. Contacte l\'administrateur.', 403);
   }
   const level = row.level || 'basique';
+  const permissions = resellerPerms(row.permissions, level);
   const token = await signJwt(
-    { sub: row.id, email: row.email, role: 'reseller', name: row.name, level },
+    { sub: row.id, email: row.email, role: 'reseller', name: row.name, level, permissions },
     env.ADMIN_SECRET || 'dev-secret',
   );
   return jsonResp({
     token,
     user: {
       id: row.id, email: row.email, name: row.name,
-      role: 'reseller', level, credit_balance: row.credit_balance,
+      role: 'reseller', level, permissions, credit_balance: row.credit_balance,
     },
   });
 }
@@ -2365,11 +2392,16 @@ async function handleMe(env, user) {
   if (user.role === 'reseller') {
     await ensureResellerLevel(env);
     const r = await env.DB
-      .prepare('SELECT id, email, name, status, level, credit_balance, commission_rate FROM resellers WHERE id = ?')
+      .prepare('SELECT id, email, name, status, level, permissions, credit_balance, commission_rate FROM resellers WHERE id = ?')
       .bind(user.sub)
       .first();
     if (!r) return errResp('not_found', 'Reseller not found', 404);
-    return jsonResp({ user: { ...r, level: r.level || 'basique', role: 'reseller' } });
+    return jsonResp({ user: {
+      ...r,
+      level: r.level || 'basique',
+      permissions: resellerPerms(r.permissions, r.level),
+      role: 'reseller',
+    } });
   }
   return jsonResp({ user });
 }
@@ -2456,7 +2488,7 @@ async function handleResellersList(env, user) {
   const binds = reseller ? [user.sub] : [];
   const rs = await env.DB
     .prepare(
-      `SELECT r.id, r.email, r.name, r.status, r.level, r.credit_balance,
+      `SELECT r.id, r.email, r.name, r.status, r.level, r.permissions, r.credit_balance,
               r.commission_rate, r.parent_reseller_id, r.created_at,
               (SELECT COUNT(*) FROM devices d   WHERE d.reseller_id = r.id) as devices,
               (SELECT COUNT(*) FROM licenses l  WHERE l.reseller_id = r.id) as licenses,
@@ -2465,7 +2497,12 @@ async function handleResellersList(env, user) {
     )
     .bind(...binds)
     .all();
-  return jsonResp({ items: rs.results || [] });
+  // On renvoie `permissions` en tableau prêt à cocher côté panel.
+  const items = (rs.results || []).map((r) => ({
+    ...r,
+    permissions: resellerPerms(r.permissions, r.level),
+  }));
+  return jsonResp({ items });
 }
 
 async function handleResellersGet(env, id, user) {
@@ -2572,11 +2609,11 @@ async function handleResellersUpdate(request, env, id, actor, user) {
   const sets = []; const vals = [];
   if (body.name !== undefined) { sets.push('name = ?'); vals.push(body.name); }
   if (body.status !== undefined) { sets.push('status = ?'); vals.push(body.status); }
-  // Niveau de permission (basique/standard/confiance) — owner uniquement.
-  if (body.level !== undefined && isOwner(user)) {
-    const lvl = ['basique', 'standard', 'confiance'].includes(body.level)
-      ? body.level : 'basique';
-    sets.push('level = ?'); vals.push(lvl);
+  // DROITS À LA CARTE (cases cochées par l'admin) — owner uniquement.
+  // On ne garde que les droits connus puis on stocke en JSON.
+  if (body.permissions !== undefined && isOwner(user)) {
+    sets.push('permissions = ?');
+    vals.push(JSON.stringify(sanitizePerms(body.permissions)));
   }
   // Seul l'owner peut changer la commission.
   if (body.commission_rate !== undefined && isOwner(user)) {

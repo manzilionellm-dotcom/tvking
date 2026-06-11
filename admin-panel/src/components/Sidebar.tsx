@@ -38,11 +38,11 @@ const OWNER_NAV: NavItem[] = [
 
 const RESELLER_NAV: NavItem[] = [
   { key: 'nav.dashboard',     to: '/' },
-  { key: 'nav.activate',      to: '/activate' },
-  // Visible seulement pour le niveau « confiance » (capacité resellers).
-  { key: 'nav.myResellers',   to: '/resellers', cap: 'resellers' },
-  { key: 'nav.myDevices',     to: '/devices' },
-  { key: 'nav.myActivations', to: '/activations' },
+  // Chaque entrée n'apparaît que si l'admin a coché le droit correspondant.
+  { key: 'nav.activate',      to: '/activate',    cap: 'activate' },
+  { key: 'nav.myResellers',   to: '/resellers',   cap: 'resellers' },
+  { key: 'nav.myDevices',     to: '/devices',     cap: 'devices' },
+  { key: 'nav.myActivations', to: '/activations', cap: 'activations' },
   { key: 'nav.account',       to: '/account' },
 ];
 

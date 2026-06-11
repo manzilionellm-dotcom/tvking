@@ -1,8 +1,15 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import {
-  resellersApi, creditsApi, type Reseller, ApiError,
+  resellersApi, creditsApi, type Reseller, ApiError, RESELLER_CAPS,
 } from '@/lib/api';
+
+/// Lien UNIQUE d'inscription revendeur (à partager). `?revendeur` force
+/// l'écran de connexion en mode revendeur seul → le revendeur ne voit
+/// JAMAIS la partie admin.
+function resellerSignupLink(): string {
+  return `${window.location.origin}/?revendeur`;
+}
 
 /// Page REVENDEURS (owner only). Creer des revendeurs, leur emettre
 /// des credits (tokens), voir leur solde et leur volume de ventes.
@@ -13,6 +20,15 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
   const [showCreate, setShowCreate] = useState(false);
   const [creditFor, setCreditFor] = useState<Reseller | null>(null);
   const [pwdFor, setPwdFor] = useState<Reseller | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  function copyLink() {
+    const link = resellerSignupLink();
+    navigator.clipboard?.writeText(link).then(
+      () => { setCopied(true); setTimeout(() => setCopied(false), 2000); },
+      () => setErr('Copie impossible — copie manuellement : ' + link),
+    );
+  }
 
   function reload() {
     setLoading(true);
@@ -33,12 +49,21 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
       subtitle={`${items.length} revendeur(s)`}
       onLogout={onLogout}
       actions={
-        <button
-          onClick={() => setShowCreate(true)}
-          className="rounded-md bg-accent px-3 py-2 text-sm font-semibold text-black hover:bg-accent-bright"
-        >
-          + Nouveau revendeur
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={copyLink}
+            title={resellerSignupLink()}
+            className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-sm font-semibold text-accent-bright hover:bg-accent/20"
+          >
+            {copied ? '✓ Lien copié' : '🔗 Copier le lien revendeur'}
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="rounded-md bg-accent px-3 py-2 text-sm font-semibold text-black hover:bg-accent-bright"
+          >
+            + Nouveau revendeur
+          </button>
+        </div>
       }
     >
       {err && (
@@ -51,7 +76,7 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
             <tr className="text-left text-[10px] uppercase tracking-widest text-ink-tertiary">
               <th className="px-4 py-3">Revendeur</th>
               <th className="px-4 py-3">Statut</th>
-              <th className="px-4 py-3">Niveau</th>
+              <th className="px-4 py-3">Droits (coche)</th>
               <th className="px-4 py-3 text-right">Crédits</th>
               <th className="px-4 py-3 text-right">Appareils</th>
               <th className="px-4 py-3 text-right">Licences</th>
@@ -81,20 +106,7 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
                   <StatusBadge status={r.status} />
                 </td>
                 <td className="px-4 py-3">
-                  <select
-                    value={r.level || 'basique'}
-                    onChange={(e) =>
-                      resellersApi
-                        .update(r.id, { level: e.target.value })
-                        .then(reload)
-                        .catch((x) => setErr(x.message))
-                    }
-                    className="rounded-md border border-white/10 bg-slate px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-accent"
-                  >
-                    <option value="basique">Basique (activer)</option>
-                    <option value="standard">Standard (+ sources)</option>
-                    <option value="confiance">Confiance (presque tout)</option>
-                  </select>
+                  <PermsCell r={r} onChanged={reload} onErr={setErr} />
                 </td>
                 <td className="px-4 py-3 text-right font-semibold text-accent-bright">{r.credit_balance}</td>
                 <td className="px-4 py-3 text-right text-ink-secondary">{r.devices ?? 0}</td>
@@ -157,6 +169,47 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
         />
       )}
     </AppLayout>
+  );
+}
+
+/// Cellule DROITS : une puce cliquable par capacité. L'admin coche
+/// EXACTEMENT ce qu'il accorde — chaque clic enregistre tout de suite.
+function PermsCell({
+  r, onChanged, onErr,
+}: { r: Reseller; onChanged: () => void; onErr: (m: string) => void }) {
+  const perms = r.permissions || [];
+  const [busy, setBusy] = useState(false);
+  function toggle(cap: string) {
+    const next = perms.includes(cap)
+      ? perms.filter((p) => p !== cap)
+      : [...perms, cap];
+    setBusy(true);
+    resellersApi.update(r.id, { permissions: next })
+      .then(onChanged)
+      .catch((e) => onErr(e.message))
+      .finally(() => setBusy(false));
+  }
+  return (
+    <div className={'flex flex-wrap gap-1 ' + (busy ? 'pointer-events-none opacity-50' : '')}>
+      {RESELLER_CAPS.map((c) => {
+        const on = perms.includes(c.key);
+        return (
+          <button
+            key={c.key}
+            type="button"
+            onClick={() => toggle(c.key)}
+            className={
+              'rounded-full border px-2 py-0.5 text-[10px] font-medium transition ' +
+              (on
+                ? 'border-accent bg-accent/20 text-accent-bright'
+                : 'border-white/10 bg-slate text-ink-tertiary hover:border-white/30')
+            }
+          >
+            {on ? '✓ ' : ''}{c.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
