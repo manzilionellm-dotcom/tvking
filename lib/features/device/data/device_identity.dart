@@ -7,7 +7,7 @@
 //      MK:A3:B2:F1:8E:91
 //
 //  "MK" = préfixe constant hérité (historique). On le conserve tel
-//  quel après le rebrand BLACK7 ROYAL pour ne pas invalider les MACs
+//  quel après le rebrand The Few pour ne pas invalider les MACs
 //  déjà émises chez les clients existants.
 //  Les 5 octets suivants = aléatoires, générés au premier
 //  lancement et stockés à vie dans SharedPreferences.

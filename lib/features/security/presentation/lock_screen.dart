@@ -144,7 +144,7 @@ class _LockScreenState extends State<LockScreen> {
                       style: AppTextStyles.headlineLarge,
                     ),
                     // Le badge verifie est l'identite visuelle de
-                    // BLACK7 ROYAL uniquement.
+                    // The Few uniquement.
                     if (FlavorConfig.current.flavor == Flavor.sevenMotion) ...[
                       const SizedBox(width: 8),
                       const VerifiedBadge.large(),

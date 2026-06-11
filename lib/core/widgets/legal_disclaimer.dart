@@ -1,9 +1,9 @@
 // =========================================================
-//  legal_disclaimer.dart — Mention légale BLACK7 ROYAL
+//  legal_disclaimer.dart — Mention légale The Few
 // =========================================================
 //  Bandeau réutilisable à afficher PARTOUT où l'utilisateur
 //  pourrait s'interroger sur la légalité de l'app et confondre
-//  "BLACK7 ROYAL" avec un fournisseur IPTV :
+//  "The Few" avec un fournisseur IPTV :
 //
 //    - À propos (en haut, avant Aide VIP)
 //    - Onboarding (1er lancement, avant choix appareil)

@@ -184,7 +184,7 @@ class BrandSignature extends StatefulWidget {
 
   /// Si null : utilise automatiquement la tagline du flavor courant
   /// (`FlavorConfig.current.appTagline`). En pratique presque toujours
-  /// null pour que la signature suive l'identite du build (BLACK7 ROYAL
+  /// null pour que la signature suive l'identite du build (The Few
   /// affichera 'THE FEW · NOT FOR EVERYONE', Red Room affichera
   /// 'STRICTLY 18+ · AFTER HOURS', etc.).
   final String? text;

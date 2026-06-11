@@ -44,7 +44,7 @@ class BiometricAuth {
   /// s'est authentifié avec succès, `false` si annulation ou échec.
   /// Ne throw jamais — fallback silent sur `false` en cas d'erreur.
   Future<bool> authenticate({
-    String reason = 'Déverrouille BLACK7 ROYAL',
+    String reason = 'Déverrouille The Few',
   }) async {
     try {
       return await _auth.authenticate(

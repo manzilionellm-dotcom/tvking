@@ -63,7 +63,7 @@ import 'features/subscription/data/subscription_state.dart';
 import 'features/subscription/presentation/subscription_gate.dart';
 
 Future<void> main() async {
-  // Identité du build BLACK7 ROYAL (application mobile, seul produit du
+  // Identité du build The Few (application mobile, seul produit du
   // projet depuis le retrait des variantes TV et Red Room). Doit être
   // posée AVANT `bootApp()` (qui touche aux repos lisant `FlavorConfig`).
   FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
@@ -166,7 +166,7 @@ Future<void> bootApp() async {
 
   // NB : la "fixation à distance" (RemoteConfigRepository qui
   // fetchait des playlists depuis un Gist toutes les 30 min) a
-  // été RETIRÉE à la demande user. BLACK7 ROYAL ne fournit aucun
+  // été RETIRÉE à la demande user. The Few ne fournit aucun
   // contenu — l'utilisateur apporte sa propre URL IPTV en local.
 
   // Credentials du mode admin (PIN + GitHub PAT + gist ID). Chargés
@@ -421,7 +421,7 @@ class _AppEntryState extends State<_AppEntry> {
     final FlavorConfig flavor = FlavorConfig.current;
     _lockEnabled = true;
 
-    // Gate âge : uniquement Red Room. Sur BLACK7 ROYAL, on by-pass
+    // Gate âge : uniquement Red Room. Sur The Few, on by-pass
     // directement avec `true` pour ne pas bloquer le boot.
     if (flavor.requireAgeGate) {
       AgeGateSettings.instance.isConfirmed().then((bool ok) {
@@ -538,7 +538,7 @@ class _AppEntryState extends State<_AppEntry> {
   }
 }
 
-/// Splash BLACK7 ROYAL — apparaît max 50 ms le temps que le flag
+/// Splash The Few — apparaît max 50 ms le temps que le flag
 /// onboarding soit lu depuis SharedPreferences. Toujours en Cinema
 /// Mode : c'est l'identité du produit qui s'affiche en premier.
 class _Splash extends StatelessWidget {
@@ -558,7 +558,7 @@ class _Splash extends StatelessWidget {
                   children: <Widget>[
                     const BrandLogo.splash(),
                     const SizedBox(height: 18),
-                    // Ligne "BLACK7 ROYAL ✓" — le badge bleu vérifié à côté
+                    // Ligne "The Few ✓" — le badge bleu vérifié à côté
                     // du wordmark, comme sur les profils Instagram /
                     // WhatsApp / Twitter officiels.
                     Row(

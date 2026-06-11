@@ -1,5 +1,5 @@
 // =========================================================
-//  cinematic_spacing.dart — Tokens de rythme cinéma BLACK7 ROYAL
+//  cinematic_spacing.dart — Tokens de rythme cinéma The Few
 // =========================================================
 //  Le brief design Phase 1 demande "cinematic spacing : the
 //  current app is too dense, use larger breathing spaces,

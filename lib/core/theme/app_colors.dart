@@ -1,5 +1,5 @@
 // =========================================================
-//  app_colors.dart — Facade Cinema Mode du système BLACK7 ROYAL
+//  app_colors.dart — Facade Cinema Mode du système The Few
 // =========================================================
 //  IMPORTANT — Cette classe n'est PAS la source de vérité.
 //  C'est une façade statique qui réplique le `LumiereColors.cinema`
@@ -22,7 +22,7 @@ import 'lumiere_tokens.dart';
 
 abstract final class AppColors {
   // -------------------------------------------------------
-  //  FONDS / SURFACES (Cinema Mode BLACK7 ROYAL)
+  //  FONDS / SURFACES (Cinema Mode The Few)
   // -------------------------------------------------------
 
   /// Fond principal — charbon presque noir avec une trace de chaleur.
@@ -74,7 +74,7 @@ abstract final class AppColors {
       const Color(0xFFF0EDE9).withValues(alpha: 0.06);
 
   // -------------------------------------------------------
-  //  ACCENT EMBER (rouge braise BLACK7 ROYAL)
+  //  ACCENT EMBER (rouge braise The Few)
   // -------------------------------------------------------
 
   //  --- ACCENT DYNAMIQUE (thème choisi par le client) ---

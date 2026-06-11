@@ -7,7 +7,7 @@
 //    - couleur d'accent (hex) → AccentController.applyCustom
 //
 //  Best-effort : si le réseau échoue ou que rien n'est configuré, l'app
-//  garde ses défauts (BLACK7 ROYAL, braise). Le fond clair/blanc (`bg`)
+//  garde ses défauts (The Few, braise). Le fond clair/blanc (`bg`)
 //  est lu mais pas encore appliqué (l'app est conçue en sombre — étape
 //  suivante). Aucune dépendance au cast.
 // =========================================================

@@ -1,5 +1,5 @@
 // =========================================================
-//  brand_logo.dart — Logo officiel BLACK7 ROYAL
+//  brand_logo.dart — Logo officiel The Few
 // =========================================================
 //  Wrapper centralisé autour de l'asset PNG/JPG du logo. Permet
 //  de changer la source (asset path) à un seul endroit le jour
@@ -58,7 +58,7 @@ class BrandLogo extends StatelessWidget {
 
   /// Asset PNG/JPG selon le flavor courant. Le logo Red Room (R rouge
   /// stylise sur velours noir, livre par l'utilisateur) remplace
-  /// 1:1 le logo BLACK7 ROYAL partout dans l'app quand le binaire est
+  /// 1:1 le logo The Few partout dans l'app quand le binaire est
   /// celui de Red Room.
   static String get _assetPath {
     switch (FlavorConfig.current.flavor) {
@@ -166,13 +166,13 @@ class BrandLogo extends StatelessWidget {
 
 enum BrandLogoSize { compact, medium, splash, hero }
 
-/// Constantes de chaîne pour les wordmarks BLACK7 ROYAL.
+/// Constantes de chaîne pour les wordmarks The Few.
 abstract final class BrandStrings {
   /// Nom court — utilisé partout dans l'app.
-  static const String appName = 'BLACK7 ROYAL';
+  static const String appName = 'The Few';
 
   /// Nom long — utilisé dans le titre de la fenêtre / des stores.
-  static const String longName = 'BLACK7 ROYAL — Premium IPTV';
+  static const String longName = 'The Few — Premium IPTV';
 
   /// Tagline courte pour les hero / onboarding.
   static const String tagline = 'Cinéma sans limites';

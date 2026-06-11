@@ -1,8 +1,8 @@
 // =========================================================
-//  flavor.dart — Configuration produit BLACK7 ROYAL (mobile)
+//  flavor.dart — Configuration produit The Few (mobile)
 // =========================================================
 //  Le projet ne contient plus qu'UN seul produit : l'application
-//  MOBILE BLACK7 ROYAL (7 MOTION). Les anciennes variantes TV
+//  MOBILE The Few (7 MOTION). Les anciennes variantes TV
 //  (Android TV / Fire TV) et Red Room (édition adulte) ont été
 //  retirées du projet.
 //
@@ -21,7 +21,7 @@
 import 'package:flutter/foundation.dart';
 
 /// Identité du produit lancé. Le projet ne contient plus qu'un seul
-/// produit : l'application mobile BLACK7 ROYAL (7 MOTION). Les variantes
+/// produit : l'application mobile The Few (7 MOTION). Les variantes
 /// TV et Red Room ont été retirées. L'enum est conservé (un seul membre)
 /// pour ne pas casser les lecteurs de `FlavorConfig.current.flavor`.
 enum Flavor {
@@ -45,13 +45,13 @@ class FlavorConfig {
   final Flavor flavor;
 
   /// Nom affiché à l'utilisateur (titre de l'app, barre, splash).
-  ///   - BLACK7 ROYAL  → "BLACK7 ROYAL"
+  ///   - The Few  → "The Few"
   ///   - Red Room  → "Red Room"
   final String appName;
 
   /// Tagline courte affichée sous le wordmark sur le splash et
   /// les écrans vitrine.
-  ///   - BLACK7 ROYAL  → "THE FEW · NOT FOR EVERYONE"
+  ///   - The Few  → "THE FEW · NOT FOR EVERYONE"
   ///   - Red Room  → "STRICTLY 18+ · AFTER HOURS"
   final String appTagline;
 
@@ -77,7 +77,7 @@ class FlavorConfig {
   /// code secret) — c'est l'app qui fournit le serveur implicitement.
   /// Strategie revendeur : tous les clients de cette app pointent
   /// vers le meme serveur central, identifie par leurs credentials.
-  /// Si un jour BLACK7 ROYAL et Red Room ont des serveurs differents,
+  /// Si un jour The Few et Red Room ont des serveurs differents,
   /// il suffit de changer cette ligne sur la variante concernee.
   final String iptvServerUrl;
 
@@ -121,11 +121,11 @@ class FlavorConfig {
   //  Configurations canoniques (utilisées par les mains)
   // -------------------------------------------------------
 
-  /// BLACK7 ROYAL — lecteur IPTV premium grand public.
+  /// The Few — lecteur IPTV premium grand public.
   static const FlavorConfig sevenMotion = FlavorConfig(
     flavor: Flavor.sevenMotion,
-    appName: 'BLACK7 ROYAL',
-    appTagline: 'THE FEW · NOT FOR EVERYONE',
+    appName: 'The Few',
+    appTagline: 'NOT FOR EVERYONE',
     adultOnly: false,
     biometricMandatory: false,
     requireAgeGate: false,

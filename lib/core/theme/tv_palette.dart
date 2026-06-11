@@ -3,7 +3,7 @@
 // =========================================================
 //  POURQUOI une palette dédiée à la TV ?
 //  ----------------------------------------------------------
-//  L'app téléphone garde son identité historique BLACK7 ROYAL
+//  L'app téléphone garde son identité historique The Few
 //  (charbon + rouge braise, cf. `lumiere_tokens.dart`). La version
 //  Télévision (Android TV / Fire TV / Google TV) adopte, elle, une
 //  identité « VIOLET ROYAL » : un violet profond inspiré des grandes

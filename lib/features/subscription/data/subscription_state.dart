@@ -1,7 +1,7 @@
 // =========================================================
 //  subscription_state.dart — État de l'essai/abonnement
 // =========================================================
-//  Modèle commercial BLACK7 ROYAL (demande user) :
+//  Modèle commercial The Few (demande user) :
 //    - 7 jours d'essai gratuit dès le 1er lancement
 //    - Ensuite 5 €/an ou 9,90 € à vie, paiement sur
 //      https://7themotion.com (PAS d'in-app purchase Google Play →

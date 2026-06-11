@@ -1,5 +1,5 @@
 // =========================================================
-//  title_curator.dart — Couche d'abstraction cinéma BLACK7 ROYAL
+//  title_curator.dart — Couche d'abstraction cinéma The Few
 // =========================================================
 //
 //  Mission : transformer les noms de chaînes IPTV bruts —

@@ -5,7 +5,7 @@
 //  ----------------------------------------------------------
 //  `TvFocusable` (le wrapper focus-aware utilisé PARTOUT, téléphone
 //  ET TV) affiche par défaut un focus ROUGE EMBER (identité téléphone
-//  BLACK7 ROYAL). Mais la version Télévision veut un focus VIOLET
+//  The Few). Mais la version Télévision veut un focus VIOLET
 //  (identité « VIOLET ROYAL », cf. `tv_palette.dart`).
 //
 //  On ne peut PAS changer la couleur en dur dans `TvFocusable` : ça

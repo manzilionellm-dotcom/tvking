@@ -7,7 +7,7 @@
 # =========================================================
 
 name: tv_king
-description: "7 MOTION — lecteur IPTV premium pour mobile, Android TV et Fire TV."
+description: "The Few — lecteur multimédia premium (Not For Everyone)."
 publish_to: 'none'
 version: 0.3.0+11
 
@@ -202,7 +202,7 @@ flutter_launcher_icons:
   # de l'icône launcher Android).
   image_path: "assets/branding/logo_black7royal.png"
   min_sdk_android: 21
-  adaptive_icon_background: "#0A0A0C"
+  adaptive_icon_background: "#0E0E0E"
   adaptive_icon_foreground: "assets/branding/logo_black7royal.png"
 
 flutter:

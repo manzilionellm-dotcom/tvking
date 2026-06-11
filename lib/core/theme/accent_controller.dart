@@ -47,10 +47,19 @@ class AccentTheme {
 }
 
 /// Catalogue des thèmes proposés au client. Le 1er (ember) est le
-/// défaut historique BLACK7 ROYAL — valeurs IDENTIQUES à l'ancienne
+/// défaut historique The Few — valeurs IDENTIQUES à l'ancienne
 /// façade `AppColors` pour ne rien changer tant que le client n'a pas
 /// choisi.
 const List<AccentTheme> kAccentThemes = <AccentTheme>[
+  // Défaut « The Few » — Maison Noir : or champagne sur noir profond.
+  // (1er du catalogue = appliqué tant que le client/panel n'a rien choisi.)
+  AccentTheme(
+    id: 'champagne',
+    label: 'Champagne',
+    accent: Color(0xFFC6A664),
+    bright: Color(0xFFE2C982),
+    muted: Color(0xFF8A7038),
+  ),
   AccentTheme(
     id: 'ember',
     label: 'Braise',

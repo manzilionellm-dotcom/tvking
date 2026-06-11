@@ -71,7 +71,7 @@ class SubscriptionGateScreen extends StatelessWidget {
                       children: <Widget>[
                         const BrandLogo.compact(),
                         const SizedBox(height: 14),
-                        Text('BLACK7 ROYAL',
+                        Text('The Few',
                             style: AppTextStyles.headlineLarge.copyWith(
                               fontSize: 22,
                               letterSpacing: 4,

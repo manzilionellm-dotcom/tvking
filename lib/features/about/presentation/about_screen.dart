@@ -92,7 +92,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 children: <Widget>[
                   const BrandLogo.medium(),
                   const SizedBox(height: 16),
-                  // "BLACK7 ROYAL ✓" — badge bleu Instagram-style APRÈS
+                  // "The Few ✓" — badge bleu Instagram-style APRÈS
                   // le wordmark, comme l'a demandé l'user. Pas sur
                   // l'image du logo ni sur l'icône launcher.
                   Row(
@@ -142,7 +142,7 @@ class _AboutScreenState extends State<AboutScreen> {
 
             // ----- Mention légale TiViMate-style — affichée en TOP
             //       pour que tout nouveau user comprenne dès la 1re
-            //       visite que BLACK7 ROYAL ne vend AUCUN flux IPTV.
+            //       visite que The Few ne vend AUCUN flux IPTV.
             const LegalDisclaimer.full(),
 
             const SizedBox(height: 20),

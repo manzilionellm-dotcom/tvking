@@ -4,7 +4,7 @@
 //  Le panel « Thème » peut renommer l'app à distance (ex.
 //  « WorldCup2026 »). Ce singleton ChangeNotifier porte le nom AFFICHÉ :
 //    - surcharge distante si le panel en a posé une ;
-//    - sinon le nom du flavor (BLACK7 ROYAL).
+//    - sinon le nom du flavor (The Few).
 //  Branché à la racine (main.dart) dans le `Listenable.merge` qui
 //  reconstruit MaterialApp → le nouveau nom apparaît partout d'un coup.
 //  Aucune dépendance au cast.
@@ -21,7 +21,7 @@ class BrandConfig extends ChangeNotifier {
   String? _override;
 
   /// Nom affiché de l'app : surcharge distante (panel) si présente et non
-  /// vide, sinon le nom du flavor courant (BLACK7 ROYAL).
+  /// vide, sinon le nom du flavor courant (The Few).
   String get appName {
     final String? o = _override;
     if (o != null && o.trim().isNotEmpty) return o.trim();

@@ -148,7 +148,7 @@ class _SourceChoiceSheet extends StatelessWidget {
                 final String mac = await DeviceIdentity.instance.mac;
                 final bool ok = await VipSupport.openWhatsApp(
                   customMessage:
-                      'Bonjour, je veux activer BLACK7 ROYAL. '
+                      'Bonjour, je veux activer The Few. '
                       'Mon identifiant (MAC) : $mac',
                 );
                 if (!context.mounted) return;

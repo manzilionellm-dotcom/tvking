@@ -2,7 +2,7 @@
   "@@locale": "fr",
   "@@x-template": true,
   "@@x-description": "Template canonique — toutes les autres langues s'alignent sur ces clefs.",
-  "appName": "BLACK7 ROYAL",
+  "appName": "The Few",
   "@appName": {
     "description": "Nom de la marque — ne pas traduire."
   },
@@ -97,7 +97,7 @@
   "deviceAuto": "Auto",
   "deviceAutoSubtitle": "Détection automatique",
   "deviceAutoDesc": "L'app devine d'après ton écran. Bon choix si tu ne sais pas, ou si tu utilises plusieurs appareils.",
-  "onboardingWelcomeTitle": "Bienvenue sur BLACK7 ROYAL",
+  "onboardingWelcomeTitle": "Bienvenue sur The Few",
   "onboardingWelcomeDesc": "Cinéma sans limites. Conçu pour la TV, optimisé pour ton téléphone, beau partout.",
   "onboardingLoadTitle": "Charge ta playlist",
   "onboardingLoadDesc": "Colle une URL M3U, ou tes identifiants Xtream. Tes chaînes apparaissent en quelques secondes.",
@@ -984,7 +984,7 @@
   "@subAccountFrozen": {
     "description": "Texte UI : subAccountFrozen"
   },
-  "subUnlockAll": "Débloque tout BLACK7 ROYAL",
+  "subUnlockAll": "Débloque tout The Few",
   "@subUnlockAll": {
     "description": "Texte UI : subUnlockAll"
   },
@@ -1096,7 +1096,7 @@
   "@subLoading": {
     "description": "Texte UI : subLoading"
   },
-  "subCardSubPaid": "Merci pour ton soutien — toutes les fonctions sont débloquées sur cet appareil et tes autres installations BLACK7 ROYAL.",
+  "subCardSubPaid": "Merci pour ton soutien — toutes les fonctions sont débloquées sur cet appareil et tes autres installations The Few.",
   "@subCardSubPaid": {
     "description": "Texte UI : subCardSubPaid"
   },
@@ -1198,7 +1198,7 @@
   "@aboutCreditFonts": {
     "description": "Texte UI : aboutCreditFonts"
   },
-  "aboutLegalNotice": "BLACK7 ROYAL est un lecteur média générique. Aucun contenu n'est inclus avec l'app. Tu es responsable des sources que tu ajoutes et de leur conformité aux lois en vigueur dans ton pays.",
+  "aboutLegalNotice": "The Few est un lecteur média générique. Aucun contenu n'est inclus avec l'app. Tu es responsable des sources que tu ajoutes et de leur conformité aux lois en vigueur dans ton pays.",
   "@aboutLegalNotice": {
     "description": "Texte UI : aboutLegalNotice"
   },
@@ -1496,7 +1496,7 @@
   "@deviceIdLabel": {
     "description": "Texte UI : deviceIdLabel"
   },
-  "deviceIdCaption": "Identifie ton installation BLACK7 ROYAL. Garde ce code pour le support technique de l'app. Pour toute question sur les chaînes, contacte ton fournisseur IPTV.",
+  "deviceIdCaption": "Identifie ton installation The Few. Garde ce code pour le support technique de l'app. Pour toute question sur les chaînes, contacte ton fournisseur IPTV.",
   "@deviceIdCaption": {
     "description": "Texte UI : deviceIdCaption"
   },

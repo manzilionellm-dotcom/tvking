@@ -149,7 +149,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 }
 
 // =========================================================
-//  Header : logo brand + nom flavor (Red Room / BLACK7 ROYAL)
+//  Header : logo brand + nom flavor (Red Room / The Few)
 // =========================================================
 class _Header extends StatelessWidget {
   const _Header();

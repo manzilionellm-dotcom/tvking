@@ -1,7 +1,7 @@
 // =========================================================
-//  lumiere_tokens.dart — Système de design "BLACK7 ROYAL"
+//  lumiere_tokens.dart — Système de design "The Few"
 // =========================================================
-//  Identité BLACK7 ROYAL : noir métallique + rouge braise.
+//  Identité The Few : noir métallique + rouge braise.
 //  Inspiré du logo — cinéma d'action, mouvement, intensité
 //  retenue. Pas de Netflix-red criard, pas de néon : le rouge
 //  est un rouge "ember" / "braise" qui rougeoie sans agresser.
@@ -24,7 +24,7 @@
 
 import 'package:flutter/material.dart';
 
-/// Extension `ThemeData` qui transporte la palette BLACK7 ROYAL complète.
+/// Extension `ThemeData` qui transporte la palette The Few complète.
 /// Le nom de classe reste `LumiereColors` pour conserver une API stable
 /// entre les rebrandings successifs (l'app est encore jeune, l'identité
 /// peut bouger ; les valeurs changent, l'API non).
@@ -73,7 +73,7 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
   final Color overcast;
 
   // -------- Accent ember (rouge braise) --------
-  /// Accent principal BLACK7 ROYAL : l'ember-red (#D63A30 en Cinema Mode).
+  /// Accent principal The Few : l'ember-red (#D63A30 en Cinema Mode).
   /// Nommé d'après sa valeur réelle (anciennement `champagne`, un nom
   /// hérité d'un rebranding antérieur qui ne reflétait plus la couleur).
   final Color accentEmber;
@@ -128,7 +128,7 @@ class LumiereColors extends ThemeExtension<LumiereColors> {
   final LinearGradient heroScrim;
 
   // ============================================================
-  //  Cinema Mode (BLACK7 ROYAL) — défaut, identité du produit
+  //  Cinema Mode (The Few) — défaut, identité du produit
   // ============================================================
   static const LumiereColors cinema = LumiereColors(
     canvas: Color(0xFF0A0A0C),

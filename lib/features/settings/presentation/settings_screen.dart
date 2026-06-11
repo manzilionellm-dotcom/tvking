@@ -117,7 +117,7 @@ class SettingsScreen extends StatelessWidget {
             // NOTE: la section "Mes playlists / Ajouter M3U" a été
             // retirée. Le client ne gère plus ses playlists lui-même —
             // elles arrivent automatiquement via le revendeur (admin)
-            // qui les pousse à distance grâce à l'identifiant BLACK7 ROYAL.
+            // qui les pousse à distance grâce à l'identifiant The Few.
             // Si tu es l'admin et tu veux modifier des playlists, va
             // dans "Mode admin" en bas de cette page.
             //
@@ -126,7 +126,7 @@ class SettingsScreen extends StatelessWidget {
             //   a) Tester l'app avec ses propres URLs Xtream pendant
             //      le dev (le revendeur lui-même est aussi utilisateur)
             //   b) Les clients qui ARRIVENT avec leur propre abo IPTV
-            //      ailleurs et veulent juste utiliser BLACK7 ROYAL comme
+            //      ailleurs et veulent juste utiliser The Few comme
             //      lecteur, sans passer par le système de revendeur.
             // L'écosystème revendeur (Mode admin → push à distance via
             // backend Cloudflare) reste intact, c'est juste une porte

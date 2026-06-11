@@ -21,10 +21,10 @@ abstract final class VipSupport {
   static const String _waNumber = '447307410512';
 
   /// Message pré-rempli quand l'utilisateur ouvre WhatsApp. Indique
-  /// l'origine (BLACK7 ROYAL) pour que le support sache d'où vient le
+  /// l'origine (The Few) pour que le support sache d'où vient le
   /// contact. Encodé URL-safe par `Uri`.
   static const String _defaultPrefill =
-      'Bonjour BLACK7 ROYAL, j\'ai besoin d\'aide avec l\'application.';
+      'Bonjour The Few, j\'ai besoin d\'aide avec l\'application.';
 
   /// Ouvre WhatsApp (app native si installée, sinon web). Renvoie
   /// `true` si l'OS a pu lancer l'URL, `false` sinon.
