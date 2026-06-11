@@ -31,6 +31,7 @@ import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../channels/domain/channel.dart';
+import '../../../channels/data/recently_watched_repository.dart';
 import '../../../country_home/presentation/widgets/channel_logo.dart';
 import '../../../player/presentation/play_channel.dart';
 
@@ -82,6 +83,26 @@ _Bucket _bucketOf(String category) {
   }
 }
 
+/// Variante CONTENU-AWARE : détecte le rayon « Adulte » même quand le
+/// group-title est générique. Une catégorie bascule en Adulte si son nom
+/// est adulte OU si une part notable (≥ 40 %) de ses chaînes l'est — cas
+/// fréquent des bouquets VOD X où seul le NOM des chaînes trahit le
+/// contenu (le group-title, lui, reste neutre). Ça fait apparaître le
+/// rayon Adulte là où la détection par nom de catégorie le ratait.
+_Bucket _bucketOfCategory(String category, List<Channel> channels) {
+  if (ChannelClassifier.classifyGenre('', category) == ChannelGenre.adult) {
+    return _Bucket.adult;
+  }
+  if (channels.isNotEmpty) {
+    int adult = 0;
+    for (final Channel c in channels) {
+      if (c.genre == ChannelGenre.adult) adult++;
+    }
+    if (adult * 100 >= channels.length * 40) return _Bucket.adult;
+  }
+  return _bucketOf(category);
+}
+
 class CategoryBrowserView extends StatefulWidget {
   const CategoryBrowserView({super.key, required this.channels});
 
@@ -102,6 +123,89 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
   /// « Tout » : il embrouillait, demande client). Toujours un rayon
   /// sélectionné, bien séparé et lisible.
   _Bucket? _bucket;
+
+  /// Cache MAC id→chaîne pour le rail « Récemment regardées ». Reconstruit
+  /// seulement quand la liste de chaînes change de référence (pas à chaque
+  /// tap de filtre) → évite de re-parcourir 20 000+ chaînes pour rien.
+  Map<String, Channel>? _byIdCache;
+  List<Channel>? _byIdFor;
+
+  Map<String, Channel> _channelsById() {
+    if (!identical(_byIdFor, widget.channels)) {
+      _byIdCache = <String, Channel>{
+        for (final Channel c in widget.channels) c.id: c,
+      };
+      _byIdFor = widget.channels;
+    }
+    return _byIdCache!;
+  }
+
+  /// Rail horizontal des dernières chaînes regardées (max 10), façon
+  /// « Continuer à regarder » des grandes apps. Se met à jour en direct
+  /// (stream) et ne montre QUE des chaînes présentes dans la liste active.
+  Widget _buildRecentRail() {
+    return StreamBuilder<List<String>>(
+      stream: RecentlyWatchedRepository.instance.stream,
+      initialData: RecentlyWatchedRepository.instance.current,
+      builder: (BuildContext context, AsyncSnapshot<List<String>> snap) {
+        final List<String> ids = snap.data ?? const <String>[];
+        if (ids.isEmpty) return const SizedBox.shrink();
+        final Map<String, Channel> byId = _channelsById();
+        final List<Channel> recent = <Channel>[];
+        for (final String id in ids) {
+          final Channel? c = byId[id];
+          if (c != null) {
+            recent.add(c);
+            if (recent.length >= 10) break;
+          }
+        }
+        if (recent.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Row(
+                children: <Widget>[
+                  const Icon(Icons.history_rounded,
+                      size: 16, color: AppColors.accent),
+                  const SizedBox(width: 6),
+                  Text(
+                    context.l10n.homeRecentlyWatched,
+                    style: AppTextStyles.headlineMedium.copyWith(
+                      fontSize: 13,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 92,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: recent.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemBuilder: (BuildContext context, int i) {
+                  return _RecentCard(
+                    channel: recent[i],
+                    onTap: () => playChannel(
+                      context,
+                      recent[i],
+                      zapPlaylist: widget.channels,
+                    ),
+                  );
+                },
+              ),
+            ),
+            const Divider(height: 1, thickness: 0.5, color: AppColors.surface),
+          ],
+        );
+      },
+    );
+  }
 
   /// Regroupe les chaînes par catégorie BRUTE (group-title) en
   /// CONSERVANT l'ordre d'apparition — des catégories ET des chaînes.
@@ -154,7 +258,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
     // catégorie une seule fois, et les rayons réellement présents.
     final List<String> allCats = grouped.keys.toList();
     final Map<String, _Bucket> catBucket = <String, _Bucket>{
-      for (final String c in allCats) c: _bucketOf(c),
+      for (final String c in allCats) c: _bucketOfCategory(c, grouped[c]!),
     };
     final Set<_Bucket> present = catBucket.values.toSet();
 
@@ -174,6 +278,10 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
 
     return Column(
       children: <Widget>[
+        // Rayon « Récemment regardées » : rail horizontal élégant des
+        // dernières chaînes ouvertes par le client (max 10). Disparaît
+        // tout seul s'il n'y a pas encore d'historique.
+        _buildRecentRail(),
         // Barre de filtres : affichée seulement s'il y a plus d'un rayon
         // (sinon inutile, on n'affiche que ce rayon unique).
         if (ordered.length > 1) _buildFilterBar(ordered, effective),
@@ -443,6 +551,42 @@ class _ChannelRow extends StatelessWidget {
                   color: AppColors.textTertiary, size: 22),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Vignette compacte du rail « Récemment regardées » : logo arrondi +
+/// nom propre sur une ligne. Sobre et élégant, façon carrousel premium.
+class _RecentCard extends StatelessWidget {
+  const _RecentCard({required this.channel, required this.onTap});
+
+  final Channel channel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 62,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ChannelLogo(channel: channel, size: 56, radius: 14),
+            const SizedBox(height: 6),
+            Text(
+              channel.cleanName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: AppTextStyles.bodyMedium.copyWith(
+                fontSize: 11,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
         ),
       ),
     );

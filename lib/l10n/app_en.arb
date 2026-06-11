@@ -505,5 +505,6 @@
   "pricingLifetime": "Lifetime",
   "pricingYearly": "1 year",
   "pricingTrialDays": "{days}-day free trial",
-  "simpleSwitchSource": "Switch source"
+  "simpleSwitchSource": "Switch source",
+  "homeRecentlyWatched": "Recently watched"
 }

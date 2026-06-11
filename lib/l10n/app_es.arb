@@ -505,5 +505,6 @@
   "pricingLifetime": "De por vida",
   "pricingYearly": "1 año",
   "pricingTrialDays": "Prueba gratis de {days} días",
-  "simpleSwitchSource": "Cambiar de fuente"
+  "simpleSwitchSource": "Cambiar de fuente",
+  "homeRecentlyWatched": "Vistos recientemente"
 }

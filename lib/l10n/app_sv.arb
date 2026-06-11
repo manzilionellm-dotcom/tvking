@@ -505,5 +505,6 @@
   "pricingLifetime": "Livstid",
   "pricingYearly": "1 år",
   "pricingTrialDays": "{days} dagars gratis prov",
-  "simpleSwitchSource": "Byt källa"
+  "simpleSwitchSource": "Byt källa",
+  "homeRecentlyWatched": "Nyligen sedda"
 }

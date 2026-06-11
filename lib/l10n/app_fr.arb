@@ -1920,5 +1920,9 @@
   "simpleSwitchSource": "Changer de source",
   "@simpleSwitchSource": {
     "description": "Bouton : changer de source (trio)"
+  },
+  "homeRecentlyWatched": "Récemment regardées",
+  "@homeRecentlyWatched": {
+    "description": "Titre du rail des dernières chaînes regardées"
   }
 }

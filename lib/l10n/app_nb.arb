@@ -505,5 +505,6 @@
   "pricingLifetime": "Livstid",
   "pricingYearly": "1 år",
   "pricingTrialDays": "{days} dagers gratis prøve",
-  "simpleSwitchSource": "Bytt kilde"
+  "simpleSwitchSource": "Bytt kilde",
+  "homeRecentlyWatched": "Nylig sett"
 }

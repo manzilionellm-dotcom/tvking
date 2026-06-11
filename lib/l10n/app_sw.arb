@@ -505,5 +505,6 @@
   "pricingLifetime": "Maisha",
   "pricingYearly": "Mwaka 1",
   "pricingTrialDays": "Jaribio la bure la siku {days}",
-  "simpleSwitchSource": "Badilisha chanzo"
+  "simpleSwitchSource": "Badilisha chanzo",
+  "homeRecentlyWatched": "Zilizotazamwa hivi karibuni"
 }

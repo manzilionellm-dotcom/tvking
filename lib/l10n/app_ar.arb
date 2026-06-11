@@ -505,5 +505,6 @@
   "pricingLifetime": "مدى الحياة",
   "pricingYearly": "سنة",
   "pricingTrialDays": "تجربة مجانية {days} يوم",
-  "simpleSwitchSource": "تبديل المصدر"
+  "simpleSwitchSource": "تبديل المصدر",
+  "homeRecentlyWatched": "شوهدت مؤخراً"
 }
