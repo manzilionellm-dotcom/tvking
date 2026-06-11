@@ -182,7 +182,7 @@ function AppModal({
             </div>
           </Field>
           <Field label="Lien de téléchargement (à donner aux clients)">
-            <input value={download} onChange={(e) => setDownload(e.target.value)} className={`${inputCls} font-mono`} placeholder="https://github.com/manzilionellm-dotcom/tvking/releases/download/latest/7motion.apk" />
+            <input value={download} onChange={(e) => setDownload(e.target.value)} className={`${inputCls} font-mono`} placeholder="https://app.7themotion.com/vip" />
           </Field>
           {err && <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>}
           <div className="flex justify-end gap-2 pt-2">

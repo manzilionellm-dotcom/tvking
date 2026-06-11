@@ -3,7 +3,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { CopyLink } from '@/components/CopyLink';
 import {
   activateApi, appsApi, planCostsApi, meApi, serversApi, sourcesApi,
-  getCurrentUser, isOwnerRole, DOWNLOAD_URL,
+  getCurrentUser, isOwnerRole, DOWNLOAD_URL, DOWNLOADER_CODE,
   type App, type PlanCost, type ActivateResult, type DefaultServer,
   type DeviceSourceInput, ApiError,
 } from '@/lib/api';
@@ -188,14 +188,24 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             />
           </div>
 
-          {/* Lien de téléchargement — TOUJOURS le lien vivant du backend
-              (/dl du Worker), jamais le download_url stocké en base qui
-              pouvait être un domaine mort. */}
+          {/* Téléchargement à donner au client : le lien propre OU le code
+              Downloader officiel (TV / Fire TV). Domaine app.7themotion.com. */}
           <div>
             <p className="mb-1 text-[10px] uppercase tracking-widest text-ink-tertiary">
               Lien de téléchargement (à donner au client)
             </p>
             <CopyLink url={DOWNLOAD_URL} />
+            <div className="mt-2 flex items-center gap-2 rounded-md border border-accent/30 bg-accent/10 px-3 py-2">
+              <span className="text-[10px] uppercase tracking-widest text-ink-tertiary">
+                Code Downloader
+              </span>
+              <span className="font-mono text-base font-bold tracking-wider text-accent-bright">
+                {DOWNLOADER_CODE}
+              </span>
+              <span className="text-[11px] text-ink-tertiary">
+                (TV / Fire TV → app « Downloader »)
+              </span>
+            </div>
           </div>
 
           {/* Plan */}

@@ -33,6 +33,12 @@ export const DOWNLOAD_URL: string =
   (import.meta.env.VITE_DOWNLOAD_URL as string | undefined) ||
   'https://app.7themotion.com/vip';
 
+/// Code OFFICIEL Downloader (aftv.news) qui pointe sur DOWNLOAD_URL.
+/// Le client tape ce numéro dans l'app Downloader (TV / Fire TV) →
+/// l'app se télécharge. Permanent. Surchargeable via VITE_DOWNLOADER_CODE.
+export const DOWNLOADER_CODE: string =
+  (import.meta.env.VITE_DOWNLOADER_CODE as string | undefined) || '7988141';
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
