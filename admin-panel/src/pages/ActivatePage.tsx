@@ -3,7 +3,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { CopyLink } from '@/components/CopyLink';
 import {
   activateApi, appsApi, planCostsApi, meApi, serversApi, sourcesApi,
-  getCurrentUser, isOwnerRole,
+  getCurrentUser, isOwnerRole, DOWNLOAD_URL,
   type App, type PlanCost, type ActivateResult, type DefaultServer,
   type DeviceSourceInput, ApiError,
 } from '@/lib/api';
@@ -188,15 +188,15 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             />
           </div>
 
-          {/* Lien de téléchargement (app unique, sans sélecteur) */}
-          {primaryApp?.download_url && (
-            <div>
-              <p className="mb-1 text-[10px] uppercase tracking-widest text-ink-tertiary">
-                Lien de téléchargement (à donner au client)
-              </p>
-              <CopyLink url={primaryApp.download_url} />
-            </div>
-          )}
+          {/* Lien de téléchargement — TOUJOURS le lien vivant du backend
+              (/dl du Worker), jamais le download_url stocké en base qui
+              pouvait être un domaine mort. */}
+          <div>
+            <p className="mb-1 text-[10px] uppercase tracking-widest text-ink-tertiary">
+              Lien de téléchargement (à donner au client)
+            </p>
+            <CopyLink url={DOWNLOAD_URL} />
+          </div>
 
           {/* Plan */}
           <div>

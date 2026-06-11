@@ -25,6 +25,16 @@ const API_BASE: string =
   // ou un domaine connu. En dev le proxy Vite redirige /api → :8787.
   '';
 
+/// Lien de TÉLÉCHARGEMENT de l'app à donner au client. On le dérive
+/// TOUJOURS du backend réellement utilisé (route `/dl` du Worker, qui
+/// proxy le dernier APK avec les bons en-têtes) — JAMAIS de la valeur
+/// `download_url` stockée en base, qui pouvait pointer sur un vieux
+/// domaine mort (ex. 99999.7themotion.com → page blanche). Repli sur le
+/// Worker réel si l'API tourne en same-origin (API_BASE vide).
+export const DOWNLOAD_URL: string =
+  (import.meta.env.VITE_DOWNLOAD_URL as string | undefined) ||
+  `${API_BASE || 'https://seven-motion-backend.manzilionel-lm.workers.dev'}/dl`;
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
