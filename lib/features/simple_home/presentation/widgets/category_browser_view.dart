@@ -167,7 +167,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Row(
                 children: <Widget>[
-                  const Icon(Icons.history_rounded,
+                  Icon(Icons.history_rounded,
                       size: 16, color: AppColors.accent),
                   const SizedBox(width: 6),
                   Text(
