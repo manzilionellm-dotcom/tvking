@@ -51,10 +51,13 @@ jobs:
       - name: Build (point le panel vers le Worker prod)
         working-directory: admin-panel
         env:
-          # Le Worker qui porte l'API revendeurs + la base D1 est deploye
-          # sur ce sous-domaine workers.dev (cf. logs deploy-worker).
-          # 99999.7themotion.com sert un ANCIEN worker -> ne pas l'utiliser.
-          VITE_API_BASE: 'https://seven-motion-backend.manzilionel-lm.workers.dev'
+          # Le Worker (API revendeurs + base D1) est joignable de façon
+          # FIABLE sur son Custom Domain `app.7themotion.com` (DNS + SSL
+          # gérés par Cloudflare, prouvé : /vip télécharge l'APK). On NE
+          # passe PAS par le sous-domaine workers.dev (injoignable depuis
+          # le navigateur → "Connexion impossible"). Le worker route par
+          # chemin : app.7themotion.com/api/v1/* → API.
+          VITE_API_BASE: 'https://app.7themotion.com'
         run: npm run build
 
       # Cree le projet Pages s'il n'existe pas encore (idempotent :
