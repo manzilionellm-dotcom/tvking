@@ -167,7 +167,7 @@ function AppModal({
         </h2>
         <form onSubmit={submit} className="space-y-3">
           <Field label="Nom de l'app">
-            <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Ex. BLACK7 ROYAL" autoFocus />
+            <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Ex. The Few" autoFocus />
           </Field>
           <Field label="Package (identifiant Android)">
             <input value={pkg} onChange={(e) => setPkg(e.target.value)} className={`${inputCls} font-mono`} placeholder="com.exemple.monapp" />

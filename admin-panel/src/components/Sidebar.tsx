@@ -57,7 +57,7 @@ export function Sidebar({
       {/* ===== Brand ===== */}
       <div className="flex h-16 items-center gap-3 px-5 border-b border-white/5">
         <div className="h-8 w-8 rounded-lg bg-accent/15 ring-1 ring-accent/30 grid place-items-center">
-          <span className="text-accent font-bold text-sm">A</span>
+          <span className="text-accent font-bold text-xs tracking-tight">TF</span>
         </div>
         <div className="flex flex-col">
           <span className="text-sm font-semibold tracking-tight">{t('brand')}</span>

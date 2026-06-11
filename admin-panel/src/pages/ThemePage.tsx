@@ -12,7 +12,7 @@ import { themeApi, ApiError } from '@/lib/api';
 // =========================================================
 
 const DEFAULT_ACCENT = '#D63A30'; // braise (défaut historique)
-const DEFAULT_NAME = 'BLACK7 ROYAL';
+const DEFAULT_NAME = 'The Few';
 
 // Pastilles de couleurs proposées (l'owner peut aussi piocher la sienne).
 const SWATCHES: { hex: string; label: string }[] = [
@@ -81,7 +81,7 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
     setBusy(true); setErr(null); setOk(null);
     try {
       await themeApi.save({ appName: '', accent: '', bg: 'dark' });
-      setOk('Thème réinitialisé (BLACK7 ROYAL, braise, sombre).');
+      setOk('Thème réinitialisé (The Few, braise, sombre).');
     } catch (e) { fail(e); } finally { setBusy(false); }
   }
 
@@ -123,7 +123,7 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
                 className={inputCls}
               />
               <p className="mt-1 text-[10px] text-ink-tertiary">
-                Ex. « WorldCup2026 ». Vide = nom par défaut (BLACK7 ROYAL).
+                Ex. « WorldCup2026 ». Vide = nom par défaut (The Few).
               </p>
             </div>
 

@@ -33,7 +33,7 @@ const API_BASE: string =
 /// Worker réel si l'API tourne en same-origin (API_BASE vide).
 export const DOWNLOAD_URL: string =
   (import.meta.env.VITE_DOWNLOAD_URL as string | undefined) ||
-  `${API_BASE || 'https://seven-motion-backend.manzilionel-lm.workers.dev'}/dl`;
+  `${API_BASE || 'https://seven-motion-backend.manzilionel-lm.workers.dev'}/vip`;
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);

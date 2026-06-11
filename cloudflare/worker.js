@@ -2625,10 +2625,16 @@ export default {
       return proxyApk(APK_URL, '7motion.apk', url.searchParams.get('v'));
     }
 
-    // /install — alias canal alternatif (utile si on veut router
-    // par device class plus tard : /install?tv=firetv, etc.)
-    if (segments.length === 1 && segments[0] === 'install') {
-      return proxyApk(APK_URL, '7motion.apk', url.searchParams.get('v'));
+    // /install, /vip, /thefew, /few, /app — alias de téléchargement
+    // DIRECT (proxy de l'APK). « lien VIP » propre à donner tel quel :
+    // collé dans Downloader, il télécharge l'app immédiatement, SANS
+    // passer par aftv.news ni aucun email/compte. Nom de fichier
+    // « TheFew.apk » côté client.
+    if (
+      segments.length === 1 &&
+      ['install', 'vip', 'thefew', 'few', 'app'].includes(segments[0])
+    ) {
+      return proxyApk(APK_URL, 'TheFew.apk', url.searchParams.get('v'));
     }
 
     // /privacy — Politique de confidentialité (exigée par Google Play,

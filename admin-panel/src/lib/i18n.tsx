@@ -24,7 +24,7 @@ const STORE_KEY = 'panel_lang';
 // Dictionnaire : cle -> { fr, en, ar }
 const STR: Record<string, Record<Lang, string>> = {
   // --- Marque / roles ---
-  'brand': { fr: 'BLACK7 ROYAL', en: 'BLACK7 ROYAL', ar: 'BLACK7 ROYAL' },
+  'brand': { fr: 'The Few', en: 'The Few', ar: 'The Few' },
   'role.admin': { fr: 'Super Admin', en: 'Super Admin', ar: 'المشرف العام' },
   'role.reseller': { fr: 'Revendeur', en: 'Reseller', ar: 'موزّع' },
   'role.adminFull': { fr: 'Administrateur', en: 'Administrator', ar: 'مدير' },
