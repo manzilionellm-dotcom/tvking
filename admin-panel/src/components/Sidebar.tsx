@@ -23,7 +23,6 @@ const OWNER_NAV: NavItem[] = [
   { key: 'nav.pricing',       to: '/tarifs' },
   { key: 'nav.reviews',       to: '/reviews' },
   { key: 'nav.activate',    to: '/activate' },
-  { key: 'nav.pushSource',  to: '/playlists' },
   { key: 'nav.notifications', to: '/notifications' },
   { key: 'nav.forceUpdate', to: '/force-update' },
   { key: 'nav.resellers',   to: '/resellers' },
@@ -38,7 +37,6 @@ const OWNER_NAV: NavItem[] = [
 const RESELLER_NAV: NavItem[] = [
   { key: 'nav.dashboard',     to: '/' },
   { key: 'nav.activate',      to: '/activate' },
-  { key: 'nav.pushSource',    to: '/playlists' },
   { key: 'nav.myResellers',   to: '/resellers' },
   { key: 'nav.myDevices',     to: '/devices' },
   { key: 'nav.myActivations', to: '/activations' },
