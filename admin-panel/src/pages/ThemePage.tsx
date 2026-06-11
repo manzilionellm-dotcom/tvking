@@ -1,6 +1,11 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { themeApi, ApiError } from '@/lib/api';
+import { themeApi, ApiError, type ThemeRule } from '@/lib/api';
+
+const MONTHS_FR = [
+  'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+];
 
 // =========================================================
 //  ThemePage — personnalisation de l'app à distance (owner)
@@ -276,7 +281,157 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
           </div>
         </div>
       )}
+
+      {!loading && <ThemeAutomations onLogout={onLogout} />}
     </AppLayout>
+  );
+}
+
+// =========================================================
+//  Automatisation du thème — règles « date → look »
+// =========================================================
+//  Ex. « En Décembre → preset Noël ». Évalué côté serveur quand l'app lit
+//  /api/theme → le thème bascule tout seul, sans toucher à l'app.
+function ThemeAutomations({ onLogout }: { onLogout: () => void }) {
+  const [rules, setRules] = useState<ThemeRule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+
+  useEffect(() => {
+    themeApi.getAutomations()
+      .then((r) => setRules(r.rules || []))
+      .catch((e) => { if (e instanceof ApiError && e.status === 401) onLogout(); })
+      .finally(() => setLoading(false));
+    /* eslint-disable-next-line */
+  }, []);
+
+  function patch(i: number, p: Partial<ThemeRule>) {
+    setRules((rs) => rs.map((r, k) => (k === i ? { ...r, ...p } : r)));
+  }
+  function addRule() {
+    setRules((rs) => [
+      ...rs,
+      { enabled: true, label: 'Noël', month: 12, from: null, to: null,
+        accent: '#1E8E4E', bg: 'dark', appName: '' },
+    ]);
+  }
+  function remove(i: number) {
+    setRules((rs) => rs.filter((_, k) => k !== i));
+  }
+  async function save() {
+    setBusy(true); setErr(null); setOk(null);
+    try {
+      const r = await themeApi.saveAutomations(rules);
+      setRules(r.rules || []);
+      setOk('✅ Règles enregistrées. Le thème basculera tout seul aux dates prévues.');
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
+    } finally { setBusy(false); }
+  }
+
+  // Mêmes presets que plus haut, pour choisir le look d'une règle.
+  const presetOptions = PRESETS;
+
+  const sel = 'rounded-md border border-white/10 bg-slate px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-accent';
+
+  return (
+    <div className="mt-8 max-w-4xl rounded-xl border border-white/5 bg-midnight p-6">
+      <div className="mb-1 flex items-center justify-between">
+        <h2 className="text-sm font-semibold">Automatisation du thème</h2>
+        <button
+          onClick={addRule}
+          className="rounded-md border border-white/10 px-3 py-1.5 text-xs hover:border-accent hover:text-accent-bright"
+        >
+          + Ajouter une règle
+        </button>
+      </div>
+      <p className="mb-4 text-[11px] text-ink-tertiary">
+        Ex. « En Décembre → Noël ». La règle prime sur le thème manuel pendant
+        sa période, puis l'app revient au thème normal. Aucun nouvel APK.
+      </p>
+
+      {err && <div className="mb-3 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>}
+      {ok && <div className="mb-3 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs text-success">{ok}</div>}
+
+      {loading ? (
+        <div className="text-xs text-ink-tertiary">Chargement…</div>
+      ) : rules.length === 0 ? (
+        <div className="text-xs text-ink-tertiary">
+          Aucune règle. Clique « + Ajouter une règle » (ex. Décembre → Noël).
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {rules.map((r, i) => (
+            <div
+              key={i}
+              className="flex flex-wrap items-center gap-2 rounded-lg border border-white/5 bg-slate/40 px-3 py-2"
+            >
+              <label className="flex items-center gap-1 text-xs">
+                <input
+                  type="checkbox"
+                  checked={r.enabled}
+                  onChange={(e) => patch(i, { enabled: e.target.checked })}
+                />
+                Actif
+              </label>
+              {/* Mois */}
+              <select
+                value={r.month ?? ''}
+                onChange={(e) => patch(i, { month: e.target.value ? Number(e.target.value) : null })}
+                className={sel}
+              >
+                <option value="">— Mois —</option>
+                {MONTHS_FR.map((m, idx) => (
+                  <option key={m} value={idx + 1}>{m}</option>
+                ))}
+              </select>
+              {/* Look (preset) */}
+              <select
+                value={presetOptions.find((p) => p.accent.toUpperCase() === (r.accent || '').toUpperCase() && p.bg === r.bg)?.key || ''}
+                onChange={(e) => {
+                  const p = presetOptions.find((x) => x.key === e.target.value);
+                  if (p) patch(i, { accent: p.accent, bg: p.bg, label: r.label || p.label });
+                }}
+                className={sel}
+              >
+                <option value="">— Look —</option>
+                {presetOptions.map((p) => (
+                  <option key={p.key} value={p.key}>{p.emoji} {p.label}</option>
+                ))}
+              </select>
+              <input
+                value={r.label}
+                onChange={(e) => patch(i, { label: e.target.value })}
+                placeholder="Nom de la règle"
+                className={sel + ' flex-1 min-w-[120px]'}
+              />
+              <span
+                className="h-5 w-5 rounded-full border border-white/20"
+                style={{ background: r.accent || '#333' }}
+              />
+              <button
+                onClick={() => remove(i)}
+                className="rounded-md border border-white/10 px-2 py-1 text-xs text-ink-tertiary hover:border-warning hover:text-warning"
+              >
+                Suppr.
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4">
+        <button
+          onClick={save}
+          disabled={busy}
+          className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black hover:bg-accent-bright disabled:opacity-50"
+        >
+          {busy ? '…' : 'Enregistrer les règles'}
+        </button>
+      </div>
+    </div>
   );
 }
 

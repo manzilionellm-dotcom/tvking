@@ -1344,14 +1344,50 @@ async function handleGetTheme(env) {
     const bg = await env.DB
       .prepare("SELECT value FROM app_config WHERE key = 'theme_bg'")
       .first();
-    return json({
+    const theme = {
       appName: (name && name.value) || '',
       accent: (accent && accent.value) || '',
       bg: (bg && bg.value) || '',
-    });
+    };
+    // AUTOMATISATION : si une règle date→thème est active aujourd'hui, elle
+    // PRIME sur le thème manuel (ex. décembre → preset Noël). Évalué ici,
+    // au moment où l'app lit le thème : aucun cron nécessaire.
+    try {
+      const autoRow = await env.DB
+        .prepare("SELECT value FROM app_config WHERE key = 'theme_automations'")
+        .first();
+      const rules = autoRow && autoRow.value ? JSON.parse(autoRow.value) : [];
+      const hit = pickActiveThemeRule(rules, new Date());
+      if (hit) {
+        if (hit.accent) theme.accent = hit.accent;
+        if (hit.bg) theme.bg = hit.bg;
+        if (hit.appName) theme.appName = hit.appName;
+      }
+    } catch (_) { /* pas d'automatisation valide → thème manuel */ }
+    return json(theme);
   } catch (_) {
     return json(empty);
   }
+}
+
+// Retourne la 1ère règle d'automatisation ACTIVE pour la date donnée, ou
+// null. `month` (1-12) = tout le mois. Sinon `from`/`to` ('MMDD') = plage
+// (gère le passage d'année, ex. 1215→0105). UTC pour rester simple.
+function pickActiveThemeRule(rules, now) {
+  if (!Array.isArray(rules)) return null;
+  const md = (now.getUTCMonth() + 1) * 100 + now.getUTCDate(); // ex. 1225
+  const month = now.getUTCMonth() + 1;
+  for (const r of rules) {
+    if (!r || !r.enabled) continue;
+    if (r.month && Number(r.month) === month) return r;
+    if (r.from && r.to && /^\d{4}$/.test(r.from) && /^\d{4}$/.test(r.to)) {
+      const from = parseInt(r.from, 10);
+      const to = parseInt(r.to, 10);
+      const inRange = from <= to ? (md >= from && md <= to) : (md >= from || md <= to);
+      if (inRange) return r;
+    }
+  }
+  return null;
 }
 
 // GET /api/ad (public) — vidéo publicitaire jouée au démarrage de l'app.

@@ -561,6 +561,11 @@ async function apiV1Inner(request, env) {
       if (request.method === 'GET') return handleThemeGet(env);
       if (request.method === 'PUT') return handleThemePut(request, env, actor);
     }
+    // /theme/automations — règles date → thème (ex. décembre → Noël).
+    if (parts.length === 2 && parts[1] === 'automations') {
+      if (request.method === 'GET') return handleThemeAutomationsGet(env);
+      if (request.method === 'PUT') return handleThemeAutomationsPut(request, env, actor);
+    }
   }
 
   // /ad — vidéo publicitaire jouée au démarrage de l'app. Owner.
@@ -1372,6 +1377,50 @@ async function handleThemeGet(env) {
     accent: await _cfgGetStr(env, 'theme_accent'),
     bg: await _cfgGetStr(env, 'theme_bg'),
   });
+}
+
+// ----- Automatisation du thème (règles date → thème) -----
+//  Stockées en JSON dans app_config['theme_automations']. Chaque règle :
+//  { enabled, label, month (1-12 | null), from ('MMDD'|null), to ('MMDD'|null),
+//    accent ('#RRGGBB'|''), bg ('dark'|'light'|''), appName ('') }.
+//  L'évaluation se fait CÔTÉ WORKER au GET /api/theme (pas de cron).
+async function handleThemeAutomationsGet(env) {
+  await ensureAppConfigTable(env);
+  const raw = await _cfgGetStr(env, 'theme_automations');
+  let rules = [];
+  try { rules = raw ? JSON.parse(raw) : []; } catch (_) { rules = []; }
+  return jsonResp({ rules: Array.isArray(rules) ? rules : [] });
+}
+
+async function handleThemeAutomationsPut(request, env, actor) {
+  await ensureAppConfigTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const inRules = Array.isArray(body.rules) ? body.rules : [];
+  // Nettoyage/validation de chaque règle (anti-injection + bornes).
+  const clean = inRules.slice(0, 50).map((r) => {
+    let accent = (r && r.accent ? String(r.accent) : '').trim();
+    if (accent && /^#?[0-9a-fA-F]{6}$/.test(accent)) {
+      accent = (accent[0] === '#' ? accent : '#' + accent).toUpperCase();
+    } else { accent = ''; }
+    const month = Number(r && r.month);
+    return {
+      enabled: !!(r && r.enabled),
+      label: (r && r.label ? String(r.label) : '').slice(0, 40),
+      month: month >= 1 && month <= 12 ? month : null,
+      from: (r && /^\d{4}$/.test(String(r.from)) ? String(r.from) : null),
+      to: (r && /^\d{4}$/.test(String(r.to)) ? String(r.to) : null),
+      accent,
+      bg: r && (r.bg === 'light' || r.bg === 'dark') ? r.bg : '',
+      appName: (r && r.appName ? String(r.appName) : '').slice(0, 40),
+    };
+  });
+  await _cfgSet(env, 'theme_automations', JSON.stringify(clean));
+  await logAudit(env, request, actor, 'theme.automations.save',
+    { type: 'app_config', id: null }, null, { count: clean.length });
+  return jsonResp({ ok: true, rules: clean });
 }
 
 async function handleThemePut(request, env, actor) {

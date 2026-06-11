@@ -647,12 +647,29 @@ export interface ThemeConfig {
   accent: string; // '#RRGGBB' ou '' (défaut braise)
   bg: string;     // 'dark' | 'light' | '' (défaut sombre)
 }
+export interface ThemeRule {
+  enabled: boolean;
+  label: string;
+  month: number | null;   // 1-12 = tout le mois
+  from: string | null;    // 'MMDD'
+  to: string | null;      // 'MMDD'
+  accent: string;         // '#RRGGBB' ou ''
+  bg: 'dark' | 'light' | '';
+  appName: string;
+}
 export const themeApi = {
   get: () => request<ThemeConfig>('/api/v1/theme'),
   save: (cfg: { appName: string; accent: string; bg: string }) =>
     request<{ ok: boolean } & ThemeConfig>('/api/v1/theme', {
       method: 'PUT',
       body: cfg,
+    }),
+  getAutomations: () =>
+    request<{ rules: ThemeRule[] }>('/api/v1/theme/automations'),
+  saveAutomations: (rules: ThemeRule[]) =>
+    request<{ ok: boolean; rules: ThemeRule[] }>('/api/v1/theme/automations', {
+      method: 'PUT',
+      body: { rules },
     }),
 };
 
