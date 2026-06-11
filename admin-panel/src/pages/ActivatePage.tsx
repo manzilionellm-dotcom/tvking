@@ -3,7 +3,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { CopyLink } from '@/components/CopyLink';
 import {
   activateApi, appsApi, planCostsApi, meApi, serversApi, sourcesApi,
-  getCurrentUser, isOwnerRole, DOWNLOAD_URL, DOWNLOADER_CODE,
+  getCurrentUser, isOwnerRole, userCan, DOWNLOAD_URL, DOWNLOADER_CODE,
   type App, type PlanCost, type ActivateResult, type DefaultServer,
   type DeviceSourceInput, ApiError,
 } from '@/lib/api';
@@ -31,6 +31,8 @@ const MAX_SOURCES = 3;
 export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const user = getCurrentUser();
   const isReseller = !isOwnerRole(user?.role);
+  // Pousser des sources = capacité 'sources' (revendeur standard+ ou admin).
+  const canPushSources = userCan(user, 'sources');
 
   const [mac, setMac] = useState('MK:');
   const [plan, setPlan] = useState(isReseller ? 'yearly' : 'monthly');
@@ -273,7 +275,8 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             />
           </div>
 
-          {/* ===== TRIO de sources (0 à 3) ===== */}
+          {/* ===== TRIO de sources (0 à 3) — masqué si niveau insuffisant ===== */}
+          {canPushSources && (
           <div className="rounded-lg border border-white/5 bg-slate/40 p-3">
             <label className="mb-2 block text-[10px] uppercase tracking-widest text-ink-tertiary">
               Sources du client — chargées automatiquement (jusqu'à 3)
@@ -345,6 +348,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
               </button>
             )}
           </div>
+          )}
 
           {err && (
             <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>

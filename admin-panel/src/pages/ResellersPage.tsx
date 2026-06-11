@@ -51,6 +51,7 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
             <tr className="text-left text-[10px] uppercase tracking-widest text-ink-tertiary">
               <th className="px-4 py-3">Revendeur</th>
               <th className="px-4 py-3">Statut</th>
+              <th className="px-4 py-3">Niveau</th>
               <th className="px-4 py-3 text-right">Crédits</th>
               <th className="px-4 py-3 text-right">Appareils</th>
               <th className="px-4 py-3 text-right">Licences</th>
@@ -60,13 +61,13 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
           <tbody className="divide-y divide-white/5">
             {loading && Array.from({ length: 4 }).map((_, i) => (
               <tr key={i} className="bg-obsidian">
-                <td className="px-4 py-3" colSpan={6}>
+                <td className="px-4 py-3" colSpan={7}>
                   <div className="h-4 w-full animate-pulse rounded bg-white/5" />
                 </td>
               </tr>
             ))}
             {!loading && items.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-ink-tertiary">
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-ink-tertiary">
                 Aucun revendeur. Crée le premier pour lui donner des crédits.
               </td></tr>
             )}
@@ -78,6 +79,22 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
                 </td>
                 <td className="px-4 py-3">
                   <StatusBadge status={r.status} />
+                </td>
+                <td className="px-4 py-3">
+                  <select
+                    value={r.level || 'basique'}
+                    onChange={(e) =>
+                      resellersApi
+                        .update(r.id, { level: e.target.value })
+                        .then(reload)
+                        .catch((x) => setErr(x.message))
+                    }
+                    className="rounded-md border border-white/10 bg-slate px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-accent"
+                  >
+                    <option value="basique">Basique (activer)</option>
+                    <option value="standard">Standard (+ sources)</option>
+                    <option value="confiance">Confiance (presque tout)</option>
+                  </select>
                 </td>
                 <td className="px-4 py-3 text-right font-semibold text-accent-bright">{r.credit_balance}</td>
                 <td className="px-4 py-3 text-right text-ink-secondary">{r.devices ?? 0}</td>
@@ -99,7 +116,11 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
                       }
                       className="rounded-md border border-white/10 px-2.5 py-1 text-xs hover:border-white/30"
                     >
-                      {r.status === 'active' ? 'Suspendre' : 'Réactiver'}
+                      {r.status === 'active'
+                        ? 'Suspendre'
+                        : r.status === 'pending'
+                          ? 'Activer'
+                          : 'Réactiver'}
                     </button>
                     <button
                       onClick={() => setPwdFor(r)}
@@ -140,15 +161,15 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const active = status === 'active';
+  const map: Record<string, { cls: string; label: string }> = {
+    active: { cls: 'bg-success/15 text-success', label: 'Actif' },
+    pending: { cls: 'bg-accent/15 text-accent-bright', label: 'En attente' },
+    suspended: { cls: 'bg-warning/15 text-warning', label: 'Suspendu' },
+  };
+  const s = map[status] || map.suspended;
   return (
-    <span
-      className={
-        'rounded-full px-2 py-0.5 text-[11px] font-medium ' +
-        (active ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning')
-      }
-    >
-      {active ? 'Actif' : 'Suspendu'}
+    <span className={'rounded-full px-2 py-0.5 text-[11px] font-medium ' + s.cls}>
+      {s.label}
     </span>
   );
 }

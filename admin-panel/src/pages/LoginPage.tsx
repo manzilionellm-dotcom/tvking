@@ -25,12 +25,18 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
   );
   const [email, setEmail] = useState(resellerOnly ? '' : 'admin');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  // Mode INSCRIPTION (revendeur uniquement) : auto-création de compte.
+  const [signup, setSignup] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
 
   function switchMode(m: 'admin' | 'reseller') {
     setMode(m);
     setErr(null);
+    setOkMsg(null);
+    setSignup(false);
     // En mode revendeur on vide l'identifiant 'admin' par defaut.
     setEmail(m === 'admin' ? 'admin' : '');
   }
@@ -39,7 +45,18 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
     e.preventDefault();
     setBusy(true);
     setErr(null);
+    setOkMsg(null);
     try {
+      // Auto-inscription revendeur : crée un compte 'pending' (pas de login).
+      if (mode === 'reseller' && signup) {
+        await authApi.resellerSignup(email.trim(), password, name.trim() || undefined);
+        setOkMsg(
+          'Compte créé ✅ Il est en attente de validation par l\'administrateur. '
+          + 'Tu pourras te connecter dès qu\'il l\'aura activé.',
+        );
+        setSignup(false);
+        return;
+      }
       const res = mode === 'reseller'
         ? await authApi.resellerLogin(email.trim(), password)
         : await authApi.login(email.trim(), password);
@@ -61,7 +78,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
       >
         <div className="text-center">
           <div className="mx-auto mb-4 h-12 w-12 rounded-xl bg-accent/15 ring-1 ring-accent/40 grid place-items-center">
-            <span className="text-accent font-bold text-lg">A</span>
+            <span className="text-accent font-bold text-base tracking-tight">TF</span>
           </div>
           <h1 className="text-xl font-semibold tracking-tight">{t('brand')}</h1>
           <p className="mt-1 text-xs uppercase tracking-widest text-ink-tertiary">
@@ -120,9 +137,22 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
               onChange={(e) => setEmail(e.target.value)}
               autoFocus
               className="w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none ring-accent focus:ring-1"
-              placeholder="admin"
+              placeholder={mode === 'reseller' ? 'ton-identifiant' : 'admin'}
             />
           </div>
+          {mode === 'reseller' && signup && (
+            <div>
+              <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+                Nom (optionnel)
+              </label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none ring-accent focus:ring-1"
+                placeholder="Ex. Karim Reseller"
+              />
+            </div>
+          )}
           <div>
             <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
               {t('login.password')}
@@ -142,14 +172,36 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
             {err}
           </div>
         )}
+        {okMsg && (
+          <div className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs text-success">
+            {okMsg}
+          </div>
+        )}
 
         <button
           type="submit"
           disabled={busy || !password}
           className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-black transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent-bright"
         >
-          {busy ? t('login.signing') : t('login.signin')}
+          {busy
+            ? t('login.signing')
+            : mode === 'reseller' && signup
+              ? 'Créer mon compte revendeur'
+              : t('login.signin')}
         </button>
+
+        {/* Bascule connexion ↔ inscription (revendeur uniquement). */}
+        {mode === 'reseller' && (
+          <button
+            type="button"
+            onClick={() => { setSignup(!signup); setErr(null); setOkMsg(null); }}
+            className="w-full text-center text-[11px] text-ink-tertiary underline-offset-2 hover:text-accent-bright hover:underline"
+          >
+            {signup
+              ? 'Déjà un compte ? Se connecter'
+              : 'Pas encore de compte ? Créer un compte revendeur'}
+          </button>
+        )}
 
         {!resellerOnly && (
           <p className="text-center text-[11px] text-ink-tertiary">

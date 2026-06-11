@@ -106,9 +106,23 @@ export interface MeUser {
   email: string;
   name: string | null;
   role: string; // 'super_admin' | 'admin' | 'support' | 'reseller'
+  level?: string; // revendeur : 'basique' | 'standard' | 'confiance'
   credit_balance?: number;
   commission_rate?: number;
   status?: string;
+}
+
+/// Capacités ouvertes par niveau de revendeur (miroir du backend).
+export const RESELLER_LEVEL_CAPS: Record<string, string[]> = {
+  basique: ['activate'],
+  standard: ['activate', 'sources'],
+  confiance: ['activate', 'sources', 'resellers'],
+};
+/// true si l'utilisateur courant a la capacité `cap` (admin = tout).
+export function userCan(user: MeUser | null, cap: string): boolean {
+  if (!user) return false;
+  if (user.role !== 'reseller') return true;
+  return (RESELLER_LEVEL_CAPS[user.level || 'basique'] || []).includes(cap);
 }
 export interface AuthLoginResponse {
   token: string;
@@ -140,6 +154,13 @@ export const authApi = {
       noAuth: true,
     }),
   me: () => request<{ user: MeUser }>('/api/v1/auth/me'),
+  // Auto-inscription revendeur via le lien unique → compte 'pending'.
+  resellerSignup: (email: string, password: string, name?: string) =>
+    request<{ ok: boolean; pending: boolean }>('/api/v1/auth/reseller/signup', {
+      method: 'POST',
+      body: { email, password, name },
+      noAuth: true,
+    }),
 };
 
 export interface StatsOverview {
@@ -343,7 +364,8 @@ export interface Reseller {
   id: string;
   email: string;
   name: string | null;
-  status: string;            // 'active' | 'suspended'
+  status: string;            // 'pending' | 'active' | 'suspended'
+  level?: string;            // 'basique' | 'standard' | 'confiance'
   credit_balance: number;
   commission_rate: number;
   created_at: number;
@@ -367,7 +389,8 @@ export const resellersApi = {
       body: payload,
     }),
   update: (id: string, payload: Partial<{
-    name: string; status: string; commission_rate: number; password: string;
+    name: string; status: string; level: string;
+    commission_rate: number; password: string;
   }>) =>
     request<{ updated: number }>(`/api/v1/resellers/${id}`, {
       method: 'PATCH',

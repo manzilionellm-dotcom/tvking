@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { getCurrentUser, isOwnerRole } from '@/lib/api';
+import { getCurrentUser, isOwnerRole, userCan } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 
 // =========================================================
@@ -10,7 +10,9 @@ import { useT } from '@/lib/i18n';
 //  ne voit que l'activation + ses propres donnees. Libelles traduits.
 // =========================================================
 
-type NavItem = { key: string; to: string };
+// `cap` (optionnel) = capacité requise pour voir l'entrée (revendeur).
+// Sans `cap`, l'entrée est toujours visible. L'admin voit tout.
+type NavItem = { key: string; to: string; cap?: string };
 
 const OWNER_NAV: NavItem[] = [
   { key: 'nav.dashboard',     to: '/' },
@@ -37,7 +39,8 @@ const OWNER_NAV: NavItem[] = [
 const RESELLER_NAV: NavItem[] = [
   { key: 'nav.dashboard',     to: '/' },
   { key: 'nav.activate',      to: '/activate' },
-  { key: 'nav.myResellers',   to: '/resellers' },
+  // Visible seulement pour le niveau « confiance » (capacité resellers).
+  { key: 'nav.myResellers',   to: '/resellers', cap: 'resellers' },
   { key: 'nav.myDevices',     to: '/devices' },
   { key: 'nav.myActivations', to: '/activations' },
   { key: 'nav.account',       to: '/account' },
@@ -50,7 +53,9 @@ export function Sidebar({
   const t = useT();
   const user = getCurrentUser();
   const owner = isOwnerRole(user?.role);
-  const nav = owner ? OWNER_NAV : RESELLER_NAV;
+  // Filtre par capacité : un revendeur ne voit que ce que son niveau ouvre.
+  const nav = (owner ? OWNER_NAV : RESELLER_NAV)
+    .filter((it) => !it.cap || userCan(user, it.cap));
 
   return (
     <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-white/5 bg-obsidian">

@@ -314,6 +314,10 @@ export async function apiV1(request, env) {
     if (parts[1] === 'reseller' && parts[2] === 'login' && request.method === 'POST') {
       return handleResellerLogin(request, env);
     }
+    // Auto-inscription revendeur (PUBLIC) — le lien unique à partager.
+    if (parts[1] === 'reseller' && parts[2] === 'signup' && request.method === 'POST') {
+      return handleResellerSignup(request, env);
+    }
     if (parts[1] === 'me' && request.method === 'GET') {
       const a = await requireAuth(request, env);
       if (a.error) return a.error;
@@ -365,6 +369,11 @@ export async function apiV1(request, env) {
   // /resellers — owner ET revendeurs (un revendeur gere ses sous-revendeurs).
   // Les permissions fines (parent-enfant) sont verifiees dans les handlers.
   if (parts[0] === 'resellers') {
+    // Gérer des sous-revendeurs = capacité 'resellers' (niveau confiance).
+    // L'admin a toujours accès ; un revendeur basique/standard non.
+    if (isReseller && !resellerCan(a.user, 'resellers')) {
+      return errResp('forbidden', 'Ton niveau ne permet pas de gérer des revendeurs.', 403);
+    }
     if (parts.length === 1) {
       if (request.method === 'GET') return handleResellersList(env, a.user);
       if (request.method === 'POST') return handleResellersCreate(request, env, actor, a.user);
@@ -585,6 +594,12 @@ export async function apiV1(request, env) {
   if (parts[0] === 'sources' && parts.length === 2) {
     const mac = parts[1];
     if (request.method === 'GET') return handleSourceGet(env, mac);
+    // Pousser/retirer une source = capacité 'sources' (niveau standard+).
+    // Un revendeur 'basique' ne peut PAS configurer les sources clients.
+    if ((request.method === 'PUT' || request.method === 'DELETE')
+        && !resellerCan(a.user, 'sources')) {
+      return errResp('forbidden', 'Ton niveau ne permet pas de pousser une source.', 403);
+    }
     if (request.method === 'PUT') return handleSourcePut(request, env, mac, actor);
     if (request.method === 'DELETE') return handleSourceDelete(request, env, mac, actor);
   }
@@ -2203,6 +2218,79 @@ function isOwner(user) {
 }
 
 // ----- Login revendeur (table `resellers`, role JWT 'reseller') -----
+// =========================================================
+//  REVENDEURS — niveaux de permission + auto-inscription
+// =========================================================
+//  3 niveaux prédéfinis. Chaque niveau ouvre un ensemble de
+//  capacités. L'admin choisit le niveau de chaque revendeur.
+//    - basique   : activer des appareils, c'est tout.
+//    - standard  : + pousser des sources (playlists) aux clients.
+//    - confiance  : + gérer ses propres sous-revendeurs.
+//  (apps/tarifs en lecture, et le solde de crédits, restent communs.)
+const RESELLER_CAPS = {
+  basique: ['activate'],
+  standard: ['activate', 'sources'],
+  confiance: ['activate', 'sources', 'resellers'],
+};
+function resellerLevelCaps(level) {
+  return RESELLER_CAPS[level] || RESELLER_CAPS.basique;
+}
+/// true si l'acteur a le droit `cap`. L'admin (super_admin) a TOUT.
+function resellerCan(user, cap) {
+  if (!user || user.role !== 'reseller') return true;
+  return resellerLevelCaps(user.level || 'basique').includes(cap);
+}
+
+/// Ajoute la colonne `level` à la table resellers si absente (idempotent).
+async function ensureResellerLevel(env) {
+  try {
+    await env.DB
+      .prepare("ALTER TABLE resellers ADD COLUMN level TEXT NOT NULL DEFAULT 'basique'")
+      .run();
+  } catch (_) {
+    /* colonne déjà présente */
+  }
+}
+
+// ----- Auto-inscription revendeur (PUBLIC, via le lien unique) -----
+//  Le revendeur ouvre le lien, choisit identifiant + mot de passe. Le
+//  compte est créé en statut 'pending' (niveau 'basique', 0 crédit) :
+//  il n'a AUCUN accès tant que l'admin ne l'a pas activé et ne lui a pas
+//  donné un niveau + des crédits. C'est l'admin qui garde la main.
+async function handleResellerSignup(request, env) {
+  await ensureResellerLevel(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const email = (body.email || '').trim().toLowerCase();
+  const password = body.password || '';
+  const name = (body.name || '').trim() || null;
+  if (!email || !password) {
+    return errResp('missing_fields', 'Identifiant et mot de passe requis', 400);
+  }
+  if (email.length < 3) return errResp('bad_email', 'Identifiant trop court', 400);
+  if (password.length < 4) {
+    return errResp('weak_password', 'Mot de passe trop court (min. 4)', 400);
+  }
+  const existing = await env.DB
+    .prepare('SELECT id FROM resellers WHERE email = ?').bind(email).first();
+  if (existing) return errResp('email_taken', 'Cet identifiant est déjà pris', 409);
+  const id = genId('rsl');
+  const now = Date.now();
+  const hash = await hashPassword(password);
+  await env.DB
+    .prepare(
+      `INSERT INTO resellers
+        (id, email, password_hash, name, credit_balance_cents, credit_balance,
+         commission_rate, status, level, created_at)
+       VALUES (?, ?, ?, ?, 0, 0, 0.20, 'pending', 'basique', ?)`,
+    )
+    .bind(id, email, hash, name, now)
+    .run();
+  return jsonResp({ ok: true, pending: true }, 201);
+}
+
 async function handleResellerLogin(request, env) {
   let body;
   try { body = await request.json(); } catch (_) {
@@ -2213,24 +2301,32 @@ async function handleResellerLogin(request, env) {
   if (!email || !password) {
     return errResp('missing_fields', 'email and password required', 400);
   }
+  await ensureResellerLevel(env);
   const row = await env.DB
-    .prepare('SELECT id, email, password_hash, name, status, credit_balance FROM resellers WHERE email = ?')
+    .prepare('SELECT id, email, password_hash, name, status, level, credit_balance FROM resellers WHERE email = ?')
     .bind(email)
     .first();
-  if (!row || row.status !== 'active') {
-    return errResp('bad_credentials', 'Invalid credentials', 401);
-  }
+  if (!row) return errResp('bad_credentials', 'Invalid credentials', 401);
+  // Vérifie d'abord le mot de passe (évite de révéler le statut d'un
+  // compte sur une mauvaise saisie), puis distingue pending/suspended.
   const ok = await verifyPassword(password, row.password_hash);
   if (!ok) return errResp('bad_credentials', 'Invalid credentials', 401);
+  if (row.status === 'pending') {
+    return errResp('pending', 'Compte en attente de validation par l\'administrateur.', 403);
+  }
+  if (row.status !== 'active') {
+    return errResp('suspended', 'Compte suspendu. Contacte l\'administrateur.', 403);
+  }
+  const level = row.level || 'basique';
   const token = await signJwt(
-    { sub: row.id, email: row.email, role: 'reseller', name: row.name },
+    { sub: row.id, email: row.email, role: 'reseller', name: row.name, level },
     env.ADMIN_SECRET || 'dev-secret',
   );
   return jsonResp({
     token,
     user: {
       id: row.id, email: row.email, name: row.name,
-      role: 'reseller', credit_balance: row.credit_balance,
+      role: 'reseller', level, credit_balance: row.credit_balance,
     },
   });
 }
@@ -2238,12 +2334,13 @@ async function handleResellerLogin(request, env) {
 // ----- /me : profil de l'acteur courant (+ solde si revendeur) -----
 async function handleMe(env, user) {
   if (user.role === 'reseller') {
+    await ensureResellerLevel(env);
     const r = await env.DB
-      .prepare('SELECT id, email, name, status, credit_balance, commission_rate FROM resellers WHERE id = ?')
+      .prepare('SELECT id, email, name, status, level, credit_balance, commission_rate FROM resellers WHERE id = ?')
       .bind(user.sub)
       .first();
     if (!r) return errResp('not_found', 'Reseller not found', 404);
-    return jsonResp({ user: { ...r, role: 'reseller' } });
+    return jsonResp({ user: { ...r, level: r.level || 'basique', role: 'reseller' } });
   }
   return jsonResp({ user });
 }
@@ -2323,13 +2420,14 @@ async function planCreditCost(env, plan) {
 
 // ----- Resellers CRUD (owner) -----
 async function handleResellersList(env, user) {
+  await ensureResellerLevel(env);
   // Owner : tout l'arbre. Revendeur : seulement SES sous-revendeurs directs.
   const reseller = user && user.role === 'reseller';
   const where = reseller ? 'WHERE r.parent_reseller_id = ?' : '';
   const binds = reseller ? [user.sub] : [];
   const rs = await env.DB
     .prepare(
-      `SELECT r.id, r.email, r.name, r.status, r.credit_balance,
+      `SELECT r.id, r.email, r.name, r.status, r.level, r.credit_balance,
               r.commission_rate, r.parent_reseller_id, r.created_at,
               (SELECT COUNT(*) FROM devices d   WHERE d.reseller_id = r.id) as devices,
               (SELECT COUNT(*) FROM licenses l  WHERE l.reseller_id = r.id) as licenses,
@@ -2441,9 +2539,16 @@ async function handleResellersUpdate(request, env, id, actor, user) {
   if (user && user.role === 'reseller' && before.parent_reseller_id !== user.sub) {
     return errResp('forbidden', 'Forbidden', 403);
   }
+  await ensureResellerLevel(env);
   const sets = []; const vals = [];
   if (body.name !== undefined) { sets.push('name = ?'); vals.push(body.name); }
   if (body.status !== undefined) { sets.push('status = ?'); vals.push(body.status); }
+  // Niveau de permission (basique/standard/confiance) — owner uniquement.
+  if (body.level !== undefined && isOwner(user)) {
+    const lvl = ['basique', 'standard', 'confiance'].includes(body.level)
+      ? body.level : 'basique';
+    sets.push('level = ?'); vals.push(lvl);
+  }
   // Seul l'owner peut changer la commission.
   if (body.commission_rate !== undefined && isOwner(user)) {
     sets.push('commission_rate = ?'); vals.push(Number(body.commission_rate));
