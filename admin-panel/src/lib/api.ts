@@ -642,6 +642,13 @@ export const pricingApi = {
       method: 'PUT',
       body: cfg,
     }),
+  // Donne `days` jours (7 par défaut) à TOUS les appareils actifs, puis le
+  // paywall revient automatiquement. Action ponctuelle de bascule payante.
+  grantTrialAll: (days: number) =>
+    request<{ ok: boolean; days: number; updated: number }>(
+      '/api/v1/grant-trial-all',
+      { method: 'POST', body: { days } },
+    ),
 };
 
 // =========================================================

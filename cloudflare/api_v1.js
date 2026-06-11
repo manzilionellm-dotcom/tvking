@@ -556,6 +556,18 @@ export async function apiV1(request, env) {
     }
   }
 
+  // /grant-trial-all — donne X jours (7 par défaut) à TOUS les appareils
+  // actifs, puis le paywall revient tout seul. Owner. Action de lancement
+  // du modèle payant (demande client : « +7 j à tous les actifs »).
+  if (parts[0] === 'grant-trial-all') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (parts.length === 1 && request.method === 'POST') {
+      return handleGrantTrialAll(request, env, actor);
+    }
+  }
+
   // /feedback — liste des avis reçus des clients (lecture). Owner.
   if (parts[0] === 'feedback') {
     if (a.user.role !== 'super_admin') {
@@ -1423,6 +1435,32 @@ async function handlePricingPut(request, env, actor) {
     ok: true, currency, lifetime, yearly, trialDays,
     promoEnabled: promoEnabled === '1', promoMessage,
   });
+}
+
+// =========================================================
+//  +7 JOURS À TOUS (lancement du modèle payant) — owner
+// =========================================================
+//  Met TOUS les appareils ACTIFS à `days` jours (7 par défaut) à partir de
+//  maintenant. Passé ce délai, l'app repasse « expiré » → l'écran de
+//  paiement revient automatiquement. Forçe tout le monde (y compris « à
+//  vie »/payés) — choix explicite du client (uniquement des tests pour
+//  l'instant). Irréversible : c'est une action ponctuelle de bascule.
+async function handleGrantTrialAll(request, env, actor) {
+  let body;
+  try { body = await request.json(); } catch (_) { body = {}; }
+  let days = parseInt(body && body.days, 10);
+  if (!Number.isFinite(days) || days <= 0) days = 7;
+  if (days > 365) days = 365;
+  const now = Date.now();
+  const newExpiry = now + days * 24 * 60 * 60 * 1000;
+  const res = await env.DB
+    .prepare("UPDATE licenses SET expires_at = ?, updated_at = ? WHERE status = 'active'")
+    .bind(newExpiry, now)
+    .run();
+  const updated = (res && res.meta && res.meta.changes) || 0;
+  await logAudit(env, request, actor, 'licenses.grant_trial_all',
+    { type: 'license', id: null }, null, { days, updated, expires_at: newExpiry });
+  return jsonResp({ ok: true, days, updated, expires_at: newExpiry });
 }
 
 // =========================================================

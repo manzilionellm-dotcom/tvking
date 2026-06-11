@@ -22,6 +22,24 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const [grantBusy, setGrantBusy] = useState(false);
+
+  async function grantTrialAll() {
+    const ans = window.prompt(
+      'Donner combien de jours à TOUS les appareils actifs ? '
+      + 'Passé ce délai, le paiement revient automatiquement.',
+      '7',
+    );
+    if (ans == null) return;
+    const days = parseInt(ans, 10);
+    if (!Number.isFinite(days) || days <= 0) { setErr('Nombre de jours invalide.'); return; }
+    if (!window.confirm(`Confirmer : ${days} jours pour TOUS les appareils actifs ?`)) return;
+    setGrantBusy(true); setErr(null); setOk(null);
+    try {
+      const r = await pricingApi.grantTrialAll(days);
+      setOk(`✅ ${r.updated} appareil(s) mis à ${r.days} jours. Le paiement reviendra ensuite.`);
+    } catch (e) { fail(e); } finally { setGrantBusy(false); }
+  }
 
   function fail(e: any) {
     if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
@@ -202,6 +220,26 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
             )}
           </div>
         </div>
+      </div>
+
+      {/* ===== Action de bascule : +X jours à tous les actifs ===== */}
+      <div className="mt-6 max-w-3xl rounded-xl border border-accent/30 bg-accent/5 p-5">
+        <h3 className="text-sm font-semibold text-ink-primary">
+          Lancer le modèle payant
+        </h3>
+        <p className="mt-1 text-xs text-ink-secondary">
+          Donne 7 jours (modifiable) à TOUS les appareils actifs. Passé ce
+          délai, l'écran de paiement revient automatiquement chez chaque
+          client. Action ponctuelle — à utiliser au moment de basculer.
+        </p>
+        <button
+          type="button"
+          onClick={grantTrialAll}
+          disabled={grantBusy}
+          className="mt-3 rounded-md border border-accent/50 bg-accent/10 px-4 py-2 text-sm font-semibold text-accent-bright transition hover:bg-accent/20 disabled:opacity-50"
+        >
+          {grantBusy ? 'Application…' : 'Donner 7 jours à tous les appareils actifs'}
+        </button>
       </div>
     </AppLayout>
   );
