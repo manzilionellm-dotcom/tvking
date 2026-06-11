@@ -1382,6 +1382,43 @@ async function handleGetAd(env) {
   }
 }
 
+// GET /api/pricing (public) — tarifs affichés dans l'app, pilotés par le
+// panel « Tarifs ». Renvoie {currency, lifetime, yearly, trialDays,
+// promoEnabled, promoMessage}. Défauts maison si rien posé : à vie 9,9 € ·
+// 1 an 4,9 € · essai 7 jours. Le prix est une CHAÎNE (on garde la virgule
+// décimale française "9,9" telle quelle pour l'affichage).
+async function handleGetPricing(env) {
+  const def = {
+    currency: '€',
+    lifetime: '9,9',
+    yearly: '4,9',
+    trialDays: 7,
+    promoEnabled: false,
+    promoMessage: '',
+  };
+  if (!env.DB) return json(def);
+  try {
+    await ensureAppConfigTable(env);
+    const get = async (k) => {
+      const r = await env.DB
+        .prepare('SELECT value FROM app_config WHERE key = ?')
+        .bind(k).first();
+      return r && r.value != null ? String(r.value) : '';
+    };
+    const currency = (await get('price_currency')) || def.currency;
+    const lifetime = (await get('price_lifetime')) || def.lifetime;
+    const yearly = (await get('price_yearly')) || def.yearly;
+    const td = parseInt(await get('trial_days'), 10);
+    const trialDays = Number.isFinite(td) && td >= 0 ? td : def.trialDays;
+    const promoMessage = await get('promo_msg');
+    const promoEnabled =
+        (await get('promo_enabled')) === '1' && promoMessage.length > 0;
+    return json({ currency, lifetime, yearly, trialDays, promoEnabled, promoMessage });
+  } catch (_) {
+    return json(def);
+  }
+}
+
 // GET /api/feedback-prompt (public) — invitation à laisser un avis.
 // Renvoie {enabled, message}. L'app affiche un message doux invitant le
 // client à écrire son avis / ses idées d'amélioration.
@@ -2481,6 +2518,13 @@ export default {
     if (segments[0] === 'api' && segments[1] === 'ad' && segments.length === 2) {
       if (request.method === 'GET') return await handleGetAd(env);
       return badRequest('only GET supported on /api/ad');
+    }
+
+    // /api/pricing — tarifs affichés dans l'app (GET public). Réglés via
+    // le panel « Tarifs » (api/v1/pricing).
+    if (segments[0] === 'api' && segments[1] === 'pricing' && segments.length === 2) {
+      if (request.method === 'GET') return await handleGetPricing(env);
+      return badRequest('only GET supported on /api/pricing');
     }
 
     // /api/feedback-prompt — invitation à laisser un avis (GET public).

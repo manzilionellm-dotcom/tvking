@@ -302,7 +302,7 @@
   "subBannedMsg": "Akaunti yako imesimamishwa na msimamizi. Ukidhani ni hitilafu, wasiliana nasi.",
   "subFrozenMsg": "Akaunti yako imesimamishwa. Wasiliana na usaidizi ili kurejesha ufikiaji.",
   "subTrialExpiredMsg": "Jaribio lako la bure la siku {days} limeisha. Wezesha ufikiaji wako na ufurahie KILA KITU, bila kikomo:",
-  "subSubscribePrice": "Jisajili — € 5/mwaka au € 9.90 milele",
+  "subSubscribePrice": "Jisajili sasa",
   "subContactSupport": "Wasiliana na usaidizi",
   "subPullToRefresh": "Umelipa hivi punde? Vuta chini ili kusasisha.",
   "subBenefitChannels": "Maelfu ya chaneli, filamu na mfululizo kutoka kote ulimwenguni",
@@ -500,5 +500,9 @@
   "themeChooseSub": "Rangi hubadilika papo hapo katika programu nzima",
   "themeChooseTitle": "Chagua mandhari yako",
   "catFilterMovies": "Sinema",
-  "catFilterSeries": "Mfululizo"
+  "catFilterSeries": "Mfululizo",
+  "pricingOffersTitle": "Ofa zetu",
+  "pricingLifetime": "Maisha",
+  "pricingYearly": "Mwaka 1",
+  "pricingTrialDays": "Jaribio la bure la siku {days}"
 }

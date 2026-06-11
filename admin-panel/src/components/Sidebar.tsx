@@ -20,6 +20,7 @@ const OWNER_NAV: NavItem[] = [
   { key: 'nav.featured',      to: '/featured' },
   { key: 'nav.theme',         to: '/theme' },
   { key: 'nav.ad',            to: '/ad' },
+  { key: 'nav.pricing',       to: '/tarifs' },
   { key: 'nav.reviews',       to: '/reviews' },
   { key: 'nav.activate',    to: '/activate' },
   { key: 'nav.pushSource',  to: '/playlists' },

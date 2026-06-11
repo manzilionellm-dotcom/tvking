@@ -154,9 +154,9 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   // Essais GRATUITS (0 crédit) — pour faire tester un prospect qui n'a
   // pas encore payé. Activables même avec un solde de crédits à zéro.
   const TRIALS = [
-    { id: 'trial_2h', label: 'Test 2 h' },
     { id: 'trial_24h', label: 'Test 24 h' },
     { id: 'trial_48h', label: 'Test 48 h' },
+    { id: 'trial_7d', label: 'Test 7 jours' },
   ];
 
   return (

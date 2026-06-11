@@ -52,6 +52,7 @@ import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/cloud_backup_repository.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
+import 'features/pricing/data/pricing_repository.dart';
 import 'core/flavor/flavor.dart';
 import 'features/security/data/age_gate_settings.dart';
 import 'features/security/data/lock_settings.dart';
@@ -208,6 +209,12 @@ Future<void> bootApp() async {
   // RECONSTRUIT toute l'app (BrandConfig + AccentController sont dans le
   // Listenable racine). Si rien n'est configuré ou réseau KO → défauts.
   unawaited(RemoteThemeRepository.fetchAndApply());
+
+  // Tarifs DISTANTS (à vie / 1 an / essai + promo) pilotés par le panel
+  // « Tarifs ». Non bloquant : le bloc « Nos offres » se met à jour dès
+  // que la réponse arrive (PricingRepository.notifier). Défauts maison
+  // sinon (à vie 9,9 € · 1 an 4,9 € · essai 7 jours).
+  unawaited(PricingRepository.fetch());
 
   // Invitation à laisser un avis (message piloté par le panel). Non
   // bloquant : l'accueil affichera la feuille plus tard si elle est active.

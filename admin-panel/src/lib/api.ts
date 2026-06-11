@@ -622,6 +622,29 @@ export const adApi = {
 };
 
 // =========================================================
+//  TARIFS (prix affichés dans l'app + essai + promo/bonus)
+// =========================================================
+//  L'owner fixe les prix EN € (à vie / 1 an), la durée de l'essai gratuit,
+//  et un message promo/bonus optionnel (« 1 acheté = 1 offert »). L'app lit
+//  /api/pricing au démarrage et affiche le bloc « Nos offres ».
+export interface PricingConfig {
+  currency: string;     // ex. '€'
+  lifetime: string;     // ex. '9,9'
+  yearly: string;       // ex. '4,9'
+  trialDays: number;    // ex. 7
+  promoEnabled: boolean;
+  promoMessage: string;
+}
+export const pricingApi = {
+  get: () => request<PricingConfig>('/api/v1/pricing'),
+  save: (cfg: PricingConfig) =>
+    request<{ ok: boolean } & PricingConfig>('/api/v1/pricing', {
+      method: 'PUT',
+      body: cfg,
+    }),
+};
+
+// =========================================================
 //  AVIS CLIENTS (invitation + avis reçus)
 // =========================================================
 export interface FeedbackPrompt {

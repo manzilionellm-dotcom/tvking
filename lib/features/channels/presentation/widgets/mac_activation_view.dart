@@ -25,6 +25,7 @@ import '../../../../core/support/vip_support.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../device/data/device_identity.dart';
+import '../../../pricing/presentation/pricing_banner.dart';
 import '../../../playlists/data/playlist_repository.dart';
 import '../../../playlists/data/remote_source_repository.dart';
 import '../../../playlists/presentation/xtream_login_sheet.dart';
@@ -72,6 +73,10 @@ class MacActivationView extends StatelessWidget {
               ),
               const SizedBox(height: 16),
             ],
+            // Bloc « Nos offres » — prix lisibles dès l'ouverture (à vie /
+            // 1 an / essai + promo), pilotés par le panel « Tarifs ».
+            const PricingBanner(),
+            const SizedBox(height: 18),
             // Le code MAC, bien lisible et copiable.
             Container(
               padding:

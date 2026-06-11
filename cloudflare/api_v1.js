@@ -533,6 +533,18 @@ export async function apiV1(request, env) {
     }
   }
 
+  // /pricing — tarifs affichés dans l'app (à vie / 1 an / essai + promo).
+  // Owner uniquement. GET pour relire, PUT pour enregistrer.
+  if (parts[0] === 'pricing') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (parts.length === 1) {
+      if (request.method === 'GET') return handlePricingGet(env);
+      if (request.method === 'PUT') return handlePricingPut(request, env, actor);
+    }
+  }
+
   // /feedback-prompt — invitation à laisser un avis (message + on/off). Owner.
   if (parts[0] === 'feedback-prompt') {
     if (a.user.role !== 'super_admin') {
@@ -1363,6 +1375,57 @@ async function handleAdPut(request, env, actor) {
 }
 
 // =========================================================
+//  TARIFS (pricing) — owner
+// =========================================================
+//  Pilote les prix affichés dans l'app : à vie / 1 an (en €, chaîne avec
+//  virgule décimale "9,9"), durée de l'essai gratuit, et un message
+//  promo/bonus optionnel ("achète 1 = 1 offert pour ta famille", etc.).
+async function handlePricingGet(env) {
+  await ensureAppConfigTable(env);
+  const td = parseInt(await _cfgGetStr(env, 'trial_days'), 10);
+  return jsonResp({
+    currency: (await _cfgGetStr(env, 'price_currency')) || '€',
+    lifetime: (await _cfgGetStr(env, 'price_lifetime')) || '9,9',
+    yearly: (await _cfgGetStr(env, 'price_yearly')) || '4,9',
+    trialDays: Number.isFinite(td) && td >= 0 ? td : 7,
+    promoEnabled: (await _cfgGetStr(env, 'promo_enabled')) === '1',
+    promoMessage: await _cfgGetStr(env, 'promo_msg'),
+  });
+}
+
+async function handlePricingPut(request, env, actor) {
+  await ensureAppConfigTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  // Prix : on garde une chaîne courte (ex. "9,9"). On nettoie juste les
+  // espaces et on borne la longueur — l'affichage € est ajouté côté app.
+  const cleanPrice = (v) => (v == null ? '' : String(v)).trim().slice(0, 12);
+  const lifetime = cleanPrice(body.lifetime) || '9,9';
+  const yearly = cleanPrice(body.yearly) || '4,9';
+  const currency = (body.currency == null ? '€' : String(body.currency)).trim().slice(0, 4) || '€';
+  let trialDays = parseInt(body.trialDays, 10);
+  if (!Number.isFinite(trialDays) || trialDays < 0) trialDays = 7;
+  if (trialDays > 365) trialDays = 365;
+  const promoMessage = (body.promoMessage == null ? '' : String(body.promoMessage)).trim().slice(0, 240);
+  const promoEnabled = body.promoEnabled ? '1' : '0';
+  await _cfgSet(env, 'price_lifetime', lifetime);
+  await _cfgSet(env, 'price_yearly', yearly);
+  await _cfgSet(env, 'price_currency', currency);
+  await _cfgSet(env, 'trial_days', String(trialDays));
+  await _cfgSet(env, 'promo_msg', promoMessage);
+  await _cfgSet(env, 'promo_enabled', promoEnabled);
+  await logAudit(env, request, actor, 'pricing.save',
+    { type: 'app_config', id: null }, null,
+    { lifetime, yearly, currency, trialDays, promoEnabled });
+  return jsonResp({
+    ok: true, currency, lifetime, yearly, trialDays,
+    promoEnabled: promoEnabled === '1', promoMessage,
+  });
+}
+
+// =========================================================
 //  AVIS CLIENTS (feedback) — owner
 // =========================================================
 async function handleFeedbackPromptGet(env) {
@@ -1909,6 +1972,10 @@ function planToDays(plan, customDays) {
   // d'expiration : days * 24h * 60min… donc 2/24 jour = 2 heures pile).
   const hm = /^trial_(\d+)h$/.exec(plan || '');
   if (hm) return Number(hm[1]) / 24;
+  // Essais GRATUITS en JOURS : 'trial_7d', 'trial_3d'… (ex. l'essai
+  // standard de 7 jours proposé dans le panel d'activation).
+  const dm = /^trial_(\d+)d$/.exec(plan || '');
+  if (dm) return Number(dm[1]);
   switch (plan) {
     case '1m':
     case 'monthly': return 30;

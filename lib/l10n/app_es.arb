@@ -302,7 +302,7 @@
   "subBannedMsg": "Tu cuenta fue suspendida por el administrador. Si crees que es un error, contáctanos.",
   "subFrozenMsg": "Tu cuenta está en pausa. Contacta con soporte para reactivar el acceso.",
   "subTrialExpiredMsg": "Tu prueba gratuita de {days} días ha terminado. Activa tu acceso y disfruta de TODO, sin límites:",
-  "subSubscribePrice": "Suscribirme — 5 €/año o 9,90 € de por vida",
+  "subSubscribePrice": "Suscribirme ahora",
   "subContactSupport": "Contactar con soporte",
   "subPullToRefresh": "¿Acabas de pagar? Desliza hacia abajo para actualizar.",
   "subBenefitChannels": "Miles de canales, películas y series de todo el mundo",
@@ -500,5 +500,9 @@
   "themeChooseSub": "El color cambia al instante en toda la app",
   "themeChooseTitle": "Elige tu tema",
   "catFilterMovies": "Cine",
-  "catFilterSeries": "Series"
+  "catFilterSeries": "Series",
+  "pricingOffersTitle": "Nuestras ofertas",
+  "pricingLifetime": "De por vida",
+  "pricingYearly": "1 año",
+  "pricingTrialDays": "Prueba gratis de {days} días"
 }

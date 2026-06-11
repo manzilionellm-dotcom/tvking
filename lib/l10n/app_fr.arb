@@ -1005,7 +1005,7 @@
       }
     }
   },
-  "subSubscribePrice": "M'abonner — 5 €/an ou 9,90 € à vie",
+  "subSubscribePrice": "M'abonner maintenant",
   "@subSubscribePrice": {
     "description": "Texte UI : subSubscribePrice"
   },
@@ -1895,5 +1895,26 @@
   },
   "@catFilterSeries": {
     "description": "Filtre catégories : série"
+  },
+  "pricingOffersTitle": "Nos offres",
+  "@pricingOffersTitle": {
+    "description": "Titre bloc offres"
+  },
+  "pricingLifetime": "À vie",
+  "@pricingLifetime": {
+    "description": "Offre à vie"
+  },
+  "pricingYearly": "1 an",
+  "@pricingYearly": {
+    "description": "Offre 1 an"
+  },
+  "pricingTrialDays": "Essai gratuit {days} jours",
+  "@pricingTrialDays": {
+    "description": "Essai gratuit en jours",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
   }
 }

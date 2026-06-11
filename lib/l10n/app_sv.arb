@@ -302,7 +302,7 @@
   "subBannedMsg": "Ditt konto har stängts av av administratören. Om du tror att det är ett misstag, kontakta oss.",
   "subFrozenMsg": "Ditt konto är pausat. Kontakta supporten för att återaktivera åtkomsten.",
   "subTrialExpiredMsg": "Din {days} dagars gratis provperiod är slut. Aktivera din åtkomst och njut av ALLT, utan begränsningar:",
-  "subSubscribePrice": "Prenumerera — 5 €/år eller 9,90 € för alltid",
+  "subSubscribePrice": "Prenumerera nu",
   "subContactSupport": "Kontakta supporten",
   "subPullToRefresh": "Just betalat? Dra nedåt för att uppdatera.",
   "subBenefitChannels": "Tusentals kanaler, filmer och serier från hela världen",
@@ -500,5 +500,9 @@
   "themeChooseSub": "Färgen ändras direkt i hela appen",
   "themeChooseTitle": "Välj ditt tema",
   "catFilterMovies": "Film",
-  "catFilterSeries": "Serier"
+  "catFilterSeries": "Serier",
+  "pricingOffersTitle": "Våra erbjudanden",
+  "pricingLifetime": "Livstid",
+  "pricingYearly": "1 år",
+  "pricingTrialDays": "{days} dagars gratis prov"
 }

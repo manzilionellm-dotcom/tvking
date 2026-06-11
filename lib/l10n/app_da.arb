@@ -302,7 +302,7 @@
   "subBannedMsg": "Din konto blev suspenderet af administratoren. Hvis du mener, det er en fejl, så kontakt os.",
   "subFrozenMsg": "Din konto er sat på pause. Kontakt support for at genaktivere adgangen.",
   "subTrialExpiredMsg": "Din gratis prøveperiode på {days} dage er slut. Aktiver din adgang, og nyd ALT uden begrænsninger:",
-  "subSubscribePrice": "Abonner — 5 €/år eller 9,90 € livsvarigt",
+  "subSubscribePrice": "Abonnér nu",
   "subContactSupport": "Kontakt support",
   "subPullToRefresh": "Lige betalt? Træk ned for at opdatere.",
   "subBenefitChannels": "Tusindvis af kanaler, film og serier fra hele verden",
@@ -500,5 +500,9 @@
   "themeChooseSub": "Farven ændres øjeblikkeligt i hele appen",
   "themeChooseTitle": "Vælg dit tema",
   "catFilterMovies": "Film",
-  "catFilterSeries": "Serier"
+  "catFilterSeries": "Serier",
+  "pricingOffersTitle": "Vores tilbud",
+  "pricingLifetime": "Livstid",
+  "pricingYearly": "1 år",
+  "pricingTrialDays": "{days} dages gratis prøve"
 }

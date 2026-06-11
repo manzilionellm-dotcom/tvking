@@ -303,7 +303,7 @@
   "subBannedMsg": "Your account was suspended by the administrator. If you think this is a mistake, contact us.",
   "subFrozenMsg": "Your account is paused. Contact support to reactivate access.",
   "subTrialExpiredMsg": "Your {days}-day free trial has ended. Activate your access and enjoy EVERYTHING, with no limits:",
-  "subSubscribePrice": "Subscribe — €5/year or €9.90 lifetime",
+  "subSubscribePrice": "Subscribe now",
   "subContactSupport": "Contact support",
   "subPullToRefresh": "Just paid? Pull down to refresh.",
   "subBenefitChannels": "Thousands of channels, movies & series from around the world",
@@ -500,5 +500,9 @@
   "orSeparator": "or",
   "xtreamHaveCode": "I have an Xtream code",
   "catFilterMovies": "Movies",
-  "catFilterSeries": "Series"
+  "catFilterSeries": "Series",
+  "pricingOffersTitle": "Our plans",
+  "pricingLifetime": "Lifetime",
+  "pricingYearly": "1 year",
+  "pricingTrialDays": "{days}-day free trial"
 }

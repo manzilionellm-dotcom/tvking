@@ -302,7 +302,7 @@
   "subBannedMsg": "تم تعليق حسابك من قِبل المسؤول. إذا كنت تظن أن هذا خطأ، فتواصل معنا.",
   "subFrozenMsg": "حسابك متوقّف مؤقتًا. تواصل مع الدعم لإعادة تفعيل الوصول.",
   "subTrialExpiredMsg": "انتهت تجربتك المجانية لمدة {days} يومًا. فعّل وصولك واستمتع بكل شيء بلا حدود:",
-  "subSubscribePrice": "اشترك — 5 € سنويًا أو 9.90 € مدى الحياة",
+  "subSubscribePrice": "اشترك الآن",
   "subContactSupport": "تواصل مع الدعم",
   "subPullToRefresh": "دفعت للتو؟ اسحب للأسفل للتحديث.",
   "subBenefitChannels": "آلاف القنوات والأفلام والمسلسلات من جميع أنحاء العالم",
@@ -500,5 +500,9 @@
   "themeChooseSub": "يتغير اللون فورًا في كل أنحاء التطبيق",
   "themeChooseTitle": "اختر سمتك",
   "catFilterMovies": "سينما",
-  "catFilterSeries": "مسلسلات"
+  "catFilterSeries": "مسلسلات",
+  "pricingOffersTitle": "عروضنا",
+  "pricingLifetime": "مدى الحياة",
+  "pricingYearly": "سنة",
+  "pricingTrialDays": "تجربة مجانية {days} يوم"
 }
