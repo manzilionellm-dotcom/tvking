@@ -91,8 +91,14 @@ database_id = "67303737-a50b-4258-86de-662fb9aba6e7"
 #  ⚠️ « Serveur 2 » pointe pour l'instant sur la même URL que
 #  « Serveur 1 » — remplace son `url` par ton 2ᵉ serveur quand tu
 #  l'auras, puis redéploie.
+#  ⚠️ SÉCURITÉ : ce dépôt est public. On NE met PLUS d'URL IPTV réelle
+#  ici (elle serait lisible par tout le monde). Liste VIDE par défaut →
+#  tu ajoutes tes vrais serveurs depuis le PANEL → page « Serveurs »
+#  (stockés en privé dans la base D1 `default_servers`, jamais dans le
+#  dépôt). Le worker lit D1 en priorité et ne retombe sur cette variable
+#  que si D1 est vide.
 [vars]
-DEFAULT_SERVERS = '[{"id":"srv1","label":"Serveur 1","url":"http://line.iptvmadrid.es"},{"id":"srv2","label":"Serveur 2","url":"http://line.iptvmadrid.es"}]'
+DEFAULT_SERVERS = '[]'
 
 # Le secret admin n'est PAS dans ce fichier — il se met via
 # `wrangler secret put ADMIN_SECRET` pour ne JAMAIS être commité.

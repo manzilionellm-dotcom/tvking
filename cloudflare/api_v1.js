@@ -84,6 +84,56 @@ function errResp(code, message, status = 400) {
 }
 
 // ---------------------------------------------------------
+//  Limitation de débit (anti-brute-force) — par IP, via D1
+// ---------------------------------------------------------
+//  Compte les tentatives par IP sur une fenêtre glissante. Au-delà du
+//  seuil → 429. Sur succès on remet à zéro. Fail-OPEN : si la base est
+//  indisponible, on NE bloque jamais un utilisateur légitime (la
+//  sécurité ne doit pas casser le service).
+async function ensureRateLimitTable(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS rate_limits (k TEXT PRIMARY KEY, '
+    + 'count INTEGER NOT NULL, window_start INTEGER NOT NULL)',
+  ).run();
+}
+function clientIp(request) {
+  return request.headers.get('CF-Connecting-IP')
+    || request.headers.get('X-Forwarded-For')
+    || 'unknown';
+}
+/// true = tentative AUTORISÉE ; false = bloquée (429).
+async function rateLimitHit(env, request, bucket, maxAttempts, windowMs) {
+  try {
+    await ensureRateLimitTable(env);
+    const k = `${bucket}:${clientIp(request)}`;
+    const now = Date.now();
+    const row = await env.DB
+      .prepare('SELECT count, window_start FROM rate_limits WHERE k = ?')
+      .bind(k).first();
+    if (!row || (now - row.window_start) > windowMs) {
+      await env.DB.prepare(
+        'INSERT INTO rate_limits (k, count, window_start) VALUES (?, 1, ?) '
+        + 'ON CONFLICT(k) DO UPDATE SET count = 1, window_start = ?',
+      ).bind(k, now, now).run();
+      return true;
+    }
+    if (row.count >= maxAttempts) return false;
+    await env.DB.prepare('UPDATE rate_limits SET count = count + 1 WHERE k = ?')
+      .bind(k).run();
+    return true;
+  } catch (_) {
+    return true; // fail-open
+  }
+}
+/// Remet le compteur à zéro après une réussite (login OK).
+async function rateLimitReset(env, request, bucket) {
+  try {
+    await env.DB.prepare('DELETE FROM rate_limits WHERE k = ?')
+      .bind(`${bucket}:${clientIp(request)}`).run();
+  } catch (_) { /* best-effort */ }
+}
+
+// ---------------------------------------------------------
 //  Helpers crypto (JWT, password hash, AES-GCM)
 // ---------------------------------------------------------
 //  On utilise Web Crypto natif (disponible dans Workers) — pas
@@ -731,6 +781,11 @@ async function handleLogin(request, env) {
   if (!email || !password) {
     return errResp('missing_fields', 'email and password required', 400);
   }
+  // Anti-brute-force : 10 tentatives / 10 min par IP. Succès = reset.
+  if (!await rateLimitHit(env, request, 'login', 10, 10 * 60 * 1000)) {
+    return errResp('rate_limited',
+      'Trop de tentatives de connexion. Réessaie dans ~10 minutes.', 429);
+  }
 
   // Bootstrap : si pas d'admin en base, on en cree un avec
   // ADMIN_SECRET comme mot de passe (transition seamless depuis
@@ -769,6 +824,7 @@ async function handleLogin(request, env) {
   if (!ok) {
     return errResp('bad_credentials', 'Invalid credentials', 401);
   }
+  await rateLimitReset(env, request, 'login'); // succès → on libère l'IP
   await env.DB
     .prepare('UPDATE admin_users SET last_login_at = ? WHERE id = ?')
     .bind(Date.now(), row.id)
@@ -2387,6 +2443,10 @@ async function ensureResellerLevel(env) {
 //  défaut) : il n'a AUCUN accès tant que l'admin ne l'a pas activé et ne
 //  lui a pas coché ses droits + donné des crédits. L'admin garde la main.
 async function handleResellerSignup(request, env) {
+  // Anti-spam : 5 inscriptions / heure par IP (le lien est public).
+  if (!await rateLimitHit(env, request, 'signup', 5, 60 * 60 * 1000)) {
+    return errResp('rate_limited', 'Trop d\'inscriptions. Réessaie plus tard.', 429);
+  }
   await ensureResellerLevel(env);
   let body;
   try { body = await request.json(); } catch (_) {
@@ -2430,6 +2490,11 @@ async function handleResellerLogin(request, env) {
   if (!email || !password) {
     return errResp('missing_fields', 'email and password required', 400);
   }
+  // Anti-brute-force : 10 tentatives / 10 min par IP. Succès = reset.
+  if (!await rateLimitHit(env, request, 'rlogin', 10, 10 * 60 * 1000)) {
+    return errResp('rate_limited',
+      'Trop de tentatives de connexion. Réessaie dans ~10 minutes.', 429);
+  }
   await ensureResellerLevel(env);
   const row = await env.DB
     .prepare('SELECT id, email, password_hash, name, status, level, permissions, credit_balance FROM resellers WHERE email = ?')
@@ -2446,6 +2511,7 @@ async function handleResellerLogin(request, env) {
   if (row.status !== 'active') {
     return errResp('suspended', 'Compte suspendu. Contacte l\'administrateur.', 403);
   }
+  await rateLimitReset(env, request, 'rlogin'); // succès → on libère l'IP
   const level = row.level || 'basique';
   const permissions = resellerPerms(row.permissions, level);
   const token = await signJwt(
