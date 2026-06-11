@@ -2107,6 +2107,33 @@ async function handlePublicDeviceSource(env, mac) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
 
+  // ===== SÉCURITÉ : verrou licence CÔTÉ SERVEUR =====
+  //  On ne livre la source (= identifiants IPTV : serveur, user, mdp) QUE
+  //  si l'abonnement de cet appareil est jouable. Si la licence est
+  //  EXPIRÉE / GELÉE / BANNIE, on renvoie une source VIDE → un non-payant
+  //  ne peut PAS récupérer les identifiants ni charger les flux, même s'il
+  //  contourne l'écran de paiement de l'app. C'est le serveur qui décide,
+  //  pas l'app (impossible à bidouiller côté client).
+  //  - Appareil inconnu / tout neuf / essai en cours  → null = NON bloqué
+  //    (d1StatusForMac renvoie null ou expired=false) → la source passe.
+  //  - Incident DB (lecture statut impossible)         → fail-open (on ne
+  //    coupe pas un client légitime sur une panne transitoire).
+  if (env.DB) {
+    try {
+      const st = await d1StatusForMac(env, MAC);
+      if (st && (st.expired || st.frozen || st.banned)) {
+        return json({
+          mac: MAC,
+          source: null,
+          sources: [],
+          blocked: st.banned ? 'banned' : st.frozen ? 'frozen' : 'expired',
+        });
+      }
+    } catch (_) {
+      // fail-open : on ne bloque jamais sur un incident de lecture du statut.
+    }
+  }
+
   // 1) D1 `device_sources` — sources assignées via le portail api_v1
   //    (activation avec source). Source prioritaire.
   if (env.DB) {
