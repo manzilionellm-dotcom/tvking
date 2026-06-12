@@ -1344,6 +1344,37 @@ async function handleGetFeatured(env) {
   }
 }
 
+// GET /api/greeting (public) — accueil personnalisé : ville + météo,
+// déduites de l'IP via Cloudflare (request.cf) → AUCUNE permission de
+// localisation requise sur la TV. Météo via Open-Meteo (gratuit, sans clé).
+// Renvoie {city, country, tempC, weatherCode}. Tout est best-effort.
+async function handleGreeting(request) {
+  const cf = request.cf || {};
+  const city = cf.city ? String(cf.city) : '';
+  const country = cf.country ? String(cf.country) : '';
+  const lat = cf.latitude;
+  const lon = cf.longitude;
+  let tempC = null;
+  let weatherCode = null;
+  if (lat && lon) {
+    try {
+      const r = await fetch(
+        'https://api.open-meteo.com/v1/forecast?latitude=' + lat +
+          '&longitude=' + lon + '&current=temperature_2m,weather_code',
+        { cf: { cacheTtl: 900, cacheEverything: true } },
+      );
+      if (r.ok) {
+        const j = await r.json();
+        if (j && j.current) {
+          tempC = j.current.temperature_2m;
+          weatherCode = j.current.weather_code;
+        }
+      }
+    } catch (_) { /* météo best-effort */ }
+  }
+  return json({ city, country, tempC, weatherCode });
+}
+
 // GET /api/theme (public) — thème de l'app piloté par le panel.
 // Renvoie {appName, accent, bg} : nom affiché + couleur d'accent (hex
 // #RRGGBB) + mode de fond ('dark'|'light'). Valeurs vides = l'app garde
@@ -2609,6 +2640,11 @@ export default {
         return await handleGetTheme(env, url.searchParams.get('platform'));
       }
       return badRequest('only GET supported on /api/theme');
+    }
+
+    // /api/greeting — accueil personnalisé (ville + météo via IP).
+    if (segments[0] === 'api' && segments[1] === 'greeting' && segments.length === 2) {
+      return await handleGreeting(request);
     }
 
     // /api/ad — vidéo pub au démarrage (GET public). Réglée via le panel.

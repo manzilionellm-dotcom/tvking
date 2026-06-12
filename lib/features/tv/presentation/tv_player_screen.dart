@@ -16,6 +16,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
@@ -93,6 +94,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   void _open() {
     setState(() => _buffering = true);
     _player.open(Media(_current.streamUrl));
+    // Historique (reprise « Continuer à regarder », favoris, reco).
+    RecentlyWatchedRepository.instance.record(_current.id);
     // Rapporte la chaîne au panel.
     NowPlaying.instance.set(_current.cleanName);
     SubscriptionState.instance.syncWithBackend();

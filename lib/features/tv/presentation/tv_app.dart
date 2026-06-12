@@ -6,10 +6,13 @@
 //  Films / Séries / Recherche viendront se brancher dessus (BUILD_ORDER
 //  5→9), en réutilisant les briques data du mobile.
 // =========================================================
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../data/greeting_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import 'tv_activation_screen.dart';
@@ -116,22 +119,103 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return TvShell(
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          // ----- Rail de navigation (gauche) -----
-          SizedBox(
-            width: 240,
-            child: _NavRail(
-              selected: _selected,
-              onSelect: (TvDest d) => setState(() => _selected = d),
+          const _HomeHeader(),
+          const SizedBox(height: 14),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                // ----- Rail de navigation (gauche) -----
+                SizedBox(
+                  width: 240,
+                  child: _NavRail(
+                    selected: _selected,
+                    onSelect: (TvDest d) => setState(() => _selected = d),
+                  ),
+                ),
+                const SizedBox(width: TvDimens.gutter),
+                // ----- Panneau de contenu -----
+                Expanded(child: _ContentPanel(dest: _selected)),
+              ],
             ),
           ),
-          const SizedBox(width: TvDimens.gutter),
-          // ----- Panneau de contenu (placeholder par destination) -----
-          Expanded(child: _ContentPanel(dest: _selected)),
         ],
       ),
+    );
+  }
+}
+
+/// En-tête personnalisé : Bonjour + ville • météo + heure locale en direct.
+class _HomeHeader extends StatefulWidget {
+  const _HomeHeader();
+  @override
+  State<_HomeHeader> createState() => _HomeHeaderState();
+}
+
+class _HomeHeaderState extends State<_HomeHeader> {
+  Greeting? _g;
+  Timer? _clock;
+  DateTime _now = DateTime.now();
+  static const List<String> _days = <String>[
+    'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    GreetingRepository.instance.fetch().then((Greeting? g) {
+      if (mounted) setState(() => _g = g);
+    });
+    _clock = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
+  }
+
+  @override
+  void dispose() {
+    _clock?.cancel();
+    super.dispose();
+  }
+
+  String get _time =>
+      '${_now.hour.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}';
+  String get _date => '${_days[(_now.weekday - 1).clamp(0, 6)]} $_time';
+
+  @override
+  Widget build(BuildContext context) {
+    final Greeting? g = _g;
+    final String place = (g != null && g.city.isNotEmpty)
+        ? (g.tempC != null
+            ? '${g.city} • ${g.tempC!.round()}°C ${g.emoji}'
+            : g.city)
+        : '';
+    return Row(
+      children: <Widget>[
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text('Bonjour 👋',
+                style: TextStyle(
+                    fontSize: TvDimens.headline,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary)),
+            if (place.isNotEmpty)
+              Text(place,
+                  style: TextStyle(
+                      fontSize: TvDimens.titleS, color: AppColors.textSecondary)),
+          ],
+        ),
+        const Spacer(),
+        Text(_date,
+            style: TextStyle(
+                fontSize: TvDimens.title,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary)),
+      ],
     );
   }
 }

@@ -13,6 +13,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
@@ -31,6 +32,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   List<Channel> _all = const <Channel>[];
   List<String> _cats = const <String>[];
   String? _selectedCat;
+  bool _heroShown = false;
 
   @override
   void initState() {
@@ -79,11 +81,25 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
           .where((Channel c) => _catOf(c) == _selectedCat)
           .toList(growable: false);
 
+  // Dernière chaîne regardée (1er id de l'historique présent dans la
+  // playlist courante) → « Continuer à regarder ».
+  Channel? _lastWatched() {
+    for (final String id in RecentlyWatchedRepository.instance.current) {
+      for (final Channel c in _all) {
+        if (c.id == id) return c;
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_all.isEmpty) return const _EmptyChannels();
 
-    return Row(
+    final Channel? last = _lastWatched();
+    _heroShown = last != null;
+
+    final Widget body = Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         // ----- Catégories -----
@@ -109,7 +125,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: TvFocusBuilder(
-                        autofocus: i == 0,
+                        autofocus: i == 0 && !_heroShown,
                         scale: TvFocusScale.large,
                         onSelect: () => setState(() => _selectedCat = cat),
                         builder: (BuildContext context, bool focused) {
@@ -156,6 +172,71 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
         // ----- Grille de chaînes (virtualisée) -----
         Expanded(child: _ChannelGrid(channels: _shown)),
       ],
+    );
+
+    if (last == null) return body;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _ContinueHero(
+          channel: last,
+          all: _all,
+          index: _all.indexOf(last),
+        ),
+        const SizedBox(height: 16),
+        Expanded(child: body),
+      ],
+    );
+  }
+}
+
+/// Bandeau « Continuer à regarder » (dernière chaîne), auto-focus.
+class _ContinueHero extends StatelessWidget {
+  const _ContinueHero(
+      {required this.channel, required this.all, required this.index});
+  final Channel channel;
+  final List<Channel> all;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusable(
+      autofocus: true,
+      scale: TvFocusScale.large,
+      baseColor: AppColors.surface,
+      onSelect: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => TvPlayerScreen(
+              channels: all, startIndex: index < 0 ? 0 : index),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        child: Row(
+          children: <Widget>[
+            const Icon(Icons.play_circle_fill_rounded,
+                color: AppColors.textPrimary, size: 40),
+            const SizedBox(width: 16),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text('CONTINUER À REGARDER',
+                    style: TextStyle(
+                        fontSize: TvDimens.caption,
+                        letterSpacing: 2,
+                        color: AppColors.textTertiary)),
+                const SizedBox(height: 2),
+                Text(channel.cleanName,
+                    style: TextStyle(
+                        fontSize: TvDimens.title,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary)),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
