@@ -65,19 +65,28 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1120),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: <Widget>[
-            // ----- Colonne gauche : marque + code + CTA -----
-            SizedBox(width: 640, child: _activationColumn(context)),
-            const SizedBox(width: 48),
-            // ----- Colonne droite : QR « Scanne-moi » → WhatsApp -----
-            _WhatsAppQr(mac: _mac),
-          ],
+    // Le design est pensé à une taille FIXE puis MIS À L'ÉCHELLE pour tenir
+    // dans n'importe quel écran TV (720p → 4K, overscan inclus). FittedBox =
+    // jamais de débordement, jamais « trop zoomé ». On neutralise aussi le
+    // textScale système (certaines box TV le poussent à 1.3-1.5).
+    return MediaQuery.withNoTextScaling(
+      child: Center(
+        child: FittedBox(
+          fit: BoxFit.contain,
+          child: SizedBox(
+            width: 1000,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: <Widget>[
+                // ----- Colonne gauche : marque + code + CTA -----
+                SizedBox(width: 600, child: _activationColumn(context)),
+                const SizedBox(width: 56),
+                // ----- Colonne droite : QR « Scanne-moi » → WhatsApp -----
+                _WhatsAppQr(mac: _mac),
+              ],
+            ),
+          ),
         ),
       ),
     );

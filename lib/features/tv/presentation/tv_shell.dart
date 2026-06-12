@@ -21,15 +21,21 @@ class TvShell extends StatelessWidget {
     return DecoratedBox(
       // Fond FULL-BLEED : radial or très sombre sur noir profond.
       decoration: const BoxDecoration(color: TvTokens.bg, gradient: TvTokens.bgGradient),
-      child: applySafeArea
-          ? Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: TvDimens.safeH,
-                vertical: TvDimens.safeV,
-              ),
-              child: child,
-            )
-          : child,
+      // Material TRANSPARENT obligatoire : sans un Material ancêtre, Flutter
+      // dessine chaque Text avec un double soulignement jaune (debug). On le
+      // met en transparence pour laisser voir le dégradé Maison Noir.
+      child: Material(
+        type: MaterialType.transparency,
+        child: applySafeArea
+            ? Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: TvDimens.safeH,
+                  vertical: TvDimens.safeV,
+                ),
+                child: child,
+              )
+            : child,
+      ),
     );
   }
 }
