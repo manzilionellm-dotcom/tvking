@@ -74,6 +74,11 @@ import { castReceiverHtml } from './cast_receiver.js';
 const APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/latest/7motion.apk';
 
+// APK de DeFew TV (version télévision) — release `tv-latest`. Servi via la
+// route propre `/tv` (Downloader sur box Android TV / Fire TV).
+const TV_APK_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-latest/defew-tv.apk';
+
 // NB : les variantes TV (Android TV / Fire TV, wrappers WebView, NOVA+)
 // et Red Room ont été RETIRÉES du projet. Seule l'app mobile 7 MOTION
 // (`APK_URL` ci-dessus) est encore construite et distribuée.
@@ -2706,6 +2711,16 @@ export default {
       ['install', 'vip', 'thefew', 'few', 'app'].includes(segments[0])
     ) {
       return proxyApk(APK_URL, 'TheFew.apk', url.searchParams.get('v'));
+    }
+
+    // /tv, /defewtv, /tvbox — alias de téléchargement DIRECT de l'APK
+    // DeFew TV (version télévision). Lien propre à coller dans Downloader
+    // sur une box Android TV / Fire TV. Nom de fichier « DeFewTV.apk ».
+    if (
+      segments.length === 1 &&
+      ['tv', 'defewtv', 'tvbox', 'defew'].includes(segments[0])
+    ) {
+      return proxyApk(TV_APK_URL, 'DeFewTV.apk', url.searchParams.get('v'));
     }
 
     // /privacy — Politique de confidentialité (exigée par Google Play,
