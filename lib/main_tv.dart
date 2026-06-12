@@ -16,6 +16,7 @@ import 'package:media_kit/media_kit.dart';
 
 import 'core/app/app_platform.dart';
 import 'core/flavor/flavor.dart';
+import 'core/i18n/locale_repository.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
@@ -41,6 +42,11 @@ Future<void> main() async {
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);
+
+  // Langue de l'app : on charge le choix mémorisé (ou « Système » =>
+  // l'app suit la langue de la TV). BLOQUANT et rapide : garantit que le
+  // 1er rendu est déjà dans la bonne langue (pas de flash en français).
+  await LocaleRepository.instance.initialize();
 
   // --- Briques PARTAGÉES avec le mobile (non bloquant) ---
   // 1) Identité stable (MAC) → le panel reconnaît l'appareil TV.

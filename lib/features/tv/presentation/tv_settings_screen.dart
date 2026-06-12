@@ -7,6 +7,7 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
@@ -38,32 +39,32 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
     if (mounted) setState(() => _busy = false);
   }
 
-  ({String label, Color color}) get _status {
+  ({String label, Color color}) _statusOf(BuildContext context) {
     switch (SubscriptionState.instance.status) {
       case SubscriptionStatus.paid:
-        return (label: 'Abonnement actif', color: const Color(0xFF3FBE7C));
+        return (label: context.l10n.tvStatusPaid, color: const Color(0xFF3FBE7C));
       case SubscriptionStatus.trialActive:
         final int d = SubscriptionState.instance.trialDaysRemaining;
-        return (label: 'Essai — $d jour(s) restants', color: const Color(0xFF5AA0E8));
+        return (label: context.l10n.tvStatusTrial(d), color: const Color(0xFF5AA0E8));
       case SubscriptionStatus.trialExpired:
-        return (label: 'Essai terminé — à activer', color: const Color(0xFFE8B23A));
+        return (label: context.l10n.tvStatusTrialExpired, color: const Color(0xFFE8B23A));
       case SubscriptionStatus.frozen:
-        return (label: 'Compte gelé', color: const Color(0xFFE8B23A));
+        return (label: context.l10n.tvStatusFrozen, color: const Color(0xFFE8B23A));
       case SubscriptionStatus.banned:
-        return (label: 'Compte banni', color: const Color(0xFFFF5A4A));
+        return (label: context.l10n.tvStatusBanned, color: const Color(0xFFFF5A4A));
       case SubscriptionStatus.unknown:
-        return (label: 'Non activé', color: TvTokens.mutedDim);
+        return (label: context.l10n.tvStatusUnknown, color: TvTokens.mutedDim);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final ({String label, Color color}) st = _status;
+    final ({String label, Color color}) st = _statusOf(context);
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('Réglages',
+          Text(context.l10n.tvNavSettings,
               style: TextStyle(
                   fontSize: TvDimens.displayM,
                   fontWeight: FontWeight.w800,
@@ -82,7 +83,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text('Adresse de cet appareil (MAC)',
+                Text(context.l10n.tvDeviceAddress,
                     style: TextStyle(
                         fontSize: TvDimens.label,
                         color: TvTokens.mutedDim)),
@@ -99,7 +100,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Donne cette adresse à ton revendeur pour activer The Few TV.',
+                  context.l10n.tvDeviceAddressHelp,
                   style: TextStyle(
                       fontSize: TvDimens.body, color: TvTokens.muted),
                 ),
@@ -108,7 +109,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                 // ----- Statut -----
                 Row(
                   children: <Widget>[
-                    Text('Statut : ',
+                    Text('${context.l10n.tvStatus} : ',
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             color: TvTokens.muted)),
@@ -148,7 +149,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                         children: <Widget>[
                           Icon(Icons.refresh_rounded, color: fg, size: 24),
                           const SizedBox(width: 10),
-                          Text(_busy ? 'Vérification…' : 'Rafraîchir le statut',
+                          Text(_busy ? context.l10n.tvChecking : context.l10n.tvRefreshStatus,
                               style: TextStyle(
                                   fontSize: TvDimens.title,
                                   fontWeight: FontWeight.w700,

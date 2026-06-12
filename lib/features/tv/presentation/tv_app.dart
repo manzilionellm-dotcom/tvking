@@ -10,7 +10,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/i18n/locale_repository.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../subscription/data/subscription_state.dart';
@@ -39,18 +43,29 @@ class TvApp extends StatelessWidget {
       ),
       useMaterial3: true,
     );
-    return MaterialApp(
-      title: kAppName,
-      debugShowCheckedModeBanner: false,
-      theme: base.copyWith(
-        // Police par défaut = Inter (Maison Noir) sur TOUT le texte.
-        textTheme: GoogleFonts.interTextTheme(base.textTheme)
-            .apply(bodyColor: TvTokens.text, displayColor: TvTokens.text),
-        // Coupe TOUT effet tactile (hover/splash souris) — D-pad only.
-        splashFactory: NoSplash.splashFactory,
-        hoverColor: Colors.transparent,
+    // On écoute LocaleRepository : `locale == null` => l'app SUIT la langue
+    // de la TV (Android system locale). Si la télé est en espagnol, l'app
+    // s'affiche en espagnol toute seule. Un changement manuel (Réglages)
+    // reconstruit l'app via ce ListenableBuilder.
+    return ListenableBuilder(
+      listenable: LocaleRepository.instance,
+      builder: (BuildContext context, _) => MaterialApp(
+        title: kAppName,
+        debugShowCheckedModeBanner: false,
+        // --- Internationalisation (8 langues, RTL auto pour l'arabe) ---
+        locale: LocaleRepository.instance.locale, // null = langue de la TV
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        theme: base.copyWith(
+          // Police par défaut = Inter (Maison Noir) sur TOUT le texte.
+          textTheme: GoogleFonts.interTextTheme(base.textTheme)
+              .apply(bodyColor: TvTokens.text, displayColor: TvTokens.text),
+          // Coupe TOUT effet tactile (hover/splash souris) — D-pad only.
+          splashFactory: NoSplash.splashFactory,
+          hoverColor: Colors.transparent,
+        ),
+        home: const TvGate(),
       ),
-      home: const TvGate(),
     );
   }
 }
@@ -89,11 +104,17 @@ class _TvGateState extends State<TvGate> {
 
   @override
   Widget build(BuildContext context) {
-    final bool paid =
-        SubscriptionState.instance.status == SubscriptionStatus.paid;
+    final SubscriptionStatus s = SubscriptionState.instance.status;
+    // L'app s'ouvre dès que l'appareil a un ACCÈS valide : abonnement PAYÉ
+    // OU ESSAI EN COURS. Le revendeur peut activer un essai gratuit (Test
+    // 24 h / 48 h / 7 j) depuis le panel → la TV doit se débloquer pareil,
+    // pas seulement pour un abonnement payant. Ou si le client a apporté sa
+    // propre liste (Xtream).
+    final bool active = s == SubscriptionStatus.paid ||
+        s == SubscriptionStatus.trialActive;
     final bool hasOwnList =
         PlaylistRepository.instance.currentChannels.isNotEmpty;
-    if (paid || hasOwnList) return const TvHomeScreen();
+    if (active || hasOwnList) return const TvHomeScreen();
     return const TvShell(child: TvActivationScreen());
   }
 }
@@ -102,20 +123,21 @@ class _TvGateState extends State<TvGate> {
 enum TvDest { live, films, series, guide, search, settings }
 
 extension on TvDest {
-  String get label {
+  // Libellé traduit selon la langue active (context.l10n).
+  String label(BuildContext context) {
     switch (this) {
       case TvDest.live:
-        return 'Direct';
+        return context.l10n.tvNavLive;
       case TvDest.films:
-        return 'Films';
+        return context.l10n.tvNavFilms;
       case TvDest.series:
-        return 'Séries';
+        return context.l10n.tvNavSeries;
       case TvDest.guide:
-        return 'Guide';
+        return context.l10n.tvNavGuide;
       case TvDest.search:
-        return 'Recherche';
+        return context.l10n.tvNavSearch;
       case TvDest.settings:
-        return 'Réglages';
+        return context.l10n.tvNavSettings;
     }
   }
 
@@ -190,9 +212,6 @@ class _HomeHeaderState extends State<_HomeHeader> {
   Greeting? _g;
   Timer? _clock;
   DateTime _now = DateTime.now();
-  static const List<String> _days = <String>[
-    'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche',
-  ];
 
   @override
   void initState() {
@@ -213,7 +232,6 @@ class _HomeHeaderState extends State<_HomeHeader> {
 
   String get _time =>
       '${_now.hour.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}';
-  String get _date => '${_days[(_now.weekday - 1).clamp(0, 6)]} $_time';
 
   @override
   Widget build(BuildContext context) {
@@ -221,6 +239,11 @@ class _HomeHeaderState extends State<_HomeHeader> {
     final String weather = (g != null && g.tempC != null)
         ? ' · ${g.tempC!.round()}°C ${g.emoji}'
         : '';
+    // Jour de la semaine traduit dans la langue active (intl), p. ex.
+    // « Lunes » en espagnol, « måndag » en suédois, « الاثنين » en arabe.
+    final String localeName = Localizations.localeOf(context).toString();
+    final String weekday =
+        toBeginningOfSentenceCase(DateFormat.EEEE(localeName).format(_now)) ?? '';
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: <Widget>[
@@ -228,7 +251,8 @@ class _HomeHeaderState extends State<_HomeHeader> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Text('Bonjour 👋', style: TvTokens.ui(30, weight: FontWeight.w600, color: TvTokens.text)),
+            Text('${context.l10n.tvHello} 👋',
+                style: TvTokens.ui(30, weight: FontWeight.w600, color: TvTokens.text)),
             if (g != null && g.city.isNotEmpty)
               Text.rich(TextSpan(children: <InlineSpan>[
                 TextSpan(text: g.city, style: TvTokens.ui(TvDimens.titleS, weight: FontWeight.w600, color: TvTokens.gold)),
@@ -238,7 +262,7 @@ class _HomeHeaderState extends State<_HomeHeader> {
         ),
         const Spacer(),
         Text.rich(TextSpan(children: <InlineSpan>[
-          TextSpan(text: _days[(_now.weekday - 1).clamp(0, 6)], style: TvTokens.ui(TvDimens.title, weight: FontWeight.w600, color: TvTokens.text)),
+          TextSpan(text: weekday, style: TvTokens.ui(TvDimens.title, weight: FontWeight.w600, color: TvTokens.text)),
           TextSpan(text: ' · $_time', style: TvTokens.ui(TvDimens.title, color: TvTokens.muted)),
         ])),
       ],
@@ -335,7 +359,7 @@ class _NavItem extends StatelessWidget {
               const SizedBox(width: 13),
               Icon(dest.icon, color: fg, size: 22),
               const SizedBox(width: 14),
-              Text(dest.label,
+              Text(dest.label(context),
                   style: TvTokens.ui(19,
                       weight: selected ? FontWeight.w600 : FontWeight.w500, color: fg)),
             ],
@@ -360,8 +384,8 @@ class _ContentPanel extends StatelessWidget {
     if (dest == TvDest.settings) return const TvSettingsScreen();
     return TvEmptyState(
       icon: dest.icon,
-      title: dest.label,
-      subtitle: 'Bientôt disponible. Cette section arrive très vite.',
+      title: dest.label(context),
+      subtitle: context.l10n.tvComingSoon,
     );
   }
 }

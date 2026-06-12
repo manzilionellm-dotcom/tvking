@@ -1924,5 +1924,58 @@
   "homeRecentlyWatched": "Récemment regardées",
   "@homeRecentlyWatched": {
     "description": "Titre du rail des dernières chaînes regardées"
-  }
+  },
+  "tvActivationTagline": "Accès complet, à vie. Un seul paiement.",
+  "tvLifetime": "À vie",
+  "tvActivationCodeLabel": "Ton code d'activation",
+  "tvActivationCodeHelp": "Donne ce code à ton revendeur pour activer. Il reste le même, même après une réinstallation.",
+  "tvPaidCheck": "J'ai payé — Vérifier",
+  "tvChecking": "Vérification…",
+  "tvAddOwnList": "J'ajoute ma propre liste (Xtream)",
+  "tvActivationFooter": "Paiement vérifié · Activation instantanée",
+  "tvScanToActivate": "Scanne-moi pour activer",
+  "tvScanHelp": "Ouvre l'appareil photo de ton téléphone et vise ce code. Ça ouvre WhatsApp avec ton code déjà prêt.",
+  "tvNavLive": "Direct",
+  "tvNavFilms": "Films",
+  "tvNavSeries": "Séries",
+  "tvNavGuide": "Guide",
+  "tvNavSearch": "Recherche",
+  "tvNavSettings": "Réglages",
+  "tvComingSoon": "Bientôt disponible. Cette section arrive très vite.",
+  "tvHello": "Bonjour",
+  "tvNoChannels": "Aucune chaîne pour l'instant",
+  "tvNoChannelsHelp": "Active cet appareil dans ton panel, puis pousse-lui une source. Les chaînes apparaîtront ici automatiquement.",
+  "tvContinueWatching": "CONTINUER À REGARDER",
+  "tvNoChannelInCategory": "Aucune chaîne dans cette catégorie.",
+  "tvOthers": "Autres",
+  "tvSearchHint": "Tape pour rechercher…",
+  "tvNoResult": "Aucun résultat.",
+  "tvDeviceAddress": "Adresse de cet appareil (MAC)",
+  "tvDeviceAddressHelp": "Donne cette adresse à ton revendeur pour activer The Few TV.",
+  "tvStatus": "Statut",
+  "tvStatusPaid": "Abonnement actif",
+  "tvStatusTrial": "Essai — {days} jour(s) restants",
+  "@tvStatusTrial": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "tvStatusTrialExpired": "Essai terminé — à activer",
+  "tvStatusFrozen": "Compte gelé",
+  "tvStatusBanned": "Compte banni",
+  "tvStatusUnknown": "Non activé",
+  "tvRefreshStatus": "Rafraîchir le statut",
+  "tvLiveBadge": "DIRECT",
+  "tvZapHint": "Haut/Bas pour zapper",
+  "tvAddListTitle": "Ajouter ma liste",
+  "tvAddListSubtitle": "Code Xtream — apporte ta propre playlist.",
+  "tvFieldServer": "Serveur",
+  "tvFieldUser": "Identifiant",
+  "tvFieldPass": "Mot de passe",
+  "tvAddListError": "Remplis le serveur, l'identifiant et le mot de passe.",
+  "tvConnectError": "Connexion impossible. Vérifie les infos.",
+  "tvConnecting": "Connexion…",
+  "tvAddListValidate": "Valider et charger ma liste"
 }

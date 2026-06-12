@@ -7,6 +7,7 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -24,7 +25,6 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
   bool _busy = false;
   String? _error;
 
-  static const List<String> _labels = <String>['Serveur', 'Identifiant', 'Mot de passe'];
   static const List<String> _keys = <String>[
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
     'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
@@ -39,8 +39,12 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
   }
 
   Future<void> _validate() async {
+    // On capture les libellés traduits AVANT tout await (évite d'utiliser
+    // `context` après une opération asynchrone).
+    final String errFill = context.l10n.tvAddListError;
+    final String errConn = context.l10n.tvConnectError;
     if (_vals[0].trim().isEmpty || _vals[1].trim().isEmpty || _vals[2].trim().isEmpty) {
-      setState(() => _error = 'Remplis le serveur, l\'identifiant et le mot de passe.');
+      setState(() => _error = errFill);
       return;
     }
     setState(() { _busy = true; _error = null; });
@@ -53,12 +57,18 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
       );
       if (mounted) Navigator.of(context).pop(); // le gate ouvre l'app
     } catch (_) {
-      if (mounted) setState(() { _busy = false; _error = 'Connexion impossible. Vérifie les infos.'; });
+      if (mounted) setState(() { _busy = false; _error = errConn; });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Libellés des 3 champs, traduits dans la langue active.
+    final List<String> labels = <String>[
+      context.l10n.tvFieldServer,
+      context.l10n.tvFieldUser,
+      context.l10n.tvFieldPass,
+    ];
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 980),
@@ -66,16 +76,16 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Text('Ajouter ma liste', style: TvTokens.display(34, color: TvTokens.text)),
+            Text(context.l10n.tvAddListTitle, style: TvTokens.display(34, color: TvTokens.text)),
             const SizedBox(height: 6),
-            Text('Code Xtream — apporte ta propre playlist.',
+            Text(context.l10n.tvAddListSubtitle,
                 style: TvTokens.ui(16, color: TvTokens.mutedDim)),
             const SizedBox(height: 22),
 
             // ----- Champs -----
             for (int i = 0; i < 3; i++) ...<Widget>[
               _Field(
-                label: _labels[i],
+                label: labels[i],
                 value: i == 2 ? '•' * _vals[i].length : _vals[i],
                 active: _active == i,
                 onSelect: () => setState(() => _active = i),
@@ -102,7 +112,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
             const SizedBox(height: 22),
 
             TvCtaButton(
-              label: _busy ? 'Connexion…' : 'Valider et charger ma liste',
+              label: _busy ? context.l10n.tvConnecting : context.l10n.tvAddListValidate,
               onSelect: _busy ? null : _validate,
             ),
           ],

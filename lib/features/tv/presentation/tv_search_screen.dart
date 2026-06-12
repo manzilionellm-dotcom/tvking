@@ -9,6 +9,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -83,7 +84,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                   borderRadius: BorderRadius.circular(TvDimens.cardRadius),
                 ),
                 child: Text(
-                  _q.isEmpty ? 'Tape pour rechercher…' : _q,
+                  _q.isEmpty ? context.l10n.tvSearchHint : _q,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -98,7 +99,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                 child: res.isEmpty
                     ? Center(
                         child: Text(
-                          _q.trim().isEmpty ? '' : 'Aucun résultat.',
+                          _q.trim().isEmpty ? '' : context.l10n.tvNoResult,
                           style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim),
                         ),
                       )
@@ -176,7 +177,7 @@ class _Keyboard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('Recherche',
+        Text(context.l10n.tvNavSearch,
             style: TextStyle(fontSize: TvDimens.displayS, fontWeight: FontWeight.w800, color: TvTokens.text)),
         const SizedBox(height: 16),
         Wrap(

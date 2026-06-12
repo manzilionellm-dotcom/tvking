@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_focusable.dart';
@@ -98,10 +99,11 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
       children: <Widget>[
             const TvLogo(width: 240),
             const SizedBox(height: 26),
-            Text('Accès complet, à vie. Un seul paiement.',
+            Text(context.l10n.tvActivationTagline,
+                textAlign: TextAlign.center,
                 style: TvTokens.ui(19, color: TvTokens.muted)),
             const SizedBox(height: 22),
-            const TvPricePill(label: 'À vie', amount: '9,99 \$'),
+            TvPricePill(label: context.l10n.tvLifetime, amount: '9,99 \$'),
             const SizedBox(height: 38),
 
             // ----- Carte code d'activation -----
@@ -109,7 +111,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
               padding: const EdgeInsets.all(28),
               child: Column(
                 children: <Widget>[
-                  const TvSectionLabel('Ton code d\'activation'),
+                  TvSectionLabel(context.l10n.tvActivationCodeLabel),
                   const SizedBox(height: 14),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -121,8 +123,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    'Donne ce code à ton revendeur pour activer. '
-                    'Il reste le même, même après une réinstallation.',
+                    context.l10n.tvActivationCodeHelp,
                     textAlign: TextAlign.center,
                     style: TvTokens.ui(16, color: TvTokens.mutedDim),
                   ),
@@ -132,7 +133,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
             const SizedBox(height: 26),
 
             TvCtaButton(
-              label: _busy ? 'Vérification…' : 'J\'ai payé — Vérifier',
+              label: _busy ? context.l10n.tvChecking : context.l10n.tvPaidCheck,
               autofocus: true,
               onSelect: _busy ? null : _check,
             ),
@@ -154,13 +155,13 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
                   border: Border.all(color: focused ? TvTokens.gold : TvTokens.line),
                   color: focused ? TvTokens.sel : Colors.transparent,
                 ),
-                child: Text('J\'ajoute ma propre liste (Xtream)',
+                child: Text(context.l10n.tvAddOwnList,
                     style: TvTokens.ui(19, weight: FontWeight.w600,
                         color: focused ? TvTokens.goldBright : TvTokens.muted)),
               ),
             ),
             const SizedBox(height: 18),
-            Text('Paiement vérifié · Activation instantanée',
+            Text(context.l10n.tvActivationFooter,
                 style: TvTokens.ui(13, color: TvTokens.mutedDim, spacing: 0.5)),
           ],
     );
@@ -218,7 +219,7 @@ class _WhatsAppQr extends StatelessWidget {
             const Icon(Icons.qr_code_scanner_rounded,
                 color: TvTokens.goldBright, size: 24),
             const SizedBox(width: 10),
-            Text('Scanne-moi pour activer',
+            Text(context.l10n.tvScanToActivate,
                 style: TvTokens.ui(20,
                     weight: FontWeight.w700, color: TvTokens.goldBright)),
           ],
@@ -227,8 +228,7 @@ class _WhatsAppQr extends StatelessWidget {
         SizedBox(
           width: 256,
           child: Text(
-            'Ouvre l\'appareil photo de ton téléphone et vise ce code. '
-            'Ça ouvre WhatsApp avec ton code déjà prêt.',
+            context.l10n.tvScanHelp,
             textAlign: TextAlign.center,
             style: TvTokens.ui(14, color: TvTokens.mutedDim),
           ),

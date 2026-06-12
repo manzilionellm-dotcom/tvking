@@ -12,6 +12,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
@@ -96,11 +97,10 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   @override
   Widget build(BuildContext context) {
     if (_all.isEmpty) {
-      return const TvEmptyState(
+      return TvEmptyState(
         icon: Icons.live_tv_rounded,
-        title: 'Aucune chaîne pour l\'instant',
-        subtitle: 'Active cet appareil dans ton panel, puis pousse-lui une '
-            'source. Les chaînes apparaîtront ici automatiquement.',
+        title: context.l10n.tvNoChannels,
+        subtitle: context.l10n.tvNoChannelsHelp,
       );
     }
 
@@ -118,7 +118,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
             children: <Widget>[
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
-                child: Text('Direct',
+                child: Text(context.l10n.tvNavLive,
                     style: TextStyle(
                         fontSize: TvDimens.displayS,
                         fontWeight: FontWeight.w800,
@@ -228,7 +228,7 @@ class _ContinueHero extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Text('CONTINUER À REGARDER',
+                Text(context.l10n.tvContinueWatching,
                     style: TextStyle(
                         fontSize: TvDimens.caption,
                         letterSpacing: 2,
@@ -256,7 +256,7 @@ class _ChannelGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     if (channels.isEmpty) {
       return Center(
-        child: Text('Aucune chaîne dans cette catégorie.',
+        child: Text(context.l10n.tvNoChannelInCategory,
             style: TextStyle(
                 fontSize: TvDimens.body, color: TvTokens.mutedDim)),
       );

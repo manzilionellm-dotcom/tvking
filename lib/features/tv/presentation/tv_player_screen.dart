@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
@@ -303,8 +304,8 @@ class _ChannelBar extends StatelessWidget {
                         decoration: BoxDecoration(
                             color: TvTokens.live,
                             borderRadius: BorderRadius.circular(4)),
-                        child: const Text('DIRECT',
-                            style: TextStyle(
+                        child: Text(context.l10n.tvLiveBadge,
+                            style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w800,
                                 color: Colors.white)),
@@ -312,7 +313,7 @@ class _ChannelBar extends StatelessWidget {
                       const SizedBox(width: 10),
                     ],
                     Text(
-                      channel.category.trim().isEmpty ? 'Autres' : channel.category.trim(),
+                      channel.category.trim().isEmpty ? context.l10n.tvOthers : channel.category.trim(),
                       style: TextStyle(
                           fontSize: TvDimens.label,
                           color: TvTokens.muted),
@@ -322,7 +323,7 @@ class _ChannelBar extends StatelessWidget {
               ],
             ),
           ),
-          Text('Haut/Bas pour zapper',
+          Text(context.l10n.tvZapHint,
               style: TextStyle(
                   fontSize: TvDimens.caption, color: TvTokens.mutedDim)),
         ],
