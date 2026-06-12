@@ -1027,7 +1027,31 @@ async function handleStatsOverview(env, user) {
 //  APPS HANDLERS
 // =========================================================
 
+// Seed automatique de l'app DeFew TV (version télévision). Idempotent :
+// créée une seule fois, puis modifiable normalement dans la page Apps.
+// package_name distinct (.tv) car UNIQUE et différent du mobile.
+async function ensureDefewTvApp(env) {
+  try {
+    const exists = await env.DB
+      .prepare("SELECT id FROM apps WHERE id = 'app_thefew_tv'").first();
+    if (exists) return;
+    const now = Date.now();
+    await env.DB.prepare(
+      `INSERT INTO apps
+        (id, name, package_name, primary_color, default_playlist_type,
+         download_url, is_active, created_at, updated_at)
+       VALUES ('app_thefew_tv', 'DeFew TV', 'com.manzilionellm.tvking.tv',
+               '#D63A30', 'xtream',
+               'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-latest/defew-tv.apk',
+               1, ?, ?)`,
+    ).bind(now, now).run();
+  } catch (_) {
+    // table absente / colonnes différentes → on n'empêche pas la liste.
+  }
+}
+
 async function handleAppsList(env) {
+  await ensureDefewTvApp(env);
   const rs = await env.DB
     .prepare(
       `SELECT id, name, package_name, primary_color, tagline,
