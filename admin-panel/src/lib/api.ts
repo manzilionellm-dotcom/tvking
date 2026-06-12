@@ -698,6 +698,8 @@ export interface ActivationReference {
   mac: string;
   customer_name: string | null;
   usernames: string[];     // username(s) Xtream, SANS mot de passe
+  servers: string[];       // serveur(s) Xtream (base url)
+  status: string;          // 'active'|'expired'|'frozen'|'banned'|'none'
   label: string | null;
   updated_at: number | null;
 }

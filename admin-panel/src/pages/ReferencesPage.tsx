@@ -15,6 +15,27 @@ function fmtDate(ms: number | null): string {
   try { return new Date(ms).toLocaleDateString('fr-FR'); } catch { return '—'; }
 }
 
+/// Badge de statut (couleurs en dur → rendu garanti, pas de dépendance à
+/// des classes Tailwind non définies dans le thème).
+function RefStatus({ status }: { status: string }) {
+  const map: Record<string, { bg: string; fg: string; label: string }> = {
+    active: { bg: 'rgba(47,169,106,0.16)', fg: '#3FBE7C', label: 'Actif' },
+    expired: { bg: 'rgba(214,160,48,0.16)', fg: '#E8B23A', label: 'Expiré' },
+    frozen: { bg: 'rgba(46,125,214,0.16)', fg: '#5AA0E8', label: 'Gelé' },
+    banned: { bg: 'rgba(214,58,48,0.20)', fg: '#FF5A4A', label: 'Banni' },
+    none: { bg: 'rgba(255,255,255,0.05)', fg: '#7E7872', label: '—' },
+  };
+  const s = map[status] || map.none;
+  return (
+    <span
+      className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+      style={{ background: s.bg, color: s.fg }}
+    >
+      {s.label}
+    </span>
+  );
+}
+
 export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<ActivationReference[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,7 +61,8 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
     return items.filter((it) =>
       it.mac.toLowerCase().includes(t)
       || (it.customer_name || '').toLowerCase().includes(t)
-      || it.usernames.some((u) => u.toLowerCase().includes(t)),
+      || it.usernames.some((u) => u.toLowerCase().includes(t))
+      || it.servers.some((s) => s.toLowerCase().includes(t)),
     );
   }, [items, q]);
 
@@ -65,7 +87,7 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Rechercher une MAC, un username ou un client…"
+          placeholder="Rechercher une MAC, un username, un serveur ou un client…"
           className="w-full max-w-md rounded-md border border-white/10 bg-slate px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
         />
         <span className="whitespace-nowrap text-[11px] text-ink-tertiary">
@@ -79,16 +101,18 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
             <tr className="text-left text-[10px] uppercase tracking-widest text-ink-tertiary">
               <th className="px-4 py-3">MAC</th>
               <th className="px-4 py-3">Client</th>
+              <th className="px-4 py-3">Statut</th>
               <th className="px-4 py-3">Username(s)</th>
+              <th className="px-4 py-3">Serveur(s)</th>
               <th className="px-4 py-3">Activé le</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
             {loading && (
-              <tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-ink-tertiary">Chargement…</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-ink-tertiary">Chargement…</td></tr>
             )}
             {!loading && filtered.length === 0 && (
-              <tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-ink-tertiary">
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-ink-tertiary">
                 {items.length === 0
                   ? 'Aucune source poussée pour l\'instant. Active un appareil avec une source.'
                   : 'Aucun résultat pour cette recherche.'}
@@ -106,6 +130,7 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
                   </button>
                 </td>
                 <td className="px-4 py-3 text-ink-secondary">{it.customer_name || '—'}</td>
+                <td className="px-4 py-3"><RefStatus status={it.status} /></td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
                     {it.usernames.length === 0 && <span className="text-ink-tertiary">—</span>}
@@ -117,6 +142,21 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
                         className="rounded-full border border-white/10 bg-slate px-2 py-0.5 font-mono text-[11px] text-ink-primary hover:border-accent hover:text-accent-bright"
                       >
                         {copied === u ? '✓ copié' : u}
+                      </button>
+                    ))}
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {it.servers.length === 0 && <span className="text-ink-tertiary">—</span>}
+                    {it.servers.map((s, i) => (
+                      <button
+                        key={i}
+                        onClick={() => copy(s)}
+                        title="Copier le serveur"
+                        className="max-w-[180px] truncate rounded-full border border-white/10 bg-slate px-2 py-0.5 font-mono text-[11px] text-ink-secondary hover:border-accent hover:text-accent-bright"
+                      >
+                        {copied === s ? '✓ copié' : s}
                       </button>
                     ))}
                   </div>

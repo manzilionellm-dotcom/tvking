@@ -290,11 +290,18 @@ async function handleReferencesList(env, user) {
   try {
     const where = reseller ? 'WHERE d.reseller_id = ?' : '';
     const binds = reseller ? [user.sub] : [];
+    const now = Date.now();
     const rs = await env.DB
       .prepare(
-        `SELECT ds.mac AS mac, ds.username AS username, ds.sources_json AS sources_json,
-                ds.label AS label, ds.updated_at AS updated_at,
-                c.name AS customer_name
+        `SELECT ds.mac AS mac, ds.username AS username, ds.server_url AS server_url,
+                ds.sources_json AS sources_json, ds.label AS label,
+                ds.updated_at AS updated_at, c.name AS customer_name,
+                (SELECT l.status    FROM licenses l JOIN devices dl ON dl.id = l.device_id
+                   WHERE dl.mac = ds.mac
+                   ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_status,
+                (SELECT l.expires_at FROM licenses l JOIN devices dl ON dl.id = l.device_id
+                   WHERE dl.mac = ds.mac
+                   ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_expires
          FROM device_sources ds
          LEFT JOIN devices d   ON d.mac = ds.mac
          LEFT JOIN customers c ON c.id = d.customer_id
@@ -304,19 +311,33 @@ async function handleReferencesList(env, user) {
       .bind(...binds)
       .all();
     const items = (rs.results || []).map((r) => {
-      // username(s) : depuis le trio (sources_json) sinon le champ simple.
+      // username(s) + serveur(s) : depuis le trio (sources_json) sinon les
+      // champs simples. On n'expose JAMAIS le mot de passe.
       let usernames = [];
+      let servers = [];
       if (r.sources_json) {
         try {
           const arr = JSON.parse(r.sources_json) || [];
           usernames = arr.map((s) => s && s.username).filter(Boolean);
+          servers = arr.map((s) => s && (s.server_url || s.server)).filter(Boolean);
         } catch (_) { /* ignore */ }
       }
       if (usernames.length === 0 && r.username) usernames = [r.username];
+      if (servers.length === 0 && r.server_url) servers = [r.server_url];
+      // Statut dérivé de la meilleure licence du device.
+      let status = 'none';
+      if (r.lic_status === 'banned') status = 'banned';
+      else if (r.lic_status === 'frozen') status = 'frozen';
+      else if (r.lic_status) {
+        const lifetime = r.lic_expires === null || r.lic_expires === undefined;
+        status = lifetime ? 'active' : (r.lic_expires <= now ? 'expired' : 'active');
+      }
       return {
         mac: r.mac,
         customer_name: r.customer_name || null,
         usernames,
+        servers,
+        status,
         label: r.label || null,
         updated_at: r.updated_at || null,
       };
