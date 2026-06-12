@@ -1348,20 +1348,18 @@ async function handleGetFeatured(env) {
 // Renvoie {appName, accent, bg} : nom affiché + couleur d'accent (hex
 // #RRGGBB) + mode de fond ('dark'|'light'). Valeurs vides = l'app garde
 // ses défauts (BLACK7 ROYAL, braise, sombre).
-async function handleGetTheme(env) {
+async function handleGetTheme(env, platform) {
   const empty = { appName: '', accent: '', bg: '' };
   if (!env.DB) return json(empty);
+  // Thème PAR PLATEFORME : suffixe '_tv' pour DeFew TV, rien pour le mobile.
+  const sfx = platform === 'tv' ? '_tv' : '';
   try {
     await ensureAppConfigTable(env);
-    const name = await env.DB
-      .prepare("SELECT value FROM app_config WHERE key = 'theme_name'")
-      .first();
-    const accent = await env.DB
-      .prepare("SELECT value FROM app_config WHERE key = 'theme_accent'")
-      .first();
-    const bg = await env.DB
-      .prepare("SELECT value FROM app_config WHERE key = 'theme_bg'")
-      .first();
+    const get = (k) => env.DB
+      .prepare('SELECT value FROM app_config WHERE key = ?').bind(k).first();
+    const name = await get('theme_name' + sfx);
+    const accent = await get('theme_accent' + sfx);
+    const bg = await get('theme_bg' + sfx);
     const theme = {
       appName: (name && name.value) || '',
       accent: (accent && accent.value) || '',
@@ -1371,9 +1369,7 @@ async function handleGetTheme(env) {
     // PRIME sur le thème manuel (ex. décembre → preset Noël). Évalué ici,
     // au moment où l'app lit le thème : aucun cron nécessaire.
     try {
-      const autoRow = await env.DB
-        .prepare("SELECT value FROM app_config WHERE key = 'theme_automations'")
-        .first();
+      const autoRow = await get('theme_automations' + sfx);
       const rules = autoRow && autoRow.value ? JSON.parse(autoRow.value) : [];
       const hit = pickActiveThemeRule(rules, new Date());
       if (hit) {
@@ -2605,7 +2601,7 @@ export default {
     //   L'ecriture se fait cote panel via /api/v1/theme (api_v1.js).
     if (segments[0] === 'api' && segments[1] === 'theme' && segments.length === 2) {
       if (request.method === 'GET') {
-        return await handleGetTheme(env);
+        return await handleGetTheme(env, url.searchParams.get('platform'));
       }
       return badRequest('only GET supported on /api/theme');
     }

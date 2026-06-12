@@ -54,14 +54,18 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  // Plateforme éditée : 📱 mobile (The Few) ou 📺 tv (DeFew TV).
+  const [platform, setPlatform] = useState<'mobile' | 'tv'>('mobile');
 
   function fail(e: any) {
     if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
     setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
   }
 
+  // Recharge le thème de la plateforme sélectionnée.
   useEffect(() => {
-    themeApi.get()
+    setLoading(true); setOk(null); setErr(null);
+    themeApi.get(platform)
       .then((r) => {
         setAppName(r.appName || '');
         setAccent(r.accent || '');
@@ -70,7 +74,7 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
       .catch(fail)
       .finally(() => setLoading(false));
     /* eslint-disable-next-line */
-  }, []);
+  }, [platform]);
 
   // Valeurs effectives utilisées par l'aperçu (défauts si vide).
   const effAccent = useMemo(() => {
@@ -91,8 +95,9 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
     }
     setBusy(true); setErr(null); setOk(null);
     try {
-      await themeApi.save({ appName: appName.trim(), accent: a, bg });
-      setOk('✅ Thème enregistré. L\'app s\'adapte à sa prochaine ouverture.');
+      await themeApi.save({ appName: appName.trim(), accent: a, bg }, platform);
+      const who = platform === 'tv' ? 'DeFew TV' : 'The Few (mobile)';
+      setOk(`✅ Thème ${who} enregistré. L'app s'adapte à sa prochaine ouverture.`);
     } catch (e) { fail(e); } finally { setBusy(false); }
   }
 
@@ -100,8 +105,8 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
     setAppName(''); setAccent(''); setBg('dark');
     setBusy(true); setErr(null); setOk(null);
     try {
-      await themeApi.save({ appName: '', accent: '', bg: 'dark' });
-      setOk('Thème réinitialisé (The Few, braise, sombre).');
+      await themeApi.save({ appName: '', accent: '', bg: 'dark' }, platform);
+      setOk('Thème réinitialisé.');
     } catch (e) { fail(e); } finally { setBusy(false); }
   }
 
@@ -114,6 +119,24 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
       subtitle="Personnalise le nom et les couleurs de l'app — aperçu en direct"
       onLogout={onLogout}
     >
+      {/* Bascule 📱 Mobile / 📺 TV : chaque app a son propre thème. */}
+      <div className="mb-5 inline-flex rounded-lg border border-white/10 bg-slate p-1">
+        {([['mobile', '📱 Mobile'], ['tv', '📺 TV']] as const).map(([p, label]) => (
+          <button
+            key={p}
+            onClick={() => setPlatform(p)}
+            className={
+              'rounded-md px-4 py-2 text-sm font-semibold transition ' +
+              (platform === p
+                ? 'bg-accent text-black'
+                : 'text-ink-secondary hover:text-ink-primary')
+            }
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {err && (
         <div className="mb-4 max-w-3xl rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">
           {err}
@@ -282,7 +305,7 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
         </div>
       )}
 
-      {!loading && <ThemeAutomations onLogout={onLogout} />}
+      {!loading && <ThemeAutomations onLogout={onLogout} platform={platform} />}
     </AppLayout>
   );
 }
@@ -292,7 +315,9 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
 // =========================================================
 //  Ex. « En Décembre → preset Noël ». Évalué côté serveur quand l'app lit
 //  /api/theme → le thème bascule tout seul, sans toucher à l'app.
-function ThemeAutomations({ onLogout }: { onLogout: () => void }) {
+function ThemeAutomations(
+  { onLogout, platform }: { onLogout: () => void; platform: 'mobile' | 'tv' },
+) {
   const [rules, setRules] = useState<ThemeRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -300,12 +325,13 @@ function ThemeAutomations({ onLogout }: { onLogout: () => void }) {
   const [ok, setOk] = useState<string | null>(null);
 
   useEffect(() => {
-    themeApi.getAutomations()
+    setLoading(true);
+    themeApi.getAutomations(platform)
       .then((r) => setRules(r.rules || []))
       .catch((e) => { if (e instanceof ApiError && e.status === 401) onLogout(); })
       .finally(() => setLoading(false));
     /* eslint-disable-next-line */
-  }, []);
+  }, [platform]);
 
   function patch(i: number, p: Partial<ThemeRule>) {
     setRules((rs) => rs.map((r, k) => (k === i ? { ...r, ...p } : r)));
@@ -323,7 +349,7 @@ function ThemeAutomations({ onLogout }: { onLogout: () => void }) {
   async function save() {
     setBusy(true); setErr(null); setOk(null);
     try {
-      const r = await themeApi.saveAutomations(rules);
+      const r = await themeApi.saveAutomations(rules, platform);
       setRules(r.rules || []);
       setOk('✅ Règles enregistrées. Le thème basculera tout seul aux dates prévues.');
     } catch (e) {

@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/app_platform.dart';
 import '../../../core/branding/brand_config.dart';
 import '../../../core/theme/accent_controller.dart';
 import '../../subscription/data/subscription_backend.dart';
@@ -26,8 +27,10 @@ abstract final class RemoteThemeRepository {
   /// Récupère le thème distant et l'applique (nom + couleur d'accent).
   static Future<void> fetchAndApply() async {
     try {
+      // Thème PAR PLATEFORME : le mobile lit le thème mobile, DeFew TV
+      // lit le thème TV (?platform=tv).
       final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/theme'))
+          .get(Uri.parse('$kSubscriptionBaseUrl/api/theme?platform=${AppPlatform.id}'))
           .timeout(const Duration(seconds: 6));
       if (resp.statusCode != 200) return;
       final Object? decoded = jsonDecode(resp.body);

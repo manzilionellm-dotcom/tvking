@@ -39,6 +39,10 @@ export const DOWNLOAD_URL: string =
 export const DOWNLOADER_CODE: string =
   (import.meta.env.VITE_DOWNLOADER_CODE as string | undefined) || '7988141';
 
+/// Lien + code Downloader de la version TV (DeFew TV).
+export const DOWNLOAD_URL_TV = 'https://app.7themotion.com/tv';
+export const DOWNLOADER_CODE_TV = '1848910';
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -658,20 +662,23 @@ export interface ThemeRule {
   bg: 'dark' | 'light' | '';
   appName: string;
 }
+/// '' (mobile) ou '?platform=tv' (DeFew TV).
+const _plat = (p?: string) => (p === 'tv' ? '?platform=tv' : '');
 export const themeApi = {
-  get: () => request<ThemeConfig>('/api/v1/theme'),
-  save: (cfg: { appName: string; accent: string; bg: string }) =>
-    request<{ ok: boolean } & ThemeConfig>('/api/v1/theme', {
+  get: (platform?: string) =>
+    request<ThemeConfig>(`/api/v1/theme${_plat(platform)}`),
+  save: (cfg: { appName: string; accent: string; bg: string }, platform?: string) =>
+    request<{ ok: boolean } & ThemeConfig>(`/api/v1/theme${_plat(platform)}`, {
       method: 'PUT',
       body: cfg,
     }),
-  getAutomations: () =>
-    request<{ rules: ThemeRule[] }>('/api/v1/theme/automations'),
-  saveAutomations: (rules: ThemeRule[]) =>
-    request<{ ok: boolean; rules: ThemeRule[] }>('/api/v1/theme/automations', {
-      method: 'PUT',
-      body: { rules },
-    }),
+  getAutomations: (platform?: string) =>
+    request<{ rules: ThemeRule[] }>(`/api/v1/theme/automations${_plat(platform)}`),
+  saveAutomations: (rules: ThemeRule[], platform?: string) =>
+    request<{ ok: boolean; rules: ThemeRule[] }>(
+      `/api/v1/theme/automations${_plat(platform)}`,
+      { method: 'PUT', body: { rules } },
+    ),
 };
 
 // =========================================================

@@ -715,14 +715,16 @@ async function apiV1Inner(request, env) {
     if (a.user.role !== 'super_admin') {
       return errResp('forbidden', 'Owner only', 403);
     }
+    // Thème PAR PLATEFORME : ?platform=tv (DeFew TV) ou rien (mobile).
+    const themePlatform = url.searchParams.get('platform');
     if (parts.length === 1) {
-      if (request.method === 'GET') return handleThemeGet(env);
-      if (request.method === 'PUT') return handleThemePut(request, env, actor);
+      if (request.method === 'GET') return handleThemeGet(env, themePlatform);
+      if (request.method === 'PUT') return handleThemePut(request, env, actor, themePlatform);
     }
     // /theme/automations — règles date → thème (ex. décembre → Noël).
     if (parts.length === 2 && parts[1] === 'automations') {
-      if (request.method === 'GET') return handleThemeAutomationsGet(env);
-      if (request.method === 'PUT') return handleThemeAutomationsPut(request, env, actor);
+      if (request.method === 'GET') return handleThemeAutomationsGet(env, themePlatform);
+      if (request.method === 'PUT') return handleThemeAutomationsPut(request, env, actor, themePlatform);
     }
   }
 
@@ -1041,8 +1043,7 @@ async function ensureDefewTvApp(env) {
         (id, name, package_name, primary_color, default_playlist_type,
          download_url, is_active, created_at, updated_at)
        VALUES ('app_thefew_tv', 'DeFew TV', 'com.manzilionellm.tvking.tv',
-               '#D63A30', 'xtream',
-               'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-latest/defew-tv.apk',
+               '#D63A30', 'xtream', 'https://app.7themotion.com/tv',
                1, ?, ?)`,
     ).bind(now, now).run();
   } catch (_) {
@@ -1558,12 +1559,16 @@ async function handleForceUpdatePost(request, env, actor) {
 
 // (Réutilise `_cfgGetStr` déjà défini plus bas — pas de redéclaration.)
 
-async function handleThemeGet(env) {
+// Suffixe de clé selon la plateforme ('_tv' pour DeFew TV, '' pour mobile).
+function _themeSfx(platform) { return platform === 'tv' ? '_tv' : ''; }
+
+async function handleThemeGet(env, platform) {
   await ensureAppConfigTable(env);
+  const s = _themeSfx(platform);
   return jsonResp({
-    appName: await _cfgGetStr(env, 'theme_name'),
-    accent: await _cfgGetStr(env, 'theme_accent'),
-    bg: await _cfgGetStr(env, 'theme_bg'),
+    appName: await _cfgGetStr(env, 'theme_name' + s),
+    accent: await _cfgGetStr(env, 'theme_accent' + s),
+    bg: await _cfgGetStr(env, 'theme_bg' + s),
   });
 }
 
@@ -1572,15 +1577,15 @@ async function handleThemeGet(env) {
 //  { enabled, label, month (1-12 | null), from ('MMDD'|null), to ('MMDD'|null),
 //    accent ('#RRGGBB'|''), bg ('dark'|'light'|''), appName ('') }.
 //  L'évaluation se fait CÔTÉ WORKER au GET /api/theme (pas de cron).
-async function handleThemeAutomationsGet(env) {
+async function handleThemeAutomationsGet(env, platform) {
   await ensureAppConfigTable(env);
-  const raw = await _cfgGetStr(env, 'theme_automations');
+  const raw = await _cfgGetStr(env, 'theme_automations' + _themeSfx(platform));
   let rules = [];
   try { rules = raw ? JSON.parse(raw) : []; } catch (_) { rules = []; }
   return jsonResp({ rules: Array.isArray(rules) ? rules : [] });
 }
 
-async function handleThemeAutomationsPut(request, env, actor) {
+async function handleThemeAutomationsPut(request, env, actor, platform) {
   await ensureAppConfigTable(env);
   let body;
   try { body = await request.json(); } catch (_) {
@@ -1605,14 +1610,15 @@ async function handleThemeAutomationsPut(request, env, actor) {
       appName: (r && r.appName ? String(r.appName) : '').slice(0, 40),
     };
   });
-  await _cfgSet(env, 'theme_automations', JSON.stringify(clean));
+  await _cfgSet(env, 'theme_automations' + _themeSfx(platform), JSON.stringify(clean));
   await logAudit(env, request, actor, 'theme.automations.save',
     { type: 'app_config', id: null }, null, { count: clean.length });
   return jsonResp({ ok: true, rules: clean });
 }
 
-async function handleThemePut(request, env, actor) {
+async function handleThemePut(request, env, actor, platform) {
   await ensureAppConfigTable(env);
+  const s = _themeSfx(platform);
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
@@ -1627,11 +1633,11 @@ async function handleThemePut(request, env, actor) {
   }
   if (accent && accent[0] !== '#') accent = '#' + accent;
   accent = accent.toUpperCase();
-  await _cfgSet(env, 'theme_name', appName);
-  await _cfgSet(env, 'theme_accent', accent);
-  await _cfgSet(env, 'theme_bg', bg);
+  await _cfgSet(env, 'theme_name' + s, appName);
+  await _cfgSet(env, 'theme_accent' + s, accent);
+  await _cfgSet(env, 'theme_bg' + s, bg);
   await logAudit(env, request, actor, 'theme.save',
-    { type: 'app_config', id: null }, null, { appName, accent, bg });
+    { type: 'app_config', id: null }, null, { platform: platform || 'mobile', appName, accent, bg });
   return jsonResp({ ok: true, appName, accent, bg });
 }
 
