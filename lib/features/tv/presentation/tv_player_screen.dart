@@ -46,9 +46,24 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   bool _buffering = true;
   Timer? _hideTimer;
   Timer? _presenceTimer;
+  Timer? _numTimer;
+  String _numBuffer = ''; // saisie d'un numéro de chaîne (touches 0-9)
   StreamSubscription<bool>? _bufSub;
 
   Channel get _current => widget.channels[_index];
+
+  static const List<LogicalKeyboardKey> _digits = <LogicalKeyboardKey>[
+    LogicalKeyboardKey.digit0, LogicalKeyboardKey.digit1, LogicalKeyboardKey.digit2,
+    LogicalKeyboardKey.digit3, LogicalKeyboardKey.digit4, LogicalKeyboardKey.digit5,
+    LogicalKeyboardKey.digit6, LogicalKeyboardKey.digit7, LogicalKeyboardKey.digit8,
+    LogicalKeyboardKey.digit9,
+  ];
+  static const List<LogicalKeyboardKey> _numpad = <LogicalKeyboardKey>[
+    LogicalKeyboardKey.numpad0, LogicalKeyboardKey.numpad1, LogicalKeyboardKey.numpad2,
+    LogicalKeyboardKey.numpad3, LogicalKeyboardKey.numpad4, LogicalKeyboardKey.numpad5,
+    LogicalKeyboardKey.numpad6, LogicalKeyboardKey.numpad7, LogicalKeyboardKey.numpad8,
+    LogicalKeyboardKey.numpad9,
+  ];
 
   @override
   void initState() {
@@ -66,6 +81,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   void dispose() {
     _hideTimer?.cancel();
     _presenceTimer?.cancel();
+    _numTimer?.cancel();
     _bufSub?.cancel();
     NowPlaying.instance.clear();
     SubscriptionState.instance.syncWithBackend(); // on ne regarde plus rien
@@ -99,28 +115,72 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     });
   }
 
+  // ----- Saisie d'un numéro de chaîne (0-9) → zap après ~1,5 s -----
+  void _onDigit(int d) {
+    if (_numBuffer.length < 4) _numBuffer += '$d';
+    _numTimer?.cancel();
+    _numTimer = Timer(const Duration(milliseconds: 1500), _jumpNumber);
+    setState(() {});
+  }
+
+  void _jumpNumber() {
+    final int? n = int.tryParse(_numBuffer);
+    _numBuffer = '';
+    if (n == null || n <= 0) { setState(() {}); return; }
+    setState(() => _index = (n - 1).clamp(0, widget.channels.length - 1));
+    _open();
+  }
+
+  bool _isPrev(LogicalKeyboardKey k) =>
+      k == LogicalKeyboardKey.arrowUp ||
+      k == LogicalKeyboardKey.channelUp ||
+      k == LogicalKeyboardKey.pageUp ||
+      k == LogicalKeyboardKey.mediaTrackPrevious;
+  bool _isNext(LogicalKeyboardKey k) =>
+      k == LogicalKeyboardKey.arrowDown ||
+      k == LogicalKeyboardKey.channelDown ||
+      k == LogicalKeyboardKey.pageDown ||
+      k == LogicalKeyboardKey.mediaTrackNext;
+  bool _isOk(LogicalKeyboardKey k) =>
+      k == LogicalKeyboardKey.select ||
+      k == LogicalKeyboardKey.enter ||
+      k == LogicalKeyboardKey.numpadEnter ||
+      k == LogicalKeyboardKey.gameButtonA ||
+      k == LogicalKeyboardKey.contextMenu ||
+      k == LogicalKeyboardKey.arrowLeft ||
+      k == LogicalKeyboardKey.arrowRight;
+
+  // Gestion UNIVERSELLE des télécommandes (Android TV, Fire TV, box,
+  // télécommandes universelles) : toutes les variantes de touches mènent
+  // à l'action attendue.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final LogicalKeyboardKey k = event.logicalKey;
 
-    if (k == LogicalKeyboardKey.arrowUp ||
-        k == LogicalKeyboardKey.channelUp) {
-      _zap(-1);
+    // Chiffres (clavier + pavé numérique).
+    int di = _digits.indexOf(k);
+    if (di < 0) di = _numpad.indexOf(k);
+    if (di >= 0) { _onDigit(di); return KeyEventResult.handled; }
+
+    if (_isPrev(k)) { _zap(-1); return KeyEventResult.handled; }
+    if (_isNext(k)) { _zap(1); return KeyEventResult.handled; }
+
+    if (k == LogicalKeyboardKey.mediaPlayPause ||
+        k == LogicalKeyboardKey.mediaPlay ||
+        k == LogicalKeyboardKey.mediaPause) {
+      _player.playOrPause();
+      _showOverlayTemporarily();
       return KeyEventResult.handled;
     }
-    if (k == LogicalKeyboardKey.arrowDown ||
-        k == LogicalKeyboardKey.channelDown) {
-      _zap(1);
+    if (k == LogicalKeyboardKey.mediaStop) {
+      Navigator.of(context).maybePop();
       return KeyEventResult.handled;
     }
-    if (k == LogicalKeyboardKey.select ||
-        k == LogicalKeyboardKey.enter ||
-        k == LogicalKeyboardKey.gameButtonA) {
+    if (_isOk(k)) {
       setState(() => _overlay = !_overlay);
       if (_overlay) _showOverlayTemporarily();
       return KeyEventResult.handled;
     }
-    // Tout autre appui réveille la barre.
     _showOverlayTemporarily();
     return KeyEventResult.ignored;
   }
@@ -158,6 +218,26 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                   ),
                 ),
               ),
+              // Numéro saisi à la télécommande (coin haut-droit).
+              if (_numBuffer.isNotEmpty)
+                Positioned(
+                  top: TvDimens.safeV + 8,
+                  right: TvDimens.safeH,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white24),
+                    ),
+                    child: Text(_numBuffer,
+                        style: const TextStyle(
+                            fontSize: 44,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: 4)),
+                  ),
+                ),
             ],
           ),
         ),
