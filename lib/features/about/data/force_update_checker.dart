@@ -27,6 +27,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/app_platform.dart';
 import '../../../core/app/build_info.dart';
 import '../../subscription/data/subscription_backend.dart';
 
@@ -40,7 +41,8 @@ class ForceUpdateChecker {
     if (kBuildTs <= 0) return false; // build local → jamais bloquant
     try {
       final Uri uri = Uri.parse(
-        '$kSubscriptionBaseUrl/api/app-version?build=$kBuildTs',
+        '$kSubscriptionBaseUrl/api/app-version?build=$kBuildTs'
+        '&platform=${AppPlatform.id}',
       );
       final http.Response resp = await http.get(uri).timeout(timeout);
       if (resp.statusCode != 200) return false;

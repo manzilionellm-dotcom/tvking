@@ -615,15 +615,15 @@ export const homeLayoutApi = {
 //  build connu, jusqu'à ce qu'elles se mettent à jour. minBuildTs en
 //  secondes ; 0 = désactivé.
 export const forceUpdateApi = {
-  get: () =>
-    request<{ minBuildTs: number; latestBuildTs: number }>('/api/v1/force-update'),
-  force: () =>
-    request<{ ok: boolean; minBuildTs: number }>('/api/v1/force-update', {
+  get: (platform?: string) =>
+    request<{ minBuildTs: number; latestBuildTs: number }>(`/api/v1/force-update${_plat(platform)}`),
+  force: (platform?: string) =>
+    request<{ ok: boolean; minBuildTs: number }>(`/api/v1/force-update${_plat(platform)}`, {
       method: 'POST',
       body: { action: 'force' },
     }),
-  disable: () =>
-    request<{ ok: boolean; minBuildTs: number }>('/api/v1/force-update', {
+  disable: (platform?: string) =>
+    request<{ ok: boolean; minBuildTs: number }>(`/api/v1/force-update${_plat(platform)}`, {
       method: 'POST',
       body: { action: 'disable' },
     }),

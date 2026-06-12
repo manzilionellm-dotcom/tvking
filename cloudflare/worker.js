@@ -1534,27 +1534,32 @@ async function handleGetAppVersion(request, env) {
   try {
     await ensureAppConfigTable(env);
     const url = new URL(request.url);
+    // Mise à jour forcée PAR PLATEFORME : clés suffixées '_tv' pour DeFew TV
+    // (les builds mobile et TV ont des horodatages différents).
+    const sfx = url.searchParams.get('platform') === 'tv' ? '_tv' : '';
+    const latestKey = 'latest_build_ts' + sfx;
+    const minKey = 'min_build_ts' + sfx;
     const build = parseInt(url.searchParams.get('build') || '0', 10);
     if (Number.isFinite(build) && build > 0) {
       const row = await env.DB
-        .prepare("SELECT value FROM app_config WHERE key = 'latest_build_ts'")
+        .prepare('SELECT value FROM app_config WHERE key = ?').bind(latestKey)
         .first();
       const cur = row ? parseInt(row.value, 10) || 0 : 0;
       if (build > cur) {
         await env.DB
           .prepare(
-            "INSERT INTO app_config (key, value) VALUES ('latest_build_ts', ?) " +
+            'INSERT INTO app_config (key, value) VALUES (?, ?) ' +
               'ON CONFLICT(key) DO UPDATE SET value = excluded.value'
           )
-          .bind(String(build))
+          .bind(latestKey, String(build))
           .run();
       }
     }
     const minRow = await env.DB
-      .prepare("SELECT value FROM app_config WHERE key = 'min_build_ts'")
+      .prepare('SELECT value FROM app_config WHERE key = ?').bind(minKey)
       .first();
     const latRow = await env.DB
-      .prepare("SELECT value FROM app_config WHERE key = 'latest_build_ts'")
+      .prepare('SELECT value FROM app_config WHERE key = ?').bind(latestKey)
       .first();
     return json({
       minBuildTs: minRow ? parseInt(minRow.value, 10) || 0 : 0,

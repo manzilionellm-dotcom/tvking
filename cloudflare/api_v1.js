@@ -692,9 +692,10 @@ async function apiV1Inner(request, env) {
     if (a.user.role !== 'super_admin') {
       return errResp('forbidden', 'Owner only', 403);
     }
+    const fuPlatform = url.searchParams.get('platform');
     if (parts.length === 1) {
-      if (request.method === 'GET') return handleForceUpdateGet(env);
-      if (request.method === 'POST') return handleForceUpdatePost(request, env, actor);
+      if (request.method === 'GET') return handleForceUpdateGet(env, fuPlatform);
+      if (request.method === 'POST') return handleForceUpdatePost(request, env, actor, fuPlatform);
     }
   }
 
@@ -1514,37 +1515,42 @@ async function _cfgSet(env, key, value) {
     .run();
 }
 
-async function handleForceUpdateGet(env) {
+// Suffixe de clé par plateforme (mise à jour forcée mobile vs TV).
+function _fuSfx(platform) { return platform === 'tv' ? '_tv' : ''; }
+
+async function handleForceUpdateGet(env, platform) {
   await ensureAppConfigTable(env);
+  const s = _fuSfx(platform);
   return jsonResp({
-    minBuildTs: await _cfgGet(env, 'min_build_ts'),
-    latestBuildTs: await _cfgGet(env, 'latest_build_ts'),
+    minBuildTs: await _cfgGet(env, 'min_build_ts' + s),
+    latestBuildTs: await _cfgGet(env, 'latest_build_ts' + s),
   });
 }
 
-async function handleForceUpdatePost(request, env, actor) {
+async function handleForceUpdatePost(request, env, actor, platform) {
   await ensureAppConfigTable(env);
+  const s = _fuSfx(platform);
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
   const action = (body.action || '').toString();
   if (action === 'force') {
-    const latest = await _cfgGet(env, 'latest_build_ts');
+    const latest = await _cfgGet(env, 'latest_build_ts' + s);
     if (!latest) {
       return errResp('no_build',
         'Aucun build récent détecté. Ouvre la dernière app une fois '
         + 'pour qu\'elle se signale, puis réessaie.', 400);
     }
-    await _cfgSet(env, 'min_build_ts', latest);
+    await _cfgSet(env, 'min_build_ts' + s, latest);
     await logAudit(env, request, actor, 'force_update.on',
-      { type: 'app_config', id: null }, null, { min_build_ts: latest });
+      { type: 'app_config', id: null }, null, { platform: platform || 'mobile', min_build_ts: latest });
     return jsonResp({ ok: true, minBuildTs: latest });
   }
   if (action === 'disable') {
-    await _cfgSet(env, 'min_build_ts', 0);
+    await _cfgSet(env, 'min_build_ts' + s, 0);
     await logAudit(env, request, actor, 'force_update.off',
-      { type: 'app_config', id: null }, null, null);
+      { type: 'app_config', id: null }, null, { platform: platform || 'mobile' });
     return jsonResp({ ok: true, minBuildTs: 0 });
   }
   return errResp('bad_action', "action doit être 'force' ou 'disable'", 400);

@@ -22,6 +22,7 @@ export function ForceUpdatePage({ onLogout }: { onLogout: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const [platform, setPlatform] = useState<'mobile' | 'tv'>('mobile');
 
   function fail(e: any) {
     if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
@@ -29,14 +30,14 @@ export function ForceUpdatePage({ onLogout }: { onLogout: () => void }) {
   }
 
   function load() {
-    setLoading(true);
-    forceUpdateApi.get()
+    setLoading(true); setOk(null); setErr(null);
+    forceUpdateApi.get(platform)
       .then((r) => { setMinBuildTs(r.minBuildTs); setLatestBuildTs(r.latestBuildTs); })
       .catch(fail)
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [platform]);
 
   async function doForce() {
     if (!window.confirm(
@@ -46,7 +47,7 @@ export function ForceUpdatePage({ onLogout }: { onLogout: () => void }) {
       + 'sont pas affectés.')) return;
     setBusy(true); setErr(null); setOk(null);
     try {
-      const r = await forceUpdateApi.force();
+      const r = await forceUpdateApi.force(platform);
       setMinBuildTs(r.minBuildTs);
       setOk('✅ Mise à jour forcée ACTIVÉE. Les anciennes versions seront '
         + 'bloquées à leur prochaine ouverture.');
@@ -56,7 +57,7 @@ export function ForceUpdatePage({ onLogout }: { onLogout: () => void }) {
   async function doDisable() {
     setBusy(true); setErr(null); setOk(null);
     try {
-      const r = await forceUpdateApi.disable();
+      const r = await forceUpdateApi.disable(platform);
       setMinBuildTs(r.minBuildTs);
       setOk('Mise à jour forcée désactivée. Plus aucun blocage.');
     } catch (e) { fail(e); } finally { setBusy(false); }
@@ -70,6 +71,22 @@ export function ForceUpdatePage({ onLogout }: { onLogout: () => void }) {
       subtitle="Oblige tous les utilisateurs à installer la dernière version — en un clic"
       onLogout={onLogout}
     >
+      {/* Bascule 📱 Mobile / 📺 TV : forçage indépendant par app. */}
+      <div className="mb-5 inline-flex rounded-lg border border-white/10 bg-slate p-1">
+        {([['mobile', '📱 Mobile'], ['tv', '📺 TV']] as const).map(([p, label]) => (
+          <button
+            key={p}
+            onClick={() => setPlatform(p)}
+            className={
+              'rounded-md px-4 py-2 text-sm font-semibold transition ' +
+              (platform === p ? 'bg-accent text-black' : 'text-ink-secondary hover:text-ink-primary')
+            }
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {err && (
         <div className="mb-4 max-w-lg rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">
           {err}
