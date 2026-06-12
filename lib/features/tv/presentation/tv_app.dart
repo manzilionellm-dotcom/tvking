@@ -29,6 +29,11 @@ import 'tv_search_screen.dart';
 import 'tv_settings_screen.dart';
 import 'tv_shell.dart';
 
+/// Largeur LOGIQUE de référence du design TV. Toute l'app est rendue comme
+/// si l'écran faisait cette largeur, puis mise à l'échelle vers l'écran réel
+/// (cf. `MaterialApp.builder`). 1280 = canevas 10-foot standard (720p).
+const double kTvDesignWidth = 1280;
+
 class TvApp extends StatelessWidget {
   const TvApp({super.key});
 
@@ -64,6 +69,32 @@ class TvApp extends StatelessWidget {
           splashFactory: NoSplash.splashFactory,
           hoverColor: Colors.transparent,
         ),
+        // CANEVAS TV FIXE : on rend TOUTE l'app comme un écran logique de
+        // largeur `kTvDesignWidth`, puis on met à l'échelle uniforme vers
+        // l'écran réel. Beaucoup de box Android TV / Fire TV rapportent une
+        // résolution logique trop petite (ex. 960×540) → l'UI paraît
+        // « zoomée ». Avec ce canevas fixe, l'app a TOUJOURS la même taille
+        // relative, quelle que soit la TV. On neutralise aussi le textScale
+        // système (certaines box le poussent à 1,3-1,5).
+        builder: (BuildContext context, Widget? child) {
+          final MediaQueryData mq = MediaQuery.of(context);
+          final Size screen = mq.size;
+          if (child == null || screen.width <= 0 || screen.height <= 0) {
+            return child ?? const SizedBox.shrink();
+          }
+          const double designW = kTvDesignWidth;
+          final double designH = designW * screen.height / screen.width;
+          return MediaQuery(
+            data: mq.copyWith(
+              size: Size(designW, designH),
+              textScaler: TextScaler.noScaling,
+            ),
+            child: FittedBox(
+              fit: BoxFit.fill,
+              child: SizedBox(width: designW, height: designH, child: child),
+            ),
+          );
+        },
         home: const TvGate(),
       ),
     );
