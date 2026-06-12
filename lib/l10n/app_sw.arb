@@ -552,5 +552,8 @@
   "tvAddListError": "Jaza seva, jina la mtumiaji na nenosiri.",
   "tvConnectError": "Imeshindwa kuunganisha. Angalia taarifa.",
   "tvConnecting": "Inaunganisha…",
-  "tvAddListValidate": "Thibitisha na upakie orodha yangu"
+  "tvAddListValidate": "Thibitisha na upakie orodha yangu",
+  "tvSearchingChannels": "Inatafuta vituo vyako…",
+  "tvRetry": "Jaribu tena",
+  "tvSourceInvalid": "Usajili umepokelewa lakini umekataliwa — angalia taarifa kwenye paneli."
 }

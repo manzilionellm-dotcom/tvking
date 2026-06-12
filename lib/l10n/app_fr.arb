@@ -1977,5 +1977,8 @@
   "tvAddListError": "Remplis le serveur, l'identifiant et le mot de passe.",
   "tvConnectError": "Connexion impossible. Vérifie les infos.",
   "tvConnecting": "Connexion…",
-  "tvAddListValidate": "Valider et charger ma liste"
+  "tvAddListValidate": "Valider et charger ma liste",
+  "tvSearchingChannels": "Recherche de tes chaînes…",
+  "tvRetry": "Réessayer",
+  "tvSourceInvalid": "Abonnement reçu mais refusé — vérifie les identifiants dans le panel."
 }

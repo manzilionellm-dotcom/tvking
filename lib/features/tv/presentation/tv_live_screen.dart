@@ -17,6 +17,7 @@ import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/data/remote_source_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import 'tv_components.dart';
@@ -36,17 +37,41 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   String? _selectedCat;
   bool _heroShown = false;
 
+  // Re-synchro de la source poussée par le panel. CRUCIAL : sans ça, l'app
+  // ne récupérait la source qu'au tout 1er démarrage ; si le revendeur
+  // activait/poussait APRÈS, la TV restait « Aucune chaîne » jusqu'au
+  // redémarrage. Ici on re-tente tant qu'on n'a aucune chaîne.
+  Timer? _syncTimer;
+  bool _syncing = false;
+  RemoteSyncResult? _lastSync;
+
   @override
   void initState() {
     super.initState();
     _ingest(PlaylistRepository.instance.currentChannels);
     _sub = PlaylistRepository.instance.channelsStream.listen(_ingest);
+    _kickSourceSync(); // tout de suite à l'ouverture de l'écran
+    _syncTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+      if (_all.isEmpty) _kickSourceSync();
+    });
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _syncTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _kickSourceSync() async {
+    if (_syncing) return;
+    if (mounted) setState(() => _syncing = true);
+    final RemoteSyncResult r = await RemoteSourceRepository.sync();
+    if (!mounted) return;
+    setState(() {
+      _syncing = false;
+      _lastSync = r;
+    });
   }
 
   // Catégorie EXACTEMENT comme écrite dans la source (M3U group-title /
@@ -97,10 +122,78 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   @override
   Widget build(BuildContext context) {
     if (_all.isEmpty) {
-      return TvEmptyState(
-        icon: Icons.live_tv_rounded,
-        title: context.l10n.tvNoChannels,
-        subtitle: context.l10n.tvNoChannelsHelp,
+      // États PRÉCIS au lieu d'un « écran mort » :
+      //  • en cours / réseau → « Recherche de tes chaînes… »
+      //  • source refusée     → identifiants invalides côté panel
+      //  • rien d'assigné     → message d'activation habituel
+      final bool searching = _syncing ||
+          _lastSync == null ||
+          _lastSync == RemoteSyncResult.networkError;
+      final String title;
+      final String subtitle;
+      if (searching) {
+        title = context.l10n.tvSearchingChannels;
+        subtitle = context.l10n.tvNoChannelsHelp;
+      } else if (_lastSync == RemoteSyncResult.sourceFailed) {
+        title = context.l10n.tvNoChannels;
+        subtitle = context.l10n.tvSourceInvalid;
+      } else {
+        title = context.l10n.tvNoChannels;
+        subtitle = context.l10n.tvNoChannelsHelp;
+      }
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(searching ? Icons.wifi_find_rounded : Icons.live_tv_rounded,
+                size: 64, color: TvTokens.mutedDim),
+            const SizedBox(height: 16),
+            Text(title,
+                style: TextStyle(
+                    fontSize: TvDimens.headline,
+                    fontWeight: FontWeight.w700,
+                    color: TvTokens.text)),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: 600,
+              child: Text(subtitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: TvDimens.body, color: TvTokens.mutedDim)),
+            ),
+            const SizedBox(height: 22),
+            // Bouton « Réessayer maintenant » (focusable D-pad).
+            TvFocusBuilder(
+              autofocus: true,
+              scale: TvFocusScale.large,
+              onSelect: _syncing ? null : _kickSourceSync,
+              builder: (BuildContext context, bool focused) => Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                decoration: BoxDecoration(
+                  color: focused ? TvTokens.gold : TvTokens.sel,
+                  borderRadius: BorderRadius.circular(TvTokens.rButton),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(Icons.refresh_rounded,
+                        size: 22,
+                        color: focused ? const Color(0xFF1A1206) : TvTokens.goldBright),
+                    const SizedBox(width: 10),
+                    Text(
+                        _syncing
+                            ? context.l10n.tvSearchingChannels
+                            : context.l10n.tvRetry,
+                        style: TextStyle(
+                            fontSize: TvDimens.title,
+                            fontWeight: FontWeight.w700,
+                            color: focused ? const Color(0xFF1A1206) : TvTokens.goldBright)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       );
     }
 

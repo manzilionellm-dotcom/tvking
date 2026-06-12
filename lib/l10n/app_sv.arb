@@ -552,5 +552,8 @@
   "tvAddListError": "Fyll i server, användarnamn och lösenord.",
   "tvConnectError": "Kan inte ansluta. Kontrollera uppgifterna.",
   "tvConnecting": "Ansluter…",
-  "tvAddListValidate": "Bekräfta och ladda min lista"
+  "tvAddListValidate": "Bekräfta och ladda min lista",
+  "tvSearchingChannels": "Söker dina kanaler…",
+  "tvRetry": "Försök igen",
+  "tvSourceInvalid": "Abonnemang mottaget men avvisat — kontrollera uppgifterna i panelen."
 }

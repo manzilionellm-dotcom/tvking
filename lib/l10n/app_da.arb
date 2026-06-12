@@ -552,5 +552,8 @@
   "tvAddListError": "Udfyld server, brugernavn og adgangskode.",
   "tvConnectError": "Kan ikke oprette forbindelse. Tjek oplysningerne.",
   "tvConnecting": "Opretter forbindelse…",
-  "tvAddListValidate": "Bekræft og indlæs min liste"
+  "tvAddListValidate": "Bekræft og indlæs min liste",
+  "tvSearchingChannels": "Søger efter dine kanaler…",
+  "tvRetry": "Prøv igen",
+  "tvSourceInvalid": "Abonnement modtaget, men afvist — tjek oplysningerne i panelet."
 }

@@ -552,5 +552,8 @@
   "tvAddListError": "Rellena el servidor, el usuario y la contraseña.",
   "tvConnectError": "No se puede conectar. Revisa los datos.",
   "tvConnecting": "Conectando…",
-  "tvAddListValidate": "Confirmar y cargar mi lista"
+  "tvAddListValidate": "Confirmar y cargar mi lista",
+  "tvSearchingChannels": "Buscando tus canales…",
+  "tvRetry": "Reintentar",
+  "tvSourceInvalid": "Suscripción recibida pero rechazada — verifica las credenciales en el panel."
 }

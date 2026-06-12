@@ -552,5 +552,8 @@
   "tvAddListError": "Fyll inn server, brukernavn og passord.",
   "tvConnectError": "Får ikke kontakt. Sjekk opplysningene.",
   "tvConnecting": "Kobler til…",
-  "tvAddListValidate": "Bekreft og last inn listen min"
+  "tvAddListValidate": "Bekreft og last inn listen min",
+  "tvSearchingChannels": "Søker etter kanalene dine…",
+  "tvRetry": "Prøv igjen",
+  "tvSourceInvalid": "Abonnement mottatt, men avvist — sjekk opplysningene i panelet."
 }
