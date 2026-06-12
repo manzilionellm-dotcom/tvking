@@ -12,6 +12,7 @@ import '../../../core/theme/app_colors.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import 'tv_live_screen.dart';
+import 'tv_settings_screen.dart';
 import 'tv_shell.dart';
 
 class TvApp extends StatelessWidget {
@@ -218,8 +219,10 @@ class _ContentPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // « Direct » est branché ; les autres buckets arrivent (BUILD_ORDER 6-9).
+    // « Direct » et « Réglages » sont branchés ; les autres buckets
+    // arrivent (BUILD_ORDER 6-9).
     if (dest == TvDest.live) return const TvLiveScreen();
+    if (dest == TvDest.settings) return const TvSettingsScreen();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
