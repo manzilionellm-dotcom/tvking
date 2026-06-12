@@ -386,7 +386,7 @@ async function updateDeviceInfo(env, mac, body) {
   if (!env.DB || !body) return;
   try {
     for (const col of ['device_model TEXT', 'android_build TEXT',
-        'android_release TEXT', 'app_build INTEGER']) {
+        'android_release TEXT', 'app_build INTEGER', 'platform TEXT']) {
       try {
         await env.DB.prepare('ALTER TABLE devices ADD COLUMN ' + col).run();
       } catch (_) { /* déjà présente */ }
@@ -395,7 +395,10 @@ async function updateDeviceInfo(env, mac, body) {
     const build = (body.build ? String(body.build) : '').slice(0, 120);
     const release = (body.android ? String(body.android) : '').slice(0, 20);
     const appBuild = parseInt(body.appBuild, 10) || 0;
-    if (!model && !build && !release && !appBuild) return;
+    // 'tv' (DeFew TV) ou 'mobile' (The Few) — pour distinguer dans le panel.
+    const platform = (body.platform === 'tv' || body.platform === 'mobile')
+      ? body.platform : '';
+    if (!model && !build && !release && !appBuild && !platform) return;
     await env.DB
       .prepare(
         'UPDATE devices SET device_model = ?, android_build = ?, ' +
@@ -403,6 +406,11 @@ async function updateDeviceInfo(env, mac, body) {
       )
       .bind(model, build, release, appBuild, mac)
       .run();
+    // platform à part : on ne l'écrase pas avec du vide (vieux clients).
+    if (platform) {
+      await env.DB.prepare('UPDATE devices SET platform = ? WHERE mac = ?')
+        .bind(platform, mac).run();
+    }
   } catch (_) {
     // best-effort : ne jamais faire échouer un heartbeat.
   }

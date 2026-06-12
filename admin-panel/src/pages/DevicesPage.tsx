@@ -94,8 +94,9 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                   <td className="px-4 py-3 font-mono text-xs text-accent">{d.mac}</td>
                   <td className="px-4 py-3">{d.customer_name || d.customer_email || '—'}</td>
                   <td className="px-4 py-3">
+                    <PlatformChip device={d} />
                     {d.device_model ? (
-                      <div>
+                      <div className="mt-1">
                         <div className="text-xs text-ink-secondary">{d.device_model}</div>
                         <div className="text-[10px] text-ink-tertiary">
                           {d.android_release ? `Android ${d.android_release}` : ''}
@@ -204,6 +205,27 @@ function ActivatePlanModal({
         </div>
       </div>
     </div>
+  );
+}
+
+/// Pastille 📱 Mobile / 📺 TV. Priorité au champ `platform` (rapporté par
+/// l'app) ; à défaut, heuristique sur le modèle (box TV connues).
+function PlatformChip({ device }: { device: Device }) {
+  const isTv =
+    device.platform === 'tv' ||
+    /\btv\b|aftt|aftb|aftm|afts|fire\s*tv|firetv|shield|bravia|chromecast|google\s*tv|mibox|mi\s*box|adt-|homatics|formuler|dune|nvidia/i.test(
+      device.device_model || '',
+    );
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+      style={{
+        background: isTv ? 'rgba(106,141,176,0.18)' : 'rgba(255,255,255,0.06)',
+        color: isTv ? '#8FB4D6' : '#B6B0A8',
+      }}
+    >
+      {isTv ? '📺 TV' : '📱 Mobile'}
+    </span>
   );
 }
 

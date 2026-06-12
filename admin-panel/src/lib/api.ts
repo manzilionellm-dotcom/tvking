@@ -297,6 +297,7 @@ export interface Device {
   android_build?: string | null;
   android_release?: string | null;
   app_build?: number | null;
+  platform?: string | null;   // 'tv' (DeFew TV) | 'mobile' (The Few)
 }
 export const devicesApi = {
   list: (q?: string) =>

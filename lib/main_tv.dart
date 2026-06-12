@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
+import 'core/app/app_platform.dart';
 import 'core/flavor/flavor.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/playlists/data/playlist_repository.dart';
@@ -27,6 +28,10 @@ Future<void> main() async {
 
   // Flavor explicite (un seul produit pour l'instant : The Few).
   FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
+
+  // Cette app est la version TÉLÉVISION → le heartbeat enverra
+  // platform='tv' et le panel l'affichera comme 📺 (vs 📱 mobile).
+  AppPlatform.isTv = true;
 
   // Moteur lecteur natif (mpv) — avant runApp, comme côté mobile.
   MediaKit.ensureInitialized();

@@ -24,6 +24,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/app_platform.dart';
 import '../../../core/app/build_info.dart';
 import '../../device/data/device_identity.dart';
 import 'now_playing.dart';
@@ -153,6 +154,8 @@ abstract final class SubscriptionBackend {
         'appBuild': kBuildTs,
         // Chaîne en cours de visionnage (vide si rien) → panel « En ligne ».
         'channel': NowPlaying.instance.current,
+        // 📱 mobile / 📺 tv → le panel distingue les deux apps.
+        'platform': AppPlatform.id,
       };
       final http.Response resp = await http
           .post(
