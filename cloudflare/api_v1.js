@@ -576,6 +576,16 @@ async function apiV1Inner(request, env) {
     return handleActivate(request, env, a.user, actor);
   }
 
+  // /transfer — déplacer un abonnement d'une ancienne MAC vers une
+  // nouvelle (changement d'appareil) SANS perdre le temps payé. Requiert
+  // le droit 'activate' (revendeur) ; l'admin a toujours accès.
+  if (parts[0] === 'transfer' && parts.length === 1 && request.method === 'POST') {
+    if (!resellerCan(a.user, 'activate')) {
+      return errResp('forbidden', 'Ton compte n\'a pas le droit de transférer.', 403);
+    }
+    return handleDeviceTransfer(request, env, a.user, actor);
+  }
+
   // /apps
   if (parts[0] === 'apps') {
     if (parts.length === 1) {
@@ -2942,6 +2952,91 @@ async function handleResellerCreditsList(env, id, user) {
     .bind(id)
     .all();
   return jsonResp({ items: rs.results || [] });
+}
+
+// ----- TRANSFERT d'abonnement (ancienne MAC → nouvelle MAC) -----
+//  RIGUEUR BUSINESS : un client qui a PAYÉ ne doit JAMAIS perdre son
+//  accès parce que l'identifiant de son appareil a changé (nouveau
+//  téléphone, réinstallation, mise à jour qui a changé l'ANDROID_ID…).
+//  Ici on DÉPLACE la licence + la source de l'ancienne MAC vers la
+//  nouvelle, en gardant EXACTEMENT le temps restant. GRATUIT (aucun
+//  crédit débité) : changer d'appareil ne se paie pas.
+async function handleDeviceTransfer(request, env, user, actor) {
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const oldMac = (body.old_mac || '').trim().toUpperCase();
+  const newMac = (body.new_mac || '').trim().toUpperCase();
+  const macRx = /^MK(?::[0-9A-F]{2}){5}$/i;
+  if (!macRx.test(oldMac)) return errResp('bad_mac', 'Ancienne MAC invalide.', 400);
+  if (!macRx.test(newMac)) return errResp('bad_mac', 'Nouvelle MAC invalide.', 400);
+  if (oldMac === newMac) return errResp('same_mac', 'Les deux MAC sont identiques.', 400);
+
+  const isReseller = user.role === 'reseller';
+  const now = Date.now();
+
+  const oldDev = await env.DB
+    .prepare('SELECT id, customer_id, reseller_id FROM devices WHERE mac = ?')
+    .bind(oldMac).first();
+  if (!oldDev) return errResp('not_found', 'Ancienne MAC introuvable.', 404);
+  if (isReseller && oldDev.reseller_id && oldDev.reseller_id !== user.sub) {
+    return errResp('forbidden', 'Cet appareil ne t\'appartient pas.', 403);
+  }
+
+  // Combien de licences à déplacer (pour le retour). 0 = on déplace au
+  // moins la source (utile si le client a juste réinstallé).
+  const lics = await env.DB
+    .prepare('SELECT id, expires_at, status FROM licenses WHERE device_id = ?')
+    .bind(oldDev.id).all();
+  const licRows = lics.results || [];
+
+  // Nouveau device : on réutilise le MÊME client (identité préservée).
+  let newDev = await env.DB
+    .prepare('SELECT id, reseller_id FROM devices WHERE mac = ?')
+    .bind(newMac).first();
+  let newDeviceId;
+  if (newDev) {
+    if (isReseller && newDev.reseller_id && newDev.reseller_id !== user.sub) {
+      return errResp('forbidden', 'La nouvelle MAC appartient à un autre revendeur.', 403);
+    }
+    newDeviceId = newDev.id;
+    await env.DB.prepare(
+      'UPDATE devices SET customer_id = ?, reseller_id = COALESCE(reseller_id, ?), block_status = NULL, last_seen_at = ? WHERE id = ?',
+    ).bind(oldDev.customer_id, oldDev.reseller_id, now, newDeviceId).run();
+  } else {
+    newDeviceId = genId('dev');
+    await env.DB.prepare(
+      `INSERT INTO devices (id, customer_id, mac, label, reseller_id, first_seen_at, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(newDeviceId, oldDev.customer_id, newMac,
+           body.label || 'Transfert', oldDev.reseller_id, now, now).run();
+  }
+
+  // Déplace les licences vers le nouveau device (temps restant intact).
+  await env.DB.prepare(
+    'UPDATE licenses SET device_id = ?, customer_id = ?, updated_at = ? WHERE device_id = ?',
+  ).bind(newDeviceId, oldDev.customer_id, now, oldDev.id).run();
+
+  // Déplace la source IPTV : si la nouvelle MAC en avait déjà une, on la
+  // remplace par celle de l'ancienne (le client garde SES identifiants).
+  try {
+    await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(newMac).run();
+    await env.DB.prepare('UPDATE device_sources SET mac = ?, updated_at = ? WHERE mac = ?')
+      .bind(newMac, now, oldMac).run();
+  } catch (_) { /* pas de source à déplacer */ }
+
+  // L'ancien appareil n'a plus de licence → il redevient inactif tout seul.
+  await logAudit(env, request, actor, 'device.transfer',
+    { type: 'device', id: oldDev.id },
+    { old_mac: oldMac }, { new_mac: newMac, moved_licenses: licRows.length });
+
+  return jsonResp({
+    ok: true,
+    old_mac: oldMac,
+    new_mac: newMac,
+    moved_licenses: licRows.length,
+  });
 }
 
 // ----- ACTIVATION par MAC (owner ou revendeur autonome) -----

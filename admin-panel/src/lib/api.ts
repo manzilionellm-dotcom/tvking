@@ -708,6 +708,17 @@ export const referencesApi = {
 };
 
 // =========================================================
+//  TRANSFERT d'abonnement (changement d'appareil)
+// =========================================================
+export const transferApi = {
+  transfer: (oldMac: string, newMac: string, label?: string) =>
+    request<{ ok: boolean; old_mac: string; new_mac: string; moved_licenses: number }>(
+      '/api/v1/transfer',
+      { method: 'POST', body: { old_mac: oldMac, new_mac: newMac, label } },
+    ),
+};
+
+// =========================================================
 //  PUB VIDÉO AU DÉMARRAGE (jouée quand le client ouvre l'app)
 // =========================================================
 export interface AdConfig {

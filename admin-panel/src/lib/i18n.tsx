@@ -54,6 +54,7 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.myActivations': { fr: 'Mes activations', en: 'My activations', ar: 'تفعيلاتي' },
   'nav.history': { fr: 'Historique', en: 'History', ar: 'السجل' },
   'nav.references': { fr: 'Références', en: 'References', ar: 'المراجع' },
+  'nav.transfer': { fr: 'Transférer', en: 'Transfer', ar: 'نقل' },
   'nav.account': { fr: 'Mon compte', en: 'My account', ar: 'حسابي' },
 
   // --- Commun ---
