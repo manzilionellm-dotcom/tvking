@@ -26,6 +26,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/app/build_info.dart';
 import '../../device/data/device_identity.dart';
+import 'now_playing.dart';
 
 /// URL du Worker Cloudflare — DOIT être le MÊME backend que celui
 /// utilisé par le panneau admin (admin-panel, `VITE_API_BASE`), sinon
@@ -150,6 +151,8 @@ abstract final class SubscriptionBackend {
         'sdk': info['sdk'] ?? '',
         'build': info['build'] ?? '',
         'appBuild': kBuildTs,
+        // Chaîne en cours de visionnage (vide si rien) → panel « En ligne ».
+        'channel': NowPlaying.instance.current,
       };
       final http.Response resp = await http
           .post(

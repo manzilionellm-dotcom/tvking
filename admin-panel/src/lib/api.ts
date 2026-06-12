@@ -785,6 +785,7 @@ export interface OnlineDevice {
   ip: string;
   country: string;
   lastSeen: number;
+  channel?: string;   // chaîne en cours de visionnage (vide si rien)
 }
 export interface OnlineSnapshot {
   onlineCount: number;

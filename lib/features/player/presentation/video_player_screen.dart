@@ -35,6 +35,8 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../onboarding/data/device_class_repository.dart';
+import '../../subscription/data/now_playing.dart';
+import '../../subscription/data/subscription_state.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/data/recording_service.dart';
@@ -78,6 +80,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   bool _overlayVisible = true;
   Timer? _hideOverlayTimer;
+  // Heartbeat périodique pendant le visionnage → garde l'app « en ligne »
+  // et la chaîne en cours à jour dans le panel.
+  Timer? _presenceTimer;
+
+  /// Rapporte la chaîne en cours au backend (panel « En ligne → Regarde »).
+  void _reportNowPlaying() {
+    NowPlaying.instance.set(_currentChannel.cleanName);
+    // Fire-and-forget : on n'attend pas le réseau.
+    SubscriptionState.instance.syncWithBackend();
+  }
 
   bool _hasError = false;
   String? _errorMessage;
@@ -129,6 +141,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     super.initState();
 
     _currentChannel = widget.channel;
+
+    // Rapporte tout de suite la chaîne en cours, puis rafraîchit toutes les
+    // 3 min tant que le lecteur est ouvert (présence + chaîne à jour).
+    _reportNowPlaying();
+    _presenceTimer = Timer.periodic(const Duration(minutes: 3), (_) {
+      SubscriptionState.instance.syncWithBackend();
+    });
 
     // Écoute les changements d'état PiP côté natif. Quand l'OS bascule
     // en mini-fenêtre, on cache d'autorité l'overlay des contrôles —
@@ -363,6 +382,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _hasError = false;
       _errorMessage = null;
       _isBuffering = true;
+      // (la chaîne change → on le rapporte juste après le setState)
     });
     RecentlyWatchedRepository.instance.record(next.id);
     // Zap = nouvelle session côté Hook Model. On ferme l'ancienne et
@@ -377,6 +397,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         )
         .then((int id) => _watchSessionId = id);
     _openMedia(next.streamUrl);
+    _reportNowPlaying(); // panel « En ligne » : nouvelle chaîne
     _scheduleHideOverlay();
   }
 
@@ -786,6 +807,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void dispose() {
     _hideOverlayTimer?.cancel();
+    _presenceTimer?.cancel();
+    // On ne regarde plus rien → on le signale au panel (heartbeat avec
+    // channel vide). Fire-and-forget.
+    NowPlaying.instance.clear();
+    SubscriptionState.instance.syncWithBackend();
     for (final StreamSubscription<dynamic> s in _subs) {
       s.cancel();
     }

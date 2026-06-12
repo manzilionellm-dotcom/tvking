@@ -1808,9 +1808,11 @@ async function handleOnlineGet(env) {
   const now = Date.now();
   const ONLINE_MS = 15 * 60 * 1000;
   const DAY_MS = 24 * 60 * 60 * 1000;
+  // `channel` peut manquer sur une base ancienne → on l'ajoute (no-op si déjà là).
+  try { await env.DB.prepare('ALTER TABLE presence ADD COLUMN channel TEXT').run(); } catch (_) {}
   const rs = await env.DB
     .prepare(
-      'SELECT mac, ip, country, last_seen FROM presence ' +
+      'SELECT mac, ip, country, last_seen, channel FROM presence ' +
         'WHERE last_seen > ? ORDER BY last_seen DESC LIMIT 1000'
     )
     .bind(now - DAY_MS)
@@ -1831,6 +1833,7 @@ async function handleOnlineGet(env) {
       ip: r.ip || '',
       country: (r.country || '').toUpperCase(),
       lastSeen: r.last_seen || 0,
+      channel: r.channel || '',
     })),
   });
 }

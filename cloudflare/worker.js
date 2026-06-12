@@ -321,20 +321,25 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
 // Présence « en ligne » : table séparée (on ne touche PAS au schéma
 // `devices`). On garde la dernière IP + pays + horodatage par MAC. Le
 // panel considère « en ligne » = vu il y a moins de quelques minutes.
-async function recordPresence(env, mac, ip, country, now) {
+async function recordPresence(env, mac, ip, country, now, channel) {
   if (!env.DB) return;
   try {
     await env.DB.prepare(
       'CREATE TABLE IF NOT EXISTS presence (' +
-        'mac TEXT PRIMARY KEY, ip TEXT, country TEXT, last_seen INTEGER)'
+        'mac TEXT PRIMARY KEY, ip TEXT, country TEXT, last_seen INTEGER, channel TEXT)'
     ).run();
+    // Colonne `channel` ajoutée après coup sur les bases existantes.
+    try { await env.DB.prepare('ALTER TABLE presence ADD COLUMN channel TEXT').run(); } catch (_) {}
+    // L'app envoie `channel` à CHAQUE heartbeat (nom de la chaîne en cours,
+    // ou '' si elle ne regarde rien) → on reflète toujours l'état courant.
+    const chan = (channel === undefined || channel === null) ? null : String(channel).slice(0, 120);
     await env.DB
       .prepare(
-        'INSERT INTO presence (mac, ip, country, last_seen) VALUES (?, ?, ?, ?) ' +
+        'INSERT INTO presence (mac, ip, country, last_seen, channel) VALUES (?, ?, ?, ?, ?) ' +
           'ON CONFLICT(mac) DO UPDATE SET ip = excluded.ip, ' +
-          'country = excluded.country, last_seen = excluded.last_seen'
+          'country = excluded.country, last_seen = excluded.last_seen, channel = excluded.channel'
       )
-      .bind(mac, ip, country, now)
+      .bind(mac, ip, country, now, chan)
       .run();
   } catch (_) {
     // best-effort : la présence ne doit jamais faire échouer un heartbeat.
@@ -1755,7 +1760,10 @@ async function handleHeartbeat(request, env) {
   // géographique des annonces. Best-effort, ne bloque jamais le heartbeat.
   const ip = request.headers.get('CF-Connecting-IP') || '';
   const country = request.headers.get('CF-IPCountry') || '';
-  await recordPresence(env, mac, ip, country, now);
+  // `channel` = nom de la chaîne en cours de visionnage (envoyé par l'app),
+  // ou '' si elle ne regarde rien. Affiché dans le panel « En ligne ».
+  const channel = typeof body.channel === 'string' ? body.channel : '';
+  await recordPresence(env, mac, ip, country, now, channel);
 
   // --- Chemin D1 (par defaut des que la base est branchee) ---
   // On enregistre AUTOMATIQUEMENT la MAC (essai 7 j), puis on renvoie son

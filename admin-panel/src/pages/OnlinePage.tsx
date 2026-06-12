@@ -114,6 +114,7 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
                   <th className="px-4 py-2.5">Pays</th>
                   <th className="px-4 py-2.5">IP</th>
                   <th className="px-4 py-2.5">MAC</th>
+                  <th className="px-4 py-2.5">Regarde</th>
                   <th className="px-4 py-2.5">Vu</th>
                 </tr>
               </thead>
@@ -126,12 +127,17 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-ink-secondary">{d.ip || '—'}</td>
                     <td className="px-4 py-2.5 font-mono text-xs text-ink-tertiary">{d.mac}</td>
+                    <td className="px-4 py-2.5 text-xs">
+                      {d.channel
+                        ? <span className="inline-flex items-center gap-1 text-accent-bright">▶ {d.channel}</span>
+                        : <span className="text-ink-tertiary">—</span>}
+                    </td>
                     <td className="px-4 py-2.5 text-xs text-ink-tertiary">{ago(d.lastSeen)}</td>
                   </tr>
                 ))}
                 {(data?.items.length ?? 0) === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-6 text-center text-xs text-ink-tertiary">
+                    <td colSpan={5} className="px-4 py-6 text-center text-xs text-ink-tertiary">
                       Personne en ligne dans les 15 dernières minutes.
                     </td>
                   </tr>
