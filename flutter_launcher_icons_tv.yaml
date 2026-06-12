@@ -1,0 +1,10 @@
+# Config d'icône SPÉCIFIQUE à DeFew TV (logo « The Few » or sur noir).
+# Utilisée par le workflow build-tv via `flutter_launcher_icons -f`. Le
+# mobile garde sa propre config (dans pubspec.yaml) — non impacté.
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/branding/thefew_tv_icon.png"
+  adaptive_icon_background: "#000000"
+  adaptive_icon_foreground: "assets/branding/thefew_tv_icon.png"
+  min_sdk_android: 21

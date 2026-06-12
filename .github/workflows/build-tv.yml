@@ -159,8 +159,8 @@ jobs:
 
       # Icône de marque (pas le logo Flutter par défaut) — même source que
       # le mobile (assets/branding/logo_black7royal.png).
-      - name: Generate launcher icons
-        run: dart run flutter_launcher_icons || true
+      - name: Generate launcher icons (logo The Few)
+        run: dart run flutter_launcher_icons -f flutter_launcher_icons_tv.yaml || true
 
       # RELEASE + SPLIT-PER-ABI : APK ~40-60 Mo (au lieu de 202 Mo en debug
       # multi-ABI). On publie l'arm64-v8a (box Android TV / Fire TV 4K).
