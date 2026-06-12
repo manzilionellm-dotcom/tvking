@@ -229,7 +229,7 @@ class _ChannelBar extends StatelessWidget {
                       const SizedBox(width: 10),
                     ],
                     Text(
-                      channel.prettyCategory,
+                      channel.category.trim().isEmpty ? 'Autres' : channel.category.trim(),
                       style: TextStyle(
                           fontSize: TvDimens.label,
                           color: AppColors.textSecondary),

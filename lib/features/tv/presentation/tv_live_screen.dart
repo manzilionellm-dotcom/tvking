@@ -45,12 +45,21 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     super.dispose();
   }
 
+  // Catégorie EXACTEMENT comme écrite dans la source (M3U group-title /
+  // Xtream category_name). On ne reclasse PAS : on respecte l'ordre et les
+  // noms du créateur de la playlist.
+  static String _catOf(Channel c) {
+    final String raw = c.category.trim();
+    return raw.isEmpty ? 'Autres' : raw;
+  }
+
   void _ingest(List<Channel> channels) {
     final List<Channel> live =
         channels.where((Channel c) => c.isLive).toList(growable: false);
+    // Ordre des catégories = ordre d'APPARITION dans la source (1re vue).
     final List<String> cats = <String>[];
     for (final Channel c in live) {
-      final String cat = c.prettyCategory;
+      final String cat = _catOf(c);
       if (!cats.contains(cat)) cats.add(cat);
     }
     if (!mounted) return;
@@ -67,7 +76,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   List<Channel> get _shown => _selectedCat == null
       ? _all
       : _all
-          .where((Channel c) => c.prettyCategory == _selectedCat)
+          .where((Channel c) => _catOf(c) == _selectedCat)
           .toList(growable: false);
 
   @override
