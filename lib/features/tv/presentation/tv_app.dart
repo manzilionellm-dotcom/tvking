@@ -9,8 +9,10 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import 'tv_activation_screen.dart';
 import 'tv_live_screen.dart';
 import 'tv_search_screen.dart';
 import 'tv_settings_screen.dart';
@@ -38,7 +40,26 @@ class TvApp extends StatelessWidget {
         splashFactory: NoSplash.splashFactory,
         hoverColor: Colors.transparent,
       ),
-      home: const TvHomeScreen(),
+      home: const TvGate(),
+    );
+  }
+}
+
+/// Porte d'entrée : tant que l'appareil n'est pas PAYÉ (activé par le
+/// revendeur), on montre l'écran d'activation (prix + MAC). Sinon, l'app.
+class TvGate extends StatelessWidget {
+  const TvGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: SubscriptionState.instance,
+      builder: (BuildContext context, _) {
+        final bool active =
+            SubscriptionState.instance.status == SubscriptionStatus.paid;
+        if (active) return const TvHomeScreen();
+        return const TvShell(child: TvActivationScreen());
+      },
     );
   }
 }
