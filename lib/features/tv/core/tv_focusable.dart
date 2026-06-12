@@ -18,8 +18,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../core/theme/app_colors.dart';
 import 'tv_dimens.dart';
+import 'tv_tokens.dart';
 
 /// Intensité du grossissement au focus selon la taille de l'élément.
 enum TvFocusScale { small, medium, large }
@@ -124,7 +124,7 @@ class _TvFocusableState extends State<TvFocusable> {
   Widget build(BuildContext context) {
     final BorderRadius radius =
         widget.borderRadius ?? BorderRadius.circular(TvDimens.cardRadius);
-    final Color focusBg = widget.focusColor ?? AppColors.surfaceOverlay;
+    final Color focusBg = widget.focusColor ?? TvTokens.sel;
     final bool active = _focused && widget.enabled;
 
     // Échelle : un poil moins quand on enfonce OK (effet "pressé").
@@ -155,29 +155,26 @@ class _TvFocusableState extends State<TvFocusable> {
             duration: TvDimens.focusAnim,
             curve: TvDimens.focusCurve,
             decoration: BoxDecoration(
-              // Signal 2 : COULEUR de surface tonale.
+              // Signal 2 : COULEUR de surface (tonale, Maison Noir).
               color: active
                   ? focusBg
-                  : (widget.selected ? AppColors.surfaceHigh : widget.baseColor),
+                  : (widget.selected ? TvTokens.sel : widget.baseColor),
               borderRadius: radius,
-              // Signal 4 : CONTOUR (+ inset visuel via le padding interne
-              // que les cartes appliquent elles-mêmes).
+              // Signal 4 : CONTOUR OR au focus (visible partout, §5 spec).
               border: (widget.showOutline && (active || widget.selected))
                   ? Border.all(
-                      color: active
-                          ? AppColors.textPrimary
-                          : AppColors.textTertiary,
+                      color: active ? TvTokens.gold : TvTokens.line,
                       width: TvDimens.focusOutline,
                     )
                   : null,
-              // Signal 3 : HALO / élévation.
+              // Signal 3 : HALO or discret au focus.
               boxShadow: (widget.showGlow && active)
                   ? <BoxShadow>[
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.55),
+                        color: TvTokens.gold.withValues(alpha: 0.22),
                         blurRadius: TvDimens.focusGlowBlur,
                         spreadRadius: TvDimens.focusGlowSpread,
-                        offset: const Offset(0, 8),
+                        offset: const Offset(0, 6),
                       ),
                     ]
                   : null,

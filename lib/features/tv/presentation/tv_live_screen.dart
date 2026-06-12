@@ -12,12 +12,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_colors.dart';
+import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import 'tv_components.dart';
 import 'tv_player_screen.dart';
 
 class TvLiveScreen extends StatefulWidget {
@@ -94,7 +95,14 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_all.isEmpty) return const _EmptyChannels();
+    if (_all.isEmpty) {
+      return const TvEmptyState(
+        icon: Icons.live_tv_rounded,
+        title: 'Aucune chaîne pour l\'instant',
+        subtitle: 'Active cet appareil dans ton panel, puis pousse-lui une '
+            'source. Les chaînes apparaîtront ici automatiquement.',
+      );
+    }
 
     final Channel? last = _lastWatched();
     _heroShown = last != null;
@@ -114,7 +122,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                     style: TextStyle(
                         fontSize: TvDimens.displayS,
                         fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary)),
+                        color: TvTokens.text)),
               ),
               Expanded(
                 child: ListView.builder(
@@ -135,12 +143,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                               if (mounted) setState(() => _selectedCat = cat);
                             });
                           }
-                          final Color bg = focused
-                              ? AppColors.textPrimary
-                              : (sel ? AppColors.surfaceHigh : Colors.transparent);
-                          final Color fg = focused
-                              ? AppColors.background
-                              : (sel ? AppColors.textPrimary : AppColors.textSecondary);
+                          // Maison Noir : fond `--sel` + texte or au focus/
+                          // actif. JAMAIS de bloc blanc plein (interdit #4).
+                          final bool hl = focused || sel;
+                          final Color bg = hl ? TvTokens.sel : Colors.transparent;
+                          final Color fg = hl ? TvTokens.goldBright : TvTokens.muted;
                           return Container(
                             decoration: BoxDecoration(
                               color: bg,
@@ -203,7 +210,7 @@ class _ContinueHero extends StatelessWidget {
     return TvFocusable(
       autofocus: true,
       scale: TvFocusScale.large,
-      baseColor: AppColors.surface,
+      baseColor: TvTokens.card,
       onSelect: () => Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => TvPlayerScreen(
@@ -215,7 +222,7 @@ class _ContinueHero extends StatelessWidget {
         child: Row(
           children: <Widget>[
             const Icon(Icons.play_circle_fill_rounded,
-                color: AppColors.textPrimary, size: 40),
+                color: TvTokens.text, size: 40),
             const SizedBox(width: 16),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -225,13 +232,13 @@ class _ContinueHero extends StatelessWidget {
                     style: TextStyle(
                         fontSize: TvDimens.caption,
                         letterSpacing: 2,
-                        color: AppColors.textTertiary)),
+                        color: TvTokens.mutedDim)),
                 const SizedBox(height: 2),
                 Text(channel.cleanName,
                     style: TextStyle(
                         fontSize: TvDimens.title,
                         fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary)),
+                        color: TvTokens.text)),
               ],
             ),
           ],
@@ -251,7 +258,7 @@ class _ChannelGrid extends StatelessWidget {
       return Center(
         child: Text('Aucune chaîne dans cette catégorie.',
             style: TextStyle(
-                fontSize: TvDimens.body, color: AppColors.textTertiary)),
+                fontSize: TvDimens.body, color: TvTokens.mutedDim)),
       );
     }
     return GridView.builder(
@@ -303,7 +310,7 @@ class _ChannelCard extends StatelessWidget {
               style: TextStyle(
                   fontSize: TvDimens.caption,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary),
+                  color: TvTokens.text),
             ),
           ],
         ),
@@ -323,7 +330,7 @@ class _Logo extends StatelessWidget {
           style: TextStyle(
               fontSize: TvDimens.title,
               fontWeight: FontWeight.w800,
-              color: AppColors.textSecondary)),
+              color: TvTokens.muted)),
     );
     final String? url = channel.logoUrl;
     if (url == null || url.isEmpty) return fallback;
@@ -347,13 +354,13 @@ class _EmptyChannels extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Icon(Icons.live_tv_rounded,
-              size: 72, color: AppColors.textMuted),
+              size: 72, color: TvTokens.mutedDim),
           const SizedBox(height: 16),
           Text('Aucune chaîne pour l\'instant',
               style: TextStyle(
                   fontSize: TvDimens.headline,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary)),
+                  color: TvTokens.text)),
           const SizedBox(height: 10),
           SizedBox(
             width: 560,
@@ -362,7 +369,7 @@ class _EmptyChannels extends StatelessWidget {
               'Les chaînes apparaîtront ici automatiquement.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                  fontSize: TvDimens.body, color: AppColors.textTertiary),
+                  fontSize: TvDimens.body, color: TvTokens.mutedDim),
             ),
           ),
         ],

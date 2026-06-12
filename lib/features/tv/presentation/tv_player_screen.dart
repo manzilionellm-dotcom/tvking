@@ -15,7 +15,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
-import '../../../core/theme/app_colors.dart';
+import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../subscription/data/now_playing.dart';
@@ -291,7 +291,7 @@ class _ChannelBar extends StatelessWidget {
                   style: TextStyle(
                       fontSize: TvDimens.headline,
                       fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary),
+                      color: TvTokens.text),
                 ),
                 const SizedBox(height: 4),
                 Row(
@@ -301,7 +301,7 @@ class _ChannelBar extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                            color: AppColors.live,
+                            color: TvTokens.live,
                             borderRadius: BorderRadius.circular(4)),
                         child: const Text('DIRECT',
                             style: TextStyle(
@@ -315,7 +315,7 @@ class _ChannelBar extends StatelessWidget {
                       channel.category.trim().isEmpty ? 'Autres' : channel.category.trim(),
                       style: TextStyle(
                           fontSize: TvDimens.label,
-                          color: AppColors.textSecondary),
+                          color: TvTokens.muted),
                     ),
                   ],
                 ),
@@ -324,7 +324,7 @@ class _ChannelBar extends StatelessWidget {
           ),
           Text('Haut/Bas pour zapper',
               style: TextStyle(
-                  fontSize: TvDimens.caption, color: AppColors.textTertiary)),
+                  fontSize: TvDimens.caption, color: TvTokens.mutedDim)),
         ],
       ),
     );
@@ -335,6 +335,6 @@ class _ChannelBar extends StatelessWidget {
             style: TextStyle(
                 fontSize: TvDimens.title,
                 fontWeight: FontWeight.w800,
-                color: AppColors.textSecondary)),
+                color: TvTokens.muted)),
       );
 }

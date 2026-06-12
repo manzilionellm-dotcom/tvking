@@ -9,7 +9,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_colors.dart';
+import '../core/tv_tokens.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
@@ -79,7 +79,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: TvTokens.card,
                   borderRadius: BorderRadius.circular(TvDimens.cardRadius),
                 ),
                 child: Text(
@@ -89,7 +89,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                   style: TextStyle(
                     fontSize: TvDimens.title,
                     fontWeight: FontWeight.w700,
-                    color: _q.isEmpty ? AppColors.textTertiary : AppColors.textPrimary,
+                    color: _q.isEmpty ? TvTokens.mutedDim : TvTokens.text,
                   ),
                 ),
               ),
@@ -99,7 +99,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                     ? Center(
                         child: Text(
                           _q.trim().isEmpty ? '' : 'Aucun résultat.',
-                          style: TextStyle(fontSize: TvDimens.body, color: AppColors.textTertiary),
+                          style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim),
                         ),
                       )
                     : GridView.builder(
@@ -136,7 +136,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                                     style: TextStyle(
                                         fontSize: TvDimens.caption,
                                         fontWeight: FontWeight.w600,
-                                        color: AppColors.textPrimary)),
+                                        color: TvTokens.text)),
                               ],
                             ),
                           ),
@@ -152,7 +152,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
 
   Widget _ini(Channel c) => Center(
         child: Text(c.initials,
-            style: TextStyle(fontSize: TvDimens.title, fontWeight: FontWeight.w800, color: AppColors.textSecondary)),
+            style: TextStyle(fontSize: TvDimens.title, fontWeight: FontWeight.w800, color: TvTokens.muted)),
       );
 }
 
@@ -177,7 +177,7 @@ class _Keyboard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text('Recherche',
-            style: TextStyle(fontSize: TvDimens.displayS, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+            style: TextStyle(fontSize: TvDimens.displayS, fontWeight: FontWeight.w800, color: TvTokens.text)),
         const SizedBox(height: 16),
         Wrap(
           spacing: 8,
@@ -215,14 +215,14 @@ class _Key extends StatelessWidget {
           return Container(
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: focused ? AppColors.textPrimary : AppColors.surfaceHigh,
+              color: focused ? TvTokens.gold : TvTokens.sel,
               borderRadius: BorderRadius.circular(TvDimens.cardRadius),
             ),
             child: Text(label,
                 style: TextStyle(
                     fontSize: TvDimens.title,
                     fontWeight: FontWeight.w700,
-                    color: focused ? AppColors.background : AppColors.textPrimary)),
+                    color: focused ? const Color(0xFF1A1206) : TvTokens.text)),
           );
         },
       ),

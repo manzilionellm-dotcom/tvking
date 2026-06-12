@@ -60,7 +60,7 @@ jobs:
       - name: Brand manifest (DeFew TV)
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
-          sed -i 's|android:label="tv_king"|android:label="DeFew TV"|g' "$MANIFEST" || true
+          sed -i 's|android:label="tv_king"|android:label="The Few TV"|g' "$MANIFEST" || true
           grep 'android:label' "$MANIFEST" || true
 
       - name: Patch manifest — réseau (cleartext HTTP + INTERNET)

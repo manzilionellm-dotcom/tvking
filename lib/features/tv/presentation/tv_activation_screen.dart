@@ -1,24 +1,22 @@
 // =========================================================
-//  tv_activation_screen.dart — Écran d'ACCUEIL / ACTIVATION
+//  tv_activation_screen.dart — Licence « The Few » (Maison Noir)
 // =========================================================
-//  Affiché tant que l'appareil n'est pas payé/en essai. Montre :
-//   • que l'app n'est PAS gratuite (À VIE : 9,99 $),
-//   • le CODE D'ACTIVATION (MAC) de cette TV — stable, identique même
-//     après désinstallation/réinstallation (dérivé de l'ANDROID_ID),
-//   • un bouton « J'ai payé — Vérifier » qui re-synchronise le statut.
+//  Logo hero + tagline sobre + prix en pastille or + code d'activation
+//  (mono) dans une carte + CTA or « J'ai payé — Vérifier ». Poll 5 s :
+//  dès que le revendeur active la MAC, la TV se débloque toute seule.
 // =========================================================
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-import '../../../core/theme/app_colors.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
-import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
-
-// Or « The Few ».
-const Color _gold = Color(0xFFD9B26A);
+import '../core/tv_tokens.dart';
+import 'tv_add_source_screen.dart';
+import 'tv_components.dart';
+import 'tv_shell.dart';
 
 class TvActivationScreen extends StatefulWidget {
   const TvActivationScreen({super.key});
@@ -30,6 +28,7 @@ class TvActivationScreen extends StatefulWidget {
 class _TvActivationScreenState extends State<TvActivationScreen> {
   String _mac = '…';
   bool _busy = false;
+  bool _copied = false;
   Timer? _poll;
 
   @override
@@ -38,10 +37,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = m);
     });
-    // ACTIVATION INSTANTANÉE : tant qu'on est sur cet écran, on revérifie
-    // le statut toutes les 5 s. Dès que le revendeur active la MAC (ou que
-    // l'essai bascule), la porte (TvGate) s'ouvre toute seule en quelques
-    // secondes — sans que le client touche à rien.
+    // Activation instantanée : revérifie toutes les 5 s.
     _poll = Timer.periodic(const Duration(seconds: 5),
         (_) => SubscriptionState.instance.syncWithBackend());
   }
@@ -58,109 +54,116 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
     if (mounted) setState(() => _busy = false);
   }
 
+  void _copy() {
+    Clipboard.setData(ClipboardData(text: _mac));
+    setState(() => _copied = true);
+    Future<void>.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 820),
+        constraints: const BoxConstraints(maxWidth: 760),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
-            // --- Marque ---
-            Text('The Few',
-                style: TextStyle(
-                    fontSize: 64,
-                    fontStyle: FontStyle.italic,
-                    fontWeight: FontWeight.w700,
-                    color: _gold)),
-            Text('NOT FOR EVERYONE',
-                style: TextStyle(
-                    fontSize: TvDimens.label,
-                    letterSpacing: 6,
-                    color: AppColors.textSecondary)),
-            const SizedBox(height: 28),
+            const TvLogo(width: 240),
+            const SizedBox(height: 26),
+            Text('Accès complet, à vie. Un seul paiement.',
+                style: TvTokens.ui(19, color: TvTokens.muted)),
+            const SizedBox(height: 22),
+            const TvPricePill(label: 'À vie', amount: '9,99 \$'),
+            const SizedBox(height: 38),
 
-            // --- Pas gratuit + prix ---
-            Text('Cette application n\'est pas gratuite.',
-                style: TextStyle(
-                    fontSize: TvDimens.title, color: AppColors.textPrimary)),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
-              decoration: BoxDecoration(
-                  border: Border.all(color: _gold, width: 2),
-                  borderRadius: BorderRadius.circular(999)),
-              child: Text('À VIE — 9,99 \$',
-                  style: TextStyle(
-                      fontSize: TvDimens.headline,
-                      fontWeight: FontWeight.w800,
-                      color: _gold)),
-            ),
-            const SizedBox(height: 30),
-
-            // --- Code d'activation (MAC) ---
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(TvDimens.panelRadius),
-                  border: Border.all(color: AppColors.maisonBorder)),
+            // ----- Carte code d'activation -----
+            TvCard(
+              padding: const EdgeInsets.all(28),
               child: Column(
                 children: <Widget>[
-                  Text('TON CODE D\'ACTIVATION',
-                      style: TextStyle(
-                          fontSize: TvDimens.label,
-                          letterSpacing: 3,
-                          color: AppColors.textTertiary)),
-                  const SizedBox(height: 10),
-                  SelectableText(_mac,
-                      style: TextStyle(
-                          fontSize: 40,
-                          fontWeight: FontWeight.w800,
-                          fontFamily: 'monospace',
-                          letterSpacing: 3,
-                          color: AppColors.textPrimary)),
-                  const SizedBox(height: 12),
+                  const TvSectionLabel('Ton code d\'activation'),
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      Text(_mac, style: TvTokens.mono(38, color: TvTokens.goldBright, spacing: 2)),
+                      const SizedBox(width: 16),
+                      _CopyButton(copied: _copied, onSelect: _copy),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
                   Text(
                     'Donne ce code à ton revendeur pour activer. '
-                    'Il reste LE MÊME même si tu désinstalles puis réinstalles.',
+                    'Il reste le même, même après une réinstallation.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontSize: TvDimens.body,
-                        color: AppColors.textSecondary),
+                    style: TvTokens.ui(16, color: TvTokens.mutedDim),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 26),
 
-            // --- Bouton vérifier ---
-            TvFocusBuilder(
+            TvCtaButton(
+              label: _busy ? 'Vérification…' : 'J\'ai payé — Vérifier',
               autofocus: true,
-              scale: TvFocusScale.large,
               onSelect: _busy ? null : _check,
-              builder: (BuildContext context, bool focused) {
-                final Color bg = focused ? _gold : AppColors.surfaceHigh;
-                final Color fg = focused ? AppColors.background : _gold;
-                return Container(
-                  decoration: BoxDecoration(
-                      color: bg,
-                      borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-                      border: Border.all(color: _gold)),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-                  child: Text(_busy ? 'Vérification…' : 'J\'ai payé — Vérifier',
-                      style: TextStyle(
-                          fontSize: TvDimens.title,
-                          fontWeight: FontWeight.w800,
-                          color: fg)),
-                );
-              },
             ),
+            const SizedBox(height: 14),
+            // Le client peut apporter SA propre liste (The Few ne vend pas
+            // de liste) → il a le droit de l'ajouter lui-même.
+            TvFocusBuilder(
+              scale: TvFocusScale.large,
+              onSelect: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const TvShell(child: TvAddSourceScreen()),
+                ),
+              ),
+              builder: (BuildContext context, bool focused) => Container(
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(TvTokens.rButton),
+                  border: Border.all(color: focused ? TvTokens.gold : TvTokens.line),
+                  color: focused ? TvTokens.sel : Colors.transparent,
+                ),
+                child: Text('J\'ajoute ma propre liste (Xtream)',
+                    style: TvTokens.ui(19, weight: FontWeight.w600,
+                        color: focused ? TvTokens.goldBright : TvTokens.muted)),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text('Paiement vérifié · Activation instantanée',
+                style: TvTokens.ui(13, color: TvTokens.mutedDim, spacing: 0.5)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CopyButton extends StatelessWidget {
+  const _CopyButton({required this.copied, required this.onSelect});
+  final bool copied;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      onSelect: onSelect,
+      scale: TvFocusScale.small,
+      builder: (BuildContext context, bool focused) => Container(
+        width: 44,
+        height: 44,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: TvTokens.card,
+          border: Border.all(color: focused ? TvTokens.gold : TvTokens.line),
+          borderRadius: BorderRadius.circular(TvTokens.rSmall),
+        ),
+        child: Icon(copied ? Icons.check_rounded : Icons.copy_rounded,
+            size: 22, color: copied ? const Color(0xFF5FA975) : TvTokens.gold),
       ),
     );
   }

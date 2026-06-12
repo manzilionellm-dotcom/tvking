@@ -9,13 +9,17 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-import '../../../core/theme/app_colors.dart';
+import '../../channels/domain/channel.dart';
+import '../../playlists/data/playlist_repository.dart';
 import '../../subscription/data/subscription_state.dart';
-import '../data/greeting_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import '../core/tv_tokens.dart';
+import '../data/greeting_repository.dart';
 import 'tv_activation_screen.dart';
+import 'tv_components.dart';
 import 'tv_live_screen.dart';
 import 'tv_search_screen.dart';
 import 'tv_settings_screen.dart';
@@ -28,17 +32,20 @@ class TvApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData base = ThemeData(
       brightness: Brightness.dark,
-      scaffoldBackgroundColor: AppColors.background,
+      scaffoldBackgroundColor: TvTokens.bg,
       colorScheme: const ColorScheme.dark(
-        surface: AppColors.surface,
-        primary: AppColors.textPrimary,
+        surface: TvTokens.card,
+        primary: TvTokens.gold,
       ),
       useMaterial3: true,
     );
     return MaterialApp(
-      title: 'DeFew TV',
+      title: kAppName,
       debugShowCheckedModeBanner: false,
       theme: base.copyWith(
+        // Police par défaut = Inter (Maison Noir) sur TOUT le texte.
+        textTheme: GoogleFonts.interTextTheme(base.textTheme)
+            .apply(bodyColor: TvTokens.text, displayColor: TvTokens.text),
         // Coupe TOUT effet tactile (hover/splash souris) — D-pad only.
         splashFactory: NoSplash.splashFactory,
         hoverColor: Colors.transparent,
@@ -48,22 +55,46 @@ class TvApp extends StatelessWidget {
   }
 }
 
-/// Porte d'entrée : tant que l'appareil n'est pas PAYÉ (activé par le
-/// revendeur), on montre l'écran d'activation (prix + MAC). Sinon, l'app.
-class TvGate extends StatelessWidget {
+/// Porte d'entrée. L'app s'ouvre si :
+///   • l'appareil est PAYÉ (activé par le revendeur), OU
+///   • le client a ajouté SA PROPRE liste (The Few ne vend pas de liste →
+///     on lui donne le droit d'apporter sa playlist) → des chaînes locales.
+/// Sinon → écran d'activation (prix + MAC + « J'ajoute ma propre liste »).
+class TvGate extends StatefulWidget {
   const TvGate({super.key});
+  @override
+  State<TvGate> createState() => _TvGateState();
+}
+
+class _TvGateState extends State<TvGate> {
+  StreamSubscription<List<Channel>>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    SubscriptionState.instance.addListener(_onChange);
+    _sub = PlaylistRepository.instance.channelsStream.listen((_) => _onChange());
+  }
+
+  @override
+  void dispose() {
+    SubscriptionState.instance.removeListener(_onChange);
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  void _onChange() {
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: SubscriptionState.instance,
-      builder: (BuildContext context, _) {
-        final bool active =
-            SubscriptionState.instance.status == SubscriptionStatus.paid;
-        if (active) return const TvHomeScreen();
-        return const TvShell(child: TvActivationScreen());
-      },
-    );
+    final bool paid =
+        SubscriptionState.instance.status == SubscriptionStatus.paid;
+    final bool hasOwnList =
+        PlaylistRepository.instance.currentChannels.isNotEmpty;
+    if (paid || hasOwnList) return const TvHomeScreen();
+    return const TvShell(child: TvActivationScreen());
   }
 }
 
@@ -187,34 +218,29 @@ class _HomeHeaderState extends State<_HomeHeader> {
   @override
   Widget build(BuildContext context) {
     final Greeting? g = _g;
-    final String place = (g != null && g.city.isNotEmpty)
-        ? (g.tempC != null
-            ? '${g.city} • ${g.tempC!.round()}°C ${g.emoji}'
-            : g.city)
+    final String weather = (g != null && g.tempC != null)
+        ? ' · ${g.tempC!.round()}°C ${g.emoji}'
         : '';
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: <Widget>[
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Text('Bonjour 👋',
-                style: TextStyle(
-                    fontSize: TvDimens.headline,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary)),
-            if (place.isNotEmpty)
-              Text(place,
-                  style: TextStyle(
-                      fontSize: TvDimens.titleS, color: AppColors.textSecondary)),
+            Text('Bonjour 👋', style: TvTokens.ui(30, weight: FontWeight.w600, color: TvTokens.text)),
+            if (g != null && g.city.isNotEmpty)
+              Text.rich(TextSpan(children: <InlineSpan>[
+                TextSpan(text: g.city, style: TvTokens.ui(TvDimens.titleS, weight: FontWeight.w600, color: TvTokens.gold)),
+                TextSpan(text: weather, style: TvTokens.ui(TvDimens.titleS, color: TvTokens.muted)),
+              ])),
           ],
         ),
         const Spacer(),
-        Text(_date,
-            style: TextStyle(
-                fontSize: TvDimens.title,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary)),
+        Text.rich(TextSpan(children: <InlineSpan>[
+          TextSpan(text: _days[(_now.weekday - 1).clamp(0, 6)], style: TvTokens.ui(TvDimens.title, weight: FontWeight.w600, color: TvTokens.text)),
+          TextSpan(text: ' · $_time', style: TvTokens.ui(TvDimens.title, color: TvTokens.muted)),
+        ])),
       ],
     );
   }
@@ -232,15 +258,15 @@ class _NavRail extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
-          child: Text(
-            'DeFew TV',
-            style: TextStyle(
-              fontSize: TvDimens.headline,
-              fontWeight: FontWeight.w800,
-              color: AppColors.textPrimary,
-              letterSpacing: 0.5,
-            ),
+          padding: const EdgeInsets.fromLTRB(10, 2, 10, 22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const TvLogo(width: 150),
+              const SizedBox(height: 6),
+              Text('THE FEW TV',
+                  style: TvTokens.ui(10, weight: FontWeight.w600, color: TvTokens.gold, spacing: 3.4)),
+            ],
           ),
         ),
         Expanded(
@@ -285,31 +311,33 @@ class _NavItem extends StatelessWidget {
       scale: TvFocusScale.large,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        // Au focus : fond clair + contenu sombre (pattern TiviMate).
-        final Color bg = focused
-            ? AppColors.textPrimary
-            : (selected ? AppColors.surfaceHigh : Colors.transparent);
-        final Color fg = focused
-            ? AppColors.background
-            : (selected ? AppColors.textPrimary : AppColors.textSecondary);
+        // Maison Noir : fond `--sel` au focus/actif, barre OR à gauche si
+        // actif, texte or. JAMAIS de bloc blanc plein.
+        final bool hl = focused || selected;
+        final Color fg = hl ? TvTokens.goldBright : TvTokens.muted;
         return Container(
+          height: 54,
           decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+            color: hl ? TvTokens.sel : Colors.transparent,
+            borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: <Widget>[
-              Icon(dest.icon, color: fg, size: 26),
-              const SizedBox(width: 14),
-              Text(
-                dest.label,
-                style: TextStyle(
-                  fontSize: TvDimens.title,
-                  fontWeight: FontWeight.w600,
-                  color: fg,
+              // Barre or à gauche (item actif).
+              Container(
+                width: 3,
+                margin: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: selected ? TvTokens.gold : Colors.transparent,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
+              const SizedBox(width: 13),
+              Icon(dest.icon, color: fg, size: 22),
+              const SizedBox(width: 14),
+              Text(dest.label,
+                  style: TvTokens.ui(19,
+                      weight: selected ? FontWeight.w600 : FontWeight.w500, color: fg)),
             ],
           ),
         );
@@ -330,26 +358,10 @@ class _ContentPanel extends StatelessWidget {
     if (dest == TvDest.live) return const TvLiveScreen();
     if (dest == TvDest.search) return const TvSearchScreen();
     if (dest == TvDest.settings) return const TvSettingsScreen();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(
-          dest.label,
-          style: TextStyle(
-            fontSize: TvDimens.displayM,
-            fontWeight: FontWeight.w800,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          'Écran « ${dest.label} » — en construction.',
-          style: TextStyle(
-            fontSize: TvDimens.body,
-            color: AppColors.textTertiary,
-          ),
-        ),
-      ],
+    return TvEmptyState(
+      icon: dest.icon,
+      title: dest.label,
+      subtitle: 'Bientôt disponible. Cette section arrive très vite.',
     );
   }
 }

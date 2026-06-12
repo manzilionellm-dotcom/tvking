@@ -7,7 +7,7 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_colors.dart';
+import '../core/tv_tokens.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
@@ -52,7 +52,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       case SubscriptionStatus.banned:
         return (label: 'Compte banni', color: const Color(0xFFFF5A4A));
       case SubscriptionStatus.unknown:
-        return (label: 'Non activé', color: AppColors.textTertiary);
+        return (label: 'Non activé', color: TvTokens.mutedDim);
     }
   }
 
@@ -67,7 +67,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               style: TextStyle(
                   fontSize: TvDimens.displayM,
                   fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary)),
+                  color: TvTokens.text)),
           const SizedBox(height: 24),
 
           // ----- Carte MAC -----
@@ -75,9 +75,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
             width: 760,
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: TvTokens.card,
               borderRadius: BorderRadius.circular(TvDimens.panelRadius),
-              border: Border.all(color: AppColors.maisonBorder),
+              border: Border.all(color: TvTokens.lineSoft),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -85,7 +85,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                 Text('Adresse de cet appareil (MAC)',
                     style: TextStyle(
                         fontSize: TvDimens.label,
-                        color: AppColors.textTertiary)),
+                        color: TvTokens.mutedDim)),
                 const SizedBox(height: 10),
                 SelectableText(
                   _mac,
@@ -93,15 +93,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     fontSize: TvDimens.displayS,
                     fontWeight: FontWeight.w800,
                     fontFamily: 'monospace',
-                    color: AppColors.textPrimary,
+                    color: TvTokens.text,
                     letterSpacing: 2,
                   ),
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Donne cette adresse à ton revendeur pour activer DeFew TV.',
+                  'Donne cette adresse à ton revendeur pour activer The Few TV.',
                   style: TextStyle(
-                      fontSize: TvDimens.body, color: AppColors.textSecondary),
+                      fontSize: TvDimens.body, color: TvTokens.muted),
                 ),
                 const SizedBox(height: 22),
 
@@ -111,7 +111,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     Text('Statut : ',
                         style: TextStyle(
                             fontSize: TvDimens.title,
-                            color: AppColors.textSecondary)),
+                            color: TvTokens.muted)),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 4),
@@ -134,10 +134,8 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   scale: TvFocusScale.large,
                   onSelect: _busy ? null : _refresh,
                   builder: (BuildContext context, bool focused) {
-                    final Color bg =
-                        focused ? AppColors.textPrimary : AppColors.surfaceHigh;
-                    final Color fg =
-                        focused ? AppColors.background : AppColors.textPrimary;
+                    final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+                    final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
                     return Container(
                       decoration: BoxDecoration(
                           color: bg,
