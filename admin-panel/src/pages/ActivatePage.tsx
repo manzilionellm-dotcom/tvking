@@ -232,13 +232,16 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
                     }
                   >
                     <span>{p.label}</span>
-                    {c !== null && <span className="text-[11px] text-ink-tertiary">{c} cr.</span>}
+                    {/* Le coût en crédits ne concerne QUE les revendeurs.
+                        L'owner (super admin) active gratuitement et sans
+                        limite → on ne lui montre aucun crédit. */}
+                    {isReseller && c !== null && <span className="text-[11px] text-ink-tertiary">{c} cr.</span>}
                   </button>
                 );
               })}
             </div>
             <div className="mt-2 text-[10px] uppercase tracking-widest text-ink-tertiary">
-              Essai gratuit · 0 crédit
+              {isReseller ? 'Essai gratuit · 0 crédit' : 'Essai gratuit'}
             </div>
             <div className="mt-1 grid grid-cols-3 gap-2">
               {TRIALS.map((t) => {
@@ -361,9 +364,12 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
           >
             {busy
               ? 'Activation…'
-              : costFor(plan) === 0
-                ? 'Activer (gratuit)'
-                : `Activer (${costFor(plan) ?? '?'} crédits)`}
+              : !isReseller
+                /* Owner : activation gratuite et illimitée, jamais de crédit. */
+                ? 'Activer'
+                : costFor(plan) === 0
+                  ? 'Activer (gratuit)'
+                  : `Activer (${costFor(plan) ?? '?'} crédits)`}
           </button>
         </form>
 
