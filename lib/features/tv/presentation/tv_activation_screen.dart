@@ -7,6 +7,8 @@
 //     après désinstallation/réinstallation (dérivé de l'ANDROID_ID),
 //   • un bouton « J'ai payé — Vérifier » qui re-synchronise le statut.
 // =========================================================
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -28,6 +30,7 @@ class TvActivationScreen extends StatefulWidget {
 class _TvActivationScreenState extends State<TvActivationScreen> {
   String _mac = '…';
   bool _busy = false;
+  Timer? _poll;
 
   @override
   void initState() {
@@ -35,6 +38,18 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = m);
     });
+    // ACTIVATION INSTANTANÉE : tant qu'on est sur cet écran, on revérifie
+    // le statut toutes les 5 s. Dès que le revendeur active la MAC (ou que
+    // l'essai bascule), la porte (TvGate) s'ouvre toute seule en quelques
+    // secondes — sans que le client touche à rien.
+    _poll = Timer.periodic(const Duration(seconds: 5),
+        (_) => SubscriptionState.instance.syncWithBackend());
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
   }
 
   Future<void> _check() async {
