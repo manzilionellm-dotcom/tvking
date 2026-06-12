@@ -281,6 +281,52 @@ async function requireAuth(request, env) {
 //  admin_users est vide, on cree un compte avec email = "admin"
 //  et password = env.ADMIN_SECRET. Permet de demarrer sans setup
 //  hors-bande (l'admin se connecte avec le secret qu'il a deja).
+// ----- Carnet de références : MAC activées + username(s) Xtream -----
+//  Pour le support : retrouver vite quel identifiant a été mis sur quelle
+//  MAC. On NE renvoie JAMAIS le mot de passe. Owner = tout ; revendeur =
+//  uniquement SES appareils (cloisonnement par reseller_id).
+async function handleReferencesList(env, user) {
+  const reseller = user && user.role === 'reseller';
+  try {
+    const where = reseller ? 'WHERE d.reseller_id = ?' : '';
+    const binds = reseller ? [user.sub] : [];
+    const rs = await env.DB
+      .prepare(
+        `SELECT ds.mac AS mac, ds.username AS username, ds.sources_json AS sources_json,
+                ds.label AS label, ds.updated_at AS updated_at,
+                c.name AS customer_name
+         FROM device_sources ds
+         LEFT JOIN devices d   ON d.mac = ds.mac
+         LEFT JOIN customers c ON c.id = d.customer_id
+         ${where}
+         ORDER BY ds.updated_at DESC LIMIT 1000`,
+      )
+      .bind(...binds)
+      .all();
+    const items = (rs.results || []).map((r) => {
+      // username(s) : depuis le trio (sources_json) sinon le champ simple.
+      let usernames = [];
+      if (r.sources_json) {
+        try {
+          const arr = JSON.parse(r.sources_json) || [];
+          usernames = arr.map((s) => s && s.username).filter(Boolean);
+        } catch (_) { /* ignore */ }
+      }
+      if (usernames.length === 0 && r.username) usernames = [r.username];
+      return {
+        mac: r.mac,
+        customer_name: r.customer_name || null,
+        usernames,
+        label: r.label || null,
+        updated_at: r.updated_at || null,
+      };
+    });
+    return jsonResp({ items });
+  } catch (_) {
+    return jsonResp({ items: [] });
+  }
+}
+
 // ----- Historique des modifications (lecture seule) -----
 async function handleAuditLogsList(env) {
   try {
@@ -448,6 +494,12 @@ async function apiV1Inner(request, env) {
       return errResp('forbidden', 'Owner only', 403);
     }
     return handleAuditLogsList(env);
+  }
+
+  // /references — carnet : MAC activées + username(s) Xtream (SANS mot de
+  // passe), pour le support. Owner = tout ; revendeur = ses appareils.
+  if (parts[0] === 'references' && parts.length === 1 && request.method === 'GET') {
+    return handleReferencesList(env, a.user);
   }
 
   // /me — profil de l'acteur courant (+ solde de credits si revendeur)

@@ -33,6 +33,7 @@ const OWNER_NAV: NavItem[] = [
   { key: 'nav.apps',        to: '/apps' },
   { key: 'nav.servers',     to: '/servers' },
   { key: 'nav.activations', to: '/activations' },
+  { key: 'nav.references',  to: '/references' },
   { key: 'nav.history',     to: '/history' },
   { key: 'nav.account',     to: '/account' },
 ];
@@ -44,6 +45,7 @@ const RESELLER_NAV: NavItem[] = [
   { key: 'nav.myResellers',   to: '/resellers',   cap: 'resellers' },
   { key: 'nav.myDevices',     to: '/devices',     cap: 'devices' },
   { key: 'nav.myActivations', to: '/activations', cap: 'activations' },
+  { key: 'nav.references',    to: '/references',  cap: 'activations' },
   { key: 'nav.account',       to: '/account' },
 ];
 

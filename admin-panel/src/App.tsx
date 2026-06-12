@@ -25,6 +25,7 @@ import { TarifsPage } from '@/pages/TarifsPage';
 import { ReviewsPage } from '@/pages/ReviewsPage';
 import { AccountPage } from '@/pages/AccountPage';
 import { HistoryPage } from '@/pages/HistoryPage';
+import { ReferencesPage } from '@/pages/ReferencesPage';
 
 /// Etats possibles de l'app :
 ///   - bootstrapping : on verifie si le token est encore valide
@@ -115,6 +116,7 @@ export default function App() {
       <Route path="/resellers" element={<ResellersPage onLogout={handleLogout} />} />
       <Route path="/account" element={<AccountPage onLogout={handleLogout} />} />
       <Route path="/history" element={<HistoryPage onLogout={handleLogout} />} />
+      <Route path="/references" element={<ReferencesPage onLogout={handleLogout} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

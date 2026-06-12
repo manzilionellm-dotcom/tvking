@@ -692,6 +692,20 @@ export const auditApi = {
 };
 
 // =========================================================
+//  CARNET DE RÉFÉRENCES — MAC activées + username(s) Xtream
+// =========================================================
+export interface ActivationReference {
+  mac: string;
+  customer_name: string | null;
+  usernames: string[];     // username(s) Xtream, SANS mot de passe
+  label: string | null;
+  updated_at: number | null;
+}
+export const referencesApi = {
+  list: () => request<{ items: ActivationReference[] }>('/api/v1/references'),
+};
+
+// =========================================================
 //  PUB VIDÉO AU DÉMARRAGE (jouée quand le client ouvre l'app)
 // =========================================================
 export interface AdConfig {
