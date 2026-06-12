@@ -92,6 +92,71 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
+      - name: Patch screen_brightness_android build.gradle
+        run: |
+          set -e
+          FILE=$(find ~/.pub-cache/hosted/pub.dev -path "*/screen_brightness_android-*/android/build.gradle" 2>/dev/null | head -1)
+          if [ -z "$FILE" ]; then
+            echo "⊙ screen_brightness_android pas dans pub-cache, skip"
+            exit 0
+          fi
+          export PATCH_FILE="$FILE"
+          python3 << 'PYEOF'
+          import os, re
+          file = os.environ['PATCH_FILE']
+          with open(file) as f:
+              lines = f.readlines()
+          kotlin_block_re = re.compile(r'^\s*kotlin\s*\{')
+          out = []
+          in_kotlin = False
+          depth = 0
+          removed = 0
+          for line in lines:
+              if not in_kotlin:
+                  if kotlin_block_re.match(line):
+                      in_kotlin = True
+                      depth = line.count('{') - line.count('}')
+                      removed += 1
+                      if depth <= 0:
+                          in_kotlin = False
+                      continue
+                  out.append(line)
+              else:
+                  depth += line.count('{') - line.count('}')
+                  removed += 1
+                  if depth <= 0:
+                      in_kotlin = False
+          if removed > 0:
+              with open(file, 'w') as f:
+                  f.writelines(out)
+              print(f'retire {removed} ligne(s) kotlin{{}}')
+          else:
+              print('aucun bloc kotlin{} (deja fixe)')
+          PYEOF
+
+      - name: Patch build.gradle.kts for notifications (desugaring)
+        run: |
+          set -e
+          python3 << 'PYEOF'
+          f = "android/app/build.gradle.kts"
+          s = open(f).read()
+          if 'isCoreLibraryDesugaringEnabled' not in s:
+              s = s.replace(
+                  'compileOptions {',
+                  'compileOptions {\n        isCoreLibraryDesugaringEnabled = true',
+                  1)
+              print('desugaring active')
+          if 'desugar_jdk_libs' not in s:
+              s = s.rstrip() + ('\n\ndependencies {\n'
+                  '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n'
+                  '}\n')
+              print('dep desugar ajoutee')
+          open(f, 'w').write(s)
+          PYEOF
+
+      - name: Generate AppLocalizations from .arb files
+        run: flutter gen-l10n || true
+
       - name: Build DeFew TV (debug APK, target main_tv)
         run: |
           set -e
