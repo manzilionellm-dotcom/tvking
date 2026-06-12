@@ -16,6 +16,8 @@ import 'package:media_kit/media_kit.dart';
 
 import 'core/flavor/flavor.dart';
 import 'features/device/data/device_identity.dart';
+import 'features/playlists/data/playlist_repository.dart';
+import 'features/playlists/data/remote_source_repository.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
 import 'features/tv/presentation/tv_app.dart';
@@ -44,6 +46,15 @@ Future<void> main() async {
   }));
   // 3) Thème distant piloté par le panel (couleur/nom).
   unawaited(RemoteThemeRepository.fetchAndApply());
+
+  // 4) Chaînes : on charge la base locale, PUIS on synchronise la source
+  //    poussée par le panel (Xtream/M3U via /api/device-source/<mac>).
+  //    Les écrans écoutent `PlaylistRepository.channelsStream`.
+  unawaited(
+    PlaylistRepository.instance.initialize().then((_) {
+      RemoteSourceRepository.sync();
+    }),
+  );
 
   runApp(const TvApp());
 }

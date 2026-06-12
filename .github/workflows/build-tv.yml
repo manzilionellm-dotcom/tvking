@@ -1,0 +1,124 @@
+# ============================================================================
+#  build-tv.yml — Compile DeFew TV (entrée lib/main_tv.dart) en APK
+#  sideloadable et le publie sur la release "tv-latest".
+#
+#  App SŒUR du mobile : MÊME projet Flutter, MÊME backend/panel. Seule
+#  l'UI (10-foot, D-pad) diffère. On régénère android/ via `flutter create`
+#  (comme le build mobile), on patche le manifest (réseau cleartext + TV
+#  leanback + label DeFew TV), puis on build le TARGET main_tv.
+#
+#  v1 = build DEBUG (pas de secret de signature requis) → parfait pour
+#  tester sur une box Android TV / Fire TV. Le pipeline release signé
+#  (keystore stable) viendra quand l'app sera plus complète.
+# ============================================================================
+name: Build DeFew TV (APK)
+
+on:
+  push:
+    branches: ['main', 'claude/**', 'feature/**']
+    paths:
+      - 'lib/main_tv.dart'
+      - 'lib/features/tv/**'
+      - '.github/workflows/build-tv.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-tv:
+    name: Build DeFew TV APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Generate native Android folder
+        run: flutter create . --platforms=android --org com.manzilionellm.tvking --project-name tv_king
+
+      - name: Brand manifest (DeFew TV)
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          sed -i 's|android:label="tv_king"|android:label="DeFew TV"|g' "$MANIFEST" || true
+          grep 'android:label' "$MANIFEST" || true
+
+      - name: Patch manifest — réseau (cleartext HTTP + INTERNET)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST"
+          fi
+          if ! grep -q 'usesCleartextTraffic' "$MANIFEST"; then
+            sed -i 's|<application|<application\n        android:usesCleartextTraffic="true"|' "$MANIFEST"
+          fi
+          grep -nE 'INTERNET|usesCleartextTraffic' "$MANIFEST" || true
+
+      - name: Patch manifest — Android TV (leanback)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'android.software.leanback' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-feature android:name="android.software.leanback" android:required="false"/>\n    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>' "$MANIFEST"
+          fi
+          # Catégorie LEANBACK_LAUNCHER sur l'activité principale (visible
+          # dans la home Android TV à côté de Netflix/Prime).
+          if ! grep -q 'LEANBACK_LAUNCHER' "$MANIFEST"; then
+            sed -i 's#<category android:name="android.intent.category.LAUNCHER"/>#<category android:name="android.intent.category.LAUNCHER"/>\n                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>#' "$MANIFEST"
+          fi
+          grep -nE 'leanback|LEANBACK_LAUNCHER|touchscreen' "$MANIFEST" || true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build DeFew TV (debug APK, target main_tv)
+        run: |
+          set -e
+          flutter build apk --debug --target=lib/main_tv.dart
+          ls -lah build/app/outputs/flutter-apk/
+
+      - name: Publish "tv-latest" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -ex
+          REPO="${{ github.repository }}"
+          SRC="build/app/outputs/flutter-apk/app-debug.apk"
+          OUT="build/app/outputs/flutter-apk/defew-tv.apk"
+          cp "$SRC" "$OUT"
+          NOTES="DeFew TV — build de prévisualisation (10-foot, D-pad).
+
+          Même backend/panel que le mobile. Sideload sur Android TV / Fire TV :
+          Downloader → https://github.com/$REPO/releases/download/tv-latest/defew-tv.apk
+
+          Commit : ${{ github.sha }}"
+          if gh release view tv-latest --repo "$REPO" >/dev/null 2>&1; then
+            gh release edit tv-latest --repo "$REPO" --notes "$NOTES"
+            gh release upload tv-latest --repo "$REPO" --clobber "$OUT"
+          else
+            gh release create tv-latest --repo "$REPO" \
+              --title "DeFew TV — dernier build" \
+              --notes "$NOTES" --prerelease "$OUT"
+          fi
+          gh release view tv-latest --repo "$REPO"

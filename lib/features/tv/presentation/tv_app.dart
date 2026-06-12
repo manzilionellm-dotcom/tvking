@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import 'tv_live_screen.dart';
 import 'tv_shell.dart';
 
 class TvApp extends StatelessWidget {
@@ -217,6 +218,8 @@ class _ContentPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // « Direct » est branché ; les autres buckets arrivent (BUILD_ORDER 6-9).
+    if (dest == TvDest.live) return const TvLiveScreen();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -230,8 +233,7 @@ class _ContentPanel extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Text(
-          'Écran « ${dest.label} » — en construction (branché sur la même '
-          'source que ton panel).',
+          'Écran « ${dest.label} » — en construction.',
           style: TextStyle(
             fontSize: TvDimens.body,
             color: AppColors.textTertiary,
