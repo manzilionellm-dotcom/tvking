@@ -3,14 +3,13 @@
 // =========================================================
 //  Moteur = libVLC (flutter_vlc_player), PAS media_kit/mpv : sur certaines
 //  box Android TV, mpv donnait « son sans image » (vidéo HEVC non rendue).
-//  libVLC décode en LOGICIEL universellement (HEVC/H.265 + AC-3) et rend
-//  l'image via une TextureView → image GARANTIE.
+//  libVLC rend l'image via une TextureView fiable → image qui s'affiche.
 //
-//  Réglages stabilité (cf. plan validé) :
-//    1) décodage LOGICIEL forcé (HwAcc.disabled),
-//    2) gros tampon (network/live/file caching = 3000 ms),
-//    3) pas de drop/skip de trames (image complète),
-//    4) watchdog 15 s : aucune progression → reconnexion auto (ré-ouvre l'URL).
+//  Réglages stabilité :
+//    1) HwAcc.auto : décodage matériel quand dispo (le 100 % logiciel + le
+//       no-drop figeaient la box sur du HEVC), drop de trames AUTORISÉ ;
+//    2) gros tampon (network/live/file caching = 3000 ms) ;
+//    3) watchdog 15 s : aucune progression → reconnexion auto (ré-ouvre l'URL).
 //
 //  D-pad : Haut/Bas (ou Ch+/Ch-) = zap, chiffres = n° de chaîne, OK = barre,
 //  Back = quitter. Logo « The Few » affiché à l'ouverture / au zap.
@@ -80,17 +79,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     LogicalKeyboardKey.numpad9,
   ];
 
-  // Options libVLC = les 4 réglages de stabilité.
+  // Options libVLC. On laisse libVLC choisir le décodage (HwAcc.auto :
+  // matériel quand dispo, rendu via TextureView fiable) et on AUTORISE le
+  // drop de trames (sinon une box trop lente fige tout sur du HEVC). Gros
+  // tampon réseau pour limiter les coupures.
   static VlcPlayerOptions _vlcOptions() => VlcPlayerOptions(
         advanced: VlcAdvancedOptions(<String>[
           VlcAdvancedOptions.networkCaching(3000),
           VlcAdvancedOptions.liveCaching(3000),
           VlcAdvancedOptions.fileCaching(3000),
           VlcAdvancedOptions.clockJitter(0),
-        ]),
-        video: VlcVideoOptions(<String>[
-          VlcVideoOptions.dropLateFrames(false),
-          VlcVideoOptions.skipFrames(false),
         ]),
         http: VlcHttpOptions(<String>[
           VlcHttpOptions.httpReconnect(true),
@@ -102,7 +100,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     super.initState();
     _controller = VlcPlayerController.network(
       _current.streamUrl,
-      hwAcc: HwAcc.disabled, // décodage LOGICIEL forcé → image garantie
+      hwAcc: HwAcc.auto, // matériel si dispo (rendu TextureView fiable côté libVLC)
       autoPlay: true,
       options: _vlcOptions(),
     );
@@ -163,7 +161,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       // Nouvelle chaîne → on charge la nouvelle URL dans le MÊME lecteur.
       _controller.setMediaFromNetwork(
         _current.streamUrl,
-        hwAcc: HwAcc.disabled,
+        hwAcc: HwAcc.auto,
         autoPlay: true,
       );
     }
@@ -189,7 +187,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     // Ré-ouvre la MÊME URL = reconnexion au direct.
     _controller
         .setMediaFromNetwork(_current.streamUrl,
-            hwAcc: HwAcc.disabled, autoPlay: true)
+            hwAcc: HwAcc.auto, autoPlay: true)
         .catchError((_) {});
   }
 
