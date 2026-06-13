@@ -16,6 +16,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
+import '../../device/data/device_identity.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../core/tv_dimens.dart';
@@ -44,12 +45,18 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   Timer? _syncTimer;
   bool _syncing = false;
   RemoteSyncResult? _lastSync;
+  String _mac = '…'; // adresse de CET appareil (à montrer si pas de chaînes)
 
   @override
   void initState() {
     super.initState();
     _ingest(PlaylistRepository.instance.currentChannels);
     _sub = PlaylistRepository.instance.channelsStream.listen(_ingest);
+    // MAC affichée sur l'état vide : sans elle, impossible de savoir à quel
+    // appareil pousser une source dans le panel.
+    DeviceIdentity.instance.mac.then((String m) {
+      if (mounted) setState(() => _mac = m);
+    });
     _kickSourceSync(); // tout de suite à l'ouverture de l'écran
     _syncTimer = Timer.periodic(const Duration(seconds: 12), (_) {
       if (_all.isEmpty) _kickSourceSync();
@@ -160,6 +167,33 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       fontSize: TvDimens.body, color: TvTokens.mutedDim)),
+            ),
+            const SizedBox(height: 20),
+            // ----- Adresse de CET appareil (MAC) : ESSENTIEL -----
+            // On l'affiche ICI : pour pousser une source, le revendeur doit
+            // connaître la MAC. L'écran d'activation ne s'affiche plus (déjà
+            // activé), donc c'est le seul endroit visible avec les Réglages.
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+              decoration: BoxDecoration(
+                color: TvTokens.card,
+                borderRadius: BorderRadius.circular(TvTokens.rCard),
+                border: Border.all(color: TvTokens.lineSoft),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(context.l10n.tvDeviceAddress.toUpperCase(),
+                      style: TvTokens.ui(12,
+                          weight: FontWeight.w600,
+                          color: TvTokens.mutedDim,
+                          spacing: 2)),
+                  const SizedBox(height: 8),
+                  Text(_mac,
+                      style: TvTokens.mono(30,
+                          color: TvTokens.goldBright, spacing: 2)),
+                ],
+              ),
             ),
             const SizedBox(height: 22),
             // Bouton « Réessayer maintenant » (focusable D-pad).
