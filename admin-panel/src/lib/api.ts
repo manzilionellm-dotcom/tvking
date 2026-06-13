@@ -727,6 +727,54 @@ export const transferApi = {
 };
 
 // =========================================================
+//  Familles — une ligne (source) partagée par plusieurs appareils
+// =========================================================
+export interface FamilySource {
+  type: 'xtream' | 'm3u';
+  label?: string | null;
+  server_url?: string | null;
+  username?: string | null;
+  password?: string | null;
+  m3u_url?: string | null;
+  epg_url?: string | null;
+}
+export interface Family {
+  id: string;
+  name: string;
+  source: FamilySource | null;
+  member_count?: number;
+  created_at: number;
+}
+export interface FamilyMember {
+  mac: string;
+  label: string | null;
+  created_at: number;
+}
+
+export const familiesApi = {
+  list: () => request<{ items: Family[] }>('/api/v1/families'),
+  create: (name: string, source: FamilySource) =>
+    request<{ ok: boolean; family: Family }>('/api/v1/families', {
+      method: 'POST',
+      body: { name, source },
+    }),
+  get: (id: string) =>
+    request<{ family: Family; members: FamilyMember[] }>(`/api/v1/families/${id}`),
+  remove: (id: string) =>
+    request<{ ok: boolean }>(`/api/v1/families/${id}`, { method: 'DELETE' }),
+  addMember: (id: string, mac: string, label?: string, plan?: string) =>
+    request<{ ok: boolean; mac: string }>(`/api/v1/families/${id}/members`, {
+      method: 'POST',
+      body: { mac, label, plan },
+    }),
+  removeMember: (id: string, mac: string) =>
+    request<{ ok: boolean }>(
+      `/api/v1/families/${id}/members/${encodeURIComponent(mac)}`,
+      { method: 'DELETE' },
+    ),
+};
+
+// =========================================================
 //  PUB VIDÉO AU DÉMARRAGE (jouée quand le client ouvre l'app)
 // =========================================================
 export interface AdConfig {

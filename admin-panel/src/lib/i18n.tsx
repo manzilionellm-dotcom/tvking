@@ -55,6 +55,7 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.history': { fr: 'Historique', en: 'History', ar: 'السجل' },
   'nav.references': { fr: 'Références', en: 'References', ar: 'المراجع' },
   'nav.transfer': { fr: 'Transférer', en: 'Transfer', ar: 'نقل' },
+  'nav.families': { fr: 'Famille', en: 'Family', ar: 'العائلة' },
   'nav.account': { fr: 'Mon compte', en: 'My account', ar: 'حسابي' },
 
   // --- Commun ---

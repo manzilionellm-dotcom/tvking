@@ -25,6 +25,7 @@ const OWNER_NAV: NavItem[] = [
   { key: 'nav.pricing',       to: '/tarifs' },
   { key: 'nav.reviews',       to: '/reviews' },
   { key: 'nav.activate',    to: '/activate' },
+  { key: 'nav.families',    to: '/families' },
   { key: 'nav.transfer',    to: '/transfer' },
   { key: 'nav.notifications', to: '/notifications' },
   { key: 'nav.forceUpdate', to: '/force-update' },
@@ -43,6 +44,7 @@ const RESELLER_NAV: NavItem[] = [
   { key: 'nav.dashboard',     to: '/' },
   // Chaque entrée n'apparaît que si l'admin a coché le droit correspondant.
   { key: 'nav.activate',      to: '/activate',    cap: 'activate' },
+  { key: 'nav.families',      to: '/families',    cap: 'activate' },
   { key: 'nav.transfer',      to: '/transfer',    cap: 'activate' },
   { key: 'nav.myResellers',   to: '/resellers',   cap: 'resellers' },
   { key: 'nav.myDevices',     to: '/devices',     cap: 'devices' },

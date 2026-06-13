@@ -27,6 +27,7 @@ import { AccountPage } from '@/pages/AccountPage';
 import { HistoryPage } from '@/pages/HistoryPage';
 import { ReferencesPage } from '@/pages/ReferencesPage';
 import { TransferPage } from '@/pages/TransferPage';
+import { FamiliesPage } from '@/pages/FamiliesPage';
 
 /// Etats possibles de l'app :
 ///   - bootstrapping : on verifie si le token est encore valide
@@ -119,6 +120,7 @@ export default function App() {
       <Route path="/history" element={<HistoryPage onLogout={handleLogout} />} />
       <Route path="/references" element={<ReferencesPage onLogout={handleLogout} />} />
       <Route path="/transfer" element={<TransferPage onLogout={handleLogout} />} />
+      <Route path="/families" element={<FamiliesPage onLogout={handleLogout} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

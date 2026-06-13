@@ -586,8 +586,33 @@ async function apiV1Inner(request, env) {
     return handleDeviceTransfer(request, env, a.user, actor);
   }
 
+  // /families — OFFRE FAMILLE : UNE ligne Xtream (multi-connexions) +
+  // plusieurs appareils. On crée la famille (nom + source), puis on ajoute
+  // des appareils ; chacun reçoit la MÊME source + une licence active.
+  // Le nombre d'écrans simultanés = max_connections de la ligne (fournisseur).
+  if (parts[0] === 'families') {
+    if (!resellerCan(a.user, 'activate')) {
+      return errResp('forbidden', 'Ton compte n\'a pas le droit de gérer des familles.', 403);
+    }
+    await ensureFamiliesTables(env);
+    if (parts.length === 1) {
+      if (request.method === 'GET') return handleFamiliesList(env, a.user);
+      if (request.method === 'POST') return handleFamiliesCreate(request, env, actor, a.user);
+    }
+    if (parts.length === 2) {
+      const fid = parts[1];
+      if (request.method === 'GET') return handleFamiliesGet(env, fid, a.user);
+      if (request.method === 'DELETE') return handleFamiliesDelete(env, fid, actor);
+    }
+    if (parts.length === 3 && parts[2] === 'members' && request.method === 'POST') {
+      return handleFamilyAddMember(request, env, a.user, actor, parts[1]);
+    }
+    if (parts.length === 4 && parts[2] === 'members' && request.method === 'DELETE') {
+      return handleFamilyRemoveMember(env, parts[1], decodeMac(parts[3]), actor);
+    }
+  }
+
   // /apps
-  if (parts[0] === 'apps') {
     if (parts.length === 1) {
       if (request.method === 'GET') return handleAppsList(env);
       if (request.method === 'POST') {
@@ -2225,6 +2250,188 @@ async function handleSourceDelete(request, env, mac, actor) {
   await logAudit(env, request, actor, 'source.clear',
     { type: 'device_source', id: m }, null, null);
   return jsonResp({ ok: true, mac: m });
+}
+
+// =========================================================
+//  FAMILLES — une ligne (source) partagée par plusieurs appareils
+// =========================================================
+const _MAC_RX = /^MK(?::[0-9A-F]{2}){5}$/i;
+
+async function ensureFamiliesTables(env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS families (
+       id TEXT PRIMARY KEY,
+       name TEXT NOT NULL,
+       source_json TEXT,
+       reseller_id TEXT,
+       created_at INTEGER,
+       updated_at INTEGER
+     )`,
+  ).run();
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS family_members (
+       id TEXT PRIMARY KEY,
+       family_id TEXT NOT NULL,
+       mac TEXT NOT NULL,
+       label TEXT,
+       created_at INTEGER,
+       UNIQUE(family_id, mac)
+     )`,
+  ).run();
+}
+
+// La source renvoyée aux LISTES masque le mot de passe (le détail le montre).
+function _familyRowToJson(row, { hidePassword = true } = {}) {
+  let source = null;
+  try { source = row.source_json ? JSON.parse(row.source_json) : null; } catch (_) { source = null; }
+  if (source && hidePassword && source.password) {
+    source = { ...source, password: '••••••' };
+  }
+  return {
+    id: row.id,
+    name: row.name,
+    source,
+    reseller_id: row.reseller_id || null,
+    created_at: row.created_at || 0,
+    updated_at: row.updated_at || 0,
+  };
+}
+
+async function handleFamiliesList(env, user) {
+  const owner = isOwner(user);
+  const rows = owner
+    ? await env.DB.prepare('SELECT * FROM families ORDER BY created_at DESC').all()
+    : await env.DB.prepare('SELECT * FROM families WHERE reseller_id = ? ORDER BY created_at DESC')
+        .bind(user.sub).all();
+  const list = (rows.results || []);
+  // Compte de membres par famille (une requête groupée).
+  const counts = {};
+  try {
+    const c = await env.DB.prepare(
+      'SELECT family_id, COUNT(*) AS n FROM family_members GROUP BY family_id',
+    ).all();
+    for (const r of (c.results || [])) counts[r.family_id] = r.n;
+  } catch (_) {/* table vide */}
+  return jsonResp({
+    items: list.map((row) => ({
+      ..._familyRowToJson(row),
+      member_count: counts[row.id] || 0,
+    })),
+  });
+}
+
+async function handleFamiliesCreate(request, env, actor, user) {
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const name = (body.name || '').trim();
+  if (!name) return errResp('bad_name', 'name required', 400);
+  const norm = normalizeSource(body.source || {});
+  if (norm.error) return errResp('bad_source', norm.error, 400);
+  const now = Date.now();
+  const id = genId('fam');
+  const resellerId = user.role === 'reseller' ? user.sub : (body.reseller_id || null);
+  await ensureFamiliesTables(env);
+  await env.DB.prepare(
+    `INSERT INTO families (id, name, source_json, reseller_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).bind(id, name, JSON.stringify(norm.source), resellerId, now, now).run();
+  await logAudit(env, request, actor, 'family.create',
+    { type: 'family', id }, null, { name });
+  return jsonResp({ ok: true, family: _familyRowToJson(
+    { id, name, source_json: JSON.stringify(norm.source), reseller_id: resellerId, created_at: now, updated_at: now },
+    { hidePassword: false }), member_count: 0 }, 201);
+}
+
+async function handleFamiliesGet(env, id, user) {
+  const row = await env.DB.prepare('SELECT * FROM families WHERE id = ?').bind(id).first();
+  if (!row) return errResp('not_found', 'Family not found', 404);
+  if (user.role === 'reseller' && row.reseller_id !== user.sub) {
+    return errResp('forbidden', 'Not your family', 403);
+  }
+  const m = await env.DB.prepare(
+    'SELECT mac, label, created_at FROM family_members WHERE family_id = ? ORDER BY created_at ASC',
+  ).bind(id).all();
+  return jsonResp({
+    family: _familyRowToJson(row, { hidePassword: false }),
+    members: (m.results || []),
+  });
+}
+
+async function handleFamiliesDelete(env, id, actor) {
+  const row = await env.DB.prepare('SELECT id FROM families WHERE id = ?').bind(id).first();
+  if (!row) return errResp('not_found', 'Family not found', 404);
+  // On retire la source poussée à chaque membre (ils perdent l'accès famille).
+  const m = await env.DB.prepare('SELECT mac FROM family_members WHERE family_id = ?').bind(id).all();
+  for (const r of (m.results || [])) {
+    try { await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(r.mac).run(); } catch (_) {}
+  }
+  await env.DB.prepare('DELETE FROM family_members WHERE family_id = ?').bind(id).run();
+  await env.DB.prepare('DELETE FROM families WHERE id = ?').bind(id).run();
+  await logAudit(env, { headers: new Headers() }, actor, 'family.delete',
+    { type: 'family', id }, null, null);
+  return jsonResp({ ok: true, id });
+}
+
+async function handleFamilyAddMember(request, env, user, actor, familyId) {
+  let body;
+  try { body = await request.json(); } catch (_) { body = {}; }
+  const mac = (body.mac || '').trim().toUpperCase();
+  if (!_MAC_RX.test(mac)) {
+    return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
+  }
+  const fam = await env.DB.prepare('SELECT * FROM families WHERE id = ?').bind(familyId).first();
+  if (!fam) return errResp('not_found', 'Family not found', 404);
+  if (user.role === 'reseller' && fam.reseller_id !== user.sub) {
+    return errResp('forbidden', 'Not your family', 403);
+  }
+  let source;
+  try { source = JSON.parse(fam.source_json); } catch (_) { source = null; }
+  if (!source) return errResp('bad_source', 'Family has no valid source', 400);
+
+  // 1) Active la licence de l'appareil (réutilise handleActivate : crée
+  //    device+client+licence, pas de crédits pour l'owner). Plan à vie par
+  //    défaut (la famille n'est pas limitée dans le temps côté licence).
+  const plan = body.plan || 'lifetime';
+  const actReq = new Request('https://internal/activate', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      mac,
+      plan,
+      app_id: body.app_id || 'app_7motion',
+      customer_name: body.label ? `${fam.name} — ${body.label}` : fam.name,
+      label: body.label || null,
+    }),
+  });
+  const actResp = await handleActivate(actReq, env, user, actor);
+  if (actResp && actResp.status >= 400) return actResp; // propage l'erreur
+
+  // 2) Pousse la source de la famille à cette MAC (l'app la charge).
+  await upsertDeviceSource(env, mac, [source]);
+
+  // 3) Enregistre le membre dans la famille.
+  await env.DB.prepare(
+    `INSERT INTO family_members (id, family_id, mac, label, created_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(family_id, mac) DO UPDATE SET label = excluded.label`,
+  ).bind(genId('fm'), familyId, mac, body.label || null, Date.now()).run();
+
+  await logAudit(env, request, actor, 'family.member.add',
+    { type: 'family', id: familyId }, null, { mac, label: body.label || null });
+  return jsonResp({ ok: true, family_id: familyId, mac, label: body.label || null }, 201);
+}
+
+async function handleFamilyRemoveMember(env, familyId, mac, actor) {
+  const m = (mac || '').trim().toUpperCase();
+  await env.DB.prepare('DELETE FROM family_members WHERE family_id = ? AND mac = ?')
+    .bind(familyId, m).run();
+  // Retire la source → l'appareil n'a plus l'accès famille.
+  try { await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run(); } catch (_) {}
+  await logAudit(env, { headers: new Headers() }, actor, 'family.member.remove',
+    { type: 'family', id: familyId }, null, { mac: m });
+  return jsonResp({ ok: true, family_id: familyId, mac: m });
 }
 
 // =========================================================
