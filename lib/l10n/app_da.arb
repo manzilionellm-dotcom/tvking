@@ -562,5 +562,6 @@
   "tvQuit": "Luk",
   "tvStay": "Bliv",
   "tvChooseServer": "Vælg din server",
-  "tvManualServer": "Manuel URL"
+  "tvManualServer": "Manuel URL",
+  "tvKeyboardHint": "Tip: du kan skrive med tastaturet i fjernbetjenings-appen på telefonen (kopiér-indsæt virker)."
 }

@@ -562,5 +562,6 @@
   "tvQuit": "Funga",
   "tvStay": "Endelea",
   "tvChooseServer": "Chagua seva yako",
-  "tvManualServer": "URL ya mkono"
+  "tvManualServer": "URL ya mkono",
+  "tvKeyboardHint": "Dokezo: unaweza kuandika kwa kibodi ya programu ya rimoti ya simu yako (nakili-bandika hufanya kazi)."
 }

@@ -562,5 +562,6 @@
   "tvQuit": "Exit",
   "tvStay": "Stay",
   "tvChooseServer": "Choose your server",
-  "tvManualServer": "Manual URL"
+  "tvManualServer": "Manual URL",
+  "tvKeyboardHint": "Tip: you can type with your phone's TV-remote app keyboard (copy-paste works)."
 }

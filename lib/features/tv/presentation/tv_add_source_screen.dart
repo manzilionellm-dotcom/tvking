@@ -5,7 +5,10 @@
 //  sienne. Le client CHOISIT un serveur (ceux configurés dans le panel,
 //  GET /api/servers) et tape JUSTE son code (identifiant + mot de passe).
 //  L'URL du serveur reste cachée. Repli « URL manuelle » s'il en a une à lui.
-//  → on charge via PlaylistRepository → l'app s'ouvre.
+//
+//  SAISIE : de VRAIS champs texte → fonctionnent avec le clavier de l'appli
+//  TÉLÉCOMMANDE du TÉLÉPHONE (Android TV Remote…), un clavier physique, l'IME
+//  de la box, et le COPIER-COLLER. Plus besoin de taper lettre par lettre.
 // =========================================================
 import 'package:flutter/material.dart';
 
@@ -25,31 +28,22 @@ class TvAddSourceScreen extends StatefulWidget {
 }
 
 class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
+  final TextEditingController _serverC = TextEditingController();
+  final TextEditingController _userC = TextEditingController();
+  final TextEditingController _passC = TextEditingController();
+
   List<DefaultServer> _servers = const <DefaultServer>[];
   String _choice = _kManual; // id du serveur choisi, ou _kManual
-  // Valeurs : serveur (manuel), identifiant, mot de passe.
-  String _manualUrl = '';
-  String _user = '';
-  String _pass = '';
-  // Champ actif : 0=serveur(manuel), 1=identifiant, 2=mot de passe.
-  int _active = 1;
   bool _busy = false;
   String? _error;
 
   bool get _manual => _choice == _kManual;
   String get _serverUrl => _manual
-      ? _manualUrl
+      ? _serverC.text.trim()
       : (_servers
           .firstWhere((DefaultServer s) => s.id == _choice,
               orElse: () => const DefaultServer(id: '', label: '', url: ''))
           .url);
-
-  static const List<String> _keys = <String>[
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-    '.', ':', '/', '-', '_', '@',
-  ];
 
   @override
   void initState() {
@@ -60,73 +54,41 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
           list.where((DefaultServer s) => s.url.isNotEmpty).toList();
       setState(() {
         _servers = ok;
-        // S'il y a des serveurs du panel → on en sélectionne un par défaut
-        // (le client n'a plus qu'à taper son code). Sinon → saisie manuelle.
-        if (ok.isNotEmpty) {
-          _choice = ok.first.id;
-          _active = 1; // identifiant
-        } else {
-          _choice = _kManual;
-          _active = 0; // serveur
-        }
+        _choice = ok.isNotEmpty ? ok.first.id : _kManual;
       });
     });
   }
 
-  void _type(String c) {
-    setState(() {
-      if (_active == 0) {
-        _manualUrl += c;
-      } else if (_active == 1) {
-        _user += c;
-      } else {
-        _pass += c;
-      }
-    });
-  }
-
-  void _back() {
-    setState(() {
-      if (_active == 0 && _manualUrl.isNotEmpty) {
-        _manualUrl = _manualUrl.substring(0, _manualUrl.length - 1);
-      } else if (_active == 1 && _user.isNotEmpty) {
-        _user = _user.substring(0, _user.length - 1);
-      } else if (_active == 2 && _pass.isNotEmpty) {
-        _pass = _pass.substring(0, _pass.length - 1);
-      }
-    });
-  }
-
-  void _clearActive() {
-    setState(() {
-      if (_active == 0) {
-        _manualUrl = '';
-      } else if (_active == 1) {
-        _user = '';
-      } else {
-        _pass = '';
-      }
-    });
+  @override
+  void dispose() {
+    _serverC.dispose();
+    _userC.dispose();
+    _passC.dispose();
+    super.dispose();
   }
 
   Future<void> _validate() async {
     final String errFill = context.l10n.tvAddListError;
     final String errConn = context.l10n.tvConnectError;
     final String server = _serverUrl.trim();
-    if (server.isEmpty || _user.trim().isEmpty || _pass.trim().isEmpty) {
+    final String user = _userC.text.trim();
+    final String pass = _passC.text.trim();
+    if (server.isEmpty || user.isEmpty || pass.isEmpty) {
       setState(() => _error = errFill);
       return;
     }
     setState(() { _busy = true; _error = null; });
     try {
       await PlaylistRepository.instance.addXtreamPlaylist(
-        name: _manual ? 'Ma liste' : (_servers
-            .firstWhere((DefaultServer s) => s.id == _choice,
-                orElse: () => const DefaultServer(id: '', label: 'Ma liste', url: ''))
-            .label),
+        name: _manual
+            ? 'Ma liste'
+            : (_servers
+                .firstWhere((DefaultServer s) => s.id == _choice,
+                    orElse: () => const DefaultServer(id: '', label: 'Ma liste', url: ''))
+                .label),
         serverUrl: server,
-        username: _user.trim(),
-        password: _pass.trim(),
+        username: user,
+        password: pass,
       );
       if (mounted) Navigator.of(context).pop(); // le gate ouvre l'app
     } catch (_) {
@@ -138,98 +100,135 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
   Widget build(BuildContext context) {
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 980),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(context.l10n.tvAddListTitle,
-                style: TvTokens.display(34, color: TvTokens.text)),
-            const SizedBox(height: 6),
-            Text(context.l10n.tvAddListSubtitle,
-                style: TvTokens.ui(16, color: TvTokens.mutedDim)),
-            const SizedBox(height: 18),
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Text(context.l10n.tvAddListTitle,
+                  style: TvTokens.display(34, color: TvTokens.text)),
+              const SizedBox(height: 6),
+              Text(context.l10n.tvAddListSubtitle,
+                  style: TvTokens.ui(16, color: TvTokens.mutedDim)),
+              const SizedBox(height: 18),
 
-            // ----- Choix du serveur (ceux du panel) + « URL manuelle » -----
-            if (_servers.isNotEmpty) ...<Widget>[
-              Text(context.l10n.tvChooseServer.toUpperCase(),
-                  style: TvTokens.ui(11,
-                      weight: FontWeight.w600, color: TvTokens.mutedDim, spacing: 2)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: <Widget>[
-                  for (final DefaultServer s in _servers)
+              // ----- Choix du serveur (ceux du panel) + « URL manuelle » -----
+              if (_servers.isNotEmpty) ...<Widget>[
+                Text(context.l10n.tvChooseServer.toUpperCase(),
+                    style: TvTokens.ui(11,
+                        weight: FontWeight.w600, color: TvTokens.mutedDim, spacing: 2)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: <Widget>[
+                    for (final DefaultServer s in _servers)
+                      _ServerChip(
+                        label: s.label,
+                        selected: _choice == s.id,
+                        onSelect: () => setState(() => _choice = s.id),
+                      ),
                     _ServerChip(
-                      label: s.label,
-                      selected: _choice == s.id,
-                      onSelect: () => setState(() {
-                        _choice = s.id;
-                        _active = 1; // → identifiant
-                      }),
+                      label: context.l10n.tvManualServer,
+                      selected: _manual,
+                      onSelect: () => setState(() => _choice = _kManual),
                     ),
-                  _ServerChip(
-                    label: context.l10n.tvManualServer,
-                    selected: _manual,
-                    onSelect: () => setState(() {
-                      _choice = _kManual;
-                      _active = 0; // → serveur
-                    }),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-            ],
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
 
-            // ----- Champs (serveur seulement si manuel) -----
-            if (_manual) ...<Widget>[
-              _Field(
-                label: context.l10n.tvFieldServer,
-                value: _manualUrl,
-                active: _active == 0,
-                onSelect: () => setState(() => _active = 0),
+              // ----- Champs texte (clavier téléphone / physique + coller) -----
+              if (_manual) ...<Widget>[
+                _TextField(
+                  controller: _serverC,
+                  label: context.l10n.tvFieldServer,
+                  hint: 'http://serveur.com:8080',
+                  autofocus: true,
+                  keyboardType: TextInputType.url,
+                ),
+                const SizedBox(height: 10),
+              ],
+              _TextField(
+                controller: _userC,
+                label: context.l10n.tvFieldUser,
+                autofocus: !_manual,
               ),
               const SizedBox(height: 10),
-            ],
-            _Field(
-              label: context.l10n.tvFieldUser,
-              value: _user,
-              active: _active == 1,
-              onSelect: () => setState(() => _active = 1),
-            ),
-            const SizedBox(height: 10),
-            _Field(
-              label: context.l10n.tvFieldPass,
-              value: '•' * _pass.length,
-              active: _active == 2,
-              onSelect: () => setState(() => _active = 2),
-            ),
+              _TextField(
+                controller: _passC,
+                label: context.l10n.tvFieldPass,
+                obscure: true,
+              ),
 
-            if (_error != null) ...<Widget>[
-              const SizedBox(height: 8),
-              Text(_error!, style: TvTokens.ui(14, color: const Color(0xFFE0746A))),
-            ],
-            const SizedBox(height: 16),
+              const SizedBox(height: 10),
+              Text(context.l10n.tvKeyboardHint,
+                  style: TvTokens.ui(12, color: TvTokens.mutedDim)),
 
-            // ----- Clavier -----
-            Wrap(
-              spacing: 7,
-              runSpacing: 7,
-              children: <Widget>[
-                for (final String k in _keys) _Key(label: k, onTap: () => _type(k)),
-                _Key(label: '⌫', onTap: _back),
-                _Key(label: '✕', onTap: _clearActive),
+              if (_error != null) ...<Widget>[
+                const SizedBox(height: 8),
+                Text(_error!, style: TvTokens.ui(14, color: const Color(0xFFE0746A))),
               ],
-            ),
-            const SizedBox(height: 22),
+              const SizedBox(height: 20),
 
-            TvCtaButton(
-              label: _busy ? context.l10n.tvConnecting : context.l10n.tvAddListValidate,
-              onSelect: _busy ? null : _validate,
-            ),
-          ],
+              TvCtaButton(
+                label: _busy ? context.l10n.tvConnecting : context.l10n.tvAddListValidate,
+                onSelect: _busy ? null : _validate,
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+/// Champ texte Maison Noir. C'est un VRAI TextField : il accepte le clavier
+/// de l'appli télécommande du téléphone, un clavier USB/Bluetooth, l'IME de
+/// la box, et le copier-coller (appui long / Ctrl+V).
+class _TextField extends StatelessWidget {
+  const _TextField({
+    required this.controller,
+    required this.label,
+    this.hint,
+    this.obscure = false,
+    this.autofocus = false,
+    this.keyboardType,
+  });
+  final TextEditingController controller;
+  final String label;
+  final String? hint;
+  final bool obscure;
+  final bool autofocus;
+  final TextInputType? keyboardType;
+
+  @override
+  Widget build(BuildContext context) {
+    OutlineInputBorder border(Color c, double w) => OutlineInputBorder(
+          borderRadius: BorderRadius.circular(TvTokens.rButton),
+          borderSide: BorderSide(color: c, width: w),
+        );
+    return TextField(
+      controller: controller,
+      autofocus: autofocus,
+      obscureText: obscure,
+      keyboardType: keyboardType,
+      autocorrect: false,
+      enableSuggestions: false,
+      cursorColor: TvTokens.gold,
+      style: TvTokens.ui(18, weight: FontWeight.w500, color: TvTokens.text),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        labelStyle: TvTokens.ui(13, color: TvTokens.muted),
+        hintStyle: TvTokens.ui(14, color: TvTokens.mutedDim),
+        floatingLabelStyle: TvTokens.ui(13, color: TvTokens.goldBright),
+        filled: true,
+        fillColor: TvTokens.card,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        enabledBorder: border(TvTokens.line, 1),
+        focusedBorder: border(TvTokens.gold, 2),
       ),
     );
   }
@@ -263,74 +262,6 @@ class _ServerChip extends StatelessWidget {
                       : (selected ? TvTokens.goldBright : TvTokens.muted))),
         );
       },
-    );
-  }
-}
-
-class _Field extends StatelessWidget {
-  const _Field({required this.label, required this.value, required this.active, required this.onSelect});
-  final String label;
-  final String value;
-  final bool active;
-  final VoidCallback onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    return TvFocusBuilder(
-      scale: TvFocusScale.large,
-      onSelect: onSelect,
-      builder: (BuildContext context, bool focused) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: BoxDecoration(
-          color: TvTokens.card,
-          borderRadius: BorderRadius.circular(TvTokens.rButton),
-          border: Border.all(color: (active || focused) ? TvTokens.gold : TvTokens.line),
-        ),
-        child: Row(
-          children: <Widget>[
-            SizedBox(
-              width: 160,
-              child: Text(label.toUpperCase(),
-                  style: TvTokens.ui(11, weight: FontWeight.w600, color: TvTokens.mutedDim, spacing: 2)),
-            ),
-            Expanded(
-              child: Text(value.isEmpty ? '—' : value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TvTokens.ui(18, weight: FontWeight.w500, color: TvTokens.text)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Key extends StatelessWidget {
-  const _Key({required this.label, required this.onTap});
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 50,
-      height: 50,
-      child: TvFocusBuilder(
-        scale: TvFocusScale.small,
-        onSelect: onTap,
-        builder: (BuildContext context, bool focused) => Container(
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: focused ? TvTokens.gold : TvTokens.sel,
-            borderRadius: BorderRadius.circular(TvTokens.rSmall),
-          ),
-          child: Text(label,
-              style: TvTokens.ui(20,
-                  weight: FontWeight.w600,
-                  color: focused ? const Color(0xFF1A1206) : TvTokens.text)),
-        ),
-      ),
     );
   }
 }

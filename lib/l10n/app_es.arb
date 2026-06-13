@@ -562,5 +562,6 @@
   "tvQuit": "Salir",
   "tvStay": "Continuar",
   "tvChooseServer": "Elige tu servidor",
-  "tvManualServer": "URL manual"
+  "tvManualServer": "URL manual",
+  "tvKeyboardHint": "Consejo: puedes escribir con el teclado de la app de mando de tu teléfono (se puede copiar y pegar)."
 }

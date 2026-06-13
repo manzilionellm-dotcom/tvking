@@ -562,5 +562,6 @@
   "tvQuit": "خروج",
   "tvStay": "البقاء",
   "tvChooseServer": "اختر الخادم",
-  "tvManualServer": "رابط يدوي"
+  "tvManualServer": "رابط يدوي",
+  "tvKeyboardHint": "نصيحة: يمكنك الكتابة بلوحة مفاتيح تطبيق ريموت هاتفك (النسخ واللصق يعمل)."
 }

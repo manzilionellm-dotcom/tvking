@@ -562,5 +562,6 @@
   "tvQuit": "Avsluta",
   "tvStay": "Stanna kvar",
   "tvChooseServer": "Välj din server",
-  "tvManualServer": "Manuell URL"
+  "tvManualServer": "Manuell URL",
+  "tvKeyboardHint": "Tips: du kan skriva med tangentbordet i fjärrkontrollsappen på telefonen (kopiera-klistra funkar)."
 }

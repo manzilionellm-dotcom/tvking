@@ -1987,5 +1987,6 @@
   "tvQuit": "Quitter",
   "tvStay": "Continuer",
   "tvChooseServer": "Choisis ton serveur",
-  "tvManualServer": "URL manuelle"
+  "tvManualServer": "URL manuelle",
+  "tvKeyboardHint": "Astuce : tu peux taper avec le clavier de l'appli télécommande de ton téléphone (copier-coller possible)."
 }
