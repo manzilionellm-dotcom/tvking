@@ -560,5 +560,7 @@
   "tvQuitMessage": "Starta om för att uppdatera dina kanaler, eller avsluta appen.",
   "tvRestart": "Starta om",
   "tvQuit": "Avsluta",
-  "tvStay": "Stanna kvar"
+  "tvStay": "Stanna kvar",
+  "tvChooseServer": "Välj din server",
+  "tvManualServer": "Manuell URL"
 }

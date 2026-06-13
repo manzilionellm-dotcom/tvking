@@ -2,16 +2,21 @@
 //  tv_add_source_screen.dart — « J'ajoute ma propre liste » (Xtream)
 // =========================================================
 //  The Few NE VEND PAS de liste : le client a le DROIT d'apporter la
-//  sienne. Saisie au clavier télécommande (3 champs : serveur, identifiant,
-//  mot de passe) → on charge via PlaylistRepository → l'app s'ouvre.
+//  sienne. Le client CHOISIT un serveur (ceux configurés dans le panel,
+//  GET /api/servers) et tape JUSTE son code (identifiant + mot de passe).
+//  L'URL du serveur reste cachée. Repli « URL manuelle » s'il en a une à lui.
+//  → on charge via PlaylistRepository → l'app s'ouvre.
 // =========================================================
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../playlists/data/default_servers.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_components.dart';
+
+const String _kManual = '__manual__';
 
 class TvAddSourceScreen extends StatefulWidget {
   const TvAddSourceScreen({super.key});
@@ -20,10 +25,24 @@ class TvAddSourceScreen extends StatefulWidget {
 }
 
 class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
-  final List<String> _vals = <String>['', '', '']; // serveur, user, pass
-  int _active = 0;
+  List<DefaultServer> _servers = const <DefaultServer>[];
+  String _choice = _kManual; // id du serveur choisi, ou _kManual
+  // Valeurs : serveur (manuel), identifiant, mot de passe.
+  String _manualUrl = '';
+  String _user = '';
+  String _pass = '';
+  // Champ actif : 0=serveur(manuel), 1=identifiant, 2=mot de passe.
+  int _active = 1;
   bool _busy = false;
   String? _error;
+
+  bool get _manual => _choice == _kManual;
+  String get _serverUrl => _manual
+      ? _manualUrl
+      : (_servers
+          .firstWhere((DefaultServer s) => s.id == _choice,
+              orElse: () => const DefaultServer(id: '', label: '', url: ''))
+          .url);
 
   static const List<String> _keys = <String>[
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
@@ -32,28 +51,82 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
     '.', ':', '/', '-', '_', '@',
   ];
 
-  void _type(String c) => setState(() => _vals[_active] += c);
+  @override
+  void initState() {
+    super.initState();
+    DefaultServersApi.fetch().then((List<DefaultServer> list) {
+      if (!mounted) return;
+      final List<DefaultServer> ok =
+          list.where((DefaultServer s) => s.url.isNotEmpty).toList();
+      setState(() {
+        _servers = ok;
+        // S'il y a des serveurs du panel → on en sélectionne un par défaut
+        // (le client n'a plus qu'à taper son code). Sinon → saisie manuelle.
+        if (ok.isNotEmpty) {
+          _choice = ok.first.id;
+          _active = 1; // identifiant
+        } else {
+          _choice = _kManual;
+          _active = 0; // serveur
+        }
+      });
+    });
+  }
+
+  void _type(String c) {
+    setState(() {
+      if (_active == 0) {
+        _manualUrl += c;
+      } else if (_active == 1) {
+        _user += c;
+      } else {
+        _pass += c;
+      }
+    });
+  }
+
   void _back() {
-    final String v = _vals[_active];
-    if (v.isNotEmpty) setState(() => _vals[_active] = v.substring(0, v.length - 1));
+    setState(() {
+      if (_active == 0 && _manualUrl.isNotEmpty) {
+        _manualUrl = _manualUrl.substring(0, _manualUrl.length - 1);
+      } else if (_active == 1 && _user.isNotEmpty) {
+        _user = _user.substring(0, _user.length - 1);
+      } else if (_active == 2 && _pass.isNotEmpty) {
+        _pass = _pass.substring(0, _pass.length - 1);
+      }
+    });
+  }
+
+  void _clearActive() {
+    setState(() {
+      if (_active == 0) {
+        _manualUrl = '';
+      } else if (_active == 1) {
+        _user = '';
+      } else {
+        _pass = '';
+      }
+    });
   }
 
   Future<void> _validate() async {
-    // On capture les libellés traduits AVANT tout await (évite d'utiliser
-    // `context` après une opération asynchrone).
     final String errFill = context.l10n.tvAddListError;
     final String errConn = context.l10n.tvConnectError;
-    if (_vals[0].trim().isEmpty || _vals[1].trim().isEmpty || _vals[2].trim().isEmpty) {
+    final String server = _serverUrl.trim();
+    if (server.isEmpty || _user.trim().isEmpty || _pass.trim().isEmpty) {
       setState(() => _error = errFill);
       return;
     }
     setState(() { _busy = true; _error = null; });
     try {
       await PlaylistRepository.instance.addXtreamPlaylist(
-        name: 'Ma liste',
-        serverUrl: _vals[0].trim(),
-        username: _vals[1].trim(),
-        password: _vals[2].trim(),
+        name: _manual ? 'Ma liste' : (_servers
+            .firstWhere((DefaultServer s) => s.id == _choice,
+                orElse: () => const DefaultServer(id: '', label: 'Ma liste', url: ''))
+            .label),
+        serverUrl: server,
+        username: _user.trim(),
+        password: _pass.trim(),
       );
       if (mounted) Navigator.of(context).pop(); // le gate ouvre l'app
     } catch (_) {
@@ -63,12 +136,6 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Libellés des 3 champs, traduits dans la langue active.
-    final List<String> labels = <String>[
-      context.l10n.tvFieldServer,
-      context.l10n.tvFieldUser,
-      context.l10n.tvFieldPass,
-    ];
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 980),
@@ -76,25 +143,71 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Text(context.l10n.tvAddListTitle, style: TvTokens.display(34, color: TvTokens.text)),
+            Text(context.l10n.tvAddListTitle,
+                style: TvTokens.display(34, color: TvTokens.text)),
             const SizedBox(height: 6),
             Text(context.l10n.tvAddListSubtitle,
                 style: TvTokens.ui(16, color: TvTokens.mutedDim)),
-            const SizedBox(height: 22),
+            const SizedBox(height: 18),
 
-            // ----- Champs -----
-            for (int i = 0; i < 3; i++) ...<Widget>[
+            // ----- Choix du serveur (ceux du panel) + « URL manuelle » -----
+            if (_servers.isNotEmpty) ...<Widget>[
+              Text(context.l10n.tvChooseServer.toUpperCase(),
+                  style: TvTokens.ui(11,
+                      weight: FontWeight.w600, color: TvTokens.mutedDim, spacing: 2)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  for (final DefaultServer s in _servers)
+                    _ServerChip(
+                      label: s.label,
+                      selected: _choice == s.id,
+                      onSelect: () => setState(() {
+                        _choice = s.id;
+                        _active = 1; // → identifiant
+                      }),
+                    ),
+                  _ServerChip(
+                    label: context.l10n.tvManualServer,
+                    selected: _manual,
+                    onSelect: () => setState(() {
+                      _choice = _kManual;
+                      _active = 0; // → serveur
+                    }),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // ----- Champs (serveur seulement si manuel) -----
+            if (_manual) ...<Widget>[
               _Field(
-                label: labels[i],
-                value: i == 2 ? '•' * _vals[i].length : _vals[i],
-                active: _active == i,
-                onSelect: () => setState(() => _active = i),
+                label: context.l10n.tvFieldServer,
+                value: _manualUrl,
+                active: _active == 0,
+                onSelect: () => setState(() => _active = 0),
               ),
               const SizedBox(height: 10),
             ],
+            _Field(
+              label: context.l10n.tvFieldUser,
+              value: _user,
+              active: _active == 1,
+              onSelect: () => setState(() => _active = 1),
+            ),
+            const SizedBox(height: 10),
+            _Field(
+              label: context.l10n.tvFieldPass,
+              value: '•' * _pass.length,
+              active: _active == 2,
+              onSelect: () => setState(() => _active = 2),
+            ),
 
             if (_error != null) ...<Widget>[
-              const SizedBox(height: 4),
+              const SizedBox(height: 8),
               Text(_error!, style: TvTokens.ui(14, color: const Color(0xFFE0746A))),
             ],
             const SizedBox(height: 16),
@@ -106,7 +219,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
               children: <Widget>[
                 for (final String k in _keys) _Key(label: k, onTap: () => _type(k)),
                 _Key(label: '⌫', onTap: _back),
-                _Key(label: '✕', onTap: () => setState(() => _vals[_active] = '')),
+                _Key(label: '✕', onTap: _clearActive),
               ],
             ),
             const SizedBox(height: 22),
@@ -118,6 +231,38 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ServerChip extends StatelessWidget {
+  const _ServerChip({required this.label, required this.selected, required this.onSelect});
+  final String label;
+  final bool selected;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.medium,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        final bool hl = focused || selected;
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+          decoration: BoxDecoration(
+            color: focused ? TvTokens.gold : (selected ? TvTokens.sel : Colors.transparent),
+            borderRadius: BorderRadius.circular(TvTokens.rButton),
+            border: Border.all(color: hl ? TvTokens.gold : TvTokens.line),
+          ),
+          child: Text(label,
+              style: TvTokens.ui(15,
+                  weight: FontWeight.w600,
+                  color: focused
+                      ? const Color(0xFF1A1206)
+                      : (selected ? TvTokens.goldBright : TvTokens.muted))),
+        );
+      },
     );
   }
 }

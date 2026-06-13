@@ -560,5 +560,7 @@
   "tvQuitMessage": "Genstart for at opdatere dine kanaler, eller luk appen.",
   "tvRestart": "Genstart",
   "tvQuit": "Luk",
-  "tvStay": "Bliv"
+  "tvStay": "Bliv",
+  "tvChooseServer": "Vælg din server",
+  "tvManualServer": "Manuel URL"
 }

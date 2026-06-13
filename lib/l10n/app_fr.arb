@@ -1985,5 +1985,7 @@
   "tvQuitMessage": "Redémarre pour rafraîchir tes chaînes, ou quitte l'application.",
   "tvRestart": "Redémarrer",
   "tvQuit": "Quitter",
-  "tvStay": "Continuer"
+  "tvStay": "Continuer",
+  "tvChooseServer": "Choisis ton serveur",
+  "tvManualServer": "URL manuelle"
 }

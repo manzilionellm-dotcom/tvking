@@ -560,5 +560,7 @@
   "tvQuitMessage": "Restart to refresh your channels, or exit the app.",
   "tvRestart": "Restart",
   "tvQuit": "Exit",
-  "tvStay": "Stay"
+  "tvStay": "Stay",
+  "tvChooseServer": "Choose your server",
+  "tvManualServer": "Manual URL"
 }

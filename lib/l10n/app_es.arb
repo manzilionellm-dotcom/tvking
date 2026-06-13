@@ -560,5 +560,7 @@
   "tvQuitMessage": "Reinicia para actualizar tus canales, o sal de la app.",
   "tvRestart": "Reiniciar",
   "tvQuit": "Salir",
-  "tvStay": "Continuar"
+  "tvStay": "Continuar",
+  "tvChooseServer": "Elige tu servidor",
+  "tvManualServer": "URL manual"
 }

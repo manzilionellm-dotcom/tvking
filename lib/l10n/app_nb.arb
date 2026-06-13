@@ -560,5 +560,7 @@
   "tvQuitMessage": "Start på nytt for å oppdatere kanalene, eller avslutt appen.",
   "tvRestart": "Start på nytt",
   "tvQuit": "Avslutt",
-  "tvStay": "Bli"
+  "tvStay": "Bli",
+  "tvChooseServer": "Velg serveren din",
+  "tvManualServer": "Manuell URL"
 }

@@ -560,5 +560,7 @@
   "tvQuitMessage": "Anzisha upya ili kuonyesha upya vituo vyako, au funga programu.",
   "tvRestart": "Anzisha upya",
   "tvQuit": "Funga",
-  "tvStay": "Endelea"
+  "tvStay": "Endelea",
+  "tvChooseServer": "Chagua seva yako",
+  "tvManualServer": "URL ya mkono"
 }

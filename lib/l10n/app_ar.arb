@@ -560,5 +560,7 @@
   "tvQuitMessage": "أعد التشغيل لتحديث قنواتك، أو أغلق التطبيق.",
   "tvRestart": "إعادة التشغيل",
   "tvQuit": "خروج",
-  "tvStay": "البقاء"
+  "tvStay": "البقاء",
+  "tvChooseServer": "اختر الخادم",
+  "tvManualServer": "رابط يدوي"
 }
