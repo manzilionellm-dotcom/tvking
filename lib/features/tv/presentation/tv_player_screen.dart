@@ -175,6 +175,24 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     });
   }
 
+  // Affiche/masque la barre (OK télécommande OU tap sur l'écran tactile).
+  void _toggleOverlay() {
+    setState(() => _overlay = !_overlay);
+    if (_overlay) _showOverlayTemporarily();
+  }
+
+  // Lecture/pause (touche média OU bouton tactile). setState pour rafraîchir
+  // l'icône ▶/⏸ des contrôles tactiles.
+  void _togglePlayPause() {
+    if (_controller.isPlaying) {
+      _controller.pause();
+    } else {
+      _controller.play();
+    }
+    _showOverlayTemporarily();
+    setState(() {});
+  }
+
   // ----- Saisie d'un numéro de chaîne (0-9) → zap après ~1,5 s -----
   void _onDigit(int d) {
     if (_numBuffer.length < 4) _numBuffer += '$d';
@@ -235,12 +253,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     if (k == LogicalKeyboardKey.mediaPlayPause ||
         k == LogicalKeyboardKey.mediaPlay ||
         k == LogicalKeyboardKey.mediaPause) {
-      if (_controller.isPlaying) {
-        _controller.pause();
-      } else {
-        _controller.play();
-      }
-      _showOverlayTemporarily();
+      _togglePlayPause();
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.mediaStop) {
@@ -248,8 +261,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       return KeyEventResult.handled;
     }
     if (_isOk(k)) {
-      setState(() => _overlay = !_overlay);
-      if (_overlay) _showOverlayTemporarily();
+      _toggleOverlay();
       return KeyEventResult.handled;
     }
     _showOverlayTemporarily();
@@ -264,11 +276,25 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         focusNode: _focus,
         autofocus: true,
         onKeyEvent: _onKey,
-        child: ColoredBox(
-          color: Colors.black,
-          child: Stack(
-            fit: StackFit.expand,
-            children: <Widget>[
+        // TACTILE (TV/tablette à écran tactile) : tap = affiche/masque la
+        // barre ; glissé vertical = zap. Les boutons de la barre captent leur
+        // propre tap (ils gagnent l'arène des gestes) avant ce fond.
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _toggleOverlay,
+          onVerticalDragEnd: (DragEndDetails d) {
+            final double v = d.primaryVelocity ?? 0;
+            if (v < -250) {
+              _zap(1); // glissé vers le HAUT → chaîne suivante
+            } else if (v > 250) {
+              _zap(-1); // glissé vers le BAS → chaîne précédente
+            }
+          },
+          child: ColoredBox(
+            color: Colors.black,
+            child: Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
               // Vidéo SurfaceView native plein écran (16:9 centré sur TV 16:9).
               Center(
                 child: AspectRatio(
@@ -295,7 +321,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                     ),
                   ),
                 ),
-              // Barre de chaînes (auto-masquée).
+              // Barre de chaînes + contrôles tactiles (auto-masqués).
               AnimatedOpacity(
                 opacity: _overlay ? 1 : 0,
                 duration: TvDimens.focusAnim,
@@ -303,7 +329,21 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                   ignoring: !_overlay,
                   child: Align(
                     alignment: Alignment.bottomCenter,
-                    child: _ChannelBar(channel: _current, index: _index),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        // Boutons au doigt (tablette / TV tactile). Non
+                        // focusables : le D-pad les ignore et zappe directement.
+                        _TouchControls(
+                          isPlaying: _controller.isPlaying,
+                          onBack: () => Navigator.of(context).maybePop(),
+                          onPrev: () => _zap(-1),
+                          onNext: () => _zap(1),
+                          onPlayPause: _togglePlayPause,
+                        ),
+                        _ChannelBar(channel: _current, index: _index),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -327,9 +367,79 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                             letterSpacing: 4)),
                   ),
                 ),
-            ],
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Rangée de boutons ronds pour le TACTILE (tablette / TV à écran tactile) :
+/// retour, chaîne −, lecture/pause, chaîne +. Volontairement NON focusables
+/// (GestureDetector, pas TvFocusable) → la télécommande D-pad les ignore et
+/// continue de zapper directement, ils ne servent qu'au doigt.
+class _TouchControls extends StatelessWidget {
+  const _TouchControls({
+    required this.isPlaying,
+    required this.onBack,
+    required this.onPrev,
+    required this.onNext,
+    required this.onPlayPause,
+  });
+
+  final bool isPlaying;
+  final VoidCallback onBack;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+  final VoidCallback onPlayPause;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          _RoundButton(icon: Icons.arrow_back_rounded, onTap: onBack),
+          const SizedBox(width: 14),
+          _RoundButton(icon: Icons.skip_previous_rounded, onTap: onPrev),
+          const SizedBox(width: 14),
+          _RoundButton(
+            icon: isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            onTap: onPlayPause,
+            big: true,
+          ),
+          const SizedBox(width: 14),
+          _RoundButton(icon: Icons.skip_next_rounded, onTap: onNext),
+        ],
+      ),
+    );
+  }
+}
+
+class _RoundButton extends StatelessWidget {
+  const _RoundButton({required this.icon, required this.onTap, this.big = false});
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool big;
+
+  @override
+  Widget build(BuildContext context) {
+    final double d = big ? 68 : 54;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: d,
+        height: d,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.55),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Icon(icon, color: TvTokens.text, size: big ? 38 : 28),
       ),
     );
   }

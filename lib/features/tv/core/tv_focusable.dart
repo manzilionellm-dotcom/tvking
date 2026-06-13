@@ -131,55 +131,79 @@ class _TvFocusableState extends State<TvFocusable> {
     final double targetScale =
         active ? (_pressed ? _scaleValue * 0.97 : _scaleValue) : 1.0;
 
-    return Focus(
-      focusNode: _node,
-      autofocus: widget.autofocus,
-      canRequestFocus: widget.enabled,
-      onKeyEvent: _onKey,
-      onFocusChange: (bool f) {
-        setState(() {
-          _focused = f;
-          if (!f) _pressed = false;
-        });
-        widget.onFocusChange?.call(f);
-      },
-      child: AnimatedScale(
-        // Signal 1 : SCALE (transform GPU uniquement).
-        scale: targetScale,
-        duration: TvDimens.focusAnim,
-        curve: TvDimens.focusCurve,
-        child: AnimatedOpacity(
-          opacity: widget.enabled ? 1.0 : 0.45, // §4 disabled
+    // TACTILE (TV/tablette à écran tactile) : on rend l'élément cliquable au
+    // doigt EN PLUS du D-pad. Comme TOUTE l'UI TV passe par TvFocusable, ce
+    // seul GestureDetector rend l'app entière navigable au toucher. Le doigt
+    // prend d'abord le focus (le halo suit le doigt), puis relâche = onSelect.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: widget.enabled
+          ? (_) {
+              _node.requestFocus();
+              if (!_pressed) setState(() => _pressed = true);
+            }
+          : null,
+      onTapUp: widget.enabled
+          ? (_) {
+              if (_pressed) setState(() => _pressed = false);
+            }
+          : null,
+      onTapCancel: widget.enabled
+          ? () {
+              if (_pressed) setState(() => _pressed = false);
+            }
+          : null,
+      onTap: widget.enabled ? widget.onSelect : null,
+      child: Focus(
+        focusNode: _node,
+        autofocus: widget.autofocus,
+        canRequestFocus: widget.enabled,
+        onKeyEvent: _onKey,
+        onFocusChange: (bool f) {
+          setState(() {
+            _focused = f;
+            if (!f) _pressed = false;
+          });
+          widget.onFocusChange?.call(f);
+        },
+        child: AnimatedScale(
+          // Signal 1 : SCALE (transform GPU uniquement).
+          scale: targetScale,
           duration: TvDimens.focusAnim,
-          child: AnimatedContainer(
+          curve: TvDimens.focusCurve,
+          child: AnimatedOpacity(
+            opacity: widget.enabled ? 1.0 : 0.45, // §4 disabled
             duration: TvDimens.focusAnim,
-            curve: TvDimens.focusCurve,
-            decoration: BoxDecoration(
-              // Signal 2 : COULEUR de surface (tonale, Maison Noir).
-              color: active
-                  ? focusBg
-                  : (widget.selected ? TvTokens.sel : widget.baseColor),
-              borderRadius: radius,
-              // Signal 4 : CONTOUR OR au focus (visible partout, §5 spec).
-              border: (widget.showOutline && (active || widget.selected))
-                  ? Border.all(
-                      color: active ? TvTokens.gold : TvTokens.line,
-                      width: TvDimens.focusOutline,
-                    )
-                  : null,
-              // Signal 3 : HALO or discret au focus.
-              boxShadow: (widget.showGlow && active)
-                  ? <BoxShadow>[
-                      BoxShadow(
-                        color: TvTokens.gold.withValues(alpha: 0.22),
-                        blurRadius: TvDimens.focusGlowBlur,
-                        spreadRadius: TvDimens.focusGlowSpread,
-                        offset: const Offset(0, 6),
-                      ),
-                    ]
-                  : null,
+            child: AnimatedContainer(
+              duration: TvDimens.focusAnim,
+              curve: TvDimens.focusCurve,
+              decoration: BoxDecoration(
+                // Signal 2 : COULEUR de surface (tonale, Maison Noir).
+                color: active
+                    ? focusBg
+                    : (widget.selected ? TvTokens.sel : widget.baseColor),
+                borderRadius: radius,
+                // Signal 4 : CONTOUR OR au focus (visible partout, §5 spec).
+                border: (widget.showOutline && (active || widget.selected))
+                    ? Border.all(
+                        color: active ? TvTokens.gold : TvTokens.line,
+                        width: TvDimens.focusOutline,
+                      )
+                    : null,
+                // Signal 3 : HALO or discret au focus.
+                boxShadow: (widget.showGlow && active)
+                    ? <BoxShadow>[
+                        BoxShadow(
+                          color: TvTokens.gold.withValues(alpha: 0.22),
+                          blurRadius: TvDimens.focusGlowBlur,
+                          spreadRadius: TvDimens.focusGlowSpread,
+                          offset: const Offset(0, 6),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: widget.child,
             ),
-            child: widget.child,
           ),
         ),
       ),
