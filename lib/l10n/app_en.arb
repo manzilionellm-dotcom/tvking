@@ -555,5 +555,10 @@
   "tvAddListValidate": "Confirm and load my list",
   "tvSearchingChannels": "Looking for your channels…",
   "tvRetry": "Retry",
-  "tvSourceInvalid": "Subscription received but rejected — check the credentials in the panel."
+  "tvSourceInvalid": "Subscription received but rejected — check the credentials in the panel.",
+  "tvQuitTitle": "Exit The Few TV?",
+  "tvQuitMessage": "Restart to refresh your channels, or exit the app.",
+  "tvRestart": "Restart",
+  "tvQuit": "Exit",
+  "tvStay": "Stay"
 }

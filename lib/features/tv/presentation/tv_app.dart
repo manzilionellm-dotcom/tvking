@@ -9,6 +9,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
@@ -17,6 +18,7 @@ import '../../../core/i18n/locale_repository.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/data/remote_source_repository.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -95,8 +97,150 @@ class TvApp extends StatelessWidget {
             ),
           );
         },
-        home: const TvGate(),
+        home: const RestartWidget(child: TvGate()),
       ),
+    );
+  }
+}
+
+/// Permet un « redémarrage » logiciel de l'app : on change la clé du
+/// sous-arbre → tout est reconstruit (initState relancés) → les chaînes /
+/// la source / l'abonnement sont re-téléchargés. Réel rechargement sans
+/// que le client ait à fermer puis rouvrir (qui ne rafraîchissait pas).
+class RestartWidget extends StatefulWidget {
+  const RestartWidget({super.key, required this.child});
+  final Widget child;
+
+  static void restart(BuildContext context) {
+    context.findAncestorStateOfType<_RestartWidgetState>()?._restart();
+  }
+
+  @override
+  State<RestartWidget> createState() => _RestartWidgetState();
+}
+
+class _RestartWidgetState extends State<RestartWidget> {
+  Key _key = UniqueKey();
+
+  void _restart() {
+    // Re-synchronise explicitement (au cas où les écrans étaient déjà montés).
+    SubscriptionState.instance.syncWithBackend();
+    RemoteSourceRepository.sync();
+    setState(() => _key = UniqueKey());
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      KeyedSubtree(key: _key, child: widget.child);
+}
+
+/// Dialogue Back/Exit : Continuer / Redémarrer / Quitter. Renvoie
+/// 'restart', 'quit', ou null (continuer). Navigable à la télécommande.
+Future<String?> showExitDialog(BuildContext context) {
+  return showDialog<String>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.86),
+    builder: (BuildContext ctx) => const _ExitDialog(),
+  );
+}
+
+class _ExitDialog extends StatelessWidget {
+  const _ExitDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: 560,
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: TvTokens.card,
+          borderRadius: BorderRadius.circular(TvTokens.rCard),
+          border: Border.all(color: TvTokens.line),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(context.l10n.tvQuitTitle,
+                textAlign: TextAlign.center,
+                style: TvTokens.display(28, color: TvTokens.text)),
+            const SizedBox(height: 10),
+            Text(context.l10n.tvQuitMessage,
+                textAlign: TextAlign.center,
+                style: TvTokens.ui(15, color: TvTokens.mutedDim)),
+            const SizedBox(height: 26),
+            _DialogBtn(
+              icon: Icons.play_arrow_rounded,
+              label: context.l10n.tvStay,
+              autofocus: true,
+              primary: true,
+              onSelect: () => Navigator.of(context).pop(),
+            ),
+            const SizedBox(height: 10),
+            _DialogBtn(
+              icon: Icons.refresh_rounded,
+              label: context.l10n.tvRestart,
+              onSelect: () => Navigator.of(context).pop('restart'),
+            ),
+            const SizedBox(height: 10),
+            _DialogBtn(
+              icon: Icons.power_settings_new_rounded,
+              label: context.l10n.tvQuit,
+              onSelect: () => Navigator.of(context).pop('quit'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DialogBtn extends StatelessWidget {
+  const _DialogBtn({
+    required this.icon,
+    required this.label,
+    required this.onSelect,
+    this.autofocus = false,
+    this.primary = false,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback onSelect;
+  final bool autofocus;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      autofocus: autofocus,
+      scale: TvFocusScale.large,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        final Color fg = focused
+            ? const Color(0xFF1A1206)
+            : (primary ? TvTokens.goldBright : TvTokens.text);
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+          decoration: BoxDecoration(
+            color: focused
+                ? TvTokens.gold
+                : (primary ? TvTokens.sel : Colors.transparent),
+            borderRadius: BorderRadius.circular(TvTokens.rButton),
+            border: Border.all(
+                color: focused ? TvTokens.gold : TvTokens.line),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Icon(icon, size: 22, color: fg),
+              const SizedBox(width: 10),
+              Text(label,
+                  style: TvTokens.ui(18, weight: FontWeight.w700, color: fg)),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -145,8 +289,26 @@ class _TvGateState extends State<TvGate> {
         s == SubscriptionStatus.trialActive;
     final bool hasOwnList =
         PlaylistRepository.instance.currentChannels.isNotEmpty;
-    if (active || hasOwnList) return const TvHomeScreen();
-    return const TvShell(child: TvActivationScreen());
+    final Widget home = (active || hasOwnList)
+        ? const TvHomeScreen()
+        : const TvShell(child: TvActivationScreen());
+    // Back à la RACINE → boîte Continuer / Redémarrer / Quitter (les écrans
+    // empilés au-dessus, comme le lecteur, gèrent leur propre Back avant
+    // d'arriver ici).
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? _) async {
+        if (didPop) return;
+        final String? action = await showExitDialog(context);
+        if (!context.mounted) return;
+        if (action == 'restart') {
+          RestartWidget.restart(context);
+        } else if (action == 'quit') {
+          await SystemNavigator.pop();
+        }
+      },
+      child: home,
+    );
   }
 }
 

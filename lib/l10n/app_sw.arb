@@ -555,5 +555,10 @@
   "tvAddListValidate": "Thibitisha na upakie orodha yangu",
   "tvSearchingChannels": "Inatafuta vituo vyako…",
   "tvRetry": "Jaribu tena",
-  "tvSourceInvalid": "Usajili umepokelewa lakini umekataliwa — angalia taarifa kwenye paneli."
+  "tvSourceInvalid": "Usajili umepokelewa lakini umekataliwa — angalia taarifa kwenye paneli.",
+  "tvQuitTitle": "Funga The Few TV?",
+  "tvQuitMessage": "Anzisha upya ili kuonyesha upya vituo vyako, au funga programu.",
+  "tvRestart": "Anzisha upya",
+  "tvQuit": "Funga",
+  "tvStay": "Endelea"
 }

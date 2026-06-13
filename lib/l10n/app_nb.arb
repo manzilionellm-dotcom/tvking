@@ -555,5 +555,10 @@
   "tvAddListValidate": "Bekreft og last inn listen min",
   "tvSearchingChannels": "Søker etter kanalene dine…",
   "tvRetry": "Prøv igjen",
-  "tvSourceInvalid": "Abonnement mottatt, men avvist — sjekk opplysningene i panelet."
+  "tvSourceInvalid": "Abonnement mottatt, men avvist — sjekk opplysningene i panelet.",
+  "tvQuitTitle": "Avslutte The Few TV?",
+  "tvQuitMessage": "Start på nytt for å oppdatere kanalene, eller avslutt appen.",
+  "tvRestart": "Start på nytt",
+  "tvQuit": "Avslutt",
+  "tvStay": "Bli"
 }

@@ -555,5 +555,10 @@
   "tvAddListValidate": "Bekræft og indlæs min liste",
   "tvSearchingChannels": "Søger efter dine kanaler…",
   "tvRetry": "Prøv igen",
-  "tvSourceInvalid": "Abonnement modtaget, men afvist — tjek oplysningerne i panelet."
+  "tvSourceInvalid": "Abonnement modtaget, men afvist — tjek oplysningerne i panelet.",
+  "tvQuitTitle": "Luk The Few TV?",
+  "tvQuitMessage": "Genstart for at opdatere dine kanaler, eller luk appen.",
+  "tvRestart": "Genstart",
+  "tvQuit": "Luk",
+  "tvStay": "Bliv"
 }

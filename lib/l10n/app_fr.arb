@@ -1980,5 +1980,10 @@
   "tvAddListValidate": "Valider et charger ma liste",
   "tvSearchingChannels": "Recherche de tes chaînes…",
   "tvRetry": "Réessayer",
-  "tvSourceInvalid": "Abonnement reçu mais refusé — vérifie les identifiants dans le panel."
+  "tvSourceInvalid": "Abonnement reçu mais refusé — vérifie les identifiants dans le panel.",
+  "tvQuitTitle": "Quitter The Few TV ?",
+  "tvQuitMessage": "Redémarre pour rafraîchir tes chaînes, ou quitte l'application.",
+  "tvRestart": "Redémarrer",
+  "tvQuit": "Quitter",
+  "tvStay": "Continuer"
 }

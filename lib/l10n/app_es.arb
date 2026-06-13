@@ -555,5 +555,10 @@
   "tvAddListValidate": "Confirmar y cargar mi lista",
   "tvSearchingChannels": "Buscando tus canales…",
   "tvRetry": "Reintentar",
-  "tvSourceInvalid": "Suscripción recibida pero rechazada — verifica las credenciales en el panel."
+  "tvSourceInvalid": "Suscripción recibida pero rechazada — verifica las credenciales en el panel.",
+  "tvQuitTitle": "¿Salir de The Few TV?",
+  "tvQuitMessage": "Reinicia para actualizar tus canales, o sal de la app.",
+  "tvRestart": "Reiniciar",
+  "tvQuit": "Salir",
+  "tvStay": "Continuar"
 }
