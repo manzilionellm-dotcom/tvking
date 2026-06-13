@@ -1,0 +1,38 @@
+# =========================================================
+#  native_video_player — plugin Flutter local (Android only)
+# =========================================================
+#  POURQUOI CE PLUGIN EXISTE
+#  Sur certaines box Android TV / Fire TV, les lecteurs qui rendent la vidéo
+#  dans une TEXTURE Flutter (media_kit/libmpv ET flutter_vlc_player/libVLC)
+#  donnaient « son OK / image NOIRE » : les trames HEVC (H.265) décodées par
+#  MediaCodec n'arrivaient jamais jusqu'à la texture. Les vrais lecteurs IPTV
+#  (IPTV Smarters, etc.) rendent sur une SurfaceView native via ExoPlayer.
+#
+#  Ce plugin fait EXACTEMENT ça : une PlatformView en Hybrid Composition qui
+#  héberge une `SurfaceView` Android pilotée par Media3 (ExoPlayer). La vidéo
+#  n'est donc JAMAIS routée par une texture Flutter → l'image s'affiche.
+#
+#  Ce package vit sous `packages/` (suivi par git) parce que le CI régénère
+#  `android/` à chaque build via `flutter create` : du code natif placé dans
+#  `android/app/` serait écrasé. Un plugin path survit et s'auto-enregistre
+#  via GeneratedPluginRegistrant après `flutter pub get`.
+# =========================================================
+name: native_video_player
+description: "SurfaceView + Media3 ExoPlayer natif pour lecture IPTV (HEVC/TS/HLS) sans texture Flutter."
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.5.0
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.manzilionellm.native_video_player
+        pluginClass: NativeVideoPlayerPlugin

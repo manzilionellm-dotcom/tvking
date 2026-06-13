@@ -19,6 +19,8 @@ on:
     paths:
       - 'lib/main_tv.dart'
       - 'lib/features/tv/**'
+      - 'packages/**'
+      - 'pubspec.yaml'
       - 'assets/branding/**'
       - 'lib/l10n/**'
       - '.github/workflows/build-tv.yml'

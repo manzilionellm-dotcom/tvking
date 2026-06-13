@@ -1,14 +1,16 @@
 // =========================================================
-//  tv_player_screen.dart — Lecteur plein écran TV (libVLC)
+//  tv_player_screen.dart — Lecteur plein écran TV (SurfaceView natif)
 // =========================================================
-//  Moteur = libVLC (flutter_vlc_player), PAS media_kit/mpv : sur certaines
-//  box Android TV, mpv donnait « son sans image » (vidéo HEVC non rendue).
-//  libVLC rend l'image via une TextureView fiable → image qui s'affiche.
+//  Moteur = Media3 / ExoPlayer sur une vraie android.view.SurfaceView, via le
+//  plugin local `native_video_player` (Hybrid Composition). PAS media_kit/mpv
+//  NI flutter_vlc_player : les deux rendaient la vidéo dans une TEXTURE Flutter
+//  et donnaient « son OK / image NOIRE » sur certaines box (trames HEVC
+//  décodées par MediaCodec mais jamais affichées). Une SurfaceView native sort
+//  la vidéo du chemin texture → l'image passe, comme dans IPTV Smarters & co.
 //
-//  Réglages stabilité :
-//    1) HwAcc.auto : décodage matériel quand dispo (le 100 % logiciel + le
-//       no-drop figeaient la box sur du HEVC), drop de trames AUTORISÉ ;
-//    2) gros tampon (network/live/file caching = 3000 ms) ;
+//  Réglages stabilité (côté natif, cf. NativeVideoView.kt) :
+//    1) décodage matériel MediaCodec + repli logiciel (decoder fallback) ;
+//    2) gros tampon (min 5 s / max 30 s, démarrage 1,5 s) ;
 //    3) watchdog 15 s : aucune progression → reconnexion auto (ré-ouvre l'URL).
 //
 //  D-pad : Haut/Bas (ou Ch+/Ch-) = zap, chiffres = n° de chaîne, OK = barre,
@@ -18,7 +20,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_vlc_player/flutter_vlc_player.dart';
+import 'package:native_video_player/native_video_player.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
@@ -45,7 +47,7 @@ class TvPlayerScreen extends StatefulWidget {
 }
 
 class _TvPlayerScreenState extends State<TvPlayerScreen> {
-  late final VlcPlayerController _controller;
+  late final NativeVideoController _controller;
   final FocusNode _focus = FocusNode();
 
   late int _index = widget.startIndex;
@@ -79,32 +81,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     LogicalKeyboardKey.numpad9,
   ];
 
-  // Options libVLC. On laisse libVLC choisir le décodage (HwAcc.auto :
-  // matériel quand dispo, rendu via TextureView fiable) et on AUTORISE le
-  // drop de trames (sinon une box trop lente fige tout sur du HEVC). Gros
-  // tampon réseau pour limiter les coupures.
-  static VlcPlayerOptions _vlcOptions() => VlcPlayerOptions(
-        advanced: VlcAdvancedOptions(<String>[
-          VlcAdvancedOptions.networkCaching(3000),
-          VlcAdvancedOptions.liveCaching(3000),
-          VlcAdvancedOptions.fileCaching(3000),
-          VlcAdvancedOptions.clockJitter(0),
-        ]),
-        http: VlcHttpOptions(<String>[
-          VlcHttpOptions.httpReconnect(true),
-        ]),
-      );
-
   @override
   void initState() {
     super.initState();
-    _controller = VlcPlayerController.network(
-      _current.streamUrl,
-      hwAcc: HwAcc.auto, // matériel si dispo (rendu TextureView fiable côté libVLC)
-      autoPlay: true,
-      options: _vlcOptions(),
-    );
-    _controller.addListener(_onVlc);
+    // Le décodage (MediaCodec matériel + repli logiciel), le tampon réseau et
+    // le User-Agent sont gérés côté natif (NativeVideoView.kt). Ici on se
+    // contente de piloter l'URL et d'écouter l'état.
+    _controller = NativeVideoController(initialUrl: _current.streamUrl);
+    _controller.addListener(_onPlayer);
     _open(reuse: true); // historique / présence pour la 1re chaîne
     // Chien de garde : aucune progression depuis 15 s → reconnexion.
     _watchdog = Timer.periodic(_watchEvery, (_) {
@@ -123,7 +107,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     _presenceTimer?.cancel();
     _numTimer?.cancel();
     _watchdog?.cancel();
-    _controller.removeListener(_onVlc);
+    _controller.removeListener(_onPlayer);
     NowPlaying.instance.clear();
     SubscriptionState.instance.syncWithBackend(); // on ne regarde plus rien
     _controller.dispose();
@@ -131,24 +115,23 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     super.dispose();
   }
 
-  // Écoute l'état libVLC : progression (anti-gel), buffering (logo), erreurs.
-  void _onVlc() {
-    final VlcPlayerValue v = _controller.value;
+  // Écoute l'état du lecteur natif : progression (anti-gel), buffering (logo),
+  // erreurs.
+  void _onPlayer() {
     // Progression réelle → « pas gelé ».
-    if (v.position != _lastPos) {
-      _lastPos = v.position;
+    if (_controller.position != _lastPos) {
+      _lastPos = _controller.position;
       _lastProgress = DateTime.now();
       _recovering = false;
     }
-    final PlayingState st = v.playingState;
-    final bool buffering = !v.isInitialized ||
-        st == PlayingState.initializing ||
-        st == PlayingState.buffering;
+    // Logo tant qu'on bufferise OU que la 1re trame n'est pas encore dessinée
+    // (au zap, firstFrame est remis à false → logo jusqu'à l'image suivante).
+    final bool buffering = _controller.isBuffering || !_controller.firstFrame;
     if (mounted && buffering != _buffering) {
       setState(() => _buffering = buffering);
     }
     // Erreur / fin de flux live → reconnexion.
-    if (v.hasError || st == PlayingState.error || st == PlayingState.ended) {
+    if (_controller.hasError || _controller.isEnded) {
       _recover();
     }
   }
@@ -159,11 +142,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     if (mounted) setState(() => _buffering = true);
     if (!reuse) {
       // Nouvelle chaîne → on charge la nouvelle URL dans le MÊME lecteur.
-      _controller.setMediaFromNetwork(
-        _current.streamUrl,
-        hwAcc: HwAcc.auto,
-        autoPlay: true,
-      );
+      _controller.setUrl(_current.streamUrl);
     }
     // Historique (reprise « Continuer à regarder », favoris, reco).
     RecentlyWatchedRepository.instance.record(_current.id);
@@ -185,10 +164,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     _recovering = true;
     _lastProgress = DateTime.now();
     // Ré-ouvre la MÊME URL = reconnexion au direct.
-    _controller
-        .setMediaFromNetwork(_current.streamUrl,
-            hwAcc: HwAcc.auto, autoPlay: true)
-        .catchError((_) {});
+    _controller.setUrl(_current.streamUrl);
   }
 
   void _showOverlayTemporarily() {
@@ -259,7 +235,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     if (k == LogicalKeyboardKey.mediaPlayPause ||
         k == LogicalKeyboardKey.mediaPlay ||
         k == LogicalKeyboardKey.mediaPause) {
-      if (_controller.value.isPlaying) {
+      if (_controller.isPlaying) {
         _controller.pause();
       } else {
         _controller.play();
@@ -293,12 +269,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: <Widget>[
-              // Vidéo libVLC plein écran (16:9 centré sur une TV 16:9).
+              // Vidéo SurfaceView native plein écran (16:9 centré sur TV 16:9).
               Center(
-                child: VlcPlayer(
-                  controller: _controller,
+                child: AspectRatio(
                   aspectRatio: 16 / 9,
-                  placeholder: const ColoredBox(color: Colors.black),
+                  child: NativeVideoView(controller: _controller),
                 ),
               ),
               // Écran de marque pendant l'ouverture / le zap / une reconnexion.

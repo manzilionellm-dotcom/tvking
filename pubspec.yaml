@@ -118,13 +118,18 @@ dependencies:
   # à la main) et joue le flux dans une page HTML5.
   qr_flutter: ^4.1.0
 
-  # --- Lecteur TV : libVLC natif (flutter_vlc_player) ---
-  # POURQUOI : sur Android TV / Fire TV, media_kit (libmpv) donnait « son
-  # sans image » sur certaines box (vidéo HEVC non rendue). libVLC décode
-  # en LOGICIEL de façon universelle (HEVC/H.265 + AC-3) et rend l'image via
-  # une TextureView → image garantie. C'est le moteur du lecteur TV
-  # (tv_player_screen). Le mobile garde media_kit.
-  flutter_vlc_player: ^7.4.1
+  # --- Lecteur TV : SurfaceView natif (Media3 / ExoPlayer) ---
+  # POURQUOI : sur Android TV / Fire TV, media_kit (libmpv) ET flutter_vlc_player
+  # (libVLC) donnaient « son OK / image NOIRE » → les trames HEVC décodées par
+  # MediaCodec n'arrivaient jamais jusqu'à la TEXTURE Flutter. Les vrais lecteurs
+  # IPTV (Smarters, etc.) rendent sur une SurfaceView native via ExoPlayer.
+  # `native_video_player` est un plugin local qui fait exactement ça :
+  # SurfaceView + Media3, en Hybrid Composition (jamais de texture dans le
+  # chemin vidéo). C'est le moteur du lecteur TV (tv_player_screen). Le mobile
+  # garde media_kit. Plugin sous packages/ car le CI régénère android/ à chaque
+  # build (du natif dans android/app serait écrasé).
+  native_video_player:
+    path: packages/native_video_player
 
   # Récupère l'IP locale du téléphone sur le WiFi (sinon impossible
   # de construire l'URL "http://<mon-ip>:8090/" que la TV doit ouvrir).
