@@ -239,6 +239,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final LogicalKeyboardKey k = event.logicalKey;
 
+    // BACK / Retour télécommande (toutes variantes) → quitter le lecteur,
+    // retour à la liste. On gère explicitement pour ne jamais rester coincé.
+    if (k == LogicalKeyboardKey.goBack ||
+        k == LogicalKeyboardKey.escape ||
+        k == LogicalKeyboardKey.browserBack ||
+        k == LogicalKeyboardKey.exit) {
+      Navigator.of(context).maybePop();
+      return KeyEventResult.handled;
+    }
+
     int di = _digits.indexOf(k);
     if (di < 0) di = _numpad.indexOf(k);
     if (di >= 0) { _onDigit(di); return KeyEventResult.handled; }
