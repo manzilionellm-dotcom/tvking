@@ -78,10 +78,18 @@ jobs:
           fi
           grep -nE 'INTERNET|usesCleartextTraffic' "$MANIFEST" || true
 
-      # CONFIDENTIALITÉ : FLAG_SECURE sur l'activité Flutter → impossible de
-      # faire une capture d'écran / un enregistrement d'écran dans Privé, et
-      # l'aperçu dans le multitâche est masqué. On patche le MainActivity.kt
-      # généré (spécifique au build Privé, n'impacte pas The Few).
+      # Pont natif : export GALERIE en MP4 (remux TS→MP4 via MediaMuxer →
+      # lisible Samsung/Android/WhatsApp) + service d'enregistrement. MÊME
+      # overlay que The Few mobile (éprouvé). Câble les MethodChannels
+      # .../gallery et .../recording_service. NB : embarque aussi Google Cast
+      # (même overlay) — sans incidence si on ne caste pas.
+      - name: Apply native overlay (gallery MP4 export + recording)
+        run: bash android_overlay/google_cast/apply_cast_patch.sh
+
+      # CONFIDENTIALITÉ : FLAG_SECURE → captures/enregistrements d'écran
+      # bloqués + aperçu multitâche masqué. Patch ROBUSTE : marche que le
+      # MainActivity soit le simple FlutterActivity OU celui de l'overlay
+      # (FlutterFragmentActivity, sans onCreate → on en ajoute un).
       - name: Patch MainActivity for FLAG_SECURE (anti screenshot)
         run: |
           set -e
@@ -90,27 +98,35 @@ jobs:
           files = glob.glob('android/app/src/main/kotlin/**/MainActivity.kt', recursive=True)
           if not files:
               print('MainActivity.kt introuvable'); raise SystemExit(0)
+          flag = 'window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)'
           for f in files:
               s = open(f).read()
               if 'FLAG_SECURE' in s:
-                  print('deja patche', f); continue
+                  print('deja', f); continue
               if 'import android.os.Bundle' not in s:
-                  s = s.replace(
-                      'import io.flutter.embedding.android.FlutterActivity',
-                      'import android.os.Bundle\nimport android.view.WindowManager\n'
-                      'import io.flutter.embedding.android.FlutterActivity', 1)
-              s2 = re.sub(
-                  r'class MainActivity\s*:\s*FlutterActivity\(\)\s*$',
-                  'class MainActivity : FlutterActivity() {\n'
-                  '    override fun onCreate(savedInstanceState: Bundle?) {\n'
-                  '        super.onCreate(savedInstanceState)\n'
-                  '        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)\n'
-                  '    }\n}',
-                  s, flags=re.M)
-              if s2 == s:
-                  print('motif classe non trouve dans', f)
+                  s = re.sub(r'(^package [^\n]+\n)',
+                             r'\1import android.os.Bundle\nimport android.view.WindowManager\n',
+                             s, count=1, flags=re.M)
+              if 'override fun onCreate' in s:
+                  # Injecte après le super.onCreate(...) existant.
+                  s = re.sub(r'(super\.onCreate\([^\n]*\)\n)',
+                             r'\1        ' + flag + '\n', s, count=1)
               else:
-                  open(f, 'w').write(s2); print('FLAG_SECURE injecte dans', f)
+                  m = re.search(r'class MainActivity\s*:\s*\w+\([^)]*\)\s*\{', s)
+                  if m:
+                      body = ('\n    override fun onCreate(savedInstanceState: Bundle?) {\n'
+                              '        super.onCreate(savedInstanceState)\n'
+                              '        ' + flag + '\n    }\n')
+                      s = s[:m.end()] + body + s[m.end():]
+                  else:
+                      s = re.sub(r'class MainActivity\s*:\s*(\w+)\(\)\s*$',
+                          lambda mo: ('class MainActivity : ' + mo.group(1) + '() {\n'
+                              '    override fun onCreate(savedInstanceState: Bundle?) {\n'
+                              '        super.onCreate(savedInstanceState)\n'
+                              '        ' + flag + '\n    }\n}'),
+                          s, flags=re.M)
+              open(f, 'w').write(s)
+              print('FLAG_SECURE ok', f)
           PYEOF
 
       - name: Flutter pub get
