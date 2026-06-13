@@ -94,8 +94,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     _completedSub = _player.stream.completed.listen((bool done) {
       if (done) _recover();
     });
-    _configurePlayer(); // décodage logiciel forcé + gros buffers
-    _open();
+    // Config (décodage matériel HEVC + buffers) AVANT d'ouvrir le 1er flux,
+    // puis lecture → l'image s'affiche dès la 1re chaîne.
+    _configurePlayer().then((_) {
+      if (mounted) _open();
+    });
     // Chien de garde : aucune progression depuis 15 s → reconnexion auto.
     _watchdog = Timer.periodic(_watchEvery, (_) {
       if (!_recovering &&
@@ -108,15 +111,17 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         (_) => SubscriptionState.instance.syncWithBackend());
   }
 
-  // Les 2 réglages qui garantissent l'IMAGE et limitent le gel :
-  //   • hwdec=no → décodage 100 % LOGICIEL (HEVC/H.265 + AC-3 garantis,
-  //     même si la box n'a pas le codec matériel → fini l'écran noir).
+  // Réglages décodage + tampon :
+  //   • hwdec=mediacodec-copy → décodage VIDÉO MATÉRIEL Android (HEVC/H.265)
+  //     avec recopie des trames → l'IMAGE s'affiche de façon FIABLE (le mode
+  //     direct/zero-copy ou le 100 % logiciel donnaient « son sans image »
+  //     sur beaucoup de box). L'audio (AC-3) reste décodé normalement.
   //   • cache / readahead → gros tampon réseau (~10 s) → moins de gels.
   Future<void> _configurePlayer() async {
     final dynamic platform = _player.platform;
     if (platform is NativePlayer) {
       try {
-        await platform.setProperty('hwdec', 'no');
+        await platform.setProperty('hwdec', 'mediacodec-copy');
         await platform.setProperty('cache', 'yes');
         await platform.setProperty('cache-secs', '10');
         await platform.setProperty('demuxer-readahead-secs', '10');

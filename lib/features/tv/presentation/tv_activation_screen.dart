@@ -9,7 +9,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../device/data/device_identity.dart';
@@ -84,7 +83,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
                 SizedBox(width: 600, child: _activationColumn(context)),
                 const SizedBox(width: 56),
                 // ----- Colonne droite : QR « Scanne-moi » → WhatsApp -----
-                _WhatsAppQr(mac: _mac),
+                TvWhatsAppQr(mac: _mac),
               ],
             ),
           ),
@@ -164,76 +163,6 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
             Text(context.l10n.tvActivationFooter,
                 style: TvTokens.ui(13, color: TvTokens.mutedDim, spacing: 0.5)),
           ],
-    );
-  }
-}
-
-/// Panneau QR « Scanne-moi » : ouvre WhatsApp avec le code d'activation
-/// déjà pré-rempli dans le message. Le client n'a qu'à scanner avec
-/// l'appareil photo de son téléphone → conversation prête à envoyer.
-class _WhatsAppQr extends StatelessWidget {
-  const _WhatsAppQr({required this.mac});
-  final String mac;
-
-  // Numéro WhatsApp business (format international, sans + ni espaces).
-  static const String _phone = '447307410512';
-
-  String get _url {
-    final String code = (mac == '…' || mac.isEmpty) ? '' : mac;
-    final String msg = Uri.encodeComponent(
-        'Bonjour, je souhaite activer The Few TV.'
-        '${code.isEmpty ? '' : ' Mon code : $code'}');
-    return 'https://wa.me/$_phone?text=$msg';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        // QR sur fond clair (un QR se scanne en sombre-sur-clair).
-        Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(TvTokens.rCard),
-            border: Border.all(color: TvTokens.gold, width: 2),
-          ),
-          child: QrImageView(
-            data: _url,
-            version: QrVersions.auto,
-            size: 220,
-            backgroundColor: Colors.white,
-            // Modules sombres = lisibilité maximale par la caméra.
-            eyeStyle: const QrEyeStyle(
-                eyeShape: QrEyeShape.square, color: Color(0xFF0B0B0B)),
-            dataModuleStyle: const QrDataModuleStyle(
-                dataModuleShape: QrDataModuleShape.square,
-                color: Color(0xFF0B0B0B)),
-          ),
-        ),
-        const SizedBox(height: 18),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            const Icon(Icons.qr_code_scanner_rounded,
-                color: TvTokens.goldBright, size: 24),
-            const SizedBox(width: 10),
-            Text(context.l10n.tvScanToActivate,
-                style: TvTokens.ui(20,
-                    weight: FontWeight.w700, color: TvTokens.goldBright)),
-          ],
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: 256,
-          child: Text(
-            context.l10n.tvScanHelp,
-            textAlign: TextAlign.center,
-            style: TvTokens.ui(14, color: TvTokens.mutedDim),
-          ),
-        ),
-      ],
     );
   }
 }

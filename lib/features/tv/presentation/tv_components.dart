@@ -5,7 +5,9 @@
 //  EmptyState. Tout référence TvTokens — zéro couleur en dur.
 // =========================================================
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -13,6 +15,74 @@ import '../core/tv_tokens.dart';
 /// Nom produit affiché PARTOUT.
 const String kAppName = 'The Few TV';
 const String _kLogoAsset = 'assets/branding/thefew_tv_icon.png';
+
+/// Numéro WhatsApp business (format international, sans + ni espaces).
+const String kWhatsAppPhone = '447307410512';
+
+/// Construit le lien wa.me avec un message pré-rempli (code MAC inclus).
+String tvWhatsAppUrl(String mac) {
+  final String code = (mac == '…' || mac.isEmpty) ? '' : mac;
+  final String msg = Uri.encodeComponent(
+      'Bonjour, je souhaite activer The Few TV.'
+      '${code.isEmpty ? '' : ' Mon code : $code'}');
+  return 'https://wa.me/$kWhatsAppPhone?text=$msg';
+}
+
+/// Panneau QR « Scanne-moi » → WhatsApp du revendeur, MAC pré-remplie.
+/// Réutilisé sur l'écran d'activation ET sur l'accueil (quand aucune chaîne).
+class TvWhatsAppQr extends StatelessWidget {
+  const TvWhatsAppQr({super.key, required this.mac, this.size = 220});
+  final String mac;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        // QR sur fond clair (un QR se scanne en sombre-sur-clair).
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(TvTokens.rCard),
+            border: Border.all(color: TvTokens.gold, width: 2),
+          ),
+          child: QrImageView(
+            data: tvWhatsAppUrl(mac),
+            version: QrVersions.auto,
+            size: size,
+            backgroundColor: Colors.white,
+            eyeStyle: const QrEyeStyle(
+                eyeShape: QrEyeShape.square, color: Color(0xFF0B0B0B)),
+            dataModuleStyle: const QrDataModuleStyle(
+                dataModuleShape: QrDataModuleShape.square,
+                color: Color(0xFF0B0B0B)),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const Icon(Icons.qr_code_scanner_rounded,
+                color: TvTokens.goldBright, size: 22),
+            const SizedBox(width: 10),
+            Text(context.l10n.tvScanToActivate,
+                style: TvTokens.ui(18,
+                    weight: FontWeight.w700, color: TvTokens.goldBright)),
+          ],
+        ),
+        const SizedBox(height: 6),
+        SizedBox(
+          width: size + 40,
+          child: Text(context.l10n.tvScanHelp,
+              textAlign: TextAlign.center,
+              style: TvTokens.ui(13, color: TvTokens.mutedDim)),
+        ),
+      ],
+    );
+  }
+}
 
 /// Logo réel « The Few » (or sur noir).
 class TvLogo extends StatelessWidget {

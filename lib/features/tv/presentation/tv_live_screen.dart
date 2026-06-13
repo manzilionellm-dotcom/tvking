@@ -21,8 +21,10 @@ import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import 'tv_add_source_screen.dart';
 import 'tv_components.dart';
 import 'tv_player_screen.dart';
+import 'tv_shell.dart';
 
 class TvLiveScreen extends StatefulWidget {
   const TvLiveScreen({super.key});
@@ -149,83 +151,84 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
         subtitle = context.l10n.tvNoChannelsHelp;
       }
       return Center(
-        child: Column(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
-            Icon(searching ? Icons.wifi_find_rounded : Icons.live_tv_rounded,
-                size: 64, color: TvTokens.mutedDim),
-            const SizedBox(height: 16),
-            Text(title,
-                style: TextStyle(
-                    fontSize: TvDimens.headline,
-                    fontWeight: FontWeight.w700,
-                    color: TvTokens.text)),
-            const SizedBox(height: 10),
+            // ===== Gauche : message + MAC + actions =====
             SizedBox(
-              width: 600,
-              child: Text(subtitle,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: TvDimens.body, color: TvTokens.mutedDim)),
-            ),
-            const SizedBox(height: 20),
-            // ----- Adresse de CET appareil (MAC) : ESSENTIEL -----
-            // On l'affiche ICI : pour pousser une source, le revendeur doit
-            // connaître la MAC. L'écran d'activation ne s'affiche plus (déjà
-            // activé), donc c'est le seul endroit visible avec les Réglages.
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
-              decoration: BoxDecoration(
-                color: TvTokens.card,
-                borderRadius: BorderRadius.circular(TvTokens.rCard),
-                border: Border.all(color: TvTokens.lineSoft),
-              ),
+              width: 560,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(context.l10n.tvDeviceAddress.toUpperCase(),
-                      style: TvTokens.ui(12,
-                          weight: FontWeight.w600,
-                          color: TvTokens.mutedDim,
-                          spacing: 2)),
+                  Icon(searching ? Icons.wifi_find_rounded : Icons.live_tv_rounded,
+                      size: 52, color: TvTokens.mutedDim),
+                  const SizedBox(height: 14),
+                  Text(title, style: TvTokens.display(30, color: TvTokens.text)),
                   const SizedBox(height: 8),
-                  Text(_mac,
-                      style: TvTokens.mono(30,
-                          color: TvTokens.goldBright, spacing: 2)),
+                  Text(subtitle,
+                      style: TvTokens.ui(15, color: TvTokens.mutedDim)),
+                  const SizedBox(height: 18),
+                  // ----- Adresse de CET appareil (MAC) -----
+                  // Visible ICI car l'écran d'activation ne s'affiche plus
+                  // (déjà activé) : le client/revendeur a besoin de la MAC.
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 22, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: TvTokens.card,
+                      borderRadius: BorderRadius.circular(TvTokens.rCard),
+                      border: Border.all(color: TvTokens.lineSoft),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(context.l10n.tvDeviceAddress.toUpperCase(),
+                            style: TvTokens.ui(12,
+                                weight: FontWeight.w600,
+                                color: TvTokens.mutedDim,
+                                spacing: 2)),
+                        const SizedBox(height: 8),
+                        Text(_mac,
+                            style: TvTokens.mono(28,
+                                color: TvTokens.goldBright, spacing: 2)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  // ----- Actions : Réessayer + Ajouter sa propre liste -----
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: <Widget>[
+                      _ActionPill(
+                        icon: Icons.refresh_rounded,
+                        label: _syncing
+                            ? context.l10n.tvSearchingChannels
+                            : context.l10n.tvRetry,
+                        autofocus: true,
+                        onSelect: _syncing ? null : _kickSourceSync,
+                      ),
+                      _ActionPill(
+                        icon: Icons.playlist_add_rounded,
+                        label: context.l10n.tvAddOwnList,
+                        onSelect: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                const TvShell(child: TvAddSourceScreen()),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 22),
-            // Bouton « Réessayer maintenant » (focusable D-pad).
-            TvFocusBuilder(
-              autofocus: true,
-              scale: TvFocusScale.large,
-              onSelect: _syncing ? null : _kickSourceSync,
-              builder: (BuildContext context, bool focused) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                decoration: BoxDecoration(
-                  color: focused ? TvTokens.gold : TvTokens.sel,
-                  borderRadius: BorderRadius.circular(TvTokens.rButton),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Icon(Icons.refresh_rounded,
-                        size: 22,
-                        color: focused ? const Color(0xFF1A1206) : TvTokens.goldBright),
-                    const SizedBox(width: 10),
-                    Text(
-                        _syncing
-                            ? context.l10n.tvSearchingChannels
-                            : context.l10n.tvRetry,
-                        style: TextStyle(
-                            fontSize: TvDimens.title,
-                            fontWeight: FontWeight.w700,
-                            color: focused ? const Color(0xFF1A1206) : TvTokens.goldBright)),
-                  ],
-                ),
-              ),
-            ),
+            const SizedBox(width: 44),
+            // ===== Droite : QR WhatsApp pour contacter le revendeur =====
+            TvWhatsAppQr(mac: _mac, size: 190),
           ],
         ),
       );
@@ -471,36 +474,48 @@ class _Logo extends StatelessWidget {
   }
 }
 
-class _EmptyChannels extends StatelessWidget {
-  const _EmptyChannels();
+/// Petit bouton-pilule focusable (or au focus). Utilisé sur l'accueil vide
+/// (« Réessayer », « J'ajoute ma propre liste »).
+class _ActionPill extends StatelessWidget {
+  const _ActionPill({
+    required this.icon,
+    required this.label,
+    required this.onSelect,
+    this.autofocus = false,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback? onSelect;
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(Icons.live_tv_rounded,
-              size: 72, color: TvTokens.mutedDim),
-          const SizedBox(height: 16),
-          Text('Aucune chaîne pour l\'instant',
-              style: TextStyle(
-                  fontSize: TvDimens.headline,
-                  fontWeight: FontWeight.w700,
-                  color: TvTokens.text)),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: 560,
-            child: Text(
-              'Active cet appareil dans ton panel et pousse-lui une source. '
-              'Les chaînes apparaîtront ici automatiquement.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: TvDimens.body, color: TvTokens.mutedDim),
-            ),
+    return TvFocusBuilder(
+      autofocus: autofocus,
+      scale: TvFocusScale.large,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+          decoration: BoxDecoration(
+            color: focused ? TvTokens.gold : TvTokens.sel,
+            borderRadius: BorderRadius.circular(TvTokens.rButton),
           ),
-        ],
-      ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(icon, size: 20, color: fg),
+              const SizedBox(width: 9),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: TvDimens.titleS,
+                      fontWeight: FontWeight.w700,
+                      color: fg)),
+            ],
+          ),
+        );
+      },
     );
   }
 }
