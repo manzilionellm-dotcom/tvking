@@ -20,6 +20,7 @@ import 'core/i18n/locale_repository.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
+import 'features/recordings/data/recording_repository.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
 import 'features/tv/presentation/tv_app.dart';
@@ -65,6 +66,16 @@ Future<void> main() async {
     PlaylistRepository.instance.initialize().then((_) {
       RemoteSourceRepository.sync();
     }),
+  );
+
+  // 5) Enregistrements : on initialise la base et on finalise les
+  //    enregistrements « fantômes » (l'app a pu être tuée par l'OS en plein
+  //    enregistrement). recoverOrphans est idempotent (no-op s'il n'y a rien).
+  unawaited(
+    RecordingRepository.instance
+        .initialize()
+        .then((_) => RecordingRepository.instance.recoverOrphans())
+        .then((_) {}),
   );
 
   runApp(const TvApp());

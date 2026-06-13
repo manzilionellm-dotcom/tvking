@@ -26,6 +26,9 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
+import '../../player/data/local_stream_relay.dart';
+import '../../recordings/data/recording_repository.dart';
+import '../../recordings/domain/recording.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
@@ -57,7 +60,20 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   Timer? _presenceTimer;
   Timer? _numTimer;
   Timer? _watchdog;
+  Timer? _toastTimer;
   String _numBuffer = ''; // saisie d'un numéro de chaîne (touches 0-9)
+
+  // ----- Enregistrement -----
+  // Quand on enregistre, on fait passer la lecture par le MINI-RELAIS local
+  // (LocalStreamRelay) : il ouvre UNE seule connexion vers le serveur IPTV et
+  // recopie les octets À LA FOIS vers le lecteur ET vers le fichier .ts. Donc
+  // le fournisseur ne voit qu'1 connexion (compatible max_connections=1) et le
+  // fichier capture EXACTEMENT ce qui est à l'écran. Hors enregistrement, la
+  // lecture reste DIRECTE (le relais n'est pas dans le chemin).
+  Recording? _activeRecording;
+  bool get _isRecording => _activeRecording != null;
+  String? _relayPlayUrl; // URL locale 127.0.0.1 utilisée pendant l'enregistrement
+  String? _toastMsg; // petit message éphémère (sauvegardé / vide / échec)
 
   // Anti-gel : on suit la progression réelle (position qui avance).
   DateTime _lastProgress = DateTime.now();
@@ -107,6 +123,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     _presenceTimer?.cancel();
     _numTimer?.cancel();
     _watchdog?.cancel();
+    _toastTimer?.cancel();
+    // Si on quitte le lecteur en plein enregistrement : on finalise proprement
+    // (arrêt du relais + clôture en base), sans toucher au controller détruit.
+    if (_activeRecording != null) {
+      final Recording rec = _activeRecording!;
+      LocalStreamRelay.instance.stopRecording(rec.streamUrl ?? _current.streamUrl);
+      RecordingRepository.instance.finishRecording(rec);
+    }
     _controller.removeListener(_onPlayer);
     NowPlaying.instance.clear();
     SubscriptionState.instance.syncWithBackend(); // on ne regarde plus rien
@@ -154,6 +178,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   void _zap(int delta) {
     final int n = widget.channels.length;
     if (n <= 1) return;
+    // On ne peut enregistrer qu'1 chaîne à la fois (1 connexion) : changer de
+    // chaîne clôt et SAUVEGARDE l'enregistrement en cours.
+    if (_isRecording) _finalizeRecording(resumeDirect: false);
     setState(() => _index = (_index + delta) % n);
     if (_index < 0) _index += n;
     _open();
@@ -163,8 +190,111 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     if (_recovering) return;
     _recovering = true;
     _lastProgress = DateTime.now();
-    // Ré-ouvre la MÊME URL = reconnexion au direct.
-    _controller.setUrl(_current.streamUrl);
+    // Ré-ouvre la MÊME source : l'URL locale du relais si on enregistre, sinon
+    // l'URL directe. = reconnexion au direct sans casser l'enregistrement.
+    _controller.setUrl(_relayPlayUrl ?? _current.streamUrl);
+  }
+
+  // ----- Enregistrement (bouton REC / touche média) -----
+
+  Future<void> _toggleRecording() async {
+    if (_isRecording) {
+      await _finalizeRecording(resumeDirect: true);
+    } else {
+      await _startRecording();
+    }
+    _showOverlayTemporarily();
+  }
+
+  Future<void> _startRecording() async {
+    if (_isRecording) return;
+    final String realUrl = _current.streamUrl;
+    try {
+      final String path = await RecordingRepository.instance
+          .createFilePath(channelName: _current.cleanName);
+
+      // 1) On bascule D'ABORD la lecture sur le relais : le lecteur lâche la
+      //    connexion DIRECTE et le relais ouvre L'UNIQUE connexion vers le
+      //    serveur. On évite ainsi d'avoir 2 connexions en même temps
+      //    (incompatible avec les fournisseurs max_connections=1).
+      final String localUrl =
+          await LocalStreamRelay.instance.playUrlFor(realUrl);
+      _relayPlayUrl = localUrl;
+      _controller.setUrl(localUrl);
+
+      // 2) On attache l'écriture fichier à CETTE MÊME session relais (pas de
+      //    nouvelle connexion : le tee recopie juste les octets vers le .ts).
+      final bool ok = await LocalStreamRelay.instance
+          .startRecording(realUrl: realUrl, filePath: path);
+      if (!ok) {
+        _relayPlayUrl = null;
+        _controller.setUrl(realUrl); // on revient au direct
+        _flash('Échec démarrage enregistrement');
+        return;
+      }
+
+      // 3) On enregistre la fiche en base (liste « Enregistrements »).
+      final Recording rec = await RecordingRepository.instance.startRecording(
+        channelId: _current.id,
+        channelName: _current.cleanName,
+        filePath: path,
+        channelLogoUrl: _current.logoUrl,
+        streamUrl: realUrl,
+      );
+      if (mounted) {
+        setState(() => _activeRecording = rec);
+        _flash('Enregistrement en cours…');
+      }
+    } catch (e) {
+      _flash('Erreur enregistrement');
+    }
+  }
+
+  /// Clôt l'enregistrement en cours. [resumeDirect] = on rebascule la lecture
+  /// en direct (bouton stop) ; à false quand l'appelant va lui-même rouvrir
+  /// une autre source (zap).
+  Future<void> _finalizeRecording({required bool resumeDirect}) async {
+    final Recording? rec = _activeRecording;
+    if (rec == null) return;
+    // UI immédiate : on n'est plus « en train d'enregistrer ».
+    if (mounted) {
+      setState(() => _activeRecording = null);
+    } else {
+      _activeRecording = null;
+    }
+    _relayPlayUrl = null;
+    final String realUrl = rec.streamUrl ?? _current.streamUrl;
+    int bytes = 0;
+    try {
+      bytes = await LocalStreamRelay.instance.stopRecording(realUrl);
+      await RecordingRepository.instance.finishRecording(rec);
+    } catch (_) {}
+    if (resumeDirect && mounted) {
+      _controller.setUrl(_current.streamUrl);
+    }
+    if (mounted) {
+      _flash(bytes > 0
+          ? 'Enregistrement sauvegardé (${_humanSize(bytes)})'
+          : 'Enregistrement vide');
+    }
+  }
+
+  // Petit message éphémère en bas de l'écran (~3 s).
+  void _flash(String msg) {
+    setState(() => _toastMsg = msg);
+    _toastTimer?.cancel();
+    _toastTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _toastMsg = null);
+    });
+  }
+
+  static String _humanSize(int bytes) {
+    if (bytes < 1024) return '$bytes o';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} Ko';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} Mo';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} Go';
   }
 
   void _showOverlayTemporarily() {
@@ -260,6 +390,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       Navigator.of(context).maybePop();
       return KeyEventResult.handled;
     }
+    if (k == LogicalKeyboardKey.mediaRecord || k == LogicalKeyboardKey.keyR) {
+      _toggleRecording();
+      return KeyEventResult.handled;
+    }
     if (_isOk(k)) {
       _toggleOverlay();
       return KeyEventResult.handled;
@@ -336,10 +470,12 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                         // focusables : le D-pad les ignore et zappe directement.
                         _TouchControls(
                           isPlaying: _controller.isPlaying,
+                          isRecording: _isRecording,
                           onBack: () => Navigator.of(context).maybePop(),
                           onPrev: () => _zap(-1),
                           onNext: () => _zap(1),
                           onPlayPause: _togglePlayPause,
+                          onRecord: _toggleRecording,
                         ),
                         _ChannelBar(channel: _current, index: _index),
                       ],
@@ -367,6 +503,59 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                             letterSpacing: 4)),
                   ),
                 ),
+              // Pastille « ● REC » visible en permanence pendant l'enregistrement
+              // (même quand la barre est masquée).
+              if (_isRecording)
+                Positioned(
+                  top: TvDimens.safeV + 8,
+                  left: TvDimens.safeH,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(100),
+                      border: Border.all(color: TvTokens.live),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(Icons.fiber_manual_record_rounded,
+                            color: TvTokens.live, size: 16),
+                        const SizedBox(width: 8),
+                        Text('REC',
+                            style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 2,
+                                color: TvTokens.text)),
+                      ],
+                    ),
+                  ),
+                ),
+              // Message éphémère (sauvegardé / vide / échec).
+              if (_toastMsg != null)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: TvDimens.safeV + 120,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 22, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.78),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Text(_toastMsg!,
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: TvTokens.text)),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -383,17 +572,21 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 class _TouchControls extends StatelessWidget {
   const _TouchControls({
     required this.isPlaying,
+    required this.isRecording,
     required this.onBack,
     required this.onPrev,
     required this.onNext,
     required this.onPlayPause,
+    required this.onRecord,
   });
 
   final bool isPlaying;
+  final bool isRecording;
   final VoidCallback onBack;
   final VoidCallback onPrev;
   final VoidCallback onNext;
   final VoidCallback onPlayPause;
+  final VoidCallback onRecord;
 
   @override
   Widget build(BuildContext context) {
@@ -413,6 +606,17 @@ class _TouchControls extends StatelessWidget {
           ),
           const SizedBox(width: 14),
           _RoundButton(icon: Icons.skip_next_rounded, onTap: onNext),
+          const SizedBox(width: 14),
+          // Bouton ENREGISTRER : rouge plein quand on enregistre (= stop),
+          // contour rouge sinon (= démarrer).
+          _RoundButton(
+            icon: isRecording
+                ? Icons.stop_rounded
+                : Icons.fiber_manual_record_rounded,
+            onTap: onRecord,
+            iconColor: TvTokens.live,
+            highlight: isRecording,
+          ),
         ],
       ),
     );
@@ -420,10 +624,18 @@ class _TouchControls extends StatelessWidget {
 }
 
 class _RoundButton extends StatelessWidget {
-  const _RoundButton({required this.icon, required this.onTap, this.big = false});
+  const _RoundButton({
+    required this.icon,
+    required this.onTap,
+    this.big = false,
+    this.iconColor,
+    this.highlight = false,
+  });
   final IconData icon;
   final VoidCallback onTap;
   final bool big;
+  final Color? iconColor;
+  final bool highlight;
 
   @override
   Widget build(BuildContext context) {
@@ -435,11 +647,15 @@ class _RoundButton extends StatelessWidget {
         width: d,
         height: d,
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.55),
+          color: highlight
+              ? TvTokens.live.withValues(alpha: 0.25)
+              : Colors.black.withValues(alpha: 0.55),
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white24),
+          border: Border.all(
+              color: highlight ? TvTokens.live : Colors.white24),
         ),
-        child: Icon(icon, color: TvTokens.text, size: big ? 38 : 28),
+        child: Icon(icon,
+            color: iconColor ?? TvTokens.text, size: big ? 38 : 28),
       ),
     );
   }
