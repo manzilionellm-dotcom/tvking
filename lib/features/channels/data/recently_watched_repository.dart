@@ -18,6 +18,7 @@ import 'dart:async';
 
 import 'package:sqflite/sqflite.dart';
 
+import '../../../core/flavor/flavor.dart';
 import '../../playlists/data/playlist_database.dart';
 
 class RecentlyWatchedRepository {
@@ -67,6 +68,10 @@ class RecentlyWatchedRepository {
   }
 
   Future<void> record(String channelId) async {
+    // Mode incognito (flavor adulte « Privé ») : on n'enregistre AUCUN
+    // historique de visionnage → pas de « Continuer à regarder », rien à
+    // retrouver pour un tiers. Discrétion totale.
+    if (FlavorConfig.current.adultOnly) return;
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
     final int now = DateTime.now().millisecondsSinceEpoch;

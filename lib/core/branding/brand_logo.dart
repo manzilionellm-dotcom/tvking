@@ -64,6 +64,8 @@ class BrandLogo extends StatelessWidget {
     switch (FlavorConfig.current.flavor) {
       case Flavor.sevenMotion:
         return 'assets/branding/logo_black7royal.png';
+      case Flavor.prive:
+        return 'assets/branding/prive_icon.png';
     }
   }
 
@@ -73,6 +75,8 @@ class BrandLogo extends StatelessWidget {
     switch (FlavorConfig.current.flavor) {
       case Flavor.sevenMotion:
         return '7';
+      case Flavor.prive:
+        return 'P';
     }
   }
 

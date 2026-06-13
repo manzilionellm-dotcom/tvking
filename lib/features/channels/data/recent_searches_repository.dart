@@ -15,6 +15,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/flavor/flavor.dart';
+
 class RecentSearchesRepository extends ChangeNotifier {
   RecentSearchesRepository._();
   static final RecentSearchesRepository instance =
@@ -42,6 +44,8 @@ class RecentSearchesRepository extends ChangeNotifier {
   /// à chaque keystroke). On dédupe (insensible à la casse + trim)
   /// et on garde max 10 entrées.
   Future<void> record(String query) async {
+    // Mode incognito (flavor « Privé ») : pas d'historique de recherche.
+    if (FlavorConfig.current.adultOnly) return;
     final String clean = query.trim();
     if (clean.length < _kMinChars) return;
 

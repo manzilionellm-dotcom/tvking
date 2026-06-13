@@ -35,6 +35,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../../../core/flavor/flavor.dart';
 import '../../playlists/data/playlist_database.dart';
 
 /// Snapshot d'une session pour l'UI.
@@ -137,6 +138,10 @@ class WatchHistoryRepository extends ChangeNotifier {
     required String channelId,
     String? channelName,
   }) async {
+    // Mode incognito (flavor « Privé ») : on n'enregistre aucune session de
+    // visionnage (ni stats d'affinité). -1 = session factice ignorée par
+    // endSession (WHERE id = -1 ne touche rien).
+    if (FlavorConfig.current.adultOnly) return -1;
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
     final int now = DateTime.now().millisecondsSinceEpoch;
