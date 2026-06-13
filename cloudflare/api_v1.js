@@ -610,6 +610,13 @@ async function apiV1Inner(request, env) {
     if (parts.length === 4 && parts[2] === 'members' && request.method === 'DELETE') {
       return handleFamilyRemoveMember(env, parts[1], decodeMac(parts[3]), actor);
     }
+    // Liens M3U distribuables (une source → plusieurs liens séparés).
+    if (parts.length === 3 && parts[2] === 'links' && request.method === 'POST') {
+      return handleFamilyCreateLink(request, env, a.user, actor, parts[1]);
+    }
+    if (parts.length === 4 && parts[2] === 'links' && request.method === 'DELETE') {
+      return handleFamilyDeleteLink(env, parts[1], parts[3], actor);
+    }
   }
 
   // /apps
@@ -2278,6 +2285,17 @@ async function ensureFamiliesTables(env) {
        UNIQUE(family_id, mac)
      )`,
   ).run();
+  // Liens M3U distribuables : 1 jeton unique par lien, tous adossés à la
+  // MÊME source de la famille. Sert à donner un lien séparé à chacun.
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS family_links (
+       id TEXT PRIMARY KEY,
+       family_id TEXT NOT NULL,
+       token TEXT NOT NULL UNIQUE,
+       label TEXT,
+       created_at INTEGER
+     )`,
+  ).run();
 }
 
 // La source renvoyée aux LISTES masque le mot de passe (le détail le montre).
@@ -2353,10 +2371,44 @@ async function handleFamiliesGet(env, id, user) {
   const m = await env.DB.prepare(
     'SELECT mac, label, created_at FROM family_members WHERE family_id = ? ORDER BY created_at ASC',
   ).bind(id).all();
+  const l = await env.DB.prepare(
+    'SELECT id, token, label, created_at FROM family_links WHERE family_id = ? ORDER BY created_at ASC',
+  ).bind(id).all();
   return jsonResp({
     family: _familyRowToJson(row, { hidePassword: false }),
     members: (m.results || []),
+    links: (l.results || []),
   });
+}
+
+async function handleFamilyCreateLink(request, env, user, actor, familyId) {
+  let body;
+  try { body = await request.json(); } catch (_) { body = {}; }
+  const fam = await env.DB.prepare('SELECT id, reseller_id FROM families WHERE id = ?')
+    .bind(familyId).first();
+  if (!fam) return errResp('not_found', 'Family not found', 404);
+  if (user.role === 'reseller' && fam.reseller_id !== user.sub) {
+    return errResp('forbidden', 'Not your family', 403);
+  }
+  // Jeton long et non-devinable (32 hex).
+  const token = crypto.randomUUID().replace(/-/g, '');
+  const id = genId('lnk');
+  const now = Date.now();
+  await env.DB.prepare(
+    `INSERT INTO family_links (id, family_id, token, label, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).bind(id, familyId, token, (body.label || '').trim() || null, now).run();
+  await logAudit(env, request, actor, 'family.link.create',
+    { type: 'family', id: familyId }, null, { label: body.label || null });
+  return jsonResp({ ok: true, id, token, label: (body.label || '').trim() || null, created_at: now }, 201);
+}
+
+async function handleFamilyDeleteLink(env, familyId, linkId, actor) {
+  await env.DB.prepare('DELETE FROM family_links WHERE id = ? AND family_id = ?')
+    .bind(linkId, familyId).run();
+  await logAudit(env, { headers: new Headers() }, actor, 'family.link.delete',
+    { type: 'family', id: familyId }, null, { link: linkId });
+  return jsonResp({ ok: true, id: linkId });
 }
 
 async function handleFamiliesDelete(env, id, actor) {

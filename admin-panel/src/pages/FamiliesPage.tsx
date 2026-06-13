@@ -1,8 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import {
-  familiesApi, ApiError,
-  type Family, type FamilyMember, type FamilySource,
+  familiesApi, m3uLinkUrl, ApiError,
+  type Family, type FamilyMember, type FamilySource, type FamilyLink,
 } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 
@@ -19,6 +19,9 @@ export function FamiliesPage({ onLogout }: { onLogout: () => void }) {
   const [families, setFamilies] = useState<Family[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [members, setMembers] = useState<FamilyMember[]>([]);
+  const [links, setLinks] = useState<FamilyLink[]>([]);
+  const [linkLabel, setLinkLabel] = useState('');
+  const [copied, setCopied] = useState<string | null>(null);
   const [detail, setDetail] = useState<Family | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -47,8 +50,34 @@ export function FamiliesPage({ onLogout }: { onLogout: () => void }) {
     setSelected(id);
     setErr(null);
     familiesApi.get(id)
-      .then((r) => { setDetail(r.family); setMembers(r.members); })
+      .then((r) => { setDetail(r.family); setMembers(r.members); setLinks(r.links || []); })
       .catch(fail);
+  }
+
+  async function addLink() {
+    if (!selected) return;
+    setBusy(true); setErr(null);
+    try {
+      await familiesApi.createLink(selected, linkLabel.trim() || undefined);
+      setLinkLabel('');
+      openFamily(selected);
+    } catch (e) { fail(e); } finally { setBusy(false); }
+  }
+
+  async function removeLink(linkId: string) {
+    if (!selected) return;
+    setBusy(true); setErr(null);
+    try {
+      await familiesApi.deleteLink(selected, linkId);
+      openFamily(selected);
+    } catch (e) { fail(e); } finally { setBusy(false); }
+  }
+
+  function copy(text: string, id: string) {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(id);
+      setTimeout(() => setCopied((c) => (c === id ? null : c)), 1500);
+    }).catch(() => {});
   }
 
   async function createFamily(e: FormEvent) {
@@ -231,6 +260,48 @@ export function FamiliesPage({ onLogout }: { onLogout: () => void }) {
                     </button>
                   </div>
                 ))}
+              </div>
+
+              {/* ===== Liens M3U distribuables (une source → N liens séparés) ===== */}
+              <div className="space-y-2 rounded-lg border border-white/5 bg-slate/40 p-3">
+                <p className="text-[10px] uppercase tracking-widest text-ink-tertiary">
+                  Liens M3U à distribuer (même source)
+                </p>
+                <div className="flex gap-2">
+                  <input value={linkLabel} onChange={(e) => setLinkLabel(e.target.value)}
+                    placeholder="Nom du lien (ex. Papa, Maman, Enfant)" className={inputCls} />
+                  <button type="button" onClick={addLink} disabled={busy}
+                    className="shrink-0 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black transition hover:bg-accent-bright disabled:opacity-50">
+                    Générer
+                  </button>
+                </div>
+                {links.length === 0 && (
+                  <p className="text-xs text-ink-tertiary">Aucun lien généré.</p>
+                )}
+                {links.map((lk) => {
+                  const url = m3uLinkUrl(lk.token);
+                  return (
+                    <div key={lk.id}
+                      className="rounded-md border border-white/5 bg-slate px-3 py-2 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-ink-primary">{lk.label || 'Lien'}</span>
+                        <div className="flex items-center gap-3">
+                          <button type="button" onClick={() => copy(url, lk.id)}
+                            className="text-xs text-accent-bright hover:underline">
+                            {copied === lk.id ? 'Copié ✓' : 'Copier'}
+                          </button>
+                          <button type="button" onClick={() => removeLink(lk.id)} disabled={busy}
+                            className="text-xs text-ink-tertiary hover:text-accent-bright">
+                            Révoquer
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-1 break-all font-mono text-[11px] text-ink-tertiary">
+                        {url}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

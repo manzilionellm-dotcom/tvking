@@ -750,6 +750,18 @@ export interface FamilyMember {
   label: string | null;
   created_at: number;
 }
+export interface FamilyLink {
+  id: string;
+  token: string;
+  label: string | null;
+  created_at: number;
+}
+
+/// URL publique d'un lien M3U de famille (à donner au membre). Le jeton
+/// est résolu par le Worker → playlist de la source unique de la famille.
+export function m3uLinkUrl(token: string): string {
+  return `${API_BASE}/api/m3u/${token}`;
+}
 
 export const familiesApi = {
   list: () => request<{ items: Family[] }>('/api/v1/families'),
@@ -759,7 +771,9 @@ export const familiesApi = {
       body: { name, source },
     }),
   get: (id: string) =>
-    request<{ family: Family; members: FamilyMember[] }>(`/api/v1/families/${id}`),
+    request<{ family: Family; members: FamilyMember[]; links: FamilyLink[] }>(
+      `/api/v1/families/${id}`,
+    ),
   remove: (id: string) =>
     request<{ ok: boolean }>(`/api/v1/families/${id}`, { method: 'DELETE' }),
   addMember: (id: string, mac: string, label?: string, plan?: string) =>
@@ -772,6 +786,15 @@ export const familiesApi = {
       `/api/v1/families/${id}/members/${encodeURIComponent(mac)}`,
       { method: 'DELETE' },
     ),
+  createLink: (id: string, label?: string) =>
+    request<FamilyLink>(`/api/v1/families/${id}/links`, {
+      method: 'POST',
+      body: { label },
+    }),
+  deleteLink: (id: string, linkId: string) =>
+    request<{ ok: boolean }>(`/api/v1/families/${id}/links/${linkId}`, {
+      method: 'DELETE',
+    }),
 };
 
 // =========================================================

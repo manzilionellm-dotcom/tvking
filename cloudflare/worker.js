@@ -2298,6 +2298,46 @@ async function handlePublicDeviceSource(env, mac) {
   return json({ mac: MAC, source: null });
 }
 
+// /api/m3u/:token — public. Résout un lien M3U de famille vers la vraie
+// playlist. Le jeton (family_links) → source de la famille → on REDIRIGE
+// vers la playlist upstream :
+//   - Xtream : {server}/get.php?username=&password=&type=m3u_plus&output=ts
+//   - M3U    : l'URL M3U telle quelle.
+// Plusieurs jetons séparés peuvent pointer vers la MÊME source.
+async function handlePublicFamilyM3u(env, rawToken) {
+  if (!env.DB) return new Response('not found', { status: 404 });
+  // Tolère un suffixe .m3u / .m3u8 dans l'URL.
+  const token = String(rawToken || '').replace(/\.(m3u8?|ts)$/i, '').trim();
+  if (!token) return new Response('not found', { status: 404 });
+  try {
+    const link = await env.DB
+      .prepare('SELECT family_id FROM family_links WHERE token = ?')
+      .bind(token).first();
+    if (!link) return new Response('lien invalide', { status: 404 });
+    const fam = await env.DB
+      .prepare('SELECT source_json FROM families WHERE id = ?')
+      .bind(link.family_id).first();
+    if (!fam || !fam.source_json) return new Response('source absente', { status: 404 });
+    let src;
+    try { src = JSON.parse(fam.source_json); } catch (_) { src = null; }
+    if (!src) return new Response('source invalide', { status: 404 });
+
+    let target = null;
+    if (src.type === 'xtream' && src.server_url && src.username && src.password) {
+      const base = String(src.server_url).replace(/\/+$/, '');
+      const u = encodeURIComponent(src.username);
+      const p = encodeURIComponent(src.password);
+      target = `${base}/get.php?username=${u}&password=${p}&type=m3u_plus&output=ts`;
+    } else if (src.type === 'm3u' && src.m3u_url) {
+      target = src.m3u_url;
+    }
+    if (!target) return new Response('source incomplète', { status: 404 });
+    return Response.redirect(target, 302);
+  } catch (_) {
+    return new Response('erreur', { status: 500 });
+  }
+}
+
 // /api/backup/:mac — public (GET + PUT).
 //
 //  Sauvegarde cloud "best-effort" des donnees LOCALES de l'utilisateur
@@ -2576,6 +2616,14 @@ export default {
         return badRequest('only GET supported on /api/device-source/:mac');
       }
       return await handlePublicDeviceSource(env, segments[2]);
+    }
+
+    // /api/m3u/:token — public. Lien M3U distribuable d'une FAMILLE : on
+    // résout le jeton → source de la famille → on renvoie la playlist M3U
+    // (redirection vers le get.php Xtream ou l'URL M3U). Plusieurs liens
+    // séparés possibles, tous adossés à UNE seule source.
+    if (segments[0] === 'api' && segments[1] === 'm3u' && segments.length === 3) {
+      return await handlePublicFamilyM3u(env, segments[2]);
     }
 
     // /api/backup/:mac — public, sauvegarde/restauration cloud par MAC
