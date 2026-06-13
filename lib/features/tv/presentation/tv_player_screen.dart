@@ -22,6 +22,7 @@ import '../../channels/domain/channel.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
+import 'tv_components.dart';
 
 class TvPlayerScreen extends StatefulWidget {
   const TvPlayerScreen({
@@ -52,6 +53,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   String _numBuffer = ''; // saisie d'un numéro de chaîne (touches 0-9)
   StreamSubscription<bool>? _bufSub;
 
+  // --- Anti-gel / anti écran-noir (équiv. libVLC du prompt) ---
+  StreamSubscription<Duration>? _posSub;
+  StreamSubscription<String>? _errSub;
+  StreamSubscription<bool>? _completedSub;
+  Timer? _watchdog;
+  DateTime _lastProgress = DateTime.now();
+  bool _recovering = false;
+  static const Duration _frozen = Duration(seconds: 15);
+  static const Duration _watchEvery = Duration(seconds: 4);
+
   Channel get _current => widget.channels[_index];
 
   static const List<LogicalKeyboardKey> _digits = <LogicalKeyboardKey>[
@@ -73,10 +84,53 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     _bufSub = _player.stream.buffering.listen((bool b) {
       if (mounted) setState(() => _buffering = b);
     });
+    // Toute progression de lecture = « pas gelé ».
+    _posSub = _player.stream.position.listen((Duration _) {
+      _lastProgress = DateTime.now();
+      _recovering = false;
+    });
+    // Erreur (codec/réseau) ou fin de flux live → on reconnecte.
+    _errSub = _player.stream.error.listen((String _) => _recover());
+    _completedSub = _player.stream.completed.listen((bool done) {
+      if (done) _recover();
+    });
+    _configurePlayer(); // décodage logiciel forcé + gros buffers
     _open();
+    // Chien de garde : aucune progression depuis 15 s → reconnexion auto.
+    _watchdog = Timer.periodic(_watchEvery, (_) {
+      if (!_recovering &&
+          DateTime.now().difference(_lastProgress) > _frozen) {
+        _recover();
+      }
+    });
     // Garde l'app « en ligne » + chaîne à jour pendant le visionnage.
     _presenceTimer = Timer.periodic(const Duration(minutes: 3),
         (_) => SubscriptionState.instance.syncWithBackend());
+  }
+
+  // Les 2 réglages qui garantissent l'IMAGE et limitent le gel :
+  //   • hwdec=no → décodage 100 % LOGICIEL (HEVC/H.265 + AC-3 garantis,
+  //     même si la box n'a pas le codec matériel → fini l'écran noir).
+  //   • cache / readahead → gros tampon réseau (~10 s) → moins de gels.
+  Future<void> _configurePlayer() async {
+    final dynamic platform = _player.platform;
+    if (platform is NativePlayer) {
+      try {
+        await platform.setProperty('hwdec', 'no');
+        await platform.setProperty('cache', 'yes');
+        await platform.setProperty('cache-secs', '10');
+        await platform.setProperty('demuxer-readahead-secs', '10');
+        await platform.setProperty('network-timeout', '30');
+      } catch (_) {/* best effort */}
+    }
+  }
+
+  // Reconnexion : on ré-ouvre la MÊME URL (retour au direct).
+  void _recover() {
+    if (_recovering) return;
+    _recovering = true;
+    _lastProgress = DateTime.now();
+    _open();
   }
 
   @override
@@ -84,7 +138,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     _hideTimer?.cancel();
     _presenceTimer?.cancel();
     _numTimer?.cancel();
+    _watchdog?.cancel();
     _bufSub?.cancel();
+    _posSub?.cancel();
+    _errSub?.cancel();
+    _completedSub?.cancel();
     NowPlaying.instance.clear();
     SubscriptionState.instance.syncWithBackend(); // on ne regarde plus rien
     _player.dispose();
@@ -94,6 +152,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
   void _open() {
     setState(() => _buffering = true);
+    _lastProgress = DateTime.now();
     _player.open(Media(_current.streamUrl));
     // Historique (reprise « Continuer à regarder », favoris, reco).
     RecentlyWatchedRepository.instance.record(_current.id);
@@ -203,11 +262,25 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
             fit: StackFit.expand,
             children: <Widget>[
               Video(controller: _video, controls: NoVideoControls),
+              // Écran de marque pendant l'ouverture / le zap / une
+              // reconnexion : le LOGO « The Few » s'affiche à chaque
+              // changement de chaîne, le temps que le flux s'ouvre.
               if (_buffering)
-                const Center(
-                  child: SizedBox(
-                    width: 56, height: 56,
-                    child: CircularProgressIndicator(strokeWidth: 3),
+                const ColoredBox(
+                  color: TvTokens.bg,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        TvLogo(width: 200),
+                        SizedBox(height: 28),
+                        SizedBox(
+                          width: 40, height: 40,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 3, color: TvTokens.gold),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               // Barre de chaînes (auto-masquée).
