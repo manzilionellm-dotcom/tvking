@@ -374,7 +374,69 @@ class _HomeScreenState extends State<HomeScreen> {
     final List<Channel> docs = buckets.docs;
     final List<Channel> live = buckets.live;
 
-    // Hero : prend la 1ʳᵉ chaîne avec un logo (plus joli) sinon la 1ʳᵉ
+    // ===== Accueil « Privé » (flavor adulte) : contenu DIVISÉ en 2 =====
+    //  « En direct » (Live Adult = chaînes live) et « Cinéma » (Cinema Adult
+    //  = VOD/films). Tout est déjà filtré au repository (genre adulte
+    //  uniquement) ; ici on sépare juste live vs à la demande.
+    if (FlavorConfig.current.adultOnly) {
+      final List<Channel> adultLive =
+          all.where((Channel c) => c.isLive).toList(growable: false);
+      final List<Channel> adultVod =
+          all.where((Channel c) => !c.isLive).toList(growable: false);
+      final Channel? heroA = all.isEmpty
+          ? null
+          : all.firstWhere((Channel c) => c.hasLogo, orElse: () => all.first);
+      return CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: <Widget>[
+          const SliverPadding(padding: EdgeInsets.only(top: 64)),
+          const SliverToBoxAdapter(child: PaywallBanner()),
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
+          if (heroA != null)
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+              sliver: SliverToBoxAdapter(
+                child: HeroSection(
+                  channel: heroA,
+                  onWatch: () => _onChannelTap(heroA),
+                  onInfo: () => _onChannelLongPress(heroA),
+                ),
+              ),
+            ),
+          // ----- En direct (Live Adult) -----
+          if (adultLive.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 18),
+                child: PremiumRow(
+                  title: context.l10n.sectionLiveNow,
+                  subtitle: context.l10n.channelCount(adultLive.length),
+                  channels: adultLive.take(40).toList(),
+                  onChannelTap: _onChannelTap,
+                  onChannelLongPress: _onChannelLongPress,
+                  onSeeAll: _openLiveTV,
+                ),
+              ),
+            ),
+          // ----- Cinéma (Cinema Adult = VOD) -----
+          if (adultVod.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 18),
+                child: PremiumRow(
+                  title: context.l10n.catMovies,
+                  subtitle: context.l10n.channelCount(adultVod.length),
+                  channels: adultVod.take(40).toList(),
+                  onChannelTap: _onChannelTap,
+                  onChannelLongPress: _onChannelLongPress,
+                ),
+              ),
+            ),
+          const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+        ],
+      );
+    }
+
     final Channel hero =
         all.firstWhere((Channel c) => c.hasLogo, orElse: () => all.first);
 
