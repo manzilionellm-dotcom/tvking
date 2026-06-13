@@ -26,6 +26,9 @@ import 'package:flutter/foundation.dart';
 /// pour ne pas casser les lecteurs de `FlavorConfig.current.flavor`.
 enum Flavor {
   sevenMotion,
+  // « Privé » — édition 18+ : MÊME app, mais nom/logo dédiés et
+  // catalogue limité aux chaînes adultes (adultOnly = true).
+  prive,
 }
 
 @immutable
@@ -134,6 +137,22 @@ class FlavorConfig {
     // nouveau revendeur `yzrgxcat.getpremiumiptv.fr`. URL choisie
     // par l'utilisateur, credentials individuels saisis au login
     // (Identifiant + code secret) — pas hardcodes.
+    iptvServerUrl: 'http://yzrgxcat.getpremiumiptv.fr',
+  );
+
+  /// Privé — édition 18+ « by invitation only ». MÊME app que The Few
+  /// (même code, même backend, même lecteur), mais :
+  ///   - nom/logo dédiés (« Privé »),
+  ///   - `adultOnly` = true → SEULES les chaînes adultes (Live Adult /
+  ///     Cinema Adult…) sont affichées (filtre au repository),
+  ///   - portail d'âge (18+) au 1er lancement.
+  static const FlavorConfig prive = FlavorConfig(
+    flavor: Flavor.prive,
+    appName: 'Privé',
+    appTagline: '18+ · BY INVITATION ONLY',
+    adultOnly: true,
+    biometricMandatory: false,
+    requireAgeGate: true,
     iptvServerUrl: 'http://yzrgxcat.getpremiumiptv.fr',
   );
 }

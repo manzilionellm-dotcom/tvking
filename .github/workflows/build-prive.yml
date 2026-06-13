@@ -1,0 +1,170 @@
+# ============================================================================
+#  build-prive.yml — Compile « Privé » (édition 18+) en APK sideloadable.
+#
+#  MÊME app que The Few mobile (entrée lib/main_prive.dart → bootApp()), mais
+#  flavor `prive` : nom/logo « Privé » + adultOnly (chaînes adultes seulement).
+#  applicationId DISTINCT (com.manzilionellm.prive) → s'installe À CÔTÉ de
+#  The Few sans la remplacer.
+#
+#  v1 = release --split-per-abi (arm64) → prive.apk sur la release "prive-latest".
+# ============================================================================
+name: Build Privé (APK)
+
+on:
+  push:
+    branches: ['main', 'claude/**', 'feature/**']
+    paths:
+      - 'lib/main_prive.dart'
+      - 'lib/core/flavor/flavor.dart'
+      - 'assets/branding/prive_icon.png'
+      - 'assets/branding/prive_icon_fg.png'
+      - 'flutter_launcher_icons_prive.yaml'
+      - '.github/workflows/build-prive.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-prive:
+    name: Build Privé APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses || true
+
+      # applicationId DISTINCT (com.manzilionellm.prive) pour coexister avec
+      # The Few (com.manzilionellm.tvking). Pas de code natif custom → flutter
+      # create régénère un projet cohérent (MainActivity Flutter par défaut).
+      - name: Generate native Android folder (Privé)
+        run: flutter create . --platforms=android --org com.manzilionellm --project-name prive
+
+      - name: Brand manifest (Privé)
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          sed -i 's|android:label="prive"|android:label="Privé"|g' "$MANIFEST" || true
+          grep 'android:label' "$MANIFEST" || true
+
+      - name: Patch manifest — réseau (cleartext HTTP + INTERNET)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST"
+          fi
+          if ! grep -q 'usesCleartextTraffic' "$MANIFEST"; then
+            sed -i 's|<application|<application\n        android:usesCleartextTraffic="true"|' "$MANIFEST"
+          fi
+          grep -nE 'INTERNET|usesCleartextTraffic' "$MANIFEST" || true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Patch screen_brightness_android build.gradle
+        run: |
+          set -e
+          FILE=$(find ~/.pub-cache/hosted/pub.dev -path "*/screen_brightness_android-*/android/build.gradle" 2>/dev/null | head -1)
+          if [ -z "$FILE" ]; then
+            echo "skip screen_brightness"; exit 0
+          fi
+          export PATCH_FILE="$FILE"
+          python3 << 'PYEOF'
+          import os, re
+          file = os.environ['PATCH_FILE']
+          lines = open(file).readlines()
+          kre = re.compile(r'^\s*kotlin\s*\{')
+          out=[]; ink=False; depth=0; removed=0
+          for line in lines:
+              if not ink:
+                  if kre.match(line):
+                      ink=True; depth=line.count('{')-line.count('}'); removed+=1
+                      if depth<=0: ink=False
+                      continue
+                  out.append(line)
+              else:
+                  depth+=line.count('{')-line.count('}'); removed+=1
+                  if depth<=0: ink=False
+          if removed: open(file,'w').writelines(out); print('patched', removed)
+          else: print('no kotlin block')
+          PYEOF
+
+      - name: Patch build.gradle.kts for notifications (desugaring)
+        run: |
+          set -e
+          python3 << 'PYEOF'
+          f = "android/app/build.gradle.kts"
+          s = open(f).read()
+          if 'isCoreLibraryDesugaringEnabled' not in s:
+              s = s.replace('compileOptions {',
+                  'compileOptions {\n        isCoreLibraryDesugaringEnabled = true', 1)
+          if 'desugar_jdk_libs' not in s:
+              s = s.rstrip() + ('\n\ndependencies {\n'
+                  '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n')
+          open(f, 'w').write(s)
+          PYEOF
+
+      - name: Generate AppLocalizations from .arb files
+        run: flutter gen-l10n || true
+
+      - name: Generate launcher icons (logo Privé)
+        run: dart run flutter_launcher_icons -f flutter_launcher_icons_prive.yaml || true
+
+      - name: Build Privé (release, arm64, target main_prive)
+        run: |
+          set -e
+          BUILD_TS=$(date +%s)
+          ok=
+          for attempt in 1 2 3 4; do
+            flutter build apk --release --no-tree-shake-icons --split-per-abi \
+              --obfuscate --split-debug-info=build/symbols \
+              --dart-define=APP_BUILD_TS=$BUILD_TS \
+              --target=lib/main_prive.dart && { ok=1; break; }
+            echo "attempt $attempt failed; retry 25s"; sleep 25
+          done
+          [ "$ok" = 1 ] || { echo "build failed"; exit 1; }
+          echo "=== APKs ==="; ls -lah build/app/outputs/flutter-apk/
+
+      - name: Publish "prive-latest" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -ex
+          REPO="${{ github.repository }}"
+          SRC="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
+          OUT="build/app/outputs/flutter-apk/prive.apk"
+          cp "$SRC" "$OUT"
+          NOTES="Privé — édition 18+ (même app que The Few, chaînes adultes uniquement).
+
+          Sideload : https://github.com/$REPO/releases/download/prive-latest/prive.apk
+          S'installe À CÔTÉ de The Few (applicationId distinct).
+
+          Commit : ${{ github.sha }}"
+          if gh release view prive-latest --repo "$REPO" >/dev/null 2>&1; then
+            gh release edit prive-latest --repo "$REPO" --notes "$NOTES"
+            gh release upload prive-latest --repo "$REPO" --clobber "$OUT"
+          else
+            gh release create prive-latest --repo "$REPO" \
+              --title "Privé — dernier build" --notes "$NOTES" --prerelease "$OUT"
+          fi
+          gh release view prive-latest --repo "$REPO"

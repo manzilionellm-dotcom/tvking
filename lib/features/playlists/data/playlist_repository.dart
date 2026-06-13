@@ -31,6 +31,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../core/flavor/flavor.dart';
 import '../../channels/domain/channel.dart';
+import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
 import '../domain/playlist.dart';
 import 'm3u_fetcher.dart';
@@ -75,12 +76,25 @@ class PlaylistRepository {
   List<Channel> _channelsCache = const <Channel>[];
   List<Playlist> _playlistsCache = const <Playlist>[];
 
-  Stream<List<Channel>> get channelsStream => _channelsController.stream;
+  // FILTRE FLAVOR (POINT UNIQUE) : sur un flavor `adultOnly` (ex. « Privé »),
+  // on ne laisse passer QUE les chaînes du genre Adulte. Comme tout l'UI
+  // (accueil, recherche, favoris, EPG, reco) lit les chaînes par ICI, la
+  // restriction est héritée partout, sans toucher chaque écran. Sur les
+  // flavors normaux (The Few, TV), `adultOnly` = false → aucune restriction.
+  List<Channel> _applyFlavorFilter(List<Channel> all) {
+    if (!FlavorConfig.current.adultOnly) return all;
+    return all
+        .where((Channel c) => c.genre == ChannelGenre.adult)
+        .toList(growable: false);
+  }
+
+  Stream<List<Channel>> get channelsStream =>
+      _channelsController.stream.map(_applyFlavorFilter);
   Stream<List<Playlist>> get playlistsStream => _playlistsController.stream;
 
   /// Snapshot synchrone des chaînes actuellement chargées. À utiliser
   /// en `initialData` d'un StreamBuilder pour avoir l'état immédiatement.
-  List<Channel> get currentChannels => _channelsCache;
+  List<Channel> get currentChannels => _applyFlavorFilter(_channelsCache);
 
   /// Snapshot synchrone des playlists actuellement chargées.
   List<Playlist> get currentPlaylists => _playlistsCache;
