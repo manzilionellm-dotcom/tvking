@@ -19,6 +19,7 @@ import 'package:media_kit/media_kit.dart';
 import 'core/app/app_platform.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
+import 'core/notifications/notification_service.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/favorites_repository.dart';
@@ -131,6 +132,10 @@ Future<void> _bootstrap() async {
   // 6) Favoris : on précharge l'ensemble des chaînes favorites pour que le
   //    cœur ❤ du lecteur affiche le bon état dès la 1re ouverture.
   unawaited(FavoritesRepository.instance.initialize());
+
+  // 7) Notifications (alarmes « ton équipe joue bientôt ») : init du plugin +
+  //    fuseaux horaires + canal Android. Idempotent, best-effort.
+  unawaited(NotificationService.instance.init());
 
   runApp(const TvApp());
 }

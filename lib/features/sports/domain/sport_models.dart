@@ -47,6 +47,7 @@ class SportEvent {
     this.awayScore,
     this.date = '',
     this.time = '',
+    this.timestamp = '',
     this.status = '',
     this.league = '',
   });
@@ -59,6 +60,7 @@ class SportEvent {
   final String? awayScore;
   final String date; // YYYY-MM-DD
   final String time; // HH:MM:SS
+  final String timestamp; // ISO UTC (TheSportsDB strTimestamp)
   final String status;
   final String league;
 
@@ -67,6 +69,20 @@ class SportEvent {
       homeScore!.isNotEmpty &&
       awayScore != null &&
       awayScore!.isNotEmpty;
+
+  /// Date/heure de début du match (UTC → local), si connue.
+  DateTime? get startsAt {
+    if (timestamp.isNotEmpty) {
+      final DateTime? dt = DateTime.tryParse(timestamp);
+      if (dt != null) return dt.toLocal();
+    }
+    if (date.isNotEmpty) {
+      final DateTime? dt = DateTime.tryParse(
+          '${date}T${time.isEmpty ? '00:00:00' : time}Z');
+      if (dt != null) return dt.toLocal();
+    }
+    return null;
+  }
 
   factory SportEvent.fromJson(Map<String, dynamic> j) => SportEvent(
         id: '${j['id'] ?? ''}',
@@ -77,6 +93,7 @@ class SportEvent {
         awayScore: j['awayScore'] == null ? null : '${j['awayScore']}',
         date: '${j['date'] ?? ''}',
         time: '${j['time'] ?? ''}',
+        timestamp: '${j['timestamp'] ?? ''}',
         status: '${j['status'] ?? ''}',
         league: '${j['league'] ?? ''}',
       );

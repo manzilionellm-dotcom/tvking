@@ -1,12 +1,12 @@
 // =========================================================
-//  sports_repository.dart — Actu sport + équipe préférée
+//  sports_repository.dart — Actu sport + équipes préférées (multi) + alarmes
 // =========================================================
-//  Source = TheSportsDB, MAIS toujours via ton Worker (proxy + cache 10 min) :
-//  l'app n'appelle jamais l'API tierce directement.
+//  Source = TheSportsDB via le Worker (proxy + cache 10 min).
 //    - search(q)            : rechercher une équipe (picker).
-//    - setFavorite(team)    : choisir SON équipe (persisté).
-//    - eventsStream         : derniers + prochains matchs (avec score),
-//                             rafraîchis automatiquement toutes les 10 min.
+//    - addFavorite/remove   : gérer PLUSIEURS équipes préférées (persisté).
+//    - eventsFor(id)        : derniers + prochains matchs (score), maj 10 min.
+//    - ALARMES : pour chaque match à venir, un rappel est programmé ~1 h avant
+//      (NotificationService) → « ⚽ <équipe> joue bientôt ».
 // =========================================================
 import 'dart:async';
 import 'dart:convert';
@@ -15,6 +15,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/notifications/notification_service.dart';
 import '../../subscription/data/subscription_backend.dart' show kSubscriptionBaseUrl;
 import '../domain/sport_models.dart';
 
@@ -28,37 +29,55 @@ class SportsRepository {
   SportsRepository._();
   static final SportsRepository instance = SportsRepository._();
 
-  static const String _kFavKey = 'sports.favorite_team.v1';
+  static const String _kFavV2 = 'sports.favorites.v2'; // tableau JSON d'équipes
+  static const String _kFavV1 = 'sports.favorite_team.v1'; // ancien : 1 équipe
   static const Duration _refresh = Duration(minutes: 10);
 
-  SportTeam? _favorite;
-  SportsEvents _events = const SportsEvents();
+  final List<SportTeam> _favorites = <SportTeam>[];
+  final Map<String, SportsEvents> _eventsByTeam = <String, SportsEvents>{};
   Timer? _timer;
   bool _initialized = false;
 
-  final StreamController<SportTeam?> _favController =
-      StreamController<SportTeam?>.broadcast();
-  final StreamController<SportsEvents> _eventsController =
-      StreamController<SportsEvents>.broadcast();
+  final StreamController<List<SportTeam>> _favController =
+      StreamController<List<SportTeam>>.broadcast();
+  final StreamController<void> _changesController =
+      StreamController<void>.broadcast();
 
-  SportTeam? get favorite => _favorite;
-  SportsEvents get events => _events;
-  Stream<SportTeam?> get favoriteStream => _favController.stream;
-  Stream<SportsEvents> get eventsStream => _eventsController.stream;
+  List<SportTeam> get favorites => List<SportTeam>.unmodifiable(_favorites);
+  bool isFavorite(String id) => _favorites.any((SportTeam t) => t.id == id);
+  SportsEvents eventsFor(String id) =>
+      _eventsByTeam[id] ?? const SportsEvents();
+  Stream<List<SportTeam>> get favoritesStream => _favController.stream;
+  Stream<void> get changesStream => _changesController.stream;
 
   Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String? raw = prefs.getString(_kFavKey);
-      if (raw != null && raw.isNotEmpty) {
-        _favorite = SportTeam.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      final String? v2 = prefs.getString(_kFavV2);
+      if (v2 != null && v2.isNotEmpty) {
+        final List<dynamic> list = jsonDecode(v2) as List<dynamic>;
+        _favorites
+          ..clear()
+          ..addAll(list
+              .whereType<Map<String, dynamic>>()
+              .map(SportTeam.fromJson)
+              .where((SportTeam t) => t.id.isNotEmpty));
+      } else {
+        // Migration depuis l'ancienne unique équipe.
+        final String? v1 = prefs.getString(_kFavV1);
+        if (v1 != null && v1.isNotEmpty) {
+          _favorites.add(
+              SportTeam.fromJson(jsonDecode(v1) as Map<String, dynamic>));
+          await _save(prefs);
+          await prefs.remove(_kFavV1);
+        }
       }
     } catch (_) {}
-    if (!_favController.isClosed) _favController.add(_favorite);
-    if (_favorite != null) {
-      unawaited(_fetchEvents());
+    _emitFav();
+    if (_favorites.isNotEmpty) {
+      unawaited(_fetchAll());
       _startTimer();
     }
   }
@@ -85,42 +104,63 @@ class SportsRepository {
     }
   }
 
-  Future<void> setFavorite(SportTeam team) async {
-    _favorite = team;
+  Future<void> addFavorite(SportTeam team) async {
+    if (isFavorite(team.id)) return;
+    _favorites.add(team);
     try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kFavKey, jsonEncode(team.toJson()));
+      await _save(await SharedPreferences.getInstance());
     } catch (_) {}
-    if (!_favController.isClosed) _favController.add(_favorite);
-    _events = const SportsEvents();
-    if (!_eventsController.isClosed) _eventsController.add(_events);
-    await _fetchEvents();
+    _emitFav();
+    await _fetchTeam(team.id);
     _startTimer();
   }
 
-  Future<void> clearFavorite() async {
-    _favorite = null;
-    _events = const SportsEvents();
-    _timer?.cancel();
+  Future<void> removeFavorite(String id) async {
+    _favorites.removeWhere((SportTeam t) => t.id == id);
+    _eventsByTeam.remove(id);
     try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_kFavKey);
+      await _save(await SharedPreferences.getInstance());
     } catch (_) {}
-    if (!_favController.isClosed) _favController.add(null);
-    if (!_eventsController.isClosed) _eventsController.add(_events);
+    _emitFav();
+    if (!_changesController.isClosed) _changesController.add(null);
+    if (_favorites.isEmpty) _timer?.cancel();
+  }
+
+  Future<void> _save(SharedPreferences prefs) async {
+    await prefs.setString(
+        _kFavV2,
+        jsonEncode(_favorites.map((SportTeam t) => t.toJson()).toList()));
+  }
+
+  void _emitFav() {
+    if (!_favController.isClosed) {
+      _favController.add(List<SportTeam>.unmodifiable(_favorites));
+    }
   }
 
   void _startTimer() {
     _timer?.cancel();
-    _timer = Timer.periodic(_refresh, (_) => _fetchEvents());
+    _timer = Timer.periodic(_refresh, (_) => _fetchAll());
   }
 
-  Future<void> _fetchEvents() async {
-    final SportTeam? fav = _favorite;
-    if (fav == null) return;
+  Future<void> _fetchAll() async {
+    for (final SportTeam t in List<SportTeam>.from(_favorites)) {
+      await _fetchTeam(t.id);
+    }
+  }
+
+  Future<void> _fetchTeam(String id) async {
+    SportTeam? team;
+    for (final SportTeam t in _favorites) {
+      if (t.id == id) {
+        team = t;
+        break;
+      }
+    }
+    if (team == null) return;
     try {
       final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/sports/team/${Uri.encodeComponent(fav.id)}'),
+          .get(Uri.parse('$kSubscriptionBaseUrl/api/sports/team/${Uri.encodeComponent(id)}'),
               headers: const <String, String>{'Accept': 'application/json'})
           .timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) return;
@@ -130,10 +170,30 @@ class SportsRepository {
               .whereType<Map<String, dynamic>>()
               .map(SportEvent.fromJson)
               .toList(growable: false);
-      _events = SportsEvents(last: parse('last'), next: parse('next'));
-      if (!_eventsController.isClosed) _eventsController.add(_events);
+      final SportsEvents ev = SportsEvents(last: parse('last'), next: parse('next'));
+      _eventsByTeam[id] = ev;
+      if (!_changesController.isClosed) _changesController.add(null);
+      unawaited(_scheduleReminders(team, ev.next));
     } catch (e) {
       if (kDebugMode) debugPrint('[Sports] events error: $e');
+    }
+  }
+
+  // ALARME ~1 h avant chaque match à venir. Idempotent (le service dédoublonne
+  // par id stable) → re-planifier toutes les 10 min ne crée pas de doublons.
+  Future<void> _scheduleReminders(SportTeam team, List<SportEvent> next) async {
+    for (final SportEvent ev in next) {
+      final DateTime? start = ev.startsAt;
+      if (start == null || start.isBefore(DateTime.now())) continue;
+      try {
+        await NotificationService.instance.scheduleProgramReminder(
+          channelId: 'sport_${team.id}_${ev.id}',
+          channelName: team.name,
+          title: '⚽ ${team.name} joue bientôt',
+          startMs: start.millisecondsSinceEpoch,
+          leadMinutes: 60,
+        );
+      } catch (_) {}
     }
   }
 }

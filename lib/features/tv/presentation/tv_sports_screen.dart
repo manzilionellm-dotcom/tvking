@@ -1,9 +1,10 @@
 // =========================================================
-//  tv_sports_screen.dart — « Actu » sport + équipe préférée (10-foot)
+//  tv_sports_screen.dart — « Actu » sport + équipes préférées (10-foot)
 // =========================================================
-//  Bandeau défilant des matchs (résultats + à venir), rafraîchi toutes les
-//  10 min. Le client choisit SON équipe → on affiche son dernier match (score)
-//  et son prochain match. Données = TheSportsDB via le Worker (proxy + cache).
+//  Plusieurs équipes préférées. Pour chacune : dernier match (score) + prochain
+//  match, + un bandeau ACTU qui défile (tous les matchs). Rafraîchi 10 min. Une
+//  ALARME est posée ~1 h avant chaque match à venir. Données = TheSportsDB via
+//  le Worker (proxy + cache).
 // =========================================================
 import 'dart:async';
 
@@ -25,107 +26,81 @@ class TvSportsScreen extends StatefulWidget {
 }
 
 class _TvSportsScreenState extends State<TvSportsScreen> {
-  StreamSubscription<SportTeam?>? _favSub;
-  StreamSubscription<SportsEvents>? _evSub;
-  SportTeam? _fav = SportsRepository.instance.favorite;
-  SportsEvents _events = SportsRepository.instance.events;
+  StreamSubscription<List<SportTeam>>? _favSub;
+  StreamSubscription<void>? _changeSub;
+  List<SportTeam> _favs = SportsRepository.instance.favorites;
 
   @override
   void initState() {
     super.initState();
     SportsRepository.instance.initialize();
-    _favSub = SportsRepository.instance.favoriteStream.listen((SportTeam? t) {
-      if (mounted) setState(() => _fav = t);
+    _favSub = SportsRepository.instance.favoritesStream.listen((List<SportTeam> t) {
+      if (mounted) setState(() => _favs = t);
     });
-    _evSub = SportsRepository.instance.eventsStream.listen((SportsEvents e) {
-      if (mounted) setState(() => _events = e);
+    _changeSub = SportsRepository.instance.changesStream.listen((_) {
+      if (mounted) setState(() {});
     });
   }
 
   @override
   void dispose() {
     _favSub?.cancel();
-    _evSub?.cancel();
+    _changeSub?.cancel();
     super.dispose();
   }
 
-  Future<void> _pickTeam() async {
+  Future<void> _addTeam() async {
     final SportTeam? t = await Navigator.of(context).push<SportTeam>(
       MaterialPageRoute<SportTeam>(
         builder: (_) => const TvShell(child: TvTeamPickerScreen()),
       ),
     );
-    if (t != null) await SportsRepository.instance.setFavorite(t);
+    if (t != null) await SportsRepository.instance.addFavorite(t);
   }
 
   @override
   Widget build(BuildContext context) {
-    final SportTeam? fav = _fav;
-    if (fav == null) return _emptyState();
+    if (_favs.isEmpty) return _emptyState();
 
-    final List<String> tickerItems = <String>[
-      ..._events.last.map((SportEvent e) => e.ticker),
-      ..._events.next.map((SportEvent e) => e.ticker),
-    ];
+    final List<String> tickerItems = <String>[];
+    for (final SportTeam t in _favs) {
+      final SportsEvents e = SportsRepository.instance.eventsFor(t.id);
+      tickerItems.addAll(e.last.map((SportEvent x) => x.ticker));
+      tickerItems.addAll(e.next.map((SportEvent x) => x.ticker));
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        // ----- Bandeau défilant -----
         if (tickerItems.isNotEmpty) _Ticker(items: tickerItems),
-        if (tickerItems.isNotEmpty) const SizedBox(height: 18),
-        // ----- En-tête équipe -----
+        if (tickerItems.isNotEmpty) const SizedBox(height: 16),
         Row(
           children: <Widget>[
-            _badge(fav.badge, 56),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(fav.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: TvDimens.displayS,
-                          fontWeight: FontWeight.w800,
-                          color: TvTokens.text)),
-                  if (fav.league.isNotEmpty)
-                    Text(fav.league,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: TvDimens.label, color: TvTokens.muted)),
-                ],
-              ),
-            ),
+            Text('Mes équipes',
+                style: TextStyle(
+                    fontSize: TvDimens.displayS,
+                    fontWeight: FontWeight.w800,
+                    color: TvTokens.text)),
+            const Spacer(),
             _PillButton(
-                icon: Icons.swap_horiz_rounded,
-                label: 'Changer',
-                onSelect: _pickTeam),
+                icon: Icons.add_rounded, label: 'Ajouter', onSelect: _addTeam),
           ],
         ),
-        const SizedBox(height: 18),
-        // ----- Dernier / Prochain match -----
+        const SizedBox(height: 14),
         Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Expanded(
-                child: _MatchCard(
-                  title: 'Dernier match',
-                  event: _events.last.isNotEmpty ? _events.last.first : null,
-                ),
-              ),
-              const SizedBox(width: TvDimens.gutter),
-              Expanded(
-                child: _MatchCard(
-                  title: 'Prochain match',
-                  event: _events.next.isNotEmpty ? _events.next.first : null,
-                ),
-              ),
-            ],
+          child: ListView.separated(
+            padding: const EdgeInsets.only(right: 6, bottom: 8),
+            itemCount: _favs.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (BuildContext context, int i) {
+              final SportTeam t = _favs[i];
+              return _TeamSection(
+                team: t,
+                events: SportsRepository.instance.eventsFor(t.id),
+                autofocus: i == 0,
+                onRemove: () => SportsRepository.instance.removeFavorite(t.id),
+              );
+            },
           ),
         ),
       ],
@@ -136,17 +111,16 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            const Icon(Icons.sports_soccer_rounded,
-                size: 64, color: TvTokens.mutedDim),
+            const Icon(Icons.sports_soccer_rounded, size: 64, color: TvTokens.mutedDim),
             const SizedBox(height: 16),
-            Text('Choisis ton équipe préférée',
+            Text('Choisis tes équipes préférées',
                 style: TvTokens.display(32, color: TvTokens.text)),
             const SizedBox(height: 8),
             SizedBox(
-              width: 520,
+              width: 560,
               child: Text(
-                'Tu verras son dernier résultat et son prochain match (avec le score), '
-                'plus un bandeau d\'actu sport qui défile, mis à jour toutes les 10 minutes.',
+                'Tu verras leurs scores et leurs prochains matchs, un bandeau d\'actu '
+                'qui défile, et une alarme ~1 h avant chaque match.',
                 textAlign: TextAlign.center,
                 style: TvTokens.ui(16, color: TvTokens.mutedDim),
               ),
@@ -156,22 +130,87 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
                 icon: Icons.add_rounded,
                 label: 'Choisir mon équipe',
                 autofocus: true,
-                onSelect: _pickTeam),
+                onSelect: _addTeam),
           ],
         ),
       );
+}
 
-  Widget _badge(String url, double size) => SizedBox(
-        width: size,
-        height: size,
-        child: url.isNotEmpty
-            ? Image.network(url,
-                fit: BoxFit.contain,
-                cacheWidth: 160,
-                errorBuilder: (_, __, ___) =>
-                    const Icon(Icons.shield_rounded, color: TvTokens.muted))
-            : const Icon(Icons.shield_rounded, color: TvTokens.muted),
-      );
+class _TeamSection extends StatelessWidget {
+  const _TeamSection({
+    required this.team,
+    required this.events,
+    required this.onRemove,
+    this.autofocus = false,
+  });
+  final SportTeam team;
+  final SportsEvents events;
+  final VoidCallback onRemove;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: TvTokens.panel,
+        borderRadius: BorderRadius.circular(TvTokens.rCard),
+        border: Border.all(color: TvTokens.lineSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              SizedBox(
+                width: 44,
+                height: 44,
+                child: team.badge.isNotEmpty
+                    ? Image.network(team.badge,
+                        fit: BoxFit.contain,
+                        cacheWidth: 120,
+                        errorBuilder: (_, __, ___) =>
+                            const Icon(Icons.shield_rounded, color: TvTokens.muted))
+                    : const Icon(Icons.shield_rounded, color: TvTokens.muted),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(team.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: TvDimens.title,
+                        fontWeight: FontWeight.w800,
+                        color: TvTokens.text)),
+              ),
+              _IconBtn(
+                  icon: Icons.delete_outline_rounded,
+                  autofocus: autofocus,
+                  onSelect: onRemove),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: _MatchCard(
+                    title: 'Dernier match',
+                    event: events.last.isNotEmpty ? events.last.first : null),
+              ),
+              const SizedBox(width: TvDimens.gutter),
+              Expanded(
+                child: _MatchCard(
+                    title: 'Prochain match',
+                    event: events.next.isNotEmpty ? events.next.first : null),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Bandeau qui défile horizontalement (résultats + matchs à venir).
@@ -277,10 +316,10 @@ class _MatchCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: TvTokens.card,
-        borderRadius: BorderRadius.circular(TvTokens.rCard),
+        borderRadius: BorderRadius.circular(TvDimens.cardRadius),
         border: Border.all(color: TvTokens.lineSoft),
       ),
       child: Column(
@@ -288,12 +327,12 @@ class _MatchCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Text(title.toUpperCase(),
-              style: TvTokens.ui(13,
-                  weight: FontWeight.w700, color: TvTokens.mutedDim, spacing: 1.5)),
-          const SizedBox(height: 14),
+              style: TvTokens.ui(12,
+                  weight: FontWeight.w700, color: TvTokens.mutedDim, spacing: 1.2)),
+          const SizedBox(height: 12),
           if (event == null)
-            Text('Aucune donnée pour le moment',
-                style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim))
+            Text('Aucune donnée',
+                style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim))
           else ...<Widget>[
             Row(
               children: <Widget>[
@@ -303,18 +342,18 @@ class _MatchCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.right,
                       style: TextStyle(
-                          fontSize: TvDimens.title,
+                          fontSize: TvDimens.titleS,
                           fontWeight: FontWeight.w700,
                           color: TvTokens.text)),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Text(
                       event!.hasScore
                           ? '${event!.homeScore} – ${event!.awayScore}'
                           : 'vs',
                       style: TextStyle(
-                          fontSize: event!.hasScore ? 34 : 22,
+                          fontSize: event!.hasScore ? 28 : 18,
                           fontWeight: FontWeight.w800,
                           color: TvTokens.goldBright)),
                 ),
@@ -323,13 +362,13 @@ class _MatchCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                          fontSize: TvDimens.title,
+                          fontSize: TvDimens.titleS,
                           fontWeight: FontWeight.w700,
                           color: TvTokens.text)),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Text(
               <String>[
                 if (event!.league.isNotEmpty) event!.league,
@@ -340,11 +379,38 @@ class _MatchCard extends StatelessWidget {
               ].join('  ·  '),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: TvDimens.label, color: TvTokens.muted),
+              style: TextStyle(fontSize: TvDimens.caption, color: TvTokens.muted),
             ),
           ],
         ],
       ),
+    );
+  }
+}
+
+class _IconBtn extends StatelessWidget {
+  const _IconBtn({required this.icon, required this.onSelect, this.autofocus = false});
+  final IconData icon;
+  final VoidCallback onSelect;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      autofocus: autofocus,
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        return Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: focused ? TvTokens.gold : Colors.transparent,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon,
+              size: 24, color: focused ? const Color(0xFF1A1206) : TvTokens.muted),
+        );
+      },
     );
   }
 }
