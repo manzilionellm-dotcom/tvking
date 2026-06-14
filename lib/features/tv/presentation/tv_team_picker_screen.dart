@@ -15,6 +15,32 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 
+/// Catalogue VIP : les grandes équipes par sport. On stocke des NOMS ; au clic,
+/// on résout l'équipe (id + logo) via la recherche TheSportsDB (Worker). Ainsi
+/// le client choisit en UN clic, sans rien taper.
+const Map<String, List<String>> _kVipTeams = <String, List<String>>{
+  'Football': <String>[
+    'Real Madrid', 'Barcelona', 'Manchester United', 'Manchester City',
+    'Liverpool', 'Arsenal', 'Chelsea', 'Tottenham', 'Paris SG',
+    'Bayern Munich', 'Borussia Dortmund', 'Juventus', 'AC Milan',
+    'Inter Milan', 'Napoli', 'Atletico Madrid', 'Ajax', 'Porto',
+    'Benfica', 'Marseille',
+  ],
+  'Basket (NBA)': <String>[
+    'Los Angeles Lakers', 'Boston Celtics', 'Golden State Warriors',
+    'Chicago Bulls', 'Miami Heat', 'Milwaukee Bucks', 'Brooklyn Nets',
+    'Denver Nuggets', 'New York Knicks', 'Dallas Mavericks',
+  ],
+  'Rugby': <String>[
+    'Leinster', 'Toulouse', 'Saracens', 'Leicester Tigers',
+    'Stade Francais', 'Munster',
+  ],
+  'NFL': <String>[
+    'Kansas City Chiefs', 'Dallas Cowboys', 'New England Patriots',
+    'Green Bay Packers', 'San Francisco 49ers', 'Buffalo Bills',
+  ],
+};
+
 class TvTeamPickerScreen extends StatefulWidget {
   const TvTeamPickerScreen({super.key});
 
@@ -26,7 +52,10 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
   String _q = '';
   List<SportTeam> _results = const <SportTeam>[];
   bool _loading = false;
+  bool _resolving = false; // en train de résoudre une équipe du catalogue VIP
+  String? _msg; // petit message (équipe introuvable…)
   Timer? _debounce;
+  Timer? _msgTimer;
 
   // Instance STABLE → non reconstruite à chaque frappe (focus préservé).
   late final Widget _keyboard =
@@ -35,7 +64,38 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _msgTimer?.cancel();
     super.dispose();
+  }
+
+  // Clic sur une équipe du catalogue VIP (on n'a que le nom) → on résout l'id +
+  // le logo via la recherche, puis on renvoie l'équipe à l'appelant.
+  Future<void> _resolveAndPick(String name) async {
+    if (_resolving) return;
+    setState(() {
+      _resolving = true;
+      _msg = null;
+    });
+    final List<SportTeam> r = await SportsRepository.instance.search(name);
+    if (!mounted) return;
+    setState(() => _resolving = false);
+    if (r.isEmpty) {
+      _flash('« $name » introuvable — essaie la recherche.');
+      return;
+    }
+    final SportTeam best = r.firstWhere(
+      (SportTeam t) => t.name.toLowerCase() == name.toLowerCase(),
+      orElse: () => r.first,
+    );
+    if (mounted) Navigator.of(context).pop(best);
+  }
+
+  void _flash(String m) {
+    setState(() => _msg = m);
+    _msgTimer?.cancel();
+    _msgTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _msg = null);
+    });
   }
 
   void _type(String c) {
@@ -97,7 +157,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
                   borderRadius: BorderRadius.circular(TvDimens.cardRadius),
                 ),
                 child: Text(
-                  _q.isEmpty ? 'Tape le nom de ton équipe…' : _q,
+                  _q.isEmpty ? 'Choisis une équipe ci-dessous, ou tape un nom…' : _q,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -107,6 +167,15 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
                 ),
               ),
               const SizedBox(height: 14),
+              if (_msg != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(_msg!,
+                      style: TextStyle(
+                          fontSize: TvDimens.label,
+                          fontWeight: FontWeight.w600,
+                          color: TvTokens.live)),
+                ),
               Expanded(child: _resultsView()),
             ],
           ),
@@ -116,6 +185,16 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
   }
 
   Widget _resultsView() {
+    if (_resolving) {
+      return const Center(
+        child: SizedBox(
+            width: 40,
+            height: 40,
+            child: CircularProgressIndicator(strokeWidth: 3, color: TvTokens.gold)),
+      );
+    }
+    // Requête vide → CATALOGUE VIP : on choisit une grande équipe en 1 clic.
+    if (_q.trim().isEmpty) return _catalogView();
     if (_loading && _results.isEmpty) {
       return const Center(
         child: SizedBox(
@@ -126,10 +205,8 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
     }
     if (_results.isEmpty) {
       return Center(
-        child: Text(
-          _q.trim().length < 2 ? '' : 'Aucune équipe trouvée',
-          style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim),
-        ),
+        child: Text('Aucune équipe trouvée',
+            style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim)),
       );
     }
     return ListView.separated(
@@ -189,6 +266,58 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
       },
     );
   }
+
+  // Catalogue VIP : sections par sport, chips d'équipes animées (focus or).
+  Widget _catalogView() {
+    final List<Widget> children = <Widget>[];
+    bool first = true;
+    bool sectionFirst = true;
+    _kVipTeams.forEach((String sport, List<String> teams) {
+      children.add(Padding(
+        padding: EdgeInsets.fromLTRB(2, sectionFirst ? 0 : 20, 2, 10),
+        child: Text(sport.toUpperCase(),
+            style: TvTokens.ui(14,
+                weight: FontWeight.w700,
+                color: TvTokens.mutedDim,
+                spacing: 1.5)),
+      ));
+      sectionFirst = false;
+      final List<Widget> chips = <Widget>[];
+      for (final String name in teams) {
+        chips.add(_teamChip(name, autofocus: first));
+        first = false;
+      }
+      children.add(Wrap(spacing: 10, runSpacing: 10, children: chips));
+    });
+    return ListView(
+      padding: const EdgeInsets.only(right: 6, bottom: 12),
+      children: children,
+    );
+  }
+
+  Widget _teamChip(String name, {bool autofocus = false}) {
+    return TvFocusBuilder(
+      autofocus: autofocus,
+      scale: TvFocusScale.small,
+      onSelect: () => _resolveAndPick(name),
+      builder: (BuildContext context, bool focused) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: focused ? TvTokens.gold : TvTokens.card,
+            borderRadius: BorderRadius.circular(TvTokens.rButton),
+            border: Border.all(
+                color: focused ? TvTokens.gold : TvTokens.lineSoft),
+          ),
+          child: Text(name,
+              style: TextStyle(
+                  fontSize: TvDimens.titleS,
+                  fontWeight: FontWeight.w700,
+                  color: focused ? const Color(0xFF1A1206) : TvTokens.text)),
+        );
+      },
+    );
+  }
 }
 
 class _PickerKeyboard extends StatelessWidget {
@@ -220,7 +349,7 @@ class _PickerKeyboard extends StatelessWidget {
           runSpacing: 8,
           children: <Widget>[
             for (int i = 0; i < _keys.length; i++)
-              _Key(label: _keys[i], autofocus: i == 0, onTap: () => onType(_keys[i])),
+              _Key(label: _keys[i], onTap: () => onType(_keys[i])),
             _Key(label: '␣', wide: true, onTap: () => onType(' ')),
             _Key(label: '⌫', onTap: onBackspace),
             _Key(label: '✕', onTap: onClear),
