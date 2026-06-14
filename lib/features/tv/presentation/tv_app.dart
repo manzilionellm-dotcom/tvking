@@ -30,6 +30,7 @@ import 'tv_live_screen.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_search_screen.dart';
 import 'tv_settings_screen.dart';
+import 'tv_sports_screen.dart';
 import 'tv_shell.dart';
 
 /// Largeur LOGIQUE de référence du design TV. Toute l'app est rendue comme
@@ -317,7 +318,7 @@ class _TvGateState extends State<TvGate> {
 }
 
 /// Destinations de la navigation principale (buckets §8 home).
-enum TvDest { live, films, series, guide, recordings, search, settings }
+enum TvDest { live, news, films, series, guide, recordings, search, settings }
 
 extension on TvDest {
   // Libellé traduit selon la langue active (context.l10n).
@@ -325,6 +326,8 @@ extension on TvDest {
     switch (this) {
       case TvDest.live:
         return context.l10n.tvNavLive;
+      case TvDest.news:
+        return 'Actu';
       case TvDest.films:
         return context.l10n.tvNavFilms;
       case TvDest.series:
@@ -344,6 +347,8 @@ extension on TvDest {
     switch (this) {
       case TvDest.live:
         return Icons.live_tv_rounded;
+      case TvDest.news:
+        return Icons.sports_soccer_rounded;
       case TvDest.films:
         return Icons.movie_rounded;
       case TvDest.series:
@@ -649,6 +654,7 @@ class _ContentPanel extends StatelessWidget {
     // « Direct » et « Réglages » sont branchés ; les autres buckets
     // arrivent (BUILD_ORDER 6-9).
     if (dest == TvDest.live) return const TvLiveScreen();
+    if (dest == TvDest.news) return const TvSportsScreen();
     if (dest == TvDest.recordings) return const TvRecordingsScreen();
     if (dest == TvDest.search) return const TvSearchScreen();
     if (dest == TvDest.settings) return const TvSettingsScreen();
