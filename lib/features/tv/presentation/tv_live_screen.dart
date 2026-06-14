@@ -363,12 +363,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                     itemBuilder: (BuildContext context, int i) {
                     final String cat = cats[i];
                     final bool sel = cat == _selectedCat;
-                    final bool isFav = _isSpecialCat(cat);
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: TvFocusBuilder(
                         autofocus: i == 0 && !_heroShown,
-                        scale: TvFocusScale.large,
+                        scale: TvFocusScale.medium,
                         onSelect: () => setState(() => _selectedCat = cat),
                         builder: (BuildContext context, bool focused) {
                           // Le focus met à jour la grille (preview live).
@@ -377,19 +376,37 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                               if (mounted) setState(() => _selectedCat = cat);
                             });
                           }
-                          // Maison Noir : fond `--sel` + texte or au focus/
-                          // actif. JAMAIS de bloc blanc plein (interdit #4).
-                          final bool hl = focused || sel;
-                          final Color bg = hl ? TvTokens.sel : Colors.transparent;
-                          // Les favoris restent toujours teintés or (repère).
-                          final Color fg = hl
+                          // FOCUS UNIQUE (règle #3) : seul l'élément RÉELLEMENT
+                          // focus (D-pad) porte l'or — bordure 2 px + texte or
+                          // + ombre. La catégorie « active mais pas focus » =
+                          // gris neutre discret, JAMAIS d'or, jamais de scale.
+                          final bool active = sel && !focused;
+                          final Color bg = (focused || active)
+                              ? TvTokens.sel
+                              : Colors.transparent;
+                          final Color fg = focused
                               ? TvTokens.goldBright
-                              : (isFav ? TvTokens.gold : TvTokens.muted);
+                              : (active ? TvTokens.text : TvTokens.muted);
                           return Container(
                             decoration: BoxDecoration(
                               color: bg,
                               borderRadius:
-                                  BorderRadius.circular(TvDimens.cardRadius),
+                                  BorderRadius.circular(TvTokens.rMenuItem),
+                              border: focused
+                                  ? Border.all(
+                                      color: TvTokens.gold,
+                                      width: TvDimens.focusOutline)
+                                  : null,
+                              boxShadow: focused
+                                  ? <BoxShadow>[
+                                      BoxShadow(
+                                        color: TvTokens.gold
+                                            .withValues(alpha: 0.22),
+                                        blurRadius: TvDimens.focusGlowBlur,
+                                        spreadRadius: TvDimens.focusGlowSpread,
+                                      ),
+                                    ]
+                                  : null,
                             ),
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 12),
@@ -399,8 +416,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                   fontSize: TvDimens.titleS,
-                                  fontWeight:
-                                      isFav ? FontWeight.w800 : FontWeight.w600,
+                                  fontWeight: (focused || active)
+                                      ? FontWeight.w700
+                                      : FontWeight.w600,
                                   color: fg),
                             ),
                           );
@@ -504,7 +522,7 @@ class _ChannelGrid extends StatelessWidget {
       padding: const EdgeInsets.only(top: 4, bottom: 8),
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 230,
-        mainAxisExtent: 132,
+        mainAxisExtent: 152,
         crossAxisSpacing: TvDimens.gutter,
         mainAxisSpacing: TvDimens.gutter,
       ),
@@ -525,7 +543,7 @@ class _ChannelCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool fav = FavoritesRepository.instance.current.contains(channel.id);
-    final String? q = _qualityTag(channel);
+    final _ParsedName p = _parseName(channel);
     return TvFocusable(
       scale: TvFocusScale.small,
       onSelect: () {
@@ -541,27 +559,25 @@ class _ChannelCard extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            // Tuile premium : le logo posé sur une carte sombre arrondie, avec
-            // badge qualité (4K/HD/HEVC) et ❤ si la chaîne est en favori.
+            // Tuile : logo centré (avec padding) sur fond #161514, bordure
+            // blanche 5 % → les logos ne « flottent » plus comme des stickers.
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: TvTokens.card,
-                  borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-                  border: Border.all(color: TvTokens.lineSoft),
+                  color: TvTokens.tile,
+                  borderRadius: BorderRadius.circular(TvTokens.rCard),
+                  border: Border.all(color: TvTokens.tileBorder),
                 ),
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(14),
                 child: Stack(
                   children: <Widget>[
                     Positioned.fill(child: _Logo(channel: channel)),
-                    if (q != null)
-                      Positioned(top: 0, right: 0, child: _QualityBadge(tag: q)),
                     if (fav)
                       const Positioned(
                         top: 0,
-                        left: 0,
+                        right: 0,
                         child: Icon(Icons.favorite_rounded,
-                            size: 15, color: TvTokens.gold),
+                            size: 14, color: TvTokens.gold),
                       ),
                   ],
                 ),
@@ -569,7 +585,7 @@ class _ChannelCard extends StatelessWidget {
             ),
             const SizedBox(height: 7),
             Text(
-              channel.cleanName,
+              p.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
@@ -578,45 +594,81 @@ class _ChannelCard extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                   color: TvTokens.text),
             ),
+            // Badges qualité/tags PROPRES, après le nom (jamais dans le titre).
+            if (p.badges.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 4),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 5,
+                children: <Widget>[
+                  for (final String b in p.badges.take(3)) _TagBadge(label: b),
+                ],
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  /// Déduit un badge qualité du nom/catégorie (4K / FHD / HEVC / HD), sinon null.
-  static String? _qualityTag(Channel c) {
-    final String s = '${c.name} ${c.category}'.toUpperCase();
-    if (s.contains('4K') || s.contains('UHD') || s.contains('2160')) return '4K';
-    if (s.contains('FHD') || s.contains('1080')) return 'FHD';
-    if (s.contains('HEVC') || s.contains('H265') || s.contains('H.265')) {
-      return 'HEVC';
+  /// Extrait les tags du nom (qualité + VIP/RAW/60 FPS/HEVC/LIVE) en casse
+  /// uniforme et renvoie le nom NETTOYÉ + la liste des badges.
+  static _ParsedName _parseName(Channel c) {
+    String n = c.cleanName;
+    final List<String> badges = <String>[];
+    const List<(String, String)> rules = <(String, String)>[
+      ('4K', r'\b(4K|UHD|2160P?)\b'),
+      ('FHD', r'\b(FHD|1080P?)\b'),
+      ('HD', r'\bHD\b'),
+      ('HEVC', r'\b(HEVC|H\.?265)\b'),
+      ('60 FPS', r'\b60\s?FPS\b'),
+      ('VIP', r'\bVIP\b'),
+      ('RAW', r'\bRAW\b'),
+      ('LIVE', r'\bLIVE\b'),
+    ];
+    for (final (String label, String pattern) in rules) {
+      final RegExp re = RegExp(pattern, caseSensitive: false);
+      if (re.hasMatch(n)) {
+        badges.add(label);
+        n = n.replaceAll(re, ' ');
+      }
     }
-    if (RegExp(r'(^|[^A-Z])HD([^A-Z]|$)').hasMatch(s)) return 'HD';
-    return null;
+    n = n
+        .replaceAll(RegExp(r'\s{2,}'), ' ')
+        .replaceAll(RegExp(r'^[\s|·\-–]+'), '')
+        .replaceAll(RegExp(r'[\s|·\-–]+$'), '')
+        .trim();
+    if (n.isEmpty) n = c.cleanName; // garde-fou : jamais de nom vide
+    return _ParsedName(n, badges);
   }
 }
 
-/// Petit badge qualité (or sur fond sombre) posé dans le coin d'une vignette.
-class _QualityBadge extends StatelessWidget {
-  const _QualityBadge({required this.tag});
-  final String tag;
+/// Nom de chaîne nettoyé + ses badges extraits.
+class _ParsedName {
+  const _ParsedName(this.name, this.badges);
+  final String name;
+  final List<String> badges;
+}
+
+/// Petit badge discret (or sur fond or ~12 %), placé APRÈS le nom.
+class _TagBadge extends StatelessWidget {
+  const _TagBadge({required this.label});
+  final String label;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: TvTokens.gold.withValues(alpha: 0.6)),
+        color: TvTokens.badgeBg,
+        borderRadius: BorderRadius.circular(TvTokens.rSmall),
       ),
-      child: Text(tag,
+      child: Text(label,
           style: TextStyle(
               fontSize: 10,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.5,
-              color: TvTokens.goldBright)),
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+              color: TvTokens.gold)),
     );
   }
 }
@@ -640,6 +692,13 @@ class _Logo extends StatelessWidget {
       url,
       fit: BoxFit.contain,
       errorBuilder: (_, __, ___) => fallback,
+      // Skeleton Maison Noir : pendant le chargement, on montre les initiales
+      // très discrètes plutôt qu'un trou vide (finition premium).
+      loadingBuilder: (BuildContext context, Widget child,
+          ImageChunkEvent? progress) {
+        if (progress == null) return child;
+        return Opacity(opacity: 0.35, child: fallback);
+      },
       // Décodage hors-UI + petite taille mémoire (perf §10).
       cacheWidth: 200,
     );
