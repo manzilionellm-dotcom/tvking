@@ -1863,7 +1863,7 @@ async function handleUpsertClient(request, env, mac) {
 //  Toujours public (pas d'auth) : l'identifiant est le MAC,
 //  comme pour /config/:mac.
 // =========================================================
-async function handleHeartbeat(request, env) {
+async function handleHeartbeat(request, env, ctx) {
   let body;
   try {
     body = await request.json();
@@ -1885,7 +1885,17 @@ async function handleHeartbeat(request, env) {
   // `channel` = nom de la chaîne en cours de visionnage (envoyé par l'app),
   // ou '' si elle ne regarde rien. Affiché dans le panel « En ligne ».
   const channel = typeof body.channel === 'string' ? body.channel : '';
-  await recordPresence(env, mac, ip, country, now, channel);
+  // `defer` = exécute une écriture best-effort EN ARRIÈRE-PLAN (waitUntil) :
+  // la réponse part tout de suite, l'écriture continue après. À 5M, ça
+  // raccourcit le chemin critique et réduit la contention D1. Repli `await`
+  // (renvoie la promesse) si le runtime ne fournit pas `ctx`.
+  const defer = (p) => {
+    if (ctx && typeof ctx.waitUntil === 'function') { ctx.waitUntil(p); return null; }
+    return p;
+  };
+
+  // Présence (panel « En ligne ») = purement best-effort → en fond.
+  defer(recordPresence(env, mac, ip, country, now, channel));
 
   // --- Chemin D1 (par defaut des que la base est branchee) ---
   // On enregistre AUTOMATIQUEMENT la MAC (essai 7 j), puis on renvoie son
@@ -1895,8 +1905,8 @@ async function handleHeartbeat(request, env) {
     // updateDeviceInfo qui écrit dans ces colonnes).
     await ensureScaleSchema(env);
     await ensureD1Device(env, mac, now);
-    // Enrichit la fiche avec le modèle + numéro de build Android.
-    await updateDeviceInfo(env, mac, body);
+    // Enrichissement (modèle, build…) pas nécessaire à la réponse → en fond.
+    defer(updateDeviceInfo(env, mac, body));
     const d1 = await d1StatusForMac(env, mac, now);
     if (d1) return json({ ok: true, created: true, ...d1 });
   }
@@ -2609,7 +2619,7 @@ async function handleAiSearch(request, env) {
 // ----- Routeur -----
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: JSON_HEADERS });
     }
@@ -2671,7 +2681,7 @@ export default {
       if (request.method !== 'POST') {
         return badRequest('only POST supported on /api/heartbeat');
       }
-      return handleHeartbeat(request, env);
+      return handleHeartbeat(request, env, ctx);
     }
 
     // /api/status/:mac — public, l'app demande son état trial/freeze
