@@ -620,6 +620,7 @@ async function apiV1Inner(request, env) {
   }
 
   // /apps
+  if (parts[0] === 'apps') {
     if (parts.length === 1) {
       if (request.method === 'GET') return handleAppsList(env);
       if (request.method === 'POST') {
