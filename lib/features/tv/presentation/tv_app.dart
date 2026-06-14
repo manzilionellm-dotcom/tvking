@@ -483,36 +483,42 @@ class _HomeHeaderState extends State<_HomeHeader> {
   @override
   Widget build(BuildContext context) {
     final Greeting? g = _g;
-    final String weather = (g != null && g.tempC != null)
-        ? ' · ${g.tempC!.round()}°C ${g.emoji}'
-        : '';
     // Jour de la semaine traduit dans la langue active (intl), p. ex.
     // « Lunes » en espagnol, « måndag » en suédois, « الاثنين » en arabe.
     final String localeName = Localizations.localeOf(context).toString();
     final String weekday =
         toBeginningOfSentenceCase(DateFormat.EEEE(localeName).format(_now)) ?? '';
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: <Widget>[
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text('${context.l10n.tvHello} 👋',
-                style: TvTokens.ui(30, weight: FontWeight.w600, color: TvTokens.text)),
-            if (g != null && g.city.isNotEmpty)
-              Text.rich(TextSpan(children: <InlineSpan>[
-                TextSpan(text: g.city, style: TvTokens.ui(TvDimens.titleS, weight: FontWeight.w600, color: TvTokens.gold)),
-                TextSpan(text: weather, style: TvTokens.ui(TvDimens.titleS, color: TvTokens.muted)),
-              ])),
-          ],
-        ),
-        const Spacer(),
-        Text.rich(TextSpan(children: <InlineSpan>[
-          TextSpan(text: weekday, style: TvTokens.ui(TvDimens.title, weight: FontWeight.w600, color: TvTokens.text)),
-          TextSpan(text: ' · $_time', style: TvTokens.ui(TvDimens.title, color: TvTokens.muted)),
-        ])),
-      ],
+    // UN SEUL bloc contexte en haut à gauche : salut + (ville · temp météo ·
+    // jour · heure) sur 2 lignes. L'heure isolée en haut à droite est retirée.
+    final String temp =
+        (g != null && g.tempC != null) ? '${g.tempC!.round()}° ${g.emoji}' : '';
+    final String dayTime = '$weekday · $_time';
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text('${context.l10n.tvHello} 👋',
+              style: TvTokens.ui(30,
+                  weight: FontWeight.w600, color: TvTokens.text)),
+          const SizedBox(height: 4),
+          Text.rich(TextSpan(
+            style: TvTokens.ui(TvDimens.titleS, color: TvTokens.muted),
+            children: <InlineSpan>[
+              if (g != null && g.city.isNotEmpty) ...<InlineSpan>[
+                TextSpan(
+                    text: g.city,
+                    style: TvTokens.ui(TvDimens.titleS,
+                        weight: FontWeight.w600, color: TvTokens.gold)),
+                const TextSpan(text: '  ·  '),
+              ],
+              if (temp.isNotEmpty) TextSpan(text: '$temp  ·  '),
+              TextSpan(text: dayTime),
+            ],
+          )),
+        ],
+      ),
     );
   }
 }
@@ -533,16 +539,15 @@ class _NavRail extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.fromLTRB(10, 2, 10, 22),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              const TvLogo(width: 150),
-              const SizedBox(height: 6),
-              Text('THE FEW TV',
-                  style: TvTokens.ui(10, weight: FontWeight.w600, color: TvTokens.gold, spacing: 3.4)),
-            ],
+        // Branding allégé : logo The Few (+ baseline « NOT FOR EVERYONE »
+        // incluse dans l'image) ; mention « THE FEW TV » retirée (redondante)
+        // et hauteur réduite. Halo chaud discret derrière (profondeur premium).
+        Container(
+          padding: const EdgeInsets.fromLTRB(10, 2, 10, 10),
+          decoration: const BoxDecoration(gradient: TvTokens.brandGlow),
+          child: const Align(
+            alignment: Alignment.centerLeft,
+            child: TvLogo(width: 140),
           ),
         ),
         Expanded(
