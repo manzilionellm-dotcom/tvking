@@ -337,6 +337,11 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
 let _scaleSchemaReady = false;
 let _presenceReady = false;
 let _trendingCache = { at: 0, items: [] };
+// Caches sport (TheSportsDB, gratuit) — par isolate, 10 min. Proxy : la clé/URL
+// reste cote serveur, et on ne tape pas l'API a chaque requete client.
+const _SPORTSDB = 'https://www.thesportsdb.com/api/v1/json/3';
+let _sportsTeamCache = {};   // idTeam -> { at, data }
+let _sportsSearchCache = {}; // requete(min) -> { at, data }
 
 async function ensureScaleSchema(env) {
   if (_scaleSchemaReady || !env.DB) return;
@@ -419,6 +424,75 @@ async function handleTrending(env) {
     // En cas d'erreur on sert le dernier cache connu (jamais d'échec dur).
     return json({ items: _trendingCache.items });
   }
+}
+
+// =========================================================
+//  SPORT (TheSportsDB) — recherche d'equipe + derniers/prochains matchs
+// =========================================================
+//  Proxy + cache 10 min. Le client n'appelle JAMAIS TheSportsDB directement.
+
+// GET /api/sports/search?q=<nom> -> { teams: [{id,name,badge,league,sport}] }
+async function handleSportsSearch(url) {
+  const q = (url.searchParams.get('q') || '').trim();
+  if (q.length < 2) return json({ teams: [] });
+  const key = q.toLowerCase();
+  const now = Date.now();
+  const c = _sportsSearchCache[key];
+  if (c && now - c.at < 600000) return json(c.data);
+  try {
+    const r = await fetch(
+      `${_SPORTSDB}/searchteams.php?t=${encodeURIComponent(q)}`,
+    );
+    const j = await r.json().catch(() => ({}));
+    const teams = ((j && j.teams) || []).slice(0, 20).map((t) => ({
+      id: t.idTeam,
+      name: t.strTeam,
+      badge: t.strTeamBadge || t.strBadge || '',
+      league: t.strLeague || '',
+      sport: t.strSport || '',
+    }));
+    const data = { teams };
+    _sportsSearchCache[key] = { at: now, data };
+    return json(data);
+  } catch (_) {
+    return json({ teams: [] });
+  }
+}
+
+// GET /api/sports/team/:id -> { last: [ev], next: [ev] } (ev = match + score)
+async function handleSportsTeam(id) {
+  const now = Date.now();
+  const c = _sportsTeamCache[id];
+  if (c && now - c.at < 600000) return json(c.data);
+  const mapEv = (e) => ({
+    id: e.idEvent,
+    name: e.strEvent || '',
+    home: e.strHomeTeam || '',
+    away: e.strAwayTeam || '',
+    homeScore: (e.intHomeScore === null || e.intHomeScore === undefined)
+      ? null : String(e.intHomeScore),
+    awayScore: (e.intAwayScore === null || e.intAwayScore === undefined)
+      ? null : String(e.intAwayScore),
+    date: e.dateEvent || '',
+    time: e.strTime || '',
+    status: e.strStatus || '',
+    league: e.strLeague || '',
+  });
+  let last = [];
+  let next = [];
+  try {
+    const r = await fetch(`${_SPORTSDB}/eventslast.php?id=${encodeURIComponent(id)}`);
+    const j = await r.json().catch(() => ({}));
+    last = ((j && j.results) || []).map(mapEv);
+  } catch (_) { /* gratuit : best-effort */ }
+  try {
+    const r = await fetch(`${_SPORTSDB}/eventsnext.php?id=${encodeURIComponent(id)}`);
+    const j = await r.json().catch(() => ({}));
+    next = ((j && j.events) || []).map(mapEv);
+  } catch (_) { /* eventsnext parfois reserve : on ignore */ }
+  const data = { last, next };
+  _sportsTeamCache[id] = { at: now, data };
+  return json(data);
 }
 
 // Enregistre AUTOMATIQUEMENT une MAC dans la base au 1er heartbeat :
@@ -2716,6 +2790,18 @@ export default {
         return badRequest('only GET supported on /api/trending');
       }
       return await handleTrending(env);
+    }
+
+    // /api/sports/search?q= et /api/sports/team/:id — public (proxy TheSportsDB)
+    if (segments[0] === 'api' && segments[1] === 'sports' &&
+        segments[2] === 'search' && segments.length === 3) {
+      if (request.method !== 'GET') return badRequest('only GET');
+      return await handleSportsSearch(url);
+    }
+    if (segments[0] === 'api' && segments[1] === 'sports' &&
+        segments[2] === 'team' && segments.length === 4) {
+      if (request.method !== 'GET') return badRequest('only GET');
+      return await handleSportsTeam(segments[3]);
     }
 
     // /api/m3u/:token — public. Lien M3U distribuable d'une FAMILLE : on
