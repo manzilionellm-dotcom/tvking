@@ -475,6 +475,7 @@ async function handleSportsTeam(id) {
       ? null : String(e.intAwayScore),
     date: e.dateEvent || '',
     time: e.strTime || '',
+    timestamp: e.strTimestamp || '', // ISO UTC (pour programmer les alarmes)
     status: e.strStatus || '',
     league: e.strLeague || '',
   });
