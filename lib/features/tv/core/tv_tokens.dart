@@ -15,6 +15,9 @@ class TvTokens {
   static const Color bg = Color(0xFF070707); // fond global, noir profond
   static const Color panel = Color(0xFF0E0D0C); // sidebar / surfaces
   static const Color card = Color(0xFF121110); // cartes
+  static const Color tile = Color(0xFF161514); // fond des vignettes de chaînes
+  static const Color tileBorder = Color(0x0DFFFFFF); // bordure vignette (blanc 5 %)
+  static const Color badgeBg = Color(0x1FCCB089); // fond badge (or ~12 %)
   static const Color sel = Color(0xFF181512); // item de menu sélectionné
   static const Color line = Color(0xFF231F19); // bordures / séparateurs
   static const Color lineSoft = Color(0xFF1D1A15); // bordures discrètes
@@ -39,6 +42,14 @@ class TvTokens {
     radius: 1.3,
     colors: <Color>[Color(0xFF15120E), bg],
     stops: <double>[0.0, 0.6],
+  );
+
+  // ---- Halo chaud discret derrière le branding (coin haut-gauche) ----
+  // Profondeur « premium » : évite le noir plat sous le logo The Few.
+  static const Gradient brandGlow = RadialGradient(
+    center: Alignment.topLeft,
+    radius: 1.1,
+    colors: <Color>[Color(0x14CCB089), Color(0x00000000)],
   );
 
   // ---- Filet d'accent or (haut de carte) ----
