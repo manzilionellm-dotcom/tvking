@@ -35,6 +35,7 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/presentation/widgets/channel_logo.dart';
+import '../../epg/presentation/widgets/mini_epg_now_next.dart';
 import '../../onboarding/data/device_class_repository.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
@@ -1674,6 +1675,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 ],
               ),
             ),
+
+            // ----- Mini-guide « En ce moment / Ensuite » (façon TiviMate) -----
+            //  Self-hiding : invisible si la chaîne n'a pas d'EPG. Se
+            //  recharge automatiquement au zapping et toutes les 30 s.
+            MiniEpgNowNext(channelId: ch.id),
 
             // ----- Centre : Play/Pause minimaliste -----
             //
