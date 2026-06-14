@@ -34,6 +34,7 @@ import '../../cast/presentation/cast_picker_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
+import '../../channels/presentation/widgets/channel_logo.dart';
 import '../../onboarding/data/device_class_repository.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
@@ -116,6 +117,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // de widgets, le moteur media_kit continue de décoder/jouer l'audio.
   // Préférence de session uniquement (remise à false à chaque écran).
   bool _audioOnly = false;
+
+  // Autoplay « À suivre » (façon YouTube / Netflix) : quand un contenu
+  // FINI se termine (VOD, replay/catch-up, enregistrement) et qu'une
+  // chaîne suivante existe, on propose un compte à rebours de 10 s qui
+  // enchaîne tout seul. L'arrêt devient l'effort (le secret n°1 du
+  // binge), mais ça reste annulable. Jamais déclenché en live (un live
+  // n'a pas de fin → `_isSeekable` est faux).
+  static const int _upNextStartSeconds = 10;
+  Timer? _upNextTimer;
+  int _upNextSeconds = _upNextStartSeconds;
+  Channel? _upNextChannel; // non-null = overlay « À suivre » affiché
 
   // Picture-in-Picture : implémenté en NATIF Android via
   // MainActivity.kt + MethodChannel `tvking/pip`. Pas de plugin
@@ -246,6 +258,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // (style YouTube Premium). Aucun appel quand `p == false`
       // = home → app cachée normalement (pas de PiP).
       PipService.instance.setPlaybackActive(p);
+    }));
+    // Fin de lecture d'un contenu FINI → autoplay « À suivre ».
+    _subs.add(_player.stream.completed.listen((bool done) {
+      if (done && mounted) _maybeStartUpNext();
     }));
     _subs.add(_player.stream.error.listen((String e) {
       if (!mounted) return;
@@ -443,6 +459,50 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _zapNext() => _zapTo(_zapIndex + 1);
   void _zapPrev() => _zapTo(_zapIndex - 1);
+
+  /// Lance le compte à rebours « À suivre » si — et seulement si — le
+  /// contenu qui vient de finir était FINI (VOD/replay/enregistrement)
+  /// ET qu'une chaîne suivante existe. En live ça ne se déclenche jamais
+  /// (`_isSeekable` faux), donc aucun risque de zap intempestif.
+  void _maybeStartUpNext() {
+    if (!_isSeekable || !_canZap || _upNextChannel != null) return;
+    final List<Channel> list = widget.zapPlaylist!;
+    final int idx = _zapIndex;
+    if (idx < 0) return;
+    final Channel next = list[(idx + 1) % list.length];
+    setState(() {
+      _upNextChannel = next;
+      _upNextSeconds = _upNextStartSeconds;
+    });
+    _upNextTimer?.cancel();
+    _upNextTimer = Timer.periodic(const Duration(seconds: 1), (Timer t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() => _upNextSeconds--);
+      if (_upNextSeconds <= 0) {
+        t.cancel();
+        _playUpNext();
+      }
+    });
+  }
+
+  /// Enchaîne sur la chaîne suivante et referme l'overlay.
+  void _playUpNext() {
+    _upNextTimer?.cancel();
+    setState(() {
+      _upNextChannel = null;
+      _upNextSeconds = _upNextStartSeconds;
+    });
+    _zapNext();
+  }
+
+  /// Annule l'autoplay (l'utilisateur préfère rester / sortir).
+  void _cancelUpNext() {
+    _upNextTimer?.cancel();
+    if (mounted) setState(() => _upNextChannel = null);
+  }
 
   // ----- Enregistrement -----
 
@@ -816,6 +876,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void dispose() {
     _hideOverlayTimer?.cancel();
     _presenceTimer?.cancel();
+    _upNextTimer?.cancel();
     // On ne regarde plus rien → on le signale au panel (heartbeat avec
     // channel vide). Fire-and-forget.
     NowPlaying.instance.clear();
@@ -1402,11 +1463,82 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 //  cible, et controles cast (pause/reprise/stop). Le widget
                 //  se masque tout seul quand aucun cast n'est actif.
                 _CastingOverlay(channel: _currentChannel),
+
+                // ----- 7. Overlay « À suivre » (autoplay façon YouTube) -----
+                if (_upNextChannel != null) _buildUpNextOverlay(),
               ],
             );
           },
         ),
       );
+  }
+
+  /// Carte « À suivre dans Xs » en bas-droite (façon YouTube/Netflix).
+  /// Affiche la prochaine chaîne, un bouton pour lancer tout de suite,
+  /// et un bouton pour annuler. Le compte à rebours est géré par
+  /// [_maybeStartUpNext].
+  Widget _buildUpNextOverlay() {
+    final Channel next = _upNextChannel!;
+    return Positioned(
+      right: 16,
+      bottom: 16,
+      child: Container(
+        width: 280,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.82),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: AppColors.accent.withValues(alpha: 0.5),
+            width: 1.2,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              context.l10n.playerUpNextIn(_upNextSeconds),
+              style: AppTextStyles.eyebrow.copyWith(color: AppColors.accent),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: <Widget>[
+                ChannelLogo(channel: next, size: ChannelLogoSize.compact),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    next.cleanName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.bodyLarge.copyWith(
+                      fontSize: 14,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: <Widget>[
+                TextButton(
+                  onPressed: _cancelUpNext,
+                  child: Text(context.l10n.playerUpNextCancel),
+                ),
+                const SizedBox(width: 4),
+                FilledButton.icon(
+                  onPressed: _playUpNext,
+                  icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                  label: Text(context.l10n.playerUpNextPlay),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ----- Composants -----

@@ -57,6 +57,12 @@
   "playerStop": "STOP",
   "playerAudioOnly": "Écouteurs",
   "playerVideo": "Vidéo",
+  "playerUpNextIn": "À suivre dans {seconds}s",
+  "@playerUpNextIn": {
+    "placeholders": { "seconds": { "type": "int" } }
+  },
+  "playerUpNextCancel": "Annuler",
+  "playerUpNextPlay": "Lire",
   "playerTracks": "Pistes",
   "playerSpeed": "Vitesse",
   "playerRatio": "Format",
