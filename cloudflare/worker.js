@@ -351,6 +351,29 @@ async function recordPresence(env, mac, ip, country, now, channel) {
   }
 }
 
+// « Tendances en direct » : agrège la table `presence` pour renvoyer les
+// chaînes les plus regardées EN CE MOMENT (vues dans les 15 dernières minutes)
+// avec leur nombre de spectateurs. Lecture seule, best-effort (jamais d'erreur
+// 500 — renvoie une liste vide si la base n'est pas prête).
+async function handleTrending(env) {
+  if (!env.DB) return json({ items: [] });
+  try {
+    const since = Date.now() - 15 * 60 * 1000; // « en ligne » = vu < 15 min
+    const rs = await env.DB.prepare(
+      "SELECT channel, COUNT(*) AS n FROM presence " +
+        "WHERE channel IS NOT NULL AND channel != '' AND last_seen >= ? " +
+        "GROUP BY channel ORDER BY n DESC LIMIT 25",
+    ).bind(since).all();
+    const items = (rs.results || []).map((r) => ({
+      channel: r.channel,
+      count: r.n,
+    }));
+    return json({ items });
+  } catch (_) {
+    return json({ items: [] });
+  }
+}
+
 // Enregistre AUTOMATIQUEMENT une MAC dans la base au 1er heartbeat :
 // cree un client "auto" + le device (l'essai 7 j demarre a first_seen_at).
 // Ainsi TOUTE app installee apparait dans ton panel, sans rien faire.
@@ -2632,6 +2655,16 @@ export default {
         return badRequest('only GET supported on /api/device-source/:mac');
       }
       return await handlePublicDeviceSource(env, segments[2]);
+    }
+
+    // /api/trending — public, top des chaînes les plus regardées EN CE MOMENT
+    // (preuve sociale temps réel parmi tous les appareils en ligne). Lecture
+    // seule, jamais d'écriture → aucun risque pour l'activation.
+    if (segments[0] === 'api' && segments[1] === 'trending' && segments.length === 2) {
+      if (request.method !== 'GET') {
+        return badRequest('only GET supported on /api/trending');
+      }
+      return await handleTrending(env);
     }
 
     // /api/m3u/:token — public. Lien M3U distribuable d'une FAMILLE : on

@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
+import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../device/data/device_identity.dart';
 import '../../playlists/data/favorites_repository.dart';
@@ -37,14 +38,17 @@ class TvLiveScreen extends StatefulWidget {
 class _TvLiveScreenState extends State<TvLiveScreen> {
   StreamSubscription<List<Channel>>? _sub;
   StreamSubscription<Set<String>>? _favSub;
+  StreamSubscription<List<String>>? _trendSub;
   Set<String> _favIds = FavoritesRepository.instance.current;
+  List<String> _trending = TrendingRepository.instance.current;
   List<Channel> _all = const <Channel>[];
   List<String> _cats = const <String>[];
   String? _selectedCat;
   bool _heroShown = false;
 
-  /// Pseudo-catégorie en TÊTE de liste qui regroupe les chaînes favorites
-  /// (façon TiviMate). On la distingue d'une vraie catégorie par ce sentinelle.
+  /// Pseudo-catégories en TÊTE de liste (sentinelles internes, pas de vraies
+  /// catégories) : Tendances (les plus regardées EN CE MOMENT) puis Favoris.
+  static const String _kTrendCat = 'k.trending';
   static const String _kFavCat = '★ favoris'; // ★ favoris (clé interne)
 
   // Re-synchro de la source poussée par le panel. CRUCIAL : sans ça, l'app
@@ -66,6 +70,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     _favSub = FavoritesRepository.instance.favoritesStream.listen((Set<String> ids) {
       if (mounted) setState(() => _favIds = ids);
     });
+    // Tendances en direct : la catégorie « 🔥 Tendances » se met à jour seule.
+    TrendingRepository.instance.start();
+    _trendSub = TrendingRepository.instance.stream.listen((List<String> names) {
+      if (mounted) setState(() => _trending = names);
+    });
     // MAC affichée sur l'état vide : sans elle, impossible de savoir à quel
     // appareil pousser une source dans le panel.
     DeviceIdentity.instance.mac.then((String m) {
@@ -81,6 +90,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   void dispose() {
     _sub?.cancel();
     _favSub?.cancel();
+    _trendSub?.cancel();
+    TrendingRepository.instance.stop();
     _syncTimer?.cancel();
     super.dispose();
   }
@@ -89,14 +100,42 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   List<Channel> get _favChannels =>
       _all.where((Channel c) => _favIds.contains(c.id)).toList(growable: false);
 
-  /// Catégories affichées = « ★ Favoris » (si au moins 1 favori) en tête,
-  /// puis les vraies catégories de la source.
-  List<String> get _displayCats =>
-      _favChannels.isEmpty ? _cats : <String>[_kFavCat, ..._cats];
+  /// Chaînes tendance présentes dans la playlist locale, dans l'ORDRE de
+  /// popularité renvoyé par le backend (match par nom, insensible à la casse).
+  List<Channel> get _trendingChannels {
+    if (_trending.isEmpty || _all.isEmpty) return const <Channel>[];
+    final Map<String, Channel> byName = <String, Channel>{};
+    for (final Channel c in _all) {
+      byName.putIfAbsent(c.cleanName.trim().toLowerCase(), () => c);
+    }
+    final List<Channel> out = <Channel>[];
+    final Set<String> seen = <String>{};
+    for (final String name in _trending) {
+      final Channel? c = byName[name.trim().toLowerCase()];
+      if (c != null && seen.add(c.id)) out.add(c);
+    }
+    return out;
+  }
 
-  /// Libellé visible d'une catégorie (la sentinelle Favoris est traduite).
-  String _catLabel(BuildContext context, String cat) =>
-      cat == _kFavCat ? '★ ${context.l10n.navFavorites}' : cat;
+  /// Catégories affichées : « 🔥 Tendances » puis « ★ Favoris » (si non vides)
+  /// en tête, puis les vraies catégories de la source.
+  List<String> get _displayCats {
+    final List<String> out = <String>[];
+    if (_trendingChannels.isNotEmpty) out.add(_kTrendCat);
+    if (_favChannels.isNotEmpty) out.add(_kFavCat);
+    out.addAll(_cats);
+    return out;
+  }
+
+  /// Vrai pour les pseudo-catégories spéciales (teintées or).
+  bool _isSpecialCat(String cat) => cat == _kTrendCat || cat == _kFavCat;
+
+  /// Libellé visible d'une catégorie (les sentinelles sont traduites/ornées).
+  String _catLabel(BuildContext context, String cat) {
+    if (cat == _kTrendCat) return '🔥 Tendances';
+    if (cat == _kFavCat) return '★ ${context.l10n.navFavorites}';
+    return cat;
+  }
 
   Future<void> _kickSourceSync() async {
     if (_syncing) return;
@@ -135,7 +174,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       // catégorie absente de `cats`) — sinon un refresh de la source l'en
       // ferait sortir.
       if (_selectedCat != null &&
-          _selectedCat != _kFavCat &&
+          !_isSpecialCat(_selectedCat!) &&
           !cats.contains(_selectedCat)) {
         _selectedCat = cats.isNotEmpty ? cats.first : null;
       }
@@ -143,6 +182,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   }
 
   List<Channel> get _shown {
+    if (_selectedCat == _kTrendCat) return _trendingChannels;
     if (_selectedCat == _kFavCat) return _favChannels;
     return _selectedCat == null
         ? _all
@@ -296,7 +336,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                     itemBuilder: (BuildContext context, int i) {
                     final String cat = cats[i];
                     final bool sel = cat == _selectedCat;
-                    final bool isFav = cat == _kFavCat;
+                    final bool isFav = _isSpecialCat(cat);
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: TvFocusBuilder(
