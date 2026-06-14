@@ -26,6 +26,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
+import '../../epg/presentation/channel_programs_screen.dart';
 import '../../player/data/local_stream_relay.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
@@ -64,7 +65,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // déplacent le surlignage, OK active. Ordre : 0=Retour 1=Préc 2=Lecture/Pause
   // 3=Suiv 4=REC 5=Favori.
   int _btnFocus = -1;
-  static const int _btnCount = 6;
+  static const int _btnCount = 3;
   bool _buffering = true;
   Timer? _hideTimer;
   Timer? _presenceTimer;
@@ -366,7 +367,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (!_overlay || _btnFocus < 0) {
       setState(() {
         _overlay = true;
-        if (_btnFocus < 0) _btnFocus = 2; // Lecture/Pause par défaut
+        if (_btnFocus < 0) _btnFocus = 1; // REC par défaut (bouton central)
       });
       _showOverlayTemporarily();
       return;
@@ -379,13 +380,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (!_overlay) {
       setState(() {
         _overlay = true;
-        if (_btnFocus < 0) _btnFocus = 2;
+        if (_btnFocus < 0) _btnFocus = 1;
       });
       _showOverlayTemporarily();
       return;
     }
     setState(() {
-      _btnFocus = (_btnFocus < 0 ? 2 : _btnFocus + delta).clamp(0, _btnCount - 1);
+      _btnFocus = (_btnFocus < 0 ? 1 : _btnFocus + delta).clamp(0, _btnCount - 1);
     });
     _showOverlayTemporarily();
   }
@@ -394,24 +395,26 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   void _activateBtn(int i) {
     switch (i) {
       case 0:
-        Navigator.of(context).maybePop();
+        _openGuide();
         break;
       case 1:
-        _zap(-1);
-        break;
-      case 2:
-        _togglePlayPause();
-        break;
-      case 3:
-        _zap(1);
-        break;
-      case 4:
         _toggleRecording();
         break;
-      case 5:
+      case 2:
         _toggleFavorite();
         break;
     }
+  }
+
+  // Ouvre le GUIDE de la chaîne en cours : émission actuelle + « à suivre »,
+  // avec possibilité de poser une ALARME (rappel) sur un programme.
+  void _openGuide() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ChannelProgramsScreen(channel: _current),
+      ),
+    );
+    _showOverlayTemporarily();
   }
 
   // Lecture/pause (touche média OU bouton tactile). setState pour rafraîchir
@@ -601,14 +604,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                         channel: _current,
                         index: _index,
                         total: widget.channels.length,
-                        isPlaying: _controller.isPlaying,
                         isRecording: _isRecording,
                         isFavorite: _isFavorite,
                         focusedIndex: _btnFocus,
-                        onBack: () => Navigator.of(context).maybePop(),
-                        onPrev: () => _zap(-1),
-                        onNext: () => _zap(1),
-                        onPlayPause: _togglePlayPause,
+                        onGuide: _openGuide,
                         onRecord: _toggleRecording,
                         onFavorite: _toggleFavorite,
                       ),
@@ -708,14 +707,10 @@ class _ControlsBar extends StatelessWidget {
     required this.channel,
     required this.index,
     required this.total,
-    required this.isPlaying,
     required this.isRecording,
     required this.isFavorite,
     required this.focusedIndex,
-    required this.onBack,
-    required this.onPrev,
-    required this.onNext,
-    required this.onPlayPause,
+    required this.onGuide,
     required this.onRecord,
     required this.onFavorite,
   });
@@ -723,16 +718,12 @@ class _ControlsBar extends StatelessWidget {
   final Channel channel;
   final int index;
   final int total;
-  final bool isPlaying;
   final bool isRecording;
   final bool isFavorite;
 
-  /// Index du bouton surligné au D-pad (-1 = aucun).
+  /// Index du bouton surligné au D-pad (-1 = aucun). 0=Guide 1=REC 2=Favori.
   final int focusedIndex;
-  final VoidCallback onBack;
-  final VoidCallback onPrev;
-  final VoidCallback onNext;
-  final VoidCallback onPlayPause;
+  final VoidCallback onGuide;
   final VoidCallback onRecord;
   final VoidCallback onFavorite;
 
@@ -763,54 +754,39 @@ class _ControlsBar extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 18),
-          // ---- Rangée de commandes ----
+          // ---- Commandes utiles en DIRECT uniquement : Guide, REC, Favori ----
+          // (Lecture/pause et avance/retour n'ont aucun sens en live → retirés.)
           Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               _CtrlButton(
-                icon: Icons.arrow_back_rounded,
-                onTap: onBack,
+                icon: Icons.calendar_month_rounded,
+                label: 'Guide',
+                onTap: onGuide,
                 focused: focusedIndex == 0,
               ),
-              const Spacer(),
-              _CtrlButton(
-                icon: Icons.skip_previous_rounded,
-                onTap: onPrev,
-                focused: focusedIndex == 1,
-              ),
-              const SizedBox(width: 18),
-              _CtrlButton(
-                icon:
-                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                onTap: onPlayPause,
-                primary: true,
-                focused: focusedIndex == 2,
-              ),
-              const SizedBox(width: 18),
-              _CtrlButton(
-                icon: Icons.skip_next_rounded,
-                onTap: onNext,
-                focused: focusedIndex == 3,
-              ),
-              const Spacer(),
-              // REC + favori, tout à droite (« en bas »).
+              const SizedBox(width: 34),
               _CtrlButton(
                 icon: isRecording
                     ? Icons.stop_rounded
                     : Icons.fiber_manual_record_rounded,
+                label: isRecording ? 'Stop' : 'REC',
                 onTap: onRecord,
                 accent: TvTokens.live,
                 active: isRecording,
-                focused: focusedIndex == 4,
+                focused: focusedIndex == 1,
               ),
-              const SizedBox(width: 18),
+              const SizedBox(width: 34),
               _CtrlButton(
                 icon: isFavorite
                     ? Icons.favorite_rounded
                     : Icons.favorite_border_rounded,
+                label: 'Favori',
                 onTap: onFavorite,
                 accent: TvTokens.gold,
                 active: isFavorite,
-                focused: focusedIndex == 5,
+                focused: focusedIndex == 2,
               ),
             ],
           ),
@@ -911,6 +887,7 @@ class _CtrlButton extends StatefulWidget {
   const _CtrlButton({
     required this.icon,
     required this.onTap,
+    this.label,
     this.primary = false,
     this.accent,
     this.active = false,
@@ -918,7 +895,8 @@ class _CtrlButton extends StatefulWidget {
   });
   final IconData icon;
   final VoidCallback onTap;
-  final bool primary; // bouton central (lecture/pause) : plus gros, anneau or
+  final String? label; // libellé sous le bouton (Guide / REC / Favori)
+  final bool primary;
   final Color? accent; // teinte quand actif (rouge REC / or favori)
   final bool active;
   final bool focused; // surligné au D-pad (n'importe quelle télécommande)
@@ -932,15 +910,13 @@ class _CtrlButtonState extends State<_CtrlButton> {
 
   @override
   Widget build(BuildContext context) {
-    final double d = widget.primary ? 72 : 54;
+    final double d = widget.primary ? 76 : 62;
     final Color accent = widget.accent ?? TvTokens.gold;
     // Surlignage D-pad = anneau OR épais + halo : visible sur N'IMPORTE quelle
     // télécommande (le repère « où je suis »).
     final Color borderColor = widget.focused
         ? TvTokens.gold
-        : (widget.primary
-            ? TvTokens.gold
-            : (widget.active ? accent : Colors.white24));
+        : (widget.active ? accent : Colors.white24);
     final Color bg = widget.focused
         ? TvTokens.gold.withValues(alpha: 0.28)
         : (widget.active
@@ -948,11 +924,12 @@ class _CtrlButtonState extends State<_CtrlButton> {
             : Colors.black.withValues(alpha: 0.42));
     final Color iconColor = widget.focused
         ? TvTokens.gold
-        : (widget.active
-            ? accent
-            : (widget.primary ? TvTokens.gold : TvTokens.text));
+        : (widget.active ? accent : TvTokens.text);
+    final Color labelColor = widget.focused
+        ? TvTokens.gold
+        : (widget.active ? accent : TvTokens.muted);
 
-    final double scale = _down ? 0.88 : (widget.focused ? 1.14 : 1.0);
+    final double scale = _down ? 0.9 : (widget.focused ? 1.12 : 1.0);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -964,27 +941,37 @@ class _CtrlButtonState extends State<_CtrlButton> {
         scale: scale,
         duration: const Duration(milliseconds: 120),
         curve: Curves.easeOut,
-        child: Container(
-          width: d,
-          height: d,
-          decoration: BoxDecoration(
-            color: bg,
-            shape: BoxShape.circle,
-            border: Border.all(
-                color: borderColor,
-                width: (widget.primary || widget.focused) ? 2 : 1),
-            boxShadow: (widget.primary || widget.focused)
-                ? <BoxShadow>[
-                    BoxShadow(
-                        color: TvTokens.gold
-                            .withValues(alpha: widget.focused ? 0.45 : 0.25),
-                        blurRadius: widget.focused ? 24 : 18,
-                        spreadRadius: widget.focused ? -2 : -4),
-                  ]
-                : null,
-          ),
-          child: Icon(widget.icon,
-              color: iconColor, size: widget.primary ? 40 : 27),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: d,
+              height: d,
+              decoration: BoxDecoration(
+                color: bg,
+                shape: BoxShape.circle,
+                border: Border.all(color: borderColor, width: widget.focused ? 2 : 1),
+                boxShadow: widget.focused
+                    ? <BoxShadow>[
+                        BoxShadow(
+                            color: TvTokens.gold.withValues(alpha: 0.45),
+                            blurRadius: 24,
+                            spreadRadius: -2),
+                      ]
+                    : null,
+              ),
+              child: Icon(widget.icon, color: iconColor, size: widget.primary ? 42 : 30),
+            ),
+            if (widget.label != null) ...<Widget>[
+              const SizedBox(height: 7),
+              Text(widget.label!,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                      color: labelColor)),
+            ],
+          ],
         ),
       ),
     );
