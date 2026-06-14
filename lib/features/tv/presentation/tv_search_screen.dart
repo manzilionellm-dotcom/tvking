@@ -28,6 +28,20 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   StreamSubscription<List<Channel>>? _sub;
   List<Channel> _all = const <Channel>[];
   String _q = '';
+  List<Channel> _results = const <Channel>[];
+  Timer? _debounce;
+
+  // Borne anti-surcharge : sur un boîtier TV modeste, afficher des centaines de
+  // vignettes (et leurs logos réseau) d'un coup peut faire planter l'app. On
+  // limite à 60 résultats — largement assez pour trouver une chaîne.
+  static const int _maxResults = 60;
+
+  // Le clavier est construit UNE SEULE FOIS. En réutilisant la MÊME instance
+  // dans build(), Flutter NE reconstruit PAS son sous-arbre à chaque frappe →
+  // la touche focus n'est jamais perdue (corrige « impossible d'écrire d'autres
+  // lettres »). Les callbacks sont des méthodes stables de ce State.
+  late final Widget _keyboard =
+      _Keyboard(onType: _type, onBackspace: _backspace, onClear: _clear);
 
   @override
   void initState() {
@@ -35,31 +49,56 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     _all = PlaylistRepository.instance.currentChannels
         .where((Channel c) => c.isLive)
         .toList(growable: false);
-    _sub = PlaylistRepository.instance.channelsStream.listen((List<Channel> ch) {
-      if (mounted) {
-        setState(() => _all = ch.where((Channel c) => c.isLive).toList(growable: false));
-      }
+    _sub =
+        PlaylistRepository.instance.channelsStream.listen((List<Channel> ch) {
+      if (!mounted) return;
+      _all = ch.where((Channel c) => c.isLive).toList(growable: false);
+      _runSearch();
     });
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _debounce?.cancel();
     super.dispose();
   }
 
-  List<Channel> get _results {
-    final String t = _q.trim().toLowerCase();
-    if (t.isEmpty) return const <Channel>[];
-    return _all
-        .where((Channel c) => c.cleanName.toLowerCase().contains(t))
-        .take(120)
-        .toList(growable: false);
+  void _type(String ch) {
+    setState(() => _q += ch);
+    _schedule();
   }
 
-  void _type(String ch) => setState(() => _q += ch);
   void _backspace() {
-    if (_q.isNotEmpty) setState(() => _q = _q.substring(0, _q.length - 1));
+    if (_q.isEmpty) return;
+    setState(() => _q = _q.substring(0, _q.length - 1));
+    _schedule();
+  }
+
+  void _clear() {
+    _debounce?.cancel();
+    setState(() {
+      _q = '';
+      _results = const <Channel>[];
+    });
+  }
+
+  // Debounce : on ne recalcule/réaffiche la grille (et ses logos) qu'après une
+  // courte pause → frappe fluide et pas de tempête de chargements d'images.
+  void _schedule() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 250), _runSearch);
+  }
+
+  void _runSearch() {
+    final String t = _q.trim().toLowerCase();
+    final List<Channel> r = t.isEmpty
+        ? const <Channel>[]
+        : _all
+            .where((Channel c) => c.cleanName.toLowerCase().contains(t))
+            .take(_maxResults)
+            .toList(growable: false);
+    if (mounted) setState(() => _results = r);
   }
 
   @override
@@ -68,8 +107,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        // ----- Clavier -----
-        SizedBox(width: 380, child: _Keyboard(onType: _type, onBackspace: _backspace, onClear: () => setState(() => _q = ''))),
+        // ----- Clavier (instance STABLE → non reconstruite à chaque frappe) -----
+        SizedBox(width: 380, child: _keyboard),
         const SizedBox(width: TvDimens.gutter),
         // ----- Requête + résultats -----
         Expanded(
