@@ -27,6 +27,7 @@ import '../data/greeting_repository.dart';
 import 'tv_activation_screen.dart';
 import 'tv_components.dart';
 import 'tv_live_screen.dart';
+import 'tv_recordings_screen.dart';
 import 'tv_search_screen.dart';
 import 'tv_settings_screen.dart';
 import 'tv_shell.dart';
@@ -316,7 +317,7 @@ class _TvGateState extends State<TvGate> {
 }
 
 /// Destinations de la navigation principale (buckets §8 home).
-enum TvDest { live, films, series, guide, search, settings }
+enum TvDest { live, films, series, guide, recordings, search, settings }
 
 extension on TvDest {
   // Libellé traduit selon la langue active (context.l10n).
@@ -330,6 +331,8 @@ extension on TvDest {
         return context.l10n.tvNavSeries;
       case TvDest.guide:
         return context.l10n.tvNavGuide;
+      case TvDest.recordings:
+        return 'Enregistrements';
       case TvDest.search:
         return context.l10n.tvNavSearch;
       case TvDest.settings:
@@ -347,6 +350,8 @@ extension on TvDest {
         return Icons.video_library_rounded;
       case TvDest.guide:
         return Icons.grid_view_rounded;
+      case TvDest.recordings:
+        return Icons.fiber_dvr_rounded;
       case TvDest.search:
         return Icons.search_rounded;
       case TvDest.settings:
@@ -644,6 +649,7 @@ class _ContentPanel extends StatelessWidget {
     // « Direct » et « Réglages » sont branchés ; les autres buckets
     // arrivent (BUILD_ORDER 6-9).
     if (dest == TvDest.live) return const TvLiveScreen();
+    if (dest == TvDest.recordings) return const TvRecordingsScreen();
     if (dest == TvDest.search) return const TvSearchScreen();
     if (dest == TvDest.settings) return const TvSettingsScreen();
     return TvEmptyState(
