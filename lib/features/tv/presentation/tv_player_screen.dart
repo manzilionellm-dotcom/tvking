@@ -50,7 +50,8 @@ class TvPlayerScreen extends StatefulWidget {
   State<TvPlayerScreen> createState() => _TvPlayerScreenState();
 }
 
-class _TvPlayerScreenState extends State<TvPlayerScreen> {
+class _TvPlayerScreenState extends State<TvPlayerScreen>
+    with WidgetsBindingObserver {
   late final NativeVideoController _controller;
   final FocusNode _focus = FocusNode();
 
@@ -116,6 +117,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Le décodage (MediaCodec matériel + repli logiciel), le tampon réseau et
     // le User-Agent sont gérés côté natif (NativeVideoView.kt). Ici on se
     // contente de piloter l'URL et d'écouter l'état.
@@ -138,8 +140,26 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         (_) => SubscriptionState.instance.syncWithBackend());
   }
 
+  // Couper le son quand on QUITTE / minimise l'app (Home, multitâche) : pas de
+  // lecture en arrière-plan sur TV. Quitter l'app = quitter, point. On reprend
+  // le direct au retour dans l'app.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        _controller.pause();
+      case AppLifecycleState.resumed:
+        _controller.play();
+      case AppLifecycleState.inactive:
+        break; // transitions brèves (dialogue…) → on ne coupe pas
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
     _presenceTimer?.cancel();
     _numTimer?.cancel();
