@@ -289,16 +289,19 @@ class _TvGateState extends State<TvGate> {
         s == SubscriptionStatus.trialActive;
     final bool hasOwnList =
         PlaylistRepository.instance.currentChannels.isNotEmpty;
-    final Widget home = (active || hasOwnList)
+    final bool showHome = active || hasOwnList;
+    final Widget home = showHome
         ? const TvHomeScreen()
         : const TvShell(child: TvActivationScreen());
-    // Back à la RACINE → boîte Continuer / Redémarrer / Quitter (les écrans
-    // empilés au-dessus, comme le lecteur, gèrent leur propre Back avant
-    // d'arriver ici).
+    // Retour : sur l'ACCUEIL, c'est TvHomeScreen qui gère (contenu → menu →
+    // boîte Quitter au dernier niveau). Ce PopScope racine (même route) ne
+    // garde donc la boîte QUE pour l'écran d'activation ; sinon il laisse
+    // faire l'accueil (sans ça, la boîte s'afficherait à chaque Retour).
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (bool didPop, Object? _) async {
         if (didPop) return;
+        if (showHome) return; // géré par TvHomeScreen
         final String? action = await showExitDialog(context);
         if (!context.mounted) return;
         if (action == 'restart') {
@@ -362,33 +365,84 @@ class TvHomeScreen extends StatefulWidget {
 class _TvHomeScreenState extends State<TvHomeScreen> {
   TvDest _selected = TvDest.live;
 
+  // Cible « Retour » : node posé sur l'item de menu sélectionné, pour y
+  // ramener le focus depuis le contenu. `_railHasFocus` dit si le focus est
+  // ACTUELLEMENT quelque part sur le menu de gauche.
+  final FocusNode _railFocus = FocusNode(debugLabel: 'navRailSelected');
+  bool _railHasFocus = false;
+
+  @override
+  void dispose() {
+    _railFocus.dispose();
+    super.dispose();
+  }
+
+  // RETOUR (n'importe quelle télécommande) :
+  //   - depuis le CONTENU  → on ramène le focus au menu de gauche (vraie
+  //     navigation arrière), PAS de pop-up.
+  //   - déjà sur le MENU   → c'est le dernier niveau : on propose Quitter /
+  //     Redémarrer (la boîte n'apparaît donc qu'au bout, pas à chaque Retour).
+  Future<void> _onBack() async {
+    if (!_railHasFocus) {
+      _railFocus.requestFocus();
+      return;
+    }
+    final String? action = await showExitDialog(context);
+    if (!mounted) return;
+    if (action == 'restart') {
+      RestartWidget.restart(context);
+    } else if (action == 'quit') {
+      await SystemNavigator.pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return TvShell(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          const _HomeHeader(),
-          const SizedBox(height: 14),
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                // ----- Rail de navigation (gauche) -----
-                SizedBox(
-                  width: 240,
-                  child: _NavRail(
-                    selected: _selected,
-                    onSelect: (TvDest d) => setState(() => _selected = d),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? _) {
+        if (didPop) return;
+        _onBack();
+      },
+      child: TvShell(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            const _HomeHeader(),
+            const SizedBox(height: 14),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  // ----- Rail de navigation (gauche) -----
+                  // Le Focus englobant (non focusable lui-même) sert juste à
+                  // SAVOIR si le focus est sur le menu, sans piéger la
+                  // navigation directionnelle (ce n'est pas un FocusScope).
+                  SizedBox(
+                    width: 240,
+                    child: Focus(
+                      canRequestFocus: false,
+                      skipTraversal: true,
+                      onFocusChange: (bool f) {
+                        if (f != _railHasFocus) {
+                          setState(() => _railHasFocus = f);
+                        }
+                      },
+                      child: _NavRail(
+                        selected: _selected,
+                        selectedFocusNode: _railFocus,
+                        onSelect: (TvDest d) => setState(() => _selected = d),
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(width: TvDimens.gutter),
-                // ----- Panneau de contenu -----
-                Expanded(child: _ContentPanel(dest: _selected)),
-              ],
+                  const SizedBox(width: TvDimens.gutter),
+                  // ----- Panneau de contenu -----
+                  Expanded(child: _ContentPanel(dest: _selected)),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -464,10 +518,15 @@ class _HomeHeaderState extends State<_HomeHeader> {
 }
 
 class _NavRail extends StatelessWidget {
-  const _NavRail({required this.selected, required this.onSelect});
+  const _NavRail(
+      {required this.selected, required this.onSelect, this.selectedFocusNode});
 
   final TvDest selected;
   final ValueChanged<TvDest> onSelect;
+
+  /// FocusNode posé sur l'item SÉLECTIONNÉ → permet de ramener le focus au
+  /// menu quand on appuie sur Retour depuis le contenu.
+  final FocusNode? selectedFocusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -497,6 +556,10 @@ class _NavRail extends StatelessWidget {
                     selected: TvDest.values[i] == selected,
                     // Focus initial sur le 1er item (Direct).
                     autofocus: i == 0,
+                    // Le node de l'item sélectionné sert de cible « Retour ».
+                    focusNode: TvDest.values[i] == selected
+                        ? selectedFocusNode
+                        : null,
                     onSelect: () => onSelect(TvDest.values[i]),
                   ),
                 ),
@@ -514,17 +577,20 @@ class _NavItem extends StatelessWidget {
     required this.selected,
     required this.onSelect,
     this.autofocus = false,
+    this.focusNode,
   });
 
   final TvDest dest;
   final bool selected;
   final VoidCallback onSelect;
   final bool autofocus;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
     return TvFocusBuilder(
       autofocus: autofocus,
+      focusNode: focusNode,
       scale: TvFocusScale.large,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {

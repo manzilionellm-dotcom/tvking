@@ -56,6 +56,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
 
   late int _index = widget.startIndex;
   bool _overlay = true;
+
+  // Index du bouton de la barre actuellement « surligné » au D-pad
+  // (-1 = aucun). Permet à N'IMPORTE QUELLE télécommande (simple D-pad, sans
+  // pointeur) d'atteindre TOUS les boutons : OK ouvre la barre, Gauche/Droite
+  // déplacent le surlignage, OK active. Ordre : 0=Retour 1=Préc 2=Lecture/Pause
+  // 3=Suiv 4=REC 5=Favori.
+  int _btnFocus = -1;
+  static const int _btnCount = 6;
   bool _buffering = true;
   Timer? _hideTimer;
   Timer? _presenceTimer;
@@ -314,15 +322,76 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   void _showOverlayTemporarily() {
     setState(() => _overlay = true);
     _hideTimer?.cancel();
-    _hideTimer = Timer(const Duration(seconds: 5), () {
-      if (mounted) setState(() => _overlay = false);
+    _hideTimer = Timer(const Duration(seconds: 6), () {
+      if (mounted) setState(() {
+        _overlay = false;
+        _btnFocus = -1; // on oublie le surlignage quand la barre se masque
+      });
     });
   }
 
-  // Affiche/masque la barre (OK télécommande OU tap sur l'écran tactile).
+  // Affiche/masque la barre (tap sur l'écran tactile). Au masquage on retire
+  // le surlignage D-pad.
   void _toggleOverlay() {
-    setState(() => _overlay = !_overlay);
+    setState(() {
+      _overlay = !_overlay;
+      if (!_overlay) _btnFocus = -1;
+    });
     if (_overlay) _showOverlayTemporarily();
+  }
+
+  // OK / centre du D-pad : ouvre la barre (et surligne Lecture/Pause), ou
+  // active le bouton surligné si la barre est déjà ouverte.
+  void _okPressed() {
+    if (!_overlay || _btnFocus < 0) {
+      setState(() {
+        _overlay = true;
+        if (_btnFocus < 0) _btnFocus = 2; // Lecture/Pause par défaut
+      });
+      _showOverlayTemporarily();
+      return;
+    }
+    _activateBtn(_btnFocus);
+  }
+
+  // Déplace le surlignage Gauche/Droite. Si la barre est masquée, on l'ouvre.
+  void _navBtn(int delta) {
+    if (!_overlay) {
+      setState(() {
+        _overlay = true;
+        if (_btnFocus < 0) _btnFocus = 2;
+      });
+      _showOverlayTemporarily();
+      return;
+    }
+    setState(() {
+      _btnFocus = (_btnFocus < 0 ? 2 : _btnFocus + delta).clamp(0, _btnCount - 1);
+    });
+    _showOverlayTemporarily();
+  }
+
+  // Exécute l'action du bouton surligné.
+  void _activateBtn(int i) {
+    switch (i) {
+      case 0:
+        Navigator.of(context).maybePop();
+        break;
+      case 1:
+        _zap(-1);
+        break;
+      case 2:
+        _togglePlayPause();
+        break;
+      case 3:
+        _zap(1);
+        break;
+      case 4:
+        _toggleRecording();
+        break;
+      case 5:
+        _toggleFavorite();
+        break;
+    }
   }
 
   // Lecture/pause (touche média OU bouton tactile). setState pour rafraîchir
@@ -371,14 +440,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       k == LogicalKeyboardKey.channelDown ||
       k == LogicalKeyboardKey.pageDown ||
       k == LogicalKeyboardKey.mediaTrackNext;
+  // OK / centre du D-pad — toutes les variantes de télécommandes. (Gauche/
+  // Droite ne sont PLUS « OK » : ils déplacent le surlignage entre boutons.)
   bool _isOk(LogicalKeyboardKey k) =>
       k == LogicalKeyboardKey.select ||
       k == LogicalKeyboardKey.enter ||
       k == LogicalKeyboardKey.numpadEnter ||
       k == LogicalKeyboardKey.gameButtonA ||
-      k == LogicalKeyboardKey.contextMenu ||
-      k == LogicalKeyboardKey.arrowLeft ||
-      k == LogicalKeyboardKey.arrowRight;
+      k == LogicalKeyboardKey.space;
 
   // Télécommandes universelles : toutes les variantes mènent à l'action.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
@@ -391,6 +460,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
         k == LogicalKeyboardKey.escape ||
         k == LogicalKeyboardKey.browserBack ||
         k == LogicalKeyboardKey.exit) {
+      // Retour = quitter le lecteur (convention YouTube/Netflix). La
+      // navigation des boutons se fait à Gauche/Droite + OK.
       Navigator.of(context).maybePop();
       return KeyEventResult.handled;
     }
@@ -399,8 +470,19 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     if (di < 0) di = _numpad.indexOf(k);
     if (di >= 0) { _onDigit(di); return KeyEventResult.handled; }
 
+    // Haut/Bas (et Ch+/Ch-) = zap direct, même quand la barre est ouverte.
     if (_isPrev(k)) { _zap(-1); return KeyEventResult.handled; }
     if (_isNext(k)) { _zap(1); return KeyEventResult.handled; }
+
+    // Gauche/Droite = déplacer le surlignage entre les boutons de la barre.
+    if (k == LogicalKeyboardKey.arrowLeft) {
+      _navBtn(-1);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.arrowRight) {
+      _navBtn(1);
+      return KeyEventResult.handled;
+    }
 
     if (k == LogicalKeyboardKey.mediaPlayPause ||
         k == LogicalKeyboardKey.mediaPlay ||
@@ -421,7 +503,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       return KeyEventResult.handled;
     }
     if (_isOk(k)) {
-      _toggleOverlay();
+      _okPressed();
       return KeyEventResult.handled;
     }
     _showOverlayTemporarily();
@@ -502,6 +584,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                         isPlaying: _controller.isPlaying,
                         isRecording: _isRecording,
                         isFavorite: _isFavorite,
+                        focusedIndex: _btnFocus,
                         onBack: () => Navigator.of(context).maybePop(),
                         onPrev: () => _zap(-1),
                         onNext: () => _zap(1),
@@ -608,6 +691,7 @@ class _ControlsBar extends StatelessWidget {
     required this.isPlaying,
     required this.isRecording,
     required this.isFavorite,
+    required this.focusedIndex,
     required this.onBack,
     required this.onPrev,
     required this.onNext,
@@ -622,6 +706,9 @@ class _ControlsBar extends StatelessWidget {
   final bool isPlaying;
   final bool isRecording;
   final bool isFavorite;
+
+  /// Index du bouton surligné au D-pad (-1 = aucun).
+  final int focusedIndex;
   final VoidCallback onBack;
   final VoidCallback onPrev;
   final VoidCallback onNext;
@@ -659,18 +746,31 @@ class _ControlsBar extends StatelessWidget {
           // ---- Rangée de commandes ----
           Row(
             children: <Widget>[
-              _CtrlButton(icon: Icons.arrow_back_rounded, onTap: onBack),
+              _CtrlButton(
+                icon: Icons.arrow_back_rounded,
+                onTap: onBack,
+                focused: focusedIndex == 0,
+              ),
               const Spacer(),
-              _CtrlButton(icon: Icons.skip_previous_rounded, onTap: onPrev),
+              _CtrlButton(
+                icon: Icons.skip_previous_rounded,
+                onTap: onPrev,
+                focused: focusedIndex == 1,
+              ),
               const SizedBox(width: 18),
               _CtrlButton(
                 icon:
                     isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                 onTap: onPlayPause,
                 primary: true,
+                focused: focusedIndex == 2,
               ),
               const SizedBox(width: 18),
-              _CtrlButton(icon: Icons.skip_next_rounded, onTap: onNext),
+              _CtrlButton(
+                icon: Icons.skip_next_rounded,
+                onTap: onNext,
+                focused: focusedIndex == 3,
+              ),
               const Spacer(),
               // REC + favori, tout à droite (« en bas »).
               _CtrlButton(
@@ -680,6 +780,7 @@ class _ControlsBar extends StatelessWidget {
                 onTap: onRecord,
                 accent: TvTokens.live,
                 active: isRecording,
+                focused: focusedIndex == 4,
               ),
               const SizedBox(width: 18),
               _CtrlButton(
@@ -689,6 +790,7 @@ class _ControlsBar extends StatelessWidget {
                 onTap: onFavorite,
                 accent: TvTokens.gold,
                 active: isFavorite,
+                focused: focusedIndex == 5,
               ),
             ],
           ),
@@ -792,12 +894,14 @@ class _CtrlButton extends StatefulWidget {
     this.primary = false,
     this.accent,
     this.active = false,
+    this.focused = false,
   });
   final IconData icon;
   final VoidCallback onTap;
   final bool primary; // bouton central (lecture/pause) : plus gros, anneau or
   final Color? accent; // teinte quand actif (rouge REC / or favori)
   final bool active;
+  final bool focused; // surligné au D-pad (n'importe quelle télécommande)
 
   @override
   State<_CtrlButton> createState() => _CtrlButtonState();
@@ -810,15 +914,25 @@ class _CtrlButtonState extends State<_CtrlButton> {
   Widget build(BuildContext context) {
     final double d = widget.primary ? 72 : 54;
     final Color accent = widget.accent ?? TvTokens.gold;
-    final Color borderColor = widget.primary
+    // Surlignage D-pad = anneau OR épais + halo : visible sur N'IMPORTE quelle
+    // télécommande (le repère « où je suis »).
+    final Color borderColor = widget.focused
         ? TvTokens.gold
-        : (widget.active ? accent : Colors.white24);
-    final Color bg = widget.active
-        ? accent.withValues(alpha: 0.22)
-        : Colors.black.withValues(alpha: 0.42);
-    final Color iconColor = widget.active
-        ? accent
-        : (widget.primary ? TvTokens.gold : TvTokens.text);
+        : (widget.primary
+            ? TvTokens.gold
+            : (widget.active ? accent : Colors.white24));
+    final Color bg = widget.focused
+        ? TvTokens.gold.withValues(alpha: 0.28)
+        : (widget.active
+            ? accent.withValues(alpha: 0.22)
+            : Colors.black.withValues(alpha: 0.42));
+    final Color iconColor = widget.focused
+        ? TvTokens.gold
+        : (widget.active
+            ? accent
+            : (widget.primary ? TvTokens.gold : TvTokens.text));
+
+    final double scale = _down ? 0.88 : (widget.focused ? 1.14 : 1.0);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -827,8 +941,8 @@ class _CtrlButtonState extends State<_CtrlButton> {
       onTapCancel: () => setState(() => _down = false),
       onTap: widget.onTap,
       child: AnimatedScale(
-        scale: _down ? 0.88 : 1.0,
-        duration: const Duration(milliseconds: 110),
+        scale: scale,
+        duration: const Duration(milliseconds: 120),
         curve: Curves.easeOut,
         child: Container(
           width: d,
@@ -836,13 +950,16 @@ class _CtrlButtonState extends State<_CtrlButton> {
           decoration: BoxDecoration(
             color: bg,
             shape: BoxShape.circle,
-            border: Border.all(color: borderColor, width: widget.primary ? 2 : 1),
-            boxShadow: widget.primary
+            border: Border.all(
+                color: borderColor,
+                width: (widget.primary || widget.focused) ? 2 : 1),
+            boxShadow: (widget.primary || widget.focused)
                 ? <BoxShadow>[
                     BoxShadow(
-                        color: TvTokens.gold.withValues(alpha: 0.25),
-                        blurRadius: 18,
-                        spreadRadius: -4),
+                        color: TvTokens.gold
+                            .withValues(alpha: widget.focused ? 0.45 : 0.25),
+                        blurRadius: widget.focused ? 24 : 18,
+                        spreadRadius: widget.focused ? -2 : -4),
                   ]
                 : null,
           ),
