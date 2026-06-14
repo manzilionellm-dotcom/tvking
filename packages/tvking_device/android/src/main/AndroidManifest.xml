@@ -1,0 +1,5 @@
+<!-- Namespace défini dans build.gradle (AGP 8+). Manifest vide, sans package.
+     Aucune permission requise : ANDROID_ID (Settings.Secure) est lisible sans
+     permission, et les champs Build aussi. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+</manifest>

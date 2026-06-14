@@ -131,6 +131,16 @@ dependencies:
   native_video_player:
     path: packages/native_video_player
 
+  # --- Identité STABLE de l'appareil (cœur business / activation) ---
+  # Enregistre le channel natif `com.manzilionellm.tvking/device` (ANDROID_ID)
+  # qui rend la « MAC » virtuelle DÉTERMINISTE et stable entre réinstallations.
+  # Indispensable sur le build TV : son workflow n'applique PAS apply_cast_patch
+  # (qui pose la MainActivity native sur mobile) → sans ce plugin, la MAC était
+  # aléatoire et l'activation se perdait. Plugin = toujours présent, quel que
+  # soit le workflow (survit au `flutter create` du CI).
+  tvking_device:
+    path: packages/tvking_device
+
   # Récupère l'IP locale du téléphone sur le WiFi (sinon impossible
   # de construire l'URL "http://<mon-ip>:8090/" que la TV doit ouvrir).
   network_info_plus: ^6.1.1
