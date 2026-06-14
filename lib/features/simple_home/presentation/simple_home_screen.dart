@@ -35,6 +35,7 @@ import '../../channels/domain/channel.dart';
 import '../../channels/presentation/favorites_screen.dart';
 import '../../channels/presentation/search_screen.dart';
 import '../../channels/presentation/widgets/mac_activation_view.dart';
+import '../../channels/presentation/widgets/resume_banner.dart';
 import '../../feedback/presentation/feedback_sheet.dart';
 import '../../channels/presentation/widgets/source_choice_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
@@ -167,6 +168,12 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                   // Bandeau « message à tous » (annonce admin). Auto-géré :
                   // ne prend aucune place s'il n'y a rien à montrer.
                   const AnnouncementBanner(),
+                  // « Reprendre » : bannière façon Continue Watching de
+                  // Netflix (génère ~70% des plays). Apparaît seulement si
+                  // une session récente (< 60 min) existe ; sinon invisible.
+                  // En Privé, aucun historique n'est tracké (incognito) →
+                  // elle reste donc masquée, ce qui respecte la promesse.
+                  const ResumeBanner(),
                   Expanded(child: CategoryBrowserView(channels: channels)),
                   _buildBottomBar(),
                 ],
