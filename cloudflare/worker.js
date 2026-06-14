@@ -326,15 +326,52 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
 // Présence « en ligne » : table séparée (on ne touche PAS au schéma
 // `devices`). On garde la dernière IP + pays + horodatage par MAC. Le
 // panel considère « en ligne » = vu il y a moins de quelques minutes.
+// =========================================================
+//  SCALABILITÉ (5M+ appareils) — préparé UNE fois par isolate Worker
+// =========================================================
+//  Les DDL idempotents (ADD COLUMN / CREATE INDEX) coûtent cher s'ils sont
+//  rejoués à CHAQUE heartbeat (des millions de fois/jour). On les exécute UNE
+//  seule fois par isolate (drapeaux mémoire), puis on ne fait plus que des
+//  écritures. Les INDEX gardent les requêtes rapides même à des millions de
+//  lignes (recherche panel, agrégation Tendances, statut par MAC).
+let _scaleSchemaReady = false;
+let _presenceReady = false;
+let _trendingCache = { at: 0, items: [] };
+
+async function ensureScaleSchema(env) {
+  if (_scaleSchemaReady || !env.DB) return;
+  for (const col of ['device_model TEXT', 'android_build TEXT',
+      'android_release TEXT', 'app_build INTEGER', 'platform TEXT',
+      'android_id TEXT', 'app_version TEXT']) {
+    try { await env.DB.prepare('ALTER TABLE devices ADD COLUMN ' + col).run(); } catch (_) {}
+  }
+  for (const idx of [
+    'CREATE INDEX IF NOT EXISTS idx_presence_lastseen ON presence(last_seen)',
+    'CREATE INDEX IF NOT EXISTS idx_presence_channel ON presence(channel)',
+    'CREATE INDEX IF NOT EXISTS idx_devices_lastseen ON devices(last_seen_at)',
+    'CREATE INDEX IF NOT EXISTS idx_devices_androidid ON devices(android_id)',
+    'CREATE INDEX IF NOT EXISTS idx_devices_reseller ON devices(reseller_id)',
+    'CREATE INDEX IF NOT EXISTS idx_licenses_device ON licenses(device_id)',
+  ]) {
+    try { await env.DB.prepare(idx).run(); } catch (_) {}
+  }
+  _scaleSchemaReady = true;
+}
+
 async function recordPresence(env, mac, ip, country, now, channel) {
   if (!env.DB) return;
   try {
-    await env.DB.prepare(
-      'CREATE TABLE IF NOT EXISTS presence (' +
-        'mac TEXT PRIMARY KEY, ip TEXT, country TEXT, last_seen INTEGER, channel TEXT)'
-    ).run();
-    // Colonne `channel` ajoutée après coup sur les bases existantes.
-    try { await env.DB.prepare('ALTER TABLE presence ADD COLUMN channel TEXT').run(); } catch (_) {}
+    // DDL UNE fois par isolate (au lieu d'à chaque heartbeat — gros gain à
+    // l'échelle de millions d'appareils). L'upsert, lui, tourne à chaque fois.
+    if (!_presenceReady) {
+      await env.DB.prepare(
+        'CREATE TABLE IF NOT EXISTS presence (' +
+          'mac TEXT PRIMARY KEY, ip TEXT, country TEXT, last_seen INTEGER, channel TEXT)'
+      ).run();
+      try { await env.DB.prepare('ALTER TABLE presence ADD COLUMN channel TEXT').run(); } catch (_) {}
+      try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_presence_lastseen ON presence(last_seen)').run(); } catch (_) {}
+      _presenceReady = true;
+    }
     // L'app envoie `channel` à CHAQUE heartbeat (nom de la chaîne en cours,
     // ou '' si elle ne regarde rien) → on reflète toujours l'état courant.
     const chan = (channel === undefined || channel === null) ? null : String(channel).slice(0, 120);
@@ -357,8 +394,16 @@ async function recordPresence(env, mac, ip, country, now, channel) {
 // 500 — renvoie une liste vide si la base n'est pas prête).
 async function handleTrending(env) {
   if (!env.DB) return json({ items: [] });
+  // CACHE 60 s : l'agrégation GROUP BY sur la table présence (potentiellement
+  // des millions de lignes) ne doit PAS tourner à chaque appel. On la recalcule
+  // au plus une fois par minute et par isolate → coût D1 négligeable même si des
+  // millions d'apps demandent les Tendances en boucle.
+  const now = Date.now();
+  if (now - _trendingCache.at < 60_000) {
+    return json({ items: _trendingCache.items });
+  }
   try {
-    const since = Date.now() - 15 * 60 * 1000; // « en ligne » = vu < 15 min
+    const since = now - 15 * 60 * 1000; // « en ligne » = vu < 15 min
     const rs = await env.DB.prepare(
       "SELECT channel, COUNT(*) AS n FROM presence " +
         "WHERE channel IS NOT NULL AND channel != '' AND last_seen >= ? " +
@@ -368,9 +413,11 @@ async function handleTrending(env) {
       channel: r.channel,
       count: r.n,
     }));
+    _trendingCache = { at: now, items };
     return json({ items });
   } catch (_) {
-    return json({ items: [] });
+    // En cas d'erreur on sert le dernier cache connu (jamais d'échec dur).
+    return json({ items: _trendingCache.items });
   }
 }
 
@@ -407,14 +454,8 @@ async function ensureD1Device(env, mac, now = Date.now()) {
 // (idempotentes). On n'écrase JAMAIS avec du vide.
 async function updateDeviceInfo(env, mac, body) {
   if (!env.DB || !body) return;
+  // Les colonnes sont créées une fois par isolate via ensureScaleSchema().
   try {
-    for (const col of ['device_model TEXT', 'android_build TEXT',
-        'android_release TEXT', 'app_build INTEGER', 'platform TEXT',
-        'android_id TEXT', 'app_version TEXT']) {
-      try {
-        await env.DB.prepare('ALTER TABLE devices ADD COLUMN ' + col).run();
-      } catch (_) { /* déjà présente */ }
-    }
     const model = (body.model ? String(body.model) : '').slice(0, 80);
     const build = (body.build ? String(body.build) : '').slice(0, 120);
     const release = (body.android ? String(body.android) : '').slice(0, 20);
@@ -428,28 +469,25 @@ async function updateDeviceInfo(env, mac, body) {
       ? body.platform : '';
     if (!model && !build && !release && !appBuild && !platform &&
         !androidId && !appVersion) return;
+    // UNE SEULE écriture (au lieu de 4) : le CASE n'écrase JAMAIS un champ
+    // existant avec une valeur vide → robuste ET économe en écritures D1.
     await env.DB
       .prepare(
-        'UPDATE devices SET device_model = ?, android_build = ?, ' +
-          'android_release = ?, app_build = ? WHERE mac = ?'
+        "UPDATE devices SET " +
+          "device_model = CASE WHEN ? != '' THEN ? ELSE device_model END, " +
+          "android_build = CASE WHEN ? != '' THEN ? ELSE android_build END, " +
+          "android_release = CASE WHEN ? != '' THEN ? ELSE android_release END, " +
+          "app_build = CASE WHEN ? != 0 THEN ? ELSE app_build END, " +
+          "android_id = CASE WHEN ? != '' THEN ? ELSE android_id END, " +
+          "app_version = CASE WHEN ? != '' THEN ? ELSE app_version END, " +
+          "platform = CASE WHEN ? != '' THEN ? ELSE platform END " +
+          "WHERE mac = ?"
       )
-      .bind(model, build, release, appBuild, mac)
+      .bind(
+        model, model, build, build, release, release, appBuild, appBuild,
+        androidId, androidId, appVersion, appVersion, platform, platform, mac,
+      )
       .run();
-    // android_id / app_version : on n'écrase pas avec du vide (vieux clients
-    // qui ne les envoient pas encore).
-    if (androidId) {
-      await env.DB.prepare('UPDATE devices SET android_id = ? WHERE mac = ?')
-        .bind(androidId, mac).run();
-    }
-    if (appVersion) {
-      await env.DB.prepare('UPDATE devices SET app_version = ? WHERE mac = ?')
-        .bind(appVersion, mac).run();
-    }
-    // platform à part : on ne l'écrase pas avec du vide (vieux clients).
-    if (platform) {
-      await env.DB.prepare('UPDATE devices SET platform = ? WHERE mac = ?')
-        .bind(platform, mac).run();
-    }
   } catch (_) {
     // best-effort : ne jamais faire échouer un heartbeat.
   }
@@ -1853,6 +1891,9 @@ async function handleHeartbeat(request, env) {
   // On enregistre AUTOMATIQUEMENT la MAC (essai 7 j), puis on renvoie son
   // etat. Toute app installee apparait ainsi dans le panel admin.
   if (env.DB) {
+    // Prépare colonnes + index UNE fois par isolate (doit précéder
+    // updateDeviceInfo qui écrit dans ces colonnes).
+    await ensureScaleSchema(env);
     await ensureD1Device(env, mac, now);
     // Enrichit la fiche avec le modèle + numéro de build Android.
     await updateDeviceInfo(env, mac, body);
