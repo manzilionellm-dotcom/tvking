@@ -17,6 +17,7 @@ import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../device/data/device_identity.dart';
+import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../core/tv_dimens.dart';
@@ -35,10 +36,16 @@ class TvLiveScreen extends StatefulWidget {
 
 class _TvLiveScreenState extends State<TvLiveScreen> {
   StreamSubscription<List<Channel>>? _sub;
+  StreamSubscription<Set<String>>? _favSub;
+  Set<String> _favIds = FavoritesRepository.instance.current;
   List<Channel> _all = const <Channel>[];
   List<String> _cats = const <String>[];
   String? _selectedCat;
   bool _heroShown = false;
+
+  /// Pseudo-catégorie en TÊTE de liste qui regroupe les chaînes favorites
+  /// (façon TiviMate). On la distingue d'une vraie catégorie par ce sentinelle.
+  static const String _kFavCat = '★ favoris'; // ★ favoris (clé interne)
 
   // Re-synchro de la source poussée par le panel. CRUCIAL : sans ça, l'app
   // ne récupérait la source qu'au tout 1er démarrage ; si le revendeur
@@ -54,6 +61,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     super.initState();
     _ingest(PlaylistRepository.instance.currentChannels);
     _sub = PlaylistRepository.instance.channelsStream.listen(_ingest);
+    // Favoris en direct : la catégorie « ★ Favoris » se met à jour toute seule.
+    FavoritesRepository.instance.initialize();
+    _favSub = FavoritesRepository.instance.favoritesStream.listen((Set<String> ids) {
+      if (mounted) setState(() => _favIds = ids);
+    });
     // MAC affichée sur l'état vide : sans elle, impossible de savoir à quel
     // appareil pousser une source dans le panel.
     DeviceIdentity.instance.mac.then((String m) {
@@ -68,9 +80,23 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   @override
   void dispose() {
     _sub?.cancel();
+    _favSub?.cancel();
     _syncTimer?.cancel();
     super.dispose();
   }
+
+  /// Chaînes favorites présentes dans la playlist courante (ordre playlist).
+  List<Channel> get _favChannels =>
+      _all.where((Channel c) => _favIds.contains(c.id)).toList(growable: false);
+
+  /// Catégories affichées = « ★ Favoris » (si au moins 1 favori) en tête,
+  /// puis les vraies catégories de la source.
+  List<String> get _displayCats =>
+      _favChannels.isEmpty ? _cats : <String>[_kFavCat, ..._cats];
+
+  /// Libellé visible d'une catégorie (la sentinelle Favoris est traduite).
+  String _catLabel(BuildContext context, String cat) =>
+      cat == _kFavCat ? '★ ${context.l10n.navFavorites}' : cat;
 
   Future<void> _kickSourceSync() async {
     if (_syncing) return;
@@ -105,17 +131,25 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       _all = live;
       _cats = cats;
       _selectedCat ??= cats.isNotEmpty ? cats.first : null;
-      if (_selectedCat != null && !cats.contains(_selectedCat)) {
+      // On ne réinitialise PAS si l'utilisateur est sur « ★ Favoris » (pseudo-
+      // catégorie absente de `cats`) — sinon un refresh de la source l'en
+      // ferait sortir.
+      if (_selectedCat != null &&
+          _selectedCat != _kFavCat &&
+          !cats.contains(_selectedCat)) {
         _selectedCat = cats.isNotEmpty ? cats.first : null;
       }
     });
   }
 
-  List<Channel> get _shown => _selectedCat == null
-      ? _all
-      : _all
-          .where((Channel c) => _catOf(c) == _selectedCat)
-          .toList(growable: false);
+  List<Channel> get _shown {
+    if (_selectedCat == _kFavCat) return _favChannels;
+    return _selectedCat == null
+        ? _all
+        : _all
+            .where((Channel c) => _catOf(c) == _selectedCat)
+            .toList(growable: false);
+  }
 
   // Dernière chaîne regardée (1er id de l'historique présent dans la
   // playlist courante) → « Continuer à regarder ».
@@ -255,11 +289,14 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                         color: TvTokens.text)),
               ),
               Expanded(
-                child: ListView.builder(
-                  itemCount: _cats.length,
-                  itemBuilder: (BuildContext context, int i) {
-                    final String cat = _cats[i];
+                child: Builder(builder: (BuildContext context) {
+                  final List<String> cats = _displayCats;
+                  return ListView.builder(
+                    itemCount: cats.length,
+                    itemBuilder: (BuildContext context, int i) {
+                    final String cat = cats[i];
                     final bool sel = cat == _selectedCat;
+                    final bool isFav = cat == _kFavCat;
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: TvFocusBuilder(
@@ -277,7 +314,10 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                           // actif. JAMAIS de bloc blanc plein (interdit #4).
                           final bool hl = focused || sel;
                           final Color bg = hl ? TvTokens.sel : Colors.transparent;
-                          final Color fg = hl ? TvTokens.goldBright : TvTokens.muted;
+                          // Les favoris restent toujours teintés or (repère).
+                          final Color fg = hl
+                              ? TvTokens.goldBright
+                              : (isFav ? TvTokens.gold : TvTokens.muted);
                           return Container(
                             decoration: BoxDecoration(
                               color: bg,
@@ -287,12 +327,13 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 12),
                             child: Text(
-                              cat,
+                              _catLabel(context, cat),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                   fontSize: TvDimens.titleS,
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight:
+                                      isFav ? FontWeight.w800 : FontWeight.w600,
                                   color: fg),
                             ),
                           );
@@ -300,7 +341,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                       ),
                     );
                   },
-                ),
+                );
+                }),
               ),
             ],
           ),
