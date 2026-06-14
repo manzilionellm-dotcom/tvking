@@ -77,6 +77,18 @@ class DeviceIdentity {
     }
   }
 
+  String? _androidIdCache;
+
+  /// ANDROID_ID brut (la graine de la MAC). Exposé pour le heartbeat → le
+  /// panel peut afficher / rechercher par l'identifiant Android réel, en plus
+  /// de la MAC virtuelle qui en dérive. `''` si indisponible.
+  Future<String> androidId() async {
+    if (_androidIdCache != null) return _androidIdCache!;
+    final String? id = await _stableDeviceId();
+    _androidIdCache = (id ?? '').trim();
+    return _androidIdCache!;
+  }
+
   /// Dérive 5 octets DÉTERMINISTES d'une graine (l'ANDROID_ID) via un
   /// hash FNV-1a (sans dépendance externe), puis formate en MK:XX:..:XX.
   /// Déterministe ⇒ même appareil = même MAC à chaque (ré)installation.

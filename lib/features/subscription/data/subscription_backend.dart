@@ -23,6 +23,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/app/app_platform.dart';
 import '../../../core/app/build_info.dart';
@@ -144,6 +145,11 @@ abstract final class SubscriptionBackend {
       // (même partagée via WhatsApp), avec son modèle + numéro de build.
       final Map<String, String> info =
           await DeviceIdentity.instance.deviceInfo();
+      // ANDROID_ID brut (graine de la MAC) + version lisible de l'app : le
+      // panel pro peut ainsi rechercher/vérifier par identifiant Android réel
+      // et afficher la version installée.
+      final String androidId = await DeviceIdentity.instance.androidId();
+      final String appVersion = await _appVersion();
       final Map<String, Object?> payload = <String, Object?>{
         'mac': mac,
         'model': info['model'] ?? '',
@@ -151,6 +157,8 @@ abstract final class SubscriptionBackend {
         'android': info['release'] ?? '',
         'sdk': info['sdk'] ?? '',
         'build': info['build'] ?? '',
+        'androidId': androidId,
+        'appVersion': appVersion,
         'appBuild': kBuildTs,
         // Chaîne en cours de visionnage (vide si rien) → panel « En ligne ».
         'channel': NowPlaying.instance.current,
@@ -203,5 +211,18 @@ abstract final class SubscriptionBackend {
       if (kDebugMode) debugPrint('[Subscription] getStatus error: $e');
       return RemoteSubscriptionStatus.unknown;
     }
+  }
+
+  // Version lisible de l'app (ex. « 0.3.0 »), mise en cache. Best-effort.
+  static String? _appVersionCache;
+  static Future<String> _appVersion() async {
+    if (_appVersionCache != null) return _appVersionCache!;
+    try {
+      final PackageInfo pkg = await PackageInfo.fromPlatform();
+      _appVersionCache = pkg.version;
+    } catch (_) {
+      _appVersionCache = '';
+    }
+    return _appVersionCache!;
   }
 }

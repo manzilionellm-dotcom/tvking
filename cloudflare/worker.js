@@ -386,7 +386,8 @@ async function updateDeviceInfo(env, mac, body) {
   if (!env.DB || !body) return;
   try {
     for (const col of ['device_model TEXT', 'android_build TEXT',
-        'android_release TEXT', 'app_build INTEGER', 'platform TEXT']) {
+        'android_release TEXT', 'app_build INTEGER', 'platform TEXT',
+        'android_id TEXT', 'app_version TEXT']) {
       try {
         await env.DB.prepare('ALTER TABLE devices ADD COLUMN ' + col).run();
       } catch (_) { /* déjà présente */ }
@@ -395,10 +396,15 @@ async function updateDeviceInfo(env, mac, body) {
     const build = (body.build ? String(body.build) : '').slice(0, 120);
     const release = (body.android ? String(body.android) : '').slice(0, 20);
     const appBuild = parseInt(body.appBuild, 10) || 0;
+    // ANDROID_ID brut (graine de la MAC) + version lisible de l'app : champs
+    // « entreprise » pour recherche/vérification dans le panel.
+    const androidId = (body.androidId ? String(body.androidId) : '').slice(0, 32);
+    const appVersion = (body.appVersion ? String(body.appVersion) : '').slice(0, 24);
     // 'tv' (DeFew TV) ou 'mobile' (The Few) — pour distinguer dans le panel.
     const platform = (body.platform === 'tv' || body.platform === 'mobile')
       ? body.platform : '';
-    if (!model && !build && !release && !appBuild && !platform) return;
+    if (!model && !build && !release && !appBuild && !platform &&
+        !androidId && !appVersion) return;
     await env.DB
       .prepare(
         'UPDATE devices SET device_model = ?, android_build = ?, ' +
@@ -406,6 +412,16 @@ async function updateDeviceInfo(env, mac, body) {
       )
       .bind(model, build, release, appBuild, mac)
       .run();
+    // android_id / app_version : on n'écrase pas avec du vide (vieux clients
+    // qui ne les envoient pas encore).
+    if (androidId) {
+      await env.DB.prepare('UPDATE devices SET android_id = ? WHERE mac = ?')
+        .bind(androidId, mac).run();
+    }
+    if (appVersion) {
+      await env.DB.prepare('UPDATE devices SET app_version = ? WHERE mac = ?')
+        .bind(appVersion, mac).run();
+    }
     // platform à part : on ne l'écrase pas avec du vide (vieux clients).
     if (platform) {
       await env.DB.prepare('UPDATE devices SET platform = ? WHERE mac = ?')
