@@ -27,11 +27,13 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/flavor/flavor.dart';
 import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../channels/domain/channel.dart';
 import '../../../channels/data/recently_watched_repository.dart';
+import '../../../channels/data/watch_history_repository.dart';
 import '../../../country_home/presentation/widgets/channel_logo.dart';
 import '../../../player/presentation/play_channel.dart';
 
@@ -207,6 +209,116 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
     );
   }
 
+  /// Temps de visionnage par chaîne sur 30 jours, calculé UNE SEULE fois
+  /// (la requête SQLite ne dépend pas du filtre courant). En mode Privé
+  /// le tracking est désactivé → ce Future renvoie une map vide et on
+  /// bascule sur le repli « tendances du jour ».
+  late final Future<Map<String, int>> _topFuture =
+      WatchHistoryRepository.instance.watchTimeByChannel(days: 30);
+
+  /// Rail « 🔥 Top 10 » : les chaînes les plus regardées (classement réel
+  /// par temps de visionnage). Quand l'historique est vide — nouvel
+  /// utilisateur OU mode Privé où l'on ne piste rien — on complète par une
+  /// sélection « tendances du jour » déterministe (qui tourne chaque jour)
+  /// pour que le rail reste vivant et accrocheur. La pastille de rang
+  /// numéroté est LE secret « preuve sociale » des apps US premium.
+  Widget _buildTopRail() {
+    return FutureBuilder<Map<String, int>>(
+      future: _topFuture,
+      builder: (BuildContext context, AsyncSnapshot<Map<String, int>> snap) {
+        final List<Channel> top = _computeTop(snap.data ?? const <String, int>{});
+        if (top.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Row(
+                children: <Widget>[
+                  const Icon(Icons.local_fire_department_rounded,
+                      size: 16, color: AppColors.live),
+                  const SizedBox(width: 6),
+                  Text(
+                    context.l10n.sectionTop10Today,
+                    style: AppTextStyles.headlineMedium.copyWith(
+                      fontSize: 13,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 92,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: top.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemBuilder: (BuildContext context, int i) {
+                  return _TopCard(
+                    channel: top[i],
+                    rank: i + 1,
+                    onTap: () => playChannel(
+                      context,
+                      top[i],
+                      zapPlaylist: widget.channels,
+                    ),
+                  );
+                },
+              ),
+            ),
+            const Divider(height: 1, thickness: 0.5, color: AppColors.surface),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Construit la liste du Top 10 : d'abord les chaînes RÉELLEMENT les
+  /// plus regardées (temps de visionnage décroissant), puis complément
+  /// « tendances du jour » si on n'atteint pas 10.
+  List<Channel> _computeTop(Map<String, int> watchTime) {
+    final Map<String, Channel> byId = _channelsById();
+    final List<Channel> top = <Channel>[];
+    final Set<String> used = <String>{};
+
+    // 1) Classement réel par temps de visionnage (quand on a des données).
+    final List<MapEntry<String, int>> ranked = watchTime.entries
+        .where((MapEntry<String, int> e) =>
+            e.value > 0 && byId.containsKey(e.key))
+        .toList()
+      ..sort((MapEntry<String, int> a, MapEntry<String, int> b) =>
+          b.value.compareTo(a.value));
+    for (final MapEntry<String, int> e in ranked) {
+      top.add(byId[e.key]!);
+      used.add(e.key);
+      if (top.length >= 10) return top;
+    }
+
+    // 2) Complément « tendances du jour » : sélection déterministe qui
+    //    tourne chaque jour parmi les chaînes éligibles. AUCUNE donnée en
+    //    dur : ce sont LES chaînes du client, simplement réordonnées par
+    //    un décalage basé sur la date. On évite le rayon adulte hors mode
+    //    Privé (où, lui, tout est adulte par nature).
+    final bool allowAdult = FlavorConfig.current.adultOnly;
+    final List<Channel> pool = <Channel>[
+      for (final Channel c in widget.channels)
+        if (!used.contains(c.id) &&
+            (allowAdult || c.genre != ChannelGenre.adult))
+          c,
+    ];
+    if (pool.isEmpty) return top;
+    final int dayIndex =
+        DateTime.now().difference(DateTime(2026)).inDays.abs();
+    final int start = dayIndex % pool.length;
+    for (int k = 0; k < pool.length && top.length < 10; k++) {
+      top.add(pool[(start + k) % pool.length]);
+    }
+    return top;
+  }
+
   /// Regroupe les chaînes par catégorie BRUTE (group-title) en
   /// CONSERVANT l'ordre d'apparition — des catégories ET des chaînes.
   /// (LinkedHashMap : l'ordre des clés = ordre de 1re apparition.)
@@ -278,6 +390,10 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
 
     return Column(
       children: <Widget>[
+        // Rayon « 🔥 Top 10 » : preuve sociale en tête d'accueil (secret
+        // des apps US premium). Classement réel par temps de visionnage,
+        // avec repli « tendances du jour » pour ne jamais être vide.
+        _buildTopRail(),
         // Rayon « Récemment regardées » : rail horizontal élégant des
         // dernières chaînes ouvertes par le client (max 10). Disparaît
         // tout seul s'il n'y a pas encore d'historique.
@@ -575,6 +691,77 @@ class _RecentCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             ChannelLogo(channel: channel, size: 56, radius: 14),
+            const SizedBox(height: 6),
+            Text(
+              channel.cleanName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: AppTextStyles.bodyMedium.copyWith(
+                fontSize: 11,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Vignette du rail « Top 10 » : comme [_RecentCard], mais avec une
+/// pastille de RANG (1…10) en coin. Ce numéro est le déclencheur de
+/// « preuve sociale » qui rend le classement irrésistible (façon Netflix).
+class _TopCard extends StatelessWidget {
+  const _TopCard({
+    required this.channel,
+    required this.rank,
+    required this.onTap,
+  });
+
+  final Channel channel;
+  final int rank;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 62,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Stack(
+              clipBehavior: Clip.none,
+              children: <Widget>[
+                ChannelLogo(channel: channel, size: 56, radius: 14),
+                // Pastille de rang : numéro blanc sur fond « live » (rouge),
+                // cerclé de la couleur de fond pour bien détacher du logo.
+                Positioned(
+                  top: -4,
+                  left: -4,
+                  child: Container(
+                    width: 22,
+                    height: 22,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.live,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.background, width: 2),
+                    ),
+                    child: Text(
+                      '$rank',
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 6),
             Text(
               channel.cleanName,
