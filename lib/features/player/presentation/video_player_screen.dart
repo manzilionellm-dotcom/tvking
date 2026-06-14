@@ -109,6 +109,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Recording? _activeRecording;
   bool get _isRecording => _activeRecording != null;
 
+  // Mode « Écouteurs » (audio seul), façon YouTube : on masque l'image
+  // mais le son continue. Pratique quand on enchaîne sur WhatsApp ou
+  // une autre appli et qu'on veut juste écouter. La lecture (`_player`)
+  // n'est PAS coupée : on retire simplement la surface vidéo de l'arbre
+  // de widgets, le moteur media_kit continue de décoder/jouer l'audio.
+  // Préférence de session uniquement (remise à false à chaque écran).
+  bool _audioOnly = false;
+
   // Picture-in-Picture : implémenté en NATIF Android via
   // MainActivity.kt + MethodChannel `tvking/pip`. Pas de plugin
   // tiers — voir `lib/features/player/data/pip_service.dart` et
@@ -984,6 +992,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _scheduleHideOverlay();
   }
 
+  /// Mode « Écouteurs » (audio seul), façon YouTube.
+  ///
+  /// On bascule simplement `_audioOnly`. Quand il est `true`,
+  /// `_buildPlayerSurface()` ne pose plus le widget `Video` : la surface
+  /// vidéo disparaît, remplacée par un fond noir + une icône casque.
+  /// Le moteur `_player` (media_kit) n'est jamais mis en pause : il
+  /// continue de décoder et de jouer le SON. C'est exactement le
+  /// comportement « écran éteint, ça continue » de YouTube.
+  void _toggleAudioOnly() {
+    setState(() => _audioOnly = !_audioOnly);
+    _scheduleHideOverlay();
+  }
+
   // ============================================================
   //  Télécommande Android TV / Fire TV — touches média + D-pad
   // ============================================================
@@ -1218,6 +1239,47 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     );
   }
 
+  /// Écran affiché à la place de la vidéo en mode « Écouteurs ».
+  ///
+  /// Fond noir + grosse icône casque + nom de la chaîne. La lecture
+  /// du son continue en arrière-plan (on n'a fait que retirer le
+  /// widget `Video`). On n'intercepte PAS les taps ici : ils
+  /// remontent au `GestureDetector` parent qui affiche la barre de
+  /// contrôles, où le bouton « Vidéo » permet de réafficher l'image.
+  Widget _buildAudioOnlyView() {
+    return Container(
+      color: Colors.black,
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const Icon(
+            Icons.headphones_rounded,
+            color: Colors.white24,
+            size: 96,
+          ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              _currentChannel.cleanName,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style:
+                  AppTextStyles.headlineMedium.copyWith(color: Colors.white70),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            context.l10n.playerAudioOnly,
+            style: AppTextStyles.bodyMedium.copyWith(color: Colors.white38),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Surface de lecture : la vidéo + spinner + stats + overlays.
   /// Extraite pour pouvoir être ré-utilisée à l'identique dans le
   /// PageView et dans le mode mono-page (TV / playlist absente).
@@ -1231,23 +1293,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           return Stack(
               fit: StackFit.expand,
               children: <Widget>[
-                // ----- 1. La vidéo (avec aspect ratio forcé si demandé) -----
-                Center(
-                  child: _forcedAspect(mode) == null
-                      ? Video(
-                          controller: _videoController,
-                          controls: (VideoState _) => const SizedBox.shrink(),
-                          fit: _fitFromMode(mode),
-                        )
-                      : AspectRatio(
-                          aspectRatio: _forcedAspect(mode)!,
-                          child: Video(
+                // ----- 1. La vidéo, OU l'écran « Écouteurs » (audio seul) -----
+                //  En mode audio seul on ne pose PAS le widget `Video` :
+                //  l'image disparaît mais `_player` continue de jouer le son
+                //  (façon YouTube). On affiche un fond noir + icône casque.
+                if (_audioOnly)
+                  _buildAudioOnlyView()
+                else
+                  Center(
+                    child: _forcedAspect(mode) == null
+                        ? Video(
                             controller: _videoController,
                             controls: (VideoState _) => const SizedBox.shrink(),
                             fit: _fitFromMode(mode),
+                          )
+                        : AspectRatio(
+                            aspectRatio: _forcedAspect(mode)!,
+                            child: Video(
+                              controller: _videoController,
+                              controls: (VideoState _) => const SizedBox.shrink(),
+                              fit: _fitFromMode(mode),
+                            ),
                           ),
-                        ),
-                ),
+                  ),
 
                 // ----- 1bis. Badge discret "● REC" -----
                 //  L'enregistrement passe par le mini-relais (1 connexion)
@@ -1611,13 +1679,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     iconColor: _isRecording ? AppColors.live : null,
                     onTap: _toggleRecording,
                   ),
-                  // Bouton PiP désactivé temporairement (incompat JVM
-                  // target du plugin `floating: ^4` sur le SDK Android
-                  // CI). À rétablir quand on a un plugin compatible.
+                  // Bouton « Écouteurs » (audio seul, façon YouTube) :
+                  // masque l'image, garde le son. Quand il est actif on
+                  // propose l'inverse (« Vidéo ») pour réafficher l'image.
                   _ControlButton(
-                    icon: Icons.tune_rounded,
-                    label: context.l10n.playerSettings,
-                    onTap: _openSettings,
+                    icon: _audioOnly
+                        ? Icons.ondemand_video_rounded
+                        : Icons.headphones_rounded,
+                    label: _audioOnly
+                        ? context.l10n.playerVideo
+                        : context.l10n.playerAudioOnly,
+                    iconColor: _audioOnly ? AppColors.accent : null,
+                    onTap: _toggleAudioOnly,
                   ),
                 ],
               ),

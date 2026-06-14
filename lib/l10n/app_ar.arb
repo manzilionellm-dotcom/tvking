@@ -46,6 +46,8 @@
   "playerPlay": "تشغيل",
   "playerRec": "تسجيل",
   "playerStop": "إيقاف",
+  "playerAudioOnly": "الصوت",
+  "playerVideo": "الفيديو",
   "playerTracks": "المسارات",
   "playerSpeed": "السرعة",
   "playerRatio": "النسبة",

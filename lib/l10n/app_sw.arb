@@ -46,6 +46,8 @@
   "playerPlay": "Cheza",
   "playerRec": "REC",
   "playerStop": "STOP",
+  "playerAudioOnly": "Sauti",
+  "playerVideo": "Video",
   "playerTracks": "Nyimbo",
   "playerSpeed": "Kasi",
   "playerRatio": "Umbo",

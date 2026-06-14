@@ -47,6 +47,8 @@
   "playerPlay": "Play",
   "playerRec": "REC",
   "playerStop": "STOP",
+  "playerAudioOnly": "Audio",
+  "playerVideo": "Video",
   "playerTracks": "Tracks",
   "playerSpeed": "Speed",
   "playerRatio": "Ratio",

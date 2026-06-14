@@ -46,6 +46,8 @@
   "playerPlay": "Afspil",
   "playerRec": "REC",
   "playerStop": "STOP",
+  "playerAudioOnly": "Lyd",
+  "playerVideo": "Video",
   "playerTracks": "Spor",
   "playerSpeed": "Hastighed",
   "playerRatio": "Format",

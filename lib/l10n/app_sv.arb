@@ -46,6 +46,8 @@
   "playerPlay": "Spela",
   "playerRec": "REC",
   "playerStop": "STOP",
+  "playerAudioOnly": "Ljud",
+  "playerVideo": "Video",
   "playerTracks": "Spår",
   "playerSpeed": "Hastighet",
   "playerRatio": "Format",

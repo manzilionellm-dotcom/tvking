@@ -55,6 +55,8 @@
   "playerPlay": "Lecture",
   "playerRec": "REC",
   "playerStop": "STOP",
+  "playerAudioOnly": "Écouteurs",
+  "playerVideo": "Vidéo",
   "playerTracks": "Pistes",
   "playerSpeed": "Vitesse",
   "playerRatio": "Format",
