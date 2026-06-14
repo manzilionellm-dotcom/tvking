@@ -27,6 +27,7 @@ import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/data/local_stream_relay.dart';
+import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
 import '../../subscription/data/now_playing.dart';
@@ -75,6 +76,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   String? _relayPlayUrl; // URL locale 127.0.0.1 utilisée pendant l'enregistrement
   String? _toastMsg; // petit message éphémère (sauvegardé / vide / échec)
 
+  // ----- Favoris -----
+  // On suit l'ensemble des IDs favoris en direct (le ❤ du lecteur reflète
+  // instantanément l'ajout/retrait, et reste à jour au zap).
+  StreamSubscription<Set<String>>? _favSub;
+  Set<String> _favIds = FavoritesRepository.instance.current;
+  bool get _isFavorite => _favIds.contains(_current.id);
+
   // Anti-gel : on suit la progression réelle (position qui avance).
   DateTime _lastProgress = DateTime.now();
   Duration _lastPos = Duration.zero;
@@ -105,6 +113,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     // contente de piloter l'URL et d'écouter l'état.
     _controller = NativeVideoController(initialUrl: _current.streamUrl);
     _controller.addListener(_onPlayer);
+    // Favoris en direct (le ❤ se met à jour tout seul).
+    FavoritesRepository.instance.initialize();
+    _favSub = FavoritesRepository.instance.favoritesStream.listen((Set<String> ids) {
+      if (mounted) setState(() => _favIds = ids);
+    });
     _open(reuse: true); // historique / présence pour la 1re chaîne
     // Chien de garde : aucune progression depuis 15 s → reconnexion.
     _watchdog = Timer.periodic(_watchEvery, (_) {
@@ -124,6 +137,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     _numTimer?.cancel();
     _watchdog?.cancel();
     _toastTimer?.cancel();
+    _favSub?.cancel();
     // Si on quitte le lecteur en plein enregistrement : on finalise proprement
     // (arrêt du relais + clôture en base), sans toucher au controller détruit.
     if (_activeRecording != null) {
@@ -323,6 +337,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
     setState(() {});
   }
 
+  // Ajoute / retire la chaîne courante des favoris (bouton ❤ / touche F).
+  void _toggleFavorite() {
+    final bool wasFav = _isFavorite;
+    FavoritesRepository.instance.toggle(_current.id);
+    _flash(wasFav ? 'Retiré des favoris' : 'Ajouté aux favoris ❤');
+    _showOverlayTemporarily();
+  }
+
   // ----- Saisie d'un numéro de chaîne (0-9) → zap après ~1,5 s -----
   void _onDigit(int d) {
     if (_numBuffer.length < 4) _numBuffer += '$d';
@@ -394,6 +416,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
       _toggleRecording();
       return KeyEventResult.handled;
     }
+    if (k == LogicalKeyboardKey.keyF) {
+      _toggleFavorite();
+      return KeyEventResult.handled;
+    }
     if (_isOk(k)) {
       _toggleOverlay();
       return KeyEventResult.handled;
@@ -455,30 +481,34 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
                     ),
                   ),
                 ),
-              // Barre de chaînes + contrôles tactiles (auto-masqués).
-              AnimatedOpacity(
-                opacity: _overlay ? 1 : 0,
-                duration: TvDimens.focusAnim,
-                child: IgnorePointer(
-                  ignoring: !_overlay,
-                  child: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        // Boutons au doigt (tablette / TV tactile). Non
-                        // focusables : le D-pad les ignore et zappe directement.
-                        _TouchControls(
-                          isPlaying: _controller.isPlaying,
-                          isRecording: _isRecording,
-                          onBack: () => Navigator.of(context).maybePop(),
-                          onPrev: () => _zap(-1),
-                          onNext: () => _zap(1),
-                          onPlayPause: _togglePlayPause,
-                          onRecord: _toggleRecording,
-                        ),
-                        _ChannelBar(channel: _current, index: _index),
-                      ],
+              // Panneau de lecture (façon YouTube / Netflix) : glisse depuis le
+              // bas + fondu, masqué automatiquement après 5 s. Contient l'info
+              // chaîne + tous les contrôles (dont REC et ❤ en bas).
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: AnimatedSlide(
+                  offset: _overlay ? Offset.zero : const Offset(0, 0.28),
+                  duration: TvDimens.focusAnim,
+                  curve: Curves.easeOutCubic,
+                  child: AnimatedOpacity(
+                    opacity: _overlay ? 1 : 0,
+                    duration: TvDimens.focusAnim,
+                    child: IgnorePointer(
+                      ignoring: !_overlay,
+                      child: _ControlsBar(
+                        channel: _current,
+                        index: _index,
+                        total: widget.channels.length,
+                        isPlaying: _controller.isPlaying,
+                        isRecording: _isRecording,
+                        isFavorite: _isFavorite,
+                        onBack: () => Navigator.of(context).maybePop(),
+                        onPrev: () => _zap(-1),
+                        onNext: () => _zap(1),
+                        onPlayPause: _togglePlayPause,
+                        onRecord: _toggleRecording,
+                        onFavorite: _toggleFavorite,
+                      ),
                     ),
                   ),
                 ),
@@ -565,189 +595,261 @@ class _TvPlayerScreenState extends State<TvPlayerScreen> {
   }
 }
 
-/// Rangée de boutons ronds pour le TACTILE (tablette / TV à écran tactile) :
-/// retour, chaîne −, lecture/pause, chaîne +. Volontairement NON focusables
-/// (GestureDetector, pas TvFocusable) → la télécommande D-pad les ignore et
-/// continue de zapper directement, ils ne servent qu'au doigt.
-class _TouchControls extends StatelessWidget {
-  const _TouchControls({
+/// Panneau de lecture moderne (façon YouTube / Netflix) : dégradé sombre en
+/// bas, infos chaîne (logo + nom + DIRECT + n° de chaîne) puis une rangée de
+/// commandes « verre » animées. À droite (« en bas ») : REC et ❤ favori.
+/// Boutons NON focusables → le D-pad zappe directement (Haut/Bas) ; ils
+/// servent au doigt (tablette / TV tactile) et de repères visuels.
+class _ControlsBar extends StatelessWidget {
+  const _ControlsBar({
+    required this.channel,
+    required this.index,
+    required this.total,
     required this.isPlaying,
     required this.isRecording,
+    required this.isFavorite,
     required this.onBack,
     required this.onPrev,
     required this.onNext,
     required this.onPlayPause,
     required this.onRecord,
+    required this.onFavorite,
   });
 
+  final Channel channel;
+  final int index;
+  final int total;
   final bool isPlaying;
   final bool isRecording;
+  final bool isFavorite;
   final VoidCallback onBack;
   final VoidCallback onPrev;
   final VoidCallback onNext;
   final VoidCallback onPlayPause;
   final VoidCallback onRecord;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          _RoundButton(icon: Icons.arrow_back_rounded, onTap: onBack),
-          const SizedBox(width: 14),
-          _RoundButton(icon: Icons.skip_previous_rounded, onTap: onPrev),
-          const SizedBox(width: 14),
-          _RoundButton(
-            icon: isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-            onTap: onPlayPause,
-            big: true,
-          ),
-          const SizedBox(width: 14),
-          _RoundButton(icon: Icons.skip_next_rounded, onTap: onNext),
-          const SizedBox(width: 14),
-          // Bouton ENREGISTRER : rouge plein quand on enregistre (= stop),
-          // contour rouge sinon (= démarrer).
-          _RoundButton(
-            icon: isRecording
-                ? Icons.stop_rounded
-                : Icons.fiber_manual_record_rounded,
-            onTap: onRecord,
-            iconColor: TvTokens.live,
-            highlight: isRecording,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RoundButton extends StatelessWidget {
-  const _RoundButton({
-    required this.icon,
-    required this.onTap,
-    this.big = false,
-    this.iconColor,
-    this.highlight = false,
-  });
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool big;
-  final Color? iconColor;
-  final bool highlight;
-
-  @override
-  Widget build(BuildContext context) {
-    final double d = big ? 68 : 54;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        width: d,
-        height: d,
-        decoration: BoxDecoration(
-          color: highlight
-              ? TvTokens.live.withValues(alpha: 0.25)
-              : Colors.black.withValues(alpha: 0.55),
-          shape: BoxShape.circle,
-          border: Border.all(
-              color: highlight ? TvTokens.live : Colors.white24),
-        ),
-        child: Icon(icon,
-            color: iconColor ?? TvTokens.text, size: big ? 38 : 28),
-      ),
-    );
-  }
-}
-
-class _ChannelBar extends StatelessWidget {
-  const _ChannelBar({required this.channel, required this.index});
-  final Channel channel;
-  final int index;
+  final VoidCallback onFavorite;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(
-          TvDimens.safeH, 20, TvDimens.safeH, TvDimens.safeV + 8),
+      padding: EdgeInsets.fromLTRB(
+          TvDimens.safeH, 44, TvDimens.safeH, TvDimens.safeV + 14),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
-          colors: <Color>[Color(0xE6000000), Color(0x00000000)],
+          colors: <Color>[Color(0xF2000000), Color(0x00000000)],
         ),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          SizedBox(
-            width: 64, height: 64,
-            child: (channel.logoUrl != null && channel.logoUrl!.isNotEmpty)
-                ? Image.network(channel.logoUrl!,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => _initials(channel))
-                : _initials(channel),
+          // ---- Ligne info chaîne ----
+          Row(
+            children: <Widget>[
+              _logo(),
+              const SizedBox(width: 16),
+              Expanded(child: _info(context)),
+              const SizedBox(width: 12),
+              _channelNumber(),
+            ],
           ),
-          const SizedBox(width: 18),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text(
-                  channel.cleanName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: TvDimens.headline,
-                      fontWeight: FontWeight.w800,
-                      color: TvTokens.text),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: <Widget>[
-                    if (channel.isLive) ...<Widget>[
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                            color: TvTokens.live,
-                            borderRadius: BorderRadius.circular(4)),
-                        child: Text(context.l10n.tvLiveBadge,
-                            style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white)),
-                      ),
-                      const SizedBox(width: 10),
-                    ],
-                    Text(
-                      channel.category.trim().isEmpty
-                          ? context.l10n.tvOthers
-                          : channel.category.trim(),
-                      style: TextStyle(
-                          fontSize: TvDimens.label,
-                          color: TvTokens.muted),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          const SizedBox(height: 18),
+          // ---- Rangée de commandes ----
+          Row(
+            children: <Widget>[
+              _CtrlButton(icon: Icons.arrow_back_rounded, onTap: onBack),
+              const Spacer(),
+              _CtrlButton(icon: Icons.skip_previous_rounded, onTap: onPrev),
+              const SizedBox(width: 18),
+              _CtrlButton(
+                icon:
+                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                onTap: onPlayPause,
+                primary: true,
+              ),
+              const SizedBox(width: 18),
+              _CtrlButton(icon: Icons.skip_next_rounded, onTap: onNext),
+              const Spacer(),
+              // REC + favori, tout à droite (« en bas »).
+              _CtrlButton(
+                icon: isRecording
+                    ? Icons.stop_rounded
+                    : Icons.fiber_manual_record_rounded,
+                onTap: onRecord,
+                accent: TvTokens.live,
+                active: isRecording,
+              ),
+              const SizedBox(width: 18),
+              _CtrlButton(
+                icon: isFavorite
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                onTap: onFavorite,
+                accent: TvTokens.gold,
+                active: isFavorite,
+              ),
+            ],
           ),
-          Text(context.l10n.tvZapHint,
-              style: TextStyle(
-                  fontSize: TvDimens.caption, color: TvTokens.mutedDim)),
         ],
       ),
     );
   }
 
-  Widget _initials(Channel c) => Center(
-        child: Text(c.initials,
+  Widget _logo() => SizedBox(
+        width: 56,
+        height: 56,
+        child: (channel.logoUrl != null && channel.logoUrl!.isNotEmpty)
+            ? Image.network(channel.logoUrl!,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => _initials())
+            : _initials(),
+      );
+
+  Widget _initials() => Center(
+        child: Text(channel.initials,
             style: TextStyle(
                 fontSize: TvDimens.title,
                 fontWeight: FontWeight.w800,
                 color: TvTokens.muted)),
       );
+
+  Widget _info(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(channel.cleanName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: TvDimens.headline,
+                  fontWeight: FontWeight.w800,
+                  color: TvTokens.text)),
+          const SizedBox(height: 6),
+          Row(
+            children: <Widget>[
+              if (channel.isLive) ...<Widget>[
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                  decoration: BoxDecoration(
+                      color: TvTokens.live,
+                      borderRadius: BorderRadius.circular(5)),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const Icon(Icons.fiber_manual_record_rounded,
+                          color: Colors.white, size: 11),
+                      const SizedBox(width: 5),
+                      Text(context.l10n.tvLiveBadge,
+                          style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
+              Flexible(
+                child: Text(
+                  channel.category.trim().isEmpty
+                      ? context.l10n.tvOthers
+                      : channel.category.trim(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: TvDimens.label, color: TvTokens.muted),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+
+  Widget _channelNumber() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Text('${index + 1} / $total',
+            style: TextStyle(
+                fontSize: TvDimens.label,
+                fontWeight: FontWeight.w800,
+                color: TvTokens.text)),
+      );
+}
+
+/// Bouton de commande « verre » avec animation d'appui (scale), façon lecteur
+/// moderne. Non focusable : répond au doigt ; le D-pad zappe directement.
+class _CtrlButton extends StatefulWidget {
+  const _CtrlButton({
+    required this.icon,
+    required this.onTap,
+    this.primary = false,
+    this.accent,
+    this.active = false,
+  });
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool primary; // bouton central (lecture/pause) : plus gros, anneau or
+  final Color? accent; // teinte quand actif (rouge REC / or favori)
+  final bool active;
+
+  @override
+  State<_CtrlButton> createState() => _CtrlButtonState();
+}
+
+class _CtrlButtonState extends State<_CtrlButton> {
+  bool _down = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final double d = widget.primary ? 72 : 54;
+    final Color accent = widget.accent ?? TvTokens.gold;
+    final Color borderColor = widget.primary
+        ? TvTokens.gold
+        : (widget.active ? accent : Colors.white24);
+    final Color bg = widget.active
+        ? accent.withValues(alpha: 0.22)
+        : Colors.black.withValues(alpha: 0.42);
+    final Color iconColor = widget.active
+        ? accent
+        : (widget.primary ? TvTokens.gold : TvTokens.text);
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _down = true),
+      onTapUp: (_) => setState(() => _down = false),
+      onTapCancel: () => setState(() => _down = false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _down ? 0.88 : 1.0,
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOut,
+        child: Container(
+          width: d,
+          height: d,
+          decoration: BoxDecoration(
+            color: bg,
+            shape: BoxShape.circle,
+            border: Border.all(color: borderColor, width: widget.primary ? 2 : 1),
+            boxShadow: widget.primary
+                ? <BoxShadow>[
+                    BoxShadow(
+                        color: TvTokens.gold.withValues(alpha: 0.25),
+                        blurRadius: 18,
+                        spreadRadius: -4),
+                  ]
+                : null,
+          ),
+          child: Icon(widget.icon,
+              color: iconColor, size: widget.primary ? 40 : 27),
+        ),
+      ),
+    );
+  }
 }

@@ -14,7 +14,11 @@ import '../core/tv_tokens.dart';
 
 /// Nom produit affiché PARTOUT.
 const String kAppName = 'The Few TV';
-const String _kLogoAsset = 'assets/branding/thefew_tv_icon.png';
+// Logo « naturel » sur fond TRANSPARENT (pas le carré noir, qui se voyait
+// comme un rectangle plus sombre sur les surfaces gris foncé de l'app).
+// Le carré noir reste UNIQUEMENT pour l'icône de lancement (cf. yaml dédié),
+// où un fond est normal.
+const String _kLogoAsset = 'assets/branding/thefew_logo.png';
 
 /// Numéro WhatsApp business (format international, sans + ni espaces).
 const String kWhatsAppPhone = '447307410512';

@@ -19,6 +19,7 @@ import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/playlists/data/playlist_repository.dart';
+import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
 import 'features/recordings/data/recording_repository.dart';
 import 'features/subscription/data/subscription_state.dart';
@@ -77,6 +78,10 @@ Future<void> main() async {
         .then((_) => RecordingRepository.instance.recoverOrphans())
         .then((_) {}),
   );
+
+  // 6) Favoris : on précharge l'ensemble des chaînes favorites pour que le
+  //    cœur ❤ du lecteur affiche le bon état dès la 1re ouverture.
+  unawaited(FavoritesRepository.instance.initialize());
 
   runApp(const TvApp());
 }
