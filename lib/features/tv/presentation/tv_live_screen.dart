@@ -71,17 +71,26 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // Favoris en direct : la catégorie « ★ Favoris » se met à jour toute seule.
     FavoritesRepository.instance.initialize();
     _favSub = FavoritesRepository.instance.favoritesStream.listen((Set<String> ids) {
-      if (mounted) setState(() => _favIds = ids);
+      if (mounted) setState(() {
+        _favIds = ids;
+        _recompute();
+      });
     });
     // Tendances en direct : la catégorie « 🔥 Tendances » se met à jour seule.
     TrendingRepository.instance.start();
     _trendSub = TrendingRepository.instance.stream.listen((List<String> names) {
-      if (mounted) setState(() => _trending = names);
+      if (mounted) setState(() {
+        _trending = names;
+        _recompute();
+      });
     });
     // Historique « 🕒 Récemment » en direct.
     _recentSub =
         RecentlyWatchedRepository.instance.stream.listen((List<String> ids) {
-      if (mounted) setState(() => _recentIds = ids);
+      if (mounted) setState(() {
+        _recentIds = ids;
+        _recompute();
+      });
     });
     // MAC affichée sur l'état vide : sans elle, impossible de savoir à quel
     // appareil pousser une source dans le panel.
@@ -105,51 +114,85 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     super.dispose();
   }
 
-  /// Chaînes favorites présentes dans la playlist courante (ordre playlist).
-  List<Channel> get _favChannels =>
-      _all.where((Channel c) => _favIds.contains(c.id)).toList(growable: false);
+  // ----- État dérivé MÉMOÏSÉ (scalabilité grosses listes) -----
+  // On NE recalcule PAS ces listes à chaque frame : seulement quand une source
+  // change (chaînes, favoris, tendances, historique, catégorie). Indispensable
+  // pour rester fluide même avec des dizaines/centaines de milliers de chaînes.
+  List<Channel> _favCh = const <Channel>[];
+  List<Channel> _trendCh = const <Channel>[];
+  List<Channel> _recentCh = const <Channel>[];
+  List<String> _dispCats = const <String>[];
+  List<Channel> _shownList = const <Channel>[];
 
-  /// Chaînes tendance présentes dans la playlist locale, dans l'ORDRE de
-  /// popularité renvoyé par le backend (match par nom, insensible à la casse).
-  List<Channel> get _trendingChannels {
-    if (_trending.isEmpty || _all.isEmpty) return const <Channel>[];
-    final Map<String, Channel> byName = <String, Channel>{};
-    for (final Channel c in _all) {
-      byName.putIfAbsent(c.cleanName.trim().toLowerCase(), () => c);
+  /// Recalcule TOUT l'état dérivé à partir des sources. Appelé UNIQUEMENT quand
+  /// une source change — jamais dans build().
+  void _recompute() {
+    // Favoris (ordre playlist).
+    _favCh = _favIds.isEmpty
+        ? const <Channel>[]
+        : _all
+            .where((Channel c) => _favIds.contains(c.id))
+            .toList(growable: false);
+    // Récemment regardées (ordre historique).
+    if (_recentIds.isEmpty || _all.isEmpty) {
+      _recentCh = const <Channel>[];
+    } else {
+      final Map<String, Channel> byId = <String, Channel>{
+        for (final Channel c in _all) c.id: c,
+      };
+      _recentCh = <Channel>[
+        for (final String id in _recentIds)
+          if (byId[id] != null) byId[id]!,
+      ];
     }
-    final List<Channel> out = <Channel>[];
-    final Set<String> seen = <String>{};
-    for (final String name in _trending) {
-      final Channel? c = byName[name.trim().toLowerCase()];
-      if (c != null && seen.add(c.id)) out.add(c);
+    // Tendances (ordre de popularité, match par nom insensible à la casse).
+    if (_trending.isEmpty || _all.isEmpty) {
+      _trendCh = const <Channel>[];
+    } else {
+      final Map<String, Channel> byName = <String, Channel>{};
+      for (final Channel c in _all) {
+        byName.putIfAbsent(c.cleanName.trim().toLowerCase(), () => c);
+      }
+      final List<Channel> out = <Channel>[];
+      final Set<String> seen = <String>{};
+      for (final String name in _trending) {
+        final Channel? c = byName[name.trim().toLowerCase()];
+        if (c != null && seen.add(c.id)) out.add(c);
+      }
+      _trendCh = out;
     }
-    return out;
+    // Catégories affichées (pseudo-catégories non vides en tête).
+    final List<String> cats = <String>[];
+    if (_trendCh.isNotEmpty) cats.add(_kTrendCat);
+    if (_favCh.isNotEmpty) cats.add(_kFavCat);
+    if (_recentCh.isNotEmpty) cats.add(_kRecentCat);
+    cats.addAll(_cats);
+    _dispCats = cats;
+    // Grille affichée selon la catégorie sélectionnée.
+    if (_selectedCat == _kTrendCat) {
+      _shownList = _trendCh;
+    } else if (_selectedCat == _kFavCat) {
+      _shownList = _favCh;
+    } else if (_selectedCat == _kRecentCat) {
+      _shownList = _recentCh;
+    } else if (_selectedCat == null) {
+      _shownList = _all;
+    } else {
+      _shownList = _all
+          .where((Channel c) => _catOf(c) == _selectedCat)
+          .toList(growable: false);
+    }
   }
 
-  /// Chaînes récemment regardées, dans l'ordre de l'historique (récent → ancien).
-  List<Channel> get _recentChannels {
-    if (_recentIds.isEmpty || _all.isEmpty) return const <Channel>[];
-    final Map<String, Channel> byId = <String, Channel>{
-      for (final Channel c in _all) c.id: c,
-    };
-    final List<Channel> out = <Channel>[];
-    for (final String id in _recentIds) {
-      final Channel? c = byId[id];
-      if (c != null) out.add(c);
-    }
-    return out;
+  /// Sélectionne une catégorie (focus/OK) puis recalcule la grille.
+  void _select(String cat) {
+    if (_selectedCat == cat) return;
+    setState(() {
+      _selectedCat = cat;
+      _recompute();
+    });
   }
 
-  /// Catégories affichées : « 🔥 Tendances », « ★ Favoris », « 🕒 Récemment »
-  /// (celles non vides) en tête, puis les vraies catégories de la source.
-  List<String> get _displayCats {
-    final List<String> out = <String>[];
-    if (_trendingChannels.isNotEmpty) out.add(_kTrendCat);
-    if (_favChannels.isNotEmpty) out.add(_kFavCat);
-    if (_recentChannels.isNotEmpty) out.add(_kRecentCat);
-    out.addAll(_cats);
-    return out;
-  }
 
   /// Vrai pour les pseudo-catégories spéciales (teintées or).
   bool _isSpecialCat(String cat) =>
@@ -185,37 +228,29 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   void _ingest(List<Channel> channels) {
     final List<Channel> live =
         channels.where((Channel c) => c.isLive).toList(growable: false);
-    // Ordre des catégories = ordre d'APPARITION dans la source (1re vue).
+    // Ordre des catégories = ordre d'APPARITION ; dédup via Set (O(1)) pour
+    // rester rapide même sur de très grandes listes (évite un contains O(n²)).
     final List<String> cats = <String>[];
+    final Set<String> seenCats = <String>{};
     for (final Channel c in live) {
       final String cat = _catOf(c);
-      if (!cats.contains(cat)) cats.add(cat);
+      if (seenCats.add(cat)) cats.add(cat);
     }
     if (!mounted) return;
     setState(() {
       _all = live;
       _cats = cats;
       _selectedCat ??= cats.isNotEmpty ? cats.first : null;
-      // On ne réinitialise PAS si l'utilisateur est sur « ★ Favoris » (pseudo-
-      // catégorie absente de `cats`) — sinon un refresh de la source l'en
-      // ferait sortir.
+      // On ne réinitialise PAS si l'utilisateur est sur une pseudo-catégorie
+      // (Tendances/Favoris/Récemment, absente de `cats`) — sinon un refresh de
+      // la source l'en ferait sortir.
       if (_selectedCat != null &&
           !_isSpecialCat(_selectedCat!) &&
-          !cats.contains(_selectedCat)) {
+          !seenCats.contains(_selectedCat)) {
         _selectedCat = cats.isNotEmpty ? cats.first : null;
       }
+      _recompute();
     });
-  }
-
-  List<Channel> get _shown {
-    if (_selectedCat == _kTrendCat) return _trendingChannels;
-    if (_selectedCat == _kFavCat) return _favChannels;
-    if (_selectedCat == _kRecentCat) return _recentChannels;
-    return _selectedCat == null
-        ? _all
-        : _all
-            .where((Channel c) => _catOf(c) == _selectedCat)
-            .toList(growable: false);
   }
 
   // Dernière chaîne regardée (1er id de l'historique présent dans la
@@ -357,7 +392,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
               ),
               Expanded(
                 child: Builder(builder: (BuildContext context) {
-                  final List<String> cats = _displayCats;
+                  final List<String> cats = _dispCats;
                   return ListView.builder(
                     itemCount: cats.length,
                     itemBuilder: (BuildContext context, int i) {
@@ -368,12 +403,12 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                       child: TvFocusBuilder(
                         autofocus: i == 0 && !_heroShown,
                         scale: TvFocusScale.medium,
-                        onSelect: () => setState(() => _selectedCat = cat),
+                        onSelect: () => _select(cat),
                         builder: (BuildContext context, bool focused) {
                           // Le focus met à jour la grille (preview live).
                           if (focused && _selectedCat != cat) {
                             WidgetsBinding.instance.addPostFrameCallback((_) {
-                              if (mounted) setState(() => _selectedCat = cat);
+                              if (mounted) _select(cat);
                             });
                           }
                           // FOCUS UNIQUE (règle #3) : seul l'élément RÉELLEMENT
@@ -434,7 +469,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
         ),
         const SizedBox(width: TvDimens.gutter),
         // ----- Grille de chaînes (virtualisée) -----
-        Expanded(child: _ChannelGrid(channels: _shown)),
+        Expanded(child: _ChannelGrid(channels: _shownList)),
       ],
     );
 
