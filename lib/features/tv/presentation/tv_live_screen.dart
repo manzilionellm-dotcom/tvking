@@ -524,6 +524,8 @@ class _ChannelCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool fav = FavoritesRepository.instance.current.contains(channel.id);
+    final String? q = _qualityTag(channel);
     return TvFocusable(
       scale: TvFocusScale.small,
       onSelect: () {
@@ -535,12 +537,37 @@ class _ChannelCard extends StatelessWidget {
         );
       },
       child: Padding(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(8),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Expanded(child: _Logo(channel: channel)),
-            const SizedBox(height: 8),
+            // Tuile premium : le logo posé sur une carte sombre arrondie, avec
+            // badge qualité (4K/HD/HEVC) et ❤ si la chaîne est en favori.
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: TvTokens.card,
+                  borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                  border: Border.all(color: TvTokens.lineSoft),
+                ),
+                padding: const EdgeInsets.all(12),
+                child: Stack(
+                  children: <Widget>[
+                    Positioned.fill(child: _Logo(channel: channel)),
+                    if (q != null)
+                      Positioned(top: 0, right: 0, child: _QualityBadge(tag: q)),
+                    if (fav)
+                      const Positioned(
+                        top: 0,
+                        left: 0,
+                        child: Icon(Icons.favorite_rounded,
+                            size: 15, color: TvTokens.gold),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 7),
             Text(
               channel.cleanName,
               maxLines: 1,
@@ -554,6 +581,42 @@ class _ChannelCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  /// Déduit un badge qualité du nom/catégorie (4K / FHD / HEVC / HD), sinon null.
+  static String? _qualityTag(Channel c) {
+    final String s = '${c.name} ${c.category}'.toUpperCase();
+    if (s.contains('4K') || s.contains('UHD') || s.contains('2160')) return '4K';
+    if (s.contains('FHD') || s.contains('1080')) return 'FHD';
+    if (s.contains('HEVC') || s.contains('H265') || s.contains('H.265')) {
+      return 'HEVC';
+    }
+    if (RegExp(r'(^|[^A-Z])HD([^A-Z]|$)').hasMatch(s)) return 'HD';
+    return null;
+  }
+}
+
+/// Petit badge qualité (or sur fond sombre) posé dans le coin d'une vignette.
+class _QualityBadge extends StatelessWidget {
+  const _QualityBadge({required this.tag});
+  final String tag;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: TvTokens.gold.withValues(alpha: 0.6)),
+      ),
+      child: Text(tag,
+          style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+              color: TvTokens.goldBright)),
     );
   }
 }
