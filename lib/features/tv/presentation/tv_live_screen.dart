@@ -17,7 +17,6 @@ import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
-import '../../channels/domain/channel_genre.dart';
 import '../../device/data/device_identity.dart';
 import '../../security/data/parental_controls.dart';
 import '../../playlists/data/favorites_repository.dart';
@@ -137,10 +136,22 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   List<Channel> _recentCh = const <Channel>[];
   List<String> _dispCats = const <String>[];
   List<Channel> _shownList = const <Channel>[];
+  // Index id -> chaîne, construit UNE fois par changement de source (dans
+  // _recompute), réutilisé par les récents et « dernière vue ». Évite des
+  // scans O(n) répétés dans build() (jank sur les très grandes listes).
+  Map<String, Channel> _byId = const <String, Channel>{};
+  // Dernière chaîne vue + son index, calculés dans _recompute (pas dans build).
+  Channel? _lastWatchedCh;
+  int _lastWatchedIdx = -1;
 
   /// Recalcule TOUT l'état dérivé à partir des sources. Appelé UNIQUEMENT quand
   /// une source change — jamais dans build().
   void _recompute() {
+    // Index id -> chaîne (réutilisé : récents + « dernière vue »). Construit
+    // ICI (changement de source) et pas dans build() → zéro scan par frame.
+    _byId = <String, Channel>{
+      for (final Channel c in _all) c.id: c,
+    };
     // Favoris (ordre playlist).
     _favCh = _favIds.isEmpty
         ? const <Channel>[]
@@ -151,12 +162,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     if (_recentIds.isEmpty || _all.isEmpty) {
       _recentCh = const <Channel>[];
     } else {
-      final Map<String, Channel> byId = <String, Channel>{
-        for (final Channel c in _all) c.id: c,
-      };
       _recentCh = <Channel>[
         for (final String id in _recentIds)
-          if (byId[id] != null) byId[id]!,
+          if (_byId[id] != null) _byId[id]!,
       ];
     }
     // Tendances (ordre de popularité, match par nom insensible à la casse).
@@ -195,6 +203,17 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       _shownList = _all
           .where((Channel c) => _catOf(c) == _selectedCat)
           .toList(growable: false);
+    }
+    // Dernière chaîne vue (bandeau « Continuer ») — calculée ICI, pas en build.
+    _lastWatchedCh = null;
+    _lastWatchedIdx = -1;
+    for (final String id in _recentIds) {
+      final Channel? c = _byId[id];
+      if (c != null) {
+        _lastWatchedCh = c;
+        _lastWatchedIdx = _all.indexOf(c);
+        break;
+      }
     }
   }
 
@@ -239,11 +258,13 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     return raw.isEmpty ? 'Autres' : raw;
   }
 
-  /// Vrai si la chaîne est classée « Adulte » (pour le Mode Enfants). On teste
-  /// sur le NOM et la CATÉGORIE via le classifieur à mots-clés du projet.
-  static bool _isAdult(Channel c) =>
-      ChannelClassifier.classifyGenre(c.cleanName, c.category) ==
-      ChannelGenre.adult;
+  /// Vrai si la chaîne est classée « Adulte » (pour le Mode Enfants).
+  /// IMPORTANT (stabilité) : on lit le genre DÉJÀ classé et MIS EN CACHE du
+  /// modèle Channel (O(1) après 1er calcul). Avant, on re-classait via le
+  /// classifieur complet (des dizaines de regex) à CHAQUE rafraîchissement —
+  /// sur une grosse liste (10 000+ chaînes), ça figeait le thread UI → l'app
+  /// « ne s'updatait plus » puis se fermait (ANR). Plus jamais.
+  static bool _isAdult(Channel c) => c.genre == ChannelGenre.adult;
 
   void _ingest(List<Channel> channels) {
     // On garde la liste BRUTE pour pouvoir re-filtrer si le Mode Enfants change.
@@ -280,17 +301,6 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       }
       _recompute();
     });
-  }
-
-  // Dernière chaîne regardée (1er id de l'historique présent dans la
-  // playlist courante) → « Continuer à regarder ».
-  Channel? _lastWatched() {
-    for (final String id in RecentlyWatchedRepository.instance.current) {
-      for (final Channel c in _all) {
-        if (c.id == id) return c;
-      }
-    }
-    return null;
   }
 
   @override
@@ -399,7 +409,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       );
     }
 
-    final Channel? last = _lastWatched();
+    final Channel? last = _lastWatchedCh;
     _heroShown = last != null;
 
     final Widget body = Row(
@@ -509,7 +519,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
         _ContinueHero(
           channel: last,
           all: _all,
-          index: _all.indexOf(last),
+          index: _lastWatchedIdx < 0 ? 0 : _lastWatchedIdx,
         ),
         const SizedBox(height: 16),
         Expanded(child: body),
