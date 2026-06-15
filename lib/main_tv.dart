@@ -20,6 +20,7 @@ import 'core/app/app_platform.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
 import 'core/notifications/notification_service.dart';
+import 'features/channels/data/recently_watched_repository.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/favorites_repository.dart';
@@ -148,6 +149,15 @@ Future<void> _bootstrap() async {
   // 8) Contrôle parental : on charge l'état du Mode Enfants pour que le 1er
   //    rendu du Direct masque déjà l'Adulte si le parent l'a activé.
   unawaited(ParentalControls.instance.load());
+
+  // 9) Historique multi-box : on initialise l'historique local PUIS on le
+  //    restaure depuis le serveur si la box est neuve (l'historique « suit »
+  //    le client d'une box à l'autre). Best-effort, n'écrase jamais le local.
+  unawaited(
+    RecentlyWatchedRepository.instance.initialize().then((_) {
+      RemoteSourceRepository.syncHistory();
+    }),
+  );
 
   runApp(const TvApp());
 }

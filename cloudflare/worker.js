@@ -347,7 +347,8 @@ async function ensureScaleSchema(env) {
   if (_scaleSchemaReady || !env.DB) return;
   for (const col of ['device_model TEXT', 'android_build TEXT',
       'android_release TEXT', 'app_build INTEGER', 'platform TEXT',
-      'android_id TEXT', 'app_version TEXT', 'local_sources_json TEXT']) {
+      'android_id TEXT', 'app_version TEXT', 'local_sources_json TEXT',
+      'recent_json TEXT']) {
     try { await env.DB.prepare('ALTER TABLE devices ADD COLUMN ' + col).run(); } catch (_) {}
   }
   for (const idx of [
@@ -557,8 +558,20 @@ async function updateDeviceInfo(env, mac, body) {
       }));
       srcJson = JSON.stringify(list);
     }
+    // HISTORIQUE de visionnage (ids de chaînes, du + récent au + ancien, max
+    // 50). Sérialisé dans recent_json → permet de RESTAURER l'historique sur
+    // une 2e box (ou après réinstallation de la même source). Sans identifiant
+    // sensible : juste des ids tvg-id/stream_id propres à la playlist.
+    let recentJson = '';
+    if (Array.isArray(body.recent)) {
+      const ids = body.recent
+        .slice(0, 50)
+        .map((x) => String(x || '').slice(0, 80))
+        .filter((x) => x.length > 0);
+      if (ids.length) recentJson = JSON.stringify(ids);
+    }
     if (!model && !build && !release && !appBuild && !platform &&
-        !androidId && !appVersion && !srcJson) return;
+        !androidId && !appVersion && !srcJson && !recentJson) return;
     // UNE SEULE écriture (au lieu de 4) : le CASE n'écrase JAMAIS un champ
     // existant avec une valeur vide → robuste ET économe en écritures D1.
     await env.DB
@@ -571,13 +584,14 @@ async function updateDeviceInfo(env, mac, body) {
           "android_id = CASE WHEN ? != '' THEN ? ELSE android_id END, " +
           "app_version = CASE WHEN ? != '' THEN ? ELSE app_version END, " +
           "platform = CASE WHEN ? != '' THEN ? ELSE platform END, " +
-          "local_sources_json = CASE WHEN ? != '' THEN ? ELSE local_sources_json END " +
+          "local_sources_json = CASE WHEN ? != '' THEN ? ELSE local_sources_json END, " +
+          "recent_json = CASE WHEN ? != '' THEN ? ELSE recent_json END " +
           "WHERE mac = ?"
       )
       .bind(
         model, model, build, build, release, release, appBuild, appBuild,
         androidId, androidId, appVersion, appVersion, platform, platform,
-        srcJson, srcJson, mac,
+        srcJson, srcJson, recentJson, recentJson, mac,
       )
       .run();
   } catch (_) {
@@ -2480,6 +2494,30 @@ async function handlePublicDeviceSource(env, mac) {
   return json({ mac: MAC, source: null });
 }
 
+// /api/history/:mac — renvoie l'historique de visionnage (ids de chaînes)
+// stocké pour cette MAC (rempli par le heartbeat). L'app le lit au démarrage
+// pour restaurer « Récemment » / « Pour vous » sur une 2e box. Lecture seule,
+// best-effort : jamais d'erreur bloquante.
+async function handlePublicHistory(env, mac) {
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const MAC = mac.toUpperCase();
+  let recent = [];
+  if (env.DB) {
+    try {
+      const row = await env.DB
+        .prepare('SELECT recent_json FROM devices WHERE mac = ?')
+        .bind(MAC)
+        .first();
+      if (row && row.recent_json) {
+        try { recent = JSON.parse(row.recent_json) || []; } catch (_) { recent = []; }
+      }
+    } catch (_) {
+      // colonne/table absente → historique vide.
+    }
+  }
+  return json({ mac: MAC, recent });
+}
+
 // /api/m3u/:token — public. Résout un lien M3U de famille vers la vraie
 // playlist. Le jeton (family_links) → source de la famille → on REDIRIGE
 // vers la playlist upstream :
@@ -2798,6 +2836,16 @@ export default {
         return badRequest('only GET supported on /api/device-source/:mac');
       }
       return await handlePublicDeviceSource(env, segments[2]);
+    }
+
+    // /api/history/:mac — public, historique de visionnage synchronisé.
+    // L'app le lit au démarrage pour RESTAURER « Récemment » + « Pour vous »
+    // sur une 2e box (l'écriture se fait via le heartbeat). Lecture seule.
+    if (segments[0] === 'api' && segments[1] === 'history' && segments.length === 3) {
+      if (request.method !== 'GET') {
+        return badRequest('only GET supported on /api/history/:mac');
+      }
+      return await handlePublicHistory(env, segments[2]);
     }
 
     // /api/trending — public, top des chaînes les plus regardées EN CE MOMENT

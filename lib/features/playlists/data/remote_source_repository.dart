@@ -25,6 +25,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../channels/data/recently_watched_repository.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
@@ -97,6 +98,35 @@ abstract final class RemoteSourceRepository {
     } catch (e) {
       if (kDebugMode) debugPrint('[RemoteSource] sync error: $e');
       return RemoteSyncResult.networkError;
+    }
+  }
+
+  /// Restaure l'historique de visionnage depuis le serveur (synchro multi-box).
+  /// L'app appelle ceci au démarrage : si la box est neuve (historique local
+  /// vide), on récupère l'historique sauvegardé pour CETTE MAC et on l'amorce,
+  /// pour retrouver « Récemment » et « Pour vous » immédiatement. Best-effort :
+  /// ne throw jamais, n'écrase jamais un historique local déjà présent.
+  static Future<void> syncHistory() async {
+    try {
+      final String mac = await DeviceIdentity.instance.mac;
+      if (!mac.startsWith('MK:')) return;
+      final http.Response resp = await http
+          .get(
+            Uri.parse('$kSubscriptionBaseUrl/api/history/$mac'),
+            headers: const <String, String>{'Accept': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 8));
+      if (resp.statusCode != 200) return;
+      final Map<String, dynamic> body =
+          jsonDecode(resp.body) as Map<String, dynamic>;
+      final Object? rec = body['recent'];
+      if (rec is List && rec.isNotEmpty) {
+        final List<String> ids =
+            rec.map((Object? e) => e.toString()).toList();
+        await RecentlyWatchedRepository.instance.seedIfEmpty(ids);
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[RemoteSource] history sync error: $e');
     }
   }
 

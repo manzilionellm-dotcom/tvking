@@ -119,6 +119,36 @@ class RecentlyWatchedRepository {
     if (!_controller.isClosed) _controller.add(_cache);
   }
 
+  /// RESTAURE l'historique depuis le serveur (synchro multi-box) UNIQUEMENT
+  /// si le local est vide (nouvelle box / réinstallation). N'écrase JAMAIS un
+  /// historique local existant — le local reste prioritaire (et c'est lui que
+  /// le heartbeat renvoie au serveur). Ordre décroissant préservé.
+  Future<void> seedIfEmpty(List<String> ids) async {
+    if (ids.isEmpty) return;
+    // Mode incognito (flavor « Privé ») : aucun historique, jamais.
+    if (FlavorConfig.current.adultOnly) return;
+    await initialize();
+    if (_cache.isNotEmpty) return; // le local gagne
+    final Database db = await PlaylistDatabase.instance.database;
+    final Batch batch = db.batch();
+    int ts = DateTime.now().millisecondsSinceEpoch;
+    final List<String> kept = <String>[];
+    for (final String id in ids.take(_kMaxEntries)) {
+      if (id.isEmpty) continue;
+      batch.insert(
+        'recently_watched',
+        <String, Object?>{'channel_id': id, 'last_watched_at': ts},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      kept.add(id);
+      ts -= 1; // garde l'ordre (plus récent en premier)
+    }
+    if (kept.isEmpty) return;
+    await batch.commit(noResult: true);
+    _cache = kept;
+    if (!_controller.isClosed) _controller.add(_cache);
+  }
+
   Future<void> clear() async {
     final Database db = await PlaylistDatabase.instance.database;
     await db.delete('recently_watched');

@@ -28,6 +28,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/app/app_platform.dart';
 import '../../../core/app/build_info.dart';
 import '../../device/data/device_identity.dart';
+import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
 import 'now_playing.dart';
@@ -172,6 +173,9 @@ abstract final class SubscriptionBackend {
         // l'aider. SANS mot de passe (vie privée) — serveur + identifiant
         // suffisent au diagnostic. Best-effort : ne casse jamais le heartbeat.
         'sources': _sourcesInventory(),
+        // HISTORIQUE de visionnage (ids de chaînes, du + récent au + ancien) :
+        // sauvegardé côté serveur → restauré sur une 2e box (cf. /api/history).
+        'recent': _recentInventory(),
       };
       final http.Response resp = await http
           .post(
@@ -220,6 +224,16 @@ abstract final class SubscriptionBackend {
       }).toList();
     } catch (_) {
       return const <Map<String, Object?>>[];
+    }
+  }
+
+  /// Liste COMPACTE des chaînes récemment regardées (ids, max 50) à
+  /// sauvegarder côté serveur pour la synchro multi-box. Best-effort.
+  static List<String> _recentInventory() {
+    try {
+      return RecentlyWatchedRepository.instance.current.take(50).toList();
+    } catch (_) {
+      return const <String>[];
     }
   }
 
