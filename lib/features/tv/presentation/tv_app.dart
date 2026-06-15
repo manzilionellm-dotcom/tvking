@@ -289,9 +289,22 @@ class _TvGateState extends State<TvGate> {
     // propre liste (Xtream).
     final bool active = s == SubscriptionStatus.paid ||
         s == SubscriptionStatus.trialActive;
+    // VERROU « après 7 jours, paiement obligatoire » : si le SERVEUR a tranché
+    // que l'accès est fini (essai expiré) ou coupé (gelé / banni), on BLOQUE —
+    // MÊME si des chaînes sont déjà en cache. Sans ça, un client ayant chargé
+    // sa source pendant l'essai continuerait à regarder GRATUITEMENT après les
+    // 7 jours (les chaînes restaient en base locale). C'est la fuite à fermer.
+    final bool mustBlock = s == SubscriptionStatus.trialExpired ||
+        s == SubscriptionStatus.frozen ||
+        s == SubscriptionStatus.banned;
     final bool hasOwnList =
         PlaylistRepository.instance.currentChannels.isNotEmpty;
-    final bool showHome = active || hasOwnList;
+    // `hasOwnList` n'ouvre l'accueil QUE si le statut n'est PAS bloquant. Cas
+    // d'usage : statut INCONNU (serveur injoignable) → on ne verrouille pas un
+    // client légitime sur une coupure réseau ; le verrou serveur reprend la
+    // main dès que la connexion revient (et device-source ne livre plus la
+    // source une fois l'essai expiré).
+    final bool showHome = active || (hasOwnList && !mustBlock);
     final Widget home = showHome
         ? const TvHomeScreen()
         : const TvShell(child: TvActivationScreen());
