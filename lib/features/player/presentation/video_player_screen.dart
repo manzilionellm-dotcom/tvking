@@ -50,6 +50,26 @@ import 'widgets/player_settings_sheet.dart';
 import 'widgets/player_stats_overlay.dart';
 import 'widgets/player_tracks_sheet.dart';
 
+/// Style PREMIUM des sous-titres (façon Netflix) : grand, gras, contour + ombre
+/// pour rester lisible même sur une image claire, léger fond sombre, et remonté
+/// du bord bas. On NE bloque JAMAIS les sous-titres : dès qu'une piste est
+/// présente (ou choisie via le sélecteur), elle s'affiche proprement. Réglages
+/// volontairement généreux pour la lecture à distance (10-foot) comme de près.
+const SubtitleViewConfiguration _kSubtitleConfig = SubtitleViewConfiguration(
+  style: TextStyle(
+    height: 1.3,
+    fontSize: 32.0,
+    color: Color(0xFFFFFFFF),
+    fontWeight: FontWeight.w600,
+    backgroundColor: Color(0x88000000),
+    shadows: <Shadow>[
+      Shadow(offset: Offset(0, 1), blurRadius: 6, color: Color(0xFF000000)),
+    ],
+  ),
+  textAlign: TextAlign.center,
+  padding: EdgeInsets.fromLTRB(24, 0, 24, 56),
+);
+
 class VideoPlayerScreen extends StatefulWidget {
   const VideoPlayerScreen({
     required this.channel,
@@ -240,6 +260,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _subs.add(_player.stream.duration.listen((Duration _) {
       if (mounted) setState(() {});
     }));
+    // Sous-titres : dès que les pistes sont connues, on active automatiquement
+    // une piste française si elle existe (cf. _maybeAutoSubtitle).
+    _subs.add(_player.stream.tracks.listen(_maybeAutoSubtitle));
     _subs.add(_player.stream.playing.listen((bool p) {
       if (mounted) {
         setState(() {
@@ -437,7 +460,45 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// VOD / catch-up (overrideUrl présent) → lecture DIRECTE, car ce
   /// contenu est seekable (avance/recul) et le relais live ne gère pas
   /// les requêtes Range.
+  // Évite de réappliquer le sous-titre auto en boucle (les pistes sont émises
+  // plusieurs fois par média). Remis à false à chaque nouvelle vidéo.
+  bool _autoSubtitleApplied = false;
+
+  /// Active AUTOMATIQUEMENT une piste de sous-titres FRANÇAISE si elle existe
+  /// (une seule fois par média). On ne force aucune autre langue et on
+  /// n'écrase JAMAIS un choix déjà actif (l'utilisateur garde la main via le
+  /// sélecteur). Best-effort : aucune erreur ne perturbe la lecture. C'est ce
+  /// qui fait que, là où d'autres lecteurs « bloquent » les sous-titres, ici
+  /// ils apparaissent tout seuls quand le film en contient.
+  void _maybeAutoSubtitle(Tracks t) {
+    if (_autoSubtitleApplied) return;
+    if (t.subtitle.isEmpty) return;
+    try {
+      // Un sous-titre est-il déjà sélectionné (autre que « aucun »/« auto ») ?
+      final String activeId = _player.state.track.subtitle.id;
+      if (activeId != 'no' && activeId != 'auto') {
+        _autoSubtitleApplied = true; // respecte le choix existant
+        return;
+      }
+      const Set<String> frLang = <String>{'fr', 'fre', 'fra'};
+      for (final SubtitleTrack s in t.subtitle) {
+        final String lang = (s.language ?? '').toLowerCase();
+        final String title = (s.title ?? '').toLowerCase();
+        if (frLang.contains(lang) ||
+            title.contains('franç') ||
+            title.contains('french')) {
+          _player.setSubtitleTrack(s);
+          _autoSubtitleApplied = true;
+          return;
+        }
+      }
+    } catch (_) {
+      // best-effort : on ne casse jamais la lecture pour un sous-titre.
+    }
+  }
+
   Future<void> _openMedia(String realUrl) async {
+    _autoSubtitleApplied = false; // nouvelle vidéo → on réévalue les sous-titres
     if (widget.overrideUrl != null) {
       _player.open(Media(realUrl));
       return;
@@ -1368,6 +1429,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                             controller: _videoController,
                             controls: (VideoState _) => const SizedBox.shrink(),
                             fit: _fitFromMode(mode),
+                            subtitleViewConfiguration: _kSubtitleConfig,
                           )
                         : AspectRatio(
                             aspectRatio: _forcedAspect(mode)!,
@@ -1375,6 +1437,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                               controller: _videoController,
                               controls: (VideoState _) => const SizedBox.shrink(),
                               fit: _fitFromMode(mode),
+                              subtitleViewConfiguration: _kSubtitleConfig,
                             ),
                           ),
                   ),
