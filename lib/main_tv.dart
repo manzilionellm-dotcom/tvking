@@ -111,14 +111,21 @@ Future<void> _bootstrap() async {
   // 3) Thème distant piloté par le panel (couleur/nom).
   unawaited(RemoteThemeRepository.fetchAndApply());
 
-  // 4) Chaînes : on charge la base locale, PUIS on synchronise la source
-  //    poussée par le panel (Xtream/M3U via /api/device-source/<mac>).
-  //    Les écrans écoutent `PlaylistRepository.channelsStream`.
-  unawaited(
-    PlaylistRepository.instance.initialize().then((_) {
-      RemoteSourceRepository.sync();
-    }),
-  );
+  // 4) Chaînes : on charge la base locale AVANT le 1er rendu, puis on
+  //    synchronise la source poussée par le panel EN ARRIÈRE-PLAN.
+  //
+  //    POURQUOI bloquant ici : au redémarrage, les chaînes sont DÉJÀ en cache
+  //    (SQLite). Si on attend leur chargement avant `runApp`, l'app ouvre
+  //    DIRECTEMENT sur les chaînes — fini l'écran « Recherche de tes chaînes… »
+  //    qui s'affichait à chaque démarrage le temps que le cache se charge.
+  //    Timeout de sécurité : si la base est lente, on n'empêche JAMAIS l'app
+  //    de démarrer (au pire, le cache arrivera via le stream juste après).
+  await PlaylistRepository.instance
+      .initialize()
+      .timeout(const Duration(seconds: 6), onTimeout: () {});
+  //    La source distante se (re)synchronise après, sans bloquer : si on a
+  //    déjà des chaînes en cache, ça reste SILENCIEUX (pas d'écran « Recherche »).
+  unawaited(RemoteSourceRepository.sync());
 
   // 5) Enregistrements : on initialise la base et on finalise les
   //    enregistrements « fantômes » (l'app a pu être tuée par l'OS en plein
