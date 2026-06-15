@@ -7,9 +7,10 @@
 #  (comme le build mobile), on patche le manifest (réseau cleartext + TV
 #  leanback + label DeFew TV), puis on build le TARGET main_tv.
 #
-#  v1 = build DEBUG (pas de secret de signature requis) → parfait pour
-#  tester sur une box Android TV / Fire TV. Le pipeline release signé
-#  (keystore stable) viendra quand l'app sera plus complète.
+#  Build RELEASE signé avec un KEYSTORE FIXE (ci/defew-debug.keystore) :
+#  toutes les versions partagent la même clé → les mises à jour s'installent
+#  PAR-DESSUS l'ancienne (pas de « désinstaller d'abord »). Bannière Android TV
+#  de marque attachée pour la home Leanback.
 # ============================================================================
 name: Build DeFew TV (APK)
 
@@ -173,6 +174,38 @@ jobs:
       # le mobile (assets/branding/logo_black7royal.png).
       - name: Generate launcher icons (logo The Few)
         run: dart run flutter_launcher_icons -f flutter_launcher_icons_tv.yaml || true
+
+      # BANNIÈRE Android TV — c'est CE logo qu'affiche la home Leanback (à côté
+      # de Netflix/Prime). Sans bannière, la TV montre une vignette grise/
+      # générique (« le logo ne vient pas »). On copie notre bannière de marque
+      # dans les drawables et on l'attache à l'application via android:banner.
+      - name: Bannière Android TV (logo The Few)
+        run: |
+          set -e
+          RES=android/app/src/main/res
+          mkdir -p "$RES/drawable" "$RES/drawable-xhdpi" "$RES/drawable-xxhdpi"
+          cp assets/branding/thefew_tv_banner.png    "$RES/drawable/tv_banner.png"
+          cp assets/branding/thefew_tv_banner.png    "$RES/drawable-xhdpi/tv_banner.png"
+          cp assets/branding/thefew_tv_banner_2x.png "$RES/drawable-xxhdpi/tv_banner.png"
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'android:banner' "$MANIFEST"; then
+            sed -i 's|<application|<application\n        android:banner="@drawable/tv_banner"|' "$MANIFEST"
+          fi
+          grep -n 'android:banner' "$MANIFEST" || true
+
+      # SIGNATURE STABLE — « mise à jour sans désinstaller ».
+      # Le build release est signé par signingConfigs.debug, qui lit
+      # ~/.android/debug.keystore. Or chaque runner CI en GÉNÈRE un NOUVEAU
+      # (clé différente) → Android refuse la mise à jour (« appli non
+      # installée »). On impose donc NOTRE keystore fixe (ci/defew-debug.keystore,
+      # identifiants debug standard) : toutes les versions sont signées avec LA
+      # MÊME clé → l'update s'installe par-dessus l'ancienne, sans désinstaller.
+      - name: Signature stable (keystore fixe)
+        run: |
+          set -e
+          mkdir -p ~/.android
+          cp ci/defew-debug.keystore ~/.android/debug.keystore
+          echo "Keystore fixe en place (~/.android/debug.keystore)."
 
       # RELEASE + SPLIT-PER-ABI : APK ~40-60 Mo (au lieu de 202 Mo en debug
       # multi-ABI). On publie l'arm64-v8a (box Android TV / Fire TV 4K).
