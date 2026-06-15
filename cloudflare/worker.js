@@ -1269,6 +1269,86 @@ document.getElementById('secret-input').addEventListener('keydown', e => {
 </body>
 </html>`;
 
+// Politique de confidentialité servie sur /confidentialite (et /privacy).
+// Page autonome (CSS inline), sobre, lisible mobile + TV. Décrit fidèlement ce
+// que l'app collecte (identifiant d'appareil, modèle, version, IP, historique
+// de visionnage) et pourquoi (activation, fonctionnement, synchro multi-box).
+const PRIVACY_HTML = `<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DeFew TV — Politique de confidentialité</title>
+<style>
+  body{background:#0A0A0C;color:#EDEAE3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.6;margin:0;padding:32px}
+  .wrap{max-width:780px;margin:0 auto}
+  h1{color:#CCB089;font-size:28px;margin:0 0 4px}
+  h2{color:#E6CFA4;font-size:19px;margin:28px 0 8px}
+  p,li{color:#CFC9BF;font-size:15px}
+  a{color:#CCB089}
+  .muted{color:#8A8377;font-size:13px}
+  code{color:#E6CFA4}
+</style>
+</head>
+<body><div class="wrap">
+  <h1>Politique de confidentialité — DeFew TV</h1>
+  <p class="muted">Éditeur : 7 MOTION · Dernière mise à jour : 2026.</p>
+
+  <p>DeFew TV (« l'application ») est un lecteur multimédia pour téléviseurs et
+  box (Android TV, Fire TV, Google TV). L'application ne fournit, n'héberge ni
+  ne revend aucun contenu : l'utilisateur charge sa propre source (liste M3U ou
+  identifiants Xtream). Cette politique explique les données traitées et leur
+  finalité.</p>
+
+  <h2>1. Données que nous traitons</h2>
+  <ul>
+    <li><b>Identifiant d'appareil</b> (adresse virtuelle dérivée de l'appareil) :
+      pour reconnaître l'appareil et gérer son abonnement/activation.</li>
+    <li><b>Modèle de l'appareil, version d'Android et version de l'application</b> :
+      pour le support technique et la compatibilité.</li>
+    <li><b>Adresse IP et pays</b> (fournis par le réseau) : pour la sécurité, la
+      présence « en ligne » et le bon acheminement du service.</li>
+    <li><b>Historique de visionnage</b> (identifiants de chaînes récemment
+      ouvertes) : pour proposer « Récemment » / « Pour vous » et synchroniser
+      votre historique entre vos appareils.</li>
+  </ul>
+  <p>Nous ne collectons <b>pas</b> votre nom, votre adresse postale, vos
+  contacts, ni de données biométriques. Les identifiants de votre source IPTV
+  (mot de passe) ne sont <b>pas</b> transmis pour l'historique.</p>
+
+  <h2>2. Finalités</h2>
+  <p>Gestion de l'abonnement/activation, fonctionnement et sécurité du service,
+  synchronisation de l'expérience entre vos appareils, support technique et
+  amélioration de l'application.</p>
+
+  <h2>3. Partage</h2>
+  <p>Nous ne <b>vendons pas</b> vos données et ne les partageons pas à des fins
+  publicitaires. Les données transitent par notre infrastructure d'hébergement
+  (Cloudflare) strictement pour faire fonctionner le service.</p>
+
+  <h2>4. Conservation</h2>
+  <p>Données d'activation/abonnement : conservées pendant la durée du service
+  puis jusqu'à 24 mois. Journaux techniques et présence : environ 6 mois.</p>
+
+  <h2>5. Vos droits</h2>
+  <p>Vous pouvez demander l'accès, la rectification ou la suppression des
+  données liées à votre appareil en nous contactant. La suppression de
+  l'appareil dans notre système efface les données associées.</p>
+
+  <h2>6. Âge minimum</h2>
+  <p>L'application s'adresse aux personnes de 16 ans et plus. Un
+  <b>Mode Enfants</b> protégé par code permet de masquer le contenu adulte.</p>
+
+  <h2>7. Contact</h2>
+  <p>Pour toute question relative à cette politique ou à vos données :
+  <a href="mailto:contact@7themotion.com">contact@7themotion.com</a>.</p>
+
+  <p class="muted">En utilisant DeFew TV, vous acceptez la présente politique.
+  Vous devez disposer des droits nécessaires pour le contenu que vous lisez via
+  vos propres sources.</p>
+</div></body>
+</html>`;
+
 const HTML_HEADERS = {
   'Content-Type': 'text/html; charset=utf-8',
   'Cache-Control': 'public, max-age=300',
@@ -3034,6 +3114,15 @@ export default {
     if (segments.length === 0) {
       const html = LANDING_HTML.replaceAll('__HOST__', url.host);
       return new Response(html, { headers: HTML_HEADERS });
+    }
+
+    // /confidentialite (et /privacy) — politique de confidentialité hébergée.
+    // Amazon/Google/etc. exigent une URL publique de politique de
+    // confidentialité. On la sert ICI, sur le domaine du client, sans dépendre
+    // d'un hébergement externe. Le déploiement auto du worker la met en ligne.
+    if (segments.length === 1 &&
+        (segments[0] === 'confidentialite' || segments[0] === 'privacy')) {
+      return new Response(PRIVACY_HTML, { headers: HTML_HEADERS });
     }
 
     // /dl — proxy l'APK GitHub release a travers le cache edge
