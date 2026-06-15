@@ -110,7 +110,13 @@ uniquement (`CrashReporting.recentErrors`).
 | Obfuscation Dart (`--obfuscate` + `--split-debug-info`) | ✅ Déjà |
 | Signature **stable** (update sans désinstaller) | ✅ Déjà (keystore fixe) |
 | `versionCode` strictement croissant | ✅ Déjà |
-| R8 / shrink ressources / ProGuard | ⚠️ Par défaut Flutter release (R8 actif). **Pas de règles keep custom auditées** — à faire si on ajoute des libs réfléchies par réflexion. |
+| **R8 + ProGuard + shrink code/ressources** | ✅ Activé (Android + TV + Privé) avec règles keep `ci/proguard-rules.pro` |
+| Règles keep auditées (Flutter, media_kit, ExoPlayer/Media3, Firebase, JNI) | ✅ `ci/proguard-rules.pro` (conservatrices, variante non-`optimize`) |
+
+> ⚠️ **Validation runtime requise** : R8 retire du code mort ; un mauvais
+> stripping ne se voit qu'à l'exécution. Les règles keep couvrent les plugins
+> natifs connus et la **compilation CI est verte**, mais un **smoke-test sur
+> une vraie box** (lancer + lire un flux) reste le dernier filet avant diffusion.
 
 ---
 
@@ -151,3 +157,5 @@ flutter run --profile --trace-startup -t lib/main_tv.dart
 - Règles ProGuard/R8 custom non auditées (R8 par défaut actif).
 - Validation D-pad / focus TV à confirmer sur vrai matériel.
 - Crashlytics **désactivé** tant que `GOOGLE_SERVICES_JSON` n'est pas posé.
+- R8/shrink **activé** : compilation CI verte, mais smoke-test sur vraie box
+  recommandé avant diffusion (le stripping mort ne se voit qu'au runtime).

@@ -559,6 +559,32 @@ jobs:
               print("✓ google-services appliqué (app/build.gradle.kts)")
           PYEOF
 
+      # ----- R8 / ProGuard : rétrécissement code + ressources -----
+      # Active le shrink/obfuscation natif Android (en plus de l'obfuscation
+      # Dart) : APK plus léger, plus dur à rétro-concevoir. Règles keep dans
+      # ci/proguard-rules.pro (conservatrices → plugins natifs préservés).
+      - name: Enable R8 + ProGuard (shrink code & resources)
+        run: |
+          set -e
+          cp ci/proguard-rules.pro android/app/proguard-rules.pro
+          python3 << 'PYEOF'
+          f = "android/app/build.gradle.kts"
+          s = open(f).read()
+          if "isMinifyEnabled" not in s:
+              s = s.replace(
+                  "release {",
+                  ('release {\n'
+                   '            isMinifyEnabled = true\n'
+                   '            isShrinkResources = true\n'
+                   '            proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")'),
+                  1)
+              open(f, "w").write(s)
+              print("R8/shrink actives")
+          else:
+              print("deja actif")
+          PYEOF
+          grep -n "isMinifyEnabled\|isShrinkResources\|proguardFiles" android/app/build.gradle.kts || true
+
       # Build release + OBFUSCATION Dart.
       #  --obfuscate : renomme les symboles Dart (classes, méthodes) →
       #    rend la rétro-ingénierie / le repackaging beaucoup plus durs.

@@ -242,6 +242,31 @@ jobs:
               print("✓ google-services appliqué (app/build.gradle.kts)")
           PYEOF
 
+      # ----- R8 / ProGuard : rétrécissement code + ressources -----
+      # Identique au build mobile. Règles keep dans ci/proguard-rules.pro
+      # (conservatrices → media_kit / ExoPlayer / Firebase préservés).
+      - name: Enable R8 + ProGuard (shrink code & resources)
+        run: |
+          set -e
+          cp ci/proguard-rules.pro android/app/proguard-rules.pro
+          python3 << 'PYEOF'
+          f = "android/app/build.gradle.kts"
+          s = open(f).read()
+          if "isMinifyEnabled" not in s:
+              s = s.replace(
+                  "release {",
+                  ('release {\n'
+                   '            isMinifyEnabled = true\n'
+                   '            isShrinkResources = true\n'
+                   '            proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")'),
+                  1)
+              open(f, "w").write(s)
+              print("R8/shrink actives")
+          else:
+              print("deja actif")
+          PYEOF
+          grep -n "isMinifyEnabled\|isShrinkResources\|proguardFiles" android/app/build.gradle.kts || true
+
       # APK UNIVERSEL (toutes ABIs : arm64-v8a + armeabi-v7a + x86_64).
       # CRUCIAL pour Amazon Fire Stick : beaucoup de Fire Stick (Lite, Stick de
       # base) tournent en 32 bits (armeabi-v7a). Un APK arm64-only REFUSE de

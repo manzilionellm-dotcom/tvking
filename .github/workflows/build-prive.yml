@@ -181,6 +181,64 @@ jobs:
       - name: Generate launcher icons (logo Privé)
         run: dart run flutter_launcher_icons -f flutter_launcher_icons_prive.yaml || true
 
+      # ----- Firebase Crashlytics (OPTIONNEL, activé si secret présent) -----
+      # Si GOOGLE_SERVICES_JSON est posé, on écrit le fichier et on applique le
+      # plugin Gradle google-services. Sans secret : no-op → Crashlytics off,
+      # build vert.
+      - name: Configure Firebase Crashlytics (si secret présent)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -e
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "⊙ GOOGLE_SERVICES_JSON absent → Crashlytics désactivé (build normal)."
+            exit 0
+          fi
+          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          echo "✓ google-services.json écrit."
+          python3 << 'PYEOF'
+          import re
+          settings = "android/settings.gradle.kts"
+          s = open(settings).read()
+          if "com.google.gms.google-services" not in s:
+              s = re.sub(r'(plugins\s*\{)',
+                         r'\1\n    id("com.google.gms.google-services") version "4.4.2" apply false',
+                         s, count=1)
+              open(settings, "w").write(s)
+              print("✓ google-services déclaré (settings.gradle.kts)")
+          app = "android/app/build.gradle.kts"
+          a = open(app).read()
+          if "com.google.gms.google-services" not in a:
+              a = re.sub(r'(plugins\s*\{)',
+                         r'\1\n    id("com.google.gms.google-services")',
+                         a, count=1)
+              open(app, "w").write(a)
+              print("✓ google-services appliqué (app/build.gradle.kts)")
+          PYEOF
+
+      # ----- R8 / ProGuard : rétrécissement code + ressources -----
+      - name: Enable R8 + ProGuard (shrink code & resources)
+        run: |
+          set -e
+          cp ci/proguard-rules.pro android/app/proguard-rules.pro
+          python3 << 'PYEOF'
+          f = "android/app/build.gradle.kts"
+          s = open(f).read()
+          if "isMinifyEnabled" not in s:
+              s = s.replace(
+                  "release {",
+                  ('release {\n'
+                   '            isMinifyEnabled = true\n'
+                   '            isShrinkResources = true\n'
+                   '            proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")'),
+                  1)
+              open(f, "w").write(s)
+              print("R8/shrink actives")
+          else:
+              print("deja actif")
+          PYEOF
+          grep -n "isMinifyEnabled\|isShrinkResources\|proguardFiles" android/app/build.gradle.kts || true
+
       - name: Build Privé (release, arm64, target main_prive)
         run: |
           set -e
