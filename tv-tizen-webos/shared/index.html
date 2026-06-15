@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1920, height=1080, user-scalable=no">
+  <title>DeFew TV</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <!-- Lecteur natif Samsung (AVPlay) — masqué hors lecture -->
+  <object id="av-player" type="application/avplayer" style="display:none"></object>
+  <!-- Lecteur HTML5 (LG webOS / navigateur) -->
+  <video id="html5-video" style="display:none" autoplay></video>
+
+  <!-- ===== Écran : démarrage ===== -->
+  <section id="screen-boot" class="screen screen-center">
+    <div class="brand">DeFew <span>TV</span></div>
+    <div id="boot-text" class="muted">Démarrage…</div>
+  </section>
+
+  <!-- ===== Écran : activation (abonnement inactif) ===== -->
+  <section id="screen-activation" class="screen screen-center" style="display:none">
+    <div class="brand">DeFew <span>TV</span></div>
+    <div class="card">
+      <div class="card-label">Adresse de cet appareil</div>
+      <div id="act-mac" class="mac">…</div>
+      <div id="act-msg" class="muted">Donne cette adresse à ton revendeur pour activer ton abonnement.</div>
+      <div id="act-refresh" class="btn focusable" onclick="DFT.app.refresh()">Rafraîchir le statut</div>
+    </div>
+  </section>
+
+  <!-- ===== Écran : Direct (catégories + grille) ===== -->
+  <section id="screen-live" class="screen" style="display:none">
+    <aside id="cat-list" class="cat-list"></aside>
+    <main id="chan-grid" class="chan-grid"></main>
+  </section>
+
+  <!-- ===== Écran : lecteur ===== -->
+  <section id="screen-player" class="screen screen-player" style="display:none">
+    <div id="buffering" class="buffering" style="display:none"><div class="spinner"></div></div>
+    <div class="player-overlay">
+      <div id="player-title" class="player-title"></div>
+      <div id="player-error" class="player-error" style="display:none"></div>
+      <div class="player-hint">Retour : revenir à la liste</div>
+    </div>
+  </section>
+
+  <script src="js/config.js"></script>
+  <script src="js/platform.js"></script>
+  <script src="js/device.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/xtream.js"></script>
+  <script src="js/m3u.js"></script>
+  <script src="js/nav.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
