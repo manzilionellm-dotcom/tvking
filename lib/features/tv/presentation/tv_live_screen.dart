@@ -17,7 +17,9 @@ import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
+import '../../channels/domain/channel_genre.dart';
 import '../../device/data/device_identity.dart';
+import '../../security/data/parental_controls.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
@@ -47,6 +49,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   List<String> _cats = const <String>[];
   String? _selectedCat;
   bool _heroShown = false;
+  // Dernière liste BRUTE reçue (avant filtre Mode Enfants) : permet de
+  // re-filtrer instantanément quand le parent bascule le Mode Enfants.
+  List<Channel> _rawLive = const <Channel>[];
 
   /// Pseudo-catégories en TÊTE de liste (sentinelles internes, pas de vraies
   /// catégories) : Tendances (les plus regardées EN CE MOMENT) puis Favoris.
@@ -101,6 +106,14 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     _syncTimer = Timer.periodic(const Duration(seconds: 12), (_) {
       if (_all.isEmpty) _kickSourceSync();
     });
+    // Mode Enfants : si le parent l'active/désactive, on re-filtre la liste.
+    ParentalControls.instance.kidsMode.addListener(_onKidsModeChanged);
+  }
+
+  /// Re-filtre la liste courante quand le Mode Enfants bascule (sans toucher
+  /// au réseau : on rejoue le dernier lot BRUT à travers le nouveau filtre).
+  void _onKidsModeChanged() {
+    if (mounted) _ingest(_rawLive);
   }
 
   @override
@@ -111,6 +124,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     _recentSub?.cancel();
     TrendingRepository.instance.stop();
     _syncTimer?.cancel();
+    ParentalControls.instance.kidsMode.removeListener(_onKidsModeChanged);
     super.dispose();
   }
 
@@ -225,9 +239,24 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     return raw.isEmpty ? 'Autres' : raw;
   }
 
+  /// Vrai si la chaîne est classée « Adulte » (pour le Mode Enfants). On teste
+  /// sur le NOM et la CATÉGORIE via le classifieur à mots-clés du projet.
+  static bool _isAdult(Channel c) =>
+      ChannelClassifier.classifyGenre(c.cleanName, c.category) ==
+      ChannelGenre.adult;
+
   void _ingest(List<Channel> channels) {
-    final List<Channel> live =
-        channels.where((Channel c) => c.isLive).toList(growable: false);
+    // On garde la liste BRUTE pour pouvoir re-filtrer si le Mode Enfants change.
+    _rawLive = channels;
+    // MODE ENFANTS : on retire toutes les chaînes classées « Adulte ». Le filtre
+    // ne s'applique QUE si le parent l'a activé (défaut : désactivé → aucun
+    // changement). Détection via le classifieur existant (mots-clés robustes).
+    final bool kids = ParentalControls.instance.kidsMode.value;
+    final List<Channel> live = channels.where((Channel c) {
+      if (!c.isLive) return false;
+      if (kids && _isAdult(c)) return false;
+      return true;
+    }).toList(growable: false);
     // Ordre des catégories = ordre d'APPARITION ; dédup via Set (O(1)) pour
     // rester rapide même sur de très grandes listes (évite un contains O(n²)).
     final List<String> cats = <String>[];
