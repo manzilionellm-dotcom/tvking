@@ -11,11 +11,16 @@
 //
 //  Build : flutter build apk -t lib/main_prive.dart → prive.apk
 // =========================================================
+import 'core/app/guarded_main.dart';
 import 'core/flavor/flavor.dart';
 import 'main.dart' as app;
 
-Future<void> main() async {
-  // Flavor « Privé » posé AVANT bootApp (qui lit FlavorConfig.current).
-  FlavorConfig.setCurrent(FlavorConfig.prive);
-  await app.bootApp();
+void main() {
+  // Même filet d'erreurs global que le mobile/TV (cf. guarded_main.dart) :
+  // un démarrage qui plante est loggé, jamais fatal.
+  runGuarded(() async {
+    // Flavor « Privé » posé AVANT bootApp (qui lit FlavorConfig.current).
+    FlavorConfig.setCurrent(FlavorConfig.prive);
+    await app.bootApp();
+  });
 }

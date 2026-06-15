@@ -9,14 +9,14 @@
 //  (un workflow CI dédié + manifest Leanback viendront ensuite).
 // =========================================================
 import 'dart:async';
-import 'dart:ui' show PlatformDispatcher;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'core/app/app_platform.dart';
+import 'core/app/guarded_main.dart';
+import 'core/crash/crash_reporting.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
 import 'core/notifications/notification_service.dart';
@@ -32,53 +32,13 @@ import 'features/theme/data/remote_theme_repository.dart';
 import 'features/tv/presentation/tv_app.dart';
 
 // =========================================================
-//  BOUNDARY D'ERREURS GLOBAL — « l'app ne se ferme JAMAIS toute seule »
+//  Point d'entrée TV — le filet d'erreurs global (« l'app ne se ferme
+//  JAMAIS toute seule ») est désormais MUTUALISÉ avec le mobile dans
+//  core/app/guarded_main.dart (`runGuarded`). Avant, ce filet était
+//  dupliqué ici ; on le partage maintenant pour garantir un comportement
+//  IDENTIQUE sur tous les flavors (mobile, Privé, TV).
 // =========================================================
-//  C'est ce que font les applis grand public (Netflix, YouTube…) : aucune
-//  exception non rattrapée ne doit tuer le process. On installe 4 filets :
-//    1) ErrorWidget.builder : un widget qui plante affiche un fond sombre
-//       discret (au lieu de l'écran rouge/gris) — le RESTE de l'app continue.
-//    2) FlutterError.onError : erreurs de build/layout/paint → on LOG, pas de
-//       crash.
-//    3) PlatformDispatcher.onError : erreurs async/plateforme non rattrapées →
-//       on les déclare « gérées » (return true) → pas de crash.
-//    4) runZonedGuarded : filet ultime pour toute erreur asynchrone de la zone.
-//  En prod on se contente de logguer (debugPrint) ; en debug on garde
-//  l'affichage console habituel pour ne pas masquer les bugs pendant le dev.
-// =========================================================
-void main() {
-  // 1) Un sous-arbre qui plante ne casse pas tout l'écran : fond Maison Noir.
-  ErrorWidget.builder =
-      (FlutterErrorDetails details) => const ColoredBox(color: Color(0xFF070707));
-
-  runZonedGuarded<Future<void>>(
-    () async {
-      WidgetsFlutterBinding.ensureInitialized();
-
-      // 2) Erreurs Flutter (build/layout/paint).
-      final FlutterExceptionHandler? presentError = FlutterError.onError;
-      FlutterError.onError = (FlutterErrorDetails details) {
-        if (kDebugMode) {
-          presentError?.call(details); // console habituelle en dev
-        } else {
-          debugPrint('[FlutterError] ${details.exceptionAsString()}');
-        }
-      };
-
-      // 3) Erreurs async/plateforme non rattrapées → « gérées », pas de crash.
-      PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-        debugPrint('[Uncaught] $error');
-        return true;
-      };
-
-      await _bootstrap();
-    },
-    // 4) Filet ultime.
-    (Object error, StackTrace stack) {
-      debugPrint('[Zone] $error');
-    },
-  );
-}
+void main() => runGuarded(_bootstrap);
 
 Future<void> _bootstrap() async {
   // Flavor explicite (un seul produit pour l'instant : The Few).
@@ -88,8 +48,14 @@ Future<void> _bootstrap() async {
   // platform='tv' et le panel l'affichera comme 📺 (vs 📱 mobile).
   AppPlatform.isTv = true;
 
-  // Moteur lecteur natif (mpv) — avant runApp, comme côté mobile.
-  MediaKit.ensureInitialized();
+  // Moteur lecteur natif (mpv) — avant runApp, comme côté mobile. GARDÉ :
+  // une box bas de gamme où la lib native manque ne doit pas tuer le boot.
+  try {
+    MediaKit.ensureInitialized();
+  } catch (e, s) {
+    CrashReporting.instance
+        .recordError(e, s, context: 'MediaKit.ensureInitialized');
+  }
 
   // La TV est TOUJOURS en paysage : on verrouille (pas de portrait).
   await SystemChrome.setPreferredOrientations(<DeviceOrientation>[

@@ -15,6 +15,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:media_kit/media_kit.dart';
 
+import 'core/app/guarded_main.dart';
+import 'core/crash/crash_reporting.dart';
 import 'core/branding/brand_config.dart';
 import 'core/branding/brand_logo.dart';
 import 'core/branding/powered_by_marquee.dart';
@@ -62,12 +64,17 @@ import 'features/recordings/data/recording_repository.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/subscription/presentation/subscription_gate.dart';
 
-Future<void> main() async {
-  // Identité du build The Few (application mobile, seul produit du
-  // projet depuis le retrait des variantes TV et Red Room). Doit être
-  // posée AVANT `bootApp()` (qui touche aux repos lisant `FlavorConfig`).
-  FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
-  await bootApp();
+void main() {
+  // Tout le démarrage tourne sous le filet d'erreurs global PARTAGÉ
+  // (cf. core/app/guarded_main.dart) : aucune exception, même AVANT le
+  // 1er frame, ne peut fermer l'app — elle est loggée puis l'app continue.
+  runGuarded(() async {
+    // Identité du build The Few (application mobile, seul produit du
+    // projet depuis le retrait des variantes TV et Red Room). Doit être
+    // posée AVANT `bootApp()` (qui touche aux repos lisant `FlavorConfig`).
+    FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
+    await bootApp();
+  });
 }
 
 /// Séquence d'initialisation de l'application. Le flavor doit déjà avoir
@@ -76,8 +83,17 @@ Future<void> main() async {
 Future<void> bootApp() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // libmpv natif — AVANT runApp pour ne pas crasher au premier lecteur
-  MediaKit.ensureInitialized();
+  // libmpv natif — AVANT runApp pour ne pas crasher au premier lecteur.
+  // GARDÉ : sur un appareil exotique où la lib native manque/échoue
+  // (UnsatisfiedLinkError…), l'app NE DOIT PAS mourir au boot. On capte,
+  // on signale, et on continue : le lecteur échouera proprement plus tard
+  // (chaque écran lecteur a déjà ses propres try/catch).
+  try {
+    MediaKit.ensureInitialized();
+  } catch (e, s) {
+    CrashReporting.instance
+        .recordError(e, s, context: 'MediaKit.ensureInitialized');
+  }
 
   // Rotation auto autorisée sur toutes les orientations supportées.
   // Sans ça, même quand l'utilisateur incline son téléphone en mode
