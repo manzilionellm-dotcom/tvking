@@ -2993,12 +2993,14 @@ export default {
       return proxyApk(APK_URL, 'TheFew.apk', url.searchParams.get('v'));
     }
 
-    // /tv, /defewtv, /tvbox — alias de téléchargement DIRECT de l'APK
-    // DeFew TV (version télévision). Lien propre à coller dans Downloader
-    // sur une box Android TV / Fire TV. Nom de fichier « DeFewTV.apk ».
+    // /tv, /defewtv, /tvbox, /defew + CODES COURTS MÉMORABLES (/777, /7777,
+    // /tv7) — alias de téléchargement DIRECT de l'APK DeFew TV (version TV).
+    // TV_APK_URL pointe sur le tag `tv-latest` → TOUJOURS la dernière version.
+    // Lien propre à coller dans Downloader. Fichier « DeFewTV.apk ».
     if (
       segments.length === 1 &&
-      ['tv', 'defewtv', 'tvbox', 'defew'].includes(segments[0])
+      ['tv', 'defewtv', 'tvbox', 'defew', '777', '7777', 'tv7']
+          .includes(segments[0].toLowerCase())
     ) {
       return proxyApk(TV_APK_URL, 'DeFewTV.apk', url.searchParams.get('v'));
     }
@@ -3096,7 +3098,7 @@ export default {
     // 404 final.
     const RESERVED = new Set([
       'admin', 'config', 'dl', 'install', 'api', 'panel',
-      'redroom', 'tv',
+      'redroom', 'tv', 'defewtv', 'tvbox', 'defew', '777', '7777', 'tv7',
       'cast-receiver', 'cast-skin.css',
       'favicon.ico', 'robots.txt', 'sitemap.xml',
     ]);
