@@ -258,7 +258,7 @@ jobs:
                   ('release {\n'
                    '            isMinifyEnabled = true\n'
                    '            isShrinkResources = true\n'
-                   '            proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")'),
+                   '            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")'),
                   1)
               open(f, "w").write(s)
               print("R8/shrink actives")

@@ -15,6 +15,15 @@
 -keep class io.flutter.embedding.** { *; }
 -dontwarn io.flutter.**
 
+# ----- Google Play Core (composants différés Flutter) -----
+# L'embedding Flutter RÉFÉRENCE com.google.android.play.core.* (SplitCompat,
+# deferred components) MAIS la lib n'est pas embarquée → R8 échoue sur
+# « Missing class » si on ne l'ignore pas. C'est LA cassure R8 #1 des apps
+# Flutter. On n'utilise pas les composants différés → on ignore sans risque.
+-dontwarn com.google.android.play.core.**
+-dontwarn com.google.android.play.**
+-keep class io.flutter.embedding.engine.deferredcomponents.** { *; }
+
 # ----- Méthodes natives (JNI) : ne JAMAIS renommer -----
 -keepclasseswithmembernames class * { native <methods>; }
 
