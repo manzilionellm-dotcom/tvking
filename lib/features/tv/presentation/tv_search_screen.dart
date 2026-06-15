@@ -7,6 +7,7 @@
 // =========================================================
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
@@ -164,8 +165,13 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                               children: <Widget>[
                                 Expanded(
                                   child: (res[i].logoUrl != null && res[i].logoUrl!.isNotEmpty)
-                                      ? Image.network(res[i].logoUrl!, fit: BoxFit.contain, cacheWidth: 200,
-                                          errorBuilder: (_, __, ___) => _ini(res[i]))
+                                      ? CachedNetworkImage(
+                                          imageUrl: res[i].logoUrl!,
+                                          fit: BoxFit.contain,
+                                          memCacheWidth: 200,
+                                          fadeInDuration: const Duration(milliseconds: 150),
+                                          placeholder: (_, __) => Opacity(opacity: 0.35, child: _ini(res[i])),
+                                          errorWidget: (_, __, ___) => _ini(res[i]))
                                       : _ini(res[i]),
                                 ),
                                 const SizedBox(height: 6),

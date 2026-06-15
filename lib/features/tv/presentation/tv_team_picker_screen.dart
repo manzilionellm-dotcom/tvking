@@ -7,6 +7,7 @@
 // =========================================================
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../sports/data/sports_repository.dart';
@@ -228,9 +229,13 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
                   width: 44,
                   height: 44,
                   child: t.badge.isNotEmpty
-                      ? Image.network(t.badge,
-                          fit: BoxFit.contain, cacheWidth: 120,
-                          errorBuilder: (_, __, ___) => const Icon(
+                      ? CachedNetworkImage(
+                          imageUrl: t.badge,
+                          fit: BoxFit.contain, memCacheWidth: 120,
+                          fadeInDuration: const Duration(milliseconds: 150),
+                          placeholder: (_, __) => const Icon(
+                              Icons.shield_rounded, color: TvTokens.muted),
+                          errorWidget: (_, __, ___) => const Icon(
                               Icons.shield_rounded, color: TvTokens.muted))
                       : const Icon(Icons.shield_rounded, color: TvTokens.muted),
                 ),

@@ -10,6 +10,7 @@
 // =========================================================
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
@@ -762,19 +763,20 @@ class _Logo extends StatelessWidget {
     );
     final String? url = channel.logoUrl;
     if (url == null || url.isEmpty) return fallback;
-    return Image.network(
-      url,
+    // CACHE DISQUE + mémoire (cached_network_image) : après le 1er affichage,
+    // les logos s'affichent INSTANTANÉMENT — même après un redémarrage — et ne
+    // se RE-TÉLÉCHARGENT jamais. C'est ce qui donne le scroll fluide « façon
+    // Netflix » sur 20 000 chaînes (avant : Image.network re-téléchargeait à
+    // chaque fois → flashs + jank). Skeleton discret (initiales 35 %) au lieu
+    // d'un spinner (20 000 spinners = lag).
+    return CachedNetworkImage(
+      imageUrl: url,
       fit: BoxFit.contain,
-      errorBuilder: (_, __, ___) => fallback,
-      // Skeleton Maison Noir : pendant le chargement, on montre les initiales
-      // très discrètes plutôt qu'un trou vide (finition premium).
-      loadingBuilder: (BuildContext context, Widget child,
-          ImageChunkEvent? progress) {
-        if (progress == null) return child;
-        return Opacity(opacity: 0.35, child: fallback);
-      },
-      // Décodage hors-UI + petite taille mémoire (perf §10).
-      cacheWidth: 200,
+      placeholder: (_, __) => Opacity(opacity: 0.35, child: fallback),
+      errorWidget: (_, __, ___) => fallback,
+      memCacheWidth: 200,
+      fadeInDuration: const Duration(milliseconds: 180),
+      fadeOutDuration: const Duration(milliseconds: 120),
     );
   }
 }

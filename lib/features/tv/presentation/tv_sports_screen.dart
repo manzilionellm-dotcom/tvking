@@ -8,6 +8,7 @@
 // =========================================================
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../sports/data/sports_repository.dart';
@@ -167,10 +168,14 @@ class _TeamSection extends StatelessWidget {
                 width: 44,
                 height: 44,
                 child: team.badge.isNotEmpty
-                    ? Image.network(team.badge,
+                    ? CachedNetworkImage(
+                        imageUrl: team.badge,
                         fit: BoxFit.contain,
-                        cacheWidth: 120,
-                        errorBuilder: (_, __, ___) =>
+                        memCacheWidth: 120,
+                        fadeInDuration: const Duration(milliseconds: 150),
+                        placeholder: (_, __) =>
+                            const Icon(Icons.shield_rounded, color: TvTokens.muted),
+                        errorWidget: (_, __, ___) =>
                             const Icon(Icons.shield_rounded, color: TvTokens.muted))
                     : const Icon(Icons.shield_rounded, color: TvTokens.muted),
               ),

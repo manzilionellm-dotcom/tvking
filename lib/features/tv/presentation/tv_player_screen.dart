@@ -18,6 +18,7 @@
 // =========================================================
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
@@ -799,9 +800,13 @@ class _ControlsBar extends StatelessWidget {
         width: 56,
         height: 56,
         child: (channel.logoUrl != null && channel.logoUrl!.isNotEmpty)
-            ? Image.network(channel.logoUrl!,
+            ? CachedNetworkImage(
+                imageUrl: channel.logoUrl!,
                 fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => _initials())
+                memCacheWidth: 160,
+                fadeInDuration: const Duration(milliseconds: 150),
+                placeholder: (_, __) => _initials(),
+                errorWidget: (_, __, ___) => _initials())
             : _initials(),
       );
 
