@@ -41,7 +41,7 @@ export const DOWNLOADER_CODE: string =
 
 /// Lien + code Downloader de la version TV (DeFew TV).
 export const DOWNLOAD_URL_TV = 'https://app.7themotion.com/tv';
-export const DOWNLOADER_CODE_TV = '1848910';
+export const DOWNLOADER_CODE_TV = '6248618';
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
