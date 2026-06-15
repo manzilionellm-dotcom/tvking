@@ -303,11 +303,37 @@ export interface Device {
   app_build?: number | null;
   platform?: string | null;   // 'tv' (DeFew TV) | 'mobile' (The Few)
 }
+// Abonnement (licence) d'un appareil, vue panel.
+export interface DeviceLicense {
+  status: string;          // 'active' | 'expired' | 'frozen' | …
+  plan: string | null;
+  started_at?: number | null;
+  expires_at: number | null;
+  auto_renew?: number;
+}
+// Présence live d'un appareil (dernière trace serveur).
+export interface DevicePresence {
+  online: boolean;
+  ip: string;
+  country: string;
+  channel: string;         // chaîne en cours de visionnage ('' si rien)
+  last_seen: number;
+}
+// Fiche 360° agrégée d'un appareil : abonnement + présence + M-Trio.
+export interface DeviceOverview {
+  mac: string;
+  license: DeviceLicense | null;
+  presence: DevicePresence | null;
+  sources: DeviceSource[];
+}
 export const devicesApi = {
   list: (q?: string) =>
     request<{ items: Device[] }>(
       `/api/v1/devices${q ? `?q=${encodeURIComponent(q)}` : ''}`,
     ),
+  // Fiche 360° d'un appareil (abonnement + présence live + M-Trio) en 1 appel.
+  overview: (id: string) =>
+    request<DeviceOverview>(`/api/v1/devices/${encodeURIComponent(id)}/overview`),
   // Geler ('frozen'), bannir ('banned') ou reactiver ('active') une MAC.
   setBlock: (id: string, block_status: 'active' | 'frozen' | 'banned') =>
     request<{ updated: number; block_status: string | null }>(

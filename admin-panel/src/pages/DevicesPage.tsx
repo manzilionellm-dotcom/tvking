@@ -1,10 +1,18 @@
 import { ReactNode, useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import {
-  devicesApi, activateApi, sourcesApi,
-  type Device, type DeviceSource, ApiError,
+  devicesApi, activateApi, flagEmoji,
+  type Device, type DeviceSource, type DeviceOverview,
+  type DeviceLicense, type DevicePresence, ApiError,
 } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
+
+/// Libellés FR lisibles des plans (clé technique → texte).
+const PLAN_LABELS: Record<string, string> = {
+  monthly: '1 mois', quarterly: '3 mois', biannual: '6 mois',
+  yearly: '1 an', lifetime: 'À vie',
+};
 
 export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<Device[]>([]);
@@ -157,7 +165,11 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
       {detailFor && (
         <DeviceDetailModal
           device={detailFor}
+          busy={busyId === detailFor.id}
           onClose={() => setDetailFor(null)}
+          onActivate={() => { const d = detailFor; setDetailFor(null); setActivateFor(d); }}
+          onBlock={(status) => setBlock(detailFor, status)}
+          onRemove={() => { const d = detailFor; setDetailFor(null); remove(d); }}
         />
       )}
     </AppLayout>
@@ -176,44 +188,52 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
 //  client a ajouté lui-même une liste M3U/Xtream depuis l'app (« Mes sources »),
 //  celle-ci reste stockée localement sur sa TV et n'est pas remontée au serveur.
 function DeviceDetailModal({
-  device, onClose,
-}: { device: Device; onClose: () => void }) {
-  const [sources, setSources] = useState<DeviceSource[] | null>(null);
+  device, busy, onClose, onActivate, onBlock, onRemove,
+}: {
+  device: Device;
+  busy: boolean;
+  onClose: () => void;
+  onActivate: () => void;
+  onBlock: (status: 'active' | 'frozen' | 'banned') => void;
+  onRemove: () => void;
+}) {
+  const navigate = useNavigate();
+  const [ov, setOv] = useState<DeviceOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    sourcesApi.get(device.mac)
-      .then((r) => {
-        if (!alive) return;
-        // Le worker renvoie `sources` (le trio) ; fallback sur `source` seule.
-        const list = r.sources && r.sources.length
-          ? r.sources
-          : (r.source ? [r.source] : []);
-        setSources(list);
-        setErr(null);
-      })
+    devicesApi.overview(device.id)
+      .then((r) => { if (alive) { setOv(r); setErr(null); } })
       .catch((e) => { if (alive) setErr(e instanceof ApiError ? e.message : 'Échec.'); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [device.mac]);
+  }, [device.id]);
 
   const st = device.block_status || 'active';
+  const sources = ov?.sources ?? [];
+  const macUrl = encodeURIComponent(device.mac);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
       <div
-        className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-midnight p-6 shadow-2xl"
+        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-midnight p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold tracking-tight">Fiche appareil</h2>
+            <h2 className="text-lg font-semibold tracking-tight">Centre de contrôle appareil</h2>
             <p className="mt-0.5 font-mono text-xs text-accent">{device.mac}</p>
           </div>
           <DeviceStatus status={st} />
+        </div>
+
+        {/* ----- Abonnement + Présence live (résumé d'un coup d'œil) ----- */}
+        <div className="mb-4 grid grid-cols-2 gap-3">
+          <SubscriptionBox loading={loading} license={ov?.license ?? null} />
+          <PresenceBox loading={loading} presence={ov?.presence ?? null} />
         </div>
 
         {/* ----- Infos appareil (le « ventre ») ----- */}
@@ -234,7 +254,7 @@ function DeviceDetailModal({
           <h3 className="text-sm font-semibold text-ink-secondary">
             M-Trio · sources poussées
           </h3>
-          {sources && (
+          {!loading && !err && (
             <span className="text-[11px] text-ink-tertiary">{sources.length}/3</span>
           )}
         </div>
@@ -245,7 +265,7 @@ function DeviceDetailModal({
         {err && (
           <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>
         )}
-        {!loading && !err && sources && sources.length === 0 && (
+        {!loading && !err && sources.length === 0 && (
           <div className="rounded-lg border border-white/5 bg-obsidian px-3 py-4 text-center text-xs text-ink-tertiary">
             Aucune source poussée depuis le panel pour cette MAC.
             <br />
@@ -253,13 +273,82 @@ function DeviceDetailModal({
             elle reste stockée localement et n'apparaît pas ici.)
           </div>
         )}
-        {!loading && !err && sources && sources.map((s, i) => (
+        {!loading && !err && sources.map((s, i) => (
           <SourceCard key={i} index={i} source={s} />
         ))}
+
+        {/* ----- Actions : tout piloter depuis ici (gauche/droite/nord/sud) ----- */}
+        <div className="mt-5 border-t border-white/5 pt-4">
+          <div className="mb-2 text-[10px] uppercase tracking-widest text-ink-tertiary">Actions</div>
+          <div className="flex flex-wrap gap-1.5">
+            <ActionBtn busy={busy} primary onClick={onActivate} title="Activer / prolonger l'abonnement">Activer / prolonger</ActionBtn>
+            <ActionBtn busy={busy} onClick={() => navigate(`/activate?mac=${macUrl}`)} title="Pousser ou modifier le M-Trio de sources">Pousser une source</ActionBtn>
+            <ActionBtn busy={busy} onClick={() => navigate(`/transfer?mac=${macUrl}`)} title="Transférer l'abonnement vers une nouvelle MAC">Transférer</ActionBtn>
+            {st !== 'frozen' && (
+              <ActionBtn busy={busy} onClick={() => onBlock('frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>
+            )}
+            {st !== 'banned' && (
+              <ActionBtn busy={busy} onClick={() => onBlock('banned')} title="Bannir (abus)">Bannir</ActionBtn>
+            )}
+            {st !== 'active' && (
+              <ActionBtn busy={busy} onClick={() => onBlock('active')} title="Réactiver">Réactiver</ActionBtn>
+            )}
+            <ActionBtn busy={busy} danger onClick={onRemove} title="Supprimer la MAC">Supprimer</ActionBtn>
+          </div>
+        </div>
 
         <div className="flex justify-end pt-5">
           <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary">Fermer</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/// Encart « Abonnement » : statut + plan + expiration (jours restants).
+function SubscriptionBox({ loading, license }: { loading: boolean; license: DeviceLicense | null }) {
+  if (loading) return <div className="h-16 animate-pulse rounded-lg bg-white/5" />;
+  const ok = license && license.status === 'active';
+  const lifetime = license && license.expires_at == null && ok;
+  let detail = 'Aucun abonnement';
+  if (license) {
+    const plan = license.plan ? (PLAN_LABELS[license.plan] || license.plan) : '';
+    if (lifetime) {
+      detail = `${plan || 'À vie'} · illimité`;
+    } else if (license.expires_at != null) {
+      const days = Math.ceil((license.expires_at - Date.now()) / 86400000);
+      detail = days >= 0
+        ? `${plan} · ${days} j restant${days > 1 ? 's' : ''}`
+        : `${plan} · expiré depuis ${-days} j`;
+    } else {
+      detail = plan || license.status;
+    }
+  }
+  return (
+    <div className="rounded-lg border border-white/5 bg-obsidian px-3 py-2.5">
+      <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">Abonnement</div>
+      <div className={'mt-0.5 text-sm font-semibold ' + (ok ? 'text-success' : 'text-warning')}>
+        {ok ? (lifetime ? 'À vie' : 'Actif') : (license ? 'Expiré' : '—')}
+      </div>
+      <div className="mt-0.5 truncate text-[11px] text-ink-tertiary" title={detail}>{detail}</div>
+    </div>
+  );
+}
+
+/// Encart « Présence » : en ligne maintenant ? + chaîne en cours + IP/pays.
+function PresenceBox({ loading, presence }: { loading: boolean; presence: DevicePresence | null }) {
+  if (loading) return <div className="h-16 animate-pulse rounded-lg bg-white/5" />;
+  const online = presence?.online;
+  const flag = presence?.country ? flagEmoji(presence.country) : '';
+  return (
+    <div className="rounded-lg border border-white/5 bg-obsidian px-3 py-2.5">
+      <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">Présence</div>
+      <div className={'mt-0.5 flex items-center gap-1.5 text-sm font-semibold ' + (online ? 'text-success' : 'text-ink-tertiary')}>
+        <span className={'h-2 w-2 rounded-full ' + (online ? 'bg-success' : 'bg-white/20')} />
+        {online ? 'En ligne' : 'Hors ligne'}
+      </div>
+      <div className="mt-0.5 truncate text-[11px] text-ink-tertiary" title={presence?.channel || ''}>
+        {presence?.channel ? `▶ ${presence.channel}` : (presence ? `${flag} ${presence.ip || '—'}`.trim() : '—')}
       </div>
     </div>
   );

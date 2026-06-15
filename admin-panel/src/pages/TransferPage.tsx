@@ -1,4 +1,5 @@
 import { FormEvent, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { transferApi, ApiError } from '@/lib/api';
 
@@ -14,7 +15,9 @@ import { transferApi, ApiError } from '@/lib/api';
 const MAC_RX = /^MK(?::[0-9A-Fa-f]{2}){5}$/;
 
 export function TransferPage({ onLogout }: { onLogout: () => void }) {
-  const [oldMac, setOldMac] = useState('');
+  // Ancienne MAC pré-remplie si on arrive depuis la fiche appareil (?mac=…).
+  const [sp] = useSearchParams();
+  const [oldMac, setOldMac] = useState(sp.get('mac') || '');
   const [newMac, setNewMac] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);

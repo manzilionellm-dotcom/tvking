@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { CopyLink } from '@/components/CopyLink';
 import {
@@ -34,7 +35,9 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   // Pousser des sources = capacité 'sources' (revendeur standard+ ou admin).
   const canPushSources = userCan(user, 'sources');
 
-  const [mac, setMac] = useState('MK:');
+  // MAC pré-remplie si on arrive depuis la fiche appareil (?mac=…).
+  const [sp] = useSearchParams();
+  const [mac, setMac] = useState(sp.get('mac') || 'MK:');
   const [plan, setPlan] = useState(isReseller ? 'yearly' : 'monthly');
   const [customerName, setCustomerName] = useState('');
   const [apps, setApps] = useState<App[]>([]);

@@ -864,6 +864,10 @@ async function apiV1Inner(request, env) {
       // Supprimer la MAC.
       if (request.method === 'DELETE') return handleDeviceDelete(env, did, actor, a.user);
     }
+    // /devices/:id/overview — fiche 360° (abonnement + présence + M-Trio).
+    if (parts.length === 3 && parts[2] === 'overview') {
+      if (request.method === 'GET') return handleDeviceOverview(env, parts[1], a.user);
+    }
   }
 
   // /licenses
@@ -2514,6 +2518,84 @@ async function handleDevicesList(request, env, user) {
   sql += ` ORDER BY d.last_seen_at DESC LIMIT 200`;
   const rs = await env.DB.prepare(sql).bind(...binds).all();
   return jsonResp({ items: rs.results || [] });
+}
+
+// =========================================================
+//  FICHE 360° D'UN APPAREIL — « tout ce que le client a dans le ventre »
+// =========================================================
+//  GET /devices/:id/overview → en UN appel : abonnement (licence), présence
+//  live (en ligne / IP / pays / chaîne en cours) et M-Trio (sources poussées).
+//  Le panel affiche tout d'un coup pour aider/diagnostiquer un client par sa
+//  MAC. Respecte le cloisonnement revendeur via deviceForActor.
+async function handleDeviceOverview(env, id, user) {
+  const r = await deviceForActor(env, id, user);
+  if (r.error) return r.error;
+  const dev = r.dev;
+  const now = Date.now();
+
+  // --- Abonnement : la licence la plus « forte » (à vie d'abord, sinon la
+  //     plus lointaine). Statut recalculé : active / expired / <statut brut>.
+  let license = null;
+  try {
+    const lic = await env.DB
+      .prepare(
+        `SELECT status, plan, started_at, expires_at, auto_renew
+           FROM licenses WHERE device_id = ?
+          ORDER BY (expires_at IS NULL) DESC, expires_at DESC LIMIT 1`,
+      )
+      .bind(dev.id)
+      .first();
+    if (lic) {
+      const live = lic.status === 'active'
+        && (lic.expires_at == null || lic.expires_at > now);
+      const expired = lic.expires_at != null && lic.expires_at <= now;
+      license = {
+        status: live ? 'active' : (expired ? 'expired' : lic.status),
+        plan: lic.plan || null,
+        started_at: lic.started_at ?? null,
+        expires_at: lic.expires_at ?? null,
+        auto_renew: lic.auto_renew ? 1 : 0,
+      };
+    }
+  } catch (_) { /* table licences absente : on ignore */ }
+
+  // --- Présence live : dernière trace dans `presence` (par MAC).
+  let presence = null;
+  try {
+    const p = await env.DB
+      .prepare('SELECT ip, country, last_seen, channel FROM presence WHERE mac = ?')
+      .bind(dev.mac)
+      .first();
+    if (p) {
+      const ONLINE_MS = 15 * 60 * 1000;
+      presence = {
+        online: (p.last_seen || 0) > now - ONLINE_MS,
+        ip: p.ip || '',
+        country: (p.country || '').toUpperCase(),
+        channel: p.channel || '',
+        last_seen: p.last_seen || 0,
+      };
+    }
+  } catch (_) { /* table presence absente : on ignore */ }
+
+  // --- M-Trio : sources poussées (trio sources_json, sinon source simple).
+  let sources = [];
+  try {
+    await ensureSourcesTable(env);
+    const row = await env.DB
+      .prepare('SELECT * FROM device_sources WHERE mac = ?')
+      .bind(dev.mac)
+      .first();
+    if (row && row.sources_json) {
+      try { sources = JSON.parse(row.sources_json) || []; } catch (_) { sources = []; }
+    }
+    if (!sources.length && row) {
+      const { sources_json, mac: _m, updated_at, ...single } = row;
+      sources = [single];
+    }
+  } catch (_) { /* table device_sources absente : on ignore */ }
+
+  return jsonResp({ mac: dev.mac, license, presence, sources });
 }
 
 async function handleDevicesCreate(request, env, actor) {
