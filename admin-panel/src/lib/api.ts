@@ -477,8 +477,11 @@ export const activateApi = {
 
 // Source assignée par MAC (gérée indépendamment de l'activation).
 export const sourcesApi = {
+  // Le worker renvoie le TRIO complet (`sources`) + la 1re source (`source`,
+  // rétro-compat). On expose les deux : `sources` sert au panel pour montrer
+  // « tout ce que le client a dans le ventre » à partir de sa MAC.
   get: (mac: string) =>
-    request<{ mac: string; source: DeviceSource | null }>(
+    request<{ mac: string; source: DeviceSource | null; sources?: DeviceSource[] }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
     ),
   set: (mac: string, source: DeviceSourceInput) =>

@@ -1,6 +1,9 @@
 import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { devicesApi, activateApi, type Device, ApiError } from '@/lib/api';
+import {
+  devicesApi, activateApi, sourcesApi,
+  type Device, type DeviceSource, ApiError,
+} from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 
 export function DevicesPage({ onLogout }: { onLogout: () => void }) {
@@ -10,6 +13,8 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activateFor, setActivateFor] = useState<Device | null>(null);
+  // Appareil dont on affiche la « fiche complète » (infos + M-Trio).
+  const [detailFor, setDetailFor] = useState<Device | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -91,7 +96,16 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
               const busy = busyId === d.id;
               return (
                 <tr key={d.id} className="bg-obsidian hover:bg-midnight">
-                  <td className="px-4 py-3 font-mono text-xs text-accent">{d.mac}</td>
+                  <td className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => setDetailFor(d)}
+                      title="Voir la fiche complète (M-Trio + infos appareil)"
+                      className="font-mono text-xs text-accent underline-offset-2 hover:underline"
+                    >
+                      {d.mac}
+                    </button>
+                  </td>
                   <td className="px-4 py-3">{d.customer_name || d.customer_email || '—'}</td>
                   <td className="px-4 py-3">
                     <PlatformChip device={d} />
@@ -111,6 +125,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                   <td className="px-4 py-3 text-ink-tertiary">{formatDateTime(d.last_seen_at)}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap justify-end gap-1.5">
+                      <ActionBtn busy={busy} onClick={() => setDetailFor(d)} title="Fiche complète : M-Trio + infos appareil">Détails</ActionBtn>
                       <ActionBtn busy={busy} primary onClick={() => setActivateFor(d)} title="Activer / prolonger (le client a payé)">Activer</ActionBtn>
                       {st !== 'frozen' && (
                         <ActionBtn busy={busy} onClick={() => setBlock(d, 'frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>
@@ -138,7 +153,186 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
           onDone={() => { setActivateFor(null); load(); }}
         />
       )}
+
+      {detailFor && (
+        <DeviceDetailModal
+          device={detailFor}
+          onClose={() => setDetailFor(null)}
+        />
+      )}
     </AppLayout>
+  );
+}
+
+// =========================================================
+//  FICHE COMPLÈTE D'UN APPAREIL — « tout ce que le client a dans le ventre »
+// =========================================================
+//  Le client donne sa MAC → on affiche ici TOUT : ses infos appareil
+//  (modèle, Android, plateforme, dernière vue) ET son M-Trio (les 1 à 3
+//  sources Xtream/M3U poussées depuis le panel, avec identifiants) pour
+//  pouvoir l'aider/diagnostiquer. Les sources sont lues via /api/v1/sources/:mac.
+//
+//  NOTE : seules les sources POUSSÉES par le panel sont visibles ici. Si le
+//  client a ajouté lui-même une liste M3U/Xtream depuis l'app (« Mes sources »),
+//  celle-ci reste stockée localement sur sa TV et n'est pas remontée au serveur.
+function DeviceDetailModal({
+  device, onClose,
+}: { device: Device; onClose: () => void }) {
+  const [sources, setSources] = useState<DeviceSource[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    sourcesApi.get(device.mac)
+      .then((r) => {
+        if (!alive) return;
+        // Le worker renvoie `sources` (le trio) ; fallback sur `source` seule.
+        const list = r.sources && r.sources.length
+          ? r.sources
+          : (r.source ? [r.source] : []);
+        setSources(list);
+        setErr(null);
+      })
+      .catch((e) => { if (alive) setErr(e instanceof ApiError ? e.message : 'Échec.'); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [device.mac]);
+
+  const st = device.block_status || 'active';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+      <div
+        className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-midnight p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">Fiche appareil</h2>
+            <p className="mt-0.5 font-mono text-xs text-accent">{device.mac}</p>
+          </div>
+          <DeviceStatus status={st} />
+        </div>
+
+        {/* ----- Infos appareil (le « ventre ») ----- */}
+        <div className="mb-5 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+          <InfoRow label="Client" value={device.customer_name || device.customer_email || '—'} />
+          <InfoRow label="Plateforme" value={device.platform === 'tv' ? '📺 TV' : device.platform === 'mobile' ? '📱 Mobile' : '—'} />
+          <InfoRow label="Modèle" value={device.device_model || '—'} />
+          <InfoRow label="Android" value={device.android_release ? `Android ${device.android_release}` : '—'} />
+          <InfoRow label="Build Android" value={device.android_build || '—'} />
+          <InfoRow label="Version app" value={device.app_build != null ? String(device.app_build) : '—'} />
+          <InfoRow label="Étiquette" value={device.label || '—'} />
+          <InfoRow label="Dernière vue" value={formatDateTime(device.last_seen_at)} />
+          <InfoRow label="Première vue" value={formatDateTime(device.first_seen_at)} />
+        </div>
+
+        {/* ----- M-Trio : les sources poussées ----- */}
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-ink-secondary">
+            M-Trio · sources poussées
+          </h3>
+          {sources && (
+            <span className="text-[11px] text-ink-tertiary">{sources.length}/3</span>
+          )}
+        </div>
+
+        {loading && (
+          <div className="h-16 animate-pulse rounded-lg bg-white/5" />
+        )}
+        {err && (
+          <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>
+        )}
+        {!loading && !err && sources && sources.length === 0 && (
+          <div className="rounded-lg border border-white/5 bg-obsidian px-3 py-4 text-center text-xs text-ink-tertiary">
+            Aucune source poussée depuis le panel pour cette MAC.
+            <br />
+            (Le client a peut-être ajouté sa propre liste M3U/Xtream sur sa TV —
+            elle reste stockée localement et n'apparaît pas ici.)
+          </div>
+        )}
+        {!loading && !err && sources && sources.map((s, i) => (
+          <SourceCard key={i} index={i} source={s} />
+        ))}
+
+        <div className="flex justify-end pt-5">
+          <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary">Fermer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">{label}</div>
+      <div className="truncate text-ink-secondary" title={value}>{value}</div>
+    </div>
+  );
+}
+
+/// Carte d'une source du M-Trio (avec identifiants Xtream ou URL M3U).
+function SourceCard({ index, source }: { index: number; source: DeviceSource }) {
+  const isXtream = source.type === 'xtream';
+  return (
+    <div className="mb-2 rounded-lg border border-white/5 bg-obsidian px-3 py-3">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] font-bold text-ink-tertiary">#{index + 1}</span>
+        <span
+          className="rounded px-1.5 py-0.5 text-[10px] font-bold"
+          style={{
+            background: isXtream ? 'rgba(202,162,74,0.18)' : 'rgba(90,160,232,0.18)',
+            color: isXtream ? '#CAA24A' : '#5AA0E8',
+          }}
+        >
+          {isXtream ? 'XTREAM' : 'M3U'}
+        </span>
+        {source.label && <span className="truncate text-xs text-ink-secondary">{source.label}</span>}
+      </div>
+      <div className="grid grid-cols-1 gap-y-1.5 text-xs">
+        {isXtream ? (
+          <>
+            <CredRow label="Serveur" value={source.server_url || '—'} />
+            <CredRow label="Identifiant" value={source.username || '—'} />
+            <CredRow label="Mot de passe" value={source.password || '—'} mono />
+            {source.epg_url && <CredRow label="EPG" value={source.epg_url} />}
+          </>
+        ) : (
+          <>
+            <CredRow label="URL M3U" value={source.m3u_url || '—'} />
+            {source.epg_url && <CredRow label="EPG" value={source.epg_url} />}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/// Ligne identifiant copiable (clic = copie dans le presse-papier).
+function CredRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    if (!value || value === '—') return;
+    navigator.clipboard?.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    }).catch(() => {});
+  }
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="w-24 shrink-0 text-[10px] uppercase tracking-widest text-ink-tertiary">{label}</span>
+      <button
+        type="button"
+        onClick={copy}
+        title="Cliquer pour copier"
+        className={'min-w-0 flex-1 truncate text-left text-ink-secondary hover:text-accent ' + (mono ? 'font-mono' : '')}
+      >
+        {copied ? 'Copié ✔' : value}
+      </button>
+    </div>
   );
 }
 
