@@ -207,15 +207,18 @@ jobs:
           cp ci/defew-debug.keystore ~/.android/debug.keystore
           echo "Keystore fixe en place (~/.android/debug.keystore)."
 
-      # RELEASE + SPLIT-PER-ABI : APK ~40-60 Mo (au lieu de 202 Mo en debug
-      # multi-ABI). On publie l'arm64-v8a (box Android TV / Fire TV 4K).
-      - name: Build DeFew TV (release, arm64, target main_tv)
+      # APK UNIVERSEL (toutes ABIs : arm64-v8a + armeabi-v7a + x86_64).
+      # CRUCIAL pour Amazon Fire Stick : beaucoup de Fire Stick (Lite, Stick de
+      # base) tournent en 32 bits (armeabi-v7a). Un APK arm64-only REFUSE de
+      # s'installer dessus. L'APK universel s'installe sur TOUS les Fire Stick
+      # et toutes les box Android TV — un seul fichier, un seul lien.
+      - name: Build DeFew TV (release universel, target main_tv)
         run: |
           set -e
-          flutter build apk --release --no-tree-shake-icons --split-per-abi \
+          flutter build apk --release --no-tree-shake-icons \
             --obfuscate --split-debug-info=build/symbols \
             --target=lib/main_tv.dart
-          echo "=== APKs produits ==="
+          echo "=== APK produit ==="
           ls -lah build/app/outputs/flutter-apk/
 
       - name: Publish "tv-latest" release
@@ -224,12 +227,13 @@ jobs:
         run: |
           set -ex
           REPO="${{ github.repository }}"
-          SRC="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
+          SRC="build/app/outputs/flutter-apk/app-release.apk"
           OUT="build/app/outputs/flutter-apk/defew-tv.apk"
           cp "$SRC" "$OUT"
           NOTES="DeFew TV — build de prévisualisation (10-foot, D-pad).
 
-          Même backend/panel que le mobile. Sideload sur Android TV / Fire TV :
+          APK UNIVERSEL : s'installe sur TOUS les Fire Stick (32/64 bits) et
+          box Android TV. Même backend/panel que le mobile. Sideload :
           Downloader → https://github.com/$REPO/releases/download/tv-latest/defew-tv.apk
 
           Commit : ${{ github.sha }}"
