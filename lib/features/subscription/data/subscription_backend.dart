@@ -28,6 +28,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/app/app_platform.dart';
 import '../../../core/app/build_info.dart';
 import '../../device/data/device_identity.dart';
+import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/domain/playlist.dart';
 import 'now_playing.dart';
 
 /// URL du Worker Cloudflare — DOIT être le MÊME backend que celui
@@ -164,6 +166,12 @@ abstract final class SubscriptionBackend {
         'channel': NowPlaying.instance.current,
         // 📱 mobile / 📺 tv → le panel distingue les deux apps.
         'platform': AppPlatform.id,
+        // INVENTAIRE des sources réellement présentes sur l'appareil (celles
+        // poussées par le panel ET celles que le client a ajoutées lui-même).
+        // Sert au panel : « tout ce que le client a dans le ventre » pour mieux
+        // l'aider. SANS mot de passe (vie privée) — serveur + identifiant
+        // suffisent au diagnostic. Best-effort : ne casse jamais le heartbeat.
+        'sources': _sourcesInventory(),
       };
       final http.Response resp = await http
           .post(
@@ -187,6 +195,31 @@ abstract final class SubscriptionBackend {
     } catch (e) {
       if (kDebugMode) debugPrint('[Subscription] heartbeat error: $e');
       return RemoteSubscriptionStatus.unknown;
+    }
+  }
+
+  /// Construit l'inventaire COMPACT des sources présentes sur l'appareil
+  /// (max 5), pour que le panel voie « tout ce que le client a ». On NE
+  /// transmet JAMAIS le mot de passe : type, nom, serveur, identifiant,
+  /// nombre de chaînes et « active » suffisent à diagnostiquer. Tout est
+  /// gardé dans un try/catch pour ne jamais faire échouer le heartbeat.
+  static List<Map<String, Object?>> _sourcesInventory() {
+    try {
+      final List<Playlist> all =
+          PlaylistRepository.instance.currentPlaylists;
+      return all.take(5).map((Playlist p) {
+        final bool xtream = p.type == PlaylistType.xtream;
+        return <String, Object?>{
+          'type': xtream ? 'xtream' : 'm3u',
+          'name': p.name,
+          'server': xtream ? (p.xtreamServer ?? '') : (p.m3uUrl ?? ''),
+          'username': xtream ? (p.xtreamUsername ?? '') : '',
+          'channels': p.channelCount,
+          'active': p.isActive,
+        };
+      }).toList();
+    } catch (_) {
+      return const <Map<String, Object?>>[];
     }
   }
 

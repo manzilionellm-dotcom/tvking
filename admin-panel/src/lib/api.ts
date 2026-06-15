@@ -319,12 +319,24 @@ export interface DevicePresence {
   channel: string;         // chaîne en cours de visionnage ('' si rien)
   last_seen: number;
 }
-// Fiche 360° agrégée d'un appareil : abonnement + présence + M-Trio.
+// Source réellement présente sur la TV (remontée par le heartbeat de l'app).
+// Sans mot de passe : le client ne le transmet jamais.
+export interface DeviceLocalSource {
+  type: 'xtream' | 'm3u';
+  name: string;
+  server: string;
+  username: string;
+  channels: number;
+  active: boolean;
+}
+// Fiche 360° agrégée d'un appareil : abonnement + présence + M-Trio +
+// inventaire réel des sources sur l'appareil.
 export interface DeviceOverview {
   mac: string;
   license: DeviceLicense | null;
   presence: DevicePresence | null;
   sources: DeviceSource[];
+  localSources?: DeviceLocalSource[];
 }
 export const devicesApi = {
   list: (q?: string) =>

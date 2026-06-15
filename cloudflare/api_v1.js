@@ -2595,7 +2595,21 @@ async function handleDeviceOverview(env, id, user) {
     }
   } catch (_) { /* table device_sources absente : on ignore */ }
 
-  return jsonResp({ mac: dev.mac, license, presence, sources });
+  // --- Inventaire RÉEL sur l'appareil (remonté par le heartbeat) : toutes les
+  //     sources présentes sur la TV, y compris celles que le client a ajoutées
+  //     lui-même. SANS mot de passe (le client ne le remonte jamais).
+  let localSources = [];
+  try {
+    const drow = await env.DB
+      .prepare('SELECT local_sources_json FROM devices WHERE id = ?')
+      .bind(dev.id)
+      .first();
+    if (drow && drow.local_sources_json) {
+      try { localSources = JSON.parse(drow.local_sources_json) || []; } catch (_) { localSources = []; }
+    }
+  } catch (_) { /* colonne absente sur base ancienne : on ignore */ }
+
+  return jsonResp({ mac: dev.mac, license, presence, sources, localSources });
 }
 
 async function handleDevicesCreate(request, env, actor) {

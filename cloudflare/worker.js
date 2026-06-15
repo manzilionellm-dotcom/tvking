@@ -347,7 +347,7 @@ async function ensureScaleSchema(env) {
   if (_scaleSchemaReady || !env.DB) return;
   for (const col of ['device_model TEXT', 'android_build TEXT',
       'android_release TEXT', 'app_build INTEGER', 'platform TEXT',
-      'android_id TEXT', 'app_version TEXT']) {
+      'android_id TEXT', 'app_version TEXT', 'local_sources_json TEXT']) {
     try { await env.DB.prepare('ALTER TABLE devices ADD COLUMN ' + col).run(); } catch (_) {}
   }
   for (const idx of [
@@ -542,8 +542,23 @@ async function updateDeviceInfo(env, mac, body) {
     // 'tv' (DeFew TV) ou 'mobile' (The Few) — pour distinguer dans le panel.
     const platform = (body.platform === 'tv' || body.platform === 'mobile')
       ? body.platform : '';
+    // INVENTAIRE des sources présentes sur l'appareil (sans mot de passe).
+    // On normalise/borne (max 5) puis on sérialise en JSON pour la colonne
+    // local_sources_json. '' = pas d'info envoyée → on n'écrase pas l'existant.
+    let srcJson = '';
+    if (Array.isArray(body.sources)) {
+      const list = body.sources.slice(0, 5).map((s) => ({
+        type: s && s.type === 'm3u' ? 'm3u' : 'xtream',
+        name: (s && s.name ? String(s.name) : '').slice(0, 60),
+        server: (s && s.server ? String(s.server) : '').slice(0, 200),
+        username: (s && s.username ? String(s.username) : '').slice(0, 80),
+        channels: Number.isFinite(s && s.channels) ? (s.channels | 0) : 0,
+        active: !!(s && s.active),
+      }));
+      srcJson = JSON.stringify(list);
+    }
     if (!model && !build && !release && !appBuild && !platform &&
-        !androidId && !appVersion) return;
+        !androidId && !appVersion && !srcJson) return;
     // UNE SEULE écriture (au lieu de 4) : le CASE n'écrase JAMAIS un champ
     // existant avec une valeur vide → robuste ET économe en écritures D1.
     await env.DB
@@ -555,12 +570,14 @@ async function updateDeviceInfo(env, mac, body) {
           "app_build = CASE WHEN ? != 0 THEN ? ELSE app_build END, " +
           "android_id = CASE WHEN ? != '' THEN ? ELSE android_id END, " +
           "app_version = CASE WHEN ? != '' THEN ? ELSE app_version END, " +
-          "platform = CASE WHEN ? != '' THEN ? ELSE platform END " +
+          "platform = CASE WHEN ? != '' THEN ? ELSE platform END, " +
+          "local_sources_json = CASE WHEN ? != '' THEN ? ELSE local_sources_json END " +
           "WHERE mac = ?"
       )
       .bind(
         model, model, build, build, release, release, appBuild, appBuild,
-        androidId, androidId, appVersion, appVersion, platform, platform, mac,
+        androidId, androidId, appVersion, appVersion, platform, platform,
+        srcJson, srcJson, mac,
       )
       .run();
   } catch (_) {

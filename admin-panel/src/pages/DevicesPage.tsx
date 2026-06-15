@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import {
   devicesApi, activateApi, flagEmoji,
-  type Device, type DeviceSource, type DeviceOverview,
+  type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
   type DeviceLicense, type DevicePresence, ApiError,
 } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
@@ -277,6 +277,25 @@ function DeviceDetailModal({
           <SourceCard key={i} index={i} source={s} />
         ))}
 
+        {/* ----- Inventaire RÉEL sur la TV (remonté par l'app) ----- */}
+        {!loading && !err && (ov?.localSources?.length ?? 0) > 0 && (
+          <div className="mt-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-ink-secondary">
+                Sur la TV du client · inventaire réel
+              </h3>
+              <span className="text-[11px] text-ink-tertiary">{ov!.localSources!.length}</span>
+            </div>
+            <p className="mb-2 text-[11px] text-ink-tertiary">
+              Toutes les sources réellement chargées sur l'appareil (poussées
+              par le panel <em>et</em> ajoutées par le client). Sans mot de passe.
+            </p>
+            {ov!.localSources!.map((s, i) => (
+              <LocalSourceCard key={i} source={s} />
+            ))}
+          </div>
+        )}
+
         {/* ----- Actions : tout piloter depuis ici (gauche/droite/nord/sud) ----- */}
         <div className="mt-5 border-t border-white/5 pt-4">
           <div className="mb-2 text-[10px] uppercase tracking-widest text-ink-tertiary">Actions</div>
@@ -395,6 +414,36 @@ function SourceCard({ index, source }: { index: number; source: DeviceSource }) 
             {source.epg_url && <CredRow label="EPG" value={source.epg_url} />}
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/// Carte d'une source réellement présente sur la TV (inventaire heartbeat).
+/// Compacte, sans mot de passe ; badge « active » sur celle en cours d'usage.
+function LocalSourceCard({ source }: { source: DeviceLocalSource }) {
+  const isXtream = source.type === 'xtream';
+  return (
+    <div className="mb-2 rounded-lg border border-white/5 bg-obsidian px-3 py-2.5">
+      <div className="mb-1 flex items-center gap-2">
+        <span
+          className="rounded px-1.5 py-0.5 text-[10px] font-bold"
+          style={{
+            background: isXtream ? 'rgba(202,162,74,0.18)' : 'rgba(90,160,232,0.18)',
+            color: isXtream ? '#CAA24A' : '#5AA0E8',
+          }}
+        >
+          {isXtream ? 'XTREAM' : 'M3U'}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-xs text-ink-secondary">{source.name || '—'}</span>
+        {source.active && (
+          <span className="rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success">active</span>
+        )}
+      </div>
+      <div className="grid grid-cols-1 gap-y-1.5 text-xs">
+        <CredRow label="Serveur" value={source.server || '—'} />
+        {isXtream && <CredRow label="Identifiant" value={source.username || '—'} />}
+        <CredRow label="Chaînes" value={source.channels ? String(source.channels) : '—'} />
       </div>
     </div>
   );
