@@ -146,6 +146,12 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // Dernière chaîne vue + son index, calculés dans _recompute (pas dans build).
   Channel? _lastWatchedCh;
   int _lastWatchedIdx = -1;
+  // Clé STABLE de la grille de chaînes. Quand le bandeau « Reprendre » apparaît
+  // (au retour du lecteur), la mise en page passe de Row à Column → sans clé,
+  // la grille serait RECRÉÉE et le défilement/focus repartiraient au début.
+  // Avec cette GlobalKey, Flutter PRÉSERVE la grille (scroll + focus) : on
+  // revient exactement là où on regardait, pour continuer à scroller.
+  final GlobalKey _liveGridKey = GlobalKey();
 
   /// Recalcule TOUT l'état dérivé à partir des sources. Appelé UNIQUEMENT quand
   /// une source change — jamais dans build().
@@ -544,7 +550,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
         ),
         const SizedBox(width: TvDimens.gutter),
         // ----- Grille de chaînes (virtualisée) -----
-        Expanded(child: _ChannelGrid(channels: _shownList)),
+        Expanded(child: _ChannelGrid(key: _liveGridKey, channels: _shownList)),
       ],
     );
 
@@ -616,7 +622,7 @@ class _ContinueHero extends StatelessWidget {
 }
 
 class _ChannelGrid extends StatelessWidget {
-  const _ChannelGrid({required this.channels});
+  const _ChannelGrid({super.key, required this.channels});
   final List<Channel> channels;
 
   @override
