@@ -57,6 +57,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   /// catégories) : Tendances (les plus regardées EN CE MOMENT) puis Favoris.
   static const String _kTrendCat = 'k.trending';
   static const String _kRecentCat = 'k.recent';
+  static const String _kForYouCat = 'k.foryou'; // « Parce que vous avez regardé »
   static const String _kFavCat = '★ favoris'; // ★ favoris (clé interne)
 
   // Re-synchro de la source poussée par le panel. CRUCIAL : sans ça, l'app
@@ -135,6 +136,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   List<Channel> _favCh = const <Channel>[];
   List<Channel> _trendCh = const <Channel>[];
   List<Channel> _recentCh = const <Channel>[];
+  List<Channel> _forYouCh = const <Channel>[];
   List<String> _dispCats = const <String>[];
   List<Channel> _shownList = const <Channel>[];
   // Index id -> chaîne, construit UNE fois par changement de source (dans
@@ -184,11 +186,38 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       }
       _trendCh = out;
     }
+    // « Parce que vous avez regardé… » : recommandation LOCALE façon Netflix.
+    // On déduit le(s) genre(s) de l'historique récent, puis on propose d'autres
+    // chaînes du même genre (hors favoris et déjà-vues). Calculé ICI (O(n) une
+    // fois par changement de source, jamais en build) et plafonné à 40.
+    if (_recentIds.isEmpty || _all.isEmpty) {
+      _forYouCh = const <Channel>[];
+    } else {
+      final Set<ChannelGenre> liked = <ChannelGenre>{};
+      for (final String id in _recentIds.take(12)) {
+        final Channel? c = _byId[id];
+        if (c != null) liked.add(c.genre);
+      }
+      liked.remove(ChannelGenre.other); // trop vague pour recommander
+      if (liked.isEmpty) {
+        _forYouCh = const <Channel>[];
+      } else {
+        final Set<String> exclude = <String>{..._recentIds, ..._favIds};
+        final List<Channel> out = <Channel>[];
+        for (final Channel c in _all) {
+          if (out.length >= 40) break;
+          if (exclude.contains(c.id)) continue;
+          if (liked.contains(c.genre)) out.add(c);
+        }
+        _forYouCh = out;
+      }
+    }
     // Catégories affichées (pseudo-catégories non vides en tête).
     final List<String> cats = <String>[];
     if (_trendCh.isNotEmpty) cats.add(_kTrendCat);
     if (_favCh.isNotEmpty) cats.add(_kFavCat);
     if (_recentCh.isNotEmpty) cats.add(_kRecentCat);
+    if (_forYouCh.isNotEmpty) cats.add(_kForYouCat);
     cats.addAll(_cats);
     _dispCats = cats;
     // Grille affichée selon la catégorie sélectionnée.
@@ -198,6 +227,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       _shownList = _favCh;
     } else if (_selectedCat == _kRecentCat) {
       _shownList = _recentCh;
+    } else if (_selectedCat == _kForYouCat) {
+      _shownList = _forYouCh;
     } else if (_selectedCat == null) {
       _shownList = _all;
     } else {
@@ -230,13 +261,17 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
 
   /// Vrai pour les pseudo-catégories spéciales (teintées or).
   bool _isSpecialCat(String cat) =>
-      cat == _kTrendCat || cat == _kFavCat || cat == _kRecentCat;
+      cat == _kTrendCat ||
+      cat == _kFavCat ||
+      cat == _kRecentCat ||
+      cat == _kForYouCat;
 
   /// Libellé visible d'une catégorie (les sentinelles sont traduites/ornées).
   String _catLabel(BuildContext context, String cat) {
     if (cat == _kTrendCat) return '🔥 Tendances';
     if (cat == _kFavCat) return '★ ${context.l10n.navFavorites}';
     if (cat == _kRecentCat) return '🕒 Récemment';
+    if (cat == _kForYouCat) return '✨ Pour vous';
     return cat;
   }
 
