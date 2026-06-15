@@ -207,6 +207,41 @@ jobs:
           cp ci/defew-debug.keystore ~/.android/debug.keystore
           echo "Keystore fixe en place (~/.android/debug.keystore)."
 
+      # ----- Firebase Crashlytics (OPTIONNEL, activé si secret présent) -----
+      # Identique au build mobile : si GOOGLE_SERVICES_JSON est posé, on écrit
+      # le fichier et on applique le plugin Gradle google-services. Sans secret,
+      # no-op → Crashlytics désactivé (fail-open), build vert.
+      - name: Configure Firebase Crashlytics (si secret présent)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -e
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "⊙ GOOGLE_SERVICES_JSON absent → Crashlytics désactivé (build normal)."
+            exit 0
+          fi
+          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          echo "✓ google-services.json écrit."
+          python3 << 'PYEOF'
+          import re
+          settings = "android/settings.gradle.kts"
+          s = open(settings).read()
+          if "com.google.gms.google-services" not in s:
+              s = re.sub(r'(plugins\s*\{)',
+                         r'\1\n    id("com.google.gms.google-services") version "4.4.2" apply false',
+                         s, count=1)
+              open(settings, "w").write(s)
+              print("✓ google-services déclaré (settings.gradle.kts)")
+          app = "android/app/build.gradle.kts"
+          a = open(app).read()
+          if "com.google.gms.google-services" not in a:
+              a = re.sub(r'(plugins\s*\{)',
+                         r'\1\n    id("com.google.gms.google-services")',
+                         a, count=1)
+              open(app, "w").write(a)
+              print("✓ google-services appliqué (app/build.gradle.kts)")
+          PYEOF
+
       # APK UNIVERSEL (toutes ABIs : arm64-v8a + armeabi-v7a + x86_64).
       # CRUCIAL pour Amazon Fire Stick : beaucoup de Fire Stick (Lite, Stick de
       # base) tournent en 32 bits (armeabi-v7a). Un APK arm64-only REFUSE de

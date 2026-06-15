@@ -30,6 +30,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../crash/crash_reporting.dart';
+import '../crash/crash_reporting_firebase.dart';
 
 /// Lance [body] (la séquence de démarrage d'un flavor) sous les 4 filets.
 ///
@@ -72,6 +73,10 @@ void runGuarded(Future<void> Function() body) {
 
       // Collecteur prêt AVANT le boot : toute erreur de démarrage est captée.
       await CrashReporting.instance.initialize();
+
+      // Crashlytics si (et seulement si) le projet est configuré. Best-effort,
+      // jamais bloquant ni fatal : sans google-services.json, no-op silencieux.
+      await attachCrashlytics();
 
       await body();
     },

@@ -185,6 +185,20 @@ dependencies:
   # le fichier. Plugin officiel de l'écosystème Flutter Community.
   share_plus: ^10.1.4
 
+  # ----- Rapport de crash (OPTIONNEL, fail-open) -----
+  # firebase_core : socle Firebase (initialise l'« app » Firebase à partir
+  #   de google-services.json). firebase_crashlytics : remonte les crashes
+  #   Dart ET natifs (JNI/NDK, UnsatisfiedLinkError…). Le SDK natif collecte
+  #   AUTOMATIQUEMENT modèle, fabricant, version Android, ABI, RAM, etc.
+  #
+  #   POURQUOI « fail-open » : SANS google-services.json (cas par défaut, dev
+  #   et forks), `Firebase.initializeApp()` lève une exception qu'on capte →
+  #   Crashlytics reste désactivé et l'app/le build continuent normalement.
+  #   Le rapport ne s'active QUE si le secret CI GOOGLE_SERVICES_JSON est posé
+  #   (cf. build-android.yml + lib/core/crash/crash_reporting_firebase.dart).
+  firebase_core: ^3.8.0
+  firebase_crashlytics: ^4.1.5
+
 # Pin de screen_brightness_android pour eviter la 2.1.5 qui a un
 # build.gradle cassé (bloc kotlin{} top-level inutilisable par notre
 # config Flutter CI). 2.1.4 (juste avant la cassée) est compatible
