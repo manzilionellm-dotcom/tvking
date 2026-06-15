@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'core/app/app_platform.dart';
+import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
 import 'core/crash/crash_reporting.dart';
 import 'core/flavor/flavor.dart';
@@ -43,6 +44,12 @@ void main() => runGuarded(_bootstrap);
 Future<void> _bootstrap() async {
   // Flavor explicite (un seul produit pour l'instant : The Few).
   FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
+
+  // DISJONCTEUR anti-boucle de redémarrage : si la TV s'est relancée
+  // plusieurs fois de suite (crash natif type mémoire en ré-important une
+  // grosse source), on passe en MODE SANS ÉCHEC et on saute le ré-import
+  // distant plus bas → la boucle est cassée. Voir core/app/boot_guard.dart.
+  await BootGuard.instance.beginBoot();
 
   // Cette app est la version TÉLÉVISION → le heartbeat enverra
   // platform='tv' et le panel l'affichera comme 📺 (vs 📱 mobile).
@@ -92,7 +99,14 @@ Future<void> _bootstrap() async {
       .timeout(const Duration(seconds: 6), onTimeout: () {});
   //    La source distante se (re)synchronise après, sans bloquer : si on a
   //    déjà des chaînes en cache, ça reste SILENCIEUX (pas d'écran « Recherche »).
-  unawaited(RemoteSourceRepository.sync());
+  //    MODE SANS ÉCHEC : on SAUTE ce ré-import — c'est l'étape la plus
+  //    gourmande (fetch + parse de toute la source) et le suspect n°1 d'un
+  //    crash mémoire en boucle. L'app ouvre sur le cache existant.
+  if (!BootGuard.instance.safeMode) {
+    unawaited(RemoteSourceRepository.sync());
+  } else {
+    debugPrint('[main_tv] mode sans échec → ré-import de la source distante sauté.');
+  }
 
   // 5) Enregistrements : on initialise la base et on finalise les
   //    enregistrements « fantômes » (l'app a pu être tuée par l'OS en plein
@@ -121,9 +135,13 @@ Future<void> _bootstrap() async {
   //    le client d'une box à l'autre). Best-effort, n'écrase jamais le local.
   unawaited(
     RecentlyWatchedRepository.instance.initialize().then((_) {
-      RemoteSourceRepository.syncHistory();
+      if (!BootGuard.instance.safeMode) RemoteSourceRepository.syncHistory();
     }),
   );
 
   runApp(const TvApp());
+
+  // L'app est lancée : si elle tient quelques secondes, on efface l'historique
+  // de boucle (un démarrage réussi « pardonne » les crashs précédents).
+  BootGuard.instance.scheduleStableReset();
 }

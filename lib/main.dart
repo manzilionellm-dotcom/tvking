@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:media_kit/media_kit.dart';
 
+import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
 import 'core/crash/crash_reporting.dart';
 import 'core/branding/brand_config.dart';
@@ -95,6 +96,12 @@ Future<void> bootApp() async {
         .recordError(e, s, context: 'MediaKit.ensureInitialized');
   }
 
+  // DISJONCTEUR anti-boucle de redémarrage (cf. core/app/boot_guard.dart) :
+  // si l'app s'est relancée plusieurs fois de suite (crash natif type
+  // mémoire en ré-important une grosse source), on saute le ré-import
+  // distant plus bas pour casser la boucle.
+  await BootGuard.instance.beginBoot();
+
   // Rotation auto autorisée sur toutes les orientations supportées.
   // Sans ça, même quand l'utilisateur incline son téléphone en mode
   // paysage pour regarder un film, l'écran reste verrouillé en portrait
@@ -126,9 +133,13 @@ Future<void> bootApp() async {
     // charge automatiquement. Le client n'a rien à saisir. Puis on purge
     // toute source qui n'a pas marché (0 chaîne) pour ne rien laisser
     // traîner.
-    RemoteSourceRepository.sync().then((_) {
-      PlaylistRepository.instance.pruneEmptyPlaylists();
-    });
+    // MODE SANS ÉCHEC : on saute ce ré-import (étape la plus gourmande,
+    // suspect n°1 d'un crash mémoire en boucle) → l'app ouvre sur le cache.
+    if (!BootGuard.instance.safeMode) {
+      RemoteSourceRepository.sync().then((_) {
+        PlaylistRepository.instance.pruneEmptyPlaylists();
+      });
+    }
 
     // Sauvegarde cloud par MAC : démarre l'upload automatique (à chaque
     // changement de playlists/favoris) et tente une restauration SI
@@ -266,6 +277,10 @@ Future<void> bootApp() async {
   });
 
   runApp(const TvKingApp());
+
+  // App lancée : si elle tient quelques secondes, on efface l'historique de
+  // boucle de crash (un démarrage réussi « pardonne » les crashs précédents).
+  BootGuard.instance.scheduleStableReset();
 }
 
 class TvKingApp extends StatelessWidget {

@@ -13,6 +13,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/app/boot_guard.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
@@ -67,6 +68,12 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   Timer? _syncTimer;
   bool _syncing = false;
   RemoteSyncResult? _lastSync;
+  // Garde-fou : on borne le nombre de ré-imports AUTOMATIQUES de la source.
+  // Sans ça, si la source ne charge jamais (échec/box surchargée), le timer
+  // 12 s relancerait un fetch+parse complet INDÉFINIMENT (gaspillage CPU/mémoire,
+  // suspect de surchauffe/boucle). Au-delà, seul le bouton manuel ré-essaie.
+  int _autoSyncAttempts = 0;
+  static const int _kMaxAutoSync = 6;
   String _mac = '…'; // adresse de CET appareil (à montrer si pas de chaînes)
 
   @override
@@ -103,10 +110,22 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = m);
     });
-    _kickSourceSync(); // tout de suite à l'ouverture de l'écran
-    _syncTimer = Timer.periodic(const Duration(seconds: 12), (_) {
-      if (_all.isEmpty) _kickSourceSync();
-    });
+    // MODE SANS ÉCHEC (boucle de redémarrage détectée) : on NE relance PAS
+    // le ré-import automatique de la source — c'est précisément l'étape
+    // gourmande qu'on veut éviter pour casser la boucle. Le bouton manuel
+    // « Synchroniser » reste disponible.
+    if (!BootGuard.instance.safeMode) {
+      _kickSourceSync(); // tout de suite à l'ouverture de l'écran
+      _syncTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+        // Borné : on arrête les tentatives AUTO après _kMaxAutoSync essais.
+        if (_all.isEmpty && _autoSyncAttempts < _kMaxAutoSync) {
+          _autoSyncAttempts++;
+          _kickSourceSync();
+        } else if (_all.isNotEmpty) {
+          _autoSyncAttempts = 0; // la source a fini par charger → on réarme
+        }
+      });
+    }
     // Mode Enfants : si le parent l'active/désactive, on re-filtre la liste.
     ParentalControls.instance.kidsMode.addListener(_onKidsModeChanged);
   }

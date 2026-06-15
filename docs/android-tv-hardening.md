@@ -19,6 +19,21 @@
 | `MediaKit.ensureInitialized()` gardé (try/catch) | ✅ Fait | mobile + TV |
 | Init lourde **non bloquante** (`unawaited`) | ✅ Déjà en place | boot async |
 | Chargements bloquants bornés par `timeout` | ✅ TV (6 s playlist) | anti-ANR |
+| **Disjoncteur anti-boucle de redémarrage** (mode sans échec) | ✅ Fait | `lib/core/app/boot_guard.dart` |
+
+### Disjoncteur anti-boucle (« la TV redémarre toute seule »)
+Un **crash natif** (mémoire insuffisante en ré-important une grosse source
+poussée par le panel, MediaCodec, mpv…) **ne peut pas** être rattrapé en Dart :
+Android tue puis relance le process. Si le démarrage refait aussitôt l'action
+qui a planté → **boucle infinie**. `BootGuard` compte les lancements
+rapprochés ; au 3ᵉ en moins de 20 s il passe en **MODE SANS ÉCHEC** : on
+**saute le ré-import distant** (l'étape la plus gourmande), l'app ouvre sur le
+**cache** → la boucle est cassée. Un démarrage stable (8 s) remet le compteur
+à zéro. Le ré-import auto côté écran Direct est aussi **borné** (6 essais max).
+
+> 🔎 Pour connaître la **vraie cause** du crash natif (OOM ? codec ?), il faut
+> **Crashlytics activé** (`GOOGLE_SERVICES_JSON`) ou un `adb logcat` sur la box.
+> Le disjoncteur traite le SYMPTÔME (la boucle) ; Crashlytics donne la CAUSE.
 
 Les 4 filets : `ErrorWidget.builder` (sous-arbre qui plante → fond noir, le
 reste tourne), `FlutterError.onError`, `PlatformDispatcher.onError` (return
