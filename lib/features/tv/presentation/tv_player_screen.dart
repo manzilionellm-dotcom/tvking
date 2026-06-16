@@ -23,6 +23,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 
+import '../../../core/crash/crash_reporting.dart';
+import '../../../core/observability/structured_logger.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
@@ -52,6 +54,20 @@ class TvPlayerScreen extends StatefulWidget {
   State<TvPlayerScreen> createState() => _TvPlayerScreenState();
 }
 
+/// Nature de l'erreur lecteur affichée en plein écran (overlay + Réessayer).
+enum _PlayerError {
+  /// Aucune erreur : lecture / buffering normal.
+  none,
+
+  /// Le codec du flux n'est pas décodable sur cet appareil (H.265 sans
+  /// décodeur matériel…). Message dédié, réessayer la même chaîne est inutile.
+  unsupportedCodec,
+
+  /// Le flux ne répond pas / met trop de temps à démarrer (timeout de charge,
+  /// ou erreur réseau terminale après les reconnexions silencieuses du natif).
+  loadFailed,
+}
+
 class _TvPlayerScreenState extends State<TvPlayerScreen>
     with WidgetsBindingObserver {
   late final NativeVideoController _controller;
@@ -59,6 +75,19 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   late int _index = widget.startIndex;
   bool _overlay = true;
+
+  // Erreur lecteur affichée en plein écran (avec bouton Réessayer). Tant
+  // qu'elle n'est pas `none`, on n'enchaîne PLUS les reconnexions automatiques
+  // (fini le spinner sans fin / l'écran noir infini).
+  _PlayerError _errorKind = _PlayerError.none;
+  Timer? _loadTimer;
+
+  // Délai max d'attente de la 1re image après l'ouverture d'une chaîne. Au-delà,
+  // on arrête le spinner et on affiche « Chargement trop long, réessaie » : le
+  // direct IPTV met parfois plusieurs secondes à répondre, mais au-delà de ce
+  // seuil c'est un vrai problème (provider injoignable, flux mort). 12 s = on
+  // laisse sa chance à un provider lent sans laisser l'utilisateur bloqué.
+  static const Duration _loadTimeout = Duration(seconds: 12);
 
   // Index du bouton de la barre actuellement « surligné » au D-pad
   // (-1 = aucun). Permet à N'IMPORTE QUELLE télécommande (simple D-pad, sans
@@ -131,8 +160,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       if (mounted) setState(() => _favIds = ids);
     });
     _open(reuse: true); // historique / présence pour la 1re chaîne
-    // Chien de garde : aucune progression depuis 15 s → reconnexion.
+    // Chien de garde : aucune progression depuis 15 s → reconnexion. On ne
+    // tente RIEN tant qu'un overlay d'erreur est affiché (l'utilisateur doit
+    // décider : Réessayer ou zapper).
     _watchdog = Timer.periodic(_watchEvery, (_) {
+      if (_errorKind != _PlayerError.none) return;
       if (!_recovering && DateTime.now().difference(_lastProgress) > _frozen) {
         _recover();
       }
@@ -166,6 +198,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _presenceTimer?.cancel();
     _numTimer?.cancel();
     _watchdog?.cancel();
+    _loadTimer?.cancel();
     _toastTimer?.cancel();
     _favSub?.cancel();
     // Si on quitte le lecteur en plein enregistrement : on finalise proprement
@@ -186,28 +219,59 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // Écoute l'état du lecteur natif : progression (anti-gel), buffering (logo),
   // erreurs.
   void _onPlayer() {
+    // CODEC NON SUPPORTÉ (ex. H.265 sans décodeur matériel) : message dédié,
+    // PAS de reconnexion (la même chaîne replanterait pareil). On loggue le
+    // diagnostic (appareil, Android, codec) pour comprendre à distance.
+    if (_controller.unsupportedCodec) {
+      if (_errorKind != _PlayerError.unsupportedCodec) {
+        _loadTimer?.cancel();
+        _logPlayerError('unsupported_codec');
+        if (mounted) setState(() => _errorKind = _PlayerError.unsupportedCodec);
+      }
+      return;
+    }
     // Progression réelle → « pas gelé ».
     if (_controller.position != _lastPos) {
       _lastPos = _controller.position;
       _lastProgress = DateTime.now();
       _recovering = false;
     }
+    // 1re image arrivée → on annule le timeout de chargement.
+    if (_controller.firstFrame) _loadTimer?.cancel();
     // Logo tant qu'on bufferise OU que la 1re trame n'est pas encore dessinée
     // (au zap, firstFrame est remis à false → logo jusqu'à l'image suivante).
     final bool buffering = _controller.isBuffering || !_controller.firstFrame;
     if (mounted && buffering != _buffering) {
       setState(() => _buffering = buffering);
     }
-    // Erreur / fin de flux live → reconnexion.
-    if (_controller.hasError || _controller.isEnded) {
-      _recover();
+    // ERREUR TERMINALE remontée par le natif : ça n'arrive QU'APRÈS plusieurs
+    // reconnexions silencieuses échouées côté ExoPlayer. Inutile d'en relancer
+    // d'autres ici (c'était l'ancien spinner sans fin) → on montre un message
+    // « Chargement trop long, réessaie » + bouton Réessayer.
+    if (_controller.hasError) {
+      if (_errorKind != _PlayerError.loadFailed) {
+        _loadTimer?.cancel();
+        _logPlayerError('native_error');
+        if (mounted) setState(() => _errorKind = _PlayerError.loadFailed);
+      }
+      return;
     }
+    // Fin de flux live (rare) → une reconnexion.
+    if (_controller.isEnded) _recover();
   }
 
   void _open({bool reuse = false}) {
     _lastProgress = DateTime.now();
     _lastPos = Duration.zero;
-    if (mounted) setState(() => _buffering = true);
+    if (mounted) {
+      setState(() {
+        _buffering = true;
+        _errorKind = _PlayerError.none; // nouvelle tentative → on efface l'erreur
+      });
+    }
+    // Timeout de chargement (anti-écran-noir infini) : sans 1re image au bout
+    // de [_loadTimeout], on arrête le spinner et on propose Réessayer.
+    _armLoadTimeout();
     if (!reuse) {
       // Nouvelle chaîne → on charge la nouvelle URL dans le MÊME lecteur.
       _controller.setUrl(_current.streamUrl);
@@ -234,9 +298,54 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (_recovering) return;
     _recovering = true;
     _lastProgress = DateTime.now();
+    // Filet anti-gel : si la reconnexion elle-même n'aboutit pas (toujours pas
+    // d'image au bout de [_loadTimeout]), on bascule sur l'overlay « Chargement
+    // trop long » plutôt que de rester gelé sur le logo indéfiniment.
+    _armLoadTimeout();
     // Ré-ouvre la MÊME source : l'URL locale du relais si on enregistre, sinon
     // l'URL directe. = reconnexion au direct sans casser l'enregistrement.
     _controller.setUrl(_relayPlayUrl ?? _current.streamUrl);
+  }
+
+  // (Ré)arme le timeout de chargement : sans 1re image au bout de [_loadTimeout],
+  // on arrête le spinner et on propose Réessayer (anti-écran-noir infini).
+  void _armLoadTimeout() {
+    _loadTimer?.cancel();
+    _loadTimer = Timer(_loadTimeout, () {
+      if (mounted &&
+          !_controller.firstFrame &&
+          _errorKind == _PlayerError.none) {
+        _logPlayerError('load_timeout');
+        setState(() => _errorKind = _PlayerError.loadFailed);
+      }
+    });
+  }
+
+  // Bouton « Réessayer » de l'overlay d'erreur : on efface l'erreur et on
+  // recharge la chaîne courante (setUrl remet aussi à zéro l'état codec/erreur
+  // côté controller). Relance le timeout de chargement.
+  void _retry() {
+    _recovering = false;
+    _open();
+  }
+
+  // Journalise un échec lecteur avec le maximum de contexte (modèle d'appareil,
+  // version Android, codec demandé vs décodeurs dispo — fournis par le natif).
+  // Objectif : comprendre à distance POURQUOI ça plante, sans logcat.
+  void _logPlayerError(String reason) {
+    final Map<String, Object?> diag =
+        _controller.diagnostics ?? const <String, Object?>{};
+    StructuredLogger.instance.error(
+      domain: 'native',
+      event: 'player.$reason',
+      ctx: <String, Object?>{
+        'channel': _current.cleanName,
+        'url': _current.streamUrl,
+        ...diag,
+      },
+    );
+    CrashReporting.instance
+        .log('player $reason — ${_current.cleanName} — $diag');
   }
 
   // ----- Enregistrement (bouton REC / touche média) -----
@@ -490,6 +599,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       return KeyEventResult.handled;
     }
 
+    // Overlay d'erreur affiché : OK = Réessayer. (Back est déjà géré au-dessus
+    // pour quitter, et Haut/Bas zappe vers une autre chaîne ci-dessous.)
+    if (_errorKind != _PlayerError.none && _isOk(k)) {
+      _retry();
+      return KeyEventResult.handled;
+    }
+
     int di = _digits.indexOf(k);
     if (di < 0) di = _numpad.indexOf(k);
     if (di >= 0) { _onDigit(di); return KeyEventResult.handled; }
@@ -569,7 +685,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                 ),
               ),
               // Écran de marque pendant l'ouverture / le zap / une reconnexion.
-              if (_buffering)
+              // Masqué dès qu'un overlay d'erreur prend le relais (pas de
+              // spinner derrière le message « réessayer »).
+              if (_buffering && _errorKind == _PlayerError.none)
                 const ColoredBox(
                   color: TvTokens.bg,
                   child: Center(
@@ -586,6 +704,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                       ],
                     ),
                   ),
+                ),
+              // Overlay d'erreur plein écran + bouton Réessayer (codec non
+              // supporté OU chargement trop long). Remplace l'écran noir/spinner
+              // infini par un message clair et une porte de sortie.
+              if (_errorKind != _PlayerError.none)
+                _PlayerErrorOverlay(
+                  kind: _errorKind,
+                  diagnostics: _controller.diagnostics,
+                  onRetry: _retry,
+                  onBack: () => Navigator.of(context).maybePop(),
                 ),
               // Panneau de lecture (façon YouTube / Netflix) : glisse depuis le
               // bas + fondu, masqué automatiquement après 5 s. Contient l'info
@@ -981,4 +1109,143 @@ class _CtrlButtonState extends State<_CtrlButton> {
       ),
     );
   }
+}
+
+/// Overlay d'erreur plein écran (façon lecteur TV) : remplace l'écran noir /
+/// le spinner infini par un message clair + un bouton « Réessayer ». Le bouton
+/// répond au doigt (TV tactile) ET à OK de la télécommande (géré par l'écran).
+class _PlayerErrorOverlay extends StatelessWidget {
+  const _PlayerErrorOverlay({
+    required this.kind,
+    required this.diagnostics,
+    required this.onRetry,
+    required this.onBack,
+  });
+
+  final _PlayerError kind;
+  final Map<String, Object?>? diagnostics;
+  final VoidCallback onRetry;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool codec = kind == _PlayerError.unsupportedCodec;
+    final IconData icon =
+        codec ? Icons.videocam_off_rounded : Icons.hourglass_disabled_rounded;
+    final String title =
+        codec ? 'Format vidéo non supporté' : 'Chargement trop long';
+    final String message = codec
+        ? "Cette chaîne utilise un format vidéo que cet appareil ne peut pas "
+            "décoder. Essaie une autre chaîne, ou un appareil plus récent."
+        : "La chaîne met trop de temps à répondre. Vérifie ta connexion, puis "
+            "réessaie ou choisis une autre chaîne.";
+    // Diagnostic technique discret (codec demandé, appareil) : aide au support
+    // sans gêner l'utilisateur. Affiché seulement pour l'erreur de codec.
+    final String? detail = codec ? _detailLine() : null;
+
+    return ColoredBox(
+      color: TvTokens.bg,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 48),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(icon, color: TvTokens.gold, size: 64),
+                const SizedBox(height: 24),
+                Text(title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w800,
+                        color: TvTokens.text)),
+                const SizedBox(height: 14),
+                Text(message,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontSize: 18, height: 1.4, color: TvTokens.muted)),
+                if (detail != null) ...<Widget>[
+                  const SizedBox(height: 14),
+                  Text(detail,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: TvTokens.muted.withValues(alpha: 0.7))),
+                ],
+                const SizedBox(height: 32),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    _retryButton(),
+                    const SizedBox(width: 16),
+                    _backButton(),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Text('OK = Réessayer · Retour = quitter',
+                    style: TextStyle(fontSize: 13, color: TvTokens.muted)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String? _detailLine() {
+    final Map<String, Object?>? d = diagnostics;
+    if (d == null || d.isEmpty) return null;
+    final Object? codec = d['codec'];
+    final Object? device = d['device'];
+    final List<String> parts = <String>[
+      if (codec != null && '$codec'.isNotEmpty) 'Codec : $codec',
+      if (device != null && '$device'.isNotEmpty) '$device',
+    ];
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
+  Widget _retryButton() => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onRetry,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+          decoration: BoxDecoration(
+            color: TvTokens.gold.withValues(alpha: 0.28),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: TvTokens.gold, width: 2),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const <Widget>[
+              Icon(Icons.refresh_rounded, color: TvTokens.gold, size: 22),
+              SizedBox(width: 10),
+              Text('Réessayer',
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: TvTokens.gold)),
+            ],
+          ),
+        ),
+      );
+
+  Widget _backButton() => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onBack,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white24),
+          ),
+          child: const Text('Retour',
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: TvTokens.text)),
+        ),
+      );
 }
