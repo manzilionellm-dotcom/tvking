@@ -43,6 +43,17 @@ class NativeVideoController extends ChangeNotifier {
   /// Erreur de lecture remontée par ExoPlayer (l'écran déclenche _recover).
   bool hasError = false;
 
+  /// Le codec du flux n'est PAS décodable sur cet appareil (ex. H.265/HEVC sans
+  /// décodeur matériel). Distinct de [hasError] : réessayer la MÊME chaîne ne
+  /// changera rien → l'écran affiche « Format non supporté » plutôt que de
+  /// tenter des reconnexions en boucle.
+  bool unsupportedCodec = false;
+
+  /// Détails techniques du dernier échec de décodage (modèle d'appareil,
+  /// version Android, codec demandé, décodeurs matériels disponibles). Affichés
+  /// en petit sous le message d'erreur ET loggués pour le diagnostic à distance.
+  Map<String, Object?>? diagnostics;
+
   /// Flux terminé (rare en direct, mais on reconnecte si ça arrive).
   bool isEnded = false;
 
@@ -60,23 +71,39 @@ class NativeVideoController extends ChangeNotifier {
   }
 
   Future<dynamic> _onNativeCall(MethodCall call) async {
-    switch (call.method) {
+    applyNativeEvent(call.method, call.arguments);
+    if (!_disposed) notifyListeners();
+    return null;
+  }
+
+  /// Applique un évènement natif à l'état (SANS notifier). Isolé du
+  /// MethodChannel pour être testable directement (cf. test du controller).
+  @visibleForTesting
+  void applyNativeEvent(String method, Object? arguments) {
+    switch (method) {
       case 'buffering':
-        isBuffering = call.arguments as bool;
+        isBuffering = arguments as bool;
       case 'playing':
-        isPlaying = call.arguments as bool;
+        isPlaying = arguments as bool;
       case 'position':
-        position = Duration(milliseconds: call.arguments as int);
+        position = Duration(milliseconds: arguments as int);
       case 'firstFrame':
         firstFrame = true;
         isBuffering = false;
       case 'ended':
         isEnded = true;
+      case 'unsupportedCodec':
+        // Codec non décodable : on marque l'erreur ET le drapeau dédié pour que
+        // l'écran montre « Format non supporté » au lieu de reconnecter à vide.
+        unsupportedCodec = true;
+        hasError = true;
+        if (arguments is Map) {
+          diagnostics = arguments.map<String, Object?>(
+              (Object? k, Object? v) => MapEntry<String, Object?>(k.toString(), v));
+        }
       case 'error':
         hasError = true;
     }
-    if (!_disposed) notifyListeners();
-    return null;
   }
 
   /// Charge (ou recharge) une URL : zap vers une autre chaîne, ou reconnexion
@@ -84,6 +111,8 @@ class NativeVideoController extends ChangeNotifier {
   /// nouvelle 1re trame arrive).
   void setUrl(String url) {
     hasError = false;
+    unsupportedCodec = false;
+    diagnostics = null;
     isEnded = false;
     isBuffering = true;
     firstFrame = false;

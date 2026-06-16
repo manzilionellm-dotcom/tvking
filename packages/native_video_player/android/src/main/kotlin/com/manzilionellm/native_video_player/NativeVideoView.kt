@@ -1,18 +1,25 @@
 package com.manzilionellm.native_video_player
 
 import android.content.Context
+import android.media.MediaCodecList
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.SurfaceView
 import android.view.View
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import io.flutter.plugin.common.BinaryMessenger
@@ -54,6 +61,16 @@ class NativeVideoView(
 
     private var currentUrl: String? = null
 
+    // Codec vidéo réellement présent dans le flux en cours (rempli par
+    // onTracksChanged). Sert au diagnostic remonté quand le décodage échoue.
+    private var currentVideoMime: String? = null
+
+    // GARDES DE CYCLE DE VIE (anti-segfault au zap/retour rapide). Tant que
+    // `isReleased` est vrai, plus AUCUN accès au player natif : un appel après
+    // release() = accès à de la mémoire libérée = crash brutal du process.
+    @Volatile
+    private var isReleased = false
+
     // Reconnexion auto silencieuse.
     private var retryCount = 0
     private var pendingRetry: Runnable? = null
@@ -61,6 +78,7 @@ class NativeVideoView(
 
     private val positionPump = object : Runnable {
         override fun run() {
+            if (isReleased) return
             if (player.isPlaying) {
                 channel.invokeMethod("position", player.currentPosition)
             }
@@ -86,8 +104,43 @@ class NativeVideoView(
             .build()
 
         // Décodage matériel (MediaCodec) avec repli logiciel si l'init échoue.
+        //
+        // ANTI-CRASH MATCH (HEVC/H.265) : on REFUSE le décodage LOGICIEL des
+        // codecs lourds (H.265, AV1, VP9). Sur une box faible sans décodeur
+        // matériel, décoder un direct sport haute-définition en logiciel sature
+        // la RAM → OOM → segfault → l'app se ferme d'un coup en plein match.
+        // En ne gardant QUE les décodeurs matériels pour ces formats, si la box
+        // n'en a aucun, ExoPlayer lève proprement DECODER_INIT_FAILED → on
+        // affiche « Format non supporté » au lieu de crasher (cf. onPlayerError).
+        // Le H.264 (et l'audio) gardent le comportement par défaut : leur
+        // décodage logiciel est léger et sûr, on ne bride pas les flux courants.
+        val codecSelector = object : MediaCodecSelector {
+            override fun getDecoderInfos(
+                mimeType: String,
+                requiresSecureDecoder: Boolean,
+                requiresTunnelingDecoder: Boolean,
+            ): List<MediaCodecInfo> {
+                val infos = MediaCodecSelector.DEFAULT
+                    .getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+                if (mimeType == MimeTypes.VIDEO_H265 ||
+                    mimeType == MimeTypes.VIDEO_AV1 ||
+                    mimeType == MimeTypes.VIDEO_VP9
+                ) {
+                    val hardwareOnly = infos.filter { it.hardwareAccelerated }
+                    // Aucun décodeur matériel → liste vide → échec PROPRE (pas de
+                    // repli logiciel qui ferait planter le process).
+                    return if (hardwareOnly.isNotEmpty()) hardwareOnly else emptyList()
+                }
+                return infos
+            }
+
+            override fun getPassthroughDecoderInfo(): MediaCodecInfo? =
+                MediaCodecSelector.DEFAULT.getPassthroughDecoderInfo()
+        }
+
         val renderersFactory = DefaultRenderersFactory(context)
             .setEnableDecoderFallback(true)
+            .setMediaCodecSelector(codecSelector)
 
         // User-Agent type lecteur connu + redirections cross-protocole : des
         // panels Xtream ne servent le vrai flux qu'aux signatures connues.
@@ -121,6 +174,13 @@ class NativeVideoView(
     // ---- Dart → natif -------------------------------------------------------
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        // Après dispose(), le player natif est libéré : on ignore tout appel
+        // tardif (zap pendant la fermeture) plutôt que de toucher de la mémoire
+        // libérée et crasher le process.
+        if (isReleased) {
+            result.success(null)
+            return
+        }
         when (call.method) {
             "setUrl" -> {
                 val url = call.argument<String>("url")
@@ -131,6 +191,7 @@ class NativeVideoView(
                 cancelRetry()
                 retryCount = 0
                 currentUrl = url
+                currentVideoMime = null
                 player.setMediaItem(MediaItem.fromUri(url))
                 player.prepare()
                 player.playWhenReady = true
@@ -167,12 +228,36 @@ class NativeVideoView(
         channel.invokeMethod("playing", isPlaying)
     }
 
+    // On retient le codec vidéo réellement présent dans le flux : il sert au
+    // diagnostic remonté à Dart si le décodage échoue ensuite (« codec demandé
+    // vs disponible »).
+    override fun onTracksChanged(tracks: Tracks) {
+        for (group in tracks.groups) {
+            if (group.type != C.TRACK_TYPE_VIDEO) continue
+            for (i in 0 until group.length) {
+                val mime = group.getTrackFormat(i).sampleMimeType
+                if (mime != null) currentVideoMime = mime
+            }
+        }
+    }
+
     override fun onRenderedFirstFrame() {
         retryCount = 0
         channel.invokeMethod("firstFrame", null)
     }
 
     override fun onPlayerError(error: PlaybackException) {
+        // ERREUR DE CODEC (décodeur introuvable / format non décodable sur cet
+        // appareil) : réessayer ne sert à RIEN (un codec absent ne réapparaît
+        // pas). On ne boucle donc PAS en reconnexions ; on remonte tout de suite
+        // une erreur « codec non supporté » à Dart, avec le diagnostic complet
+        // (modèle, version Android, codec demandé vs décodeurs dispo) → l'écran
+        // affiche un message clair + Réessayer au lieu d'un spinner sans fin.
+        if (isCodecError(error)) {
+            channel.invokeMethod("unsupportedCodec", buildDiagnostics(error))
+            return
+        }
+
         // RECONNEXION SILENCIEUSE : on ne montre PAS d'erreur au client tant
         // qu'on n'a pas épuisé les essais. On re-prépare avec un back-off.
         if (retryCount < maxSilentRetries) {
@@ -189,6 +274,7 @@ class NativeVideoView(
     private fun scheduleRetry(delayMs: Long) {
         cancelRetry()
         val r = Runnable {
+            if (isReleased) return@Runnable // vue détruite entre-temps : on n'y touche plus
             val url = currentUrl
             if (url != null) {
                 player.setMediaItem(MediaItem.fromUri(url))
@@ -207,13 +293,70 @@ class NativeVideoView(
         pendingRetry = null
     }
 
+    // ---- diagnostic codec ---------------------------------------------------
+
+    /** `true` si l'erreur vient du décodeur / d'un format non décodable. */
+    private fun isCodecError(error: PlaybackException): Boolean = when (error.errorCode) {
+        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED -> true
+        else -> false
+    }
+
+    /** Contexte technique remonté à Dart pour comprendre POURQUOI ça plante. */
+    private fun buildDiagnostics(error: PlaybackException): Map<String, Any?> = mapOf(
+        "device" to "${Build.MANUFACTURER} ${Build.MODEL}",
+        "android" to "${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})",
+        "codec" to (currentVideoMime ?: "inconnu"),
+        "hardwareDecoders" to hardwareDecodersFor(currentVideoMime),
+        "errorCode" to error.errorCodeName,
+        "message" to error.message,
+    )
+
+    /** Noms des décodeurs MATÉRIELS disponibles pour [mime] sur cet appareil. */
+    private fun hardwareDecodersFor(mime: String?): String {
+        if (mime == null) return ""
+        return try {
+            MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
+                .filter { !it.isEncoder && it.supportedTypes.any { t -> t.equals(mime, ignoreCase = true) } }
+                .filter {
+                    // API 29+ : flag fiable ; sinon on déduit du nom (les
+                    // décodeurs logiciels commencent par OMX.google. / c2.android.).
+                    if (Build.VERSION.SDK_INT >= 29) {
+                        it.isHardwareAccelerated
+                    } else {
+                        !it.name.startsWith("OMX.google.") && !it.name.startsWith("c2.android.")
+                    }
+                }
+                .joinToString(",") { it.name }
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
     // ---- cycle de vie -------------------------------------------------------
 
     override fun dispose() {
+        // ANTI-DOUBLE-RELEASE : Flutter peut appeler dispose() plus d'une fois
+        // (recréation de PlatformView, zap rapide). Un second release() = crash.
+        if (isReleased) return
+        isReleased = true
+
         cancelRetry()
         handler.removeCallbacks(positionPump)
-        player.removeListener(this)
-        player.release()
+        try {
+            player.removeListener(this)
+            // On STOPPE et on DÉTACHE la SurfaceView AVANT de libérer : libérer
+            // un player encore attaché à une surface en cours de démontage
+            // (l'utilisateur quitte/zappe vite) provoque un segfault natif.
+            player.stop()
+            player.clearVideoSurface()
+            player.release()
+        } catch (e: Exception) {
+            // Une exception pendant la libération ne doit jamais tuer le process.
+        }
         channel.setMethodCallHandler(null)
     }
 }
