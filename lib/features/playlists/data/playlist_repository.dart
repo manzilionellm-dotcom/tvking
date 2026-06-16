@@ -125,21 +125,9 @@ class PlaylistRepository {
       limit: 1,
     );
 
-    List<Map<String, Object?>> rows;
-    if (activeRows.isNotEmpty) {
-      final int activeId = activeRows.first['id'] as int;
-      rows = await db.query(
-        'channels',
-        where: 'playlist_id = ?',
-        whereArgs: <Object>[activeId],
-        // ORDRE NATIF DE LA PLAYLIST : on trie par local_id (= ordre
-        // d'insertion = ordre exact du M3U / Xtream). Le client a
-        // demandé que l'app respecte CE que la source lui donne — si la
-        // playlist commence par l'Afrique, l'app commence par l'Afrique.
-        // (Avant : tri alphabétique sur le nom, qui cassait cet ordre.)
-        orderBy: 'local_id ASC',
-      );
-    } else {
+    final int? activeId =
+        activeRows.isNotEmpty ? activeRows.first['id'] as int : null;
+    if (activeId == null) {
       // Aucune playlist active. AVANT de tout renvoyer, on PURGE les
       // chaînes orphelines (dont la playlist a été supprimée) : sur les
       // bases créées avant l'activation des clés étrangères, le CASCADE
@@ -150,12 +138,15 @@ class PlaylistRepository {
         'channels',
         where: 'playlist_id NOT IN (SELECT id FROM playlists)',
       );
-      rows = await db.query(
-        'channels',
-        orderBy: 'local_id ASC',
-      );
     }
-    final List<Channel> all = rows.map(_channelFromMap).toList();
+    // LECTURE PAR LOTS + PLAFOND MÉMOIRE (anti-OOM box faibles). Avant, un
+    // SEUL gros SELECT ramenait TOUTES les lignes d'un coup, puis on
+    // construisait la liste complète de Channel : sur une grosse source
+    // (50k–100k+ chaînes), le pic mémoire (lignes brutes + objets) faisait
+    // planter/redémarrer les petites box. On lit désormais par tranches
+    // (keyset sur local_id, l'ordre natif de la playlist est préservé) et on
+    // s'arrête au plafond. Voir _readChannelsBounded.
+    final List<Channel> all = await _readChannelsBounded(db, activeId);
 
     // Filtre adultOnly du flavor Red Room. On le pose ICI (point
     // unique de lecture) pour que TOUS les consommateurs (home,
@@ -166,6 +157,52 @@ class PlaylistRepository {
       return all.where((Channel c) => c.genre == ChannelGenre.adult).toList();
     }
     return all;
+  }
+
+  /// Plafond de chaînes chargées EN MÉMOIRE — garde-fou anti-OOM des box
+  /// faibles (Android TV/box 1 Go). Au-delà, on s'arrête : les chaînes
+  /// supplémentaires restent en base (rien n'est perdu) mais ne sont pas
+  /// matérialisées en RAM, ce qui empêchait la TV de planter/redémarrer sur
+  /// les sources géantes. 50 000 couvre les très grosses playlists légitimes.
+  static const int kMaxInMemoryChannels = 50000;
+
+  /// Taille d'un lot de lecture. On lit la table par tranches (keyset sur
+  /// `local_id`, la clé primaire) au lieu d'un unique gros SELECT : le pic
+  /// mémoire transitoire (lignes brutes SQLite) est borné à UN lot au lieu de
+  /// TOUTE la playlist → moitié moins de pression mémoire à l'ouverture.
+  static const int _kReadChunk = 5000;
+
+  /// Lit les chaînes par lots successifs et borne le total à
+  /// [kMaxInMemoryChannels]. Keyset pagination : `local_id > dernier` (O(1) par
+  /// lot grâce à l'index PK), l'ORDRE NATIF de la playlist est préservé.
+  Future<List<Channel>> _readChannelsBounded(Database db, int? activeId) async {
+    final List<Channel> out = <Channel>[];
+    int afterLocalId = 0; // local_id (AUTOINCREMENT) démarre à 1
+    while (out.length < kMaxInMemoryChannels) {
+      final List<Map<String, Object?>> rows = await db.query(
+        'channels',
+        where: activeId != null
+            ? 'playlist_id = ? AND local_id > ?'
+            : 'local_id > ?',
+        whereArgs: activeId != null
+            ? <Object>[activeId, afterLocalId]
+            : <Object>[afterLocalId],
+        orderBy: 'local_id ASC',
+        limit: _kReadChunk,
+      );
+      if (rows.isEmpty) break;
+      for (final Map<String, Object?> r in rows) {
+        out.add(_channelFromMap(r));
+        afterLocalId = r['local_id'] as int;
+      }
+      if (rows.length < _kReadChunk) break; // dernière tranche
+    }
+    if (out.length >= kMaxInMemoryChannels) {
+      debugPrint('[Playlist] plafond mémoire atteint '
+          '($kMaxInMemoryChannels chaînes) → tranches suivantes NON chargées '
+          '(garde-fou anti-OOM box faibles).');
+    }
+    return out;
   }
 
   Future<List<Playlist>> getAllPlaylists() async {
