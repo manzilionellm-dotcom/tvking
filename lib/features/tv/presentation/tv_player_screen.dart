@@ -219,6 +219,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // Écoute l'état du lecteur natif : progression (anti-gel), buffering (logo),
   // erreurs.
   void _onPlayer() {
+    // CEINTURE anti-crash : le lecteur natif peut notifier À TOUT MOMENT, y
+    // compris pendant que l'écran se ferme (entre le début de dispose() et le
+    // removeListener). Toucher setState() après dispose lance une exception.
+    // On sort donc immédiatement si l'écran n'est plus monté.
+    if (!mounted) return;
     // CODEC NON SUPPORTÉ (ex. H.265 sans décodeur matériel) : message dédié,
     // PAS de reconnexion (la même chaîne replanterait pareil). On loggue le
     // diagnostic (appareil, Android, codec) pour comprendre à distance.

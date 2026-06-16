@@ -547,11 +547,15 @@ class PlaylistRepository {
   //  REFRESH — re-télécharge la même source
   // ============================================================
 
-  /// Re-télécharge une playlist existante en utilisant les mêmes
-  /// paramètres d'origine. Supprime les anciennes chaînes et
-  /// Re-synchronise TOUTES les playlists en parallèle. Renvoie le
-  /// nombre de playlists actualisées avec succès. Sert au bouton
-  /// "Actualiser" de la home et à l'auto-refresh au démarrage.
+  /// Re-synchronise TOUTES les playlists, UNE PAR UNE (séquentiel).
+  ///
+  /// ANTI-OOM : on attend (`await`) chaque `refreshPlaylist` avant la suivante.
+  /// C'est VOLONTAIRE : rafraîchir en parallèle ferait coexister plusieurs
+  /// grosses sources en mémoire en même temps (chaque M3U/JSON est chargé
+  /// entièrement puis parsé) → pic mémoire multiplié → OutOfMemory sur box TV
+  /// faible. En séquentiel, un seul gros import vit à la fois. Renvoie le
+  /// nombre de playlists actualisées avec succès. Sert au bouton « Actualiser »
+  /// de la home et à l'auto-refresh au démarrage.
   Future<int> refreshAll() async {
     final List<Playlist> all = await getAllPlaylists();
     int ok = 0;

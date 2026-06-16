@@ -94,6 +94,24 @@ jobs:
           fi
           grep -nE 'leanback|LEANBACK_LAUNCHER|touchscreen' "$MANIFEST" || true
 
+      # ANTI-OOM (anti « l'app se ferme / redémarre en boucle ») : on demande le
+      # GROS TAS mémoire à Android (android:largeHeap="true"). `flutter create`
+      # NE le pose PAS par défaut. Or une app IPTV garde une grosse source en
+      # mémoire (dizaines de milliers de chaînes) PENDANT que MediaCodec décode
+      # de la vidéo : sur une box TV bas de gamme, le tas standard (souvent
+      # 96–192 Mo) est vite saturé → OutOfMemory → Android TUE le process (crash
+      # brutal du match, ou boucle de redémarrage au boot). largeHeap relève le
+      # plafond à plusieurs centaines de Mo → beaucoup moins d'OOM. Filet
+      # SYSTÉMIQUE (tout le process en profite), non invasif (aucun code à écrire).
+      - name: Patch manifest — mémoire (largeHeap, anti-OOM)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'android:largeHeap' "$MANIFEST"; then
+            sed -i 's|<application|<application\n        android:largeHeap="true"|' "$MANIFEST"
+          fi
+          grep -n 'largeHeap' "$MANIFEST" || true
+
       - name: Flutter pub get
         run: flutter pub get
 
