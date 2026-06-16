@@ -133,9 +133,6 @@ class NativeVideoView(
                 }
                 return infos
             }
-
-            override fun getPassthroughDecoderInfo(): MediaCodecInfo? =
-                MediaCodecSelector.DEFAULT.getPassthroughDecoderInfo()
         }
 
         val renderersFactory = DefaultRenderersFactory(context)
