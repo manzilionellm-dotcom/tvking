@@ -55,13 +55,25 @@ Future<void> _bootstrap() async {
   // platform='tv' et le panel l'affichera comme 📺 (vs 📱 mobile).
   AppPlatform.isTv = true;
 
-  // Moteur lecteur natif (mpv) — avant runApp, comme côté mobile. GARDÉ :
-  // une box bas de gamme où la lib native manque ne doit pas tuer le boot.
-  try {
-    MediaKit.ensureInitialized();
-  } catch (e, s) {
-    CrashReporting.instance
-        .recordError(e, s, context: 'MediaKit.ensureInitialized');
+  // Moteur lecteur natif (mpv / libmpv via media_kit) — sert à la lecture
+  // VOD/films. Le DIRECT, lui, passe par le lecteur ExoPlayer natif
+  // (native_video_player), qui n'a PAS besoin de media_kit.
+  //
+  // MODE SANS ÉCHEC : on SAUTE ce chargement natif lourd. Charger libmpv est
+  // l'une des opérations les plus gourmandes/risquées du boot sur une box bas
+  // de gamme (grosse lib native) → suspect d'un crash au démarrage qui
+  // rebouclerait. En safe mode, on s'en passe : le Direct fonctionne quand
+  // même ; seule la VOD media_kit est indisponible jusqu'au prochain
+  // démarrage sain. Objectif : CASSER la boucle de redémarrage.
+  if (!BootGuard.instance.safeMode) {
+    try {
+      MediaKit.ensureInitialized();
+    } catch (e, s) {
+      CrashReporting.instance
+          .recordError(e, s, context: 'MediaKit.ensureInitialized');
+    }
+  } else {
+    debugPrint('[main_tv] mode sans échec → init media_kit (libmpv) sautée.');
   }
 
   // La TV est TOUJOURS en paysage : on verrouille (pas de portrait).
