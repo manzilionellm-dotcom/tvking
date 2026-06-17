@@ -97,18 +97,28 @@ Future<void> _bootstrap() async {
   // 3) Thème distant piloté par le panel (couleur/nom).
   unawaited(RemoteThemeRepository.fetchAndApply());
 
-  // 4) Chaînes : on charge la base locale AVANT le 1er rendu, puis on
-  //    synchronise la source poussée par le panel EN ARRIÈRE-PLAN.
+  // 4) Chaînes : on charge la base locale EN ARRIÈRE-PLAN, puis on
+  //    synchronise la source poussée par le panel (aussi en arrière-plan).
   //
-  //    POURQUOI bloquant ici : au redémarrage, les chaînes sont DÉJÀ en cache
-  //    (SQLite). Si on attend leur chargement avant `runApp`, l'app ouvre
-  //    DIRECTEMENT sur les chaînes — fini l'écran « Recherche de tes chaînes… »
-  //    qui s'affichait à chaque démarrage le temps que le cache se charge.
-  //    Timeout de sécurité : si la base est lente, on n'empêche JAMAIS l'app
-  //    de démarrer (au pire, le cache arrivera via le stream juste après).
-  await PlaylistRepository.instance
-      .initialize()
-      .timeout(const Duration(seconds: 6), onTimeout: () {});
+  //    ⚠️ ANR (« L'application ne répond pas ») — CORRECTIF.
+  //    AVANT, on ATTENDAIT (`await`) ce chargement AVANT `runApp`, pour éviter
+  //    le bref écran « Recherche de tes chaînes… ». Mais sur une grosse source,
+  //    `initialize()` matérialise jusqu'à 50 000 objets `Channel` en mémoire
+  //    (voir PlaylistRepository.kMaxInMemoryChannels). Faire ce gros travail
+  //    AVANT que l'app ne s'affiche laisse le fil principal occupé, écran
+  //    vide, plus de 5 secondes → Android conclut que l'app est gelée et
+  //    affiche « ... isn't responding / Close app ». L'utilisateur ferme,
+  //    rouvre, regèle → impression de « redémarre en boucle ».
+  //    Un `timeout` ne réglait RIEN : il ne peut pas interrompre du travail
+  //    déjà lancé sur le fil principal.
+  //
+  //    DÉSORMAIS : on NE bloque PLUS le démarrage. `runApp` est atteint tout
+  //    de suite → l'app est réactive immédiatement (Android ne déclenche plus
+  //    d'ANR). Le cache arrive juste après via le stream `channelsStream` ;
+  //    en attendant, l'UI montre l'écran « Recherche de tes chaînes… » (état
+  //    déjà géré). Compromis assumé : ce bref écran réapparaît, mais c'est
+  //    infiniment préférable à un gel/ANR.
+  unawaited(PlaylistRepository.instance.initialize());
   //    La source distante se (re)synchronise après, sans bloquer : si on a
   //    déjà des chaînes en cache, ça reste SILENCIEUX (pas d'écran « Recherche »).
   //    MODE SANS ÉCHEC : on SAUTE ce ré-import — c'est l'étape la plus
