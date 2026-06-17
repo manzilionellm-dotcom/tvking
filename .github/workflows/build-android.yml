@@ -390,11 +390,21 @@ jobs:
           KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           set -e
-          if [ -z "$KS_B64" ]; then
-            echo "⊙ Pas de secret keystore → build release signé en debug (repli)"
+          if [ -n "$KS_B64" ]; then
+            # Voie historique : keystore fourni en base64 via secret.
+            echo "$KS_B64" | base64 -d > android/app/release.jks
+            echo "✓ keystore depuis ANDROID_KEYSTORE_BASE64"
+          elif [ -n "$KS_PW" ] && [ -f ci/release.jks.enc ]; then
+            # Voie simple : keystore CHIFFRÉ commité dans le dépôt
+            # (ci/release.jks.enc), déchiffré avec le SEUL secret mot de passe.
+            openssl enc -d -aes-256-cbc -pbkdf2 \
+              -in ci/release.jks.enc -out android/app/release.jks \
+              -pass pass:"$KS_PW"
+            echo "✓ keystore déchiffré depuis ci/release.jks.enc"
+          else
+            echo "⊙ Pas de keystore → build release signé en debug (repli)"
             exit 0
           fi
-          echo "$KS_B64" | base64 -d > android/app/release.jks
           # key.properties à la racine android/ (rootProject), lu par
           # build.gradle.kts. storeFile est relatif à android/app/.
           cat > android/key.properties <<EOF
