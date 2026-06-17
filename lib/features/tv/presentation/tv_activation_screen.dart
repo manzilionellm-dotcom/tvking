@@ -55,8 +55,20 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
     if (mounted) setState(() => _busy = false);
   }
 
-  void _copy() {
-    Clipboard.setData(ClipboardData(text: _mac));
+  Future<void> _copy() async {
+    // Sur certaines box Android TV bas de gamme, le presse-papiers n'existe
+    // pas → `Clipboard.setData` lève une erreur (canal de plateforme absent).
+    // On l'ENVELOPPE : copier le code MAC est un confort, jamais un point de
+    // panne. Le code reste de toute façon affiché à l'écran pour être recopié
+    // à la main. Sans ce try/catch, l'échec remontait en erreur async non
+    // gérée (bruit, voire fermeture sur les builds stricts).
+    try {
+      await Clipboard.setData(ClipboardData(text: _mac));
+    } catch (_) {
+      // Pas de presse-papiers sur cette TV : on n'affiche pas « Copié » à tort.
+      return;
+    }
+    if (!mounted) return;
     setState(() => _copied = true);
     Future<void>.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _copied = false);
