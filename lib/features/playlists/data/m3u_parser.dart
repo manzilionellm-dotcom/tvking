@@ -42,13 +42,90 @@ class M3uParseResult {
 abstract final class M3uParser {
   /// Comme [parse], mais exécuté dans un ISOLATE via `compute` → l'UI ne
   /// gèle JAMAIS, même pour une playlist de plusieurs Mo / des dizaines de
-  /// milliers de chaînes. Variante à utiliser en production (anti-ANR,
-  /// s'adapte aux téléphones modestes).
+  /// milliers de chaînes.
+  ///
+  /// ⚠️ COÛT MÉMOIRE : `compute` COPIE la String entière dans l'isolate
+  /// (deep copy) → sur une M3U de 100 Mo, le pic atteint ~200 Mo (l'original
+  /// + la copie). Sur une box TV bas de gamme c'est un déclencheur d'OOM.
+  /// Préférer désormais [parseStreaming] (même résultat, pas de copie isolate).
+  /// Conservé pour compatibilité.
   static Future<M3uParseResult> parseInBackground(
     String content, {
     required int playlistId,
   }) {
     return compute(_m3uParseEntry, (content, playlistId));
+  }
+
+  /// Variante ANTI-OOM de [parse], à privilégier en production.
+  ///
+  /// Parse le contenu M3U **sur l'isolate principal mais SANS le copier**
+  /// (contrairement à [parseInBackground]/`compute`) et **SANS matérialiser**
+  /// la liste de toutes les lignes (`split('\n')` créerait une 2e copie de la
+  /// taille du fichier). On balaie la String en place (recherche de `\n`) et,
+  /// tous les [yieldEvery] lignes, on REND LA MAIN à la boucle d'évènements
+  /// (`await Future.delayed(Duration.zero)`) → l'UI reste fluide (pas d'ANR),
+  /// comme le fait déjà l'import EPG. Résultat identique à [parse].
+  ///
+  /// Bénéfice : sur une M3U de 100 Mo, on économise ~200 Mo de pic mémoire
+  /// (plus de copie isolate + plus de liste de lignes) → beaucoup moins d'OOM.
+  static Future<M3uParseResult> parseStreaming(
+    String content, {
+    required int playlistId,
+    int yieldEvery = 5000,
+  }) async {
+    final List<Channel> channels = <Channel>[];
+    final List<String> warnings = <String>[];
+
+    if (content.isEmpty) {
+      warnings.add('Fichier vide.');
+      return M3uParseResult(channels: channels, warnings: warnings);
+    }
+
+    // Strip BOM UTF-8 si présent (commun sur les exports Windows).
+    int start = 0;
+    if (content.codeUnitAt(0) == 0xFEFF) start = 1;
+
+    final _M3uState st = _M3uState();
+    final int len = content.length;
+    int pos = start;
+    int lineIndex = 0;
+
+    while (pos <= len) {
+      final int nl = content.indexOf('\n', pos);
+      final int end = nl == -1 ? len : nl;
+      // `.trim()` (fait dans _consumeLine) retire un éventuel \r final → on
+      // gère \r\n sans pré-normalisation. Les fins de ligne « \r » seules
+      // (vieux Mac, quasi éteintes) ne sont pas découpées — cf. [parse].
+      final String line = content.substring(pos, end);
+
+      // Avertissement d'en-tête, comme [parse] : on regarde la 1re ligne.
+      if (lineIndex == 0 &&
+          !line.trim().toUpperCase().startsWith('#EXTM3U')) {
+        warnings.add(
+          'Pas de #EXTM3U au début — on tente quand même de parser.',
+        );
+      }
+
+      _consumeLine(line, st, channels, warnings, playlistId);
+      lineIndex++;
+
+      // Anti-ANR : on cède périodiquement la main → la boucle d'évènements
+      // (animations, télécommande) respire pendant un gros import.
+      if (lineIndex % yieldEvery == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      if (nl == -1) break;
+      pos = nl + 1;
+    }
+
+    if (kDebugMode) {
+      debugPrint(
+        '[M3uParser] (streaming) ${channels.length} chaînes parsées, '
+        '${warnings.length} warning(s).',
+      );
+    }
+    return M3uParseResult(channels: channels, warnings: warnings);
   }
 
   /// Parse un contenu M3U complet (String) → liste de chaînes.
@@ -83,119 +160,11 @@ abstract final class M3uParser {
     }
 
     // ----- Boucle principale -----
-
-    Map<String, String>? pendingAttrs;
-    String? pendingName;
-    String? pendingGroup; // #EXTGRP: hors EXTINF
-
+    // Logique par-ligne MUTUALISÉE avec [parseStreaming] via [_consumeLine] :
+    // une seule source de vérité → les deux variantes restent équivalentes.
+    final _M3uState st = _M3uState();
     for (int i = 0; i < lines.length; i++) {
-      final String raw = lines[i];
-      final String line = raw.trim();
-
-      if (line.isEmpty) continue;
-
-      // ----- Directives connues -----
-
-      if (line.toUpperCase().startsWith('#EXTM3U')) {
-        // Header initial — peut aussi contenir des attributs
-        // globaux qu'on ignore pour l'instant.
-        continue;
-      }
-
-      if (line.toUpperCase().startsWith('#EXTINF:')) {
-        final _ExtInf parsed = _parseExtInf(line);
-        pendingAttrs = parsed.attrs;
-        pendingName = parsed.name;
-        continue;
-      }
-
-      if (line.toUpperCase().startsWith('#EXTGRP:')) {
-        // Group title sur ligne séparée — s'applique à la
-        // prochaine chaîne (M3U_PLUS variant).
-        pendingGroup = line.substring('#EXTGRP:'.length).trim();
-        continue;
-      }
-
-      // Ignorer silencieusement toutes les autres directives
-      // (#EXTVLCOPT, #KODIPROP, #EXT-X-*, commentaires).
-      if (line.startsWith('#')) {
-        continue;
-      }
-
-      // ----- Ligne URL -----
-
-      // On accepte tout schéma — l'utilisateur sait ce qu'il met
-      // dans sa playlist. media_kit gère http/https/rtmp/udp.
-      final bool looksLikeUrl = _looksLikeUrl(line);
-      if (!looksLikeUrl) {
-        warnings.add('Ligne ignorée (pas une URL valide) : '
-            '${line.length > 80 ? "${line.substring(0, 80)}…" : line}');
-        continue;
-      }
-
-      // Si on a une URL SANS #EXTINF avant, on l'accepte quand
-      // même : c'est un M3U "simple" (juste des URLs). On génère
-      // un nom et une catégorie par défaut.
-      if (pendingAttrs == null && pendingName == null) {
-        channels.add(
-          Channel(
-            id: 'm3u-$playlistId-${channels.length}',
-            playlistId: playlistId,
-            name: 'Chaîne ${channels.length + 1}',
-            category: pendingGroup ?? 'Autres',
-            streamUrl: line,
-            isLive: true,
-            logoUrl: null,
-            catchupSupported: false,
-          ),
-        );
-        pendingGroup = null;
-        continue;
-      }
-
-      // Construire la Channel à partir des attrs accumulés
-      final Map<String, String> attrs =
-          pendingAttrs ?? <String, String>{};
-      final String tvgId = attrs['tvg-id'] ?? '';
-      final String logoUrl = attrs['tvg-logo'] ?? attrs['logo'] ?? '';
-      final String groupFromAttrs =
-          attrs['group-title'] ?? attrs['group'] ?? '';
-      final String groupTitle = groupFromAttrs.isNotEmpty
-          ? groupFromAttrs
-          : (pendingGroup ?? 'Autres');
-      final String catchupRaw = attrs['catchup'] ?? '';
-      final String catchupDaysRaw = attrs['catchup-days'] ?? '';
-      final String catchupSource = attrs['catchup-source'] ?? '';
-
-      // Nom : fallback si vide
-      String name = (pendingName ?? '').trim();
-      if (name.isEmpty) name = 'Chaîne ${channels.length + 1}';
-
-      // ID stable : tvg-id si dispo, sinon "m3u-<playlist>-<index>"
-      final String channelId = tvgId.isNotEmpty
-          ? tvgId
-          : 'm3u-$playlistId-${channels.length}';
-
-      channels.add(
-        Channel(
-          id: channelId,
-          playlistId: playlistId,
-          name: name,
-          category: groupTitle.isEmpty ? 'Autres' : groupTitle,
-          streamUrl: line,
-          isLive: true,
-          logoUrl: logoUrl.isEmpty ? null : logoUrl,
-          catchupSupported:
-              catchupRaw.isNotEmpty || catchupSource.isNotEmpty,
-          catchupDays: int.tryParse(catchupDaysRaw),
-          catchupSource: catchupSource.isEmpty ? null : catchupSource,
-        ),
-      );
-
-      // Reset des buffers pour la prochaine chaîne
-      pendingAttrs = null;
-      pendingName = null;
-      pendingGroup = null;
+      _consumeLine(lines[i], st, channels, warnings, playlistId);
     }
 
     if (kDebugMode) {
@@ -206,6 +175,124 @@ abstract final class M3uParser {
     }
 
     return M3uParseResult(channels: channels, warnings: warnings);
+  }
+
+  // ============================================================
+  //  Cœur du parsing : UNE ligne → met à jour l'état / ajoute une chaîne.
+  //  Partagé par [parse] (sync) et [parseStreaming] (async) pour garantir
+  //  un comportement STRICTEMENT identique.
+  // ============================================================
+  static void _consumeLine(
+    String raw,
+    _M3uState st,
+    List<Channel> channels,
+    List<String> warnings,
+    int playlistId,
+  ) {
+    final String line = raw.trim();
+
+    if (line.isEmpty) return;
+
+    // ----- Directives connues -----
+
+    if (line.toUpperCase().startsWith('#EXTM3U')) {
+      // Header initial — peut aussi contenir des attributs
+      // globaux qu'on ignore pour l'instant.
+      return;
+    }
+
+    if (line.toUpperCase().startsWith('#EXTINF:')) {
+      final _ExtInf parsed = _parseExtInf(line);
+      st.pendingAttrs = parsed.attrs;
+      st.pendingName = parsed.name;
+      return;
+    }
+
+    if (line.toUpperCase().startsWith('#EXTGRP:')) {
+      // Group title sur ligne séparée — s'applique à la
+      // prochaine chaîne (M3U_PLUS variant).
+      st.pendingGroup = line.substring('#EXTGRP:'.length).trim();
+      return;
+    }
+
+    // Ignorer silencieusement toutes les autres directives
+    // (#EXTVLCOPT, #KODIPROP, #EXT-X-*, commentaires).
+    if (line.startsWith('#')) {
+      return;
+    }
+
+    // ----- Ligne URL -----
+
+    // On accepte tout schéma — l'utilisateur sait ce qu'il met
+    // dans sa playlist. media_kit gère http/https/rtmp/udp.
+    final bool looksLikeUrl = _looksLikeUrl(line);
+    if (!looksLikeUrl) {
+      warnings.add('Ligne ignorée (pas une URL valide) : '
+          '${line.length > 80 ? "${line.substring(0, 80)}…" : line}');
+      return;
+    }
+
+    // Si on a une URL SANS #EXTINF avant, on l'accepte quand
+    // même : c'est un M3U "simple" (juste des URLs). On génère
+    // un nom et une catégorie par défaut.
+    if (st.pendingAttrs == null && st.pendingName == null) {
+      channels.add(
+        Channel(
+          id: 'm3u-$playlistId-${channels.length}',
+          playlistId: playlistId,
+          name: 'Chaîne ${channels.length + 1}',
+          category: st.pendingGroup ?? 'Autres',
+          streamUrl: line,
+          isLive: true,
+          logoUrl: null,
+          catchupSupported: false,
+        ),
+      );
+      st.pendingGroup = null;
+      return;
+    }
+
+    // Construire la Channel à partir des attrs accumulés
+    final Map<String, String> attrs = st.pendingAttrs ?? <String, String>{};
+    final String tvgId = attrs['tvg-id'] ?? '';
+    final String logoUrl = attrs['tvg-logo'] ?? attrs['logo'] ?? '';
+    final String groupFromAttrs =
+        attrs['group-title'] ?? attrs['group'] ?? '';
+    final String groupTitle = groupFromAttrs.isNotEmpty
+        ? groupFromAttrs
+        : (st.pendingGroup ?? 'Autres');
+    final String catchupRaw = attrs['catchup'] ?? '';
+    final String catchupDaysRaw = attrs['catchup-days'] ?? '';
+    final String catchupSource = attrs['catchup-source'] ?? '';
+
+    // Nom : fallback si vide
+    String name = (st.pendingName ?? '').trim();
+    if (name.isEmpty) name = 'Chaîne ${channels.length + 1}';
+
+    // ID stable : tvg-id si dispo, sinon "m3u-<playlist>-<index>"
+    final String channelId = tvgId.isNotEmpty
+        ? tvgId
+        : 'm3u-$playlistId-${channels.length}';
+
+    channels.add(
+      Channel(
+        id: channelId,
+        playlistId: playlistId,
+        name: name,
+        category: groupTitle.isEmpty ? 'Autres' : groupTitle,
+        streamUrl: line,
+        isLive: true,
+        logoUrl: logoUrl.isEmpty ? null : logoUrl,
+        catchupSupported: catchupRaw.isNotEmpty || catchupSource.isNotEmpty,
+        catchupDays: int.tryParse(catchupDaysRaw),
+        catchupSource: catchupSource.isEmpty ? null : catchupSource,
+      ),
+    );
+
+    // Reset des buffers pour la prochaine chaîne
+    st.pendingAttrs = null;
+    st.pendingName = null;
+    st.pendingGroup = null;
   }
 
   // ============================================================
@@ -296,6 +383,15 @@ class _ExtInf {
   const _ExtInf({required this.attrs, required this.name});
   final Map<String, String> attrs;
   final String name;
+}
+
+/// État mutable du parsing accumulé entre les lignes (#EXTINF puis URL) :
+/// les attributs/nom/groupe « en attente » de la prochaine ligne URL.
+/// Permet de parser ligne par ligne ([_consumeLine]) en flux.
+class _M3uState {
+  Map<String, String>? pendingAttrs;
+  String? pendingName;
+  String? pendingGroup; // #EXTGRP: hors EXTINF
 }
 
 // Point d'entrée de l'isolate (`compute`) pour [M3uParser.parseInBackground].

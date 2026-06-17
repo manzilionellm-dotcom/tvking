@@ -298,9 +298,10 @@ class PlaylistRepository {
       if (kDebugMode) debugPrint('[Repo] GET $url');
       final String body = await M3uFetcher.fetch(url, httpClient: client);
 
-      // 3) Parse (dans un ISOLATE → pas de gel UI) + insertion en batch
+      // 3) Parse EN FLUX (anti-OOM : pas de copie isolate ni de liste de
+      //    lignes — cf. M3uParser.parseStreaming) + insertion en batch.
       final M3uParseResult parsed =
-          await M3uParser.parseInBackground(body, playlistId: playlistId);
+          await M3uParser.parseStreaming(body, playlistId: playlistId);
 
       if (parsed.channels.isEmpty) {
         // Source invalide → on lève ; le `catch` retire l'orpheline.
@@ -633,8 +634,9 @@ class PlaylistRepository {
           playlist.m3uUrl!,
           httpClient: client,
         );
+        // Parse EN FLUX (anti-OOM) — cf. M3uParser.parseStreaming.
         final M3uParseResult parsed =
-            await M3uParser.parseInBackground(body, playlistId: playlist.id!);
+            await M3uParser.parseStreaming(body, playlistId: playlist.id!);
         if (parsed.channels.isEmpty) {
           throw Exception('Aucune chaîne dans la nouvelle version.');
         }
