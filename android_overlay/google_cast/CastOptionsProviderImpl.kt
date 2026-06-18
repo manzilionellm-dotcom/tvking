@@ -10,7 +10,7 @@
 //  sur TOUTES les Chromecast / Google TV, chez n'importe qui.
 //
 //  Historique : on utilisait le Custom Styled Media Receiver brandé
-//  "7 MOTION" (App ID `46F815A5`, compte manzilionel.lm@gmail.com,
+//  "7 MOTION" (App ID `46F815A5`, compte développeur 7themotion.com,
 //  skin https://99999.7themotion.com/cast-skin.css). Mais il était
 //  resté "Unpublished" sur la Console → utilisable UNIQUEMENT sur
 //  les Chromecast inscrites comme appareils de test du compte dev.

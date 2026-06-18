@@ -600,7 +600,13 @@ class _ContinueHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TvFocusable(
-      autofocus: true,
+      // PAS d'autofocus : au RETOUR du lecteur (Back), Flutter restaure le
+      // focus sur la chaîne qu'on regardait dans la grille. Si ce bandeau
+      // « Continuer à regarder » s'auto-focusait, il VOLAIT ce focus et
+      // renvoyait l'utilisateur tout en haut (sensation « ça repart au Direct »)
+      // au lieu de le laisser là où il était descendu. On le laisse focusable
+      // (on peut monter dessus volontairement), mais il ne se saisit plus du
+      // focus tout seul.
       scale: TvFocusScale.large,
       baseColor: TvTokens.card,
       onSelect: () => Navigator.of(context).push(

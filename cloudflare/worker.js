@@ -1440,7 +1440,7 @@ administrateurs sont stockés sous forme hachée.</p>
 <p>L'application n'est pas destinée aux enfants de moins de 13 ans.</p>
 
 <h2>8. Contact</h2>
-<p>Pour toute question ou demande de suppression : <a href="mailto:lionel930031@gmail.com">lionel930031@gmail.com</a>.</p>
+<p>Pour toute question ou demande de suppression : <a href="mailto:contact@7themotion.com">contact@7themotion.com</a>.</p>
 
 <p class="muted">En utilisant 7 MOTION, vous acceptez la présente politique.</p>
 </div></body></html>`;
