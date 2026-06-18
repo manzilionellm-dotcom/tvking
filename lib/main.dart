@@ -26,6 +26,7 @@ import 'features/ads/presentation/startup_ad_screen.dart';
 import 'features/feedback/data/feedback_repository.dart';
 import 'features/theme/data/remote_theme_repository.dart';
 import 'core/notifications/notification_service.dart';
+import 'core/update/update_prompt.dart';
 import 'core/branding/verified_badge.dart';
 import 'core/theme/app_text_styles.dart' show AppTextStyles;
 import 'core/i18n/locale_repository.dart';
@@ -433,6 +434,14 @@ class _AppEntryState extends State<_AppEntry> {
   void initState() {
     super.initState();
     _checkForcedUpdate();
+    // Mise à jour in-app (sideload) : détection NON bloquante après le
+    // 1er frame, avec un léger délai pour ne pas gêner le boot/lock.
+    // Fail-open : si rien de neuf ou erreur réseau, ne fait rien.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(seconds: 3), () {
+        if (mounted) maybePromptUpdate(context);
+      });
+    });
     _resolveAd();
     OnboardingState.instance.hasCompleted().then((bool done) {
       if (mounted) {

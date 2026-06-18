@@ -152,8 +152,18 @@ jobs:
             echo "⊙ usesCleartextTraffic déjà présent"
           fi
 
+          # 3. REQUEST_INSTALL_PACKAGES — permet à l'updater in-app de
+          #    lancer l'installation du nouvel APK sans navigateur externe
+          #    (mise à jour par-dessus, sans désinstallation).
+          if ! grep -q 'REQUEST_INSTALL_PACKAGES' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>' "$MANIFEST"
+            echo "✓ permission REQUEST_INSTALL_PACKAGES ajoutée"
+          else
+            echo "⊙ permission REQUEST_INSTALL_PACKAGES déjà présente"
+          fi
+
           echo "--- Manifest réseau patché ---"
-          grep -nE 'INTERNET|usesCleartextTraffic|<application' "$MANIFEST" || true
+          grep -nE 'INTERNET|usesCleartextTraffic|REQUEST_INSTALL_PACKAGES|<application' "$MANIFEST" || true
 
       # Active le mode Android TV / Fire TV / Google TV :
       #
@@ -616,6 +626,7 @@ jobs:
           for attempt in 1 2 3 4; do
             echo "=== Build attempt $attempt ==="
             flutter build apk --release --no-tree-shake-icons --split-per-abi \
+              --build-number=${{ github.run_number }} \
               --obfuscate --split-debug-info=build/symbols \
               --dart-define=APP_BUILD_TS=$BUILD_TS && { ok=1; break; }
             echo "Attempt $attempt failed; retry in 25s"; sleep 25
@@ -675,6 +686,7 @@ jobs:
           for attempt in 1 2 3 4; do
             echo "=== AAB build attempt $attempt ==="
             flutter build appbundle --release --no-tree-shake-icons \
+              --build-number=${{ github.run_number }} \
               --obfuscate --split-debug-info=build/symbols \
               --dart-define=APP_BUILD_TS=$BUILD_TS && { ok=1; break; }
             echo "Attempt $attempt failed; retry in 25s"; sleep 25
@@ -774,6 +786,18 @@ jobs:
             echo ">>> Upload AAB (Google Play)"
             gh release upload latest --repo "$REPO" --clobber "$AAB" || true
           fi
+
+          # version.json — manifeste lu par l'updater in-app pour
+          # detecter une nouvelle version (versionCode = run_number).
+          cat > version.json <<JSON
+          {
+            "versionCode": ${{ github.run_number }},
+            "versionName": "0.3.0",
+            "url": "https://github.com/$REPO/releases/download/latest/7motion.apk",
+            "mandatory": false
+          }
+          JSON
+          gh release upload latest --repo "$REPO" --clobber version.json || true
 
           echo ">>> État final"
           gh release view latest --repo "$REPO"
