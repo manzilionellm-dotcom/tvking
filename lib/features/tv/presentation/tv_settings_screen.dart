@@ -13,6 +13,7 @@ import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import '../data/instant_tv_settings.dart';
 import 'tv_parental_screen.dart';
 import 'tv_shell.dart';
 import 'tv_sources_screen.dart';
@@ -33,6 +34,10 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
     super.initState();
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = m);
+    });
+    // Charge l'état mémorisé de l'Instant TV pour afficher le bon interrupteur.
+    InstantTvSettings.instance.load().then((_) {
+      if (mounted) setState(() {});
     });
   }
 
@@ -232,6 +237,67 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                             color: fg)),
                     const Spacer(),
                     Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          // ----- Instant TV Mode (relancer la dernière chaîne au lancement) -----
+          // OK (D-pad) bascule l'interrupteur. Réglage persistant : la fonction
+          // est ainsi CONFIGURABLE comme exigé (défaut activé = effet « vraie
+          // télé » dès l'ouverture).
+          TvFocusBuilder(
+            scale: TvFocusScale.large,
+            onSelect: () async {
+              await InstantTvSettings.instance
+                  .setEnabled(!InstantTvSettings.instance.enabled);
+              if (mounted) setState(() {});
+            },
+            builder: (BuildContext context, bool focused) {
+              final bool on = InstantTvSettings.instance.enabled;
+              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color fg =
+                  focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+              return Container(
+                width: 760,
+                decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                child: Row(
+                  children: <Widget>[
+                    Icon(Icons.live_tv_rounded, color: fg, size: 26),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text('Instant TV — reprendre la dernière chaîne',
+                              style: TextStyle(
+                                  fontSize: TvDimens.title,
+                                  fontWeight: FontWeight.w700,
+                                  color: fg)),
+                          const SizedBox(height: 2),
+                          Text(
+                              on
+                                  ? 'Au lancement, l\'app ouvre directement ta dernière chaîne.'
+                                  : 'Au lancement, l\'app reste sur l\'accueil.',
+                              style: TextStyle(
+                                  fontSize: TvDimens.caption,
+                                  color: fg.withValues(alpha: 0.8))),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Icon(
+                        on
+                            ? Icons.toggle_on_rounded
+                            : Icons.toggle_off_rounded,
+                        color: fg,
+                        size: 40),
                   ],
                 ),
               );

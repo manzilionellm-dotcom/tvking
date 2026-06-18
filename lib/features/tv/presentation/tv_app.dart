@@ -16,17 +16,22 @@ import 'package:intl/intl.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../core/app/boot_guard.dart';
+import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
+import '../../security/data/parental_controls.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../data/greeting_repository.dart';
+import '../data/instant_tv_settings.dart';
 import 'tv_activation_screen.dart';
 import 'tv_components.dart';
 import 'tv_live_screen.dart';
+import 'tv_player_screen.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_search_screen.dart';
 import 'tv_settings_screen.dart';
@@ -393,6 +398,89 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   // ACTUELLEMENT quelque part sur le menu de gauche.
   final FocusNode _railFocus = FocusNode(debugLabel: 'navRailSelected');
   bool _railHasFocus = false;
+
+  // ===== INSTANT TV MODE =====
+  // Une seule tentative par LANCEMENT du process (« cold start »). `static` →
+  // la valeur survit aux reconstructions de l'accueil mais repart à zéro au
+  // prochain démarrage réel de l'app. On ne relance donc PAS le lecteur si
+  // l'utilisateur revient à l'accueil et que celui-ci se reconstruit, ni en
+  // boucle après un « Redémarrer ».
+  static bool _instantTvTried = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // POST-FRAME : on attend que l'accueil soit réellement affiché avant de
+    // pousser le lecteur. CRUCIAL pour la stabilité — on ne relance jamais un
+    // flux pendant le démarrage à froid (c'était la cause de l'ANR). L'app est
+    // d'abord réactive, PUIS on enchaîne sur la dernière chaîne.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeInstantTv());
+  }
+
+  /// INSTANT TV MODE — relance la dernière chaîne regardée au lancement, pour
+  /// la sensation « vraie télé ». Tous les garde-fous sont réunis ici pour que
+  /// la fonction soit premium SANS jamais menacer la stabilité.
+  Future<void> _maybeInstantTv() async {
+    if (_instantTvTried) return;
+    _instantTvTried = true;
+
+    // 1) JAMAIS en mode sans échec : si l'app sort d'une boucle de crash, on
+    //    n'ajoute surtout pas un lancement de flux automatique par-dessus.
+    if (BootGuard.instance.safeMode) return;
+
+    // 2) Réglage utilisateur (configurable, défaut activé).
+    await InstantTvSettings.instance.load();
+    if (!InstantTvSettings.instance.enabled) return;
+
+    // 3) On ne relance qu'À L'ARRIVÉE sur le Direct : si l'utilisateur a déjà
+    //    navigué ailleurs pendant le chargement, on ne l'interrompt pas.
+    if (!mounted || _selected != TvDest.live) return;
+
+    // 4) Dernière chaîne regardée (tête de l'historique). Rien = 1re
+    //    utilisation → on reste à l'accueil (pas de fallback à inventer).
+    final List<String> recent = RecentlyWatchedRepository.instance.current;
+    if (recent.isEmpty) return;
+    final String lastId = recent.first;
+
+    // 5) On attend que le cache des chaînes soit prêt (chargé en arrière-plan
+    //    depuis le correctif anti-ANR), borné à 8 s.
+    final List<Channel> channels = await _awaitChannels();
+    if (!mounted || channels.isEmpty) return;
+
+    // 6) Retrouver la chaîne. Absente (source modifiée, chaîne retirée) →
+    //    FALLBACK : on reste simplement à l'accueil.
+    final int index = channels.indexWhere((Channel c) => c.id == lastId);
+    if (index < 0) return;
+
+    // 7) Sécurité Mode Enfants : on ne relance jamais automatiquement une
+    //    chaîne Adulte tant que le Mode Enfants est actif.
+    if (ParentalControls.instance.kidsMode.value &&
+        channels[index].genre == ChannelGenre.adult) {
+      return;
+    }
+
+    if (!mounted || _selected != TvDest.live) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TvPlayerScreen(channels: channels, startIndex: index),
+      ),
+    );
+  }
+
+  /// Attend la 1re liste de chaînes NON VIDE (le chargement est asynchrone
+  /// depuis le correctif anti-ANR). Plafonné à 8 s : si rien n'arrive, on
+  /// abandonne proprement l'autoplay (l'utilisateur reste à l'accueil).
+  Future<List<Channel>> _awaitChannels() async {
+    final PlaylistRepository repo = PlaylistRepository.instance;
+    if (repo.currentChannels.isNotEmpty) return repo.currentChannels;
+    try {
+      return await repo.channelsStream
+          .firstWhere((List<Channel> c) => c.isNotEmpty)
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {
+      return repo.currentChannels;
+    }
+  }
 
   @override
   void dispose() {
