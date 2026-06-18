@@ -756,10 +756,14 @@ jobs:
             gh release upload latest --repo "$REPO" --clobber "$APK" "$APK_COMPAT"
           else
             echo ">>> Release latest absente, on la crée"
+            # NB : pas de `--latest` ici. GitHub refuse (HTTP 422) qu'une
+            # release soit à la fois `--prerelease` ET marquée "Latest".
+            # On reste cohérent avec la branche edit (prerelease) ; le tag
+            # `latest` sert juste de lien stable, pas de badge "Latest".
             gh release create latest --repo "$REPO" \
               --title "7 MOTION — dernier build" \
               --notes "$NOTES" \
-              --prerelease --latest \
+              --prerelease \
               "$APK" "$APK_COMPAT"
           fi
 
