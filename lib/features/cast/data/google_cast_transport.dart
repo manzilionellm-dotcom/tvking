@@ -32,6 +32,23 @@ import 'dlna_profiles.dart';
 import 'google_cast_api.dart';
 import 'local_cast_server.dart';
 
+/// FLAG D'ACTIVATION DU CUSTOM CAST RECEIVER (App ID `46F815A5`).
+///
+/// `false` (defaut, expedie en prod) : le sender natif pointe sur le
+///   Default Media Receiver public `CC1AD845`, qui NE decode PAS le
+///   MPEG-TS brut → on WRAPPE le .ts en HLS servi par le serveur local
+///   du telephone. Inconvenient : eteindre le telephone coupe le flux.
+///
+/// `true` : le custom receiver `46F815A5` (cloudflare/cast_receiver.js,
+///   mpegts.js) est Published dans la Cast Developer Console et decode
+///   le MPEG-TS LUI-MEME → on envoie l'URL Xtream .ts DIRECTE. La TV
+///   tire le flux seule → le telephone peut s'eteindre, la TV continue.
+///
+/// ⚠️ DOIT etre flippe EN MEME TEMPS que `USE_CUSTOM_RECEIVER` dans
+///    android_overlay/google_cast/CastOptionsProviderImpl.kt. Les deux
+///    decrivent le MEME basculement. Les desynchroniser = ecran noir.
+const bool kCastUseCustomReceiver = false;
+
 class GoogleCastTransport implements CastTransport {
   GoogleCastTransport(this.device);
 
@@ -116,8 +133,12 @@ class GoogleCastTransport implements CastTransport {
     // "cast" bleu SANS image alors meme que loadMedia est accepte
     // (constate sur la SHIELD de l'utilisateur). On wrappe donc le .ts
     // en HLS pour TOUS les recepteurs Cast, SHIELD comprise.
-    final bool shouldWrap =
-        !isHlsOrDash(streamUrl) && _looksLikeRawMpegTs(streamUrl);
+    //   3. On ne wrappe PAS si le custom receiver (mpegts.js) est actif :
+    //      il decode le MPEG-TS seul, on lui envoie le .ts DIRECT pour que
+    //      la TV tire le flux sans le telephone (cf. kCastUseCustomReceiver).
+    final bool shouldWrap = !kCastUseCustomReceiver &&
+        !isHlsOrDash(streamUrl) &&
+        _looksLikeRawMpegTs(streamUrl);
 
     if (shouldWrap) {
       final String? wrappedUrl =

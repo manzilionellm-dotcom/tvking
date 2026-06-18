@@ -42,6 +42,24 @@ import com.google.android.gms.cast.framework.media.NotificationOptions
 
 class CastOptionsProviderImpl : OptionsProvider {
 
+    companion object {
+        // BASCULEMENT CUSTOM RECEIVER — flipper EN MEME TEMPS que
+        // `kCastUseCustomReceiver` (lib/features/cast/data/
+        // google_cast_transport.dart). Voir le bloc d'en-tete ci-dessus.
+        //
+        //   false (defaut, prod) : Default Media Receiver public
+        //     CC1AD845 → le sender wrappe le .ts en HLS (telephone requis).
+        //   true : custom receiver 46F815A5 PUBLISHED (mpegts.js) → le
+        //     sender envoie le .ts direct (TV autonome, telephone off OK).
+        private const val USE_CUSTOM_RECEIVER = false
+
+        // Default Media Receiver public de Google (toujours actif).
+        private const val DEFAULT_RECEIVER_ID = "CC1AD845"
+        // Custom Styled Media Receiver brande 7 MOTION (mpegts.js).
+        // A publier sur la Cast Developer Console avant de l'activer.
+        private const val CUSTOM_RECEIVER_ID = "46F815A5"
+    }
+
     override fun getCastOptions(context: Context): CastOptions {
         // Notification persistante quand un cast est actif. Style
         // YouTube : "Lecture sur Salon LG ⏯".
@@ -80,7 +98,9 @@ class CastOptionsProviderImpl : OptionsProvider {
             // POUR RETROUVER LE BRANDING plus tard : publier l'app
             // 46F815A5 dans la Cast Developer Console (statut
             // "Published"), puis remettre cet App ID ci-dessous.
-            .setReceiverApplicationId("CC1AD845")
+            .setReceiverApplicationId(
+                if (USE_CUSTOM_RECEIVER) CUSTOM_RECEIVER_ID else DEFAULT_RECEIVER_ID
+            )
             .setCastMediaOptions(mediaOptions)
             // Resume la session si l'app est tuée puis relancée
             // dans les 30 min — l'utilisateur ne se reconnecte pas
