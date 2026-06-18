@@ -278,7 +278,12 @@ class _AboutScreenState extends State<AboutScreen> {
                     icon: Icons.privacy_tip_outlined,
                     label: context.l10n.aboutPrivacyPolicy,
                     onTap: () => _openUrl(
-                      'https://7motion.app/privacy',
+                      // Domaine SÛR : `app.7themotion.com` est le Custom Domain
+                      // branché sur le Worker Cloudflare (cf. wrangler.toml) qui
+                      // sert la page /privacy. On y pointe pour être certain que
+                      // la page affichée est bien la version à jour (e-mail de
+                      // contact = domaine, jamais l'e-mail perso de l'éditeur).
+                      'https://app.7themotion.com/privacy',
                     ),
                   ),
                 ],
