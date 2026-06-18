@@ -51,7 +51,7 @@ class CastOptionsProviderImpl : OptionsProvider {
         //     CC1AD845 → le sender wrappe le .ts en HLS (telephone requis).
         //   true : custom receiver 46F815A5 PUBLISHED (mpegts.js) → le
         //     sender envoie le .ts direct (TV autonome, telephone off OK).
-        private const val USE_CUSTOM_RECEIVER = false
+        private const val USE_CUSTOM_RECEIVER = true
 
         // Default Media Receiver public de Google (toujours actif).
         private const val DEFAULT_RECEIVER_ID = "CC1AD845"

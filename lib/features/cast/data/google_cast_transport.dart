@@ -47,7 +47,7 @@ import 'local_cast_server.dart';
 /// ⚠️ DOIT etre flippe EN MEME TEMPS que `USE_CUSTOM_RECEIVER` dans
 ///    android_overlay/google_cast/CastOptionsProviderImpl.kt. Les deux
 ///    decrivent le MEME basculement. Les desynchroniser = ecran noir.
-const bool kCastUseCustomReceiver = false;
+const bool kCastUseCustomReceiver = true;
 
 class GoogleCastTransport implements CastTransport {
   GoogleCastTransport(this.device);
