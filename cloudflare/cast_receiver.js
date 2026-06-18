@@ -1,35 +1,49 @@
 // =========================================================
-//  cast_receiver.js — HTML du Cast Receiver custom 7 MOTION / Red Room
+//  cast_receiver.js — Custom CAF Web Receiver 7 MOTION / Red Room
 // =========================================================
 //  Exposee par worker.js sur la route GET /cast-receiver.
 //  URL publique a coller dans la Google Cast SDK Developer
-//  Console pour obtenir un Receiver Application ID.
+//  Console pour obtenir un Receiver Application ID (custom).
+//
+//  POURQUOI UN CUSTOM RECEIVER (et pas le Default Media Receiver
+//  public CC1AD845) :
+//    Le Default Media Receiver de Google ne decode PAS le MPEG-TS
+//    brut (`video/mp2t`) des flux IPTV Xtream `/live/.../id.ts` :
+//    la TV affiche l'ecran "cast" SANS image (constate SHIELD, LG,
+//    Samsung). Pour le contourner, l'ancien sender wrappait le .ts
+//    en HLS servi par le SERVEUR LOCAL DU TELEPHONE → la TV tirait
+//    le flux depuis le telephone → eteindre le telephone COUPAIT la
+//    lecture. Le comportement "je caste, j'eteins le tel, la TV joue
+//    1-2h" etait donc casse sur toutes les TV modernes.
+//
+//    Ce custom receiver decode le MPEG-TS LUI-MEME, sur la TV
+//    (mpegts.js → transmux TS->fMP4 via Media Source Extensions).
+//    Du coup le sender envoie l'URL Xtream DIRECTE : la Chromecast /
+//    Google TV fetch le flux directement depuis le serveur IPTV, le
+//    telephone n'est plus dans la boucle → on peut l'eteindre, la TV
+//    continue. C'est ca, le "cast evolutif".
 //
 //  ARCHITECTURE :
-//    - Page HTML autonome, hebergee par notre Worker
-//    - Charge le CAF (Cast Application Framework) Receiver SDK v3
-//      depuis le CDN officiel Google
-//    - Utilise <cast-media-player> qui fournit GRATUITEMENT :
-//        - Lecture HLS / DASH / MPEG-TS / MP4 (autoplay quand le
-//          sender envoie une LoadRequest)
-//        - Bare controls : play/pause, seek, volume, qualite
-//        - Sous-titres si presents
-//        - Idle screen avec notre logo quand rien ne joue
-//    - On customize via les CSS variables documentees par Google :
-//        --background-color, --logo-image, --splash-image,
-//        --progress-color, etc.
+//    - Page HTML autonome, hebergee par notre Worker (zero backend).
+//    - Charge le CAF Receiver SDK v3 + mpegts.js + hls.js (CDN).
+//    - <cast-media-player> gere nativement HLS / DASH / MP4 (Shaka).
+//    - Un LOAD interceptor route le flux selon son type :
+//        * .m3u8  → HLS natif CAF (+ streamType LIVE si live)
+//        * .ts / video/mp2t / Xtream /live/ → mpegts.js sur un
+//          <video> dedie (le seul chemin fiable pour le TS brut)
+//        * mp4/mkv/webm → lecteur natif CAF
+//    - mpegts.js ne tourne QUE pour le TS brut ; tout le reste passe
+//      par le pipeline CAF standard. 100% additif.
 //
-//  BRANDING :
-//    Comme on a 2 apps (7 MOTION + Red Room), on differencie via
-//    un query param ?app=redroom dans l'URL receiver. La Console
-//    Google accepte une URL avec query strings.
-//    → 7 MOTION inscrira `https://99999.7themotion.com/cast-receiver`
-//    → Red Room inscrira `https://99999.7themotion.com/cast-receiver?app=redroom`
-//    Chacun aura son propre Application ID, et le sender Android
-//    enverra a l'ID correspondant a son flavor.
+//  BRANDING : ?app=redroom bascule le velours / R rouge. La Console
+//  Google accepte les query strings, donc 7 MOTION et Red Room ont
+//  chacun leur Application ID pointant sur la meme page avec le bon
+//  query param.
 //
-//  REFERENCE :
-//    https://developers.google.com/cast/docs/web_receiver/styled_media_receiver
+//  REFERENCES :
+//    https://developers.google.com/cast/docs/web_receiver/basic
+//    https://developers.google.com/cast/docs/media/streaming_protocols
+//    https://github.com/xqq/mpegts.js
 // =========================================================
 
 export function castReceiverHtml(flavor) {
@@ -50,11 +64,14 @@ export function castReceiverHtml(flavor) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${appName} · Cast</title>
   <!--
-    CAF Receiver SDK v3 (Cast Application Framework).
-    C'est ce qui transforme cette page en receiver Cast officiel.
-    Sans ce script, le Chromecast ne sait pas quoi faire.
+    CAF Receiver SDK v3 (Cast Application Framework) — transforme la
+    page en receiver Cast officiel. mpegts.js = transmux MPEG-TS brut
+    (IPTV Xtream) vers fMP4 cote TV. hls.js = repli HLS si le pipeline
+    natif CAF refuse une variante. Les deux sont charges depuis un CDN
+    par la TV elle-meme (pas par notre backend).
   -->
   <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
   <style>
     html, body {
       margin: 0;
@@ -67,9 +84,7 @@ export function castReceiverHtml(flavor) {
       overflow: hidden;
     }
 
-    /* ===== <cast-media-player> : le composant officiel CAF =====
-       Toutes ces variables sont documentees par Google et stylent
-       l'idle screen + les controles overlay pendant la lecture.   */
+    /* ===== <cast-media-player> : pipeline CAF natif (HLS/DASH/MP4) ===== */
     cast-media-player {
       --theme-hue: 0;
       --background-color: ${bg};
@@ -85,14 +100,27 @@ export function castReceiverHtml(flavor) {
       height: 100%;
     }
 
-    /* ===== Watermark coin bas-droite pendant la lecture =====
-       Discret, comme un logo de chaine TV. Apparait par dessus la
-       video sans la masquer.                                       */
+    /* ===== <video> dedie au MPEG-TS brut pilote par mpegts.js =====
+       Masque par defaut ; on l'affiche PAR-DESSUS le cast-media-player
+       uniquement pendant une lecture TS. */
+    #ts-video {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      background: ${bg};
+      object-fit: contain;
+      z-index: 1;
+      display: none;
+    }
+    #ts-video.active { display: block; }
+
+    /* ===== Watermark coin bas-droite pendant la lecture ===== */
     .brand-watermark {
       position: fixed;
       right: 24px;
       bottom: 24px;
-      z-index: 2;
+      z-index: 3;
       opacity: 0.55;
       pointer-events: none;
       font-size: 11px;
@@ -114,43 +142,170 @@ export function castReceiverHtml(flavor) {
   </style>
 </head>
 <body>
-  <!-- Le composant principal CAF qui gere la lecture video et
-       affiche le splash screen avec notre logo quand rien ne joue. -->
+  <!-- Pipeline CAF natif : splash + lecture HLS/DASH/MP4. -->
   <cast-media-player></cast-media-player>
 
-  <!-- Watermark de marque, visible en transparence sur la video. -->
+  <!-- Element dedie au MPEG-TS brut (mpegts.js). Affiche par-dessus
+       le cast-media-player seulement pendant une lecture TS. -->
+  <video id="ts-video" playsinline></video>
+
   <div class="brand-watermark">${appName}</div>
 
   <script>
-    // ===== Boot du receiver =====
-    // Recupere l'instance CastReceiverContext (singleton fourni
-    // par le CAF SDK) et la demarre. Sans .start() le Chromecast
-    // affiche un ecran d'erreur generique apres ~10s.
+    // =====================================================
+    //  Boot du receiver
+    // =====================================================
+    const APP = '${appName}';
     const context = cast.framework.CastReceiverContext.getInstance();
     const playerManager = context.getPlayerManager();
 
-    // ===== Diagnostic console (utile pour debug remote) =====
-    // L'app Cast Connect debug du Chrome permet d'inspecter cette
-    // console depuis l'ordi. Aide a savoir ce que le sender envoie.
-    playerManager.addEventListener(
-      cast.framework.events.EventType.MEDIA_INFORMATION_CHANGED,
-      function(event) {
-        console.log('[${appName} cast] media info :', event.mediaInformation);
+    const tsVideo = document.getElementById('ts-video');
+    let mpegtsPlayer = null;     // instance mpegts.js courante
+    let tsActive = false;        // true tant qu'une lecture TS est en cours
+
+    // ---- Helpers -------------------------------------------------
+    function log() {
+      try { console.log.apply(console, ['[' + APP + ' cast]'].concat([].slice.call(arguments))); } catch (e) {}
+    }
+
+    // Heuristique : URL de flux MPEG-TS brut (IPTV Xtream live).
+    //   - extension .ts (eventuellement suivie de query string)
+    //   - contentType video/mp2t
+    //   - chemin Xtream /live/USER/PASS/ID(.ts)
+    // On EXCLUT explicitement le HLS (.m3u8) qui contient aussi des
+    // segments .ts mais doit passer par le pipeline HLS, pas mpegts.js.
+    function isRawMpegTs(url, contentType) {
+      const u = (url || '').toLowerCase();
+      const ct = (contentType || '').toLowerCase();
+      if (u.indexOf('.m3u8') !== -1) return false;
+      if (ct.indexOf('mpegurl') !== -1) return false;
+      if (ct === 'video/mp2t' || ct === 'video/mpeg' || ct === 'video/vnd.dlna.mpeg-tts') return true;
+      if (/\\.ts(\\?|$)/.test(u)) return true;
+      if (u.indexOf('/live/') !== -1) return true;
+      return false;
+    }
+
+    function teardownTs() {
+      tsActive = false;
+      tsVideo.classList.remove('active');
+      try { tsVideo.pause(); } catch (e) {}
+      if (mpegtsPlayer) {
+        try { mpegtsPlayer.unload(); } catch (e) {}
+        try { mpegtsPlayer.detachMediaElement(); } catch (e) {}
+        try { mpegtsPlayer.destroy(); } catch (e) {}
+        mpegtsPlayer = null;
       }
+      try { tsVideo.removeAttribute('src'); tsVideo.load(); } catch (e) {}
+    }
+
+    // Lance un flux MPEG-TS brut via mpegts.js sur le <video> dedie.
+    function playRawTs(url) {
+      teardownTs();
+      if (!window.mpegts || !mpegts.isSupported()) {
+        log('mpegts.js indisponible — la TV ne supporte pas MSE pour le TS');
+        return false;
+      }
+      mpegtsPlayer = mpegts.createPlayer({
+        type: 'mpegts',
+        isLive: true,
+        url: url,
+      }, {
+        // Live : pas de buffer infini, on colle au direct.
+        liveBufferLatencyChasing: true,
+        lazyLoad: false,
+        enableWorker: true,
+      });
+      mpegtsPlayer.attachMediaElement(tsVideo);
+      mpegtsPlayer.on(mpegts.Events.ERROR, function (type, detail) {
+        log('mpegts error', type, detail);
+      });
+      mpegtsPlayer.load();
+      tsVideo.muted = false;
+      const p = tsVideo.play();
+      if (p && p.catch) p.catch(function (e) { log('ts autoplay blocked', e); });
+      tsActive = true;
+      tsVideo.classList.add('active');
+      return true;
+    }
+
+    // =====================================================
+    //  LOAD interceptor — route le flux selon son type
+    // =====================================================
+    playerManager.setMessageInterceptor(
+      cast.framework.messages.MessageType.LOAD,
+      function (request) {
+        try {
+          const media = request.media || {};
+          const url = media.contentId || media.contentUrl || '';
+          const ct = media.contentType || '';
+          log('LOAD', url, ct);
+
+          if (isRawMpegTs(url, ct)) {
+            // MPEG-TS brut → mpegts.js sur le <video> dedie. On indique
+            // a CAF que le contenu est gere en externe : on lance la
+            // lecture nous-memes et on renvoie null pour suspendre le
+            // pipeline CAF (qui ecran-noirerait sur du TS brut).
+            const ok = playRawTs(url);
+            if (ok) {
+              // Met a jour le MediaInformation pour que le sender voie
+              // un etat coherent (titre, live).
+              return null; // suspend le load CAF natif (mpegts.js gere)
+            }
+            // mpegts.js KO → on laisse CAF tenter sa chance (repli).
+          } else {
+            // Tout flux NON-TS → pipeline CAF natif. On s'assure que le
+            // <video> mpegts est bien rendu et qu'un eventuel flux TS
+            // precedent est demonte.
+            if (tsActive) teardownTs();
+          }
+
+          // HLS / DASH / MP4 : normalisations utiles.
+          if (/\\.m3u8(\\?|$)/i.test(url) && !media.contentType) {
+            media.contentType = 'application/x-mpegURL';
+          }
+          // Flux live (Xtream / pas de duree) → streamType LIVE, sinon
+          // CAF attend une duree et peut rester en buffering.
+          if (media.streamType == null &&
+              (url.indexOf('/live/') !== -1 || /\\.m3u8(\\?|$)/i.test(url))) {
+            media.streamType = cast.framework.messages.StreamType.LIVE;
+          }
+          request.media = media;
+          return request;
+        } catch (e) {
+          log('LOAD interceptor error', e);
+          return request;
+        }
+      }
+    );
+
+    // Quand le sender coupe (STOP) ou met en pause/play, on relaie au
+    // lecteur mpegts.js s'il est actif.
+    playerManager.setMessageInterceptor(
+      cast.framework.messages.MessageType.STOP,
+      function (request) { if (tsActive) teardownTs(); return request; }
+    );
+    playerManager.setMessageInterceptor(
+      cast.framework.messages.MessageType.PAUSE,
+      function (request) { if (tsActive) { try { tsVideo.pause(); } catch (e) {} return null; } return request; }
+    );
+    playerManager.setMessageInterceptor(
+      cast.framework.messages.MessageType.PLAY,
+      function (request) { if (tsActive) { try { tsVideo.play(); } catch (e) {} return null; } return request; }
     );
 
     playerManager.addEventListener(
       cast.framework.events.EventType.ERROR,
-      function(event) {
-        console.error('[${appName} cast] error :', event);
-      }
+      function (event) { log('CAF error', event); }
     );
 
-    // ===== Options de demarrage =====
-    // STATUS_TEXT visible en haut de l'idle screen avec le logo.
+    // =====================================================
+    //  Options de demarrage
+    // =====================================================
     const options = new cast.framework.CastReceiverOptions();
-    options.disableIdleTimeout = false;   // ferme apres 5 min d'inactivite (defaut)
-    options.statusText = '${appName}';
+    // Le receiver reste vivant tant qu'un flux joue (live IPTV =
+    // sessions longues, le telephone peut etre eteint).
+    options.disableIdleTimeout = true;
+    options.statusText = APP;
     context.start(options);
   </script>
 </body>
