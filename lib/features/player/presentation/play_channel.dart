@@ -32,6 +32,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/network/cellular_guard.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import 'video_player_screen.dart';
@@ -52,6 +53,10 @@ Future<void> playChannel(
   // mouvement du capteur — y compris quand l'auto-rotate système
   // Android est désactivé.
 
+  if (!context.mounted) return;
+  // Garde données cellulaires (Wi-Fi only / avertissement data). Fail-open :
+  // n'empêche jamais la lecture à cause d'un bug réseau.
+  if (!await guardCellularPlayback(context)) return;
   if (!context.mounted) return;
   await Navigator.of(context).push<void>(
     MaterialPageRoute<void>(

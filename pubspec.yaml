@@ -102,6 +102,10 @@ dependencies:
   package_info_plus: ^8.1.4
   url_launcher: ^6.3.1
 
+  # Détection du type de réseau (Wi-Fi / cellulaire) pour la garde
+  # "données cellulaires" avant lecture (cf. core/network/cellular_guard.dart).
+  connectivity_plus: ^6.1.0
+
   # --- Phase 2 : EPG XMLTV ---
   # Parser XML en streaming (XmlEventReader) — indispensable pour
   # ingérer les fichiers EPG qui font souvent 100-500 Mo sans

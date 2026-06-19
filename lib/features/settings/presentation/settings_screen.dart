@@ -100,6 +100,22 @@ class SettingsScreen extends StatelessWidget {
                       value: s.showStats,
                       onChanged: s.setShowStats,
                     ),
+                    _SwitchTile(
+                      icon: Icons.wifi_rounded,
+                      title: 'Lecture en Wi-Fi uniquement',
+                      subtitle:
+                          'Bloque le démarrage d\'un flux en données cellulaires (évite la facture surprise).',
+                      value: s.wifiOnly,
+                      onChanged: s.setWifiOnly,
+                    ),
+                    _SwitchTile(
+                      icon: Icons.signal_cellular_alt_rounded,
+                      title: 'Avertir en données cellulaires',
+                      subtitle:
+                          'Affiche un avertissement avant de lire hors Wi-Fi.',
+                      value: s.warnOnCellular,
+                      onChanged: s.setWarnOnCellular,
+                    ),
                     _ActionTile(
                       icon: Icons.badge_outlined,
                       title: 'Signature de lecture (User-Agent)',

@@ -46,6 +46,8 @@ class PlayerSettings extends ChangeNotifier {
   static const String _kSpeedKey = 'player.last_speed';
   static const String _kAntiFreezeKey = 'player.anti_freeze';
   static const String _kUserAgentKey = 'player.user_agent';
+  static const String _kWifiOnlyKey = 'player.wifi_only';
+  static const String _kWarnCellKey = 'player.warn_cellular';
 
   /// User-Agent par défaut (façon VLC). Beaucoup de serveurs IPTV
   /// n'acceptent le VRAI flux QUE pour des signatures de lecteurs connus
@@ -103,6 +105,14 @@ class PlayerSettings extends ChangeNotifier {
   /// User-Agent envoyé au serveur IPTV pour récupérer les flux.
   String _userAgent = kDefaultUserAgent;
 
+  /// Lecture autorisée UNIQUEMENT en Wi-Fi : bloque (avec confirmation)
+  /// le démarrage d'un flux sur données cellulaires. Évite les factures
+  /// surprise — l'IPTV consomme beaucoup de data.
+  bool _wifiOnly = false;
+
+  /// Avertir avant de lire en données cellulaires (si `wifiOnly` = false).
+  bool _warnOnCellular = true;
+
   bool _loaded = false;
 
   // ----- Getters -----
@@ -112,6 +122,8 @@ class PlayerSettings extends ChangeNotifier {
   bool get showStats => _showStats;
   bool get antiFreeze => _antiFreeze;
   double get lastSpeed => _lastSpeed;
+  bool get wifiOnly => _wifiOnly;
+  bool get warnOnCellular => _warnOnCellular;
 
   /// User-Agent effectif (jamais vide → repli sur le défaut VLC).
   String get userAgent =>
@@ -146,6 +158,8 @@ class PlayerSettings extends ChangeNotifier {
     _antiFreeze = prefs.getBool(_kAntiFreezeKey) ?? true;
     _lastSpeed = prefs.getDouble(_kSpeedKey) ?? 1.0;
     _userAgent = prefs.getString(_kUserAgentKey) ?? kDefaultUserAgent;
+    _wifiOnly = prefs.getBool(_kWifiOnlyKey) ?? false;
+    _warnOnCellular = prefs.getBool(_kWarnCellKey) ?? true;
     _loaded = true;
     notifyListeners();
   }
@@ -210,5 +224,21 @@ class PlayerSettings extends ChangeNotifier {
     notifyListeners();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kUserAgentKey, v);
+  }
+
+  Future<void> setWifiOnly(bool enabled) async {
+    if (enabled == _wifiOnly) return;
+    _wifiOnly = enabled;
+    notifyListeners();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kWifiOnlyKey, enabled);
+  }
+
+  Future<void> setWarnOnCellular(bool enabled) async {
+    if (enabled == _warnOnCellular) return;
+    _warnOnCellular = enabled;
+    notifyListeners();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kWarnCellKey, enabled);
   }
 }
