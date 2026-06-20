@@ -66,6 +66,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // activait/poussait APRÈS, la TV restait « Aucune chaîne » jusqu'au
   // redémarrage. Ici on re-tente tant qu'on n'a aucune chaîne.
   Timer? _syncTimer;
+  // Anti-jank D-pad (P1-5) : le focus d'une catégorie déclenche un _recompute
+  // O(n) (reconstruit _byId/byName sur des dizaines de milliers de chaînes). En
+  // défilement rapide à la télécommande, on DÉBOUNCE pour ne recalculer que sur
+  // la catégorie où le focus se POSE, pas sur chaque case traversée.
+  Timer? _catDebounce;
   bool _syncing = false;
   RemoteSyncResult? _lastSync;
   // Garde-fou : on borne le nombre de ré-imports AUTOMATIQUES de la source.
@@ -144,6 +149,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     _recentSub?.cancel();
     TrendingRepository.instance.stop();
     _syncTimer?.cancel();
+    _catDebounce?.cancel();
     ParentalControls.instance.kidsMode.removeListener(_onKidsModeChanged);
     super.dispose();
   }
@@ -280,6 +286,17 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     setState(() {
       _selectedCat = cat;
       _recompute();
+    });
+  }
+
+  /// Sélection DÉBOUNCÉE (P1-5) : utilisée par le focus D-pad. On attend que le
+  /// focus se pose ~220 ms avant le _recompute O(n) → plus de jank/ANR quand
+  /// l'utilisateur traverse rapidement les catégories à la télécommande.
+  void _selectDebounced(String cat) {
+    if (_selectedCat == cat) return;
+    _catDebounce?.cancel();
+    _catDebounce = Timer(const Duration(milliseconds: 220), () {
+      if (mounted) _select(cat);
     });
   }
 
@@ -505,11 +522,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                         scale: TvFocusScale.medium,
                         onSelect: () => _select(cat),
                         builder: (BuildContext context, bool focused) {
-                          // Le focus met à jour la grille (preview live).
+                          // Le focus met à jour la grille (preview live), mais
+                          // DÉBOUNCÉ (P1-5) : en défilement rapide on ne recalcule
+                          // pas sur chaque catégorie traversée, seulement à l'arrêt.
                           if (focused && _selectedCat != cat) {
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              if (mounted) _select(cat);
-                            });
+                            _selectDebounced(cat);
                           }
                           // FOCUS UNIQUE (règle #3) : seul l'élément RÉELLEMENT
                           // focus (D-pad) porte l'or — bordure 2 px + texte or

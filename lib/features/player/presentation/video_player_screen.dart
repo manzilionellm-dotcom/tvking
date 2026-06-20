@@ -825,12 +825,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         //  faiblit), on met en pause + recharge PROPREMENT au lieu
         //  d'afficher des images saccadées / cassées. Tant qu'il reste
         //  de l'avance, la lecture continue même sur connexion pourrie.
-        //    - demuxer-max-bytes      : 1 GiB de tampon devant (gros
-        //      matelas ; les box/TV modernes ont assez de RAM)
-        //    - demuxer-max-back-bytes : 256 MiB de back-buffer (rewind)
+        //    - demuxer-max-bytes      : 192 MiB de tampon devant. CORRIGÉ (P1-4) :
+        //      l'ancien 1 GiB faisait OOM les téléphones/box 1-2 Go (le tampon
+        //      croît jusqu'au plafond sur lecture longue). 192 MiB reste un gros
+        //      matelas anti-coupure tout en restant tenable partout.
+        //    - demuxer-max-back-bytes : 64 MiB de back-buffer (rewind)
         //    - demuxer-readahead-secs : on lit loin devant (>=60 s)
-        await native?.setProperty('demuxer-max-bytes', '1073741824');
-        await native?.setProperty('demuxer-max-back-bytes', '268435456');
+        await native?.setProperty('demuxer-max-bytes', '201326592');
+        await native?.setProperty('demuxer-max-back-bytes', '67108864');
         await native?.setProperty(
           'demuxer-readahead-secs',
           s.antiFreezeReadaheadSeconds.toString(),
