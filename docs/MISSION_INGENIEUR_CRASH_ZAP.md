@@ -193,6 +193,21 @@ les 14 fichiers de test du repo n'étaient jamais exécutés en CI.
 > **d'intégration on-device** (matériel requis) → à ajouter une fois la stack
 > native confirmée par Crashlytics (Étape 2).
 
+**CI verte (run #5, `flutter test` bloquant) ✅.** En activant le gate, on a
+découvert que **8 tests pré-existants** ne tournaient jamais (aucune CI) et
+étaient périmés vs la prod — sans rapport avec le zap, mais ils bloquaient :
+- `cast/data/cast_manager.dart` : `castShouldAddDevice` ré-extrait (+ garde
+  « fenêtre de découverte » rétablie) ;
+- `cast/data/multicast_lock_test.dart` : aligné sur `acquire()` (champ
+  `lastAcquireOk` supprimé) ;
+- `cast/data/lg_diagnostic_fixes_test.dart` + `cast/data/preflight_reachability_test.dart`
+  : libellés `friendlyMessageFor` alignés (« ne répond pas » / « MÊME WiFi »,
+  plus de « QR code ») ;
+- `recordings/data/auto_stop_reason_test.dart` : `kMaxRecordingDuration` = 30 j.
+
+`flutter analyze` est lancé en **informatif** (le repo traîne ~250 infos de
+style `prefer_const` ; dette à résorber à part, hors mission).
+
 ### Suite (bloquée tant que la stack n'est pas remontée)
 
 - **Étape 2** (reproduire + capturer la stack) nécessite une **box TV physique**
