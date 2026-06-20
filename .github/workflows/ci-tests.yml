@@ -1,0 +1,75 @@
+# ============================================================================
+#  ci-tests.yml — Garde-fou qualité : `flutter analyze` + `flutter test`
+#
+#  POURQUOI (Étape 4 du brief stabilité-zap) : jusqu'ici AUCUN workflow ne
+#  lançait les tests ni l'analyse statique. Les 14 fichiers de test du repo
+#  n'étaient donc jamais exécutés en CI → une régression pouvait passer
+#  inaperçue. Ce workflow rend les deux BLOQUANTS sur push/PR : si l'analyse
+#  trouve une erreur ou si un test échoue, le job est rouge.
+#
+#  Léger et rapide : pas besoin du SDK Android ici (les tests tournent sur la
+#  VM Dart). On installe juste Java + Flutter, on résout les deps, on génère
+#  les localisations (certains widgets en dépendent), puis analyze + test.
+# ============================================================================
+name: CI — analyze & tests
+
+on:
+  push:
+    branches: ['main', 'claude/**', 'feature/**']
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - 'packages/**'
+      - 'pubspec.yaml'
+      - 'analysis_options.yaml'
+      - 'l10n.yaml'
+      - '.github/workflows/ci-tests.yml'
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - 'packages/**'
+      - 'pubspec.yaml'
+      - 'analysis_options.yaml'
+      - 'l10n.yaml'
+  workflow_dispatch:
+
+jobs:
+  analyze-and-test:
+    name: flutter analyze + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      # Les écrans utilisent AppLocalizations (généré depuis les .arb). On le
+      # génère avant l'analyse/les tests pour éviter les imports manquants.
+      - name: Generate AppLocalizations
+        run: flutter gen-l10n || true
+
+      # BLOQUANT : `flutter analyze` sort en erreur si le code viole les règles
+      # de analysis_options.yaml (qui passe déjà plusieurs warnings en erreurs).
+      - name: Flutter analyze (bloquant)
+        run: flutter analyze
+
+      # BLOQUANT : tous les tests unitaires/widget doivent passer.
+      - name: Flutter test (bloquant)
+        run: flutter test --reporter expanded

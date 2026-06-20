@@ -173,6 +173,26 @@ builds actuels) :
 > hors périmètre de cette mission TV, à répliquer si on veut la mesure
 > crash-free sur tout le produit.
 
+### 2026-06-20 — Étape 4 : non-régression (tests + CI bloquant)
+
+**Constat :** AUCUN workflow ne lançait `flutter analyze` ni `flutter test` —
+les 14 fichiers de test du repo n'étaient jamais exécutés en CI.
+
+**Fait (code) :**
+- `.github/workflows/ci-tests.yml` — nouveau job **bloquant** sur push/PR :
+  `flutter analyze` + `flutter test`. Protège tout le suite existant et les
+  nouveaux tests.
+- `test/features/tv/zap_resource_discipline_test.dart` — verrouille les 2
+  invariants Dart du zap : (1) chaque zap nettoie l'état (erreur/codec/buffering/
+  1re trame) et notifie **exactement une fois** (rafale de 50 zaps testée, =
+  la cible du brief) ; (2) **après `dispose()`** plus aucune notification ni
+  exception (zap qui course la fermeture de l'écran).
+
+> Limite assumée : ces tests sont **purs** (logique Dart d'orchestration). Le
+> test « 50 zaps qui exercent vraiment ExoPlayer/MediaCodec » est un test
+> **d'intégration on-device** (matériel requis) → à ajouter une fois la stack
+> native confirmée par Crashlytics (Étape 2).
+
 ### Suite (bloquée tant que la stack n'est pas remontée)
 
 - **Étape 2** (reproduire + capturer la stack) nécessite une **box TV physique**
