@@ -98,8 +98,12 @@ class NativeVideoView(
         // Tampons orientés DÉMARRAGE RAPIDE + direct : on lance la lecture dès
         // ~1 s de données (bufferForPlayback), on retampe vite après coupure,
         // et on autorise jusqu'à 30 s de tampon pour absorber les hoquets.
+        // Tampon volontairement BORNÉ (max 15 s) : un tampon de 30 s de vidéo HD
+        // retient beaucoup de RAM, et en changeant souvent de chaîne sur une box
+        // à faible mémoire ça aggravait la saturation → crash. 15 s reste large
+        // pour absorber les hoquets du direct IPTV, sans gonfler la mémoire.
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(2_500, 30_000, 1_000, 2_000)
+            .setBufferDurationsMs(2_500, 15_000, 1_000, 2_000)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
@@ -189,6 +193,18 @@ class NativeVideoView(
                 retryCount = 0
                 currentUrl = url
                 currentVideoMime = null
+                // ANTI-CRASH « après plusieurs zaps » : on LIBÈRE explicitement
+                // le décodeur + la mémoire de la chaîne précédente AVANT d'en
+                // ouvrir une nouvelle. Sur une box Android TV / Fire TV, le
+                // nombre de décodeurs MediaCodec simultanés est TRÈS limité et la
+                // RAM est faible. En enchaînant les chaînes, l'ancien décodeur
+                // n'était pas toujours rendu à temps → au bout de 5-6 chaînes,
+                // épuisement des décodeurs / saturation mémoire → le process se
+                // fait tuer (l'app « disparaît »). `stop()` termine la lecture en
+                // cours et `clearMediaItems()` relâche l'item + ses ressources,
+                // garantissant qu'on repart toujours d'un état propre.
+                player.stop()
+                player.clearMediaItems()
                 player.setMediaItem(MediaItem.fromUri(url))
                 player.prepare()
                 player.playWhenReady = true
