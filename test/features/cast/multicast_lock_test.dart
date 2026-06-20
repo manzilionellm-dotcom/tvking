@@ -1,10 +1,16 @@
 // =========================================================
-//  multicast_lock_test.dart — Correctif #2
+//  multicast_lock_test.dart — contrat du pont MulticastLock
 // =========================================================
 //  Vérifie que MulticastLock.acquire() :
-//    - mémorise le résultat dans `lastAcquireOk`,
-//    - ne lève jamais (false sur MissingPlugin / refus natif),
-//  pour que le CastManager puisse diagnostiquer un picker vide.
+//    - renvoie `true` quand le natif accorde le lock ;
+//    - renvoie `false` quand le natif refuse ;
+//    - renvoie `false` SANS lever quand il n'y a pas de bridge natif
+//      (MissingPluginException : iOS / Web / test) — l'appelant doit pouvoir
+//      continuer la découverte de toute façon.
+//
+//  NB : l'API ne mémorise plus le résultat dans un champ `lastAcquireOk`
+//  (supprimé lors d'un refactor) ; on vérifie donc directement la valeur
+//  RENVOYÉE par acquire(), qui est le contrat actuel (cf. multicast_lock.dart).
 // =========================================================
 
 import 'package:flutter/services.dart';
@@ -16,35 +22,29 @@ void main() {
 
   const MethodChannel channel =
       MethodChannel('com.manzilionellm.tvking/multicast');
-  final messenger =
+  final TestDefaultBinaryMessenger messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
 
   tearDown(() {
     messenger.setMockMethodCallHandler(channel, null);
-    MulticastLock.instance.lastAcquireOk = false;
   });
 
-  test('acquire renvoie true → lastAcquireOk = true', () async {
+  test('acquire renvoie true quand le natif accorde le lock', () async {
     messenger.setMockMethodCallHandler(channel, (MethodCall call) async {
       return call.method == 'acquire' ? true : null;
     });
-    final bool ok = await MulticastLock.instance.acquire();
-    expect(ok, isTrue);
-    expect(MulticastLock.instance.lastAcquireOk, isTrue);
+    expect(await MulticastLock.instance.acquire(), isTrue);
   });
 
-  test('acquire renvoie false → lastAcquireOk = false', () async {
-    messenger.setMockMethodCallHandler(channel, (MethodCall call) async => false);
-    final bool ok = await MulticastLock.instance.acquire();
-    expect(ok, isFalse);
-    expect(MulticastLock.instance.lastAcquireOk, isFalse);
+  test('acquire renvoie false quand le natif refuse', () async {
+    messenger.setMockMethodCallHandler(
+        channel, (MethodCall call) async => false);
+    expect(await MulticastLock.instance.acquire(), isFalse);
   });
 
   test('aucun bridge natif (MissingPlugin) → false sans crash', () async {
     // Pas de handler → MissingPluginException côté MethodChannel.
     messenger.setMockMethodCallHandler(channel, null);
-    final bool ok = await MulticastLock.instance.acquire();
-    expect(ok, isFalse);
-    expect(MulticastLock.instance.lastAcquireOk, isFalse);
+    expect(await MulticastLock.instance.acquire(), isFalse);
   });
 }

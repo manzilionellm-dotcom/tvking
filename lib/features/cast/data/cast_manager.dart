@@ -67,6 +67,33 @@ enum CastState {
   error,
 }
 
+/// Règle PURE (donc testable sans réseau) d'ajout d'un appareil découvert.
+///
+/// Extraite de la boucle de découverte pour deux raisons :
+///   1) la rendre testable unitairement (cf. cast_discovery_rules_test) ;
+///   2) reposer la garde « fenêtre de découverte » qui avait disparu lors
+///      d'un refactor : le timer de [CastManager.startDiscovery] repasse l'état
+///      à idle/casting à l'échéance MAIS n'annule pas les flux SSDP/mDNS — une
+///      réponse tardive pouvait donc encore ajouter un appareil APRÈS la fin du
+///      scan. On rétablit le contrat documenté : hors fenêtre → jamais ajouté.
+///
+/// Retourne `true` si [candidate] doit être ajouté à [existing] :
+///   - la fenêtre de découverte est ouverte ([windowOpen]) ;
+///   - ET l'appareil n'est pas déjà listé — dédup par id OU par host:port
+///     (SSDP et mDNS renvoient souvent la même TV : Google TV = SSDP +
+///     Chromecast en même temps).
+bool castShouldAddDevice(
+  List<CastDevice> existing,
+  CastDevice candidate, {
+  required bool windowOpen,
+}) {
+  if (!windowOpen) return false;
+  final bool already = existing.any((CastDevice e) =>
+      e.id == candidate.id ||
+      (e.host == candidate.host && e.port == candidate.port));
+  return !already;
+}
+
 class CastManager extends ChangeNotifier {
   CastManager._() {
     _subscribeToNativeEvents();
@@ -334,14 +361,14 @@ class CastManager extends ChangeNotifier {
     _discoveryTimer?.cancel();
 
     void onDevice(CastDevice d) {
-      // Double dédup : par id ET par host+port pour ne jamais lister
-      // la même TV plusieurs fois même si SSDP et mDNS la renvoient
-      // tous les deux (cas typique des Google TV qui font SSDP +
-      // Chromecast en même temps).
-      final bool already = _discovered.any((CastDevice e) =>
-          e.id == d.id ||
-          (e.host == d.host && e.port == d.port));
-      if (already) return;
+      // Règle d'ajout centralisée (dédup id/host:port + fenêtre de découverte).
+      // windowOpen : on n'est dans la fenêtre que tant que l'état vaut
+      // `discovering` (le timer le fait retomber à l'échéance → arrivées
+      // tardives ignorées).
+      if (!castShouldAddDevice(_discovered, d,
+          windowOpen: _state == CastState.discovering)) {
+        return;
+      }
       _discovered.add(d);
       notifyListeners();
     }
