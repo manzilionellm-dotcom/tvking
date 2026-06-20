@@ -48,7 +48,7 @@ import 'local_cast_server.dart';
 /// ⚠️ DOIT etre flippe EN MEME TEMPS que `USE_CUSTOM_RECEIVER` dans
 ///    android_overlay/google_cast/CastOptionsProviderImpl.kt. Les deux
 ///    decrivent le MEME basculement. Les desynchroniser = ecran noir.
-const bool kCastUseCustomReceiver = false;
+const bool kCastUseCustomReceiver = true;
 
 /// Base du service de remux VPS (cf. server/cast-remux) qui transforme le
 /// MPEG-TS live en HLS-fMP4 — le SEUL format que le recepteur Cast par
@@ -62,6 +62,19 @@ String _castRemuxUrl(String upstreamUrl) {
   final String b64 =
       base64Url.encode(utf8.encode(upstreamUrl)).replaceAll('=', '');
   return '$_kCastRemuxBase/live/$b64/master.m3u8';
+}
+
+/// Force une URL en HTTPS (le receiver custom est servi en HTTPS et ne peut
+/// pas charger du HTTP — "mixed content"). On ne touche qu'au schema ; si
+/// l'URL est deja https/relative, on la rend telle quelle.
+///
+/// Hypothese (a valider chez le fournisseur) : l'endpoint .ts repond aussi
+/// en HTTPS. La plupart des panels Xtream derriere Cloudflare le font.
+String _upgradeToHttps(String url) {
+  if (url.startsWith('http://')) {
+    return 'https://${url.substring('http://'.length)}';
+  }
+  return url;
 }
 
 class GoogleCastTransport implements CastTransport {
@@ -150,9 +163,29 @@ class GoogleCastTransport implements CastTransport {
     // re-encodage) qui sert le flux en HLS-fMP4 https. Le Chromecast tire
     // tout du VPS -> le telephone peut s'eteindre.
     if (!isHlsOrDash(streamUrl) && _looksLikeRawMpegTs(streamUrl)) {
-      urlToCast = _castRemuxUrl(streamUrl);
-      mime = 'application/x-mpegURL';
-      castPath = 'remux_hls';
+      if (kCastUseCustomReceiver) {
+        // CHEMIN ON-DEVICE (flotte de clients) : le receiver custom
+        // embarque mpegts.js → il decode le MPEG-TS LUI-MEME. On envoie
+        // donc l'URL DU FOURNISSEUR directement, forcee en HTTPS (un
+        // receiver servi en HTTPS ne peut pas fetch du HTTP = "mixed
+        // content").
+        //
+        // POURQUOI CA SCALE : c'est le CHROMECAST (sur le WiFi maison du
+        // client = IP RESIDENTIELLE autorisee) qui tire le flux. Aucune
+        // video ne passe par un serveur central → pas de blocage d'IP
+        // datacenter (le HTTP 456), zero cout serveur, OK pour tous les
+        // clients simultanement.
+        urlToCast = _upgradeToHttps(streamUrl);
+        mime = 'video/mp2t';
+        castPath = 'custom_ts_direct';
+      } else {
+        // CHEMIN VPS (legacy) : remux TS->HLS-fMP4 par un serveur. Bute
+        // sur le blocage d'IP datacenter des fournisseurs → inadapte a
+        // une flotte de clients. Conserve pour reference / repli.
+        urlToCast = _castRemuxUrl(streamUrl);
+        mime = 'application/x-mpegURL';
+        castPath = 'remux_hls';
+      }
     }
 
     // DIAGNOSTIC (brief §4.3) — tracer EXACTEMENT l'URL et le MIME

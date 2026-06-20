@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>7 MOTION — Cast Receiver</title>
+  <!--
+    =====================================================================
+     Custom Cast Receiver (7 MOTION) — lecture MPEG-TS via mpegts.js
+    =====================================================================
+     POURQUOI : le recepteur Cast par defaut (Shaka) ne sait PAS lire le
+     MPEG-TS brut des flux IPTV (.ts / Xtream /live/). mpegts.js le demuxe
+     cote recepteur (dans le Chromecast) et le pousse au lecteur via MSE.
+
+     COMMENT CA RESOUT LE BLOCAGE FOURNISSEUR : c'est le Chromecast
+     lui-meme (sur le WiFi maison du client = IP residentielle autorisee)
+     qui telecharge le flux directement chez le fournisseur. Aucune video
+     ne transite par un serveur central → pas de blocage d'IP datacenter,
+     et ca scale a tous les clients sans cout serveur.
+
+     PREREQUIS COTE FOURNISSEUR : l'URL .ts doit repondre en HTTPS (cette
+     page est servie en HTTPS → elle ne peut pas charger du HTTP =
+     "mixed content"). Le sender force deja http->https (_upgradeToHttps).
+
+     A VALIDER SUR UN VRAI CHROMECAST : l'integration mpegts.js <-> CAF
+     est le point a roder (codecs, latence live). Logs visibles via le
+     Cast Command & Control (CaC) tool : https://casttool.appspot.com/cactool/
+    =====================================================================
+  -->
+  <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+    #v { position: absolute; inset: 0; width: 100%; height: 100%; background: #000; }
+  </style>
+</head>
+<body>
+  <video id="v" autoplay playsinline></video>
+
+  <script>
+  (function () {
+    const context = cast.framework.CastReceiverContext.getInstance();
+    const playerManager = context.getPlayerManager();
+    const video = document.getElementById('v');
+
+    let tsPlayer = null;
+    function destroyTs() {
+      if (tsPlayer) { try { tsPlayer.destroy(); } catch (e) {} tsPlayer = null; }
+    }
+
+    // Heuristique : flux MPEG-TS brut (pas un HLS/DASH/MP4 deja lisible).
+    function isRawTs(url, contentType) {
+      const u = (url || '').toLowerCase();
+      const c = (contentType || '').toLowerCase();
+      if (u.includes('.m3u8') || u.includes('.mpd') || u.includes('.mp4')) return false;
+      if (c.includes('mpegurl') || c.includes('dash+xml') || c.includes('mp4')) return false;
+      return u.includes('.ts') || u.includes('/live/') ||
+             c.includes('mp2t') || c.includes('mpegts');
+    }
+
+    // Intercepte le LOAD : si c'est du MPEG-TS brut, on prend la main avec
+    // mpegts.js et on remplace contentUrl par la source MSE qu'il cree, pour
+    // que CAF suive l'etat de lecture du MEME element video.
+    playerManager.setMessageInterceptor(
+      cast.framework.messages.MessageType.LOAD,
+      (request) => {
+        try {
+          const media = request.media || {};
+          const url = media.contentUrl || media.contentId;
+          if (window.mpegts && mpegts.isSupported() &&
+              isRawTs(url, media.contentType)) {
+            destroyTs();
+            tsPlayer = mpegts.createPlayer(
+              { type: 'mpegts', isLive: true, url: url, cors: true },
+              { liveBufferLatencyChasing: true, lazyLoad: false },
+            );
+            tsPlayer.attachMediaElement(video);
+            tsPlayer.load();
+            // mpegts.js a pose une MediaSource sur video.src (blob:) — on la
+            // donne a CAF pour qu'il pilote/affiche la lecture de cet element.
+            media.contentUrl = video.src;
+            media.contentType = 'video/mp4';
+            request.media = media;
+          } else {
+            destroyTs();
+          }
+        } catch (e) {
+          // En cas de pepin on laisse CAF tenter sa lecture standard.
+          destroyTs();
+        }
+        return request;
+      },
+    );
+
+    // Nettoyage quand la session/lecture s'arrete.
+    playerManager.addEventListener(
+      cast.framework.events.EventType.MEDIA_FINISHED, destroyTs);
+    context.addEventListener(
+      cast.framework.system.EventType.SHUTDOWN, destroyTs);
+
+    context.start();
+  })();
+  </script>
+</body>
+</html>

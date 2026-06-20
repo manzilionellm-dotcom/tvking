@@ -7,5 +7,20 @@
 
 {$CAST_DOMAIN} {
 	encode zstd gzip
-	reverse_proxy remux:8080
+
+	# Receiver Cast custom (mpegts.js) servi en STATIQUE et en HTTPS.
+	# C'est cette page que le Chromecast charge ; la VIDEO, elle, ne passe
+	# PAS par ici (le Chromecast tire le flux direct chez le fournisseur).
+	# URL a enregistrer dans la Cast Developer Console :
+	#   https://cast.7themotion.com/receiver/
+	handle_path /receiver/* {
+		root * /srv/receiver
+		file_server
+	}
+
+	# Reste : ancien service de remux (legacy, repli). Inutile pour le
+	# chemin on-device, mais conserve si on veut le receiver par defaut.
+	handle {
+		reverse_proxy remux:8080
+	}
 }

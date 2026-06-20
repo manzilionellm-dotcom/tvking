@@ -51,16 +51,24 @@ class CastOptionsProviderImpl : OptionsProvider {
         //     CC1AD845 → le sender wrappe le .ts en HLS (telephone requis).
         //   true : custom receiver 46F815A5 PUBLISHED (mpegts.js) → le
         //     sender envoie le .ts direct (TV autonome, telephone off OK).
-        // false : recepteur PAR DEFAUT public CC1AD845. Depuis le wrap HLS
-        // servi par le Worker (route /cs/, HTTPS), le recepteur par defaut
-        // lit le flux nativement → AUCUNE publication de receiver custom
-        // requise. (Le custom 46F815A5 ne sert qu'au branding, optionnel.)
-        private const val USE_CUSTOM_RECEIVER = false
+        // true : on cible le CUSTOM RECEIVER (mpegts.js) → c'est le
+        //   Chromecast qui decode le MPEG-TS et tire le flux du fournisseur
+        //   sur l'IP RESIDENTIELLE du client. Seule approche qui marche
+        //   pour une flotte de clients (pas de serveur central → pas de
+        //   blocage d'IP datacenter). EXIGE que le receiver soit PUBLISHED
+        //   dans la Cast Developer Console (sinon il ne charge que sur les
+        //   appareils de test du compte dev → "marche pas chez les clients").
+        private const val USE_CUSTOM_RECEIVER = true
 
         // Default Media Receiver public de Google (toujours actif).
         private const val DEFAULT_RECEIVER_ID = "CC1AD845"
-        // Custom Styled Media Receiver brande 7 MOTION (mpegts.js).
-        // A publier sur la Cast Developer Console avant de l'activer.
+        // CUSTOM RECEIVER 7 MOTION (mpegts.js) — DOIT etre un "Custom
+        // Receiver" (pas un "Styled Media Receiver", qui n'autorise que du
+        // CSS et ne peut donc PAS embarquer mpegts.js) pointant vers la page
+        // hebergee https://cast.7themotion.com/receiver/ , puis PUBLISHED.
+        // Remplace cet App ID par celui que la Console te donne apres
+        // enregistrement/publication (tu peux reutiliser 46F815A5 s'il est
+        // reconfigure en Custom Receiver vers cette URL).
         private const val CUSTOM_RECEIVER_ID = "46F815A5"
     }
 
