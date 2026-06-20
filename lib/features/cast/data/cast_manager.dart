@@ -13,6 +13,7 @@
 // =========================================================
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show Socket;
 
 import 'package:flutter/foundation.dart';
@@ -836,10 +837,12 @@ class CastManager extends ChangeNotifier {
     transport.profile = profile;
 
     // Échelle de stratégies en gradient (étendue à 5 niveaux) :
-    //   0 = direct + métadonnée DLNA complète (cas idéal, latence min)
-    //   1 = direct + métadonnée minimale (juste MIME, pas de PN)
-    //   2 = direct + AUCUNE métadonnée (URL nue → fallback ultime direct)
-    //   3 = relay  + métadonnée DLNA complète (résout 95% des 500)
+    //   0 = WORKER + métadonnée DLNA complète (source https toujours
+    //       allumée, redirect résolu, UA VLC, en-têtes DLNA — la plus
+    //       fiable, et le téléphone peut s'éteindre)
+    //   1 = WORKER + métadonnée minimale (si LG rejette le PN)
+    //   2 = direct + AUCUNE métadonnée (URL upstream nue → fallback direct)
+    //   3 = relay  + métadonnée DLNA complète (relais téléphone, legacy)
     //   4 = relay  + métadonnée minimale (sans PN, dernier recours)
     //
     // ATTENTION : on essaie TOUJOURS les 3 stratégies "direct" d'abord,
@@ -895,7 +898,9 @@ class CastManager extends ChangeNotifier {
       final Stopwatch attemptSw = Stopwatch()..start();
       final String strategyName = _strategyName(s);
       // s>=5 = variantes de MIME, toujours en DIRECT + métadonnée complète.
-      final String urlKind = (s < 3 || s >= 5) ? 'direct' : 'relay';
+      final String urlKind = (s == 0 || s == 1)
+          ? 'worker'
+          : ((s < 3 || s >= 5) ? 'direct' : 'relay');
       final String metaName = (s == 1 || s == 4) ? 'minimal' : (s == 2 ? 'none' : 'full');
 
       try {
@@ -906,11 +911,18 @@ class CastManager extends ChangeNotifier {
         final String urlToCast;
         switch (s) {
           case 0:
-            urlToCast = probe.finalUrl;
+            // Worker Cloudflare (toujours allume) re-sert le flux en
+            // MPEG-TS https : redirect upstream deja resolu + UA VLC +
+            // en-tetes DLNA. Sur la LG QNED816QA, le SetAVTransportURI en
+            // direct vers l'upstream hang 15s (la TV sonde l'URL en
+            // synchrone, l'upstream filtre l'UA/est lent) ET le relais
+            // telephone fait "connection abort". Le Worker corrige les
+            // deux : la TV recoit une source rapide et fiable.
+            urlToCast = _workerTsUrl(probe.finalUrl);
             transport.metadataMode = MetadataMode.full;
             break;
           case 1:
-            urlToCast = probe.finalUrl;
+            urlToCast = _workerTsUrl(probe.finalUrl);
             transport.metadataMode = MetadataMode.minimal;
             break;
           case 2:
@@ -1009,9 +1021,9 @@ class CastManager extends ChangeNotifier {
   String _strategyName(int strategyIndex) {
     switch (strategyIndex) {
       case 0:
-        return 'direct+full';
+        return 'worker+full';
       case 1:
-        return 'direct+minimal';
+        return 'worker+minimal';
       case 2:
         return 'direct+nometa';
       case 3:
@@ -1021,6 +1033,16 @@ class CastManager extends ChangeNotifier {
       default:
         return 'direct+altmime'; // variantes de MIME (s >= 5)
     }
+  }
+
+  /// URL MPEG-TS https servie par le Worker Cloudflare (route /cs/) qui
+  /// re-sert le flux IPTV : toujours allume (le telephone peut s'eteindre),
+  /// redirect upstream resolu, UA VLC, en-tetes DLNA. L'upstream est encode
+  /// en base64url dans le chemin → Worker stateless. Cf. worker.js.
+  String _workerTsUrl(String upstreamUrl) {
+    final String b64 =
+        base64Url.encode(utf8.encode(upstreamUrl)).replaceAll('=', '');
+    return 'https://app.7themotion.com/cs/$b64.ts';
   }
 
   Future<String> _ensureRelayUrl({

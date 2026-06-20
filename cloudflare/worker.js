@@ -3190,6 +3190,13 @@ export default {
         h.set('Content-Type', 'video/mp2t');
         h.set('Cache-Control', 'no-store, no-cache');
         h.set('Access-Control-Allow-Origin', '*');
+        // En-tetes DLNA pour les renderers UPnP (LG webOS, Samsung...) qui
+        // sondent l'URL avant de jouer : flux LIVE en streaming, pas de seek.
+        h.set('transferMode.dlna.org', 'Streaming');
+        h.set(
+          'contentFeatures.dlna.org',
+          'DLNA.ORG_OP=00;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000',
+        );
         return new Response(up.body, { status: up.status, headers: h });
       }
 
