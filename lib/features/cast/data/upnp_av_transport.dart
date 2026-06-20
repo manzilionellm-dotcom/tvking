@@ -150,6 +150,14 @@ class UpnpAvTransport implements CastTransport {
       // ignore — best effort
     }
 
+    // (1b) Attendre que le renderer soit VRAIMENT libéré (STOPPED) avant de
+    //      réenvoyer une URI. Sur webOS / LG, un SetAVTransportURI envoyé
+    //      pendant que la TV est encore PLAYING/TRANSITIONING FIGE l'appel
+    //      → le 2e cast (zapping) timeout à 15s (constaté sur LG QNED816QA).
+    //      Borné + poll court : coût ~nul quand la TV est déjà idle (retour
+    //      immédiat dès que l'état est STOPPED/NO_MEDIA_PRESENT/inconnu).
+    await _waitUntilStopped(maxWait: const Duration(seconds: 3));
+
     // (2) Construit le bloc de métadonnées DIDL-Lite selon le mode courant.
     final String metadata = _buildMetadataForCurrentMode(streamUrl, title);
 
@@ -272,8 +280,32 @@ class UpnpAvTransport implements CastTransport {
   }) async {
     final DateTime deadline = DateTime.now().add(maxWait);
     while (DateTime.now().isBefore(deadline)) {
-      final String? state = await _getTransportState();
+      final String? state = await _getTransportState()
+          .timeout(const Duration(seconds: 2), onTimeout: () => null);
       if (state == null || state != 'TRANSITIONING') return;
+      await Future<void>.delayed(pollEvery);
+    }
+  }
+
+  /// Poll GetTransportInfo jusqu'à ce que le renderer soit VRAIMENT libéré
+  /// (STOPPED / NO_MEDIA_PRESENT / état inconnu) après un Stop. Évite de
+  /// réenvoyer SetAVTransportURI pendant que la TV est encore PLAYING/
+  /// TRANSITIONING — ce qui fige l'appel sur webOS/LG (zapping cassé).
+  /// Chaque sonde est bornée à 2s pour ne jamais bloquer si la TV ne
+  /// répond pas à GetTransportInfo.
+  Future<void> _waitUntilStopped({
+    required Duration maxWait,
+    Duration pollEvery = const Duration(milliseconds: 200),
+  }) async {
+    final DateTime deadline = DateTime.now().add(maxWait);
+    while (DateTime.now().isBefore(deadline)) {
+      final String? state = await _getTransportState()
+          .timeout(const Duration(seconds: 2), onTimeout: () => null);
+      if (state == null ||
+          state == 'STOPPED' ||
+          state == 'NO_MEDIA_PRESENT') {
+        return;
+      }
       await Future<void>.delayed(pollEvery);
     }
   }
