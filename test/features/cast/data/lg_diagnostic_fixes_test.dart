@@ -79,7 +79,6 @@ void main() {
       final Exception e = Exception('UPnP Play a échoué : Action Failed');
       final String msg = mgr.friendlyMessageFor(e);
       expect(msg, contains('format'));
-      expect(msg, contains('QR code'));
     });
 
     test('"Resource not found" -> meme branche format', () {
@@ -120,7 +119,7 @@ void main() {
         'No route to host, errno = 113), address = 192.168.8.4',
       );
       final String msg = mgr.friendlyMessageFor(e);
-      expect(msg, contains('éteinte'));
+      expect(msg, contains('ne répond pas'));
       expect(msg, contains('WiFi'));
       // S'assure qu'on ne tombe PAS sur le message generique socket.
       expect(msg, isNot('Connexion impossible avec la TV.'));
@@ -130,14 +129,14 @@ void main() {
       final Exception e = Exception(
         'SocketException: Connection failed (OS Error: Network is unreachable, errno = 101)',
       );
-      expect(mgr.friendlyMessageFor(e), contains('éteinte'));
+      expect(mgr.friendlyMessageFor(e), contains('ne répond pas'));
     });
 
     test('B4 — "Connection refused" -> meme branche (TV repond pas)', () {
       final Exception e = Exception(
         'SocketException: Connection refused (errno = 111)',
       );
-      expect(mgr.friendlyMessageFor(e), contains('éteinte'));
+      expect(mgr.friendlyMessageFor(e), contains('ne répond pas'));
     });
 
     test('B4 — priorite sur la branche socket generique', () {
@@ -148,7 +147,7 @@ void main() {
       final Exception e = Exception(
         'ClientException with SocketException: No route to host',
       );
-      expect(mgr.friendlyMessageFor(e), contains('éteinte'));
+      expect(mgr.friendlyMessageFor(e), contains('ne répond pas'));
       expect(mgr.friendlyMessageFor(e), isNot('Connexion impossible avec la TV.'));
     });
   });

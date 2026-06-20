@@ -39,9 +39,12 @@ void main() {
     });
   });
 
-  test('kMaxRecordingDuration reste a 6h (limite stockage planifiee)', () {
-    // Doc : un changement de cette duree impacte la com utilisateur
-    // ("limite de 6 h atteinte") et les estimations storage.
-    expect(kMaxRecordingDuration, const Duration(hours: 6));
+  test('kMaxRecordingDuration = 30 jours (plafond effectif = stockage)', () {
+    // La durée a été relevée à 30 jours : en pratique le stockage du
+    // téléphone se remplit bien avant, donc aucune limite fonctionnelle
+    // n'est ressentie (cf. la doc de la constante dans
+    // http_recording_downloader.dart). Ce test verrouille la valeur
+    // courante du contrat ; un changement impacte la com utilisateur.
+    expect(kMaxRecordingDuration, const Duration(days: 30));
   });
 }

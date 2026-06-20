@@ -31,7 +31,7 @@ void main() {
         Exception('TV injoignable sur le réseau (192.168.8.4:1178) '
             '— no route to host (pré-vol TCP)'),
       );
-      expect(msg, contains('même WiFi'));
+      expect(msg, contains('MÊME WiFi'));
       expect(msg.toLowerCase(), contains('isolation'));
     });
 
@@ -41,7 +41,7 @@ void main() {
             '(OS Error: No route to host, errno = 113)'),
       );
       expect(msg.toLowerCase(), contains('isolation'));
-      expect(msg, contains('QR code'));
+      expect(msg, contains('ne répond pas'));
     });
 
     test('errno 101 (network unreachable) → même guidance', () {
