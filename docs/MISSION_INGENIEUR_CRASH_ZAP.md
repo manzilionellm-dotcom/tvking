@@ -135,4 +135,51 @@ Pistes probables à **valider** (ne pas implémenter à l'aveugle) :
 
 ---
 
+## 8. État d'avancement
+
+### 2026-06-20 — Étape 1 : câblage de la capture des crashs NATIFS (NDK)
+
+**Constat (la vraie raison du « on corrige à l'aveugle ») :** la CI TV
+(`build-tv.yml`) n'appliquait QUE le plugin Gradle `google-services`. Le plugin
+`com.google.firebase.crashlytics` n'était PAS appliqué et le module
+`firebase-crashlytics-ndk` était absent. Conséquence : même AVEC le secret
+`GOOGLE_SERVICES_JSON`, Crashlytics n'aurait remonté que les erreurs **Dart/JVM**
+— **jamais** le crash **natif** (SIGSEGV ExoPlayer/MediaCodec/SurfaceView) qui
+est le bug. La capture native était donc le vrai verrou, pas seulement le secret.
+
+**Fait (code) :** `build-tv.yml`, étape « Configure Firebase Crashlytics »
+étendue (entièrement protégée par la présence du secret → aucun impact sur les
+builds actuels) :
+- applique le plugin `com.google.firebase.crashlytics` (v3.0.3) en plus de
+  `google-services` ;
+- ajoute la dépendance `firebase-crashlytics-ndk` via la BoM Firebase 33.7.0
+  (capture des signaux natifs) ;
+- active `nativeSymbolUploadEnabled` sur le build release (stacks natives
+  lisibles dans la console Crashlytics).
+- Patch idempotent (re-jouable sans doublon) et vérifié sur un
+  `app/build.gradle.kts` représentatif.
+
+**À FAIRE par le propriétaire du projet (actions hors-code, non automatisables) :**
+1. Créer le projet **Firebase** + une app Android `com.manzilionellm.tvking`,
+   télécharger le `google-services.json`.
+2. Poser son **contenu** dans le secret repo `GOOGLE_SERVICES_JSON`
+   (Settings → Secrets and variables → Actions → New repository secret).
+3. Dans la console Firebase, activer **Crashlytics** (et **NDK reporting**).
+4. Relancer le workflow **Build DeFew TV** ; installer l'APK ; vérifier qu'un
+   crash natif (zapping) remonte symbolisé + voir le taux **crash-free**.
+
+> Tant que les builds `build-android.yml` / `build-prive.yml` partagent le même
+> secret, le même ajout (3 lignes de patch) leur donnerait la capture native ;
+> hors périmètre de cette mission TV, à répliquer si on veut la mesure
+> crash-free sur tout le produit.
+
+### Suite (bloquée tant que la stack n'est pas remontée)
+
+- **Étape 2** (reproduire + capturer la stack) nécessite une **box TV physique**
+  + le projet Firebase ci-dessus → ne peut pas être faite côté CI/agent seul.
+- **Étape 3** (corriger la racine) reste **volontairement non commencée** :
+  conformément au brief, on ne corrige PAS à l'aveugle avant d'avoir la stack.
+
+---
+
 *Document maintenu dans le repo : `docs/MISSION_INGENIEUR_CRASH_ZAP.md`.*

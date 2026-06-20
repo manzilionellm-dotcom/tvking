@@ -225,10 +225,25 @@ jobs:
           cp ci/defew-debug.keystore ~/.android/debug.keystore
           echo "Keystore fixe en place (~/.android/debug.keystore)."
 
-      # ----- Firebase Crashlytics (OPTIONNEL, activé si secret présent) -----
-      # Identique au build mobile : si GOOGLE_SERVICES_JSON est posé, on écrit
-      # le fichier et on applique le plugin Gradle google-services. Sans secret,
-      # no-op → Crashlytics désactivé (fail-open), build vert.
+      # ----- Firebase Crashlytics + NDK (OPTIONNEL, activé si secret présent) --
+      # Si GOOGLE_SERVICES_JSON est posé, on écrit le fichier et on applique
+      # DEUX plugins Gradle :
+      #   1) google-services        → branche le projet Firebase (auto-init).
+      #   2) firebase.crashlytics    → c'est LUI qui active la capture des crashs
+      #      NATIFS (NDK) et l'upload des symboles (déobfuscation des stacks).
+      # + la dépendance `firebase-crashlytics-ndk` qui pose le handler de
+      #   signaux natifs (SIGSEGV/SIGABRT d'ExoPlayer/MediaCodec/SurfaceView).
+      #
+      # POURQUOI C'EST INDISPENSABLE ICI : les 4 filets Dart de guarded_main.dart
+      # ne voient JAMAIS un crash natif (le process est tué par le noyau, aucune
+      # exception Dart n'est levée). Sans le plugin Crashlytics + le module NDK,
+      # même avec le secret on ne remonterait QUE les erreurs Dart/JVM — donc
+      # toujours AUCUNE stack du vrai crash de zapping. Avec ce câblage, le crash
+      # natif arrive symbolisé dans la console Crashlytics → on corrige la racine
+      # au lieu de deviner.
+      #
+      # Sans secret : no-op total (exit 0) → Crashlytics désactivé (fail-open),
+      # build vert. Tout ce bloc est donc SANS risque pour les builds actuels.
       - name: Configure Firebase Crashlytics (si secret présent)
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
@@ -242,22 +257,76 @@ jobs:
           echo "✓ google-services.json écrit."
           python3 << 'PYEOF'
           import re
+
+          # ---- 1) settings.gradle.kts : déclarer les plugins (apply false) ----
           settings = "android/settings.gradle.kts"
           s = open(settings).read()
           if "com.google.gms.google-services" not in s:
               s = re.sub(r'(plugins\s*\{)',
                          r'\1\n    id("com.google.gms.google-services") version "4.4.2" apply false',
                          s, count=1)
-              open(settings, "w").write(s)
               print("✓ google-services déclaré (settings.gradle.kts)")
+          if "com.google.firebase.crashlytics" not in s:
+              s = re.sub(r'(plugins\s*\{)',
+                         r'\1\n    id("com.google.firebase.crashlytics") version "3.0.3" apply false',
+                         s, count=1)
+              print("✓ crashlytics déclaré (settings.gradle.kts)")
+          open(settings, "w").write(s)
+
+          # ---- 2) app/build.gradle.kts : appliquer les plugins ----
           app = "android/app/build.gradle.kts"
           a = open(app).read()
           if "com.google.gms.google-services" not in a:
               a = re.sub(r'(plugins\s*\{)',
                          r'\1\n    id("com.google.gms.google-services")',
                          a, count=1)
-              open(app, "w").write(a)
               print("✓ google-services appliqué (app/build.gradle.kts)")
+          if "com.google.firebase.crashlytics" not in a:
+              # Crashlytics APRÈS google-services (ordre recommandé Firebase).
+              a = re.sub(r'(id\("com\.google\.gms\.google-services"\))',
+                         r'\1\n    id("com.google.firebase.crashlytics")',
+                         a, count=1)
+              print("✓ crashlytics appliqué (app/build.gradle.kts)")
+
+          # ---- 3) Dépendances : BoM Firebase + module NDK (capture native) ----
+          # La BoM aligne la version du module NDK sur le reste de Firebase
+          # → pas de version à deviner, pas de conflit avec FlutterFire.
+          if "firebase-crashlytics-ndk" not in a:
+              a = a.rstrip() + (
+                  '\n\n'
+                  '// Capture des crashs NATIFS (NDK) : module ajouté par la mission\n'
+                  '// stabilité-zap. Plusieurs blocs dependencies{} sont permis en\n'
+                  '// Gradle Kotlin DSL ; ils sont cumulatifs.\n'
+                  'dependencies {\n'
+                  '    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))\n'
+                  '    implementation("com.google.firebase:firebase-crashlytics-ndk")\n'
+                  '}\n'
+              )
+              print("✓ firebase-crashlytics-ndk ajouté (app/build.gradle.kts)")
+
+          # ---- 4) Release : uploader les symboles natifs (stacks lisibles) ----
+          # nativeSymbolUploadEnabled = upload des symboles de NOS .so (moteur
+          # Flutter + plugins) → frames natives lisibles dans Crashlytics. Forme
+          # pleinement qualifiée (pas d'import à insérer en tête de fichier).
+          if "nativeSymbolUploadEnabled" not in a:
+              a = re.sub(
+                  r'(buildTypes\s*\{\s*release\s*\{)',
+                  r'\1\n            extensions.configure('
+                  r'com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension::class.java) {\n'
+                  r'                it.nativeSymbolUploadEnabled = true\n'
+                  r'            }',
+                  a, count=1)
+              if "nativeSymbolUploadEnabled" in a:
+                  print("✓ upload symboles natifs activé (release)")
+              else:
+                  # Le template a pu écrire `getByName(\"release\")` : on garde la
+                  # capture native (déjà OK via le module NDK), seul l'upload des
+                  # symboles est sauté — non bloquant.
+                  print("⊙ bloc release non reconnu : capture native OK, "
+                        "upload symboles à brancher manuellement si besoin")
+
+          open(app, "w").write(a)
+          print("Crashlytics NDK câblé.")
           PYEOF
 
       # ----- R8 / ProGuard : rétrécissement code + ressources -----
