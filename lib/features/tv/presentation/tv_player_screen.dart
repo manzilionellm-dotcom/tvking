@@ -102,6 +102,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   Timer? _numTimer;
   Timer? _watchdog;
   Timer? _toastTimer;
+  // DEBOUNCE DU ZAP (anti-crash + fluidité). Quand on enchaîne les chaînes
+  // vite, on NE doit PAS ouvrir le flux à chaque pression : chaque ouverture
+  // lance une connexion réseau + un `prepare` ExoPlayer côté natif, et la
+  // rafale d'ouvertures empilées pouvait faire se FERMER l'app d'un coup. On
+  // temporise donc : le numéro change instantanément, mais on n'ouvre le flux
+  // qu'une fois le zapping STABILISÉ (cf. _zap).
+  Timer? _zapSettle;
   String _numBuffer = ''; // saisie d'un numéro de chaîne (touches 0-9)
 
   // ----- Enregistrement -----
@@ -200,6 +207,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _watchdog?.cancel();
     _loadTimer?.cancel();
     _toastTimer?.cancel();
+    _zapSettle?.cancel();
     _favSub?.cancel();
     // Si on quitte le lecteur en plein enregistrement : on finalise proprement
     // (arrêt du relais + clôture en base), sans toucher au controller détruit.
@@ -266,6 +274,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _open({bool reuse = false}) {
+    // Un zap en attente (debounce) est désormais honoré ICI : on annule le
+    // timer pour éviter une 2e ouverture après une saisie de numéro / Réessayer.
+    _zapSettle?.cancel();
     _lastProgress = DateTime.now();
     _lastPos = Duration.zero;
     if (mounted) {
@@ -294,9 +305,21 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // On ne peut enregistrer qu'1 chaîne à la fois (1 connexion) : changer de
     // chaîne clôt et SAUVEGARDE l'enregistrement en cours.
     if (_isRecording) _finalizeRecording(resumeDirect: false);
-    setState(() => _index = (_index + delta) % n);
-    if (_index < 0) _index += n;
-    _open();
+    // 1) Mise à jour INSTANTANÉE de la chaîne ciblée (numéro + infos barre) :
+    //    le zapping reste réactif à l'œil, même si on n'ouvre pas encore le flux.
+    setState(() {
+      _index = (_index + delta) % n;
+      if (_index < 0) _index += n;
+    });
+    _showOverlayTemporarily();
+    // 2) DEBOUNCE : on n'ouvre RÉELLEMENT le flux qu'une fois le zapping
+    //    stabilisé (~350 ms sans nouvelle pression). Enchaîner 10 chaînes vite
+    //    ne déclenche donc qu'UNE ouverture (celle où on s'arrête), au lieu de
+    //    10 ouvertures réseau + `prepare` empilés qui pouvaient fermer l'app.
+    _zapSettle?.cancel();
+    _zapSettle = Timer(const Duration(milliseconds: 350), () {
+      if (mounted) _open();
+    });
   }
 
   void _recover() {
