@@ -26,6 +26,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../channels/domain/channel.dart';
+import 'playlist_import_limits.dart';
 
 /// Résultat du parsing : la liste des chaînes + warnings non
 /// bloquants (lignes ignorées, attributs étranges, etc.).
@@ -93,6 +94,18 @@ abstract final class M3uParser {
       final String line = raw.trim();
 
       if (line.isEmpty) continue;
+
+      // PLAFOND MÉMOIRE (anti-OOM box faibles) : au-delà de
+      // kMaxChannelsPerImport on arrête de matérialiser des chaînes — le reste
+      // de la playlist est ignoré (la source reste utilisable, juste tronquée
+      // à une taille tenable). Aligné sur le plafond de LECTURE du repository.
+      if (channels.length >= kMaxChannelsPerImport) {
+        warnings.add(
+          'Limite atteinte ($kMaxChannelsPerImport chaînes) — le reste de la '
+          'playlist est ignoré (garde-fou mémoire des appareils faibles).',
+        );
+        break;
+      }
 
       // ----- Directives connues -----
 

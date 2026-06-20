@@ -24,11 +24,13 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../player/data/player_settings.dart';
+import 'playlist_import_limits.dart';
 
 abstract final class M3uFetcher {
   /// UA « navigateur » historique, gardé comme DERNIER recours dans la
@@ -90,24 +92,23 @@ abstract final class M3uFetcher {
       for (int i = 0; i < userAgents.length; i++) {
         final String ua = userAgents[i];
         try {
-          final http.Response resp = await client.get(
-            Uri.parse(url),
-            headers: <String, String>{
+          // Requête STREAMÉE (pas client.get) pour lire le corps par morceaux
+          // et COUPER au plafond mémoire — cf. _readCapped. En-têtes « complets »
+          // façon navigateur : beaucoup de pare-feux anti-bot de fronts CDN
+          // bloquent les requêtes « trop nues » (sans Accept-Language ni
+          // Connection) avec un code maison (ex. « 884 »), MÊME avec un UA de
+          // navigateur. NB : on ne force PAS d'Accept-Encoding (dart:io ajoute
+          // « gzip » tout seul et décompresse automatiquement).
+          final http.Request req = http.Request('GET', Uri.parse(url))
+            ..followRedirects = true
+            ..headers.addAll(<String, String>{
               'User-Agent': ua,
               'Accept': '*/*',
-              // En-têtes « complets » façon navigateur. Beaucoup de
-              // pare-feux anti-bot de fronts CDN bloquent les requêtes
-              // « trop nues » (sans Accept-Language ni Connection) avec
-              // un code maison (ex. « 884 »), MÊME avec un User-Agent de
-              // navigateur. En envoyant le même jeu d'en-têtes qu'un vrai
-              // navigateur, on passe ces filtres (cas confirmé : l'URL
-              // marche dans un navigateur, pas avec un client « nu »).
               'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
               'Connection': 'keep-alive',
-              // NB : on ne force PAS d'en-tête Accept-Encoding. dart:io
-              // ajoute « gzip » tout seul et décompresse automatiquement.
-            },
-          ).timeout(_timeout);
+            });
+          final http.StreamedResponse resp =
+              await client.send(req).timeout(_timeout);
 
           if (resp.statusCode != 200) {
             // Serveur qui refuse cette signature (souvent 403 / 401 /
@@ -116,7 +117,12 @@ abstract final class M3uFetcher {
             continue;
           }
 
-          final String body = _decodeBody(resp);
+          // Lecture BORNÉE : on accumule les octets mais on COUPE le flux dès
+          // kMaxM3uBytes → on ne charge JAMAIS une source géante d'un bloc en
+          // RAM (cause racine OOM box faibles). Dépassement → PlaylistImportTooLarge.
+          final List<int> bytes =
+              await _readCapped(resp.stream, kMaxM3uBytes).timeout(_timeout);
+          final String body = _decodeBytes(bytes);
           final String head = body.trimLeft();
           if (head.isEmpty) {
             lastError =
@@ -158,6 +164,10 @@ abstract final class M3uFetcher {
             );
           }
           return body;
+        } on PlaylistImportTooLarge {
+          // Source trop volumineuse : la taille ne dépend PAS de la signature
+          // → inutile de retenter d'autres UA. On remonte l'erreur claire à l'UI.
+          rethrow;
         } on TimeoutException catch (e) {
           // Hôte trop lent / injoignable : ce n'est PAS un problème de
           // signature → inutile de retenter les autres UA (on cumulerait
@@ -196,11 +206,30 @@ abstract final class M3uFetcher {
         'depuis cet appareil.$detail';
   }
 
+  /// Lit [stream] en accumulant les octets, mais COUPE à [maxBytes] : au-delà,
+  /// on lève [PlaylistImportTooLarge] (le `for await` s'arrête, l'abonnement est
+  /// annulé) → on ne matérialise JAMAIS une source géante d'un bloc. Anti-OOM.
+  static Future<List<int>> _readCapped(
+      Stream<List<int>> stream, int maxBytes) async {
+    final BytesBuilder builder = BytesBuilder(copy: false);
+    int total = 0;
+    await for (final List<int> chunk in stream) {
+      total += chunk.length;
+      if (total > maxBytes) {
+        throw PlaylistImportTooLarge(
+          'Playlist trop volumineuse (> ${maxBytes ~/ (1024 * 1024)} Mo). '
+          'Réduis la source ou filtre les catégories côté fournisseur.',
+        );
+      }
+      builder.add(chunk);
+    }
+    return builder.takeBytes();
+  }
+
   /// Décodage UTF-8 → Latin-1 fallback + BOM strip.
-  /// On travaille sur `bodyBytes` (jamais `body`) pour avoir le
+  /// On travaille sur les octets bruts (jamais `body`) pour avoir le
   /// contrôle total de l'encoding.
-  static String _decodeBody(http.Response resp) {
-    final List<int> bytes = resp.bodyBytes;
+  static String _decodeBytes(List<int> bytes) {
     if (bytes.isEmpty) return '';
 
     // Strip BOM UTF-8 (EF BB BF) si présent

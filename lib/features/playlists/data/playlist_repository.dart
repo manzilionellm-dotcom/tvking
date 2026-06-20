@@ -781,16 +781,14 @@ class PlaylistRepository {
         batch.insert('channels', _channelToMap(channels[j]));
       }
       await batch.commit(noResult: true);
-      // Anti-ANR / mémoire : on NE recharge PLUS toute la base après
-      // CHAQUE tranche (c'était du O(n²) — sur un gros bouquet ça ramait
-      // de plus en plus). On émet seulement après la 1re tranche (premier
-      // affichage rapide) et à la toute fin (cohérence garantie).
-      final bool isFirst = i == 0;
-      final bool isLast = end >= channels.length;
-      if (isFirst || isLast) {
-        await _emitCurrentState();
-      }
     }
+    // ANTI-OOM (P1-3) : on N'ÉMET PLUS d'état ICI — ni par tranche, ni à la
+    // fin. Chaque appelant ré-émet l'état UNE seule fois APRÈS l'insertion
+    // (addM3u/addXtream → setActivePlaylist ; refreshPlaylist →
+    // _emitCurrentState). Avant, `_emitCurrentState()` relisait TOUTE la base
+    // (jusqu'à 50k Channel) pendant l'import → une matérialisation complète
+    // supplémentaire EN PLUS de `parsed.channels` déjà en RAM = pic mémoire qui
+    // faisait planter les box faibles. On lit la base une seule fois, à la fin.
   }
 
   Future<void> _updatePlaylistMetrics(Playlist playlist) async {

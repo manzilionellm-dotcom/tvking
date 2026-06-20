@@ -31,6 +31,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -38,6 +39,7 @@ import 'package:http/http.dart' as http;
 import '../../channels/domain/channel.dart';
 import '../../player/data/player_settings.dart';
 import '../../vod/domain/vod_movie.dart';
+import 'playlist_import_limits.dart';
 
 /// Exception métier pour signaler une erreur Xtream lisible
 /// (login refusé, serveur HS, réponse non-JSON, etc.).
@@ -134,6 +136,10 @@ class XtreamClient {
 
     final List<Channel> channels = <Channel>[];
     for (final dynamic item in raw) {
+      // PLAFOND MÉMOIRE (anti-OOM) : on arrête de matérialiser au-delà du
+      // plafond d'import — le reste reste sur le serveur, la source est juste
+      // tronquée à une taille tenable sur box faible.
+      if (channels.length >= kMaxChannelsPerImport) break;
       if (item is! Map<String, dynamic>) continue;
 
       final String streamId = item['stream_id']?.toString() ?? '';
@@ -204,6 +210,7 @@ class XtreamClient {
 
     final List<VodMovie> movies = <VodMovie>[];
     for (final dynamic item in raw) {
+      if (movies.length >= kMaxChannelsPerImport) break; // plafond mémoire (anti-OOM)
       if (item is! Map<String, dynamic>) continue;
       final String streamId = item['stream_id']?.toString() ?? '';
       if (streamId.isEmpty) continue;
@@ -284,31 +291,43 @@ class XtreamClient {
     return list;
   }
 
-  /// GET avec rotation de signatures : renvoie la 1ʳᵉ réponse 200, en
-  /// mémorisant la signature gagnante. Lève une [XtreamException] claire
-  /// si AUCUNE signature n'obtient 200.
-  Future<http.Response> _get(Uri uri) async {
+  /// GET avec rotation de signatures, renvoyant le CORPS décodé (String) lu en
+  /// STREAMING et BORNÉ à [kMaxXtreamJsonBytes] : on ne télécharge JAMAIS un
+  /// JSON Xtream géant d'un bloc en RAM (cause racine OOM box faibles). Mémorise
+  /// la signature gagnante. Lève une [XtreamException] si aucune signature n'a
+  /// 200, ou [PlaylistImportTooLarge] si la réponse dépasse le plafond.
+  Future<String> _getBody(Uri uri) async {
     Object? lastError;
     for (final String ua in _candidateUserAgents()) {
       try {
-        final http.Response resp = await _http.get(
-          uri,
-          headers: <String, String>{
+        final http.Request req = http.Request('GET', uri)
+          ..followRedirects = true
+          ..headers.addAll(<String, String>{
             'Accept': 'application/json',
             'User-Agent': ua,
             // En-têtes « complets » façon navigateur — certains fronts
             // CDN bloquent les requêtes trop nues (cf. m3u_fetcher).
             'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
             'Connection': 'keep-alive',
-          },
-        ).timeout(_timeout);
+          });
+        final http.StreamedResponse resp =
+            await _http.send(req).timeout(_timeout);
         if (resp.statusCode == 200) {
           _workingUserAgent = ua;
-          return resp;
+          final List<int> bytes = await _readCapped(
+            resp.stream,
+            kMaxXtreamJsonBytes,
+          ).timeout(_timeout);
+          // Xtream sert du JSON (UTF-8). allowMalformed pour ne jamais planter
+          // sur un octet douteux d'un backend exotique.
+          return utf8.decode(bytes, allowMalformed: true);
         }
         lastError = XtreamException(
           'Erreur HTTP ${resp.statusCode} sur ${uri.host}',
         );
+      } on PlaylistImportTooLarge {
+        // Taille indépendante de la signature → on remonte l'erreur claire.
+        rethrow;
       } on TimeoutException catch (e) {
         // Serveur injoignable/trop lent : pas un souci d'UA → on arrête
         // pour ne pas cumuler les timeouts sur chaque signature.
@@ -322,12 +341,31 @@ class XtreamClient {
         XtreamException('Serveur Xtream injoignable (${uri.host}).');
   }
 
+  /// Lit [stream] en bornant à [maxBytes] (anti-OOM) : dépassement →
+  /// [PlaylistImportTooLarge], le flux est interrompu et l'abonnement annulé.
+  static Future<List<int>> _readCapped(
+      Stream<List<int>> stream, int maxBytes) async {
+    final BytesBuilder builder = BytesBuilder(copy: false);
+    int total = 0;
+    await for (final List<int> chunk in stream) {
+      total += chunk.length;
+      if (total > maxBytes) {
+        throw PlaylistImportTooLarge(
+          'Source Xtream trop volumineuse (> ${maxBytes ~/ (1024 * 1024)} Mo). '
+          'Filtre les catégories côté fournisseur.',
+        );
+      }
+      builder.add(chunk);
+    }
+    return builder.takeBytes();
+  }
+
   /// Appel API qui retourne une Map JSON (cas verifyCredentials).
   Future<Map<String, dynamic>> _callApi({required String? action}) async {
     final Uri uri = _buildUri(action: action);
-    final http.Response response = await _get(uri);
+    final String body = await _getBody(uri);
     try {
-      final dynamic decoded = jsonDecode(response.body);
+      final dynamic decoded = jsonDecode(body);
       if (decoded is Map<String, dynamic>) return decoded;
       throw XtreamException(
         'Réponse JSON non attendue (Map attendue) sur action=$action.',
@@ -342,12 +380,11 @@ class XtreamClient {
   /// Appel API qui retourne une List JSON (cas get_live_streams, etc.).
   Future<List<dynamic>> _callApiList({required String action}) async {
     final Uri uri = _buildUri(action: action);
-    final http.Response response = await _get(uri);
+    final String body = await _getBody(uri);
     try {
       // Décodage dans un ISOLATE (compute) : sur un gros bouquet la réponse
       // pèse plusieurs Mo et un jsonDecode synchrone gèlerait l'UI (ANR).
-      final dynamic decoded =
-          await compute(_decodeJsonInIsolate, response.body);
+      final dynamic decoded = await compute(_decodeJsonInIsolate, body);
       if (decoded is List<dynamic>) return decoded;
       // Certains serveurs encapsulent dans `{data: [...]}` ; on tolère.
       if (decoded is Map<String, dynamic> && decoded['data'] is List) {
