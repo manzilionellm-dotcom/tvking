@@ -40,7 +40,6 @@ class FlavorConfig {
     required this.adultOnly,
     required this.biometricMandatory,
     required this.requireAgeGate,
-    required this.iptvServerUrl,
   });
 
   /// Identité technique du build (utile pour les analytics, le
@@ -75,14 +74,11 @@ class FlavorConfig {
   /// SharedPreferences). Un refus = sortie de l'app.
   final bool requireAgeGate;
 
-  /// URL du serveur Xtream Codes utilise PAR DEFAUT pour ce flavor.
-  /// Cache au client (qui ne voit que les 2 champs identifiant /
-  /// code secret) — c'est l'app qui fournit le serveur implicitement.
-  /// Strategie revendeur : tous les clients de cette app pointent
-  /// vers le meme serveur central, identifie par leurs credentials.
-  /// Si un jour The Few et Red Room ont des serveurs differents,
-  /// il suffit de changer cette ligne sur la variante concernee.
-  final String iptvServerUrl;
+  // NB (P1-10 / AGENTS.md règle n°2) : il N'Y A PLUS d'URL de serveur IPTV
+  // en dur ici. Les URLs des serveurs « par défaut » vivent UNIQUEMENT côté
+  // backend (variable `DEFAULT_SERVERS` / table D1 `default_servers`,
+  // récupérées via `GET /api/servers`). Aucune URL de flux ni host revendeur
+  // n'est commité dans l'app (dépôt public) — évite la fuite + le HTTP clair.
 
   /// Configuration actuelle. Doit être posée par `main()` AVANT
   /// le premier `runApp(...)`. Si on lit sans avoir set, on a un
@@ -132,12 +128,8 @@ class FlavorConfig {
     adultOnly: false,
     biometricMandatory: false,
     requireAgeGate: false,
-    // 2026-06-01 : bascule depuis `pro.best-iptvinreviews.com`
-    // (saturé en 458 + TTFB 50-77s, plantait login + cast) vers le
-    // nouveau revendeur `yzrgxcat.getpremiumiptv.fr`. URL choisie
-    // par l'utilisateur, credentials individuels saisis au login
-    // (Identifiant + code secret) — pas hardcodes.
-    iptvServerUrl: 'http://yzrgxcat.getpremiumiptv.fr',
+    // Serveurs IPTV « par défaut » : fournis par le backend (GET /api/servers),
+    // jamais en dur ici. Les identifiants individuels sont saisis au login.
   );
 
   /// Privé — édition 18+ « by invitation only ». MÊME app que The Few
@@ -153,6 +145,6 @@ class FlavorConfig {
     adultOnly: true,
     biometricMandatory: false,
     requireAgeGate: true,
-    iptvServerUrl: 'http://yzrgxcat.getpremiumiptv.fr',
+    // Idem : aucun serveur IPTV en dur (cf. sevenMotion).
   );
 }
