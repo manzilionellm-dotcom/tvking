@@ -88,9 +88,63 @@ class AdminCredentials extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ----- Anti-brute-force du PIN admin (P1-11) -----
+  //  Le PIN fait 4 chiffres (10 000 combinaisons) → sans limite, il se force en
+  //  quelques minutes. On VERROUILLE après [_kMaxFails] échecs, avec un backoff
+  //  progressif. Défense indépendante du stockage (qui reste à migrer vers un
+  //  hash + flutter_secure_storage — nécessite l'ajout du package `crypto`,
+  //  donc un `pub get`, traité hors de ce correctif sans réseau).
+  static const String _kFailCountKey = 'admin.pin.fails.v1';
+  static const String _kLockUntilKey = 'admin.pin.lock_until.v1';
+  static const int _kMaxFails = 5;
+
+  Duration _lockRemaining = Duration.zero;
+
+  /// Temps de verrouillage restant (0 = déverrouillé). À afficher dans l'UI
+  /// admin (« Réessaie dans … ») après un appel à [verifyPin].
+  Duration get lockRemaining => _lockRemaining;
+
   Future<bool> verifyPin(String input) async {
     if (_pin == null) return false;
-    return input == _pin;
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final int now = DateTime.now().millisecondsSinceEpoch;
+
+    // 1) Verrouillé ? On n'évalue même pas le PIN (anti-brute-force).
+    final int lockUntil = prefs.getInt(_kLockUntilKey) ?? 0;
+    if (now < lockUntil) {
+      _lockRemaining = Duration(milliseconds: lockUntil - now);
+      return false;
+    }
+    _lockRemaining = Duration.zero;
+
+    // 2) Succès → on remet les compteurs à zéro.
+    if (input == _pin) {
+      await prefs.remove(_kFailCountKey);
+      await prefs.remove(_kLockUntilKey);
+      return true;
+    }
+
+    // 3) Échec → on incrémente et, au seuil, on verrouille avec backoff.
+    final int fails = (prefs.getInt(_kFailCountKey) ?? 0) + 1;
+    await prefs.setInt(_kFailCountKey, fails);
+    if (fails >= _kMaxFails) {
+      final Duration lock = _lockDurationFor(fails);
+      await prefs.setInt(_kLockUntilKey, now + lock.inMilliseconds);
+      _lockRemaining = lock;
+    }
+    return false;
+  }
+
+  /// Backoff progressif au-delà du seuil : 30 s → 1 min → 5 min → 15 min (cap).
+  Duration _lockDurationFor(int fails) {
+    final int over = fails - _kMaxFails; // 0, 1, 2, …
+    const List<Duration> steps = <Duration>[
+      Duration(seconds: 30),
+      Duration(minutes: 1),
+      Duration(minutes: 5),
+      Duration(minutes: 15),
+    ];
+    return steps[over.clamp(0, steps.length - 1)];
   }
 
   Future<void> setWorkerUrl(String url) async {

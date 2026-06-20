@@ -552,22 +552,35 @@ class PlaylistRepository {
   /// Re-synchronise TOUTES les playlists en parallèle. Renvoie le
   /// nombre de playlists actualisées avec succès. Sert au bouton
   /// "Actualiser" de la home et à l'auto-refresh au démarrage.
+  // Anti-concurrence (P1-1) : refreshAll re-télécharge + re-parse TOUTES les
+  // sources (gros pics mémoire). Il est appelé par le bouton « Actualiser », le
+  // timer 24 h et l'auto-refresh — sans verrou, deux passes pouvaient se
+  // chevaucher et DOUBLER le pic mémoire (suspect OOM). On garantit une seule
+  // passe à la fois.
+  bool _refreshingAll = false;
+
   Future<int> refreshAll() async {
-    final List<Playlist> all = await getAllPlaylists();
-    int ok = 0;
-    for (final Playlist p in all) {
-      try {
-        final bool result = await refreshPlaylist(p);
-        if (result) ok++;
-      } catch (_) {
-        // Best-effort — si une playlist échoue, on passe à la
-        // suivante (on ne veut pas bloquer les autres).
+    if (_refreshingAll) return 0; // une passe déjà en cours → on ne double pas
+    _refreshingAll = true;
+    try {
+      final List<Playlist> all = await getAllPlaylists();
+      int ok = 0;
+      for (final Playlist p in all) {
+        try {
+          final bool result = await refreshPlaylist(p);
+          if (result) ok++;
+        } catch (_) {
+          // Best-effort — si une playlist échoue, on passe à la
+          // suivante (on ne veut pas bloquer les autres).
+        }
       }
+      // Nettoyage : retire toute source qui s'est vidée (code qui n'a
+      // plus de chaîne) pour ne pas laisser de playlist morte traîner.
+      await pruneEmptyPlaylists();
+      return ok;
+    } finally {
+      _refreshingAll = false;
     }
-    // Nettoyage : retire toute source qui s'est vidée (code qui n'a
-    // plus de chaîne) pour ne pas laisser de playlist morte traîner.
-    await pruneEmptyPlaylists();
-    return ok;
   }
 
   /// Supprime les playlists DÉJÀ synchronisées qui n'ont AUCUNE chaîne
