@@ -1481,6 +1481,65 @@ function checkAdmin(request, env) {
   return safeEqual(provided, expected);
 }
 
+// ----- Rate-limit applicatif des endpoints PUBLICS (anti-abus / anti-énumération) -----
+//  Réutilise la table `rate_limits` (MÊME schéma que api_v1.js → coexistence
+//  sans conflit). Clé = bucket + IP appelante (CF-Connecting-IP). FAIL-OPEN :
+//  un incident D1 (ou D1 absent) ne bloque JAMAIS un client légitime — la
+//  sécurité ne doit pas casser le service. Renvoie `true` si AUTORISÉ.
+function clientIp(request) {
+  return request.headers.get('CF-Connecting-IP')
+    || request.headers.get('X-Forwarded-For')
+    || 'unknown';
+}
+async function rateLimitOk(env, request, bucket, maxAttempts, windowMs) {
+  if (!env || !env.DB) return true; // pas de D1 → on ne bloque pas
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS rate_limits (k TEXT PRIMARY KEY, '
+      + 'count INTEGER NOT NULL, window_start INTEGER NOT NULL)',
+    ).run();
+    const k = `${bucket}:${clientIp(request)}`;
+    const now = Date.now();
+    const row = await env.DB
+      .prepare('SELECT count, window_start FROM rate_limits WHERE k = ?')
+      .bind(k).first();
+    if (!row || (now - row.window_start) > windowMs) {
+      await env.DB.prepare(
+        'INSERT INTO rate_limits (k, count, window_start) VALUES (?, 1, ?) '
+        + 'ON CONFLICT(k) DO UPDATE SET count = 1, window_start = ?',
+      ).bind(k, now, now).run();
+      return true;
+    }
+    if (row.count >= maxAttempts) return false;
+    await env.DB.prepare('UPDATE rate_limits SET count = count + 1 WHERE k = ?')
+      .bind(k).run();
+    return true;
+  } catch (_) {
+    return true; // fail-open
+  }
+}
+function tooManyRequests() {
+  return json(
+    { error: 'rate_limited', message: 'Trop de requêtes, réessaie dans un instant.' },
+    429,
+  );
+}
+
+// ----- Réponse JSON SANS CORS '*' (endpoints liés à un appareil) -----
+//  Les endpoints qui renvoient des données rattachées à une MAC (source +
+//  identifiants IPTV, backup, config playlists) ne doivent PAS être lisibles
+//  par un site web tiers depuis un navigateur. En N'ENVOYANT PAS d'en-tête
+//  `Access-Control-Allow-Origin`, le navigateur bloque toute lecture
+//  cross-origin. Le client NATIF (Flutter http) n'est pas soumis au CORS →
+//  l'app continue de fonctionner normalement. Défense anti-moisson d'identifiants.
+const JSON_HEADERS_PRIVATE = {
+  'Content-Type': 'application/json; charset=utf-8',
+  'Cache-Control': 'no-store',
+};
+function jsonPrivate(body, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS_PRIVATE });
+}
+
 // ===== Annonces broadcast (admin -> apps) =====
 //  La table est auto-créée au 1er appel : on évite ainsi de toucher au
 //  schéma D1 / aux migrations existantes (zéro risque sur le déploiement).
@@ -2370,8 +2429,9 @@ async function handlePublicConfig(env, mac) {
   const data = await readClient(env, mac);
   if (!data) return notFound(`Aucun playlist configurée pour ${mac}`);
   // On ne renvoie au client que ce dont il a besoin (pas les
-  // métadonnées admin comme added_at).
-  return json({
+  // métadonnées admin comme added_at). `jsonPrivate` = pas de CORS '*'
+  // (ces playlists peuvent contenir des identifiants/URLs sensibles).
+  return jsonPrivate({
     name: data.name || '',
     playlists: data.playlists || [],
   });
@@ -2487,7 +2547,7 @@ async function handlePublicDeviceSource(env, mac) {
     try {
       const st = await d1StatusForMac(env, MAC);
       if (st && (st.expired || st.frozen || st.banned)) {
-        return json({
+        return jsonPrivate({
           mac: MAC,
           source: null,
           sources: [],
@@ -2521,7 +2581,7 @@ async function handlePublicDeviceSource(env, mac) {
           const { sources_json, updated_at, ...single } = row;
           sources = [single];
         }
-        return json({ mac: MAC, source: sources[0] || null, sources });
+        return jsonPrivate({ mac: MAC, source: sources[0] || null, sources });
       }
     } catch (_) {
       // Table absente / D1 indisponible → on tente le repli KV ci-dessous.
@@ -2565,13 +2625,13 @@ async function handlePublicDeviceSource(env, mac) {
           updated_at: updatedAt,
         };
       }
-      if (source) return json({ mac: MAC, source });
+      if (source) return jsonPrivate({ mac: MAC, source });
     }
   } catch (_) {
     // KV indisponible → pas de source.
   }
 
-  return json({ mac: MAC, source: null });
+  return jsonPrivate({ mac: MAC, source: null });
 }
 
 // /api/history/:mac — renvoie l'historique de visionnage (ids de chaînes)
@@ -2653,7 +2713,7 @@ async function handlePublicFamilyM3u(env, rawToken) {
 async function handleDeviceBackup(request, env, mac, method) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
-  if (!env.DB) return json({ mac: MAC, data: null, updated_at: 0 });
+  if (!env.DB) return jsonPrivate({ mac: MAC, data: null, updated_at: 0 });
 
   try {
     await env.DB.prepare(
@@ -2673,16 +2733,16 @@ async function handleDeviceBackup(request, env, mac, method) {
         .prepare('SELECT data_json, updated_at FROM device_backups WHERE mac = ?')
         .bind(MAC)
         .first();
-      if (!row) return json({ mac: MAC, data: null, updated_at: 0 });
+      if (!row) return jsonPrivate({ mac: MAC, data: null, updated_at: 0 });
       let data = null;
       try {
         data = row.data_json ? JSON.parse(row.data_json) : null;
       } catch (_) {
         data = null;
       }
-      return json({ mac: MAC, data, updated_at: row.updated_at || 0 });
+      return jsonPrivate({ mac: MAC, data, updated_at: row.updated_at || 0 });
     } catch (_) {
-      return json({ mac: MAC, data: null, updated_at: 0 });
+      return jsonPrivate({ mac: MAC, data: null, updated_at: 0 });
     }
   }
 
@@ -2711,9 +2771,11 @@ async function handleDeviceBackup(request, env, mac, method) {
            data_json = excluded.data_json,
            updated_at = excluded.updated_at`,
       ).bind(MAC, str, now).run();
-      return json({ ok: true, mac: MAC, updated_at: now });
+      return jsonPrivate({ ok: true, mac: MAC, updated_at: now });
     } catch (e) {
-      return json({ ok: false, error: String(e && e.message ? e.message : e) }, 500);
+      // Pas de fuite de message interne au client (cf. P1-8) ; on loggue côté serveur.
+      try { console.error('[backup] put failed', String(e && e.stack ? e.stack : e)); } catch (_) {}
+      return jsonPrivate({ ok: false, error: 'backup_failed' }, 500);
     }
   }
 
@@ -2797,11 +2859,13 @@ async function handleAiSearch(request, env) {
       }),
     });
     if (!resp.ok) {
-      const t = await resp.text();
-      return json(
-        { error: 'ai_upstream', status: resp.status, detail: t.slice(0, 300) },
-        502,
-      );
+      // On NE renvoie PAS le corps amont au client (peut contenir des détails
+      // internes / la clé en écho selon le fournisseur). Log serveur uniquement.
+      try {
+        const t = await resp.text();
+        console.error('[ai] upstream error', resp.status, t.slice(0, 300));
+      } catch (_) { /* best-effort */ }
+      return json({ error: 'ai_upstream', status: resp.status }, 502);
     }
     const data = await resp.json();
     // Structured outputs → le 1er bloc texte contient le JSON valide.
@@ -2819,10 +2883,8 @@ async function handleAiSearch(request, env) {
     if (!filter) return json({ error: 'ai_parse' }, 502);
     return json({ ok: true, filter });
   } catch (e) {
-    return json(
-      { error: 'ai_error', detail: String(e && e.message ? e.message : e) },
-      502,
-    );
+    try { console.error('[ai] error', String(e && e.stack ? e.stack : e)); } catch (_) {}
+    return json({ error: 'ai_error' }, 502);
   }
 }
 
@@ -2830,6 +2892,26 @@ async function handleAiSearch(request, env) {
 
 export default {
   async fetch(request, env, ctx) {
+    // FILET GLOBAL : aucune exception non rattrapée ne doit produire un 500
+    // "1101" nu ni fuiter une stack/message interne au client. On loggue
+    // côté serveur (visible via `wrangler tail`) et on renvoie un corps
+    // générique avec un identifiant de corrélation.
+    try {
+      return await handleRequest(request, env, ctx);
+    } catch (e) {
+      const requestId =
+        (globalThis.crypto && crypto.randomUUID && crypto.randomUUID())
+        || Date.now().toString(36);
+      try {
+        console.error('[worker] unhandled error', requestId,
+          e && e.stack ? e.stack : String(e));
+      } catch (_) { /* logging best-effort */ }
+      return json({ error: 'internal_error', request_id: requestId }, 500);
+    }
+  },
+};
+
+async function handleRequest(request, env, ctx) {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: JSON_HEADERS });
     }
@@ -2877,6 +2959,30 @@ export default {
     }
 
     const segments = url.pathname.split('/').filter(Boolean);
+
+    // ===== Rate-limit applicatif des endpoints publics =====
+    //  Limites VOLONTAIREMENT généreuses : un usage normal (l'app pingue au
+    //  plus quelques fois/min) n'est jamais gêné, mais on coupe l'énumération
+    //  de MAC (device-source/backup/config/status/history) et l'abus de l'IA
+    //  payante. Par IP appelante, fenêtre 60 s, FAIL-OPEN (cf. rateLimitOk).
+    {
+      const seg0 = segments[0] || '';
+      const seg1 = segments[1] || '';
+      let rl = null;
+      if (seg0 === 'api') {
+        if (seg1 === 'ai') rl = ['ai', 30];                        // 30 / min (LLM payant)
+        else if (seg1 === 'device-source' || seg1 === 'backup'
+          || seg1 === 'status' || seg1 === 'history') rl = ['dev', 120]; // anti-énumération MAC
+        else if (seg1 === 'heartbeat' || seg1 === 'trending'
+          || seg1 === 'announcement' || seg1 === 'sports'
+          || seg1 === 'feedback' || seg1 === 'm3u') rl = ['pub', 240];
+      } else if (seg0 === 'config') {
+        rl = ['cfg', 120]; // /config/:mac — même protection anti-énumération
+      }
+      if (rl && !(await rateLimitOk(env, request, rl[0], rl[1], 60 * 1000))) {
+        return tooManyRequests();
+      }
+    }
 
     // /config/:mac — public
     if (segments[0] === 'config' && segments.length === 2) {
@@ -3339,5 +3445,4 @@ export default {
     }
 
     return notFound('Unknown route. Try /, /dl, /config/:mac or /admin/clients');
-  },
-};
+}
