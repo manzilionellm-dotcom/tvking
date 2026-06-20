@@ -70,10 +70,20 @@ jobs:
       # (~250 `prefer_const`, quelques imports inutilisés) : c'est une dette
       # pré-existante, à résorber séparément, et la rendre bloquante d'un coup
       # ferait échouer tout le repo sans rapport avec la stabilité du lecteur.
-      # Le filet anti-régression reste utile : un test qui ne compile plus, un
-      # symbole renommé, un mauvais type → ERREUR → CI rouge.
+      #
+      # NB : `flutter analyze` sort en code 1 dès qu'il reste la MOINDRE info,
+      # même avec --no-fatal-*. On ne se fie donc PAS à son code de sortie : on
+      # capture la sortie et on échoue UNIQUEMENT s'il y a des lignes de
+      # sévérité « error ». Filet anti-régression conservé : un test qui ne
+      # compile plus / un symbole renommé / un mauvais type = error = CI rouge.
       - name: Flutter analyze (bloquant sur erreurs)
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+        run: |
+          flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee analyze.log || true
+          if grep -qE "(^|[[:space:]])error[[:space:]]•" analyze.log; then
+            echo "::error::flutter analyze a trouvé des ERREURS (voir le journal ci-dessus)."
+            exit 1
+          fi
+          echo "✓ Aucune ERREUR d'analyse (infos/warnings de style tolérés)."
 
       # BLOQUANT : tous les tests unitaires/widget doivent passer.
       - name: Flutter test (bloquant)
