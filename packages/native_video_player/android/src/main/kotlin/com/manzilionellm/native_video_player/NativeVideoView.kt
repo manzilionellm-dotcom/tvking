@@ -129,7 +129,12 @@ class NativeVideoView(
                     return
                 }
                 cancelRetry()
-                retryCount = 0
+                // On ne remet le budget de reconnexion silencieuse à zéro QUE
+                // pour une VRAIE nouvelle chaîne (URL différente). Si Dart
+                // ré-ouvre la MÊME URL (recover sur flux gelé), on CONSERVE le
+                // compteur → après maxSilentRetries on remonte enfin l'erreur à
+                // Dart au lieu de relancer 8 essais à l'infini (boucle CPU/réseau).
+                if (url != currentUrl) retryCount = 0
                 currentUrl = url
                 player.setMediaItem(MediaItem.fromUri(url))
                 player.prepare()

@@ -100,6 +100,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   bool _recovering = false;
   static const Duration _frozen = Duration(seconds: 15);
   static const Duration _watchEvery = Duration(seconds: 4);
+  // Reconnexion BORNÉE (P1-6) : on compte les ré-ouvertures sur la MÊME chaîne.
+  // Au-delà de _kMaxRecover sans reprise, on ARRÊTE la boucle (CPU/réseau/chauffe)
+  // et on montre une erreur claire + bouton « Réessayer » au lieu de boucler à
+  // l'infini sur un flux mort. Remis à zéro dès qu'une image revient (progression)
+  // ou au changement de chaîne.
+  int _recoverAttempts = 0;
+  static const int _kMaxRecover = 5;
+  bool _fatal = false;
 
   Channel get _current => widget.channels[_index];
 
@@ -186,11 +194,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // Écoute l'état du lecteur natif : progression (anti-gel), buffering (logo),
   // erreurs.
   void _onPlayer() {
-    // Progression réelle → « pas gelé ».
+    // Progression réelle → « pas gelé ». La lecture est repartie : on remet à
+    // zéro le budget de reconnexion (et on lève un éventuel état d'erreur).
     if (_controller.position != _lastPos) {
       _lastPos = _controller.position;
       _lastProgress = DateTime.now();
       _recovering = false;
+      _recoverAttempts = 0;
+      if (_fatal && mounted) setState(() => _fatal = false);
     }
     // Logo tant qu'on bufferise OU que la 1re trame n'est pas encore dessinée
     // (au zap, firstFrame est remis à false → logo jusqu'à l'image suivante).
@@ -207,7 +218,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   void _open({bool reuse = false}) {
     _lastProgress = DateTime.now();
     _lastPos = Duration.zero;
-    if (mounted) setState(() => _buffering = true);
+    // Nouvelle chaîne → budget de reconnexion neuf, on lève tout état d'erreur.
+    _recoverAttempts = 0;
+    _recovering = false;
+    if (mounted) setState(() {
+      _buffering = true;
+      _fatal = false;
+    });
     if (!reuse) {
       // Nouvelle chaîne → on charge la nouvelle URL dans le MÊME lecteur.
       _controller.setUrl(_current.streamUrl);
@@ -225,18 +242,41 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // On ne peut enregistrer qu'1 chaîne à la fois (1 connexion) : changer de
     // chaîne clôt et SAUVEGARDE l'enregistrement en cours.
     if (_isRecording) _finalizeRecording(resumeDirect: false);
+    // En Dart, `a % n` est TOUJOURS dans [0, n) pour n > 0 → pas de wrap négatif
+    // à corriger (l'ancienne ligne `if (_index < 0)` était du code mort).
     setState(() => _index = (_index + delta) % n);
-    if (_index < 0) _index += n;
     _open();
   }
 
   void _recover() {
-    if (_recovering) return;
+    if (_recovering || _fatal) return;
+    // BORNE (P1-6) : au-delà de _kMaxRecover ré-ouvertures sans reprise, on
+    // ARRÊTE la boucle de reconnexion et on bascule en erreur explicite avec
+    // « Réessayer » manuel — fini la boucle CPU/réseau infinie sur flux mort.
+    if (_recoverAttempts >= _kMaxRecover) {
+      if (mounted) setState(() {
+        _fatal = true;
+        _buffering = false;
+      });
+      return;
+    }
+    _recoverAttempts++;
     _recovering = true;
     _lastProgress = DateTime.now();
     // Ré-ouvre la MÊME source : l'URL locale du relais si on enregistre, sinon
     // l'URL directe. = reconnexion au direct sans casser l'enregistrement.
     _controller.setUrl(_relayPlayUrl ?? _current.streamUrl);
+  }
+
+  /// « Réessayer » manuel depuis l'écran d'erreur : on repart d'un budget neuf.
+  void _manualRetry() {
+    setState(() {
+      _fatal = false;
+      _recoverAttempts = 0;
+      _buffering = true;
+    });
+    _controller.setUrl(_relayPlayUrl ?? _current.streamUrl);
+    _showOverlayTemporarily();
   }
 
   // ----- Enregistrement (bouton REC / touche média) -----
@@ -478,6 +518,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final LogicalKeyboardKey k = event.logicalKey;
 
+    // ÉCRAN D'ERREUR (P1-6) : OK = Réessayer ; le Retour reste géré plus bas
+    // (quitter le lecteur). On capte OK ici pour ne pas ouvrir la barre.
+    if (_fatal && _isOk(k)) {
+      _manualRetry();
+      return KeyEventResult.handled;
+    }
+
     // BACK / Retour télécommande (toutes variantes) → quitter le lecteur,
     // retour à la liste. On gère explicitement pour ne jamais rester coincé.
     if (k == LogicalKeyboardKey.goBack ||
@@ -569,7 +616,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                 ),
               ),
               // Écran de marque pendant l'ouverture / le zap / une reconnexion.
-              if (_buffering)
+              if (_buffering && !_fatal)
                 const ColoredBox(
                   color: TvTokens.bg,
                   child: Center(
@@ -582,6 +629,51 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                           width: 40, height: 40,
                           child: CircularProgressIndicator(
                               strokeWidth: 3, color: TvTokens.gold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              // Écran d'ERREUR (P1-6) : la reconnexion automatique a été épuisée
+              // (flux durablement injoignable). On ARRÊTE de boucler et on offre
+              // un « Réessayer » manuel (OK) ou « Quitter » (Retour).
+              if (_fatal)
+                ColoredBox(
+                  color: TvTokens.bg,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Icon(Icons.error_outline_rounded,
+                            color: TvTokens.mutedDim, size: 56),
+                        const SizedBox(height: 16),
+                        Text(_current.cleanName,
+                            style: TextStyle(
+                                fontSize: TvDimens.title,
+                                fontWeight: FontWeight.w800,
+                                color: TvTokens.text)),
+                        const SizedBox(height: 8),
+                        Text('Chaîne indisponible pour le moment.',
+                            style: TextStyle(
+                                fontSize: TvDimens.body,
+                                color: TvTokens.mutedDim)),
+                        const SizedBox(height: 20),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 22, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: TvTokens.sel,
+                            borderRadius:
+                                BorderRadius.circular(TvTokens.rButton),
+                            border: Border.all(
+                                color: TvTokens.gold,
+                                width: TvDimens.focusOutline),
+                          ),
+                          child: Text('OK : Réessayer   ·   Retour : Quitter',
+                              style: TextStyle(
+                                  fontSize: TvDimens.titleS,
+                                  fontWeight: FontWeight.w700,
+                                  color: TvTokens.goldBright)),
                         ),
                       ],
                     ),
