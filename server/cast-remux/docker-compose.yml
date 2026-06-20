@@ -1,0 +1,42 @@
+# Deploiement cast-remux + HTTPS automatique (Caddy / Let's Encrypt).
+#
+#   1. Pointe un sous-domaine (ex: cast.7themotion.com) en A vers l'IP du VPS.
+#   2. Mets ce domaine + ton email dans le fichier .env (cf. .env.example).
+#   3. `docker compose up -d`
+#
+# Caddy obtient et renouvelle le certificat TLS tout seul, et proxy le
+# trafic https vers le service node en interne (http://remux:8080).
+
+services:
+  remux:
+    build: .
+    restart: unless-stopped
+    environment:
+      - PORT=8080
+      - IDLE_TIMEOUT_MS=30000
+    # Pas de port publie : seul Caddy parle au service (reseau interne).
+    expose:
+      - "8080"
+    # ffmpeg ecrit ses segments dans /tmp (tmpfs = RAM, rapide, ephemere).
+    tmpfs:
+      - /tmp
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - remux
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - CAST_DOMAIN=${CAST_DOMAIN}
+      - CAST_EMAIL=${CAST_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

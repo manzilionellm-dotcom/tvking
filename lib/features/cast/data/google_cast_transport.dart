@@ -50,17 +50,18 @@ import 'local_cast_server.dart';
 ///    decrivent le MEME basculement. Les desynchroniser = ecran noir.
 const bool kCastUseCustomReceiver = false;
 
-/// Base du Worker Cloudflare qui re-sert les flux IPTV en HLS HTTPS pour
-/// le cast (route `/cs/`). Toujours allume → le telephone peut s'eteindre.
-const String _kCastWorkerBase = 'https://app.7themotion.com';
+/// Base du service de remux VPS (cf. server/cast-remux) qui transforme le
+/// MPEG-TS live en HLS-fMP4 — le SEUL format que le recepteur Cast par
+/// defaut (Shaka) lit nativement. A faire pointer (DNS A) vers ton VPS.
+const String _kCastRemuxBase = 'https://cast.7themotion.com';
 
-/// Construit l'URL HLS (servie par le Worker en HTTPS) qui wrappe un flux
-/// MPEG-TS http brut. L'URL upstream est encodee en base64url dans le
-/// chemin → le Worker reste stateless (cf. route /cs/ de worker.js).
-String _workerHlsUrl(String upstreamUrl) {
+/// Construit l'URL HLS-fMP4 (servie par le VPS remux en HTTPS) pour un flux
+/// MPEG-TS brut. L'upstream est encode en base64url dans le chemin → le
+/// service reste stateless (cf. server/cast-remux/server.js).
+String _castRemuxUrl(String upstreamUrl) {
   final String b64 =
       base64Url.encode(utf8.encode(upstreamUrl)).replaceAll('=', '');
-  return '$_kCastWorkerBase/cs/$b64.m3u8';
+  return '$_kCastRemuxBase/live/$b64/master.m3u8';
 }
 
 class GoogleCastTransport implements CastTransport {
@@ -136,22 +137,22 @@ class GoogleCastTransport implements CastTransport {
     String mime = _guessMime(streamUrl);
     String castPath = 'direct';
 
-    // Decision de wrap HLS :
-    //   1. On ne wrappe PAS un flux deja adaptatif (HLS/DASH).
-    //   2. On wrappe le MPEG-TS brut (.ts / Xtream /live/).
+    // Decision de remux pour le Cast :
+    //   1. On ne touche PAS un flux deja adaptatif (HLS/DASH).
+    //   2. On remux le MPEG-TS brut (.ts / Xtream /live/).
     //
-    // POURQUOI (2026-06-20, valide par diag terrain SHIELD/LG) : un
-    // Chromecast / Google TV charge un RECEIVER WEB qui (a) ne decode PAS
-    // le MPEG-TS http brut et (b) tourne en HTTPS donc REFUSE un flux http
-    // (mixed content). On re-sert donc le flux en HLS HTTPS depuis le
-    // WORKER Cloudflare (route /cs/, toujours allume) : le Chromecast tire
-    // tout du Worker en https → le recepteur PAR DEFAUT de Google le lit
-    // nativement (aucune publication de receiver custom requise) ET le
-    // telephone peut s'eteindre (le Worker, pas le tel, sert le flux).
+    // POURQUOI (2026-06-20, valide par diag terrain SHIELD) : le recepteur
+    // Cast par defaut (Shaka depuis fin 2025) ne sait PAS lire du MPEG-TS
+    // brut -> erreur "codec / format non supporte". Le seul format que TOUS
+    // les Chromecast lisent nativement = HLS-fMP4. Un Worker Cloudflare ne
+    // peut pas transcoder ; on passe donc par le service de remux VPS
+    // (server/cast-remux, ffmpeg -c copy = remux conteneur, pas de
+    // re-encodage) qui sert le flux en HLS-fMP4 https. Le Chromecast tire
+    // tout du VPS -> le telephone peut s'eteindre.
     if (!isHlsOrDash(streamUrl) && _looksLikeRawMpegTs(streamUrl)) {
-      urlToCast = _workerHlsUrl(streamUrl);
+      urlToCast = _castRemuxUrl(streamUrl);
       mime = 'application/x-mpegURL';
-      castPath = 'worker_hls';
+      castPath = 'remux_hls';
     }
 
     // DIAGNOSTIC (brief §4.3) — tracer EXACTEMENT l'URL et le MIME

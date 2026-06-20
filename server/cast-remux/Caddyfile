@@ -1,0 +1,11 @@
+# Caddy : TLS automatique (Let's Encrypt) + reverse proxy vers le service.
+# Le domaine et l'email viennent de l'environnement (docker-compose .env).
+
+{
+	email {$CAST_EMAIL}
+}
+
+{$CAST_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy remux:8080
+}
