@@ -21,6 +21,7 @@
 // =========================================================
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -47,7 +48,20 @@ import 'local_cast_server.dart';
 /// ⚠️ DOIT etre flippe EN MEME TEMPS que `USE_CUSTOM_RECEIVER` dans
 ///    android_overlay/google_cast/CastOptionsProviderImpl.kt. Les deux
 ///    decrivent le MEME basculement. Les desynchroniser = ecran noir.
-const bool kCastUseCustomReceiver = true;
+const bool kCastUseCustomReceiver = false;
+
+/// Base du Worker Cloudflare qui re-sert les flux IPTV en HLS HTTPS pour
+/// le cast (route `/cs/`). Toujours allume → le telephone peut s'eteindre.
+const String _kCastWorkerBase = 'https://app.7themotion.com';
+
+/// Construit l'URL HLS (servie par le Worker en HTTPS) qui wrappe un flux
+/// MPEG-TS http brut. L'URL upstream est encodee en base64url dans le
+/// chemin → le Worker reste stateless (cf. route /cs/ de worker.js).
+String _workerHlsUrl(String upstreamUrl) {
+  final String b64 =
+      base64Url.encode(utf8.encode(upstreamUrl)).replaceAll('=', '');
+  return '$_kCastWorkerBase/cs/$b64.m3u8';
+}
 
 class GoogleCastTransport implements CastTransport {
   GoogleCastTransport(this.device);
@@ -123,47 +137,21 @@ class GoogleCastTransport implements CastTransport {
     String castPath = 'direct';
 
     // Decision de wrap HLS :
-    //   1. On ne wrappe PAS un flux deja adaptatif (HLS/DASH). (BUG A)
+    //   1. On ne wrappe PAS un flux deja adaptatif (HLS/DASH).
     //   2. On wrappe le MPEG-TS brut (.ts / Xtream /live/).
     //
-    // IMPORTANT (2026-06-06) : meme une NVIDIA SHIELD, quand on lui
-    // CASTE via le SDK Google Cast, charge le RECEIVER WEB (Default
-    // Media Receiver CC1AD845) — PAS son ExoPlayer natif. Or ce
-    // receiver ne decode PAS le MPEG-TS brut : on obtient l'ecran
-    // "cast" bleu SANS image alors meme que loadMedia est accepte
-    // (constate sur la SHIELD de l'utilisateur). On wrappe donc le .ts
-    // en HLS pour TOUS les recepteurs Cast, SHIELD comprise.
-    //   3. On ne wrappe PAS si le custom receiver (mpegts.js) est actif :
-    //      il decode le MPEG-TS seul, on lui envoie le .ts DIRECT pour que
-    //      la TV tire le flux sans le telephone (cf. kCastUseCustomReceiver).
-    final bool shouldWrap = !kCastUseCustomReceiver &&
-        !isHlsOrDash(streamUrl) &&
-        _looksLikeRawMpegTs(streamUrl);
-
-    if (shouldWrap) {
-      final String? wrappedUrl =
-          await LocalCastServer.instance.registerRelay(
-        upstreamUrl: streamUrl,
-        profile: const DlnaProfile(
-          mime: 'video/mp2t',
-          profileName: 'MPEG_TS_SD_NA_ISO',
-          transferMode: DlnaTransferMode.streaming,
-          objectClass: 'object.item.videoItem.videoBroadcast',
-          fileExtension: 'ts',
-        ),
-        receiverHost: device.host,
-        wrapInHls: true,
-      );
-      // L'URL wrappee pointe vers l'IP LAN du telephone. Si la TV est
-      // sur un autre /24 (VLAN invite, isolation AP), elle ne peut pas
-      // joindre le relais → on retombe sur l'URL directe. (BUG B)
-      if (wrappedUrl != null && sameSubnet(wrappedUrl, device.host)) {
-        urlToCast = wrappedUrl;
-        mime = 'application/x-mpegURL';
-        castPath = 'hls_wrap';
-      } else {
-        castPath = wrappedUrl == null ? 'wrap_failed' : 'wrap_unreachable';
-      }
+    // POURQUOI (2026-06-20, valide par diag terrain SHIELD/LG) : un
+    // Chromecast / Google TV charge un RECEIVER WEB qui (a) ne decode PAS
+    // le MPEG-TS http brut et (b) tourne en HTTPS donc REFUSE un flux http
+    // (mixed content). On re-sert donc le flux en HLS HTTPS depuis le
+    // WORKER Cloudflare (route /cs/, toujours allume) : le Chromecast tire
+    // tout du Worker en https → le recepteur PAR DEFAUT de Google le lit
+    // nativement (aucune publication de receiver custom requise) ET le
+    // telephone peut s'eteindre (le Worker, pas le tel, sert le flux).
+    if (!isHlsOrDash(streamUrl) && _looksLikeRawMpegTs(streamUrl)) {
+      urlToCast = _workerHlsUrl(streamUrl);
+      mime = 'application/x-mpegURL';
+      castPath = 'worker_hls';
     }
 
     // DIAGNOSTIC (brief §4.3) — tracer EXACTEMENT l'URL et le MIME

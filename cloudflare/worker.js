@@ -3125,6 +3125,77 @@ export default {
       return new Response(PRIVACY_HTML, { headers: HTML_HEADERS });
     }
 
+    // /cs/<b64url>.m3u8  et  /cs/<b64url>.ts — WRAP HLS pour le CAST.
+    //
+    //  Un Chromecast / Google TV ne lit PAS le MPEG-TS http brut des flux
+    //  IPTV (format non supporte par Cast + mixed content : le receiver
+    //  tourne en https et refuse un flux http). On re-sert donc le flux
+    //  en HLS HTTPS depuis CE Worker (toujours allume) :
+    //    - .m3u8 → playlist HLS "single infinite segment" (technique
+    //      eprouvee IPTV->Cast ; PAS de #EXT-X-ENDLIST = le receiver lit
+    //      le .ts continu jusqu'a fermeture TCP).
+    //    - .ts   → pass-through streaming du flux upstream http (octets
+    //      copies tel quel, AUCUN transcodage).
+    //  L'URL upstream est encodee en base64url dans le chemin (stateless,
+    //  pas de KV). Le Chromecast tire tout du Worker en https → le
+    //  telephone peut s'eteindre, la TV continue.
+    if (segments.length === 2 && segments[0] === 'cs') {
+      const file = segments[1];
+      const dotIdx = file.lastIndexOf('.');
+      const b64 = dotIdx > 0 ? file.slice(0, dotIdx) : file;
+      const ext = dotIdx > 0 ? file.slice(dotIdx + 1) : '';
+
+      let upstream;
+      try {
+        let s = b64.replace(/-/g, '+').replace(/_/g, '/');
+        while (s.length % 4) s += '=';
+        upstream = decodeURIComponent(escape(atob(s)));
+      } catch (e) {
+        return new Response('bad token', { status: 400 });
+      }
+
+      if (ext === 'm3u8') {
+        const manifest =
+          '#EXTM3U\n' +
+          '#EXT-X-VERSION:3\n' +
+          '#EXT-X-TARGETDURATION:10\n' +
+          '#EXT-X-MEDIA-SEQUENCE:0\n' +
+          '#EXT-X-PLAYLIST-TYPE:EVENT\n' +
+          '#EXTINF:10.0,\n' +
+          b64 + '.ts\n';
+        return new Response(manifest, {
+          headers: {
+            'Content-Type': 'application/vnd.apple.mpegurl',
+            'Cache-Control': 'no-store, no-cache',
+            'Access-Control-Allow-Origin': '*',
+          },
+        });
+      }
+
+      if (ext === 'ts') {
+        let dst;
+        try {
+          dst = new URL(upstream);
+        } catch (e) {
+          return new Response('bad url', { status: 400 });
+        }
+        if (dst.protocol !== 'http:' && dst.protocol !== 'https:') {
+          return new Response('bad proto', { status: 400 });
+        }
+        const up = await fetch(dst.toString(), {
+          headers: { 'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18' },
+          redirect: 'follow',
+        });
+        const h = new Headers();
+        h.set('Content-Type', 'video/mp2t');
+        h.set('Cache-Control', 'no-store, no-cache');
+        h.set('Access-Control-Allow-Origin', '*');
+        return new Response(up.body, { status: up.status, headers: h });
+      }
+
+      return new Response('bad ext', { status: 400 });
+    }
+
     // /dl — proxy l'APK GitHub release a travers le cache edge
     // Cloudflare pour des telechargements rapides depuis Downloader.
     // Variante /dl/release pour aliasing futur (release vs beta).
