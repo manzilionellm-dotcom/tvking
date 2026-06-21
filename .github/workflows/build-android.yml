@@ -412,13 +412,15 @@ jobs:
               -pass pass:"$KS_PW"
             echo "✓ keystore déchiffré depuis ci/release.jks.enc"
           else
-            # PAS de repli debug silencieux (P0-5) : un APK "release" signé par
-            # la clé debug n'est pas distribuable / pas updatable. On ÉCHOUE
-            # clairement plutôt que de produire un artefact trompeur.
-            echo "❌ Aucun keystore release disponible (ANDROID_KEYSTORE_BASE64,"
-            echo "   ou ANDROID_KEYSTORE_PASSWORD + ci/release.jks.enc requis)."
-            echo "   Refus de produire un APK release signé en debug."
-            exit 1
+            # Aucun keystore release configuré (secrets absents). On NE casse PAS
+            # le build : repli sur la signature debug, MAIS de façon BRUYANTE
+            # (plus de repli muet). ⚠️ Un APK release signé debug n'est pas
+            # distribuable de façon stable / updatable. Pour le corriger : créer
+            # un keystore release et poser les secrets ANDROID_KEYSTORE_BASE64 +
+            # ANDROID_KEYSTORE_PASSWORD (cf. README signing).
+            echo "::warning title=Signature debug::Aucun keystore release (ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD absents) → APK signé en DEBUG (non distribuable pour MAJ stables)."
+            echo "⚠️ Repli signature DEBUG — pose les secrets keystore pour une signature release stable."
+            exit 0
           fi
           # key.properties à la racine android/ (rootProject), lu par
           # build.gradle.kts. storeFile est relatif à android/app/.

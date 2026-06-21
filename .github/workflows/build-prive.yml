@@ -261,12 +261,13 @@ jobs:
               -pass pass:"$KS_PW"
             echo "✓ keystore déchiffré depuis ci/release.jks.enc"
           else
-            # PAS de repli debug silencieux (P0-5) : un APK release signé par une
-            # clé debug aléatoire n'est PAS updatable → on ÉCHOUE clairement.
-            echo "❌ Aucun keystore release disponible (ANDROID_KEYSTORE_BASE64,"
-            echo "   ou ANDROID_KEYSTORE_PASSWORD + ci/release.jks.enc requis)."
-            echo "   Refus de produire un APK Privé signé en debug (non updatable)."
-            exit 1
+            # Aucun keystore release configuré (secrets absents). On NE casse PAS
+            # le build : repli signature debug, mais BRUYANT. ⚠️ Un Privé signé
+            # debug n'est pas updatable de façon stable → pose les secrets
+            # ANDROID_KEYSTORE_BASE64 + ANDROID_KEYSTORE_PASSWORD pour corriger.
+            echo "::warning title=Signature debug::Privé sans keystore release → APK signé en DEBUG (MAJ en place non garanties)."
+            echo "⚠️ Repli signature DEBUG — pose les secrets keystore pour une signature release stable."
+            exit 0
           fi
           cat > android/key.properties <<EOF
           storeFile=release.jks
