@@ -52,6 +52,19 @@ void runGuarded(Future<void> Function() body) {
     () async {
       WidgetsFlutterBinding.ensureInitialized();
 
+      // ANTI-OOM IMAGES (P0-6) — PARTAGÉ par tous les flavors (mobile/TV/Privé).
+      //  Symptôme : en défilant (D-pad haut/bas) la grille de chaînes, l'app se
+      //  FERME toute seule. Cause : le cache d'images Flutter par défaut autorise
+      //  jusqu'à 1000 images / ~100 Mo ; en scrollant des milliers de logos
+      //  réseau, il enfle et l'OS TUE le process (un kill mémoire natif n'est PAS
+      //  rattrapable par les filets Dart → « fermeture brutale »). On PLAFONNE le
+      //  cache pour qu'il évince agressivement : la mémoire reste bornée, le
+      //  scroll ne crashe plus (les logos hors écran sont relâchés puis re-servis
+      //  depuis le cache disque de cached_network_image → toujours fluide).
+      PaintingBinding.instance.imageCache
+        ..maximumSize = 150 // 150 images max (au lieu de 1000)
+        ..maximumSizeBytes = 60 << 20; // 60 Mo max (au lieu de ~100 Mo)
+
       // 2) Erreurs Flutter (build/layout/paint).
       final FlutterExceptionHandler? presentError = FlutterError.onError;
       FlutterError.onError = (FlutterErrorDetails details) {
