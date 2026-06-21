@@ -12,12 +12,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:media_kit/media_kit.dart';
 
 import 'core/app/app_platform.dart';
 import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
-import 'core/crash/crash_reporting.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
 import 'core/notifications/notification_service.dart';
@@ -55,14 +53,12 @@ Future<void> _bootstrap() async {
   // platform='tv' et le panel l'affichera comme 📺 (vs 📱 mobile).
   AppPlatform.isTv = true;
 
-  // Moteur lecteur natif (mpv) — avant runApp, comme côté mobile. GARDÉ :
-  // une box bas de gamme où la lib native manque ne doit pas tuer le boot.
-  try {
-    MediaKit.ensureInitialized();
-  } catch (e, s) {
-    CrashReporting.instance
-        .recordError(e, s, context: 'MediaKit.ensureInitialized');
-  }
+  // ANTI-OOM TV (confirmé par logcat: lowmemorykiller / signal 9) : on N'INITIE
+  // PLUS le moteur mpv (media_kit) sur la TV. La TV joue EXCLUSIVEMENT via
+  // ExoPlayer (packages/native_video_player) — cf. tv_player_screen.dart. mpv
+  // n'y était JAMAIS utilisé : l'initialiser ne faisait que charger libmpv +
+  // ses codecs en mémoire pour rien, aggravant la pression mémoire au démarrage
+  // sur des box à RAM limitée (SHIELD incluse). Aucune fonctionnalité TV perdue.
 
   // La TV est TOUJOURS en paysage : on verrouille (pas de portrait).
   await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
