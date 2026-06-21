@@ -290,6 +290,20 @@ jobs:
               print('minSdk -> 21 (depuis litteral)')
           else:
               print('WARN: minSdk introuvable')
+          # 1b) applicationId DISTINCT du mobile. Le build mobile « The Few » ET
+          #     le build TV utilisaient TOUS LES DEUX com.manzilionellm.tvking.tv_king,
+          #     signés avec des clés DIFFÉRENTES → "Application non installée"
+          #     (conflit même-package/signature-différente) même après désinstall,
+          #     y compris sur une box moderne (SHIELD). On donne à la TV son PROPRE
+          #     package → installation propre, et cohabitation possible avec le
+          #     mobile. Le `namespace` (chemin Kotlin/R) reste inchangé : seul le
+          #     package INSTALLÉ change.
+          if re.search(r'applicationId\s*=\s*"com\.manzilionellm\.tvking\.tv_king"', s):
+              s = re.sub(r'applicationId\s*=\s*"com\.manzilionellm\.tvking\.tv_king"',
+                         'applicationId = "com.manzilionellm.tvking.defewtv"', s, count=1)
+              print('applicationId -> com.manzilionellm.tvking.defewtv (distinct du mobile)')
+          else:
+              print('WARN: applicationId tv_king introuvable')
           # 2) Forcer v1/v2/v3 sur la config debug (clé fixe utilisée en release).
           if 'enableV1Signing' not in s:
               s = s.replace(
