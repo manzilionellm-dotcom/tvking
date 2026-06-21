@@ -239,6 +239,96 @@ jobs:
           PYEOF
           grep -n "isMinifyEnabled\|isShrinkResources\|proguardFiles" android/app/build.gradle.kts || true
 
+      # ----- Signature RELEASE STABLE (P0-5) -----
+      # Privé DOIT être signé avec le keystore release stable (cert d'identité
+      # stable ⇒ mises à jour en place possibles). AVANT ce correctif, Privé
+      # était signé par le keystore debug ÉPHÉMÈRE du runner (clé aléatoire à
+      # chaque build) → « application not installed » / signature mismatch à la
+      # moindre MAJ. On réutilise ci/release.jks.enc (déchiffré avec
+      # ANDROID_KEYSTORE_PASSWORD) ou ANDROID_KEYSTORE_BASE64 — MÊME clé que The Few.
+      - name: Configure release signing (Privé)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -e
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > android/app/release.jks
+            echo "✓ keystore depuis ANDROID_KEYSTORE_BASE64"
+          elif [ -n "$KS_PW" ] && [ -f ci/release.jks.enc ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 \
+              -in ci/release.jks.enc -out android/app/release.jks \
+              -pass pass:"$KS_PW"
+            echo "✓ keystore déchiffré depuis ci/release.jks.enc"
+          else
+            # PAS de repli debug silencieux (P0-5) : un APK release signé par une
+            # clé debug aléatoire n'est PAS updatable → on ÉCHOUE clairement.
+            echo "❌ Aucun keystore release disponible (ANDROID_KEYSTORE_BASE64,"
+            echo "   ou ANDROID_KEYSTORE_PASSWORD + ci/release.jks.enc requis)."
+            echo "   Refus de produire un APK Privé signé en debug (non updatable)."
+            exit 1
+          fi
+          cat > android/key.properties <<EOF
+          storeFile=release.jks
+          storePassword=$KS_PW
+          keyAlias=sevenmotion
+          keyPassword=$KS_PW
+          EOF
+          echo "✓ release.jks + key.properties écrits (Privé signé release)"
+
+      - name: Patch build.gradle.kts for release signing (Privé)
+        run: |
+          set -e
+          F=android/app/build.gradle.kts
+          [ -f "$F" ] || { echo "❌ $F introuvable"; exit 1; }
+          export GRADLE_FILE="$F"
+          python3 << 'PYEOF'
+          import os
+          f = os.environ['GRADLE_FILE']
+          s = open(f).read()
+          if 'signingConfigs.getByName("release")' in s:
+              print('deja patche'); raise SystemExit
+          imports = 'import java.util.Properties\nimport java.io.FileInputStream\n\n'
+          loader = (
+              'val keystoreProperties = Properties()\n'
+              'val keystorePropertiesFile = rootProject.file("key.properties")\n'
+              'if (keystorePropertiesFile.exists()) {\n'
+              '    keystoreProperties.load(FileInputStream(keystorePropertiesFile))\n'
+              '}\n\n'
+          )
+          signing = (
+              'android {\n'
+              '    signingConfigs {\n'
+              '        create("release") {\n'
+              '            val sf = keystoreProperties.getProperty("storeFile")\n'
+              '            if (sf != null) {\n'
+              '                storeFile = file(sf)\n'
+              '                storePassword = keystoreProperties.getProperty("storePassword")\n'
+              '                keyAlias = keystoreProperties.getProperty("keyAlias")\n'
+              '                keyPassword = keystoreProperties.getProperty("keyPassword")\n'
+              '            }\n'
+              '        }\n'
+              '    }\n'
+          )
+          if 'android {' not in s:
+              print('pas de bloc android {} — template inattendu'); raise SystemExit(1)
+          if 'import java.util.Properties' not in s:
+              s = imports + s
+          s = s.replace('android {', loader + 'android {', 1)
+          s = s.replace('android {', signing, 1)
+          old = 'signingConfig = signingConfigs.getByName("debug")'
+          new = ('signingConfig = if (keystorePropertiesFile.exists()) '
+                 'signingConfigs.getByName("release") else '
+                 'signingConfigs.getByName("debug")')
+          if old in s:
+              s = s.replace(old, new, 1)
+              print('buildType release -> cle stable')
+          else:
+              print('WARN: ligne signingConfig debug non trouvee')
+          open(f, 'w').write(s)
+          print('build.gradle.kts patche (signing)')
+          PYEOF
+
       - name: Build Privé (release, arm64, target main_prive)
         run: |
           set -e

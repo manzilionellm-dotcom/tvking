@@ -39,6 +39,23 @@
 -keep class androidx.media3.** { *; }
 -dontwarn androidx.media3.**
 
+# ----- libVLC (flutter_vlc_player — repli lecteur sur certaines box TV) -----
+# Le moteur libVLC est instancié et appelé par RÉFLEXION + JNI (org.videolan.*).
+# Sans keep, R8 peut supprimer des classes utilisées au runtime → crash au
+# démarrage de la lecture sur la build TV (qui embarque ce repli). Additif,
+# aucun risque (on empêche seulement le stripping).
+-keep class org.videolan.** { *; }
+-dontwarn org.videolan.**
+
+# ----- @Keep (androidx) : respecter l'intention explicite des libs tierces -----
+# Toute classe/membre annoté @androidx.annotation.Keep DOIT survivre à R8
+# (sinon ClassNotFound/NoSuchMethod au runtime). On ne s'appuyait avant que sur
+# le wildcard de package des plugins maison → on couvre désormais aussi les deps.
+-keep @androidx.annotation.Keep class * { *; }
+-keepclassmembers class * {
+    @androidx.annotation.Keep *;
+}
+
 # ----- Firebase / Crashlytics (actif seulement si configuré) -----
 -keep class com.google.firebase.** { *; }
 -keep class com.google.android.gms.** { *; }
