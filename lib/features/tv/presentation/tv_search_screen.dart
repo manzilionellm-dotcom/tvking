@@ -144,6 +144,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                         ),
                       )
                     : GridView.builder(
+                        addAutomaticKeepAlives: false,
                         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                           maxCrossAxisExtent: 230,
                           mainAxisExtent: 120,

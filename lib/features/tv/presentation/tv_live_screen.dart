@@ -672,6 +672,10 @@ class _ChannelGrid extends StatelessWidget {
     }
     return GridView.builder(
       padding: const EdgeInsets.only(top: 4, bottom: 8),
+      // Mémoire bornée au scroll : on ne garde PAS les cartes hors écran en vie.
+      // NB : on NE met PAS de cacheExtent élevé — ça pré-chargerait trop de logos
+      // d'un coup à l'ouverture (suspect du crash de démarrage). Défaut conservé.
+      addAutomaticKeepAlives: false,
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 230,
         mainAxisExtent: 152,
@@ -679,8 +683,12 @@ class _ChannelGrid extends StatelessWidget {
         mainAxisSpacing: TvDimens.gutter,
       ),
       itemCount: channels.length,
-      itemBuilder: (BuildContext context, int i) =>
-          _ChannelCard(channel: channels[i], all: channels, index: i),
+      // Garde-fou index : aucun accès hors borne même si la liste change pendant
+      // un scroll rapide.
+      itemBuilder: (BuildContext context, int i) {
+        if (i < 0 || i >= channels.length) return const SizedBox.shrink();
+        return _ChannelCard(channel: channels[i], all: channels, index: i);
+      },
     );
   }
 }
@@ -765,33 +773,49 @@ class _ChannelCard extends StatelessWidget {
 
   /// Extrait les tags du nom (qualité + VIP/RAW/60 FPS/HEVC/LIVE) en casse
   /// uniforme et renvoie le nom NETTOYÉ + la liste des badges.
+  ///
+  /// PERF FLUIDITÉ : regex COMPILÉES UNE FOIS (statique) + résultat MÉMOÏSÉ par
+  /// nom. Avant : 8 RegExp recompilées + exécutées à CHAQUE carte entrant à
+  /// l'écran → pic CPU à chaque frame de scroll. Maintenant : 0 recompile, 0
+  /// recalcul pour un nom déjà vu. (Aucun impact mémoire/démarrage : pas de
+  /// pré-chargement, juste du calcul évité.)
+  static final List<(String, RegExp)> _badgeRules = <(String, RegExp)>[
+    ('4K', RegExp(r'\b(4K|UHD|2160P?)\b', caseSensitive: false)),
+    ('FHD', RegExp(r'\b(FHD|1080P?)\b', caseSensitive: false)),
+    ('HD', RegExp(r'\bHD\b', caseSensitive: false)),
+    ('HEVC', RegExp(r'\b(HEVC|H\.?265)\b', caseSensitive: false)),
+    ('60 FPS', RegExp(r'\b60\s?FPS\b', caseSensitive: false)),
+    ('VIP', RegExp(r'\bVIP\b', caseSensitive: false)),
+    ('RAW', RegExp(r'\bRAW\b', caseSensitive: false)),
+    ('LIVE', RegExp(r'\bLIVE\b', caseSensitive: false)),
+  ];
+  static final RegExp _multiSpace = RegExp(r'\s{2,}');
+  static final RegExp _leadSep = RegExp(r'^[\s|·\-–]+');
+  static final RegExp _trailSep = RegExp(r'[\s|·\-–]+$');
+  static final Map<String, _ParsedName> _nameMemo = <String, _ParsedName>{};
+
   static _ParsedName _parseName(Channel c) {
-    String n = c.cleanName;
+    final String key = c.cleanName;
+    final _ParsedName? hit = _nameMemo[key];
+    if (hit != null) return hit;
+    String n = key;
     final List<String> badges = <String>[];
-    const List<(String, String)> rules = <(String, String)>[
-      ('4K', r'\b(4K|UHD|2160P?)\b'),
-      ('FHD', r'\b(FHD|1080P?)\b'),
-      ('HD', r'\bHD\b'),
-      ('HEVC', r'\b(HEVC|H\.?265)\b'),
-      ('60 FPS', r'\b60\s?FPS\b'),
-      ('VIP', r'\bVIP\b'),
-      ('RAW', r'\bRAW\b'),
-      ('LIVE', r'\bLIVE\b'),
-    ];
-    for (final (String label, String pattern) in rules) {
-      final RegExp re = RegExp(pattern, caseSensitive: false);
+    for (final (String label, RegExp re) in _badgeRules) {
       if (re.hasMatch(n)) {
         badges.add(label);
         n = n.replaceAll(re, ' ');
       }
     }
     n = n
-        .replaceAll(RegExp(r'\s{2,}'), ' ')
-        .replaceAll(RegExp(r'^[\s|·\-–]+'), '')
-        .replaceAll(RegExp(r'[\s|·\-–]+$'), '')
+        .replaceAll(_multiSpace, ' ')
+        .replaceAll(_leadSep, '')
+        .replaceAll(_trailSep, '')
         .trim();
-    if (n.isEmpty) n = c.cleanName; // garde-fou : jamais de nom vide
-    return _ParsedName(n, badges);
+    if (n.isEmpty) n = key; // garde-fou : jamais de nom vide
+    final _ParsedName result = _ParsedName(n, badges);
+    if (_nameMemo.length > 4000) _nameMemo.clear(); // garde-fou mémoire
+    _nameMemo[key] = result;
+    return result;
   }
 }
 
@@ -852,6 +876,7 @@ class _Logo extends StatelessWidget {
       placeholder: (_, __) => Opacity(opacity: 0.35, child: fallback),
       errorWidget: (_, __, ___) => fallback,
       memCacheWidth: 200,
+      memCacheHeight: 200, // décodage borné aussi en hauteur (mémoire/image)
       fadeInDuration: const Duration(milliseconds: 180),
       fadeOutDuration: const Duration(milliseconds: 120),
     );
