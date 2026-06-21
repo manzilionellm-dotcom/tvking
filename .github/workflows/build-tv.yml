@@ -267,6 +267,47 @@ jobs:
           PYEOF
           grep -n "isMinifyEnabled\|isShrinkResources\|proguardFiles" android/app/build.gradle.kts || true
 
+      # COMPATIBILITÉ MAXIMALE BOX (corrige « Application non installée ») :
+      #  1) minSdk fixé à 21 (Android 5.0 = plancher Flutter). Sans ça, le
+      #     minSdk hérite de la valeur la plus haute exigée par un plugin →
+      #     les box sur un Android plus ancien REFUSENT l'install. 21 = le plus
+      #     grand dénominateur commun installable.
+      #  2) Signatures v1 (JAR) + v2 + v3 toutes activées : les box < Android 7
+      #     (API 24) ne savent vérifier QUE la v1 ; sans elle → install refusée.
+      - name: Compatibilité box (minSdk 21 + signatures v1/v2/v3)
+        run: |
+          set -e
+          python3 << 'PYEOF'
+          import re
+          f = "android/app/build.gradle.kts"
+          s = open(f).read()
+          # 1) minSdk -> 21
+          if re.search(r'minSdk\s*=\s*flutter\.minSdkVersion', s):
+              s = re.sub(r'minSdk\s*=\s*flutter\.minSdkVersion', 'minSdk = 21', s)
+              print('minSdk -> 21 (depuis flutter.minSdkVersion)')
+          elif re.search(r'minSdk\s*=\s*\d+', s):
+              s = re.sub(r'minSdk\s*=\s*\d+', 'minSdk = 21', s, count=1)
+              print('minSdk -> 21 (depuis litteral)')
+          else:
+              print('WARN: minSdk introuvable')
+          # 2) Forcer v1/v2/v3 sur la config debug (clé fixe utilisée en release).
+          if 'enableV1Signing' not in s:
+              s = s.replace(
+                  'android {',
+                  ('android {\n'
+                   '    signingConfigs {\n'
+                   '        getByName("debug") {\n'
+                   '            enableV1Signing = true\n'
+                   '            enableV2Signing = true\n'
+                   '            enableV3Signing = true\n'
+                   '        }\n'
+                   '    }'),
+                  1)
+              print('signatures v1/v2/v3 forcees sur debug')
+          open(f, 'w').write(s)
+          PYEOF
+          grep -nE "minSdk|enableV1Signing|enableV2Signing|enableV3Signing" android/app/build.gradle.kts || true
+
       # APK UNIVERSEL (toutes ABIs : arm64-v8a + armeabi-v7a + x86_64).
       # CRUCIAL pour Amazon Fire Stick : beaucoup de Fire Stick (Lite, Stick de
       # base) tournent en 32 bits (armeabi-v7a). Un APK arm64-only REFUSE de
