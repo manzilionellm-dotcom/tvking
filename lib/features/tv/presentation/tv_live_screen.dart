@@ -679,15 +679,28 @@ class _ChannelGrid extends StatelessWidget {
         mainAxisSpacing: TvDimens.gutter,
       ),
       itemCount: channels.length,
-      itemBuilder: (BuildContext context, int i) =>
-          _ChannelCard(channel: channels[i], all: channels, index: i),
+      // Garde-fou index + CLÉ STABLE (P0/P2) : jamais d'accès hors borne même
+      // si la liste est remplacée pendant un scroll rapide (ConcurrentModif /
+      // RangeError évités), et identité stable par chaîne → Flutter réutilise
+      // l'élément au lieu de le recréer (et de re-télécharger/redécoder le logo)
+      // à chaque rebuild de la grille.
+      itemBuilder: (BuildContext context, int i) {
+        if (i < 0 || i >= channels.length) return const SizedBox.shrink();
+        final Channel c = channels[i];
+        return _ChannelCard(
+          key: ValueKey<String>('ch.${c.id}'),
+          channel: c,
+          all: channels,
+          index: i,
+        );
+      },
     );
   }
 }
 
 class _ChannelCard extends StatelessWidget {
   const _ChannelCard(
-      {required this.channel, required this.all, required this.index});
+      {super.key, required this.channel, required this.all, required this.index});
   final Channel channel;
   final List<Channel> all;
   final int index;
@@ -852,6 +865,9 @@ class _Logo extends StatelessWidget {
       placeholder: (_, __) => Opacity(opacity: 0.35, child: fallback),
       errorWidget: (_, __, ___) => fallback,
       memCacheWidth: 200,
+      // Décodage borné AUSSI en hauteur (P0 mémoire) : un logo très haut ne
+      // peut plus décoder une grande bitmap → empreinte par image plafonnée.
+      memCacheHeight: 200,
       fadeInDuration: const Duration(milliseconds: 180),
       fadeOutDuration: const Duration(milliseconds: 120),
     );
