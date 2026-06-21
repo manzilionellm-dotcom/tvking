@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      BASE: 'https://99999.7themotion.com'
+      BASE: 'https://app.7themotion.com'
       MAC: 'MK:0A:0A:0A:0A:0A'
     steps:
       - name: Heartbeat + status via 99999

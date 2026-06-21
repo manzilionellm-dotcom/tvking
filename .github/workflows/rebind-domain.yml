@@ -32,7 +32,7 @@ jobs:
       CF_API: 'https://api.cloudflare.com/client/v4'
       TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      HOST: '99999.7themotion.com'
+      HOST: 'app.7themotion.com'
       TARGET: 'seven-motion-backend'
     steps:
       - name: Detache puis attache le domaine
