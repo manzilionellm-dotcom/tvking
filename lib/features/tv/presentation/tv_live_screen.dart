@@ -705,7 +705,7 @@ class _ChannelGrid extends StatelessWidget {
   }
 }
 
-class _ChannelCard extends StatelessWidget {
+class _ChannelCard extends StatefulWidget {
   const _ChannelCard(
       {required this.channel, required this.all, required this.index});
   final Channel channel;
@@ -713,18 +713,52 @@ class _ChannelCard extends StatelessWidget {
   final int index;
 
   @override
+  State<_ChannelCard> createState() => _ChannelCardState();
+}
+
+class _ChannelCardState extends State<_ChannelCard> {
+  // FocusNode possédé par la carte (et non par TvFocusable) : on en a besoin
+  // pour RE-DEMANDER le focus au retour du lecteur. On le passe à TvFocusable,
+  // qui détecte alors qu'il ne lui appartient pas et ne le dispose pas (on s'en
+  // charge ici) → pas de double-dispose, pas de fuite. Aucun coût ajouté : sans
+  // ça, TvFocusable créait de toute façon son propre node par carte.
+  final FocusNode _node = FocusNode();
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final Channel channel = widget.channel;
     final bool fav = FavoritesRepository.instance.current.contains(channel.id);
     final _ParsedName p = _parseName(channel);
     return TvFocusable(
+      focusNode: _node,
       scale: TvFocusScale.small,
-      onSelect: () {
-        Navigator.of(context).push(
+      onSelect: () async {
+        await Navigator.of(context).push(
           MaterialPageRoute<void>(
             builder: (_) =>
-                TvPlayerScreen(channels: all, startIndex: index),
+                TvPlayerScreen(channels: widget.all, startIndex: widget.index),
           ),
         );
+        // RESTAURATION DU FOCUS (retour lecteur, demande explicite « pas pro »).
+        // Au Back depuis le lecteur, on rend le focus EXACTEMENT à la chaîne
+        // d'où l'utilisateur est parti — pas au 1er élément / aux catégories /
+        // au clavier. La grille est préservée (GlobalKey _liveGridKey) → la
+        // carte est toujours montée et reprend son halo, façon Netflix.
+        //
+        // On le fait en POST-FRAME : à la fermeture d'une route, le FocusScope
+        // sous-jacent tente de restaurer SON dernier focus tout seul (et tombe
+        // parfois sur les catégories). En demandant le focus APRÈS cette frame,
+        // notre requête a le dernier mot → la bonne chaîne est toujours surlignée.
+        if (!mounted) return;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _node.requestFocus();
+        });
       },
       child: Padding(
         padding: const EdgeInsets.all(8),
