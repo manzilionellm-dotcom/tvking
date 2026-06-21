@@ -252,7 +252,32 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     if (_forYouCh.isNotEmpty) cats.add(_kForYouCat);
     cats.addAll(_cats);
     _dispCats = cats;
-    // Grille affichée selon la catégorie sélectionnée.
+    // Grille affichée selon la catégorie sélectionnée (extraite : voir
+    // _recomputeShown — c'est la SEULE partie qui dépend de _selectedCat).
+    _recomputeShown();
+    // Dernière chaîne vue (bandeau « Continuer ») — calculée ICI, pas en build.
+    _lastWatchedCh = null;
+    _lastWatchedIdx = -1;
+    for (final String id in _recentIds) {
+      final Channel? c = _byId[id];
+      if (c != null) {
+        _lastWatchedCh = c;
+        _lastWatchedIdx = _all.indexOf(c);
+        break;
+      }
+    }
+  }
+
+  /// Recalcule UNIQUEMENT la grille affichée à partir de _selectedCat.
+  ///
+  /// ANTI-ANR (P0, logcat SHIELD « Waited 5000ms for KeyEvent », 100 % CPU) :
+  /// changer de catégorie ne dépend QUE de _selectedCat — pas besoin de
+  /// reconstruire _byId, la map de tendances (qui curait 50 000 noms),
+  /// « Pour vous » ni la dernière vue. Avant, _select() relançait TOUT
+  /// _recompute() → une tempête de RegExp à CHAQUE déplacement D-pad dans les
+  /// catégories → fil UI figé ~3,7 s → ANR. Ici : une seule passe O(n) de
+  /// filtre sur la catégorie BRUTE (trim, aucune curation) → instantané.
+  void _recomputeShown() {
     if (_selectedCat == _kTrendCat) {
       _shownList = _trendCh;
     } else if (_selectedCat == _kFavCat) {
@@ -268,25 +293,15 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
           .where((Channel c) => _catOf(c) == _selectedCat)
           .toList(growable: false);
     }
-    // Dernière chaîne vue (bandeau « Continuer ») — calculée ICI, pas en build.
-    _lastWatchedCh = null;
-    _lastWatchedIdx = -1;
-    for (final String id in _recentIds) {
-      final Channel? c = _byId[id];
-      if (c != null) {
-        _lastWatchedCh = c;
-        _lastWatchedIdx = _all.indexOf(c);
-        break;
-      }
-    }
   }
 
-  /// Sélectionne une catégorie (focus/OK) puis recalcule la grille.
+  /// Sélectionne une catégorie (focus/OK) puis recalcule SEULEMENT la grille
+  /// (pas tout l'état dérivé — cf. _recomputeShown, anti-ANR).
   void _select(String cat) {
     if (_selectedCat == cat) return;
     setState(() {
       _selectedCat = cat;
-      _recompute();
+      _recomputeShown();
     });
   }
 

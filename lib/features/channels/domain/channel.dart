@@ -111,7 +111,19 @@ class Channel {
   ///
   /// Le `name` brut reste accessible via `name` directement —
   /// utile pour la recherche, l'EPG, le matching de favoris.
-  String get cleanName => TitleCurator.curate(name);
+  ///
+  /// **Caché par `id`** (comme [genre]/[country]/[quality]) : `curate()` est
+  /// une passe de DIZAINES de RegExp. Sans ce cache, chaque accès la relançait —
+  /// et le cache interne de `TitleCurator` (8000 entrées) THRASHE dès qu'une
+  /// playlist dépasse 8000 chaînes (le cas réel : 50 000+), si bien que presque
+  /// chaque appel ré-exécutait tout le pipeline. Conséquence mesurée (logcat
+  /// SHIELD) : `_recompute` saturait le fil UI à 100 % pendant ~3,7 s → ANR
+  /// (« Waited 5000ms for KeyEvent »). Mémoïsé par chaîne, c'est UNE curation
+  /// par chaîne sur toute la session, puis O(1) — quelle que soit la taille.
+  String get cleanName => _ChannelComputedCache.cleanNames.putIfAbsent(
+        id,
+        () => TitleCurator.curate(name),
+      );
 
   /// Catégorie présentable à l'écran. Passe par le dictionnaire
   /// éditorial du [TitleCurator] (ex: "ADULT" → "After Dark",
@@ -177,6 +189,8 @@ abstract final class _ChannelComputedCache {
   static final Map<String, CountryInfo?> countries = <String, CountryInfo?>{};
   static final Map<String, ChannelQuality> qualities =
       <String, ChannelQuality>{};
+  // Nom curé (présentable) caché par id — voir Channel.cleanName.
+  static final Map<String, String> cleanNames = <String, String>{};
 
   /// À appeler quand on supprime une playlist : on nettoie les
   /// entrées orphelines pour ne pas faire de fuite mémoire.
@@ -185,6 +199,7 @@ abstract final class _ChannelComputedCache {
       genres.remove(id);
       countries.remove(id);
       qualities.remove(id);
+      cleanNames.remove(id);
     }
   }
 }
