@@ -71,6 +71,12 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // défilement rapide à la télécommande, on DÉBOUNCE pour ne recalculer que sur
   // la catégorie où le focus se POSE, pas sur chaque case traversée.
   Timer? _catDebounce;
+  // Anti-ANR (P0) : les flux favoris/récents/tendances peuvent émettre EN RAFALE
+  // (surtout au retour du lecteur : record() → récents, etc.). Sans coalescence,
+  // chaque émission relançait un _recompute O(n) → plusieurs recalculs lourds
+  // coup sur coup → fil UI saturé → ANR (« app figée » tuée par l'OS). On
+  // FUSIONNE : on planifie UN SEUL recompute après une courte pause.
+  Timer? _recomputeDebounce;
   bool _syncing = false;
   RemoteSyncResult? _lastSync;
   // Garde-fou : on borne le nombre de ré-imports AUTOMATIQUES de la source.
@@ -89,26 +95,20 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // Favoris en direct : la catégorie « ★ Favoris » se met à jour toute seule.
     FavoritesRepository.instance.initialize();
     _favSub = FavoritesRepository.instance.favoritesStream.listen((Set<String> ids) {
-      if (mounted) setState(() {
-        _favIds = ids;
-        _recompute();
-      });
+      _favIds = ids;
+      _scheduleRecompute(); // coalescé (anti-ANR)
     });
     // Tendances en direct : la catégorie « 🔥 Tendances » se met à jour seule.
     TrendingRepository.instance.start();
     _trendSub = TrendingRepository.instance.stream.listen((List<String> names) {
-      if (mounted) setState(() {
-        _trending = names;
-        _recompute();
-      });
+      _trending = names;
+      _scheduleRecompute(); // coalescé (anti-ANR)
     });
     // Historique « 🕒 Récemment » en direct.
     _recentSub =
         RecentlyWatchedRepository.instance.stream.listen((List<String> ids) {
-      if (mounted) setState(() {
-        _recentIds = ids;
-        _recompute();
-      });
+      _recentIds = ids;
+      _scheduleRecompute(); // coalescé (anti-ANR)
     });
     // MAC affichée sur l'état vide : sans elle, impossible de savoir à quel
     // appareil pousser une source dans le panel.
@@ -150,6 +150,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     TrendingRepository.instance.stop();
     _syncTimer?.cancel();
     _catDebounce?.cancel();
+    _recomputeDebounce?.cancel();
     ParentalControls.instance.kidsMode.removeListener(_onKidsModeChanged);
     super.dispose();
   }
@@ -286,6 +287,17 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     setState(() {
       _selectedCat = cat;
       _recompute();
+    });
+  }
+
+  /// Coalesce les recalculs déclenchés par les flux (favoris/récents/tendances).
+  /// Plusieurs émissions rapprochées → UN SEUL `_recompute` (anti-ANR). Le délai
+  /// court (150 ms) reste imperceptible pour ces mises à jour non urgentes.
+  void _scheduleRecompute() {
+    _recomputeDebounce?.cancel();
+    _recomputeDebounce = Timer(const Duration(milliseconds: 150), () {
+      if (!mounted) return;
+      setState(_recompute);
     });
   }
 
