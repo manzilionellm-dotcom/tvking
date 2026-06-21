@@ -672,12 +672,6 @@ class _ChannelGrid extends StatelessWidget {
     }
     return GridView.builder(
       padding: const EdgeInsets.only(top: 4, bottom: 8),
-      // PERF scroll (fluidité TV) : on pré-rend ~900 px en avance (cacheExtent)
-      // → plus de tuiles blanches en défilement rapide D-pad ; et on NE garde
-      // PAS les cartes hors écran vivantes (mémoire bornée, rebuild léger grâce
-      // au mémo de _parseName).
-      cacheExtent: 900,
-      addAutomaticKeepAlives: false,
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 230,
         mainAxisExtent: 152,
@@ -685,28 +679,15 @@ class _ChannelGrid extends StatelessWidget {
         mainAxisSpacing: TvDimens.gutter,
       ),
       itemCount: channels.length,
-      // Garde-fou index + CLÉ STABLE (P0/P2) : jamais d'accès hors borne même
-      // si la liste est remplacée pendant un scroll rapide (ConcurrentModif /
-      // RangeError évités), et identité stable par chaîne → Flutter réutilise
-      // l'élément au lieu de le recréer (et de re-télécharger/redécoder le logo)
-      // à chaque rebuild de la grille.
-      itemBuilder: (BuildContext context, int i) {
-        if (i < 0 || i >= channels.length) return const SizedBox.shrink();
-        final Channel c = channels[i];
-        return _ChannelCard(
-          key: ValueKey<String>('ch.${c.id}'),
-          channel: c,
-          all: channels,
-          index: i,
-        );
-      },
+      itemBuilder: (BuildContext context, int i) =>
+          _ChannelCard(channel: channels[i], all: channels, index: i),
     );
   }
 }
 
 class _ChannelCard extends StatelessWidget {
   const _ChannelCard(
-      {super.key, required this.channel, required this.all, required this.index});
+      {required this.channel, required this.all, required this.index});
   final Channel channel;
   final List<Channel> all;
   final int index;
@@ -784,50 +765,33 @@ class _ChannelCard extends StatelessWidget {
 
   /// Extrait les tags du nom (qualité + VIP/RAW/60 FPS/HEVC/LIVE) en casse
   /// uniforme et renvoie le nom NETTOYÉ + la liste des badges.
-  ///
-  /// PERF FLUIDITÉ (scroll TV) : les regex sont COMPILÉES UNE SEULE FOIS
-  /// (statique) et le résultat est MÉMOÏSÉ par nom. Avant, chaque carte qui
-  /// (re)rentrait à l'écran recompilait + exécutait 8 regex → pic CPU à chaque
-  /// frame de défilement rapide (jank). Maintenant : 0 recompile, 0 recalcul
-  /// pour un nom déjà vu → scroll « beurre ».
-  static final List<(String, RegExp)> _badgeRules = <(String, RegExp)>[
-    ('4K', RegExp(r'\b(4K|UHD|2160P?)\b', caseSensitive: false)),
-    ('FHD', RegExp(r'\b(FHD|1080P?)\b', caseSensitive: false)),
-    ('HD', RegExp(r'\bHD\b', caseSensitive: false)),
-    ('HEVC', RegExp(r'\b(HEVC|H\.?265)\b', caseSensitive: false)),
-    ('60 FPS', RegExp(r'\b60\s?FPS\b', caseSensitive: false)),
-    ('VIP', RegExp(r'\bVIP\b', caseSensitive: false)),
-    ('RAW', RegExp(r'\bRAW\b', caseSensitive: false)),
-    ('LIVE', RegExp(r'\bLIVE\b', caseSensitive: false)),
-  ];
-  static final RegExp _multiSpace = RegExp(r'\s{2,}');
-  static final RegExp _leadSep = RegExp(r'^[\s|·\-–]+');
-  static final RegExp _trailSep = RegExp(r'[\s|·\-–]+$');
-  static final Map<String, _ParsedName> _nameMemo = <String, _ParsedName>{};
-
   static _ParsedName _parseName(Channel c) {
-    final String key = c.cleanName;
-    final _ParsedName? hit = _nameMemo[key];
-    if (hit != null) return hit;
-    String n = key;
+    String n = c.cleanName;
     final List<String> badges = <String>[];
-    for (final (String label, RegExp re) in _badgeRules) {
+    const List<(String, String)> rules = <(String, String)>[
+      ('4K', r'\b(4K|UHD|2160P?)\b'),
+      ('FHD', r'\b(FHD|1080P?)\b'),
+      ('HD', r'\bHD\b'),
+      ('HEVC', r'\b(HEVC|H\.?265)\b'),
+      ('60 FPS', r'\b60\s?FPS\b'),
+      ('VIP', r'\bVIP\b'),
+      ('RAW', r'\bRAW\b'),
+      ('LIVE', r'\bLIVE\b'),
+    ];
+    for (final (String label, String pattern) in rules) {
+      final RegExp re = RegExp(pattern, caseSensitive: false);
       if (re.hasMatch(n)) {
         badges.add(label);
         n = n.replaceAll(re, ' ');
       }
     }
     n = n
-        .replaceAll(_multiSpace, ' ')
-        .replaceAll(_leadSep, '')
-        .replaceAll(_trailSep, '')
+        .replaceAll(RegExp(r'\s{2,}'), ' ')
+        .replaceAll(RegExp(r'^[\s|·\-–]+'), '')
+        .replaceAll(RegExp(r'[\s|·\-–]+$'), '')
         .trim();
-    if (n.isEmpty) n = key; // garde-fou : jamais de nom vide
-    final _ParsedName result = _ParsedName(n, badges);
-    // Garde-fou mémoire : on borne le mémo sur les sources géantes.
-    if (_nameMemo.length > 4000) _nameMemo.clear();
-    _nameMemo[key] = result;
-    return result;
+    if (n.isEmpty) n = c.cleanName; // garde-fou : jamais de nom vide
+    return _ParsedName(n, badges);
   }
 }
 
@@ -888,9 +852,6 @@ class _Logo extends StatelessWidget {
       placeholder: (_, __) => Opacity(opacity: 0.35, child: fallback),
       errorWidget: (_, __, ___) => fallback,
       memCacheWidth: 200,
-      // Décodage borné AUSSI en hauteur (P0 mémoire) : un logo très haut ne
-      // peut plus décoder une grande bitmap → empreinte par image plafonnée.
-      memCacheHeight: 200,
       fadeInDuration: const Duration(milliseconds: 180),
       fadeOutDuration: const Duration(milliseconds: 120),
     );

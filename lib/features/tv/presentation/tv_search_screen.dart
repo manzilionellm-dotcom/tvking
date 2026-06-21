@@ -144,10 +144,6 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                         ),
                       )
                     : GridView.builder(
-                        // PERF scroll (fluidité TV) : pré-rendu en avance + pas
-                        // de conservation des cartes hors écran.
-                        cacheExtent: 900,
-                        addAutomaticKeepAlives: false,
                         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                           maxCrossAxisExtent: 230,
                           mainAxisExtent: 120,
