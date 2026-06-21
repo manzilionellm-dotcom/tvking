@@ -9,6 +9,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -98,9 +99,18 @@ class NativeVideoView(
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(15_000)
 
+        // DefaultDataSource délègue le http(s) au httpFactory ci-dessus (donc
+        // MÊME User-Agent / redirections pour le DIRECT) MAIS sait AUSSI ouvrir
+        // les sources LOCALES (file://, content://). Indispensable pour LIRE un
+        // enregistrement .ts DANS l'app : avant, la lecture était déléguée à un
+        // lecteur externe (open_filex) qui, sur cette box, tombait sur la Galerie
+        // → FATAL EXCEPTION (gallery3d) qui tuait l'app. Le direct reste 100 %
+        // inchangé (http passe toujours par le même httpFactory).
+        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+
         // Politique de ré-essai réseau AGRESSIVE : on retente beaucoup avant
         // d'abandonner un chargement (le direct IPTV coupe souvent brièvement).
-        val mediaSourceFactory = DefaultMediaSourceFactory(httpFactory)
+        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
             .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(6))
 
         player = ExoPlayer.Builder(context, renderersFactory)

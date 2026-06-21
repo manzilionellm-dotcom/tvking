@@ -2,16 +2,17 @@
 //  tv_recordings_screen.dart — « Mes enregistrements » (10-foot)
 // =========================================================
 //  Liste des vidéos enregistrées par le client (RecordingRepository). Chaque
-//  ligne est focusable au D-pad : OK = LIRE (via le lecteur système, open_filex
-//  — on ne touche PAS au lecteur live de l'app), bouton corbeille = SUPPRIMER.
+//  ligne est focusable au D-pad : OK = LIRE EN INTERNE (lecteur dédié
+//  TvRecordingPlayerScreen, moteur natif ExoPlayer — le MÊME que le direct),
+//  bouton corbeille = SUPPRIMER.
 //
-//  Robuste : aucune exception ne fait planter l'écran (try/catch partout) ;
-//  si aucun lecteur externe n'est installé, on l'explique au lieu de crasher.
+//  IMPORTANT : on ne délègue PLUS à un lecteur externe (open_filex/intent VIEW).
+//  Sur cette box, le .ts tombait sur la Galerie Android qui CRASHE (FATAL
+//  EXCEPTION gallery3d) et tue l'app. La lecture interne supprime ce risque.
 // =========================================================
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:open_filex/open_filex.dart';
 
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
@@ -19,6 +20,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_components.dart';
+import 'tv_recording_player_screen.dart';
 
 class TvRecordingsScreen extends StatelessWidget {
   const TvRecordingsScreen({super.key});
@@ -70,23 +72,16 @@ class _RecordingRow extends StatelessWidget {
   final Recording rec;
   final bool autofocus;
 
-  Future<void> _play(BuildContext context) async {
-    try {
-      final OpenResult res = await OpenFilex.open(rec.filePath);
-      if (res.type != ResultType.done && context.mounted) {
-        await _info(
-          context,
-          'Lecture impossible',
-          "Aucune application capable de lire ce fichier (.ts) n'est installée "
-              'sur cette TV. Installe un lecteur comme VLC ou MX Player.',
-        );
-      }
-    } catch (_) {
-      if (context.mounted) {
-        await _info(context, 'Lecture impossible',
-            "Ce fichier n'a pas pu être ouvert.");
-      }
-    }
+  // LECTURE EN INTERNE (plus de lecteur externe qui crashait la box) : on
+  // pousse le lecteur d'enregistrement dédié, qui rejoue le .ts via le MÊME
+  // moteur natif (ExoPlayer/Media3) que le direct. Voir
+  // tv_recording_player_screen.dart pour le « pourquoi » détaillé.
+  void _play(BuildContext context) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => TvRecordingPlayerScreen(recording: rec),
+      ),
+    );
   }
 
   Future<void> _delete(BuildContext context) async {
@@ -115,22 +110,6 @@ class _RecordingRow extends StatelessWidget {
     try {
       await RecordingRepository.instance.delete(rec);
     } catch (_) {}
-  }
-
-  Future<void> _info(BuildContext context, String title, String body) {
-    return showDialog<void>(
-      context: context,
-      builder: (BuildContext ctx) => AlertDialog(
-        backgroundColor: TvTokens.card,
-        title: Text(title, style: TextStyle(color: TvTokens.text)),
-        content: Text(body, style: TextStyle(color: TvTokens.muted)),
-        actions: <Widget>[
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text('OK', style: TextStyle(color: TvTokens.gold))),
-        ],
-      ),
-    );
   }
 
   @override
