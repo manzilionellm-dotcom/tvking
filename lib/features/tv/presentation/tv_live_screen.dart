@@ -49,6 +49,25 @@ String _tvPretty(String s) {
   return r.trim();
 }
 
+// Filet TV pour les LIBELLÉS DE CATÉGORIE : retire les mots techniques résiduels
+// (RAW, HEVC, VIP, FHD, 4K, HD…) que le curateur partagé aurait laissés. On ne
+// l'applique QU'AUX catégories (les noms de chaînes ont déjà leur qualité
+// extraite en chip). Mots ENTIERS uniquement (jamais au milieu d'un mot).
+final RegExp _tvCodecWords = RegExp(
+    r'(^|\s)(raw|hevc|h\.?264|h\.?265|vip|fhd|uhd|sd|4k|hd|60\s?fps|50\s?fps|multi|multilang|backup|bkp)(?=\s|$)',
+    caseSensitive: false);
+String _tvStripCodec(String s) {
+  String r = s;
+  String before;
+  int safety = 3; // occurrences adjacentes : quelques passes suffisent
+  do {
+    before = r;
+    r = r.replaceAll(_tvCodecWords, ' ');
+    safety--;
+  } while (before != r && safety > 0);
+  return r;
+}
+
 class TvLiveScreen extends StatefulWidget {
   const TvLiveScreen({super.key});
 
@@ -103,6 +122,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // Chaîne à re-focuser au RETOUR du lecteur (désignée par _openPlayer). La
   // carte correspondante reprend le focus à son prochain build (déterministe).
   String? _restoreFocusId;
+  // Source du lancement : true = rangée « Reprendre », false = grille. Évite
+  // qu'une chaîne présente DANS LES DEUX vole le focus du mauvais côté au retour.
+  bool _restoreFromRail = false;
   bool _syncing = false;
   RemoteSyncResult? _lastSync;
   // Garde-fou : on borne le nombre de ré-imports AUTOMATIQUES de la source.
@@ -331,18 +353,24 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   /// Ouvre le lecteur pour [index] de la liste affichée, PUIS — au retour —
   /// DÉSIGNE la chaîne quittée pour que SA carte reprenne le focus. La grille
   /// (et donc la catégorie) ne bouge pas → on revient exactement où on était.
-  Future<void> _openPlayer(int index) async {
-    if (index < 0 || index >= _shownList.length) return;
-    final String chId = _shownList[index].id;
+  Future<void> _openPlayerWith(List<Channel> list, int index,
+      {required bool fromRail}) async {
+    if (index < 0 || index >= list.length) return;
+    final String chId = list[index].id;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            TvPlayerScreen(channels: _shownList, startIndex: index),
+        builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
       ),
     );
     if (!mounted) return;
-    setState(() => _restoreFocusId = chId);
+    setState(() {
+      _restoreFocusId = chId;
+      _restoreFromRail = fromRail;
+    });
   }
+
+  Future<void> _openPlayer(int index) =>
+      _openPlayerWith(_shownList, index, fromRail: false);
 
   void _setPreview(Channel c) {
     // Focuser une CHAÎNE annule tout changement de CATÉGORIE en attente : si un
@@ -418,7 +446,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // Catégorie réelle : on NETTOIE le libellé affiché (FR|/UK|, RAW, 60fps,
     // hevc…) via le curateur PARTAGÉ (appel en lecture seule, on ne le modifie
     // pas) + polissage TV. La clé brute (_catOf) reste INTACTE pour le filtrage.
-    final String pretty = _tvPretty(TitleCurator.curateCategory(cat));
+    final String pretty =
+        _tvPretty(_tvStripCodec(TitleCurator.curateCategory(cat)));
     return pretty.isEmpty ? cat : pretty;
   }
 
@@ -628,36 +657,31 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       channels: _shownList,
       onFocused: _setPreview,
       onPlay: _openPlayer,
-      restoreFocusId: _restoreFocusId,
+      // La grille ne reprend le focus que si le lancement venait de la GRILLE.
+      restoreFocusId: _restoreFromRail ? null : _restoreFocusId,
       onRestored: () => _restoreFocusId = null,
     );
 
-    // Chaîne reflétée par le hero : la survolée, sinon la dernière vue, sinon la
-    // 1re de la liste affichée. Le hero suit la sélection (façon Google TV).
-    final Channel? heroCh = _previewCh ??
-        _lastWatchedCh ??
-        (_shownList.isNotEmpty
-            ? _shownList.first
-            : (_all.isNotEmpty ? _all.first : null));
+    // Rangée « Reprendre » : les ~8 DERNIÈRES chaînes regardées (ordre récent).
+    final List<Channel> recentList =
+        _recentCh.length > 8 ? _recentCh.sublist(0, 8) : _recentCh;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        // ----- Bande haute : « Continuer » à gauche + C-LIST à droite -----
+        // ----- Bande haute : « Reprendre » (récentes) à gauche + C-LIST à droite
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Expanded(
-              child: heroCh != null
-                  ? _LiveHero(
-                      channel: heroCh,
-                      all: _all,
-                      // Le hero ne prend le focus initial QUE s'il y a une
-                      // « dernière vue » (rôle Continuer) ; sinon le focus va à
-                      // la C-List, et le hero suit le survol de la grille.
-                      autofocus: _heroShown,
-                    )
-                  : const SizedBox.shrink(),
+              child: _ResumeRail(
+                channels: recentList,
+                onPlay: (int i) =>
+                    _openPlayerWith(recentList, i, fromRail: true),
+                // La rangée ne reprend le focus que si le lancement venait d'ELLE.
+                restoreFocusId: _restoreFromRail ? _restoreFocusId : null,
+                onRestored: () => _restoreFocusId = null,
+              ),
             ),
             const SizedBox(width: TvDimens.gutter),
             SizedBox(width: 420, child: cList),
@@ -830,6 +854,130 @@ class _CRow extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Rangée « Reprendre » (bande haute, à gauche) : les ~8 dernières chaînes
+/// regardées, qu'on fait DÉFILER à la télécommande (horizontal). OK = lecture.
+/// Masquée s'il n'y a pas encore d'historique.
+class _ResumeRail extends StatelessWidget {
+  const _ResumeRail({
+    required this.channels,
+    required this.onPlay,
+    this.restoreFocusId,
+    this.onRestored,
+  });
+
+  final List<Channel> channels;
+  final void Function(int index) onPlay;
+  final String? restoreFocusId;
+  final VoidCallback? onRestored;
+
+  @override
+  Widget build(BuildContext context) {
+    if (channels.isEmpty) return const SizedBox.shrink();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+          child: Text('REPRENDRE',
+              style: TvTokens.ui(13,
+                  weight: FontWeight.w800,
+                  color: TvTokens.mutedDim,
+                  spacing: 2)),
+        ),
+        SizedBox(
+          height: 150,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.zero,
+            itemCount: channels.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 14),
+            itemBuilder: (BuildContext context, int i) => _ResumeCard(
+              channel: channels[i],
+              onPlay: () => onPlay(i),
+              restoreFocusId: restoreFocusId,
+              onRestored: onRestored,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Une carte de la rangée « Reprendre » : logo + nom (nettoyé), focusable.
+class _ResumeCard extends StatefulWidget {
+  const _ResumeCard({
+    required this.channel,
+    required this.onPlay,
+    this.restoreFocusId,
+    this.onRestored,
+  });
+  final Channel channel;
+  final VoidCallback onPlay;
+  final String? restoreFocusId;
+  final VoidCallback? onRestored;
+
+  @override
+  State<_ResumeCard> createState() => _ResumeCardState();
+}
+
+class _ResumeCardState extends State<_ResumeCard> {
+  final FocusNode _node = FocusNode();
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Channel c = widget.channel;
+    // Reprise du focus au retour du lecteur (même mécanisme déterministe que la
+    // grille) : si l'écran nous désigne, on (re)prend le focus puis on libère.
+    if (widget.restoreFocusId != null && widget.restoreFocusId == c.id) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (widget.restoreFocusId == widget.channel.id) {
+          _node.requestFocus();
+          widget.onRestored?.call();
+        }
+      });
+    }
+    return SizedBox(
+      width: 230,
+      child: TvFocusable(
+        focusNode: _node,
+        scale: TvFocusScale.small,
+        baseColor: TvTokens.card,
+        onSelect: widget.onPlay,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: <Widget>[
+              _LogoChip(channel: c),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _tvPretty(c.cleanName),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 18,
+                      height: 1.15,
+                      fontWeight: FontWeight.w600,
+                      color: TvTokens.text),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
