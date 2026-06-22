@@ -165,6 +165,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   List<Channel> _forYouCh = const <Channel>[];
   List<String> _dispCats = const <String>[];
   List<Channel> _shownList = const <Channel>[];
+  // Nombre de chaînes par VRAIE catégorie (compteur de la C-List). Construit en
+  // UNE passe O(n) dans _ingest (pas par item de build) → la C-List affiche le
+  // compteur sans rescanner _all à chaque ligne. Les pseudo-catégories
+  // (Tendances/Favoris/…) comptent via la longueur de leur liste dérivée.
+  Map<String, int> _realCatCounts = const <String, int>{};
   // Index id -> chaîne, construit UNE fois par changement de source (dans
   // _recompute), réutilisé par les récents et « dernière vue ». Évite des
   // scans O(n) répétés dans build() (jank sur les très grandes listes).
@@ -295,6 +300,15 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     }
   }
 
+  /// Compteur affiché dans la C-List pour une catégorie (vraie ou pseudo).
+  int _countOf(String cat) {
+    if (cat == _kTrendCat) return _trendCh.length;
+    if (cat == _kFavCat) return _favCh.length;
+    if (cat == _kRecentCat) return _recentCh.length;
+    if (cat == _kForYouCat) return _forYouCh.length;
+    return _realCatCounts[cat] ?? 0;
+  }
+
   /// Sélectionne une catégorie (focus/OK) puis recalcule SEULEMENT la grille
   /// (pas tout l'état dérivé — cf. _recomputeShown, anti-ANR).
   void _select(String cat) {
@@ -387,14 +401,19 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // rester rapide même sur de très grandes listes (évite un contains O(n²)).
     final List<String> cats = <String>[];
     final Set<String> seenCats = <String>{};
+    // Compteur par catégorie calculé ICI, dans la MÊME passe O(n) (pas par ligne
+    // de la C-List) → affichage du compteur sans rescanner _all.
+    final Map<String, int> counts = <String, int>{};
     for (final Channel c in live) {
       final String cat = _catOf(c);
       if (seenCats.add(cat)) cats.add(cat);
+      counts[cat] = (counts[cat] ?? 0) + 1;
     }
     if (!mounted) return;
     setState(() {
       _all = live;
       _cats = cats;
+      _realCatCounts = counts;
       _selectedCat ??= cats.isNotEmpty ? cats.first : null;
       // On ne réinitialise PAS si l'utilisateur est sur une pseudo-catégorie
       // (Tendances/Favoris/Récemment, absente de `cats`) — sinon un refresh de
@@ -517,118 +536,213 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     final Channel? last = _lastWatchedCh;
     _heroShown = last != null;
 
-    final Widget body = Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        // ----- Catégories -----
-        SizedBox(
-          width: 300,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
-                child: Text(context.l10n.tvNavLive,
-                    style: TextStyle(
-                        fontSize: TvDimens.displayS,
-                        fontWeight: FontWeight.w800,
-                        color: TvTokens.text)),
-              ),
-              Expanded(
-                child: Builder(builder: (BuildContext context) {
-                  final List<String> cats = _dispCats;
-                  return ListView.builder(
-                    itemCount: cats.length,
-                    itemBuilder: (BuildContext context, int i) {
-                    final String cat = cats[i];
-                    final bool sel = cat == _selectedCat;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: TvFocusBuilder(
-                        autofocus: i == 0 && !_heroShown,
-                        scale: TvFocusScale.medium,
-                        onSelect: () => _select(cat),
-                        builder: (BuildContext context, bool focused) {
-                          // Le focus met à jour la grille (preview live), mais
-                          // DÉBOUNCÉ (P1-5) : en défilement rapide on ne recalcule
-                          // pas sur chaque catégorie traversée, seulement à l'arrêt.
-                          if (focused && _selectedCat != cat) {
-                            _selectDebounced(cat);
-                          }
-                          // FOCUS UNIQUE (règle #3) : seul l'élément RÉELLEMENT
-                          // focus (D-pad) porte l'or — bordure 2 px + texte or
-                          // + ombre. La catégorie « active mais pas focus » =
-                          // gris neutre discret, JAMAIS d'or, jamais de scale.
-                          final bool active = sel && !focused;
-                          final Color bg = (focused || active)
-                              ? TvTokens.sel
-                              : Colors.transparent;
-                          final Color fg = focused
-                              ? TvTokens.goldBright
-                              : (active ? TvTokens.text : TvTokens.muted);
-                          return Container(
-                            decoration: BoxDecoration(
-                              color: bg,
-                              borderRadius:
-                                  BorderRadius.circular(TvTokens.rMenuItem),
-                              border: focused
-                                  ? Border.all(
-                                      color: TvTokens.gold,
-                                      width: TvDimens.focusOutline)
-                                  : null,
-                              boxShadow: focused
-                                  ? <BoxShadow>[
-                                      BoxShadow(
-                                        color: TvTokens.gold
-                                            .withValues(alpha: 0.22),
-                                        blurRadius: TvDimens.focusGlowBlur,
-                                        spreadRadius: TvDimens.focusGlowSpread,
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 12),
-                            child: Text(
-                              _catLabel(context, cat),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  fontSize: TvDimens.titleS,
-                                  fontWeight: (focused || active)
-                                      ? FontWeight.w700
-                                      : FontWeight.w600,
-                                  color: fg),
-                            ),
-                          );
-                        },
-                      ),
-                    );
-                  },
-                );
-                }),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: TvDimens.gutter),
-        // ----- Grille de chaînes (virtualisée) -----
-        Expanded(child: _ChannelGrid(key: _liveGridKey, channels: _shownList)),
-      ],
+    // ===== C-LIST (catégories) — COMPACTE, EN HAUT À DROITE =====
+    // Déplacée de l'ancienne colonne gauche de 300 px vers une bande haute à
+    // droite : l'espace central est désormais 100 % dédié aux chaînes. Hauteur
+    // BORNÉE (≤5 lignes puis scroll vertical interne), compteur aligné à droite,
+    // noms tronqués (ellipsis). Le focus D-pad circule menu gauche ⇄ C-List ⇄
+    // grille (traversée directionnelle géométrique de Flutter).
+    final Widget cList = _CategoryRail(
+      cats: _dispCats,
+      selectedCat: _selectedCat,
+      autofocusFirst: !_heroShown,
+      labelOf: (String c) => _catLabel(context, c),
+      countOf: _countOf,
+      onSelect: _select,
+      onFocusDebounced: _selectDebounced,
     );
 
-    if (last == null) return body;
+    // Grille de chaînes (virtualisée) — occupe TOUTE la zone principale.
+    final Widget grid = _ChannelGrid(key: _liveGridKey, channels: _shownList);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        _ContinueHero(
-          channel: last,
-          all: _all,
-          index: _lastWatchedIdx < 0 ? 0 : _lastWatchedIdx,
+        // ----- Bande haute : « Continuer » à gauche + C-LIST à droite -----
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Expanded(
+              child: last != null
+                  ? _ContinueHero(
+                      channel: last,
+                      all: _all,
+                      index: _lastWatchedIdx < 0 ? 0 : _lastWatchedIdx,
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            const SizedBox(width: TvDimens.gutter),
+            SizedBox(width: 420, child: cList),
+          ],
         ),
-        const SizedBox(height: 16),
-        Expanded(child: body),
+        const SizedBox(height: 14),
+        // ----- Zone principale LIBRE : la grille pleine largeur -----
+        Expanded(child: grid),
       ],
+    );
+  }
+}
+
+/// C-LIST compacte (catégories) — bande HAUTE À DROITE.
+///
+/// Hauteur BORNÉE (≤ _kMaxVisible lignes puis scroll vertical interne) pour ne
+/// jamais manger la place des chaînes. Chaque ligne : libellé (ellipsis) +
+/// compteur ALIGNÉ À DROITE. Focusable D-pad (or au focus) ; le focus met à jour
+/// la grille en DÉBOUNCÉ (pas de recalcul sur chaque ligne traversée).
+class _CategoryRail extends StatelessWidget {
+  const _CategoryRail({
+    required this.cats,
+    required this.selectedCat,
+    required this.autofocusFirst,
+    required this.labelOf,
+    required this.countOf,
+    required this.onSelect,
+    required this.onFocusDebounced,
+  });
+
+  final List<String> cats;
+  final String? selectedCat;
+  final bool autofocusFirst;
+  final String Function(String) labelOf;
+  final int Function(String) countOf;
+  final void Function(String) onSelect;
+  final void Function(String) onFocusDebounced;
+
+  // Hauteur d'une ligne (itemExtent) et nombre de lignes visibles max : on
+  // calcule une hauteur EXACTE (pas de shrinkWrap qui mesurerait des milliers de
+  // catégories) → liste paresseuse, fluide même sur d'énormes playlists.
+  static const double _kRowExtent = 46;
+  static const int _kMaxVisible = 5;
+
+  @override
+  Widget build(BuildContext context) {
+    if (cats.isEmpty) return const SizedBox.shrink();
+    final int visible = cats.length < _kMaxVisible ? cats.length : _kMaxVisible;
+    return Container(
+      decoration: BoxDecoration(
+        color: TvTokens.card.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(TvTokens.rCard),
+        border: Border.all(color: TvTokens.lineSoft),
+      ),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 2, 6, 8),
+            child: Text(
+              context.l10n.tvNavLive.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TvTokens.ui(12,
+                  weight: FontWeight.w700,
+                  color: TvTokens.mutedDim,
+                  spacing: 2),
+            ),
+          ),
+          SizedBox(
+            height: visible * _kRowExtent,
+            child: ListView.builder(
+              padding: EdgeInsets.zero,
+              itemExtent: _kRowExtent,
+              itemCount: cats.length,
+              itemBuilder: (BuildContext context, int i) {
+                final String cat = cats[i];
+                return _CRow(
+                  label: labelOf(cat),
+                  count: countOf(cat),
+                  selected: cat == selectedCat,
+                  autofocus: i == 0 && autofocusFirst,
+                  onSelect: () => onSelect(cat),
+                  onFocused: () {
+                    if (selectedCat != cat) onFocusDebounced(cat);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Une ligne de la C-List : libellé (ellipsis) + compteur aligné à droite.
+class _CRow extends StatelessWidget {
+  const _CRow({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.autofocus,
+    required this.onSelect,
+    required this.onFocused,
+  });
+
+  final String label;
+  final int count;
+  final bool selected;
+  final bool autofocus;
+  final VoidCallback onSelect;
+  final VoidCallback onFocused;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: TvFocusBuilder(
+        autofocus: autofocus,
+        scale: TvFocusScale.small,
+        onSelect: onSelect,
+        builder: (BuildContext context, bool focused) {
+          if (focused) onFocused();
+          // FOCUS UNIQUE : seule la ligne RÉELLEMENT focus porte l'or. La
+          // catégorie active-mais-pas-focus = gris discret (jamais d'or).
+          final bool active = selected && !focused;
+          final Color bg =
+              (focused || active) ? TvTokens.sel : Colors.transparent;
+          final Color fg = focused
+              ? TvTokens.goldBright
+              : (active ? TvTokens.text : TvTokens.muted);
+          return Container(
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
+              border: focused
+                  ? Border.all(
+                      color: TvTokens.gold, width: TvDimens.focusOutline)
+                  : null,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: TvDimens.body,
+                        fontWeight: (focused || active)
+                            ? FontWeight.w700
+                            : FontWeight.w600,
+                        color: fg),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                // Compteur ALIGNÉ À DROITE.
+                Text(
+                  '$count',
+                  style: TextStyle(
+                      fontSize: TvDimens.label,
+                      fontWeight: FontWeight.w700,
+                      color: focused ? TvTokens.goldBright : TvTokens.mutedDim),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
