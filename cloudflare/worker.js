@@ -235,6 +235,23 @@ function computeStatus(client, now = Date.now()) {
 //  Renvoie un objet au MEME format que computeStatus(), ou null si pas
 //  de licence D1 (ou D1 non deploye → fallback KV transparent).
 // =========================================================
+// Durée d'essai (jours) PILOTÉE DEPUIS LE PANEL (Tarifs → app_config.trial_days,
+// écrit par api_v1 handlePricingPut). Repli sur TRIAL_DAYS (7) si non défini ou
+// table absente → AUCUN changement de comportement tant que le panel ne fixe
+// pas la valeur. C'est ce qui rend l'essai réglable sans rebuild de l'app.
+async function getTrialDays(env) {
+  if (!env.DB) return TRIAL_DAYS;
+  try {
+    const r = await env.DB
+      .prepare("SELECT value FROM app_config WHERE key = 'trial_days'")
+      .first();
+    const td = parseInt(r && r.value, 10);
+    return Number.isFinite(td) && td >= 0 ? td : TRIAL_DAYS;
+  } catch (_) {
+    return TRIAL_DAYS;
+  }
+}
+
 async function d1StatusForMac(env, mac, now = Date.now()) {
   if (!env.DB) return null;
   let dev;
@@ -303,10 +320,11 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
     };
   }
 
-  // --- Cas 2 : device connu mais PAS de licence → ESSAI 7 jours ---
-  // L'essai court depuis first_seen_at. Apres TRIAL_DAYS, expired=true →
-  // l'app bloque → le client doit venir te voir pour etre active.
-  const trialUntil = (dev.first_seen_at || now) + TRIAL_DAYS * DAY_MS;
+  // --- Cas 2 : device connu mais PAS de licence → ESSAI (durée réglable) ---
+  // L'essai court depuis first_seen_at. Après la durée configurée (panel),
+  // expired=true → l'app bloque → le client doit venir te voir pour être activé.
+  const trialDays = await getTrialDays(env);
+  const trialUntil = (dev.first_seen_at || now) + trialDays * DAY_MS;
   const expired = trialUntil <= now;
   return {
     exists: true,

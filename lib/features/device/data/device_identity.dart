@@ -60,9 +60,25 @@ class DeviceIdentity {
       return stored;
     }
     final String? androidId = await _stableDeviceId();
-    final String derived = (androidId != null && androidId.trim().isNotEmpty)
-        ? _macFromSeed(androidId.trim())
-        : _generate();
+    String seed = (androidId ?? '').trim();
+    if (seed.isEmpty) {
+      // REPLI DURCI (anti-reset d'essai) : si l'ANDROID_ID manque (rare :
+      // émulateurs, ROMs exotiques), on DÉRIVE d'une EMPREINTE MATÉRIELLE stable
+      // (fabricant, modèle, build…) AU LIEU d'un aléatoire stocké localement qui
+      // se réinitialisait à l'effacement des données. Conséquence : effacer les
+      // données ne redonne plus un essai neuf, même sur ces appareils.
+      // (Compromis assumé : 2 appareils STRICTEMENT identiques et sans
+      // ANDROID_ID partageraient la même MAC — cas marginal.)
+      final Map<String, String> info = await deviceInfo();
+      seed = <String>[
+        info['manufacturer'] ?? '',
+        info['model'] ?? '',
+        info['build'] ?? '',
+        info['release'] ?? '',
+        info['sdk'] ?? '',
+      ].where((String s) => s.trim().isNotEmpty).join('|').trim();
+    }
+    final String derived = seed.isNotEmpty ? _macFromSeed(seed) : _generate();
     await prefs.setString(_kKey, derived);
     _cached = derived;
     return derived;
