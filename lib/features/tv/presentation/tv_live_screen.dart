@@ -20,6 +20,8 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../device/data/device_identity.dart';
+import '../../epg/data/epg_repository.dart';
+import '../../epg/domain/epg_program.dart';
 import '../../security/data/parental_controls.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -77,6 +79,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // coup sur coup → fil UI saturé → ANR (« app figée » tuée par l'OS). On
   // FUSIONNE : on planifie UN SEUL recompute après une courte pause.
   Timer? _recomputeDebounce;
+  // HERO « aperçu live » : chaîne actuellement survolée dans la grille. Le hero
+  // en haut la reflète (logo + EN DIRECT + EPG). DÉBOUNCÉ : en défilement rapide
+  // on ne met à jour le hero (et sa requête EPG) qu'à l'arrêt du focus.
+  Channel? _previewCh;
+  Timer? _previewDebounce;
   bool _syncing = false;
   RemoteSyncResult? _lastSync;
   // Garde-fou : on borne le nombre de ré-imports AUTOMATIQUES de la source.
@@ -151,6 +158,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     _syncTimer?.cancel();
     _catDebounce?.cancel();
     _recomputeDebounce?.cancel();
+    _previewDebounce?.cancel();
     ParentalControls.instance.kidsMode.removeListener(_onKidsModeChanged);
     super.dispose();
   }
@@ -174,9 +182,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // _recompute), réutilisé par les récents et « dernière vue ». Évite des
   // scans O(n) répétés dans build() (jank sur les très grandes listes).
   Map<String, Channel> _byId = const <String, Channel>{};
-  // Dernière chaîne vue + son index, calculés dans _recompute (pas dans build).
+  // Dernière chaîne vue (alimente le hero « Continuer »), calculée dans
+  // _recompute (pas dans build).
   Channel? _lastWatchedCh;
-  int _lastWatchedIdx = -1;
   // Clé STABLE de la grille de chaînes. Quand le bandeau « Reprendre » apparaît
   // (au retour du lecteur), la mise en page passe de Row à Column → sans clé,
   // la grille serait RECRÉÉE et le défilement/focus repartiraient au début.
@@ -260,14 +268,12 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // Grille affichée selon la catégorie sélectionnée (extraite : voir
     // _recomputeShown — c'est la SEULE partie qui dépend de _selectedCat).
     _recomputeShown();
-    // Dernière chaîne vue (bandeau « Continuer ») — calculée ICI, pas en build.
+    // Dernière chaîne vue (alimente le hero) — calculée ICI, pas en build.
     _lastWatchedCh = null;
-    _lastWatchedIdx = -1;
     for (final String id in _recentIds) {
       final Channel? c = _byId[id];
       if (c != null) {
         _lastWatchedCh = c;
-        _lastWatchedIdx = _all.indexOf(c);
         break;
       }
     }
@@ -298,6 +304,19 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
           .where((Channel c) => _catOf(c) == _selectedCat)
           .toList(growable: false);
     }
+  }
+
+  /// Met à jour (débouncé) la chaîne reflétée par le hero quand une carte de la
+  /// grille prend le focus. 120 ms → en défilement rapide, on ne lance pas une
+  /// requête EPG par carte traversée, seulement à l'arrêt.
+  void _setPreview(Channel c) {
+    if (_previewCh?.id == c.id) return;
+    _previewDebounce?.cancel();
+    _previewDebounce = Timer(const Duration(milliseconds: 120), () {
+      if (mounted && _previewCh?.id != c.id) {
+        setState(() => _previewCh = c);
+      }
+    });
   }
 
   /// Compteur affiché dans la C-List pour une catégorie (vraie ou pseudo).
@@ -552,8 +571,21 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       onFocusDebounced: _selectDebounced,
     );
 
-    // Grille de chaînes (virtualisée) — occupe TOUTE la zone principale.
-    final Widget grid = _ChannelGrid(key: _liveGridKey, channels: _shownList);
+    // Grille de chaînes (virtualisée) — occupe TOUTE la zone principale. Chaque
+    // carte signale son focus → le hero reflète la chaîne survolée.
+    final Widget grid = _ChannelGrid(
+      key: _liveGridKey,
+      channels: _shownList,
+      onFocused: _setPreview,
+    );
+
+    // Chaîne reflétée par le hero : la survolée, sinon la dernière vue, sinon la
+    // 1re de la liste affichée. Le hero suit la sélection (façon Google TV).
+    final Channel? heroCh = _previewCh ??
+        _lastWatchedCh ??
+        (_shownList.isNotEmpty
+            ? _shownList.first
+            : (_all.isNotEmpty ? _all.first : null));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -563,11 +595,14 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Expanded(
-              child: last != null
-                  ? _ContinueHero(
-                      channel: last,
+              child: heroCh != null
+                  ? _LiveHero(
+                      channel: heroCh,
                       all: _all,
-                      index: _lastWatchedIdx < 0 ? 0 : _lastWatchedIdx,
+                      // Le hero ne prend le focus initial QUE s'il y a une
+                      // « dernière vue » (rôle Continuer) ; sinon le focus va à
+                      // la C-List, et le hero suit le survol de la grille.
+                      autofocus: _heroShown,
                     )
                   : const SizedBox.shrink(),
             ),
@@ -747,49 +782,108 @@ class _CRow extends StatelessWidget {
   }
 }
 
-/// Bandeau « Continuer à regarder » (dernière chaîne), auto-focus.
-class _ContinueHero extends StatelessWidget {
-  const _ContinueHero(
-      {required this.channel, required this.all, required this.index});
+/// Hero « aperçu live » : reflète la chaîne SURVOLÉE dans la grille (ou la
+/// dernière vue). Logo normalisé + pastille ● EN DIRECT + EPG « EN CE MOMENT ·
+/// programme ». OK = lire cette chaîne (rôle « Continuer » quand c'est la
+/// dernière vue). La requête EPG est faite UNE fois par chaîne (pas par carte).
+class _LiveHero extends StatefulWidget {
+  const _LiveHero(
+      {required this.channel, required this.all, this.autofocus = false});
   final Channel channel;
   final List<Channel> all;
-  final int index;
+  final bool autofocus;
+
+  @override
+  State<_LiveHero> createState() => _LiveHeroState();
+}
+
+class _LiveHeroState extends State<_LiveHero> {
+  late Future<EpgProgram?> _epg = _loadEpg();
+
+  Future<EpgProgram?> _loadEpg() =>
+      EpgRepository.instance.currentProgram(widget.channel.id);
+
+  @override
+  void didUpdateWidget(covariant _LiveHero old) {
+    super.didUpdateWidget(old);
+    // Nouvelle chaîne survolée → une (seule) nouvelle requête EPG.
+    if (old.channel.id != widget.channel.id) {
+      _epg = _loadEpg();
+    }
+  }
+
+  void _play() {
+    final int idx = widget.all.indexOf(widget.channel);
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TvPlayerScreen(
+            channels: widget.all, startIndex: idx < 0 ? 0 : idx),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final Channel c = widget.channel;
     return TvFocusable(
-      autofocus: true,
+      autofocus: widget.autofocus,
       scale: TvFocusScale.large,
       baseColor: TvTokens.card,
-      onSelect: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => TvPlayerScreen(
-              channels: all, startIndex: index < 0 ? 0 : index),
-        ),
-      ),
+      onSelect: _play,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        padding: const EdgeInsets.all(16),
         child: Row(
           children: <Widget>[
-            const Icon(Icons.play_circle_fill_rounded,
-                color: TvTokens.text, size: 40),
-            const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text(context.l10n.tvContinueWatching,
-                    style: TextStyle(
-                        fontSize: TvDimens.caption,
-                        letterSpacing: 2,
-                        color: TvTokens.mutedDim)),
-                const SizedBox(height: 2),
-                Text(channel.cleanName,
-                    style: TextStyle(
-                        fontSize: TvDimens.title,
-                        fontWeight: FontWeight.w800,
-                        color: TvTokens.text)),
-              ],
+            // Logo normalisé (contain + padding) sur une tuile premium.
+            Container(
+              width: 132,
+              height: 132,
+              decoration: BoxDecoration(
+                color: TvTokens.tile,
+                borderRadius: BorderRadius.circular(TvTokens.rCard),
+                border: Border.all(color: TvTokens.tileBorder),
+              ),
+              padding: const EdgeInsets.all(14),
+              child: _Logo(channel: c),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const _LivePill(),
+                  const SizedBox(height: 10),
+                  Text(c.cleanName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: TvDimens.headline,
+                          fontWeight: FontWeight.w800,
+                          color: TvTokens.text)),
+                  const SizedBox(height: 8),
+                  // EPG « EN CE MOMENT · programme » (une requête par chaîne) ;
+                  // repli sur la catégorie si pas d'EPG → jamais de ligne vide.
+                  FutureBuilder<EpgProgram?>(
+                    future: _epg,
+                    builder: (BuildContext context,
+                        AsyncSnapshot<EpgProgram?> snap) {
+                      final EpgProgram? p = snap.data;
+                      final String line = p != null
+                          ? 'EN CE MOMENT · ${p.title}'
+                          : (c.category.trim().isNotEmpty
+                              ? c.category.trim()
+                              : '');
+                      if (line.isEmpty) return const SizedBox.shrink();
+                      return Text(line,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: TvDimens.body, color: TvTokens.muted));
+                    },
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -798,9 +892,46 @@ class _ContinueHero extends StatelessWidget {
   }
 }
 
+/// Pastille « ● EN DIRECT » (rouge sobre), utilisée par le hero.
+class _LivePill extends StatelessWidget {
+  const _LivePill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: TvTokens.live.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(TvTokens.rSmall),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+                color: TvTokens.live, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 7),
+          Text('EN DIRECT',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                  color: TvTokens.live)),
+        ],
+      ),
+    );
+  }
+}
+
 class _ChannelGrid extends StatelessWidget {
-  const _ChannelGrid({super.key, required this.channels});
+  const _ChannelGrid({super.key, required this.channels, this.onFocused});
   final List<Channel> channels;
+
+  /// Signale au parent quelle chaîne vient de prendre le focus (→ hero).
+  final void Function(Channel)? onFocused;
 
   @override
   Widget build(BuildContext context) {
@@ -817,9 +948,12 @@ class _ChannelGrid extends StatelessWidget {
       // NB : on NE met PAS de cacheExtent élevé — ça pré-chargerait trop de logos
       // d'un coup à l'ouverture (suspect du crash de démarrage). Défaut conservé.
       addAutomaticKeepAlives: false,
+      // Cartes PAYSAGE ~16:9 (réf. design) : plus grandes, plus « premium » que
+      // les vignettes carrées d'avant. La tuile (Expanded) occupe l'essentiel de
+      // la hauteur → ratio proche de 16:9 ; le reste = nom + chip qualité.
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 230,
-        mainAxisExtent: 152,
+        maxCrossAxisExtent: 300,
+        mainAxisExtent: 196,
         crossAxisSpacing: TvDimens.gutter,
         mainAxisSpacing: TvDimens.gutter,
       ),
@@ -828,7 +962,11 @@ class _ChannelGrid extends StatelessWidget {
       // un scroll rapide.
       itemBuilder: (BuildContext context, int i) {
         if (i < 0 || i >= channels.length) return const SizedBox.shrink();
-        return _ChannelCard(channel: channels[i], all: channels, index: i);
+        return _ChannelCard(
+            channel: channels[i],
+            all: channels,
+            index: i,
+            onFocused: onFocused);
       },
     );
   }
@@ -836,10 +974,14 @@ class _ChannelGrid extends StatelessWidget {
 
 class _ChannelCard extends StatefulWidget {
   const _ChannelCard(
-      {required this.channel, required this.all, required this.index});
+      {required this.channel,
+      required this.all,
+      required this.index,
+      this.onFocused});
   final Channel channel;
   final List<Channel> all;
   final int index;
+  final void Function(Channel)? onFocused;
 
   @override
   State<_ChannelCard> createState() => _ChannelCardState();
@@ -873,6 +1015,10 @@ class _ChannelCardState extends State<_ChannelCard> {
     return TvFocusable(
       focusNode: _node,
       scale: TvFocusScale.small,
+      // Survol → le hero du haut reflète cette chaîne (débouncé côté parent).
+      onFocusChange: (bool f) {
+        if (f) widget.onFocused?.call(channel);
+      },
       onSelect: () async {
         await Navigator.of(context).push(
           MaterialPageRoute<void>(
