@@ -889,17 +889,75 @@ class _LiveHeroState extends State<_LiveHero> {
                     builder: (BuildContext context,
                         AsyncSnapshot<EpgProgram?> snap) {
                       final EpgProgram? p = snap.data;
-                      final String line = p != null
-                          ? 'EN CE MOMENT · ${p.title}'
-                          : (c.category.trim().isNotEmpty
-                              ? c.category.trim()
-                              : '');
-                      if (line.isEmpty) return const SizedBox.shrink();
-                      return Text(line,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: TvDimens.body, color: TvTokens.muted));
+                      // FALLBACK (pas d'EPG) : on reste COMPACT — juste la
+                      // catégorie (ou rien), jamais de grand vide.
+                      if (p == null) {
+                        final String cat = c.category.trim();
+                        if (cat.isEmpty) return const SizedBox.shrink();
+                        return Text(_tvPretty(cat),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: TvDimens.body,
+                                color: TvTokens.muted));
+                      }
+                      // EPG dispo : titre + barre de progression + horaires
+                      // (+ synopsis si présent).
+                      final int now = DateTime.now().millisecondsSinceEpoch;
+                      final int span = p.stopTime - p.startTime;
+                      final double prog = span > 0
+                          ? ((now - p.startTime) / span)
+                              .clamp(0.0, 1.0)
+                              .toDouble()
+                          : 0.0;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text('EN CE MOMENT · ${p.title}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: TvDimens.body,
+                                  fontWeight: FontWeight.w600,
+                                  color: TvTokens.text)),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(2),
+                                  child: SizedBox(
+                                    height: 4,
+                                    child: LinearProgressIndicator(
+                                      value: prog,
+                                      backgroundColor: TvTokens.line,
+                                      valueColor:
+                                          const AlwaysStoppedAnimation<Color>(
+                                              TvTokens.gold),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(p.timeRangeShort,
+                                  style: TextStyle(
+                                      fontSize: TvDimens.label,
+                                      color: TvTokens.mutedDim)),
+                            ],
+                          ),
+                          if (p.description != null &&
+                              p.description!.trim().isNotEmpty) ...<Widget>[
+                            const SizedBox(height: 8),
+                            Text(p.description!.trim(),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: TvDimens.label,
+                                    color: TvTokens.muted)),
+                          ],
+                        ],
+                      );
                     },
                   ),
                 ],
@@ -912,9 +970,29 @@ class _LiveHeroState extends State<_LiveHero> {
   }
 }
 
-/// Pastille « ● EN DIRECT » (rouge sobre), utilisée par le hero.
-class _LivePill extends StatelessWidget {
+/// Pastille « ● EN DIRECT » (rouge sobre) avec point qui PULSE (0.6→1.0, 1.5 s)
+/// pour signaler la liveness. Animation minuscule (un point de 8 px) → coût nul.
+class _LivePill extends StatefulWidget {
   const _LivePill();
+
+  @override
+  State<_LivePill> createState() => _LivePillState();
+}
+
+class _LivePillState extends State<_LivePill>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1500),
+  )..repeat(reverse: true);
+  late final Animation<double> _pulse = Tween<double>(begin: 0.6, end: 1.0)
+      .animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -927,11 +1005,14 @@ class _LivePill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Container(
-            width: 8,
-            height: 8,
-            decoration: const BoxDecoration(
-                color: TvTokens.live, shape: BoxShape.circle),
+          FadeTransition(
+            opacity: _pulse,
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                  color: TvTokens.live, shape: BoxShape.circle),
+            ),
           ),
           const SizedBox(width: 7),
           Text('EN DIRECT',
@@ -946,7 +1027,7 @@ class _LivePill extends StatelessWidget {
   }
 }
 
-class _ChannelGrid extends StatelessWidget {
+class _ChannelGrid extends StatefulWidget {
   const _ChannelGrid({super.key, required this.channels, this.onFocused});
   final List<Channel> channels;
 
@@ -954,40 +1035,65 @@ class _ChannelGrid extends StatelessWidget {
   final void Function(Channel)? onFocused;
 
   @override
+  State<_ChannelGrid> createState() => _ChannelGridState();
+}
+
+class _ChannelGridState extends State<_ChannelGrid> {
+  // Index de la carte actuellement focus (null = la grille n'a PAS le focus).
+  // Sert à ATTÉNUER les voisines (réf. design : c'est ce qui fait « ressortir »
+  // la sélection). On passe par un ValueNotifier : au déplacement du focus,
+  // SEULES les petites surcouches d'atténuation se reconstruisent, PAS toute la
+  // grille → perf préservée sur la box.
+  final ValueNotifier<int?> _focused = ValueNotifier<int?>(null);
+
+  @override
+  void dispose() {
+    _focused.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (channels.isEmpty) {
+    if (widget.channels.isEmpty) {
       return Center(
         child: Text(context.l10n.tvNoChannelInCategory,
             style: TextStyle(
                 fontSize: TvDimens.body, color: TvTokens.mutedDim)),
       );
     }
-    return GridView.builder(
-      padding: const EdgeInsets.only(top: 4, bottom: 8),
-      // Mémoire bornée au scroll : on ne garde PAS les cartes hors écran en vie.
-      // NB : on NE met PAS de cacheExtent élevé — ça pré-chargerait trop de logos
-      // d'un coup à l'ouverture (suspect du crash de démarrage). Défaut conservé.
-      addAutomaticKeepAlives: false,
-      // Cartes PAYSAGE ~16:9 (réf. design) : plus grandes, plus « premium » que
-      // les vignettes carrées d'avant. La tuile (Expanded) occupe l'essentiel de
-      // la hauteur → ratio proche de 16:9 ; le reste = nom + chip qualité.
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 300,
-        mainAxisExtent: 196,
-        crossAxisSpacing: TvDimens.gutter,
-        mainAxisSpacing: TvDimens.gutter,
-      ),
-      itemCount: channels.length,
-      // Garde-fou index : aucun accès hors borne même si la liste change pendant
-      // un scroll rapide.
-      itemBuilder: (BuildContext context, int i) {
-        if (i < 0 || i >= channels.length) return const SizedBox.shrink();
-        return _ChannelCard(
-            channel: channels[i],
-            all: channels,
-            index: i,
-            onFocused: onFocused);
+    // Quand le focus QUITTE la grille (menu / C-List), on retire l'atténuation.
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onFocusChange: (bool f) {
+        if (!f) _focused.value = null;
       },
+      child: GridView.builder(
+        padding: const EdgeInsets.only(top: 4, bottom: 8),
+        // Mémoire bornée au scroll : on ne garde PAS les cartes hors écran en vie.
+        addAutomaticKeepAlives: false,
+        // Cartes PAYSAGE ~16:9 (réf. design).
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 300,
+          mainAxisExtent: 196,
+          crossAxisSpacing: TvDimens.gutter,
+          mainAxisSpacing: TvDimens.gutter,
+        ),
+        itemCount: widget.channels.length,
+        // Garde-fou index : aucun accès hors borne même si la liste change.
+        itemBuilder: (BuildContext context, int i) {
+          if (i < 0 || i >= widget.channels.length) {
+            return const SizedBox.shrink();
+          }
+          return _ChannelCard(
+            channel: widget.channels[i],
+            all: widget.channels,
+            index: i,
+            onFocused: widget.onFocused,
+            focusedIndex: _focused,
+          );
+        },
+      ),
     );
   }
 }
@@ -997,11 +1103,15 @@ class _ChannelCard extends StatefulWidget {
       {required this.channel,
       required this.all,
       required this.index,
-      this.onFocused});
+      this.onFocused,
+      this.focusedIndex});
   final Channel channel;
   final List<Channel> all;
   final int index;
   final void Function(Channel)? onFocused;
+
+  /// Index focus de la grille → cette carte s'atténue si une AUTRE a le focus.
+  final ValueNotifier<int?>? focusedIndex;
 
   @override
   State<_ChannelCard> createState() => _ChannelCardState();
@@ -1035,9 +1145,16 @@ class _ChannelCardState extends State<_ChannelCard> {
     return TvFocusable(
       focusNode: _node,
       scale: TvFocusScale.small,
-      // Survol → le hero du haut reflète cette chaîne (débouncé côté parent).
+      // La carte EST la surface (card au repos, sel au focus) → le focus se
+      // marque par bordure or + ombre + scale + lueur (cf. tv_focusable). Le
+      // contenu est posé PAR-DESSUS via un Stack.
+      baseColor: TvTokens.card,
+      // Survol → hero du haut + index focus de la grille (atténuation voisines).
       onFocusChange: (bool f) {
-        if (f) widget.onFocused?.call(channel);
+        if (f) {
+          widget.onFocused?.call(channel);
+          widget.focusedIndex?.value = widget.index;
+        }
       },
       onSelect: () async {
         await Navigator.of(context).push(
@@ -1046,68 +1163,72 @@ class _ChannelCardState extends State<_ChannelCard> {
                 TvPlayerScreen(channels: widget.all, startIndex: widget.index),
           ),
         );
-        // RESTAURATION DU FOCUS (retour lecteur, demande explicite « pas pro »).
-        // Au Back depuis le lecteur, on rend le focus EXACTEMENT à la chaîne
-        // d'où l'utilisateur est parti — pas au 1er élément / aux catégories /
-        // au clavier. La grille est préservée (GlobalKey _liveGridKey) → la
-        // carte est toujours montée et reprend son halo, façon Netflix.
-        //
-        // On le fait en POST-FRAME : à la fermeture d'une route, le FocusScope
-        // sous-jacent tente de restaurer SON dernier focus tout seul (et tombe
-        // parfois sur les catégories). En demandant le focus APRÈS cette frame,
-        // notre requête a le dernier mot → la bonne chaîne est toujours surlignée.
+        // RESTAURATION DU FOCUS (retour lecteur) : on rend le focus EXACTEMENT
+        // à la chaîne quittée. POST-FRAME pour avoir le dernier mot sur la
+        // restauration auto du FocusScope. Grille préservée (GlobalKey).
         if (!mounted) return;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _node.requestFocus();
         });
       },
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            // Tuile : logo centré (avec padding) sur fond #161514, bordure
-            // blanche 5 % → les logos ne « flottent » plus comme des stickers.
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: TvTokens.tile,
-                  borderRadius: BorderRadius.circular(TvTokens.rCard),
-                  border: Border.all(color: TvTokens.tileBorder),
-                ),
-                padding: const EdgeInsets.all(14),
-                child: Stack(
-                  children: <Widget>[
-                    Positioned.fill(child: _Logo(channel: channel)),
-                    if (fav)
-                      const Positioned(
-                        top: 0,
-                        right: 0,
-                        child: Icon(Icons.favorite_rounded,
-                            size: 14, color: TvTokens.gold),
-                      ),
-                  ],
-                ),
-              ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          // LOGO PETIT en chip haut-gauche (normalisé) : quand des chaînes
+          // partagent le même logo, c'est le NOM qui distingue (réf. design).
+          Positioned(top: 10, left: 10, child: _LogoChip(channel: channel)),
+          // Chip qualité discret en haut-droite.
+          if (quality != null)
+            Positioned(top: 12, right: 12, child: _TagBadge(label: quality)),
+          // Favori discret en bas-droite.
+          if (fav)
+            const Positioned(
+              right: 12,
+              bottom: 12,
+              child:
+                  Icon(Icons.favorite_rounded, size: 16, color: TvTokens.gold),
             ),
-            const SizedBox(height: 7),
-            Text(
+          // NOM DOMINANT en bas-gauche : c'est lui qui « porte » la carte.
+          Positioned(
+            left: 14,
+            right: 40,
+            bottom: 12,
+            child: Text(
               p.name,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
               style: TextStyle(
-                  fontSize: TvDimens.caption,
+                  fontSize: 22,
+                  height: 1.1,
                   fontWeight: FontWeight.w600,
                   color: TvTokens.text),
             ),
-            // UN SEUL chip qualité (4K/FHD/HD), discret, après le nom.
-            if (quality != null) ...<Widget>[
-              const SizedBox(height: 4),
-              _TagBadge(label: quality),
-            ],
-          ],
-        ),
+          ),
+          // ATTÉNUATION DES VOISINES : voile sombre quand une AUTRE carte a le
+          // focus (peinture simple, pas de saveLayer → peu coûteux ; animé).
+          if (widget.focusedIndex != null)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: ValueListenableBuilder<int?>(
+                  valueListenable: widget.focusedIndex!,
+                  builder: (BuildContext context, int? f, Widget? __) {
+                    final bool dim = f != null && f != widget.index;
+                    return AnimatedContainer(
+                      duration: TvDimens.focusAnim,
+                      curve: TvDimens.focusCurve,
+                      decoration: BoxDecoration(
+                        color: dim
+                            ? TvTokens.bg.withValues(alpha: 0.45)
+                            : Colors.transparent,
+                        borderRadius:
+                            BorderRadius.circular(TvDimens.cardRadius),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1187,6 +1308,29 @@ class _TagBadge extends StatelessWidget {
               fontWeight: FontWeight.w700,
               letterSpacing: 0.4,
               color: TvTokens.gold)),
+    );
+  }
+}
+
+/// Logo PETIT en chip (haut-gauche de la carte) : taille NORMALISÉE pour que
+/// tous les logos pèsent visuellement pareil (jamais un logo qui remplit la
+/// carte à côté d'un mini-logo). Réutilise [_Logo] (contain + repli initiales).
+class _LogoChip extends StatelessWidget {
+  const _LogoChip({required this.channel});
+  final Channel channel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        color: const Color(0xD9141210), // rgba(20,18,16,.85)
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: TvTokens.line),
+      ),
+      padding: const EdgeInsets.all(7),
+      child: _Logo(channel: channel),
     );
   }
 }
