@@ -441,8 +441,15 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   // Le Focus englobant (non focusable lui-même) sert juste à
                   // SAVOIR si le focus est sur le menu, sans piéger la
                   // navigation directionnelle (ce n'est pas un FocusScope).
-                  SizedBox(
-                    width: 240,
+                  // RAIL REPLIABLE (réf. design) : icônes seules au repos
+                  // (96 px) → se DÉPLOIE à 300 px quand le focus y entre (labels
+                  // apparaissent). On réutilise `_railHasFocus` déjà suivi par le
+                  // Focus englobant. Largeur animée (décélérée) ; le contenu à
+                  // droite (grille virtualisée) se ré-agence à coût négligeable.
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    curve: const Cubic(0.2, 0.0, 0.0, 1.0),
+                    width: _railHasFocus ? 300 : 96,
                     child: Focus(
                       canRequestFocus: false,
                       skipTraversal: true,
@@ -453,6 +460,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                       },
                       child: _NavRail(
                         selected: _selected,
+                        expanded: _railHasFocus,
                         selectedFocusNode: _railFocus,
                         onSelect: (TvDest d) => setState(() => _selected = d),
                       ),
@@ -516,31 +524,25 @@ class _HomeHeaderState extends State<_HomeHeader> {
     final String temp =
         (g != null && g.tempC != null) ? '${g.tempC!.round()}° ${g.emoji}' : '';
     final String dayTime = '$weekday · $_time';
+    // ÉPURÉ (réf. design) : plus de « Bonjour 👋 ». Un simple cluster
+    // ville · météo · jour · heure, DISCRET, aligné EN HAUT À DROITE.
     return Align(
-      alignment: Alignment.centerLeft,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Text('${context.l10n.tvHello} 👋',
-              style: TvTokens.ui(30,
-                  weight: FontWeight.w600, color: TvTokens.text)),
-          const SizedBox(height: 4),
-          Text.rich(TextSpan(
-            style: TvTokens.ui(TvDimens.titleS, color: TvTokens.muted),
-            children: <InlineSpan>[
-              if (g != null && g.city.isNotEmpty) ...<InlineSpan>[
-                TextSpan(
-                    text: g.city,
-                    style: TvTokens.ui(TvDimens.titleS,
-                        weight: FontWeight.w600, color: TvTokens.gold)),
-                const TextSpan(text: '  ·  '),
-              ],
-              if (temp.isNotEmpty) TextSpan(text: '$temp  ·  '),
-              TextSpan(text: dayTime),
+      alignment: Alignment.centerRight,
+      child: Text.rich(
+        TextSpan(
+          style: TvTokens.ui(18, color: TvTokens.mutedDim),
+          children: <InlineSpan>[
+            if (g != null && g.city.isNotEmpty) ...<InlineSpan>[
+              TextSpan(
+                  text: g.city,
+                  style: TvTokens.ui(18,
+                      weight: FontWeight.w600, color: TvTokens.muted)),
+              const TextSpan(text: '   ·   '),
             ],
-          )),
-        ],
+            if (temp.isNotEmpty) TextSpan(text: '$temp   ·   '),
+            TextSpan(text: dayTime),
+          ],
+        ),
       ),
     );
   }
@@ -548,10 +550,16 @@ class _HomeHeaderState extends State<_HomeHeader> {
 
 class _NavRail extends StatelessWidget {
   const _NavRail(
-      {required this.selected, required this.onSelect, this.selectedFocusNode});
+      {required this.selected,
+      required this.onSelect,
+      this.expanded = true,
+      this.selectedFocusNode});
 
   final TvDest selected;
   final ValueChanged<TvDest> onSelect;
+
+  /// Rail déployé (labels visibles) vs replié (icônes seules).
+  final bool expanded;
 
   /// FocusNode posé sur l'item SÉLECTIONNÉ → permet de ramener le focus au
   /// menu quand on appuie sur Retour depuis le contenu.
@@ -559,42 +567,43 @@ class _NavRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        // Branding allégé : logo The Few (+ baseline « NOT FOR EVERYONE »
-        // incluse dans l'image) ; mention « THE FEW TV » retirée (redondante)
-        // et hauteur réduite. Halo chaud discret derrière (profondeur premium).
-        Container(
-          padding: const EdgeInsets.fromLTRB(10, 2, 10, 10),
-          decoration: const BoxDecoration(gradient: TvTokens.brandGlow),
-          child: const Align(
-            alignment: Alignment.centerLeft,
-            child: TvLogo(width: 140),
+    return ClipRect(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          // Branding : logo réduit en mode replié (rentre dans 96 px).
+          Container(
+            padding: const EdgeInsets.fromLTRB(10, 2, 10, 10),
+            decoration: const BoxDecoration(gradient: TvTokens.brandGlow),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TvLogo(width: expanded ? 140 : 60),
+            ),
           ),
-        ),
-        Expanded(
-          child: ListView(
-            children: <Widget>[
-              for (int i = 0; i < TvDest.values.length; i++)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _NavItem(
-                    dest: TvDest.values[i],
-                    selected: TvDest.values[i] == selected,
-                    // Focus initial sur le 1er item (Direct).
-                    autofocus: i == 0,
-                    // Le node de l'item sélectionné sert de cible « Retour ».
-                    focusNode: TvDest.values[i] == selected
-                        ? selectedFocusNode
-                        : null,
-                    onSelect: () => onSelect(TvDest.values[i]),
+          Expanded(
+            child: ListView(
+              children: <Widget>[
+                for (int i = 0; i < TvDest.values.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _NavItem(
+                      dest: TvDest.values[i],
+                      selected: TvDest.values[i] == selected,
+                      expanded: expanded,
+                      // Focus initial sur le 1er item (Direct).
+                      autofocus: i == 0,
+                      // Le node de l'item sélectionné sert de cible « Retour ».
+                      focusNode: TvDest.values[i] == selected
+                          ? selectedFocusNode
+                          : null,
+                      onSelect: () => onSelect(TvDest.values[i]),
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -604,6 +613,7 @@ class _NavItem extends StatelessWidget {
     required this.dest,
     required this.selected,
     required this.onSelect,
+    this.expanded = true,
     this.autofocus = false,
     this.focusNode,
   });
@@ -611,6 +621,7 @@ class _NavItem extends StatelessWidget {
   final TvDest dest;
   final bool selected;
   final VoidCallback onSelect;
+  final bool expanded;
   final bool autofocus;
   final FocusNode? focusNode;
 
@@ -646,9 +657,24 @@ class _NavItem extends StatelessWidget {
               const SizedBox(width: 13),
               Icon(dest.icon, color: fg, size: 22),
               const SizedBox(width: 14),
-              Text(dest.label(context),
-                  style: TvTokens.ui(19,
-                      weight: selected ? FontWeight.w600 : FontWeight.w500, color: fg)),
+              // Label : fond dans un Flexible (clip) + fondu → ne déborde JAMAIS
+              // pendant l'animation de largeur du rail (96 → 300). Invisible et
+              // sans place quand le rail est replié.
+              Flexible(
+                child: AnimatedOpacity(
+                  opacity: expanded ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 160),
+                  child: Text(
+                    dest.label(context),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.fade,
+                    style: TvTokens.ui(19,
+                        weight: selected ? FontWeight.w600 : FontWeight.w500,
+                        color: fg),
+                  ),
+                ),
+              ),
             ],
           ),
         );
