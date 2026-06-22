@@ -272,30 +272,54 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       }
       _trendCh = out;
     }
-    // « Parce que vous avez regardé… » : recommandation LOCALE façon Netflix.
-    // On déduit le(s) genre(s) de l'historique récent, puis on propose d'autres
-    // chaînes du même genre (hors favoris et déjà-vues). Calculé ICI (O(n) une
-    // fois par changement de source, jamais en build) et plafonné à 40.
+    // « Pour vous » : petit MOTEUR DE RECO local (pas d'envoi de données). On
+    // construit un PROFIL DE GOÛT pondéré depuis l'historique récent — genre ET
+    // pays, pondérés par fréquence ET récence (la dernière vue pèse le plus) —
+    // puis on SCORE chaque chaîne candidate (hors déjà-vues/favorites) par
+    // affinité (genre ×2 + pays ×1) et on garde les meilleures. Calculé ICI
+    // (O(n), une fois par changement de source — jamais en build).
     if (_recentIds.isEmpty || _all.isEmpty) {
       _forYouCh = const <Channel>[];
     } else {
-      final Set<ChannelGenre> liked = <ChannelGenre>{};
-      for (final String id in _recentIds.take(12)) {
+      final Map<ChannelGenre, double> genreScore = <ChannelGenre, double>{};
+      final Map<String, double> countryScore = <String, double>{};
+      int rank = 0;
+      for (final String id in _recentIds.take(20)) {
         final Channel? c = _byId[id];
-        if (c != null) liked.add(c.genre);
+        if (c == null) continue;
+        final double w = 1.0 / (1 + rank); // récence : poids décroissant
+        rank++;
+        if (c.genre != ChannelGenre.other) {
+          genreScore[c.genre] = (genreScore[c.genre] ?? 0) + w;
+        }
+        final String? cc = c.country?.code;
+        if (cc != null && cc.isNotEmpty) {
+          countryScore[cc] = (countryScore[cc] ?? 0) + w;
+        }
       }
-      liked.remove(ChannelGenre.other); // trop vague pour recommander
-      if (liked.isEmpty) {
+      if (genreScore.isEmpty && countryScore.isEmpty) {
         _forYouCh = const <Channel>[];
       } else {
         final Set<String> exclude = <String>{..._recentIds, ..._favIds};
-        final List<Channel> out = <Channel>[];
+        final List<Channel> cand = <Channel>[];
+        final Map<String, double> score = <String, double>{};
         for (final Channel c in _all) {
-          if (out.length >= 40) break;
           if (exclude.contains(c.id)) continue;
-          if (liked.contains(c.genre)) out.add(c);
+          double s = 0;
+          if (c.genre != ChannelGenre.other) {
+            s += (genreScore[c.genre] ?? 0) * 2.0;
+          }
+          final String? cc = c.country?.code;
+          if (cc != null) s += countryScore[cc] ?? 0;
+          if (s > 0) {
+            score[c.id] = s;
+            cand.add(c);
+          }
         }
-        _forYouCh = out;
+        // Tri par affinité décroissante ; on garde le top 40.
+        cand.sort((Channel a, Channel b) =>
+            (score[b.id] ?? 0).compareTo(score[a.id] ?? 0));
+        _forYouCh = cand.length > 40 ? cand.sublist(0, 40) : cand;
       }
     }
     // Catégories affichées (pseudo-catégories non vides en tête).
