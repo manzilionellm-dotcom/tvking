@@ -200,6 +200,16 @@ jobs:
             sed -i 's|<application|<application\n        android:banner="@drawable/tv_banner"|' "$MANIFEST"
           fi
           grep -n 'android:banner' "$MANIFEST" || true
+          # ANTI-OOM box à FAIBLE RAM (« se connecte puis se ferme direct ») :
+          # on autorise un TAS mémoire agrandi. Sur les Android d'entrée de gamme
+          # (512 Mo–1 Go), le décodage vidéo (MediaCodec) + l'UI Flutter + le cache
+          # d'images dépassent vite le heap par défaut → l'OS tue le process au
+          # démarrage (kill natif non rattrapable). largeHeap repousse cette
+          # limite. Sans effet négatif sur les box puissantes.
+          if ! grep -q 'android:largeHeap' "$MANIFEST"; then
+            sed -i 's|<application|<application\n        android:largeHeap="true"|' "$MANIFEST"
+          fi
+          grep -n 'largeHeap' "$MANIFEST" || true
 
       # SIGNATURE STABLE — « mise à jour sans désinstaller ».
       # Le build release est signé par signingConfigs.debug, qui lit
