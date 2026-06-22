@@ -326,6 +326,12 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   /// grille prend le focus. 120 ms → en défilement rapide, on ne lance pas une
   /// requête EPG par carte traversée, seulement à l'arrêt.
   void _setPreview(Channel c) {
+    // Focuser une CHAÎNE annule tout changement de CATÉGORIE en attente : si un
+    // focus transitoire avait effleuré une catégorie (ex. au retour du lecteur),
+    // sa sélection débouncée ne se déclenchera pas → la catégorie ne « saute »
+    // plus. (Placé AVANT le court-circuit pour s'appliquer même si la chaîne est
+    // identique au précédent aperçu.)
+    _catDebounce?.cancel();
     if (_previewCh?.id == c.id) return;
     _previewDebounce?.cancel();
     _previewDebounce = Timer(const Duration(milliseconds: 120), () {
@@ -584,7 +590,12 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     final Widget cList = _CategoryRail(
       cats: _dispCats,
       selectedCat: _selectedCat,
-      autofocusFirst: !_heroShown,
+      // La C-List ne PREND JAMAIS le focus initial / au retour : sinon, en
+      // revenant du lecteur, la 1re catégorie (ex. Angleterre) attrapait le
+      // focus ET se sélectionnait toute seule → on perdait la catégorie ET la
+      // position. Le focus revient désormais sur la CARTE quittée (cf. la
+      // restauration post-frame dans _ChannelCard).
+      autofocusFirst: false,
       labelOf: (String c) => _catLabel(context, c),
       countOf: _countOf,
       onSelect: _select,
