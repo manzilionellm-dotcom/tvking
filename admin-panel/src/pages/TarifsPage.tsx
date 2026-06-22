@@ -242,6 +242,47 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
           {grantBusy ? 'Application…' : 'Donner 7 jours à tous les appareils actifs'}
         </button>
       </div>
+
+      {/* ===== Liens légaux (bouclier « lecteur uniquement ») ===== */}
+      <div className="mt-6 max-w-3xl rounded-xl border border-white/5 bg-midnight p-5">
+        <h3 className="text-sm font-semibold text-ink-primary">Liens légaux</h3>
+        <p className="mt-1 text-xs text-ink-secondary">
+          Positionnement « lecteur uniquement » : l'app ne vend ni ne fournit
+          aucune chaîne ni lien. Colle ces liens dans tes fiches de distribution
+          (stores) et tes publications — c'est ce que regardent les plateformes
+          pour éviter les retraits.
+        </p>
+        <div className="mt-3 space-y-2">
+          {[
+            { label: 'Conditions d’utilisation', url: 'https://app.7themotion.com/terms' },
+            { label: 'Politique de confidentialité', url: 'https://app.7themotion.com/privacy' },
+          ].map((l) => (
+            <div key={l.url} className="flex items-center gap-2">
+              <code className="flex-1 truncate rounded-md bg-slate px-3 py-2 text-xs text-ink-primary">
+                {l.url}
+              </code>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(l.url);
+                  setOk(`✅ ${l.label} — lien copié.`);
+                }}
+                className="rounded-md border border-white/10 bg-slate px-3 py-2 text-xs transition hover:bg-white/5"
+              >
+                Copier
+              </button>
+              <a
+                href={l.url}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-accent-bright transition hover:bg-accent/20"
+              >
+                Ouvrir
+              </a>
+            </div>
+          ))}
+        </div>
+      </div>
     </AppLayout>
   );
 }
