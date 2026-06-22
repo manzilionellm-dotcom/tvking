@@ -20,6 +20,14 @@ on:
     paths:
       - 'lib/main_tv.dart'
       - 'lib/features/tv/**'
+      # Modules PARTAGÉS dont dépend l'app TV — sinon une correction ici ne
+      # déclenchait pas le build TV (ex. identité device / abonnement / cœur).
+      - 'lib/features/device/**'
+      - 'lib/features/subscription/**'
+      - 'lib/features/channels/**'
+      - 'lib/features/playlists/**'
+      - 'lib/features/epg/**'
+      - 'lib/core/**'
       - 'packages/**'
       - 'pubspec.yaml'
       - 'assets/branding/**'
