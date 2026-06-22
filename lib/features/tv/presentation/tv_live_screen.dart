@@ -864,6 +864,12 @@ class _ChannelCardState extends State<_ChannelCard> {
     final Channel channel = widget.channel;
     final bool fav = FavoritesRepository.instance.current.contains(channel.id);
     final _ParsedName p = _parseName(channel);
+    // PREMIUM (réf. design) : on retire le jargon codec (RAW/HEVC/60FPS/VIP/LIVE)
+    // qui faisait « IPTV brut » et on ne garde qu'UN chip qualité (4K/FHD/HD).
+    final String? quality = p.badges
+        .cast<String?>()
+        .firstWhere((String? b) => b == '4K' || b == 'FHD' || b == 'HD',
+            orElse: () => null);
     return TvFocusable(
       focusNode: _node,
       scale: TvFocusScale.small,
@@ -929,16 +935,10 @@ class _ChannelCardState extends State<_ChannelCard> {
                   fontWeight: FontWeight.w600,
                   color: TvTokens.text),
             ),
-            // Badges qualité/tags PROPRES, après le nom (jamais dans le titre).
-            if (p.badges.isNotEmpty) ...<Widget>[
+            // UN SEUL chip qualité (4K/FHD/HD), discret, après le nom.
+            if (quality != null) ...<Widget>[
               const SizedBox(height: 4),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 5,
-                children: <Widget>[
-                  for (final String b in p.badges.take(3)) _TagBadge(label: b),
-                ],
-              ),
+              _TagBadge(label: quality),
             ],
           ],
         ),

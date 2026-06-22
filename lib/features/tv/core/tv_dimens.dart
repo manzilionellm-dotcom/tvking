@@ -22,16 +22,24 @@ class TvDimens {
   static const double rowGap = 4;
 
   // --- §4 Focus (multi-signaux) ---
-  //  Petite carte = 1.10, moyenne = 1.05, grand bloc = 1.025.
-  static const double focusScaleSmall = 1.10;
-  static const double focusScaleMedium = 1.05;
-  static const double focusScaleLarge = 1.025;
-  static const Duration focusAnim = Duration(milliseconds: 150); // 120-200 ms
-  static const Curve focusCurve = Curves.easeOut;
-  static const double focusGlowBlur = 24; // halo
-  static const double focusGlowSpread = 1;
-  static const double focusOutline = 2; // contour
+  //  RÈGLE PREMIUM (réf. Apple TV+) : scale RETENU — au-delà de ~1.06 ça
+  //  « gonfle » et fait cheap. La profondeur vient de l'OMBRE PORTÉE + de la
+  //  lueur champagne, pas d'un gros zoom. Carte = 1.06, ligne = 1.04, bloc = 1.03.
+  static const double focusScaleSmall = 1.06;
+  static const double focusScaleMedium = 1.04;
+  static const double focusScaleLarge = 1.03;
+  // Court + DÉCÉLÉRÉ : l'élément arrive vite puis se pose en douceur (180 ms,
+  // courbe d'« emphasized decelerate »). Au-delà de ~200 ms ça paraît mou.
+  static const Duration focusAnim = Duration(milliseconds: 180);
+  static const Curve focusCurve = Cubic(0.2, 0.0, 0.0, 1.0);
+  static const double focusGlowBlur = 32; // lueur champagne (0 0 32px)
+  static const double focusGlowSpread = 2;
+  static const double focusOutline = 2; // contour or
   static const double focusInset = 3; // espace élément ↔ contour
+  // Ombre portée d'élévation au focus (réf. Apple TV+) : c'est ELLE, pas la
+  // bordure, qui « soulève » l'élément. 0 12px 40px noir 60 %.
+  static const double focusElevBlur = 40;
+  static const double focusElevDy = 12;
 
   // --- §6 Typo : nettement plus grand que mobile (lisible à 3 m) ---
   static const double displayL = 48;

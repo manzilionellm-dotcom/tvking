@@ -11,23 +11,26 @@ import 'package:google_fonts/google_fonts.dart';
 class TvTokens {
   TvTokens._();
 
-  // ---- Couleurs (valeurs EXACTES de la charte) ----
-  static const Color bg = Color(0xFF070707); // fond global, noir profond
-  static const Color panel = Color(0xFF0E0D0C); // sidebar / surfaces
-  static const Color card = Color(0xFF121110); // cartes
-  static const Color tile = Color(0xFF161514); // fond des vignettes de chaînes
+  // ---- Couleurs — système de SURFACES en couches (la profondeur naît de
+  //  l'empilement, pas des bordures). Refonte « quiet luxury » : noir CHAUD
+  //  (jamais #000 → pas de banding OLED), accent champagne. ----
+  static const Color bg = Color(0xFF0A0908); // Surface 0 — noir chaud
+  static const Color panel = Color(0xFF0F0D0B); // sidebar (proche du fond)
+  static const Color card = Color(0xFF141210); // Surface 1 — carte au repos
+  static const Color tile = Color(0xFF1A1712); // fond des vignettes de chaînes
   static const Color tileBorder = Color(0x0DFFFFFF); // bordure vignette (blanc 5 %)
   static const Color badgeBg = Color(0x1FCCB089); // fond badge (or ~12 %)
-  static const Color sel = Color(0xFF181512); // item de menu sélectionné
-  static const Color line = Color(0xFF231F19); // bordures / séparateurs
-  static const Color lineSoft = Color(0xFF1D1A15); // bordures discrètes
-  static const Color text = Color(0xFFF3EFE9); // texte principal
-  static const Color muted = Color(0xFF8A8377); // texte secondaire
-  static const Color mutedDim = Color(0xFF5B554C); // texte tertiaire / hints
-  static const Color gold = Color(0xFFCCB089); // ACCENT (logo)
-  static const Color goldBright = Color(0xFFE6CFA4); // prix, code, titres d'accent
+  static const Color sel = Color(0xFF1E1B16); // Surface 2 — focus / élevé
+  static const Color surface3 = Color(0xFF242019); // overlay / menu déployé
+  static const Color line = Color(0xFF2A2620); // hairline / bordure subtile
+  static const Color lineSoft = Color(0xFF211D17); // bordures discrètes (repos)
+  static const Color text = Color(0xFFF4F1EB); // texte principal
+  static const Color muted = Color(0xFF9A9388); // texte secondaire
+  static const Color mutedDim = Color(0xFF6B655B); // texte tertiaire / hints
+  static const Color gold = Color(0xFFCCB089); // ACCENT (brand)
+  static const Color goldBright = Color(0xFFE4CBA0); // OR FOCUS (texte + lueur)
   static const Color goldDeep = Color(0xFF9C855F); // or sombre : dégradés
-  static const Color live = Color(0xFFC8503F); // badge DIRECT (rouge sobre)
+  static const Color live = Color(0xFFE0503C); // pastille EN DIRECT (rouge vif sobre)
   static const Color success = Color(0xFF5FA975); // ✓ copié
 
   // ---- Rayons ----

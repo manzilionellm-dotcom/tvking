@@ -190,14 +190,20 @@ class _TvFocusableState extends State<TvFocusable> {
                         width: TvDimens.focusOutline,
                       )
                     : null,
-                // Signal 3 : HALO or discret au focus.
+                // Signal 3 : ÉLÉVATION (ombre portée) + lueur champagne. C'est
+                // l'ombre profonde — pas la bordure — qui « soulève » l'élément
+                // façon Apple TV+ ; la lueur or signe la marque.
                 boxShadow: (widget.showGlow && active)
                     ? <BoxShadow>[
                         BoxShadow(
-                          color: TvTokens.gold.withValues(alpha: 0.22),
+                          color: const Color(0x99000000), // noir 60 %
+                          blurRadius: TvDimens.focusElevBlur,
+                          offset: const Offset(0, TvDimens.focusElevDy),
+                        ),
+                        BoxShadow(
+                          color: TvTokens.gold.withValues(alpha: 0.30),
                           blurRadius: TvDimens.focusGlowBlur,
                           spreadRadius: TvDimens.focusGlowSpread,
-                          offset: const Offset(0, 6),
                         ),
                       ]
                     : null,
