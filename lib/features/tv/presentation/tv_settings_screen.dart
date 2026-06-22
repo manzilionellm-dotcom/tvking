@@ -13,6 +13,7 @@ import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import 'tv_legal_screen.dart';
 import 'tv_parental_screen.dart';
 import 'tv_shell.dart';
 import 'tv_sources_screen.dart';
@@ -237,6 +238,64 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               );
             },
           ),
+          const SizedBox(height: 14),
+          // ----- Mentions légales & Conditions (positionnement « lecteur ») -----
+          TvFocusBuilder(
+            scale: TvFocusScale.large,
+            onSelect: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const TvShell(child: TvLegalScreen()),
+              ),
+            ),
+            builder: (BuildContext context, bool focused) {
+              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color fg =
+                  focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+              return Container(
+                width: 760,
+                decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                child: Row(
+                  children: <Widget>[
+                    Icon(Icons.gavel_rounded, color: fg, size: 26),
+                    const SizedBox(width: 12),
+                    Text('Mentions légales & Conditions d\'utilisation',
+                        style: TextStyle(
+                            fontSize: TvDimens.title,
+                            fontWeight: FontWeight.w700,
+                            color: fg)),
+                    const Spacer(),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                  ],
+                ),
+              );
+            },
+          ),
+          // ----- Avertissement « lecteur » toujours visible (bas de page) -----
+          const SizedBox(height: 22),
+          Container(
+            width: 760,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: TvTokens.card,
+              borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+              border: Border.all(color: TvTokens.lineSoft),
+            ),
+            child: Text(
+              'Cette application est un LECTEUR multimédia. Elle ne vend, ne '
+              'fournit et n\'héberge aucune chaîne, aucun flux ni aucun lien '
+              'M3U. Le contenu est fourni par l\'utilisateur, seul responsable '
+              'de sa licéité.',
+              style: TextStyle(
+                  fontSize: TvDimens.label,
+                  height: 1.45,
+                  color: TvTokens.mutedDim),
+            ),
+          ),
+          const SizedBox(height: 12),
         ],
       ),
     );

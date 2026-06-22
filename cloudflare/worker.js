@@ -1464,6 +1464,83 @@ administrateurs sont stockés sous forme hachée.</p>
 </div></body></html>`;
 }
 
+// Conditions d'utilisation (pages /terms, /conditions, /cgu). POSITIONNEMENT
+// JURIDIQUE des lecteurs sérieux (TiviMate, OTT Navigator…) : l'app est un
+// LECTEUR multimédia neutre ; elle ne vend / ne fournit / n'héberge AUCUN
+// contenu ni lien M3U ; l'abonnement éventuel rémunère le LOGICIEL, pas le
+// contenu. À coller dans la fiche des stores et à lier dans le panel.
+function termsHtml() {
+  const updated = '22 juin 2026';
+  return `<!doctype html><html lang="fr"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>7 MOTION — Conditions d'utilisation</title>
+<style>
+  body{margin:0;background:#0A0A0C;color:#E8E8EC;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.6}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 20px 64px}
+  h1{font-size:26px;margin:0 0 4px}h2{font-size:18px;margin:28px 0 8px;color:#fff}
+  .muted{color:#9A9AA2;font-size:13px}a{color:#FF5A4A}
+  strong{color:#fff}
+</style></head><body><div class="wrap">
+<h1>Conditions d'utilisation — 7 MOTION</h1>
+<p class="muted">Dernière mise à jour : ${updated}</p>
+
+<h2>1. Nature de l'application — un LECTEUR, rien d'autre</h2>
+<p>7 MOTION est un <strong>lecteur multimédia</strong> (player) permettant de lire
+des flux audio/vidéo fournis par l'utilisateur. L'application
+<strong>ne fournit pas, ne vend pas, n'héberge pas, ne diffuse pas et n'indexe
+aucune</strong> chaîne de télévision, flux, contenu audiovisuel, ni liste de
+lecture (M3U) ou identifiants de portail (Xtream). <strong>Aucun contenu n'est
+inclus, préchargé ou commercialisé</strong> avec l'application.</p>
+
+<h2>2. Contenu fourni par l'utilisateur</h2>
+<p>L'utilisateur fournit lui-même ses propres sources (lien M3U / identifiants
+Xtream), obtenues auprès de son propre fournisseur. L'utilisateur est
+<strong>seul responsable</strong> des contenus qu'il ajoute, lit ou diffuse,
+ainsi que de la détention des droits, licences et abonnements nécessaires.</p>
+
+<h2>3. Abonnement = le LOGICIEL, pas le contenu</h2>
+<p>Tout paiement ou abonnement éventuel rémunère <strong>uniquement
+l'utilisation de l'application</strong> (le lecteur et ses fonctionnalités :
+interface, favoris, enregistrement local, EPG, etc.). Il ne constitue
+<strong>en aucun cas</strong> l'achat, la vente, la location ou la fourniture de
+chaînes, de flux ou de contenus audiovisuels.</p>
+
+<h2>4. Usage licite</h2>
+<p>L'utilisateur s'engage à utiliser l'application <strong>conformément aux lois
+en vigueur</strong> dans son pays et à ne pas l'utiliser pour accéder à des
+contenus illégaux ou portant atteinte aux droits d'auteur. Toute utilisation
+illicite est strictement interdite et relève de la seule responsabilité de
+l'utilisateur.</p>
+
+<h2>5. Contenus tiers — absence de responsabilité</h2>
+<p>L'éditeur n'a aucun contrôle sur les contenus tiers accessibles via les
+sources fournies par l'utilisateur et ne saurait en être tenu responsable. Il ne
+garantit ni la disponibilité, ni la légalité, ni la qualité de ces contenus.</p>
+
+<h2>6. Propriété intellectuelle & réclamations</h2>
+<p>Toutes les marques, logos et contenus appartiennent à leurs propriétaires
+respectifs. L'application n'hébergeant aucun contenu, toute réclamation relative
+à des droits d'auteur doit être adressée au <strong>fournisseur de la source
+concernée</strong>. Pour signaler un usage abusif de l'application :
+<a href="mailto:lionel930031@gmail.com">lionel930031@gmail.com</a>.</p>
+
+<h2>7. Fourniture « en l'état »</h2>
+<p>L'application est fournie « telle quelle », sans garantie de disponibilité
+continue ni d'absence d'erreurs. L'éditeur peut faire évoluer ou suspendre tout
+ou partie des fonctionnalités.</p>
+
+<h2>8. Données personnelles</h2>
+<p>Le traitement des données est décrit dans notre
+<a href="/privacy">politique de confidentialité</a>.</p>
+
+<h2>9. Acceptation</h2>
+<p>En installant ou en utilisant 7 MOTION, l'utilisateur reconnaît avoir lu et
+accepté les présentes conditions.</p>
+
+<p class="muted">Contact : <a href="mailto:lionel930031@gmail.com">lionel930031@gmail.com</a></p>
+</div></body></html>`;
+}
+
 function notFound(msg = 'Not found') {
   return new Response(msg, { status: 404, headers: TEXT_HEADERS });
 }
@@ -3365,6 +3442,21 @@ async function handleRequest(request, env, ctx) {
     // Huawei AppGallery, etc.). URL à coller dans la fiche de chaque store.
     if (segments.length === 1 && segments[0] === 'privacy') {
       return new Response(privacyHtml(), {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+        },
+      });
+    }
+
+    // /terms (+ /conditions, /cgu) — Conditions d'utilisation (positionnement
+    // « lecteur uniquement »). À coller dans la fiche des stores et à lier
+    // depuis le panel / l'app.
+    if (segments.length === 1 &&
+        (segments[0] === 'terms' ||
+            segments[0] === 'conditions' ||
+            segments[0] === 'cgu')) {
+      return new Response(termsHtml(), {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'public, max-age=3600',

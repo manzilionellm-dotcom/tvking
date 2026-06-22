@@ -162,6 +162,18 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
             const SizedBox(height: 18),
             Text(context.l10n.tvActivationFooter,
                 style: TvTokens.ui(13, color: TvTokens.mutedDim, spacing: 0.5)),
+            const SizedBox(height: 10),
+            // Positionnement « lecteur » (bouclier juridique) visible dès le gate.
+            SizedBox(
+              width: 540,
+              child: Text(
+                'Lecteur multimédia — ne vend ni ne fournit aucune chaîne ni '
+                'lien M3U. Le contenu est apporté par l\'utilisateur. '
+                'Conditions : app.7themotion.com/terms',
+                textAlign: TextAlign.center,
+                style: TvTokens.ui(12, color: TvTokens.mutedDim),
+              ),
+            ),
           ],
     );
   }
