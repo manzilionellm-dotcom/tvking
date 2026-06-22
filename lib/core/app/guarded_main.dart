@@ -27,10 +27,47 @@ import 'dart:async';
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../crash/crash_reporting.dart';
 import '../crash/crash_reporting_firebase.dart';
+
+/// Channel natif (plugin tvking_device) — sert ici à lire la RAM de l'appareil
+/// pour ADAPTER le cache d'images (petites box ⇄ grandes box).
+const MethodChannel _deviceChannel =
+    MethodChannel('com.manzilionellm.tvking/device');
+
+/// Ajuste le cache d'images selon la RAM réelle. Le défaut posé au boot est
+/// déjà PRUDENT (sûr même à 1 Go) ; ici on l'ÉLARGIT sur les box bien dotées et
+/// on le RESSERRE encore sur les box « low RAM ». Best-effort : si l'info n'est
+/// pas dispo, on garde le défaut prudent.
+Future<void> _tuneImageCacheForRam() async {
+  try {
+    final Object? raw =
+        await _deviceChannel.invokeMethod<Object?>('getMemoryInfo');
+    if (raw is! Map) return;
+    final int totalMb = (raw['totalMb'] as num?)?.toInt() ?? 0;
+    final bool lowRam = raw['lowRam'] == true;
+    int imgs;
+    int bytes;
+    if (lowRam || (totalMb > 0 && totalMb <= 1024)) {
+      imgs = 60; // ≤ 1 Go : empreinte minimale
+      bytes = 24 << 20;
+    } else if (totalMb <= 2048) {
+      imgs = 120; // ~1–2 Go : équilibré
+      bytes = 48 << 20;
+    } else {
+      imgs = 220; // > 2 Go : pleine qualité
+      bytes = 96 << 20;
+    }
+    PaintingBinding.instance.imageCache
+      ..maximumSize = imgs
+      ..maximumSizeBytes = bytes;
+  } catch (_) {
+    // RAM inconnue (plateforme/échec) → on garde le défaut prudent du boot.
+  }
+}
 
 /// Lance [body] (la séquence de démarrage d'un flavor) sous les 4 filets.
 ///
@@ -61,9 +98,15 @@ void runGuarded(Future<void> Function() body) {
       //  cache pour qu'il évince agressivement : la mémoire reste bornée, le
       //  scroll ne crashe plus (les logos hors écran sont relâchés puis re-servis
       //  depuis le cache disque de cached_network_image → toujours fluide).
+      // DÉFAUT PRUDENT (sûr même sur une box ~1 Go) posé IMMÉDIATEMENT au boot
+      // → protège les petites box dès la 1re image. Puis on ADAPTE selon la RAM
+      // réelle (cf. _tuneImageCacheForRam) : on élargit sur les grandes box.
       PaintingBinding.instance.imageCache
-        ..maximumSize = 150 // 150 images max (au lieu de 1000)
-        ..maximumSizeBytes = 60 << 20; // 60 Mo max (au lieu de ~100 Mo)
+        ..maximumSize = 90
+        ..maximumSizeBytes = 40 << 20;
+      // Ajustement adaptatif (non bloquant) : petite RAM ⇒ resserre, grande
+      // RAM ⇒ élargit. Best-effort, ne retarde jamais le démarrage.
+      unawaited(_tuneImageCacheForRam());
 
       // 2) Erreurs Flutter (build/layout/paint).
       final FlutterExceptionHandler? presentError = FlutterError.onError;

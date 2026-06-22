@@ -1,5 +1,6 @@
 package com.manzilionellm.tvking_device
 
+import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
 import android.provider.Settings
@@ -63,6 +64,22 @@ class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                         "release" to Build.VERSION.RELEASE,
                         "sdk" to Build.VERSION.SDK_INT.toString(),
                         "build" to Build.DISPLAY,
+                    ),
+                )
+            }
+            // RAM de l'appareil → permet à l'app d'ADAPTER son empreinte
+            // (cache d'images) : petite box = léger, grande box = pleine qualité.
+            "getMemoryInfo" -> {
+                val am = appContext?.getSystemService(Context.ACTIVITY_SERVICE)
+                    as? ActivityManager
+                val mi = ActivityManager.MemoryInfo()
+                am?.getMemoryInfo(mi)
+                val totalMb = (mi.totalMem / (1024L * 1024L)).toInt()
+                val lowRam = am?.isLowRamDevice ?: false
+                result.success(
+                    hashMapOf(
+                        "totalMb" to totalMb,
+                        "lowRam" to lowRam,
                     ),
                 )
             }
