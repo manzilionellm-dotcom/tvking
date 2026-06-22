@@ -100,6 +100,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // on ne met à jour le hero (et sa requête EPG) qu'à l'arrêt du focus.
   Channel? _previewCh;
   Timer? _previewDebounce;
+  // Chaîne à re-focuser au RETOUR du lecteur (désignée par _openPlayer). La
+  // carte correspondante reprend le focus à son prochain build (déterministe).
+  String? _restoreFocusId;
   bool _syncing = false;
   RemoteSyncResult? _lastSync;
   // Garde-fou : on borne le nombre de ré-imports AUTOMATIQUES de la source.
@@ -325,6 +328,22 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   /// Met à jour (débouncé) la chaîne reflétée par le hero quand une carte de la
   /// grille prend le focus. 120 ms → en défilement rapide, on ne lance pas une
   /// requête EPG par carte traversée, seulement à l'arrêt.
+  /// Ouvre le lecteur pour [index] de la liste affichée, PUIS — au retour —
+  /// DÉSIGNE la chaîne quittée pour que SA carte reprenne le focus. La grille
+  /// (et donc la catégorie) ne bouge pas → on revient exactement où on était.
+  Future<void> _openPlayer(int index) async {
+    if (index < 0 || index >= _shownList.length) return;
+    final String chId = _shownList[index].id;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            TvPlayerScreen(channels: _shownList, startIndex: index),
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _restoreFocusId = chId);
+  }
+
   void _setPreview(Channel c) {
     // Focuser une CHAÎNE annule tout changement de CATÉGORIE en attente : si un
     // focus transitoire avait effleuré une catégorie (ex. au retour du lecteur),
@@ -608,6 +627,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       key: _liveGridKey,
       channels: _shownList,
       onFocused: _setPreview,
+      onPlay: _openPlayer,
+      restoreFocusId: _restoreFocusId,
+      onRestored: () => _restoreFocusId = null,
     );
 
     // Chaîne reflétée par le hero : la survolée, sinon la dernière vue, sinon la
@@ -1039,11 +1061,27 @@ class _LivePillState extends State<_LivePill>
 }
 
 class _ChannelGrid extends StatefulWidget {
-  const _ChannelGrid({super.key, required this.channels, this.onFocused});
+  const _ChannelGrid(
+      {super.key,
+      required this.channels,
+      this.onFocused,
+      this.onPlay,
+      this.restoreFocusId,
+      this.onRestored});
   final List<Channel> channels;
 
   /// Signale au parent quelle chaîne vient de prendre le focus (→ hero).
   final void Function(Channel)? onFocused;
+
+  /// Lance le lecteur pour l'index donné (la navigation est gérée par l'écran,
+  /// qui sait ensuite RENDRE le focus à la bonne carte au retour).
+  final void Function(int index)? onPlay;
+
+  /// Id de la chaîne à re-focuser au retour du lecteur (désigné par l'écran).
+  final String? restoreFocusId;
+
+  /// Appelé par la carte une fois le focus repris (l'écran libère le drapeau).
+  final VoidCallback? onRestored;
 
   @override
   State<_ChannelGrid> createState() => _ChannelGridState();
@@ -1098,10 +1136,12 @@ class _ChannelGridState extends State<_ChannelGrid> {
           }
           return _ChannelCard(
             channel: widget.channels[i],
-            all: widget.channels,
             index: i,
+            onPlay: widget.onPlay,
             onFocused: widget.onFocused,
             focusedIndex: _focused,
+            restoreFocusId: widget.restoreFocusId,
+            onRestored: widget.onRestored,
           );
         },
       ),
@@ -1112,17 +1152,23 @@ class _ChannelGridState extends State<_ChannelGrid> {
 class _ChannelCard extends StatefulWidget {
   const _ChannelCard(
       {required this.channel,
-      required this.all,
       required this.index,
+      this.onPlay,
       this.onFocused,
-      this.focusedIndex});
+      this.focusedIndex,
+      this.restoreFocusId,
+      this.onRestored});
   final Channel channel;
-  final List<Channel> all;
   final int index;
+  final void Function(int index)? onPlay;
   final void Function(Channel)? onFocused;
 
   /// Index focus de la grille → cette carte s'atténue si une AUTRE a le focus.
   final ValueNotifier<int?>? focusedIndex;
+
+  /// Si == id de cette chaîne, la carte reprend le focus (retour lecteur).
+  final String? restoreFocusId;
+  final VoidCallback? onRestored;
 
   @override
   State<_ChannelCard> createState() => _ChannelCardState();
@@ -1153,6 +1199,20 @@ class _ChannelCardState extends State<_ChannelCard> {
         .cast<String?>()
         .firstWhere((String? b) => b == '4K' || b == 'FHD' || b == 'HD',
             orElse: () => null);
+    // RESTAURATION DU FOCUS au retour du lecteur (déterministe) : quand l'écran
+    // nous DÉSIGNE (restoreFocusId == notre id), on (re)prend le focus en
+    // post-frame puis on libère le drapeau. Déclenché par un rebuild explicite
+    // de l'écran au retour → survit aux reconstructions de fond (preview, EPG,
+    // récents…) qui faisaient échouer l'ancienne approche.
+    if (widget.restoreFocusId != null && widget.restoreFocusId == channel.id) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (widget.restoreFocusId == widget.channel.id) {
+          _node.requestFocus();
+          widget.onRestored?.call();
+        }
+      });
+    }
     return TvFocusable(
       focusNode: _node,
       scale: TvFocusScale.small,
@@ -1167,21 +1227,9 @@ class _ChannelCardState extends State<_ChannelCard> {
           widget.focusedIndex?.value = widget.index;
         }
       },
-      onSelect: () async {
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) =>
-                TvPlayerScreen(channels: widget.all, startIndex: widget.index),
-          ),
-        );
-        // RESTAURATION DU FOCUS (retour lecteur) : on rend le focus EXACTEMENT
-        // à la chaîne quittée. POST-FRAME pour avoir le dernier mot sur la
-        // restauration auto du FocusScope. Grille préservée (GlobalKey).
-        if (!mounted) return;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _node.requestFocus();
-        });
-      },
+      // Lecture : l'ÉCRAN gère la navigation (et la restauration du focus au
+      // retour). La carte se contente de signaler son index.
+      onSelect: () => widget.onPlay?.call(widget.index),
       child: Stack(
         fit: StackFit.expand,
         children: <Widget>[
