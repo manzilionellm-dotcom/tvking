@@ -14,6 +14,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/app/boot_guard.dart';
+import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
@@ -32,6 +33,21 @@ import 'tv_add_source_screen.dart';
 import 'tv_components.dart';
 import 'tv_player_screen.dart';
 import 'tv_shell.dart';
+
+// Polissage TV-ONLY des libellés (n'altère PAS le curateur partagé/mobile ni le
+// nom brut servant au matching flux/EPG) :
+//  • « Prime: 13e Rue » → « Prime · 13e Rue » (deux-points en séparateur élégant,
+//    SAUF entre chiffres pour ne pas casser une heure « 20:30 ») ;
+//  • on retire un séparateur orphelin en début/fin et les espaces multiples.
+final RegExp _tvColonSep = RegExp(r'(?<!\d):(?!\d)');
+final RegExp _tvMultiSpace = RegExp(r'\s{2,}');
+final RegExp _tvOrphanSep = RegExp(r'^[\s·:|\-–—]+|[\s·:|\-–—]+$');
+String _tvPretty(String s) {
+  String r = s.replaceAll(_tvColonSep, ' · ');
+  r = r.replaceAll(_tvMultiSpace, ' ');
+  r = r.replaceAll(_tvOrphanSep, '');
+  return r.trim();
+}
 
 class TvLiveScreen extends StatefulWidget {
   const TvLiveScreen({super.key});
@@ -374,7 +390,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     if (cat == _kFavCat) return '★ ${context.l10n.navFavorites}';
     if (cat == _kRecentCat) return '🕒 Récemment';
     if (cat == _kForYouCat) return '✨ Pour vous';
-    return cat;
+    // Catégorie réelle : on NETTOIE le libellé affiché (FR|/UK|, RAW, 60fps,
+    // hevc…) via le curateur PARTAGÉ (appel en lecture seule, on ne le modifie
+    // pas) + polissage TV. La clé brute (_catOf) reste INTACTE pour le filtrage.
+    final String pretty = _tvPretty(TitleCurator.curateCategory(cat));
+    return pretty.isEmpty ? cat : pretty;
   }
 
   Future<void> _kickSourceSync() async {
@@ -854,7 +874,7 @@ class _LiveHeroState extends State<_LiveHero> {
                 children: <Widget>[
                   const _LivePill(),
                   const SizedBox(height: 10),
-                  Text(c.cleanName,
+                  Text(_tvPretty(c.cleanName),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -1132,6 +1152,7 @@ class _ChannelCardState extends State<_ChannelCard> {
         .replaceAll(_leadSep, '')
         .replaceAll(_trailSep, '')
         .trim();
+    n = _tvPretty(n); // « Prime: 13e Rue » → « Prime · 13e Rue » (TV-only)
     if (n.isEmpty) n = key; // garde-fou : jamais de nom vide
     final _ParsedName result = _ParsedName(n, badges);
     if (_nameMemo.length > 4000) _nameMemo.clear(); // garde-fou mémoire
