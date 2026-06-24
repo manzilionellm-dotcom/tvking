@@ -238,18 +238,11 @@ class UpnpAvTransport implements CastTransport {
     required String title,
     required String protocolInfo,
   }) {
-    // Adaptation MIME selon le récepteur. Diagnostic capturé sur la TV
-    // LG QNED816QA de l'utilisateur : sa sink contient
-    // `video/vnd.dlna.mpeg-tts` mais PAS `video/mp2t`. Quand on envoie
-    // `video/mp2t`, LG répond "Resource not found" car elle ne reconnaît
-    // pas le MIME annoncé. On rewrite le MIME en MIME que LG comprend.
-    String effectiveProtocolInfo = protocolInfo;
-    if (_isLg && protocolInfo.contains('video/mp2t')) {
-      effectiveProtocolInfo = protocolInfo.replaceAll(
-        'video/mp2t',
-        'video/vnd.dlna.mpeg-tts',
-      );
-    }
+    // Adaptation MIME selon le récepteur (cf. applyLgMimeRewrite). Le MÊME
+    // helper est appelé pour le header contentFeatures.dlna.org dans
+    // _soapRequest → le DIDL et l'en-tête ne peuvent plus diverger.
+    final String effectiveProtocolInfo =
+        applyLgMimeRewrite(protocolInfo, isLg: _isLg);
     final StringBuffer b = StringBuffer()
       ..write('<DIDL-Lite ')
       ..write('xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" ')
@@ -346,6 +339,25 @@ class UpnpAvTransport implements CastTransport {
     );
   }
 
+  /// Lecture publique de CurrentTransportState pour la surveillance de
+  /// session côté CastManager (reconnexion auto DLNA). `null` si la TV ne
+  /// supporte pas GetTransportInfo.
+  Future<String?> currentTransportState() => _getTransportState();
+
+  /// Réécriture MIME pour LG webOS. Diagnostic LG QNED816QA : la Sink de
+  /// la TV annonce `video/vnd.dlna.mpeg-tts` mais PAS `video/mp2t` ; en
+  /// envoyant `video/mp2t` elle répond "Resource not found". On réécrit
+  /// donc `video/mp2t` → `video/vnd.dlna.mpeg-tts` UNIQUEMENT pour LG.
+  /// Pur + statique → utilisable à la fois dans le DIDL-Lite et dans
+  /// l'en-tête contentFeatures.dlna.org (cohérence garantie), et testable.
+  @visibleForTesting
+  static String applyLgMimeRewrite(String protocolInfo, {required bool isLg}) {
+    if (isLg && protocolInfo.contains('video/mp2t')) {
+      return protocolInfo.replaceAll('video/mp2t', 'video/vnd.dlna.mpeg-tts');
+    }
+    return protocolInfo;
+  }
+
   Future<String?> _getTransportState() async {
     try {
       final http.Response resp = await _soapRequest(
@@ -425,8 +437,13 @@ class UpnpAvTransport implements CastTransport {
       headers['transferMode.dlna.org'] = 'Streaming';
       // Le contentFeatures complet (4 champs : pn / op / ps / flags)
       // = exactement ce qu'on met dans protocolInfo, sans le préfixe
-      // `http-get:*:<mime>:`.
-      final List<String> parts = profile.buildProtocolInfo().split(':');
+      // `http-get:*:<mime>:`. On part du MÊME protocolInfo réécrit pour LG
+      // (applyLgMimeRewrite) que celui du DIDL-Lite : ainsi l'en-tête et la
+      // métadonnée annoncent rigoureusement le même profil (le 4e champ est
+      // identique, et on ne risque plus de divergence si le format évolue).
+      final List<String> parts =
+          applyLgMimeRewrite(profile.buildProtocolInfo(), isLg: _isLg)
+              .split(':');
       if (parts.length >= 4) {
         headers['contentFeatures.dlna.org'] = parts[3];
       }

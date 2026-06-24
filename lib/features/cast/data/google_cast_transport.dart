@@ -18,10 +18,22 @@
 //  dans notre picker custom, mais la VRAIE session passe par le
 //  SDK qui peut découvrir des récepteurs que mDNS rate (cas du
 //  multi-VLAN avec Bonjour gateway).
+//
+//  ⚠️ ÉTAT ACTUEL (2026-06) — CHROMECAST EN MODE DÉGRADÉ.
+//  Le Default Media Receiver (CC1AD845) ne décode PAS le MPEG-TS brut
+//  des flux IPTV. On le contourne en remuxant le .ts en HLS-fMP4 via le
+//  VPS `cast.7themotion.com` (_kCastRemuxBase). CE VPS EST ACTUELLEMENT
+//  ÉTEINT → un cast Chromecast sur un flux .ts donnerait un écran noir.
+//  Tant qu'il ne tourne pas, on DÉTECTE son indisponibilité (HEAD 3 s)
+//  et on remonte une erreur claire au lieu de tenter le load (cf.
+//  _remuxReachable). On NE supprime PAS le code VPS : il redeviendra
+//  fonctionnel dès le VPS rallumé. Le DLNA (LG/Samsung) n'est PAS
+//  concerné — il joue le .ts en direct.
 // =========================================================
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
@@ -169,6 +181,26 @@ class GoogleCastTransport implements CastTransport {
         'isExoPlayerDevice': isExoPlayerReceiver(device),
       },
     );
+
+    // GARDE-FOU CHROMECAST (mode dégradé) : le chemin remux dépend du VPS
+    // cast.7themotion.com. S'il ne répond pas, le Default Media Receiver
+    // recevrait une URL morte → écran noir avec le titre affiché. On
+    // détecte l'indisponibilité (HEAD court) et on remonte une erreur
+    // claire AVANT de tenter le load, plutôt que d'infliger l'écran noir.
+    if (castPath == 'remux_hls') {
+      final bool remuxUp = await _remuxReachable();
+      if (!remuxUp) {
+        StructuredLogger.instance.warn(
+          domain: 'cast',
+          event: 'google.remux_unavailable',
+          ctx: <String, Object?>{'base': _kCastRemuxBase},
+        );
+        throw Exception(
+          'Le cast vers Chromecast est temporairement indisponible. '
+          'Utilise une TV compatible DLNA (LG/Samsung) ou réessaie plus tard.',
+        );
+      }
+    }
 
     final bool loaded = await api.loadMedia(
       streamUrl: urlToCast,
@@ -328,5 +360,30 @@ class GoogleCastTransport implements CastTransport {
     if (lower.contains('.mkv')) return 'video/x-matroska';
     // Cas IPTV courant : .ts brut ou /live/.../...ts
     return 'video/mp2t';
+  }
+
+  /// Teste si le VPS de remux ([_kCastRemuxBase]) répond, avec un timeout
+  /// court (3 s). On fait un GET sur la racine (le HEAD n'est pas garanti
+  /// supporté) et on l'annule dès la réponse — on veut juste savoir si le
+  /// serveur est joignable, pas lire un corps. Tolérant : n'importe quel
+  /// code HTTP = serveur debout ; seules une exception réseau / un timeout
+  /// = injoignable. Best-effort, ne jette jamais.
+  Future<bool> _remuxReachable() async {
+    final HttpClient client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 3);
+    try {
+      final Uri base = Uri.parse(_kCastRemuxBase);
+      final HttpClientRequest req =
+          await client.getUrl(base).timeout(const Duration(seconds: 3));
+      final HttpClientResponse resp =
+          await req.close().timeout(const Duration(seconds: 3));
+      // N'importe quelle réponse HTTP prouve que le serveur est debout.
+      await resp.listen(null, cancelOnError: true).cancel();
+      return true;
+    } on Exception {
+      return false;
+    } finally {
+      client.close(force: true);
+    }
   }
 }

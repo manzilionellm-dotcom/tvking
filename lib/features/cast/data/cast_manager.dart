@@ -258,6 +258,17 @@ class CastManager extends ChangeNotifier {
   /// pour pouvoir la libérer dans `disconnect()`.
   String? _currentRelayUrl;
 
+  // ----- Surveillance de session DLNA (reconnexion auto) -----
+  //  En DLNA, c'est le lecteur INTERNE de la TV qui bufferise (pas l'app) :
+  //  on ne peut PAS faire un buffer « façon YouTube » côté sender. Le maximum
+  //  réaliste = flux direct stable + RELANCE automatique si le flux coupe.
+  //  Ces champs portent l'état du watchdog (cf. _startDlnaWatchdog).
+  Timer? _dlnaWatchdog;
+  String? _dlnaLiveUrl;
+  String? _dlnaLiveTitle;
+  final List<DateTime> _dlnaReconnects = <DateTime>[];
+  bool _dlnaReconnecting = false;
+
   /// Progression friendly-french exposée à l'UI. Le picker, la
   /// mini-bar et le VideoPlayerScreen s'abonnent via ListenableBuilder
   /// pour afficher des messages humains au lieu de stack traces.
@@ -505,6 +516,9 @@ class CastManager extends ChangeNotifier {
     String? imageUrl,
   }) async {
     stopDiscovery();
+    // Coupe une éventuelle surveillance DLNA de la session précédente
+    // avant d'en démarrer une nouvelle (évite deux watchdogs concurrents).
+    _stopDlnaWatchdog();
     // Phase 1+/B5 (2026-06-01) — Capture ma seq des le start. Si une
     // autre castTo bumpe _sessionSeq pendant que je tourne, j'arrete.
     final int mySeq = ++_sessionSeq;
@@ -837,10 +851,9 @@ class CastManager extends ChangeNotifier {
     transport.profile = profile;
 
     // Échelle de stratégies en gradient (étendue à 5 niveaux) :
-    //   0 = WORKER + métadonnée DLNA complète (source https toujours
-    //       allumée, redirect résolu, UA VLC, en-têtes DLNA — la plus
-    //       fiable, et le téléphone peut s'éteindre)
-    //   1 = WORKER + métadonnée minimale (si LG rejette le PN)
+    //   0 = direct + métadonnée DLNA complète (cas idéal, latence min ;
+    //       la TV tire l'upstream elle-même → téléphone-éteint-TV-continue)
+    //   1 = direct + métadonnée minimale (juste MIME, pas de PN)
     //   2 = direct + AUCUNE métadonnée (URL upstream nue → fallback direct)
     //   3 = relay  + métadonnée DLNA complète (relais téléphone, legacy)
     //   4 = relay  + métadonnée minimale (sans PN, dernier recours)
@@ -898,9 +911,8 @@ class CastManager extends ChangeNotifier {
       final Stopwatch attemptSw = Stopwatch()..start();
       final String strategyName = _strategyName(s);
       // s>=5 = variantes de MIME, toujours en DIRECT + métadonnée complète.
-      final String urlKind = (s == 0 || s == 1)
-          ? 'worker'
-          : ((s < 3 || s >= 5) ? 'direct' : 'relay');
+      // 0,1,2 et >=5 = direct ; 3,4 = relay (le Worker ne sert plus en DLNA).
+      final String urlKind = (s < 3 || s >= 5) ? 'direct' : 'relay';
       final String metaName = (s == 1 || s == 4) ? 'minimal' : (s == 2 ? 'none' : 'full');
 
       try {
@@ -911,18 +923,27 @@ class CastManager extends ChangeNotifier {
         final String urlToCast;
         switch (s) {
           case 0:
-            // Worker Cloudflare (toujours allume) re-sert le flux en
-            // MPEG-TS https : redirect upstream deja resolu + UA VLC +
-            // en-tetes DLNA. Sur la LG QNED816QA, le SetAVTransportURI en
-            // direct vers l'upstream hang 15s (la TV sonde l'URL en
-            // synchrone, l'upstream filtre l'UA/est lent) ET le relais
-            // telephone fait "connection abort". Le Worker corrige les
-            // deux : la TV recoit une source rapide et fiable.
-            urlToCast = _workerTsUrl(probe.finalUrl);
+            // ENVOI DIRECT de l'URL upstream (restauré — régression 3586027).
+            // Le Worker /cs/ (stratégie 0 du 2026-06-20) proxifiait le live
+            // via Cloudflare, mais le Worker COUPE un flux continu à ~105 s
+            // (limite de durée Cloudflare) → le live s'arrêtait en plein
+            // match. En direct, la LG tire le flux du serveur IPTV elle-même :
+            // pas d'intermédiaire à durée bornée, et le téléphone peut
+            // s'éteindre (TV autonome). Le Worker reste utilisé pour le
+            // chemin Chromecast (cf. _workerTsUrl, conservé).
+            // Upstream direct ; on bascule sur l'URL http d'origine si une
+            // redirection l'a fait passer en https (webOS gère mal le TLS).
+            urlToCast = dlnaDirectUrlFor(
+              finalUrl: probe.finalUrl,
+              originalUrl: probe.originalUrl,
+            );
             transport.metadataMode = MetadataMode.full;
             break;
           case 1:
-            urlToCast = _workerTsUrl(probe.finalUrl);
+            urlToCast = dlnaDirectUrlFor(
+              finalUrl: probe.finalUrl,
+              originalUrl: probe.originalUrl,
+            );
             transport.metadataMode = MetadataMode.minimal;
             break;
           case 2:
@@ -965,6 +986,10 @@ class CastManager extends ChangeNotifier {
           durationMs: attemptSw.elapsedMilliseconds,
           success: true,
         ));
+        // Lecture confirmée PLAYING → on arme la surveillance de session
+        // (reconnexion auto si le flux coupe). On relance sur l'URL
+        // GAGNANTE (`urlToCast`), donc avec la même stratégie/profil.
+        _startDlnaWatchdog(transport, urlToCast, title, mySeq);
         return; // succès
       } on Exception catch (e) {
         lastError = e;
@@ -1021,9 +1046,9 @@ class CastManager extends ChangeNotifier {
   String _strategyName(int strategyIndex) {
     switch (strategyIndex) {
       case 0:
-        return 'worker+full';
+        return 'direct+full';
       case 1:
-        return 'worker+minimal';
+        return 'direct+minimal';
       case 2:
         return 'direct+nometa';
       case 3:
@@ -1035,14 +1060,44 @@ class CastManager extends ChangeNotifier {
     }
   }
 
+  // ⚠️ NE JAMAIS remettre _workerTsUrl en stratégie 0/1 DLNA. Le Worker
+  // Cloudflare coupe le flux LIVE à ~105s (limite de durée). La LG doit
+  // recevoir l'URL upstream DIRECTE (probe.finalUrl) pour tirer le flux
+  // elle-même → téléphone-éteint-TV-continue. Régression historique:
+  // commit 3586027 (2026-06-20), réparée. Worker réservé au chemin Chromecast.
+  //
   /// URL MPEG-TS https servie par le Worker Cloudflare (route /cs/) qui
-  /// re-sert le flux IPTV : toujours allume (le telephone peut s'eteindre),
-  /// redirect upstream resolu, UA VLC, en-tetes DLNA. L'upstream est encode
-  /// en base64url dans le chemin → Worker stateless. Cf. worker.js.
+  /// re-sert le flux IPTV (redirect upstream resolu, UA VLC, en-tetes DLNA).
+  /// Réservé au chemin Chromecast/QR ; cf. worker.js. NE PAS appeler en DLNA.
+  // ignore: unused_element
   String _workerTsUrl(String upstreamUrl) {
     final String b64 =
         base64Url.encode(utf8.encode(upstreamUrl)).replaceAll('=', '');
     return 'https://app.7themotion.com/cs/$b64.ts';
+  }
+
+  /// Choisit l'URL à pousser en stratégie DIRECT (0/1) vers une TV DLNA.
+  ///
+  /// `StreamProbe` suit les redirections : si l'upstream redirige
+  /// `http → https`, `probe.finalUrl` devient https. Or la pile DLNA de
+  /// webOS (LG QNED816QA) — et de beaucoup de Smart TV — gère mal le TLS
+  /// sur le chemin média (handshake qui échoue, flux qui coupe). On
+  /// préfère donc l'URL HTTP d'origine quand la finalUrl est passée en
+  /// https par redirection : la TV évite le TLS, au prix de devoir suivre
+  /// elle-même la redirection (compromis + fiable en pratique sur webOS).
+  /// Si la finalUrl est déjà http (cas le plus courant en IPTV), on la
+  /// renvoie telle quelle → aucun changement de comportement.
+  ///
+  /// Pur + statique → testable sans stack réseau (cf. tests cast).
+  @visibleForTesting
+  static String dlnaDirectUrlFor({
+    required String finalUrl,
+    required String originalUrl,
+  }) {
+    final bool finalIsHttps = finalUrl.toLowerCase().startsWith('https:');
+    final bool originIsHttp = originalUrl.toLowerCase().startsWith('http:');
+    if (finalIsHttps && originIsHttp) return originalUrl;
+    return finalUrl;
   }
 
   Future<String> _ensureRelayUrl({
@@ -1250,6 +1305,7 @@ class CastManager extends ChangeNotifier {
   }
 
   Future<void> disconnect() async {
+    _stopDlnaWatchdog();
     try {
       await _transport?.stop();
     } catch (_) {}
@@ -1265,5 +1321,104 @@ class CastManager extends ChangeNotifier {
     _currentTitle = null;
     _state = CastState.idle;
     _setProgress(CastProgress.idle);
+  }
+
+  // ============================================================
+  //  Surveillance de session DLNA — reconnexion auto
+  // ============================================================
+  //  Équivalent RÉALISTE du « ne jamais geler » pour le DLNA. On NE peut
+  //  pas bufferiser côté app (c'est la TV qui lit le flux). Ce qu'on PEUT
+  //  faire : détecter une coupure et relancer la lecture sans que
+  //  l'utilisateur ait à toucher quoi que ce soit.
+
+  /// Démarre la surveillance après qu'une lecture DLNA a réellement démarré
+  /// (PLAYING confirmé par `playStream`). Toutes les ~10 s on lit
+  /// GetTransportInfo ; si l'état retombe en STOPPED/NO_MEDIA_PRESENT de
+  /// façon inattendue (flux coupé côté serveur/réseau), on relance UNE fois
+  /// SetAVTransportURI+Play sur la MÊME URL (cf. _dlnaAutoReconnect).
+  void _startDlnaWatchdog(
+    UpnpAvTransport transport,
+    String url,
+    String title,
+    int mySeq,
+  ) {
+    _dlnaWatchdog?.cancel();
+    _dlnaLiveUrl = url;
+    _dlnaLiveTitle = title;
+    _dlnaReconnects.clear();
+    _dlnaReconnecting = false;
+    _dlnaWatchdog =
+        Timer.periodic(const Duration(seconds: 10), (Timer t) async {
+      // Session changée (un nouveau cast a démarré) ou déconnecté → stop.
+      if (mySeq != _sessionSeq || _transport == null) {
+        t.cancel();
+        if (identical(_dlnaWatchdog, t)) _dlnaWatchdog = null;
+        return;
+      }
+      // On ne surveille QUE pendant une lecture active : ni pendant une
+      // pause VOLONTAIRE de l'utilisateur (sinon on relancerait un flux
+      // qu'il a mis en pause), ni pendant une reconnexion déjà en cours.
+      if (_state != CastState.casting || _dlnaReconnecting) return;
+      final String? st = await transport.currentTransportState();
+      // null = la TV ne supporte pas GetTransportInfo → rien à surveiller.
+      if (st == null) return;
+      if (st == 'STOPPED' || st == 'NO_MEDIA_PRESENT') {
+        await _dlnaAutoReconnect(transport, mySeq);
+      }
+    });
+  }
+
+  /// Relance la lecture sur la même URL, une fois, après un court délai.
+  /// Rate-limité à 3 reconnexions par minute glissante pour ne JAMAIS
+  /// partir en boucle si le serveur IPTV est définitivement coupé.
+  Future<void> _dlnaAutoReconnect(
+    UpnpAvTransport transport,
+    int mySeq,
+  ) async {
+    final String? url = _dlnaLiveUrl;
+    if (url == null) return;
+    final DateTime now = DateTime.now();
+    _dlnaReconnects
+        .removeWhere((DateTime d) => now.difference(d) > const Duration(minutes: 1));
+    if (_dlnaReconnects.length >= 3) {
+      StructuredLogger.instance.warn(
+        domain: 'cast',
+        event: 'dlna.auto_reconnect_giveup',
+        ctx: <String, Object?>{'windowReconnects': _dlnaReconnects.length},
+      );
+      return;
+    }
+    _dlnaReconnecting = true;
+    _dlnaReconnects.add(now);
+    StructuredLogger.instance.info(
+      domain: 'cast',
+      event: 'dlna.auto_reconnect',
+      ctx: <String, Object?>{'attemptInWindow': _dlnaReconnects.length},
+    );
+    try {
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (mySeq != _sessionSeq || _transport == null) return;
+      await transport.playStream(
+        streamUrl: url,
+        title: _dlnaLiveTitle ?? '7 MOTION',
+      );
+    } on Exception catch (e) {
+      StructuredLogger.instance.warn(
+        domain: 'cast',
+        event: 'dlna.auto_reconnect_fail',
+        ctx: <String, Object?>{'error': e.toString()},
+      );
+    } finally {
+      _dlnaReconnecting = false;
+    }
+  }
+
+  void _stopDlnaWatchdog() {
+    _dlnaWatchdog?.cancel();
+    _dlnaWatchdog = null;
+    _dlnaReconnects.clear();
+    _dlnaReconnecting = false;
+    _dlnaLiveUrl = null;
+    _dlnaLiveTitle = null;
   }
 }

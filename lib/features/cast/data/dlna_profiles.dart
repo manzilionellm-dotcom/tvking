@@ -110,16 +110,22 @@ class DlnaProfile {
     dlnaFlags.write('DLNA.ORG_OP=${supportsSeek ? '01' : '00'};');
     // CI=0 = contenu NON transcodé (CI=1 si on transcode plus tard)
     dlnaFlags.write('DLNA.ORG_CI=0;');
-    // FLAGS — 32 hex chars. Les bits qu'on positionne :
-    //   bit 24 (0x01000000) = transfer-mode interactif autorisé
-    //   bit 25 (0x02000000) = transfer-mode background autorisé
-    //   bit 26 (0x04000000) = transfer-mode streaming autorisé
-    //   bit 28 (0x10000000) = HTTP byte-range seek
-    //   bit 31 (0x80000000) = sender paced (le serveur fixe le rythme)
-    // Pour le LIVE : streaming + sender-paced  → 0x84000000
-    // Pour la VOD  : interactive + streaming + byte-seek → 0x95000000
-    // Les 24 derniers hex sont réservés/zero.
-    final String first32 = supportsSeek ? '95000000' : '84000000';
+    // FLAGS — 32 hex chars (8 significatifs + 24 réservés/zero).
+    //   bit 24 (0x01000000) = sp-flag (sender paced)
+    //   bit 25 (0x02000000) = lop-npt (limited-operations time-seek)
+    //   bit 26 (0x04000000) = lop-bytes
+    //   bit 28 (0x10000000) = connection-stalling autorisé
+    //   bit 29 (0x20000000) = DLNA v1.5 flag
+    //   bit 30 (0x40000000) = streaming-transfer-mode
+    //   bit 31 (0x80000000) = background-transfer-mode (bg-ok)
+    //
+    // LIVE (transferMode streaming, OP=00) → 0x01700000 : c'est la
+    // combinaison RECONNUE pour du live HTTP streaming
+    // (sp-flag + lop-npt + streaming-transfer-mode + bg-ok), et celle
+    // que le Worker /cs/ annonce déjà → app et backend cohérents.
+    // L'ancienne valeur 0x84000000 n'était pas une combinaison standard.
+    // VOD (interactive) → 0x95000000 : seek + interactive, inchangé.
+    final String first32 = supportsSeek ? '95000000' : '01700000';
     dlnaFlags.write('DLNA.ORG_FLAGS=${first32}000000000000000000000000');
     return 'http-get:*:$mime:$dlnaFlags';
   }
