@@ -46,22 +46,24 @@ class CastOptionsProviderImpl : OptionsProvider {
         // ⚠️ BASCULEMENT CUSTOM RECEIVER — USE_CUSTOM_RECEIVER (ici) et
         // kCastUseCustomReceiver (lib/features/cast/data/google_cast_transport.dart)
         // DOIVENT TOUJOURS valoir LA MÊME CHOSE. Les désynchroniser = écran
-        // noir (le sender enverrait un format que le receiver chargé ne sait
-        // pas lire). Les deux sont à `true` ci-dessous → custom receiver actif.
+        // noir. Les deux sont à `false` ci-dessous.
         //
-        //   false : Default Media Receiver public CC1AD845 (ne décode pas le
-        //     MPEG-TS brut → nécessitait un wrap HLS / VPS).
-        //   true  : custom receiver 5BDFD969 (page mpegts.js sur
-        //     app.7themotion.com/cast-receiver) → décode le MPEG-TS LUI-MÊME
-        //     sur la TV → le sender envoie l'URL .ts DIRECTE, sans VPS.
-        private const val USE_CUSTOM_RECEIVER = true
+        // ⚠️ NE PASSER À `true` QU'UNE FOIS `5BDFD969` PUBLISHED dans la
+        // Google Cast Developer Console. Sinon le picker natif Google FILTRE
+        // par cet app id non publié et CACHE TOUS les appareils → la box
+        // Chromecast/SHIELD disparaît (« Aucun appareil disponible »), alors
+        // qu'avec le Default Media Receiver public CC1AD845 elle s'affiche.
+        //
+        //   false (ACTUEL) : Default Media Receiver public CC1AD845 → la box
+        //     est découvrable ; lecture .ts via repli VPS si dispo.
+        //   true  : custom receiver 5BDFD969 (mpegts.js, /cast-receiver) →
+        //     décode le MPEG-TS sur la TV, .ts direct sans VPS. EXIGE publish.
+        private const val USE_CUSTOM_RECEIVER = false
 
         // Default Media Receiver public de Google (toujours actif).
         private const val DEFAULT_RECEIVER_ID = "CC1AD845"
         // Custom Cast receiver « 7 MOTION TS » (page mpegts.js servie par le
-        // Worker à /cast-receiver). DOIT être PUBLISHED dans la Google Cast
-        // Developer Console — sinon il ne charge QUE sur les Chromecast/SHIELD
-        // inscrites comme appareils de test du compte dev.
+        // Worker à /cast-receiver). DOIT être PUBLISHED avant de l'activer.
         private const val CUSTOM_RECEIVER_ID = "5BDFD969"
     }
 

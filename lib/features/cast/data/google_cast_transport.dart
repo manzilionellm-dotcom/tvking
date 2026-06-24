@@ -52,16 +52,21 @@ import 'local_cast_server.dart';
 ///   HLS (serveur local du telephone / VPS). Inconvenient : dependance
 ///   telephone ou VPS.
 ///
-/// `true` (ACTUEL) : le custom receiver `5BDFD969` (page mpegts.js servie
-///   par le Worker à `https://app.7themotion.com/cast-receiver`) decode le
-///   MPEG-TS LUI-MEME sur la TV → on envoie l'URL Xtream .ts DIRECTE (sans
-///   VPS). La TV tire le flux seule → le telephone peut s'eteindre.
+/// `true` : le custom receiver `5BDFD969` (page mpegts.js servie par le
+///   Worker à `https://app.7themotion.com/cast-receiver`) decode le MPEG-TS
+///   LUI-MEME sur la TV → on envoie l'URL Xtream .ts DIRECTE (sans VPS).
 ///
 /// ⚠️ kCastUseCustomReceiver (ici) et USE_CUSTOM_RECEIVER
 ///    (android_overlay/google_cast/CastOptionsProviderImpl.kt) DOIVENT
-///    TOUJOURS valoir LA MÊME CHOSE. Les desynchroniser = ECRAN NOIR (le
-///    sender enverrait un format que le receiver charge ne sait pas lire).
-const bool kCastUseCustomReceiver = true;
+///    TOUJOURS valoir LA MÊME CHOSE. Les desynchroniser = ECRAN NOIR.
+///
+/// ⚠️ REMIS À `false` (2026-06-24) : activer le custom receiver alors que
+///    `5BDFD969` n'est PAS publie faisait DISPARAITRE la box du picker natif
+///    Google (« Aucun appareil disponible »). On reste sur le Default Media
+///    Receiver public `CC1AD845` (box decouvrable) jusqu'a publication de
+///    `5BDFD969`. Repasser ce flag (et USE_CUSTOM_RECEIVER) a `true`
+///    UNIQUEMENT une fois `5BDFD969` Published.
+const bool kCastUseCustomReceiver = false;
 
 /// Base du service de remux VPS (cf. server/cast-remux) qui transforme le
 /// MPEG-TS live en HLS-fMP4 — le SEUL format que le recepteur Cast par
