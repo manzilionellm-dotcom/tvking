@@ -45,22 +45,23 @@ import 'dlna_profiles.dart';
 import 'google_cast_api.dart';
 import 'local_cast_server.dart';
 
-/// FLAG D'ACTIVATION DU CUSTOM CAST RECEIVER (App ID `46F815A5`).
+/// FLAG D'ACTIVATION DU CUSTOM CAST RECEIVER (App ID `5BDFD969`, « 7 MOTION TS »).
 ///
-/// `false` (defaut, expedie en prod) : le sender natif pointe sur le
-///   Default Media Receiver public `CC1AD845`, qui NE decode PAS le
-///   MPEG-TS brut → on WRAPPE le .ts en HLS servi par le serveur local
-///   du telephone. Inconvenient : eteindre le telephone coupe le flux.
+/// `false` : le sender natif pointe sur le Default Media Receiver public
+///   `CC1AD845`, qui NE decode PAS le MPEG-TS brut → on WRAPPE le .ts en
+///   HLS (serveur local du telephone / VPS). Inconvenient : dependance
+///   telephone ou VPS.
 ///
-/// `true` : le custom receiver `46F815A5` (cloudflare/cast_receiver.js,
-///   mpegts.js) est Published dans la Cast Developer Console et decode
-///   le MPEG-TS LUI-MEME → on envoie l'URL Xtream .ts DIRECTE. La TV
-///   tire le flux seule → le telephone peut s'eteindre, la TV continue.
+/// `true` (ACTUEL) : le custom receiver `5BDFD969` (page mpegts.js servie
+///   par le Worker à `https://app.7themotion.com/cast-receiver`) decode le
+///   MPEG-TS LUI-MEME sur la TV → on envoie l'URL Xtream .ts DIRECTE (sans
+///   VPS). La TV tire le flux seule → le telephone peut s'eteindre.
 ///
-/// ⚠️ DOIT etre flippe EN MEME TEMPS que `USE_CUSTOM_RECEIVER` dans
-///    android_overlay/google_cast/CastOptionsProviderImpl.kt. Les deux
-///    decrivent le MEME basculement. Les desynchroniser = ecran noir.
-const bool kCastUseCustomReceiver = false;
+/// ⚠️ kCastUseCustomReceiver (ici) et USE_CUSTOM_RECEIVER
+///    (android_overlay/google_cast/CastOptionsProviderImpl.kt) DOIVENT
+///    TOUJOURS valoir LA MÊME CHOSE. Les desynchroniser = ECRAN NOIR (le
+///    sender enverrait un format que le receiver charge ne sait pas lire).
+const bool kCastUseCustomReceiver = true;
 
 /// Base du service de remux VPS (cf. server/cast-remux) qui transforme le
 /// MPEG-TS live en HLS-fMP4 — le SEUL format que le recepteur Cast par
@@ -149,22 +150,29 @@ class GoogleCastTransport implements CastTransport {
     String mime = _guessMime(streamUrl);
     String castPath = 'direct';
 
-    // Decision de remux pour le Cast :
+    // Decision de routage du flux pour le Cast :
     //   1. On ne touche PAS un flux deja adaptatif (HLS/DASH).
-    //   2. On remux le MPEG-TS brut (.ts / Xtream /live/).
-    //
-    // POURQUOI (2026-06-20, valide par diag terrain SHIELD) : le recepteur
-    // Cast par defaut (Shaka depuis fin 2025) ne sait PAS lire du MPEG-TS
-    // brut -> erreur "codec / format non supporte". Le seul format que TOUS
-    // les Chromecast lisent nativement = HLS-fMP4. Un Worker Cloudflare ne
-    // peut pas transcoder ; on passe donc par le service de remux VPS
-    // (server/cast-remux, ffmpeg -c copy = remux conteneur, pas de
-    // re-encodage) qui sert le flux en HLS-fMP4 https. Le Chromecast tire
-    // tout du VPS -> le telephone peut s'eteindre.
+    //   2. Pour le MPEG-TS brut (.ts / Xtream /live/) :
+    //      - custom receiver ACTIF (kCastUseCustomReceiver==true) :
+    //        la page mpegts.js (5BDFD969 -> /cast-receiver) decode le TS
+    //        ELLE-MEME sur la TV → on envoie l'URL .ts DIRECTE en
+    //        video/mp2t, SANS VPS. La TV tire le flux seule.
+    //      - custom receiver INACTIF : le Default Media Receiver ne lit
+    //        pas le TS brut → on remuxe en HLS-fMP4 via le VPS
+    //        (_castRemuxUrl, ffmpeg -c copy). Code conserve derriere le
+    //        flag, reutilisable, mais inactif tant que le custom est ON.
     if (!isHlsOrDash(streamUrl) && _looksLikeRawMpegTs(streamUrl)) {
-      urlToCast = _castRemuxUrl(streamUrl);
-      mime = 'application/x-mpegURL';
-      castPath = 'remux_hls';
+      // On passe par un booleen LOCAL (pas le const directement) pour que
+      // les DEUX branches restent du code vivant pour l'analyzer : le repli
+      // VPS (_castRemuxUrl) demeure reference et reutilisable, juste inactif
+      // au runtime tant que le custom receiver est ON.
+      final bool useCustomReceiver = kCastUseCustomReceiver;
+      // Custom receiver mpegts.js (5BDFD969 -> /cast-receiver) : il decode le
+      // .ts LUI-MEME → on envoie l'URL .ts brute DIRECTE, sans VPS.
+      // Sinon (Default Media Receiver) : repli remux HLS-fMP4 via le VPS.
+      urlToCast = useCustomReceiver ? streamUrl : _castRemuxUrl(streamUrl);
+      mime = useCustomReceiver ? 'video/mp2t' : 'application/x-mpegURL';
+      castPath = useCustomReceiver ? 'direct_ts_custom_receiver' : 'remux_hls';
     }
 
     // DIAGNOSTIC (brief §4.3) — tracer EXACTEMENT l'URL et le MIME
@@ -223,10 +231,12 @@ class GoogleCastTransport implements CastTransport {
   /// Attend que le recepteur passe REELLEMENT en lecture.
   /// - PLAYING -> succes.
   /// - IDLE + idleReason "error" -> la TV a rejete le flux.
-  /// - timeout (18 s) -> la lecture n'a jamais demarre (format non lu).
+  /// - timeout (25 s) -> la lecture n'a jamais demarre (format non lu).
+  ///   25 s (et non 18) : le transmux mpegts.js du custom receiver peut
+  ///   mettre quelques secondes a produire le 1er segment fMP4.
   Future<void> _awaitRealPlayback(GoogleCastApi api) async {
     final Completer<void> done = Completer<void>();
-    final Timer timer = Timer(const Duration(seconds: 18), () {
+    final Timer timer = Timer(const Duration(seconds: 25), () {
       if (!done.isCompleted) {
         done.completeError(Exception(
           'La TV n\'a pas démarré la lecture — format probablement non '

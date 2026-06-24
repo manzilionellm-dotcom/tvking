@@ -43,25 +43,26 @@ import com.google.android.gms.cast.framework.media.NotificationOptions
 class CastOptionsProviderImpl : OptionsProvider {
 
     companion object {
-        // BASCULEMENT CUSTOM RECEIVER — flipper EN MEME TEMPS que
-        // `kCastUseCustomReceiver` (lib/features/cast/data/
-        // google_cast_transport.dart). Voir le bloc d'en-tete ci-dessus.
+        // ⚠️ BASCULEMENT CUSTOM RECEIVER — USE_CUSTOM_RECEIVER (ici) et
+        // kCastUseCustomReceiver (lib/features/cast/data/google_cast_transport.dart)
+        // DOIVENT TOUJOURS valoir LA MÊME CHOSE. Les désynchroniser = écran
+        // noir (le sender enverrait un format que le receiver chargé ne sait
+        // pas lire). Les deux sont à `true` ci-dessous → custom receiver actif.
         //
-        //   false (defaut, prod) : Default Media Receiver public
-        //     CC1AD845 → le sender wrappe le .ts en HLS (telephone requis).
-        //   true : custom receiver 46F815A5 PUBLISHED (mpegts.js) → le
-        //     sender envoie le .ts direct (TV autonome, telephone off OK).
-        // false : recepteur PAR DEFAUT public CC1AD845. Depuis le wrap HLS
-        // servi par le Worker (route /cs/, HTTPS), le recepteur par defaut
-        // lit le flux nativement → AUCUNE publication de receiver custom
-        // requise. (Le custom 46F815A5 ne sert qu'au branding, optionnel.)
-        private const val USE_CUSTOM_RECEIVER = false
+        //   false : Default Media Receiver public CC1AD845 (ne décode pas le
+        //     MPEG-TS brut → nécessitait un wrap HLS / VPS).
+        //   true  : custom receiver 5BDFD969 (page mpegts.js sur
+        //     app.7themotion.com/cast-receiver) → décode le MPEG-TS LUI-MÊME
+        //     sur la TV → le sender envoie l'URL .ts DIRECTE, sans VPS.
+        private const val USE_CUSTOM_RECEIVER = true
 
         // Default Media Receiver public de Google (toujours actif).
         private const val DEFAULT_RECEIVER_ID = "CC1AD845"
-        // Custom Styled Media Receiver brande 7 MOTION (mpegts.js).
-        // A publier sur la Cast Developer Console avant de l'activer.
-        private const val CUSTOM_RECEIVER_ID = "46F815A5"
+        // Custom Cast receiver « 7 MOTION TS » (page mpegts.js servie par le
+        // Worker à /cast-receiver). DOIT être PUBLISHED dans la Google Cast
+        // Developer Console — sinon il ne charge QUE sur les Chromecast/SHIELD
+        // inscrites comme appareils de test du compte dev.
+        private const val CUSTOM_RECEIVER_ID = "5BDFD969"
     }
 
     override fun getCastOptions(context: Context): CastOptions {
