@@ -58,6 +58,12 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.families': { fr: 'Famille', en: 'Family', ar: 'العائلة' },
   'nav.account': { fr: 'Mon compte', en: 'My account', ar: 'حسابي' },
 
+  // --- Sections du menu (regroupement Sidebar) ---
+  'navsec.activation': { fr: 'Activation & abonnés', en: 'Activation & subscribers', ar: 'التفعيل والمشتركون' },
+  'navsec.channels': { fr: 'Chaînes & sources', en: 'Channels & sources', ar: 'القنوات والمصادر' },
+  'navsec.content': { fr: 'App & contenu', en: 'App & content', ar: 'التطبيق والمحتوى' },
+  'navsec.system': { fr: 'Système', en: 'System', ar: 'النظام' },
+
   // --- Commun ---
   'common.credits': { fr: 'Crédits', en: 'Credits', ar: 'الأرصدة' },
   'common.logout': { fr: 'Se déconnecter', en: 'Sign out', ar: 'تسجيل الخروج' },

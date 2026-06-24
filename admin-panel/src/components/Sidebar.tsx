@@ -13,44 +13,80 @@ import { useT } from '@/lib/i18n';
 // `cap` (optionnel) = capacité requise pour voir l'entrée (revendeur).
 // Sans `cap`, l'entrée est toujours visible. L'admin voit tout.
 type NavItem = { key: string; to: string; cap?: string };
+// Une section = un titre traduit (`titleKey`) + ses entrées. Le menu est
+// REGROUPÉ par section pour séparer clairement l'ACTIVATION (abonnement,
+// appareils, revendeurs…) des CHAÎNES & SOURCES (serveurs IPTV) — demande
+// produit « bien séparer activation et chaînes ». Présentation uniquement :
+// aucune logique d'activation/abonnement n'est touchée ici.
+type NavSection = { titleKey: string; items: NavItem[] };
 
-const OWNER_NAV: NavItem[] = [
-  { key: 'nav.dashboard',     to: '/' },
-  { key: 'nav.controlCenter', to: '/control-center' },
-  { key: 'nav.online',        to: '/online' },
-  { key: 'nav.homeManager',   to: '/home-manager' },
-  { key: 'nav.featured',      to: '/featured' },
-  { key: 'nav.theme',         to: '/theme' },
-  { key: 'nav.ad',            to: '/ad' },
-  { key: 'nav.pricing',       to: '/tarifs' },
-  { key: 'nav.reviews',       to: '/reviews' },
-  { key: 'nav.activate',    to: '/activate' },
-  { key: 'nav.families',    to: '/families' },
-  { key: 'nav.transfer',    to: '/transfer' },
-  { key: 'nav.notifications', to: '/notifications' },
-  { key: 'nav.forceUpdate', to: '/force-update' },
-  { key: 'nav.resellers',   to: '/resellers' },
-  { key: 'nav.customers',   to: '/customers' },
-  { key: 'nav.devices',     to: '/devices' },
-  { key: 'nav.apps',        to: '/apps' },
-  { key: 'nav.servers',     to: '/servers' },
-  { key: 'nav.activations', to: '/activations' },
-  { key: 'nav.references',  to: '/references' },
-  { key: 'nav.history',     to: '/history' },
-  { key: 'nav.account',     to: '/account' },
+const OWNER_NAV: NavSection[] = [
+  {
+    titleKey: 'navsec.activation',
+    items: [
+      { key: 'nav.activate',    to: '/activate' },
+      { key: 'nav.activations', to: '/activations' },
+      { key: 'nav.customers',   to: '/customers' },
+      { key: 'nav.devices',     to: '/devices' },
+      { key: 'nav.resellers',   to: '/resellers' },
+      { key: 'nav.families',    to: '/families' },
+      { key: 'nav.transfer',    to: '/transfer' },
+      { key: 'nav.pricing',     to: '/tarifs' },
+      { key: 'nav.references',  to: '/references' },
+    ],
+  },
+  {
+    titleKey: 'navsec.channels',
+    items: [
+      { key: 'nav.servers',     to: '/servers' },
+    ],
+  },
+  {
+    titleKey: 'navsec.content',
+    items: [
+      { key: 'nav.controlCenter', to: '/control-center' },
+      { key: 'nav.homeManager',   to: '/home-manager' },
+      { key: 'nav.featured',      to: '/featured' },
+      { key: 'nav.theme',         to: '/theme' },
+      { key: 'nav.ad',            to: '/ad' },
+      { key: 'nav.notifications', to: '/notifications' },
+      { key: 'nav.forceUpdate',   to: '/force-update' },
+      { key: 'nav.reviews',       to: '/reviews' },
+    ],
+  },
+  {
+    titleKey: 'navsec.system',
+    items: [
+      { key: 'nav.dashboard', to: '/' },
+      { key: 'nav.online',    to: '/online' },
+      { key: 'nav.apps',      to: '/apps' },
+      { key: 'nav.history',   to: '/history' },
+      { key: 'nav.account',   to: '/account' },
+    ],
+  },
 ];
 
-const RESELLER_NAV: NavItem[] = [
-  { key: 'nav.dashboard',     to: '/' },
-  // Chaque entrée n'apparaît que si l'admin a coché le droit correspondant.
-  { key: 'nav.activate',      to: '/activate',    cap: 'activate' },
-  { key: 'nav.families',      to: '/families',    cap: 'activate' },
-  { key: 'nav.transfer',      to: '/transfer',    cap: 'activate' },
-  { key: 'nav.myResellers',   to: '/resellers',   cap: 'resellers' },
-  { key: 'nav.myDevices',     to: '/devices',     cap: 'devices' },
-  { key: 'nav.myActivations', to: '/activations', cap: 'activations' },
-  { key: 'nav.references',    to: '/references',  cap: 'activations' },
-  { key: 'nav.account',       to: '/account' },
+const RESELLER_NAV: NavSection[] = [
+  {
+    titleKey: 'navsec.activation',
+    // Chaque entrée n'apparaît que si l'admin a coché le droit correspondant.
+    items: [
+      { key: 'nav.activate',      to: '/activate',    cap: 'activate' },
+      { key: 'nav.families',      to: '/families',    cap: 'activate' },
+      { key: 'nav.transfer',      to: '/transfer',    cap: 'activate' },
+      { key: 'nav.myResellers',   to: '/resellers',   cap: 'resellers' },
+      { key: 'nav.myDevices',     to: '/devices',     cap: 'devices' },
+      { key: 'nav.myActivations', to: '/activations', cap: 'activations' },
+      { key: 'nav.references',    to: '/references',  cap: 'activations' },
+    ],
+  },
+  {
+    titleKey: 'navsec.system',
+    items: [
+      { key: 'nav.dashboard', to: '/' },
+      { key: 'nav.account',   to: '/account' },
+    ],
+  },
 ];
 
 export function Sidebar({
@@ -61,8 +97,13 @@ export function Sidebar({
   const user = getCurrentUser();
   const owner = isOwnerRole(user?.role);
   // Filtre par capacité : un revendeur ne voit que ce que son niveau ouvre.
-  const nav = (owner ? OWNER_NAV : RESELLER_NAV)
-    .filter((it) => !it.cap || userCan(user, it.cap));
+  // On filtre les ENTRÉES puis on retire les sections devenues vides.
+  const sections = (owner ? OWNER_NAV : RESELLER_NAV)
+    .map((sec) => ({
+      ...sec,
+      items: sec.items.filter((it) => !it.cap || userCan(user, it.cap)),
+    }))
+    .filter((sec) => sec.items.length > 0);
 
   return (
     <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-white/5 bg-obsidian">
@@ -87,36 +128,44 @@ export function Sidebar({
         </div>
       )}
 
-      {/* ===== Nav ===== */}
+      {/* ===== Nav (regroupée par sections) ===== */}
       <nav className="flex-1 overflow-y-auto px-2 py-4">
-        <ul className="space-y-0.5">
-          {nav.map((item) => (
-            <li key={item.to}>
-              <NavLink
-                to={item.to}
-                end={item.to === '/'}
-                onClick={() => onNavigate?.()}
-                className={({ isActive }) =>
-                  cn(
-                    'group relative flex items-center rounded-md px-3 py-2 text-sm transition-colors',
-                    isActive
-                      ? 'bg-white/5 text-ink-primary'
-                      : 'text-ink-secondary hover:bg-white/[0.03] hover:text-ink-primary',
-                  )
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    {isActive && (
-                      <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-r bg-accent" />
+        {sections.map((section, idx) => (
+          <div key={section.titleKey} className={cn(idx > 0 && 'mt-5')}>
+            {/* Titre de section — sépare visuellement Activation / Chaînes / etc. */}
+            <div className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-ink-tertiary">
+              {t(section.titleKey)}
+            </div>
+            <ul className="space-y-0.5">
+              {section.items.map((item) => (
+                <li key={item.to}>
+                  <NavLink
+                    to={item.to}
+                    end={item.to === '/'}
+                    onClick={() => onNavigate?.()}
+                    className={({ isActive }) =>
+                      cn(
+                        'group relative flex items-center rounded-md px-3 py-2 text-sm transition-colors',
+                        isActive
+                          ? 'bg-white/5 text-ink-primary'
+                          : 'text-ink-secondary hover:bg-white/[0.03] hover:text-ink-primary',
+                      )
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        {isActive && (
+                          <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-r bg-accent" />
+                        )}
+                        <span>{t(item.key)}</span>
+                      </>
                     )}
-                    <span>{t(item.key)}</span>
-                  </>
-                )}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </nav>
 
       {/* ===== Logout ===== */}
