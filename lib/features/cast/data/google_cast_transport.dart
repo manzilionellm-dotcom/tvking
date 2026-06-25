@@ -60,13 +60,12 @@ import 'local_cast_server.dart';
 ///    (android_overlay/google_cast/CastOptionsProviderImpl.kt) DOIVENT
 ///    TOUJOURS valoir LA MÊME CHOSE. Les desynchroniser = ECRAN NOIR.
 ///
-/// ⚠️ REMIS À `false` (2026-06-24) : activer le custom receiver alors que
-///    `5BDFD969` n'est PAS publie faisait DISPARAITRE la box du picker natif
-///    Google (« Aucun appareil disponible »). On reste sur le Default Media
-///    Receiver public `CC1AD845` (box decouvrable) jusqu'a publication de
-///    `5BDFD969`. Repasser ce flag (et USE_CUSTOM_RECEIVER) a `true`
-///    UNIQUEMENT une fois `5BDFD969` Published.
-const bool kCastUseCustomReceiver = false;
+/// ✅ ACTIVÉ (2026-06-25) : `5BDFD969` est desormais PUBLISHED (Custom
+///    Receiver → https://app.7themotion.com/cast-receiver). Le receiver
+///    mpegts.js decode le MPEG-TS sur la TV → on envoie le .ts DIRECT, sans
+///    VPS, et la box reapparait dans le picker (le filtre par app id publie
+///    ne cache plus les appareils).
+const bool kCastUseCustomReceiver = true;
 
 /// Base du service de remux VPS (cf. server/cast-remux) qui transforme le
 /// MPEG-TS live en HLS-fMP4 — le SEUL format que le recepteur Cast par

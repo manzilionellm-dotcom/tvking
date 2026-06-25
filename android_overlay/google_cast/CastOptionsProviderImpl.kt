@@ -46,19 +46,21 @@ class CastOptionsProviderImpl : OptionsProvider {
         // ⚠️ BASCULEMENT CUSTOM RECEIVER — USE_CUSTOM_RECEIVER (ici) et
         // kCastUseCustomReceiver (lib/features/cast/data/google_cast_transport.dart)
         // DOIVENT TOUJOURS valoir LA MÊME CHOSE. Les désynchroniser = écran
-        // noir. Les deux sont à `false` ci-dessous.
+        // noir. Les deux sont à `true` ci-dessous.
         //
-        // ⚠️ NE PASSER À `true` QU'UNE FOIS `5BDFD969` PUBLISHED dans la
-        // Google Cast Developer Console. Sinon le picker natif Google FILTRE
-        // par cet app id non publié et CACHE TOUS les appareils → la box
-        // Chromecast/SHIELD disparaît (« Aucun appareil disponible »), alors
-        // qu'avec le Default Media Receiver public CC1AD845 elle s'affiche.
+        // ✅ ACTIVÉ (2026-06-25) : `5BDFD969` est désormais PUBLISHED dans la
+        // Google Cast Developer Console (Custom Receiver →
+        // https://app.7themotion.com/cast-receiver). Étant publié, il se
+        // charge sur TOUS les Chromecast/SHIELD/Google TV (clients inclus,
+        // aucun numéro de série à enregistrer) et la box réapparaît dans le
+        // picker.
         //
-        //   false (ACTUEL) : Default Media Receiver public CC1AD845 → la box
-        //     est découvrable ; lecture .ts via repli VPS si dispo.
-        //   true  : custom receiver 5BDFD969 (mpegts.js, /cast-receiver) →
-        //     décode le MPEG-TS sur la TV, .ts direct sans VPS. EXIGE publish.
-        private const val USE_CUSTOM_RECEIVER = false
+        //   false : Default Media Receiver public CC1AD845 (ne décode pas le
+        //     MPEG-TS brut → dépendait d'un wrap HLS / VPS).
+        //   true (ACTUEL) : custom receiver 5BDFD969 (mpegts.js,
+        //     /cast-receiver) → décode le MPEG-TS sur la TV, .ts direct, SANS
+        //     VPS, téléphone éteignable.
+        private const val USE_CUSTOM_RECEIVER = true
 
         // Default Media Receiver public de Google (toujours actif).
         private const val DEFAULT_RECEIVER_ID = "CC1AD845"
