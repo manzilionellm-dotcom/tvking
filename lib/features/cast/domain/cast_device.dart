@@ -81,10 +81,51 @@ class CastDevice {
     return s.length < 2 ? name : s;
   }
 
+  /// Marque reconnue de la TV (parmi les 10 plus répandues), ou `null` si
+  /// inconnue. Détectée depuis le fabricant + le nom annoncés en SSDP/mDNS.
+  /// Sert à l'AFFICHAGE (nom propre dans le sélecteur) et au DIAGNOSTIC
+  /// (savoir tout de suite quelle marque échoue pour ajouter SON réglage
+  /// ciblé). Ne change RIEN au protocole de cast : purement informatif.
+  String? get brand => detectCastBrand(name, manufacturer);
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) || (other is CastDevice && other.id == id);
 
   @override
   int get hashCode => id.hashCode;
+}
+
+/// Détecte la marque de TV parmi les plus répandues mondialement à partir du
+/// fabricant et/ou du nom convivial (SSDP friendlyName, mDNS). Renvoie une
+/// étiquette normalisée (« Samsung », « LG », « Sony »…) ou `null` si aucune
+/// ne correspond. Pur + sans effet de bord → testable et réutilisable.
+///
+/// IMPORTANT : ceci ne fait que NOMMER/RECONNAÎTRE la marque. Le réglage
+/// SPÉCIFIQUE d'une marque (User-Agent, profil/MIME particulier) reste ajouté
+/// au cas par cas à partir d'un diagnostic réel — on ne devine pas à l'aveugle
+/// au risque de casser une TV qui marche déjà.
+String? detectCastBrand(String name, String? manufacturer) {
+  final String hay = '${manufacturer ?? ''} $name'.toLowerCase();
+  // Table des 10 marques les plus vendues + alias/OS connus. Ordre : on
+  // teste les indices les plus spécifiques d'abord (OS propriétaires).
+  const List<List<String>> brands = <List<String>>[
+    <String>['Samsung', 'samsung', 'tizen'],
+    <String>['LG', 'lg electronics', 'webos', 'netcast', '[lg]'],
+    <String>['Sony', 'sony', 'bravia'],
+    <String>['TCL', 'tcl'],
+    <String>['Hisense', 'hisense', 'vidaa'],
+    <String>['Vizio', 'vizio', 'smartcast'],
+    <String>['Philips', 'philips'],
+    <String>['Panasonic', 'panasonic', 'viera'],
+    <String>['Sharp', 'sharp', 'aquos'],
+    <String>['Toshiba', 'toshiba', 'regza'],
+  ];
+  for (final List<String> entry in brands) {
+    final String label = entry.first;
+    for (final String token in entry.skip(1)) {
+      if (hay.contains(token)) return label;
+    }
+  }
+  return null;
 }
