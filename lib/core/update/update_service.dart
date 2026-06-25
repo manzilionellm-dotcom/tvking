@@ -30,6 +30,8 @@ import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'build_flags.dart';
+
 class UpdateInfo {
   const UpdateInfo({
     required this.versionCode,
@@ -55,6 +57,8 @@ class UpdateService {
   /// Retourne les infos de MAJ si une version PLUS RECENTE est dispo,
   /// sinon `null`. Fail-open : toute erreur → `null`.
   Future<UpdateInfo?> check() async {
+    // Play Store : les MAJ viennent du Store, jamais du sideload GitHub.
+    if (kIsPlayBuild) return null;
     try {
       final PackageInfo info = await PackageInfo.fromPlatform();
       final int current = int.tryParse(info.buildNumber) ?? 0;

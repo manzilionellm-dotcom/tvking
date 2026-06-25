@@ -29,6 +29,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/app/app_platform.dart';
 import '../../../core/app/build_info.dart';
+import '../../../core/update/build_flags.dart';
 import '../../subscription/data/subscription_backend.dart';
 
 class ForceUpdateChecker {
@@ -38,6 +39,9 @@ class ForceUpdateChecker {
   /// `true` si l'app installée doit être mise à jour de force.
   Future<bool> mustUpdate(
       {Duration timeout = const Duration(seconds: 6)}) async {
+    // Play Store : la mise à jour forcée passe par le Store, pas par
+    // le sideload GitHub. On ne déclenche jamais ce flux côté Play.
+    if (kIsPlayBuild) return false;
     if (kBuildTs <= 0) return false; // build local → jamais bloquant
     try {
       final Uri uri = Uri.parse(

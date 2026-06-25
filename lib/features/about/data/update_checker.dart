@@ -29,6 +29,8 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/update/build_flags.dart';
+
 class UpdateInfo {
   const UpdateInfo({
     required this.currentVersion,
@@ -71,6 +73,8 @@ class UpdateChecker {
 
   Future<UpdateInfo?> check(
       {Duration timeout = const Duration(seconds: 8)}) async {
+    // Play Store : pas d'updater sideload GitHub (MAJ via le Store).
+    if (kIsPlayBuild) return null;
     try {
       final PackageInfo pkg = await PackageInfo.fromPlatform();
       final String current = pkg.version;
