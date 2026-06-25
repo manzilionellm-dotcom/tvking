@@ -141,4 +141,57 @@ void main() {
       expect(pi, contains('DLNA.ORG_OP=01'));
     });
   });
+
+  // ============================================================
+  //  (e) Variantes MIME — universalité TV (Samsung)
+  // ============================================================
+  group('CastManager.buildAltMimeProfiles (Samsung / universalité)', () {
+    test('flux MPEG-TS (mp2t) → variantes mpeg + vnd.dlna.mpeg-tts, PAS mp2t', () {
+      const DlnaProfile base = DlnaProfile(
+        mime: 'video/mp2t',
+        profileName: 'MPEG_TS_SD_NA_ISO',
+        transferMode: DlnaTransferMode.streaming,
+      );
+      final List<String> mimes =
+          CastManager.buildAltMimeProfiles(base).map((p) => p.mime).toList();
+      // Samsung accepte souvent `video/mpeg` : il DOIT être dans les variantes.
+      expect(mimes, contains('video/mpeg'));
+      expect(mimes, contains('video/vnd.dlna.mpeg-tts'));
+      // On n'inclut pas l'étiquette de base (déjà essayée en stratégies 0-4).
+      expect(mimes, isNot(contains('video/mp2t')));
+    });
+
+    test('variantes sans DLNA.ORG_PN (étiquette MIME nue)', () {
+      const DlnaProfile base = DlnaProfile(
+        mime: 'video/mp2t',
+        profileName: 'MPEG_TS_SD_NA_ISO',
+        transferMode: DlnaTransferMode.streaming,
+      );
+      for (final DlnaProfile p in CastManager.buildAltMimeProfiles(base)) {
+        expect(p.profileName, isNull);
+      }
+    });
+
+    test('flux NON-TS (mp4) → aucune variante (liste vide)', () {
+      const DlnaProfile mp4 = DlnaProfile(
+        mime: 'video/mp4',
+        profileName: 'AVC_MP4_BL_CIF15_AAC_520',
+        transferMode: DlnaTransferMode.interactive,
+      );
+      expect(CastManager.buildAltMimeProfiles(mp4), isEmpty);
+    });
+
+    test('base video/mpeg → variantes contiennent mp2t + tts, pas mpeg', () {
+      const DlnaProfile base = DlnaProfile(
+        mime: 'video/mpeg',
+        profileName: null,
+        transferMode: DlnaTransferMode.streaming,
+      );
+      final List<String> mimes =
+          CastManager.buildAltMimeProfiles(base).map((p) => p.mime).toList();
+      expect(mimes, contains('video/mp2t'));
+      expect(mimes, contains('video/vnd.dlna.mpeg-tts'));
+      expect(mimes, isNot(contains('video/mpeg')));
+    });
+  });
 }

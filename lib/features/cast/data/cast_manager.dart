@@ -872,31 +872,17 @@ class CastManager extends ChangeNotifier {
     // d'origine) échouent par REFUS DE FORMAT, on RE-tente en DIRECT avec
     // ces étiquettes alternatives. 100 % ADDITIF : une TV qui caste déjà
     // réussit en stratégie 0-4 et ne touche jamais ces variantes.
-    final List<DlnaProfile> altProfiles = <DlnaProfile>[];
-    {
-      final bool isTs = profile.mime == 'video/mp2t' ||
-          profile.mime == 'video/vnd.dlna.mpeg-tts' ||
-          profile.mime == 'video/mpeg';
-      if (isTs) {
-        for (final String m in const <String>[
-          'video/vnd.dlna.mpeg-tts',
-          'video/mpeg',
-          'video/mp2t',
-        ]) {
-          if (m != profile.mime &&
-              !altProfiles.any((DlnaProfile p) => p.mime == m)) {
-            altProfiles.add(DlnaProfile(
-              mime: m,
-              profileName: null, // sans PN : étiquette MIME nue
-              transferMode: profile.transferMode,
-              objectClass: profile.objectClass,
-              fileExtension: profile.fileExtension,
-            ));
-          }
-        }
-      }
-    }
-    final int totalStrategies = 5 + altProfiles.length;
+    final List<DlnaProfile> altProfiles = buildAltMimeProfiles(profile);
+    final int altCount = altProfiles.length;
+    // Chaque variante MIME est tentée en DIRECT (5..5+N-1) PUIS via le RELAIS
+    // (5+N..5+2N-1) — d'où le *2. POURQUOI le relais en plus : Samsung sonde
+    // l'URL média en HEAD avant de lire et a besoin du relais (qui répond au
+    // HEAD + résout les redirections) AVEC la bonne étiquette MIME. Jusqu'ici
+    // l'étiquette `video/mpeg` (préférée Samsung) n'était essayée qu'en DIRECT
+    // → la combinaison « MIME Samsung + relais » manquait. 100% ADDITIF : une
+    // TV qui caste déjà (LG) réussit en stratégie 0 et n'atteint JAMAIS ces
+    // variantes — son comportement est strictement inchangé.
+    final int totalStrategies = 5 + altCount * 2;
     final int startStrategy = 0;
     final int budget = totalStrategies;
 
@@ -909,10 +895,15 @@ class CastManager extends ChangeNotifier {
       _checkCancelled(mySeq);
       final int displayAttempt = s + 1;
       final Stopwatch attemptSw = Stopwatch()..start();
-      final String strategyName = _strategyName(s);
-      // s>=5 = variantes de MIME, toujours en DIRECT + métadonnée complète.
-      // 0,1,2 et >=5 = direct ; 3,4 = relay (le Worker ne sert plus en DLNA).
-      final String urlKind = (s < 3 || s >= 5) ? 'direct' : 'relay';
+      // Variantes MIME : 5..5+N-1 = DIRECT, 5+N..5+2N-1 = RELAIS.
+      //   direct = stratégies 0,1,2 et les variantes MIME directes ;
+      //   relay  = stratégies 3,4 et les variantes MIME via relais.
+      final bool isAltDirect = s >= 5 && s < 5 + altCount;
+      final bool isAltRelay = s >= 5 + altCount;
+      final String urlKind =
+          (s < 3 || isAltDirect) ? 'direct' : 'relay';
+      final String strategyName =
+          (s >= 5) ? '$urlKind+altmime' : _strategyName(s);
       final String metaName = (s == 1 || s == 4) ? 'minimal' : (s == 2 ? 'none' : 'full');
 
       try {
@@ -966,10 +957,23 @@ class CastManager extends ChangeNotifier {
             );
             transport.metadataMode = MetadataMode.minimal;
             break;
-          default: // s >= 5 : même flux, étiquette MIME alternative (direct)
-            transport.profile = altProfiles[s - 5];
-            urlToCast = probe.finalUrl;
-            transport.metadataMode = MetadataMode.full;
+          default:
+            // Variante d'étiquette MIME (universalité TV, ex. Samsung qui
+            // veut `video/mpeg`). En DIRECT (5..5+N-1) ou via le RELAIS
+            // (5+N..5+2N-1) — le relais sert le bon Content-Type ET répond au
+            // HEAD de sonde Samsung + résout les redirections.
+            {
+              final int altIdx = isAltRelay ? (s - 5 - altCount) : (s - 5);
+              transport.profile = altProfiles[altIdx];
+              transport.metadataMode = MetadataMode.full;
+              urlToCast = isAltRelay
+                  ? await _ensureRelayUrl(
+                      upstreamUrl: probe.finalUrl,
+                      profile: altProfiles[altIdx],
+                      receiverHost: transport.device.host,
+                    )
+                  : probe.finalUrl;
+            }
             break;
         }
 
@@ -1088,6 +1092,40 @@ class CastManager extends ChangeNotifier {
   /// Si la finalUrl est déjà http (cas le plus courant en IPTV), on la
   /// renvoie telle quelle → aucun changement de comportement.
   ///
+  /// Construit la liste des PROFILS À ÉTIQUETTE MIME ALTERNATIVE essayés en
+  /// dernier recours (universalité TV). Le MÊME flux MPEG-TS est parfois
+  /// étiqueté différemment selon la marque : Samsung accepte souvent
+  /// `video/mpeg`, LG `video/vnd.dlna.mpeg-tts`, la norme étant `video/mp2t`.
+  /// On renvoie les étiquettes DIFFÉRENTES de celle du profil de base (sans
+  /// `DLNA.ORG_PN` : étiquette MIME nue). Liste vide si le flux n'est pas du
+  /// MPEG-TS (mp4/mkv… → aucune variante).
+  ///
+  /// Pur + statique → testable (simulation Samsung/LG sans stack réseau).
+  @visibleForTesting
+  static List<DlnaProfile> buildAltMimeProfiles(DlnaProfile base) {
+    final bool isTs = base.mime == 'video/mp2t' ||
+        base.mime == 'video/vnd.dlna.mpeg-tts' ||
+        base.mime == 'video/mpeg';
+    final List<DlnaProfile> out = <DlnaProfile>[];
+    if (!isTs) return out;
+    for (final String m in const <String>[
+      'video/vnd.dlna.mpeg-tts',
+      'video/mpeg',
+      'video/mp2t',
+    ]) {
+      if (m != base.mime && !out.any((DlnaProfile p) => p.mime == m)) {
+        out.add(DlnaProfile(
+          mime: m,
+          profileName: null, // sans PN : étiquette MIME nue
+          transferMode: base.transferMode,
+          objectClass: base.objectClass,
+          fileExtension: base.fileExtension,
+        ));
+      }
+    }
+    return out;
+  }
+
   /// Pur + statique → testable sans stack réseau (cf. tests cast).
   @visibleForTesting
   static String dlnaDirectUrlFor({
