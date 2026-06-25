@@ -698,11 +698,25 @@ jobs:
           # la conserve intacte. En parallèle, --dart-define=PLAY_BUILD=true
           # désactive l'updater côté Dart (cf. kIsPlayBuild).
           MANIFEST=android/app/src/main/AndroidManifest.xml
+          # (a) REQUEST_INSTALL_PACKAGES est dans le manifest SOURCE (ajouté
+          #     plus haut par le patch réseau) → suppression directe.
           sed -i '/android.permission.REQUEST_INSTALL_PACKAGES/d' "$MANIFEST"
           if grep -q 'REQUEST_INSTALL_PACKAGES' "$MANIFEST"; then
             echo "❌ REQUEST_INSTALL_PACKAGES encore présent dans l'AAB"; exit 1
           fi
           echo "✓ REQUEST_INSTALL_PACKAGES retiré du manifest pour l'AAB Play"
+          # (b) READ_MEDIA_IMAGES/VIDEO/AUDIO sont MERGÉES depuis le plugin
+          #     media_kit (lecture de médias LOCAUX). 7 MOTION ne lit que des
+          #     flux DISTANTS ; ses enregistrements vont en stockage privé +
+          #     écriture MediaStore (aucun READ requis sur Android 10+). Ces
+          #     permissions sont donc inutiles ET déclenchent la déclaration
+          #     "Photos et vidéos" sur Play. Comme elles viennent d'un plugin
+          #     (absentes du manifest source), on les neutralise via le merger
+          #     avec tools:node="remove" — UNIQUEMENT pour l'AAB. L'APK
+          #     sideload, déjà empaqueté, n'est pas touché.
+          grep -q 'xmlns:tools' "$MANIFEST" || sed -i 's|<manifest |<manifest xmlns:tools="http://schemas.android.com/tools" |' "$MANIFEST"
+          sed -i '/<manifest /a\    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove"/>\n    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove"/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove"/>' "$MANIFEST"
+          echo "✓ READ_MEDIA_IMAGES/VIDEO/AUDIO marquées tools:node=remove (AAB Play)"
           ok=
           for attempt in 1 2 3 4; do
             echo "=== AAB build attempt $attempt ==="
@@ -714,6 +728,20 @@ jobs:
             echo "Attempt $attempt failed; retry in 25s"; sleep 25
           done
           [ "$ok" = 1 ] || { echo "AAB build failed after retries"; exit 1; }
+          # Vérif anti-régression : le manifeste FUSIONNÉ de l'AAB ne doit
+          # plus contenir aucune permission sensible retirée ci-dessus.
+          MERGED=$(find android/app/build build/app -path '*merged_manifest*release*AndroidManifest.xml' 2>/dev/null | head -1)
+          if [ -n "$MERGED" ]; then
+            echo "Manifeste fusionné : $MERGED"
+            for P in REQUEST_INSTALL_PACKAGES READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_MEDIA_AUDIO; do
+              if grep -q "android.permission.$P" "$MERGED"; then
+                echo "❌ $P encore présent dans le manifeste fusionné de l'AAB"; exit 1
+              fi
+            done
+            echo "✓ Manifeste AAB sans REQUEST_INSTALL_PACKAGES ni READ_MEDIA_*"
+          else
+            echo "⚠️ Manifeste fusionné introuvable — vérif sautée (non bloquant)"
+          fi
           OUT=build/app/outputs/bundle/release
           ls -lah "$OUT" || true
           cp "$OUT/app-release.aab" "$OUT/7motion.aab"
