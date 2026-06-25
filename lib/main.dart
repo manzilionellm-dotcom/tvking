@@ -457,13 +457,17 @@ class _AppEntryState extends State<_AppEntry> {
       }
     });
 
-    // Verrouillage TOUJOURS actif au démarrage (demande client) : comme
-    // une app bancaire, on exige l'authentification au lancement, quel
-    // que soit le flavor — on ne lit plus de réglage optionnel. Le
-    // LockScreen propose empreinte + code PIN de secours, donc aucun
-    // risque de blocage même sur un appareil sans biométrie configurée.
+    // Verrouillage à l'ouverture = OPT-IN (désactivé par défaut). Sur une
+    // install fraîche, l'app s'ouvre SANS empreinte ni code — aucune
+    // friction pour celui qui vient de télécharger. L'utilisateur qui le
+    // souhaite peut l'activer dans Réglages > Sécurité (pref
+    // `security.lock_on_open`, défaut false). On LIT donc ce réglage au lieu
+    // de forcer le verrou. Le LockScreen (empreinte + PIN de secours) reste
+    // disponible pour ceux qui activent l'option.
     final FlavorConfig flavor = FlavorConfig.current;
-    _lockEnabled = true;
+    LockSettings.instance.isLockEnabled().then((bool enabled) {
+      if (mounted) setState(() => _lockEnabled = enabled);
+    });
 
     // Gate âge : uniquement Red Room. Sur The Few, on by-pass
     // directement avec `true` pour ne pas bloquer le boot.
