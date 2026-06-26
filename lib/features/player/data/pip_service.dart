@@ -109,6 +109,57 @@ class PipService extends ChangeNotifier {
     }
   }
 
+  // =========================================================
+  //  Mode « Écouteurs » = AUDIO EN ARRIÈRE-PLAN (façon radio)
+  // =========================================================
+  //  Quand l'utilisateur tape « Écouteurs » dans le player, on :
+  //    1. setAudioOnlyMode(true)  → le natif NE déclenche PLUS le PiP
+  //       vidéo quand on quitte l'app (onUserLeaveHint l'ignore).
+  //    2. startBackgroundAudio(title) → démarre un foreground service
+  //       (PlaybackForegroundService) qui garde le process en vie +
+  //       acquiert wakelock + wifilock → le son de media_kit/libmpv
+  //       continue écran éteint / dans une autre app, avec une
+  //       notification. À l'arrêt du mode (ou dispose) : stop.
+  //  Tout est fail-open : sur un device sans le bridge, ça no-op et la
+  //  lecture normale n'est pas affectée.
+
+  /// Active/désactive le mode audio-seul côté natif. Quand `true`, le
+  /// PiP vidéo est SUPPRIMÉ au passage en arrière-plan (c'est le service
+  /// audio qui prend le relais).
+  Future<void> setAudioOnlyMode(bool active) async {
+    try {
+      await _channel.invokeMethod<void>(
+        'setAudioOnlyMode',
+        <String, Object>{'active': active},
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('[PiP] setAudioOnlyMode failed: $e');
+    }
+  }
+
+  /// Démarre le service audio de fond (notification + locks). `title`
+  /// s'affiche dans la notification (nom de la chaîne en cours).
+  Future<void> startBackgroundAudio(String title) async {
+    try {
+      await _channel.invokeMethod<void>(
+        'startBackgroundAudio',
+        <String, Object>{'title': title},
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('[PiP] startBackgroundAudio failed: $e');
+    }
+  }
+
+  /// Arrête le service audio de fond (retire la notification + libère
+  /// les locks). Idempotent.
+  Future<void> stopBackgroundAudio() async {
+    try {
+      await _channel.invokeMethod<void>('stopBackgroundAudio');
+    } catch (e) {
+      if (kDebugMode) debugPrint('[PiP] stopBackgroundAudio failed: $e');
+    }
+  }
+
   /// Handler des appels natif → Dart. Pour l'instant un seul
   /// event : `onPipModeChanged` quand l'état PiP change. Au futur :
   /// `onMediaActionTriggered` pour les boutons play/pause dans

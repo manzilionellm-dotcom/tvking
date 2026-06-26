@@ -99,7 +99,8 @@ cat "$MANIFEST"
 mkdir -p "$ANDROID_PKG_PATH"
 for kt_file in MainActivity.kt GoogleCastApi.kt CastOptionsProviderImpl.kt \
                GalleryExporter.kt RecordingForegroundService.kt \
-               RecordingServiceBridge.kt MulticastLockBridge.kt; do
+               RecordingServiceBridge.kt MulticastLockBridge.kt \
+               PlaybackForegroundService.kt; do
   src="$OVERLAY/$kt_file"
   dst="$ANDROID_PKG_PATH/$kt_file"
   # sed rewrite : `package com.manzilionellm.tvking` → `package $DETECTED_PKG`
@@ -185,6 +186,20 @@ else
   SVC='        <service android:name=".RecordingForegroundService" android:foregroundServiceType="mediaPlayback" android:exported="false" />'
   sed -i "s|</application>|${SVC}\n    </application>|" "$MANIFEST"
   echo "✅ Patched AndroidManifest (Service + permissions)"
+fi
+
+# --- 3b-bis. Service AUDIO en arrière-plan (mode « Écouteurs ») ---
+# Garde le SON en vie écran éteint / dans une autre app. Mêmes
+# permissions que RecordingForegroundService (déjà ajoutées au bloc 3b :
+# FOREGROUND_SERVICE + FOREGROUND_SERVICE_MEDIA_PLAYBACK + POST_NOTIF +
+# WAKE_LOCK + ACCESS_WIFI_STATE). On ajoute juste la déclaration du
+# service. Idempotent.
+if grep -q "PlaybackForegroundService" "$MANIFEST"; then
+  echo "Service Playback déjà déclaré — skip"
+else
+  PSVC='        <service android:name=".PlaybackForegroundService" android:foregroundServiceType="mediaPlayback" android:exported="false" />'
+  sed -i "s|</application>|${PSVC}\n    </application>|" "$MANIFEST"
+  echo "✅ Patched AndroidManifest (PlaybackForegroundService)"
 fi
 
 # --- 3c. Permissions DÉCOUVERTE RÉSEAU (Cast / DLNA) ----------------

@@ -21,6 +21,7 @@
 package com.manzilionellm.tvking
 
 import android.app.PictureInPictureParams
+import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
 import android.util.Log
@@ -62,6 +63,12 @@ class MainActivity : FlutterFragmentActivity() {
     /// a un ratio différent détecté (4:3, 21:9, etc.).
     private var pipAspectNumer: Int = 16
     private var pipAspectDenom: Int = 9
+
+    /// Vrai quand le mode « Écouteurs » (audio seul) est actif. Mis à
+    /// jour par Dart (PipService.setAudioOnlyMode). Quand `true`, on NE
+    /// déclenche PAS le PiP vidéo au passage en arrière-plan : c'est le
+    /// PlaybackForegroundService qui garde le SON en vie (écran éteint).
+    private var audioOnlyMode: Boolean = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -199,6 +206,21 @@ class MainActivity : FlutterFragmentActivity() {
                     "isPipSupported" -> {
                         result.success(isPipSupportedNative())
                     }
+                    // ----- Mode « Écouteurs » : audio en arrière-plan -----
+                    "setAudioOnlyMode" -> {
+                        audioOnlyMode = call.argument<Boolean>("active") ?: false
+                        Log.i(TAG, "audioOnlyMode = $audioOnlyMode")
+                        result.success(null)
+                    }
+                    "startBackgroundAudio" -> {
+                        val title = call.argument<String>("title") ?: "7 MOTION"
+                        startBackgroundAudio(title)
+                        result.success(null)
+                    }
+                    "stopBackgroundAudio" -> {
+                        stopBackgroundAudio()
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -240,6 +262,37 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    /// Démarre le service audio de fond (mode « Écouteurs »). Appelé
+    /// pendant que l'app est VISIBLE (tap utilisateur) → pas de
+    /// restriction Android 12+ sur le démarrage d'un foreground service.
+    private fun startBackgroundAudio(title: String) {
+        try {
+            val intent = Intent(this, PlaybackForegroundService::class.java).apply {
+                action = PlaybackForegroundService.ACTION_START
+                putExtra(PlaybackForegroundService.EXTRA_TITLE, title)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "startBackgroundAudio failed: $e")
+        }
+    }
+
+    /// Arrête le service audio de fond.
+    private fun stopBackgroundAudio() {
+        try {
+            val intent = Intent(this, PlaybackForegroundService::class.java).apply {
+                action = PlaybackForegroundService.ACTION_STOP
+            }
+            startService(intent)
+        } catch (e: Throwable) {
+            Log.w(TAG, "stopBackgroundAudio failed: $e")
+        }
+    }
+
     /// Appelé par Android quand l'utilisateur appuie HOME / SWITCH /
     /// fait un swipe pour quitter l'app. C'est LA hook standard
     /// utilisée par YouTube / Netflix pour entrer en PiP juste avant
@@ -254,6 +307,10 @@ class MainActivity : FlutterFragmentActivity() {
     ///     arriver mais sécurité).
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
+        // Mode « Écouteurs » : PAS de PiP vidéo. L'audio de fond est
+        // déjà tenu en vie par PlaybackForegroundService, on ne pose
+        // donc pas de mini-fenêtre flottante.
+        if (audioOnlyMode) return
         if (playbackActive &&
             isPipSupportedNative() &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.N &&

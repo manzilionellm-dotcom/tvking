@@ -955,6 +955,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _hideOverlayTimer?.cancel();
     _presenceTimer?.cancel();
     _upNextTimer?.cancel();
+    // Mode « Écouteurs » : on coupe le service audio de fond et on lève le
+    // drapeau natif (sinon le son continuerait après la fermeture du
+    // lecteur). Idempotent / fail-open.
+    PipService.instance.stopBackgroundAudio();
+    PipService.instance.setAudioOnlyMode(false);
     // On ne regarde plus rien → on le signale au panel (heartbeat avec
     // channel vide). Fire-and-forget.
     NowPlaying.instance.clear();
@@ -1140,8 +1145,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// continue de décoder et de jouer le SON. C'est exactement le
   /// comportement « écran éteint, ça continue » de YouTube.
   void _toggleAudioOnly() {
-    setState(() => _audioOnly = !_audioOnly);
+    final bool enabling = !_audioOnly;
+    setState(() => _audioOnly = enabling);
     _scheduleHideOverlay();
+    // Mode « Écouteurs » = AUDIO EN ARRIÈRE-PLAN (façon radio). On
+    // prévient le natif :
+    //   1. setAudioOnlyMode → ne PLUS entrer en PiP vidéo quand on quitte
+    //      l'app (c'est le service audio qui prend le relais).
+    //   2. start/stopBackgroundAudio → foreground service qui garde le SON
+    //      en vie écran éteint / dans une autre app, avec une notification.
+    // Fail-open : si le bridge natif manque, ça no-op et la lecture audio
+    // dans l'app n'est pas affectée.
+    PipService.instance.setAudioOnlyMode(enabling);
+    if (enabling) {
+      final String title = widget.overrideTitle ?? _currentChannel.cleanName;
+      PipService.instance.startBackgroundAudio(title);
+    } else {
+      PipService.instance.stopBackgroundAudio();
+    }
   }
 
   // ============================================================
