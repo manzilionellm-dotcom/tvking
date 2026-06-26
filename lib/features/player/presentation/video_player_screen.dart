@@ -365,6 +365,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// VOD → durée > 0 → seek dispo ; vrai live → durée 0 → pas de seek.
   bool get _isSeekable => _player.state.duration > Duration.zero;
 
+  /// `true` si on AFFICHE la barre de progression + les compteurs de temps
+  /// (`00:03 / 00:31`). Volontairement plus STRICT que `_isSeekable` : en
+  /// live, libmpv expose une petite "durée" = la fenêtre de buffer glissante
+  /// (~30 s) → `_isSeekable` devient vrai et la barre affichait « 00:31 », ce
+  /// que des clients lisaient comme « je ne peux voir que 30 s ». On masque
+  /// donc la barre pour le live et on ne la montre que pour du contenu à
+  /// durée RÉELLE : un catch-up/replay explicite (`overrideUrl`) ou une
+  /// chaîne marquée non-live (VOD/film/téléchargement). Le FONCTIONNEMENT ne
+  /// change pas (buffer, retour arrière, seek) — c'est purement l'affichage
+  /// trompeur qui disparaît. `_isSeekable` reste inchangé pour la logique de
+  /// zapping / up-next.
+  bool get _showSeekBar =>
+      widget.overrideUrl != null || (!_currentChannel.isLive && _isSeekable);
+
   /// `true` quand l'écran tourne sur une TV / Android TV / Fire TV
   /// (10-foot UI, télécommande). Le layout du player s'adapte —
   /// boutons focusables au D-pad, ⏮/⏭ visibles, pas de swipe.
@@ -1846,10 +1860,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               ),
             ),
 
-            // ----- Barre de progression (uniquement VOD seekable) -----
+            // ----- Barre de progression (uniquement VOD/replay) -----
             //  Permet d'avancer/reculer N'IMPORTE OÙ dans un film en
-            //  faisant glisser. Masquée pour le live (durée inconnue).
-            if (_isSeekable) _SeekBar(player: _player),
+            //  faisant glisser. MASQUÉE en live : la "durée" d'un live
+            //  n'est que la fenêtre de buffer glissante (~30 s), ce qui
+            //  faisait croire au client qu'il ne pouvait voir que 30 s.
+            //  Le seek/buffer reste fonctionnel, on cache juste l'affichage.
+            if (_showSeekBar) _SeekBar(player: _player),
 
             // ----- Bas : barre de contrôles -----
             Padding(
