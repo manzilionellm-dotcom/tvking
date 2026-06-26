@@ -1777,7 +1777,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         // VOD (film / replay) : recul / play / avance.
                         // Live : zap chaîne précédente / play / suivante.
-                        children: _isSeekable
+                        // (gate strict `_showSeekBar` : en live la fenêtre de
+                        // buffer ne doit PAS faire apparaître recul/avance.)
+                        children: _showSeekBar
                             ? <Widget>[
                                 _TvDpadButton(
                                   icon: Icons.fast_rewind_rounded,
@@ -1826,9 +1828,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                               ],
                       )
                     // PHONE : pour un flux seekable (film/replay) on
-                    // encadre le play/pause de deux boutons recul/avance
-                    // ±10 s. Pour le live, seul le play/pause.
-                    : _isSeekable
+                    // encadre le play/pause de deux boutons recul/avance.
+                    // Pour le LIVE, seul le play/pause (style TikTok, clean) :
+                    // on utilise `_showSeekBar` (strict) et NON `_isSeekable`,
+                    // car en live la fenêtre de buffer rendait `_isSeekable`
+                    // vrai et faisait apparaître les flèches recul/avance.
+                    : _showSeekBar
                         ? Row(
                             mainAxisSize: MainAxisSize.min,
                             mainAxisAlignment: MainAxisAlignment.center,
