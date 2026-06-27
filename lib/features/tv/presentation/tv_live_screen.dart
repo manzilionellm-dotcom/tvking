@@ -1495,10 +1495,13 @@ class _ChannelGridState extends State<_ChannelGrid> {
         padding: const EdgeInsets.only(top: 4, bottom: 8),
         // Mémoire bornée au scroll : on ne garde PAS les cartes hors écran en vie.
         addAutomaticKeepAlives: false,
-        // Cartes PAYSAGE ~16:9 (réf. design).
+        // PETITES TUILES CARRÉES (réf. Leanback / Android TV) : logo centré +
+        // nom dessous. Plus petites = plus de chaînes à l'écran, look « app
+        // icon » mignon. Elles GRANDISSENT au focus (scale + halo, cf.
+        // TvFocusable) → l'effet animé reste lisible sans encombrer.
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 300,
-          mainAxisExtent: 196,
+          maxCrossAxisExtent: 158,
+          mainAxisExtent: 166,
           crossAxisSpacing: TvDimens.gutter,
           mainAxisSpacing: TvDimens.gutter,
         ),
@@ -1649,48 +1652,43 @@ class _ChannelCardState extends State<_ChannelCard> {
       child: Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          // LOGO PETIT en chip haut-gauche (normalisé) : quand des chaînes
-          // partagent le même logo, c'est le NOM qui distingue (réf. design).
-          Positioned(top: 10, left: 10, child: _LogoChip(channel: channel)),
-          // Chips qualité (haut-droite) : qualité + HDR/Dolby, max 2.
-          if (chips.isNotEmpty)
-            Positioned(
-              top: 12,
-              right: 12,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  for (int b = 0; b < chips.length; b++) ...<Widget>[
-                    if (b > 0) const SizedBox(width: 6),
-                    _TagBadge(label: chips[b]),
-                  ],
-                ],
-              ),
-            ),
-          // Favori discret en bas-droite.
-          if (fav)
-            const Positioned(
-              right: 12,
-              bottom: 12,
-              child:
-                  Icon(Icons.favorite_rounded, size: 16, color: TvTokens.gold),
-            ),
-          // NOM DOMINANT en bas-gauche : c'est lui qui « porte » la carte.
-          Positioned(
-            left: 14,
-            right: 40,
-            bottom: 12,
-            child: Text(
-              p.name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: 22,
-                  height: 1.1,
-                  fontWeight: FontWeight.w600,
-                  color: TvTokens.text),
+          // CONTENU CENTRÉ (petite tuile « app icon ») : logo bien visible au
+          // centre + nom dessous, centré. Le monogramme assure qu'il n'y a
+          // jamais de carte grise.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
+            child: Column(
+              children: <Widget>[
+                Expanded(
+                  child: Center(child: _LogoChip(channel: channel, size: 80)),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  p.name,
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      height: 1.1,
+                      fontWeight: FontWeight.w600,
+                      color: TvTokens.text),
+                ),
+              ],
             ),
           ),
+          // Chip qualité (1 seul, discret) en haut-droite — petite tuile = on
+          // évite d'encombrer, on garde le plus parlant.
+          if (chips.isNotEmpty)
+            Positioned(top: 8, right: 8, child: _TagBadge(label: chips.first)),
+          // Favori discret en haut-gauche.
+          if (fav)
+            const Positioned(
+              top: 8,
+              left: 8,
+              child:
+                  Icon(Icons.favorite_rounded, size: 15, color: TvTokens.gold),
+            ),
           // ATTÉNUATION DES VOISINES : voile sombre quand une AUTRE carte a le
           // focus (peinture simple, pas de saveLayer → peu coûteux ; animé).
           if (widget.focusedIndex != null)
@@ -1732,7 +1730,7 @@ class _ChannelCardState extends State<_ChannelCard> {
                       _burstAdded
                           ? Icons.favorite_rounded
                           : Icons.heart_broken_rounded,
-                      size: 56,
+                      size: 40,
                       color: _burstAdded ? TvTokens.gold : TvTokens.mutedDim,
                       shadows: const <Shadow>[
                         Shadow(color: Color(0xCC000000), blurRadius: 12),
