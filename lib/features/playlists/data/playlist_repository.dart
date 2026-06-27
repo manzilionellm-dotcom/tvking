@@ -31,6 +31,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../core/app/device_memory.dart';
 import '../../../core/flavor/flavor.dart';
+import '../../../core/security/secret_cipher.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
@@ -103,7 +104,25 @@ class PlaylistRepository {
   /// Charge initialement les chaînes depuis la base et émet sur le stream.
   /// À appeler une fois au démarrage de l'app.
   Future<void> initialize() async {
+    // Prépare la clé de chiffrement AVANT toute lecture (déchiffrement des
+    // mots de passe Xtream). Fail-open : si indisponible, lecture en clair.
+    await SecretCipher.instance.ensureReady();
     await _emitCurrentState();
+  }
+
+  /// Construit une [Playlist] depuis une ligne SQLite en DÉCHIFFRANT le mot de
+  /// passe Xtream (les anciennes valeurs en clair sont renvoyées telles quelles
+  /// par le cipher). Point UNIQUE de lecture → l'objet en mémoire a toujours le
+  /// mot de passe EN CLAIR (l'UI, le client Xtream et la sauvegarde cloud le
+  /// voient déchiffré ; seule la colonne SQLite est chiffrée).
+  Playlist _playlistFromRow(Map<String, Object?> row) {
+    final Object? pw = row['xtream_password'];
+    if (pw is String && pw.isNotEmpty) {
+      final Map<String, Object?> copy = Map<String, Object?>.from(row);
+      copy['xtream_password'] = SecretCipher.instance.decrypt(pw);
+      return Playlist.fromMap(copy);
+    }
+    return Playlist.fromMap(row);
   }
 
   // ============================================================
@@ -208,16 +227,18 @@ class PlaylistRepository {
   }
 
   Future<List<Playlist>> getAllPlaylists() async {
+    await SecretCipher.instance.ensureReady();
     final Database db = await PlaylistDatabase.instance.database;
     final List<Map<String, Object?>> rows =
         await db.query('playlists', orderBy: 'created_at DESC');
-    return rows.map(Playlist.fromMap).toList();
+    return rows.map(_playlistFromRow).toList();
   }
 
   /// Phase 1+/Multi-serveurs : retourne la playlist active, ou la 1ere
   /// (la plus ancienne) si aucune n'est marquee. `null` si la base
   /// est vide.
   Future<Playlist?> getActivePlaylist() async {
+    await SecretCipher.instance.ensureReady();
     final Database db = await PlaylistDatabase.instance.database;
     // 1) Tente la marquee active
     final List<Map<String, Object?>> active = await db.query(
@@ -225,7 +246,7 @@ class PlaylistRepository {
       where: 'is_active = 1',
       limit: 1,
     );
-    if (active.isNotEmpty) return Playlist.fromMap(active.first);
+    if (active.isNotEmpty) return _playlistFromRow(active.first);
     // 2) Fallback sur la plus ancienne
     final List<Map<String, Object?>> first = await db.query(
       'playlists',
@@ -233,7 +254,7 @@ class PlaylistRepository {
       limit: 1,
     );
     if (first.isEmpty) return null;
-    return Playlist.fromMap(first.first);
+    return _playlistFromRow(first.first);
   }
 
   /// Phase 1+/Multi-serveurs : marque [playlistId] comme la playlist
@@ -750,6 +771,14 @@ class PlaylistRepository {
     final Map<String, Object?> map = playlist.toMap();
     if (isFirst) {
       map['is_active'] = 1;
+    }
+    // CHIFFREMENT AU REPOS : on chiffre le mot de passe Xtream AVANT l'écriture
+    // en base (fail-open : si la clé n'est pas dispo, la valeur reste en clair).
+    // C'est le SEUL point d'écriture du mot de passe → un seul endroit à chiffrer.
+    await SecretCipher.instance.ensureReady();
+    final Object? pw = map['xtream_password'];
+    if (pw is String && pw.isNotEmpty) {
+      map['xtream_password'] = SecretCipher.instance.encrypt(pw);
     }
     return db.insert('playlists', map);
   }

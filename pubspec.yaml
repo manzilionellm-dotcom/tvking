@@ -203,6 +203,17 @@ dependencies:
   firebase_core: ^3.8.0
   firebase_crashlytics: ^4.1.5
 
+  # ----- Chiffrement des identifiants au repos (sécurité) -----
+  # `encrypt` : surcouche PUR DART (pointycastle) qui expose AES-GCM avec une
+  #   API simple. Sert à chiffrer le mot de passe Xtream AVANT son écriture en
+  #   base SQLite (cf. core/security/secret_cipher.dart). Pur Dart → aucun code
+  #   natif ajouté, donc aucun risque sur le build Android.
+  # `crypto` : fonctions de hachage officielles (SHA-256) du Dart team. Sert à
+  #   DÉRIVER la clé de chiffrement depuis l'ANDROID_ID de l'appareil (jamais
+  #   stocké sur disque) → la clé n'est nulle part dans les fichiers de l'app.
+  encrypt: ^5.0.3
+  crypto: ^3.0.6
+
 # Pin de screen_brightness_android pour eviter la 2.1.5 qui a un
 # build.gradle cassé (bloc kotlin{} top-level inutilisable par notre
 # config Flutter CI). 2.1.4 (juste avant la cassée) est compatible
