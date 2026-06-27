@@ -27,28 +27,25 @@ import 'dart:async';
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../crash/crash_reporting.dart';
 import '../crash/crash_reporting_firebase.dart';
-
-/// Channel natif (plugin tvking_device) — sert ici à lire la RAM de l'appareil
-/// pour ADAPTER le cache d'images (petites box ⇄ grandes box).
-const MethodChannel _deviceChannel =
-    MethodChannel('com.manzilionellm.tvking/device');
+import 'device_memory.dart';
 
 /// Ajuste le cache d'images selon la RAM réelle. Le défaut posé au boot est
 /// déjà PRUDENT (sûr même à 1 Go) ; ici on l'ÉLARGIT sur les box bien dotées et
 /// on le RESSERRE encore sur les box « low RAM ». Best-effort : si l'info n'est
 /// pas dispo, on garde le défaut prudent.
+///
+/// La RAM est lue via [DeviceMemory] (SOURCE UNIQUE, partagée avec le plafond
+/// de chaînes en RAM côté PlaylistRepository) → un seul appel natif, une seule
+/// vérité « petite box / grande box ».
 Future<void> _tuneImageCacheForRam() async {
   try {
-    final Object? raw =
-        await _deviceChannel.invokeMethod<Object?>('getMemoryInfo');
-    if (raw is! Map) return;
-    final int totalMb = (raw['totalMb'] as num?)?.toInt() ?? 0;
-    final bool lowRam = raw['lowRam'] == true;
+    await DeviceMemory.ensureLoaded();
+    final int totalMb = DeviceMemory.totalMb;
+    final bool lowRam = DeviceMemory.lowRam;
     int imgs;
     int bytes;
     if (lowRam || (totalMb > 0 && totalMb <= 1024)) {

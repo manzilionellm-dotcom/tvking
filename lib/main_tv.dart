@@ -15,7 +15,9 @@ import 'package:flutter/services.dart';
 
 import 'core/app/app_platform.dart';
 import 'core/app/boot_guard.dart';
+import 'core/app/device_memory.dart';
 import 'core/app/guarded_main.dart';
+import 'core/app/safe_mode_app.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
 import 'core/notifications/notification_service.dart';
@@ -52,6 +54,26 @@ Future<void> _bootstrap() async {
   // Cette app est la version TÉLÉVISION → le heartbeat enverra
   // platform='tv' et le panel l'affichera comme 📺 (vs 📱 mobile).
   AppPlatform.isTv = true;
+
+  // ====================================================================
+  //  MODE SANS ÉCHEC (disjoncteur) — boucle de crash détectée par BootGuard.
+  //  On n'initialise RIEN de risqué (pas de mpv, pas de repos lourds, AUCUN
+  //  import distant) : on ouvre un écran de RÉCUPÉRATION ciblé selon l'endroit
+  //  du dernier crash (rendu vs mémoire/import), puis on s'arrête là. C'est ce
+  //  qui CASSE la boucle « ouvre/ferme » au lieu de refaire l'action qui tue.
+  // ====================================================================
+  if (BootGuard.instance.isInSafeMode) {
+    await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    // Langue chargée pour que l'écran de récup s'affiche dans la bonne langue.
+    await LocaleRepository.instance.initialize();
+    runApp(SafeModeApp(failedPhase: BootGuard.instance.lastFailedPhase));
+    return; // ⛔ on ne va PAS plus loin (rien de risqué).
+  }
+  // Boot normal : on note le jalon « moteur prêt » (avant tout import).
+  await BootGuard.instance.markPhase(BootPhase.flutterUp);
 
   // ANTI-OOM TV (confirmé par logcat: lowmemorykiller / signal 9) : on N'INITIE
   // PLUS le moteur mpv (media_kit) sur la TV. La TV joue EXCLUSIVEMENT via
@@ -93,16 +115,14 @@ Future<void> _bootstrap() async {
   await PlaylistRepository.instance
       .initialize()
       .timeout(const Duration(seconds: 6), onTimeout: () {});
-  //    La source distante se (re)synchronise après, sans bloquer : si on a
-  //    déjà des chaînes en cache, ça reste SILENCIEUX (pas d'écran « Recherche »).
-  //    MODE SANS ÉCHEC : on SAUTE ce ré-import — c'est l'étape la plus
-  //    gourmande (fetch + parse de toute la source) et le suspect n°1 d'un
-  //    crash mémoire en boucle. L'app ouvre sur le cache existant.
-  if (!BootGuard.instance.safeMode) {
-    unawaited(RemoteSourceRepository.sync());
-  } else {
-    debugPrint('[main_tv] mode sans échec → ré-import de la source distante sauté.');
-  }
+  //    La source distante se (re)synchronise plus bas, APRÈS runApp, et de façon
+  //    JALONNÉE (importStart → importDone → markBootSucceeded) : c'est l'étape la
+  //    plus gourmande (fetch + parse de toute la source), suspect n°1 du crash
+  //    mémoire. En mode sans échec on n'arrive jamais ici (return plus haut).
+
+  // PLAFOND CHAÎNES ADAPTÉ À LA RAM : on lit la classe mémoire AVANT l'import
+  // pour que le plafond de chaînes en RAM soit exact (petite box ⇒ plafond bas).
+  await DeviceMemory.ensureLoaded();
 
   // 5) Enregistrements : on initialise la base et on finalise les
   //    enregistrements « fantômes » (l'app a pu être tuée par l'OS en plein
@@ -137,7 +157,36 @@ Future<void> _bootstrap() async {
 
   runApp(const TvApp());
 
-  // L'app est lancée : si elle tient quelques secondes, on efface l'historique
-  // de boucle (un démarrage réussi « pardonne » les crashs précédents).
-  BootGuard.instance.scheduleStableReset();
+  // Jalon « 1er frame rendu » : l'UI s'est affichée au moins une fois.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    BootGuard.instance.markPhase(BootPhase.firstFrame);
+  });
+
+  // ====================================================================
+  //  IMPORT DISTANT = étape risquée → JALONNÉE. À sa FIN (succès ou rien à
+  //  importer), on déclare le boot RÉUSSI : c'est le SEUL reset du compteur
+  //  anti-boucle (plus de reset par timer). Si un crash natif survient PENDANT
+  //  l'import (même à 60 s), on n'atteint jamais markBootSucceeded → le
+  //  compteur reste incrémenté → au 3e essai, BootGuard ouvre le mode sans
+  //  échec. C'est exactement ce que l'ancien reset-par-timer empêchait.
+  //
+  //  RÉCUPÉRATION : si l'utilisateur a choisi « démarrer sans réimporter » dans
+  //  l'écran mode sans échec, on SAUTE l'auto-import ce boot-ci (one-shot).
+  // ====================================================================
+  final bool skipAutoImport = await BootGuard.instance.consumeSkipAutoImport();
+  if (skipAutoImport) {
+    debugPrint('[main_tv] auto-import SAUTÉ (choix de récupération). '
+        'L\'app ouvre sur le cache ; sync manuelle possible.');
+    await BootGuard.instance.markBootSucceeded();
+  } else {
+    await BootGuard.instance.markPhase(BootPhase.importStart);
+    // RemoteSourceRepository.sync ne throw jamais (renvoie un résultat) ; on
+    // marque donc le succès du boot dès qu'il a terminé, quel que soit le
+    // résultat (chargé / rien d'assigné / réseau KO) — l'app, elle, a démarré
+    // sans crasher, c'est ça « un boot réussi ».
+    unawaited(RemoteSourceRepository.sync().then((_) async {
+      await BootGuard.instance.markPhase(BootPhase.importDone);
+      await BootGuard.instance.markBootSucceeded();
+    }));
+  }
 }

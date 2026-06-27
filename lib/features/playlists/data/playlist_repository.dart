@@ -29,6 +29,7 @@ import 'package:sqflite/sqflite.dart';
 // ignore: depend_on_referenced_packages — dart:async fournit unawaited
 
 
+import '../../../core/app/device_memory.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
@@ -160,11 +161,12 @@ class PlaylistRepository {
   }
 
   /// Plafond de chaînes chargées EN MÉMOIRE — garde-fou anti-OOM des box
-  /// faibles (Android TV/box 1 Go). Au-delà, on s'arrête : les chaînes
-  /// supplémentaires restent en base (rien n'est perdu) mais ne sont pas
-  /// matérialisées en RAM, ce qui empêchait la TV de planter/redémarrer sur
-  /// les sources géantes. 50 000 couvre les très grosses playlists légitimes.
-  static const int kMaxInMemoryChannels = 50000;
+  /// faibles. DÉSORMAIS ADAPTÉ À LA RAM (cf. DeviceMemory.channelCap) au lieu
+  /// d'un 50 000 fixe : une box 1 Go plafonne à 10 000, une grosse box à
+  /// 50 000. Au-delà, on s'arrête : les chaînes supplémentaires restent en base
+  /// (rien n'est perdu) mais ne sont pas matérialisées en RAM, ce qui
+  /// empêchait la TV de planter/redémarrer sur les sources géantes.
+  static int get kMaxInMemoryChannels => DeviceMemory.channelCap;
 
   /// Taille d'un lot de lecture. On lit la table par tranches (keyset sur
   /// `local_id`, la clé primaire) au lieu d'un unique gros SELECT : le pic
@@ -541,6 +543,18 @@ class PlaylistRepository {
     // Re-émet l'état "officiel" depuis la DB pour rester cohérent
     // en cas d'incohérence (rare).
     await _emitCurrentState();
+  }
+
+  /// RÉCUPÉRATION (mode sans échec) : supprime TOUTES les playlists et leurs
+  /// chaînes, directement en base, SANS dépendre des streams ni du cache (donc
+  /// utilisable très tôt au démarrage, avant `initialize()`). Sert au bouton
+  /// « Supprimer ma source / Réinitialiser » de l'écran de récupération.
+  Future<void> deleteAllPlaylists() async {
+    final Database db = await PlaylistDatabase.instance.database;
+    await db.delete('channels');
+    await db.delete('playlists');
+    _channelsCache = const <Channel>[];
+    _playlistsCache = const <Playlist>[];
   }
 
   // ============================================================

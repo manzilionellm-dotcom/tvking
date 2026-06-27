@@ -36,6 +36,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/device_memory.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/data/player_settings.dart';
 import '../../vod/domain/vod_movie.dart';
@@ -136,10 +137,10 @@ class XtreamClient {
 
     final List<Channel> channels = <Channel>[];
     for (final dynamic item in raw) {
-      // PLAFOND MÉMOIRE (anti-OOM) : on arrête de matérialiser au-delà du
-      // plafond d'import — le reste reste sur le serveur, la source est juste
-      // tronquée à une taille tenable sur box faible.
-      if (channels.length >= kMaxChannelsPerImport) break;
+      // PLAFOND MÉMOIRE (anti-OOM), ADAPTÉ À LA RAM (DeviceMemory.channelCap) :
+      // on arrête de matérialiser au-delà — le reste reste sur le serveur, la
+      // source est juste tronquée à une taille tenable sur box faible.
+      if (channels.length >= DeviceMemory.channelCap) break;
       if (item is! Map<String, dynamic>) continue;
 
       final String streamId = item['stream_id']?.toString() ?? '';
@@ -210,7 +211,7 @@ class XtreamClient {
 
     final List<VodMovie> movies = <VodMovie>[];
     for (final dynamic item in raw) {
-      if (movies.length >= kMaxChannelsPerImport) break; // plafond mémoire (anti-OOM)
+      if (movies.length >= DeviceMemory.channelCap) break; // plafond mémoire RAM-tiered (anti-OOM)
       if (item is! Map<String, dynamic>) continue;
       final String streamId = item['stream_id']?.toString() ?? '';
       if (streamId.isEmpty) continue;
