@@ -26,15 +26,17 @@ class TvSearchScreen extends StatefulWidget {
 }
 
 class _TvSearchScreenState extends State<TvSearchScreen> {
-  StreamSubscription<List<Channel>>? _sub;
-  List<Channel> _all = const <Channel>[];
   String _q = '';
   List<Channel> _results = const <Channel>[];
   Timer? _debounce;
+  // Jeton anti-désordre : chaque recherche asynchrone porte un numéro. Un
+  // résultat qui revient APRÈS qu'une frappe plus récente soit partie est
+  // ignoré (sinon une vieille requête lente écraserait la nouvelle).
+  int _epoch = 0;
 
-  // Borne anti-surcharge : sur un boîtier TV modeste, afficher des centaines de
-  // vignettes (et leurs logos réseau) d'un coup peut faire planter l'app. On
-  // limite à 60 résultats — largement assez pour trouver une chaîne.
+  // Borne anti-surcharge : 60 résultats max (largement assez pour trouver une
+  // chaîne). C'est AUSSI la LIMIT SQL → la base ne renvoie jamais plus que ça,
+  // donc on ne matérialise jamais des centaines de chaînes en RAM.
   static const int _maxResults = 60;
 
   // Le clavier est construit UNE SEULE FOIS. En réutilisant la MÊME instance
@@ -45,22 +47,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       _Keyboard(onType: _type, onBackspace: _backspace, onClear: _clear);
 
   @override
-  void initState() {
-    super.initState();
-    _all = PlaylistRepository.instance.currentChannels
-        .where((Channel c) => c.isLive)
-        .toList(growable: false);
-    _sub =
-        PlaylistRepository.instance.channelsStream.listen((List<Channel> ch) {
-      if (!mounted) return;
-      _all = ch.where((Channel c) => c.isLive).toList(growable: false);
-      _runSearch();
-    });
-  }
-
-  @override
   void dispose() {
-    _sub?.cancel();
     _debounce?.cancel();
     super.dispose();
   }
@@ -78,28 +65,36 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
 
   void _clear() {
     _debounce?.cancel();
+    _epoch++; // annule toute recherche en vol
     setState(() {
       _q = '';
       _results = const <Channel>[];
     });
   }
 
-  // Debounce : on ne recalcule/réaffiche la grille (et ses logos) qu'après une
-  // courte pause → frappe fluide et pas de tempête de chargements d'images.
+  // Debounce : on ne relance la recherche (et le rendu des logos) qu'après une
+  // courte pause → frappe fluide et pas de tempête de requêtes/chargements.
   void _schedule() {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 250), _runSearch);
   }
 
-  void _runSearch() {
-    final String t = _q.trim().toLowerCase();
-    final List<Channel> r = t.isEmpty
-        ? const <Channel>[]
-        : _all
-            .where((Channel c) => c.cleanName.toLowerCase().contains(t))
-            .take(_maxResults)
-            .toList(growable: false);
-    if (mounted) setState(() => _results = r);
+  // Recherche EN BASE (SQL LIKE + LIMIT, cf. PlaylistRepository.searchLiveChannels)
+  // : on ne garde JAMAIS toute la liste de chaînes en RAM. La base renvoie au
+  // plus _maxResults lignes correspondantes — c'est le principe anti-OOM
+  // « façon TiviMate » appliqué à la recherche (tient 100 000 chaînes).
+  Future<void> _runSearch() async {
+    final String t = _q.trim();
+    final int epoch = ++_epoch;
+    if (t.isEmpty) {
+      if (mounted) setState(() => _results = const <Channel>[]);
+      return;
+    }
+    final List<Channel> r = await PlaylistRepository.instance
+        .searchLiveChannels(t, limit: _maxResults);
+    // Une frappe plus récente est partie entre-temps → on jette ce résultat.
+    if (!mounted || epoch != _epoch) return;
+    setState(() => _results = r);
   }
 
   @override
