@@ -9,6 +9,7 @@
 //  RemoteSourceRepository). États vides PROFESSIONNELS (pas d'écran mort).
 // =========================================================
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -30,6 +31,7 @@ import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import '../core/tv_logo.dart';
 import 'tv_add_source_screen.dart';
 import 'tv_components.dart';
 import 'tv_player_screen.dart';
@@ -779,14 +781,29 @@ class _CategoryRail extends StatelessWidget {
   Widget build(BuildContext context) {
     if (cats.isEmpty) return const SizedBox.shrink();
     final int visible = cats.length < _kMaxVisible ? cats.length : _kMaxVisible;
-    return Container(
-      decoration: BoxDecoration(
-        color: TvTokens.card.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(TvTokens.rCard),
-        border: Border.all(color: TvTokens.lineSoft),
-      ),
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-      child: Column(
+    // RAIL VERRE (§5.2) : UN SEUL BackdropFilter, STATIQUE et HORS liste
+    // scrollable (la ListView est à l'intérieur, mais le flou n'est appliqué
+    // qu'UNE fois au conteneur du rail, jamais par ligne) → conforme RÈGLE 2.
+    // Sigma faible (10 ≤ 12). Fond dégradé semi-transparent + hairline OR.
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(TvTokens.rGlass),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[
+                TvTokens.panel.withValues(alpha: 0.62),
+                TvTokens.card.withValues(alpha: 0.42),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(TvTokens.rGlass),
+            border: Border.all(color: TvTokens.hairline),
+          ),
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+          child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -823,7 +840,9 @@ class _CategoryRail extends StatelessWidget {
               },
             ),
           ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -978,6 +997,10 @@ class _ResumeCard extends StatefulWidget {
 
 class _ResumeCardState extends State<_ResumeCard> {
   final FocusNode _node = FocusNode();
+  // EPG « en ce moment » de la chaîne → barre de progression OR (§5.4). Une
+  // seule requête par carte (la rangée « Reprendre » est bornée à ~8).
+  late final Future<EpgProgram?> _epg =
+      EpgRepository.instance.currentProgram(widget.channel.id);
 
   @override
   void dispose() {
@@ -1008,21 +1031,55 @@ class _ResumeCardState extends State<_ResumeCard> {
         onSelect: widget.onPlay,
         child: Padding(
           padding: const EdgeInsets.all(12),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              _LogoChip(channel: c),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _tvPretty(c.cleanName),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 18,
-                      height: 1.15,
-                      fontWeight: FontWeight.w600,
-                      color: TvTokens.text),
-                ),
+              Row(
+                children: <Widget>[
+                  _LogoChip(channel: c, size: 56),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _tvPretty(c.cleanName),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 18,
+                          height: 1.15,
+                          fontWeight: FontWeight.w600,
+                          color: TvTokens.text),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              // Barre de progression OR de l'émission en cours (§5.4). Si pas
+              // d'EPG → barre absente (pas de barre grise plate).
+              FutureBuilder<EpgProgram?>(
+                future: _epg,
+                builder: (BuildContext context,
+                    AsyncSnapshot<EpgProgram?> snap) {
+                  final EpgProgram? p = snap.data;
+                  if (p == null) return const SizedBox(height: 3);
+                  final int now = DateTime.now().millisecondsSinceEpoch;
+                  final int span = p.stopTime - p.startTime;
+                  final double prog = span > 0
+                      ? ((now - p.startTime) / span).clamp(0.0, 1.0)
+                      : 0.0;
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: SizedBox(
+                      height: 3,
+                      child: LinearProgressIndicator(
+                        value: prog,
+                        backgroundColor: TvTokens.line,
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                            TvTokens.gold),
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ),
@@ -1428,12 +1485,20 @@ class _ChannelCardState extends State<_ChannelCard> {
     final Channel channel = widget.channel;
     final bool fav = FavoritesRepository.instance.current.contains(channel.id);
     final _ParsedName p = _parseName(channel);
-    // PREMIUM (réf. design) : on retire le jargon codec (RAW/HEVC/60FPS/VIP/LIVE)
-    // qui faisait « IPTV brut » et on ne garde qu'UN chip qualité (4K/FHD/HD).
+    // PREMIUM (§5.5) : zéro jargon codec brut. On garde UN chip qualité
+    // (4K/UHD/FHD/HD) + un chip HDR/Dolby s'il existe. Max 2 chips → carte nette.
     final String? quality = p.badges
         .cast<String?>()
         .firstWhere((String? b) => b == '4K' || b == 'FHD' || b == 'HD',
             orElse: () => null);
+    final String? premium = p.badges
+        .cast<String?>()
+        .firstWhere((String? b) => b == 'HDR' || b == 'DOLBY',
+            orElse: () => null);
+    final List<String> chips = <String>[
+      if (quality != null) quality,
+      if (premium != null) premium,
+    ];
     // RESTAURATION DU FOCUS au retour du lecteur (déterministe) : quand l'écran
     // nous DÉSIGNE (restoreFocusId == notre id), on (re)prend le focus en
     // post-frame puis on libère le drapeau. Déclenché par un rebuild explicite
@@ -1473,9 +1538,21 @@ class _ChannelCardState extends State<_ChannelCard> {
           // LOGO PETIT en chip haut-gauche (normalisé) : quand des chaînes
           // partagent le même logo, c'est le NOM qui distingue (réf. design).
           Positioned(top: 10, left: 10, child: _LogoChip(channel: channel)),
-          // Chip qualité discret en haut-droite.
-          if (quality != null)
-            Positioned(top: 12, right: 12, child: _TagBadge(label: quality)),
+          // Chips qualité (haut-droite) : qualité + HDR/Dolby, max 2.
+          if (chips.isNotEmpty)
+            Positioned(
+              top: 12,
+              right: 12,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  for (int b = 0; b < chips.length; b++) ...<Widget>[
+                    if (b > 0) const SizedBox(width: 6),
+                    _TagBadge(label: chips[b]),
+                  ],
+                ],
+              ),
+            ),
           // Favori discret en bas-droite.
           if (fav)
             const Positioned(
@@ -1569,6 +1646,10 @@ class _ChannelCardState extends State<_ChannelCard> {
     ('4K', RegExp(r'\b(4K|UHD|2160P?)\b', caseSensitive: false)),
     ('FHD', RegExp(r'\b(FHD|1080P?)\b', caseSensitive: false)),
     ('HD', RegExp(r'\bHD\b', caseSensitive: false)),
+    // Chips premium (§5.5) : on les EXTRAIT (donc retirés du nom affiché) et on
+    // les ré-affiche en badge propre, jamais en jargon brut.
+    ('HDR', RegExp(r'\bHDR(10)?\+?\b', caseSensitive: false)),
+    ('DOLBY', RegExp(r'\b(DOLBY|ATMOS|DTS|DDP?|EAC3|DV)\b', caseSensitive: false)),
     ('HEVC', RegExp(r'\b(HEVC|H\.?265)\b', caseSensitive: false)),
     ('60 FPS', RegExp(r'\b60\s?FPS\b', caseSensitive: false)),
     ('VIP', RegExp(r'\bVIP\b', caseSensitive: false)),
@@ -1620,17 +1701,20 @@ class _TagBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Chip qualité premium (§5.5) : bordure hairline OR, texte or, majuscules
+    // espacées. Rayon badges = 8 dp.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
         color: TvTokens.badgeBg,
         borderRadius: BorderRadius.circular(TvTokens.rSmall),
+        border: Border.all(color: TvTokens.hairline),
       ),
       child: Text(label,
           style: TextStyle(
               fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.4,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.8,
               color: TvTokens.gold)),
     );
   }
@@ -1640,21 +1724,18 @@ class _TagBadge extends StatelessWidget {
 /// tous les logos pèsent visuellement pareil (jamais un logo qui remplit la
 /// carte à côté d'un mini-logo). Réutilise [_Logo] (contain + repli initiales).
 class _LogoChip extends StatelessWidget {
-  const _LogoChip({required this.channel});
+  const _LogoChip({required this.channel, this.size = 76});
   final Channel channel;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 56,
-      height: 56,
-      decoration: BoxDecoration(
-        color: const Color(0xD9141210), // rgba(20,18,16,.85)
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: TvTokens.line),
-      ),
-      padding: const EdgeInsets.all(7),
-      child: _Logo(channel: channel),
+    // Logo AGRANDI (§5.1) + fallback MONOGRAMME (jamais de carte grise, §6).
+    return TvChannelLogo(
+      logoUrl: channel.logoUrl,
+      label: channel.cleanName,
+      size: size,
+      radius: 10,
     );
   }
 }
