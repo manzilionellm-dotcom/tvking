@@ -102,20 +102,39 @@ jobs:
           fi
           grep -nE 'leanback|LEANBACK_LAUNCHER|touchscreen' "$MANIFEST" || true
 
-      # NOTE — ALLÈGEMENT media_kit RETIRÉ (build TV cassé) :
-      # On avait tenté de retirer media_kit/libmpv du pubspec pour ce build TV
-      # (~25-40 Mo de moins). MAIS un fichier EST atteignable depuis main_tv.dart :
-      #   main_tv → tv_app → tv_live_screen → tv_player_screen
-      #           → epg/channel_programs_screen → player/play_channel
-      #           → player/video_player_screen  (import media_kit)
-      # Donc retirer media_kit faisait ÉCHOUER la compilation TV (builds #116/#117
-      # rouges → plus aucun APK publié). media_kit n'est de toute façon JAMAIS
-      # initialisé au runtime sur la TV (cf. main_tv.dart : lecture via ExoPlayer
-      # uniquement) → l'embarquer ne nuit PAS à la stabilité, ça ne coûte que de
-      # la taille d'APK. On préfère un build VERT qui publie la correction
-      # anti-OOM. L'allègement reviendra via une vraie séparation lecteur
-      # TV (ExoPlayer) / lecteur mobile (media_kit) — l'EPG TV ne doit plus
-      # transiter par play_channel mobile.
+      # ALLÉGER L'APK TV (~25-40 Mo) : la TV lit EXCLUSIVEMENT via ExoPlayer
+      # (native_video_player), JAMAIS via media_kit/libmpv (qui embarque les
+      # binaires lourds de libmpv). On retire media_kit du pubspec POUR CE BUILD
+      # TV SEULEMENT (checkout CI, non commité → mobile/Privé gardent media_kit).
+      #
+      # PRÉ-REQUIS VÉRIFIÉ : plus AUCUN fichier atteignable depuis main_tv.dart
+      # n'importe media_kit. L'ancienne fuite (tv_player_screen → EPG mobile
+      # channel_programs_screen → play_channel → video_player_screen[media_kit])
+      # a été coupée : le lecteur TV ouvre désormais un guide NATIF TV
+      # (tv_channel_programs_screen.dart) qui n'importe aucun lecteur. La
+      # compilation TV ne touche donc plus media_kit → ce retrait est sûr.
+      # (Si jamais une régression réintroduisait l'import, ce build passerait au
+      # rouge sans toucher l'APK publié, et on reviendrait.)
+      - name: Alléger l'APK TV (retirer media_kit, inutile sur TV)
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          import re
+          f = "pubspec.yaml"
+          lines = open(f).read().splitlines(keepends=True)
+          out = []
+          for line in lines:
+              if re.match(r'\s*(media_kit|media_kit_video|media_kit_libs_android_video)\s*:', line):
+                  print("retiré:", line.strip())
+                  continue
+              out.append(line)
+          open(f, "w").write("".join(out))
+          PYEOF
+          if grep -nE "^\s*media_kit" pubspec.yaml; then
+            echo "::warning::media_kit encore présent dans pubspec TV"
+          else
+            echo "✓ media_kit retiré du pubspec (build TV uniquement)"
+          fi
 
       - name: Flutter pub get
         run: flutter pub get

@@ -27,7 +27,6 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
-import '../../epg/presentation/channel_programs_screen.dart';
 import '../../player/data/local_stream_relay.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
@@ -35,6 +34,7 @@ import '../../recordings/domain/recording.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
+import 'tv_channel_programs_screen.dart';
 import 'tv_components.dart';
 
 class TvPlayerScreen extends StatefulWidget {
@@ -452,7 +452,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   void _openGuide() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ChannelProgramsScreen(channel: _current),
+        builder: (_) => TvChannelProgramsScreen(channel: _current),
       ),
     );
     _showOverlayTemporarily();
