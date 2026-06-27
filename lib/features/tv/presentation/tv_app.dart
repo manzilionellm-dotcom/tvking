@@ -434,47 +434,38 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            const _HomeHeader(),
-            const SizedBox(height: 14),
-            Expanded(
+            // ----- BARRE HAUTE : marque (gauche) + contexte + MENU COMPACT (droite)
+            //  Le menu de navigation est désormais COMPACT EN HAUT À DROITE : la
+            //  grande colonne de gauche est libérée pour la LISTE des chaînes
+            //  (lisibilité seniors). Le Focus englobant (non focusable) suit
+            //  `_railHasFocus` (cible « Retour » = menu) sans piéger la
+            //  navigation directionnelle.
+            Focus(
+              canRequestFocus: false,
+              skipTraversal: true,
+              onFocusChange: (bool f) {
+                if (f != _railHasFocus) {
+                  setState(() => _railHasFocus = f);
+                }
+              },
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: <Widget>[
-                  // ----- Rail de navigation (gauche) -----
-                  // Le Focus englobant (non focusable lui-même) sert juste à
-                  // SAVOIR si le focus est sur le menu, sans piéger la
-                  // navigation directionnelle (ce n'est pas un FocusScope).
-                  // RAIL REPLIABLE (réf. design) : icônes seules au repos
-                  // (96 px) → se DÉPLOIE à 300 px quand le focus y entre (labels
-                  // apparaissent). On réutilise `_railHasFocus` déjà suivi par le
-                  // Focus englobant. Largeur animée (décélérée) ; le contenu à
-                  // droite (grille virtualisée) se ré-agence à coût négligeable.
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 220),
-                    curve: const Cubic(0.2, 0.0, 0.0, 1.0),
-                    width: _railHasFocus ? 300 : 96,
-                    child: Focus(
-                      canRequestFocus: false,
-                      skipTraversal: true,
-                      onFocusChange: (bool f) {
-                        if (f != _railHasFocus) {
-                          setState(() => _railHasFocus = f);
-                        }
-                      },
-                      child: _NavRail(
-                        selected: _selected,
-                        expanded: _railHasFocus,
-                        selectedFocusNode: _railFocus,
-                        onSelect: (TvDest d) => setState(() => _selected = d),
-                      ),
-                    ),
+                  TvLogo(width: 92),
+                  const SizedBox(width: 18),
+                  const Expanded(child: _HomeHeader()),
+                  const SizedBox(width: 18),
+                  _CompactNavBar(
+                    selected: _selected,
+                    selectedFocusNode: _railFocus,
+                    onSelect: (TvDest d) => setState(() => _selected = d),
                   ),
-                  const SizedBox(width: TvDimens.gutter),
-                  // ----- Panneau de contenu -----
-                  Expanded(child: _ContentPanel(dest: _selected)),
                 ],
               ),
             ),
+            const SizedBox(height: 14),
+            // ----- Panneau de contenu (PLEINE LARGEUR sous la barre) -----
+            Expanded(child: _ContentPanel(dest: _selected)),
           ],
         ),
       ),
@@ -550,134 +541,89 @@ class _HomeHeaderState extends State<_HomeHeader> {
     );
   }
 }
-
-class _NavRail extends StatelessWidget {
-  const _NavRail(
-      {required this.selected,
-      required this.onSelect,
-      this.expanded = true,
-      this.selectedFocusNode});
+/// Menu de navigation COMPACT (barre horizontale, en HAUT À DROITE). Remplace
+/// l'ancien rail vertical de gauche : la grande colonne de gauche est désormais
+/// dédiée à la LISTE des chaînes (lisibilité seniors). Routing INCHANGÉ.
+class _CompactNavBar extends StatelessWidget {
+  const _CompactNavBar({
+    required this.selected,
+    required this.onSelect,
+    this.selectedFocusNode,
+  });
 
   final TvDest selected;
   final ValueChanged<TvDest> onSelect;
-
-  /// Rail déployé (labels visibles) vs replié (icônes seules).
-  final bool expanded;
-
-  /// FocusNode posé sur l'item SÉLECTIONNÉ → permet de ramener le focus au
-  /// menu quand on appuie sur Retour depuis le contenu.
   final FocusNode? selectedFocusNode;
 
   @override
   Widget build(BuildContext context) {
-    return ClipRect(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          // Branding : logo réduit en mode replié (rentre dans 96 px).
-          Container(
-            padding: const EdgeInsets.fromLTRB(10, 2, 10, 10),
-            decoration: const BoxDecoration(gradient: TvTokens.brandGlow),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: TvLogo(width: expanded ? 140 : 60),
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              children: <Widget>[
-                for (int i = 0; i < TvDest.values.length; i++)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: _NavItem(
-                      dest: TvDest.values[i],
-                      selected: TvDest.values[i] == selected,
-                      expanded: expanded,
-                      // Focus initial sur le 1er item (Direct).
-                      autofocus: i == 0,
-                      // Le node de l'item sélectionné sert de cible « Retour ».
-                      focusNode: TvDest.values[i] == selected
-                          ? selectedFocusNode
-                          : null,
-                      onSelect: () => onSelect(TvDest.values[i]),
-                    ),
-                  ),
-              ],
-            ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        for (int i = 0; i < TvDest.values.length; i++) ...<Widget>[
+          if (i > 0) const SizedBox(width: 8),
+          _CompactNavItem(
+            dest: TvDest.values[i],
+            selected: TvDest.values[i] == selected,
+            // L'item sélectionné porte le node « Retour » (cible du focus quand
+            // on revient depuis le contenu).
+            focusNode:
+                TvDest.values[i] == selected ? selectedFocusNode : null,
+            onSelect: () => onSelect(TvDest.values[i]),
           ),
         ],
-      ),
+      ],
     );
   }
 }
 
-class _NavItem extends StatelessWidget {
-  const _NavItem({
+class _CompactNavItem extends StatelessWidget {
+  const _CompactNavItem({
     required this.dest,
     required this.selected,
     required this.onSelect,
-    this.expanded = true,
-    this.autofocus = false,
     this.focusNode,
   });
 
   final TvDest dest;
   final bool selected;
   final VoidCallback onSelect;
-  final bool expanded;
-  final bool autofocus;
   final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
     return TvFocusBuilder(
-      autofocus: autofocus,
       focusNode: focusNode,
-      scale: TvFocusScale.large,
+      scale: TvFocusScale.medium,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        // Maison Noir : fond `--sel` au focus/actif, barre OR à gauche si
-        // actif, texte or. JAMAIS de bloc blanc plein.
+        // Maison Noir : fond `--sel` + or au focus/actif ; bordure or si actif.
         final bool hl = focused || selected;
         final Color fg = hl ? TvTokens.goldBright : TvTokens.muted;
         return Container(
-          height: 54,
+          height: 50,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
             color: hl ? TvTokens.sel : Colors.transparent,
             borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
+            border:
+                selected ? Border.all(color: TvTokens.gold, width: 1) : null,
           ),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              // Barre or à gauche (item actif).
-              Container(
-                width: 3,
-                margin: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  color: selected ? TvTokens.gold : Colors.transparent,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 13),
               Icon(dest.icon, color: fg, size: 22),
-              const SizedBox(width: 14),
-              // Label : fond dans un Flexible (clip) + fondu → ne déborde JAMAIS
-              // pendant l'animation de largeur du rail (96 → 300). Invisible et
-              // sans place quand le rail est replié.
-              Flexible(
-                child: AnimatedOpacity(
-                  opacity: expanded ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 160),
-                  child: Text(
-                    dest.label(context),
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.fade,
-                    style: TvTokens.ui(19,
-                        weight: selected ? FontWeight.w600 : FontWeight.w500,
-                        color: fg),
-                  ),
+              // Libellé affiché pour l'item ACTIF ou FOCUS (repère clair au D-pad
+              // pour les seniors) ; les autres restent en icône seule (compact).
+              if (hl) ...<Widget>[
+                const SizedBox(width: 9),
+                Text(
+                  dest.label(context),
+                  maxLines: 1,
+                  softWrap: false,
+                  style: TvTokens.ui(15, weight: FontWeight.w600, color: fg),
                 ),
-              ),
+              ],
             ],
           ),
         );

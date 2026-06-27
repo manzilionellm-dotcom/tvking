@@ -757,7 +757,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     final Widget cList = _CategoryRail(
       cats: _dispCats,
       selectedCat: _selectedCat,
-      autofocusFirst: false,
+      // Focus initial sur la GRANDE liste de gauche (accessibilité seniors).
+      autofocusFirst: true,
       labelOf: (String c) => _catLabel(context, c),
       countOf: _countOf,
       onSelect: _select,
@@ -799,29 +800,33 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
             ),
           ),
         ),
-        Column(
+        // ---- ÉCHANGE DES BLOCS : la LISTE (catégories) en GRANDE colonne
+        //  GAUCHE pleine hauteur (lisibilité seniors) ; au centre, « Reprendre »
+        //  + la grille. Le menu, lui, est passé en haut à droite (cf. tv_app).
+        Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            // ---- Bande haute : « Reprendre » (récentes) + C-LISTE à droite ----
-            Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
+            // GRANDE colonne GAUCHE : la liste, pleine hauteur, gros texte.
+            SizedBox(width: 380, child: cList),
+            const SizedBox(width: TvDimens.gutter),
+            // CENTRE : « Reprendre » en haut + grille en dessous.
             Expanded(
-              child: _ResumeRail(
-                channels: recentList,
-                onPlay: (int i) =>
-                    _openPlayerWith(recentList, i, fromRail: true),
-                restoreFocusId: _restoreFromRail ? _restoreFocusId : null,
-                onRestored: () => _restoreFocusId = null,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  _ResumeRail(
+                    channels: recentList,
+                    onPlay: (int i) =>
+                        _openPlayerWith(recentList, i, fromRail: true),
+                    restoreFocusId:
+                        _restoreFromRail ? _restoreFocusId : null,
+                    onRestored: () => _restoreFocusId = null,
+                  ),
+                  const SizedBox(height: 14),
+                  Expanded(child: grid),
+                ],
               ),
             ),
-            const SizedBox(width: TvDimens.gutter),
-            SizedBox(width: 420, child: cList),
-          ],
-        ),
-            const SizedBox(height: 14),
-            // ---- Zone principale LIBRE : la grille pleine largeur ----
-            Expanded(child: grid),
           ],
         ),
       ],
@@ -829,12 +834,10 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   }
 }
 
-/// C-LISTE compacte (catégories) — bande HAUTE À DROITE.
-///
-/// Hauteur BORNÉE (<= _kMaxVisible lignes puis scroll vertical interne) pour ne
-/// jamais manger la place des chaînes. Chaque ligne : libellé (ellipsis) +
-/// compteur ALIGNÉ À DROITE. Focusable D-pad (or au focus) ; le focus met à jour
-/// la grille en DÉBOUNCÉ (pas de recalcul sur chaque ligne traversée).
+/// LISTE des catégories — GRANDE colonne de GAUCHE, pleine hauteur (échange de
+/// blocs : lisibilité seniors). Remplit la hauteur et défile (lazy, itemExtent).
+/// Chaque ligne : libellé (ellipsis) + compteur. Focusable D-pad (or au focus) ;
+/// le focus met à jour la grille en DÉBOUNCÉ (pas de recalcul par ligne).
 class _CategoryRail extends StatelessWidget {
   const _CategoryRail({
     required this.cats,
@@ -854,16 +857,14 @@ class _CategoryRail extends StatelessWidget {
   final void Function(String) onSelect;
   final void Function(String) onFocusDebounced;
 
-  // Hauteur d'une ligne (itemExtent) et nombre de lignes visibles max : on
-  // calcule une hauteur EXACTE (pas de shrinkWrap qui mesurerait des milliers de
-  // catégories) → liste paresseuse, fluide même sur d'énormes playlists.
-  static const double _kRowExtent = 46;
-  static const int _kMaxVisible = 5;
+  // Lignes HAUTES (lisibilité seniors). La liste REMPLIT toute la colonne de
+  // gauche et défile (lazy via itemExtent → fluide même sur des milliers de
+  // catégories, pas de shrinkWrap).
+  static const double _kRowExtent = 64;
 
   @override
   Widget build(BuildContext context) {
     if (cats.isEmpty) return const SizedBox.shrink();
-    final int visible = cats.length < _kMaxVisible ? cats.length : _kMaxVisible;
     // RAIL VERRE (§5.2) : UN SEUL BackdropFilter, STATIQUE et HORS liste
     // scrollable (la ListView est à l'intérieur, mais le flou n'est appliqué
     // qu'UNE fois au conteneur du rail, jamais par ligne) → conforme RÈGLE 2.
@@ -887,7 +888,6 @@ class _CategoryRail extends StatelessWidget {
           ),
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
           child: Column(
-        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           Padding(
@@ -902,8 +902,7 @@ class _CategoryRail extends StatelessWidget {
                   spacing: 2),
             ),
           ),
-          SizedBox(
-            height: visible * _kRowExtent,
+          Expanded(
             child: ListView.builder(
               padding: EdgeInsets.zero,
               itemExtent: _kRowExtent,
@@ -976,7 +975,7 @@ class _CRow extends StatelessWidget {
                       color: TvTokens.gold, width: TvDimens.focusOutline)
                   : null,
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(
               children: <Widget>[
                 Expanded(
@@ -984,8 +983,9 @@ class _CRow extends StatelessWidget {
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    // GROS texte (lisibilité seniors).
                     style: TextStyle(
-                        fontSize: TvDimens.body,
+                        fontSize: TvDimens.title,
                         fontWeight: (focused || active)
                             ? FontWeight.w700
                             : FontWeight.w600,
@@ -997,7 +997,7 @@ class _CRow extends StatelessWidget {
                 Text(
                   '$count',
                   style: TextStyle(
-                      fontSize: TvDimens.label,
+                      fontSize: TvDimens.titleS,
                       fontWeight: FontWeight.w700,
                       color: focused ? TvTokens.goldBright : TvTokens.mutedDim),
                 ),
