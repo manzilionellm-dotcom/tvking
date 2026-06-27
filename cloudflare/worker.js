@@ -2878,21 +2878,22 @@ async function handleDeviceBackup(request, env, mac, method) {
 }
 
 // /api/ai/search — public POST. Traduit une phrase en LANGAGE NATUREL en
-//  un FILTRE de recherche structuré (JSON) via Claude. L'app applique
+//  un FILTRE de recherche structuré (JSON) via Mistral. L'app applique
 //  ensuite ce filtre LOCALEMENT a son catalogue (le catalogue ne quitte
 //  jamais l'appareil → prive + peu couteux).
 //
-//  La cle Anthropic vit en SECRET cote Worker (env.ANTHROPIC_API_KEY) —
+//  La cle Mistral vit en SECRET cote Worker (env.MISTRAL_API_KEY) —
 //  jamais dans l'app. Tant que le secret n'est pas defini, l'endpoint
 //  repond 503 (fonctionnalite dormante, aucun cout).
 //
-//  Modele par defaut : claude-haiku-4-5 (rapide + peu cher, adapte a une
-//  recherche tapee a chaque requete). Surchargeable via env.AI_MODEL.
+//  Modele par defaut : mistral-small-latest (rapide + peu cher, adapte a
+//  une recherche tapee a chaque requete). Surchargeable via env.AI_MODEL.
+//  API OpenAI-compatible : https://api.mistral.ai/v1/chat/completions.
 async function handleAiSearch(request, env) {
   if (request.method !== 'POST') {
     return badRequest('only POST supported on /api/ai/search');
   }
-  const key = env.ANTHROPIC_API_KEY;
+  const key = env.MISTRAL_API_KEY;
   if (!key) {
     return json(
       { error: 'ai_disabled', message: 'Recherche IA non configurée.' },
@@ -2910,47 +2911,39 @@ async function handleAiSearch(request, env) {
   if (!query) return badRequest('query required');
   if (query.length > 300) return badRequest('query too long');
 
-  const model = env.AI_MODEL || 'claude-haiku-4-5';
+  const model = env.AI_MODEL || 'mistral-small-latest';
 
   const system =
     "Tu convertis une requête utilisateur en langage naturel en un FILTRE de " +
     "recherche pour une application de lecteur multimédia (IPTV). Réponds " +
-    "UNIQUEMENT avec le filtre structuré. Champs : keywords (mots-clés " +
-    "simples, en minuscules, sans articles, dans la langue de la requête) ; " +
-    "type ('live' pour chaînes/direct, 'movie' pour films, 'series' pour " +
-    "séries, 'any' si indéterminé) ; genres (ex: sport, football, " +
+    "UNIQUEMENT par un objet JSON valide, sans texte autour, sans bloc de " +
+    "code. Champs obligatoires : keywords (tableau de mots-clés simples, en " +
+    "minuscules, sans articles, dans la langue de la requête) ; type " +
+    "('live' pour chaînes/direct, 'movie' pour films, 'series' pour séries, " +
+    "'any' si indéterminé) ; genres (tableau ; ex: sport, football, " +
     "actualités, enfants, musique, cinéma, documentaire) ; title_contains " +
-    "(un titre précis si l'utilisateur en cite un, sinon vide) ; language " +
-    "(langue si mentionnée, sinon vide). Laisse un champ vide ([] ou '') " +
-    "s'il n'est pas pertinent.";
-
-  const schema = {
-    type: 'object',
-    properties: {
-      keywords: { type: 'array', items: { type: 'string' } },
-      type: { type: 'string', enum: ['live', 'movie', 'series', 'any'] },
-      genres: { type: 'array', items: { type: 'string' } },
-      title_contains: { type: 'string' },
-      language: { type: 'string' },
-    },
-    required: ['keywords', 'type', 'genres', 'title_contains', 'language'],
-    additionalProperties: false,
-  };
+    "(un titre précis si l'utilisateur en cite un, sinon chaîne vide) ; " +
+    "language (langue si mentionnée, sinon chaîne vide). Laisse un champ " +
+    "vide ([] ou '') s'il n'est pas pertinent. Exemple de réponse : " +
+    '{"keywords":["foot","ligue 1"],"type":"live","genres":["sport",' +
+    '"football"],"title_contains":"","language":"fr"}';
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    const resp = await fetch('https://api.mistral.ai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
+        authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({
         model,
         max_tokens: 400,
-        system,
-        messages: [{ role: 'user', content: query }],
-        output_config: { format: { type: 'json_schema', schema } },
+        temperature: 0,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: query },
+        ],
       }),
     });
     if (!resp.ok) {
@@ -2963,16 +2956,21 @@ async function handleAiSearch(request, env) {
       return json({ error: 'ai_upstream', status: resp.status }, 502);
     }
     const data = await resp.json();
-    // Structured outputs → le 1er bloc texte contient le JSON valide.
+    // API OpenAI-compatible → le contenu du 1er choix est le JSON demandé.
     let filter = null;
-    if (Array.isArray(data.content)) {
-      const textBlock = data.content.find((b) => b && b.type === 'text');
-      if (textBlock && typeof textBlock.text === 'string') {
-        try {
-          filter = JSON.parse(textBlock.text);
-        } catch (_) {
-          filter = null;
-        }
+    const content =
+      data &&
+      Array.isArray(data.choices) &&
+      data.choices[0] &&
+      data.choices[0].message &&
+      typeof data.choices[0].message.content === 'string'
+        ? data.choices[0].message.content
+        : null;
+    if (content) {
+      try {
+        filter = JSON.parse(content);
+      } catch (_) {
+        filter = null;
       }
     }
     if (!filter) return json({ error: 'ai_parse' }, 502);
