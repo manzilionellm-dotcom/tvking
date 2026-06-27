@@ -145,6 +145,28 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // différé → on affiche le bouton « ● EN DIRECT » pour revenir au direct.
   bool _behindLive = false;
 
+  // ── Chien de garde anti-gel (TIER 1) ──────────────────────────────
+  // Les flux IPTV live peuvent GELER sans émettre d'erreur : la socket
+  // reste ouverte mais ne livre plus d'octets. libmpv croit alors
+  // « jouer » (playing=true, buffering=false) alors que l'image est
+  // figée — l'app resterait bloquée sur une image noire jusqu'à ce que
+  // l'utilisateur tape « réessayer ». Le watchdog surveille la POSITION :
+  // si elle n'avance plus pendant ~15 s alors qu'on est censé lire (et
+  // qu'on ne bufferise pas), on rouvre la source tout seul (reconnexion
+  // automatique, façon _retry). Budget de reconnexions BORNÉ pour ne pas
+  // marteler un serveur réellement mort ; ré-armé après 30 s de lecture
+  // saine. Live uniquement (la VOD est seekable : sa position s'arrête
+  // légitimement en pause / fin de fichier).
+  Timer? _watchdogTimer;
+  Duration _lastWatchdogPos = Duration.zero;
+  int _watchdogStaleTicks = 0;
+  int _watchdogGoodTicks = 0;
+  int _watchdogRecoveries = 0;
+  static const Duration _kWatchdogInterval = Duration(seconds: 5);
+  static const int _kWatchdogStaleTicksBeforeRecover = 3; // ~15 s figé
+  static const int _kWatchdogGoodTicksToReset = 6; // ~30 s sains
+  static const int _kWatchdogMaxRecoveries = 4;
+
   // Autoplay « À suivre » (façon YouTube / Netflix) : quand un contenu
   // FINI se termine (VOD, replay/catch-up, enregistrement) et qu'une
   // chaîne suivante existe, on propose un compte à rebours de 10 s qui
@@ -356,6 +378,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
 
     _scheduleHideOverlay();
+    _startWatchdog();
   }
 
   // ----- Zapping -----
@@ -963,6 +986,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _hideOverlayTimer?.cancel();
     _presenceTimer?.cancel();
     _upNextTimer?.cancel();
+    _watchdogTimer?.cancel();
     // Mode « Écouteurs » : on coupe le service audio de fond et on lève le
     // drapeau natif (sinon le son continuerait après la fermeture du
     // lecteur). Idempotent / fail-open.
@@ -1054,6 +1078,83 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _errorMessage = null;
       _isBuffering = true;
     });
+    final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+    _openMedia(url);
+  }
+
+  // ----- Chien de garde anti-gel -----
+
+  /// Démarre le chien de garde anti-gel. Idempotent (annule l'ancien).
+  void _startWatchdog() {
+    _watchdogTimer?.cancel();
+    _lastWatchdogPos = _player.state.position;
+    _watchdogStaleTicks = 0;
+    _watchdogGoodTicks = 0;
+    _watchdogTimer = Timer.periodic(_kWatchdogInterval, (_) => _watchdogTick());
+  }
+
+  void _watchdogTick() {
+    if (!mounted) return;
+    // Live uniquement : la VOD/catch-up est seekable, sa position
+    // s'arrête légitimement (pause, fin) → ce ne serait pas un gel.
+    if (!_liveViaRelay) return;
+    // Un VRAI gel = mpv se croit en lecture, ne bufferise pas, aucune
+    // erreur affichée, mais la position stagne. Sinon on ne compte rien
+    // et on resynchronise la position de référence.
+    if (!_isPlaying || _isBuffering || _hasError) {
+      _lastWatchdogPos = _player.state.position;
+      _watchdogStaleTicks = 0;
+      return;
+    }
+    final Duration pos = _player.state.position;
+    if (pos == _lastWatchdogPos) {
+      _watchdogStaleTicks++;
+      if (_watchdogStaleTicks >= _kWatchdogStaleTicksBeforeRecover) {
+        _watchdogRecover();
+      }
+    } else {
+      _lastWatchdogPos = pos;
+      _watchdogStaleTicks = 0;
+      // Lecture qui progresse : après ~30 s saines on ré-arme le budget
+      // de reconnexions (une longue session ne doit pas l'épuiser à
+      // cause de gels transitoires espacés).
+      if (++_watchdogGoodTicks >= _kWatchdogGoodTicksToReset) {
+        _watchdogGoodTicks = 0;
+        _watchdogRecoveries = 0;
+      }
+    }
+  }
+
+  /// Flux gelé détecté → rouvre la source courante (reconnexion auto,
+  /// façon `_retry` mais sans intervention de l'utilisateur).
+  void _watchdogRecover() {
+    _watchdogStaleTicks = 0;
+    _watchdogGoodTicks = 0;
+    if (_watchdogRecoveries >= _kWatchdogMaxRecoveries) {
+      // Trop de reconnexions sans lecture saine durable → flux
+      // probablement mort. On affiche l'erreur (bouton « réessayer »)
+      // et on arrête de marteler le serveur.
+      debugPrint(
+          '[Player] watchdog: abandon après $_watchdogRecoveries reconnexions');
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _errorMessage =
+              'Flux interrompu. Vérifie ta connexion puis réessaie.';
+        });
+      }
+      return;
+    }
+    _watchdogRecoveries++;
+    debugPrint(
+        '[Player] watchdog: flux gelé → reconnexion automatique #$_watchdogRecoveries');
+    if (mounted) {
+      setState(() {
+        _isBuffering = true;
+        // Un gel pendant un replay → on revient au direct à la reconnexion.
+        _behindLive = false;
+      });
+    }
     final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
     _openMedia(url);
   }
