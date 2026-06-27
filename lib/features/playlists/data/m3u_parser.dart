@@ -48,13 +48,24 @@ abstract final class M3uParser {
   static Future<M3uParseResult> parseInBackground(
     String content, {
     required int playlistId,
+    int? maxChannels,
   }) {
-    return compute(_m3uParseEntry, (content, playlistId));
+    return compute(
+      _m3uParseEntry,
+      (content, playlistId, maxChannels ?? kMaxChannelsPerImport),
+    );
   }
 
   /// Parse un contenu M3U complet (String) → liste de chaînes.
-  /// [playlistId] est assigné à chaque chaîne.
-  static M3uParseResult parse(String content, {required int playlistId}) {
+  /// [playlistId] est assigné à chaque chaîne. [maxChannels] borne le nombre de
+  /// chaînes matérialisées (anti-OOM) ; on le PASSE en argument car le parsing
+  /// tourne dans un ISOLATE où l'état statique (DeviceMemory) n'est PAS partagé
+  /// — l'appelant (isolate principal) fournit le plafond adapté à la RAM.
+  static M3uParseResult parse(
+    String content, {
+    required int playlistId,
+    int maxChannels = kMaxChannelsPerImport,
+  }) {
     final List<Channel> channels = <Channel>[];
     final List<String> warnings = <String>[];
 
@@ -95,13 +106,13 @@ abstract final class M3uParser {
 
       if (line.isEmpty) continue;
 
-      // PLAFOND MÉMOIRE (anti-OOM box faibles) : au-delà de
-      // kMaxChannelsPerImport on arrête de matérialiser des chaînes — le reste
-      // de la playlist est ignoré (la source reste utilisable, juste tronquée
-      // à une taille tenable). Aligné sur le plafond de LECTURE du repository.
-      if (channels.length >= kMaxChannelsPerImport) {
+      // PLAFOND MÉMOIRE (anti-OOM box faibles) : au-delà de [maxChannels] on
+      // arrête de matérialiser des chaînes — le reste de la playlist est ignoré
+      // (la source reste utilisable, juste tronquée à une taille tenable).
+      // [maxChannels] est ADAPTÉ À LA RAM par l'appelant (DeviceMemory.channelCap).
+      if (channels.length >= maxChannels) {
         warnings.add(
-          'Limite atteinte ($kMaxChannelsPerImport chaînes) — le reste de la '
+          'Limite atteinte ($maxChannels chaînes) — le reste de la '
           'playlist est ignoré (garde-fou mémoire des appareils faibles).',
         );
         break;
@@ -314,5 +325,5 @@ class _ExtInf {
 // Point d'entrée de l'isolate (`compute`) pour [M3uParser.parseInBackground].
 // Top-level = forme la plus sûre pour `compute` ; le Record (String, int)
 // est « sendable » entre isolates.
-M3uParseResult _m3uParseEntry((String, int) args) =>
-    M3uParser.parse(args.$1, playlistId: args.$2);
+M3uParseResult _m3uParseEntry((String, int, int) args) =>
+    M3uParser.parse(args.$1, playlistId: args.$2, maxChannels: args.$3);

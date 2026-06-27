@@ -300,9 +300,13 @@ class PlaylistRepository {
       if (kDebugMode) debugPrint('[Repo] GET $url');
       final String body = await M3uFetcher.fetch(url, httpClient: client);
 
-      // 3) Parse (dans un ISOLATE → pas de gel UI) + insertion en batch
-      final M3uParseResult parsed =
-          await M3uParser.parseInBackground(body, playlistId: playlistId);
+      // 3) Parse (dans un ISOLATE → pas de gel UI) + insertion en batch.
+      //    Plafond chaînes ADAPTÉ À LA RAM passé à l'isolate (anti-OOM).
+      final M3uParseResult parsed = await M3uParser.parseInBackground(
+        body,
+        playlistId: playlistId,
+        maxChannels: DeviceMemory.channelCap,
+      );
 
       if (parsed.channels.isEmpty) {
         // Source invalide → on lève ; le `catch` retire l'orpheline.
@@ -656,8 +660,11 @@ class PlaylistRepository {
           playlist.m3uUrl!,
           httpClient: client,
         );
-        final M3uParseResult parsed =
-            await M3uParser.parseInBackground(body, playlistId: playlist.id!);
+        final M3uParseResult parsed = await M3uParser.parseInBackground(
+          body,
+          playlistId: playlist.id!,
+          maxChannels: DeviceMemory.channelCap,
+        );
         if (parsed.channels.isEmpty) {
           throw Exception('Aucune chaîne dans la nouvelle version.');
         }

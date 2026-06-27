@@ -1,0 +1,44 @@
+# ============================================================
+#  tests.yml — Tests unitaires Dart (cœur métier)
+# ============================================================
+#  VOLONTAIREMENT SÉPARÉ des workflows de build (build-tv / build-android /
+#  build-prive) : un test rouge NE DOIT JAMAIS bloquer la publication d'un APK.
+#  Ce workflow ne fait que COMPILER et exécuter `flutter test` → il sert de
+#  filet de régression sur la logique critique (parsing, anti-boucle, anti-OOM)
+#  sans toucher au pipeline de release.
+# ============================================================
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+      - "claude/**"
+      - "feature/**"
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    name: flutter test (cœur métier)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      # Génère AppLocalizations (generate: true) au cas où un test futur en
+      # dépendrait. Best-effort : ne bloque pas si rien à générer.
+      - name: Generate AppLocalizations
+        run: flutter gen-l10n || true
+
+      - name: Run unit tests
+        run: flutter test --reporter expanded
