@@ -289,7 +289,13 @@ class PlaylistRepository {
   /// page grâce à l'index PK, ordre natif préservé). [category] = null →
   /// toutes catégories. [afterLocalId] = dernier local_id reçu (0 = début).
   /// Ne charge QUE [limit] chaînes en mémoire.
-  Future<List<Channel>> getChannelsPage({
+  ///
+  /// Renvoie un enregistrement (channels, nextCursor, hasMore) : `nextCursor`
+  /// est le `local_id` de la dernière ligne (à repasser en [afterLocalId] pour
+  /// la page suivante — le modèle Channel ne porte pas le local_id), et
+  /// `hasMore` indique s'il reste probablement des pages (page pleine).
+  Future<({List<Channel> channels, int nextCursor, bool hasMore})>
+      getChannelsPage({
     String? category,
     int afterLocalId = 0,
     int limit = 120,
@@ -318,7 +324,17 @@ class PlaylistRepository {
       orderBy: 'local_id ASC',
       limit: limit,
     );
-    return rows.map(_channelFromMap).toList(growable: false);
+    final List<Channel> channels = rows.map(_channelFromMap).toList(growable: false);
+    // Curseur keyset = local_id de la DERNIÈRE ligne brute (avant tout filtre
+    // applicatif). On le lit sur la map (le modèle Channel ne l'expose pas).
+    final int nextCursor =
+        rows.isNotEmpty ? (rows.last['local_id'] as int) : afterLocalId;
+    return (
+      channels: channels,
+      nextCursor: nextCursor,
+      // Page pleine ⇒ il reste probablement des chaînes derrière.
+      hasMore: rows.length >= limit,
+    );
   }
 
   /// Recherche LIVE par nom (insensible à la casse), bornée à [limit]. SQL
@@ -369,6 +385,7 @@ class PlaylistRepository {
         'channels',
         where: where.toString(),
         whereArgs: args,
+        orderBy: 'local_id ASC', // ordre playlist stable (déterministe)
       );
       out.addAll(rows.map(_channelFromMap));
     }

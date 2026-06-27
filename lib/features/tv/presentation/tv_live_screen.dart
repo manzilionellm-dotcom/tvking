@@ -19,7 +19,6 @@ import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
-import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../device/data/device_identity.dart';
 import '../../epg/data/epg_repository.dart';
@@ -77,47 +76,63 @@ class TvLiveScreen extends StatefulWidget {
 }
 
 class _TvLiveScreenState extends State<TvLiveScreen> {
+  // FLUX = SIGNAL, plus SOURCE. On n'absorbe PLUS toute la liste de chaînes en
+  // RAM (cause racine des crashs mémoire « façon TiviMate » sur grosses
+  // sources). Le flux sert seulement de DÉCLENCHEUR : quand la source vient
+  // d'être (re)synchronisée, on recharge le CATALOGUE (catégories + compteurs)
+  // depuis SQLite via un AGRÉGAT léger, et la grille lit la base par PAGES.
   StreamSubscription<List<Channel>>? _sub;
   StreamSubscription<Set<String>>? _favSub;
-  StreamSubscription<List<String>>? _trendSub;
   StreamSubscription<List<String>>? _recentSub;
   Set<String> _favIds = FavoritesRepository.instance.current;
-  List<String> _trending = TrendingRepository.instance.current;
   List<String> _recentIds = RecentlyWatchedRepository.instance.current;
-  List<Channel> _all = const <Channel>[];
-  List<String> _cats = const <String>[];
+
+  // --- CATALOGUE (catégories + compteurs), chargé par AGRÉGAT SQL ---
+  // ZÉRO chaîne matérialisée ici : juste (nom de catégorie, nombre). Tient
+  // 100 000 chaînes sans pression mémoire.
+  List<({String category, int count})> _catCounts =
+      const <({String category, int count})>[];
+  int _totalCount = 0; // total chaînes LIVE (pseudo-catégorie « Toutes »)
+  Map<String, int> _realCatCounts = const <String, int>{};
+  List<String> _dispCats = const <String>[]; // clés affichées (pseudo + réelles)
   String? _selectedCat;
-  bool _heroShown = false;
-  // Dernière liste BRUTE reçue (avant filtre Mode Enfants) : permet de
-  // re-filtrer instantanément quand le parent bascule le Mode Enfants.
-  List<Channel> _rawLive = const <Channel>[];
+  bool _ready = false; // a-t-on chargé le catalogue au moins une fois ?
 
-  /// Pseudo-catégories en TÊTE de liste (sentinelles internes, pas de vraies
-  /// catégories) : Tendances (les plus regardées EN CE MOMENT) puis Favoris.
-  static const String _kTrendCat = 'k.trending';
+  // --- GRILLE PAGINÉE de la catégorie sélectionnée ---
+  // Seules les pages déjà défilées vivent en RAM (quelques centaines de
+  // chaînes), JAMAIS toute la catégorie. C'est LE principe anti-OOM « TiviMate ».
+  List<Channel> _shownList = const <Channel>[];
+  int _pageCursor = 0; // dernier local_id chargé (pagination keyset)
+  bool _hasMore = true; // reste-t-il des pages à charger ?
+  bool _loadingPage = false; // garde-fou anti-réentrance d'un chargement
+  // « Époque » de la grille : incrémentée à chaque changement de catégorie. Un
+  // chargement de page parti pour l'ancienne catégorie est ignoré à son retour
+  // si l'époque a changé (jamais de mélange de deux catégories dans la grille).
+  int _gridEpoch = 0;
+
+  // --- RANGÉES DÉRIVÉES BORNÉES (résolues par external_id, pas de scan) ---
+  List<Channel> _favCh = const <Channel>[];
+  List<Channel> _recentCh = const <Channel>[];
+
+  /// Pseudo-catégories (sentinelles internes, pas de vraies catégories de la
+  /// source). Résolues par ID (listes BORNÉES) → aucun scan complet de la base.
   static const String _kRecentCat = 'k.recent';
-  static const String _kForYouCat = 'k.foryou'; // « Parce que vous avez regardé »
-  static const String _kFavCat = '★ favoris'; // ★ favoris (clé interne)
+  static const String _kFavCat = '★ favoris'; // ★ favoris (clé interne)
+  static const String _kAllCat = 'k.all'; // « Toutes » (toutes catégories)
 
-  // Re-synchro de la source poussée par le panel. CRUCIAL : sans ça, l'app
-  // ne récupérait la source qu'au tout 1er démarrage ; si le revendeur
-  // activait/poussait APRÈS, la TV restait « Aucune chaîne » jusqu'au
-  // redémarrage. Ici on re-tente tant qu'on n'a aucune chaîne.
+  // Re-synchro de la source poussée par le panel. CRUCIAL : sans ça, l'app ne
+  // récupérait la source qu'au tout 1er démarrage ; si le revendeur activait
+  // APRÈS, la TV restait « Aucune chaîne » jusqu'au redémarrage. Ici on re-tente
+  // tant qu'on n'a aucune chaîne.
   Timer? _syncTimer;
-  // Anti-jank D-pad (P1-5) : le focus d'une catégorie déclenche un _recompute
-  // O(n) (reconstruit _byId/byName sur des dizaines de milliers de chaînes). En
-  // défilement rapide à la télécommande, on DÉBOUNCE pour ne recalculer que sur
-  // la catégorie où le focus se POSE, pas sur chaque case traversée.
+  // Anti-jank D-pad : le focus d'une catégorie change la grille (et lance une
+  // requête SQL de 1re page). En défilement rapide à la télécommande, on
+  // DÉBOUNCE pour ne charger que la catégorie où le focus se POSE.
   Timer? _catDebounce;
-  // Anti-ANR (P0) : les flux favoris/récents/tendances peuvent émettre EN RAFALE
-  // (surtout au retour du lecteur : record() → récents, etc.). Sans coalescence,
-  // chaque émission relançait un _recompute O(n) → plusieurs recalculs lourds
-  // coup sur coup → fil UI saturé → ANR (« app figée » tuée par l'OS). On
-  // FUSIONNE : on planifie UN SEUL recompute après une courte pause.
-  Timer? _recomputeDebounce;
-  // HERO « aperçu live » : chaîne actuellement survolée dans la grille. Le hero
-  // en haut la reflète (logo + EN DIRECT + EPG). DÉBOUNCÉ : en défilement rapide
-  // on ne met à jour le hero (et sa requête EPG) qu'à l'arrêt du focus.
+  // Coalescence des rechargements déclenchés par les flux (catalogue / rangées).
+  Timer? _catalogDebounce;
+  Timer? _railsDebounce;
+  // HERO « aperçu live » : chaîne survolée dans la grille. DÉBOUNCÉ.
   Channel? _previewCh;
   Timer? _previewDebounce;
   // Chaîne à re-focuser au RETOUR du lecteur (désignée par _openPlayer). La
@@ -129,255 +144,306 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   bool _syncing = false;
   RemoteSyncResult? _lastSync;
   // Garde-fou : on borne le nombre de ré-imports AUTOMATIQUES de la source.
-  // Sans ça, si la source ne charge jamais (échec/box surchargée), le timer
-  // 12 s relancerait un fetch+parse complet INDÉFINIMENT (gaspillage CPU/mémoire,
-  // suspect de surchauffe/boucle). Au-delà, seul le bouton manuel ré-essaie.
+  // Sans ça, si la source ne charge jamais (échec/box surchargée), le timer 12 s
+  // relancerait un fetch+parse complet INDÉFINIMENT. Au-delà, seul le bouton
+  // manuel ré-essaie.
   int _autoSyncAttempts = 0;
   static const int _kMaxAutoSync = 6;
+  // Taille d'une page de grille. ~150 chaînes : un écran TV en montre ~20 ; on
+  // garde quelques pages d'avance pour un scroll fluide, RAM bornée.
+  static const int _kPageSize = 150;
   String _mac = '…'; // adresse de CET appareil (à montrer si pas de chaînes)
+  // Clé STABLE de la grille : quand le bandeau « Reprendre » apparaît/disparaît,
+  // la mise en page change ; cette GlobalKey PRÉSERVE le scroll et le focus.
+  final GlobalKey _liveGridKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
-    _ingest(PlaylistRepository.instance.currentChannels);
-    _sub = PlaylistRepository.instance.channelsStream.listen(_ingest);
-    // Favoris en direct : la catégorie « ★ Favoris » se met à jour toute seule.
+    // Favoris en direct : la pseudo-catégorie « ★ Favoris » se met à jour seule.
     FavoritesRepository.instance.initialize();
-    _favSub = FavoritesRepository.instance.favoritesStream.listen((Set<String> ids) {
+    _favSub =
+        FavoritesRepository.instance.favoritesStream.listen((Set<String> ids) {
       _favIds = ids;
-      _scheduleRecompute(); // coalescé (anti-ANR)
-    });
-    // Tendances en direct : la catégorie « 🔥 Tendances » se met à jour seule.
-    TrendingRepository.instance.start();
-    _trendSub = TrendingRepository.instance.stream.listen((List<String> names) {
-      _trending = names;
-      _scheduleRecompute(); // coalescé (anti-ANR)
+      _scheduleRailsRefresh();
     });
     // Historique « 🕒 Récemment » en direct.
     _recentSub =
         RecentlyWatchedRepository.instance.stream.listen((List<String> ids) {
       _recentIds = ids;
-      _scheduleRecompute(); // coalescé (anti-ANR)
+      _scheduleRailsRefresh();
     });
-    // MAC affichée sur l'état vide : sans elle, impossible de savoir à quel
-    // appareil pousser une source dans le panel.
+    // Le flux de chaînes ne sert PLUS que de SIGNAL « la source a changé » : on
+    // recharge alors le catalogue (agrégat SQL) — on n'absorbe plus la liste.
+    _sub = PlaylistRepository.instance.channelsStream
+        .listen((_) => _scheduleCatalogRefresh());
+    // MAC affichée sur l'état vide.
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = m);
     });
-    // MODE SANS ÉCHEC (boucle de redémarrage détectée) : on NE relance PAS
-    // le ré-import automatique de la source — c'est précisément l'étape
-    // gourmande qu'on veut éviter pour casser la boucle. Le bouton manuel
-    // « Synchroniser » reste disponible.
+    // MODE SANS ÉCHEC : on NE relance PAS le ré-import automatique (étape
+    // gourmande qu'on veut éviter pour casser la boucle). Bouton manuel restant.
     if (!BootGuard.instance.safeMode) {
-      _kickSourceSync(); // tout de suite à l'ouverture de l'écran
+      _kickSourceSync();
       _syncTimer = Timer.periodic(const Duration(seconds: 12), (_) {
-        // Borné : on arrête les tentatives AUTO après _kMaxAutoSync essais.
-        if (_all.isEmpty && _autoSyncAttempts < _kMaxAutoSync) {
+        if (_totalCount == 0 && _autoSyncAttempts < _kMaxAutoSync) {
           _autoSyncAttempts++;
           _kickSourceSync();
-        } else if (_all.isNotEmpty) {
+        } else if (_totalCount > 0) {
           _autoSyncAttempts = 0; // la source a fini par charger → on réarme
         }
       });
     }
-    // Mode Enfants : si le parent l'active/désactive, on re-filtre la liste.
+    // Mode Enfants : si le parent l'active/désactive, on recharge (re-filtrage).
     ParentalControls.instance.kidsMode.addListener(_onKidsModeChanged);
+    // Chargement initial : rangées + catalogue + 1re page.
+    _refreshAll();
   }
 
-  /// Re-filtre la liste courante quand le Mode Enfants bascule (sans toucher
-  /// au réseau : on rejoue le dernier lot BRUT à travers le nouveau filtre).
+  /// Le Mode Enfants a basculé → on recharge rangées + catalogue + page courante
+  /// (le filtre Adulte s'applique à chaque page chargée).
   void _onKidsModeChanged() {
-    if (mounted) _ingest(_rawLive);
+    if (mounted) _refreshAll();
   }
 
   @override
   void dispose() {
     _sub?.cancel();
     _favSub?.cancel();
-    _trendSub?.cancel();
     _recentSub?.cancel();
-    TrendingRepository.instance.stop();
     _syncTimer?.cancel();
     _catDebounce?.cancel();
-    _recomputeDebounce?.cancel();
+    _catalogDebounce?.cancel();
+    _railsDebounce?.cancel();
     _previewDebounce?.cancel();
     ParentalControls.instance.kidsMode.removeListener(_onKidsModeChanged);
     super.dispose();
   }
 
-  // ----- État dérivé MÉMOÏSÉ (scalabilité grosses listes) -----
-  // On NE recalcule PAS ces listes à chaque frame : seulement quand une source
-  // change (chaînes, favoris, tendances, historique, catégorie). Indispensable
-  // pour rester fluide même avec des dizaines/centaines de milliers de chaînes.
-  List<Channel> _favCh = const <Channel>[];
-  List<Channel> _trendCh = const <Channel>[];
-  List<Channel> _recentCh = const <Channel>[];
-  List<Channel> _forYouCh = const <Channel>[];
-  List<String> _dispCats = const <String>[];
-  List<Channel> _shownList = const <Channel>[];
-  // Nombre de chaînes par VRAIE catégorie (compteur de la C-List). Construit en
-  // UNE passe O(n) dans _ingest (pas par item de build) → la C-List affiche le
-  // compteur sans rescanner _all à chaque ligne. Les pseudo-catégories
-  // (Tendances/Favoris/…) comptent via la longueur de leur liste dérivée.
-  Map<String, int> _realCatCounts = const <String, int>{};
-  // Index id -> chaîne, construit UNE fois par changement de source (dans
-  // _recompute), réutilisé par les récents et « dernière vue ». Évite des
-  // scans O(n) répétés dans build() (jank sur les très grandes listes).
-  Map<String, Channel> _byId = const <String, Channel>{};
-  // Dernière chaîne vue (alimente le hero « Continuer »), calculée dans
-  // _recompute (pas dans build).
-  Channel? _lastWatchedCh;
-  // Clé STABLE de la grille de chaînes. Quand le bandeau « Reprendre » apparaît
-  // (au retour du lecteur), la mise en page passe de Row à Column → sans clé,
-  // la grille serait RECRÉÉE et le défilement/focus repartiraient au début.
-  // Avec cette GlobalKey, Flutter PRÉSERVE la grille (scroll + focus) : on
-  // revient exactement là où on regardait, pour continuer à scroller.
-  final GlobalKey _liveGridKey = GlobalKey();
+  // ============================================================
+  //  CHARGEMENT DES DONNÉES (SQLite — JAMAIS toute la liste en RAM)
+  // ============================================================
 
-  /// Recalcule TOUT l'état dérivé à partir des sources. Appelé UNIQUEMENT quand
-  /// une source change — jamais dans build().
-  void _recompute() {
-    // Index id -> chaîne (réutilisé : récents + « dernière vue »). Construit
-    // ICI (changement de source) et pas dans build() → zéro scan par frame.
-    _byId = <String, Channel>{
-      for (final Channel c in _all) c.id: c,
-    };
-    // Favoris (ordre playlist).
-    _favCh = _favIds.isEmpty
-        ? const <Channel>[]
-        : _all
-            .where((Channel c) => _favIds.contains(c.id))
-            .toList(growable: false);
-    // Récemment regardées (ordre historique).
-    if (_recentIds.isEmpty || _all.isEmpty) {
-      _recentCh = const <Channel>[];
-    } else {
-      _recentCh = <Channel>[
+  /// Recharge TOUT : rangées dérivées (favoris/récents) puis catalogue + page.
+  Future<void> _refreshAll() async {
+    await _resolveDerivedRails();
+    await _loadCatalog();
+  }
+
+  void _scheduleCatalogRefresh() {
+    _catalogDebounce?.cancel();
+    _catalogDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) _refreshAll();
+    });
+  }
+
+  void _scheduleRailsRefresh() {
+    _railsDebounce?.cancel();
+    _railsDebounce = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) _onRailsChanged();
+    });
+  }
+
+  /// Résout les rangées BORNÉES (favoris/récemment) par external_id : on ne
+  /// charge que les quelques dizaines de chaînes concernées (aucun scan).
+  Future<void> _resolveDerivedRails() async {
+    final bool kids = ParentalControls.instance.kidsMode.value;
+    final PlaylistRepository repo = PlaylistRepository.instance;
+
+    List<Channel> fav = const <Channel>[];
+    if (_favIds.isNotEmpty) {
+      fav = await repo.getChannelsByExternalIds(_favIds.toList(growable: false));
+      if (kids) {
+        fav = fav.where((Channel c) => !_isAdult(c)).toList(growable: false);
+      }
+    }
+
+    List<Channel> recent = const <Channel>[];
+    if (_recentIds.isNotEmpty) {
+      final List<Channel> fetched =
+          await repo.getChannelsByExternalIds(_recentIds);
+      final Map<String, Channel> byId = <String, Channel>{
+        for (final Channel c in fetched) c.id: c,
+      };
+      // Ordre HISTORIQUE (le plus récent d'abord), pas l'ordre playlist.
+      recent = <Channel>[
         for (final String id in _recentIds)
-          if (_byId[id] != null) _byId[id]!,
+          if (byId[id] != null && !(kids && _isAdult(byId[id]!))) byId[id]!,
       ];
     }
-    // Tendances (ordre de popularité, match par nom insensible à la casse).
-    if (_trending.isEmpty || _all.isEmpty) {
-      _trendCh = const <Channel>[];
-    } else {
-      final Map<String, Channel> byName = <String, Channel>{};
-      for (final Channel c in _all) {
-        byName.putIfAbsent(c.cleanName.trim().toLowerCase(), () => c);
+
+    if (!mounted) return;
+    setState(() {
+      _favCh = fav;
+      _recentCh = recent;
+    });
+  }
+
+  /// Les rangées favoris/récents ont changé : on re-résout puis on met à jour la
+  /// liste affichée SI on est sur une pseudo-catégorie (sans toucher la grille
+  /// d'une vraie catégorie → pas de saut de défilement intempestif).
+  Future<void> _onRailsChanged() async {
+    await _resolveDerivedRails();
+    if (!mounted) return;
+    setState(() {
+      _rebuildDispCats();
+      if (_selectedCat == _kFavCat) {
+        _shownList = _favCh;
+      } else if (_selectedCat == _kRecentCat) {
+        _shownList = _recentCh;
       }
-      final List<Channel> out = <Channel>[];
-      final Set<String> seen = <String>{};
-      for (final String name in _trending) {
-        final Channel? c = byName[name.trim().toLowerCase()];
-        if (c != null && seen.add(c.id)) out.add(c);
-      }
-      _trendCh = out;
+    });
+    // Si la pseudo-catégorie affichée s'est VIDÉE, on retombe sur « Toutes ».
+    if ((_selectedCat == _kFavCat && _favCh.isEmpty) ||
+        (_selectedCat == _kRecentCat && _recentCh.isEmpty)) {
+      _applySelection(_kAllCat, force: true);
     }
-    // « Pour vous » : petit MOTEUR DE RECO local (pas d'envoi de données). On
-    // construit un PROFIL DE GOÛT pondéré depuis l'historique récent — genre ET
-    // pays, pondérés par fréquence ET récence (la dernière vue pèse le plus) —
-    // puis on SCORE chaque chaîne candidate (hors déjà-vues/favorites) par
-    // affinité (genre ×2 + pays ×1) et on garde les meilleures. Calculé ICI
-    // (O(n), une fois par changement de source — jamais en build).
-    if (_recentIds.isEmpty || _all.isEmpty) {
-      _forYouCh = const <Channel>[];
-    } else {
-      final Map<ChannelGenre, double> genreScore = <ChannelGenre, double>{};
-      final Map<String, double> countryScore = <String, double>{};
-      int rank = 0;
-      for (final String id in _recentIds.take(20)) {
-        final Channel? c = _byId[id];
-        if (c == null) continue;
-        final double w = 1.0 / (1 + rank); // récence : poids décroissant
-        rank++;
-        if (c.genre != ChannelGenre.other) {
-          genreScore[c.genre] = (genreScore[c.genre] ?? 0) + w;
-        }
-        final String? cc = c.country?.code;
-        if (cc != null && cc.isNotEmpty) {
-          countryScore[cc] = (countryScore[cc] ?? 0) + w;
-        }
-      }
-      if (genreScore.isEmpty && countryScore.isEmpty) {
-        _forYouCh = const <Channel>[];
-      } else {
-        final Set<String> exclude = <String>{..._recentIds, ..._favIds};
-        final List<Channel> cand = <Channel>[];
-        final Map<String, double> score = <String, double>{};
-        for (final Channel c in _all) {
-          if (exclude.contains(c.id)) continue;
-          double s = 0;
-          if (c.genre != ChannelGenre.other) {
-            s += (genreScore[c.genre] ?? 0) * 2.0;
-          }
-          final String? cc = c.country?.code;
-          if (cc != null) s += countryScore[cc] ?? 0;
-          if (s > 0) {
-            score[c.id] = s;
-            cand.add(c);
-          }
-        }
-        // Tri par affinité décroissante ; on garde le top 40.
-        cand.sort((Channel a, Channel b) =>
-            (score[b.id] ?? 0).compareTo(score[a.id] ?? 0));
-        _forYouCh = cand.length > 40 ? cand.sublist(0, 40) : cand;
-      }
-    }
-    // Catégories affichées (pseudo-catégories non vides en tête).
+  }
+
+  /// (Re)construit la liste des catégories affichées à partir des rangées et du
+  /// catalogue courants : pseudo en tête, puis « Toutes », puis les réelles.
+  void _rebuildDispCats() {
     final List<String> cats = <String>[];
-    if (_trendCh.isNotEmpty) cats.add(_kTrendCat);
     if (_favCh.isNotEmpty) cats.add(_kFavCat);
     if (_recentCh.isNotEmpty) cats.add(_kRecentCat);
-    if (_forYouCh.isNotEmpty) cats.add(_kForYouCat);
-    cats.addAll(_cats);
+    if (_catCounts.isNotEmpty) cats.add(_kAllCat);
+    cats.addAll(_catCounts.map((e) => e.category));
     _dispCats = cats;
-    // Grille affichée selon la catégorie sélectionnée (extraite : voir
-    // _recomputeShown — c'est la SEULE partie qui dépend de _selectedCat).
-    _recomputeShown();
-    // Dernière chaîne vue (alimente le hero) — calculée ICI, pas en build.
-    _lastWatchedCh = null;
-    for (final String id in _recentIds) {
-      final Channel? c = _byId[id];
-      if (c != null) {
-        _lastWatchedCh = c;
-        break;
+  }
+
+  /// Charge le CATALOGUE (catégories + compteurs) par AGRÉGAT SQL, puis choisit
+  /// la catégorie courante et charge sa 1re page si besoin. ZÉRO chaîne en RAM
+  /// pour cette étape (juste des compteurs).
+  Future<void> _loadCatalog() async {
+    final PlaylistRepository repo = PlaylistRepository.instance;
+    final List<({String category, int count})> counts =
+        await repo.getActiveCategoryCounts();
+    if (!mounted) return;
+
+    int total = 0;
+    final Map<String, int> real = <String, int>{};
+    for (final e in counts) {
+      total += e.count;
+      real[e.category] = e.count;
+    }
+
+    // La sélection courante est-elle toujours valide ?
+    final String? sel = _selectedCat;
+    final bool selValid = sel != null &&
+        (sel == _kAllCat ||
+            (sel == _kFavCat && _favCh.isNotEmpty) ||
+            (sel == _kRecentCat && _recentCh.isNotEmpty) ||
+            real.containsKey(sel));
+
+    CrashReporting.instance
+        .recordMemoryBreadcrumbWithCounts('tvlive.catalog', channels: total);
+
+    setState(() {
+      _catCounts = counts;
+      _totalCount = total;
+      _realCatCounts = real;
+      _ready = true;
+      _rebuildDispCats();
+    });
+
+    if (!selValid) {
+      // Défaut : 1re VRAIE catégorie (comportement historique), sinon « Toutes ».
+      final String? next = counts.isNotEmpty
+          ? counts.first.category
+          : (_dispCats.isNotEmpty ? _dispCats.first : null);
+      if (next != null) _applySelection(next, force: true);
+    } else if (_shownList.isEmpty && sel != _kFavCat && sel != _kRecentCat) {
+      // Sélection valide mais grille vide (1er chargement) → charger la page.
+      _applySelection(sel!, force: true);
+    }
+  }
+
+  // ============================================================
+  //  PAGINATION DE LA GRILLE
+  // ============================================================
+
+  /// Sélectionne une catégorie : réinitialise la pagination puis charge la 1re
+  /// page (catégorie réelle / « Toutes ») ou affiche la liste BORNÉE (pseudo).
+  void _applySelection(String cat, {bool force = false}) {
+    if (!force && _selectedCat == cat) return;
+    _gridEpoch++; // invalide tout chargement de page en vol
+    _catDebounce?.cancel();
+    setState(() {
+      _selectedCat = cat;
+      _pageCursor = 0;
+      _hasMore = true;
+      _loadingPage = false;
+      if (cat == _kFavCat) {
+        _shownList = _favCh;
+        _hasMore = false;
+      } else if (cat == _kRecentCat) {
+        _shownList = _recentCh;
+        _hasMore = false;
+      } else {
+        _shownList = const <Channel>[];
       }
+    });
+    if (cat != _kFavCat && cat != _kRecentCat) {
+      _loadPage(); // catégorie réelle ou « Toutes »
     }
   }
 
-  /// Recalcule UNIQUEMENT la grille affichée à partir de _selectedCat.
-  ///
-  /// ANTI-ANR (P0, logcat SHIELD « Waited 5000ms for KeyEvent », 100 % CPU) :
-  /// changer de catégorie ne dépend QUE de _selectedCat — pas besoin de
-  /// reconstruire _byId, la map de tendances (qui curait 50 000 noms),
-  /// « Pour vous » ni la dernière vue. Avant, _select() relançait TOUT
-  /// _recompute() → une tempête de RegExp à CHAQUE déplacement D-pad dans les
-  /// catégories → fil UI figé ~3,7 s → ANR. Ici : une seule passe O(n) de
-  /// filtre sur la catégorie BRUTE (trim, aucune curation) → instantané.
-  void _recomputeShown() {
-    if (_selectedCat == _kTrendCat) {
-      _shownList = _trendCh;
-    } else if (_selectedCat == _kFavCat) {
-      _shownList = _favCh;
-    } else if (_selectedCat == _kRecentCat) {
-      _shownList = _recentCh;
-    } else if (_selectedCat == _kForYouCat) {
-      _shownList = _forYouCh;
-    } else if (_selectedCat == null) {
-      _shownList = _all;
-    } else {
-      _shownList = _all
-          .where((Channel c) => _catOf(c) == _selectedCat)
-          .toList(growable: false);
+  /// Charge la PROCHAINE page de la catégorie courante depuis SQLite (keyset).
+  /// Garde-fous : pas de réentrance, pas de chargement s'il n'y a plus de pages,
+  /// et on IGNORE le résultat si l'utilisateur a changé de catégorie entre-temps.
+  Future<void> _loadPage() async {
+    if (_loadingPage || !_hasMore) return;
+    final String? cat = _selectedCat;
+    if (cat == _kFavCat || cat == _kRecentCat) return; // listes en mémoire
+    _loadingPage = true;
+    final int epoch = _gridEpoch;
+    final String? catArg = (cat == null || cat == _kAllCat) ? null : cat;
+    try {
+      final res = await PlaylistRepository.instance.getChannelsPage(
+        category: catArg,
+        afterLocalId: _pageCursor,
+        limit: _kPageSize,
+      );
+      if (!mounted || epoch != _gridEpoch) return; // catégorie changée
+      final bool kids = ParentalControls.instance.kidsMode.value;
+      final List<Channel> page = kids
+          ? res.channels
+              .where((Channel c) => !_isAdult(c))
+              .toList(growable: false)
+          : res.channels;
+      setState(() {
+        _shownList = <Channel>[..._shownList, ...page];
+        _pageCursor = res.nextCursor;
+        _hasMore = res.hasMore;
+      });
+    } finally {
+      // Ne ré-arme le drapeau que si l'époque n'a pas changé (sinon
+      // _applySelection l'a déjà remis à false pour la nouvelle catégorie).
+      if (epoch == _gridEpoch) _loadingPage = false;
     }
   }
 
-  /// Met à jour (débouncé) la chaîne reflétée par le hero quand une carte de la
-  /// grille prend le focus. 120 ms → en défilement rapide, on ne lance pas une
-  /// requête EPG par carte traversée, seulement à l'arrêt.
-  /// Ouvre le lecteur pour [index] de la liste affichée, PUIS — au retour —
-  /// DÉSIGNE la chaîne quittée pour que SA carte reprenne le focus. La grille
-  /// (et donc la catégorie) ne bouge pas → on revient exactement où on était.
+  Future<void> _kickSourceSync() async {
+    if (_syncing) return;
+    if (mounted) setState(() => _syncing = true);
+    final RemoteSyncResult r = await RemoteSourceRepository.sync();
+    if (!mounted) return;
+    setState(() {
+      _syncing = false;
+      _lastSync = r;
+    });
+  }
+
+  /// Vrai si la chaîne est classée « Adulte » (Mode Enfants). O(1) : on lit le
+  /// genre DÉJÀ classé et mis en cache du modèle Channel (jamais de re-classif).
+  static bool _isAdult(Channel c) => c.genre == ChannelGenre.adult;
+
+  // ============================================================
+  //  NAVIGATION LECTEUR
+  // ============================================================
+
+  /// Ouvre le lecteur pour [index] de [list], PUIS — au retour — DÉSIGNE la
+  /// chaîne quittée pour que SA carte reprenne le focus (on revient où on était).
   Future<void> _openPlayerWith(List<Channel> list, int index,
       {required bool fromRail}) async {
     if (index < 0 || index >= list.length) return;
@@ -398,11 +464,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       _openPlayerWith(_shownList, index, fromRail: false);
 
   void _setPreview(Channel c) {
-    // Focuser une CHAÎNE annule tout changement de CATÉGORIE en attente : si un
-    // focus transitoire avait effleuré une catégorie (ex. au retour du lecteur),
-    // sa sélection débouncée ne se déclenchera pas → la catégorie ne « saute »
-    // plus. (Placé AVANT le court-circuit pour s'appliquer même si la chaîne est
-    // identique au précédent aperçu.)
+    // Focuser une CHAÎNE annule tout changement de CATÉGORIE en attente.
     _catDebounce?.cancel();
     if (_previewCh?.id == c.id) return;
     _previewDebounce?.cancel();
@@ -413,148 +475,54 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     });
   }
 
-  /// Compteur affiché dans la C-List pour une catégorie (vraie ou pseudo).
+  // ============================================================
+  //  C-LISTE (catégories)
+  // ============================================================
+
+  /// Compteur affiché dans la C-Liste pour une catégorie (vraie ou pseudo).
   int _countOf(String cat) {
-    if (cat == _kTrendCat) return _trendCh.length;
     if (cat == _kFavCat) return _favCh.length;
     if (cat == _kRecentCat) return _recentCh.length;
-    if (cat == _kForYouCat) return _forYouCh.length;
+    if (cat == _kAllCat) return _totalCount;
     return _realCatCounts[cat] ?? 0;
   }
 
-  /// Sélectionne une catégorie (focus/OK) puis recalcule SEULEMENT la grille
-  /// (pas tout l'état dérivé — cf. _recomputeShown, anti-ANR).
-  void _select(String cat) {
-    if (_selectedCat == cat) return;
-    setState(() {
-      _selectedCat = cat;
-      _recomputeShown();
-    });
-  }
+  /// Sélection immédiate (OK sur une catégorie).
+  void _select(String cat) => _applySelection(cat);
 
-  /// Coalesce les recalculs déclenchés par les flux (favoris/récents/tendances).
-  /// Plusieurs émissions rapprochées → UN SEUL `_recompute` (anti-ANR). Le délai
-  /// court (150 ms) reste imperceptible pour ces mises à jour non urgentes.
-  void _scheduleRecompute() {
-    _recomputeDebounce?.cancel();
-    _recomputeDebounce = Timer(const Duration(milliseconds: 150), () {
-      if (!mounted) return;
-      setState(_recompute);
-    });
-  }
-
-  /// Sélection DÉBOUNCÉE (P1-5) : utilisée par le focus D-pad. On attend que le
-  /// focus se pose ~220 ms avant le _recompute O(n) → plus de jank/ANR quand
-  /// l'utilisateur traverse rapidement les catégories à la télécommande.
+  /// Sélection DÉBOUNCÉE (focus D-pad) : on attend que le focus se pose ~220 ms
+  /// avant de charger la nouvelle catégorie → plus de requête à chaque case
+  /// traversée à la télécommande.
   void _selectDebounced(String cat) {
     if (_selectedCat == cat) return;
     _catDebounce?.cancel();
     _catDebounce = Timer(const Duration(milliseconds: 220), () {
-      if (mounted) _select(cat);
+      if (mounted) _applySelection(cat);
     });
   }
 
-
-  /// Vrai pour les pseudo-catégories spéciales (teintées or).
-  bool _isSpecialCat(String cat) =>
-      cat == _kTrendCat ||
-      cat == _kFavCat ||
-      cat == _kRecentCat ||
-      cat == _kForYouCat;
-
   /// Libellé visible d'une catégorie (les sentinelles sont traduites/ornées).
   String _catLabel(BuildContext context, String cat) {
-    if (cat == _kTrendCat) return '🔥 Tendances';
     if (cat == _kFavCat) return '★ ${context.l10n.navFavorites}';
     if (cat == _kRecentCat) return '🕒 Récemment';
-    if (cat == _kForYouCat) return '✨ Pour vous';
+    if (cat == _kAllCat) return '📺 Toutes';
     // Catégorie réelle : on NETTOIE le libellé affiché (FR|/UK|, RAW, 60fps,
-    // hevc…) via le curateur PARTAGÉ (appel en lecture seule, on ne le modifie
-    // pas) + polissage TV. La clé brute (_catOf) reste INTACTE pour le filtrage.
+    // hevc…) via le curateur PARTAGÉ (lecture seule) + polissage TV. La clé brute
+    // reste INTACTE pour le filtrage SQL.
     final String pretty =
         _tvPretty(_tvStripCodec(TitleCurator.curateCategory(cat)));
     return pretty.isEmpty ? cat : pretty;
   }
 
-  Future<void> _kickSourceSync() async {
-    if (_syncing) return;
-    if (mounted) setState(() => _syncing = true);
-    final RemoteSyncResult r = await RemoteSourceRepository.sync();
-    if (!mounted) return;
-    setState(() {
-      _syncing = false;
-      _lastSync = r;
-    });
-  }
-
-  // Catégorie EXACTEMENT comme écrite dans la source (M3U group-title /
-  // Xtream category_name). On ne reclasse PAS : on respecte l'ordre et les
-  // noms du créateur de la playlist.
-  static String _catOf(Channel c) {
-    final String raw = c.category.trim();
-    return raw.isEmpty ? 'Autres' : raw;
-  }
-
-  /// Vrai si la chaîne est classée « Adulte » (pour le Mode Enfants).
-  /// IMPORTANT (stabilité) : on lit le genre DÉJÀ classé et MIS EN CACHE du
-  /// modèle Channel (O(1) après 1er calcul). Avant, on re-classait via le
-  /// classifieur complet (des dizaines de regex) à CHAQUE rafraîchissement —
-  /// sur une grosse liste (10 000+ chaînes), ça figeait le thread UI → l'app
-  /// « ne s'updatait plus » puis se fermait (ANR). Plus jamais.
-  static bool _isAdult(Channel c) => c.genre == ChannelGenre.adult;
-
-  void _ingest(List<Channel> channels) {
-    // On garde la liste BRUTE pour pouvoir re-filtrer si le Mode Enfants change.
-    _rawLive = channels;
-    // MODE ENFANTS : on retire toutes les chaînes classées « Adulte ». Le filtre
-    // ne s'applique QUE si le parent l'a activé (défaut : désactivé → aucun
-    // changement). Détection via le classifieur existant (mots-clés robustes).
-    final bool kids = ParentalControls.instance.kidsMode.value;
-    final List<Channel> live = channels.where((Channel c) {
-      if (!c.isLive) return false;
-      if (kids && _isAdult(c)) return false;
-      return true;
-    }).toList(growable: false);
-    // Ordre des catégories = ordre d'APPARITION ; dédup via Set (O(1)) pour
-    // rester rapide même sur de très grandes listes (évite un contains O(n²)).
-    final List<String> cats = <String>[];
-    final Set<String> seenCats = <String>{};
-    // Compteur par catégorie calculé ICI, dans la MÊME passe O(n) (pas par ligne
-    // de la C-List) → affichage du compteur sans rescanner _all.
-    final Map<String, int> counts = <String, int>{};
-    for (final Channel c in live) {
-      final String cat = _catOf(c);
-      if (seenCats.add(cat)) cats.add(cat);
-      counts[cat] = (counts[cat] ?? 0) + 1;
-    }
-    if (!mounted) return;
-    CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
-        'tvlive.ingest', channels: live.length);
-    setState(() {
-      _all = live;
-      _cats = cats;
-      _realCatCounts = counts;
-      _selectedCat ??= cats.isNotEmpty ? cats.first : null;
-      // On ne réinitialise PAS si l'utilisateur est sur une pseudo-catégorie
-      // (Tendances/Favoris/Récemment, absente de `cats`) — sinon un refresh de
-      // la source l'en ferait sortir.
-      if (_selectedCat != null &&
-          !_isSpecialCat(_selectedCat!) &&
-          !seenCats.contains(_selectedCat)) {
-        _selectedCat = cats.isNotEmpty ? cats.first : null;
-      }
-      _recompute();
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (_all.isEmpty) {
+    if (_totalCount == 0) {
       // États PRÉCIS au lieu d'un « écran mort » :
-      //  • en cours / réseau → « Recherche de tes chaînes… »
-      //  • source refusée     → identifiants invalides côté panel
-      //  • rien d'assigné     → message d'activation habituel
-      final bool searching = _syncing ||
+      //  • pas encore prêt / en cours / réseau → « Recherche de tes chaînes… »
+      //  • source refusée → identifiants invalides côté panel
+      //  • rien d'assigné → message d'activation habituel
+      final bool searching = !_ready ||
+          _syncing ||
           _lastSync == null ||
           _lastSync == RemoteSyncResult.networkError;
       final String title;
@@ -590,8 +558,6 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                       style: TvTokens.ui(15, color: TvTokens.mutedDim)),
                   const SizedBox(height: 18),
                   // ----- Adresse de CET appareil (MAC) -----
-                  // Visible ICI car l'écran d'activation ne s'affiche plus
-                  // (déjà activé) : le client/revendeur a besoin de la MAC.
                   Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 22, vertical: 14),
@@ -653,23 +619,10 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       );
     }
 
-    final Channel? last = _lastWatchedCh;
-    _heroShown = last != null;
-
-    // ===== C-LIST (catégories) — COMPACTE, EN HAUT À DROITE =====
-    // Déplacée de l'ancienne colonne gauche de 300 px vers une bande haute à
-    // droite : l'espace central est désormais 100 % dédié aux chaînes. Hauteur
-    // BORNÉE (≤5 lignes puis scroll vertical interne), compteur aligné à droite,
-    // noms tronqués (ellipsis). Le focus D-pad circule menu gauche ⇄ C-List ⇄
-    // grille (traversée directionnelle géométrique de Flutter).
+    // ===== C-LISTE (catégories) — COMPACTE, EN HAUT À DROITE =====
     final Widget cList = _CategoryRail(
       cats: _dispCats,
       selectedCat: _selectedCat,
-      // La C-List ne PREND JAMAIS le focus initial / au retour : sinon, en
-      // revenant du lecteur, la 1re catégorie (ex. Angleterre) attrapait le
-      // focus ET se sélectionnait toute seule → on perdait la catégorie ET la
-      // position. Le focus revient désormais sur la CARTE quittée (cf. la
-      // restauration post-frame dans _ChannelCard).
       autofocusFirst: false,
       labelOf: (String c) => _catLabel(context, c),
       countOf: _countOf,
@@ -677,14 +630,14 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       onFocusDebounced: _selectDebounced,
     );
 
-    // Grille de chaînes (virtualisée) — occupe TOUTE la zone principale. Chaque
-    // carte signale son focus → le hero reflète la chaîne survolée.
+    // Grille de chaînes (virtualisée + PAGINÉE depuis SQLite) — toute la zone.
     final Widget grid = _ChannelGrid(
       key: _liveGridKey,
       channels: _shownList,
       onFocused: _setPreview,
       onPlay: _openPlayer,
-      // La grille ne reprend le focus que si le lancement venait de la GRILLE.
+      // Chargement de la page SUIVANTE quand le focus approche du bas de grille.
+      onLoadMore: _loadPage,
       restoreFocusId: _restoreFromRail ? null : _restoreFocusId,
       onRestored: () => _restoreFocusId = null,
     );
@@ -696,7 +649,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        // ----- Bande haute : « Reprendre » (récentes) à gauche + C-LIST à droite
+        // ----- Bande haute : « Reprendre » (récentes) à gauche + C-LISTE à droite
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -705,7 +658,6 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                 channels: recentList,
                 onPlay: (int i) =>
                     _openPlayerWith(recentList, i, fromRail: true),
-                // La rangée ne reprend le focus que si le lancement venait d'ELLE.
                 restoreFocusId: _restoreFromRail ? _restoreFocusId : null,
                 onRestored: () => _restoreFocusId = null,
               ),
@@ -722,9 +674,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   }
 }
 
-/// C-LIST compacte (catégories) — bande HAUTE À DROITE.
+/// C-LISTE compacte (catégories) — bande HAUTE À DROITE.
 ///
-/// Hauteur BORNÉE (≤ _kMaxVisible lignes puis scroll vertical interne) pour ne
+/// Hauteur BORNÉE (<= _kMaxVisible lignes puis scroll vertical interne) pour ne
 /// jamais manger la place des chaînes. Chaque ligne : libellé (ellipsis) +
 /// compteur ALIGNÉ À DROITE. Focusable D-pad (or au focus) ; le focus met à jour
 /// la grille en DÉBOUNCÉ (pas de recalcul sur chaque ligne traversée).
@@ -1241,6 +1193,7 @@ class _ChannelGrid extends StatefulWidget {
       required this.channels,
       this.onFocused,
       this.onPlay,
+      this.onLoadMore,
       this.restoreFocusId,
       this.onRestored});
   final List<Channel> channels;
@@ -1251,6 +1204,11 @@ class _ChannelGrid extends StatefulWidget {
   /// Lance le lecteur pour l'index donné (la navigation est gérée par l'écran,
   /// qui sait ensuite RENDRE le focus à la bonne carte au retour).
   final void Function(int index)? onPlay;
+
+  /// Demande au parent de charger la PAGE SUIVANTE (pagination SQLite) quand le
+  /// focus/scroll approche du bas de la grille. Le parent ignore l'appel s'il
+  /// charge déjà ou s'il n'y a plus de page (garde-fou anti-OOM).
+  final VoidCallback? onLoadMore;
 
   /// Id de la chaîne à re-focuser au retour du lecteur (désigné par l'écran).
   final String? restoreFocusId;
@@ -1308,6 +1266,13 @@ class _ChannelGridState extends State<_ChannelGrid> {
         itemBuilder: (BuildContext context, int i) {
           if (i < 0 || i >= widget.channels.length) {
             return const SizedBox.shrink();
+          }
+          // PAGINATION : quand on construit une carte proche de la FIN de la
+          // page courante, on demande la suivante. Appel sûr pendant build :
+          // onLoadMore (côté écran) ne fait que lancer un Future (le setState
+          // arrive APRÈS l'await), et il est gardé contre la réentrance.
+          if (i >= widget.channels.length - 16) {
+            widget.onLoadMore?.call();
           }
           return _ChannelCard(
             channel: widget.channels[i],
