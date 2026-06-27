@@ -26,6 +26,7 @@ import '../core/tv_tokens.dart';
 import '../data/greeting_repository.dart';
 import 'tv_activation_screen.dart';
 import 'tv_components.dart';
+import 'tv_films_screen.dart';
 import 'tv_guide_grid_screen.dart';
 import 'tv_live_screen.dart';
 import 'tv_recordings_screen.dart';
@@ -697,6 +698,7 @@ class _ContentPanel extends StatelessWidget {
     if (dest == TvDest.news) return const TvSportsScreen();
     if (dest == TvDest.recordings) return const TvRecordingsScreen();
     if (dest == TvDest.guide) return const TvGuideGridScreen();
+    if (dest == TvDest.films) return const TvFilmsScreen();
     if (dest == TvDest.search) return const TvSearchScreen();
     if (dest == TvDest.settings) return const TvSettingsScreen();
     return TvEmptyState(
