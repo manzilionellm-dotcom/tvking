@@ -139,6 +139,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // Préférence de session uniquement (remise à false à chaque écran).
   bool _audioOnly = false;
 
+  // « Revoir le but » (replay live) : on est revenu en arrière dans le
+  // back-buffer du live (demuxer-max-back-bytes). `true` = on est en
+  // différé → on affiche le bouton « ● EN DIRECT » pour revenir au direct.
+  bool _behindLive = false;
+
   // Autoplay « À suivre » (façon YouTube / Netflix) : quand un contenu
   // FINI se termine (VOD, replay/catch-up, enregistrement) et qu'une
   // chaîne suivante existe, on propose un compte à rebours de 10 s qui
@@ -444,6 +449,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _hasError = false;
       _errorMessage = null;
       _isBuffering = true;
+      // Nouvelle chaîne → on repart au DIRECT (on n'est plus en différé).
+      _behindLive = false;
       // (la chaîne change → on le rapporte juste après le setState)
     });
     RecentlyWatchedRepository.instance.record(next.id);
@@ -1209,6 +1216,33 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _toast(label);
   }
 
+  // ============================================================
+  //  « Revoir le but » — replay instantané sur le LIVE
+  // ============================================================
+  //  Le live garde un back-buffer (demuxer-max-back-bytes = 64 MiB),
+  //  donc on peut revenir ~20 s en arrière SANS rien télécharger : on
+  //  rejoue depuis le tampon déjà en mémoire. Un seul tap → on revoit
+  //  l'action. Tant qu'on est en différé, on propose « ● EN DIRECT »
+  //  pour resauter au direct (bord du buffer).
+  void _replayMoment() {
+    final Duration target =
+        _player.state.position - const Duration(seconds: 20);
+    _player.seek(target < Duration.zero ? Duration.zero : target);
+    if (mounted) setState(() => _behindLive = true);
+    _toast('↺ Revoir');
+    _scheduleHideOverlay();
+  }
+
+  /// Resaute au DIRECT (bord du buffer = position la plus récente
+  /// disponible). En live, `state.duration` suit le bord du live.
+  void _goToLive() {
+    final Duration end = _player.state.duration;
+    if (end > Duration.zero) _player.seek(end);
+    if (mounted) setState(() => _behindLive = false);
+    _toast('● En direct');
+    _scheduleHideOverlay();
+  }
+
   /// Handler clavier / télécommande. Branché sur le `Focus` parent
   /// du Scaffold. Retourne `KeyEventResult.handled` quand l'événement
   /// est consommé (pour stopper la propagation) ou `ignored` quand on
@@ -1879,10 +1913,44 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                               ),
                             ],
                           )
-                        : _PlayPauseButton(
-                            isPlaying: _isPlaying,
-                            onTap: _togglePlayPause,
-                          ),
+                        : _liveViaRelay
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: <Widget>[
+                                  // ↺ Revoir le but : rejoue ~20 s en arrière
+                                  // depuis le back-buffer du live (1 tap, zéro
+                                  // téléchargement). Bouton DÉLIBÉRÉ et labellisé
+                                  // — rien à voir avec l'ancienne barre trompeuse.
+                                  _SeekIconButton(
+                                    icon: Icons.replay_rounded,
+                                    semanticsLabel: 'Revoir',
+                                    onTap: _replayMoment,
+                                  ),
+                                  const SizedBox(width: 24),
+                                  _PlayPauseButton(
+                                    isPlaying: _isPlaying,
+                                    onTap: _togglePlayPause,
+                                  ),
+                                  const SizedBox(width: 24),
+                                  // ● EN DIRECT : visible UNIQUEMENT en différé,
+                                  // resaute au bord du live. Sinon un spacer de
+                                  // même largeur garde le play/pause centré.
+                                  if (_behindLive)
+                                    _SeekIconButton(
+                                      icon: Icons.sensors_rounded,
+                                      semanticsLabel: 'En direct',
+                                      color: AppColors.live,
+                                      onTap: _goToLive,
+                                    )
+                                  else
+                                    const SizedBox(width: 64),
+                                ],
+                              )
+                            : _PlayPauseButton(
+                                isPlaying: _isPlaying,
+                                onTap: _togglePlayPause,
+                              ),
               ),
             ),
 
@@ -2068,11 +2136,13 @@ class _SeekIconButton extends StatelessWidget {
     required this.icon,
     required this.onTap,
     required this.semanticsLabel,
+    this.color = Colors.white,
   });
 
   final IconData icon;
   final VoidCallback onTap;
   final String semanticsLabel;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -2088,7 +2158,7 @@ class _SeekIconButton extends StatelessWidget {
             padding: const EdgeInsets.all(10),
             child: Icon(
               icon,
-              color: Colors.white,
+              color: color,
               size: 44,
               shadows: const <Shadow>[
                 Shadow(color: Colors.black54, blurRadius: 16),
