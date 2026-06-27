@@ -14,6 +14,7 @@ import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:palette_generator/palette_generator.dart';
 
 import '../../../core/app/boot_guard.dart';
 import '../../../core/crash/crash_reporting.dart';
@@ -541,8 +542,69 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     _previewDebounce = Timer(const Duration(milliseconds: 120), () {
       if (mounted && _previewCh?.id != c.id) {
         setState(() => _previewCh = c);
+        _updateAmbient(c); // gradient ambiant dérivé du logo (§6)
       }
     });
+  }
+
+  // ============================================================
+  //  GRADIENT AMBIANT (§5.3 / §6) — couleur dominante du logo, EN CACHE
+  // ============================================================
+  //  Le fond de l'écran prend une teinte SOMBRE dérivée de la couleur dominante
+  //  du logo de la chaîne survolée. Conforme RÈGLE 4 (perf) : extraction faite
+  //  UNE seule fois par chaîne (cache statique), sur une image RÉDUITE (48 px),
+  //  et UNIQUEMENT pour le hero (1 image à la fois, après débounce du focus) —
+  //  jamais par carte ni dans une liste. Repli : preset de catégorie, sinon or.
+  Color _ambient = TvTokens.bg;
+  static final Map<String, Color> _domCache = <String, Color>{};
+
+  Color _categoryAmbient(String category) {
+    final String c = category.toLowerCase();
+    if (c.contains('sport')) return const Color(0xFF14322A);
+    if (c.contains('cin') || c.contains('film') || c.contains('movie')) {
+      return const Color(0xFF2A1622);
+    }
+    if (c.contains('info') || c.contains('news') || c.contains('actu')) {
+      return const Color(0xFF1A2436);
+    }
+    if (c.contains('music') || c.contains('musi')) return const Color(0xFF2A1430);
+    if (c.contains('kid') || c.contains('enfant')) return const Color(0xFF2E2410);
+    if (c.contains('doc') || c.contains('natur')) return const Color(0xFF13281C);
+    return const Color(0xFF1C160E); // défaut : or très sombre
+  }
+
+  Future<void> _updateAmbient(Channel c) async {
+    final Color? cached = _domCache[c.id];
+    if (cached != null) {
+      if (mounted) setState(() => _ambient = cached);
+      return;
+    }
+    // Repli immédiat (preset de catégorie) pendant l'extraction.
+    Color color = _categoryAmbient(c.category);
+    if (mounted) setState(() => _ambient = color);
+    final String? url = c.logoUrl;
+    if (url == null || url.isEmpty) {
+      _domCache[c.id] = color;
+      return;
+    }
+    try {
+      final PaletteGenerator pal = await PaletteGenerator.fromImageProvider(
+        CachedNetworkImageProvider(url),
+        size: const Size(48, 48),
+        maximumColorCount: 8,
+      );
+      final Color? dom = pal.vibrantColor?.color ??
+          pal.dominantColor?.color ??
+          pal.mutedColor?.color;
+      if (dom != null) {
+        // On ASSOMBRIT vers un fond matte (jamais une couleur vive plein écran).
+        color = Color.lerp(TvTokens.bg, dom, 0.35)!;
+      }
+    } catch (_) {
+      // extraction impossible → on garde le preset de catégorie.
+    }
+    _domCache[c.id] = color;
+    if (mounted && _previewCh?.id == c.id) setState(() => _ambient = color);
   }
 
   // ============================================================
@@ -718,11 +780,30 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     final List<Channel> recentList =
         _recentCh.length > 8 ? _recentCh.sublist(0, 8) : _recentCh;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Stack(
       children: <Widget>[
-        // ----- Bande haute : « Reprendre » (récentes) à gauche + C-LISTE à droite
-        Row(
+        // ----- FOND AMBIANT (§6) : teinte SOMBRE dérivée de la couleur
+        //  dominante du logo survolé. AnimatedContainer = transition douce au
+        //  changement de focus (PAS une boucle → conforme RÈGLE 7). Aucun flou.
+        Positioned.fill(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 450),
+            curve: Curves.easeOut,
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: const Alignment(-0.5, -0.85),
+                radius: 1.4,
+                colors: <Color>[_ambient, TvTokens.bg],
+                stops: const <double>[0.0, 0.72],
+              ),
+            ),
+          ),
+        ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            // ---- Bande haute : « Reprendre » (récentes) + C-LISTE à droite ----
+            Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Expanded(
@@ -738,9 +819,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
             SizedBox(width: 420, child: cList),
           ],
         ),
-        const SizedBox(height: 14),
-        // ----- Zone principale LIBRE : la grille pleine largeur -----
-        Expanded(child: grid),
+            const SizedBox(height: 14),
+            // ---- Zone principale LIBRE : la grille pleine largeur ----
+            Expanded(child: grid),
+          ],
+        ),
       ],
     );
   }
@@ -945,7 +1028,38 @@ class _ResumeRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (channels.isEmpty) return const SizedBox.shrink();
+    // ÉTAT VIDE (§8) : pas de trou — une invitation discrète.
+    if (channels.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('REPRENDRE',
+                style: TvTokens.ui(13,
+                    weight: FontWeight.w800,
+                    color: TvTokens.mutedDim,
+                    spacing: 2)),
+            const SizedBox(height: 10),
+            Row(
+              children: <Widget>[
+                Icon(Icons.history_rounded, size: 18, color: TvTokens.mutedDim),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    'Tes chaînes récemment regardées apparaîtront ici.',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.ui(14, color: TvTokens.mutedDim),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,

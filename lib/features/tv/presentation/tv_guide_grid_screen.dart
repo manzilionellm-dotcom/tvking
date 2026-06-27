@@ -14,7 +14,6 @@
 // =========================================================
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -25,6 +24,7 @@ import '../../epg/domain/epg_program.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
+import '../core/tv_logo.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_player_screen.dart';
@@ -334,33 +334,12 @@ class _GuideLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Widget fallback = Center(
-      child: Text(channel.initials,
-          style: TextStyle(
-              fontSize: TvDimens.title,
-              fontWeight: FontWeight.w800,
-              color: TvTokens.muted)),
-    );
-    final String? url = channel.logoUrl;
-    return Container(
-      width: 64,
-      height: 64,
-      decoration: BoxDecoration(
-        color: const Color(0xD9141210),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: TvTokens.line),
-      ),
-      padding: const EdgeInsets.all(8),
-      child: (url == null || url.isEmpty)
-          ? fallback
-          : CachedNetworkImage(
-              imageUrl: url,
-              fit: BoxFit.contain,
-              memCacheWidth: 160,
-              memCacheHeight: 160,
-              placeholder: (_, __) => Opacity(opacity: 0.35, child: fallback),
-              errorWidget: (_, __, ___) => fallback,
-            ),
+    // Logo premium partagé + fallback MONOGRAMME (jamais de carte grise, §6).
+    return TvChannelLogo(
+      logoUrl: channel.logoUrl,
+      label: channel.cleanName,
+      size: 64,
+      radius: 8,
     );
   }
 }
