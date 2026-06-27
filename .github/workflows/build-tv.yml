@@ -225,6 +225,42 @@ jobs:
           cp ci/defew-debug.keystore ~/.android/debug.keystore
           echo "Keystore fixe en place (~/.android/debug.keystore)."
 
+      # ----- SIGNATURE RELEASE (CLÉ MAÎTRESSE — identique mobile/Privé) -----
+      # Si le secret est présent, on signe la TV avec TA clé de release
+      # (ci/release.jks.enc déchiffré par ANDROID_KEYSTORE_PASSWORD), la MÊME que
+      # The Few mobile et Privé → UNE seule clé maîtresse pour TOUTES les apps,
+      # et c'est elle qui permet la publication (Play Store inclus).
+      # REPLI : sans secret, on NE casse PAS le build → on garde la signature
+      # debug fixe ci-dessus (sideload OK, mais non publiable Play Store).
+      # ⚠️ Bascule de clé = les box ayant l'APK debug actuel devront réinstaller
+      # UNE fois (signature différente), puis les MAJ s'installeront par-dessus.
+      - name: Configure release signing (clé maîtresse, si secret présent)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -e
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > android/app/release.jks
+            echo "✓ keystore depuis ANDROID_KEYSTORE_BASE64"
+          elif [ -n "$KS_PW" ] && [ -f ci/release.jks.enc ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 \
+              -in ci/release.jks.enc -out android/app/release.jks \
+              -pass pass:"$KS_PW"
+            echo "✓ keystore déchiffré depuis ci/release.jks.enc (clé maîtresse)"
+          else
+            echo "::warning title=Signature debug (TV)::Aucun keystore release (ANDROID_KEYSTORE_PASSWORD absent) → APK TV signé en DEBUG (sideload OK, NON publiable Play Store). Pose le secret pour signer avec la clé maîtresse."
+            exit 0
+          fi
+          # key.properties à la racine android/ (lu par build.gradle.kts).
+          cat > android/key.properties <<EOF
+          storeFile=release.jks
+          storePassword=$KS_PW
+          keyAlias=sevenmotion
+          keyPassword=$KS_PW
+          EOF
+          echo "✓ release.jks + key.properties écrits (TV signée avec la clé maîtresse)."
+
       # ----- Firebase Crashlytics (OPTIONNEL, activé si secret présent) -----
       # Identique au build mobile : si GOOGLE_SERVICES_JSON est posé, on écrit
       # le fichier et on applique le plugin Gradle google-services. Sans secret,
@@ -322,20 +358,58 @@ jobs:
               print('applicationId -> com.manzilionellm.tvking.defewtv (distinct du mobile)')
           else:
               print('WARN: applicationId tv_king introuvable')
-          # 2) Forcer v1/v2/v3 sur la config debug (clé fixe utilisée en release).
-          if 'enableV1Signing' not in s:
-              s = s.replace(
-                  'android {',
-                  ('android {\n'
-                   '    signingConfigs {\n'
-                   '        getByName("debug") {\n'
-                   '            enableV1Signing = true\n'
-                   '            enableV2Signing = true\n'
-                   '            enableV3Signing = true\n'
-                   '        }\n'
-                   '    }'),
-                  1)
-              print('signatures v1/v2/v3 forcees sur debug')
+          # 2) SIGNATURE : clé maîtresse RELEASE (même que mobile/Privé) + repli
+          #    debug. On injecte les imports + le chargeur key.properties + un bloc
+          #    signingConfigs contenant DEUX configs, toutes deux en v1/v2/v3
+          #    (compat box) : `debug` (clé fixe) et `release` (clé maîtresse lue
+          #    depuis key.properties). Puis on bascule le buildType release sur la
+          #    clé maîtresse SI key.properties existe (secret présent), sinon debug.
+          if 'signingConfigs.getByName("release")' not in s:
+              if 'import java.util.Properties' not in s:
+                  s = 'import java.util.Properties\nimport java.io.FileInputStream\n\n' + s
+              loader = (
+                  'val keystoreProperties = Properties()\n'
+                  'val keystorePropertiesFile = rootProject.file("key.properties")\n'
+                  'if (keystorePropertiesFile.exists()) {\n'
+                  '    keystoreProperties.load(FileInputStream(keystorePropertiesFile))\n'
+                  '}\n\n'
+              )
+              s = s.replace('android {', loader + 'android {', 1)
+              signing = (
+                  'android {\n'
+                  '    signingConfigs {\n'
+                  '        getByName("debug") {\n'
+                  '            enableV1Signing = true\n'
+                  '            enableV2Signing = true\n'
+                  '            enableV3Signing = true\n'
+                  '        }\n'
+                  '        create("release") {\n'
+                  '            val sf = keystoreProperties.getProperty("storeFile")\n'
+                  '            if (sf != null) {\n'
+                  '                storeFile = file(sf)\n'
+                  '                storePassword = keystoreProperties.getProperty("storePassword")\n'
+                  '                keyAlias = keystoreProperties.getProperty("keyAlias")\n'
+                  '                keyPassword = keystoreProperties.getProperty("keyPassword")\n'
+                  '            }\n'
+                  '            enableV1Signing = true\n'
+                  '            enableV2Signing = true\n'
+                  '            enableV3Signing = true\n'
+                  '        }\n'
+                  '    }'
+              )
+              s = s.replace('android {', signing, 1)
+              old = 'signingConfig = signingConfigs.getByName("debug")'
+              new = ('signingConfig = if (keystorePropertiesFile.exists()) '
+                     'signingConfigs.getByName("release") else '
+                     'signingConfigs.getByName("debug")')
+              if old in s:
+                  s = s.replace(old, new, 1)
+                  print('release buildType -> cle maitresse si presente, sinon debug')
+              else:
+                  print('WARN: ligne signingConfig debug introuvable (release reste debug)')
+              print('signingConfigs debug+release injectes (v1/v2/v3)')
+          else:
+              print('signing deja patche')
           open(f, 'w').write(s)
           PYEOF
           grep -nE "minSdk|enableV1Signing|enableV2Signing|enableV3Signing" android/app/build.gradle.kts || true
