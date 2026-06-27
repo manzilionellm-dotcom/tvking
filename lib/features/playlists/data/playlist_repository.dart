@@ -383,9 +383,14 @@ class PlaylistRepository {
     List<Channel> channels,
     String epgUrl,
   ) async {
+    await _syncEpgForIds(channels.map((Channel c) => c.id).toSet(), epgUrl);
+  }
+
+  /// Variante par IDs : l'import EN FLUX (Xtream) ne garde PAS la liste
+  /// complète des Channel en mémoire ; il collecte juste leurs ids (légers)
+  /// pour filtrer l'EPG.
+  Future<void> _syncEpgForIds(Set<String> ids, String epgUrl) async {
     try {
-      final Set<String> ids =
-          channels.map((Channel c) => c.id).toSet();
       await EpgRepository.instance.downloadAndImport(
         url: epgUrl,
         knownChannelIds: ids,
@@ -491,24 +496,34 @@ class PlaylistRepository {
       );
       playlistId = await _insertPlaylist(newPlaylist);
 
-      // 3) Récupère catégories + chaînes
+      // 3) IMPORT EN FLUX (anti-OOM) : catégorie par catégorie, chaque petit
+      //    lot inséré IMMÉDIATEMENT en base puis jeté → on ne tient JAMAIS la
+      //    liste complète des chaînes ni un gros arbre JSON en mémoire (c'était
+      //    le pic ~plusieurs centaines de Mo qui tuait les box 1 Go). On ne
+      //    collecte que les IDS (légers) pour filtrer l'EPG ensuite.
       final Map<String, String> cats = await xtream.fetchLiveCategories();
-      final List<Channel> channels = await xtream.fetchLiveChannels(
+      final Set<String> epgIds = <String>{};
+      final int count = await xtream.importLiveChannelsStreamed(
         playlistId: playlistId,
         categories: cats,
+        onBatch: (List<Channel> batch) async {
+          await _insertChannels(batch);
+          for (final Channel c in batch) {
+            epgIds.add(c.id);
+          }
+        },
       );
 
-      if (channels.isEmpty) {
+      if (count == 0) {
         // Compte sans chaîne live → on lève ; le `catch` retire l'orpheline.
         throw Exception(
           'Aucune chaîne live disponible pour ce compte Xtream.',
         );
       }
 
-      await _insertChannels(channels);
       final Playlist saved = newPlaylist.copyWith(
         id: playlistId,
-        channelCount: channels.length,
+        channelCount: count,
         lastSyncedAt: DateTime.now().millisecondsSinceEpoch,
       );
       await _updatePlaylistMetrics(saved);
@@ -519,9 +534,10 @@ class PlaylistRepository {
       // `getAllChannels` ne renvoie que les chaînes de la playlist active.
       await setActivePlaylist(playlistId);
 
-      // EPG auto en arrière-plan (Xtream a sa propre URL XMLTV)
+      // EPG auto en arrière-plan (Xtream a sa propre URL XMLTV). On passe les
+      // IDS collectés pendant l'import en flux (pas de liste Channel gardée).
       if (newPlaylist.epgUrl != null) {
-        unawaited(_syncEpgFor(channels, newPlaylist.epgUrl!));
+        unawaited(_syncEpgForIds(epgIds, newPlaylist.epgUrl!));
       }
       return saved;
     } catch (_) {

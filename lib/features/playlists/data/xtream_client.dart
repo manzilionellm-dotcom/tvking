@@ -143,38 +143,8 @@ class XtreamClient {
       // source est juste tronquée à une taille tenable sur box faible.
       if (channels.length >= DeviceMemory.channelCap) break;
       if (item is! Map<String, dynamic>) continue;
-
-      final String streamId = item['stream_id']?.toString() ?? '';
-      if (streamId.isEmpty) continue;
-
-      final String name = item['name']?.toString() ?? '(Sans nom)';
-      final String categoryId = item['category_id']?.toString() ?? '';
-      final String category = cats[categoryId] ?? 'Autres';
-      final String? streamIcon = item['stream_icon']?.toString();
-      final dynamic tvArchiveRaw = item['tv_archive'];
-      final int tvArchive = tvArchiveRaw is int
-          ? tvArchiveRaw
-          : int.tryParse(tvArchiveRaw?.toString() ?? '') ?? 0;
-      final dynamic tvArchiveDurationRaw = item['tv_archive_duration'];
-      final int tvArchiveDuration = tvArchiveDurationRaw is int
-          ? tvArchiveDurationRaw
-          : int.tryParse(tvArchiveDurationRaw?.toString() ?? '') ?? 0;
-
-      channels.add(
-        Channel(
-          id: 'xtream-$streamId',
-          playlistId: playlistId,
-          name: name,
-          category: category.isEmpty ? 'Autres' : category,
-          streamUrl: _buildLiveStreamUrl(streamId),
-          isLive: true,
-          logoUrl: (streamIcon == null || streamIcon.isEmpty)
-              ? null
-              : streamIcon,
-          catchupSupported: tvArchive == 1,
-          catchupDays: tvArchive == 1 ? tvArchiveDuration : null,
-        ),
-      );
+      final Channel? ch = _mapLiveStream(item, playlistId, cats);
+      if (ch != null) channels.add(ch);
     }
 
     if (kDebugMode) {
@@ -183,6 +153,115 @@ class XtreamClient {
     CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
         'xtream.channels.built', channels: channels.length);
     return channels;
+  }
+
+  /// Mappe UN objet JSON `get_live_streams` en [Channel] (parsing défensif :
+  /// Xtream renvoie souvent des nombres en String). Renvoie `null` si l'entrée
+  /// est inexploitable (pas de stream_id).
+  Channel? _mapLiveStream(
+    Map<String, dynamic> item,
+    int playlistId,
+    Map<String, String> cats,
+  ) {
+    final String streamId = item['stream_id']?.toString() ?? '';
+    if (streamId.isEmpty) return null;
+    final String name = item['name']?.toString() ?? '(Sans nom)';
+    final String categoryId = item['category_id']?.toString() ?? '';
+    final String category = cats[categoryId] ?? 'Autres';
+    final String? streamIcon = item['stream_icon']?.toString();
+    final dynamic tvArchiveRaw = item['tv_archive'];
+    final int tvArchive = tvArchiveRaw is int
+        ? tvArchiveRaw
+        : int.tryParse(tvArchiveRaw?.toString() ?? '') ?? 0;
+    final dynamic tvArchiveDurationRaw = item['tv_archive_duration'];
+    final int tvArchiveDuration = tvArchiveDurationRaw is int
+        ? tvArchiveDurationRaw
+        : int.tryParse(tvArchiveDurationRaw?.toString() ?? '') ?? 0;
+    return Channel(
+      id: 'xtream-$streamId',
+      playlistId: playlistId,
+      name: name,
+      category: category.isEmpty ? 'Autres' : category,
+      streamUrl: _buildLiveStreamUrl(streamId),
+      isLive: true,
+      logoUrl: (streamIcon == null || streamIcon.isEmpty) ? null : streamIcon,
+      catchupSupported: tvArchive == 1,
+      catchupDays: tvArchive == 1 ? tvArchiveDuration : null,
+    );
+  }
+
+  /// IMPORT LIVE EN FLUX (anti-OOM, le cœur du soin 15k–100k chaînes).
+  ///
+  /// Au lieu de télécharger+décoder TOUT `get_live_streams` d'un coup (un JSON
+  /// de 15k+ objets → pic mémoire ~plusieurs centaines de Mo → kill natif sur
+  /// box 1 Go), on importe **catégorie par catégorie** :
+  ///   pour chaque catégorie → `get_live_streams&category_id=X` (petite
+  ///   réponse) → on mappe le petit lot → `onBatch(lot)` l'insère
+  ///   IMMÉDIATEMENT en base → on jette le lot. À aucun moment on ne tient une
+  ///   `List<Channel>` géante ni un gros arbre JSON.
+  ///
+  /// Robustesse :
+  ///  • Dédup par id (`seen`) : certains serveurs ignorent le filtre et
+  ///    renvoient tout à chaque appel → on n'insère jamais de doublon, et le
+  ///    plafond + l'arrêt anticipé évitent le travail inutile.
+  ///  • Une catégorie qui échoue n'arrête pas les autres.
+  ///  • REPLI : si aucune catégorie n'a produit de chaîne (serveur sans
+  ///    filtrage), on retombe sur le fetch global capé [fetchLiveChannels].
+  ///
+  /// Renvoie le nombre total de chaînes importées (= insérées).
+  Future<int> importLiveChannelsStreamed({
+    required int playlistId,
+    Map<String, String>? categories,
+    required Future<void> Function(List<Channel> batch) onBatch,
+  }) async {
+    final Map<String, String> cats =
+        categories ?? await fetchLiveCategories();
+    final Set<String> seen = <String>{};
+    int total = 0;
+
+    for (final MapEntry<String, String> entry in cats.entries) {
+      if (total >= DeviceMemory.channelCap) break;
+      List<dynamic> raw;
+      try {
+        raw = await _callApiList(
+          action: 'get_live_streams',
+          categoryId: entry.key,
+        );
+      } catch (_) {
+        // Une catégorie injoignable/malformée ne bloque pas l'import global.
+        continue;
+      }
+      final List<Channel> batch = <Channel>[];
+      for (final dynamic item in raw) {
+        if (total + batch.length >= DeviceMemory.channelCap) break;
+        if (item is! Map<String, dynamic>) continue;
+        final Channel? ch = _mapLiveStream(item, playlistId, cats);
+        if (ch == null) continue;
+        if (!seen.add(ch.id)) continue; // dédup (serveurs ignorant le filtre)
+        batch.add(ch);
+      }
+      // `raw` (l'arbre JSON de CETTE catégorie) devient collectable ici.
+      if (batch.isNotEmpty) {
+        await onBatch(batch);
+        total += batch.length;
+        CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
+            'xtream.stream.batch', channels: total);
+      }
+    }
+
+    // REPLI : serveur qui ne sait pas filtrer par catégorie (0 chaîne obtenue
+    // ainsi) → on tente l'ancien chemin global, déjà capé à channelCap.
+    if (total == 0) {
+      final List<Channel> all = await fetchLiveChannels(
+        playlistId: playlistId,
+        categories: cats,
+      );
+      if (all.isNotEmpty) {
+        await onBatch(all);
+        total = all.length;
+      }
+    }
+    return total;
   }
 
   // ============================================================
@@ -382,8 +461,13 @@ class XtreamClient {
   }
 
   /// Appel API qui retourne une List JSON (cas get_live_streams, etc.).
-  Future<List<dynamic>> _callApiList({required String action}) async {
-    final Uri uri = _buildUri(action: action);
+  /// [categoryId] (optionnel) restreint la réponse à une seule catégorie →
+  /// import EN FLUX, mémoire bornée à un petit lot.
+  Future<List<dynamic>> _callApiList({
+    required String action,
+    String? categoryId,
+  }) async {
+    final Uri uri = _buildUri(action: action, categoryId: categoryId);
     final String body = await _getBody(uri);
     // Breadcrumb : taille du corps HTTP reçu (suspect OOM n°1 sur grosse source).
     CrashReporting.instance
@@ -411,13 +495,16 @@ class XtreamClient {
   // Point d'entrée de l'isolate pour le décodage JSON (cf. _callApiList).
   // Doit rester top-level/statique pour être envoyable à `compute`.
 
-  Uri _buildUri({required String? action}) {
+  Uri _buildUri({required String? action, String? categoryId}) {
     final Uri base = Uri.parse('$_baseUrl/player_api.php');
     final Map<String, String> queryParameters = <String, String>{
       ...base.queryParameters,
       'username': username,
       'password': password,
       if (action != null) 'action': action,
+      // Filtre par catégorie (import EN FLUX) : le serveur ne renvoie alors que
+      // les chaînes de CETTE catégorie → petite réponse → mémoire bornée.
+      if (categoryId != null && categoryId.isNotEmpty) 'category_id': categoryId,
     };
     return base.replace(queryParameters: queryParameters);
   }
