@@ -114,10 +114,14 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // --- RANGÉES DÉRIVÉES BORNÉES (résolues par external_id, pas de scan) ---
   List<Channel> _favCh = const <Channel>[];
   List<Channel> _recentCh = const <Channel>[];
+  // « Pour vous » : reco BORNÉE (top catégories préférées -> 1re page SQL de
+  // chacune, hors déjà-vues). Jamais de scan complet -> anti-OOM.
+  List<Channel> _forYouCh = const <Channel>[];
 
   /// Pseudo-catégories (sentinelles internes, pas de vraies catégories de la
   /// source). Résolues par ID (listes BORNÉES) → aucun scan complet de la base.
   static const String _kRecentCat = 'k.recent';
+  static const String _kForYouCat = 'k.foryou';
   static const String _kFavCat = '★ favoris'; // ★ favoris (clé interne)
   static const String _kAllCat = 'k.all'; // « Toutes » (toutes catégories)
 
@@ -228,7 +232,54 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   /// Recharge TOUT : rangées dérivées (favoris/récents) puis catalogue + page.
   Future<void> _refreshAll() async {
     await _resolveDerivedRails();
+    await _computeForYou();
     await _loadCatalog();
+  }
+
+  /// Calcule « Pour vous » de façon BORNÉE (anti-OOM) : on déduit les catégories
+  /// préférées de l'historique (poids 2) et des favoris (poids 1), puis on
+  /// charge la 1re PAGE SQL de chacune des meilleures catégories (jamais toute
+  /// la base), en excluant ce qui est déjà vu/favori. Cap à 60 chaînes.
+  Future<void> _computeForYou() async {
+    final Map<String, double> catScore = <String, double>{};
+    void tally(List<Channel> src, double w) {
+      for (final Channel c in src) {
+        final String cat =
+            c.category.trim().isEmpty ? 'Autres' : c.category.trim();
+        catScore[cat] = (catScore[cat] ?? 0) + w;
+      }
+    }
+
+    tally(_recentCh, 2.0); // l'historique pèse le plus
+    tally(_favCh, 1.0);
+    if (catScore.isEmpty) {
+      if (mounted) setState(() => _forYouCh = const <Channel>[]);
+      return;
+    }
+    // Top catégories préférées (au plus 4).
+    final List<MapEntry<String, double>> ranked = catScore.entries.toList()
+      ..sort((MapEntry<String, double> a, MapEntry<String, double> b) =>
+          b.value.compareTo(a.value));
+    final List<String> prefCats =
+        ranked.take(4).map((MapEntry<String, double> e) => e.key).toList();
+
+    final Set<String> exclude = <String>{..._recentIds, ..._favIds};
+    final bool kids = ParentalControls.instance.kidsMode.value;
+    final List<Channel> out = <Channel>[];
+    final Set<String> seen = <String>{};
+    for (final String cat in prefCats) {
+      final page = await PlaylistRepository.instance
+          .getChannelsPage(category: cat, limit: 40);
+      for (final Channel c in page.channels) {
+        if (exclude.contains(c.id)) continue;
+        if (kids && _isAdult(c)) continue;
+        if (seen.add(c.id)) out.add(c);
+        if (out.length >= 60) break;
+      }
+      if (out.length >= 60) break;
+    }
+    if (!mounted) return;
+    setState(() => _forYouCh = out);
   }
 
   void _scheduleCatalogRefresh() {
@@ -285,6 +336,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   /// d'une vraie catégorie → pas de saut de défilement intempestif).
   Future<void> _onRailsChanged() async {
     await _resolveDerivedRails();
+    await _computeForYou();
     if (!mounted) return;
     setState(() {
       _rebuildDispCats();
@@ -292,11 +344,14 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
         _shownList = _favCh;
       } else if (_selectedCat == _kRecentCat) {
         _shownList = _recentCh;
+      } else if (_selectedCat == _kForYouCat) {
+        _shownList = _forYouCh;
       }
     });
     // Si la pseudo-catégorie affichée s'est VIDÉE, on retombe sur « Toutes ».
     if ((_selectedCat == _kFavCat && _favCh.isEmpty) ||
-        (_selectedCat == _kRecentCat && _recentCh.isEmpty)) {
+        (_selectedCat == _kRecentCat && _recentCh.isEmpty) ||
+        (_selectedCat == _kForYouCat && _forYouCh.isEmpty)) {
       _applySelection(_kAllCat, force: true);
     }
   }
@@ -305,6 +360,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   /// catalogue courants : pseudo en tête, puis « Toutes », puis les réelles.
   void _rebuildDispCats() {
     final List<String> cats = <String>[];
+    if (_forYouCh.isNotEmpty) cats.add(_kForYouCat);
     if (_favCh.isNotEmpty) cats.add(_kFavCat);
     if (_recentCh.isNotEmpty) cats.add(_kRecentCat);
     if (_catCounts.isNotEmpty) cats.add(_kAllCat);
@@ -334,6 +390,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
         (sel == _kAllCat ||
             (sel == _kFavCat && _favCh.isNotEmpty) ||
             (sel == _kRecentCat && _recentCh.isNotEmpty) ||
+            (sel == _kForYouCat && _forYouCh.isNotEmpty) ||
             real.containsKey(sel));
 
     CrashReporting.instance
@@ -353,9 +410,15 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
           ? counts.first.category
           : (_dispCats.isNotEmpty ? _dispCats.first : null);
       if (next != null) _applySelection(next, force: true);
-    } else if (_shownList.isEmpty && sel != _kFavCat && sel != _kRecentCat) {
+    } else if (_shownList.isEmpty &&
+        sel != _kFavCat &&
+        sel != _kRecentCat &&
+        sel != _kForYouCat) {
       // Sélection valide mais grille vide (1er chargement) → charger la page.
       _applySelection(sel!, force: true);
+    } else if (sel == _kForYouCat) {
+      // « Pour vous » vient peut-être d'être recalculé → on rafraîchit la grille.
+      setState(() => _shownList = _forYouCh);
     }
   }
 
@@ -380,11 +443,14 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       } else if (cat == _kRecentCat) {
         _shownList = _recentCh;
         _hasMore = false;
+      } else if (cat == _kForYouCat) {
+        _shownList = _forYouCh;
+        _hasMore = false;
       } else {
         _shownList = const <Channel>[];
       }
     });
-    if (cat != _kFavCat && cat != _kRecentCat) {
+    if (cat != _kFavCat && cat != _kRecentCat && cat != _kForYouCat) {
       _loadPage(); // catégorie réelle ou « Toutes »
     }
   }
@@ -395,7 +461,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   Future<void> _loadPage() async {
     if (_loadingPage || !_hasMore) return;
     final String? cat = _selectedCat;
-    if (cat == _kFavCat || cat == _kRecentCat) return; // listes en mémoire
+    // Pseudo-catégories = listes déjà en mémoire (pas de pagination SQL).
+    if (cat == _kFavCat || cat == _kRecentCat || cat == _kForYouCat) return;
     _loadingPage = true;
     final int epoch = _gridEpoch;
     final String? catArg = (cat == null || cat == _kAllCat) ? null : cat;
@@ -484,6 +551,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   int _countOf(String cat) {
     if (cat == _kFavCat) return _favCh.length;
     if (cat == _kRecentCat) return _recentCh.length;
+    if (cat == _kForYouCat) return _forYouCh.length;
     if (cat == _kAllCat) return _totalCount;
     return _realCatCounts[cat] ?? 0;
   }
@@ -506,6 +574,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   String _catLabel(BuildContext context, String cat) {
     if (cat == _kFavCat) return '★ ${context.l10n.navFavorites}';
     if (cat == _kRecentCat) return '🕒 Récemment';
+    if (cat == _kForYouCat) return '✨ Pour vous';
     if (cat == _kAllCat) return '📺 Toutes';
     // Catégorie réelle : on NETTOIE le libellé affiché (FR|/UK|, RAW, 60fps,
     // hevc…) via le curateur PARTAGÉ (lecture seule) + polissage TV. La clé brute
