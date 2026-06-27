@@ -17,6 +17,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/notifications/notification_service.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
@@ -37,10 +38,56 @@ class TvChannelProgramsScreen extends StatefulWidget {
 class _TvChannelProgramsScreenState extends State<TvChannelProgramsScreen> {
   late Future<List<EpgProgram>> _future;
 
+  // Heures de début (startTime) des émissions pour lesquelles un RAPPEL est posé
+  // pendant cette session → permet d'afficher l'icône alarme « pleine » et de
+  // basculer (poser/retirer). L'id de notif est dérivé de (chaîne, startTime),
+  // donc l'opération est idempotente même entre deux ouvertures.
+  final Set<int> _reminders = <int>{};
+
   @override
   void initState() {
     super.initState();
     _future = EpgRepository.instance.todayPrograms(widget.channel.id);
+  }
+
+  /// Pose ou retire un rappel (alarme 5 min avant) sur une émission à venir.
+  Future<void> _toggleReminder(EpgProgram p) async {
+    final bool alreadySet = _reminders.contains(p.startTime);
+    if (alreadySet) {
+      await NotificationService.instance
+          .cancelProgramReminder(widget.channel.id, p.startTime);
+      if (!mounted) return;
+      setState(() => _reminders.remove(p.startTime));
+      _toast('Rappel retiré');
+      return;
+    }
+    final bool ok = await NotificationService.instance.scheduleProgramReminder(
+      channelId: widget.channel.id,
+      channelName: widget.channel.cleanName,
+      title: p.title,
+      startMs: p.startTime,
+    );
+    if (!mounted) return;
+    if (ok) {
+      setState(() => _reminders.add(p.startTime));
+      _toast('Rappel posé · 5 min avant');
+    } else {
+      // Échec : créneau trop proche/passé, ou rappels coupés dans les réglages.
+      _toast('Rappel impossible (trop proche ou rappels désactivés)');
+    }
+  }
+
+  void _toast(String msg) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: TvTokens.card,
+        content: Text(msg,
+            style: TextStyle(color: TvTokens.text, fontSize: TvDimens.body)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
@@ -93,6 +140,8 @@ class _TvChannelProgramsScreenState extends State<TvChannelProgramsScreen> {
                       itemBuilder: (BuildContext context, int i) => _ProgramRow(
                         program: programs[i],
                         autofocus: i == liveIndex,
+                        hasReminder: _reminders.contains(programs[i].startTime),
+                        onToggleReminder: () => _toggleReminder(programs[i]),
                       ),
                     );
                   },
@@ -127,10 +176,17 @@ class _TvChannelProgramsScreenState extends State<TvChannelProgramsScreen> {
 enum _ProgState { past, live, future }
 
 class _ProgramRow extends StatelessWidget {
-  const _ProgramRow({required this.program, this.autofocus = false});
+  const _ProgramRow({
+    required this.program,
+    this.autofocus = false,
+    this.hasReminder = false,
+    this.onToggleReminder,
+  });
 
   final EpgProgram program;
   final bool autofocus;
+  final bool hasReminder;
+  final VoidCallback? onToggleReminder;
 
   _ProgState _stateFor(DateTime now) {
     if (program.isLiveAt(now)) return _ProgState.live;
@@ -142,12 +198,13 @@ class _ProgramRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final _ProgState state = _stateFor(DateTime.now());
     final bool isLive = state == _ProgState.live;
+    final bool isFuture = state == _ProgState.future;
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.small,
-      // OK ne lance RIEN (le direct continue derrière) : l'écran est informatif.
-      // On revient au lecteur d'une pression sur Retour.
-      onSelect: () {},
+      // À VENIR → OK pose/retire un RAPPEL (alarme 5 min avant). LIVE/passé →
+      // OK ne lance rien (le direct continue derrière) ; Retour revient au lecteur.
+      onSelect: isFuture ? onToggleReminder : () {},
       builder: (BuildContext context, bool focused) {
         final Color border = focused
             ? TvTokens.gold
@@ -207,6 +264,18 @@ class _ProgramRow extends StatelessWidget {
                   ],
                 ),
               ),
+              // À VENIR : indicateur de RAPPEL. Cloche pleine (or) = rappel posé ;
+              // cloche vide = OK pour poser un rappel. (Rien pour live/passé.)
+              if (isFuture) ...<Widget>[
+                const SizedBox(width: 12),
+                Icon(
+                  hasReminder
+                      ? Icons.notifications_active_rounded
+                      : Icons.notifications_none_rounded,
+                  size: 26,
+                  color: hasReminder ? TvTokens.gold : TvTokens.mutedDim,
+                ),
+              ],
             ],
           ),
         );
