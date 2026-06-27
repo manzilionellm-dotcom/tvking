@@ -40,10 +40,9 @@ jobs:
       - name: Generate AppLocalizations
         run: flutter gen-l10n || true
 
-      # On cible les suites FIABLES (cœur métier durci : anti-boucle, anti-OOM,
-      # parsing, chiffrement). Les tests `cast/` PRÉ-EXISTANTS sont exclus pour
-      # l'instant : plusieurs sont périmés (assertions sur d'anciens messages) ou
-      # n'initialisent pas le binding de test → à nettoyer dans un lot dédié.
-      # Élargir ce périmètre au fur et à mesure que les suites repassent au vert.
-      - name: Run unit tests (cœur métier)
-        run: flutter test test/core test/features/playlists --reporter expanded
+      # Suite COMPLÈTE : après nettoyage des tests cast périmés (assertions sur
+      # d'anciens messages de friendlyMessageFor remises à jour ; suppression du
+      # test castShouldAddDevice qui visait une fonction supprimée), tout `test/`
+      # doit repasser au vert.
+      - name: Run unit tests
+        run: flutter test --reporter expanded
