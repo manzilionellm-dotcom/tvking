@@ -1,0 +1,86 @@
+# =========================================================
+#  quality.yml — Barrière qualité (analyze + tests)
+# =========================================================
+#  Problème résolu : les workflows build-*.yml COMPILENT et
+#  PUBLIENT, mais ne lançaient JAMAIS `flutter analyze` ni
+#  `flutter test`. Un build pouvait donc être « vert » (=
+#  l'APK/AAB s'est construit) tout en embarquant une
+#  régression qu'un test aurait attrapée.
+#
+#  Ce workflow est VOLONTAIREMENT SÉPARÉ des builds : il ne
+#  bloque PAS la construction de l'AAB. Objectif : ajouter un
+#  filet sans jamais casser un build vert existant.
+#
+#  Politique de sévérité (prudente, pour ne pas noyer sous le
+#  bruit du baseline actuel) :
+#    • analyze → échoue UNIQUEMENT sur de vraies ERREURS
+#      (--no-fatal-infos --no-fatal-warnings). Une erreur
+#      d'analyse casserait le build de toute façon ; on la
+#      remonte juste plus tôt et plus clairement.
+#    • test → échoue si un test échoue. C'est la vraie barrière
+#      anti-régression.
+#
+#  ÉVOLUTION : quand le baseline d'analyse sera propre (zéro
+#  warning/info), retirer `--no-fatal-infos --no-fatal-warnings`
+#  pour passer en mode strict.
+# =========================================================
+
+name: Quality (analyze + tests)
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+      - 'feature/**'
+    # Inutile de relancer analyze/test quand SEULS des fichiers
+    # non-Dart changent (worker, docs, workflows de build…).
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'analysis_options.yaml'
+      - '.github/workflows/quality.yml'
+  pull_request:
+  workflow_dispatch: {}
+
+# Annule les runs obsolètes quand on pousse plusieurs fois d'affilée
+# sur la même réf.
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: flutter analyze + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Print Flutter version
+        run: flutter --version
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Échoue seulement sur les ERREURS (pas les warnings/infos du
+      # baseline). Voir l'en-tête pour passer en strict plus tard.
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      # Vraie barrière : un test rouge = workflow rouge.
+      - name: Run tests
+        run: flutter test --reporter expanded
