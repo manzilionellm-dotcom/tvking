@@ -249,7 +249,7 @@ class _TvFocusableState extends State<TvFocusable> {
                           offset: const Offset(0, TvDimens.focusElevDy),
                         ),
                         BoxShadow(
-                          color: TvTokens.gold.withValues(alpha: 0.30),
+                          color: TvTokens.gold.withValues(alpha: 0.35),
                           blurRadius: TvDimens.focusGlowBlur,
                           spreadRadius: TvDimens.focusGlowSpread,
                         ),

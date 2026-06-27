@@ -98,6 +98,11 @@ dependencies:
   # Cache + chargement asynchrone des logos de chaînes.
   cached_network_image: ^3.4.1
 
+  # Extraction de la COULEUR DOMINANTE d'un logo (gradient ambiant du hero TV,
+  # §6). Package officiel Flutter. Utilisé UNIQUEMENT pour le hero (1 image à la
+  # fois), résultat MIS EN CACHE par chaîne → conforme à la cible 60 fps.
+  palette_generator: ^0.3.3+5
+
   # --- Phase 1.5 : Finitions / About / Updater ---
   package_info_plus: ^8.1.4
   url_launcher: ^6.3.1

@@ -25,14 +25,14 @@ class TvDimens {
   //  RÈGLE PREMIUM (réf. Apple TV+) : scale RETENU — au-delà de ~1.06 ça
   //  « gonfle » et fait cheap. La profondeur vient de l'OMBRE PORTÉE + de la
   //  lueur champagne, pas d'un gros zoom. Carte = 1.06, ligne = 1.04, bloc = 1.03.
-  static const double focusScaleSmall = 1.06;
-  static const double focusScaleMedium = 1.04;
-  static const double focusScaleLarge = 1.03;
+  static const double focusScaleSmall = 1.08;
+  static const double focusScaleMedium = 1.06;
+  static const double focusScaleLarge = 1.06;
   // Court + DÉCÉLÉRÉ : l'élément arrive vite puis se pose en douceur (180 ms,
   // courbe d'« emphasized decelerate »). Au-delà de ~200 ms ça paraît mou.
-  static const Duration focusAnim = Duration(milliseconds: 180);
-  static const Curve focusCurve = Cubic(0.2, 0.0, 0.0, 1.0);
-  static const double focusGlowBlur = 32; // lueur champagne (0 0 32px)
+  static const Duration focusAnim = Duration(milliseconds: 200);
+  static const Curve focusCurve = Curves.easeOutCubic;
+  static const double focusGlowBlur = 34; // lueur champagne (0 0 32px)
   static const double focusGlowSpread = 2;
   static const double focusOutline = 2; // contour or
   static const double focusInset = 3; // espace élément ↔ contour
@@ -53,7 +53,7 @@ class TvDimens {
   static const double caption = 14;
 
   // --- Rayons / élévations ---
-  static const double cardRadius = 12;
+  static const double cardRadius = 14;
   static const double panelRadius = 16;
 
   // --- Rangées / cartes de référence ---
