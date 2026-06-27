@@ -37,6 +37,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/app/device_memory.dart';
+import '../../../core/crash/crash_reporting.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/data/player_settings.dart';
 import '../../vod/domain/vod_movie.dart';
@@ -179,6 +180,8 @@ class XtreamClient {
     if (kDebugMode) {
       debugPrint('[XtreamClient] ${channels.length} chaînes live récupérées');
     }
+    CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
+        'xtream.channels.built', channels: channels.length);
     return channels;
   }
 
@@ -382,10 +385,14 @@ class XtreamClient {
   Future<List<dynamic>> _callApiList({required String action}) async {
     final Uri uri = _buildUri(action: action);
     final String body = await _getBody(uri);
+    // Breadcrumb : taille du corps HTTP reçu (suspect OOM n°1 sur grosse source).
+    CrashReporting.instance
+        .recordMemoryBreadcrumbWithCounts('xtream.http.$action', bytes: body.length);
     try {
       // Décodage dans un ISOLATE (compute) : sur un gros bouquet la réponse
       // pèse plusieurs Mo et un jsonDecode synchrone gèlerait l'UI (ANR).
       final dynamic decoded = await compute(_decodeJsonInIsolate, body);
+      CrashReporting.instance.recordMemoryBreadcrumb('xtream.json.decoded.$action');
       if (decoded is List<dynamic>) return decoded;
       // Certains serveurs encapsulent dans `{data: [...]}` ; on tolère.
       if (decoded is Map<String, dynamic> && decoded['data'] is List) {

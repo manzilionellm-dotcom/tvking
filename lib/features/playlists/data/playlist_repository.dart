@@ -30,6 +30,7 @@ import 'package:sqflite/sqflite.dart';
 
 
 import '../../../core/app/device_memory.dart';
+import '../../../core/crash/crash_reporting.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/security/secret_cipher.dart';
 import '../../channels/domain/channel.dart';
@@ -833,6 +834,8 @@ class PlaylistRepository {
   ///     rafraîchit toutes les ~900ms (chunk + emit) — sensation
   ///     "ça avance" au lieu de "ça dort".
   Future<void> _insertChannels(List<Channel> channels) async {
+    CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
+        'sqlite.insert.start', channels: channels.length);
     const int chunkSize = 1000;
     final Database db = await PlaylistDatabase.instance.database;
     for (int i = 0; i < channels.length; i += chunkSize) {
@@ -845,6 +848,8 @@ class PlaylistRepository {
       }
       await batch.commit(noResult: true);
     }
+    CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
+        'sqlite.insert.done', channels: channels.length);
     // ANTI-OOM (P1-3) : on N'ÉMET PLUS d'état ICI — ni par tranche, ni à la
     // fin. Chaque appelant ré-émet l'état UNE seule fois APRÈS l'insertion
     // (addM3u/addXtream → setActivePlaylist ; refreshPlaylist →

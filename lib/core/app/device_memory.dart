@@ -69,19 +69,20 @@ abstract final class DeviceMemory {
   /// Dart + ses chaînes (id, name, category, streamUrl ~100+ car., logoUrl) ≈
   /// **0,4–0,8 Ko**. On retient ~0,6 Ko/chaîne pour le dimensionnement :
   ///
-  ///   • ≤ 1 Go  →  10 000 chaînes  ≈  ~6 Mo de modèles  (marge pour ExoPlayer,
-  ///                cache images 24 Mo, UI… sur un budget process ~96–192 Mo)
-  ///   • ≤ 2 Go  →  25 000 chaînes  ≈  ~15 Mo
-  ///   • > 2 Go  →  50 000 chaînes  ≈  ~30 Mo
+  ///   • ≤ 1 Go  →   5 000 chaînes  (box 1 Go : Flutter + ExoPlayer + logos +
+  ///                 SQLite + cache images laissent TRÈS peu de marge ; 10 000
+  ///                 objets Dart pouvaient encore déclencher le kill natif)
+  ///   • ≤ 2 Go  →  15 000 chaînes
+  ///   • > 2 Go  →  50 000 chaînes
   ///
   /// Tant que la RAM n'est pas connue (`!isLoaded`, ex. dans un isolate), on
-  /// renvoie un plafond PRUDENT (15 000) : on protège d'abord les petites box.
+  /// renvoie un plafond PRUDENT (8 000) : on protège d'abord les petites box.
   /// Les chaînes au-delà du plafond restent en base (rien n'est perdu), elles
   /// ne sont juste pas tenues en mémoire en même temps.
   static int get channelCap {
-    if (!_loaded) return 15000;
-    if (_lowRam || (_totalMb > 0 && _totalMb <= 1024)) return 10000;
-    if (_totalMb <= 2048) return 25000;
+    if (!_loaded) return 8000;
+    if (_lowRam || (_totalMb > 0 && _totalMb <= 1024)) return 5000;
+    if (_totalMb <= 2048) return 15000;
     return 50000;
   }
 }

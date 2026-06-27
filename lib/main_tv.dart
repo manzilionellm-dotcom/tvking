@@ -18,6 +18,7 @@ import 'core/app/boot_guard.dart';
 import 'core/app/device_memory.dart';
 import 'core/app/guarded_main.dart';
 import 'core/app/safe_mode_app.dart';
+import 'core/crash/crash_reporting.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
 import 'core/notifications/notification_service.dart';
@@ -155,11 +156,13 @@ Future<void> _bootstrap() async {
     }),
   );
 
+  CrashReporting.instance.recordMemoryBreadcrumb('boot.beforeRunApp');
   runApp(const TvApp());
 
   // Jalon « 1er frame rendu » : l'UI s'est affichée au moins une fois.
   WidgetsBinding.instance.addPostFrameCallback((_) {
     BootGuard.instance.markPhase(BootPhase.firstFrame);
+    CrashReporting.instance.recordMemoryBreadcrumb('boot.firstFrame');
   });
 
   // ====================================================================
@@ -180,11 +183,13 @@ Future<void> _bootstrap() async {
     await BootGuard.instance.markBootSucceeded();
   } else {
     await BootGuard.instance.markPhase(BootPhase.importStart);
+    CrashReporting.instance.recordMemoryBreadcrumb('import.start');
     // RemoteSourceRepository.sync ne throw jamais (renvoie un résultat) ; on
     // marque donc le succès du boot dès qu'il a terminé, quel que soit le
     // résultat (chargé / rien d'assigné / réseau KO) — l'app, elle, a démarré
     // sans crasher, c'est ça « un boot réussi ».
     unawaited(RemoteSourceRepository.sync().then((_) async {
+      CrashReporting.instance.recordMemoryBreadcrumb('import.done');
       await BootGuard.instance.markPhase(BootPhase.importDone);
       await BootGuard.instance.markBootSucceeded();
     }));

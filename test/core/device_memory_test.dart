@@ -8,9 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tv_king/core/app/device_memory.dart';
 
 void main() {
-  test('RAM inconnue → plafond prudent (15000)', () {
+  test('RAM inconnue → plafond prudent (8000)', () {
     // Sans ensureLoaded(), isLoaded vaut false → on protège les petites box.
     expect(DeviceMemory.isLoaded, isFalse);
-    expect(DeviceMemory.channelCap, 15000);
+    expect(DeviceMemory.channelCap, 8000);
   });
 }

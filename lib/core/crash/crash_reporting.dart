@@ -18,7 +18,11 @@
 //  surcouche optionnelle (cf. `crash_reporting_firebase.dart`) qui se
 //  contente d'appeler `attachBackend()` au démarrage si elle est présente.
 // =========================================================
+import 'dart:io' show ProcessInfo;
+
 import 'package:flutter/foundation.dart';
+
+import '../app/device_memory.dart';
 
 /// Signature d'un « puits » d'erreurs distant (ex. Firebase Crashlytics).
 /// On reste volontairement générique : la couche métier n'a aucune idée
@@ -93,6 +97,56 @@ class CrashReporting {
   /// Trace simple (fil d'Ariane), utile avant un point sensible.
   void log(String message) {
     debugPrint('[CrashReporting] $message');
+  }
+
+  // ============================================================
+  //  BREADCRUMBS MÉMOIRE (diagnostic anti-OOM box faible RAM)
+  // ============================================================
+  //  But : localiser PRÉCISÉMENT la phase où la mémoire explose avant le kill
+  //  natif (lowmemorykiller / signal 9). On pose un fil d'Ariane AVANT/APRÈS
+  //  chaque étape lourde (fetch, décodage JSON, conversion, insertion SQLite,
+  //  1er rendu…). À lire ensuite via `adb logcat | grep "\[mem\]"`.
+  //
+  //  La métrique clé est le **RSS du process** (mémoire résidente réellement
+  //  occupée — c'est CELLE que l'OS regarde pour tuer l'app), via
+  //  `ProcessInfo.currentRss` (pur Dart, aucune dépendance native). On y ajoute
+  //  la classe de RAM de l'appareil (DeviceMemory). Best-effort, JAMAIS bloquant.
+
+  /// Fil d'Ariane mémoire simple pour une [phase] donnée.
+  void recordMemoryBreadcrumb(String phase) =>
+      recordMemoryBreadcrumbWithCounts(phase);
+
+  /// Variante avec compteurs (nb de [channels] traitées, taille en [bytes]).
+  void recordMemoryBreadcrumbWithCounts(
+    String phase, {
+    int? channels,
+    int? bytes,
+  }) {
+    try {
+      // RSS = mémoire résidente du process (octets) → l'indicateur que l'OS
+      // utilise pour décider de tuer l'app. C'est LE chiffre qui compte.
+      int rssMb = 0;
+      try {
+        rssMb = (ProcessInfo.currentRss / (1024 * 1024)).round();
+      } catch (_) {
+        // currentRss indisponible sur certaines plateformes → on ignore.
+      }
+      final int totalMb = DeviceMemory.totalMb;
+      final StringBuffer b = StringBuffer('[mem] $phase | rss=${rssMb}Mo');
+      if (totalMb > 0) b.write(' | ramTotale=${totalMb}Mo');
+      if (DeviceMemory.lowRam) b.write(' | lowRam');
+      if (channels != null) b.write(' | chaines=$channels');
+      if (bytes != null) {
+        b.write(' | taille=${(bytes / (1024 * 1024)).toStringAsFixed(1)}Mo');
+      }
+      b.write(' | ${DateTime.now().toIso8601String()}');
+      final String line = b.toString();
+      _ring.add(line);
+      if (_ring.length > _maxRing) _ring.removeAt(0);
+      debugPrint('[CrashReporting] $line');
+    } catch (_) {
+      // Un breadcrumb ne doit JAMAIS faire planter l'app.
+    }
   }
 
   /// Les derniers messages collectés (lecture seule) — pour un écran de diag.

@@ -14,6 +14,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/app/boot_guard.dart';
+import '../../../core/crash/crash_reporting.dart';
 import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
@@ -527,6 +528,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       counts[cat] = (counts[cat] ?? 0) + 1;
     }
     if (!mounted) return;
+    CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
+        'tvlive.ingest', channels: live.length);
     setState(() {
       _all = live;
       _cats = cats;
