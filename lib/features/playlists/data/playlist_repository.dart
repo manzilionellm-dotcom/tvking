@@ -227,6 +227,154 @@ class PlaylistRepository {
     return out;
   }
 
+  // ============================================================
+  //  LECTURE PAGINÉE (stabilité « façon TiviMate », anti-OOM 100k+)
+  // ============================================================
+  //  PRINCIPE : la BASE est la source de vérité ; l'UI ne tient JAMAIS toute
+  //  la liste en RAM. Elle demande des PAGES (LIMIT) ou UNE catégorie à la fois.
+  //  Une box tient ainsi 100 000 chaînes sans crash : seule la fenêtre visible
+  //  (+ un petit tampon) est matérialisée. Ces méthodes sont ADDITIVES : les
+  //  écrans existants (stream/getAllChannels) continuent de marcher tels quels.
+
+  /// Id de la playlist active (ou null si aucune n'est marquée active).
+  Future<int?> _activePlaylistId(Database db) async {
+    final List<Map<String, Object?>> rows = await db.query(
+      'playlists',
+      columns: <String>['id'],
+      where: 'is_active = 1',
+      limit: 1,
+    );
+    return rows.isNotEmpty ? rows.first['id'] as int : null;
+  }
+
+  /// Liste des catégories de la playlist active + nombre de chaînes LIVE par
+  /// catégorie, dans l'ordre d'apparition (min local_id). Requête LÉGÈRE
+  /// (agrégat) : ne matérialise AUCUNE chaîne. C'est ce qui alimente la liste
+  /// de catégories sans charger 100k objets.
+  Future<List<({String category, int count})>> getActiveCategoryCounts() async {
+    final Database db = await PlaylistDatabase.instance.database;
+    final int? activeId = await _activePlaylistId(db);
+    final String where = activeId != null ? 'WHERE playlist_id = ? AND is_live = 1' : 'WHERE is_live = 1';
+    final List<Object> args = activeId != null ? <Object>[activeId] : <Object>[];
+    final List<Map<String, Object?>> rows = await db.rawQuery(
+      'SELECT category AS c, COUNT(*) AS n, MIN(local_id) AS o '
+      'FROM channels $where GROUP BY category ORDER BY o ASC',
+      args,
+    );
+    return rows
+        .map((Map<String, Object?> r) => (
+              category: (r['c'] as String?)?.trim().isNotEmpty == true
+                  ? (r['c'] as String).trim()
+                  : 'Autres',
+              count: (r['n'] as int?) ?? 0,
+            ))
+        .toList(growable: false);
+  }
+
+  /// Nombre total de chaînes LIVE de la playlist active (pour la pseudo-cat
+  /// « Toutes » et les compteurs). Léger (COUNT).
+  Future<int> countActiveLiveChannels() async {
+    final Database db = await PlaylistDatabase.instance.database;
+    final int? activeId = await _activePlaylistId(db);
+    final List<Map<String, Object?>> rows = await db.rawQuery(
+      activeId != null
+          ? 'SELECT COUNT(*) AS n FROM channels WHERE playlist_id = ? AND is_live = 1'
+          : 'SELECT COUNT(*) AS n FROM channels WHERE is_live = 1',
+      activeId != null ? <Object>[activeId] : <Object>[],
+    );
+    return (rows.first['n'] as int?) ?? 0;
+  }
+
+  /// UNE PAGE de chaînes LIVE, en pagination KEYSET sur `local_id` (O(1) par
+  /// page grâce à l'index PK, ordre natif préservé). [category] = null →
+  /// toutes catégories. [afterLocalId] = dernier local_id reçu (0 = début).
+  /// Ne charge QUE [limit] chaînes en mémoire.
+  Future<List<Channel>> getChannelsPage({
+    String? category,
+    int afterLocalId = 0,
+    int limit = 120,
+  }) async {
+    final Database db = await PlaylistDatabase.instance.database;
+    final int? activeId = await _activePlaylistId(db);
+    final StringBuffer where = StringBuffer('is_live = 1 AND local_id > ?');
+    final List<Object> args = <Object>[afterLocalId];
+    if (activeId != null) {
+      where.write(' AND playlist_id = ?');
+      args.add(activeId);
+    }
+    if (category != null) {
+      // 'Autres' = catégorie vide/absente dans la source.
+      if (category == 'Autres') {
+        where.write(" AND (category = 'Autres' OR category = '' OR category IS NULL)");
+      } else {
+        where.write(' AND category = ?');
+        args.add(category);
+      }
+    }
+    final List<Map<String, Object?>> rows = await db.query(
+      'channels',
+      where: where.toString(),
+      whereArgs: args,
+      orderBy: 'local_id ASC',
+      limit: limit,
+    );
+    return rows.map(_channelFromMap).toList(growable: false);
+  }
+
+  /// Recherche LIVE par nom (insensible à la casse), bornée à [limit]. SQL
+  /// `LIKE` + LIMIT → jamais de scan complet matérialisé en RAM.
+  Future<List<Channel>> searchLiveChannels(String query, {int limit = 200}) async {
+    final String q = query.trim();
+    if (q.isEmpty) return const <Channel>[];
+    final Database db = await PlaylistDatabase.instance.database;
+    final int? activeId = await _activePlaylistId(db);
+    final StringBuffer where = StringBuffer('is_live = 1 AND name LIKE ?');
+    final List<Object> args = <Object>['%$q%'];
+    if (activeId != null) {
+      where.write(' AND playlist_id = ?');
+      args.add(activeId);
+    }
+    final List<Map<String, Object?>> rows = await db.query(
+      'channels',
+      where: where.toString(),
+      whereArgs: args,
+      orderBy: 'local_id ASC',
+      limit: limit,
+    );
+    return rows.map(_channelFromMap).toList(growable: false);
+  }
+
+  /// Récupère des chaînes par leurs `external_id` (point queries) — sert aux
+  /// rangées « Favoris » / « Récemment » / « Tendances » SANS scanner toute la
+  /// base : on ne charge que les quelques dizaines de chaînes concernées.
+  Future<List<Channel>> getChannelsByExternalIds(List<String> ids) async {
+    if (ids.isEmpty) return const <Channel>[];
+    final Database db = await PlaylistDatabase.instance.database;
+    final int? activeId = await _activePlaylistId(db);
+    final List<Channel> out = <Channel>[];
+    // Chunké à 800 pour rester sous la limite de variables SQLite (~999).
+    const int chunk = 800;
+    for (int i = 0; i < ids.length; i += chunk) {
+      final List<String> part =
+          ids.sublist(i, (i + chunk > ids.length) ? ids.length : i + chunk);
+      final String placeholders = List<String>.filled(part.length, '?').join(',');
+      final StringBuffer where =
+          StringBuffer('is_live = 1 AND external_id IN ($placeholders)');
+      final List<Object> args = <Object>[...part];
+      if (activeId != null) {
+        where.write(' AND playlist_id = ?');
+        args.add(activeId);
+      }
+      final List<Map<String, Object?>> rows = await db.query(
+        'channels',
+        where: where.toString(),
+        whereArgs: args,
+      );
+      out.addAll(rows.map(_channelFromMap));
+    }
+    return out;
+  }
+
   Future<List<Playlist>> getAllPlaylists() async {
     await SecretCipher.instance.ensureReady();
     final Database db = await PlaylistDatabase.instance.database;
