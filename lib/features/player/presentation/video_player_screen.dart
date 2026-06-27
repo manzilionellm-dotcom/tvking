@@ -26,6 +26,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/notifications/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/live_badge.dart';
@@ -1166,7 +1167,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     PipService.instance.setAudioOnlyMode(enabling);
     if (enabling) {
       final String title = widget.overrideTitle ?? _currentChannel.cleanName;
-      PipService.instance.startBackgroundAudio(title);
+      // Android 13+ : sans POST_NOTIFICATIONS accordée, la notification du
+      // foreground service ne S'AFFICHE PAS (l'utilisateur croit que le mode
+      // Écouteurs est cassé). On la demande MAINTENANT — l'app est encore au
+      // premier plan, moment idéal pour la pop-up système — puis on démarre le
+      // service que la permission soit accordée ou non (le son continue dans
+      // tous les cas ; seule la notif dépend de la permission). Fail-open.
+      unawaited(
+        NotificationService.instance
+            .requestPermission()
+            .whenComplete(() => PipService.instance.startBackgroundAudio(title)),
+      );
     } else {
       PipService.instance.stopBackgroundAudio();
     }
