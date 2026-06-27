@@ -15,6 +15,8 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
@@ -113,9 +115,30 @@ class NativeVideoView(
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
             .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(6))
 
+        // ADAPTATION AUTOMATIQUE DE LA QUALITÉ (« façon Netflix »), réglée pour
+        // les réseaux FAIBLES / INSTABLES (ex. Afrique). Ne s'applique QUE si le
+        // flux propose PLUSIEURS qualités (HLS/DASH multi-débit) — un flux à
+        // débit unique ne peut pas être allégé (c'est le fournisseur qui décide).
+        //   • bandwidthFraction 0.6 : on n'utilise que 60 % du débit MESURÉ pour
+        //     choisir la qualité → marge de sécurité, beaucoup moins de coupures.
+        //   • on DESCEND vite quand la connexion faiblit (maxDurationFor
+        //     QualityDecrease court) et on REMONTE prudemment (minDurationFor
+        //     QualityIncrease long) → pas de yo-yo, image stable.
+        // Aucun plafond fixe : sur bonne connexion, la HD revient toute seule.
+        val trackSelector = DefaultTrackSelector(
+            context,
+            AdaptiveTrackSelection.Factory(
+                15_000, // minDurationForQualityIncreaseMs (remonte prudemment)
+                18_000, // maxDurationForQualityDecreaseMs (descend vite)
+                20_000, // minDurationToRetainAfterDiscardMs
+                0.6f,   // bandwidthFraction (marge de sécurité réseau)
+            ),
+        )
+
         player = ExoPlayer.Builder(context, renderersFactory)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setTrackSelector(trackSelector)
             .setHandleAudioBecomingNoisy(true)
             .build()
 
