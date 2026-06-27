@@ -25,6 +25,7 @@ class NativeVideoController extends ChangeNotifier {
 
   MethodChannel? _channel;
   String? _pendingUrl;
+  double _volume = 1.0; // multi-vue : 0 = muet (tuile inactive), 1 = son actif
   bool _attached = false;
   bool _disposed = false;
 
@@ -56,6 +57,11 @@ class NativeVideoController extends ChangeNotifier {
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       ch.invokeMethod<void>('setUrl', <String, dynamic>{'url': url});
+    }
+    // Réapplique le volume voulu dès le rattachement (utile en multi-vue où une
+    // tuile démarre muette).
+    if (_volume != 1.0) {
+      ch.invokeMethod<void>('setVolume', <String, dynamic>{'volume': _volume});
     }
   }
 
@@ -99,6 +105,13 @@ class NativeVideoController extends ChangeNotifier {
   void play() => _channel?.invokeMethod<void>('play');
 
   void pause() => _channel?.invokeMethod<void>('pause');
+
+  /// Règle le volume (0.0 = muet, 1.0 = plein). Sert à la MULTI-VUE : seule la
+  /// tuile active garde le son. Conservé pour ré-application au rattachement.
+  void setVolume(double volume) {
+    _volume = volume.clamp(0.0, 1.0);
+    _channel?.invokeMethod<void>('setVolume', <String, dynamic>{'volume': _volume});
+  }
 
   @override
   void dispose() {

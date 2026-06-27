@@ -155,6 +155,13 @@ class NativeVideoView(
                 player.play()
                 result.success(null)
             }
+            "setVolume" -> {
+                // Multi-vue : on coupe le son des tuiles inactives (volume 0) et
+                // on ne laisse le son QUE sur la tuile active (volume 1).
+                val v = (call.argument<Double>("volume") ?: 1.0).toFloat()
+                player.volume = v.coerceIn(0f, 1f)
+                result.success(null)
+            }
             "pause" -> {
                 player.pause()
                 result.success(null)

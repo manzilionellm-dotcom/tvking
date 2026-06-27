@@ -36,6 +36,7 @@ import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import 'tv_channel_programs_screen.dart';
 import 'tv_components.dart';
+import 'tv_multiview_screen.dart';
 
 class TvPlayerScreen extends StatefulWidget {
   const TvPlayerScreen({
@@ -66,7 +67,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // déplacent le surlignage, OK active. Ordre : 0=Retour 1=Préc 2=Lecture/Pause
   // 3=Suiv 4=REC 5=Favori.
   int _btnFocus = -1;
-  static const int _btnCount = 3;
+  static const int _btnCount = 4;
   bool _buffering = true;
   Timer? _hideTimer;
   Timer? _presenceTimer;
@@ -444,7 +445,36 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       case 2:
         _toggleFavorite();
         break;
+      case 3:
+        _openMultiView();
+        break;
     }
+  }
+
+  // MULTI-VUE (2 chaînes) : réservée aux box assez puissantes (2 décodeurs).
+  // Sur une petite box, on n'essaie PAS (message) → on protège la stabilité.
+  void _openMultiView() {
+    if (!multiViewSupported()) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('Multi-vue indisponible : appareil trop limité '
+              '(2 flux simultanés non garantis).'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      _showOverlayTemporarily();
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TvMultiViewScreen(
+          channels: widget.channels,
+          startIndex: _index,
+        ),
+      ),
+    );
+    _showOverlayTemporarily();
   }
 
   // Ouvre le GUIDE de la chaîne en cours : émission actuelle + « à suivre »,
@@ -703,6 +733,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                         onGuide: _openGuide,
                         onRecord: _toggleRecording,
                         onFavorite: _toggleFavorite,
+                        onMulti: _openMultiView,
                       ),
                     ),
                   ),
@@ -806,6 +837,7 @@ class _ControlsBar extends StatelessWidget {
     required this.onGuide,
     required this.onRecord,
     required this.onFavorite,
+    required this.onMulti,
   });
 
   final Channel channel;
@@ -819,6 +851,7 @@ class _ControlsBar extends StatelessWidget {
   final VoidCallback onGuide;
   final VoidCallback onRecord;
   final VoidCallback onFavorite;
+  final VoidCallback onMulti;
 
   @override
   Widget build(BuildContext context) {
@@ -880,6 +913,13 @@ class _ControlsBar extends StatelessWidget {
                 accent: TvTokens.gold,
                 active: isFavorite,
                 focused: focusedIndex == 2,
+              ),
+              const SizedBox(width: 34),
+              _CtrlButton(
+                icon: Icons.grid_view_rounded,
+                label: 'Multi',
+                onTap: onMulti,
+                focused: focusedIndex == 3,
               ),
             ],
           ),
