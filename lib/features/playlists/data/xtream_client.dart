@@ -41,6 +41,7 @@ import '../../../core/crash/crash_reporting.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/data/player_settings.dart';
 import '../../vod/domain/vod_movie.dart';
+import '../../vod/domain/vod_series.dart';
 import 'playlist_import_limits.dart';
 
 /// Exception métier pour signaler une erreur Xtream lisible
@@ -331,6 +332,110 @@ class XtreamClient {
     return '$_baseUrl/movie/$username/$password/$streamId.$ext';
   }
 
+  // ============================================================
+  //  SÉRIES (saisons + épisodes)
+  // ============================================================
+
+  /// Catégories Séries (map id → nom).
+  Future<Map<String, String>> fetchSeriesCategories() async {
+    final List<dynamic> raw =
+        await _callApiList(action: 'get_series_categories');
+    final Map<String, String> result = <String, String>{};
+    for (final dynamic item in raw) {
+      if (item is Map<String, dynamic>) {
+        final String id = item['category_id']?.toString() ?? '';
+        final String name = item['category_name']?.toString() ?? 'Sans nom';
+        if (id.isNotEmpty) result[id] = name;
+      }
+    }
+    return result;
+  }
+
+  /// Catalogue des séries (vignettes). Les épisodes NE sont PAS chargés ici
+  /// (2e appel get_series_info à l'ouverture de la fiche). Plafonné RAM.
+  Future<List<VodSeries>> fetchSeries({Map<String, String>? categories}) async {
+    final Map<String, String> cats =
+        categories ?? await fetchSeriesCategories();
+    final List<dynamic> raw = await _callApiList(action: 'get_series');
+
+    final List<VodSeries> out = <VodSeries>[];
+    for (final dynamic item in raw) {
+      if (out.length >= DeviceMemory.channelCap) break; // anti-OOM RAM-tiered
+      if (item is! Map<String, dynamic>) continue;
+      final String seriesId = item['series_id']?.toString() ?? '';
+      if (seriesId.isEmpty) continue;
+      final String name = item['name']?.toString() ?? '(Sans nom)';
+      final String categoryId = item['category_id']?.toString() ?? '';
+      final String category = cats[categoryId] ?? 'Autres';
+      final String? cover = item['cover']?.toString();
+      final String? plot = item['plot']?.toString();
+      final String? rating = item['rating']?.toString();
+      final String? year = item['releaseDate']?.toString();
+      out.add(
+        VodSeries(
+          id: seriesId,
+          name: name,
+          category: category.isEmpty ? 'Autres' : category,
+          posterUrl: (cover == null || cover.isEmpty) ? null : cover,
+          plot: (plot == null || plot.isEmpty) ? null : plot,
+          rating: (rating == null || rating.isEmpty || rating == '0')
+              ? null
+              : rating,
+          year: (year == null || year.isEmpty) ? null : year,
+        ),
+      );
+    }
+    if (kDebugMode) {
+      debugPrint('[XtreamClient] ${out.length} séries récupérées');
+    }
+    return out;
+  }
+
+  /// Épisodes d'une série (tous saisons confondues, triés saison/épisode).
+  /// get_series_info renvoie `{ episodes: { "1": [...], "2": [...] } }`.
+  Future<List<VodEpisode>> fetchSeriesEpisodes(String seriesId) async {
+    final Map<String, dynamic> data =
+        await _callApi(action: 'get_series_info', seriesId: seriesId);
+    final dynamic eps = data['episodes'];
+    final List<VodEpisode> out = <VodEpisode>[];
+    if (eps is Map<String, dynamic>) {
+      for (final MapEntry<String, dynamic> entry in eps.entries) {
+        final int season = int.tryParse(entry.key) ?? 0;
+        final dynamic list = entry.value;
+        if (list is! List) continue;
+        for (final dynamic e in list) {
+          if (e is! Map<String, dynamic>) continue;
+          final String id = e['id']?.toString() ?? '';
+          if (id.isEmpty) continue;
+          final int epNum = int.tryParse(e['episode_num']?.toString() ?? '') ??
+              (out.length + 1);
+          String ext =
+              (e['container_extension']?.toString() ?? 'mp4').trim();
+          if (ext.isEmpty) ext = 'mp4';
+          final String title =
+              (e['title']?.toString().trim().isNotEmpty ?? false)
+                  ? e['title'].toString()
+                  : 'Épisode $epNum';
+          out.add(
+            VodEpisode(
+              id: 'ep-$id',
+              title: title,
+              season: season,
+              episodeNum: epNum,
+              streamUrl: '$_baseUrl/series/$username/$password/$id.$ext',
+              containerExt: ext,
+            ),
+          );
+        }
+      }
+    }
+    out.sort((VodEpisode a, VodEpisode b) {
+      final int s = a.season.compareTo(b.season);
+      return s != 0 ? s : a.episodeNum.compareTo(b.episodeNum);
+    });
+    return out;
+  }
+
   /// Ferme proprement le client HTTP. À appeler en fin de cycle.
   void dispose() => _http.close();
 
@@ -444,8 +549,9 @@ class XtreamClient {
   }
 
   /// Appel API qui retourne une Map JSON (cas verifyCredentials).
-  Future<Map<String, dynamic>> _callApi({required String? action}) async {
-    final Uri uri = _buildUri(action: action);
+  Future<Map<String, dynamic>> _callApi(
+      {required String? action, String? seriesId}) async {
+    final Uri uri = _buildUri(action: action, seriesId: seriesId);
     final String body = await _getBody(uri);
     try {
       final dynamic decoded = jsonDecode(body);
@@ -495,7 +601,7 @@ class XtreamClient {
   // Point d'entrée de l'isolate pour le décodage JSON (cf. _callApiList).
   // Doit rester top-level/statique pour être envoyable à `compute`.
 
-  Uri _buildUri({required String? action, String? categoryId}) {
+  Uri _buildUri({required String? action, String? categoryId, String? seriesId}) {
     final Uri base = Uri.parse('$_baseUrl/player_api.php');
     final Map<String, String> queryParameters = <String, String>{
       ...base.queryParameters,
@@ -505,6 +611,8 @@ class XtreamClient {
       // Filtre par catégorie (import EN FLUX) : le serveur ne renvoie alors que
       // les chaînes de CETTE catégorie → petite réponse → mémoire bornée.
       if (categoryId != null && categoryId.isNotEmpty) 'category_id': categoryId,
+      // Fiche série (get_series_info) : identifiant de la série demandée.
+      if (seriesId != null && seriesId.isNotEmpty) 'series_id': seriesId,
     };
     return base.replace(queryParameters: queryParameters);
   }
