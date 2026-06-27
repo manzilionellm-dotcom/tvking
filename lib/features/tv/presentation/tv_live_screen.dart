@@ -12,6 +12,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/app/boot_guard.dart';
 import '../../../core/crash/crash_reporting.dart';
@@ -1322,10 +1323,35 @@ class _ChannelCardState extends State<_ChannelCard> {
   // ça, TvFocusable créait de toute façon son propre node par carte.
   final FocusNode _node = FocusNode();
 
+  // « Pop » de cœur affiché brièvement après un appui long (favori basculé).
+  // true = vient d'être ajouté (cœur plein), false = retiré (cœur barré).
+  bool _burst = false;
+  bool _burstAdded = false;
+  Timer? _burstTimer;
+
   @override
   void dispose() {
+    _burstTimer?.cancel();
     _node.dispose();
     super.dispose();
+  }
+
+  /// Bascule le favori (appui long sur OK ou au doigt). Affiche un cœur animé
+  /// au centre de la carte. L'état persistant (petit cœur en coin) se met à
+  /// jour via le flux de favoris de l'écran.
+  void _toggleFavorite() {
+    final String id = widget.channel.id;
+    final bool willBeFav = !FavoritesRepository.instance.isFavorite(id);
+    FavoritesRepository.instance.toggle(id);
+    HapticFeedback.selectionClick();
+    _burstTimer?.cancel();
+    setState(() {
+      _burst = true;
+      _burstAdded = willBeFav;
+    });
+    _burstTimer = Timer(const Duration(milliseconds: 650), () {
+      if (mounted) setState(() => _burst = false);
+    });
   }
 
   @override
@@ -1370,6 +1396,8 @@ class _ChannelCardState extends State<_ChannelCard> {
       // Lecture : l'ÉCRAN gère la navigation (et la restauration du focus au
       // retour). La carte se contente de signaler son index.
       onSelect: () => widget.onPlay?.call(widget.index),
+      // APPUI LONG sur OK (ou au doigt) → bascule le favori (raccourci rapide).
+      onLongPress: _toggleFavorite,
       child: Stack(
         fit: StackFit.expand,
         children: <Widget>[
@@ -1427,6 +1455,34 @@ class _ChannelCardState extends State<_ChannelCard> {
                 ),
               ),
             ),
+          // « POP » de cœur au centre après un appui long (favori basculé) :
+          // grossit + s'estompe en ~650 ms. Cœur PLEIN or = ajouté, cœur BARRÉ
+          // = retiré. Purement visuel (IgnorePointer) → n'intercepte aucun focus.
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedScale(
+                scale: _burst ? 1.0 : 0.5,
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutBack,
+                child: AnimatedOpacity(
+                  opacity: _burst ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 220),
+                  child: Center(
+                    child: Icon(
+                      _burstAdded
+                          ? Icons.favorite_rounded
+                          : Icons.heart_broken_rounded,
+                      size: 56,
+                      color: _burstAdded ? TvTokens.gold : TvTokens.mutedDim,
+                      shadows: const <Shadow>[
+                        Shadow(color: Color(0xCC000000), blurRadius: 12),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

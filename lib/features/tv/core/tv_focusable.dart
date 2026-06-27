@@ -15,6 +15,8 @@
 //  Le D-pad « OK » (select / enter / gameButtonA / space) déclenche
 //  `onSelect`. `Back` est géré par le Navigator au niveau de l'écran.
 // =========================================================
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -29,6 +31,7 @@ class TvFocusable extends StatefulWidget {
     super.key,
     required this.child,
     this.onSelect,
+    this.onLongPress,
     this.onFocusChange,
     this.focusNode,
     this.autofocus = false,
@@ -46,6 +49,12 @@ class TvFocusable extends StatefulWidget {
   /// statique ; pour adapter la couleur du contenu, voir [TvFocusBuilder].
   final Widget child;
   final VoidCallback? onSelect;
+
+  /// Appui LONG sur OK (D-pad maintenu ~450 ms) OU appui long au doigt. Sert,
+  /// par ex., à mettre une chaîne en favori sans ouvrir le lecteur. Quand
+  /// l'appui long se déclenche, l'appui court (onSelect) qui suivrait le
+  /// relâchement est ANNULÉ (sinon on ouvrirait aussi le lecteur).
+  final VoidCallback? onLongPress;
   final ValueChanged<bool>? onFocusChange;
   final FocusNode? focusNode;
   final bool autofocus;
@@ -75,6 +84,13 @@ class _TvFocusableState extends State<TvFocusable> {
   bool _focused = false;
   bool _pressed = false;
 
+  // APPUI LONG (D-pad) : à l'enfoncement d'OK on arme un timer ; s'il se
+  // déclenche AVANT le relâchement, c'est un appui long → on appelle
+  // onLongPress et on marque _longFired pour ANNULER l'onSelect du relâchement.
+  Timer? _longTimer;
+  bool _longFired = false;
+  static const Duration _kLongPress = Duration(milliseconds: 450);
+
   @override
   void initState() {
     super.initState();
@@ -83,8 +99,14 @@ class _TvFocusableState extends State<TvFocusable> {
 
   @override
   void dispose() {
+    _longTimer?.cancel();
     if (_ownsNode) _node.dispose();
     super.dispose();
+  }
+
+  void _cancelLongTimer() {
+    _longTimer?.cancel();
+    _longTimer = null;
   }
 
   double get _scaleValue {
@@ -110,10 +132,29 @@ class _TvFocusableState extends State<TvFocusable> {
     if (!_isSelectKey(event.logicalKey)) return KeyEventResult.ignored;
     if (event is KeyDownEvent) {
       if (!_pressed) setState(() => _pressed = true);
+      // Arme l'appui long seulement si un handler est fourni.
+      _longFired = false;
+      _cancelLongTimer();
+      if (widget.onLongPress != null && widget.enabled) {
+        _longTimer = Timer(_kLongPress, () {
+          _longFired = true;
+          widget.onLongPress!.call();
+        });
+      }
+      return KeyEventResult.handled;
+    }
+    // Les répétitions clavier (OK maintenu) n'ouvrent rien : le timer décide.
+    if (event is KeyRepeatEvent) {
       return KeyEventResult.handled;
     }
     if (event is KeyUpEvent) {
+      _cancelLongTimer();
       if (_pressed) setState(() => _pressed = false);
+      // Si l'appui long s'est déclenché, on N'OUVRE PAS (onSelect annulé).
+      if (_longFired) {
+        _longFired = false;
+        return KeyEventResult.handled;
+      }
       widget.onSelect?.call();
       return KeyEventResult.handled;
     }
@@ -154,6 +195,13 @@ class _TvFocusableState extends State<TvFocusable> {
             }
           : null,
       onTap: widget.enabled ? widget.onSelect : null,
+      // Appui long au DOIGT (écrans tactiles) : même effet que OK maintenu.
+      onLongPress: (widget.enabled && widget.onLongPress != null)
+          ? () {
+              if (_pressed) setState(() => _pressed = false);
+              widget.onLongPress!.call();
+            }
+          : null,
       child: Focus(
         focusNode: _node,
         autofocus: widget.autofocus,
@@ -224,6 +272,7 @@ class TvFocusBuilder extends StatefulWidget {
     super.key,
     required this.builder,
     this.onSelect,
+    this.onLongPress,
     this.focusNode,
     this.autofocus = false,
     this.scale = TvFocusScale.medium,
@@ -232,6 +281,7 @@ class TvFocusBuilder extends StatefulWidget {
 
   final Widget Function(BuildContext context, bool focused) builder;
   final VoidCallback? onSelect;
+  final VoidCallback? onLongPress;
   final FocusNode? focusNode;
   final bool autofocus;
   final TvFocusScale scale;
@@ -248,6 +298,7 @@ class _TvFocusBuilderState extends State<TvFocusBuilder> {
   Widget build(BuildContext context) {
     return TvFocusable(
       onSelect: widget.onSelect,
+      onLongPress: widget.onLongPress,
       focusNode: widget.focusNode,
       autofocus: widget.autofocus,
       scale: widget.scale,
