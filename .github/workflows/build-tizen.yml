@@ -44,11 +44,17 @@ jobs:
       # Dépendances système attendues par le SDK Tizen (web-cli + outils natifs).
       # python2.7 / libncurses5 ne sont plus dans les dépôts par défaut récents :
       # on tente, sans bloquer si l'un manque (le SDK fonctionne souvent sans).
+      # L'installateur web-cli du SDK Tizen exige python3.8 + libpython3.8, qui
+      # ne sont PAS dans les dépôts d'ubuntu-22.04 (python3.10 par défaut) → son
+      # auto-install échoue (exit 4). On les fournit via le PPA deadsnakes AVANT.
       - name: System dependencies (Tizen SDK)
         run: |
           sudo apt-get update || true
-          sudo apt-get install -y libncurses5 libpython2.7 zip unzip xz-utils \
-            pciutils file curl || true
+          sudo add-apt-repository -y ppa:deadsnakes/ppa || true
+          sudo apt-get update || true
+          sudo apt-get install -y python3.8 libpython3.8 \
+            libncurses5 libpython2.7 zip unzip xz-utils pciutils file curl || true
+          python3.8 --version || true
 
       - name: Setup Java 17 (Temurin)
         uses: actions/setup-java@v4

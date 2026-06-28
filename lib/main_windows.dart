@@ -27,7 +27,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:sqflite_common_ffi/sqflite_common_ffi.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'core/app/app_platform.dart';
 import 'core/app/guarded_main.dart';
