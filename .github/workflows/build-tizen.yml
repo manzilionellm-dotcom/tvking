@@ -161,14 +161,22 @@ jobs:
       # Certificat AUTO-SIGNÉ (auteur) pour produire un .tpk signé en CI sans
       # compte Samsung. Suffit pour la COMPILATION et le sideload en Mode Dev ;
       # PAS pour une TV de détail (qui exige un certificat distributeur Samsung).
+      # Certificat AUTO-SIGNÉ (auteur) — forme MINIMALE documentée par
+      # flutter-tizen (les options de nom distinctif en plus brouillaient le
+      # parsing → mot de passe non appliqué → « PKCS12 MAC invalid »). On pointe
+      # AUSSI la CLI vers le profiles.xml généré (sinon le packaging .NET lit un
+      # autre profil et ouvre author.p12 avec un mauvais mot de passe).
       - name: Self-signed author certificate
         run: |
           set -e
           TZ="$HOME/tizen-studio/tools/ide/bin/tizen"
-          "$TZ" certificate -a thefew -f author -p thefewpass \
-            -c FR -s IDF -ct Paris -o TheFew -n TheFew -e dev@thefew.tv || true
-          "$TZ" security-profiles add -n TheFewProfile \
-            -a "$HOME/tizen-studio-data/keystore/author/author.p12" -p thefewpass || true
+          P12="$HOME/tizen-studio-data/keystore/author/author.p12"
+          PROFILES="$HOME/tizen-studio-data/profile/profiles.xml"
+          "$TZ" certificate -a thefew -p thefewpass -f author
+          "$TZ" security-profiles add -n TheFewProfile -a "$P12" -p thefewpass
+          "$TZ" cli-config "profiles.path=$PROFILES" || true
+          echo "----- profiles.xml -----"
+          cat "$PROFILES" 2>/dev/null || true
 
       # Profil « common » : son rootstrap (iot-headed-6.0) est celui qu'on peut
       # installer headless (le rootstrap « tv » exige l'extension SDK Samsung TV,
