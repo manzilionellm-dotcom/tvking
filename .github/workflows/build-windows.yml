@@ -58,6 +58,19 @@ jobs:
           channel: 'stable'
           cache: true
 
+      # Épingle CMake à 3.31. POURQUOI : firebase_core embarque un SDK C++
+      # (firebase_cpp_sdk) dont le CMakeLists déclare `cmake_minimum_required`
+      # < 3.5 ; or CMake 4.x (installé par défaut sur windows-latest) a SUPPRIMÉ
+      # cette compat → erreur « Compatibility with CMake < 3.5 has been removed »
+      # qui casse la génération. CMake 3.31 est la dernière série qui l'accepte
+      # encore (avec un simple avertissement). Firebase ne sert de toute façon à
+      # RIEN sur PC (Crashlytics est Android-only et se désactive tout seul,
+      # fail-open) — on garde juste le build qui passe sans toucher au code.
+      - name: Pin CMake 3.31 (compat firebase_cpp_sdk)
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: '3.31.6'
+
       # Le moteur desktop Flutter doit être activé pour que `flutter create`
       # génère le dossier windows/ et que `flutter build windows` fonctionne.
       - name: Enable Windows desktop
