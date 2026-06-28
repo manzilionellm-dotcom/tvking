@@ -166,48 +166,67 @@ export function screenReceiverHtml(code) {
     curUrl = null;
   }
 
-  function playTs(url){
+  var triedNative = false;
+
+  function activate(){
+    showPanel(false);
+    video.classList.add('active');
+    video.muted = false;
+    var p = video.play();
+    if (p && p.catch) p.catch(function(){
+      // Autoplay bloqué : on tente en muet (la TV débloque au 1er geste).
+      video.muted = true; video.play().catch(function(){});
+    });
+  }
+
+  // Stratégie 2 : décodeur NATIF de la TV. Beaucoup de Smart TV ont le
+  // HEVC/H265 en MATÉRIEL (contrairement à Chrome desktop) → ce repli les
+  // récupère GRATUITEMENT, sans serveur de transcodage.
+  function tryNative(url){
+    triedNative = true;
+    try { if (player){ player.destroy(); player = null; } } catch(e){}
+    try {
+      video.src = url;
+      video.onerror = function(){
+        showErr("Codec non lisible sur cet écran (souvent HEVC/H265). "
+          + "Utilise Chromecast ou DLNA pour cette chaîne.  [MediaError natif]");
+      };
+      activate();
+      curUrl = url;
+    } catch(e){
+      showErr("Lecture impossible sur cet écran. Utilise Chromecast ou DLNA.");
+    }
+  }
+
+  function playStream(url){
     teardown();
     showErr('');
-    if (!window.mpegts || !mpegts.isSupported()){
-      showErr("Cet écran ne peut pas lire ce flux dans le navigateur. Essaie Chromecast ou DLNA.");
-      return;
+    triedNative = false;
+    // Stratégie 1 : mpegts.js (transmux TS H.264 → marche partout, même
+    // Chrome). Sur erreur codec, on bascule sur le décodeur natif (st. 2).
+    if (window.mpegts && mpegts.isSupported()){
+      try {
+        player = mpegts.createPlayer(
+          { type:'mpegts', isLive:true, url:url },
+          { liveBufferLatencyChasing:true, lazyLoad:false, enableWorker:true }
+        );
+        player.attachMediaElement(video);
+        player.on(mpegts.Events.ERROR, function(type, detail){
+          if (type === 'NetworkError'){
+            showErr("Connexion au flux impossible (serveur IPTV ou réseau). "
+              + "Vérifie ton abonnement / réessaie.  [NetworkError · " + (detail || '') + "]");
+          } else if (!triedNative){
+            // MediaError / autre (souvent HEVC) → décodeur natif de la TV.
+            tryNative(url);
+          }
+        });
+        player.load();
+        activate();
+        curUrl = url;
+        return;
+      } catch(e){ /* on tombe sur le natif ci-dessous */ }
     }
-    try {
-      player = mpegts.createPlayer(
-        { type:'mpegts', isLive:true, url:url },
-        { liveBufferLatencyChasing:true, lazyLoad:false, enableWorker:true }
-      );
-      player.attachMediaElement(video);
-      player.on(mpegts.Events.ERROR, function(type, detail){
-        // On distingue les causes pour un message UTILE (et on tague le
-        // type pour le debug — l'utilisateur peut le lire/photographier).
-        var msg;
-        if (type === 'NetworkError') {
-          msg = "Connexion au flux impossible (serveur IPTV ou réseau). "
-              + "Vérifie ton abonnement / réessaie.";
-        } else if (type === 'MediaError') {
-          msg = "Codec non lisible sur cet écran (souvent HEVC/H265). "
-              + "Utilise Chromecast ou DLNA pour cette chaîne.";
-        } else {
-          msg = "Lecture impossible sur cet écran. "
-              + "Utilise Chromecast ou DLNA pour cette chaîne.";
-        }
-        showErr(msg + '  [' + type + ' · ' + (detail || '') + ']');
-      });
-      player.load();
-      curUrl = url;
-      showPanel(false);
-      video.classList.add('active');
-      video.muted = false;
-      var p = video.play();
-      if (p && p.catch) p.catch(function(){
-        // Autoplay bloqué : on tente en muet (la TV débloquera au 1er geste).
-        video.muted = true; video.play().catch(function(){});
-      });
-    } catch(e){
-      showErr("Lecture impossible. Essaie Chromecast ou DLNA.");
-    }
+    tryNative(url);
   }
 
   function apply(state){
@@ -219,7 +238,7 @@ export function screenReceiverHtml(code) {
     if (a === 'play'){
       if (seq !== lastSeq || state.playUrl !== curUrl){
         lastSeq = seq;
-        if (state.playUrl) playTs(state.playUrl);
+        if (state.playUrl) playStream(state.playUrl);
       }
       return;
     }
