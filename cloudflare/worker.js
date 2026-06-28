@@ -62,6 +62,10 @@ import { runMigration } from './migrate_kv_to_d1.js';
 // hebergee a /cast-receiver, URL a coller dans la Google Cast SDK
 // Developer Console pour obtenir un Receiver Application ID.
 import { castReceiverHtml } from './cast_receiver.js';
+// Récepteur « Caster sur un écran » (cf. cloudflare/screen_receiver.js) —
+// page générique servie à /e/<CODE> que n'importe quel navigateur de TV
+// ouvre. Voir handleScreen() pour l'appairage + la signalisation.
+import { screenReceiverHtml } from './screen_receiver.js';
 
 // ----- Constantes APK / téléchargement -----
 //
@@ -2981,6 +2985,129 @@ async function handleAiSearch(request, env) {
   }
 }
 
+// =========================================================
+//  « Caster sur un écran » — appairage + signalisation (cross-réseau)
+// =========================================================
+//  Le téléphone crée une session (code court), affiche un QR pointant
+//  vers /e/<CODE>. La TV ouvre ce lien (screen_receiver.js) et POLL
+//  l'état. Le téléphone pousse des commandes (play/pause/stop). Le flux
+//  IPTV est lu par la TV via la route proxy /cs/<b64>.ts (HTTPS) → pas
+//  besoin que TV et téléphone soient sur le même réseau.
+//
+//  Stockage : table D1 `screen_sessions` (créée à la volée). Pas de
+//  WebSocket → pas de Durable Objects. Signalisation = polling léger.
+async function ensureScreenTable(env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS screen_sessions (
+       code        TEXT PRIMARY KEY,
+       state_json  TEXT,
+       created_at  INTEGER,
+       updated_at  INTEGER,
+       expires_at  INTEGER
+     )`,
+  ).run();
+}
+
+function newScreenCode() {
+  // 4 caractères base32 SANS ambigus (pas de 0/O/1/I) → facile à recopier.
+  const ALPHA = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const r = crypto.getRandomValues(new Uint8Array(4));
+  let c = '';
+  for (let i = 0; i < 4; i++) c += ALPHA[r[i] % ALPHA.length];
+  return c;
+}
+
+// base64url compatible avec le décodeur de la route /cs/ (UTF-8 safe).
+function screenB64Url(str) {
+  const b = btoa(unescape(encodeURIComponent(str)));
+  return b.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function handleScreen(request, env, segments) {
+  if (!env.DB) return json({ error: 'db_unbound' }, 503);
+  await ensureScreenTable(env);
+  const now = Date.now();
+  const TTL = 6 * 60 * 60 * 1000; // 6 h
+  const origin = new URL(request.url).origin;
+
+  // POST /api/screen/new — le téléphone crée une session.
+  if (segments[2] === 'new' && request.method === 'POST') {
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code = newScreenCode();
+      const ex = await env.DB.prepare(
+        'SELECT code FROM screen_sessions WHERE code = ?',
+      ).bind(code).first();
+      if (!ex) break;
+    }
+    await env.DB.prepare(
+      `INSERT INTO screen_sessions (code, state_json, created_at, updated_at, expires_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).bind(code, JSON.stringify({ action: 'idle', seq: 0 }), now, now, now + TTL).run();
+    return json({ ok: true, code, url: `${origin}/e/${code}` });
+  }
+
+  const code = String(segments[2] || '').toUpperCase();
+  if (!/^[2-9A-Z]{4}$/.test(code)) return badRequest('bad code');
+
+  // GET /api/screen/:code — l'écran lit l'état courant (polling).
+  if (segments.length === 3 && request.method === 'GET') {
+    const row = await env.DB.prepare(
+      'SELECT state_json, expires_at FROM screen_sessions WHERE code = ?',
+    ).bind(code).first();
+    if (!row || (row.expires_at || 0) < now) return json({ action: 'expired' });
+    let st;
+    try { st = JSON.parse(row.state_json || '{}'); } catch (_) { st = { action: 'idle', seq: 0 }; }
+    return json(st);
+  }
+
+  // POST /api/screen/:code/command — le téléphone pousse une commande.
+  if (segments[3] === 'command' && request.method === 'POST') {
+    const row = await env.DB.prepare(
+      'SELECT state_json FROM screen_sessions WHERE code = ?',
+    ).bind(code).first();
+    if (!row) return json({ error: 'no_session' }, 404);
+    let body;
+    try { body = await request.json(); } catch (_) { return badRequest('bad json'); }
+    let prev;
+    try { prev = JSON.parse(row.state_json || '{}'); } catch (_) { prev = {}; }
+    const seq = (prev.seq || 0) + 1;
+    const action = String((body && body.action) || '');
+    let state;
+    if (action === 'play') {
+      const raw = String((body && body.url) || '');
+      if (!raw) return badRequest('url required');
+      // Flux lu par la TV via le proxy HTTPS du Worker (cross-réseau).
+      // On passe tout par /cs/<b64>.ts + mpegts.js (cas dominant IPTV) ;
+      // un codec non lisible (HEVC) déclenche le repli côté récepteur.
+      const playUrl = `${origin}/cs/${screenB64Url(raw)}.ts`;
+      state = {
+        action: 'play',
+        type: 'ts',
+        playUrl,
+        title: String((body && body.title) || ''),
+        paused: false,
+        seq,
+      };
+    } else if (action === 'pause') {
+      state = { ...prev, action: 'control', paused: true, seq };
+    } else if (action === 'resume') {
+      state = { ...prev, action: 'control', paused: false, seq };
+    } else if (action === 'stop') {
+      state = { action: 'idle', seq };
+    } else {
+      return badRequest('bad action');
+    }
+    const t = Date.now();
+    await env.DB.prepare(
+      'UPDATE screen_sessions SET state_json = ?, updated_at = ?, expires_at = ? WHERE code = ?',
+    ).bind(JSON.stringify(state), t, t + TTL, code).run();
+    return json({ ok: true, seq });
+  }
+
+  return badRequest('unsupported screen route');
+}
+
 // ----- Routeur -----
 
 export default {
@@ -3069,6 +3196,8 @@ async function handleRequest(request, env, ctx) {
         else if (seg1 === 'heartbeat' || seg1 === 'trending'
           || seg1 === 'announcement' || seg1 === 'sports'
           || seg1 === 'feedback' || seg1 === 'm3u') rl = ['pub', 240];
+        // L'écran récepteur poll ~40×/min ; on laisse large (TV + téléphone).
+        else if (seg1 === 'screen') rl = ['scr', 600];
       } else if (seg0 === 'config') {
         rl = ['cfg', 120]; // /config/:mac — même protection anti-énumération
       }
@@ -3481,6 +3610,27 @@ async function handleRequest(request, env, ctx) {
           'Access-Control-Allow-Origin': '*',
         },
       });
+    }
+
+    // /e/<CODE> — récepteur « Caster sur un écran » (n'importe quel
+    // navigateur de TV). Cf. screen_receiver.js + handleScreen().
+    if (segments.length === 2 && segments[0] === 'e') {
+      const sc = String(segments[1] || '').toUpperCase();
+      if (!/^[2-9A-Z]{4}$/.test(sc)) {
+        return new Response('code invalide', { status: 400 });
+      }
+      return new Response(screenReceiverHtml(sc), {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+
+    // /api/screen/* — création de session, état (polling), commandes.
+    if (segments[0] === 'api' && segments[1] === 'screen') {
+      return handleScreen(request, env, segments);
     }
 
     // /cast-skin.css — feuille de style pour Google Cast Styled

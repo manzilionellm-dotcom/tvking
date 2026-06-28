@@ -1,0 +1,184 @@
+// =========================================================
+//  screen_receiver.js — Récepteur « Caster sur un écran »
+// =========================================================
+//  Page web GÉNÉRIQUE (pas liée à Google Cast) que N'IMPORTE QUEL
+//  écran avec un navigateur ouvre : Smart TV (Tizen/webOS/Google TV),
+//  un vieux téléviseur avec navigateur, un PC, un vidéoprojecteur
+//  connecté… L'utilisateur ouvre `app.7themotion.com/e/<CODE>` (ou
+//  scanne le QR depuis le téléphone).
+//
+//  Cross-réseau : TOUT passe par le Worker (HTTPS). La TV ne parle
+//  jamais au téléphone → pas besoin d'être sur le même Wi-Fi, pas de
+//  souci d'« AP isolation ». Le flux IPTV est proxifié par la route
+//  /cs/<b64>.ts du Worker (déjà en place) et lu ici par mpegts.js
+//  (transmux MPEG-TS → fMP4 via Media Source Extensions).
+//
+//  Signalisation par POLLING léger (pas de WebSocket → pas besoin de
+//  Durable Objects) : la page demande `GET /api/screen/<CODE>` toutes
+//  les ~1,5 s et réagit aux changements de `seq`.
+//
+//  Limite connue : un navigateur de TV ne décode pas le HEVC/H265
+//  (et on ne peut pas transcoder sur un Worker). Sur échec de lecture,
+//  on affiche un repli clair (« utilise Chromecast / DLNA »).
+// =========================================================
+
+export function screenReceiverHtml(code) {
+  const safeCode = String(code || '').replace(/[^0-9A-Za-z]/g, '').slice(0, 8);
+  return `<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>7 MOTION — Écran</title>
+<script src="//cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; background:#0A0A0C; color:#fff;
+    font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    overflow:hidden; }
+  #video { position:fixed; inset:0; width:100%; height:100%;
+    background:#000; object-fit:contain; display:none; }
+  #video.active { display:block; }
+  #panel { position:fixed; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center; padding:6vh 4vw; }
+  #panel.hidden { display:none; }
+  .logo { font-size:clamp(28px,6vw,64px); font-weight:800; letter-spacing:.06em;
+    color:#fff; margin-bottom:3vh; }
+  .logo b { color:#D63A30; }
+  .hint { font-size:clamp(15px,2.2vw,24px); color:#9aa; max-width:680px;
+    line-height:1.5; }
+  .codebox { margin-top:4vh; padding:2.4vh 5vw; border:2px solid #2a2a30;
+    border-radius:18px; background:#121216; }
+  .codelbl { font-size:clamp(12px,1.6vw,16px); color:#778; text-transform:uppercase;
+    letter-spacing:.18em; margin-bottom:1.2vh; }
+  .code { font-size:clamp(40px,9vw,96px); font-weight:800; letter-spacing:.14em;
+    color:#D63A30; font-variant-numeric:tabular-nums; }
+  .dot { display:inline-block; width:.5em; height:.5em; border-radius:50%;
+    background:#3a3; margin-right:.5em; vertical-align:middle;
+    animation:pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:.35} 50%{opacity:1} }
+  #err { position:fixed; left:0; right:0; bottom:0; padding:2.4vh 4vw;
+    background:rgba(214,58,48,.92); color:#fff; font-size:clamp(15px,2.2vw,22px);
+    text-align:center; display:none; }
+  #err.show { display:block; }
+</style>
+</head>
+<body>
+  <video id="video" playsinline webkit-playsinline autoplay></video>
+
+  <div id="panel">
+    <div class="logo">7&nbsp;<b>MOTION</b></div>
+    <div class="hint">Prêt à recevoir ta vidéo. Depuis ton téléphone&nbsp;7&nbsp;MOTION,
+      appuie sur « Caster sur un écran » et scanne le QR — ou vérifie que le code
+      ci-dessous correspond.</div>
+    <div class="codebox">
+      <div class="codelbl"><span class="dot"></span>Connecté · code de l'écran</div>
+      <div class="code" id="code">${safeCode}</div>
+    </div>
+  </div>
+
+  <div id="err"></div>
+
+<script>
+(function(){
+  var CODE = ${JSON.stringify(safeCode)};
+  var POLL_MS = 1500;
+  var video = document.getElementById('video');
+  var panel = document.getElementById('panel');
+  var errEl = document.getElementById('err');
+  var player = null;        // instance mpegts.js courante
+  var lastSeq = -1;         // dernière commande appliquée
+  var curUrl = null;        // URL en cours de lecture
+
+  function showPanel(on){ panel.classList.toggle('hidden', !on); }
+  function showErr(msg){ if(!msg){ errEl.classList.remove('show'); return; }
+    errEl.textContent = msg; errEl.classList.add('show'); }
+
+  function teardown(){
+    try { if (player){ player.destroy(); player = null; } } catch(e){}
+    try { video.removeAttribute('src'); video.load(); } catch(e){}
+    video.classList.remove('active');
+    curUrl = null;
+  }
+
+  function playTs(url){
+    teardown();
+    showErr('');
+    if (!window.mpegts || !mpegts.isSupported()){
+      showErr("Cet écran ne peut pas lire ce flux dans le navigateur. Essaie Chromecast ou DLNA.");
+      return;
+    }
+    try {
+      player = mpegts.createPlayer(
+        { type:'mpegts', isLive:true, url:url },
+        { liveBufferLatencyChasing:true, lazyLoad:false, enableWorker:true }
+      );
+      player.attachMediaElement(video);
+      player.on(mpegts.Events.ERROR, function(t,d){
+        // Codec non supporté (ex. HEVC) ou flux mort → repli clair.
+        showErr("Ce flux n'est pas lisible sur cet écran (codec non supporté, souvent HEVC). Utilise Chromecast ou DLNA pour cette chaîne.");
+      });
+      player.load();
+      curUrl = url;
+      showPanel(false);
+      video.classList.add('active');
+      video.muted = false;
+      var p = video.play();
+      if (p && p.catch) p.catch(function(){
+        // Autoplay bloqué : on tente en muet (la TV débloquera au 1er geste).
+        video.muted = true; video.play().catch(function(){});
+      });
+    } catch(e){
+      showErr("Lecture impossible. Essaie Chromecast ou DLNA.");
+    }
+  }
+
+  function apply(state){
+    if (!state) return;
+    var a = state.action;
+    if (a === 'expired'){ teardown(); showPanel(true); showErr("Session expirée — relance le cast depuis le téléphone."); return; }
+    var seq = state.seq || 0;
+
+    if (a === 'play'){
+      if (seq !== lastSeq || state.playUrl !== curUrl){
+        lastSeq = seq;
+        if (state.playUrl) playTs(state.playUrl);
+      }
+      return;
+    }
+    if (a === 'control'){
+      lastSeq = seq;
+      try { if (state.paused) video.pause(); else video.play().catch(function(){}); } catch(e){}
+      return;
+    }
+    if (a === 'idle' || a === 'stop'){
+      if (seq !== lastSeq){ lastSeq = seq; teardown(); showPanel(true); showErr(''); }
+      return;
+    }
+  }
+
+  var failures = 0;
+  function poll(){
+    fetch('/api/screen/' + CODE, { cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(s){ failures = 0; apply(s); })
+      .catch(function(){ failures++; if (failures === 5) showErr("Connexion au serveur perdue — on réessaie…"); })
+      .then(function(){ setTimeout(poll, POLL_MS); });
+  }
+  poll();
+
+  // Garde l'écran réveillé tant que possible (best-effort).
+  try {
+    if (navigator.wakeLock && navigator.wakeLock.request){
+      var reacquire = function(){ navigator.wakeLock.request('screen').catch(function(){}); };
+      reacquire();
+      document.addEventListener('visibilitychange', function(){
+        if (document.visibilityState === 'visible') reacquire();
+      });
+    }
+  } catch(e){}
+})();
+</script>
+</body>
+</html>`;
+}
