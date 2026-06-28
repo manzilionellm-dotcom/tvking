@@ -110,7 +110,15 @@ jobs:
         continue-on-error: true
 
       # Compilation RELEASE du point d'entrée Windows.
+      # CL : on injecte _SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS pour
+      # TOUTES les compilations C++. POURQUOI : le plugin local_auth_windows
+      # inclut encore <experimental/coroutine>, que le MSVC récent transforme en
+      # ERREUR (STL1011) sauf si cette macro est définie. La variable
+      # d'environnement CL est lue par cl.exe et propage le define partout, sans
+      # patcher le plugin. Sans effet sur le code de l'app.
       - name: Build The Few (Windows release, target main_windows)
+        env:
+          CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
         run: flutter build windows --release --target=lib/main_windows.dart
 
       # Empaquetage : on zippe TOUT le dossier Release (l'.exe a besoin de ses

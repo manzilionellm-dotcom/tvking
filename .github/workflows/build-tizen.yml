@@ -117,9 +117,9 @@ jobs:
                   "  http: ^1.2.2\n\n"
                   "  # --- Paquets Tizen (ajoutés par le CI Tizen, jamais ailleurs) ---\n"
                   "  video_player_avplay: ^0.8.13\n"
-                  "  sqflite_tizen: ^0.0.5\n"
-                  "  path_provider_tizen: ^2.1.0\n"
-                  "  shared_preferences_tizen: ^2.3.0",
+                  "  sqflite_tizen: ^0.1.4\n"
+                  "  path_provider_tizen: any\n"
+                  "  shared_preferences_tizen: any",
                   1)
               open(f, "w", encoding="utf-8").write(s)
               print("paquets Tizen injectés")
