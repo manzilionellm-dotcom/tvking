@@ -213,8 +213,18 @@ export function screenReceiverHtml(code) {
         player.attachMediaElement(video);
         player.on(mpegts.Events.ERROR, function(type, detail){
           if (type === 'NetworkError'){
-            showErr("Connexion au flux impossible (serveur IPTV ou réseau). "
-              + "Vérifie ton abonnement / réessaie.  [NetworkError · " + (detail || '') + "]");
+            // On récupère le VRAI code HTTP du serveur IPTV (exposé par le
+            // proxy) pour diagnostiquer : 403 = IP bloquée, 5xx/limite =
+            // trop de connexions, 404 = URL.
+            fetch(url).then(function(r){
+              var us = r.headers.get('X-Upstream-Status') || String(r.status);
+              try { if (r.body) r.body.cancel(); } catch(e){}
+              showErr("Le serveur IPTV refuse la connexion du relais — code " + us
+                + ". Souvent : limite de connexions atteinte (ton téléphone joue "
+                + "déjà la chaîne) OU l'IP du serveur bloque le cloud.  [HTTP " + us + "]");
+            }).catch(function(){
+              showErr("Serveur IPTV / réseau injoignable depuis le relais.  [NetworkError]");
+            });
           } else if (!triedNative){
             // MediaError / autre (souvent HEVC) → décodeur natif de la TV.
             tryNative(url);

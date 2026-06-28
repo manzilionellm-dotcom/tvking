@@ -3511,13 +3511,25 @@ async function handleRequest(request, env, ctx) {
           return new Response('bad proto', { status: 400 });
         }
         const up = await fetch(dst.toString(), {
-          headers: { 'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18' },
+          headers: {
+            'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18',
+            // Certains serveurs Xtream filtrent sur Referer/Accept ; on
+            // se présente comme un lecteur normal du même hôte.
+            'Referer': `${dst.protocol}//${dst.host}/`,
+            'Accept': '*/*',
+          },
           redirect: 'follow',
         });
         const h = new Headers();
         h.set('Content-Type', 'video/mp2t');
         h.set('Cache-Control', 'no-store, no-cache');
         h.set('Access-Control-Allow-Origin', '*');
+        // Diagnostic : on EXPOSE le vrai code HTTP du serveur IPTV au
+        // récepteur (sinon mpegts.js ne montre qu'un « HttpStatusCodeInvalid »
+        // générique). Permet de distinguer 403 (IP bloquée), limite de
+        // connexions, 404 (URL), etc.
+        h.set('X-Upstream-Status', String(up.status));
+        h.set('Access-Control-Expose-Headers', 'X-Upstream-Status');
         // En-tetes DLNA pour les renderers UPnP (LG webOS, Samsung...) qui
         // sondent l'URL avant de jouer : flux LIVE en streaming, pas de seek.
         h.set('transferMode.dlna.org', 'Streaming');
