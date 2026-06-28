@@ -31,6 +31,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/live_badge.dart';
 import '../../cast/data/cast_manager.dart';
+import '../../cast/data/local_cast_server.dart';
 import '../../cast/presentation/cast_picker_sheet.dart';
 import '../../cast/presentation/screen_cast_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
@@ -1196,7 +1197,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
     final String title = widget.overrideTitle ?? _currentChannel.cleanName;
     _hideOverlayTimer?.cancel();
-    await showScreenCastSheet(context, streamUrl: url, title: title);
+    bool handedOff = false;
+    await showScreenCastSheet(
+      context,
+      streamUrl: url,
+      title: title,
+      // Handoff : dès que l'écran est prêt, on STOPPE la lecture du
+      // téléphone pour libérer la connexion IPTV (sinon 2 connexions
+      // simultanées = souvent refusé par l'abonnement). Le watchdog se met
+      // en veille tout seul (plus de lecture en cours).
+      onActive: () {
+        if (!mounted) return;
+        handedOff = true;
+        _player.stop();
+      },
+    );
+    // La feuille est fermée → on coupe le cast écran, et si on avait rendu
+    // la main à l'écran, on REPREND la lecture sur le téléphone.
+    LocalCastServer.instance.stopBrowser();
+    if (mounted && handedOff) {
+      _openMedia(url);
+    }
     _scheduleHideOverlay();
   }
 

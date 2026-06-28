@@ -28,13 +28,18 @@ Future<void> showScreenCastSheet(
   BuildContext context, {
   required String streamUrl,
   required String title,
+  VoidCallback? onActive,
 }) {
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => ScreenCastSheet(streamUrl: streamUrl, title: title),
+    builder: (_) => ScreenCastSheet(
+      streamUrl: streamUrl,
+      title: title,
+      onActive: onActive,
+    ),
   );
 }
 
@@ -42,11 +47,17 @@ class ScreenCastSheet extends StatefulWidget {
   const ScreenCastSheet({
     required this.streamUrl,
     required this.title,
+    this.onActive,
     super.key,
   });
 
   final String streamUrl;
   final String title;
+
+  /// Appelé quand l'écran est prêt à recevoir (le cast est actif). Le
+  /// player s'en sert pour ARRÊTER la lecture du téléphone et libérer la
+  /// connexion IPTV (handoff — utile si l'abonnement = 1 connexion).
+  final VoidCallback? onActive;
 
   @override
   State<ScreenCastSheet> createState() => _ScreenCastSheetState();
@@ -78,6 +89,9 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
       _localUrl = url;
       _status = _Status.ready;
     });
+    // Handoff : on prévient le player qu'il peut arrêter de jouer sur le
+    // téléphone (libère la connexion IPTV pour l'écran).
+    widget.onActive?.call();
   }
 
   Future<void> _stop() async {
