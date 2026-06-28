@@ -57,6 +57,16 @@ dependencies:
   # Manipulation de chemins de fichiers portable Android/iOS.
   path: ^1.9.0
 
+  # SQLite pour le BUREAU (Windows / Linux / macOS). `sqflite` seul ne
+  # fonctionne QUE sur mobile (il s'appuie sur le SQLite embarqué d'Android/
+  # iOS). Sur Windows il n'existe pas de SQLite système → `sqflite_common_ffi`
+  # fournit le moteur SQLite via FFI (la lib `sqlite3` est embarquée par le
+  # package). Au démarrage Windows (lib/main_windows.dart) on appelle
+  # `sqfliteFfiInit()` puis on pointe `databaseFactory = databaseFactoryFfi`
+  # → TOUT le code existant (PlaylistDatabase, etc.) marche SANS modification,
+  # le mobile n'est PAS impacté (il n'importe jamais ce package).
+  sqflite_common_ffi: ^2.3.3
+
   # Donne accès au dossier de données de l'app, où sqflite
   # range son fichier .db (chez Android : /data/data/com.x/...).
   path_provider: ^2.1.5
@@ -81,6 +91,13 @@ dependencies:
   # screen_brightness compatible et un build.gradle sans bloc kotlin{}.
   media_kit_video: ^1.3.0
   media_kit_libs_android_video: ^1.3.6
+  # Binaires libmpv pour WINDOWS (équivalent desktop de _android_video). Sans
+  # ce package, `flutter build windows` ne sait pas lier le moteur de lecture
+  # (libmpv) → pas de vidéo sur PC. Il n'embarque QUE les .dll Windows, donc
+  # AUCUN impact sur l'APK Android (le build TV strippe d'ailleurs media_kit).
+  # C'est le moteur de lecture de la cible Windows (le lecteur natif Media3/
+  # ExoPlayer est Android-uniquement). Activé en lecture côté Windows (étape 2).
+  media_kit_libs_windows_video: ^1.0.10
 
   # Garde l'écran allumé pendant la lecture (sinon Android
   # éteint l'écran après 30s d'inactivité, même en pleine

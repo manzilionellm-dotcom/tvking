@@ -124,7 +124,7 @@ jobs:
           lines = open(f).read().splitlines(keepends=True)
           out = []
           for line in lines:
-              if re.match(r'\s*(media_kit|media_kit_video|media_kit_libs_android_video)\s*:', line):
+              if re.match(r'\s*(media_kit|media_kit_video|media_kit_libs_android_video|media_kit_libs_windows_video)\s*:', line):
                   print("retiré:", line.strip())
                   continue
               out.append(line)

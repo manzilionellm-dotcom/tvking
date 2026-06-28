@@ -13,6 +13,12 @@ class AppPlatform {
   /// `true` uniquement dans l'app TV (DeFew TV). Défaut = mobile.
   static bool isTv = false;
 
+  /// `true` uniquement dans l'app de BUREAU Windows (lib/main_windows.dart).
+  /// Le panel pourra ainsi distinguer 💻 PC des box 📺 et des 📱.
+  static bool isWindows = false;
+
   /// Identifiant envoyé au backend.
-  static String get id => isTv ? 'tv' : 'mobile';
+  /// Windows est testé EN PREMIER car un poste PC peut aussi être une box TV
+  /// (mini-PC branché à l'écran) : on veut alors l'étiquette la plus précise.
+  static String get id => isWindows ? 'windows' : (isTv ? 'tv' : 'mobile');
 }
