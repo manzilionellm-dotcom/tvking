@@ -1,12 +1,15 @@
 // =========================================================
-//  screen_cast_sheet.dart — « Caster sur un écran » (QR)
+//  screen_cast_sheet.dart — « Caster sur un écran » (code TV)
 // =========================================================
-//  Affiche un QR + un code court. L'utilisateur ouvre le lien sur
-//  N'IMPORTE QUEL écran avec un navigateur (Smart TV, PC, vidéo-
-//  projecteur), même hors du Wi-Fi du téléphone — tout passe par le
-//  Worker (cf. screen_cast_service.dart). Dès qu'on crée la session, on
-//  pousse la chaîne courante : la TV démarre la lecture toute seule à
-//  l'ouverture du lien.
+//  Une TV n'a PAS de caméra : elle ne scanne donc rien. Le bon modèle
+//  (façon YouTube / Netflix) : sur la TV on ouvre une adresse FIXE
+//  (app.7themotion.com/ecran) puis on TAPE un code à 4 caractères. Le
+//  QR, lui, sert juste à un AUTRE téléphone.
+//
+//  Dès qu'on crée la session, on pousse la chaîne courante : la TV
+//  démarre la lecture toute seule une fois connectée. Tout passe par le
+//  Worker (cf. screen_cast_service.dart) → marche même hors du Wi-Fi du
+//  téléphone.
 // =========================================================
 
 import 'dart:ui';
@@ -66,8 +69,8 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
       setState(() => _status = _Status.error);
       return;
     }
-    // On pousse tout de suite la chaîne : la TV démarrera la lecture
-    // dès qu'elle ouvrira le lien.
+    // On pousse tout de suite la chaîne : la TV démarrera la lecture dès
+    // qu'elle se connecte.
     await ScreenCastService.instance
         .play(s.code, widget.streamUrl, title: widget.title);
     if (!mounted) return;
@@ -85,7 +88,7 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final double maxH = MediaQuery.of(context).size.height * 0.85;
+    final double maxH = MediaQuery.of(context).size.height * 0.9;
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       child: BackdropFilter(
@@ -148,7 +151,8 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
                 color: AppColors.textSecondary, size: 40),
             const SizedBox(height: 12),
             Text(
-              'Impossible de préparer l’écran pour le moment.\nVérifie ta connexion et réessaie.',
+              'Impossible de préparer l’écran pour le moment. '
+              'Vérifie ta connexion et réessaie.',
               textAlign: TextAlign.center,
               style: AppTextStyles.bodyMedium
                   .copyWith(color: AppColors.textSecondary),
@@ -165,11 +169,40 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
         );
       case _Status.ready:
         final ScreenSession s = _session!;
+        final String pairAddr = '${Uri.parse(s.url).host}/ecran';
         return Column(
           children: <Widget>[
-            // QR blanc (lisible par toutes les caméras de TV/téléphone).
+            // ETAPE 1 — sur la TV (qui n'a pas de camera) : ouvrir cette
+            // adresse FIXE dans son navigateur.
+            Text('Sur ta TV, ouvre le navigateur et va sur',
+                textAlign: TextAlign.center,
+                style: AppTextStyles.bodyMedium
+                    .copyWith(color: AppColors.textSecondary)),
+            const SizedBox(height: 6),
+            SelectableText(
+              pairAddr,
+              textAlign: TextAlign.center,
+              style: AppTextStyles.headlineMedium
+                  .copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 18),
+            // ETAPE 2 — taper ce code sur la TV.
+            Text('puis entre ce code',
+                style: AppTextStyles.bodyMedium
+                    .copyWith(color: AppColors.textSecondary)),
+            const SizedBox(height: 6),
+            Text(
+              s.code,
+              style: AppTextStyles.displayLarge.copyWith(
+                color: AppColors.accent,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 10,
+              ),
+            ),
+            const SizedBox(height: 22),
+            // QR = raccourci pour UN AUTRE TELEPHONE (la TV ne scanne rien).
             Container(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
@@ -177,42 +210,19 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
               child: QrImageView(
                 data: s.url,
                 version: QrVersions.auto,
-                size: 200,
+                size: 150,
                 backgroundColor: Colors.white,
               ),
             ),
-            const SizedBox(height: 18),
-            Text(
-              'Sur ta TV, ouvre le navigateur et va sur :',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.bodyMedium
-                  .copyWith(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 6),
-            SelectableText(
-              s.url.replaceFirst(RegExp(r'^https?://'), ''),
-              textAlign: TextAlign.center,
-              style: AppTextStyles.bodyLarge
-                  .copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 14),
-            Text('ou tape le code',
+            const SizedBox(height: 8),
+            Text('ou scanne avec un autre téléphone',
                 style: AppTextStyles.labelSmall
                     .copyWith(color: AppColors.textSecondary)),
-            const SizedBox(height: 4),
-            Text(
-              s.code,
-              style: AppTextStyles.displayLarge.copyWith(
-                color: AppColors.accent,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 6,
-              ),
-            ),
             const SizedBox(height: 20),
             Text(
-              'La chaîne démarre toute seule dès que la TV ouvre le lien. '
-              'Fonctionne sur n’importe quel écran avec un navigateur, '
-              'même hors de ton Wi-Fi.',
+              'La chaîne démarre toute seule dès que la TV est connectée. '
+              'Marche sur n’importe quel écran avec un navigateur, même '
+              'hors de ton Wi-Fi.',
               textAlign: TextAlign.center,
               style: AppTextStyles.labelSmall
                   .copyWith(color: AppColors.textSecondary),

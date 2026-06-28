@@ -22,6 +22,71 @@
 //  on affiche un repli clair (« utilise Chromecast / DLNA »).
 // =========================================================
 
+// Page d'APPAIRAGE servie à /ecran : la TV (qui n'a PAS de caméra et ne
+// scanne donc rien) ouvre cette adresse FIXE une fois, puis l'utilisateur
+// tape le code à 4 caractères affiché sur son téléphone → redirige vers
+// /e/<CODE>. C'est le modèle « entrer le code sur la TV » de YouTube /
+// Netflix : seul le code change, l'adresse reste mémorisable.
+export function screenPairHtml() {
+  return `<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>7 MOTION — Écran</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#0A0A0C;color:#fff;
+    font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  .wrap{position:fixed;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;padding:6vh 5vw}
+  .logo{font-size:clamp(28px,6vw,64px);font-weight:800;letter-spacing:.06em;margin-bottom:2vh}
+  .logo b{color:#D63A30}
+  .hint{font-size:clamp(15px,2.4vw,26px);color:#9aa;max-width:760px;line-height:1.5;margin-bottom:5vh}
+  form{display:flex;flex-direction:column;align-items:center;gap:3.2vh}
+  input{font-size:clamp(40px,10vw,110px);font-weight:800;letter-spacing:.22em;
+    text-align:center;text-transform:uppercase;width:min(90vw,8em);
+    background:#121216;color:#fff;border:3px solid #2a2a30;border-radius:18px;
+    padding:.18em .1em;caret-color:#D63A30}
+  input:focus{outline:none;border-color:#D63A30}
+  button{font-size:clamp(18px,2.6vw,30px);font-weight:700;color:#fff;
+    background:#D63A30;border:none;border-radius:14px;padding:.7em 2.4em;cursor:pointer}
+  button:focus{outline:3px solid #fff;outline-offset:3px}
+  .err{color:#D63A30;font-size:clamp(14px,2vw,20px);min-height:1.4em;margin-top:1vh}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo">7&nbsp;<b>MOTION</b></div>
+    <div class="hint">Entre le code à 4&nbsp;caractères affiché sur ton téléphone
+      (rubrique « Caster sur un écran »).</div>
+    <form id="f">
+      <input id="c" autocomplete="off" autocapitalize="characters"
+        autocorrect="off" spellcheck="false" maxlength="4"
+        inputmode="text" placeholder="––––" autofocus>
+      <button type="submit">Valider</button>
+      <div class="err" id="e"></div>
+    </form>
+  </div>
+<script>
+(function(){
+  var input=document.getElementById('c'), err=document.getElementById('e');
+  document.getElementById('f').addEventListener('submit',function(ev){
+    ev.preventDefault();
+    var code=(input.value||'').toUpperCase().replace(/[^2-9A-Z]/g,'');
+    if(code.length!==4){ err.textContent='Code à 4 caractères (chiffres 2-9 et lettres).'; return; }
+    window.location.href='/e/'+code;
+  });
+  input.addEventListener('input',function(){
+    input.value=(input.value||'').toUpperCase().replace(/[^2-9A-Z]/g,'').slice(0,4);
+    err.textContent='';
+  });
+})();
+</script>
+</body>
+</html>`;
+}
+
 export function screenReceiverHtml(code) {
   const safeCode = String(code || '').replace(/[^0-9A-Za-z]/g, '').slice(0, 8);
   return `<!doctype html>

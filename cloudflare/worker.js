@@ -65,7 +65,7 @@ import { castReceiverHtml } from './cast_receiver.js';
 // Récepteur « Caster sur un écran » (cf. cloudflare/screen_receiver.js) —
 // page générique servie à /e/<CODE> que n'importe quel navigateur de TV
 // ouvre. Voir handleScreen() pour l'appairage + la signalisation.
-import { screenReceiverHtml } from './screen_receiver.js';
+import { screenReceiverHtml, screenPairHtml } from './screen_receiver.js';
 
 // ----- Constantes APK / téléchargement -----
 //
@@ -3606,6 +3606,20 @@ async function handleRequest(request, env, ctx) {
           'Content-Type': 'text/html; charset=utf-8',
           // Cache 10 minutes — la page receiver bouge peu, et le
           // Chromecast la recharge a chaque session de cast.
+          'Cache-Control': 'public, max-age=600',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+
+    // /ecran (et alias /screen) — page d'APPAIRAGE : la TV n'a pas de
+    // caméra, donc on lui fait OUVRIR cette adresse fixe puis TAPER le
+    // code à 4 caractères (modèle YouTube/Netflix). Redirige vers /e/<CODE>.
+    if (segments.length === 1 &&
+        (segments[0] === 'ecran' || segments[0] === 'screen')) {
+      return new Response(screenPairHtml(), {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'public, max-age=600',
           'Access-Control-Allow-Origin': '*',
         },
