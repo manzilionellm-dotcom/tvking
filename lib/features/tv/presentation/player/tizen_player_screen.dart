@@ -21,7 +21,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:video_player_avplay/video_player_avplay.dart';
+import 'package:video_player_avplay/video_player.dart';
 
 import '../../../channels/data/recently_watched_repository.dart';
 import '../../../channels/domain/channel.dart';

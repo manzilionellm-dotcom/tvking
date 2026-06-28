@@ -21,7 +21,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'core/app/app_platform.dart';
 import 'core/app/guarded_main.dart';
@@ -46,14 +45,9 @@ Future<void> _bootstrap() async {
   // C'est une TÉLÉVISION → le panel l'affiche comme 📺 (comme l'Android TV).
   AppPlatform.isTv = true;
 
-  // SQLite bureau/embarqué via FFI (best-effort). Sur certaines cibles Tizen le
-  // moteur FFI peut manquer ; on n'empêche jamais le démarrage si l'init échoue.
-  try {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  } catch (_) {
-    // Cache local indisponible : l'app démarrera sur la source distante.
-  }
+  // SQLite : sur Tizen on utilise le plugin NATIF `sqflite_tizen` (ajouté par le
+  // workflow CI) — il enregistre tout seul la fabrique de bases, donc le code
+  // existant (PlaylistDatabase → openDatabase) fonctionne SANS FFI ni init.
 
   // INJECTION du lecteur Samsung (AVPlay) comme lecteur plein écran de l'app.
   registerTvPlayer((List<Channel> channels, int startIndex) =>

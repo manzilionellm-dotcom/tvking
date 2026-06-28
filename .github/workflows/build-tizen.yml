@@ -98,30 +98,35 @@ jobs:
           echo "===== paquets installés ====="
           "$PM" list installed 2>/dev/null || "$PM" show-pkgs 2>/dev/null || true
 
-      # On AJOUTE le lecteur Samsung au pubspec UNIQUEMENT pour ce build Tizen
-      # (checkout CI, non commité) : ainsi les builds Android/Windows n'ont jamais
-      # cette dépendance. video_player_avplay est publié par tizen.org.
-      - name: Inject video_player_avplay (Tizen only)
+      # On AJOUTE les paquets Tizen au pubspec UNIQUEMENT pour ce build (checkout
+      # CI, non commité) : ainsi les builds Android/Windows n'ont jamais ces
+      # dépendances. Tous publiés par tizen.org (équipe flutter-tizen) :
+      #   • video_player_avplay : lecteur natif AVPlay (HLS/TS/DASH) ;
+      #   • sqflite_tizen       : SQLite natif Tizen (cache des chaînes) ;
+      #   • path_provider_tizen : dossiers de l'app (chemin de la base) ;
+      #   • shared_preferences_tizen : réglages persistés (MAC, prefs).
+      - name: Inject Tizen plugins (Tizen only)
         run: |
           set -e
           python3 - <<'PYEOF'
           f = "pubspec.yaml"
           s = open(f, encoding="utf-8").read()
           if "video_player_avplay" not in s:
-              # insère sous la dépendance http (toujours présente)
               s = s.replace(
                   "  http: ^1.2.2",
                   "  http: ^1.2.2\n\n"
-                  "  # Lecteur natif Samsung TV (AVPlay/PlusPlayer) — Tizen UNIQUEMENT.\n"
-                  "  # Ajouté par le workflow CI Tizen, jamais sur Android/Windows.\n"
-                  "  video_player_avplay: ^0.8.13",
+                  "  # --- Paquets Tizen (ajoutés par le CI Tizen, jamais ailleurs) ---\n"
+                  "  video_player_avplay: ^0.8.13\n"
+                  "  sqflite_tizen: ^0.0.5\n"
+                  "  path_provider_tizen: ^2.1.0\n"
+                  "  shared_preferences_tizen: ^2.3.0",
                   1)
               open(f, "w", encoding="utf-8").write(s)
-              print("video_player_avplay injecté")
+              print("paquets Tizen injectés")
           else:
-              print("déjà présent")
+              print("déjà présents")
           PYEOF
-          grep -n "video_player_avplay" pubspec.yaml || true
+          grep -nE "video_player_avplay|_tizen" pubspec.yaml || true
 
       - name: flutter-tizen doctor
         run: flutter-tizen doctor -v || true
