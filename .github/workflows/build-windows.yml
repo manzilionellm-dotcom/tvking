@@ -56,7 +56,10 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          cache: true
+          # cache DÉSACTIVÉ : un cache PUB_CACHE restauré partiellement laissait
+          # sqflite_common_ffi sans son fichier de lib (« cannot find the file
+          # specified ») → on force un téléchargement propre à chaque build.
+          cache: false
 
       # Le moteur desktop Flutter doit être activé pour que `flutter create`
       # génère le dossier windows/ et que `flutter build windows` fonctionne.
@@ -104,6 +107,27 @@ jobs:
 
       - name: Flutter pub get
         run: flutter pub get
+
+      # DIAGNOSTIC + auto-réparation : on vérifie que le fichier de lib de
+      # sqflite_common_ffi est bien présent ; sinon on répare le cache pub et on
+      # relance pub get (filet contre une extraction incomplète).
+      - name: Vérifier sqflite_common_ffi (auto-réparation si besoin)
+        shell: pwsh
+        run: |
+          $pkg = Get-ChildItem -Path "$env:PUB_CACHE\hosted\pub.dev" -Directory -Filter "sqflite_common_ffi-*" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -eq $pkg) { Write-Host "::warning::package sqflite_common_ffi absent du cache"; }
+          else {
+            $lib = Join-Path $pkg.FullName "lib\sqflite_common_ffi.dart"
+            Write-Host "Cherche: $lib"
+            if (-not (Test-Path $lib)) {
+              Write-Host "::warning::fichier manquant -> flutter pub cache repair"
+              flutter pub cache repair
+              flutter pub get
+            } else {
+              Write-Host "✓ sqflite_common_ffi.dart present"
+            }
+            Get-ChildItem (Join-Path $pkg.FullName "lib") | Format-Table Name
+          }
 
       - name: Generate AppLocalizations from .arb files
         run: flutter gen-l10n
