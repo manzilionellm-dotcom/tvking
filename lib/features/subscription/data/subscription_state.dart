@@ -183,6 +183,35 @@ class SubscriptionState extends ChangeNotifier {
     return remaining > 0 ? remaining : 0;
   }
 
+  /// Seuil d'alerte d'expiration : on prévient le client quand il reste ≤ ce
+  /// nombre de jours (abonnement payant OU essai).
+  static const int kExpiryWarnDays = 5;
+
+  /// Jours restants avant expiration (abo payant OU essai). `null` si à vie /
+  /// inconnu / déjà expiré. LECTURE SEULE — n'altère JAMAIS la logique de
+  /// blocage (alerte purement informative, cf. bandeau d'expiration).
+  int? get daysUntilExpiry {
+    if (isLifetime) return null;
+    final SubscriptionStatus s = status;
+    if (s == SubscriptionStatus.paid) {
+      final DateTime? until = paidUntil;
+      if (until == null) return null; // payant sans date / à vie
+      final int ms = until.millisecondsSinceEpoch - _effectiveNowMs;
+      return ms <= 0 ? 0 : (ms / _kDayMs).ceil();
+    }
+    if (s == SubscriptionStatus.trialActive) {
+      return trialDaysRemaining;
+    }
+    return null; // expiré/banni/gelé/inconnu → pas une simple « alerte »
+  }
+
+  /// True si l'abonnement (payant ou essai) expire dans ≤ [kExpiryWarnDays]
+  /// jours. Sert à afficher le bandeau d'alerte « pense à renouveler ».
+  bool get isExpiringSoon {
+    final int? d = daysUntilExpiry;
+    return d != null && d >= 0 && d <= kExpiryWarnDays;
+  }
+
   /// True si l'app doit afficher un écran bloquant (gelé, banni,
   /// ou essai expiré non payé). Utilisé par `_AppEntry` au boot.
   bool get shouldBlockUser {

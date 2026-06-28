@@ -27,6 +27,7 @@ import '../../device/data/device_identity.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../security/data/parental_controls.dart';
+import '../../subscription/data/subscription_state.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
@@ -814,6 +815,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
+                  // ALERTE D'EXPIRATION : bandeau visible quand l'abonnement
+                  // expire bientôt (≤ 5 j). Invisible sinon (0 hauteur).
+                  const _ExpiryBanner(),
                   _ResumeRail(
                     channels: recentList,
                     onPlay: (int i) =>
@@ -1924,6 +1928,56 @@ class _ActionPill extends StatelessWidget {
                       fontSize: TvDimens.titleS,
                       fontWeight: FontWeight.w700,
                       color: fg)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Bandeau d'ALERTE D'EXPIRATION (auto) : visible sur l'accueil quand
+/// l'abonnement (payant ou essai) expire dans ≤ SubscriptionState.kExpiryWarnDays
+/// jours. Pousse au renouvellement → moins d'abonnés perdus. Invisible sinon
+/// (0 hauteur). Purement informatif (pas focusable). Se met à jour tout seul
+/// (ListenableBuilder sur SubscriptionState, alimenté par le heartbeat).
+class _ExpiryBanner extends StatelessWidget {
+  const _ExpiryBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: SubscriptionState.instance,
+      builder: (BuildContext context, Widget? _) {
+        final SubscriptionState sub = SubscriptionState.instance;
+        if (!sub.isExpiringSoon) return const SizedBox.shrink();
+        final int d = sub.daysUntilExpiry ?? 0;
+        final String quand = d <= 0
+            ? "aujourd'hui"
+            : (d == 1 ? 'demain' : 'dans $d jours');
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: TvTokens.badgeBg, // or ~12 %
+            borderRadius: BorderRadius.circular(TvTokens.rCard),
+            border: Border.all(color: TvTokens.gold),
+          ),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.hourglass_bottom_rounded,
+                  size: 22, color: TvTokens.goldBright),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Ton abonnement expire $quand. Pense à le renouveler '
+                  'auprès de ton revendeur pour ne pas être coupé.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvTokens.ui(15,
+                      weight: FontWeight.w600, color: TvTokens.text),
+                ),
+              ),
             ],
           ),
         );
