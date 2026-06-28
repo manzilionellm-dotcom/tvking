@@ -179,9 +179,21 @@ export function screenReceiverHtml(code) {
         { liveBufferLatencyChasing:true, lazyLoad:false, enableWorker:true }
       );
       player.attachMediaElement(video);
-      player.on(mpegts.Events.ERROR, function(t,d){
-        // Codec non supporté (ex. HEVC) ou flux mort → repli clair.
-        showErr("Ce flux n'est pas lisible sur cet écran (codec non supporté, souvent HEVC). Utilise Chromecast ou DLNA pour cette chaîne.");
+      player.on(mpegts.Events.ERROR, function(type, detail){
+        // On distingue les causes pour un message UTILE (et on tague le
+        // type pour le debug — l'utilisateur peut le lire/photographier).
+        var msg;
+        if (type === 'NetworkError') {
+          msg = "Connexion au flux impossible (serveur IPTV ou réseau). "
+              + "Vérifie ton abonnement / réessaie.";
+        } else if (type === 'MediaError') {
+          msg = "Codec non lisible sur cet écran (souvent HEVC/H265). "
+              + "Utilise Chromecast ou DLNA pour cette chaîne.";
+        } else {
+          msg = "Lecture impossible sur cet écran. "
+              + "Utilise Chromecast ou DLNA pour cette chaîne.";
+        }
+        showErr(msg + '  [' + type + ' · ' + (detail || '') + ']');
       });
       player.load();
       curUrl = url;
