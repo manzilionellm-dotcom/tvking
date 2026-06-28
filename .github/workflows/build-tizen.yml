@@ -158,27 +158,48 @@ jobs:
             echo "::warning::tizen/tizen-manifest.xml introuvable"
           fi
 
-      # Certificat AUTO-SIGNÉ (auteur) pour produire un .tpk signé en CI sans
-      # compte Samsung. Suffit pour la COMPILATION et le sideload en Mode Dev ;
-      # PAS pour une TV de détail (qui exige un certificat distributeur Samsung).
-      # Certificat AUTO-SIGNÉ (auteur) — forme MINIMALE documentée par
-      # flutter-tizen (les options de nom distinctif en plus brouillaient le
-      # parsing → mot de passe non appliqué → « PKCS12 MAC invalid »). On pointe
-      # AUSSI la CLI vers le profiles.xml généré (sinon le packaging .NET lit un
-      # autre profil et ouvre author.p12 avec un mauvais mot de passe).
-      - name: Self-signed author certificate
+      # ----- SIGNATURE du .tpk -----
+      # DEUX modes :
+      #  1) RÉEL (recommandé) — si les secrets Samsung sont posés : on décode TES
+      #     certificats Samsung (auteur + distributeur, créés UNE fois via le
+      #     Certificate Manager Samsung avec un compte gratuit, liés au DUID de ta
+      #     TV) et on crée le profil avec. → .tpk INSTALLABLE sur ta TV en Mode
+      #     Développeur (et base pour le store).
+      #  2) AUTO-SIGNÉ (repli) — sans secrets : best-effort. NB : un .tpk
+      #     auto-signé NE s'installe PAS sur une TV de détail de toute façon
+      #     (Samsung exige un certificat distributeur Samsung lié au DUID). Ce
+      #     repli ne sert donc qu'à valider la chaîne de build.
+      #  Secrets attendus (Réglages GitHub → Secrets) :
+      #     SAMSUNG_AUTHOR_P12_BASE64, SAMSUNG_AUTHOR_PASSWORD,
+      #     SAMSUNG_DISTRIBUTOR_P12_BASE64, SAMSUNG_DISTRIBUTOR_PASSWORD
+      - name: Signature (certif Samsung si secrets, sinon auto-signé)
+        env:
+          AUTHOR_P12: ${{ secrets.SAMSUNG_AUTHOR_P12_BASE64 }}
+          AUTHOR_PW: ${{ secrets.SAMSUNG_AUTHOR_PASSWORD }}
+          DIST_P12: ${{ secrets.SAMSUNG_DISTRIBUTOR_P12_BASE64 }}
+          DIST_PW: ${{ secrets.SAMSUNG_DISTRIBUTOR_PASSWORD }}
         run: |
           set -e
           TZ="$HOME/tizen-studio/tools/ide/bin/tizen"
-          P12="$HOME/tizen-studio-data/keystore/author/author.p12"
           PROFILES="$HOME/tizen-studio-data/profile/profiles.xml"
-          # Flags LONGS (--password) : évite l'ambiguïté -p/-pw entre versions
-          # du CLI Tizen (cause du « PKCS12 MAC invalid »).
-          "$TZ" certificate -a thefew --password thefewpass -f author || true
-          "$TZ" security-profiles add -n TheFewProfile -a "$P12" --password thefewpass || true
+          mkdir -p "$HOME/certs"
+          if [ -n "$AUTHOR_P12" ] && [ -n "$DIST_P12" ]; then
+            echo "$AUTHOR_P12" | base64 -d > "$HOME/certs/author.p12"
+            echo "$DIST_P12"   | base64 -d > "$HOME/certs/dist.p12"
+            "$TZ" security-profiles add -n TheFewProfile \
+              -a "$HOME/certs/author.p12" -p "$AUTHOR_PW" \
+              -d "$HOME/certs/dist.p12"  --dist-password "$DIST_PW" || \
+            "$TZ" security-profiles add -n TheFewProfile \
+              -a "$HOME/certs/author.p12" -p "$AUTHOR_PW" \
+              -d "$HOME/certs/dist.p12"  -dp "$DIST_PW"
+            echo "✓ profil signé avec les certificats Samsung (secrets)."
+          else
+            echo "::warning::Secrets Samsung absents → tentative AUTO-SIGNÉE (non installable sur TV de détail). Pose SAMSUNG_AUTHOR_P12_BASE64 etc. pour un .tpk installable."
+            "$TZ" certificate -a thefew -p thefewpass -f author || true
+            "$TZ" security-profiles add -n TheFewProfile \
+              -a "$HOME/tizen-studio-data/keystore/author/author.p12" -p thefewpass || true
+          fi
           "$TZ" cli-config "profiles.path=$PROFILES" || true
-          echo "----- profiles.xml -----"
-          cat "$PROFILES" 2>/dev/null || true
 
       # Profil « common » : son rootstrap (iot-headed-6.0) est celui qu'on peut
       # installer headless (le rootstrap « tv » exige l'extension SDK Samsung TV,

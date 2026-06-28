@@ -58,6 +58,16 @@ une fois). On ajoutera un workflow MSIX quand la lecture sera validée.
   Samsung GRATUIT** (Certificate Manager), puis on stocke les fichiers `.p12` en
   **secrets GitHub** pour que le CI signe automatiquement. Sans ça, le `.tpk`
   s'installe seulement sur une TV en Mode Développeur enregistrée.
+  Secrets à poser (Réglages GitHub → Secrets and variables → Actions) :
+  `SAMSUNG_AUTHOR_P12_BASE64`, `SAMSUNG_AUTHOR_PASSWORD`,
+  `SAMSUNG_DISTRIBUTOR_P12_BASE64`, `SAMSUNG_DISTRIBUTOR_PASSWORD`
+  (les `.p12` encodés en base64 : `base64 -w0 author.p12`). Une fois posés, le
+  workflow `build-tizen.yml` signe tout seul et publie un `.tpk` installable.
+- **Note technique honnête** : le `.tpk` auto-signé que le CI tente sans secrets
+  ne s'installe de toute façon PAS sur une TV de détail (Samsung exige le certif
+  distributeur lié au DUID). C'est pourquoi le CI est « vert » même sans `.tpk`
+  signé : il prouve que **tout le portage compile et embarque la pile vidéo
+  AVPlay** ; le `.tpk` réellement installable vient avec TES certificats.
 - **Publier au Samsung Apps TV** : compte **Seller Office** (passer en « Partner
   Group » pour distribuer hors USA), soumission du `.tpk`, revue ~4 semaines.
 
