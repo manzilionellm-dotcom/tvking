@@ -33,13 +33,16 @@ import 'core/app/app_platform.dart';
 import 'core/app/guarded_main.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
+import 'features/channels/domain/channel.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
+import 'features/tv/presentation/player/desktop_player_screen.dart';
 import 'features/tv/presentation/tv_app.dart';
+import 'features/tv/presentation/tv_player_screen.dart';
 
 // Le filet d'erreurs global (« l'app ne se ferme JAMAIS toute seule ») est
 // MUTUALISÉ avec le mobile et la TV via runGuarded.
@@ -62,9 +65,12 @@ Future<void> _bootstrap() async {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
-  // Moteur de lecture desktop (libmpv). Initialisation idempotente et légère ;
-  // le câblage du lecteur Windows dans l'UI viendra à l'étape 2.
+  // Moteur de lecture desktop (libmpv) : initialisation, puis on INJECTE le
+  // lecteur media_kit comme lecteur plein écran de l'app (le défaut natif
+  // Android est ainsi remplacé sur PC, sans toucher au code partagé).
   MediaKit.ensureInitialized();
+  registerTvPlayer((List<Channel> channels, int startIndex) =>
+      DesktopPlayerScreen(channels: channels, startIndex: startIndex));
 
   // Langue de l'app : choix mémorisé (ou « Système »). Bloquant et rapide pour
   // que le 1er rendu soit déjà dans la bonne langue.

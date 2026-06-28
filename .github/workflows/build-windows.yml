@@ -58,19 +58,6 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # Épingle CMake à 3.31. POURQUOI : firebase_core embarque un SDK C++
-      # (firebase_cpp_sdk) dont le CMakeLists déclare `cmake_minimum_required`
-      # < 3.5 ; or CMake 4.x (installé par défaut sur windows-latest) a SUPPRIMÉ
-      # cette compat → erreur « Compatibility with CMake < 3.5 has been removed »
-      # qui casse la génération. CMake 3.31 est la dernière série qui l'accepte
-      # encore (avec un simple avertissement). Firebase ne sert de toute façon à
-      # RIEN sur PC (Crashlytics est Android-only et se désactive tout seul,
-      # fail-open) — on garde juste le build qui passe sans toucher au code.
-      - name: Pin CMake 3.31 (compat firebase_cpp_sdk)
-        uses: lukka/get-cmake@latest
-        with:
-          cmakeVersion: '3.31.6'
-
       # Le moteur desktop Flutter doit être activé pour que `flutter create`
       # génère le dossier windows/ et que `flutter build windows` fonctionne.
       - name: Enable Windows desktop
@@ -80,6 +67,40 @@ jobs:
       # Même org/nom de projet que les autres cibles → cohérence du package.
       - name: Generate native Windows folder
         run: flutter create . --platforms=windows --org com.manzilionellm.tvking --project-name tv_king
+
+      # EXCLURE FIREBASE DU BUILD PC. POURQUOI : firebase_core télécharge un SDK
+      # C++ (firebase_cpp_sdk) dont le CMakeLists exige `cmake_minimum_required`
+      # < 3.5 ; or le CMake fourni par Visual Studio (utilisé par Flutter, PAS
+      # celui du PATH) est en 4.x et a SUPPRIMÉ cette compat → « Compatibility
+      # with CMake < 3.5 has been removed » qui casse la génération. Firebase
+      # Crashlytics est de toute façon ANDROID-ONLY et se désactive tout seul sur
+      # PC (fail-open) → il n'apporte RIEN ici. On le retire donc du build PC
+      # comme le build TV retire media_kit : modification du checkout CI
+      # UNIQUEMENT (non commité → Android garde Firebase intact).
+      #   1) on enlève firebase_core / firebase_crashlytics du pubspec ;
+      #   2) on remplace le SEUL fichier qui importe Firebase par un stub no-op
+      #      (même API attachCrashlytics()) pour que la compilation passe.
+      - name: Exclure Firebase (inutile sur PC)
+        shell: bash
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          import re
+          f = "pubspec.yaml"
+          out = []
+          for line in open(f, encoding="utf-8").read().splitlines(keepends=True):
+              if re.match(r'\s*(firebase_core|firebase_crashlytics)\s*:', line):
+                  print("retiré:", line.strip())
+                  continue
+              out.append(line)
+          open(f, "w", encoding="utf-8").write("".join(out))
+          PYEOF
+          cat > lib/core/crash/crash_reporting_firebase.dart <<'DARTEOF'
+          // STUB CI WINDOWS — Firebase est exclu du build PC (cf. build-windows.yml).
+          // Même signature que la version Android : ne fait RIEN (fail-open).
+          Future<bool> attachCrashlytics() async => false;
+          DARTEOF
+          echo "✓ Firebase retiré du build PC (pubspec + stub)."
 
       - name: Flutter pub get
         run: flutter pub get

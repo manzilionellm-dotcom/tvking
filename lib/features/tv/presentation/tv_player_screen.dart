@@ -38,7 +38,30 @@ import 'tv_channel_programs_screen.dart';
 import 'tv_components.dart';
 import 'tv_multiview_screen.dart';
 
-class TvPlayerScreen extends StatefulWidget {
+/// Signature d'un constructeur de lecteur plein écran (pour une liste de
+/// chaînes + un index de départ). Permet à CHAQUE plateforme d'injecter SON
+/// moteur de lecture sans que le code partagé ne connaisse media_kit/AVPlay.
+typedef TvPlayerBuilder = Widget Function(
+    List<Channel> channels, int startIndex);
+
+/// Lecteur injecté par la plateforme (null = on utilise le lecteur natif
+/// Android ci-dessous). Posé AVANT runApp par chaque point d'entrée :
+///   • Android TV (main_tv)  → rien à poser : défaut = NativeTvPlayerScreen
+///     (Media3/ExoPlayer SurfaceView).
+///   • Windows (main_windows) → un lecteur media_kit (libmpv).
+///   • Samsung (main_tizen)   → un lecteur video_player_avplay (AVPlay natif).
+/// AVANTAGE CLÉ : le fichier du lecteur media_kit / AVPlay n'est importé QUE par
+/// son main_* respectif → le build Android TV ne voit JAMAIS media_kit (sa
+/// fermeture de compilation reste propre, cf. build-tv.yml qui strippe media_kit).
+TvPlayerBuilder? _injectedPlayer;
+
+/// Enregistre le lecteur de la plateforme (appelé une fois au démarrage).
+void registerTvPlayer(TvPlayerBuilder builder) => _injectedPlayer = builder;
+
+/// Lecteur plein écran TV. Façade FINE : si une plateforme a injecté son moteur
+/// (Windows/Tizen), on l'utilise ; sinon on retombe sur le lecteur natif Android
+/// (NativeTvPlayerScreen) — comportement Android STRICTEMENT inchangé.
+class TvPlayerScreen extends StatelessWidget {
   const TvPlayerScreen({
     super.key,
     required this.channels,
@@ -50,10 +73,32 @@ class TvPlayerScreen extends StatefulWidget {
   final int startIndex;
 
   @override
-  State<TvPlayerScreen> createState() => _TvPlayerScreenState();
+  Widget build(BuildContext context) {
+    final TvPlayerBuilder? injected = _injectedPlayer;
+    if (injected != null) return injected(channels, startIndex);
+    return NativeTvPlayerScreen(channels: channels, startIndex: startIndex);
+  }
 }
 
-class _TvPlayerScreenState extends State<TvPlayerScreen>
+/// Lecteur NATIF Android (Media3 / ExoPlayer sur SurfaceView) — l'implémentation
+/// historique, inchangée. C'est le défaut quand aucune plateforme n'injecte de
+/// moteur (donc TOUJOURS sur Android TV / Fire TV).
+class NativeTvPlayerScreen extends StatefulWidget {
+  const NativeTvPlayerScreen({
+    super.key,
+    required this.channels,
+    required this.startIndex,
+  });
+
+  /// Liste pour le zap (Haut/Bas) — généralement la catégorie courante.
+  final List<Channel> channels;
+  final int startIndex;
+
+  @override
+  State<NativeTvPlayerScreen> createState() => _NativeTvPlayerScreenState();
+}
+
+class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     with WidgetsBindingObserver {
   late final NativeVideoController _controller;
   final FocusNode _focus = FocusNode();
