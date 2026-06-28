@@ -32,6 +32,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/live_badge.dart';
 import '../../cast/data/cast_manager.dart';
 import '../../cast/presentation/cast_picker_sheet.dart';
+import '../../cast/presentation/screen_cast_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
@@ -1188,6 +1189,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _scheduleHideOverlay();
   }
 
+  /// « Caster sur un écran » : QR/code vers un navigateur de TV
+  /// (n'importe quel écran, même hors du Wi-Fi du téléphone). Tout passe
+  /// par le Worker — cf. screen_cast_sheet.dart.
+  Future<void> _openScreenCast() async {
+    final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+    final String title = widget.overrideTitle ?? _currentChannel.cleanName;
+    _hideOverlayTimer?.cancel();
+    await showScreenCastSheet(context, streamUrl: url, title: title);
+    _scheduleHideOverlay();
+  }
+
   /// Bouton manuel "Mini-fenêtre" dans la rangée de contrôles du
   /// player. Permet de tester / utiliser le PiP sans devoir
   /// appuyer HOME. Utile aussi sur les devices où onUserLeaveHint
@@ -2117,6 +2129,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         : context.l10n.playerAudioOnly,
                     iconColor: _audioOnly ? AppColors.accent : null,
                     onTap: _toggleAudioOnly,
+                  ),
+                  // Caster sur n'importe quel écran avec un navigateur
+                  // (QR/code, via le Worker — marche même hors Wi-Fi local).
+                  _ControlButton(
+                    icon: Icons.screen_share_rounded,
+                    label: 'Écran',
+                    onTap: _openScreenCast,
                   ),
                 ],
               ),
