@@ -78,10 +78,19 @@ jobs:
         run: |
           set -e
           PM="$HOME/tizen-studio/package-manager/package-manager-cli.bin"
+          # PAS de « || true » : on VEUT voir si l'install du rootstrap échoue
+          # (c'est ce que flutter-tizen cherche via getRootstrap). On installe le
+          # toolchain natif + la baseline IOT-Headed 6.0 (rootstrap du profil
+          # « common », celui du template flutter-tizen) + l'add-on certificats.
           "$PM" install --accept-license \
             NativeToolchain-Gcc-9.2 \
             IOT-Headed-6.0-NativeAppDevelopment-CLI \
-            cert-add-on || true
+            cert-add-on
+          echo "===== rootstraps installés (platforms/) ====="
+          find "$HOME/tizen-studio/platforms" -maxdepth 3 -iname "*device.core*" 2>/dev/null || true
+          ls -la "$HOME/tizen-studio/platforms" 2>/dev/null || true
+          echo "===== paquets installés ====="
+          "$PM" list installed 2>/dev/null || "$PM" show-pkgs 2>/dev/null || true
 
       # On AJOUTE le lecteur Samsung au pubspec UNIQUEMENT pour ce build Tizen
       # (checkout CI, non commité) : ainsi les builds Android/Windows n'ont jamais
@@ -150,10 +159,13 @@ jobs:
           "$TZ" security-profiles add -n TheFewProfile \
             -a "$HOME/tizen-studio-data/keystore/author/author.p12" -p thefewpass || true
 
-      - name: Build .tpk (profil TV)
+      # Profil « common » : son rootstrap (iot-headed-6.0) est celui qu'on peut
+      # installer headless (le rootstrap « tv » exige l'extension SDK Samsung TV,
+      # non publique). Un TPK common s'installe et tourne sur Tizen TV 6.0+.
+      - name: Build .tpk (profil common, rootstrap IOT-Headed 6.0)
         run: |
           set -e
-          flutter-tizen build tpk --device-profile tv \
+          flutter-tizen build tpk --device-profile common \
             --security-profile TheFewProfile \
             --target lib/main_tizen.dart
           echo "=== .tpk produit ==="
