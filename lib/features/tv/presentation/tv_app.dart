@@ -26,6 +26,7 @@ import '../core/tv_tokens.dart';
 import '../data/greeting_repository.dart';
 import 'tv_activation_screen.dart';
 import 'tv_components.dart';
+import 'tv_diagnostic_screen.dart';
 import 'tv_live_screen.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_search_screen.dart';
@@ -394,10 +395,55 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   final FocusNode _railFocus = FocusNode(debugLabel: 'navRailSelected');
   bool _railHasFocus = false;
 
+  // Accès CACHÉ au diagnostic on-device : séquence D-pad HAUT-HAUT-BAS-BAS sur
+  // l'accueil. Le Focus englobant ci-dessous OBSERVE les touches (il renvoie
+  // toujours `ignored`) → la navigation directionnelle normale n'est jamais
+  // perturbée. On garde seulement les 4 dernières flèches haut/bas.
+  static const List<bool> _diagSeq = <bool>[true, true, false, false]; // H H B B
+  final List<bool> _diagBuf = <bool>[];
+  bool _diagOpen = false;
+
   @override
   void dispose() {
     _railFocus.dispose();
     super.dispose();
+  }
+
+  /// Observateur passif de touches (ne consomme RIEN). Détecte la séquence
+  /// cachée et ouvre l'écran de diagnostic. Renvoie toujours `ignored`.
+  KeyEventResult _onHomeKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final LogicalKeyboardKey k = event.logicalKey;
+    final bool up =
+        k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.channelUp;
+    final bool down =
+        k == LogicalKeyboardKey.arrowDown || k == LogicalKeyboardKey.channelDown;
+    if (!up && !down) {
+      if (_diagBuf.isNotEmpty) _diagBuf.clear();
+      return KeyEventResult.ignored;
+    }
+    _diagBuf.add(up);
+    if (_diagBuf.length > _diagSeq.length) {
+      _diagBuf.removeAt(0);
+    }
+    bool match = _diagBuf.length == _diagSeq.length;
+    for (int i = 0; match && i < _diagSeq.length; i++) {
+      if (_diagBuf[i] != _diagSeq[i]) match = false;
+    }
+    if (match) {
+      _diagBuf.clear();
+      _openDiagnostic();
+    }
+    return KeyEventResult.ignored;
+  }
+
+  Future<void> _openDiagnostic() async {
+    if (_diagOpen) return;
+    _diagOpen = true;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => const TvDiagnosticScreen()),
+    );
+    _diagOpen = false;
   }
 
   // RETOUR (n'importe quelle télécommande) :
@@ -427,7 +473,14 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         if (didPop) return;
         _onBack();
       },
-      child: TvShell(
+      child: Focus(
+        // OBSERVATEUR de touches uniquement : non focusable, hors traversée,
+        // renvoie toujours `ignored` (cf. _onHomeKey). Sert seulement à capter
+        // la séquence cachée HAUT-HAUT-BAS-BAS sans gêner la navigation.
+        canRequestFocus: false,
+        skipTraversal: true,
+        onKeyEvent: _onHomeKey,
+        child: TvShell(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
@@ -474,6 +527,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
