@@ -1,0 +1,195 @@
+# ============================================================================
+#  build-tizen.yml — Compile The Few pour SAMSUNG TV (Tizen) en .tpk
+#
+#  App SŒUR de l'Android TV : MÊME projet Flutter, MÊME backend/panel. Seul le
+#  moteur de lecture change (video_player_avplay / AVPlay natif Samsung) et la
+#  chaîne de build (flutter-tizen au lieu de flutter).
+#
+#  ⚠️ ÉTAT : portage de PRÉVISUALISATION. La chaîne d'outils Tizen est lourde et
+#  ne se teste vraiment que sur une VRAIE TV Samsung 2021+ (Tizen 6.0+). Ce
+#  workflow met en place flutter-tizen + le SDK Tizen, injecte le lecteur AVPlay,
+#  et produit un .tpk SIGNÉ EN AUTO-SIGNÉ (auteur) → utile pour valider la
+#  compilation et le sideload en Mode Développeur. Pour INSTALLER sur une TV de
+#  détail / publier au store, il faut un certificat DISTRIBUTEUR Samsung (compte
+#  Samsung gratuit, créé une fois, puis stocké en secrets CI) — cf. README plus
+#  bas dans les notes de release.
+#
+#  Réf. : github.com/flutter-tizen/flutter-tizen (doc + CI plugins).
+# ============================================================================
+name: Build The Few (Samsung Tizen)
+
+on:
+  push:
+    branches: ['main', 'claude/**', 'feature/**']
+    paths:
+      - 'lib/main_tizen.dart'
+      - 'lib/features/tv/presentation/player/tizen_player_screen.dart'
+      - '.github/workflows/build-tizen.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-tizen:
+    name: Build The Few (.tpk)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # Dépendances système attendues par le SDK Tizen (web-cli + outils natifs).
+      # python2.7 / libncurses5 ne sont plus dans les dépôts par défaut récents :
+      # on tente, sans bloquer si l'un manque (le SDK fonctionne souvent sans).
+      - name: System dependencies (Tizen SDK)
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y libncurses5 libpython2.7 zip unzip xz-utils \
+            pciutils file curl || true
+
+      - name: Setup Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # flutter-tizen embarque SON Flutter pinné : on ne pose PAS subosito ici.
+      - name: Clone flutter-tizen
+        run: |
+          set -e
+          git clone --depth 1 https://github.com/flutter-tizen/flutter-tizen.git "$HOME/flutter-tizen"
+          echo "$HOME/flutter-tizen/bin" >> "$GITHUB_PATH"
+
+      # Installation HEADLESS du SDK Tizen (web-cli) + paquets nécessaires.
+      - name: Install Tizen Studio (headless)
+        run: |
+          set -e
+          curl -fsSL https://download.tizen.org/sdk/Installer/tizen-sdk_10.0/web-cli_Tizen_SDK_10.0_ubuntu-64.bin -o install.bin
+          chmod a+x install.bin
+          ./install.bin --accept-license "$HOME/tizen-studio"
+          rm -f install.bin
+          echo "$HOME/tizen-studio/tools/ide/bin" >> "$GITHUB_PATH"
+          echo "$HOME/tizen-studio/tools" >> "$GITHUB_PATH"
+
+      - name: Install Tizen SDK packages
+        run: |
+          set -e
+          PM="$HOME/tizen-studio/package-manager/package-manager-cli.bin"
+          "$PM" install --accept-license \
+            NativeToolchain-Gcc-9.2 \
+            IOT-Headed-6.0-NativeAppDevelopment-CLI \
+            cert-add-on || true
+
+      # On AJOUTE le lecteur Samsung au pubspec UNIQUEMENT pour ce build Tizen
+      # (checkout CI, non commité) : ainsi les builds Android/Windows n'ont jamais
+      # cette dépendance. video_player_avplay est publié par tizen.org.
+      - name: Inject video_player_avplay (Tizen only)
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          f = "pubspec.yaml"
+          s = open(f, encoding="utf-8").read()
+          if "video_player_avplay" not in s:
+              # insère sous la dépendance http (toujours présente)
+              s = s.replace(
+                  "  http: ^1.2.2",
+                  "  http: ^1.2.2\n\n"
+                  "  # Lecteur natif Samsung TV (AVPlay/PlusPlayer) — Tizen UNIQUEMENT.\n"
+                  "  # Ajouté par le workflow CI Tizen, jamais sur Android/Windows.\n"
+                  "  video_player_avplay: ^0.8.13",
+                  1)
+              open(f, "w", encoding="utf-8").write(s)
+              print("video_player_avplay injecté")
+          else:
+              print("déjà présent")
+          PYEOF
+          grep -n "video_player_avplay" pubspec.yaml || true
+
+      - name: flutter-tizen doctor
+        run: flutter-tizen doctor -v || true
+
+      - name: flutter-tizen pub get
+        run: flutter-tizen pub get
+
+      - name: Generate AppLocalizations
+        run: flutter-tizen gen-l10n || true
+
+      # Génère le dossier natif tizen/ (tizen-manifest.xml, icône, embedder).
+      - name: Generate native Tizen folder
+        run: flutter-tizen create . --platforms tizen || true
+
+      # Manifeste TV : api-version 6.0 (plancher Flutter, TV 2021+) + accès
+      # Internet (indispensable pour l'IPTV). On ajuste si le fichier existe.
+      - name: Patch tizen-manifest.xml (TV + internet)
+        run: |
+          set -e
+          M=tizen/tizen-manifest.xml
+          if [ -f "$M" ]; then
+            sed -i 's/api-version="[0-9.]*"/api-version="6.0"/' "$M" || true
+            if ! grep -q 'tizen.org/privilege/internet' "$M"; then
+              sed -i 's#</manifest>#  <privileges>\n    <privilege>http://tizen.org/privilege/internet</privilege>\n  </privileges>\n</manifest>#' "$M" || true
+            fi
+            echo "----- tizen-manifest.xml -----"
+            cat "$M"
+          else
+            echo "::warning::tizen/tizen-manifest.xml introuvable"
+          fi
+
+      # Certificat AUTO-SIGNÉ (auteur) pour produire un .tpk signé en CI sans
+      # compte Samsung. Suffit pour la COMPILATION et le sideload en Mode Dev ;
+      # PAS pour une TV de détail (qui exige un certificat distributeur Samsung).
+      - name: Self-signed author certificate
+        run: |
+          set -e
+          TZ="$HOME/tizen-studio/tools/ide/bin/tizen"
+          "$TZ" certificate -a thefew -f author -p thefewpass \
+            -c FR -s IDF -ct Paris -o TheFew -n TheFew -e dev@thefew.tv || true
+          "$TZ" security-profiles add -n TheFewProfile \
+            -a "$HOME/tizen-studio-data/keystore/author/author.p12" -p thefewpass || true
+
+      - name: Build .tpk (profil TV)
+        run: |
+          set -e
+          flutter-tizen build tpk --device-profile tv \
+            --security-profile TheFewProfile \
+            --target lib/main_tizen.dart
+          echo "=== .tpk produit ==="
+          ls -lah build/tizen/tpk/ || true
+
+      - name: Upload .tpk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TheFew-Tizen
+          path: build/tizen/tpk/*.tpk
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Publish "tizen-latest" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          REPO="${{ github.repository }}"
+          TPK=$(ls build/tizen/tpk/*.tpk 2>/dev/null | head -1 || true)
+          if [ -z "$TPK" ]; then
+            echo "::warning::Aucun .tpk produit (compilation Tizen à finaliser)."
+            exit 0
+          fi
+          cp "$TPK" build/tizen/tpk/thefew-tizen.tpk
+          NOTES="The Few — build Samsung TV (Tizen) de prévisualisation.
+
+          Auto-signé (auteur) : sideload en Mode Développeur (Tizen 6.0+, TV 2021+).
+          Pour une TV de détail / le store : certificat DISTRIBUTEUR Samsung requis.
+
+          Commit : ${{ github.sha }}"
+          if gh release view tizen-latest --repo "$REPO" >/dev/null 2>&1; then
+            gh release edit tizen-latest --repo "$REPO" --notes "$NOTES"
+            gh release upload tizen-latest --repo "$REPO" --clobber build/tizen/tpk/thefew-tizen.tpk
+          else
+            gh release create tizen-latest --repo "$REPO" \
+              --title "The Few — Samsung TV (dernier build)" \
+              --notes "$NOTES" --prerelease build/tizen/tpk/thefew-tizen.tpk
+          fi

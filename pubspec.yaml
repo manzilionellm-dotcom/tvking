@@ -65,7 +65,11 @@ dependencies:
   # `sqfliteFfiInit()` puis on pointe `databaseFactory = databaseFactoryFfi`
   # → TOUT le code existant (PlaylistDatabase, etc.) marche SANS modification,
   # le mobile n'est PAS impacté (il n'importe jamais ce package).
-  sqflite_common_ffi: ^2.3.3
+  # Version ÉPINGLÉE (pas ^) : la 2.4.2 résolue par ^2.3.3 a posé un souci de
+  # packaging sur le build Windows (fichier de lib introuvable par le
+  # compilateur). 2.3.3 est stable et fournit sqfliteFfiInit + databaseFactoryFfi
+  # + le setter databaseFactory.
+  sqflite_common_ffi: 2.3.3
 
   # Donne accès au dossier de données de l'app, où sqflite
   # range son fichier .db (chez Android : /data/data/com.x/...).
