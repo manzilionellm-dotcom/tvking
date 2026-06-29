@@ -979,6 +979,11 @@ async function handleBackup(env) {
   ];
   const dump = {};
   for (const tbl of tables) {
+    // Défense en profondeur : `tbl` vient déjà d'une liste blanche EN DUR
+    // ci-dessus (aucune entrée utilisateur), mais on valide quand même le
+    // nom comme identifiant SQL pur — si quelqu'un ajoute un jour une valeur
+    // dynamique à `tables`, l'interpolation reste inoffensive.
+    if (!/^[a-z_]+$/.test(tbl)) continue;
     try {
       const rs = await env.DB.prepare('SELECT * FROM ' + tbl).all();
       dump[tbl] = (rs && rs.results) || [];
@@ -3032,8 +3037,10 @@ async function handleChangeOwnPassword(request, env, user, actor) {
   }
   const current = body.current_password || '';
   const next = body.new_password || '';
-  if (!next || next.length < 4) {
-    return errResp('weak_password', 'Le nouveau mot de passe doit faire au moins 4 caracteres', 400);
+  // Comptes admin/revendeur = accès à TOUT le parc clients → minimum 8.
+  // (4 était trop faible pour des identifiants à fort privilège.)
+  if (!next || next.length < 8) {
+    return errResp('weak_password', 'Le nouveau mot de passe doit faire au moins 8 caracteres', 400);
   }
   const table = user.role === 'reseller' ? 'resellers' : 'admin_users';
   const row = await env.DB
