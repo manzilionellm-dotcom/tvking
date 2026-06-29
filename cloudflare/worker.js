@@ -2949,14 +2949,17 @@ async function handleAiSearch(request, env) {
           { role: 'user', content: query },
         ],
       }),
+      // Time-out dur : une recherche doit rester rapide, et un amont qui pend
+      // ne doit pas bloquer le worker. AbortSignal.timeout est supporté sur
+      // le runtime Workers.
+      signal: AbortSignal.timeout(8000),
     });
     if (!resp.ok) {
-      // On NE renvoie PAS le corps amont au client (peut contenir des détails
-      // internes / la clé en écho selon le fournisseur). Log serveur uniquement.
-      try {
-        const t = await resp.text();
-        console.error('[ai] upstream error', resp.status, t.slice(0, 300));
-      } catch (_) { /* best-effort */ }
+      // On NE log PAS le corps amont : selon le fournisseur il peut contenir
+      // des détails internes (voire la clé en écho). On ne garde que le STATUT,
+      // suffisant pour diagnostiquer (429/5xx/auth). Le corps n'est ni lu ni
+      // renvoyé au client.
+      console.error('[ai] upstream error', resp.status);
       return json({ error: 'ai_upstream', status: resp.status }, 502);
     }
     const data = await resp.json();

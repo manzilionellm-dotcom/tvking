@@ -621,6 +621,15 @@ jobs:
       #    dé-symboliser les crashs plus tard) HORS de l'APK. Le dossier
       #    build/symbols n'est PAS publié dans la release → un pirate ne
       #    peut pas s'en servir pour « dé-obfusquer ».
+      # BARRIÈRE QUALITÉ (TIER 0) — on n'embarque PAS une release qui rate
+      # l'analyse ou les tests. `analyze` ne bloque que sur les ERREURS
+      # (--no-fatal-infos/warnings), donc pas de faux rouge sur le bruit ;
+      # `test` doit passer. Si ça casse ici, l'APK/AAB n'est jamais publié.
+      - name: Quality gate (analyze + tests)
+        run: |
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          flutter test --reporter expanded
+
       - name: Build release APK (split-per-abi, obfusqué)
         run: |
           # APP_BUILD_TS : date de ce build (epoch s), injectée dans l'app

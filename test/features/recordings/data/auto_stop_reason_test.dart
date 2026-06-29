@@ -40,19 +40,12 @@ void main() {
   });
 
   test('kMaxRecordingDuration = 30 jours (plafond anti-fuite)', () {
-    // Doc : un changement de cette duree impacte la com utilisateur et les
-    // estimations storage. Valeur actuelle = plafond de SÉCURITÉ anti-fuite
-    // (si l'utilisateur oublie d'arrêter l'enregistrement), pas une durée
-    // cible. Verrouillé ici pour qu'un changement soit conscient.
+    // CONFIRMÉ (2026-06-29) : la demande produit est « enregistrements
+    // ILLIMITÉS » ; 30 jours est un garde-fou anti-fuite (si l'utilisateur
+    // oublie d'arrêter), PAS une durée cible. Les anciennes mentions « 6 h »
+    // étaient un design antérieur et ne subsistaient que dans des debugPrint
+    // (jamais affichées à l'utilisateur). Test verrouillé sur la vraie valeur :
+    // un changement (ex. cap storage-aware) doit être conscient.
     expect(kMaxRecordingDuration, const Duration(days: 30));
-  },
-      // INCOHÉRENCE À TRANCHER (produit) : la constante vaut
-      // Duration(days: 30) mais ~20 commentaires de http_recording_
-      // downloader.dart ET l'ancien test disent « 6 h », et les messages
-      // utilisateur affichent « limite de 6 h atteinte ». Soit le plafond
-      // a été relevé à 30 j (anti-fuite) sans mettre à jour la doc, soit
-      // c'est une régression. On SKIP tant que le propriétaire n'a pas
-      // confirmé la valeur voulue — pour ne pas verrouiller un mauvais
-      // choix ni laisser la barrière CI rouge.
-      skip: 'Valeur 6 h vs 30 jours à confirmer (voir commentaire).');
+  });
 }

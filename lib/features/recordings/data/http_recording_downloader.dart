@@ -395,7 +395,7 @@ class HttpRecordingDownloader {
     // Plafond 6 h — on finalise proprement.
     if (job.elapsed >= kMaxRecordingDuration) {
       if (kDebugMode) {
-        debugPrint('[Rec] plafond 6 h atteint sur ${job.filePath}');
+        debugPrint('[Rec] plafond de durée atteint sur ${job.filePath}');
       }
       _autoFinish(job.filePath, AutoStopReason.maxDurationReached);
       return;
@@ -549,7 +549,7 @@ class HttpRecordingDownloader {
       // Plafond 6 h.
       if (job.elapsed >= kMaxRecordingDuration) {
         if (kDebugMode) {
-          debugPrint('[Rec] plafond 6 h atteint sur $filePath (HLS)');
+          debugPrint('[Rec] plafond de durée atteint sur $filePath (HLS)');
         }
         exitReason = AutoStopReason.maxDurationReached;
         break;
@@ -811,7 +811,7 @@ class HttpRecordingDownloader {
   void _armMaxDurationTimer(_Job job) {
     job.maxTimer = Timer(kMaxRecordingDuration, () {
       if (kDebugMode) {
-        debugPrint('[Rec] timer 6 h déclenché → arrêt ${job.filePath}');
+        debugPrint('[Rec] timer plafond déclenché → arrêt ${job.filePath}');
       }
       _autoFinish(job.filePath, AutoStopReason.maxDurationReached);
     });
