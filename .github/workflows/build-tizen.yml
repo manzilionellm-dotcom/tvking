@@ -159,45 +159,54 @@ jobs:
           fi
 
       # ----- SIGNATURE du .tpk -----
-      # DEUX modes :
-      #  1) RÉEL (recommandé) — si les secrets Samsung sont posés : on décode TES
-      #     certificats Samsung (auteur + distributeur, créés UNE fois via le
-      #     Certificate Manager Samsung avec un compte gratuit, liés au DUID de ta
-      #     TV) et on crée le profil avec. → .tpk INSTALLABLE sur ta TV en Mode
-      #     Développeur (et base pour le store).
-      #  2) AUTO-SIGNÉ (repli) — sans secrets : best-effort. NB : un .tpk
-      #     auto-signé NE s'installe PAS sur une TV de détail de toute façon
-      #     (Samsung exige un certificat distributeur Samsung lié au DUID). Ce
-      #     repli ne sert donc qu'à valider la chaîne de build.
-      #  Secrets attendus (Réglages GitHub → Secrets) :
-      #     SAMSUNG_AUTHOR_P12_BASE64, SAMSUNG_AUTHOR_PASSWORD,
-      #     SAMSUNG_DISTRIBUTOR_P12_BASE64, SAMSUNG_DISTRIBUTOR_PASSWORD
-      - name: Signature (certif Samsung si secrets, sinon auto-signé)
+      # On signe avec TON certificat AUTEUR (ton identité, créé une fois via le
+      # Certificate Manager) + le certificat DISTRIBUTEUR Tizen PAR DÉFAUT livré
+      # avec le SDK (mot de passe public bien connu). C'est exactement la combi
+      # que tu as choisie en local (profil « thefew » → « Use the default Tizen
+      # distributor certificate »). Avantage : un SEUL fichier à exporter.
+      #
+      #  • Le distributeur Tizen par défaut suffit pour : .tpk signé valide,
+      #    test émulateur, et soumission au store (le store de Samsung re-signe).
+      #  • Le distributeur Samsung lié au DUID ne sert QUE pour le sideload sur
+      #    une TV physique précise en Mode Dev — on l'ajoutera le jour où il y a
+      #    une vraie TV (cf. PORTAGE_TV_PLATEFORMES.md).
+      #
+      #  Secrets attendus (Réglages GitHub → Secrets and variables → Actions) :
+      #     SAMSUNG_AUTHOR_P12_BASE64  = ton author.p12 encodé en base64
+      #     SAMSUNG_AUTHOR_PASSWORD    = le mot de passe choisi à sa création
+      #  (Plus besoin de secret distributeur : on prend celui du SDK.)
+      #
+      #  Sans le secret auteur → repli AUTO-SIGNÉ best-effort (valide juste que la
+      #  chaîne de build compile et embarque la pile vidéo AVPlay).
+      - name: Signature (certif auteur via secret + distributeur Tizen par défaut)
         env:
           AUTHOR_P12: ${{ secrets.SAMSUNG_AUTHOR_P12_BASE64 }}
           AUTHOR_PW: ${{ secrets.SAMSUNG_AUTHOR_PASSWORD }}
-          DIST_P12: ${{ secrets.SAMSUNG_DISTRIBUTOR_P12_BASE64 }}
-          DIST_PW: ${{ secrets.SAMSUNG_DISTRIBUTOR_PASSWORD }}
         run: |
           set -e
           TZ="$HOME/tizen-studio/tools/ide/bin/tizen"
           PROFILES="$HOME/tizen-studio-data/profile/profiles.xml"
+          # Distributeur Tizen PAR DÉFAUT du SDK (présent après l'install). Mot de
+          # passe public documenté par Tizen : « tizenpkcs12passfordsigner ».
+          DIST="$(find "$HOME/tizen-studio" -name 'tizen-distributor-signer.p12' 2>/dev/null | head -1)"
+          DIST_PW="tizenpkcs12passfordsigner"
+          echo "distributeur par défaut : ${DIST:-INTROUVABLE}"
           mkdir -p "$HOME/certs"
-          if [ -n "$AUTHOR_P12" ] && [ -n "$DIST_P12" ]; then
+          if [ -n "$AUTHOR_P12" ]; then
             echo "$AUTHOR_P12" | base64 -d > "$HOME/certs/author.p12"
-            echo "$DIST_P12"   | base64 -d > "$HOME/certs/dist.p12"
             "$TZ" security-profiles add -n TheFewProfile \
               -a "$HOME/certs/author.p12" -p "$AUTHOR_PW" \
-              -d "$HOME/certs/dist.p12"  --dist-password "$DIST_PW" || \
+              -d "$DIST" --dist-password "$DIST_PW" || \
             "$TZ" security-profiles add -n TheFewProfile \
               -a "$HOME/certs/author.p12" -p "$AUTHOR_PW" \
-              -d "$HOME/certs/dist.p12"  -dp "$DIST_PW"
-            echo "✓ profil signé avec les certificats Samsung (secrets)."
+              -d "$DIST" -dp "$DIST_PW"
+            echo "✓ profil signé : TON certificat auteur + distributeur Tizen par défaut."
           else
-            echo "::warning::Secrets Samsung absents → tentative AUTO-SIGNÉE (non installable sur TV de détail). Pose SAMSUNG_AUTHOR_P12_BASE64 etc. pour un .tpk installable."
+            echo "::warning::Secret SAMSUNG_AUTHOR_P12_BASE64 absent → tentative AUTO-SIGNÉE (validation de la chaîne de build). Pose le secret pour un .tpk signé avec ton identité."
             "$TZ" certificate -a thefew -p thefewpass -f author || true
             "$TZ" security-profiles add -n TheFewProfile \
-              -a "$HOME/tizen-studio-data/keystore/author/author.p12" -p thefewpass || true
+              -a "$HOME/tizen-studio-data/keystore/author/author.p12" -p thefewpass \
+              -d "$DIST" --dist-password "$DIST_PW" || true
           fi
           "$TZ" cli-config "profiles.path=$PROFILES" || true
 

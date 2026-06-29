@@ -53,16 +53,19 @@ une fois). On ajoutera un workflow MSIX quand la lecture sera validée.
 **Contraintes RÉELLES (à connaître) :**
 - **TV 2021 ou plus récentes uniquement** (Tizen 6.0+). Les modèles 2020 et
   avant sont bloqués par Samsung — rien à faire.
-- **Installer sur une vraie TV** demande un **certificat DISTRIBUTEUR Samsung**,
-  lié au **DUID** de la TV. Il se crée **une seule fois** avec un **compte
-  Samsung GRATUIT** (Certificate Manager), puis on stocke les fichiers `.p12` en
-  **secrets GitHub** pour que le CI signe automatiquement. Sans ça, le `.tpk`
-  s'installe seulement sur une TV en Mode Développeur enregistrée.
-  Secrets à poser (Réglages GitHub → Secrets and variables → Actions) :
-  `SAMSUNG_AUTHOR_P12_BASE64`, `SAMSUNG_AUTHOR_PASSWORD`,
-  `SAMSUNG_DISTRIBUTOR_P12_BASE64`, `SAMSUNG_DISTRIBUTOR_PASSWORD`
-  (les `.p12` encodés en base64 : `base64 -w0 author.p12`). Une fois posés, le
-  workflow `build-tizen.yml` signe tout seul et publie un `.tpk` installable.
+- **Signer le `.tpk` en CI** : il suffit de TON **certificat AUTEUR** (ton
+  identité, créé une seule fois via le **Certificate Manager**, compte Samsung
+  GRATUIT). Le **certificat DISTRIBUTEUR** utilisé est celui **par défaut de
+  Tizen** (livré avec le SDK) — suffisant pour un `.tpk` signé valide, le test
+  émulateur et la **soumission au store** (le store de Samsung **re-signe**).
+  Secrets à poser (Réglages GitHub → Secrets and variables → Actions) — **2
+  seulement** :
+  `SAMSUNG_AUTHOR_P12_BASE64` (ton `author.p12` encodé : `base64 -w0 author.p12`)
+  et `SAMSUNG_AUTHOR_PASSWORD` (le mot de passe choisi à sa création). Une fois
+  posés, `build-tizen.yml` signe tout seul et publie le `.tpk`.
+- **Sideload sur une TV physique précise** (Mode Développeur) : là seulement il
+  faut en plus le **certificat DISTRIBUTEUR Samsung lié au DUID** de cette TV.
+  On l'ajoutera le jour où une vraie TV Samsung 2021+ est disponible.
 - **Note technique honnête** : le `.tpk` auto-signé que le CI tente sans secrets
   ne s'installe de toute façon PAS sur une TV de détail (Samsung exige le certif
   distributeur lié au DUID). C'est pourquoi le CI est « vert » même sans `.tpk`
