@@ -159,8 +159,9 @@
 
     // Prix à afficher (mets ce que tu veux ; "€", "MAD", "DH"…)
     prices: {
-      m1:  { amount: "5,99", unit: "/ mois" },
-      m12: { amount: "99",   unit: "/ an"   }
+      m1:  { amount: "5,99",  unit: "/ mois"  },
+      m6:  { amount: "29,99", unit: "/ 6 mois" },
+      m12: { amount: "49,99", unit: "/ an"    }
     },
     currency: "€"
   };
@@ -277,7 +278,7 @@
   <div class="wrap">
     <h2 class="center">Nos <span class="accent">formules</span></h2>
     <p class="sub center">Activation &amp; support de ton appareil. Paiement &amp; activation via WhatsApp.</p>
-    <div class="grid g2" style="max-width:680px;margin:0 auto">
+    <div class="grid g3" style="max-width:920px;margin:0 auto">
       <div class="price">
         <div class="dur">1 mois</div>
         <div class="amt" id="p1">—</div>
@@ -288,8 +289,15 @@
         <div class="ribbon">★ MEILLEUR PRIX</div>
         <div class="dur">1 an</div>
         <div class="amt" id="p12">—</div>
-        <ul><li>Activation appareil</li><li>Support VIP prioritaire</li><li>Multi-écran</li><li>Économise sur l'année</li></ul>
+        <p style="color:var(--gold);font-weight:800;font-size:13px;margin-bottom:4px">≈ 4,17 €/mois · ~30 % d'économie</p>
+        <ul><li>Activation appareil</li><li>Support VIP prioritaire</li><li>Multi-écran</li><li>Le meilleur rapport qualité/prix</li></ul>
         <a class="btn btn-red" data-plan="1 an" style="width:100%;justify-content:center">Choisir</a>
+      </div>
+      <div class="price">
+        <div class="dur">6 mois</div>
+        <div class="amt" id="p6">—</div>
+        <ul><li>Activation appareil</li><li>Support prioritaire</li><li>Multi-écran</li><li>Économise vs mensuel</li></ul>
+        <a class="btn btn-red" data-plan="6 mois" style="width:100%;justify-content:center">Choisir</a>
       </div>
     </div>
     <p class="hint center" style="margin-top:18px">Le paiement se fait directement avec notre équipe sur WhatsApp — simple, rapide, humain.</p>
@@ -399,7 +407,7 @@
 
   // Prix
   function price(id,p){ var e=document.getElementById(id); if(e&&p) e.innerHTML = p.amount + " " + C.currency + " <span>" + p.unit + "</span>"; }
-  price("p1",C.prices.m1); price("p12",C.prices.m12);
+  price("p1",C.prices.m1); price("p6",C.prices.m6); price("p12",C.prices.m12);
 
   // Boutons "Choisir" -> WhatsApp avec la formule
   document.querySelectorAll("[data-plan]").forEach(function(b){

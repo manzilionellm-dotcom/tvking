@@ -14,8 +14,9 @@ const CONFIG = {
   tvUrl:   "https://app.7themotion.com/tv",        // déjà branché
   privacyUrl: "https://app.7themotion.com/privacy",
   prices: {
-    m1:  { amount: "5,99", unit: "/ mois" },
-    m12: { amount: "99",   unit: "/ an"   }
+    m1:  { amount: "5,99",  unit: "/ mois"  },
+    m6:  { amount: "29,99", unit: "/ 6 mois" },
+    m12: { amount: "49,99", unit: "/ an"    }
   },
   currency: "€"   // ou "MAD", "DH"…
 };
