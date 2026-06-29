@@ -9,15 +9,13 @@ Ouvre `index.html` et modifie **uniquement** le bloc `CONFIG` en haut :
 
 ```js
 const CONFIG = {
-  whatsapp: "2126XXXXXXXX",   // ton numéro WhatsApp, format international SANS "+" ni espaces
+  whatsapp: "447307410512",   // ton numéro WhatsApp, format international SANS "+" ni espaces
   appUrl:  "https://app.7themotion.com/install",  // déjà branché
   tvUrl:   "https://app.7themotion.com/tv",        // déjà branché
   privacyUrl: "https://app.7themotion.com/privacy",
   prices: {
-    m1:  { amount: "XX", unit: "/ mois"   },
-    m3:  { amount: "XX", unit: "/ 3 mois"  },
-    m6:  { amount: "XX", unit: "/ 6 mois"  },
-    m12: { amount: "XX", unit: "/ 12 mois" }
+    m1:  { amount: "5,99", unit: "/ mois" },
+    m12: { amount: "99",   unit: "/ an"   }
   },
   currency: "€"   // ou "MAD", "DH"…
 };

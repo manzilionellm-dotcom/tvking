@@ -68,10 +68,11 @@
 
   /* ---- Cartes / grilles ---- */
   .grid{display:grid;gap:18px}
+  .g2{grid-template-columns:repeat(2,1fr)}
   .g3{grid-template-columns:repeat(3,1fr)}
   .g4{grid-template-columns:repeat(4,1fr)}
   @media(max-width:900px){.g3,.g4{grid-template-columns:repeat(2,1fr)}}
-  @media(max-width:560px){.g3,.g4{grid-template-columns:1fr}}
+  @media(max-width:560px){.g2,.g3,.g4{grid-template-columns:1fr}}
   .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:26px;transition:.2s}
   .card:hover{border-color:var(--red);transform:translateY(-3px)}
   .card .ico{font-size:30px;margin-bottom:12px}
@@ -149,7 +150,7 @@
   const CONFIG = {
     // Numéro WhatsApp au format international SANS "+" ni espaces
     // ex. Maroc : 2126XXXXXXXX  ·  France : 336XXXXXXXX
-    whatsapp: "2126XXXXXXXX",
+    whatsapp: "447307410512",
 
     // Liens de téléchargement (déjà branchés sur ton worker)
     appUrl: "https://app.7themotion.com/install",
@@ -158,10 +159,8 @@
 
     // Prix à afficher (mets ce que tu veux ; "€", "MAD", "DH"…)
     prices: {
-      m1:  { amount: "XX",  unit: "/ mois"   },
-      m3:  { amount: "XX",  unit: "/ 3 mois"  },
-      m6:  { amount: "XX",  unit: "/ 6 mois"  },
-      m12: { amount: "XX",  unit: "/ 12 mois" }
+      m1:  { amount: "5,99", unit: "/ mois" },
+      m12: { amount: "99",   unit: "/ an"   }
     },
     currency: "€"
   };
@@ -278,31 +277,19 @@
   <div class="wrap">
     <h2 class="center">Nos <span class="accent">formules</span></h2>
     <p class="sub center">Activation &amp; support de ton appareil. Paiement &amp; activation via WhatsApp.</p>
-    <div class="grid g4">
+    <div class="grid g2" style="max-width:680px;margin:0 auto">
       <div class="price">
         <div class="dur">1 mois</div>
         <div class="amt" id="p1">—</div>
-        <ul><li>Activation appareil</li><li>Support inclus</li><li>Mises à jour</li></ul>
+        <ul><li>Activation appareil</li><li>Support inclus</li><li>Mises à jour</li><li>Sans engagement</li></ul>
         <a class="btn btn-red" data-plan="1 mois" style="width:100%;justify-content:center">Choisir</a>
       </div>
-      <div class="price">
-        <div class="dur">3 mois</div>
-        <div class="amt" id="p3">—</div>
-        <ul><li>Activation appareil</li><li>Support prioritaire</li><li>Mises à jour</li></ul>
-        <a class="btn btn-red" data-plan="3 mois" style="width:100%;justify-content:center">Choisir</a>
-      </div>
       <div class="price pop">
-        <div class="ribbon">★ POPULAIRE</div>
-        <div class="dur">6 mois</div>
-        <div class="amt" id="p6">—</div>
-        <ul><li>Activation appareil</li><li>Support prioritaire</li><li>Multi-écran</li></ul>
-        <a class="btn btn-red" data-plan="6 mois" style="width:100%;justify-content:center">Choisir</a>
-      </div>
-      <div class="price">
-        <div class="dur">12 mois</div>
+        <div class="ribbon">★ MEILLEUR PRIX</div>
+        <div class="dur">1 an</div>
         <div class="amt" id="p12">—</div>
-        <ul><li>Activation appareil</li><li>Support VIP</li><li>Meilleur prix</li></ul>
-        <a class="btn btn-red" data-plan="12 mois" style="width:100%;justify-content:center">Choisir</a>
+        <ul><li>Activation appareil</li><li>Support VIP prioritaire</li><li>Multi-écran</li><li>Économise sur l'année</li></ul>
+        <a class="btn btn-red" data-plan="1 an" style="width:100%;justify-content:center">Choisir</a>
       </div>
     </div>
     <p class="hint center" style="margin-top:18px">Le paiement se fait directement avec notre équipe sur WhatsApp — simple, rapide, humain.</p>
@@ -412,7 +399,7 @@
 
   // Prix
   function price(id,p){ var e=document.getElementById(id); if(e&&p) e.innerHTML = p.amount + " " + C.currency + " <span>" + p.unit + "</span>"; }
-  price("p1",C.prices.m1); price("p3",C.prices.m3); price("p6",C.prices.m6); price("p12",C.prices.m12);
+  price("p1",C.prices.m1); price("p12",C.prices.m12);
 
   // Boutons "Choisir" -> WhatsApp avec la formule
   document.querySelectorAll("[data-plan]").forEach(function(b){
