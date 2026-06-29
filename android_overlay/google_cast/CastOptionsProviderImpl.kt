@@ -55,12 +55,18 @@ class CastOptionsProviderImpl : OptionsProvider {
         // aucun numéro de série à enregistrer) et la box réapparaît dans le
         // picker.
         //
-        //   false : Default Media Receiver public CC1AD845 (ne décode pas le
-        //     MPEG-TS brut → dépendait d'un wrap HLS / VPS).
-        //   true (ACTUEL) : custom receiver 5BDFD969 (mpegts.js,
-        //     /cast-receiver) → décode le MPEG-TS sur la TV, .ts direct, SANS
-        //     VPS, téléphone éteignable.
-        private const val USE_CUSTOM_RECEIVER = true
+        //   false (ACTUEL) : Default Media Receiver public CC1AD845. Il lit le
+        //     HLS NATIVEMENT → on lui sert le RELAIS HLS du téléphone
+        //     (/hls/<token>.m3u8), qui tire le flux IPTV côté téléphone (ni
+        //     CORS ni contenu mixte). cf. google_cast_transport.dart playStream.
+        //   true : custom receiver 5BDFD969 (mpegts.js, /cast-receiver). Tentait
+        //     de décoder le .ts sur la TV, mais son fetch HTTPS→HTTP sans CORS
+        //     est bloqué sur les flux IPTV tiers (écran qui ne démarre jamais,
+        //     prouvé en diagnostic 2026-06-29). Conservé comme repli.
+        //
+        // ❌ REPASSÉ À false (2026-06-29) pour rebrancher le relais HLS qui
+        //    fonctionne. Garder SYNCHRONE avec kCastUseCustomReceiver (Dart).
+        private const val USE_CUSTOM_RECEIVER = false
 
         // Default Media Receiver public de Google (toujours actif).
         private const val DEFAULT_RECEIVER_ID = "CC1AD845"

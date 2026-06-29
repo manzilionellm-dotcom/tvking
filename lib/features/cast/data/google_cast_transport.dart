@@ -65,7 +65,17 @@ import 'local_cast_server.dart';
 ///    mpegts.js decode le MPEG-TS sur la TV → on envoie le .ts DIRECT, sans
 ///    VPS, et la box reapparait dans le picker (le filtre par app id publie
 ///    ne cache plus les appareils).
-const bool kCastUseCustomReceiver = true;
+///
+/// ❌ DESACTIVÉ (2026-06-29) — PROUVÉ EN DIAGNOSTIC TERRAIN. Envoyer le .ts
+///    brut au custom receiver ECHOUE sur un flux IPTV tiers : la page receiver
+///    tourne en HTTPS et son mpegts.js doit *fetch* le flux HTTP sans en-tete
+///    CORS → contenu mixte + CORS bloques → la TV n'atteint JAMAIS l'etat
+///    PLAYING (timeout 25 s « format non pris en charge »), meme sur un SHIELD.
+///    On repasse donc au Default Media Receiver et on caste via le RELAIS HLS
+///    du telephone (cf. playStream) : le telephone tire le flux (client natif,
+///    ni CORS ni contenu mixte) et sert une playlist HLS propre que le receiver
+///    lit nativement. Le code custom-receiver reste reference (repli).
+const bool kCastUseCustomReceiver = false;
 
 /// Base du service de remux VPS (cf. server/cast-remux) qui transforme le
 /// MPEG-TS live en HLS-fMP4 — le SEUL format que le recepteur Cast par
@@ -166,17 +176,38 @@ class GoogleCastTransport implements CastTransport {
     //        (_castRemuxUrl, ffmpeg -c copy). Code conserve derriere le
     //        flag, reutilisable, mais inactif tant que le custom est ON.
     if (!isHlsOrDash(streamUrl) && _looksLikeRawMpegTs(streamUrl)) {
-      // On passe par un booleen LOCAL (pas le const directement) pour que
-      // les DEUX branches restent du code vivant pour l'analyzer : le repli
-      // VPS (_castRemuxUrl) demeure reference et reutilisable, juste inactif
-      // au runtime tant que le custom receiver est ON.
-      final bool useCustomReceiver = kCastUseCustomReceiver;
-      // Custom receiver mpegts.js (5BDFD969 -> /cast-receiver) : il decode le
-      // .ts LUI-MEME → on envoie l'URL .ts brute DIRECTE, sans VPS.
-      // Sinon (Default Media Receiver) : repli remux HLS-fMP4 via le VPS.
-      urlToCast = useCustomReceiver ? streamUrl : _castRemuxUrl(streamUrl);
-      mime = useCustomReceiver ? 'video/mp2t' : 'application/x-mpegURL';
-      castPath = useCustomReceiver ? 'direct_ts_custom_receiver' : 'remux_hls';
+      // CHEMIN PRINCIPAL (2026-06-29) — RELAIS HLS DU TELEPHONE.
+      // Le récepteur Cast ne décode pas le MPEG-TS brut, et un fetch direct
+      // depuis la page receiver (HTTPS) vers un flux IPTV (HTTP, sans CORS) est
+      // bloqué (contenu mixte + CORS) — c'est l'échec prouvé en diagnostic.
+      // Solution : le TÉLÉPHONE tire le flux (client natif, ni CORS ni mixte)
+      // et sert une playlist HLS propre (/hls/<token>.m3u8) que le Default
+      // Media Receiver lit nativement. Technique standard (BubbleUPnP, etc.).
+      // registerRelay renvoie null si la TV n'est pas joignable depuis l'IP LAN
+      // du téléphone (réseaux séparés / isolation AP) → repli ci-dessous.
+      final DlnaProfile profile =
+          DlnaProfiles.select(url: streamUrl, finalMime: null);
+      final String? hlsRelay = await LocalCastServer.instance.registerRelay(
+        upstreamUrl: streamUrl,
+        profile: profile,
+        receiverHost: device.host,
+        wrapInHls: true,
+      );
+      if (hlsRelay != null) {
+        urlToCast = hlsRelay;
+        mime = 'application/x-mpegURL';
+        castPath = 'local_hls_relay';
+      } else {
+        // REPLI conservé et référencé (réseaux séparés / isolation : le relais
+        // local est injoignable). On passe par un booléen LOCAL pour garder les
+        // DEUX branches vivantes pour l'analyzer : custom receiver direct si
+        // activé, sinon remux VPS. Tous deux ont des limites connues (CORS /
+        // VPS éteint) mais restent réutilisables.
+        final bool useCustomReceiver = kCastUseCustomReceiver;
+        urlToCast = useCustomReceiver ? streamUrl : _castRemuxUrl(streamUrl);
+        mime = useCustomReceiver ? 'video/mp2t' : 'application/x-mpegURL';
+        castPath = useCustomReceiver ? 'direct_ts_custom_receiver' : 'remux_hls';
+      }
     }
 
     // DIAGNOSTIC (brief §4.3) — tracer EXACTEMENT l'URL et le MIME
