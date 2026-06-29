@@ -78,11 +78,18 @@ class NativeVideoView(
         surfaceView.isFocusableInTouchMode = false
         surfaceView.keepScreenOn = true
 
-        // Tampons orientés DÉMARRAGE RAPIDE + direct : on lance la lecture dès
-        // ~1 s de données (bufferForPlayback), on retampe vite après coupure,
-        // et on autorise jusqu'à 30 s de tampon pour absorber les hoquets.
+        // Tampons orientés DÉMARRAGE RAPIDE + fluidité. On lance la lecture dès
+        // ~1 s de données (bufferForPlayback INCHANGÉ → ouverture/zapping rapide,
+        // déjà plus véloce que le mobile), MAIS on approfondit le matelas
+        // anti-coupure : base 5 s, jusqu'à 45 s d'avance (au lieu de 30 s) pour
+        // mieux absorber un Wi-Fi qui faiblit (bar, box bas de gamme), façon
+        // « démarre vite puis creuse le coussin » du lecteur mobile.
+        // Plafond gardé MODÉRÉ (45 s, pas 60 s comme le mobile) car la TV tourne
+        // sur les box les plus faibles (1 Go) et prioritizeTimeOverSizeThresholds
+        // force le tampon en TEMPS : 45 s reste tenable, 60 s risquerait l'OOM
+        // sur un flux 4K.
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(2_500, 30_000, 1_000, 2_000)
+            .setBufferDurationsMs(5_000, 45_000, 1_000, 2_000)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
