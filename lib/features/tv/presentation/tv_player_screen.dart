@@ -108,6 +108,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   int _recoverAttempts = 0;
   static const int _kMaxRecover = 5;
   bool _fatal = false;
+  // True dès qu'une vraie image a été affichée pour la chaîne courante. Si on
+  // échoue SANS jamais avoir eu d'image → source vide / bloquée par le
+  // fournisseur (≠ coupure réseau d'un flux qui jouait). Remis à false à chaque
+  // ouverture (_open).
+  bool _everShownFrame = false;
 
   Channel get _current => widget.channels[_index];
 
@@ -203,6 +208,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       _recoverAttempts = 0;
       if (_fatal && mounted) setState(() => _fatal = false);
     }
+    // Une vraie image a été dessinée → la source envoie bien de la vidéo.
+    if (_controller.firstFrame) _everShownFrame = true;
     // Logo tant qu'on bufferise OU que la 1re trame n'est pas encore dessinée
     // (au zap, firstFrame est remis à false → logo jusqu'à l'image suivante).
     final bool buffering = _controller.isBuffering || !_controller.firstFrame;
@@ -218,6 +225,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   void _open({bool reuse = false}) {
     _lastProgress = DateTime.now();
     _lastPos = Duration.zero;
+    _everShownFrame = false; // nouvelle ouverture → pas encore d'image
     // Nouvelle chaîne → budget de reconnexion neuf, on lève tout état d'erreur.
     _recoverAttempts = 0;
     _recovering = false;
@@ -653,7 +661,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                                 fontWeight: FontWeight.w800,
                                 color: TvTokens.text)),
                         const SizedBox(height: 8),
-                        Text('Chaîne indisponible pour le moment.',
+                        Text(
+                            _everShownFrame
+                                ? 'Chaîne indisponible pour le moment.'
+                                : 'Chaîne vide ou bloquée par ta source.',
                             style: TextStyle(
                                 fontSize: TvDimens.body,
                                 color: TvTokens.mutedDim)),

@@ -164,6 +164,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   int _watchdogStaleTicks = 0;
   int _watchdogGoodTicks = 0;
   int _watchdogRecoveries = 0;
+  // Id de la chaîne ayant DÉJÀ atteint l'état « playing » (= une vraie image a
+  // été reçue/décodée). Sert à distinguer « la source n'envoie RIEN » (jamais
+  // joué → chaîne vide / black.ts / bloquée par le fournisseur) d'un flux qui a
+  // joué puis coupé (problème réseau). Auto-réinitialisé au zap : si l'id
+  // courant ≠ cet id, la chaîne courante n'a jamais joué.
+  String? _playedChannelId;
   static const Duration _kWatchdogInterval = Duration(seconds: 5);
   static const int _kWatchdogStaleTicksBeforeRecover = 3; // ~15 s figé
   static const int _kWatchdogGoodTicksToReset = 6; // ~30 s sains
@@ -304,6 +310,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             _hasError = false;
             _errorMessage = null;
           }
+          // La lecture a réellement démarré pour CETTE chaîne → on mémorise son
+          // id. Une erreur ultérieure ne sera donc plus attribuée à une « source
+          // vide » (cf. listener d'erreur ci-dessous).
+          if (p) _playedChannelId = _currentChannel.id;
         });
       }
       // Signal au natif Android pour le PiP auto : "lecture en
@@ -349,7 +359,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       }
       setState(() {
         _hasError = true;
-        _errorMessage = e;
+        // Si la chaîne n'a JAMAIS atteint la lecture, la source n'a envoyé
+        // aucune vidéo décodable (chaîne vide / black.ts d'1 octet / bloquée
+        // par le fournisseur). On affiche un message CLAIR au lieu de l'erreur
+        // libmpv brute (souvent « codec non supporté ») qui faisait croire à un
+        // bug de l'app alors que le flux est mort en amont.
+        _errorMessage = _playedChannelId == _currentChannel.id
+            ? e
+            : 'Chaîne indisponible : aucune vidéo reçue. Elle est vide ou '
+                'bloquée par ta source — essaie une autre chaîne.';
       });
     }));
 
@@ -1141,8 +1159,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (mounted) {
         setState(() {
           _hasError = true;
-          _errorMessage =
-              'Flux interrompu. Vérifie ta connexion puis réessaie.';
+          // Jamais joué → source vide/bloquée ; sinon → vraie coupure réseau.
+          _errorMessage = _playedChannelId == _currentChannel.id
+              ? 'Flux interrompu. Vérifie ta connexion puis réessaie.'
+              : 'Chaîne indisponible : aucune vidéo reçue. Elle est vide ou '
+                  'bloquée par ta source — essaie une autre chaîne.';
         });
       }
       return;
