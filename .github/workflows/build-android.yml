@@ -627,6 +627,12 @@ jobs:
       # `test` doit passer. Si ça casse ici, l'APK/AAB n'est jamais publié.
       - name: Quality gate (analyze + tests)
         run: |
+          # `flutter create` (étape « Generate native Android folder » plus
+          # haut) régénère un test/widget_test.dart PAR DÉFAUT (compteur) qui
+          # référence `MyApp`, classe inexistante ici → erreur d'analyse. Ce
+          # n'est PAS un test du projet (les vrais sont sous test/features,
+          # test/core) et il n'est pas committé. On le retire avant la barrière.
+          rm -f test/widget_test.dart
           flutter analyze --no-fatal-infos --no-fatal-warnings
           flutter test --reporter expanded
 

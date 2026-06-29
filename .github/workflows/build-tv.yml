@@ -349,6 +349,12 @@ jobs:
       # ne publie pas un APK TV qui rate l'analyse (erreurs) ou les tests.
       - name: Quality gate (analyze + tests)
         run: |
+          # `flutter create` (étape native plus haut) régénère un
+          # test/widget_test.dart PAR DÉFAUT (compteur) référençant `MyApp`,
+          # classe inexistante ici → erreur d'analyse. Pas un test du projet
+          # (les vrais sont sous test/features, test/core), non committé. On le
+          # retire avant la barrière.
+          rm -f test/widget_test.dart
           flutter analyze --no-fatal-infos --no-fatal-warnings
           flutter test --reporter expanded
 
