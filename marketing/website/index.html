@@ -117,6 +117,13 @@
     color:#fff;padding:15px 18px;border-radius:12px;font-size:18px;letter-spacing:1px;text-align:center;font-family:monospace}
   .mac-input input:focus{outline:none;border-color:var(--red)}
   .hint{color:var(--muted);font-size:13px;margin-top:12px}
+  /* ---- Form self-service ---- */
+  .flbl{display:block;font-size:13px;color:var(--muted);margin:14px 0 6px;font-weight:600}
+  .fin{width:100%;background:#0c0c0f;border:1.5px solid var(--line);color:#fff;padding:13px 16px;border-radius:12px;font-size:15px;font-family:monospace}
+  .fin:focus{outline:none;border-color:var(--red)}
+  .seg{display:flex;gap:8px;background:#0c0c0f;border:1px solid var(--line);border-radius:12px;padding:5px}
+  .seg-btn{flex:1;background:transparent;color:var(--muted);border:none;padding:10px;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px}
+  .seg-btn.active{background:linear-gradient(135deg,var(--red),var(--red-deep));color:#fff}
 
   /* ---- FAQ ---- */
   details{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 22px;margin-bottom:12px}
@@ -156,6 +163,7 @@
     appUrl: "https://app.7themotion.com/install",
     tvUrl:  "https://app.7themotion.com/tv",
     privacyUrl: "https://app.7themotion.com/privacy",
+    apiBase: "https://app.7themotion.com",   // backend (self-service playlist)
 
     // Prix à afficher (mets ce que tu veux ; "€", "MAD", "DH"…)
     prices: {
@@ -177,6 +185,7 @@
       <a href="#download">Télécharger</a>
       <a href="#pricing">Tarifs</a>
       <a href="#activate">Activer</a>
+      <a href="#connect">Ma playlist</a>
       <a href="#faq">FAQ</a>
     </nav>
     <a class="btn btn-red" id="navWa">WhatsApp</a>
@@ -320,6 +329,39 @@
   </div>
 </section>
 
+<!-- CONNECTER MA PLAYLIST (self-service) -->
+<section id="connect">
+  <div class="wrap">
+    <div class="mac-card" style="max-width:720px">
+      <h2>Connecter ma <span class="accent">playlist</span></h2>
+      <p class="sub center" style="margin-bottom:0">Tu as déjà ta ligne (M3U ou Xtream)&nbsp;? Saisis ta MAC et ta source ici : elles se chargent automatiquement dans l'app, partout dans le monde.</p>
+      <div style="margin-top:22px;text-align:left">
+        <label class="flbl">Adresse de l'appareil (MAC)</label>
+        <input id="csMac" class="fin" type="text" placeholder="MK:XX:XX:XX:XX:XX" maxlength="20" autocomplete="off" />
+        <div class="seg" style="margin:16px 0 6px">
+          <button type="button" class="seg-btn active" data-t="m3u">Playlist M3U</button>
+          <button type="button" class="seg-btn" data-t="xtream">Xtream (serveur)</button>
+        </div>
+        <div id="csM3u">
+          <label class="flbl">URL M3U</label>
+          <input id="csUrl" class="fin" type="url" placeholder="http://serveur.com/get.php?username=…&amp;type=m3u_plus" autocomplete="off" />
+        </div>
+        <div id="csXt" style="display:none">
+          <label class="flbl">Serveur</label>
+          <input id="csServer" class="fin" type="url" placeholder="http://serveur.com:8080" autocomplete="off" />
+          <label class="flbl">Utilisateur</label>
+          <input id="csUser" class="fin" type="text" placeholder="ton identifiant" autocomplete="off" />
+          <label class="flbl">Mot de passe</label>
+          <input id="csPass" class="fin" type="text" placeholder="ton mot de passe" autocomplete="off" />
+        </div>
+        <button class="btn btn-red" id="csSend" style="width:100%;justify-content:center;margin-top:18px">Connecter ma playlist</button>
+        <p id="csMsg" class="hint" style="text-align:center;min-height:18px"></p>
+        <p class="hint" style="text-align:center">🔒 On enregistre ta source sur TON appareil. On ne touche jamais à un appareil déjà activé par le support.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- BRING YOUR OWN -->
 <section>
   <div class="wrap">
@@ -438,6 +480,57 @@
 
   // Année
   set("yr","textContent", String(new Date().getFullYear()));
+})();
+</script>
+
+<!-- Self-service : connecter sa playlist (POST /api/self-source/:mac) -->
+<script>
+(function(){
+  var C = window.CONFIG;
+  var curType = "m3u";
+  var segs = document.querySelectorAll(".seg-btn");
+  segs.forEach(function(b){
+    b.addEventListener("click", function(){
+      segs.forEach(function(x){ x.classList.remove("active"); });
+      b.classList.add("active");
+      curType = b.getAttribute("data-t");
+      document.getElementById("csM3u").style.display = (curType==="m3u") ? "" : "none";
+      document.getElementById("csXt").style.display  = (curType==="xtream") ? "" : "none";
+    });
+  });
+
+  var btn = document.getElementById("csSend");
+  if(!btn) return;
+  function show(color, text){ var m=document.getElementById("csMsg"); m.style.color=color; m.textContent=text; }
+
+  btn.addEventListener("click", function(){
+    var mac = (document.getElementById("csMac").value||"").trim().toUpperCase();
+    if(!/^MK(:[0-9A-F]{2}){5}$/.test(mac)){ show("#ff6b6b","Adresse MAC invalide (format MK:XX:XX:XX:XX:XX)."); return; }
+    var payload = { type: curType };
+    if(curType==="m3u"){
+      var url=(document.getElementById("csUrl").value||"").trim();
+      if(!/^https?:\/\//i.test(url)){ show("#ff6b6b","URL M3U invalide (doit commencer par http)."); return; }
+      payload.m3u_url=url;
+    } else {
+      var s=(document.getElementById("csServer").value||"").trim();
+      var u=(document.getElementById("csUser").value||"").trim();
+      var p=(document.getElementById("csPass").value||"").trim();
+      if(!/^https?:\/\//i.test(s)||!u||!p){ show("#ff6b6b","Serveur (http), utilisateur et mot de passe requis."); return; }
+      payload.server_url=s; payload.username=u; payload.password=p;
+    }
+    show("var(--muted)","Connexion…"); btn.disabled=true;
+    fetch(C.apiBase + "/api/self-source/" + encodeURIComponent(mac), {
+      method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)
+    })
+    .then(function(r){ return r.json().then(function(j){ return {st:r.status, j:j}; }).catch(function(){ return {st:r.status, j:{}}; }); })
+    .then(function(o){
+      if(o.j && o.j.ok){ show("#4caf50","✅ " + (o.j.message || "Playlist enregistrée !")); }
+      else if(o.st===409){ show("#ffb300","⚠️ " + (o.j.message || "Cet appareil a déjà une source.")); }
+      else { show("#ff6b6b","❌ " + ((o.j && (o.j.message||o.j.error)) || "Échec. Vérifie tes informations.")); }
+    })
+    .catch(function(){ show("#ff6b6b","❌ Réseau indisponible, réessaie."); })
+    .then(function(){ btn.disabled=false; });
+  });
 })();
 </script>
 </body>

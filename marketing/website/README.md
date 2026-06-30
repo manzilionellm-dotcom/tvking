@@ -31,6 +31,18 @@ const CONFIG = {
 - **GitHub Pages** : pousse le fichier, active Pages.
 - **Via le worker** : on peut servir cet HTML sur `7themotion.com/` directement (demande-moi, je l'ajoute en route worker).
 
+## Self-service « Connecter ma playlist »
+La section `#connect` permet à un client d'enregistrer **lui-même** sa playlist
+(M3U ou Xtream) sur **sa propre MAC** → l'app la charge automatiquement
+(elle lit `/api/device-source/:mac`). Pratique pour saisir une longue URL au
+clavier puis la retrouver sur la box, partout dans le monde.
+
+- Backend : `POST {apiBase}/api/self-source/:mac` (dans `cloudflare/worker.js`).
+- **Sécurité** : on écrit **seulement si la MAC n'a pas déjà de source**
+  (`ON CONFLICT(mac) DO NOTHING`) → une source posée par le panel (client
+  payant) n'est **jamais** écrasée. Pour la modifier, ça passe par le support.
+- `apiBase` dans `CONFIG` pointe sur le worker (`https://app.7themotion.com`).
+
 ## Notes
 - Aucune donnée n'est collectée par la page ; tout passe par WhatsApp (humain, hors-site).
 - La lib QR est chargée via CDN ; si elle est bloquée, le lien texte reste affiché.

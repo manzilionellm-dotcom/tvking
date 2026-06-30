@@ -2733,6 +2733,91 @@ async function handlePublicDeviceSource(env, mac) {
   return jsonPrivate({ mac: MAC, source: null });
 }
 
+// POST /api/self-source/:mac — SELF-SERVICE.
+//  Un client enregistre LUI-MÊME sa playlist (M3U ou Xtream) sur SA propre MAC
+//  depuis le site web. Pratique : saisir une longue URL au clavier (PC /
+//  téléphone) puis la retrouver automatiquement sur la box (l'app lit
+//  /api/device-source/:mac et charge la source).
+//
+//  SÉCURITÉ — garde-fous :
+//   1. On écrit SEULEMENT si la MAC n'a PAS déjà de source (INSERT ... ON
+//      CONFLICT(mac) DO NOTHING) → une source posée par le PANEL (client payant)
+//      n'est JAMAIS écrasée par cet appel public. Pour changer, ça passe par le
+//      support (le panel peut, lui, remplacer).
+//   2. Le client fournit ses PROPRES identifiants → aucun intérêt à viser la
+//      MAC d'autrui (on lui « offrirait » sa propre ligne). Rate-limité (bucket
+//      'dev', anti-énumération/abus). La route GET reste INCHANGÉE.
+async function handleSelfSource(env, mac, request) {
+  if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const MAC = mac.toUpperCase();
+
+  let body;
+  try { body = await request.json(); } catch (_) { return badRequest('invalid json'); }
+
+  const type = String(body.type || '').trim().toLowerCase();
+  const label = (String(body.label || '').trim() || 'Ma playlist').slice(0, 80);
+  const epgRaw = String(body.epg_url || '').trim();
+  const epg = epgRaw && /^https?:\/\//i.test(epgRaw) ? epgRaw.slice(0, 2048) : null;
+
+  let source;
+  if (type === 'xtream') {
+    const server = String(body.server_url || '').trim().slice(0, 2048);
+    const user = String(body.username || '').trim().slice(0, 256);
+    const pass = String(body.password || '').trim().slice(0, 256);
+    if (!server || !user || !pass) return badRequest('xtream requires server_url, username, password');
+    if (!/^https?:\/\//i.test(server)) return badRequest('server_url must start with http(s)://');
+    source = { type: 'xtream', label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg };
+  } else if (type === 'm3u') {
+    const m3u = String(body.m3u_url || '').trim().slice(0, 2048);
+    if (!m3u) return badRequest('m3u requires m3u_url');
+    if (!/^https?:\/\//i.test(m3u)) return badRequest('m3u_url must start with http(s)://');
+    source = { type: 'm3u', label, server_url: null, username: null, password: null, m3u_url: m3u, epg_url: epg };
+  } else {
+    return badRequest("type must be 'xtream' or 'm3u'");
+  }
+
+  // Table garantie (le panel la crée aussi ; CREATE IF NOT EXISTS idempotent).
+  try {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS device_sources (
+         mac TEXT PRIMARY KEY, type TEXT NOT NULL, label TEXT, server_url TEXT,
+         username TEXT, password TEXT, m3u_url TEXT, epg_url TEXT,
+         sources_json TEXT, updated_at INTEGER NOT NULL)`,
+    ).run();
+  } catch (_) { /* déjà créée par le panel */ }
+
+  const sourcesJson = JSON.stringify([source]);
+  let applied = false;
+  try {
+    const res = await env.DB
+      .prepare(
+        `INSERT INTO device_sources
+           (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(mac) DO NOTHING`,
+      )
+      .bind(MAC, source.type, source.label, source.server_url, source.username,
+        source.password, source.m3u_url, source.epg_url, sourcesJson, Date.now())
+      .run();
+    applied = !!(res && res.meta && res.meta.changes > 0);
+  } catch (_) {
+    return json({ ok: false, error: 'db_write_failed' }, 500);
+  }
+
+  if (!applied) {
+    return json({
+      ok: false,
+      reason: 'already_assigned',
+      message: 'Cet appareil a déjà une source. Contacte le support pour la modifier.',
+    }, 409);
+  }
+  return json({
+    ok: true,
+    message: "Playlist enregistrée ! Ouvre l'app (ou redémarre-la) : tes chaînes vont apparaître.",
+  });
+}
+
 // /api/history/:mac — renvoie l'historique de visionnage (ids de chaînes)
 // stocké pour cette MAC (rempli par le heartbeat). L'app le lit au démarrage
 // pour restaurer « Récemment » / « Pour vous » sur une 2e box. Lecture seule,
@@ -3195,7 +3280,8 @@ async function handleRequest(request, env, ctx) {
       if (seg0 === 'api') {
         if (seg1 === 'ai') rl = ['ai', 30];                        // 30 / min (LLM payant)
         else if (seg1 === 'device-source' || seg1 === 'backup'
-          || seg1 === 'status' || seg1 === 'history') rl = ['dev', 120]; // anti-énumération MAC
+          || seg1 === 'status' || seg1 === 'history'
+          || seg1 === 'self-source') rl = ['dev', 120]; // anti-énumération MAC
         else if (seg1 === 'heartbeat' || seg1 === 'trending'
           || seg1 === 'announcement' || seg1 === 'sports'
           || seg1 === 'feedback' || seg1 === 'm3u') rl = ['pub', 240];
@@ -3247,6 +3333,15 @@ async function handleRequest(request, env, ctx) {
         return badRequest('only GET supported on /api/device-source/:mac');
       }
       return await handlePublicDeviceSource(env, segments[2]);
+    }
+
+    // POST /api/self-source/:mac — self-service : le client enregistre SA
+    // playlist depuis le site web (cf. handleSelfSource, garde-fous sécurité).
+    if (segments[0] === 'api' && segments[1] === 'self-source' && segments.length === 3) {
+      if (request.method !== 'POST') {
+        return badRequest('only POST supported on /api/self-source/:mac');
+      }
+      return await handleSelfSource(env, segments[2], request);
     }
 
     // /api/history/:mac — public, historique de visionnage synchronisé.
