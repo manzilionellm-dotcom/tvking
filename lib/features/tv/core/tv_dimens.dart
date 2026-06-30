@@ -28,9 +28,10 @@ class TvDimens {
   static const double focusScaleSmall = 1.08;
   static const double focusScaleMedium = 1.06;
   static const double focusScaleLarge = 1.06;
-  // Court + DÉCÉLÉRÉ : l'élément arrive vite puis se pose en douceur (180 ms,
-  // courbe d'« emphasized decelerate »). Au-delà de ~200 ms ça paraît mou.
-  static const Duration focusAnim = Duration(milliseconds: 200);
+  // Court + DÉCÉLÉRÉ : l'élément arrive vite puis se pose en douceur. 150 ms =
+  // ressenti « instantané » à la navigation D-pad (Apple TV+ / Google TV sont
+  // à ~150 ms) sans perdre le fondu. Au-delà de ~200 ms ça paraît mou.
+  static const Duration focusAnim = Duration(milliseconds: 150);
   static const Curve focusCurve = Curves.easeOutCubic;
   static const double focusGlowBlur = 34; // lueur champagne (0 0 32px)
   static const double focusGlowSpread = 2;

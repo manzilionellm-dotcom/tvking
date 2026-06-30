@@ -9,7 +9,6 @@
 //  RemoteSourceRepository). États vides PROFESSIONNELS (pas d'écran mort).
 // =========================================================
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -869,22 +868,22 @@ class _CategoryRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (cats.isEmpty) return const SizedBox.shrink();
-    // RAIL VERRE (§5.2) : UN SEUL BackdropFilter, STATIQUE et HORS liste
-    // scrollable (la ListView est à l'intérieur, mais le flou n'est appliqué
-    // qu'UNE fois au conteneur du rail, jamais par ligne) → conforme RÈGLE 2.
-    // Sigma faible (10 ≤ 12). Fond dégradé semi-transparent + hairline OR.
+    // RAIL « VERRE » — PERF BOX TV (§5.2) : on n'utilise PLUS de BackdropFilter
+    // (flou temps-réel). Même STATIQUE, un BackdropFilter coûte à CHAQUE image
+    // sur le petit GPU d'une box Android TV → micro-saccades diffuses « partout
+    // un peu ». On le remplace par un fond dégradé PLUS OPAQUE : visuellement
+    // quasi identique (panneau sombre façon verre), mais coût GPU NUL → fluidité
+    // constante. (Derrière le rail il n'y a que le fond : le flou ne manque pas.)
     return ClipRRect(
       borderRadius: BorderRadius.circular(TvTokens.rGlass),
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
+      child: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: <Color>[
-                TvTokens.panel.withValues(alpha: 0.62),
-                TvTokens.card.withValues(alpha: 0.42),
+                TvTokens.panel.withValues(alpha: 0.92),
+                TvTokens.card.withValues(alpha: 0.86),
               ],
             ),
             borderRadius: BorderRadius.circular(TvTokens.rGlass),
@@ -929,7 +928,6 @@ class _CategoryRail extends StatelessWidget {
             ],
           ),
         ),
-      ),
     );
   }
 }
