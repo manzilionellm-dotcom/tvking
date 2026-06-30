@@ -54,6 +54,8 @@ on:
       # landing.js est IMPORTÉ par worker.js (page d'accueil sur /) → redéployer
       # le worker quand le site change.
       - 'cloudflare/landing.js'
+      # pwa_assets.js (manifeste + service worker + icônes) IMPORTÉ par worker.js.
+      - 'cloudflare/pwa_assets.js'
       - 'cloudflare/wrangler.toml'
       - '.github/workflows/deploy-worker.yml'
 

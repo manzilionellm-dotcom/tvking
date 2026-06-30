@@ -69,6 +69,8 @@ import { screenReceiverHtml, screenPairHtml } from './screen_receiver.js';
 // Page d'accueil officielle (site VIP) servie sur la racine /. Source éditable :
 // marketing/website/index.html → régénérer cloudflare/landing.js après modif.
 import { landingHtml } from './landing.js';
+// PWA : manifeste, service worker et icônes (le site s'installe comme une app).
+import { PWA_MANIFEST, PWA_SW, PWA_ICON_192, PWA_ICON_512, PWA_APPLE_ICON } from './pwa_assets.js';
 
 // ----- Constantes APK / téléchargement -----
 //
@@ -3389,6 +3391,40 @@ async function handleRequest(request, env, ctx) {
     // domaine (ex. tondomaine.com/dl) et n'expose jamais 7themotion.com.
     if (segments.length === 0) {
       return new Response(landingHtml(), { headers: HTML_HEADERS });
+    }
+
+    // ===== PWA : le site s'installe comme une application =====
+    if (segments.length === 1) {
+      const f = segments[0];
+      if (f === 'manifest.webmanifest') {
+        return new Response(PWA_MANIFEST, {
+          headers: {
+            'Content-Type': 'application/manifest+json; charset=utf-8',
+            'Cache-Control': 'public, max-age=3600',
+            'Access-Control-Allow-Origin': '*',
+          },
+        });
+      }
+      if (f === 'sw.js') {
+        return new Response(PWA_SW, {
+          headers: {
+            'Content-Type': 'application/javascript; charset=utf-8',
+            'Cache-Control': 'no-cache',
+            'Service-Worker-Allowed': '/',
+          },
+        });
+      }
+      if (f === 'icon-192.png' || f === 'icon-512.png' || f === 'apple-touch-icon.png') {
+        const b64 = f === 'icon-192.png' ? PWA_ICON_192
+          : f === 'icon-512.png' ? PWA_ICON_512 : PWA_APPLE_ICON;
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        return new Response(bytes, {
+          headers: {
+            'Content-Type': 'image/png',
+            'Cache-Control': 'public, max-age=31536000, immutable',
+          },
+        });
+      }
     }
 
     // /confidentialite (et /privacy) — politique de confidentialité hébergée.
