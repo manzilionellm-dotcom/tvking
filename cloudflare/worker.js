@@ -70,7 +70,7 @@ import { screenReceiverHtml, screenPairHtml } from './screen_receiver.js';
 // marketing/website/index.html → régénérer cloudflare/landing.js après modif.
 import { landingHtml } from './landing.js';
 // PWA : manifeste, service worker et icônes (le site s'installe comme une app).
-import { PWA_MANIFEST, PWA_SW, PWA_ICON_192, PWA_ICON_512, PWA_APPLE_ICON } from './pwa_assets.js';
+import { PWA_MANIFEST, PWA_SW, PWA_ICON_192, PWA_ICON_512, PWA_APPLE_ICON, OG_IMAGE } from './pwa_assets.js';
 
 // ----- Constantes APK / téléchargement -----
 //
@@ -3414,9 +3414,11 @@ async function handleRequest(request, env, ctx) {
           },
         });
       }
-      if (f === 'icon-192.png' || f === 'icon-512.png' || f === 'apple-touch-icon.png') {
+      if (f === 'icon-192.png' || f === 'icon-512.png' || f === 'apple-touch-icon.png'
+          || f === 'og-image.png') {
         const b64 = f === 'icon-192.png' ? PWA_ICON_192
-          : f === 'icon-512.png' ? PWA_ICON_512 : PWA_APPLE_ICON;
+          : f === 'icon-512.png' ? PWA_ICON_512
+          : f === 'og-image.png' ? OG_IMAGE : PWA_APPLE_ICON;
         const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
         return new Response(bytes, {
           headers: {
@@ -3424,6 +3426,20 @@ async function handleRequest(request, env, ctx) {
             'Cache-Control': 'public, max-age=31536000, immutable',
           },
         });
+      }
+      // SEO : robots.txt + sitemap.xml
+      if (f === 'robots.txt') {
+        return new Response(
+          'User-agent: *\nAllow: /\nSitemap: https://app.7themotion.com/sitemap.xml\n',
+          { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } },
+        );
+      }
+      if (f === 'sitemap.xml') {
+        const sm = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+          '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+          '  <url><loc>https://app.7themotion.com/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>\n' +
+          '</urlset>\n';
+        return new Response(sm, { headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
       }
     }
 
