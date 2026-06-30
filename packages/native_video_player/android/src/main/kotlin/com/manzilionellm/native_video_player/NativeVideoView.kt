@@ -80,12 +80,25 @@ class NativeVideoView(
         surfaceView.isFocusableInTouchMode = false
         surfaceView.keepScreenOn = true
 
-        // Tampons orientés DÉMARRAGE RAPIDE + direct : on lance la lecture dès
-        // ~1 s de données (bufferForPlayback), on retampe vite après coupure,
-        // et on autorise jusqu'à 30 s de tampon pour absorber les hoquets.
+        // Tampons « façon Netflix » pour connexions LENTES / INSTABLES.
+        // L'idée : garder un GROS matelas d'avance pour traverser les coupures
+        // SANS s'arrêter, et après un blocage attendre d'avoir une vraie réserve
+        // avant de repartir (sinon on re-bloque aussitôt).
+        //   • minBuffer = 20 s  : réserve qu'on cherche à maintenir.
+        //   • maxBuffer = 90 s  : avance maximale autorisée (≈ 1 min 30).
+        //   • bufferForPlayback = 2 s : 1re image rapide au démarrage.
+        //   • bufferForPlaybackAfterRebuffer = 5 s : APRÈS une coupure, on attend
+        //     5 s de données AVANT de reprendre → on ne se re-bloque pas dans la
+        //     foulée (c'est le « il attend au lieu de couper »).
+        // Plafond MÉMOIRE à 64 Mo (setTargetBufferBytes + prioritize=false) :
+        // sur une box à faible RAM (Fire Stick), on borne la RAM. Conséquence
+        // VOULUE : sur une connexion LENTE le débit est bas, donc 64 Mo = BEAUCOUP
+        // de secondes d'avance ; sur un flux très haut débit, on bufferise moins
+        // de secondes mais on ne fait PAS planter la box (anti-OOM).
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(2_500, 30_000, 1_000, 2_000)
-            .setPrioritizeTimeOverSizeThresholds(true)
+            .setBufferDurationsMs(20_000, 90_000, 2_000, 5_000)
+            .setTargetBufferBytes(64 * 1024 * 1024)
+            .setPrioritizeTimeOverSizeThresholds(false)
             .build()
 
         // Décodage matériel (MediaCodec) avec repli logiciel si l'init échoue.
@@ -169,7 +182,7 @@ class NativeVideoView(
                 // Dart au lieu de relancer 8 essais à l'infini (boucle CPU/réseau).
                 if (url != currentUrl) retryCount = 0
                 currentUrl = url
-                player.setMediaItem(MediaItem.fromUri(url))
+                player.setMediaItem(buildMediaItem(url))
                 player.prepare()
                 player.playWhenReady = true
                 result.success(null)
@@ -231,12 +244,32 @@ class NativeVideoView(
         }
     }
 
+    /**
+     * Construit l'élément à lire. Pour un DIRECT (HLS live), on demande à jouer
+     * ~15 s DERRIÈRE le bord du direct (targetOffset). Ce petit retard crée une
+     * réserve qui absorbe les coupures réseau sans geler l'image. On autorise
+     * une accélération imperceptible (1.03×) pour rattraper doucement le direct
+     * sans à-coup. Sur un flux NON-live (VOD / .ts local), cette configuration
+     * est tout simplement ignorée par Media3.
+     */
+    private fun buildMediaItem(url: String): MediaItem =
+        MediaItem.Builder()
+            .setUri(url)
+            .setLiveConfiguration(
+                MediaItem.LiveConfiguration.Builder()
+                    .setTargetOffsetMs(15_000)
+                    .setMinOffsetMs(8_000)
+                    .setMaxPlaybackSpeed(1.03f)
+                    .build(),
+            )
+            .build()
+
     private fun scheduleRetry(delayMs: Long) {
         cancelRetry()
         val r = Runnable {
             val url = currentUrl
             if (url != null) {
-                player.setMediaItem(MediaItem.fromUri(url))
+                player.setMediaItem(buildMediaItem(url))
                 player.prepare()
                 player.playWhenReady = true
             } else {
