@@ -44,6 +44,8 @@
   .btn-ghost:hover{border-color:var(--red)}
   .btn-wa{background:#1faf54;color:#fff;box-shadow:0 8px 30px rgba(31,175,84,.35)}
   .btn-wa:hover{transform:translateY(-2px)}
+  .btn-vip{background:linear-gradient(135deg,#f7e2a0,#cda53f);color:#1a1400;font-weight:900;letter-spacing:.3px;box-shadow:0 8px 30px rgba(231,198,107,.42);border:1px solid #f7e6b0}
+  .btn-vip:hover{transform:translateY(-2px);box-shadow:0 12px 48px rgba(231,198,107,.60)}
 
   /* ---- Nav ---- */
   header.nav{position:sticky;top:0;z-index:50;background:rgba(8,8,10,.82);
@@ -185,10 +187,9 @@
       <a href="#download">Télécharger</a>
       <a href="#pricing">Tarifs</a>
       <a href="#activate">Activer</a>
-      <a href="#connect">Ma playlist</a>
       <a href="#faq">FAQ</a>
     </nav>
-    <a class="btn btn-red" id="navWa">WhatsApp</a>
+    <a class="btn btn-vip" id="navWa">👑 Accès VIP</a>
   </div>
 </header>
 
@@ -322,59 +323,13 @@
         On l'active et tes chaînes arrivent toutes seules.</p>
       <div class="mac-input">
         <input id="macInput" type="text" placeholder="MK:XX:XX:XX:XX:XX" maxlength="20" autocomplete="off" />
-        <button class="btn btn-wa" id="macSend">Activer via WhatsApp</button>
+        <button class="btn btn-vip" id="macSend">👑 Activer mon accès</button>
       </div>
       <p class="hint">📍 Tu trouves ta MAC sur l'écran d'accueil de l'app (ou dans « À propos »).</p>
     </div>
   </div>
 </section>
 
-<!-- CONNECTER MA PLAYLIST (self-service) -->
-<section id="connect">
-  <div class="wrap">
-    <div class="mac-card" style="max-width:720px">
-      <h2>Connecter ma <span class="accent">playlist</span></h2>
-      <p class="sub center" style="margin-bottom:0">Tu as déjà ta ligne (M3U ou Xtream)&nbsp;? Saisis ta MAC et ta source ici : elles se chargent automatiquement dans l'app, partout dans le monde.</p>
-      <div style="margin-top:22px;text-align:left">
-        <label class="flbl">Adresse de l'appareil (MAC)</label>
-        <input id="csMac" class="fin" type="text" placeholder="MK:XX:XX:XX:XX:XX" maxlength="20" autocomplete="off" />
-        <div class="seg" style="margin:16px 0 6px">
-          <button type="button" class="seg-btn active" data-t="m3u">Playlist M3U</button>
-          <button type="button" class="seg-btn" data-t="xtream">Xtream (serveur)</button>
-        </div>
-        <div id="csM3u">
-          <label class="flbl">URL M3U</label>
-          <input id="csUrl" class="fin" type="url" placeholder="http://serveur.com/get.php?username=…&amp;type=m3u_plus" autocomplete="off" />
-        </div>
-        <div id="csXt" style="display:none">
-          <label class="flbl">Serveur</label>
-          <input id="csServer" class="fin" type="url" placeholder="http://serveur.com:8080" autocomplete="off" />
-          <label class="flbl">Utilisateur</label>
-          <input id="csUser" class="fin" type="text" placeholder="ton identifiant" autocomplete="off" />
-          <label class="flbl">Mot de passe</label>
-          <input id="csPass" class="fin" type="text" placeholder="ton mot de passe" autocomplete="off" />
-        </div>
-        <button class="btn btn-red" id="csSend" style="width:100%;justify-content:center;margin-top:18px">Connecter ma playlist</button>
-        <p id="csMsg" class="hint" style="text-align:center;min-height:18px"></p>
-        <p class="hint" style="text-align:center">🔒 On enregistre ta source sur TON appareil. On ne touche jamais à un appareil déjà activé par le support.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- BRING YOUR OWN -->
-<section>
-  <div class="wrap">
-    <div class="banner">
-      <div class="ico">🔌</div>
-      <div>
-        <h3 style="font-size:19px;font-weight:800">Tu as déjà ta propre liste&nbsp;?</h3>
-        <p style="color:var(--muted);font-size:15px">7 MOTION lit aussi tes playlists <b>M3U</b> et tes accès <b>Xtream</b> :
-          ajoute ta source en quelques secondes et regarde immédiatement. L'app est un lecteur — tu gardes le contrôle.</p>
-      </div>
-    </div>
-  </div>
-</section>
 
 <!-- FAQ -->
 <section id="faq" style="background:var(--bg2)">
@@ -401,7 +356,7 @@
     <p class="sub center">Installe l'app et contacte-nous sur WhatsApp pour activer.</p>
     <div class="hero-cta">
       <a class="btn btn-red" id="dlPhone2">📱 Télécharger</a>
-      <a class="btn btn-wa" id="waBtn2">💬 Nous écrire</a>
+      <a class="btn btn-vip" id="waBtn2">👑 Contact VIP</a>
     </div>
   </div>
 </section>
@@ -422,7 +377,7 @@
       <a href="#download">Télécharger</a>
       <a href="#pricing">Tarifs</a>
       <a id="footPrivacy" href="#">Confidentialité</a>
-      <a id="footWa" href="#">WhatsApp</a>
+      <a id="footWa" href="#">Contact VIP</a>
     </div>
     <p style="margin-top:18px;opacity:.6">© <span id="yr"></span> 7 MOTION. Tous droits réservés.</p>
   </div>
@@ -483,55 +438,5 @@
 })();
 </script>
 
-<!-- Self-service : connecter sa playlist (POST /api/self-source/:mac) -->
-<script>
-(function(){
-  var C = window.CONFIG;
-  var curType = "m3u";
-  var segs = document.querySelectorAll(".seg-btn");
-  segs.forEach(function(b){
-    b.addEventListener("click", function(){
-      segs.forEach(function(x){ x.classList.remove("active"); });
-      b.classList.add("active");
-      curType = b.getAttribute("data-t");
-      document.getElementById("csM3u").style.display = (curType==="m3u") ? "" : "none";
-      document.getElementById("csXt").style.display  = (curType==="xtream") ? "" : "none";
-    });
-  });
-
-  var btn = document.getElementById("csSend");
-  if(!btn) return;
-  function show(color, text){ var m=document.getElementById("csMsg"); m.style.color=color; m.textContent=text; }
-
-  btn.addEventListener("click", function(){
-    var mac = (document.getElementById("csMac").value||"").trim().toUpperCase();
-    if(!/^MK(:[0-9A-F]{2}){5}$/.test(mac)){ show("#ff6b6b","Adresse MAC invalide (format MK:XX:XX:XX:XX:XX)."); return; }
-    var payload = { type: curType };
-    if(curType==="m3u"){
-      var url=(document.getElementById("csUrl").value||"").trim();
-      if(!/^https?:\/\//i.test(url)){ show("#ff6b6b","URL M3U invalide (doit commencer par http)."); return; }
-      payload.m3u_url=url;
-    } else {
-      var s=(document.getElementById("csServer").value||"").trim();
-      var u=(document.getElementById("csUser").value||"").trim();
-      var p=(document.getElementById("csPass").value||"").trim();
-      if(!/^https?:\/\//i.test(s)||!u||!p){ show("#ff6b6b","Serveur (http), utilisateur et mot de passe requis."); return; }
-      payload.server_url=s; payload.username=u; payload.password=p;
-    }
-    show("var(--muted)","Connexion…"); btn.disabled=true;
-    fetch(C.apiBase + "/api/self-source/" + encodeURIComponent(mac), {
-      method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)
-    })
-    .then(function(r){ return r.json().then(function(j){ return {st:r.status, j:j}; }).catch(function(){ return {st:r.status, j:{}}; }); })
-    .then(function(o){
-      if(o.j && o.j.ok){ show("#4caf50","✅ " + (o.j.message || "Playlist enregistrée !")); }
-      else if(o.st===409){ show("#ffb300","⚠️ " + (o.j.message || "Cet appareil a déjà une source.")); }
-      else { show("#ff6b6b","❌ " + ((o.j && (o.j.message||o.j.error)) || "Échec. Vérifie tes informations.")); }
-    })
-    .catch(function(){ show("#ff6b6b","❌ Réseau indisponible, réessaie."); })
-    .then(function(){ btn.disabled=false; });
-  });
-})();
-</script>
 </body>
 </html>
