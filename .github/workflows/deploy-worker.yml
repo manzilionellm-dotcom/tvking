@@ -51,6 +51,9 @@ on:
       # screen_receiver.js est IMPORTÉ par worker.js (récepteur « Caster
       # sur un écran ») → redéployer le worker quand il change.
       - 'cloudflare/screen_receiver.js'
+      # landing.js est IMPORTÉ par worker.js (page d'accueil sur /) → redéployer
+      # le worker quand le site change.
+      - 'cloudflare/landing.js'
       - 'cloudflare/wrangler.toml'
       - '.github/workflows/deploy-worker.yml'
 

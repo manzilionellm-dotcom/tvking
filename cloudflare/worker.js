@@ -66,6 +66,9 @@ import { castReceiverHtml } from './cast_receiver.js';
 // page générique servie à /e/<CODE> que n'importe quel navigateur de TV
 // ouvre. Voir handleScreen() pour l'appairage + la signalisation.
 import { screenReceiverHtml, screenPairHtml } from './screen_receiver.js';
+// Page d'accueil officielle (site VIP) servie sur la racine /. Source éditable :
+// marketing/website/index.html → régénérer cloudflare/landing.js après modif.
+import { landingHtml } from './landing.js';
 
 // ----- Constantes APK / téléchargement -----
 //
@@ -621,160 +624,7 @@ async function updateDeviceInfo(env, mac, body) {
   }
 }
 
-// Landing page HTML servie sur la racine. Style Maison Noir :
-// fond noir, ember rouge, typo sobre. Optimisée pour téléphones
-// ET pour les navigateurs intégrés des Smart TV (pas de JS).
-const LANDING_HTML = `<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>BLACK7 ROYAL — Téléchargement</title>
-  <meta name="description" content="Lecteur IPTV premium BLACK7 ROYAL. Téléchargez l'APK Android/Fire TV/Android TV.">
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: #0A0A0C;
-      color: #F2F2F4;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-    }
-    .card {
-      max-width: 520px;
-      width: 100%;
-      padding: 32px;
-      border-radius: 18px;
-      background: linear-gradient(180deg, #16161A 0%, #0E0E12 100%);
-      border: 1px solid rgba(214, 174, 96, 0.25);
-      box-shadow: 0 0 40px rgba(214, 174, 96, 0.08);
-    }
-    .brand {
-      display: flex;
-      align-items: baseline;
-      gap: 10px;
-      justify-content: center;
-      margin-bottom: 8px;
-    }
-    .brand h1 {
-      font-size: 32px;
-      letter-spacing: 4px;
-      font-weight: 700;
-      color: #F2F2F4;
-    }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      background: #3897F0;
-      color: white;
-      font-size: 14px;
-      font-weight: 900;
-    }
-    .tagline {
-      text-align: center;
-      color: #8E8E94;
-      font-size: 12px;
-      letter-spacing: 2px;
-      margin-bottom: 32px;
-    }
-    .dl {
-      display: block;
-      width: 100%;
-      padding: 18px;
-      border-radius: 12px;
-      background: #D6AE60;
-      color: #0A0A0C;
-      text-align: center;
-      font-size: 18px;
-      font-weight: 700;
-      text-decoration: none;
-      letter-spacing: 0.5px;
-      transition: transform 0.15s;
-    }
-    .dl:hover { transform: translateY(-1px); }
-    .dl small {
-      display: block;
-      font-size: 11px;
-      font-weight: 500;
-      opacity: 0.8;
-      margin-top: 4px;
-      letter-spacing: 1px;
-    }
-    .steps {
-      margin-top: 28px;
-      padding-top: 20px;
-      border-top: 1px solid rgba(214, 174, 96, 0.18);
-    }
-    .steps h2 {
-      font-size: 13px;
-      letter-spacing: 1.5px;
-      color: #D6AE60;
-      margin-bottom: 12px;
-      text-transform: uppercase;
-    }
-    .steps ol {
-      padding-left: 22px;
-      color: #C4C4CA;
-      font-size: 13px;
-      line-height: 1.7;
-    }
-    .steps code {
-      background: #1F1F25;
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 12px;
-      color: #D6AE60;
-    }
-    .legal {
-      margin-top: 24px;
-      padding-top: 16px;
-      border-top: 1px solid rgba(214, 174, 96, 0.12);
-      font-size: 10.5px;
-      color: #6E6E74;
-      line-height: 1.5;
-      text-align: center;
-    }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="brand">
-      <h1>BLACK7 ROYAL</h1>
-      <span class="badge">&check;</span>
-    </div>
-    <p class="tagline">THE FEW &middot; NOT FOR EVERYONE</p>
-
-    <a class="dl" href="/dl">
-      Télécharger l'APK
-      <small>Android &middot; Fire TV &middot; Android TV</small>
-    </a>
-
-    <div class="steps">
-      <h2>Installation via Downloader</h2>
-      <ol>
-        <li>Lance <strong>Downloader</strong> sur ta Fire TV / Android TV</li>
-        <li>Tape l'URL : <code>__HOST__/dl</code>
-            <br>ou un code court : <code>__HOST__/1</code>, <code>__HOST__/666666</code></li>
-        <li>Bouton <strong>GO</strong> &rarr; téléchargement automatique</li>
-        <li>Bouton <strong>Install</strong> quand le téléchargement finit</li>
-      </ol>
-    </div>
-
-    <p class="legal">
-      BLACK7 ROYAL ne vend, ne distribue et ne fournit aucun flux IPTV,
-      aucune chaîne ni aucun contenu. Apportez votre propre
-      abonnement auprès du fournisseur de votre choix.
-    </p>
-  </div>
-</body>
-</html>`;
+// Landing page : voir cloudflare/landing.js (landingHtml), servie sur la racine /.
 
 // ============================================================
 //  Panel admin web — page HTML autonome servie à /admin/panel
@@ -3538,8 +3388,7 @@ async function handleRequest(request, env, ctx) {
     // à la place du placeholder __HOST__ : ainsi la page affiche TON
     // domaine (ex. tondomaine.com/dl) et n'expose jamais 7themotion.com.
     if (segments.length === 0) {
-      const html = LANDING_HTML.replaceAll('__HOST__', url.host);
-      return new Response(html, { headers: HTML_HEADERS });
+      return new Response(landingHtml(), { headers: HTML_HEADERS });
     }
 
     // /confidentialite (et /privacy) — politique de confidentialité hébergée.

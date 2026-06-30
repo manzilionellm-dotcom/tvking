@@ -1,0 +1,543 @@
+// landing.js — page d'accueil officielle 7 MOTION servie sur la racine /.
+// Source ÉDITABLE : marketing/website/index.html — régénérer ce fichier
+// après modif (échappe \\ ` ${ pour le template literal). Importé par worker.js.
+export function landingHtml() {
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>7 MOTION · DeFew TV — Lecteur multimédia premium</title>
+<meta name="description" content="7 MOTION et DeFew TV : lecteurs multimédia rapides et fluides pour téléphone et TV. Apporte ta propre source, regarde partout." />
+<style>
+  /* ============================================================
+     THÈME VIP — NOIR / ROUGE (touches or)
+     ============================================================ */
+  :root{
+    --bg:#08080a; --bg2:#111114; --card:#16161a; --line:#262630;
+    --red:#ff1f1f; --red-deep:#b00000; --red-glow:rgba(255,31,31,.45);
+    --gold:#e7c66b; --text:#f6f6f8; --muted:#9b9ba6;
+    --radius:18px; --maxw:1120px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.55; -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+  section{padding:72px 0}
+  h2{font-size:clamp(26px,4vw,38px);font-weight:900;letter-spacing:-.5px;margin-bottom:8px}
+  h2 .accent{color:var(--red)}
+  .sub{color:var(--muted);max-width:620px;margin-bottom:36px;font-size:17px}
+  .center{text-align:center;margin-inline:auto}
+
+  /* ---- Boutons ---- */
+  .btn{
+    display:inline-flex;align-items:center;gap:10px;
+    padding:15px 26px;border-radius:999px;font-weight:800;font-size:16px;
+    cursor:pointer;border:none;transition:.2s transform,.2s box-shadow;white-space:nowrap;
+  }
+  .btn:active{transform:scale(.97)}
+  .btn-red{background:linear-gradient(135deg,var(--red),var(--red-deep));color:#fff;
+    box-shadow:0 8px 30px var(--red-glow)}
+  .btn-red:hover{box-shadow:0 10px 40px var(--red-glow);transform:translateY(-2px)}
+  .btn-ghost{background:transparent;color:var(--text);border:1.5px solid var(--line)}
+  .btn-ghost:hover{border-color:var(--red)}
+  .btn-wa{background:#1faf54;color:#fff;box-shadow:0 8px 30px rgba(31,175,84,.35)}
+  .btn-wa:hover{transform:translateY(-2px)}
+
+  /* ---- Nav ---- */
+  header.nav{position:sticky;top:0;z-index:50;background:rgba(8,8,10,.82);
+    backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+  .nav-in{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .logo{font-weight:900;font-size:22px;letter-spacing:1px}
+  .logo b{color:var(--red)}
+  .nav-links{display:flex;gap:26px;font-size:15px;color:var(--muted)}
+  .nav-links a:hover{color:#fff}
+  @media(max-width:760px){.nav-links{display:none}}
+
+  /* ---- Hero ---- */
+  .hero{position:relative;padding:84px 0 64px;text-align:center;overflow:hidden}
+  .hero::before{content:"";position:absolute;inset:0;
+    background:radial-gradient(60% 60% at 50% 0%,rgba(255,31,31,.20),transparent 70%);pointer-events:none}
+  .hero h1{position:relative;font-size:clamp(38px,7vw,68px);font-weight:900;letter-spacing:-1.5px;line-height:1.02}
+  .hero h1 .r{color:var(--red);text-shadow:0 0 40px var(--red-glow)}
+  .vip-badge{display:inline-block;margin-bottom:20px;padding:7px 16px;border-radius:999px;
+    border:1px solid var(--gold);color:var(--gold);font-weight:800;font-size:13px;letter-spacing:2px}
+  .hero p.tag{position:relative;color:var(--muted);font-size:clamp(17px,2.4vw,20px);margin:18px auto 30px;max-width:600px}
+  .hero-cta{position:relative;display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+
+  /* ---- Cartes / grilles ---- */
+  .grid{display:grid;gap:18px}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:900px){.g3,.g4{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:560px){.g2,.g3,.g4{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:26px;transition:.2s}
+  .card:hover{border-color:var(--red);transform:translateY(-3px)}
+  .card .ico{font-size:30px;margin-bottom:12px}
+  .card h3{font-size:19px;font-weight:800;margin-bottom:6px}
+  .card p{color:var(--muted);font-size:15px}
+
+  /* ---- Étapes ---- */
+  .step{position:relative;padding-left:8px}
+  .step .num{display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;
+    border-radius:12px;background:linear-gradient(135deg,var(--red),var(--red-deep));
+    color:#fff;font-weight:900;font-size:20px;margin-bottom:14px;box-shadow:0 6px 20px var(--red-glow)}
+
+  /* ---- QR ---- */
+  .qr-row{display:flex;gap:28px;flex-wrap:wrap;justify-content:center}
+  .qr-box{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px;text-align:center;width:230px}
+  .qr-box .qrimg{width:170px;height:170px;background:#fff;border-radius:12px;margin:0 auto 14px;
+    display:flex;align-items:center;justify-content:center;padding:8px}
+  .qr-box .qrimg img,.qr-box .qrimg canvas{width:100%;height:100%}
+  .qr-box h3{font-size:17px;font-weight:800}
+  .qr-box .lnk{color:var(--red);font-size:13px;word-break:break-all;margin-top:6px;display:block}
+
+  /* ---- Tarifs ---- */
+  .price{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:30px 24px;text-align:center;position:relative}
+  .price.pop{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold),0 18px 50px rgba(231,198,107,.12)}
+  .price .ribbon{position:absolute;top:-13px;left:50%;transform:translateX(-50%);
+    background:var(--gold);color:#1a1400;font-weight:900;font-size:12px;letter-spacing:1px;
+    padding:5px 14px;border-radius:999px}
+  .price .dur{font-weight:800;font-size:18px;color:var(--muted)}
+  .price .amt{font-size:40px;font-weight:900;margin:10px 0 4px}
+  .price .amt span{font-size:16px;color:var(--muted);font-weight:600}
+  .price ul{list-style:none;margin:16px 0 22px;text-align:left;font-size:14px;color:var(--muted)}
+  .price li{padding:6px 0 6px 24px;position:relative}
+  .price li::before{content:"✓";position:absolute;left:0;color:var(--red);font-weight:900}
+
+  /* ---- Form MAC ---- */
+  .mac-card{background:linear-gradient(135deg,var(--bg2),var(--card));
+    border:1px solid var(--line);border-radius:24px;padding:38px;text-align:center;max-width:640px;margin:0 auto}
+  .mac-input{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:22px}
+  .mac-input input{flex:1;min-width:240px;background:#0c0c0f;border:1.5px solid var(--line);
+    color:#fff;padding:15px 18px;border-radius:12px;font-size:18px;letter-spacing:1px;text-align:center;font-family:monospace}
+  .mac-input input:focus{outline:none;border-color:var(--red)}
+  .hint{color:var(--muted);font-size:13px;margin-top:12px}
+  /* ---- Form self-service ---- */
+  .flbl{display:block;font-size:13px;color:var(--muted);margin:14px 0 6px;font-weight:600}
+  .fin{width:100%;background:#0c0c0f;border:1.5px solid var(--line);color:#fff;padding:13px 16px;border-radius:12px;font-size:15px;font-family:monospace}
+  .fin:focus{outline:none;border-color:var(--red)}
+  .seg{display:flex;gap:8px;background:#0c0c0f;border:1px solid var(--line);border-radius:12px;padding:5px}
+  .seg-btn{flex:1;background:transparent;color:var(--muted);border:none;padding:10px;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px}
+  .seg-btn.active{background:linear-gradient(135deg,var(--red),var(--red-deep));color:#fff}
+
+  /* ---- FAQ ---- */
+  details{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 22px;margin-bottom:12px}
+  details[open]{border-color:var(--red)}
+  summary{cursor:pointer;font-weight:700;font-size:17px;list-style:none}
+  summary::-webkit-details-marker{display:none}
+  summary::after{content:"+";float:right;color:var(--red);font-weight:900}
+  details[open] summary::after{content:"–"}
+  details p{color:var(--muted);margin-top:12px;font-size:15px}
+
+  /* ---- Bandeaux ---- */
+  .banner{background:linear-gradient(135deg,rgba(255,31,31,.10),transparent);
+    border:1px solid var(--line);border-left:4px solid var(--red);
+    border-radius:14px;padding:22px 26px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+  .banner .ico{font-size:28px}
+
+  /* ---- Footer ---- */
+  footer{background:var(--bg2);border-top:1px solid var(--line);padding:48px 0 36px;color:var(--muted);font-size:14px}
+  footer a{color:var(--muted)}footer a:hover{color:#fff}
+  .disclaimer{background:#0c0c0f;border:1px solid var(--line);border-radius:14px;
+    padding:18px 22px;font-size:13px;color:var(--muted);margin-bottom:28px;line-height:1.6}
+  .foot-links{display:flex;gap:22px;flex-wrap:wrap;margin-top:14px}
+</style>
+</head>
+<body>
+
+<!-- ====================================================================
+     ⚙️  À PERSONNALISER — modifie UNIQUEMENT ce bloc CONFIG ci-dessous
+     ==================================================================== -->
+<script>
+  const CONFIG = {
+    // Numéro WhatsApp au format international SANS "+" ni espaces
+    // ex. Maroc : 2126XXXXXXXX  ·  France : 336XXXXXXXX
+    whatsapp: "447307410512",
+
+    // Liens de téléchargement (déjà branchés sur ton worker)
+    appUrl: "https://app.7themotion.com/install",
+    tvUrl:  "https://app.7themotion.com/tv",
+    privacyUrl: "https://app.7themotion.com/privacy",
+    apiBase: "https://app.7themotion.com",   // backend (self-service playlist)
+
+    // Prix à afficher (mets ce que tu veux ; "€", "MAD", "DH"…)
+    prices: {
+      m1:  { amount: "5,99",  unit: "/ mois"  },
+      m6:  { amount: "29,99", unit: "/ 6 mois" },
+      m12: { amount: "49,99", unit: "/ an"    }
+    },
+    currency: "€"
+  };
+</script>
+<!-- ==================================================================== -->
+
+<!-- NAV -->
+<header class="nav">
+  <div class="wrap nav-in">
+    <div class="logo">7&nbsp;<b>MOTION</b></div>
+    <nav class="nav-links">
+      <a href="#how">Comment ça marche</a>
+      <a href="#download">Télécharger</a>
+      <a href="#pricing">Tarifs</a>
+      <a href="#activate">Activer</a>
+      <a href="#connect">Ma playlist</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <a class="btn btn-red" id="navWa">WhatsApp</a>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap">
+    <span class="vip-badge">★ VIP EXPERIENCE</span>
+    <h1>Ton lecteur. Tes chaînes.<br><span class="r">Partout.</span></h1>
+    <p class="tag">7 MOTION (téléphone) &amp; DeFew TV (box &amp; Smart TV) : un lecteur multimédia
+      rapide, fluide et sans coupure. Tu apportes ta source — l'app fait le reste.</p>
+    <div class="hero-cta">
+      <a class="btn btn-red" id="dlPhone">📱 Télécharger (Téléphone)</a>
+      <a class="btn btn-ghost" id="dlTv">📺 Télécharger (TV)</a>
+    </div>
+  </div>
+</section>
+
+<!-- COMMENT ÇA MARCHE -->
+<section id="how">
+  <div class="wrap">
+    <h2 class="center">Comment ça <span class="accent">marche</span></h2>
+    <p class="sub center">Trois étapes, deux minutes, zéro prise de tête.</p>
+    <div class="grid g3">
+      <div class="card step">
+        <div class="num">1</div>
+        <h3>Télécharge l'app</h3>
+        <p>Sur ton téléphone ou ta TV (Android TV, Fire Stick, SHIELD…). Aucun compte requis.</p>
+      </div>
+      <div class="card step">
+        <div class="num">2</div>
+        <h3>Récupère ton adresse (MAC)</h3>
+        <p>Ouvre l'app : ton adresse d'appareil s'affiche. C'est ta clé unique.</p>
+      </div>
+      <div class="card step">
+        <div class="num">3</div>
+        <h3>Active &amp; profite</h3>
+        <p>Envoie ta MAC via WhatsApp (ou ajoute ta propre playlist). Tes chaînes
+          apparaissent automatiquement.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TÉLÉCHARGEMENT + QR -->
+<section id="download" style="background:var(--bg2)">
+  <div class="wrap">
+    <h2 class="center">Télé<span class="accent">charger</span></h2>
+    <p class="sub center">Scanne, installe, regarde. Lien direct, sans pub ni inscription.</p>
+    <div class="qr-row">
+      <div class="qr-box">
+        <div class="qrimg" id="qrPhone"></div>
+        <h3>📱 Téléphone</h3>
+        <a class="lnk" id="lnkPhone"></a>
+      </div>
+      <div class="qr-box">
+        <div class="qrimg" id="qrTv"></div>
+        <h3>📺 TV / Box</h3>
+        <a class="lnk" id="lnkTv"></a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- APPAREILS -->
+<section>
+  <div class="wrap">
+    <h2 class="center">Compatible <span class="accent">partout</span></h2>
+    <p class="sub center">Un seul abonnement, tous tes écrans.</p>
+    <div class="grid g4">
+      <div class="card center"><div class="ico">📱</div><h3>Android</h3><p>Téléphone &amp; tablette</p></div>
+      <div class="card center"><div class="ico">📺</div><h3>Android TV</h3><p>+ Google TV</p></div>
+      <div class="card center"><div class="ico">🔥</div><h3>Fire Stick</h3><p>Amazon Fire TV</p></div>
+      <div class="card center"><div class="ico">🛡️</div><h3>NVIDIA SHIELD</h3><p>&amp; box Android</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- FONCTIONNALITÉS -->
+<section style="background:var(--bg2)">
+  <div class="wrap">
+    <h2 class="center">Un lecteur <span class="accent">premium</span></h2>
+    <p class="sub center">Tout ce qu'il faut pour une expérience fluide.</p>
+    <div class="grid g3">
+      <div class="card"><div class="ico">⚡</div><h3>Démarrage rapide</h3><p>Les chaînes s'ouvrent en quelques secondes, zapping instantané.</p></div>
+      <div class="card"><div class="ico">🛡️</div><h3>Anti-coupure</h3><p>Gros tampon + reconnexion automatique : l'image tient même sur Wi-Fi faible.</p></div>
+      <div class="card"><div class="ico">📅</div><h3>Guide TV (EPG)</h3><p>Programme en cours et à venir, rappels pour tes émissions.</p></div>
+      <div class="card"><div class="ico">⭐</div><h3>Favoris &amp; reprise</h3><p>Tes chaînes préférées et « continuer à regarder » d'un appareil à l'autre.</p></div>
+      <div class="card"><div class="ico">⏺️</div><h3>Enregistrement</h3><p>Capture une émission et regarde-la plus tard.</p></div>
+      <div class="card"><div class="ico">🌍</div><h3>Multi-langue</h3><p>Interface en 8 langues, contrôle parental, mode enfants.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- TARIFS -->
+<section id="pricing">
+  <div class="wrap">
+    <h2 class="center">Nos <span class="accent">formules</span></h2>
+    <p class="sub center">Activation &amp; support de ton appareil. Paiement &amp; activation via WhatsApp.</p>
+    <div class="grid g3" style="max-width:920px;margin:0 auto">
+      <div class="price">
+        <div class="dur">1 mois</div>
+        <div class="amt" id="p1">—</div>
+        <ul><li>Activation appareil</li><li>Support inclus</li><li>Mises à jour</li><li>Sans engagement</li></ul>
+        <a class="btn btn-red" data-plan="1 mois" style="width:100%;justify-content:center">Choisir</a>
+      </div>
+      <div class="price pop">
+        <div class="ribbon">★ MEILLEUR PRIX</div>
+        <div class="dur">1 an</div>
+        <div class="amt" id="p12">—</div>
+        <p style="color:var(--gold);font-weight:800;font-size:13px;margin-bottom:4px">≈ 4,17 €/mois · ~30 % d'économie</p>
+        <ul><li>Activation appareil</li><li>Support VIP prioritaire</li><li>Multi-écran</li><li>Le meilleur rapport qualité/prix</li></ul>
+        <a class="btn btn-red" data-plan="1 an" style="width:100%;justify-content:center">Choisir</a>
+      </div>
+      <div class="price">
+        <div class="dur">6 mois</div>
+        <div class="amt" id="p6">—</div>
+        <ul><li>Activation appareil</li><li>Support prioritaire</li><li>Multi-écran</li><li>Économise vs mensuel</li></ul>
+        <a class="btn btn-red" data-plan="6 mois" style="width:100%;justify-content:center">Choisir</a>
+      </div>
+    </div>
+    <p class="hint center" style="margin-top:18px">Le paiement se fait directement avec notre équipe sur WhatsApp — simple, rapide, humain.</p>
+  </div>
+</section>
+
+<!-- ACTIVER MON APPAREIL -->
+<section id="activate" style="background:var(--bg2)">
+  <div class="wrap">
+    <div class="mac-card">
+      <h2>Activer mon <span class="accent">appareil</span></h2>
+      <p class="sub center" style="margin-bottom:0">Entre l'adresse (MAC) affichée dans ton app.
+        On l'active et tes chaînes arrivent toutes seules.</p>
+      <div class="mac-input">
+        <input id="macInput" type="text" placeholder="MK:XX:XX:XX:XX:XX" maxlength="20" autocomplete="off" />
+        <button class="btn btn-wa" id="macSend">Activer via WhatsApp</button>
+      </div>
+      <p class="hint">📍 Tu trouves ta MAC sur l'écran d'accueil de l'app (ou dans « À propos »).</p>
+    </div>
+  </div>
+</section>
+
+<!-- CONNECTER MA PLAYLIST (self-service) -->
+<section id="connect">
+  <div class="wrap">
+    <div class="mac-card" style="max-width:720px">
+      <h2>Connecter ma <span class="accent">playlist</span></h2>
+      <p class="sub center" style="margin-bottom:0">Tu as déjà ta ligne (M3U ou Xtream)&nbsp;? Saisis ta MAC et ta source ici : elles se chargent automatiquement dans l'app, partout dans le monde.</p>
+      <div style="margin-top:22px;text-align:left">
+        <label class="flbl">Adresse de l'appareil (MAC)</label>
+        <input id="csMac" class="fin" type="text" placeholder="MK:XX:XX:XX:XX:XX" maxlength="20" autocomplete="off" />
+        <div class="seg" style="margin:16px 0 6px">
+          <button type="button" class="seg-btn active" data-t="m3u">Playlist M3U</button>
+          <button type="button" class="seg-btn" data-t="xtream">Xtream (serveur)</button>
+        </div>
+        <div id="csM3u">
+          <label class="flbl">URL M3U</label>
+          <input id="csUrl" class="fin" type="url" placeholder="http://serveur.com/get.php?username=…&amp;type=m3u_plus" autocomplete="off" />
+        </div>
+        <div id="csXt" style="display:none">
+          <label class="flbl">Serveur</label>
+          <input id="csServer" class="fin" type="url" placeholder="http://serveur.com:8080" autocomplete="off" />
+          <label class="flbl">Utilisateur</label>
+          <input id="csUser" class="fin" type="text" placeholder="ton identifiant" autocomplete="off" />
+          <label class="flbl">Mot de passe</label>
+          <input id="csPass" class="fin" type="text" placeholder="ton mot de passe" autocomplete="off" />
+        </div>
+        <button class="btn btn-red" id="csSend" style="width:100%;justify-content:center;margin-top:18px">Connecter ma playlist</button>
+        <p id="csMsg" class="hint" style="text-align:center;min-height:18px"></p>
+        <p class="hint" style="text-align:center">🔒 On enregistre ta source sur TON appareil. On ne touche jamais à un appareil déjà activé par le support.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BRING YOUR OWN -->
+<section>
+  <div class="wrap">
+    <div class="banner">
+      <div class="ico">🔌</div>
+      <div>
+        <h3 style="font-size:19px;font-weight:800">Tu as déjà ta propre liste&nbsp;?</h3>
+        <p style="color:var(--muted);font-size:15px">7 MOTION lit aussi tes playlists <b>M3U</b> et tes accès <b>Xtream</b> :
+          ajoute ta source en quelques secondes et regarde immédiatement. L'app est un lecteur — tu gardes le contrôle.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section id="faq" style="background:var(--bg2)">
+  <div class="wrap" style="max-width:760px">
+    <h2 class="center">Questions <span class="accent">fréquentes</span></h2>
+    <p class="sub center">&nbsp;</p>
+    <details><summary>Où je trouve mon adresse MAC&nbsp;?</summary>
+      <p>Ouvre l'app : elle s'affiche sur l'écran d'accueil (format MK:XX:XX:XX:XX:XX), et aussi dans « À propos ».</p></details>
+    <details><summary>Sur quels appareils ça marche&nbsp;?</summary>
+      <p>Téléphones &amp; tablettes Android, Android TV, Google TV, Amazon Fire Stick, NVIDIA SHIELD et la plupart des box Android. La version iPhone arrive.</p></details>
+    <details><summary>L'image se coupe, que faire&nbsp;?</summary>
+      <p>L'app a un mode anti-coupure et se reconnecte toute seule. Si une chaîne précise reste noire, elle est souvent vide côté source — essaie-en une autre. Un bon Wi-Fi (ou Ethernet sur TV) aide beaucoup.</p></details>
+    <details><summary>Comment je paie&nbsp;?</summary>
+      <p>Directement avec notre équipe sur WhatsApp. Tu choisis ta formule, on active ton appareil, c'est réglé en quelques minutes.</p></details>
+    <details><summary>Est-ce que vous fournissez les chaînes&nbsp;?</summary>
+      <p>Non. 7 MOTION et DeFew TV sont des <b>lecteurs multimédia</b>. Nous ne vendons ni n'hébergeons aucun contenu : tu apportes ta propre source.</p></details>
+  </div>
+</section>
+
+<!-- CTA FINAL -->
+<section class="center">
+  <div class="wrap">
+    <h2>Prêt à <span class="accent">démarrer</span>&nbsp;?</h2>
+    <p class="sub center">Installe l'app et contacte-nous sur WhatsApp pour activer.</p>
+    <div class="hero-cta">
+      <a class="btn btn-red" id="dlPhone2">📱 Télécharger</a>
+      <a class="btn btn-wa" id="waBtn2">💬 Nous écrire</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="wrap">
+    <div class="disclaimer">
+      <b>Avertissement légal —</b> 7 MOTION et DeFew TV sont des applications de lecture
+      multimédia (media players). Nous ne vendons, n'hébergeons, ne diffusons et ne
+      fournissons <b>aucune chaîne, aucun flux ni aucun contenu</b>. L'utilisateur est seul
+      responsable des sources qu'il choisit d'ajouter et de leur légalité dans son pays.
+    </div>
+    <div class="logo">7&nbsp;<b>MOTION</b></div>
+    <p style="margin-top:8px">Lecteur multimédia premium pour téléphone &amp; TV.</p>
+    <div class="foot-links">
+      <a href="#how">Comment ça marche</a>
+      <a href="#download">Télécharger</a>
+      <a href="#pricing">Tarifs</a>
+      <a id="footPrivacy" href="#">Confidentialité</a>
+      <a id="footWa" href="#">WhatsApp</a>
+    </div>
+    <p style="margin-top:18px;opacity:.6">© <span id="yr"></span> 7 MOTION. Tous droits réservés.</p>
+  </div>
+</footer>
+
+<!-- QR lib (CDN) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+(function(){
+  var C = window.CONFIG;
+  var wa = function(msg){ return "https://wa.me/" + C.whatsapp + (msg ? "?text=" + encodeURIComponent(msg) : ""); };
+
+  // Liens de base
+  function set(id, attr, val){ var e=document.getElementById(id); if(e) e[attr]=val; }
+  ["dlPhone","dlPhone2"].forEach(function(id){ set(id,"href",C.appUrl); });
+  set("dlTv","href",C.tvUrl);
+  set("lnkPhone","href",C.appUrl); set("lnkPhone","textContent",C.appUrl.replace("https://",""));
+  set("lnkTv","href",C.tvUrl);     set("lnkTv","textContent",C.tvUrl.replace("https://",""));
+  set("footPrivacy","href",C.privacyUrl);
+
+  // WhatsApp
+  var waGeneral = wa("Bonjour 👋 Je suis intéressé(e) par 7 MOTION.");
+  ["navWa","waBtn2","footWa"].forEach(function(id){ set(id,"href",waGeneral); });
+
+  // Prix
+  function price(id,p){ var e=document.getElementById(id); if(e&&p) e.innerHTML = p.amount + " " + C.currency + " <span>" + p.unit + "</span>"; }
+  price("p1",C.prices.m1); price("p6",C.prices.m6); price("p12",C.prices.m12);
+
+  // Boutons "Choisir" -> WhatsApp avec la formule
+  document.querySelectorAll("[data-plan]").forEach(function(b){
+    b.href = wa("Bonjour 👋 Je veux la formule " + b.getAttribute("data-plan") + " pour 7 MOTION.");
+  });
+
+  // Formulaire MAC -> WhatsApp avec la MAC pré-remplie
+  var send = document.getElementById("macSend");
+  if(send){
+    send.addEventListener("click", function(){
+      var mac = (document.getElementById("macInput").value || "").trim().toUpperCase();
+      var msg = mac
+        ? "Bonjour 👋 Je veux activer mon appareil. Mon adresse (MAC) : " + mac
+        : "Bonjour 👋 Je veux activer mon appareil 7 MOTION.";
+      window.open(wa(msg), "_blank");
+    });
+  }
+
+  // QR codes (avec repli silencieux si la lib ne charge pas)
+  function makeQR(elId, text){
+    var el = document.getElementById(elId);
+    if(!el || typeof QRCode === "undefined") return;
+    try { new QRCode(el, { text:text, width:154, height:154, colorDark:"#000", colorLight:"#fff", correctLevel:QRCode.CorrectLevel.M }); }
+    catch(e){}
+  }
+  makeQR("qrPhone", C.appUrl);
+  makeQR("qrTv", C.tvUrl);
+
+  // Année
+  set("yr","textContent", String(new Date().getFullYear()));
+})();
+</script>
+
+<!-- Self-service : connecter sa playlist (POST /api/self-source/:mac) -->
+<script>
+(function(){
+  var C = window.CONFIG;
+  var curType = "m3u";
+  var segs = document.querySelectorAll(".seg-btn");
+  segs.forEach(function(b){
+    b.addEventListener("click", function(){
+      segs.forEach(function(x){ x.classList.remove("active"); });
+      b.classList.add("active");
+      curType = b.getAttribute("data-t");
+      document.getElementById("csM3u").style.display = (curType==="m3u") ? "" : "none";
+      document.getElementById("csXt").style.display  = (curType==="xtream") ? "" : "none";
+    });
+  });
+
+  var btn = document.getElementById("csSend");
+  if(!btn) return;
+  function show(color, text){ var m=document.getElementById("csMsg"); m.style.color=color; m.textContent=text; }
+
+  btn.addEventListener("click", function(){
+    var mac = (document.getElementById("csMac").value||"").trim().toUpperCase();
+    if(!/^MK(:[0-9A-F]{2}){5}$/.test(mac)){ show("#ff6b6b","Adresse MAC invalide (format MK:XX:XX:XX:XX:XX)."); return; }
+    var payload = { type: curType };
+    if(curType==="m3u"){
+      var url=(document.getElementById("csUrl").value||"").trim();
+      if(!/^https?:\\/\\//i.test(url)){ show("#ff6b6b","URL M3U invalide (doit commencer par http)."); return; }
+      payload.m3u_url=url;
+    } else {
+      var s=(document.getElementById("csServer").value||"").trim();
+      var u=(document.getElementById("csUser").value||"").trim();
+      var p=(document.getElementById("csPass").value||"").trim();
+      if(!/^https?:\\/\\//i.test(s)||!u||!p){ show("#ff6b6b","Serveur (http), utilisateur et mot de passe requis."); return; }
+      payload.server_url=s; payload.username=u; payload.password=p;
+    }
+    show("var(--muted)","Connexion…"); btn.disabled=true;
+    fetch(C.apiBase + "/api/self-source/" + encodeURIComponent(mac), {
+      method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)
+    })
+    .then(function(r){ return r.json().then(function(j){ return {st:r.status, j:j}; }).catch(function(){ return {st:r.status, j:{}}; }); })
+    .then(function(o){
+      if(o.j && o.j.ok){ show("#4caf50","✅ " + (o.j.message || "Playlist enregistrée !")); }
+      else if(o.st===409){ show("#ffb300","⚠️ " + (o.j.message || "Cet appareil a déjà une source.")); }
+      else { show("#ff6b6b","❌ " + ((o.j && (o.j.message||o.j.error)) || "Échec. Vérifie tes informations.")); }
+    })
+    .catch(function(){ show("#ff6b6b","❌ Réseau indisponible, réessaie."); })
+    .then(function(){ btn.disabled=false; });
+  });
+})();
+</script>
+</body>
+</html>
+`;
+}
