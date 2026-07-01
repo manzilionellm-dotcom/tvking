@@ -210,7 +210,9 @@ export function portalHtml() {
 (function(){
   "use strict";
   var MAC_RX = /^MK(:[0-9A-F]{2}){5}$/;
-  var api = function(mac){ return "/api/self-source/" + encodeURIComponent(mac); };
+  // MAC en clair dans le path (les « : » sont valides en URL) : le worker valide
+  // la forme brute MK:XX:… — l'encoder en %3A la ferait rejeter (invalid mac).
+  var api = function(mac){ return "/api/self-source/" + mac; };
   var $ = function(id){ return document.getElementById(id); };
   var state = { mac:null, mode:"m3u", editing:false };
 

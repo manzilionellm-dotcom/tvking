@@ -1247,6 +1247,13 @@ const TEXT_HEADERS = {
 // Regex MAC virtuelle BLACK7 ROYAL : MK:XX:XX:XX:XX:XX en hex.
 const MAC_RX = /^MK(?::[0-9A-F]{2}){5}$/i;
 
+// Décode une MAC reçue dans le PATH : un client web peut encoder les « : » en
+// %3A (encodeURIComponent). `url.pathname` n'étant pas décodé, on le fait ici,
+// sinon MAC_RX rejette « MK%3A24%3A… » (invalid mac). Tolérant si déjà en clair.
+function decodeMacPath(mac) {
+  try { return decodeURIComponent(String(mac || '')); } catch (_) { return String(mac || ''); }
+}
+
 // ----- Helpers réponse -----
 
 function json(body, status = 200) {
@@ -3266,9 +3273,10 @@ async function handleRequest(request, env, ctx) {
     // AJOUTE/REMPLACE (POST) ou SUPPRIME (DELETE) SA propre playlist. Une source
     // posée par le panel (payante) reste verrouillée (cf. handlers, garde-fous).
     if (segments[0] === 'api' && segments[1] === 'self-source' && segments.length === 3) {
-      if (request.method === 'GET') return await handleSelfSourceGet(env, segments[2]);
-      if (request.method === 'POST') return await handleSelfSource(env, segments[2], request);
-      if (request.method === 'DELETE') return await handleSelfSourceDelete(env, segments[2]);
+      const smac = decodeMacPath(segments[2]);
+      if (request.method === 'GET') return await handleSelfSourceGet(env, smac);
+      if (request.method === 'POST') return await handleSelfSource(env, smac, request);
+      if (request.method === 'DELETE') return await handleSelfSourceDelete(env, smac);
       return badRequest('only GET, POST or DELETE supported on /api/self-source/:mac');
     }
 
