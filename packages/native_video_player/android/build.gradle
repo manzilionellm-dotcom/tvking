@@ -50,4 +50,7 @@ dependencies {
     // meilleure reprise après erreur de chargement.
     implementation "androidx.media3:media3-exoplayer:1.8.0"
     implementation "androidx.media3:media3-exoplayer-hls:1.8.0"
+    // media3-ui : uniquement pour SubtitleView (rendu des sous-titres par-dessus
+    // la SurfaceView). On n'utilise AUCUN autre widget de ce module.
+    implementation "androidx.media3:media3-ui:1.8.0"
 }

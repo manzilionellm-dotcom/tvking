@@ -19,11 +19,13 @@ import 'package:flutter/material.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../channels/domain/channel.dart';
+import '../../epg/data/catchup_url_builder.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import 'tv_catchup_player_screen.dart';
 
 class TvChannelProgramsScreen extends StatefulWidget {
   const TvChannelProgramsScreen({required this.channel, super.key});
@@ -75,6 +77,28 @@ class _TvChannelProgramsScreenState extends State<TvChannelProgramsScreen> {
       // Échec : créneau trop proche/passé, ou rappels coupés dans les réglages.
       _toast('Rappel impossible (trop proche ou rappels désactivés)');
     }
+  }
+
+  /// REPLAY (« Revoir ») : ouvre le lecteur catch-up sur une émission passée.
+  /// L'URL est construite par CatchupUrlBuilder (timeshift Xtream auto-détecté,
+  /// template M3U, ou params par défaut). Null → le fournisseur ne propose
+  /// pas de replay pour cette chaîne : message clair, pas d'écran noir.
+  void _openReplay(EpgProgram p) {
+    final String? url =
+        CatchupUrlBuilder.build(channel: widget.channel, program: p);
+    if (url == null) {
+      _toast('Replay non proposé par le fournisseur pour cette chaîne');
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TvCatchupPlayerScreen(
+          channel: widget.channel,
+          program: p,
+          url: url,
+        ),
+      ),
+    );
   }
 
   void _toast(String msg) {
@@ -142,6 +166,7 @@ class _TvChannelProgramsScreenState extends State<TvChannelProgramsScreen> {
                         autofocus: i == liveIndex,
                         hasReminder: _reminders.contains(programs[i].startTime),
                         onToggleReminder: () => _toggleReminder(programs[i]),
+                        onReplay: () => _openReplay(programs[i]),
                       ),
                     );
                   },
@@ -181,12 +206,16 @@ class _ProgramRow extends StatelessWidget {
     this.autofocus = false,
     this.hasReminder = false,
     this.onToggleReminder,
+    this.onReplay,
   });
 
   final EpgProgram program;
   final bool autofocus;
   final bool hasReminder;
   final VoidCallback? onToggleReminder;
+
+  /// « Revoir » : lancé par OK sur une émission TERMINÉE.
+  final VoidCallback? onReplay;
 
   _ProgState _stateFor(DateTime now) {
     if (program.isLiveAt(now)) return _ProgState.live;
@@ -199,12 +228,16 @@ class _ProgramRow extends StatelessWidget {
     final _ProgState state = _stateFor(DateTime.now());
     final bool isLive = state == _ProgState.live;
     final bool isFuture = state == _ProgState.future;
+    final bool isPast = state == _ProgState.past;
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.small,
-      // À VENIR → OK pose/retire un RAPPEL (alarme 5 min avant). LIVE/passé →
-      // OK ne lance rien (le direct continue derrière) ; Retour revient au lecteur.
-      onSelect: isFuture ? onToggleReminder : () {},
+      // À VENIR → OK pose/retire un RAPPEL (alarme 5 min avant).
+      // TERMINÉ → OK lance le REPLAY (« Revoir »).
+      // LIVE → OK ne fait rien (le direct continue derrière).
+      onSelect: isFuture
+          ? onToggleReminder
+          : (isPast ? onReplay : () {}),
       builder: (BuildContext context, bool focused) {
         final Color border = focused
             ? TvTokens.gold
@@ -265,7 +298,7 @@ class _ProgramRow extends StatelessWidget {
                 ),
               ),
               // À VENIR : indicateur de RAPPEL. Cloche pleine (or) = rappel posé ;
-              // cloche vide = OK pour poser un rappel. (Rien pour live/passé.)
+              // cloche vide = OK pour poser un rappel.
               if (isFuture) ...<Widget>[
                 const SizedBox(width: 12),
                 Icon(
@@ -275,6 +308,11 @@ class _ProgramRow extends StatelessWidget {
                   size: 26,
                   color: hasReminder ? TvTokens.gold : TvTokens.mutedDim,
                 ),
+              ],
+              // TERMINÉ : icône REPLAY — OK pour revoir l'émission.
+              if (isPast) ...<Widget>[
+                const SizedBox(width: 12),
+                Icon(Icons.replay_rounded, size: 26, color: TvTokens.gold),
               ],
             ],
           ),

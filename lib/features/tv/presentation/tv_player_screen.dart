@@ -81,6 +81,11 @@ class TvPlayerScreen extends StatelessWidget {
   }
 }
 
+/// Formats d'image du lecteur : Auto = ratio réel de la vidéo, 16:9 / 4:3 =
+/// ratios forcés (16:9 = comportement historique par défaut), Plein écran =
+/// remplit tout l'écran (léger étirement possible sur du 4:3).
+enum _VideoFit { auto, w169, w43, stretch }
+
 /// Lecteur NATIF Android (Media3 / ExoPlayer sur SurfaceView) — l'implémentation
 /// historique, inchangée. C'est le défaut quand aucune plateforme n'injecte de
 /// moteur (donc TOUJOURS sur Android TV / Fire TV).
@@ -110,10 +115,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // Index du bouton de la barre actuellement « surligné » au D-pad
   // (-1 = aucun). Permet à N'IMPORTE QUELLE télécommande (simple D-pad, sans
   // pointeur) d'atteindre TOUS les boutons : OK ouvre la barre, Gauche/Droite
-  // déplacent le surlignage, OK active. Ordre : 0=Retour 1=Préc 2=Lecture/Pause
-  // 3=Suiv 4=REC 5=Favori.
+  // déplacent le surlignage, OK active.
+  // Ordre : 0=Guide 1=REC 2=Favori 3=Multi 4=Audio 5=Sous-titres 6=Format.
   int _btnFocus = -1;
-  static const int _btnCount = 4;
+  static const int _btnCount = 7;
   bool _buffering = true;
   // Spinner de re-buffering DIFFÉRÉ : il n'apparaît que si le buffering dure
   // plus de ~1,2 s. Une micro-coupure absorbée avant ce délai est donc
@@ -187,6 +192,15 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     }
     return out;
   }
+
+  // ----- Pistes & format d'image (façon bouton AUDIO d'une télé) -----
+  // Sous-titres : -1 = OFF (défaut, comportement historique), sinon index de
+  // la piste active. Remis à OFF à chaque zap (prévisible pour le client).
+  int _subIdx = -1;
+
+  // Format d'image. Défaut = 16:9 (comportement historique inchangé).
+  _VideoFit _fit = _VideoFit.w169;
+  double? _lastAspect; // dernier ratio réel appliqué (mode Auto)
 
   // Pause = position qui n'avance plus, mais ce n'est PAS un gel : le watchdog
   // ne doit alors NI reconnecter NI relancer la lecture tout seul (sinon le son
@@ -340,6 +354,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         if (!buffering) _spinnerVisible = false;
       });
     }
+    // Format « Auto » : re-cadrer quand la taille réelle de la vidéo arrive
+    // (l'événement videoSize ne change aucun des états ci-dessus).
+    if (_fit == _VideoFit.auto && _controller.videoAspectRatio != _lastAspect) {
+      _lastAspect = _controller.videoAspectRatio;
+      if (mounted) setState(() {});
+    }
     // Erreur / fin de flux live → reconnexion. Une erreur signifie que
     // l'essai EN COURS a définitivement échoué (le natif a épuisé ses
     // reconnexions silencieuses) : on lève donc le verrou _recovering, sinon
@@ -357,6 +377,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _lastPos = Duration.zero;
     // Variantes d'URL (failover silencieux) recalculées pour CETTE chaîne.
     _urls = _candidatesFor(_current.streamUrl);
+    // Sous-titres remis à OFF à chaque chaîne (prévisible pour le client).
+    _subIdx = -1;
+    _controller.setSubtitleTrack(-1);
     // Nouvelle chaîne → budget de reconnexion neuf, on lève tout état d'erreur.
     _recoverAttempts = 0;
     _recovering = false;
@@ -602,8 +625,67 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       case 3:
         _openMultiView();
         break;
+      case 4:
+        _cycleAudio();
+        break;
+      case 5:
+        _cycleSubtitles();
+        break;
+      case 6:
+        _cycleFormat();
+        break;
     }
   }
+
+  // ----- Audio / Sous-titres / Format (cyclage, façon bouton AUDIO d'une TV) -----
+
+  void _cycleAudio() {
+    final List<TrackInfo> tracks = _controller.audioTracks;
+    if (tracks.length < 2) {
+      _flash('Une seule piste audio sur cette chaîne');
+      _showOverlayTemporarily();
+      return;
+    }
+    int cur = tracks.indexWhere((TrackInfo t) => t.selected);
+    if (cur < 0) cur = 0;
+    final int next = (cur + 1) % tracks.length;
+    _controller.setAudioTrack(next);
+    _flash('Audio : ${tracks[next].label}');
+    _showOverlayTemporarily();
+  }
+
+  void _cycleSubtitles() {
+    final List<TrackInfo> tracks = _controller.textTracks;
+    if (tracks.isEmpty) {
+      _flash('Pas de sous-titres sur cette chaîne');
+      _showOverlayTemporarily();
+      return;
+    }
+    final int next = _subIdx + 1 >= tracks.length ? -1 : _subIdx + 1;
+    setState(() => _subIdx = next);
+    _controller.setSubtitleTrack(next);
+    _flash(next < 0
+        ? 'Sous-titres : désactivés'
+        : 'Sous-titres : ${tracks[next].label}');
+    _showOverlayTemporarily();
+  }
+
+  void _cycleFormat() {
+    const List<_VideoFit> order = <_VideoFit>[
+      _VideoFit.w169, _VideoFit.auto, _VideoFit.w43, _VideoFit.stretch,
+    ];
+    final _VideoFit next = order[(order.indexOf(_fit) + 1) % order.length];
+    setState(() => _fit = next);
+    _flash('Format : ${_fitLabel(next)}');
+    _showOverlayTemporarily();
+  }
+
+  static String _fitLabel(_VideoFit f) => switch (f) {
+        _VideoFit.auto => 'Auto (ratio réel)',
+        _VideoFit.w169 => '16:9',
+        _VideoFit.w43 => '4:3',
+        _VideoFit.stretch => 'Plein écran',
+      };
 
   // MULTI-VUE (2 chaînes) : réservée aux box assez puissantes (2 décodeurs).
   // Sur une petite box, on n'essaie PAS (message) → on protège la stabilité.
@@ -760,12 +842,41 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       _toggleFavorite();
       return KeyEventResult.handled;
     }
+    // Raccourcis pistes/format : touches dédiées de certaines télécommandes
+    // (AUDIO / SUBTITLE) + lettres pour les claviers.
+    if (k == LogicalKeyboardKey.mediaAudioTrack || k == LogicalKeyboardKey.keyA) {
+      _cycleAudio();
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.closedCaptionToggle ||
+        k == LogicalKeyboardKey.keyT) {
+      _cycleSubtitles();
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.keyV) {
+      _cycleFormat();
+      return KeyEventResult.handled;
+    }
     if (_isOk(k)) {
       _okPressed();
       return KeyEventResult.handled;
     }
     _showOverlayTemporarily();
     return KeyEventResult.ignored;
+  }
+
+  // Vidéo selon le format choisi. La SurfaceView remplit le rectangle qu'on
+  // lui donne : Auto/16:9/4:3 = rectangle au bon ratio centré ; Plein écran =
+  // tout l'écran (léger étirement possible).
+  Widget _videoSurface() {
+    final Widget video = NativeVideoView(controller: _controller);
+    if (_fit == _VideoFit.stretch) return video; // le Stack l'étend plein écran
+    final double ratio = switch (_fit) {
+      _VideoFit.auto => _controller.videoAspectRatio ?? 16 / 9,
+      _VideoFit.w43 => 4 / 3,
+      _ => 16 / 9,
+    };
+    return Center(child: AspectRatio(aspectRatio: ratio, child: video));
   }
 
   @override
@@ -795,13 +906,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
             child: Stack(
               fit: StackFit.expand,
               children: <Widget>[
-              // Vidéo SurfaceView native plein écran (16:9 centré sur TV 16:9).
-              Center(
-                child: AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: NativeVideoView(controller: _controller),
-                ),
-              ),
+              // Vidéo SurfaceView native, cadrée selon le format choisi
+              // (16:9 par défaut — bouton « Format » pour Auto/4:3/Plein écran).
+              _videoSurface(),
               // Écran de marque UNIQUEMENT tant que la 1re image de la chaîne
               // n'est pas rendue (ouverture / zap / reconnexion, où setUrl
               // remet firstFrame à false). Un re-buffering EN COURS de lecture
@@ -908,11 +1015,15 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                         total: widget.channels.length,
                         isRecording: _isRecording,
                         isFavorite: _isFavorite,
+                        subtitlesOn: _subIdx >= 0,
                         focusedIndex: _btnFocus,
                         onGuide: _openGuide,
                         onRecord: _toggleRecording,
                         onFavorite: _toggleFavorite,
                         onMulti: _openMultiView,
+                        onAudio: _cycleAudio,
+                        onSubtitles: _cycleSubtitles,
+                        onFormat: _cycleFormat,
                       ),
                     ),
                   ),
@@ -1012,11 +1123,15 @@ class _ControlsBar extends StatelessWidget {
     required this.total,
     required this.isRecording,
     required this.isFavorite,
+    required this.subtitlesOn,
     required this.focusedIndex,
     required this.onGuide,
     required this.onRecord,
     required this.onFavorite,
     required this.onMulti,
+    required this.onAudio,
+    required this.onSubtitles,
+    required this.onFormat,
   });
 
   final Channel channel;
@@ -1024,13 +1139,18 @@ class _ControlsBar extends StatelessWidget {
   final int total;
   final bool isRecording;
   final bool isFavorite;
+  final bool subtitlesOn;
 
-  /// Index du bouton surligné au D-pad (-1 = aucun). 0=Guide 1=REC 2=Favori.
+  /// Index du bouton surligné au D-pad (-1 = aucun).
+  /// 0=Guide 1=REC 2=Favori 3=Multi 4=Audio 5=Sous-titres 6=Format.
   final int focusedIndex;
   final VoidCallback onGuide;
   final VoidCallback onRecord;
   final VoidCallback onFavorite;
   final VoidCallback onMulti;
+  final VoidCallback onAudio;
+  final VoidCallback onSubtitles;
+  final VoidCallback onFormat;
 
   @override
   Widget build(BuildContext context) {
@@ -1099,6 +1219,31 @@ class _ControlsBar extends StatelessWidget {
                 label: 'Multi',
                 onTap: onMulti,
                 focused: focusedIndex == 3,
+              ),
+              const SizedBox(width: 34),
+              _CtrlButton(
+                icon: Icons.audiotrack_rounded,
+                label: 'Audio',
+                onTap: onAudio,
+                focused: focusedIndex == 4,
+              ),
+              const SizedBox(width: 34),
+              _CtrlButton(
+                icon: subtitlesOn
+                    ? Icons.subtitles_rounded
+                    : Icons.subtitles_off_rounded,
+                label: 'Sous-titres',
+                onTap: onSubtitles,
+                accent: TvTokens.gold,
+                active: subtitlesOn,
+                focused: focusedIndex == 5,
+              ),
+              const SizedBox(width: 34),
+              _CtrlButton(
+                icon: Icons.aspect_ratio_rounded,
+                label: 'Format',
+                onTap: onFormat,
+                focused: focusedIndex == 6,
               ),
             ],
           ),

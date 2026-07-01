@@ -5,10 +5,17 @@ import android.os.Handler
 import android.os.Looper
 import android.view.SurfaceView
 import android.view.View
+import android.widget.FrameLayout
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.SubtitleView
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -70,11 +77,22 @@ class NativeVideoView(
     }
 
     private val surfaceView = SurfaceView(context)
+
+    // Rendu des SOUS-TITRES : la vidéo est dessinée par MediaCodec directement
+    // sur la Surface (elle ne passe pas par Flutter), donc les sous-titres
+    // doivent être dessinés par une vue Android PAR-DESSUS. On empile
+    // SurfaceView + SubtitleView dans un FrameLayout.
+    private val subtitleView = SubtitleView(context)
+    private val container = FrameLayout(context)
+
     private val channel = MethodChannel(messenger, "native_video_player/$id")
     private val player: ExoPlayer
     private val handler = Handler(Looper.getMainLooper())
 
     private var currentUrl: String? = null
+
+    // Dernier état des pistes connu (pour appliquer une sélection par index).
+    private var currentTracks: Tracks = Tracks.EMPTY
 
     // Reconnexion auto silencieuse. Peu d'essais et RAPIDES : au-delà, on rend
     // la main à Dart qui, lui, sait basculer sur une VARIANTE d'URL du même
@@ -87,6 +105,12 @@ class NativeVideoView(
         override fun run() {
             if (player.isPlaying) {
                 channel.invokeMethod("position", player.currentPosition)
+            }
+            // Durée connue (VOD / replay / enregistrement) → pour la barre de
+            // progression et le seek. En live la durée est TIME_UNSET → ignorée.
+            val d = player.duration
+            if (d != C.TIME_UNSET && d > 0) {
+                channel.invokeMethod("duration", d)
             }
             handler.postDelayed(this, 500)
         }
@@ -182,10 +206,27 @@ class NativeVideoView(
         player.addListener(this)
         player.playWhenReady = true
 
+        // SOUS-TITRES DÉSACTIVÉS par défaut (comportement historique : rien
+        // n'était rendu). L'utilisateur les active via le bouton Sous-titres.
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            .build()
+
+        // Empilement vidéo + sous-titres (style par défaut de l'appareil).
+        val match = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT,
+        )
+        container.addView(surfaceView, match)
+        subtitleView.setUserDefaultStyle()
+        subtitleView.setUserDefaultTextSize()
+        container.addView(subtitleView, match)
+
         handler.postDelayed(positionPump, 500)
     }
 
-    override fun getView(): View = surfaceView
+    override fun getView(): View = container
 
     // ---- Dart → natif -------------------------------------------------------
 
@@ -225,8 +266,57 @@ class NativeVideoView(
                 player.pause()
                 result.success(null)
             }
+            "seekTo" -> {
+                // Replay / VOD / enregistrement : avance-retour. Sans effet
+                // utile en live pur (durée inconnue) — l'appelant n'y touche pas.
+                val ms = (call.argument<Number>("ms") ?: 0).toLong()
+                player.seekTo(ms.coerceAtLeast(0L))
+                result.success(null)
+            }
+            "setAudioTrack" -> {
+                // Sélectionne la N-ième piste AUDIO (index dans la liste envoyée
+                // à Dart par onTracksChanged).
+                selectTrack(C.TRACK_TYPE_AUDIO, call.argument<Int>("index") ?: 0)
+                result.success(null)
+            }
+            "setSubtitleTrack" -> {
+                // index >= 0 → active la N-ième piste TEXTE ; -1 → sous-titres OFF.
+                val idx = call.argument<Int>("index") ?: -1
+                if (idx < 0) {
+                    player.trackSelectionParameters =
+                        player.trackSelectionParameters.buildUpon()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                            .build()
+                    subtitleView.setCues(null)
+                } else {
+                    selectTrack(C.TRACK_TYPE_TEXT, idx)
+                }
+                result.success(null)
+            }
             "dispose" -> result.success(null)
             else -> result.notImplemented()
+        }
+    }
+
+    /// Applique une sélection de piste par (type, index d'affichage). L'index
+    /// correspond à l'ordre des groupes de CE type dans onTracksChanged — le
+    /// même ordre que la liste montrée côté Dart.
+    private fun selectTrack(type: Int, index: Int) {
+        var i = 0
+        for (group in currentTracks.groups) {
+            if (group.type != type) continue
+            if (i == index) {
+                player.trackSelectionParameters =
+                    player.trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(type, false)
+                        .setOverrideForType(
+                            TrackSelectionOverride(group.mediaTrackGroup, 0),
+                        )
+                        .build()
+                return
+            }
+            i++
         }
     }
 
@@ -251,6 +341,53 @@ class NativeVideoView(
     override fun onRenderedFirstFrame() {
         retryCount = 0
         channel.invokeMethod("firstFrame", null)
+    }
+
+    // Taille réelle de la vidéo → Dart peut proposer les formats d'image
+    // (Auto = ratio réel, 16:9, 4:3, Étiré) au lieu du 16:9 figé.
+    override fun onVideoSizeChanged(videoSize: VideoSize) {
+        if (videoSize.width > 0 && videoSize.height > 0) {
+            channel.invokeMethod(
+                "videoSize",
+                mapOf("width" to videoSize.width, "height" to videoSize.height),
+            )
+        }
+    }
+
+    // Pistes disponibles (audio + sous-titres) → Dart affiche les boutons
+    // Audio / Sous-titres avec les langues. Envoyé à chaque changement de
+    // média et à chaque (dé)sélection.
+    override fun onTracksChanged(tracks: Tracks) {
+        currentTracks = tracks
+        val audio = ArrayList<Map<String, Any>>()
+        val text = ArrayList<Map<String, Any>>()
+        for (group in tracks.groups) {
+            if (group.length == 0) continue
+            val f = group.getTrackFormat(0)
+            val label = f.label
+                ?: f.language?.uppercase()
+                ?: ""
+            when (group.type) {
+                C.TRACK_TYPE_AUDIO -> audio.add(
+                    mapOf(
+                        "label" to (label.ifEmpty { "Piste ${audio.size + 1}" }),
+                        "selected" to group.isSelected,
+                    ),
+                )
+                C.TRACK_TYPE_TEXT -> text.add(
+                    mapOf(
+                        "label" to (label.ifEmpty { "Sous-titres ${text.size + 1}" }),
+                        "selected" to group.isSelected,
+                    ),
+                )
+            }
+        }
+        channel.invokeMethod("tracks", mapOf("audio" to audio, "text" to text))
+    }
+
+    // Sous-titres décodés par ExoPlayer → dessinés par la SubtitleView.
+    override fun onCues(cueGroup: CueGroup) {
+        subtitleView.setCues(cueGroup.cues)
     }
 
     override fun onPlayerError(error: PlaybackException) {
