@@ -155,6 +155,14 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   static const int _kMaxRecover = 5;
   bool _fatal = false;
 
+  // Pause = position qui n'avance plus, mais ce n'est PAS un gel : le watchdog
+  // ne doit alors NI reconnecter NI relancer la lecture tout seul (sinon le son
+  // repartait même app minimisée). On distingue la pause volontaire (touche
+  // lecture/pause) de la mise en arrière-plan (Home / multitâche).
+  bool _userPaused = false;
+  bool _inBackground = false;
+  DateTime? _pausedAt; // début de la pause → rejoindre le direct si elle a duré
+
   Channel get _current => widget.channels[_index];
 
   static const List<LogicalKeyboardKey> _digits = <LogicalKeyboardKey>[
@@ -187,6 +195,14 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _open(reuse: true); // historique / présence pour la 1re chaîne
     // Chien de garde : aucune progression depuis 15 s → reconnexion.
     _watchdog = Timer.periodic(_watchEvery, (_) {
+      // En PAUSE (volontaire ou app en arrière-plan), la position n'avance
+      // plus : ce n'est PAS un gel. Sans ce garde, le watchdog rechargeait le
+      // flux après 15 s et la lecture redémarrait TOUTE SEULE (son compris,
+      // même app minimisée). On repousse simplement l'échéance.
+      if (_userPaused || _inBackground) {
+        _lastProgress = DateTime.now();
+        return;
+      }
       if (!_recovering && DateTime.now().difference(_lastProgress) > _frozen) {
         _recover();
       }
@@ -205,11 +221,34 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
+        _inBackground = true;
+        _pausedAt ??= DateTime.now();
         _controller.pause();
       case AppLifecycleState.resumed:
-        _controller.play();
+        _inBackground = false;
+        _lastProgress = DateTime.now(); // pas de reconnexion-éclair au retour
+        if (!_userPaused) _resumePlayback();
       case AppLifecycleState.inactive:
         break; // transitions brèves (dialogue…) → on ne coupe pas
+    }
+  }
+
+  /// Reprend la lecture après une pause. Sur du DIRECT, une pause de plus de
+  /// quelques secondes rend la connexion serveur douteuse (tampon plein,
+  /// socket coupée côté fournisseur) : reprendre « où on en était » = image
+  /// qui repart quelques secondes puis GÈLE en attendant le watchdog. On
+  /// RE-OUVRE donc le flux (retour au direct immédiat, sans gel). Pour une
+  /// micro-pause, un simple play() suffit (aucune interruption visuelle).
+  static const Duration _staleAfterPause = Duration(seconds: 8);
+  void _resumePlayback() {
+    final DateTime? since = _pausedAt;
+    _pausedAt = null;
+    _lastProgress = DateTime.now();
+    if (since != null &&
+        DateTime.now().difference(since) > _staleAfterPause) {
+      _controller.setUrl(_relayPlayUrl ?? _current.streamUrl);
+    } else {
+      _controller.play();
     }
   }
 
@@ -255,8 +294,14 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     if (mounted && buffering != _buffering) {
       setState(() => _buffering = buffering);
     }
-    // Erreur / fin de flux live → reconnexion.
+    // Erreur / fin de flux live → reconnexion. Une erreur signifie que
+    // l'essai EN COURS a définitivement échoué (le natif a épuisé ses
+    // reconnexions silencieuses) : on lève donc le verrou _recovering, sinon
+    // plus AUCUNE reconnexion ne partait (ni ici ni au watchdog, tous deux
+    // bloqués par le verrou) → logo infini au lieu des essais bornés puis de
+    // l'écran « Réessayer ».
     if (_controller.hasError || _controller.isEnded) {
+      _recovering = false;
       _recover();
     }
   }
@@ -267,6 +312,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Nouvelle chaîne → budget de reconnexion neuf, on lève tout état d'erreur.
     _recoverAttempts = 0;
     _recovering = false;
+    // Zapper = vouloir regarder : on sort de l'état « en pause ».
+    _userPaused = false;
+    _pausedAt = null;
     if (mounted) setState(() {
       _buffering = true;
       _fatal = false;
@@ -537,9 +585,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // l'icône ▶/⏸ des contrôles tactiles.
   void _togglePlayPause() {
     if (_controller.isPlaying) {
+      _userPaused = true;
+      _pausedAt ??= DateTime.now();
       _controller.pause();
     } else {
-      _controller.play();
+      _userPaused = false;
+      _resumePlayback(); // pause longue → on rejoint le direct (pas de gel)
     }
     _showOverlayTemporarily();
     setState(() {});
@@ -690,8 +741,13 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                   child: NativeVideoView(controller: _controller),
                 ),
               ),
-              // Écran de marque pendant l'ouverture / le zap / une reconnexion.
-              if (_buffering && !_fatal)
+              // Écran de marque UNIQUEMENT tant que la 1re image de la chaîne
+              // n'est pas rendue (ouverture / zap / reconnexion, où setUrl
+              // remet firstFrame à false). Un re-buffering EN COURS de lecture
+              // ne couvre PLUS tout l'écran : la dernière image reste affichée
+              // (SurfaceView) avec un petit spinner discret par-dessus → une
+              // micro-coupure réseau d'1 s ne « casse » plus la séance.
+              if (!_controller.firstFrame && !_fatal)
                 const ColoredBox(
                   color: TvTokens.bg,
                   child: Center(
@@ -707,6 +763,21 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                         ),
                       ],
                     ),
+                  ),
+                ),
+              // Re-buffering en cours de lecture : spinner discret, image gardée.
+              if (_controller.firstFrame && _buffering && !_fatal)
+                Center(
+                  child: Container(
+                    width: 64,
+                    height: 64,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const CircularProgressIndicator(
+                        strokeWidth: 3, color: TvTokens.gold),
                   ),
                 ),
               // Écran d'ERREUR (P1-6) : la reconnexion automatique a été épuisée
