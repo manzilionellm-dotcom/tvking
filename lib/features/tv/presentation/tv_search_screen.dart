@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/domain/channel.dart';
+import '../../channels/data/search_history_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -47,9 +48,26 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       _Keyboard(onType: _type, onBackspace: _backspace, onClear: _clear);
 
   @override
+  void initState() {
+    super.initState();
+    // Charge l'historique des recherches (best-effort) pour proposer les
+    // dernières recherches d'un clic quand la requête est vide.
+    SearchHistoryRepository.instance.load().then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
     super.dispose();
+  }
+
+  // Relance une recherche depuis une pastille d'historique (sans re-taper).
+  void _searchFrom(String query) {
+    _debounce?.cancel();
+    setState(() => _q = query);
+    _runSearch();
   }
 
   void _type(String ch) {
@@ -132,12 +150,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
               const SizedBox(height: 14),
               Expanded(
                 child: res.isEmpty
-                    ? Center(
-                        child: Text(
-                          _q.trim().isEmpty ? '' : context.l10n.tvNoResult,
-                          style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim),
-                        ),
-                      )
+                    ? _buildEmptyState(context)
                     : GridView.builder(
                         addAutomaticKeepAlives: false,
                         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -149,11 +162,17 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                         itemCount: res.length,
                         itemBuilder: (BuildContext context, int i) => TvFocusable(
                           scale: TvFocusScale.small,
-                          onSelect: () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => TvPlayerScreen(channels: res, startIndex: i),
-                            ),
-                          ),
+                          onSelect: () {
+                            // La recherche a servi (on ouvre un résultat) →
+                            // on la mémorise pour la reproposer plus tard.
+                            SearchHistoryRepository.instance.add(_q);
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    TvPlayerScreen(channels: res, startIndex: i),
+                              ),
+                            );
+                          },
                           child: Padding(
                             padding: const EdgeInsets.all(10),
                             child: Column(
@@ -189,6 +208,81 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  // État « pas de grille » : soit « aucun résultat » (requête en cours), soit
+  // les RECHERCHES RÉCENTES cliquables (requête vide) — confort D-pad.
+  Widget _buildEmptyState(BuildContext context) {
+    if (_q.trim().isNotEmpty) {
+      return Center(
+        child: Text(
+          context.l10n.tvNoResult,
+          style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim),
+        ),
+      );
+    }
+    final List<String> hist = SearchHistoryRepository.instance.items;
+    if (hist.isEmpty) return const SizedBox.shrink();
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            'RECHERCHES RÉCENTES',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: TvTokens.mutedDim,
+              letterSpacing: 1.4,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: <Widget>[
+              for (final String h in hist)
+                TvFocusable(
+                  scale: TvFocusScale.small,
+                  onSelect: () => _searchFrom(h),
+                  child: _chip(icon: Icons.history_rounded, label: h),
+                ),
+              TvFocusable(
+                scale: TvFocusScale.small,
+                onSelect: () async {
+                  await SearchHistoryRepository.instance.clear();
+                  if (mounted) setState(() {});
+                },
+                child: _chip(
+                    icon: Icons.close_rounded, label: 'Effacer', muted: true),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chip({required IconData icon, required String label, bool muted = false}) {
+    final Color fg = muted ? TvTokens.muted : TvTokens.text;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: TvTokens.card,
+        borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+        border: Border.all(color: TvTokens.lineSoft),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 18, color: TvTokens.muted),
+          const SizedBox(width: 8),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w600, color: fg)),
+        ],
+      ),
     );
   }
 
