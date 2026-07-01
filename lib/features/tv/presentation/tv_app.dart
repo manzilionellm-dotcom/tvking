@@ -24,6 +24,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../data/greeting_repository.dart';
+import '../data/display_settings.dart';
 import 'tv_activation_screen.dart';
 import 'tv_components.dart';
 import 'tv_films_screen.dart';
@@ -60,7 +61,8 @@ class TvApp extends StatelessWidget {
     // s'affiche en espagnol toute seule. Un changement manuel (Réglages)
     // reconstruit l'app via ce ListenableBuilder.
     return ListenableBuilder(
-      listenable: LocaleRepository.instance,
+      listenable: Listenable.merge(
+          <Listenable>[LocaleRepository.instance, DisplaySettings.instance]),
       builder: (BuildContext context, _) => MaterialApp(
         title: kAppName,
         debugShowCheckedModeBanner: false,
@@ -91,14 +93,26 @@ class TvApp extends StatelessWidget {
           }
           const double designW = kTvDesignWidth;
           final double designH = designW * screen.height / screen.width;
-          return MediaQuery(
-            data: mq.copyWith(
-              size: Size(designW, designH),
-              textScaler: TextScaler.noScaling,
+          // OVERSCAN : marge réglable de chaque côté (0 → 8 %) pour les TV qui
+          // rognent les bords. Fraction identique en H et V → l'aspect reste
+          // exact (pas de déformation). Défaut 0 % = comportement inchangé.
+          final double ov = DisplaySettings.instance.overscanFraction;
+          // TAILLE DU TEXTE : 1.0 (normal) ou 1.08 (grand, confort seniors).
+          final double ts = DisplaySettings.instance.textScale;
+          return Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: screen.width * ov,
+              vertical: screen.height * ov,
             ),
-            child: FittedBox(
-              fit: BoxFit.fill,
-              child: SizedBox(width: designW, height: designH, child: child),
+            child: MediaQuery(
+              data: mq.copyWith(
+                size: Size(designW, designH),
+                textScaler: TextScaler.linear(ts),
+              ),
+              child: FittedBox(
+                fit: BoxFit.fill,
+                child: SizedBox(width: designW, height: designH, child: child),
+              ),
             ),
           );
         },

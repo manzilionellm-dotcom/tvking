@@ -31,6 +31,7 @@ import 'features/recordings/data/recording_repository.dart';
 import 'features/security/data/parental_controls.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
+import 'features/tv/data/display_settings.dart';
 import 'features/tv/presentation/tv_app.dart';
 
 // =========================================================
@@ -146,6 +147,10 @@ Future<void> _bootstrap() async {
   // 8) Contrôle parental : on charge l'état du Mode Enfants pour que le 1er
   //    rendu du Direct masque déjà l'Adulte si le parent l'a activé.
   unawaited(ParentalControls.instance.load());
+
+  // Réglages d'affichage (overscan / grand texte). Best-effort, non bloquant.
+  // Défauts = comportement inchangé, donc aucun risque au 1er rendu.
+  unawaited(DisplaySettings.instance.load());
 
   // 9) Historique multi-box : on initialise l'historique local PUIS on le
   //    restaure depuis le serveur si la box est neuve (l'historique « suit »
