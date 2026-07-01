@@ -1278,13 +1278,8 @@ async function hmacHex(secret, message) {
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Comparaison à temps ~constant (évite un oracle de timing sur le token).
-function safeEqual(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
+// (La comparaison à temps constant `safeEqual` est déjà définie plus bas dans
+//  ce fichier — réutilisée ici pour vérifier le token du proxy Cast.)
 
 // Anti-SSRF : n'autorise que http(s) vers un hôte PUBLIC. Refuse localhost, les
 // domaines *.local et les IP littérales privées / réservées (RFC1918, loopback,
