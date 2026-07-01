@@ -42,8 +42,12 @@ dependencies {
     // (dont le TsExtractor MPEG-TS utilisé par l'IPTV en .ts) ; -hls ajoute
     // le support des playlists .m3u8. Le décodage HEVC passe par MediaCodec
     // (matériel) et rend directement sur la Surface de la SurfaceView.
-    // Version récente (1.5.x) : meilleure latence de démarrage + corrections
-    // de robustesse réseau.
-    implementation "androidx.media3:media3-exoplayer:1.5.1"
-    implementation "androidx.media3:media3-exoplayer-hls:1.5.1"
+    //
+    // 1.8.0 = la DERNIÈRE version qui supporte encore minSdk 21 (nos vieux
+    // Fire Stick / Fire OS 5 = Android 5.1). Les 1.9+/1.10+ exigent minSdk 23
+    // et casseraient la promesse « APK universel, tous les Fire Stick ».
+    // Gains 1.5 → 1.8 : robustesse réseau/HLS live, corrections de gel,
+    // meilleure reprise après erreur de chargement.
+    implementation "androidx.media3:media3-exoplayer:1.8.0"
+    implementation "androidx.media3:media3-exoplayer-hls:1.8.0"
 }

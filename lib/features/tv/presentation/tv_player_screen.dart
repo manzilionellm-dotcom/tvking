@@ -10,8 +10,9 @@
 //
 //  Réglages stabilité (côté natif, cf. NativeVideoView.kt) :
 //    1) décodage matériel MediaCodec + repli logiciel (decoder fallback) ;
-//    2) gros tampon (min 5 s / max 30 s, démarrage 1,5 s) ;
-//    3) watchdog 15 s : aucune progression → reconnexion auto (ré-ouvre l'URL).
+//    2) tampon anti-coupure borné en mémoire (anti-OOM) ;
+//    3) watchdog 10 s : aucune progression → récupération INVISIBLE (l'image
+//       reste, spinner différé) en alternant les variantes d'URL (.ts ⇄ .m3u8).
 //
 //  D-pad : Haut/Bas (ou Ch+/Ch-) = zap, chiffres = n° de chaîne, OK = barre,
 //  Back = quitter. Logo « The Few » affiché à l'ouverture / au zap.
@@ -114,6 +115,11 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   int _btnFocus = -1;
   static const int _btnCount = 4;
   bool _buffering = true;
+  // Spinner de re-buffering DIFFÉRÉ : il n'apparaît que si le buffering dure
+  // plus de ~1,2 s. Une micro-coupure absorbée avant ce délai est donc
+  // TOTALEMENT invisible (l'image reste affichée, rien ne s'ajoute dessus).
+  bool _spinnerVisible = false;
+  Timer? _spinnerDelay;
   Timer? _hideTimer;
   Timer? _presenceTimer;
   Timer? _numTimer;
@@ -144,7 +150,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   DateTime _lastProgress = DateTime.now();
   Duration _lastPos = Duration.zero;
   bool _recovering = false;
-  static const Duration _frozen = Duration(seconds: 15);
+  // 10 s sans progression = gelé → on agit (avant : 15 s ; plus réactif,
+  // et l'action est désormais INVISIBLE, donc un faux positif ne coûte rien).
+  static const Duration _frozen = Duration(seconds: 10);
   static const Duration _watchEvery = Duration(seconds: 4);
   // Reconnexion BORNÉE (P1-6) : on compte les ré-ouvertures sur la MÊME chaîne.
   // Au-delà de _kMaxRecover sans reprise, on ARRÊTE la boucle (CPU/réseau/chauffe)
@@ -152,8 +160,33 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // l'infini sur un flux mort. Remis à zéro dès qu'une image revient (progression)
   // ou au changement de chaîne.
   int _recoverAttempts = 0;
-  static const int _kMaxRecover = 5;
+  static const int _kMaxRecover = 6; // pair : essais répartis sur les 2 variantes d'URL
   bool _fatal = false;
+
+  // FAILOVER SILENCIEUX (façon Netflix) : variantes d'URL du MÊME flux.
+  // Les panels Xtream servent la plupart des chaînes sous DEUX formes —
+  // MPEG-TS brut (.ts) et HLS (.m3u8). Quand l'une tombe (conteneur en panne,
+  // segmenteur cassé), l'autre répond souvent encore. Les reconnexions
+  // alternent donc automatiquement entre les variantes, sans RIEN montrer
+  // au client (l'image reste, pas d'écran de logo).
+  late List<String> _urls = _candidatesFor(_current.streamUrl);
+
+  static List<String> _candidatesFor(String url) {
+    final List<String> out = <String>[url];
+    final Uri? u = Uri.tryParse(url);
+    final String? path = u?.path;
+    if (u == null || path == null) return out;
+    if (path.endsWith('.ts')) {
+      out.add(u
+          .replace(path: '${path.substring(0, path.length - 3)}.m3u8')
+          .toString());
+    } else if (path.endsWith('.m3u8')) {
+      out.add(u
+          .replace(path: '${path.substring(0, path.length - 5)}.ts')
+          .toString());
+    }
+    return out;
+  }
 
   // Pause = position qui n'avance plus, mais ce n'est PAS un gel : le watchdog
   // ne doit alors NI reconnecter NI relancer la lecture tout seul (sinon le son
@@ -246,7 +279,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _lastProgress = DateTime.now();
     if (since != null &&
         DateTime.now().difference(since) > _staleAfterPause) {
-      _controller.setUrl(_relayPlayUrl ?? _current.streamUrl);
+      // silent : on garde la dernière image à l'écran le temps de rejoindre
+      // le direct (pas d'écran de logo au retour dans l'app).
+      _controller.setUrl(_relayPlayUrl ?? _current.streamUrl, silent: true);
     } else {
       _controller.play();
     }
@@ -256,6 +291,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
+    _spinnerDelay?.cancel();
     _presenceTimer?.cancel();
     _numTimer?.cancel();
     _watchdog?.cancel();
@@ -292,7 +328,17 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // (au zap, firstFrame est remis à false → logo jusqu'à l'image suivante).
     final bool buffering = _controller.isBuffering || !_controller.firstFrame;
     if (mounted && buffering != _buffering) {
-      setState(() => _buffering = buffering);
+      _spinnerDelay?.cancel();
+      if (buffering) {
+        // Spinner DIFFÉRÉ : ne s'affiche que si le buffering persiste 1,2 s.
+        _spinnerDelay = Timer(const Duration(milliseconds: 1200), () {
+          if (mounted && _buffering) setState(() => _spinnerVisible = true);
+        });
+      }
+      setState(() {
+        _buffering = buffering;
+        if (!buffering) _spinnerVisible = false;
+      });
     }
     // Erreur / fin de flux live → reconnexion. Une erreur signifie que
     // l'essai EN COURS a définitivement échoué (le natif a épuisé ses
@@ -309,6 +355,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   void _open({bool reuse = false}) {
     _lastProgress = DateTime.now();
     _lastPos = Duration.zero;
+    // Variantes d'URL (failover silencieux) recalculées pour CETTE chaîne.
+    _urls = _candidatesFor(_current.streamUrl);
     // Nouvelle chaîne → budget de reconnexion neuf, on lève tout état d'erreur.
     _recoverAttempts = 0;
     _recovering = false;
@@ -357,9 +405,19 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _recoverAttempts++;
     _recovering = true;
     _lastProgress = DateTime.now();
-    // Ré-ouvre la MÊME source : l'URL locale du relais si on enregistre, sinon
-    // l'URL directe. = reconnexion au direct sans casser l'enregistrement.
-    _controller.setUrl(_relayPlayUrl ?? _current.streamUrl);
+    // setUrl remet la position du lecteur à ZÉRO : on aligne _lastPos, sinon
+    // ce reset serait pris pour une « vraie progression » (position ≠ _lastPos)
+    // et remettrait le budget d'essais à zéro → boucle de reconnexion infinie
+    // sur un flux mort en cours de lecture, écran « Réessayer » jamais montré.
+    _lastPos = Duration.zero;
+    // RÉCUPÉRATION INVISIBLE : silent → l'image reste affichée (pas d'écran
+    // de logo), le spinner n'apparaîtra que si ça dure. En enregistrement, on
+    // reste sur l'URL du relais (on ne casse pas la capture). Sinon, les
+    // essais ALTERNENT entre les variantes du flux : essai 1 = URL d'origine,
+    // essai 2 = variante .m3u8/.ts, essai 3 = origine, etc.
+    final String url = _relayPlayUrl ??
+        _urls[(_recoverAttempts - 1) % _urls.length];
+    _controller.setUrl(url, silent: true);
   }
 
   /// « Réessayer » manuel depuis l'écran d'erreur : on repart d'un budget neuf.
@@ -369,6 +427,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       _recoverAttempts = 0;
       _buffering = true;
     });
+    _lastProgress = DateTime.now();
+    _lastPos = Duration.zero;
     _controller.setUrl(_relayPlayUrl ?? _current.streamUrl);
     _showOverlayTemporarily();
   }
@@ -398,7 +458,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       final String localUrl =
           await LocalStreamRelay.instance.playUrlFor(realUrl);
       _relayPlayUrl = localUrl;
-      _controller.setUrl(localUrl);
+      // silent : même flux via le relais local → bascule invisible.
+      _controller.setUrl(localUrl, silent: true);
 
       // 2) On attache l'écriture fichier à CETTE MÊME session relais (pas de
       //    nouvelle connexion : le tee recopie juste les octets vers le .ts).
@@ -406,7 +467,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
           .startRecording(realUrl: realUrl, filePath: path);
       if (!ok) {
         _relayPlayUrl = null;
-        _controller.setUrl(realUrl); // on revient au direct
+        _controller.setUrl(realUrl, silent: true); // on revient au direct
         _flash('Échec démarrage enregistrement');
         return;
       }
@@ -448,7 +509,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       await RecordingRepository.instance.finishRecording(rec);
     } catch (_) {}
     if (resumeDirect && mounted) {
-      _controller.setUrl(_current.streamUrl);
+      _controller.setUrl(_current.streamUrl, silent: true);
     }
     if (mounted) {
       _flash(bytes > 0
@@ -765,8 +826,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                     ),
                   ),
                 ),
-              // Re-buffering en cours de lecture : spinner discret, image gardée.
-              if (_controller.firstFrame && _buffering && !_fatal)
+              // Re-buffering en cours de lecture : spinner discret, image
+              // gardée — et DIFFÉRÉ (1,2 s) : une micro-coupure absorbée
+              // avant ce délai ne montre RIEN du tout.
+              if (_controller.firstFrame && _spinnerVisible && !_fatal)
                 Center(
                   child: Container(
                     width: 64,

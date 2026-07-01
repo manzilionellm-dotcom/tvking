@@ -76,10 +76,12 @@ class NativeVideoView(
 
     private var currentUrl: String? = null
 
-    // Reconnexion auto silencieuse.
+    // Reconnexion auto silencieuse. Peu d'essais et RAPIDES : au-delà, on rend
+    // la main à Dart qui, lui, sait basculer sur une VARIANTE d'URL du même
+    // flux (.ts ⇄ .m3u8) — rester à marteler une URL morte retarde la bascule.
     private var retryCount = 0
     private var pendingRetry: Runnable? = null
-    private val maxSilentRetries = 8 // au-delà → on prévient Dart (reset complet)
+    private val maxSilentRetries = 3
 
     private val positionPump = object : Runnable {
         override fun run() {
@@ -141,10 +143,13 @@ class NativeVideoView(
         // inchangé (http passe toujours par le même httpFactory).
         val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
 
-        // Politique de ré-essai réseau AGRESSIVE : on retente beaucoup avant
-        // d'abandonner un chargement (le direct IPTV coupe souvent brièvement).
+        // Politique de ré-essai réseau : 3 tentatives par chargement (délais
+        // croissants ≈ 0/1/2 s). Assez pour absorber un hoquet bref, assez
+        // COURT pour qu'une URL vraiment morte remonte vite en erreur → la
+        // couche Dart bascule alors sur la variante .m3u8/.ts du même flux
+        // (failover silencieux) au lieu d'attendre ~15 s de retries inutiles.
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
-            .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(6))
+            .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(3))
 
         // ADAPTATION AUTOMATIQUE DE LA QUALITÉ (« façon Netflix »), réglée pour
         // les réseaux FAIBLES / INSTABLES (ex. Afrique). Ne s'applique QUE si le
@@ -249,12 +254,23 @@ class NativeVideoView(
     }
 
     override fun onPlayerError(error: PlaybackException) {
+        // SORTIE DE LA FENÊTRE LIVE (réseau trop lent, le serveur a « avancé »
+        // sans nous) : ce n'est PAS une panne — on ressaute au direct
+        // IMMÉDIATEMENT, sans compter d'essai ni montrer quoi que ce soit.
+        // C'est la recommandation officielle Media3 pour les flux live.
+        if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+            channel.invokeMethod("buffering", true)
+            scheduleRetry(0L)
+            return
+        }
         // RECONNEXION SILENCIEUSE : on ne montre PAS d'erreur au client tant
-        // qu'on n'a pas épuisé les essais. On re-prépare avec un back-off.
+        // qu'on n'a pas épuisé les essais. Back-off court (0,5 → 1 → 2 s) :
+        // un flux flaky repart vite, un flux mort passe vite la main à Dart
+        // (qui bascule sur la variante d'URL du même flux).
         if (retryCount < maxSilentRetries) {
             retryCount++
             channel.invokeMethod("buffering", true)
-            val delay = (1_000L * (1 shl (retryCount - 1))).coerceAtMost(8_000L)
+            val delay = (500L * (1 shl (retryCount - 1))).coerceAtMost(3_000L)
             scheduleRetry(delay)
         } else {
             // Trop d'échecs d'affilée → on laisse Dart faire un reset complet.

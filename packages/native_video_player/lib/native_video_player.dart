@@ -88,11 +88,17 @@ class NativeVideoController extends ChangeNotifier {
   /// Charge (ou recharge) une URL : zap vers une autre chaîne, ou reconnexion
   /// sur la MÊME URL. Réinitialise l'état d'affichage (logo le temps que la
   /// nouvelle 1re trame arrive).
-  void setUrl(String url) {
+  ///
+  /// [silent] = RÉCUPÉRATION INVISIBLE (façon Netflix) : on recharge le flux
+  /// SANS remettre [firstFrame] à false → l'écran garde la dernière image
+  /// affichée (la SurfaceView native la conserve) au lieu de repasser par
+  /// l'écran de marque plein écran. À utiliser pour les reconnexions et les
+  /// bascules de variante d'URL sur la MÊME chaîne — jamais pour un zap.
+  void setUrl(String url, {bool silent = false}) {
     hasError = false;
     isEnded = false;
     isBuffering = true;
-    firstFrame = false;
+    if (!silent) firstFrame = false;
     position = Duration.zero;
     if (!_disposed) notifyListeners();
     if (_channel != null) {
