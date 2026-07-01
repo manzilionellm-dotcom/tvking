@@ -33,6 +33,7 @@ on:
       - 'assets/branding/**'
       - 'lib/l10n/**'
       - '.github/workflows/build-tv.yml'
+      - 'lib/features/cast/**'
   workflow_dispatch:
 
 permissions:
