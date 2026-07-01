@@ -55,18 +55,22 @@ class CastOptionsProviderImpl : OptionsProvider {
         // aucun numéro de série à enregistrer) et la box réapparaît dans le
         // picker.
         //
-        //   false (ACTUEL) : Default Media Receiver public CC1AD845. Il lit le
-        //     HLS NATIVEMENT → on lui sert le RELAIS HLS du téléphone
-        //     (/hls/<token>.m3u8), qui tire le flux IPTV côté téléphone (ni
-        //     CORS ni contenu mixte). cf. google_cast_transport.dart playStream.
-        //   true : custom receiver 5BDFD969 (mpegts.js, /cast-receiver). Tentait
-        //     de décoder le .ts sur la TV, mais son fetch HTTPS→HTTP sans CORS
-        //     est bloqué sur les flux IPTV tiers (écran qui ne démarre jamais,
-        //     prouvé en diagnostic 2026-06-29). Conservé comme repli.
+        //   false : Default Media Receiver public CC1AD845. Il ne décode PAS le
+        //     MPEG-TS brut → il fallait lui servir le relais HLS du téléphone,
+        //     mais un flux IPTV .ts (codecs HEVC/AC3, segment unique) reste
+        //     refusé par le Shaka du DMR (« format non supporté » ~10 s).
+        //   true (ACTUEL) : custom receiver 5BDFD969 (mpegts.js, /cast-receiver).
+        //     Il décode le MPEG-TS LUI-MÊME sur la TV. L'échec CORS / contenu
+        //     mixte du diagnostic 2026-06-29 (fetch HTTPS→HTTP sans CORS) est
+        //     désormais RÉSOLU : le sender n'envoie plus le .ts HTTP brut mais
+        //     l'URL HTTPS https://app.7themotion.com/cast-proxy?u=… (même origine
+        //     que le receiver, en-têtes CORS ouverts) → mpegts.js la fetch sans
+        //     blocage. cf. google_cast_transport.dart playStream (stratégie
+        //     cast_proxy) + worker.js route /cast-proxy.
         //
-        // ❌ REPASSÉ À false (2026-06-29) pour rebrancher le relais HLS qui
-        //    fonctionne. Garder SYNCHRONE avec kCastUseCustomReceiver (Dart).
-        private const val USE_CUSTOM_RECEIVER = false
+        // ✅ ACTIVÉ (2026-07-01). Garder SYNCHRONE avec kCastUseCustomReceiver
+        //    (Dart) — les deux valent `true`.
+        private const val USE_CUSTOM_RECEIVER = true
 
         // Default Media Receiver public de Google (toujours actif).
         private const val DEFAULT_RECEIVER_ID = "CC1AD845"

@@ -1254,6 +1254,149 @@ function decodeMacPath(mac) {
   try { return decodeURIComponent(String(mac || '')); } catch (_) { return String(mac || ''); }
 }
 
+// =========================================================
+//  Proxy Cast (/cast-sign + /cast-proxy)
+// =========================================================
+//  Le récepteur Cast custom (mpegts.js, /cast-receiver) tourne en HTTPS ; il ne
+//  peut PAS fetch un flux IPTV .ts en HTTP (contenu mixte) ni sans en-têtes CORS.
+//  /cast-proxy sert d'intermédiaire : MÊME origine que le récepteur, en HTTPS,
+//  CORS ouvert, et re-typé video/mp2t → mpegts.js le lit. On protège l'endpoint
+//  par un token HMAC signé par /cast-sign (secret Worker CAST_PROXY_SECRET, JAMAIS
+//  embarqué dans l'app) + un anti-SSRF (refus des IP privées / hôtes locaux).
+
+// UA « lecteur connu » : des panels Xtream ne servent le vrai flux qu'aux
+// signatures de lecteurs répandus.
+const CAST_PROXY_UA = 'VLC/3.0.20 LibVLC/3.0.20';
+
+// HMAC-SHA256(secret, message) → hex. Web Crypto (dispo dans le runtime Worker).
+async function hmacHex(secret, message) {
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Comparaison à temps ~constant (évite un oracle de timing sur le token).
+function safeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+// Anti-SSRF : n'autorise que http(s) vers un hôte PUBLIC. Refuse localhost, les
+// domaines *.local et les IP littérales privées / réservées (RFC1918, loopback,
+// link-local, CGNAT, IPv6 ULA/loopback/link-local). Un hôte en nom de domaine
+// est laissé passer (le runtime Worker ne route de toute façon pas vers les
+// réseaux privés), mais une IP littérale privée est bloquée nettement.
+function isSafeUpstream(rawUrl) {
+  let u;
+  try { u = new URL(rawUrl); } catch (_) { return false; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+  let host = u.hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal')) return false;
+  // IPv6 littéral entre crochets → new URL garde les crochets dans hostname.
+  if (host.startsWith('[')) host = host.slice(1, -1);
+  // IPv4 littérale ?
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const o = m.slice(1).map((n) => parseInt(n, 10));
+    if (o.some((n) => n > 255)) return false;
+    const [a, b] = o;
+    if (a === 10) return false;                       // 10.0.0.0/8
+    if (a === 127) return false;                      // loopback
+    if (a === 0) return false;                        // 0.0.0.0/8
+    if (a === 169 && b === 254) return false;         // link-local
+    if (a === 172 && b >= 16 && b <= 31) return false; // 172.16.0.0/12
+    if (a === 192 && b === 168) return false;         // 192.168.0.0/16
+    if (a === 100 && b >= 64 && b <= 127) return false; // CGNAT 100.64.0.0/10
+    if (a >= 224) return false;                       // multicast / réservé
+    return true;
+  }
+  // IPv6 littérale : bloque loopback (::1), ULA (fc00::/7), link-local (fe80::/10),
+  // non-spécifié (::). Laisse passer le reste (adresses globales).
+  if (host.includes(':')) {
+    if (host === '::1' || host === '::') return false;
+    if (host.startsWith('fc') || host.startsWith('fd')) return false;
+    if (host.startsWith('fe8') || host.startsWith('fe9') ||
+        host.startsWith('fea') || host.startsWith('feb')) return false;
+    return true;
+  }
+  return true; // nom de domaine
+}
+
+// GET /cast-sign?u=<url> — renvoie l'URL /cast-proxy signée (HMAC + expiration).
+async function handleCastSign(env, url) {
+  const secret = env.CAST_PROXY_SECRET;
+  if (!secret) return json({ ok: false, error: 'proxy_unconfigured' }, 503);
+  const u = url.searchParams.get('u') || '';
+  if (!u || !isSafeUpstream(u)) return badRequest('invalid or private upstream url');
+  const exp = Math.floor(Date.now() / 1000) + 12 * 3600; // 12 h
+  const sig = (await hmacHex(secret, u + '\n' + exp)).slice(0, 32);
+  const origin = url.origin || 'https://app.7themotion.com';
+  const proxyUrl = origin + '/cast-proxy?u=' + encodeURIComponent(u) +
+    '&e=' + exp + '&t=' + sig;
+  return json({ ok: true, url: proxyUrl, expires_at: exp });
+}
+
+// GET/HEAD /cast-proxy?u=&e=&t= — vérifie le token puis STREAME l'upstream.
+async function handleCastProxy(env, url, method) {
+  const secret = env.CAST_PROXY_SECRET;
+  if (!secret) return new Response('proxy unconfigured', { status: 503 });
+  const u = url.searchParams.get('u') || '';
+  const e = url.searchParams.get('e') || '';
+  const t = url.searchParams.get('t') || '';
+  if (!u || !e || !t) return new Response('missing params', { status: 400 });
+
+  // Expiration (borne aussi le futur pour éviter un token « éternel »).
+  const exp = parseInt(e, 10);
+  const now = Math.floor(Date.now() / 1000);
+  if (!Number.isFinite(exp) || exp < now || exp > now + 24 * 3600) {
+    return new Response('token expired', { status: 403 });
+  }
+  // Token HMAC.
+  const expected = (await hmacHex(secret, u + '\n' + e)).slice(0, 32);
+  if (!safeEqual(t, expected)) return new Response('bad token', { status: 403 });
+  // Anti-SSRF (revalidé à chaque appel, indépendamment de la signature).
+  if (!isSafeUpstream(u)) return new Response('forbidden upstream', { status: 403 });
+
+  // Suivi MANUEL des redirects (≤3), avec re-validation anti-SSRF de chaque saut.
+  let target = u;
+  let resp = null;
+  for (let i = 0; i <= 3; i++) {
+    resp = await fetch(target, {
+      method: method === 'HEAD' ? 'HEAD' : 'GET',
+      redirect: 'manual',
+      headers: { 'User-Agent': CAST_PROXY_UA, Accept: '*/*' },
+    });
+    if (resp.status >= 300 && resp.status < 400) {
+      const loc = resp.headers.get('location');
+      if (!loc) break;
+      let next;
+      try { next = new URL(loc, target).toString(); } catch (_) { break; }
+      if (!isSafeUpstream(next)) return new Response('forbidden redirect', { status: 403 });
+      target = next;
+      continue;
+    }
+    break;
+  }
+  if (!resp || resp.status >= 400) {
+    return new Response('upstream error', { status: 502 });
+  }
+
+  const headers = {
+    'Content-Type': 'video/mp2t',
+    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'no-store',
+  };
+  // HEAD : pas de corps ; GET : STREAM pass-through (resp.body est un
+  // ReadableStream → aucune mise en tampon complète côté Worker).
+  if (method === 'HEAD') return new Response(null, { status: 200, headers });
+  return new Response(resp.body, { status: 200, headers });
+}
+
 // ----- Helpers réponse -----
 
 function json(body, status = 200) {
@@ -3313,6 +3456,8 @@ async function handleRequest(request, env, ctx) {
         else if (seg1 === 'screen') rl = ['scr', 600];
       } else if (seg0 === 'config') {
         rl = ['cfg', 120]; // /config/:mac — même protection anti-énumération
+      } else if (seg0 === 'cast-proxy' || seg0 === 'cast-sign') {
+        rl = ['dev', 240]; // proxy Cast : 1 requête par session de cast, large
       }
       if (rl && !(await rateLimitOk(env, request, rl[0], rl[1], 60 * 1000))) {
         return tooManyRequests();
@@ -3787,6 +3932,29 @@ async function handleRequest(request, env, ctx) {
     // (Routes TV et Red Room retirées : /redroom, /tv, /7tv, /seventv,
     //  /nova n'existent plus — ces variantes ont été supprimées du projet.
     //  Seule l'app mobile 7 MOTION est distribuée, via /royal /get /install.)
+
+    // /cast-sign?u=<url> — signe une URL upstream pour le proxy Cast.
+    //  Le secret HMAC vit UNIQUEMENT côté Worker (jamais dans l'app publique).
+    //  L'app appelle cet endpoint pour obtenir l'URL /cast-proxy signée à
+    //  envoyer au récepteur custom. Renvoie { ok, url } (url = proxy signé,
+    //  valable ~12 h). Refuse les URL non http(s) / IP privées (anti-SSRF).
+    if (segments.length === 1 && segments[0] === 'cast-sign') {
+      if (request.method !== 'GET') return badRequest('only GET on /cast-sign');
+      return await handleCastSign(env, url);
+    }
+
+    // /cast-proxy?u=<url>&e=<exp>&t=<hmac> — proxy pass-through HTTPS→upstream
+    //  pour le récepteur Cast custom (mpegts.js). Résout le blocage contenu
+    //  mixte / CORS : le récepteur (page HTTPS) fetch cette URL HTTPS de MÊME
+    //  origine (en-têtes CORS ouverts) au lieu du .ts HTTP brut. Vérifie le
+    //  token HMAC (anti open-proxy), refuse les IP privées, suit ≤3 redirects,
+    //  et STREAME la réponse en video/mp2t (pas de mise en tampon complète).
+    if (segments.length === 1 && segments[0] === 'cast-proxy') {
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        return badRequest('only GET/HEAD on /cast-proxy');
+      }
+      return await handleCastProxy(env, url, request.method);
+    }
 
     // /cast-receiver — page HTML CAF pour Google Cast Custom Receiver.
     // URL a coller dans la Google Cast SDK Developer Console.
