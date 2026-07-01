@@ -256,7 +256,7 @@ export function landingHtml() {
     <a href="#how">Comment ça marche</a>
     <a href="#download">Télécharger</a>
     <a href="#pricing">Tarifs</a>
-    <a href="/mon-espace">Ma playlist</a>
+    <a href="/mon-espace">Mes playlists</a>
     <a href="#trust">Confiance</a>
   </nav>
   <a class="btn btn-gold btn-nav" href="https://app.7themotion.com/install">Télécharger</a>
@@ -270,7 +270,7 @@ export function landingHtml() {
     comme sur votre TV. On s'occupe de tout, vous n'avez plus qu'à regarder.</p>
   <div class="hero-cta">
     <a class="btn btn-gold" id="dlPhone" href="https://app.7themotion.com/install">Télécharger l'application</a>
-    <a class="btn btn-ghost" href="/mon-espace">Gérer ma playlist</a>
+    <a class="btn btn-ghost" href="/mon-espace">Gérer mes playlists</a>
   </div>
   <div class="reassure">
     <span><i class="dot"></i> Activation en quelques minutes</span>
@@ -370,8 +370,8 @@ export function landingHtml() {
 <section id="activate"><div class="wrap">
   <div class="mac-card">
     <span class="eyebrow">Déjà l'application&nbsp;?</span>
-    <h2 style="font-size:clamp(24px,3.6vw,32px)">Gérez votre playlist, vous-même</h2>
-    <p class="lead center" style="margin:12px auto 0">Entrez l'adresse affichée dans l'app. Vous ouvrez votre espace et vous ajoutez, changez ou retirez votre playlist quand vous voulez — en quelques secondes.</p>
+    <h2 style="font-size:clamp(24px,3.6vw,32px)">Gérez vos playlists, vous-même</h2>
+    <p class="lead center" style="margin:12px auto 0">Entrez l'adresse affichée dans l'app. Vous ouvrez votre espace et vous ajoutez autant de playlists que vous voulez — M3U ou Xtream — que vous pouvez changer ou retirer quand bon vous semble.</p>
     <div class="mac-input">
       <input id="macInput" type="text" placeholder="MK : XX : XX : XX : XX : XX" maxlength="23" autocomplete="off" autocapitalize="characters" spellcheck="false" />
       <a class="btn btn-gold" id="macSend" href="/mon-espace">Ouvrir mon espace</a>

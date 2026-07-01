@@ -2595,20 +2595,26 @@ async function handlePublicDeviceSource(env, mac) {
 }
 
 // /api/self-source/:mac — SELF-SERVICE « Mon espace » (façon IBO Player Pro).
-//  Le client gère LUI-MÊME sa playlist (M3U ou Xtream) sur SA propre MAC depuis
-//  /mon-espace : la LIRE (GET), l'AJOUTER / la REMPLACER (POST), la SUPPRIMER
-//  (DELETE). L'app lit ensuite /api/device-source/:mac et charge la source.
+//  Le client gère LUI-MÊME PLUSIEURS playlists (M3U ou Xtream) sur SA propre MAC
+//  depuis /mon-espace : les LIRE (GET), en AJOUTER / MODIFIER (POST), en
+//  SUPPRIMER (DELETE). L'app lit ensuite /api/device-source/:mac et charge
+//  TOUTES les sources (elle boucle sur le tableau `sources`).
 //
-//  SÉCURITÉ — garde-fous (choix produit : « libre, mais panel verrouillé ») :
-//   1. VERROU PAYANTS : chaque ligne porte une `origin` — 'self' (posée par le
-//      client) ou 'panel' (assignée par TON panel = client payant). Une source
-//      d'origine 'panel' (ou inconnue → traitée comme 'panel', défaut SÛR) ne
-//      peut être NI remplacée NI supprimée par cet endpoint public → une source
-//      payante n'est JAMAIS touchée. Seules les sources 'self' sont modifiables.
-//   2. Le client fournit ses PROPRES identifiants → aucun intérêt à viser la MAC
-//      d'autrui. Rate-limité (bucket 'dev', anti-énumération/abus). Le mot de
-//      passe Xtream n'est JAMAIS relu (GET ne le renvoie pas).
-//  La route GET /api/device-source/:mac (lue par l'app) reste 100 % INCHANGÉE.
+//  MODÈLE MULTI-LISTES : une MAC = un tableau `sources_json` d'items. Chaque item
+//  porte une `origin` : 'self' (posé par le client, MODIFIABLE) ou 'panel'
+//  (assigné par TON panel = client payant, VERROUILLÉ). Un item sans origin est
+//  traité comme 'panel' (défaut SÛR) — SAUF migration : si l'ancienne ligne
+//  entière était marquée origin='self' (v1 mono-liste), ses items héritent
+//  'self' (on ne casse pas le contrôle d'un client déjà passé par /mon-espace).
+//
+//  SÉCURITÉ :
+//   1. VERROU PAYANTS : les items 'panel' ne sont JAMAIS modifiés/supprimés ici.
+//      Le client peut TOUJOURS AJOUTER les siens à côté (« ça avale toujours »).
+//   2. Le mot de passe Xtream n'est JAMAIS relu (GET ne le renvoie pas).
+//   3. Plafond MAX_SELF_SOURCES items 'self' (anti-abus). Rate-limité (bucket
+//      'dev'). La route GET /api/device-source/:mac (lue par l'app) reste
+//      100 % INCHANGÉE.
+const MAX_SELF_SOURCES = 20;
 
 // Crée la table si besoin + garantit la colonne `origin` (migration idempotente).
 async function ensureDeviceSourcesTable(env) {
@@ -2620,42 +2626,139 @@ async function ensureDeviceSourcesTable(env) {
          sources_json TEXT, updated_at INTEGER NOT NULL)`,
     ).run();
   } catch (_) { /* déjà créée par le panel */ }
-  // origin : 'self' | 'panel'. Les lignes existantes (panel) n'ont pas la
-  // colonne → NULL → COALESCE(..., 'panel') = verrouillé (protège les payants).
   try { await env.DB.prepare('ALTER TABLE device_sources ADD COLUMN origin TEXT').run(); } catch (_) { /* déjà là */ }
 }
 
-// GET /api/self-source/:mac — état pour « Mon espace ». Ne renvoie JAMAIS le
-// mot de passe : juste de quoi afficher + savoir si c'est verrouillé (panel).
+// Lit la liste d'items d'une MAC, NORMALISÉE : chaque item a une `origin`
+// ('self'|'panel') et, pour les 'self', un `id` stable. Renvoie aussi si une
+// écriture est nécessaire pour PERSISTER des ids fraîchement attribués.
+async function readDeviceSourceItems(env, MAC) {
+  let row;
+  try {
+    row = await env.DB.prepare(
+      `SELECT type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin
+         FROM device_sources WHERE mac = ?`,
+    ).bind(MAC).first();
+  } catch (_) { row = null; }
+  if (!row) return { items: [], needsPersist: false };
+
+  let items = [];
+  if (row.sources_json) {
+    try { items = JSON.parse(row.sources_json) || []; } catch (_) { items = []; }
+  }
+  if (!Array.isArray(items) || !items.length) {
+    // Repli ligne « simple » historique → 1 item depuis les colonnes plates.
+    items = [{
+      type: row.type, label: row.label, server_url: row.server_url,
+      username: row.username, password: row.password, m3u_url: row.m3u_url, epg_url: row.epg_url,
+    }];
+  }
+  // Migration douce : item sans origin → hérite de l'origin LIGNE si elle vaut
+  // 'self' (client v1 mono-liste), sinon 'panel' (défaut sûr, protège payants).
+  const rowSelf = String(row.origin || '') === 'self';
+  let needsPersist = false;
+  items = items.map((s) => {
+    const it = { ...s };
+    if (it.origin !== 'self' && it.origin !== 'panel') {
+      it.origin = rowSelf ? 'self' : 'panel';
+      needsPersist = true;
+    }
+    if (it.origin === 'self' && !it.id) { it.id = crypto.randomUUID(); needsPersist = true; }
+    return it;
+  });
+  return { items, needsPersist };
+}
+
+// Écrit la liste complète : colonnes plates = items[0] (compat app/panel), plus
+// `sources_json` (tableau entier) + `origin` ligne (= 'self' si TOUT est self).
+async function writeDeviceSourceItems(env, MAC, items) {
+  if (!items.length) {
+    await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(MAC).run();
+    return;
+  }
+  const first = items[0];
+  const rowOrigin = items.every((s) => s.origin === 'self') ? 'self' : 'panel';
+  const jsonStr = JSON.stringify(items);
+  await env.DB.prepare(
+    `INSERT INTO device_sources
+       (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(mac) DO UPDATE SET
+       type=excluded.type, label=excluded.label, server_url=excluded.server_url,
+       username=excluded.username, password=excluded.password, m3u_url=excluded.m3u_url,
+       epg_url=excluded.epg_url, sources_json=excluded.sources_json,
+       origin=excluded.origin, updated_at=excluded.updated_at`,
+  ).bind(
+    MAC, first.type, first.label || null, first.server_url || null, first.username || null,
+    first.password || null, first.m3u_url || null, first.epg_url || null, jsonStr, rowOrigin, Date.now(),
+  ).run();
+}
+
+// Vue publique d'un item : SANS mot de passe, avec l'info de verrouillage.
+function publicItemView(it, idx) {
+  const locked = it.origin !== 'self';
+  return {
+    id: it.id || (locked ? ('panel-' + idx) : null),
+    origin: it.origin,
+    locked,
+    type: it.type || 'm3u',
+    label: it.label || 'Ma playlist',
+    server_url: it.server_url || null,
+    username: it.username || null,
+    m3u_url: it.m3u_url || null,
+    epg_url: it.epg_url || null,
+    has_password: !!it.password,
+  };
+}
+
+// Valide + construit un item à partir du corps de requête (POST).
+function buildSourceFromBody(body) {
+  const type = String(body.type || '').trim().toLowerCase();
+  const label = (String(body.label || '').trim() || 'Ma playlist').slice(0, 80);
+  const epgRaw = String(body.epg_url || '').trim();
+  const epg = epgRaw && /^https?:\/\//i.test(epgRaw) ? epgRaw.slice(0, 2048) : null;
+  if (type === 'xtream') {
+    const server = String(body.server_url || '').trim().slice(0, 2048);
+    const user = String(body.username || '').trim().slice(0, 256);
+    const pass = String(body.password || '').trim().slice(0, 256);
+    if (!server || !user || !pass) return { error: 'xtream requires server_url, username, password' };
+    if (!/^https?:\/\//i.test(server)) return { error: 'server_url must start with http(s)://' };
+    return { source: { type: 'xtream', label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg } };
+  }
+  if (type === 'm3u') {
+    const m3u = String(body.m3u_url || '').trim().slice(0, 2048);
+    if (!m3u) return { error: 'm3u requires m3u_url' };
+    if (!/^https?:\/\//i.test(m3u)) return { error: 'm3u_url must start with http(s)://' };
+    return { source: { type: 'm3u', label, server_url: null, username: null, password: null, m3u_url: m3u, epg_url: epg } };
+  }
+  return { error: "type must be 'xtream' or 'm3u'" };
+}
+
+// GET /api/self-source/:mac — liste des playlists de « Mon espace ».
 async function handleSelfSourceGet(env, mac) {
   if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
   await ensureDeviceSourcesTable(env);
-  let row;
-  try {
-    row = await env.DB.prepare(
-      `SELECT type, label, server_url, username, m3u_url, epg_url, origin, updated_at
-         FROM device_sources WHERE mac = ?`,
-    ).bind(MAC).first();
-  } catch (_) { row = null; }
-  if (!row) return json({ ok: true, mac: MAC, hasSource: false, locked: false, source: null });
-  const locked = String(row.origin || 'panel') !== 'self'; // inconnu/panel → verrouillé
+  const { items, needsPersist } = await readDeviceSourceItems(env, MAC);
+  // Persiste les ids/origins fraîchement attribués (migration douce, one-shot).
+  if (needsPersist && items.length) {
+    try { await writeDeviceSourceItems(env, MAC, items); } catch (_) { /* best-effort */ }
+  }
+  const view = items.map(publicItemView);
+  const selfCount = items.filter((s) => s.origin === 'self').length;
   return json({
-    ok: true, mac: MAC, hasSource: true, locked,
-    source: {
-      type: row.type,
-      label: row.label || 'Ma playlist',
-      server_url: row.server_url || null,
-      username: row.username || null,
-      m3u_url: row.m3u_url || null,
-      epg_url: row.epg_url || null,
-      updated_at: row.updated_at || null,
-    },
+    ok: true, mac: MAC,
+    items: view,
+    count: view.length,
+    canAdd: selfCount < MAX_SELF_SOURCES,
+    maxItems: MAX_SELF_SOURCES,
   });
 }
 
-// POST /api/self-source/:mac — ajoute OU remplace la playlist 'self' du client.
+// POST /api/self-source/:mac — AJOUTE un item 'self' (ou MODIFIE un item 'self'
+// existant si `id` est fourni). Ne touche JAMAIS un item 'panel'. « Avale
+// toujours » : jamais bloqué par la présence d'une source panel.
 async function handleSelfSource(env, mac, request) {
   if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
@@ -2664,88 +2767,75 @@ async function handleSelfSource(env, mac, request) {
   let body;
   try { body = await request.json(); } catch (_) { return badRequest('invalid json'); }
 
-  const type = String(body.type || '').trim().toLowerCase();
-  const label = (String(body.label || '').trim() || 'Ma playlist').slice(0, 80);
-  const epgRaw = String(body.epg_url || '').trim();
-  const epg = epgRaw && /^https?:\/\//i.test(epgRaw) ? epgRaw.slice(0, 2048) : null;
-
-  let source;
-  if (type === 'xtream') {
-    const server = String(body.server_url || '').trim().slice(0, 2048);
-    const user = String(body.username || '').trim().slice(0, 256);
-    const pass = String(body.password || '').trim().slice(0, 256);
-    if (!server || !user || !pass) return badRequest('xtream requires server_url, username, password');
-    if (!/^https?:\/\//i.test(server)) return badRequest('server_url must start with http(s)://');
-    source = { type: 'xtream', label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg };
-  } else if (type === 'm3u') {
-    const m3u = String(body.m3u_url || '').trim().slice(0, 2048);
-    if (!m3u) return badRequest('m3u requires m3u_url');
-    if (!/^https?:\/\//i.test(m3u)) return badRequest('m3u_url must start with http(s)://');
-    source = { type: 'm3u', label, server_url: null, username: null, password: null, m3u_url: m3u, epg_url: epg };
-  } else {
-    return badRequest("type must be 'xtream' or 'm3u'");
-  }
+  const built = buildSourceFromBody(body);
+  if (built.error) return badRequest(built.error);
+  const source = built.source;
 
   await ensureDeviceSourcesTable(env);
+  const { items } = await readDeviceSourceItems(env, MAC);
+  const editId = body.id ? String(body.id) : null;
 
-  // VERROU : refuse si une source PANEL (payante) existe déjà.
-  let existing;
-  try {
-    existing = await env.DB.prepare('SELECT origin FROM device_sources WHERE mac = ?').bind(MAC).first();
-  } catch (_) { existing = null; }
-  if (existing && String(existing.origin || 'panel') !== 'self') {
-    return json({
-      ok: false, reason: 'locked',
-      message: 'Cet appareil est géré par votre conseiller. Contactez le support pour changer la playlist.',
-    }, 409);
+  if (editId) {
+    // MODIFICATION : uniquement un item 'self' existant (panel = interdit).
+    const idx = items.findIndex((s) => s.origin === 'self' && s.id === editId);
+    if (idx < 0) {
+      return json({ ok: false, reason: 'not_found', message: "Cette playlist n'existe pas ou est protégée." }, 404);
+    }
+    items[idx] = { ...source, origin: 'self', id: editId };
+  } else {
+    // AJOUT : plafond anti-abus sur les items 'self'.
+    const selfCount = items.filter((s) => s.origin === 'self').length;
+    if (selfCount >= MAX_SELF_SOURCES) {
+      return json({
+        ok: false, reason: 'too_many',
+        message: 'Limite atteinte (' + MAX_SELF_SOURCES + ' playlists). Supprimez-en une pour en ajouter une autre.',
+      }, 409);
+    }
+    items.push({ ...source, origin: 'self', id: crypto.randomUUID() });
   }
 
-  // Upsert de SA propre playlist (ajout OU remplacement), origin='self'.
-  const sourcesJson = JSON.stringify([source]);
   try {
-    await env.DB
-      .prepare(
-        `INSERT INTO device_sources
-           (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'self', ?)
-         ON CONFLICT(mac) DO UPDATE SET
-           type=excluded.type, label=excluded.label, server_url=excluded.server_url,
-           username=excluded.username, password=excluded.password, m3u_url=excluded.m3u_url,
-           epg_url=excluded.epg_url, sources_json=excluded.sources_json,
-           origin='self', updated_at=excluded.updated_at`,
-      )
-      .bind(MAC, source.type, source.label, source.server_url, source.username,
-        source.password, source.m3u_url, source.epg_url, sourcesJson, Date.now())
-      .run();
+    await writeDeviceSourceItems(env, MAC, items);
   } catch (_) {
     return json({ ok: false, error: 'db_write_failed' }, 500);
   }
   return json({
     ok: true,
-    message: "Playlist enregistrée ! Ouvrez l'app (ou redémarrez-la) : vos chaînes vont apparaître.",
+    message: editId
+      ? 'Playlist mise à jour ! Ouvrez (ou redémarrez) l\'app.'
+      : "Playlist ajoutée ! Ouvrez l'app (ou redémarrez-la) : vos chaînes vont apparaître.",
   });
 }
 
-// DELETE /api/self-source/:mac — supprime la playlist 'self' du client.
-//  Une source 'panel' (payante, ou origine inconnue) n'est JAMAIS supprimée ici.
-async function handleSelfSourceDelete(env, mac) {
+// DELETE /api/self-source/:mac?id=<id> — supprime UN item 'self' (jamais panel).
+//  Sans `id` : supprime TOUS les items 'self' (garde les 'panel' intacts).
+async function handleSelfSourceDelete(env, mac, request) {
   if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
   await ensureDeviceSourcesTable(env);
-  let existing;
-  try {
-    existing = await env.DB.prepare('SELECT origin FROM device_sources WHERE mac = ?').bind(MAC).first();
-  } catch (_) { existing = null; }
-  if (!existing) return json({ ok: true, message: 'Aucune playlist à supprimer.' });
-  if (String(existing.origin || 'panel') !== 'self') {
-    return json({
-      ok: false, reason: 'locked',
-      message: 'Cet appareil est géré par votre conseiller. Contactez le support.',
-    }, 409);
+
+  let delId = null;
+  try { delId = new URL(request.url).searchParams.get('id'); } catch (_) { delId = null; }
+
+  const { items } = await readDeviceSourceItems(env, MAC);
+  if (!items.length) return json({ ok: true, message: 'Aucune playlist à supprimer.' });
+
+  let kept;
+  if (delId) {
+    const target = items.find((s) => s.id === delId);
+    if (!target) return json({ ok: false, reason: 'not_found', message: 'Playlist introuvable.' }, 404);
+    if (target.origin !== 'self') {
+      return json({ ok: false, reason: 'locked', message: 'Cette playlist est gérée par votre conseiller.' }, 409);
+    }
+    kept = items.filter((s) => s.id !== delId);
+  } else {
+    // Purge de toutes les 'self', on garde les 'panel'.
+    kept = items.filter((s) => s.origin !== 'self');
   }
+
   try {
-    await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(MAC).run();
+    await writeDeviceSourceItems(env, MAC, kept);
   } catch (_) {
     return json({ ok: false, error: 'db_write_failed' }, 500);
   }
@@ -3276,7 +3366,7 @@ async function handleRequest(request, env, ctx) {
       const smac = decodeMacPath(segments[2]);
       if (request.method === 'GET') return await handleSelfSourceGet(env, smac);
       if (request.method === 'POST') return await handleSelfSource(env, smac, request);
-      if (request.method === 'DELETE') return await handleSelfSourceDelete(env, smac);
+      if (request.method === 'DELETE') return await handleSelfSourceDelete(env, smac, request);
       return badRequest('only GET, POST or DELETE supported on /api/self-source/:mac');
     }
 

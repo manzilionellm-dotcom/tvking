@@ -2188,13 +2188,31 @@ function normalizeSource(raw) {
 /// (compat avec l'ancienne app qui ne lit qu'une source).
 async function upsertDeviceSource(env, mac, sources) {
   await ensureSourcesTable(env);
-  const first = sources[0];
-  const json = JSON.stringify(sources);
+  // Les sources assignées ICI (payant) sont marquées origin='panel' → VERROUILLÉES
+  // côté self-service (le client ne peut ni les modifier ni les supprimer).
+  const panelItems = (sources || []).map((s) => ({ ...s, origin: 'panel' }));
+  // PRÉSERVE les playlists 'self' que le client a ajoutées via /mon-espace : une
+  // (ré)assignation panel NE DOIT PAS effacer les listes personnelles du client
+  // (modèle multi-listes). On relit l'existant et on ré-empile les 'self' après.
+  let selfItems = [];
+  try {
+    const prev = await env.DB
+      .prepare('SELECT sources_json FROM device_sources WHERE mac = ?')
+      .bind(mac).first();
+    if (prev && prev.sources_json) {
+      let arr = [];
+      try { arr = JSON.parse(prev.sources_json) || []; } catch (_) { arr = []; }
+      selfItems = arr.filter((s) => s && s.origin === 'self');
+    }
+  } catch (_) { /* pas de précédent → rien à préserver */ }
+
+  const merged = [...panelItems, ...selfItems];
+  const first = merged[0] || {};
+  const json = JSON.stringify(merged);
   await env.DB
     .prepare(
-      // origin='panel' FORCÉ : une source assignée par le panel (payant) reprend
-      // toujours l'origine 'panel' → verrouillée côté self-service, même si le
-      // client avait posé une source 'self' avant sur cette MAC.
+      // Colonnes plates = 1re source PANEL (compat app/panel). origin ligne =
+      // 'panel' (la source prioritaire/flat est payante et verrouillée).
       `INSERT INTO device_sources
          (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'panel', ?)
