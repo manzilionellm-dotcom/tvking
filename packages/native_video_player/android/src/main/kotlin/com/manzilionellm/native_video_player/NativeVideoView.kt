@@ -80,24 +80,22 @@ class NativeVideoView(
         surfaceView.isFocusableInTouchMode = false
         surfaceView.keepScreenOn = true
 
-        // Tampons « façon Netflix » pour connexions LENTES / INSTABLES.
-        // L'idée : garder un GROS matelas d'avance pour traverser les coupures
-        // SANS s'arrêter, et après un blocage attendre d'avoir une vraie réserve
-        // avant de repartir (sinon on re-bloque aussitôt).
-        //   • minBuffer = 20 s  : réserve qu'on cherche à maintenir.
-        //   • maxBuffer = 90 s  : avance maximale autorisée (≈ 1 min 30).
-        //   • bufferForPlayback = 2 s : 1re image rapide au démarrage.
-        //   • bufferForPlaybackAfterRebuffer = 5 s : APRÈS une coupure, on attend
-        //     5 s de données AVANT de reprendre → on ne se re-bloque pas dans la
-        //     foulée (c'est le « il attend au lieu de couper »).
-        // Plafond MÉMOIRE à 64 Mo (setTargetBufferBytes + prioritize=false) :
-        // sur une box à faible RAM (Fire Stick), on borne la RAM. Conséquence
-        // VOULUE : sur une connexion LENTE le débit est bas, donc 64 Mo = BEAUCOUP
-        // de secondes d'avance ; sur un flux très haut débit, on bufferise moins
-        // de secondes mais on ne fait PAS planter la box (anti-OOM).
+        // Tampons anti-coupure MAIS PRUDENTS EN MÉMOIRE (box à RAM limitée).
+        // ⚠️ LEÇON : un buffer trop gros (90 s / 64 Mo) faisait planter les box
+        // par MANQUE DE MÉMOIRE (OOM → l'OS tue l'app → boucle de redémarrage).
+        // On garde donc une résilience RÉELLE mais un plafond mémoire SÛR :
+        //   • minBuffer = 15 s, maxBuffer = 40 s : de l'avance pour absorber les
+        //     hoquets, sans exploser la RAM (avant : 30 s → on améliore un peu).
+        //   • bufferForPlayback = 2 s : 1re image rapide.
+        //   • bufferForPlaybackAfterRebuffer = 4 s : après une coupure, on attend
+        //     4 s de réserve avant de repartir (on ne se re-bloque pas aussitôt).
+        // Plafond MÉMOIRE à 24 Mo (setTargetBufferBytes + prioritize=false) :
+        // c'est LA garde anti-OOM. Sur une connexion lente (débit bas), 24 Mo =
+        // déjà beaucoup de secondes d'avance ; sur un flux haut débit, on borne
+        // la RAM → plus de crash sur box.
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(20_000, 90_000, 2_000, 5_000)
-            .setTargetBufferBytes(64 * 1024 * 1024)
+            .setBufferDurationsMs(15_000, 40_000, 2_000, 4_000)
+            .setTargetBufferBytes(24 * 1024 * 1024)
             .setPrioritizeTimeOverSizeThresholds(false)
             .build()
 
