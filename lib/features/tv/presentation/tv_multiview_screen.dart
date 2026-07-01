@@ -42,7 +42,8 @@ class TvMultiViewScreen extends StatefulWidget {
   State<TvMultiViewScreen> createState() => _TvMultiViewScreenState();
 }
 
-class _TvMultiViewScreenState extends State<TvMultiViewScreen> {
+class _TvMultiViewScreenState extends State<TvMultiViewScreen>
+    with WidgetsBindingObserver {
   final FocusNode _focus = FocusNode();
   late final List<Channel> _two;
   late final List<NativeVideoController> _ctrl;
@@ -51,6 +52,7 @@ class _TvMultiViewScreenState extends State<TvMultiViewScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final int n = widget.channels.length;
     final Channel a = widget.channels[widget.startIndex.clamp(0, n - 1)];
     final Channel b = widget.channels[(widget.startIndex + 1) % n];
@@ -63,8 +65,33 @@ class _TvMultiViewScreenState extends State<TvMultiViewScreen> {
     _ctrl[1].setVolume(0);
   }
 
+  // App minimisée (Home / veille / autre app) → on COUPE les deux tuiles :
+  // pas de lecture (ni de SON) en arrière-plan sur TV. Le natif a en plus son
+  // propre couvre-feu (pauseAll à l'onStop de l'activité) — ceinture et
+  // bretelles. Au retour, les connexions des deux flux LIVE sont probablement
+  // mortes : on RE-OUVRE les deux URLs (retour au direct immédiat, sans gel) ;
+  // la tuile inactive garde son volume à 0 (le volume survit au setUrl).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        for (final NativeVideoController c in _ctrl) {
+          c.pause();
+        }
+      case AppLifecycleState.resumed:
+        for (int k = 0; k < _ctrl.length; k++) {
+          _ctrl[k].setUrl(_two[k].streamUrl);
+        }
+      case AppLifecycleState.inactive:
+        break; // transitions brèves (dialogue…) → on ne coupe pas
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     for (final NativeVideoController c in _ctrl) {
       c.dispose();
     }

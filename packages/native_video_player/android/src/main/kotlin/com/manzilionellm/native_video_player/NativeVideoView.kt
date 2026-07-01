@@ -50,6 +50,25 @@ class NativeVideoView(
     id: Int,
 ) : PlatformView, MethodChannel.MethodCallHandler, Player.Listener {
 
+    companion object {
+        // Toutes les vues VIVANTES (accès main-thread uniquement : création /
+        // dispose des PlatformViews et callbacks de cycle de vie arrivent tous
+        // sur le main thread). Sert au « couvre-feu » ci-dessous.
+        private val instances = mutableSetOf<NativeVideoView>()
+
+        /**
+         * Coupe TOUS les lecteurs — appelé par le plugin quand l'ACTIVITÉ passe
+         * en arrière-plan (Home / veille / autre app). GARANTIE NATIVE « zéro
+         * son en arrière-plan » : elle ne dépend PAS de l'écran Flutter affiché
+         * (le lecteur plein écran gère déjà son cycle de vie côté Dart, mais la
+         * multi-vue ou tout futur écran pouvait laisser le son tourner). La
+         * pause remonte à Dart via onIsPlayingChanged → l'UI reste cohérente.
+         */
+        fun pauseAll() {
+            for (v in instances) v.player.pause()
+        }
+    }
+
     private val surfaceView = SurfaceView(context)
     private val channel = MethodChannel(messenger, "native_video_player/$id")
     private val player: ExoPlayer
@@ -72,6 +91,7 @@ class NativeVideoView(
     }
 
     init {
+        instances.add(this)
         channel.setMethodCallHandler(this)
 
         // La SurfaceView ne doit PAS être focusable (sinon elle capte le D-pad
@@ -286,6 +306,7 @@ class NativeVideoView(
     // ---- cycle de vie -------------------------------------------------------
 
     override fun dispose() {
+        instances.remove(this)
         cancelRetry()
         handler.removeCallbacks(positionPump)
         player.removeListener(this)
