@@ -56,6 +56,8 @@ on:
       - 'cloudflare/landing.js'
       # pwa_assets.js (manifeste + service worker + icônes) IMPORTÉ par worker.js.
       - 'cloudflare/pwa_assets.js'
+      # portal.js (« Mon espace » : le client gère sa playlist) IMPORTÉ par worker.js.
+      - 'cloudflare/portal.js'
       - 'cloudflare/wrangler.toml'
       - '.github/workflows/deploy-worker.yml'
 

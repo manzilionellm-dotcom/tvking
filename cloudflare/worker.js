@@ -69,6 +69,8 @@ import { screenReceiverHtml, screenPairHtml } from './screen_receiver.js';
 // Page d'accueil officielle (site VIP) servie sur la racine /. Source éditable :
 // marketing/website/index.html → régénérer cloudflare/landing.js après modif.
 import { landingHtml } from './landing.js';
+// « Mon espace » : page client (façon IBO Player Pro) pour gérer sa playlist.
+import { portalHtml } from './portal.js';
 // PWA : manifeste, service worker et icônes (le site s'installe comme une app).
 import { PWA_MANIFEST, PWA_SW, PWA_ICON_192, PWA_ICON_512, PWA_APPLE_ICON, OG_IMAGE } from './pwa_assets.js';
 
@@ -2585,20 +2587,68 @@ async function handlePublicDeviceSource(env, mac) {
   return jsonPrivate({ mac: MAC, source: null });
 }
 
-// POST /api/self-source/:mac — SELF-SERVICE.
-//  Un client enregistre LUI-MÊME sa playlist (M3U ou Xtream) sur SA propre MAC
-//  depuis le site web. Pratique : saisir une longue URL au clavier (PC /
-//  téléphone) puis la retrouver automatiquement sur la box (l'app lit
-//  /api/device-source/:mac et charge la source).
+// /api/self-source/:mac — SELF-SERVICE « Mon espace » (façon IBO Player Pro).
+//  Le client gère LUI-MÊME sa playlist (M3U ou Xtream) sur SA propre MAC depuis
+//  /mon-espace : la LIRE (GET), l'AJOUTER / la REMPLACER (POST), la SUPPRIMER
+//  (DELETE). L'app lit ensuite /api/device-source/:mac et charge la source.
 //
-//  SÉCURITÉ — garde-fous :
-//   1. On écrit SEULEMENT si la MAC n'a PAS déjà de source (INSERT ... ON
-//      CONFLICT(mac) DO NOTHING) → une source posée par le PANEL (client payant)
-//      n'est JAMAIS écrasée par cet appel public. Pour changer, ça passe par le
-//      support (le panel peut, lui, remplacer).
-//   2. Le client fournit ses PROPRES identifiants → aucun intérêt à viser la
-//      MAC d'autrui (on lui « offrirait » sa propre ligne). Rate-limité (bucket
-//      'dev', anti-énumération/abus). La route GET reste INCHANGÉE.
+//  SÉCURITÉ — garde-fous (choix produit : « libre, mais panel verrouillé ») :
+//   1. VERROU PAYANTS : chaque ligne porte une `origin` — 'self' (posée par le
+//      client) ou 'panel' (assignée par TON panel = client payant). Une source
+//      d'origine 'panel' (ou inconnue → traitée comme 'panel', défaut SÛR) ne
+//      peut être NI remplacée NI supprimée par cet endpoint public → une source
+//      payante n'est JAMAIS touchée. Seules les sources 'self' sont modifiables.
+//   2. Le client fournit ses PROPRES identifiants → aucun intérêt à viser la MAC
+//      d'autrui. Rate-limité (bucket 'dev', anti-énumération/abus). Le mot de
+//      passe Xtream n'est JAMAIS relu (GET ne le renvoie pas).
+//  La route GET /api/device-source/:mac (lue par l'app) reste 100 % INCHANGÉE.
+
+// Crée la table si besoin + garantit la colonne `origin` (migration idempotente).
+async function ensureDeviceSourcesTable(env) {
+  try {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS device_sources (
+         mac TEXT PRIMARY KEY, type TEXT NOT NULL, label TEXT, server_url TEXT,
+         username TEXT, password TEXT, m3u_url TEXT, epg_url TEXT,
+         sources_json TEXT, updated_at INTEGER NOT NULL)`,
+    ).run();
+  } catch (_) { /* déjà créée par le panel */ }
+  // origin : 'self' | 'panel'. Les lignes existantes (panel) n'ont pas la
+  // colonne → NULL → COALESCE(..., 'panel') = verrouillé (protège les payants).
+  try { await env.DB.prepare('ALTER TABLE device_sources ADD COLUMN origin TEXT').run(); } catch (_) { /* déjà là */ }
+}
+
+// GET /api/self-source/:mac — état pour « Mon espace ». Ne renvoie JAMAIS le
+// mot de passe : juste de quoi afficher + savoir si c'est verrouillé (panel).
+async function handleSelfSourceGet(env, mac) {
+  if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const MAC = mac.toUpperCase();
+  await ensureDeviceSourcesTable(env);
+  let row;
+  try {
+    row = await env.DB.prepare(
+      `SELECT type, label, server_url, username, m3u_url, epg_url, origin, updated_at
+         FROM device_sources WHERE mac = ?`,
+    ).bind(MAC).first();
+  } catch (_) { row = null; }
+  if (!row) return json({ ok: true, mac: MAC, hasSource: false, locked: false, source: null });
+  const locked = String(row.origin || 'panel') !== 'self'; // inconnu/panel → verrouillé
+  return json({
+    ok: true, mac: MAC, hasSource: true, locked,
+    source: {
+      type: row.type,
+      label: row.label || 'Ma playlist',
+      server_url: row.server_url || null,
+      username: row.username || null,
+      m3u_url: row.m3u_url || null,
+      epg_url: row.epg_url || null,
+      updated_at: row.updated_at || null,
+    },
+  });
+}
+
+// POST /api/self-source/:mac — ajoute OU remplace la playlist 'self' du client.
 async function handleSelfSource(env, mac, request) {
   if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
@@ -2629,45 +2679,70 @@ async function handleSelfSource(env, mac, request) {
     return badRequest("type must be 'xtream' or 'm3u'");
   }
 
-  // Table garantie (le panel la crée aussi ; CREATE IF NOT EXISTS idempotent).
-  try {
-    await env.DB.prepare(
-      `CREATE TABLE IF NOT EXISTS device_sources (
-         mac TEXT PRIMARY KEY, type TEXT NOT NULL, label TEXT, server_url TEXT,
-         username TEXT, password TEXT, m3u_url TEXT, epg_url TEXT,
-         sources_json TEXT, updated_at INTEGER NOT NULL)`,
-    ).run();
-  } catch (_) { /* déjà créée par le panel */ }
+  await ensureDeviceSourcesTable(env);
 
-  const sourcesJson = JSON.stringify([source]);
-  let applied = false;
+  // VERROU : refuse si une source PANEL (payante) existe déjà.
+  let existing;
   try {
-    const res = await env.DB
+    existing = await env.DB.prepare('SELECT origin FROM device_sources WHERE mac = ?').bind(MAC).first();
+  } catch (_) { existing = null; }
+  if (existing && String(existing.origin || 'panel') !== 'self') {
+    return json({
+      ok: false, reason: 'locked',
+      message: 'Cet appareil est géré par votre conseiller. Contactez le support pour changer la playlist.',
+    }, 409);
+  }
+
+  // Upsert de SA propre playlist (ajout OU remplacement), origin='self'.
+  const sourcesJson = JSON.stringify([source]);
+  try {
+    await env.DB
       .prepare(
         `INSERT INTO device_sources
-           (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(mac) DO NOTHING`,
+           (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'self', ?)
+         ON CONFLICT(mac) DO UPDATE SET
+           type=excluded.type, label=excluded.label, server_url=excluded.server_url,
+           username=excluded.username, password=excluded.password, m3u_url=excluded.m3u_url,
+           epg_url=excluded.epg_url, sources_json=excluded.sources_json,
+           origin='self', updated_at=excluded.updated_at`,
       )
       .bind(MAC, source.type, source.label, source.server_url, source.username,
         source.password, source.m3u_url, source.epg_url, sourcesJson, Date.now())
       .run();
-    applied = !!(res && res.meta && res.meta.changes > 0);
   } catch (_) {
     return json({ ok: false, error: 'db_write_failed' }, 500);
   }
-
-  if (!applied) {
-    return json({
-      ok: false,
-      reason: 'already_assigned',
-      message: 'Cet appareil a déjà une source. Contacte le support pour la modifier.',
-    }, 409);
-  }
   return json({
     ok: true,
-    message: "Playlist enregistrée ! Ouvre l'app (ou redémarre-la) : tes chaînes vont apparaître.",
+    message: "Playlist enregistrée ! Ouvrez l'app (ou redémarrez-la) : vos chaînes vont apparaître.",
   });
+}
+
+// DELETE /api/self-source/:mac — supprime la playlist 'self' du client.
+//  Une source 'panel' (payante, ou origine inconnue) n'est JAMAIS supprimée ici.
+async function handleSelfSourceDelete(env, mac) {
+  if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const MAC = mac.toUpperCase();
+  await ensureDeviceSourcesTable(env);
+  let existing;
+  try {
+    existing = await env.DB.prepare('SELECT origin FROM device_sources WHERE mac = ?').bind(MAC).first();
+  } catch (_) { existing = null; }
+  if (!existing) return json({ ok: true, message: 'Aucune playlist à supprimer.' });
+  if (String(existing.origin || 'panel') !== 'self') {
+    return json({
+      ok: false, reason: 'locked',
+      message: 'Cet appareil est géré par votre conseiller. Contactez le support.',
+    }, 409);
+  }
+  try {
+    await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(MAC).run();
+  } catch (_) {
+    return json({ ok: false, error: 'db_write_failed' }, 500);
+  }
+  return json({ ok: true, message: 'Playlist supprimée.' });
 }
 
 // /api/history/:mac — renvoie l'historique de visionnage (ids de chaînes)
@@ -3187,13 +3262,14 @@ async function handleRequest(request, env, ctx) {
       return await handlePublicDeviceSource(env, segments[2]);
     }
 
-    // POST /api/self-source/:mac — self-service : le client enregistre SA
-    // playlist depuis le site web (cf. handleSelfSource, garde-fous sécurité).
+    // /api/self-source/:mac — self-service « Mon espace » : le client LIT (GET),
+    // AJOUTE/REMPLACE (POST) ou SUPPRIME (DELETE) SA propre playlist. Une source
+    // posée par le panel (payante) reste verrouillée (cf. handlers, garde-fous).
     if (segments[0] === 'api' && segments[1] === 'self-source' && segments.length === 3) {
-      if (request.method !== 'POST') {
-        return badRequest('only POST supported on /api/self-source/:mac');
-      }
-      return await handleSelfSource(env, segments[2], request);
+      if (request.method === 'GET') return await handleSelfSourceGet(env, segments[2]);
+      if (request.method === 'POST') return await handleSelfSource(env, segments[2], request);
+      if (request.method === 'DELETE') return await handleSelfSourceDelete(env, segments[2]);
+      return badRequest('only GET, POST or DELETE supported on /api/self-source/:mac');
     }
 
     // /api/history/:mac — public, historique de visionnage synchronisé.
@@ -3391,6 +3467,14 @@ async function handleRequest(request, env, ctx) {
     // domaine (ex. tondomaine.com/dl) et n'expose jamais 7themotion.com.
     if (segments.length === 0) {
       return new Response(landingHtml(), { headers: HTML_HEADERS });
+    }
+
+    // /mon-espace — page client « Gérer ma playlist » (façon IBO Player Pro).
+    // Le client entre sa MAC → ajoute / modifie / supprime SA playlist lui-même
+    // (cf. portal.js + /api/self-source/:mac). noindex (outil, pas marketing).
+    if (segments.length === 1 &&
+        (segments[0] === 'mon-espace' || segments[0] === 'espace')) {
+      return new Response(portalHtml(), { headers: HTML_HEADERS });
     }
 
     // ===== PWA : le site s'installe comme une application =====

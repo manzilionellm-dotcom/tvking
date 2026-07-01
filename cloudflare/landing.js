@@ -256,7 +256,7 @@ export function landingHtml() {
     <a href="#how">Comment ça marche</a>
     <a href="#download">Télécharger</a>
     <a href="#pricing">Tarifs</a>
-    <a href="#activate">Activer</a>
+    <a href="/mon-espace">Ma playlist</a>
     <a href="#trust">Confiance</a>
   </nav>
   <a class="btn btn-gold btn-nav" href="https://app.7themotion.com/install">Télécharger</a>
@@ -270,7 +270,7 @@ export function landingHtml() {
     comme sur votre TV. On s'occupe de tout, vous n'avez plus qu'à regarder.</p>
   <div class="hero-cta">
     <a class="btn btn-gold" id="dlPhone" href="https://app.7themotion.com/install">Télécharger l'application</a>
-    <a class="btn btn-ghost" href="#pricing">Voir les offres</a>
+    <a class="btn btn-ghost" href="/mon-espace">Gérer ma playlist</a>
   </div>
   <div class="reassure">
     <span><i class="dot"></i> Activation en quelques minutes</span>
@@ -366,17 +366,17 @@ export function landingHtml() {
   <p class="center hint" style="margin-top:22px">Le règlement se fait avec un conseiller, simplement, sur WhatsApp. Humain, rapide, rassurant.</p>
 </div></section>
 
-<!-- ACTIVER -->
+<!-- MON ESPACE / GÉRER MA PLAYLIST -->
 <section id="activate"><div class="wrap">
   <div class="mac-card">
     <span class="eyebrow">Déjà l'application&nbsp;?</span>
-    <h2 style="font-size:clamp(24px,3.6vw,32px)">Activez votre appareil</h2>
-    <p class="lead center" style="margin:12px auto 0">Entrez l'adresse affichée dans l'app. On l'active, et tout arrive automatiquement.</p>
+    <h2 style="font-size:clamp(24px,3.6vw,32px)">Gérez votre playlist, vous-même</h2>
+    <p class="lead center" style="margin:12px auto 0">Entrez l'adresse affichée dans l'app. Vous ouvrez votre espace et vous ajoutez, changez ou retirez votre playlist quand vous voulez — en quelques secondes.</p>
     <div class="mac-input">
-      <input id="macInput" type="text" placeholder="MK : XX : XX : XX : XX : XX" maxlength="20" autocomplete="off" />
-      <button class="btn btn-gold" id="macSend">Activer mon accès</button>
+      <input id="macInput" type="text" placeholder="MK : XX : XX : XX : XX : XX" maxlength="23" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+      <a class="btn btn-gold" id="macSend" href="/mon-espace">Ouvrir mon espace</a>
     </div>
-    <p class="hint">Vous trouvez cette adresse sur l'écran d'accueil de l'app, ou dans « À propos ».</p>
+    <p class="hint">Vous trouvez cette adresse sur l'écran d'accueil de l'app, ou dans « À propos ». Un conseiller reste disponible si besoin.</p>
   </div>
 </div></section>
 
@@ -451,13 +451,16 @@ export function landingHtml() {
     b.href = wa("Bonjour 👋 Je souhaite la formule " + b.getAttribute("data-plan") + " pour 7 MOTION.");
   });
 
+  // « Ouvrir mon espace » : vrai lien vers /mon-espace, cliquable même sans JS.
+  // Le JS ne fait qu'ENRICHIR le lien avec la MAC saisie (pré-remplissage).
   var send = document.getElementById("macSend");
-  if(send){ send.addEventListener("click", function(){
-    var mac = (document.getElementById("macInput").value || "").trim().toUpperCase();
-    var msg = mac ? "Bonjour 👋 Je souhaite activer mon appareil. Mon adresse : " + mac
-                  : "Bonjour 👋 Je souhaite activer mon appareil 7 MOTION.";
-    window.open(wa(msg), "_blank");
-  }); }
+  var macIn = document.getElementById("macInput");
+  function updEspace(){
+    if(!send) return;
+    var mac = (macIn && macIn.value ? macIn.value : "").toUpperCase().replace(/\\s+/g,"").replace(/-/g,":");
+    send.href = mac ? "/mon-espace#mac=" + encodeURIComponent(mac) : "/mon-espace";
+  }
+  if(macIn){ macIn.addEventListener("input", updEspace); updEspace(); }
 
   set("yr","textContent", String(new Date().getFullYear()));
 })();

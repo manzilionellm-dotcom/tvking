@@ -2147,6 +2147,13 @@ async function ensureSourcesTable(env) {
   } catch (_) {
     /* colonne déjà présente */
   }
+  // origin : 'panel' (assignée ici = client payant, VERROUILLÉE côté self-service)
+  // ou 'self' (posée par le client depuis /mon-espace). Cf. worker.js self-source.
+  try {
+    await env.DB.prepare('ALTER TABLE device_sources ADD COLUMN origin TEXT').run();
+  } catch (_) {
+    /* colonne déjà présente */
+  }
 }
 
 /// Normalise + valide un objet source venant du panel. Retourne
@@ -2185,14 +2192,17 @@ async function upsertDeviceSource(env, mac, sources) {
   const json = JSON.stringify(sources);
   await env.DB
     .prepare(
+      // origin='panel' FORCÉ : une source assignée par le panel (payant) reprend
+      // toujours l'origine 'panel' → verrouillée côté self-service, même si le
+      // client avait posé une source 'self' avant sur cette MAC.
       `INSERT INTO device_sources
-         (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'panel', ?)
        ON CONFLICT(mac) DO UPDATE SET
          type=excluded.type, label=excluded.label, server_url=excluded.server_url,
          username=excluded.username, password=excluded.password,
          m3u_url=excluded.m3u_url, epg_url=excluded.epg_url,
-         sources_json=excluded.sources_json, updated_at=excluded.updated_at`,
+         sources_json=excluded.sources_json, origin='panel', updated_at=excluded.updated_at`,
     )
     .bind(mac, first.type, first.label, first.server_url, first.username,
           first.password, first.m3u_url, first.epg_url, json, Date.now())
