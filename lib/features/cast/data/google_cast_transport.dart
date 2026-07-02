@@ -87,12 +87,24 @@ class GoogleCastTransport implements CastTransport {
 
   final CastDevice device;
 
+  /// Dernier chemin de routage reellement emprunte par [playStream] :
+  /// 'cast_proxy' | 'local_hls_relay' | 'direct'. Lu par CastManager pour
+  /// etiqueter correctement l'AttemptResult (au lieu de 'direct' en dur).
+  String lastCastPath = 'direct';
+
+  /// URL exacte transmise a loadMedia, token signe masque. Null tant qu'aucun cast.
+  String? lastCastUrlRedacted;
+
   @override
   Future<void> playStream({
     required String streamUrl,
     String title = '7 MOTION',
     String? imageUrl,
   }) async {
+    // Reset des marqueurs de diagnostic : evite d'afficher le chemin
+    // du cast precedent si celui-ci echoue avant la decision de routage.
+    lastCastPath = 'direct';
+    lastCastUrlRedacted = null;
     final GoogleCastApi api = GoogleCastApi.instance;
 
     // 1) Le SDK Cast est-il disponible sur ce device ?
@@ -226,6 +238,9 @@ class GoogleCastTransport implements CastTransport {
         'isExoPlayerDevice': isExoPlayerReceiver(device),
       },
     );
+
+    lastCastPath = castPath;
+    lastCastUrlRedacted = _redactCastToken(redactStreamUrl(urlToCast));
 
     final bool loaded = await api.loadMedia(
       streamUrl: urlToCast,
@@ -439,5 +454,11 @@ class GoogleCastTransport implements CastTransport {
     } finally {
       client.close(force: true);
     }
+  }
+
+  /// Masque le parametre `t=` (token signe du proxy) dans une URL deja
+  /// passee par redactStreamUrl (qui ne masque que password/token/pass/pwd).
+  static String _redactCastToken(String url) {
+    return url.replaceAll(RegExp(r'([?&]t=)[^&]*'), r'$1***');
   }
 }
