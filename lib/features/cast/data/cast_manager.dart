@@ -23,6 +23,7 @@ import '../domain/cast_device.dart';
 import 'cast_progress.dart';
 import 'cast_session_diagnostic.dart';
 import 'cast_transport.dart';
+import 'google_cast_transport.dart';
 import 'dlna_capabilities.dart';
 import 'dlna_profiles.dart';
 import 'google_cast_api.dart';
@@ -607,23 +608,37 @@ class CastManager extends ChangeNotifier {
             title: title,
             imageUrl: imageUrl,
           );
+          // Le vrai chemin de routage ('cast_proxy'/'local_hls_relay'/'direct')
+          // n'est connu qu'apres coup, expose par GoogleCastTransport.
+          final GoogleCastTransport? gct =
+              _transport is GoogleCastTransport
+                  ? _transport as GoogleCastTransport
+                  : null;
+          final String realPath = gct?.lastCastPath ?? 'direct';
           diag.attempts.add(AttemptResult(
             strategyIndex: 0,
-            strategyName: 'direct',
-            urlKind: 'direct',
+            strategyName: realPath,
+            urlKind: realPath,
             metadataMode: 'n/a',
             durationMs: sw.elapsedMilliseconds,
             success: true,
+            lastCastUrlRedacted: gct?.lastCastUrlRedacted,
           ));
         } on Exception catch (e) {
+          final GoogleCastTransport? gctF =
+              _transport is GoogleCastTransport
+                  ? _transport as GoogleCastTransport
+                  : null;
+          final String realPathF = gctF?.lastCastPath ?? 'direct';
           diag.attempts.add(AttemptResult(
             strategyIndex: 0,
-            strategyName: 'direct',
-            urlKind: 'direct',
+            strategyName: realPathF,
+            urlKind: realPathF,
             metadataMode: 'n/a',
             durationMs: sw.elapsedMilliseconds,
             success: false,
             errorMessage: e.toString(),
+            lastCastUrlRedacted: gctF?.lastCastUrlRedacted,
           ));
           rethrow;
         }
