@@ -22,6 +22,7 @@ import 'core/crash/crash_reporting.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
 import 'core/notifications/notification_service.dart';
+import 'core/profiles/profiles_repository.dart';
 import 'features/channels/data/recently_watched_repository.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/playlists/data/playlist_repository.dart';
@@ -151,6 +152,11 @@ Future<void> _bootstrap() async {
   // Réglages d'affichage (overscan / grand texte). Best-effort, non bloquant.
   // Défauts = comportement inchangé, donc aucun risque au 1er rendu.
   unawaited(DisplaySettings.instance.load());
+
+  // Profils famille : charge le profil actif TÔT (les dépôts « par profil »
+  // — récents/recherches/collections — suffixent leurs clés avec lui). Non
+  // bloquant : lecture SharedPreferences quasi instantanée.
+  unawaited(ProfilesRepository.instance.load());
 
   // 9) Historique multi-box : on initialise l'historique local PUIS on le
   //    restaure depuis le serveur si la box est neuve (l'historique « suit »

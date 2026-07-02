@@ -10,11 +10,17 @@
 // =========================================================
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/profiles/profiles_repository.dart';
+
 class SearchHistoryRepository {
   SearchHistoryRepository._();
   static final SearchHistoryRepository instance = SearchHistoryRepository._();
 
-  static const String _key = 'tv_search_history';
+  static const String _baseKey = 'tv_search_history';
+
+  /// Clé PAR PROFIL (suffixe vide pour « Famille » → données historiques
+  /// conservées telles quelles).
+  String get _key => '$_baseKey${ProfilesRepository.instance.keySuffix}';
   static const int _max = 10;
 
   List<String> _items = <String>[];

@@ -14,6 +14,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/profiles/profiles_repository.dart';
+
 /// Une collection nommée de chaînes favorites.
 class FavoriteCollection {
   FavoriteCollection({required this.name, required this.ids});
@@ -27,17 +29,20 @@ class FavoriteCollectionsRepository extends ChangeNotifier {
   static final FavoriteCollectionsRepository instance =
       FavoriteCollectionsRepository._();
 
-  static const String _key = 'tv_fav_collections';
+  static const String _baseKey = 'tv_fav_collections';
   static const int maxCollections = 12;
 
+  /// Clé PAR PROFIL (suffixe vide pour « Famille » → données conservées).
+  String get _key => '$_baseKey${ProfilesRepository.instance.keySuffix}';
+
   List<FavoriteCollection> _items = <FavoriteCollection>[];
-  bool _loaded = false;
 
   List<FavoriteCollection> get collections =>
       List<FavoriteCollection>.unmodifiable(_items);
 
+  /// (Re)charge les collections DU PROFIL ACTIF. Volontairement idempotent et
+  /// re-jouable : un changement de profil rappelle simplement load().
   Future<void> load() async {
-    if (_loaded) return;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String raw = prefs.getString(_key) ?? '[]';
@@ -56,7 +61,6 @@ class FavoriteCollectionsRepository extends ChangeNotifier {
       debugPrint('[Collections] load: $e');
       _items = <FavoriteCollection>[];
     }
-    _loaded = true;
     notifyListeners();
   }
 

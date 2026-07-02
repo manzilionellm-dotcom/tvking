@@ -13,13 +13,17 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/profiles/profiles_repository.dart';
 import '../domain/vod_movie.dart';
 
 class RecentVodRepository {
   RecentVodRepository._();
   static final RecentVodRepository instance = RecentVodRepository._();
 
-  static const String _key = 'tv_recent_vod';
+  static const String _baseKey = 'tv_recent_vod';
+
+  /// Clé PAR PROFIL (suffixe vide pour « Famille » → données conservées).
+  String get _key => '$_baseKey${ProfilesRepository.instance.keySuffix}';
   static const int _max = 12;
 
   List<VodMovie> _items = <VodMovie>[];
