@@ -121,6 +121,21 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   Timer? _toastTimer;
   String _numBuffer = ''; // saisie d'un numéro de chaîne (touches 0-9)
 
+  // ----- « Dernière chaîne » (recall, style câble US) -----
+  // Index de la chaîne d'AVANT le dernier changement : « 0 » seul y retourne
+  // (match ↔ film en un appui). Un numéro de chaîne ne commence jamais par 0.
+  int? _prevIndex;
+
+  // ----- « Tu regardes encore ? » (anti-gaspillage bande passante) -----
+  // Après _kStillAfter SANS toucher la télécommande, on met en PAUSE et on
+  // demande. N'importe quelle touche reprend la lecture. Jamais pendant un
+  // enregistrement. (Netflix fait pareil ; ici ça évite au client de laisser
+  // le flux tourner toute la nuit → économise le serveur et la data.)
+  static const Duration _kStillAfter = Duration(hours: 4);
+  DateTime _lastUserAction = DateTime.now();
+  Timer? _stillTimer;
+  bool _askStillWatching = false;
+
   // ----- Enregistrement -----
   // Quand on enregistre, on fait passer la lecture par le MINI-RELAIS local
   // (LocalStreamRelay) : il ouvre UNE seule connexion vers le serveur IPTV et
@@ -194,6 +209,15 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Garde l'app « en ligne » + chaîne à jour pendant le visionnage.
     _presenceTimer = Timer.periodic(const Duration(minutes: 3),
         (_) => SubscriptionState.instance.syncWithBackend());
+    // « Tu regardes encore ? » : vérification 1×/min, déclenchée seulement
+    // après _kStillAfter d'inactivité totale (et jamais en enregistrement).
+    _stillTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (_askStillWatching || _isRecording) return;
+      if (DateTime.now().difference(_lastUserAction) >= _kStillAfter) {
+        _controller.pause();
+        if (mounted) setState(() => _askStillWatching = true);
+      }
+    });
   }
 
   // Couper le son quand on QUITTE / minimise l'app (Home, multitâche) : pas de
@@ -219,6 +243,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _hideTimer?.cancel();
     _presenceTimer?.cancel();
     _numTimer?.cancel();
+    _stillTimer?.cancel();
     _watchdog?.cancel();
     _toastTimer?.cancel();
     _favSub?.cancel();
@@ -290,7 +315,21 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     if (_isRecording) _finalizeRecording(resumeDirect: false);
     // En Dart, `a % n` est TOUJOURS dans [0, n) pour n > 0 → pas de wrap négatif
     // à corriger (l'ancienne ligne `if (_index < 0)` était du code mort).
+    _prevIndex = _index; // mémoire « dernière chaîne » (recall)
     setState(() => _index = (_index + delta) % n);
+    _open();
+  }
+
+  /// « Dernière chaîne » (recall) : retourne à la chaîne d'AVANT le dernier
+  /// changement — et mémorise l'actuelle, pour pouvoir re-basculer (A↔B).
+  void _recallLast() {
+    final int? p = _prevIndex;
+    if (p == null || p == _index || p < 0 || p >= widget.channels.length) {
+      return;
+    }
+    if (_isRecording) _finalizeRecording(resumeDirect: false);
+    _prevIndex = _index;
+    setState(() => _index = p);
     _open();
   }
 
@@ -555,6 +594,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
 
   // ----- Saisie d'un numéro de chaîne (0-9) → zap après ~1,5 s -----
   void _onDigit(int d) {
+    // Pépite câble US : « 0 » SEUL = dernière chaîne (recall). Aucun conflit :
+    // la numérotation des chaînes démarre à 1, un numéro ne commence pas par 0.
+    if (d == 0 && _numBuffer.isEmpty) {
+      _recallLast();
+      return;
+    }
     if (_numBuffer.length < 4) _numBuffer += '$d';
     _numTimer?.cancel();
     _numTimer = Timer(const Duration(milliseconds: 1500), _jumpNumber);
@@ -565,6 +610,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     final int? n = int.tryParse(_numBuffer);
     _numBuffer = '';
     if (n == null || n <= 0) { setState(() {}); return; }
+    _prevIndex = _index; // mémoire « dernière chaîne » (recall)
     setState(() => _index = (n - 1).clamp(0, widget.channels.length - 1));
     _open();
   }
@@ -592,6 +638,16 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final LogicalKeyboardKey k = event.logicalKey;
+
+    // Toute touche = activité → réarme « Tu regardes encore ? ». Si la
+    // question est affichée, N'IMPORTE quelle touche reprend la lecture
+    // (la touche est consommée : elle ne zappe pas par accident).
+    _lastUserAction = DateTime.now();
+    if (_askStillWatching) {
+      setState(() => _askStillWatching = false);
+      _controller.play();
+      return KeyEventResult.handled;
+    }
 
     // ÉCRAN D'ERREUR (P1-6) : OK = Réessayer ; le Retour reste géré plus bas
     // (quitter le lecteur). On capte OK ici pour ne pas ouvrir la barre.
@@ -669,8 +725,17 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         // propre tap (ils gagnent l'arène des gestes) avant ce fond.
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: _toggleOverlay,
+          onTap: () {
+            _lastUserAction = DateTime.now();
+            if (_askStillWatching) {
+              setState(() => _askStillWatching = false);
+              _controller.play();
+              return;
+            }
+            _toggleOverlay();
+          },
           onVerticalDragEnd: (DragEndDetails d) {
+            _lastUserAction = DateTime.now();
             final double v = d.primaryVelocity ?? 0;
             if (v < -250) {
               _zap(1); // glissé vers le HAUT → chaîne suivante
@@ -705,6 +770,34 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                           child: CircularProgressIndicator(
                               strokeWidth: 3, color: TvTokens.gold),
                         ),
+                      ],
+                    ),
+                  ),
+                ),
+              // « TU REGARDES ENCORE ? » : lecture en pause après une longue
+              // inactivité — n'importe quelle touche reprend. Économise la
+              // bande passante quand la TV reste allumée sans personne.
+              if (_askStillWatching)
+                ColoredBox(
+                  color: const Color(0xE6000000), // scrim noir 90 %
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Icon(Icons.nightlight_round,
+                            color: TvTokens.gold, size: 52),
+                        const SizedBox(height: 18),
+                        Text('Tu regardes encore ?',
+                            style: TextStyle(
+                                fontSize: TvDimens.title + 6,
+                                fontWeight: FontWeight.w800,
+                                color: TvTokens.text)),
+                        const SizedBox(height: 10),
+                        Text(
+                            'Appuie sur n\'importe quelle touche pour continuer.',
+                            style: TextStyle(
+                                fontSize: TvDimens.body,
+                                color: TvTokens.muted)),
                       ],
                     ),
                   ),
