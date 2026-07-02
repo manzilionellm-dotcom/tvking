@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/tv_tokens.dart';
+import '../data/greeting_repository.dart';
 import 'tv_components.dart';
 
 /// Enveloppe l'ACCUEIL : surveille l'inactivité (touches + toucher) et pousse
@@ -140,6 +141,20 @@ class _TvScreensaverScreenState extends State<_TvScreensaverScreen> {
     if (mounted) setState(() => _time = '$h:$m');
   }
 
+  /// Ligne météo « ☀️ 21° · Paris » (si la météo est déjà en cache — on ne
+  /// déclenche AUCUN appel réseau depuis le veilleur, on lit seulement).
+  String get _weatherLabel {
+    final Greeting? g = GreetingRepository.instance.current;
+    if (g == null) return '';
+    final String t =
+        g.tempC == null ? '' : '${g.tempC!.round()}°';
+    final List<String> parts = <String>[
+      if (g.emoji.isNotEmpty || t.isNotEmpty) '${g.emoji} $t'.trim(),
+      if (g.city.isNotEmpty) g.city,
+    ];
+    return parts.join(' · ');
+  }
+
   @override
   void dispose() {
     _move?.cancel();
@@ -181,13 +196,27 @@ class _TvScreensaverScreenState extends State<_TvScreensaverScreen> {
               Positioned(
                 right: 40,
                 bottom: 32,
-                child: Text(
-                  _time,
-                  style: const TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w600,
-                    color: TvTokens.mutedDim,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: <Widget>[
+                    Text(
+                      _time,
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w600,
+                        color: TvTokens.mutedDim,
+                      ),
+                    ),
+                    if (_weatherLabel.isNotEmpty)
+                      Text(
+                        _weatherLabel,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: TvTokens.mutedDim,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],
