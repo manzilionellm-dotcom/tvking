@@ -77,6 +77,13 @@ import 'local_cast_server.dart';
 ///    (CastOptionsProviderImpl.kt) — les deux valent `true`.
 const bool kCastUseCustomReceiver = true;
 
+/// Overlay de diagnostic du receiver custom (mpegts.js) : coin haut-gauche,
+/// texte vert, 15 dernieres lignes (LOAD contentId, branche mpegts/CAF,
+/// mpegts ERROR + MEDIA_INFO codecs, events du <video>, status du 1er fetch).
+/// Passe `{debug:true}` en customData du LOAD. Repasser a `false` en prod
+/// une fois le bug trouve. Sans effet sur le Default Media Receiver.
+const bool kCastDebugOverlay = true;
+
 /// Base du Worker (même domaine que le récepteur Cast custom) qui signe et sert
 /// le proxy Cast. Le secret HMAC vit UNIQUEMENT côté Worker : l'app demande une
 /// URL signée à `/cast-sign`, elle n'embarque aucun secret.
@@ -247,6 +254,7 @@ class GoogleCastTransport implements CastTransport {
       title: title,
       mime: mime,
       imageUrl: imageUrl,
+      debug: kCastDebugOverlay,
     );
     if (!loaded) {
       throw Exception('La TV a refusé le flux.');
