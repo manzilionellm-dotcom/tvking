@@ -1,0 +1,38 @@
+# ============================================================================
+#  diag-family.yml — Diagnostic des endpoints ABONNEMENT FAMILLE (manuel)
+#
+#  Lancement MANUEL uniquement (workflow_dispatch). Fait 3 appels INOFFENSIFS
+#  au worker en production pour vérifier que /api/family/* répond bien :
+#    1. info sur une MAC inconnue   → { ok:true, role:'owner', members:[] }
+#    2. join avec un code bidon     → { ok:false, error:'code_invalid' }
+#    3. invite depuis une MAC non payée → { ok:false, error:'not_paid' }
+#  Aucune écriture durable (pas de licence, pas de lien créé).
+# ============================================================================
+name: Diag Abonnement Famille
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Test /api/family/*
+        run: |
+          set -e
+          B="https://app.7themotion.com"
+          echo "=== 1) GET /api/family/info/:mac (MAC inconnue) ==="
+          curl -sS -m 15 "$B/api/family/info/MK:00:00:00:00:01" | tee r1.json; echo
+          echo "=== 2) POST /api/family/join (code bidon) ==="
+          curl -sS -m 15 -X POST "$B/api/family/join" \
+            -H 'Content-Type: application/json' \
+            -d '{"mac":"MK:00:00:00:00:01","code":"000000"}' | tee r2.json; echo
+          echo "=== 3) POST /api/family/invite (MAC non payée) ==="
+          curl -sS -m 15 -X POST "$B/api/family/invite" \
+            -H 'Content-Type: application/json' \
+            -d '{"mac":"MK:00:00:00:00:01"}' | tee r3.json; echo
+          echo "=== Vérifications ==="
+          grep -q '"role":"owner"' r1.json && echo "1 OK (owner/0 membre)"
+          grep -q 'code_invalid' r2.json && echo "2 OK (code_invalid)"
+          grep -q 'not_paid' r3.json && echo "3 OK (not_paid)"
