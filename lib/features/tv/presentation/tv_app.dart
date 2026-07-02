@@ -15,6 +15,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
+import '../../../core/profiles/profiles_repository.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -37,6 +38,7 @@ import 'tv_series_screen.dart';
 import 'tv_settings_screen.dart';
 import 'tv_sports_screen.dart';
 import 'tv_shell.dart';
+import 'tv_who_watching_screen.dart';
 
 /// Largeur LOGIQUE de référence du design TV. Toute l'app est rendue comme
 /// si l'écran faisait cette largeur, puis mise à l'échelle vers l'écran réel
@@ -279,16 +281,23 @@ class TvGate extends StatefulWidget {
 class _TvGateState extends State<TvGate> {
   StreamSubscription<List<Channel>>? _sub;
 
+  // « Qui regarde ? » (façon Netflix) : montré UNE fois par ouverture d'app,
+  // AVANT l'accueil, quand la famille a plusieurs profils. Une fois le profil
+  // choisi (ou s'il n'y a qu'un profil), on file directement à l'accueil.
+  bool _profileChosen = false;
+
   @override
   void initState() {
     super.initState();
     SubscriptionState.instance.addListener(_onChange);
+    ProfilesRepository.instance.addListener(_onChange);
     _sub = PlaylistRepository.instance.channelsStream.listen((_) => _onChange());
   }
 
   @override
   void dispose() {
     SubscriptionState.instance.removeListener(_onChange);
+    ProfilesRepository.instance.removeListener(_onChange);
     _sub?.cancel();
     super.dispose();
   }
@@ -323,9 +332,22 @@ class _TvGateState extends State<TvGate> {
     // main dès que la connexion revient (et device-source ne livre plus la
     // source une fois l'essai expiré).
     final bool showHome = active || (hasOwnList && !mustBlock);
-    final Widget home = showHome
-        ? const TvHomeScreen()
-        : const TvShell(child: TvActivationScreen());
+    // « Qui regarde ? » : si l'accès est ouvert, que la famille a PLUSIEURS
+    // profils et qu'on n'a pas encore choisi cette session → on présente la
+    // grille d'avatars AVANT l'accueil (exactement comme Netflix au démarrage).
+    final bool needProfilePick = showHome &&
+        !_profileChosen &&
+        ProfilesRepository.instance.isLoaded &&
+        ProfilesRepository.instance.profiles.length > 1;
+    final Widget home = !showHome
+        ? const TvShell(child: TvActivationScreen())
+        : needProfilePick
+            ? TvShell(
+                child: TvWhoWatchingScreen(
+                  onPicked: () => setState(() => _profileChosen = true),
+                ),
+              )
+            : const TvHomeScreen();
     // Retour : sur l'ACCUEIL, c'est TvHomeScreen qui gère (contenu → menu →
     // boîte Quitter au dernier niveau). Ce PopScope racine (même route) ne
     // garde donc la boîte QUE pour l'écran d'activation ; sinon il laisse
@@ -472,7 +494,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   TvLogo(width: 92),
                   const SizedBox(width: 18),
                   const Expanded(child: _HomeHeader()),
-                  const SizedBox(width: 18),
+                  const SizedBox(width: 16),
+                  const _ProfileChip(),
+                  const SizedBox(width: 12),
                   _CompactNavBar(
                     selected: _selected,
                     selectedFocusNode: _railFocus,
@@ -560,6 +584,53 @@ class _HomeHeaderState extends State<_HomeHeader> {
     );
   }
 }
+/// Pastille du PROFIL ACTIF (en haut, façon Netflix). Un OK ouvre « Qui
+/// regarde ? » pour changer de profil sans quitter l'accueil.
+class _ProfileChip extends StatelessWidget {
+  const _ProfileChip();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: ProfilesRepository.instance,
+      builder: (BuildContext context, _) {
+        final TvProfile p = ProfilesRepository.instance.active;
+        return TvFocusBuilder(
+          scale: TvFocusScale.medium,
+          onSelect: () => TvWhoWatchingScreen.show(context),
+          builder: (BuildContext context, bool focused) {
+            final Color fg = focused ? TvTokens.goldBright : TvTokens.muted;
+            return Container(
+              height: 50,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: focused ? TvTokens.sel : Colors.transparent,
+                borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
+                border: focused
+                    ? Border.all(color: TvTokens.gold, width: 1)
+                    : Border.all(color: TvTokens.line, width: 1),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(p.emoji, style: const TextStyle(fontSize: 20)),
+                  const SizedBox(width: 8),
+                  Text(
+                    p.name,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: TvTokens.ui(15, weight: FontWeight.w600, color: fg),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
 /// Menu de navigation COMPACT (barre horizontale, en HAUT À DROITE). Remplace
 /// l'ancien rail vertical de gauche : la grande colonne de gauche est désormais
 /// dédiée à la LISTE des chaînes (lisibilité seniors). Routing INCHANGÉ.

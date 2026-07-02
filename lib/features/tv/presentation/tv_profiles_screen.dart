@@ -14,6 +14,7 @@ import '../../../core/profiles/profiles_repository.dart';
 import '../../channels/data/search_history_repository.dart';
 import '../../playlists/data/favorite_collections_repository.dart';
 import '../../vod/data/recent_vod_repository.dart';
+import '../../vod/data/vod_watchlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -51,6 +52,7 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
     await RecentVodRepository.instance.load();
     await SearchHistoryRepository.instance.load();
     await FavoriteCollectionsRepository.instance.load();
+    await VodWatchlistRepository.instance.load();
   }
 
   @override

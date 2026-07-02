@@ -25,6 +25,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../vod/data/recent_vod_repository.dart';
 import '../../vod/data/vod_repository.dart';
+import '../../vod/data/vod_watchlist_repository.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -44,6 +45,9 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   List<String> _cats = const <String>[];
   Map<String, List<VodMovie>> _byCat = const <String, List<VodMovie>>{};
   List<VodMovie> _recent = const <VodMovie>[];
+  List<VodMovie> _watchlist = const <VodMovie>[];
+  // Ids présents dans « Ma Liste » (repère rapide pour l'affichage du ✓).
+  Set<String> _inList = <String>{};
 
   @override
   void initState() {
@@ -56,6 +60,7 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     final List<VodMovie> movies =
         await VodRepository.instance.fetchMovies(forceRefresh: force);
     await RecentVodRepository.instance.load();
+    await VodWatchlistRepository.instance.load();
     if (!mounted) return;
     // Groupement UNE fois par catégorie (ordre d'apparition). Les listes
     // référencent les mêmes objets VodMovie → pas de duplication mémoire.
@@ -76,7 +81,19 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
       _cats = cats;
       _byCat = byCat;
       _recent = RecentVodRepository.instance.items;
+      _watchlist = VodWatchlistRepository.instance.items;
+      _inList = _watchlist.map((VodMovie m) => m.id).toSet();
       _loading = false;
+    });
+  }
+
+  /// Ajoute/retire [m] de « Ma Liste » (par profil) et rafraîchit l'affichage.
+  Future<void> _toggleList(VodMovie m) async {
+    await VodWatchlistRepository.instance.toggle(m);
+    if (!mounted) return;
+    setState(() {
+      _watchlist = VodWatchlistRepository.instance.items;
+      _inList = _watchlist.map((VodMovie e) => e.id).toSet();
     });
   }
 
@@ -133,40 +150,39 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
 
     // Film mis en avant : le dernier vu, sinon le premier du catalogue.
     final VodMovie hero = _recent.isNotEmpty ? _recent.first : _all.first;
-    final bool hasRecent = _recent.isNotEmpty;
 
-    // Rangées : [héro] + [Derniers vus ?] + 1 rangée par catégorie.
-    final int railCount = (hasRecent ? 1 : 0) + _cats.length;
+    // Rangées, dans l'ordre façon Netflix : Ma Liste (si non vide), puis
+    // Derniers vus, puis une rangée par catégorie. On les assemble en une
+    // liste ordonnée → pas d'arithmétique d'index fragile.
+    final List<({String title, List<VodMovie> movies})> rails =
+        <({String title, List<VodMovie> movies})>[
+      if (_watchlist.isNotEmpty) (title: 'Ma Liste', movies: _watchlist),
+      if (_recent.isNotEmpty) (title: 'Derniers vus', movies: _recent),
+      for (final String cat in _cats)
+        (title: cat, movies: _byCat[cat] ?? const <VodMovie>[]),
+    ];
 
     return ListView.builder(
       // La VEDETTE occupe l'index 0, les rangées suivent → tout est lazy.
       addAutomaticKeepAlives: false,
-      itemCount: 1 + railCount,
+      itemCount: 1 + rails.length,
       itemBuilder: (BuildContext context, int i) {
         if (i == 0) {
           return _HeroBanner(
             movie: hero,
             autofocus: true,
+            inList: _inList.contains(hero.id),
             onPlay: () => _play(<VodMovie>[hero], 0),
+            onToggleList: () => _toggleList(hero),
           );
         }
-        int idx = i - 1;
-        if (hasRecent) {
-          if (idx == 0) {
-            return _Rail(
-              title: 'Derniers vus',
-              movies: _recent,
-              onPlay: (int j) => _play(_recent, j),
-            );
-          }
-          idx -= 1;
-        }
-        final String cat = _cats[idx];
-        final List<VodMovie> movies = _byCat[cat] ?? const <VodMovie>[];
+        final ({String title, List<VodMovie> movies}) rail = rails[i - 1];
         return _Rail(
-          title: cat,
-          movies: movies,
-          onPlay: (int j) => _play(movies, j),
+          title: rail.title,
+          movies: rail.movies,
+          inList: _inList,
+          onPlay: (int j) => _play(rail.movies, j),
+          onToggleList: (int j) => _toggleList(rail.movies[j]),
         );
       },
     );
@@ -178,11 +194,15 @@ class _HeroBanner extends StatelessWidget {
   const _HeroBanner({
     required this.movie,
     required this.onPlay,
+    required this.inList,
+    required this.onToggleList,
     this.autofocus = false,
   });
 
   final VodMovie movie;
   final VoidCallback onPlay;
+  final bool inList;
+  final VoidCallback onToggleList;
   final bool autofocus;
 
   @override
@@ -231,39 +251,26 @@ class _HeroBanner extends StatelessWidget {
                         style: TvTokens.ui(14, color: TvTokens.muted)),
                   ],
                   const SizedBox(height: 18),
-                  TvFocusBuilder(
-                    autofocus: autofocus,
-                    scale: TvFocusScale.small,
-                    onSelect: onPlay,
-                    builder: (BuildContext context, bool focused) {
-                      final Color bg =
-                          focused ? TvTokens.gold : TvTokens.badgeBg;
-                      final Color fg = focused
-                          ? const Color(0xFF1A1206)
-                          : TvTokens.goldBright;
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: bg,
-                          borderRadius:
-                              BorderRadius.circular(TvDimens.cardRadius),
-                          border: Border.all(color: TvTokens.gold),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Icon(Icons.play_arrow_rounded, color: fg, size: 24),
-                            const SizedBox(width: 8),
-                            Text('Regarder',
-                                style: TextStyle(
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w800,
-                                    color: fg)),
-                          ],
-                        ),
-                      );
-                    },
+                  Row(
+                    children: <Widget>[
+                      _HeroButton(
+                        icon: Icons.play_arrow_rounded,
+                        label: 'Regarder',
+                        autofocus: autofocus,
+                        primary: true,
+                        onSelect: onPlay,
+                      ),
+                      const SizedBox(width: 12),
+                      // « Ma Liste » : ajoute/retire le film vedette (par profil).
+                      _HeroButton(
+                        icon: inList
+                            ? Icons.check_rounded
+                            : Icons.add_rounded,
+                        label: inList ? 'Dans Ma Liste' : 'Ma Liste',
+                        primary: false,
+                        onSelect: onToggleList,
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -276,6 +283,62 @@ class _HeroBanner extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Bouton d'action de la vedette (▶ Regarder / + Ma Liste), focusable.
+class _HeroButton extends StatelessWidget {
+  const _HeroButton({
+    required this.icon,
+    required this.label,
+    required this.onSelect,
+    this.primary = false,
+    this.autofocus = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onSelect;
+  final bool primary;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      autofocus: autofocus,
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        final Color bg = focused
+            ? TvTokens.gold
+            : (primary ? TvTokens.badgeBg : TvTokens.card);
+        final Color fg = focused
+            ? const Color(0xFF1A1206)
+            : (primary ? TvTokens.goldBright : TvTokens.text);
+        return Container(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+            border: Border.all(
+                color: primary ? TvTokens.gold : TvTokens.lineSoft),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(icon, color: fg, size: 22),
+              const SizedBox(width: 8),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: fg)),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -306,11 +369,19 @@ class _HeroPoster extends StatelessWidget {
 
 /// Une RANGÉE horizontale d'affiches (titre + liste paresseuse), façon Netflix.
 class _Rail extends StatelessWidget {
-  const _Rail({required this.title, required this.movies, required this.onPlay});
+  const _Rail({
+    required this.title,
+    required this.movies,
+    required this.inList,
+    required this.onPlay,
+    required this.onToggleList,
+  });
 
   final String title;
   final List<VodMovie> movies;
+  final Set<String> inList;
   final void Function(int index) onPlay;
+  final void Function(int index) onToggleList;
 
   @override
   Widget build(BuildContext context) {
@@ -343,7 +414,9 @@ class _Rail extends StatelessWidget {
                 padding: const EdgeInsets.only(right: 12),
                 child: _PosterCard(
                   movie: movies[i],
+                  inList: inList.contains(movies[i].id),
                   onPlay: () => onPlay(i),
+                  onToggleList: () => onToggleList(i),
                 ),
               ),
             ),
@@ -356,9 +429,16 @@ class _Rail extends StatelessWidget {
 
 /// Affiche d'un film (poster 2:3) + titre, focusable. OK = lecture.
 class _PosterCard extends StatelessWidget {
-  const _PosterCard({required this.movie, required this.onPlay});
+  const _PosterCard({
+    required this.movie,
+    required this.inList,
+    required this.onPlay,
+    required this.onToggleList,
+  });
   final VodMovie movie;
+  final bool inList;
   final VoidCallback onPlay;
+  final VoidCallback onToggleList;
 
   @override
   Widget build(BuildContext context) {
@@ -366,13 +446,35 @@ class _PosterCard extends StatelessWidget {
       scale: TvFocusScale.small,
       baseColor: TvTokens.card,
       onSelect: onPlay,
+      // Appui LONG sur OK = ajouter/retirer de « Ma Liste » (façon Netflix).
+      onLongPress: onToggleList,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: _poster(),
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  _poster(),
+                  // Pastille ✓ quand le film est dans « Ma Liste ».
+                  if (inList)
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: TvTokens.gold,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.check_rounded,
+                            size: 15, color: Color(0xFF1A1206)),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 6),
