@@ -334,6 +334,7 @@ class GoogleCastApi(
         val mime = args["mime"] as? String ?: "video/mp2t"
         val imageUrl = args["imageUrl"] as? String
         val subtitle = args["subtitle"] as? String
+        val debugOverlay = (args["debug"] as? Boolean) ?: false
 
         if (streamUrl.isNullOrBlank()) {
             result.error("INVALID_ARGS", "streamUrl manquant ou vide", null)
@@ -364,10 +365,19 @@ class GoogleCastApi(
                 MediaInfo.STREAM_TYPE_BUFFERED
             }
 
+            // Overlay debug du receiver custom : on passe {debug:true} en
+            // customData. Le receiver l'active alors (sans effet sur le
+            // Default Media Receiver, qui ignore customData inconnu).
+            val customData = if (debugOverlay) {
+                org.json.JSONObject().apply { put("debug", true) }
+            } else {
+                null
+            }
             val mediaInfo = MediaInfo.Builder(streamUrl)
                 .setStreamType(streamType)
                 .setContentType(mime)
                 .setMetadata(metadata)
+                .apply { if (customData != null) setCustomData(customData) }
                 .build()
 
             val loadRequest = MediaLoadRequestData.Builder()
