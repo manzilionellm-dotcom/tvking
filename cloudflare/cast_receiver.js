@@ -139,6 +139,28 @@ export function castReceiverHtml(flavor) {
       margin-right: 8px;
       vertical-align: middle;
     }
+
+    /* ===== Overlay DEBUG (active via customData {debug:true}) ===== */
+    #dbg-overlay {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      max-width: 60%;
+      z-index: 99999;
+      font-family: "Courier New", Consolas, monospace;
+      font-size: 20px;
+      line-height: 1.3;
+      color: #00FF66;
+      text-shadow: 0 0 2px #000, 0 0 2px #000;
+      background: rgba(0,0,0,0.45);
+      padding: 8px 10px;
+      border-radius: 6px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      pointer-events: none;
+      display: none;
+    }
+    #dbg-overlay.active { display: block; }
   </style>
 </head>
 <body>
@@ -150,6 +172,9 @@ export function castReceiverHtml(flavor) {
   <video id="ts-video" playsinline></video>
 
   <div class="brand-watermark">${appName}</div>
+
+  <!-- Overlay DEBUG (n'apparait que si customData {debug:true} dans le LOAD). -->
+  <div id="dbg-overlay"></div>
 
   <script>
     // =====================================================
@@ -167,6 +192,31 @@ export function castReceiverHtml(flavor) {
     function log() {
       try { console.log.apply(console, ['[' + APP + ' cast]'].concat([].slice.call(arguments))); } catch (e) {}
     }
+
+    // ---- Overlay DEBUG (coin haut-gauche, 15 dernieres lignes) -----
+    // Active par customData {debug:true} dans le LOAD, ou par ?debug=1
+    // sur l'URL du receiver. N'affiche RIEN en fonctionnement normal.
+    let DEBUG = false;
+    try { DEBUG = new URLSearchParams(location.search).get('debug') === '1'; } catch (e) {}
+    const dbgLines = [];
+    const dbgEl = document.getElementById('dbg-overlay');
+    function dbgRender() {
+      if (!dbgEl) return;
+      if (DEBUG) { dbgEl.classList.add('active'); } else { dbgEl.classList.remove('active'); return; }
+      dbgEl.textContent = dbgLines.slice(-15).join('\n');
+    }
+    function dbg() {
+      const msg = [].slice.call(arguments).map(function (a) {
+        if (a && typeof a === 'object') { try { return JSON.stringify(a); } catch (e) { return String(a); } }
+        return String(a);
+      }).join(' ');
+      const t = new Date().toISOString().slice(11, 19);
+      dbgLines.push(t + '  ' + msg);
+      if (dbgLines.length > 60) dbgLines.shift();
+      log(msg);
+      dbgRender();
+    }
+    function dbgSetEnabled(on) { DEBUG = DEBUG || !!on; dbgRender(); }
 
     // Heuristique : URL de flux MPEG-TS brut (IPTV Xtream live).
     //   - extension .ts (eventuellement suivie de query string)
@@ -205,6 +255,19 @@ export function castReceiverHtml(flavor) {
         log('mpegts.js indisponible — la TV ne supporte pas MSE pour le TS');
         return false;
       }
+      if (DEBUG) {
+        (function () {
+          var ctrl = (('AbortController' in window)) ? new AbortController() : null;
+          var to = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 8000) : null;
+          fetch(url, { method: 'GET', signal: ctrl ? ctrl.signal : undefined })
+            .then(function (r) {
+              dbg('first fetch status=' + r.status + ' ct=' + (r.headers.get('content-type') || '?'));
+              try { if (r.body && r.body.cancel) r.body.cancel(); } catch (e) {}
+            })
+            .catch(function (e) { dbg('first fetch FAILED ' + (e && e.name) + ': ' + (e && e.message)); })
+            .then(function () { if (to) clearTimeout(to); });
+        })();
+      }
       mpegtsPlayer = mpegts.createPlayer({
         type: 'mpegts',
         isLive: true,
@@ -216,9 +279,30 @@ export function castReceiverHtml(flavor) {
         enableWorker: true,
       });
       mpegtsPlayer.attachMediaElement(tsVideo);
+      try {
+        var _dbgVideoEvents = ['loadedmetadata', 'playing', 'stalled', 'waiting', 'suspend'];
+        _dbgVideoEvents.forEach(function (ev) {
+          tsVideo.addEventListener(ev, function () { dbg('video ev=' + ev + ' rt=' + tsVideo.readyState); }, { once: false });
+        });
+        tsVideo.addEventListener('error', function () {
+          var code = tsVideo.error ? tsVideo.error.code : '?';
+          dbg('video ERROR code=' + code);
+        });
+      } catch (e) {}
       mpegtsPlayer.on(mpegts.Events.ERROR, function (type, detail) {
         log('mpegts error', type, detail);
+        dbg('mpegts ERROR type=' + type + ' detail=' + detail);
       });
+      mpegtsPlayer.on(mpegts.Events.MEDIA_INFO, function (info) {
+        try {
+          dbg('MEDIA_INFO video=' + (info && info.videoCodec) +
+              ' audio=' + (info && info.audioCodec) +
+              ' ' + (info && info.width) + 'x' + (info && info.height));
+        } catch (e) { dbg('MEDIA_INFO (unreadable)'); }
+      });
+      try {
+        mpegtsPlayer.on(mpegts.Events.LOADING_COMPLETE, function () { dbg('mpegts LOADING_COMPLETE'); });
+      } catch (e) {}
       mpegtsPlayer.load();
       tsVideo.muted = false;
       const p = tsVideo.play();
@@ -238,9 +322,17 @@ export function castReceiverHtml(flavor) {
           const media = request.media || {};
           const url = media.contentId || media.contentUrl || '';
           const ct = media.contentType || '';
+          try {
+            const cd = (request.media && request.media.customData) || request.customData || {};
+            if (cd && cd.debug) dbgSetEnabled(true);
+          } catch (e) {}
           log('LOAD', url, ct);
+          dbg('LOAD contentId=' + url);
+          dbg('contentType=' + (ct || '(none)'));
 
-          if (isRawMpegTs(url, ct)) {
+          const useMpegts = isRawMpegTs(url, ct);
+          dbg('branch=' + (useMpegts ? 'mpegts.js (raw TS)' : 'CAF native'));
+          if (useMpegts) {
             // MPEG-TS brut → mpegts.js sur le <video> dedie. On indique
             // a CAF que le contenu est gere en externe : on lance la
             // lecture nous-memes et on renvoie null pour suspendre le
