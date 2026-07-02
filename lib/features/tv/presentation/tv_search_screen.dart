@@ -14,6 +14,12 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/data/search_history_repository.dart';
+import '../../vod/data/recent_vod_repository.dart';
+import '../../vod/data/series_repository.dart';
+import '../../vod/data/vod_repository.dart';
+import '../../vod/domain/vod_movie.dart';
+import '../../vod/domain/vod_series.dart';
+import 'tv_series_screen.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -29,6 +35,9 @@ class TvSearchScreen extends StatefulWidget {
 class _TvSearchScreenState extends State<TvSearchScreen> {
   String _q = '';
   List<Channel> _results = const <Channel>[];
+  // Résultats VOD (façon Netflix : la recherche couvre AUSSI films/séries).
+  List<VodMovie> _films = const <VodMovie>[];
+  List<VodSeries> _series = const <VodSeries>[];
   Timer? _debounce;
   // Jeton anti-désordre : chaque recherche asynchrone porte un numéro. Un
   // résultat qui revient APRÈS qu'une frappe plus récente soit partie est
@@ -87,6 +96,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     setState(() {
       _q = '';
       _results = const <Channel>[];
+      _films = const <VodMovie>[];
+      _series = const <VodSeries>[];
     });
   }
 
@@ -105,7 +116,13 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     final String t = _q.trim();
     final int epoch = ++_epoch;
     if (t.isEmpty) {
-      if (mounted) setState(() => _results = const <Channel>[]);
+      if (mounted) {
+        setState(() {
+          _results = const <Channel>[];
+          _films = const <VodMovie>[];
+          _series = const <VodSeries>[];
+        });
+      }
       return;
     }
     final List<Channel> r = await PlaylistRepository.instance
@@ -113,6 +130,30 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     // Une frappe plus récente est partie entre-temps → on jette ce résultat.
     if (!mounted || epoch != _epoch) return;
     setState(() => _results = r);
+
+    // ----- FILMS & SÉRIES (façon Netflix) -----
+    // Les catalogues VOD sont en CACHE MÉMOIRE (déjà plafonné RAM). Le tout
+    // est best-effort : les sections apparaissent quand elles sont prêtes,
+    // et le jeton `epoch` jette tout résultat périmé. Une erreur réseau ne
+    // casse jamais la recherche des chaînes.
+    final String q = t.toLowerCase();
+    try {
+      final List<VodMovie> movies = await VodRepository.instance.fetchMovies();
+      if (!mounted || epoch != _epoch) return;
+      setState(() => _films = movies
+          .where((VodMovie m) => m.name.toLowerCase().contains(q))
+          .take(20)
+          .toList(growable: false));
+    } catch (_) {/* pas de VOD → section absente */}
+    try {
+      final List<VodSeries> series =
+          await SeriesRepository.instance.fetchSeries();
+      if (!mounted || epoch != _epoch) return;
+      setState(() => _series = series
+          .where((VodSeries s) => s.name.toLowerCase().contains(q))
+          .take(20)
+          .toList(growable: false));
+    } catch (_) {/* idem */}
   }
 
   @override
@@ -149,63 +190,214 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
               ),
               const SizedBox(height: 14),
               Expanded(
-                child: res.isEmpty
+                child: (res.isEmpty && _films.isEmpty && _series.isEmpty)
                     ? _buildEmptyState(context)
-                    : GridView.builder(
-                        addAutomaticKeepAlives: false,
-                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 230,
-                          mainAxisExtent: 120,
-                          crossAxisSpacing: TvDimens.gutter,
-                          mainAxisSpacing: TvDimens.gutter,
-                        ),
-                        itemCount: res.length,
-                        itemBuilder: (BuildContext context, int i) => TvFocusable(
-                          scale: TvFocusScale.small,
-                          onSelect: () {
-                            // La recherche a servi (on ouvre un résultat) →
-                            // on la mémorise pour la reproposer plus tard.
-                            SearchHistoryRepository.instance.add(_q);
-                            Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) =>
-                                    TvPlayerScreen(channels: res, startIndex: i),
-                              ),
-                            );
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.all(10),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: <Widget>[
-                                Expanded(
-                                  child: (res[i].logoUrl != null && res[i].logoUrl!.isNotEmpty)
-                                      ? CachedNetworkImage(
-                                          imageUrl: res[i].logoUrl!,
-                                          fit: BoxFit.contain,
-                                          memCacheWidth: 200,
-                                          fadeInDuration: const Duration(milliseconds: 150),
-                                          placeholder: (_, __) => Opacity(opacity: 0.35, child: _ini(res[i])),
-                                          errorWidget: (_, __, ___) => _ini(res[i]))
-                                      : _ini(res[i]),
+                    // RÉSULTATS EN SECTIONS (façon Netflix) : Chaînes, Films,
+                    // Séries — chaque section est une rangée HORIZONTALE
+                    // paresseuse (seules les vignettes visibles existent).
+                    : ListView(
+                        children: <Widget>[
+                          if (res.isNotEmpty) ...<Widget>[
+                            _sectionTitle('Chaînes'),
+                            SizedBox(
+                              height: 132,
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                addAutomaticKeepAlives: false,
+                                itemExtent: 210,
+                                itemCount: res.length,
+                                itemBuilder: (BuildContext c, int i) =>
+                                    Padding(
+                                  padding: const EdgeInsets.only(right: 10),
+                                  child: _channelTile(res, i),
                                 ),
-                                const SizedBox(height: 6),
-                                Text(res[i].cleanName,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                        fontSize: TvDimens.caption,
-                                        fontWeight: FontWeight.w600,
-                                        color: TvTokens.text)),
-                              ],
+                              ),
                             ),
-                          ),
-                        ),
+                            const SizedBox(height: 18),
+                          ],
+                          if (_films.isNotEmpty) ...<Widget>[
+                            _sectionTitle('Films'),
+                            SizedBox(
+                              height: 214,
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                addAutomaticKeepAlives: false,
+                                itemExtent: 140,
+                                itemCount: _films.length,
+                                itemBuilder: (BuildContext c, int i) =>
+                                    Padding(
+                                  padding: const EdgeInsets.only(right: 10),
+                                  child: _filmCard(_films[i]),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                          ],
+                          if (_series.isNotEmpty) ...<Widget>[
+                            _sectionTitle('Séries'),
+                            SizedBox(
+                              height: 214,
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                addAutomaticKeepAlives: false,
+                                itemExtent: 140,
+                                itemCount: _series.length,
+                                itemBuilder: (BuildContext c, int i) =>
+                                    Padding(
+                                  padding: const EdgeInsets.only(right: 10),
+                                  child: _seriesCard(_series[i]),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
               ),
             ],
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _sectionTitle(String t) => Padding(
+        padding: const EdgeInsets.only(left: 2, bottom: 8),
+        child: Text(
+          t.toUpperCase(),
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: TvTokens.mutedDim,
+            letterSpacing: 1.6,
+          ),
+        ),
+      );
+
+  /// Vignette CHAÎNE (logo + nom). OK = lecture dans la liste des résultats.
+  Widget _channelTile(List<Channel> list, int i) {
+    final Channel ch = list[i];
+    return TvFocusable(
+      scale: TvFocusScale.small,
+      baseColor: TvTokens.card,
+      onSelect: () {
+        // La recherche a servi (on ouvre un résultat) → on la mémorise.
+        SearchHistoryRepository.instance.add(_q);
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => TvPlayerScreen(channels: list, startIndex: i),
+          ),
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Expanded(
+              child: (ch.logoUrl != null && ch.logoUrl!.isNotEmpty)
+                  ? CachedNetworkImage(
+                      imageUrl: ch.logoUrl!,
+                      fit: BoxFit.contain,
+                      memCacheWidth: 200,
+                      fadeInDuration: const Duration(milliseconds: 150),
+                      placeholder: (_, __) =>
+                          Opacity(opacity: 0.35, child: _ini(ch)),
+                      errorWidget: (_, __, ___) => _ini(ch))
+                  : _ini(ch),
+            ),
+            const SizedBox(height: 6),
+            Text(ch.cleanName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: TvDimens.caption,
+                    fontWeight: FontWeight.w600,
+                    color: TvTokens.text)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Affiche FILM (poster 2:3 + titre). OK = lecture + mémorise la recherche.
+  Widget _filmCard(VodMovie m) {
+    return TvFocusable(
+      scale: TvFocusScale.small,
+      baseColor: TvTokens.card,
+      onSelect: () {
+        SearchHistoryRepository.instance.add(_q);
+        RecentVodRepository.instance.add(m); // alimente « Derniers vus »
+        final Channel ch = Channel(
+          id: m.id,
+          name: m.name,
+          category: m.category,
+          streamUrl: m.streamUrl,
+          isLive: false,
+          logoUrl: m.posterUrl,
+        );
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) =>
+                TvPlayerScreen(channels: <Channel>[ch], startIndex: 0),
+          ),
+        );
+      },
+      child: _posterAndTitle(m.posterUrl, m.name, Icons.movie_rounded),
+    );
+  }
+
+  /// Affiche SÉRIE (poster + titre). OK = fiche de la série (saisons/épisodes).
+  Widget _seriesCard(VodSeries s) {
+    return TvFocusable(
+      scale: TvFocusScale.small,
+      baseColor: TvTokens.card,
+      onSelect: () {
+        SearchHistoryRepository.instance.add(_q);
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => TvSeriesDetailScreen(series: s),
+          ),
+        );
+      },
+      child: _posterAndTitle(s.posterUrl, s.name, Icons.live_tv_rounded),
+    );
+  }
+
+  Widget _posterAndTitle(String? url, String name, IconData fallbackIcon) {
+    final Widget fallback = Container(
+      color: TvTokens.tile,
+      child: Center(
+          child: Icon(fallbackIcon, size: 30, color: TvTokens.mutedDim)),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: (url == null || url.isEmpty)
+                ? fallback
+                : CachedNetworkImage(
+                    imageUrl: url,
+                    fit: BoxFit.cover,
+                    memCacheWidth: 300,
+                    placeholder: (_, __) => fallback,
+                    errorWidget: (_, __, ___) => fallback,
+                  ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Text(name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: TvDimens.caption,
+                  fontWeight: FontWeight.w600,
+                  color: TvTokens.text)),
         ),
       ],
     );
