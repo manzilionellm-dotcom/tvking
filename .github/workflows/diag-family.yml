@@ -12,6 +12,14 @@ name: Diag Abonnement Famille
 
 on:
   workflow_dispatch: {}
+  # Astuce (même mécanique que diag-api.yml) : pousser CE fichier déclenche
+  # le diagnostic — indispensable car un workflow absent de `main` ne peut
+  # pas être lancé manuellement via l'API.
+  push:
+    branches:
+      - 'claude/**'
+    paths:
+      - '.github/workflows/diag-family.yml'
 
 jobs:
   diag:
