@@ -74,9 +74,11 @@ class _TvFamilyJoinScreenState extends State<TvFamilyJoinScreen> {
       _code = '';
       _message = switch (err) {
         'code_invalid' => 'Code invalide ou expiré. Redemande un code.',
-        'family_full' => 'Cette famille est complète (5 appareils max).',
+        'family_full' => 'Cette famille est complète (limite du plan atteinte).',
         'owner_not_paid' =>
           'L\'abonnement du propriétaire n\'est plus actif.',
+        'plan_required' =>
+          'Le propriétaire n\'a pas l\'option PLAN FAMILLE — il doit la demander à son vendeur.',
         'own_code' => 'C\'est ton propre code 🙂 — il est pour tes proches.',
         _ => 'Impossible pour le moment. Réessaie plus tard.',
       };

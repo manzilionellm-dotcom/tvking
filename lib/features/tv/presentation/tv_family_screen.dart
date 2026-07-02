@@ -30,6 +30,12 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
   Map<String, dynamic>? _info; // réponse /api/family/info
   String? _error; // message doux (réseau / pas payé…)
   String? _confirmRemove; // MAC du membre en attente de confirmation
+  String? _renamingMember; // MAC du membre en cours de nommage (chips)
+
+  /// Noms proposés pour les membres (un clic, pas de clavier).
+  static const List<String> _kMemberNames = <String>[
+    'Papa', 'Maman', 'Enfant 1', 'Enfant 2', 'Ado', 'Salon', 'Chambre',
+  ];
 
   @override
   void initState() {
@@ -66,7 +72,9 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
               'Réservé aux abonnements ACTIFS (payés). Active d\'abord cet appareil.',
             'is_member' =>
               'Cet appareil est déjà rattaché à une famille — il ne peut pas inviter.',
-            'family_full' => 'Famille complète (5 appareils maximum).',
+            'family_full' => 'Famille complète (limite du plan atteinte).',
+            'plan_required' =>
+              'Le PLAN FAMILLE est une option de ton abonnement. Demande à ton vendeur de l\'activer. 👑',
             _ => 'Impossible pour le moment. Réessaie plus tard.',
           });
       return;
@@ -191,6 +199,41 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
     final List<dynamic> members =
         (info['members'] as List<dynamic>?) ?? <dynamic>[];
     final String? code = info['code'] as String?;
+    final bool planOn = info['plan'] == true;
+    final int maxM = (info['max'] as num?)?.toInt() ?? 4;
+
+    // PLAN FAMILLE NON ACTIVÉ : le partage est une OPTION vendue par le
+    // revendeur → écran « vitrine » qui donne envie et explique quoi faire.
+    if (!planOn) {
+      return <Widget>[
+        _card(Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const <Widget>[
+            Text('👨‍👩‍👧  PLAN FAMILLE',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: TvTokens.goldBright)),
+            SizedBox(height: 10),
+            Text(
+              'Partage ton abonnement avec tes proches (jusqu\'à 5 appareils, '
+              'comme Netflix) : chacun son appareil, un seul abonnement.\n\n'
+              'Cette option n\'est pas encore activée sur ton compte — '
+              'contacte ton vendeur pour l\'ajouter. 👑',
+              style: TextStyle(fontSize: 15, color: TvTokens.muted),
+            ),
+          ],
+        )),
+        const SizedBox(height: 16),
+        _goldButton(
+          icon: Icons.refresh_rounded,
+          label: 'J\'ai activé l\'option — Vérifier',
+          onSelect: _refresh,
+          autofocus: true,
+        ),
+      ];
+    }
+
     return <Widget>[
       // Code d'invitation (gros, lisible à 3 mètres).
       if (code != null) ...<Widget>[
@@ -234,7 +277,7 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
       ),
       const SizedBox(height: 24),
       Text(
-        'APPAREILS RATTACHÉS (${members.length}/4 + celui-ci)',
+        'MA FAMILLE (${members.length}/$maxM proches + cet appareil)',
         style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
@@ -249,7 +292,10 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
         for (final dynamic m in members)
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
               children: <Widget>[
                 Expanded(
                   child: _card(Row(
@@ -257,15 +303,65 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
                       const Icon(Icons.tv_rounded,
                           color: TvTokens.muted, size: 22),
                       const SizedBox(width: 12),
-                      Text(
-                        (m is Map ? (m['mac'] ?? '') : '').toString(),
-                        style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: TvTokens.text),
+                      // Nom du profil (« Papa »…) en grand ; la MAC en petit
+                      // dessous (utile au support). Sans nom → MAC seule.
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              (m is Map &&
+                                      (m['label'] ?? '').toString().isNotEmpty)
+                                  ? (m['label']).toString()
+                                  : (m is Map ? (m['mac'] ?? '') : '')
+                                      .toString(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: TvTokens.text),
+                            ),
+                            if (m is Map &&
+                                (m['label'] ?? '').toString().isNotEmpty)
+                              Text(
+                                (m['mac'] ?? '').toString(),
+                                style: const TextStyle(
+                                    fontSize: 12, color: TvTokens.mutedDim),
+                              ),
+                          ],
+                        ),
                       ),
                     ],
                   )),
+                ),
+                const SizedBox(width: 10),
+                // Nommer (« Papa », « Maman »… — ouvre les pastilles).
+                TvFocusBuilder(
+                  scale: TvFocusScale.small,
+                  onSelect: () {
+                    final String mm =
+                        (m is Map ? (m['mac'] ?? '') : '').toString();
+                    setState(() => _renamingMember =
+                        _renamingMember == mm ? null : mm);
+                  },
+                  builder: (BuildContext context, bool focused) {
+                    final Color bg = focused ? TvTokens.gold : TvTokens.card;
+                    final Color fg = focused
+                        ? const Color(0xFF1A1206)
+                        : TvTokens.muted;
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: bg,
+                        borderRadius:
+                            BorderRadius.circular(TvDimens.cardRadius),
+                        border: Border.all(color: TvTokens.lineSoft),
+                      ),
+                      child: Icon(Icons.edit_rounded, size: 20, color: fg),
+                    );
+                  },
                 ),
                 const SizedBox(width: 10),
                 // Détacher (2 temps anti-fausse-manip).
@@ -316,6 +412,56 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
                     );
                   },
                 ),
+              ],
+                ),
+                // ----- Pastilles de nommage (sous la ligne, façon Netflix) -----
+                if (_renamingMember ==
+                    (m is Map ? (m['mac'] ?? '') : '').toString())
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: <Widget>[
+                        for (final String name in _kMemberNames)
+                          TvFocusBuilder(
+                            scale: TvFocusScale.small,
+                            onSelect: () async {
+                              final String mm =
+                                  (m is Map ? (m['mac'] ?? '') : '')
+                                      .toString();
+                              await FamilyBackend.rename(_mac, mm, name);
+                              if (!mounted) return;
+                              setState(() => _renamingMember = null);
+                              await _refresh();
+                            },
+                            builder: (BuildContext context, bool focused) {
+                              final Color bg =
+                                  focused ? TvTokens.gold : TvTokens.card;
+                              final Color fg = focused
+                                  ? const Color(0xFF1A1206)
+                                  : TvTokens.text;
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: bg,
+                                  borderRadius: BorderRadius.circular(
+                                      TvDimens.cardRadius),
+                                  border:
+                                      Border.all(color: TvTokens.lineSoft),
+                                ),
+                                child: Text(name,
+                                    style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: fg)),
+                              );
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),

@@ -59,6 +59,15 @@ abstract final class FamilyBackend {
     }
   }
 
+  /// Le PROPRIÉTAIRE [mac] nomme un [member] (« Papa », « Maman »…).
+  static Future<bool> rename(String mac, String member, String label) async {
+    final Map<String, dynamic>? r = await _post(
+      '/api/family/rename',
+      <String, Object?>{'mac': mac, 'member': member, 'label': label},
+    );
+    return r != null && r['ok'] == true;
+  }
+
   /// Sans [member] : l'appareil [mac] QUITTE sa famille. Avec [member] :
   /// le propriétaire [mac] détache ce membre.
   static Future<bool> remove(String mac, {String? member}) async {
