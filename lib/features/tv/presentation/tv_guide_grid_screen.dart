@@ -28,6 +28,8 @@ import '../core/tv_logo.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_player_screen.dart';
+import 'tv_shell.dart';
+import 'tv_timeline_guide_screen.dart';
 
 class TvGuideGridScreen extends StatefulWidget {
   const TvGuideGridScreen({super.key});
@@ -114,11 +116,53 @@ class _TvGuideGridScreenState extends State<TvGuideGridScreen> {
       children: <Widget>[
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
-          child: Text(context.l10n.tvNavGuide.toUpperCase(),
-              style: TvTokens.ui(13,
-                  weight: FontWeight.w800,
-                  color: TvTokens.mutedDim,
-                  spacing: 2)),
+          child: Row(
+            children: <Widget>[
+              Text(context.l10n.tvNavGuide.toUpperCase(),
+                  style: TvTokens.ui(13,
+                      weight: FontWeight.w800,
+                      color: TvTokens.mutedDim,
+                      spacing: 2)),
+              const Spacer(),
+              // Vue GRILLE HORAIRE (style câble US) : chaînes × heures.
+              TvFocusBuilder(
+                scale: TvFocusScale.small,
+                onSelect: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        const TvShell(child: TvTimelineGuideScreen()),
+                  ),
+                ),
+                builder: (BuildContext context, bool focused) {
+                  final Color bg = focused ? TvTokens.gold : TvTokens.card;
+                  final Color fg =
+                      focused ? const Color(0xFF1A1206) : TvTokens.text;
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: bg,
+                      borderRadius:
+                          BorderRadius.circular(TvDimens.cardRadius),
+                      border: Border.all(color: TvTokens.lineSoft),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(Icons.grid_view_rounded, size: 18, color: fg),
+                        const SizedBox(width: 8),
+                        Text('Grille horaire',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
         Expanded(
           child: ListView.separated(
