@@ -2297,15 +2297,15 @@ async function ensureFamilySchema(env) {
   if (!env.DB) { _familySchemaError = 'no_db_binding'; return false; }
   try {
     await env.DB.prepare(
-      'CREATE TABLE IF NOT EXISTS family_links (' +
+      'CREATE TABLE IF NOT EXISTS app_family_links (' +
       'member_mac TEXT PRIMARY KEY, owner_mac TEXT NOT NULL, created_at INTEGER)',
     ).run();
     await env.DB.prepare(
-      'CREATE TABLE IF NOT EXISTS family_codes (' +
+      'CREATE TABLE IF NOT EXISTS app_family_codes (' +
       'code TEXT PRIMARY KEY, owner_mac TEXT NOT NULL, expires_at INTEGER NOT NULL)',
     ).run();
     await env.DB.prepare(
-      'CREATE INDEX IF NOT EXISTS idx_family_owner ON family_links(owner_mac)',
+      'CREATE INDEX IF NOT EXISTS idx_app_family_owner ON app_family_links(owner_mac)',
     ).run();
     _familySchemaError = '';
     return true;
@@ -2325,7 +2325,7 @@ async function familyOwnerOf(env, mac) {
   if (!env.DB) return null;
   try {
     const row = await env.DB
-      .prepare('SELECT owner_mac FROM family_links WHERE member_mac = ?')
+      .prepare('SELECT owner_mac FROM app_family_links WHERE member_mac = ?')
       .bind(String(mac).toUpperCase()).first();
     return row ? row.owner_mac : null;
   } catch (_) {
@@ -2379,7 +2379,7 @@ async function handleFamilyInvite(request, env) {
     return json({ ok: false, error: 'not_paid' });
   }
   const cnt = await env.DB
-    .prepare('SELECT COUNT(*) AS n FROM family_links WHERE owner_mac = ?')
+    .prepare('SELECT COUNT(*) AS n FROM app_family_links WHERE owner_mac = ?')
     .bind(mac).first();
   const members = (cnt && Number(cnt.n)) || 0;
   if (members >= FAMILY_MAX_MEMBERS) {
@@ -2391,9 +2391,9 @@ async function handleFamilyInvite(request, env) {
   crypto.getRandomValues(buf);
   const code = String(100000 + (buf[0] % 900000));
   const expiresAt = Date.now() + FAMILY_CODE_TTL_MS;
-  await env.DB.prepare('DELETE FROM family_codes WHERE owner_mac = ?').bind(mac).run();
+  await env.DB.prepare('DELETE FROM app_family_codes WHERE owner_mac = ?').bind(mac).run();
   await env.DB
-    .prepare('INSERT INTO family_codes (code, owner_mac, expires_at) VALUES (?, ?, ?)')
+    .prepare('INSERT INTO app_family_codes (code, owner_mac, expires_at) VALUES (?, ?, ?)')
     .bind(code, mac, expiresAt).run();
   return json({ ok: true, code, expires_at: expiresAt, members, max: FAMILY_MAX_MEMBERS });
 }
@@ -2410,7 +2410,7 @@ async function handleFamilyJoin(request, env) {
     return familyUnavailable();
   }
   const row = await env.DB
-    .prepare('SELECT owner_mac, expires_at FROM family_codes WHERE code = ?')
+    .prepare('SELECT owner_mac, expires_at FROM app_family_codes WHERE code = ?')
     .bind(code).first();
   if (!row || Number(row.expires_at) < Date.now()) {
     return json({ ok: false, error: 'code_invalid' });
@@ -2424,13 +2424,13 @@ async function handleFamilyJoin(request, env) {
   }
   // Plafond : 4 membres (hors ce mac s'il re-tape le code).
   const cnt = await env.DB
-    .prepare('SELECT COUNT(*) AS n FROM family_links WHERE owner_mac = ? AND member_mac != ?')
+    .prepare('SELECT COUNT(*) AS n FROM app_family_links WHERE owner_mac = ? AND member_mac != ?')
     .bind(owner, mac).first();
   if (((cnt && Number(cnt.n)) || 0) >= FAMILY_MAX_MEMBERS) {
     return json({ ok: false, error: 'family_full', max: FAMILY_MAX_MEMBERS });
   }
   await env.DB
-    .prepare('INSERT OR REPLACE INTO family_links (member_mac, owner_mac, created_at) VALUES (?, ?, ?)')
+    .prepare('INSERT OR REPLACE INTO app_family_links (member_mac, owner_mac, created_at) VALUES (?, ?, ?)')
     .bind(mac, owner, Date.now()).run();
   return json({ ok: true, owner: maskMac(owner) });
 }
@@ -2447,14 +2447,14 @@ async function handleFamilyInfo(env, rawMac) {
     return json({ ok: true, role: 'member', owner: maskMac(ownerMac) });
   }
   const rows = await env.DB
-    .prepare('SELECT member_mac, created_at FROM family_links WHERE owner_mac = ? ORDER BY created_at ASC')
+    .prepare('SELECT member_mac, created_at FROM app_family_links WHERE owner_mac = ? ORDER BY created_at ASC')
     .bind(mac).all();
   const members = ((rows && rows.results) || []).map((r) => ({
     mac: r.member_mac, // le propriétaire voit SES appareils en clair
     since: r.created_at,
   }));
   const codeRow = await env.DB
-    .prepare('SELECT code, expires_at FROM family_codes WHERE owner_mac = ? AND expires_at > ?')
+    .prepare('SELECT code, expires_at FROM app_family_codes WHERE owner_mac = ? AND expires_at > ?')
     .bind(mac, Date.now()).first();
   return json({
     ok: true,
@@ -2480,11 +2480,11 @@ async function handleFamilyRemove(request, env) {
   if (member) {
     // Détachement par le PROPRIÉTAIRE uniquement (le lien doit lui appartenir).
     await env.DB
-      .prepare('DELETE FROM family_links WHERE member_mac = ? AND owner_mac = ?')
+      .prepare('DELETE FROM app_family_links WHERE member_mac = ? AND owner_mac = ?')
       .bind(member, mac).run();
   } else {
     await env.DB
-      .prepare('DELETE FROM family_links WHERE member_mac = ?')
+      .prepare('DELETE FROM app_family_links WHERE member_mac = ?')
       .bind(mac).run();
   }
   return json({ ok: true });
