@@ -125,6 +125,7 @@ class AttemptResult {
     required this.durationMs,
     required this.success,
     this.errorMessage,
+    this.lastCastUrlRedacted,
   });
 
   /// Index brut dans la ladder (0 = direct, 1 = relay+full, 2 = relay+min).
@@ -143,6 +144,10 @@ class AttemptResult {
   final bool success;
   final String? errorMessage;
 
+  /// URL exacte transmise a loadMedia pour cette tentative (token masque).
+  /// Null si non applicable (ex: chemin DLNA ou echec avant loadMedia).
+  final String? lastCastUrlRedacted;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'strategy': strategyName,
         'urlKind': urlKind,
@@ -150,6 +155,8 @@ class AttemptResult {
         'durationMs': durationMs,
         'success': success,
         if (errorMessage != null) 'errorMessage': errorMessage,
+        if (lastCastUrlRedacted != null)
+          'lastCastUrlRedacted': lastCastUrlRedacted,
       };
 }
 
