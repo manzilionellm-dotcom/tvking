@@ -8,6 +8,8 @@
 #    3. invite depuis une MAC non payée → { ok:false, error:'not_paid' }
 #  Aucune écriture durable (pas de licence, pas de lien créé).
 # ============================================================================
+# Run 2 : le worker renvoie désormais `detail` dans family_unavailable →
+# cette exécution doit révéler la cause exacte de l'échec du schéma D1.
 name: Diag Abonnement Famille
 
 on:
