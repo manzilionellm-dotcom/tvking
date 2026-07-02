@@ -221,6 +221,7 @@ class GoogleCastApi {
     String mime = 'video/mp2t',
     String? subtitle,
     String? imageUrl,
+    bool debug = false,
   }) async {
     try {
       final bool? result = await _channel.invokeMethod<bool>(
@@ -231,6 +232,7 @@ class GoogleCastApi {
           'mime': mime,
           if (subtitle != null) 'subtitle': subtitle,
           if (imageUrl != null) 'imageUrl': imageUrl,
+          if (debug) 'debug': true,
         },
       );
       return result ?? false;
