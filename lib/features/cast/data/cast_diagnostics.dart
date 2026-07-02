@@ -21,6 +21,11 @@ import '../domain/cast_device.dart';
 import 'cast_manager.dart';
 import 'cast_session_diagnostic.dart';
 
+/// Commit Git injecte au build via --dart-define=GIT_SHA=... (CI).
+/// Vide en dev local. Permet de prouver quel commit tourne dans un rapport.
+const String kBuildCommit =
+    String.fromEnvironment('GIT_SHA', defaultValue: 'local');
+
 enum DiagnosticPreset {
   quick(label: 'Rapide', sampleSize: 3, description: '3 chaînes (~1 min)'),
   standard(label: 'Standard', sampleSize: 8, description: '8 chaînes (~3 min)'),
@@ -212,6 +217,7 @@ class DiagnosticBatchRunner extends ChangeNotifier {
       'meta': <String, dynamic>{
         'generatedAt': DateTime.now().toIso8601String(),
         'app': '7 MOTION',
+        'buildCommit': kBuildCommit,
         'device': <String, dynamic>{
           'name': device.name,
           'kind': device.kind.name,
