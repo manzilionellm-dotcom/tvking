@@ -25,6 +25,7 @@ import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../data/cast_diagnostics.dart';
 import '../data/cast_manager.dart';
+import '../data/cast_network_diagnostic.dart';
 import '../data/cast_session_diagnostic.dart';
 import '../domain/cast_device.dart';
 
@@ -39,6 +40,10 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
   CastDevice? _selectedDevice;
   DiagnosticPreset _preset = DiagnosticPreset.standard;
   DiagnosticBatchRunner? _runner;
+
+  // Diagnostic RÉSEAU (sans caster) — indépendant du batch runner.
+  String? _netReport;
+  bool _netRunning = false;
 
   @override
   void initState() {
@@ -97,6 +102,33 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
     setState(() => _runner = null);
   }
 
+  /// Diagnostic RÉSEAU du cast : 6 checks HTTP en séquence, SANS caster
+  /// (aucune interaction TV). Produit un rapport JSON copiable.
+  Future<void> _runNetworkDiag() async {
+    setState(() => _netRunning = true);
+    String report;
+    try {
+      report = await CastNetworkDiagnostic.run();
+    } catch (e, st) {
+      report = 'Erreur diagnostic réseau: $e\n$st';
+    }
+    if (!mounted) return;
+    setState(() {
+      _netRunning = false;
+      _netReport = report;
+    });
+  }
+
+  Future<void> _copyNetReport() async {
+    final String? r = _netReport;
+    if (r == null) return;
+    await Clipboard.setData(ClipboardData(text: r));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Rapport réseau copié dans le presse-papier')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -135,12 +167,27 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
                     locked: _runner?.isRunning ?? false,
                   ),
                   const SizedBox(height: 20),
-                  if (_runner == null)
+                  if (_runner == null) ...<Widget>[
                     _StartButton(
                       enabled: _selectedDevice != null,
                       onPressed: _start,
-                    )
-                  else ...<Widget>[
+                    ),
+                    const SizedBox(height: 12),
+                    // Diagnostic RÉSEAU : ne caste pas, ne touche pas la TV.
+                    // Sert à voir POURQUOI le cast retombe en relais
+                    // (/cast-sign 503 = secret Worker manquant, DNS, etc.).
+                    _NetworkDiagButton(
+                      running: _netRunning,
+                      onPressed: _netRunning ? null : _runNetworkDiag,
+                    ),
+                    if (_netReport != null) ...<Widget>[
+                      const SizedBox(height: 16),
+                      _NetworkReportCard(
+                        report: _netReport!,
+                        onCopy: _copyNetReport,
+                      ),
+                    ],
+                  ] else ...<Widget>[
                     _RunHeader(runner: _runner!),
                     const SizedBox(height: 12),
                     _ResultsTable(results: _runner!.results),
@@ -674,6 +721,96 @@ class _SummaryCard extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _NetworkDiagButton extends StatelessWidget {
+  const _NetworkDiagButton({required this.running, required this.onPressed});
+
+  final bool running;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 48,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: running
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.wifi_find_rounded),
+        label: Text(
+          running ? 'Diagnostic réseau en cours…' : 'Diagnostic réseau cast',
+        ),
+      ),
+    );
+  }
+}
+
+class _NetworkReportCard extends StatelessWidget {
+  const _NetworkReportCard({required this.report, required this.onCopy});
+
+  final String report;
+  final VoidCallback onCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(Icons.lan_outlined, size: 18, color: AppColors.accent),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Rapport réseau cast',
+                  style: AppTextStyles.bodyMedium
+                      .copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: onCopy,
+                icon: const Icon(Icons.copy_rounded, size: 16),
+                label: const Text('Copier'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            constraints: const BoxConstraints(maxHeight: 340),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.background,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: SingleChildScrollView(
+              child: SelectableText(
+                report,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

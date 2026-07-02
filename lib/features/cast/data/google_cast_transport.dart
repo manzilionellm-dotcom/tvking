@@ -433,7 +433,14 @@ class GoogleCastTransport implements CastTransport {
   /// secret HMAC reste côté serveur (jamais dans l'app). Renvoie l'URL HTTPS de
   /// même origine que le récepteur à lui envoyer, ou `null` si la signature
   /// échoue (→ repli relais HLS du téléphone). Best-effort, ne jette jamais.
-  Future<String?> _signedCastProxyUrl(String upstreamUrl) async {
+  /// DIAGNOSTIC RÉSEAU — expose la MÊME fonction que [playStream] utilise pour
+  /// décider proxy vs relais (check 6 du diagnostic réseau). Retourne l'URL
+  /// /cast-proxy signée, ou null si /cast-sign n'a pas répondu {ok:true} → dans
+  /// ce cas playStream retombe sur le relais HLS. Ne jette jamais.
+  static Future<String?> diagnosticSignedCastProxyUrl(String upstreamUrl) =>
+      _signedCastProxyUrl(upstreamUrl);
+
+  static Future<String?> _signedCastProxyUrl(String upstreamUrl) async {
     final HttpClient client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 6);
     try {
