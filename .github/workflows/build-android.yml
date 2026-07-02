@@ -799,6 +799,16 @@ jobs:
           # de diagnostiquer le problème sans accès aux logs détaillés.
           set -ex
           REPO="${{ github.repository }}"
+          # ANTI-CLOBBER : la branche du correctif cast publie sur une release
+          # DÉDIÉE (cast-fix-latest) que RIEN d'autre n'écrase. Les autres
+          # branches (main/develop/feature/…) continuent d'écrire "latest".
+          # Sinon n'importe quel push d'une AUTRE branche remplaçait notre APK.
+          if [ "${{ github.ref_name }}" = "claude/iptv-chromecast-cast-WeAyo" ]; then
+            TAG="cast-fix-latest"
+          else
+            TAG="latest"
+          fi
+          echo ">>> Release cible : $TAG (branche ${{ github.ref_name }})"
           APK="build/app/outputs/flutter-apk/7motion.apk"
           APK_COMPAT="build/app/outputs/flutter-apk/app-debug.apk"
           AAB="build/app/outputs/bundle/release/7motion.aab"
@@ -811,6 +821,7 @@ jobs:
 
           • Commit : \`${{ github.sha }}\`
           • Run : #${{ github.run_number }}
+          • Branche : \`${{ github.ref_name }}\`
 
           **Installer / mettre à jour :**
           1. Ouvre ce lien sur ton téléphone Android
@@ -819,27 +830,27 @@ jobs:
           4. Lance l'APK pour installer
 
           Lien direct (à donner aux clients) :
-          https://github.com/$REPO/releases/download/latest/7motion.apk"
+          https://github.com/$REPO/releases/download/$TAG/7motion.apk"
 
           gh --version
           gh auth status
 
-          if gh release view latest --repo "$REPO"; then
-            echo ">>> Release latest existe, on l'édite"
-            gh release edit latest --repo "$REPO" \
+          if gh release view "$TAG" --repo "$REPO"; then
+            echo ">>> Release $TAG existe, on l'édite"
+            gh release edit "$TAG" --repo "$REPO" \
               --title "7 MOTION — dernier build" \
               --notes "$NOTES" \
               --prerelease
             # Publie le nom propre 7motion.apk ET garde app-debug.apk
             # (même binaire) pour compat Worker/anciens liens.
-            gh release upload latest --repo "$REPO" --clobber "$APK" "$APK_COMPAT"
+            gh release upload "$TAG" --repo "$REPO" --clobber "$APK" "$APK_COMPAT"
           else
-            echo ">>> Release latest absente, on la crée"
+            echo ">>> Release $TAG absente, on la crée"
             # NB : pas de `--latest` ici. GitHub refuse (HTTP 422) qu'une
             # release soit à la fois `--prerelease` ET marquée "Latest".
             # On reste cohérent avec la branche edit (prerelease) ; le tag
-            # `latest` sert juste de lien stable, pas de badge "Latest".
-            gh release create latest --repo "$REPO" \
+            # sert juste de lien stable, pas de badge "Latest".
+            gh release create "$TAG" --repo "$REPO" \
               --title "7 MOTION — dernier build" \
               --notes "$NOTES" \
               --prerelease \
@@ -847,11 +858,11 @@ jobs:
           fi
 
           # Bonus Google Play : publie aussi l'App Bundle (.aab) signé sur
-          # la release latest → lien direct stable pour le télécharger.
+          # la release → lien direct stable pour le télécharger.
           # Non bloquant (si absent, on n'échoue pas le build).
           if [ -f "$AAB" ]; then
             echo ">>> Upload AAB (Google Play)"
-            gh release upload latest --repo "$REPO" --clobber "$AAB" || true
+            gh release upload "$TAG" --repo "$REPO" --clobber "$AAB" || true
           fi
 
           # version.json — manifeste lu par l'updater in-app pour
@@ -859,15 +870,15 @@ jobs:
           cat > version.json <<JSON
           {
             "versionCode": ${{ github.run_number }},
-            "versionName": "0.3.0",
-            "url": "https://github.com/$REPO/releases/download/latest/7motion.apk",
+            "versionName": "0.3.1",
+            "url": "https://github.com/$REPO/releases/download/$TAG/7motion.apk",
             "mandatory": false
           }
           JSON
-          gh release upload latest --repo "$REPO" --clobber version.json || true
+          gh release upload "$TAG" --repo "$REPO" --clobber version.json || true
 
           echo ">>> État final"
-          gh release view latest --repo "$REPO"
+          gh release view "$TAG" --repo "$REPO"
 
       # Bonus : tag versionné (un par run) pour garder un historique
       - name: Publish versioned release

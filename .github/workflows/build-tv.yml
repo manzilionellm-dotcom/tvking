@@ -384,6 +384,15 @@ jobs:
         run: |
           set -ex
           REPO="${{ github.repository }}"
+          # ANTI-CLOBBER : la branche du correctif cast publie sur une release
+          # DÉDIÉE (cast-fix-tv-latest) que rien d'autre n'écrase. Les autres
+          # branches continuent d'écrire "tv-latest".
+          if [ "${{ github.ref_name }}" = "claude/iptv-chromecast-cast-WeAyo" ]; then
+            TAG="cast-fix-tv-latest"
+          else
+            TAG="tv-latest"
+          fi
+          echo ">>> Release cible : $TAG (branche ${{ github.ref_name }})"
           SRC="build/app/outputs/flutter-apk/app-release.apk"
           OUT="build/app/outputs/flutter-apk/defew-tv.apk"
           cp "$SRC" "$OUT"
@@ -391,15 +400,15 @@ jobs:
 
           APK UNIVERSEL : s'installe sur TOUS les Fire Stick (32/64 bits) et
           box Android TV. Même backend/panel que le mobile. Sideload :
-          Downloader → https://github.com/$REPO/releases/download/tv-latest/defew-tv.apk
+          Downloader → https://github.com/$REPO/releases/download/$TAG/defew-tv.apk
 
-          Commit : ${{ github.sha }}"
-          if gh release view tv-latest --repo "$REPO" >/dev/null 2>&1; then
-            gh release edit tv-latest --repo "$REPO" --notes "$NOTES"
-            gh release upload tv-latest --repo "$REPO" --clobber "$OUT"
+          Commit : ${{ github.sha }} · Branche : ${{ github.ref_name }}"
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$REPO" --notes "$NOTES"
+            gh release upload "$TAG" --repo "$REPO" --clobber "$OUT"
           else
-            gh release create tv-latest --repo "$REPO" \
+            gh release create "$TAG" --repo "$REPO" \
               --title "DeFew TV — dernier build" \
               --notes "$NOTES" --prerelease "$OUT"
           fi
-          gh release view tv-latest --repo "$REPO"
+          gh release view "$TAG" --repo "$REPO"
