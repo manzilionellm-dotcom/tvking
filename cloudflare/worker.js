@@ -2289,8 +2289,12 @@ async function handleHeartbeat(request, env, ctx) {
 const FAMILY_MAX_MEMBERS = 4; // + le propriétaire = 5 appareils
 const FAMILY_CODE_TTL_MS = 48 * 60 * 60 * 1000; // code valable 48 h
 
+// Dernière erreur de création du schéma famille (diagnostic — lisible dans
+// la réponse `family_unavailable` pour comprendre un échec en prod).
+let _familySchemaError = '';
+
 async function ensureFamilySchema(env) {
-  if (!env.DB) return false;
+  if (!env.DB) { _familySchemaError = 'no_db_binding'; return false; }
   try {
     await env.DB.prepare(
       'CREATE TABLE IF NOT EXISTS family_links (' +
@@ -2303,10 +2307,17 @@ async function ensureFamilySchema(env) {
     await env.DB.prepare(
       'CREATE INDEX IF NOT EXISTS idx_family_owner ON family_links(owner_mac)',
     ).run();
+    _familySchemaError = '';
     return true;
-  } catch (_) {
+  } catch (e) {
+    _familySchemaError = String((e && e.message) || e).slice(0, 200);
     return false;
   }
+}
+
+/// Réponse « famille indisponible » AVEC la cause (diagnostic).
+function familyUnavailable() {
+  return json({ ok: false, error: 'family_unavailable', detail: _familySchemaError });
 }
 
 /// MAC du propriétaire si `mac` est un MEMBRE d'une famille, sinon null.
@@ -2356,7 +2367,7 @@ async function handleFamilyInvite(request, env) {
   const mac = String(body?.mac || '').toUpperCase();
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   if (!env.DB || !(await ensureFamilySchema(env))) {
-    return json({ ok: false, error: 'family_unavailable' });
+    return familyUnavailable();
   }
   // Un membre ne peut pas devenir propriétaire (pas de chaînes de partage).
   if (await familyOwnerOf(env, mac)) {
@@ -2396,7 +2407,7 @@ async function handleFamilyJoin(request, env) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   if (!/^[0-9]{6}$/.test(code)) return json({ ok: false, error: 'code_invalid' });
   if (!env.DB || !(await ensureFamilySchema(env))) {
-    return json({ ok: false, error: 'family_unavailable' });
+    return familyUnavailable();
   }
   const row = await env.DB
     .prepare('SELECT owner_mac, expires_at FROM family_codes WHERE code = ?')
@@ -2429,7 +2440,7 @@ async function handleFamilyInfo(env, rawMac) {
   const mac = String(rawMac || '').toUpperCase();
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   if (!env.DB || !(await ensureFamilySchema(env))) {
-    return json({ ok: false, error: 'family_unavailable' });
+    return familyUnavailable();
   }
   const ownerMac = await familyOwnerOf(env, mac);
   if (ownerMac) {
@@ -2463,7 +2474,7 @@ async function handleFamilyRemove(request, env) {
   const mac = String(body?.mac || '').toUpperCase();
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   if (!env.DB || !(await ensureFamilySchema(env))) {
-    return json({ ok: false, error: 'family_unavailable' });
+    return familyUnavailable();
   }
   const member = String(body?.member || '').toUpperCase();
   if (member) {
