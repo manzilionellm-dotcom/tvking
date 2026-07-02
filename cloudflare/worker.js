@@ -2247,7 +2247,8 @@ async function handleHeartbeat(request, env, ctx) {
     await ensureD1Device(env, mac, now);
     // Enrichissement (modèle, build…) pas nécessaire à la réponse → en fond.
     defer(updateDeviceInfo(env, mac, body));
-    const d1 = await d1StatusForMac(env, mac, now);
+    // « Conscient de la famille » : un membre hérite du statut du proprio.
+    const d1 = await familyStatusForMac(env, mac, now);
     if (d1) return json({ ok: true, created: true, ...d1 });
   }
 
@@ -2268,6 +2269,217 @@ async function handleHeartbeat(request, env, ctx) {
 }
 
 // =========================================================
+//  ABONNEMENT FAMILLE (partage type Netflix — 5 appareils max)
+// =========================================================
+//  Le PROPRIÉTAIRE (abonnement payé) génère un CODE d'invitation à 6
+//  chiffres (48 h). Un proche le tape sur SON appareil → sa MAC est
+//  RATTACHÉE à l'abonnement du propriétaire : même statut (payé/expiré/
+//  gelé suivent le propriétaire automatiquement) et même source IPTV.
+//
+//  GARDE-FOUS :
+//   • 1 propriétaire + 4 membres max (5 appareils) ;
+//   • le blocage manuel (banni/gelé) d'un APPAREIL prime toujours ;
+//   • un membre ne peut pas inviter à son tour (pas de chaînes de partage) ;
+//   • FAIL-OPEN total : si les tables famille manquent ou si D1 tousse,
+//     tout se comporte EXACTEMENT comme avant (aucun client bloqué).
+//
+//  ⚠️ Connexions SIMULTANÉES : c'est la ligne Xtream (max_connections du
+//  panel IPTV) qui limite le nombre de flux en même temps — pas l'app.
+// =========================================================
+const FAMILY_MAX_MEMBERS = 4; // + le propriétaire = 5 appareils
+const FAMILY_CODE_TTL_MS = 48 * 60 * 60 * 1000; // code valable 48 h
+
+async function ensureFamilySchema(env) {
+  if (!env.DB) return false;
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS family_links (' +
+      'member_mac TEXT PRIMARY KEY, owner_mac TEXT NOT NULL, created_at INTEGER)',
+    ).run();
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS family_codes (' +
+      'code TEXT PRIMARY KEY, owner_mac TEXT NOT NULL, expires_at INTEGER NOT NULL)',
+    ).run();
+    await env.DB.prepare(
+      'CREATE INDEX IF NOT EXISTS idx_family_owner ON family_links(owner_mac)',
+    ).run();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// MAC du propriétaire si `mac` est un MEMBRE d'une famille, sinon null.
+async function familyOwnerOf(env, mac) {
+  if (!env.DB) return null;
+  try {
+    const row = await env.DB
+      .prepare('SELECT owner_mac FROM family_links WHERE member_mac = ?')
+      .bind(String(mac).toUpperCase()).first();
+    return row ? row.owner_mac : null;
+  } catch (_) {
+    return null; // tables absentes → comportement historique
+  }
+}
+
+function maskMac(mac) {
+  const s = String(mac || '');
+  return s.length > 8 ? '…' + s.slice(-8) : s;
+}
+
+/// Statut « conscient de la famille » : la licence PROPRE de l'appareil
+/// prime si elle est jouable ; sinon, si l'appareil est rattaché à un
+/// propriétaire PAYÉ et jouable, il hérite de son statut. Le blocage
+/// manuel (banni/gelé) de l'appareil lui-même prime sur tout.
+async function familyStatusForMac(env, mac, now = Date.now()) {
+  const own = await d1StatusForMac(env, mac, now);
+  // Blocage manuel de CET appareil → prime (contrôle admin/revendeur).
+  if (own && (own.banned || own.frozen) && own.source === 'd1-block') return own;
+  // Sa propre licence est jouable → elle prime.
+  if (own && own.paid && !own.expired) return own;
+  const ownerMac = await familyOwnerOf(env, mac);
+  if (!ownerMac) return own;
+  try {
+    const ost = await d1StatusForMac(env, ownerMac, now);
+    if (ost && ost.paid && !ost.expired && !ost.frozen && !ost.banned) {
+      // L'appareil hérite du statut du propriétaire (payé, échéance, plan).
+      return { ...ost, family: true, family_owner: maskMac(ownerMac) };
+    }
+  } catch (_) { /* fail-open */ }
+  return own;
+}
+
+/// POST /api/family/invite  { mac }  → génère le code d'invitation.
+async function handleFamilyInvite(request, env) {
+  let body;
+  try { body = await request.json(); } catch (_) { return badRequest('invalid JSON body'); }
+  const mac = String(body?.mac || '').toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  if (!env.DB || !(await ensureFamilySchema(env))) {
+    return json({ ok: false, error: 'family_unavailable' });
+  }
+  // Un membre ne peut pas devenir propriétaire (pas de chaînes de partage).
+  if (await familyOwnerOf(env, mac)) {
+    return json({ ok: false, error: 'is_member' });
+  }
+  // Réservé aux abonnements PAYÉS et jouables.
+  const st = await d1StatusForMac(env, mac);
+  if (!st || !st.paid || st.expired || st.frozen || st.banned) {
+    return json({ ok: false, error: 'not_paid' });
+  }
+  const cnt = await env.DB
+    .prepare('SELECT COUNT(*) AS n FROM family_links WHERE owner_mac = ?')
+    .bind(mac).first();
+  const members = (cnt && Number(cnt.n)) || 0;
+  if (members >= FAMILY_MAX_MEMBERS) {
+    return json({ ok: false, error: 'family_full', members, max: FAMILY_MAX_MEMBERS });
+  }
+  // Code à 6 chiffres (facile à taper à la télécommande), 1 seul actif par
+  // propriétaire (le nouveau remplace l'ancien).
+  const buf = new Uint32Array(1);
+  crypto.getRandomValues(buf);
+  const code = String(100000 + (buf[0] % 900000));
+  const expiresAt = Date.now() + FAMILY_CODE_TTL_MS;
+  await env.DB.prepare('DELETE FROM family_codes WHERE owner_mac = ?').bind(mac).run();
+  await env.DB
+    .prepare('INSERT INTO family_codes (code, owner_mac, expires_at) VALUES (?, ?, ?)')
+    .bind(code, mac, expiresAt).run();
+  return json({ ok: true, code, expires_at: expiresAt, members, max: FAMILY_MAX_MEMBERS });
+}
+
+/// POST /api/family/join  { mac, code }  → rattache l'appareil au proprio.
+async function handleFamilyJoin(request, env) {
+  let body;
+  try { body = await request.json(); } catch (_) { return badRequest('invalid JSON body'); }
+  const mac = String(body?.mac || '').toUpperCase();
+  const code = String(body?.code || '').trim();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  if (!/^[0-9]{6}$/.test(code)) return json({ ok: false, error: 'code_invalid' });
+  if (!env.DB || !(await ensureFamilySchema(env))) {
+    return json({ ok: false, error: 'family_unavailable' });
+  }
+  const row = await env.DB
+    .prepare('SELECT owner_mac, expires_at FROM family_codes WHERE code = ?')
+    .bind(code).first();
+  if (!row || Number(row.expires_at) < Date.now()) {
+    return json({ ok: false, error: 'code_invalid' });
+  }
+  const owner = String(row.owner_mac).toUpperCase();
+  if (owner === mac) return json({ ok: false, error: 'own_code' });
+  // Le propriétaire doit TOUJOURS être payé au moment du rattachement.
+  const ost = await d1StatusForMac(env, owner);
+  if (!ost || !ost.paid || ost.expired || ost.frozen || ost.banned) {
+    return json({ ok: false, error: 'owner_not_paid' });
+  }
+  // Plafond : 4 membres (hors ce mac s'il re-tape le code).
+  const cnt = await env.DB
+    .prepare('SELECT COUNT(*) AS n FROM family_links WHERE owner_mac = ? AND member_mac != ?')
+    .bind(owner, mac).first();
+  if (((cnt && Number(cnt.n)) || 0) >= FAMILY_MAX_MEMBERS) {
+    return json({ ok: false, error: 'family_full', max: FAMILY_MAX_MEMBERS });
+  }
+  await env.DB
+    .prepare('INSERT OR REPLACE INTO family_links (member_mac, owner_mac, created_at) VALUES (?, ?, ?)')
+    .bind(mac, owner, Date.now()).run();
+  return json({ ok: true, owner: maskMac(owner) });
+}
+
+/// GET /api/family/info/:mac → vue famille (propriétaire OU membre).
+async function handleFamilyInfo(env, rawMac) {
+  const mac = String(rawMac || '').toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  if (!env.DB || !(await ensureFamilySchema(env))) {
+    return json({ ok: false, error: 'family_unavailable' });
+  }
+  const ownerMac = await familyOwnerOf(env, mac);
+  if (ownerMac) {
+    return json({ ok: true, role: 'member', owner: maskMac(ownerMac) });
+  }
+  const rows = await env.DB
+    .prepare('SELECT member_mac, created_at FROM family_links WHERE owner_mac = ? ORDER BY created_at ASC')
+    .bind(mac).all();
+  const members = ((rows && rows.results) || []).map((r) => ({
+    mac: r.member_mac, // le propriétaire voit SES appareils en clair
+    since: r.created_at,
+  }));
+  const codeRow = await env.DB
+    .prepare('SELECT code, expires_at FROM family_codes WHERE owner_mac = ? AND expires_at > ?')
+    .bind(mac, Date.now()).first();
+  return json({
+    ok: true,
+    role: 'owner',
+    members,
+    max: FAMILY_MAX_MEMBERS,
+    code: codeRow ? codeRow.code : null,
+    code_expires_at: codeRow ? codeRow.expires_at : null,
+  });
+}
+
+/// POST /api/family/remove { mac, member? } — le propriétaire détache un
+/// membre ; sans `member`, l'appareil se détache LUI-MÊME (quitter).
+async function handleFamilyRemove(request, env) {
+  let body;
+  try { body = await request.json(); } catch (_) { return badRequest('invalid JSON body'); }
+  const mac = String(body?.mac || '').toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  if (!env.DB || !(await ensureFamilySchema(env))) {
+    return json({ ok: false, error: 'family_unavailable' });
+  }
+  const member = String(body?.member || '').toUpperCase();
+  if (member) {
+    // Détachement par le PROPRIÉTAIRE uniquement (le lien doit lui appartenir).
+    await env.DB
+      .prepare('DELETE FROM family_links WHERE member_mac = ? AND owner_mac = ?')
+      .bind(member, mac).run();
+  } else {
+    await env.DB
+      .prepare('DELETE FROM family_links WHERE member_mac = ?')
+      .bind(mac).run();
+  }
+  return json({ ok: true });
+}
+
+// =========================================================
 //  STATUS PUBLIC — appelé par l'app à chaque démarrage juste
 //  après le heartbeat, pour savoir si elle doit afficher
 //  l'écran 'essai expiré' ou 'compte gelé'.
@@ -2277,10 +2489,12 @@ async function handlePublicStatus(env, mac) {
   // D1 en priorite. Si la MAC n'est pas encore connue (status appele
   // avant le heartbeat), on la cree pour demarrer l'essai 7 j.
   if (env.DB) {
-    let d1 = await d1StatusForMac(env, mac);
+    // « Conscient de la famille » : un membre rattaché hérite du statut
+    // (payé/échéance) de son propriétaire — cf. familyStatusForMac.
+    let d1 = await familyStatusForMac(env, mac);
     if (!d1) {
       await ensureD1Device(env, mac);
-      d1 = await d1StatusForMac(env, mac);
+      d1 = await familyStatusForMac(env, mac);
     }
     if (d1) return json(d1);
   }
@@ -2640,7 +2854,9 @@ async function handlePublicDeviceSource(env, mac) {
   //    coupe pas un client légitime sur une panne transitoire).
   if (env.DB) {
     try {
-      const st = await d1StatusForMac(env, MAC);
+      // « Conscient de la famille » : un membre rattaché à un proprio payé
+      // n'est PAS bloqué (il hérite de sa licence).
+      const st = await familyStatusForMac(env, MAC);
       if (st && (st.expired || st.frozen || st.banned)) {
         return jsonPrivate({
           mac: MAC,
@@ -2658,13 +2874,29 @@ async function handlePublicDeviceSource(env, mac) {
   //    (activation avec source). Source prioritaire.
   if (env.DB) {
     try {
-      const row = await env.DB
+      let row = await env.DB
         .prepare(
           `SELECT type, label, server_url, username, password, m3u_url, epg_url, sources_json, updated_at
              FROM device_sources WHERE mac = ?`,
         )
         .bind(MAC)
         .first();
+      // FAMILLE : pas de source assignée à CE membre → il reçoit celle de
+      // son PROPRIÉTAIRE (même abonnement, même bouquet). Best-effort.
+      if (!row) {
+        try {
+          const ownerMac = await familyOwnerOf(env, MAC);
+          if (ownerMac) {
+            row = await env.DB
+              .prepare(
+                `SELECT type, label, server_url, username, password, m3u_url, epg_url, sources_json, updated_at
+                   FROM device_sources WHERE mac = ?`,
+              )
+              .bind(String(ownerMac).toUpperCase())
+              .first();
+          }
+        } catch (_) { /* fail-open */ }
+      }
       if (row) {
         // TRIO : si un tableau de sources est stocké, on le renvoie en
         // entier (l'app charge les 3). Sinon, la source simple historique.
@@ -3067,7 +3299,8 @@ async function handleRequest(request, env, ctx) {
       if (seg0 === 'api') {
         if (seg1 === 'ai') rl = ['ai', 30];                        // 30 / min (LLM payant)
         else if (seg1 === 'device-source' || seg1 === 'backup'
-          || seg1 === 'status' || seg1 === 'history') rl = ['dev', 120]; // anti-énumération MAC
+          || seg1 === 'status' || seg1 === 'history'
+          || seg1 === 'family') rl = ['dev', 120]; // anti-énumération MAC + anti-brute-force code famille
         else if (seg1 === 'heartbeat' || seg1 === 'trending'
           || seg1 === 'announcement' || seg1 === 'sports'
           || seg1 === 'feedback' || seg1 === 'm3u') rl = ['pub', 240];
@@ -3127,6 +3360,29 @@ async function handleRequest(request, env, ctx) {
         return badRequest('only GET supported on /api/history/:mac');
       }
       return await handlePublicHistory(env, segments[2]);
+    }
+
+    // /api/family/* — ABONNEMENT FAMILLE (partage type Netflix, 5 appareils).
+    // invite (proprio génère un code), join (un proche le tape), info
+    // (vue famille), remove (détacher un membre / se détacher).
+    if (segments[0] === 'api' && segments[1] === 'family') {
+      if (segments[2] === 'invite' && segments.length === 3) {
+        if (request.method !== 'POST') return badRequest('only POST supported');
+        return handleFamilyInvite(request, env);
+      }
+      if (segments[2] === 'join' && segments.length === 3) {
+        if (request.method !== 'POST') return badRequest('only POST supported');
+        return handleFamilyJoin(request, env);
+      }
+      if (segments[2] === 'info' && segments.length === 4) {
+        if (request.method !== 'GET') return badRequest('only GET supported');
+        return handleFamilyInfo(env, segments[3]);
+      }
+      if (segments[2] === 'remove' && segments.length === 3) {
+        if (request.method !== 'POST') return badRequest('only POST supported');
+        return handleFamilyRemove(request, env);
+      }
+      return badRequest('unknown family endpoint');
     }
 
     // /api/trending — public, top des chaînes les plus regardées EN CE MOMENT

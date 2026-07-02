@@ -17,6 +17,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_add_source_screen.dart';
 import 'tv_components.dart';
+import 'tv_family_join_screen.dart';
 import 'tv_shell.dart';
 
 class TvActivationScreen extends StatefulWidget {
@@ -155,6 +156,30 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
                   color: focused ? TvTokens.sel : Colors.transparent,
                 ),
                 child: Text(context.l10n.tvAddOwnList,
+                    style: TvTokens.ui(19, weight: FontWeight.w600,
+                        color: focused ? TvTokens.goldBright : TvTokens.muted)),
+              ),
+            ),
+            const SizedBox(height: 14),
+            // ABONNEMENT FAMILLE : un proche a déjà payé → il suffit de taper
+            // son code à 6 chiffres (généré dans Réglages → Abonnement
+            // Famille) pour rattacher CET appareil au même abonnement.
+            TvFocusBuilder(
+              scale: TvFocusScale.large,
+              onSelect: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const TvShell(child: TvFamilyJoinScreen()),
+                ),
+              ),
+              builder: (BuildContext context, bool focused) => Container(
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(TvTokens.rButton),
+                  border: Border.all(color: focused ? TvTokens.gold : TvTokens.line),
+                  color: focused ? TvTokens.sel : Colors.transparent,
+                ),
+                child: Text('👨‍👩‍👧  J\'ai un code famille',
                     style: TvTokens.ui(19, weight: FontWeight.w600,
                         color: focused ? TvTokens.goldBright : TvTokens.muted)),
               ),
