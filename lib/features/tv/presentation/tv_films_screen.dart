@@ -1,21 +1,29 @@
 // =========================================================
-//  tv_films_screen.dart — Films (VOD) 10-foot
+//  tv_films_screen.dart — Films (VOD) 10-foot, présentation « Netflix »
 // =========================================================
-//  Onglet FILMS : catalogue VOD du compte Xtream connecté. À gauche, les
-//  catégories (focusables) ; à droite, une grille d'AFFICHES navigable à la
-//  télécommande. OK sur un film → lecteur plein écran (ExoPlayer).
+//  Onglet FILMS refondu façon Netflix :
+//    • en HAUT : une grande AFFICHE VEDETTE (le dernier film vu, sinon le
+//      premier du catalogue) avec titre, année/note et bouton ▶ Regarder ;
+//    • en dessous : des RANGÉES HORIZONTALES défilables au D-pad —
+//      d'abord « Derniers vus » (mémoire locale), puis une rangée PAR
+//      catégorie du catalogue.
 //
-//  Données : VodRepository.fetchMovies() (récupéré une fois depuis Xtream et
-//  mis en cache mémoire, déjà PLAFONNÉ selon la RAM de la box — anti-OOM). Le
-//  filtrage par catégorie se fait sur cette liste bornée.
+//  PERF (box RAM limitée) : tout est PARESSEUX. La liste verticale des
+//  rangées est un ListView.builder (seules les rangées visibles existent),
+//  et chaque rangée est un ListView.builder horizontal (seules les affiches
+//  visibles sont construites). Les affiches passent par CachedNetworkImage
+//  avec memCacheWidth (déjà la règle dans l'app). Le catalogue vient de
+//  VodRepository (cache mémoire PLAFONNÉ selon la RAM — inchangé).
 //
-//  S'il n'y a pas de compte Xtream (que du M3U) ou pas de VOD → message clair.
+//  Données : VodRepository.fetchMovies(). S'il n'y a pas de VOD → message.
+//  Zéro contact avec le lecteur vidéo (on pousse TvPlayerScreen comme avant).
 // =========================================================
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
+import '../../vod/data/recent_vod_repository.dart';
 import '../../vod/data/vod_repository.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../core/tv_dimens.dart';
@@ -34,8 +42,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   bool _loading = true;
   List<VodMovie> _all = const <VodMovie>[];
   List<String> _cats = const <String>[];
-  String? _selectedCat;
-  List<VodMovie> _shown = const <VodMovie>[];
+  Map<String, List<VodMovie>> _byCat = const <String, List<VodMovie>>{};
+  List<VodMovie> _recent = const <VodMovie>[];
 
   @override
   void initState() {
@@ -47,40 +55,28 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     if (mounted) setState(() => _loading = true);
     final List<VodMovie> movies =
         await VodRepository.instance.fetchMovies(forceRefresh: force);
+    await RecentVodRepository.instance.load();
     if (!mounted) return;
-    // Catégories dans l'ordre d'apparition (dédup via Set).
+    // Groupement UNE fois par catégorie (ordre d'apparition). Les listes
+    // référencent les mêmes objets VodMovie → pas de duplication mémoire.
     final List<String> cats = <String>[];
-    final Set<String> seen = <String>{};
+    final Map<String, List<VodMovie>> byCat = <String, List<VodMovie>>{};
     for (final VodMovie m in movies) {
       final String c = m.category.trim().isEmpty ? 'Autres' : m.category.trim();
-      if (seen.add(c)) cats.add(c);
+      final List<VodMovie>? existing = byCat[c];
+      if (existing == null) {
+        cats.add(c);
+        byCat[c] = <VodMovie>[m];
+      } else {
+        existing.add(m);
+      }
     }
     setState(() {
       _all = movies;
       _cats = cats;
+      _byCat = byCat;
+      _recent = RecentVodRepository.instance.items;
       _loading = false;
-      _selectedCat ??= cats.isNotEmpty ? cats.first : null;
-      _recompute();
-    });
-  }
-
-  void _recompute() {
-    if (_selectedCat == null) {
-      _shown = _all;
-      return;
-    }
-    _shown = _all
-        .where((VodMovie m) =>
-            (m.category.trim().isEmpty ? 'Autres' : m.category.trim()) ==
-            _selectedCat)
-        .toList(growable: false);
-  }
-
-  void _select(String cat) {
-    if (_selectedCat == cat) return;
-    setState(() {
-      _selectedCat = cat;
-      _recompute();
     });
   }
 
@@ -94,14 +90,21 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
         logoUrl: m.posterUrl,
       );
 
-  void _play(int index) {
-    final List<Channel> list =
-        _shown.map(_asChannel).toList(growable: false);
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
-      ),
-    );
+  /// Lance la lecture de [list] à partir de [index], et mémorise le film dans
+  /// « Derniers vus ». Au retour du lecteur, on rafraîchit la rangée.
+  void _play(List<VodMovie> list, int index) {
+    RecentVodRepository.instance.add(list[index]);
+    final List<Channel> channels =
+        list.map(_asChannel).toList(growable: false);
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(
+          builder: (_) => TvPlayerScreen(channels: channels, startIndex: index),
+        ))
+        .then((_) {
+      if (mounted) {
+        setState(() => _recent = RecentVodRepository.instance.items);
+      }
+    });
   }
 
   @override
@@ -127,103 +130,225 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
         ),
       );
     }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        // ----- Catégories (rail vertical) -----
-        SizedBox(
-          width: 300,
-          child: ListView.builder(
-            itemExtent: 46,
-            itemCount: _cats.length,
-            itemBuilder: (BuildContext context, int i) {
-              final String cat = _cats[i];
-              return _CatRow(
-                label: cat,
-                selected: cat == _selectedCat,
-                autofocus: i == 0,
-                onSelect: () => _select(cat),
-                onFocused: () => _select(cat),
-              );
-            },
-          ),
-        ),
-        const SizedBox(width: TvDimens.gutter),
-        // ----- Grille d'affiches -----
-        Expanded(
-          child: GridView.builder(
-            addAutomaticKeepAlives: false,
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 170,
-              childAspectRatio: 0.62, // affiche 2:3 + place pour le titre
-              crossAxisSpacing: TvDimens.gutter,
-              mainAxisSpacing: TvDimens.gutter,
-            ),
-            itemCount: _shown.length,
-            itemBuilder: (BuildContext context, int i) => _PosterCard(
-              movie: _shown[i],
-              onPlay: () => _play(i),
-            ),
-          ),
-        ),
-      ],
+
+    // Film mis en avant : le dernier vu, sinon le premier du catalogue.
+    final VodMovie hero = _recent.isNotEmpty ? _recent.first : _all.first;
+    final bool hasRecent = _recent.isNotEmpty;
+
+    // Rangées : [héro] + [Derniers vus ?] + 1 rangée par catégorie.
+    final int railCount = (hasRecent ? 1 : 0) + _cats.length;
+
+    return ListView.builder(
+      // La VEDETTE occupe l'index 0, les rangées suivent → tout est lazy.
+      addAutomaticKeepAlives: false,
+      itemCount: 1 + railCount,
+      itemBuilder: (BuildContext context, int i) {
+        if (i == 0) {
+          return _HeroBanner(
+            movie: hero,
+            autofocus: true,
+            onPlay: () => _play(<VodMovie>[hero], 0),
+          );
+        }
+        int idx = i - 1;
+        if (hasRecent) {
+          if (idx == 0) {
+            return _Rail(
+              title: 'Derniers vus',
+              movies: _recent,
+              onPlay: (int j) => _play(_recent, j),
+            );
+          }
+          idx -= 1;
+        }
+        final String cat = _cats[idx];
+        final List<VodMovie> movies = _byCat[cat] ?? const <VodMovie>[];
+        return _Rail(
+          title: cat,
+          movies: movies,
+          onPlay: (int j) => _play(movies, j),
+        );
+      },
     );
   }
 }
 
-class _CatRow extends StatelessWidget {
-  const _CatRow({
-    required this.label,
-    required this.selected,
-    required this.autofocus,
-    required this.onSelect,
-    required this.onFocused,
+/// Grande affiche vedette (haut de page) : visuel + titre + méta + ▶ Regarder.
+class _HeroBanner extends StatelessWidget {
+  const _HeroBanner({
+    required this.movie,
+    required this.onPlay,
+    this.autofocus = false,
   });
-  final String label;
-  final bool selected;
+
+  final VodMovie movie;
+  final VoidCallback onPlay;
   final bool autofocus;
-  final VoidCallback onSelect;
-  final VoidCallback onFocused;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4, right: 4),
-      child: TvFocusBuilder(
-        autofocus: autofocus,
-        scale: TvFocusScale.small,
-        onSelect: onSelect,
-        builder: (BuildContext context, bool focused) {
-          if (focused) onFocused();
-          final bool active = selected && !focused;
-          final Color bg =
-              (focused || active) ? TvTokens.sel : Colors.transparent;
-          final Color fg = focused
-              ? TvTokens.goldBright
-              : (active ? TvTokens.text : TvTokens.muted);
-          return Container(
-            alignment: Alignment.centerLeft,
-            decoration: BoxDecoration(
-              color: bg,
-              borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
-              border: focused
-                  ? Border.all(color: TvTokens.gold, width: TvDimens.focusOutline)
-                  : null,
+    final String meta = <String>[
+      if (movie.year != null && movie.year!.isNotEmpty) movie.year!,
+      if (movie.rating != null && movie.rating!.isNotEmpty)
+        '★ ${movie.rating}',
+      if (movie.category.trim().isNotEmpty) movie.category.trim(),
+    ].join('   ·   ');
+
+    return Container(
+      height: 210,
+      margin: const EdgeInsets.only(bottom: 22),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+        gradient: const LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: <Color>[TvTokens.sel, TvTokens.card],
+        ),
+        border: Border.all(color: TvTokens.lineSoft),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        children: <Widget>[
+          // ----- Infos + bouton -----
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(26, 20, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Text(
+                    movie.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.display(28, color: TvTokens.text),
+                  ),
+                  if (meta.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 8),
+                    Text(meta,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TvTokens.ui(14, color: TvTokens.muted)),
+                  ],
+                  const SizedBox(height: 18),
+                  TvFocusBuilder(
+                    autofocus: autofocus,
+                    scale: TvFocusScale.small,
+                    onSelect: onPlay,
+                    builder: (BuildContext context, bool focused) {
+                      final Color bg =
+                          focused ? TvTokens.gold : TvTokens.badgeBg;
+                      final Color fg = focused
+                          ? const Color(0xFF1A1206)
+                          : TvTokens.goldBright;
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: bg,
+                          borderRadius:
+                              BorderRadius.circular(TvDimens.cardRadius),
+                          border: Border.all(color: TvTokens.gold),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(Icons.play_arrow_rounded, color: fg, size: 24),
+                            const SizedBox(width: 8),
+                            Text('Regarder',
+                                style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w800,
+                                    color: fg)),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          ),
+          // ----- Visuel (affiche à droite, plein cadre) -----
+          SizedBox(
+            width: 340,
+            child: _HeroPoster(url: movie.posterUrl),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroPoster extends StatelessWidget {
+  const _HeroPoster({required this.url});
+  final String? url;
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget fallback = Container(
+      color: TvTokens.tile,
+      child: Center(
+        child: Icon(Icons.movie_rounded, size: 44, color: TvTokens.mutedDim),
+      ),
+    );
+    if (url == null || url!.isEmpty) return fallback;
+    return CachedNetworkImage(
+      imageUrl: url!,
+      fit: BoxFit.cover,
+      memCacheWidth: 480,
+      fadeInDuration: const Duration(milliseconds: 150),
+      placeholder: (_, __) => fallback,
+      errorWidget: (_, __, ___) => fallback,
+    );
+  }
+}
+
+/// Une RANGÉE horizontale d'affiches (titre + liste paresseuse), façon Netflix.
+class _Rail extends StatelessWidget {
+  const _Rail({required this.title, required this.movies, required this.onPlay});
+
+  final String title;
+  final List<VodMovie> movies;
+  final void Function(int index) onPlay;
+
+  @override
+  Widget build(BuildContext context) {
+    if (movies.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 10),
             child: Text(
-              label,
+              title.toUpperCase(),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: TvDimens.body,
-                  fontWeight: (focused || active)
-                      ? FontWeight.w700
-                      : FontWeight.w600,
-                  color: fg),
+              style: TvTokens.ui(13,
+                  weight: FontWeight.w700,
+                  color: TvTokens.mutedDim,
+                  spacing: 1.6),
             ),
-          );
-        },
+          ),
+          SizedBox(
+            height: 218,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              addAutomaticKeepAlives: false,
+              itemExtent: 142,
+              itemCount: movies.length,
+              itemBuilder: (BuildContext context, int i) => Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: _PosterCard(
+                  movie: movies[i],
+                  onPlay: () => onPlay(i),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
