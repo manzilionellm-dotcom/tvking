@@ -1337,25 +1337,39 @@ async function handleCastSign(env, url) {
 }
 
 // GET/HEAD /cast-proxy?u=&e=&t= — vérifie le token puis STREAME l'upstream.
+// Reponse d'erreur du proxy Cast AVEC en-tetes CORS : sans ACAO, le
+// receiver (mpegts.js/fetch cross-origin) ne peut PAS lire le status de
+// l'erreur → echec muet, debug impossible. On expose donc l'erreur.
+function castProxyError(msg, status) {
+  return new Response(msg, {
+    status,
+    headers: {
+      'Content-Type': 'text/plain; charset=UTF-8',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
 async function handleCastProxy(env, url, method) {
   const secret = env.CAST_PROXY_SECRET;
-  if (!secret) return new Response('proxy unconfigured', { status: 503 });
+  if (!secret) return castProxyError('proxy unconfigured', 503);
   const u = url.searchParams.get('u') || '';
   const e = url.searchParams.get('e') || '';
   const t = url.searchParams.get('t') || '';
-  if (!u || !e || !t) return new Response('missing params', { status: 400 });
+  if (!u || !e || !t) return castProxyError('missing params', 400);
 
   // Expiration (borne aussi le futur pour éviter un token « éternel »).
   const exp = parseInt(e, 10);
   const now = Math.floor(Date.now() / 1000);
   if (!Number.isFinite(exp) || exp < now || exp > now + 24 * 3600) {
-    return new Response('token expired', { status: 403 });
+    return castProxyError('token expired', 403);
   }
   // Token HMAC.
   const expected = (await hmacHex(secret, u + '\n' + e)).slice(0, 32);
-  if (!safeEqual(t, expected)) return new Response('bad token', { status: 403 });
+  if (!safeEqual(t, expected)) return castProxyError('bad token', 403);
   // Anti-SSRF (revalidé à chaque appel, indépendamment de la signature).
-  if (!isSafeUpstream(u)) return new Response('forbidden upstream', { status: 403 });
+  if (!isSafeUpstream(u)) return castProxyError('forbidden upstream', 403);
 
   // Suivi MANUEL des redirects (≤3), avec re-validation anti-SSRF de chaque saut.
   let target = u;
@@ -1371,14 +1385,14 @@ async function handleCastProxy(env, url, method) {
       if (!loc) break;
       let next;
       try { next = new URL(loc, target).toString(); } catch (_) { break; }
-      if (!isSafeUpstream(next)) return new Response('forbidden redirect', { status: 403 });
+      if (!isSafeUpstream(next)) return castProxyError('forbidden redirect', 403);
       target = next;
       continue;
     }
     break;
   }
   if (!resp || resp.status >= 400) {
-    return new Response('upstream error', { status: 502 });
+    return castProxyError('upstream error', 502);
   }
 
   const headers = {
