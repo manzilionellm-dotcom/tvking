@@ -1226,8 +1226,7 @@ function render() {
         (status === 'frozen' ? '<button onclick="action(\\''+c.mac+'\\',\\'unfreeze\\')">▶ Réactiver</button>' : '<button class="ghost" onclick="action(\\''+c.mac+'\\',\\'freeze\\')">❄ Geler</button>') +
         (status === 'banned' ? '<button onclick="action(\\''+c.mac+'\\',\\'unfreeze\\')">▶ Débannir</button>' : '<button class="danger" onclick="action(\\''+c.mac+'\\',\\'ban\\')">⛔ Bannir</button>') +
         '<button class="ghost" onclick="editNote(\\''+c.mac+'\\')">📝 Note</button>' +
-        '<button class="ghost" onclick="familyOn(\\''+c.mac+'\\')">👪 Famille ON</button>' +
-        '<button class="ghost" onclick="action(\\''+c.mac+'\\',\\'family_off\\')">👪 OFF</button>' +
+        '<button class="ghost" onclick="familyMenu(\\''+c.mac+'\\')">👪 Famille</button>' +
       '</td>' +
     '</tr>';
   }).join('');
@@ -1246,16 +1245,71 @@ async function action(mac, act) {
   }
 }
 
-async function familyOn(mac) {
-  const m = prompt('PLAN FAMILLE — combien de proches autorisés (appareils en plus, max 6) ?', '4');
-  if (m === null) return;
+// ===== GESTION FAMILLE (revendeur) =====
+// Un seul bouton 👪 → menu : voir la famille, activer/désactiver le plan,
+// AJOUTER un membre soi-même (MAC), le nommer, le retirer. Le client n'a
+// rien à taper : le membre hérite du statut dès son prochain démarrage.
+async function familyAction(mac, payload) {
+  const resp = await api('/admin/clients/' + encodeURIComponent(mac) + '/action', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) { alert('Erreur ' + resp.status); return false; }
+  return true;
+}
+
+async function familyMenu(mac) {
   try {
-    const resp = await api('/admin/clients/' + encodeURIComponent(mac) + '/action', {
-      method: 'POST',
-      body: JSON.stringify({ action: 'family_on', max: Number(m) || 4 }),
-    });
-    if (!resp.ok) return alert('Erreur ' + resp.status);
-    alert('Plan Famille ACTIVÉ pour ' + mac);
+    // Vue famille (endpoint public en lecture — mêmes données que l'app).
+    let info = null;
+    try {
+      const r = await fetch('/api/family/info/' + encodeURIComponent(mac));
+      info = await r.json();
+    } catch (_) {}
+    const plan = info && info.plan === true;
+    const members = (info && info.members) || [];
+    let txt = 'PLAN FAMILLE de ' + mac + '\\n';
+    txt += 'Option : ' + (plan ? 'ACTIVÉE (' + members.length + '/' + (info.max || 4) + ' proches)' : 'NON activée') + '\\n';
+    if (info && info.code) txt += 'Code en cours : ' + info.code + '\\n';
+    if (members.length) {
+      txt += '\\nMembres :\\n';
+      for (let i = 0; i < members.length; i++) {
+        txt += '  ' + (i + 1) + '. ' + (members[i].label || 'Sans nom') + ' — ' + members[i].mac + '\\n';
+      }
+    }
+    txt += '\\nAction ?\\n 1 = Activer le plan (choisir le max)\\n 2 = Ajouter un membre (MAC + nom)\\n 3 = Nommer un membre\\n 4 = Retirer un membre\\n 5 = Désactiver le plan';
+    const choice = prompt(txt, '');
+    if (choice === null || choice === '') return;
+    if (choice === '1') {
+      const m = prompt('Combien de proches autorisés (max 6) ?', '4');
+      if (m === null) return;
+      if (await familyAction(mac, { action: 'family_on', max: Number(m) || 4 })) {
+        alert('Plan Famille ACTIVÉ pour ' + mac);
+      }
+    } else if (choice === '2') {
+      const member = prompt('MAC du membre à ajouter (MK:XX:XX:XX:XX:XX) :', 'MK:');
+      if (!member) return;
+      const label = prompt('Nom du membre (Papa, Maman…) — vide = sans nom :', '') || '';
+      if (await familyAction(mac, { action: 'family_add', member: member.trim(), label })) {
+        alert('Membre ajouté. Il aura l\\'accès à son prochain démarrage.');
+      }
+    } else if (choice === '3') {
+      const member = prompt('MAC du membre à nommer :', members[0] ? members[0].mac : 'MK:');
+      if (!member) return;
+      const label = prompt('Nouveau nom :', '');
+      if (label === null) return;
+      await familyAction(mac, { action: 'family_rename', member: member.trim(), label });
+    } else if (choice === '4') {
+      const member = prompt('MAC du membre à RETIRER :', members[0] ? members[0].mac : 'MK:');
+      if (!member) return;
+      if (await familyAction(mac, { action: 'family_remove', member: member.trim() })) {
+        alert('Membre retiré.');
+      }
+    } else if (choice === '5') {
+      if (await familyAction(mac, { action: 'family_off' })) {
+        alert('Plan Famille désactivé (les liens sont conservés).');
+      }
+    }
     await refresh();
   } catch (e) {
     if (e.message !== 'unauthorized') alert(e.message);
@@ -2745,11 +2799,58 @@ async function handleAdminAction(request, env, mac) {
           'INSERT OR REPLACE INTO app_family_plan (owner_mac, enabled, max_members, updated_at) VALUES (?, 0, NULL, ?)',
         ).bind(mac.toUpperCase(), now).run();
         break;
+      // GESTION DIRECTE PAR LE REVENDEUR : ajouter/nommer/retirer un membre
+      // de la famille de :mac SANS que le client tape de code. `family_add`
+      // AUTO-ACTIVE le plan (défaut 4) s'il ne l'était pas — « active-moi ça »
+      // en un seul geste. Le membre hérite du statut dès son prochain ping.
+      case 'family_add': {
+        await ensureFamilySchema(env);
+        const member = String(body?.member || '').toUpperCase();
+        if (!MAC_RX.test(member)) return badRequest('invalid member mac');
+        if (member === mac.toUpperCase()) return badRequest('member = owner');
+        let plan = await familyPlanFor(env, mac);
+        if (!plan.enabled) {
+          await env.DB.prepare(
+            'INSERT OR REPLACE INTO app_family_plan (owner_mac, enabled, max_members, updated_at) VALUES (?, 1, 4, ?)',
+          ).bind(mac.toUpperCase(), now).run();
+          plan = { enabled: true, max: 4 };
+        }
+        const cnt = await env.DB
+          .prepare('SELECT COUNT(*) AS n FROM app_family_links WHERE owner_mac = ? AND member_mac != ?')
+          .bind(mac.toUpperCase(), member).first();
+        if (((cnt && Number(cnt.n)) || 0) >= plan.max) {
+          return json({ ok: false, error: 'family_full', max: plan.max });
+        }
+        const label = String(body?.label || '').trim().slice(0, 24);
+        await env.DB.prepare(
+          'INSERT OR REPLACE INTO app_family_links (member_mac, owner_mac, created_at, label) VALUES (?, ?, ?, ?)',
+        ).bind(member, mac.toUpperCase(), now, label.length > 0 ? label : null).run();
+        break;
+      }
+      case 'family_rename': {
+        await ensureFamilySchema(env);
+        const member = String(body?.member || '').toUpperCase();
+        if (!MAC_RX.test(member)) return badRequest('invalid member mac');
+        const label = String(body?.label || '').trim().slice(0, 24);
+        await env.DB.prepare(
+          'UPDATE app_family_links SET label = ? WHERE member_mac = ? AND owner_mac = ?',
+        ).bind(label.length > 0 ? label : null, member, mac.toUpperCase()).run();
+        break;
+      }
+      case 'family_remove': {
+        await ensureFamilySchema(env);
+        const member = String(body?.member || '').toUpperCase();
+        if (!MAC_RX.test(member)) return badRequest('invalid member mac');
+        await env.DB.prepare(
+          'DELETE FROM app_family_links WHERE member_mac = ? AND owner_mac = ?',
+        ).bind(member, mac.toUpperCase()).run();
+        break;
+      }
       default:
         return badRequest(
           'action must be one of: freeze, unfreeze, ban, mark_paid, '
           + 'activate_lifetime, activate_year, mark_unpaid, renew, note, '
-          + 'family_on, family_off',
+          + 'family_on, family_off, family_add, family_rename, family_remove',
         );
     }
 
