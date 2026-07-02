@@ -26,6 +26,7 @@ import '../core/tv_tokens.dart';
 import '../data/greeting_repository.dart';
 import '../data/display_settings.dart';
 import 'tv_activation_screen.dart';
+import 'tv_screensaver.dart';
 import 'tv_components.dart';
 import 'tv_films_screen.dart';
 import 'tv_guide_grid_screen.dart';
@@ -444,7 +445,10 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         if (didPop) return;
         _onBack();
       },
-      child: TvShell(
+      // ÉCRAN DE VEILLE anti burn-in : ne s'arme QUE quand l'ACCUEIL est la
+      // route visible (jamais pendant la lecture ni sur un autre écran).
+      child: TvScreensaverWatcher(
+        child: TvShell(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
@@ -481,6 +485,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
             // ----- Panneau de contenu (PLEINE LARGEUR sous la barre) -----
             Expanded(child: _ContentPanel(dest: _selected)),
           ],
+        ),
         ),
       ),
     );
