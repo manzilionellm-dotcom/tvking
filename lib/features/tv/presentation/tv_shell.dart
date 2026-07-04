@@ -18,9 +18,12 @@ class TvShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      // Fond FULL-BLEED : radial or très sombre sur noir profond.
+    return Container(
+      // Fond FULL-BLEED : radial « cathédrale » sur noir profond, +
+      // VIGNETTAGE cinéma par-dessus le contenu (bords très légèrement
+      // assombris → regard guidé au centre, moins d'éblouissement le soir).
       decoration: const BoxDecoration(color: TvTokens.bg, gradient: TvTokens.bgGradient),
+      foregroundDecoration: const BoxDecoration(gradient: TvTokens.vignette),
       // Material TRANSPARENT obligatoire : sans un Material ancêtre, Flutter
       // dessine chaque Text avec un double soulignement jaune (debug). On le
       // met en transparence pour laisser voir le dégradé Maison Noir.

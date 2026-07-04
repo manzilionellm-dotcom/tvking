@@ -258,3 +258,96 @@ class TvEmptyState extends StatelessWidget {
     );
   }
 }
+
+// =========================================================
+//  SQUELETTES « RESPIRANTS » — chargement sans roue qui tourne
+// =========================================================
+//  Une roue de chargement dit « attends » ; une silhouette de contenu dit
+//  « ça arrive ». Pendant le chargement d'un catalogue (Films/Séries), on
+//  dessine la STRUCTURE de la page (vedette + rangées d'affiches) en
+//  surfaces sombres qui « respirent » (opacité 0.45 ↔ 0.9, 1.4 s).
+//  GPU-léger : une seule animation d'opacité pour tout le squelette.
+//  Respecte « réduire les animations » (statique si demandé par l'OS).
+class TvSkeletonRails extends StatefulWidget {
+  const TvSkeletonRails({super.key, this.withHero = true, this.rails = 2});
+
+  /// Dessine le grand bloc « vedette » au-dessus des rangées.
+  final bool withHero;
+
+  /// Nombre de rangées d'affiches suggérées.
+  final int rails;
+
+  @override
+  State<TvSkeletonRails> createState() => _TvSkeletonRailsState();
+}
+
+class _TvSkeletonRailsState extends State<TvSkeletonRails>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool reduce = MediaQuery.of(context).disableAnimations;
+    final Widget bones = _bones();
+    if (reduce) return Opacity(opacity: 0.7, child: bones);
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.45, end: 0.9).animate(
+          CurvedAnimation(parent: _pulse, curve: Curves.easeInOut)),
+      child: bones,
+    );
+  }
+
+  Widget _bones() {
+    return SingleChildScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          if (widget.withHero) ...<Widget>[
+            _box(width: double.infinity, height: 210, radius: TvTokens.rCard),
+            const SizedBox(height: 26),
+          ],
+          for (int r = 0; r < widget.rails; r++) ...<Widget>[
+            _box(width: 180 + (r.isEven ? 40 : 0), height: 20, radius: 6),
+            const SizedBox(height: 12),
+            Row(
+              children: <Widget>[
+                for (int i = 0; i < 6; i++) ...<Widget>[
+                  _box(
+                      width: TvDimens.posterW,
+                      height: TvDimens.posterH,
+                      radius: TvTokens.rSmall),
+                  const SizedBox(width: 12),
+                ],
+              ],
+            ),
+            const SizedBox(height: 24),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _box(
+      {required double width, required double height, required double radius}) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: TvTokens.card,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: TvTokens.tileBorder),
+      ),
+    );
+  }
+}

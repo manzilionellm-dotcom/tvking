@@ -37,6 +37,7 @@ import 'tv_search_screen.dart';
 import 'tv_series_screen.dart';
 import 'tv_settings_screen.dart';
 import 'tv_sports_screen.dart';
+import 'tv_night_comfort.dart';
 import 'tv_shell.dart';
 import 'tv_who_watching_screen.dart';
 
@@ -80,6 +81,18 @@ class TvApp extends StatelessWidget {
           // Coupe TOUT effet tactile (hover/splash souris) — D-pad only.
           splashFactory: NoSplash.splashFactory,
           hoverColor: Colors.transparent,
+          // TRANSITIONS CINÉMA (réf. Apple TV+) : chaque changement d'écran
+          // est un fondu + micro-zoom (0.98 → 1) décéléré — fluide et
+          // GPU-léger (opacity + scale uniquement), au lieu du slide
+          // Android par défaut qui fait « téléphone ».
+          pageTransitionsTheme: const PageTransitionsTheme(
+            builders: <TargetPlatform, PageTransitionsBuilder>{
+              TargetPlatform.android: _TvFadeLiftTransitionsBuilder(),
+              TargetPlatform.linux: _TvFadeLiftTransitionsBuilder(),
+              TargetPlatform.windows: _TvFadeLiftTransitionsBuilder(),
+              TargetPlatform.macOS: _TvFadeLiftTransitionsBuilder(),
+            },
+          ),
         ),
         // CANEVAS TV FIXE : on rend TOUTE l'app comme un écran logique de
         // largeur `kTvDesignWidth`, puis on met à l'échelle uniforme vers
@@ -102,24 +115,63 @@ class TvApp extends StatelessWidget {
           final double ov = DisplaySettings.instance.overscanFraction;
           // TAILLE DU TEXTE : 1.0 (normal) ou 1.08 (grand, confort seniors).
           final double ts = DisplaySettings.instance.textScale;
-          return Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: screen.width * ov,
-              vertical: screen.height * ov,
-            ),
-            child: MediaQuery(
-              data: mq.copyWith(
-                size: Size(designW, designH),
-                textScaler: TextScaler.linear(ts),
+          return Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: screen.width * ov,
+                  vertical: screen.height * ov,
+                ),
+                child: MediaQuery(
+                  data: mq.copyWith(
+                    size: Size(designW, designH),
+                    textScaler: TextScaler.linear(ts),
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.fill,
+                    child:
+                        SizedBox(width: designW, height: designH, child: child),
+                  ),
+                ),
               ),
-              child: FittedBox(
-                fit: BoxFit.fill,
-                child: SizedBox(width: designW, height: designH, child: child),
-              ),
-            ),
+              // « NUIT ROYALE » : voile ambré de confort nocturne AU-DESSUS de
+              // toute l'app (lecteur inclus). IgnorePointer → zéro impact sur
+              // le D-pad/focus. Voir tv_night_comfort.dart.
+              const TvNightComfortOverlay(),
+            ],
           );
         },
         home: const RestartWidget(child: TvGate()),
+      ),
+    );
+  }
+}
+
+/// Transition d'écran « cinéma » : fondu + micro-zoom décéléré. Le nouvel
+/// écran se POSE (0.984 → 1.0) au lieu de glisser — signature visuelle
+/// des interfaces TV haut de gamme. Coût GPU minimal (opacity + transform).
+class _TvFadeLiftTransitionsBuilder extends PageTransitionsBuilder {
+  const _TvFadeLiftTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final CurvedAnimation curved = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    return FadeTransition(
+      opacity: curved,
+      child: ScaleTransition(
+        scale: Tween<double>(begin: 0.984, end: 1.0).animate(curved),
+        child: child,
       ),
     );
   }

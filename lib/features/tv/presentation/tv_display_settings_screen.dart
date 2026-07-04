@@ -87,6 +87,39 @@ class TvDisplaySettingsScreen extends StatelessWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: 30),
+
+                // ----- Nuit Royale (confort nocturne) -----
+                _label('Nuit Royale — confort nocturne'),
+                const SizedBox(height: 4),
+                _hint(
+                    'Voile chaud très léger le soir : moins de lumière bleue, '
+                    'image plus douce pour les yeux.'),
+                const SizedBox(height: 12),
+                Row(
+                  children: <Widget>[
+                    _choice(
+                      label: 'Désactivé',
+                      selected: d.nightComfort == NightComfortMode.off,
+                      onSelect: () =>
+                          d.setNightComfort(NightComfortMode.off),
+                    ),
+                    const SizedBox(width: 12),
+                    _choice(
+                      label: 'Auto le soir',
+                      selected: d.nightComfort == NightComfortMode.auto,
+                      onSelect: () =>
+                          d.setNightComfort(NightComfortMode.auto),
+                    ),
+                    const SizedBox(width: 12),
+                    _choice(
+                      label: 'Toujours',
+                      selected: d.nightComfort == NightComfortMode.always,
+                      onSelect: () =>
+                          d.setNightComfort(NightComfortMode.always),
+                    ),
+                  ],
+                ),
               ],
             ),
           );

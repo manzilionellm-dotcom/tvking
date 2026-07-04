@@ -17,19 +17,39 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// « NUIT ROYALE » — filtre de confort nocturne. Un voile CHAUD très léger
+/// (moins de lumière bleue) + une pointe de tamisage, appliqué par-dessus
+/// toute l'app le soir. Zéro contact avec le décodage vidéo : c'est une
+/// simple couche de couleur GPU (IgnorePointer) à la racine.
+enum NightComfortMode {
+  /// Jamais de filtre.
+  off,
+
+  /// Filtre actif automatiquement le soir (21 h → 7 h). Défaut.
+  auto,
+
+  /// Filtre actif en permanence.
+  always,
+}
+
 class DisplaySettings extends ChangeNotifier {
   DisplaySettings._();
   static final DisplaySettings instance = DisplaySettings._();
 
   static const String _kOverscan = 'tv_overscan_pct';
   static const String _kBigText = 'tv_big_text';
+  static const String _kNight = 'tv_night_comfort';
   static const int maxOverscan = 8;
 
   int _overscanPct = 0; // 0..8
   bool _bigText = false;
+  NightComfortMode _night = NightComfortMode.auto;
 
   int get overscanPct => _overscanPct;
   bool get bigText => _bigText;
+
+  /// « NUIT ROYALE » — filtre de confort nocturne (voir NightComfortMode).
+  NightComfortMode get nightComfort => _night;
 
   /// Fraction de marge à appliquer de chaque côté (0.0 → 0.08).
   double get overscanFraction => _overscanPct.clamp(0, maxOverscan) / 100.0;
@@ -41,7 +61,17 @@ class DisplaySettings extends ChangeNotifier {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     _overscanPct = (prefs.getInt(_kOverscan) ?? 0).clamp(0, maxOverscan);
     _bigText = prefs.getBool(_kBigText) ?? false;
+    final int n = prefs.getInt(_kNight) ?? NightComfortMode.auto.index;
+    _night = NightComfortMode
+        .values[n.clamp(0, NightComfortMode.values.length - 1)];
     notifyListeners();
+  }
+
+  Future<void> setNightComfort(NightComfortMode mode) async {
+    _night = mode;
+    notifyListeners();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kNight, mode.index);
   }
 
   Future<void> setOverscan(int pct) async {

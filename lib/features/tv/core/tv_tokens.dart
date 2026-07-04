@@ -42,12 +42,27 @@ class TvTokens {
   // Hairline OR (gold 18%) — bordure premium (rail verre, badges, filets).
   static const Color hairline = Color(0x2ECCB089);
 
-  // ---- Fond global : radial-gradient or très sombre sur noir profond ----
+  // ---- Fond global « cathédrale » : lumière d'or qui tombe du haut,
+  //  s'éteint en noir chaud puis se referme vers le bas. Trois arrêts au
+  //  lieu de deux → la profondeur d'une salle de cinéma, pas un aplat. ----
   static const Gradient bgGradient = RadialGradient(
     center: Alignment(0.56, -0.40), // 78% / 30%
-    radius: 1.3,
-    colors: <Color>[Color(0xFF15120E), bg],
-    stops: <double>[0.0, 0.6],
+    radius: 1.45,
+    colors: <Color>[Color(0xFF191510), Color(0xFF0D0C0D), bg],
+    stops: <double>[0.0, 0.52, 0.95],
+  );
+
+  // ---- VIGNETTAGE cinéma : assombrit très légèrement les bords de l'écran.
+  //  Trois effets d'un seul dégradé : (1) le regard est guidé vers le centre,
+  //  (2) moins d'éblouissement dans un salon sombre (confort des yeux),
+  //  (3) la profondeur « projection » des salles. Discret (≤ 14 %) pour ne
+  //  jamais manger le contenu des bords. Posé en foregroundDecoration du
+  //  TvShell → aucun widget de plus dans l'arbre. ----
+  static const Gradient vignette = RadialGradient(
+    center: Alignment.center,
+    radius: 1.25,
+    colors: <Color>[Color(0x00000000), Color(0x00000000), Color(0x24000000)],
+    stops: <double>[0.0, 0.72, 1.0],
   );
 
   // ---- Halo chaud discret derrière le branding (coin haut-gauche) ----

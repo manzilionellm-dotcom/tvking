@@ -18,6 +18,7 @@ import '../../vod/domain/vod_series.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import 'tv_components.dart';
 import 'tv_player_screen.dart';
 
 class TvSeriesScreen extends StatefulWidget {
@@ -75,7 +76,8 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    // Squelette « respirant » (structure de la page) plutôt qu'une roue.
+    if (_loading) return const TvSkeletonRails(withHero: true, rails: 2);
     if (_all.isEmpty) {
       return Center(
         child: Column(

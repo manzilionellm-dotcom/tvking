@@ -30,6 +30,7 @@ import '../../vod/domain/vod_movie.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import 'tv_components.dart';
 import 'tv_player_screen.dart';
 
 class TvFilmsScreen extends StatefulWidget {
@@ -127,7 +128,9 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      // Squelette « respirant » : la structure de la page (vedette +
+      // rangées) apparaît tout de suite — perception de fluidité premium.
+      return const TvSkeletonRails(withHero: true, rails: 2);
     }
     if (_all.isEmpty) {
       return Center(
