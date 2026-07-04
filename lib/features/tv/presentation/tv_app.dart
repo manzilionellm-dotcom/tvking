@@ -37,6 +37,7 @@ import 'tv_search_screen.dart';
 import 'tv_series_screen.dart';
 import 'tv_settings_screen.dart';
 import 'tv_sports_screen.dart';
+import '../core/tv_ambience.dart';
 import 'tv_night_comfort.dart';
 import 'tv_shell.dart';
 import 'tv_who_watching_screen.dart';
@@ -432,6 +433,26 @@ class _TvGateState extends State<TvGate> {
 /// Destinations de la navigation principale (buckets §8 home).
 enum TvDest { live, news, films, series, guide, recordings, search, settings }
 
+/// Univers d'AMBIANCE associé à chaque destination : Films → lumière de
+/// projecteur, Séries → nuit indigo, Actu/Sport → pelouse nocturne, tout
+/// le reste → or Maison Noir. Voir core/tv_ambience.dart.
+TvAmbienceKind _ambienceFor(TvDest d) {
+  switch (d) {
+    case TvDest.films:
+      return TvAmbienceKind.cinema;
+    case TvDest.series:
+      return TvAmbienceKind.serie;
+    case TvDest.news:
+      return TvAmbienceKind.sport;
+    case TvDest.live:
+    case TvDest.guide:
+    case TvDest.recordings:
+    case TvDest.search:
+    case TvDest.settings:
+      return TvAmbienceKind.maison;
+  }
+}
+
 extension on TvDest {
   // Libellé traduit selon la langue active (context.l10n).
   String label(BuildContext context) {
@@ -559,7 +580,12 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   _CompactNavBar(
                     selected: _selected,
                     selectedFocusNode: _railFocus,
-                    onSelect: (TvDest d) => setState(() => _selected = d),
+                    onSelect: (TvDest d) {
+                      setState(() => _selected = d);
+                      // AMBIANCE INTELLIGENTE : l'atmosphère de l'app suit
+                      // l'univers ouvert (fondu lent dans TvShell).
+                      TvAmbience.instance.set(_ambienceFor(d));
+                    },
                   ),
                 ],
               ),
