@@ -17,6 +17,7 @@ import 'package:media_kit/media_kit.dart';
 
 import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
+import 'core/backend/backend_hosts.dart';
 import 'core/crash/crash_reporting.dart';
 import 'core/branding/brand_config.dart';
 import 'core/branding/brand_logo.dart';
@@ -181,16 +182,38 @@ Future<void> bootApp() async {
   // premier frame (About, Réglages, etc.).
   unawaited(DeviceIdentity.instance.preload());
 
+  // FAILOVER backend (même blindage que la TV) : si le domaine maison
+  // était KO au dernier lancement, on repart directement sur l'adresse
+  // Cloudflare de secours mémorisée (retour auto au domaine maison au
+  // 1er heartbeat réussi). Voir core/backend/backend_hosts.dart.
+  await BackendHosts.loadPreferred();
+
   // Essai gratuit de 7 jours + abonnement 5 €/an. Au tout
   // premier boot, persiste firstLaunchAt = now pour démarrer le
   // compte à rebours local. PUIS sync avec le backend Cloudflare
   // qui est l'autorité finale (l'admin peut geler/débloquer un
   // client à distance depuis le panel /admin/panel).
-  unawaited(SubscriptionState.instance.initialize().then((_) {
-    // Sync non bloquant : si le réseau est down, l'app utilise
-    // le trial local en fallback (calcul offline).
-    SubscriptionState.instance.syncWithBackend();
+  //
+  // ROBUSTESSE (même recette que la TV) : si le réseau a un creux au
+  // moment du boot, on RETENTE à 2/10/30 min tant que le serveur n'a
+  // pas répondu — sans ça, une app restée ouverte gardait un statut
+  // « inconnu » et laissait s'égrener la tolérance hors-ligne.
+  unawaited(SubscriptionState.instance.initialize().then((_) async {
+    await SubscriptionState.instance.syncWithBackend();
+    for (final int minutes in <int>[2, 10, 30]) {
+      if (SubscriptionState.instance.remote.exists) break;
+      await Future<void>.delayed(Duration(minutes: minutes));
+      if (SubscriptionState.instance.remote.exists) break;
+      await SubscriptionState.instance.syncWithBackend();
+    }
   }));
+  // Re-synchro PÉRIODIQUE (6 h) tant que l'app tourne : fait glisser la
+  // fenêtre de tolérance hors-ligne (kOfflineGraceDays) et propage les
+  // actions du panel (activation, gel…) sans redémarrage. Heartbeat
+  // léger — rien à voir avec le ré-import lourd des playlists (24 h).
+  Timer.periodic(const Duration(hours: 6), (_) {
+    SubscriptionState.instance.syncWithBackend();
+  });
 
   // NB : la "fixation à distance" (RemoteConfigRepository qui
   // fetchait des playlists depuis un Gist toutes les 30 min) a
