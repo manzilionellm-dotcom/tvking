@@ -353,7 +353,12 @@ class SubscriptionState extends ChangeNotifier {
       // 27 j gratuits pour autant.
       if (snap.paid) {
         final int nowMs = DateTime.now().millisecondsSinceEpoch;
-        final int graceCapMs = nowMs + kOfflineGraceDays * _kDayMs;
+        // Le serveur peut IMPOSER sa propre fenêtre via `grace_days`
+        // (1..365 j) — réglable depuis le panel sans republier d'APK.
+        final int graceDays = (snap.graceDays >= 1 && snap.graceDays <= 365)
+            ? snap.graceDays
+            : kOfflineGraceDays;
+        final int graceCapMs = nowMs + graceDays * _kDayMs;
         final int targetMs =
             (!snap.isLifetime && snap.paidUntil > 0 && snap.paidUntil < graceCapMs)
                 ? snap.paidUntil

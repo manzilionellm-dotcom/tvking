@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 
 import 'core/app/app_platform.dart';
 import 'core/app/boot_guard.dart';
+import 'core/backend/backend_hosts.dart';
 import 'core/app/device_memory.dart';
 import 'core/app/guarded_main.dart';
 import 'core/app/safe_mode_app.dart';
@@ -97,6 +98,10 @@ Future<void> _bootstrap() async {
   await LocaleRepository.instance.initialize();
 
   // --- Briques PARTAGÉES avec le mobile (non bloquant) ---
+  // 0) FAILOVER backend : si le domaine maison était KO au dernier
+  //    lancement, on repart directement sur l'adresse de secours
+  //    mémorisée (retour auto au domaine maison au 1er heartbeat OK).
+  await BackendHosts.loadPreferred();
   // 1) Identité stable (MAC) → le panel reconnaît l'appareil TV.
   unawaited(DeviceIdentity.instance.preload());
   // 2) Licence/abonnement : heartbeat + statut depuis le MÊME worker.

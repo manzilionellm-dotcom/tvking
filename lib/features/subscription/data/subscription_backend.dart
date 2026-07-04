@@ -27,6 +27,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/app/app_platform.dart';
 import '../../../core/app/build_info.dart';
+import '../../../core/backend/backend_hosts.dart';
 import '../../device/data/device_identity.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -38,14 +39,12 @@ import 'now_playing.dart';
 /// l'app lit un autre serveur que celui où le panel écrit les
 /// activations/sources → « l'app ne se connecte pas avec le panel ».
 ///
-/// Historique du bug : l'app a pointé sur `99999.7themotion.com` (ancien
-/// worker) PUIS sur `seven-motion-backend.manzilionel-lm.workers.dev`
-/// (sous-domaine workers.dev INJOIGNABLE → l'activation du panel ne
-/// descendait jamais dans l'app). On aligne désormais sur le Custom
-/// Domain FIABLE `app.7themotion.com` (= le worker que le panel utilise
-/// aussi). Résultat : l'activation panel → app redevient automatique.
-const String kSubscriptionBaseUrl =
-    'https://app.7themotion.com';
+/// FAILOVER : ce n'est plus une adresse EN DUR mais un getter vers
+/// [BackendHosts.current]. Le heartbeat sonde `app.7themotion.com`
+/// puis, s'il ne répond pas, l'adresse Cloudflare native du MÊME
+/// worker — et toute l'app (sources, thème, annonces, sauvegarde…)
+/// bascule d'un coup sur l'hôte qui marche. Voir backend_hosts.dart.
+String get kSubscriptionBaseUrl => BackendHosts.current;
 
 /// Snapshot de l'état renvoyé par le serveur. Immuable.
 @immutable
@@ -61,6 +60,7 @@ class RemoteSubscriptionStatus {
     required this.frozen,
     required this.banned,
     required this.trialUntil,
+    this.graceDays = 0,
   });
 
   /// `true` si le serveur connaît ce MAC (= il a déjà fait un
@@ -100,6 +100,11 @@ class RemoteSubscriptionStatus {
   /// Timestamp (ms epoch) d'expiration de l'essai.
   final int trialUntil;
 
+  /// Tolérance hors-ligne (jours) DÉCIDÉE PAR LE SERVEUR (`grace_days`).
+  /// `0` = absent → l'app applique son défaut (kOfflineGraceDays). Permet
+  /// d'allonger/réduire la fenêtre depuis le panel SANS republier d'APK.
+  final int graceDays;
+
   /// True si le client a le droit d'utiliser l'app.
   bool get canUse => !banned && !frozen && (paid || !expired);
 
@@ -118,6 +123,7 @@ class RemoteSubscriptionStatus {
       frozen: json['frozen'] == true,
       banned: json['banned'] == true,
       trialUntil: (json['trial_until'] as num?)?.toInt() ?? 0,
+      graceDays: (json['grace_days'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -177,25 +183,41 @@ abstract final class SubscriptionBackend {
         // sauvegardé côté serveur → restauré sur une 2e box (cf. /api/history).
         'recent': _recentInventory(),
       };
-      final http.Response resp = await http
-          .post(
-            Uri.parse('$kSubscriptionBaseUrl/api/heartbeat'),
-            headers: const <String, String>{
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: jsonEncode(payload),
-          )
-          .timeout(const Duration(seconds: 8));
-      if (resp.statusCode != 200) {
-        if (kDebugMode) {
-          debugPrint('[Subscription] heartbeat HTTP ${resp.statusCode}');
+      // FAILOVER : domaine maison d'abord (auto-guérison), puis l'adresse
+      // Cloudflare de secours. Le premier hôte qui répond 200 devient
+      // l'hôte COURANT de toute l'app (BackendHosts.markGood).
+      final String body = jsonEncode(payload);
+      for (final String base in BackendHosts.candidates()) {
+        try {
+          final http.Response resp = await http
+              .post(
+                Uri.parse('$base/api/heartbeat'),
+                headers: const <String, String>{
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                },
+                body: body,
+              )
+              .timeout(const Duration(seconds: 8));
+          if (resp.statusCode != 200) {
+            if (kDebugMode) {
+              debugPrint(
+                  '[Subscription] heartbeat HTTP ${resp.statusCode} ($base)');
+            }
+            continue; // hôte joignable mais en erreur → on tente l'autre
+          }
+          await BackendHosts.markGood(base);
+          final Map<String, dynamic> json =
+              jsonDecode(resp.body) as Map<String, dynamic>;
+          return RemoteSubscriptionStatus.fromJson(json);
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[Subscription] heartbeat error ($base): $e');
+          }
+          // Réseau/timeout → hôte suivant.
         }
-        return RemoteSubscriptionStatus.unknown;
       }
-      final Map<String, dynamic> body =
-          jsonDecode(resp.body) as Map<String, dynamic>;
-      return RemoteSubscriptionStatus.fromJson(body);
+      return RemoteSubscriptionStatus.unknown;
     } catch (e) {
       if (kDebugMode) debugPrint('[Subscription] heartbeat error: $e');
       return RemoteSubscriptionStatus.unknown;
@@ -241,23 +263,27 @@ abstract final class SubscriptionBackend {
   /// Utilisé par le `SubscriptionCard` pour rafraîchir l'UI sans
   /// déclencher un nouveau heartbeat (eg. après un pull-to-refresh).
   static Future<RemoteSubscriptionStatus> getStatus(String mac) async {
-    try {
-      final http.Response resp = await http
-          .get(
-            Uri.parse('$kSubscriptionBaseUrl/api/status/$mac'),
-            headers: const <String, String>{
-              'Accept': 'application/json',
-            },
-          )
-          .timeout(const Duration(seconds: 6));
-      if (resp.statusCode != 200) return RemoteSubscriptionStatus.unknown;
-      final Map<String, dynamic> body =
-          jsonDecode(resp.body) as Map<String, dynamic>;
-      return RemoteSubscriptionStatus.fromJson(body);
-    } catch (e) {
-      if (kDebugMode) debugPrint('[Subscription] getStatus error: $e');
-      return RemoteSubscriptionStatus.unknown;
+    // Même failover que le heartbeat : domaine maison puis secours.
+    for (final String base in BackendHosts.candidates()) {
+      try {
+        final http.Response resp = await http
+            .get(
+              Uri.parse('$base/api/status/$mac'),
+              headers: const <String, String>{
+                'Accept': 'application/json',
+              },
+            )
+            .timeout(const Duration(seconds: 6));
+        if (resp.statusCode != 200) continue;
+        await BackendHosts.markGood(base);
+        final Map<String, dynamic> body =
+            jsonDecode(resp.body) as Map<String, dynamic>;
+        return RemoteSubscriptionStatus.fromJson(body);
+      } catch (e) {
+        if (kDebugMode) debugPrint('[Subscription] getStatus error ($base): $e');
+      }
     }
+    return RemoteSubscriptionStatus.unknown;
   }
 
   // Version lisible de l'app (ex. « 0.3.0 »), mise en cache. Best-effort.
