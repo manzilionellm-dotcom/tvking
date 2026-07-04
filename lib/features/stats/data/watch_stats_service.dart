@@ -86,10 +86,19 @@ class WatchStatsService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Minutes de visionnage CONSÉCUTIVES (remis à zéro dès qu'on quitte le
+  /// lecteur). Sert au petit mot « Pense à toi » après une longue séance.
+  int _streak = 0;
+  int get continuousMinutes => _streak;
+
   /// +1 minute si une chaîne est en cours de visionnage.
   Future<void> _tick() async {
     final String channel = NowPlaying.instance.current;
-    if (channel.isEmpty) return;
+    if (channel.isEmpty) {
+      _streak = 0;
+      return;
+    }
+    _streak += 1;
     final String day = _dayKey(DateTime.now());
     final Map<String, dynamic> d = _days.putIfAbsent(
         day, () => <String, dynamic>{'t': 0, 'c': <String, dynamic>{}});

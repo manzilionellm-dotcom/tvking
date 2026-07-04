@@ -40,6 +40,7 @@ import 'tv_sports_screen.dart';
 import '../../sports/data/sports_repository.dart';
 import '../../sports/domain/sport_models.dart';
 import '../core/tv_ambience.dart';
+import 'tv_care_nudge.dart';
 import 'tv_night_comfort.dart';
 import 'tv_shell.dart';
 import 'tv_who_watching_screen.dart';
@@ -142,6 +143,9 @@ class TvApp extends StatelessWidget {
               // toute l'app (lecteur inclus). IgnorePointer → zéro impact sur
               // le D-pad/focus. Voir tv_night_comfort.dart.
               const TvNightComfortOverlay(),
+              // « PENSE À TOI » : le mot doux après 3 h d'affilée (12 s, puis
+              // s'efface). IgnorePointer aussi. Voir tv_care_nudge.dart.
+              const TvCareNudge(),
             ],
           );
         },
@@ -656,6 +660,21 @@ class _HomeHeaderState extends State<_HomeHeader> {
     final String temp =
         (g != null && g.tempC != null) ? '${g.tempC!.round()}° ${g.emoji}' : '';
     final String dayTime = '$weekday · $_time';
+    // LE MOT DU CŒUR : un chiffre de météo, c'est froid — on y ajoute ce
+    // qu'une grand-mère dirait. Tard le soir, on le murmure aussi. Un seul
+    // mot à la fois, discret, dans le même gris que le reste.
+    String heart = '';
+    final int hh = _now.hour;
+    if (hh >= 23 || hh < 5) {
+      heart = 'il est tard, mon grand 🌙';
+    } else if (g != null && g.tempC != null) {
+      final double t = g.tempC!;
+      if (t <= 8) {
+        heart = 'couvre-toi bien 🧣';
+      } else if (t >= 30) {
+        heart = 'bois de l\'eau ☀️';
+      }
+    }
     // ÉPURÉ (réf. design) : plus de « Bonjour 👋 ». Un simple cluster
     // ville · météo · jour · heure, DISCRET, aligné EN HAUT À DROITE.
     return Align(
@@ -673,6 +692,13 @@ class _HomeHeaderState extends State<_HomeHeader> {
             ],
             if (temp.isNotEmpty) TextSpan(text: '$temp   ·   '),
             TextSpan(text: dayTime),
+            // Le mot du cœur (« couvre-toi bien 🧣 », « il est tard 🌙 »…),
+            // légèrement doré pour qu'on le sente sans qu'il crie.
+            if (heart.isNotEmpty)
+              TextSpan(
+                  text: '   ·   $heart',
+                  style: TvTokens.ui(18,
+                      weight: FontWeight.w600, color: TvTokens.goldDeep)),
           ],
         ),
       ),
