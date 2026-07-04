@@ -665,15 +665,22 @@ class _HomeHeaderState extends State<_HomeHeader> {
     // mot à la fois, discret, dans le même gris que le reste.
     String heart = '';
     final int hh = _now.hour;
+    final int wd = _now.weekday;
     if (hh >= 23 || hh < 5) {
       heart = 'il est tard, mon grand 🌙';
-    } else if (g != null && g.tempC != null) {
-      final double t = g.tempC!;
-      if (t <= 8) {
-        heart = 'couvre-toi bien 🧣';
-      } else if (t >= 30) {
-        heart = 'bois de l\'eau ☀️';
-      }
+    } else if (g != null && g.tempC != null && g.tempC! <= 8) {
+      heart = 'couvre-toi bien 🧣';
+    } else if (g != null && g.tempC != null && g.tempC! >= 30) {
+      heart = 'bois de l\'eau ☀️';
+    } else if (hh >= 5 && hh < 10) {
+      // SALUTATION VIVANTE : l'accueil sent le moment de la semaine.
+      heart = 'bon café ☕';
+    } else if (wd == DateTime.friday && hh >= 18) {
+      heart = 'bon week-end 🎉';
+    } else if (wd == DateTime.sunday && hh >= 10 && hh < 20) {
+      heart = 'doux dimanche 🛋️';
+    } else if (wd == DateTime.monday && hh < 12) {
+      heart = 'bon courage 💪';
     }
     // ÉPURÉ (réf. design) : plus de « Bonjour 👋 ». Un simple cluster
     // ville · météo · jour · heure, DISCRET, aligné EN HAUT À DROITE.

@@ -55,6 +55,24 @@ class TvStatsScreen extends StatelessWidget {
                         WatchStatsService.fmt(weekTotal)),
                   ],
                 ),
+                // ----- Ce que l'app a APPRIS de toi (affiché seulement
+                //  quand il y a assez de données — on constate, on ne
+                //  devine pas). -----
+                if (s.favoriteMomentLabel() != null ||
+                    s.favoriteWeekdayLabel() != null) ...<Widget>[
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 10,
+                    children: <Widget>[
+                      if (s.favoriteMomentLabel() != null)
+                        _insight(
+                            'Ton moment télé : ${s.favoriteMomentLabel()!}'),
+                      if (s.favoriteWeekdayLabel() != null)
+                        _insight(
+                            'Ton jour préféré : ${s.favoriteWeekdayLabel()!}'),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 30),
 
                 // ----- Barres des 7 derniers jours -----
@@ -125,6 +143,22 @@ class TvStatsScreen extends StatelessWidget {
                   color: TvTokens.goldBright)),
         ],
       ),
+    );
+  }
+
+  Widget _insight(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+      decoration: BoxDecoration(
+        color: TvTokens.badgeBg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: TvTokens.hairline),
+      ),
+      child: Text(text,
+          style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: TvTokens.goldBright)),
     );
   }
 

@@ -193,6 +193,20 @@ class SportsRepository {
           startMs: start.millisecondsSinceEpoch,
           leadMinutes: 60,
         );
+        // COUP D'ENVOI : une 2e notification À L'HEURE EXACTE du match
+        // (« C'est parti ! France – Belgique ») — celle qu'on attend
+        // vraiment quand on a oublié la première. Id distinct (_ko) →
+        // le dédoublonnage du service laisse coexister les deux rappels.
+        final String affiche = (ev.home.isNotEmpty && ev.away.isNotEmpty)
+            ? '${ev.home} – ${ev.away}'
+            : team.name;
+        await NotificationService.instance.scheduleProgramReminder(
+          channelId: 'sport_${team.id}_${ev.id}_ko',
+          channelName: team.name,
+          title: '⚽ C\'est parti ! $affiche',
+          startMs: start.millisecondsSinceEpoch,
+          leadMinutes: 0,
+        );
       } catch (_) {}
     }
   }

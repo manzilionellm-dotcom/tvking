@@ -99,7 +99,8 @@ class WatchStatsService extends ChangeNotifier {
       return;
     }
     _streak += 1;
-    final String day = _dayKey(DateTime.now());
+    final DateTime now = DateTime.now();
+    final String day = _dayKey(now);
     final Map<String, dynamic> d = _days.putIfAbsent(
         day, () => <String, dynamic>{'t': 0, 'c': <String, dynamic>{}});
     d['t'] = ((d['t'] as num?)?.toInt() ?? 0) + 1;
@@ -109,6 +110,13 @@ class WatchStatsService extends ChangeNotifier {
       c[channel] = ((c[channel] as num?)?.toInt() ?? 0) + 1;
     }
     d['c'] = c;
+    // MOMENT DE LA JOURNÉE : minute rangée dans son créneau (matin /
+    // après-midi / soirée / nuit) → l'app apprend QUAND ce profil regarde.
+    final Map<String, dynamic> h =
+        (d['h'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+    final String slot = _slotOf(now.hour);
+    h[slot] = ((h[slot] as num?)?.toInt() ?? 0) + 1;
+    d['h'] = h;
     _prune();
     notifyListeners();
     try {
@@ -171,6 +179,72 @@ class WatchStatsService extends ChangeNotifier {
         ChannelStat(e.key, e.value),
     ]..sort((ChannelStat a, ChannelStat b) => b.minutes.compareTo(a.minutes));
     return list.take(limit).toList(growable: false);
+  }
+
+  /// Créneau d'une heure de la journée : m(atin) 5-12, a(près-midi) 12-18,
+  /// s(oirée) 18-23, n(uit) 23-5.
+  static String _slotOf(int hour) {
+    if (hour >= 5 && hour < 12) return 'm';
+    if (hour >= 12 && hour < 18) return 'a';
+    if (hour >= 18 && hour < 23) return 's';
+    return 'n';
+  }
+
+  /// « Ton moment télé » sur 14 jours — null tant qu'il n'y a pas au moins
+  /// une heure de données (on ne devine pas, on constate).
+  String? favoriteMomentLabel({int days = 14}) {
+    final DateTime now = DateTime.now();
+    final Map<String, int> slots = <String, int>{};
+    for (int i = 0; i < days; i++) {
+      final Map<String, dynamic>? h =
+          _days[_dayKey(now.subtract(Duration(days: i)))]?['h']
+              as Map<String, dynamic>?;
+      if (h == null) continue;
+      for (final MapEntry<String, dynamic> e in h.entries) {
+        slots[e.key] = (slots[e.key] ?? 0) + ((e.value as num?)?.toInt() ?? 0);
+      }
+    }
+    final int total = slots.values.fold(0, (int a, int b) => a + b);
+    if (total < 60) return null;
+    final String best = (slots.entries.toList()
+          ..sort((MapEntry<String, int> a, MapEntry<String, int> b) =>
+              b.value.compareTo(a.value)))
+        .first
+        .key;
+    switch (best) {
+      case 'm':
+        return 'le matin ☕';
+      case 'a':
+        return 'l\'après-midi 🌤️';
+      case 's':
+        return 'le soir 🌆';
+      default:
+        return 'la nuit 🌙';
+    }
+  }
+
+  /// « Ton jour le plus télé » sur 28 jours — null sous 2 h de données.
+  String? favoriteWeekdayLabel({int days = 28}) {
+    const List<String> names = <String>[
+      'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche',
+    ];
+    final DateTime now = DateTime.now();
+    final Map<int, int> byWeekday = <int, int>{};
+    int total = 0;
+    for (int i = 0; i < days; i++) {
+      final DateTime d = now.subtract(Duration(days: i));
+      final int mins = _minutesOf(_dayKey(d));
+      if (mins <= 0) continue;
+      byWeekday[d.weekday] = (byWeekday[d.weekday] ?? 0) + mins;
+      total += mins;
+    }
+    if (total < 120 || byWeekday.isEmpty) return null;
+    final int best = (byWeekday.entries.toList()
+          ..sort((MapEntry<int, int> a, MapEntry<int, int> b) =>
+              b.value.compareTo(a.value)))
+        .first
+        .key;
+    return names[best - 1];
   }
 
   /// « 2 h 05 » / « 45 min » — libellé humain d'une durée en minutes.
