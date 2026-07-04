@@ -25,6 +25,15 @@ import 'subscription_backend.dart';
 /// Durée de l'essai gratuit en jours.
 const int kTrialDurationDays = 7;
 
+/// BOUCLIER HORS-LIGNE — tolérance (jours) accordée à un client PAYANT
+/// quand le serveur est injoignable ou bugué. À chaque heartbeat réussi,
+/// la fenêtre repart de « maintenant + 30 j » (plafonnée à la vraie fin
+/// d'abonnement) : tant que le serveur répond au moins une fois par mois,
+/// une panne — même longue — ne bloque JAMAIS un client qui a payé.
+/// L'admin garde la main : geler/bannir bloque immédiatement (en ligne)
+/// et reste mémorisé hors-ligne (cf. _kBlockKey).
+const int kOfflineGraceDays = 30;
+
 /// URL du site marchand (paiement externe, modèle TiViMate).
 const String kPurchaseUrl = 'https://7themotion.com';
 
@@ -138,7 +147,20 @@ class SubscriptionState extends ChangeNotifier {
       if (_remote.banned) return SubscriptionStatus.banned;
       if (_remote.frozen) return SubscriptionStatus.frozen;
       if (_remote.paid) return SubscriptionStatus.paid;
-      if (_remote.expired) return SubscriptionStatus.trialExpired;
+      if (_remote.expired) {
+        // BOUCLIER ANTI-BUG SERVEUR : si le serveur prétend « expiré » alors
+        // qu'il nous a CONFIRMÉ un abonnement payant encore valide (cache
+        // local _paidUntil, plafonné à kOfflineGraceDays), on honore sa
+        // propre déclaration antérieure. Protège tous les clients payants
+        // d'un bug serveur (KV effacé, mauvaise réponse) → pas de blocage
+        // massif instantané. Banni/gelé (action ADMIN explicite) bloque
+        // toujours, lui, sans bouclier.
+        if (_paidUntil != null &&
+            _paidUntil!.millisecondsSinceEpoch > _effectiveNowMs) {
+          return SubscriptionStatus.paid;
+        }
+        return SubscriptionStatus.trialExpired;
+      }
       return SubscriptionStatus.trialActive;
     }
 
@@ -322,14 +344,23 @@ class SubscriptionState extends ChangeNotifier {
           await prefs.setInt(_kHwmKey, nowMs);
         }
       }
-      // Si le serveur dit 'paid', on persiste un fallback local
-      // pour 7 jours (au cas où l'app passe offline ensuite, on
-      // ne bloquera pas le user qui a déjà payé).
+      // BOUCLIER HORS-LIGNE : le serveur dit 'paid' → on persiste une
+      // fenêtre de tolérance GLISSANTE de kOfflineGraceDays (30 j), rafraîchie
+      // à CHAQUE heartbeat réussi, mais JAMAIS au-delà de la vraie fin
+      // d'abonnement (paid_until serveur, sauf « à vie »). Résultat : une
+      // panne serveur — même de plusieurs semaines — ne bloque pas un client
+      // qui a payé, et un abonnement qui se termine dans 3 j ne gagne pas
+      // 27 j gratuits pour autant.
       if (snap.paid) {
-        final DateTime fallback =
-            DateTime.now().add(const Duration(days: 7));
-        if (_paidUntil == null || fallback.isAfter(_paidUntil!)) {
-          await markPaidUntil(fallback);
+        final int nowMs = DateTime.now().millisecondsSinceEpoch;
+        final int graceCapMs = nowMs + kOfflineGraceDays * _kDayMs;
+        final int targetMs =
+            (!snap.isLifetime && snap.paidUntil > 0 && snap.paidUntil < graceCapMs)
+                ? snap.paidUntil
+                : graceCapMs;
+        if (_paidUntil == null ||
+            targetMs > _paidUntil!.millisecondsSinceEpoch) {
+          await markPaidUntil(DateTime.fromMillisecondsSinceEpoch(targetMs));
         }
       }
       notifyListeners();

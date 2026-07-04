@@ -100,9 +100,25 @@ Future<void> _bootstrap() async {
   // 1) Identité stable (MAC) → le panel reconnaît l'appareil TV.
   unawaited(DeviceIdentity.instance.preload());
   // 2) Licence/abonnement : heartbeat + statut depuis le MÊME worker.
-  unawaited(SubscriptionState.instance.initialize().then((_) {
-    SubscriptionState.instance.syncWithBackend();
+  //    ROBUSTESSE (box allumée en continu) : avant, UNE seule tentative au
+  //    boot — si le serveur avait un creux à cet instant, la box restait
+  //    « inconnue » des semaines et la tolérance hors-ligne s'égrenait en
+  //    silence. Désormais : RETENTATIVES au boot (2/10/30 min tant que le
+  //    serveur n'a pas répondu) + re-synchro PÉRIODIQUE (6 h) qui fait
+  //    glisser la fenêtre de tolérance (kOfflineGraceDays) et propage les
+  //    actions du panel (activation, gel…) sans redémarrer l'app.
+  unawaited(SubscriptionState.instance.initialize().then((_) async {
+    await SubscriptionState.instance.syncWithBackend();
+    for (final int minutes in <int>[2, 10, 30]) {
+      if (SubscriptionState.instance.remote.exists) break;
+      await Future<void>.delayed(Duration(minutes: minutes));
+      if (SubscriptionState.instance.remote.exists) break;
+      await SubscriptionState.instance.syncWithBackend();
+    }
   }));
+  Timer.periodic(const Duration(hours: 6), (_) {
+    SubscriptionState.instance.syncWithBackend();
+  });
   // 3) Thème distant piloté par le panel (couleur/nom).
   unawaited(RemoteThemeRepository.fetchAndApply());
 
