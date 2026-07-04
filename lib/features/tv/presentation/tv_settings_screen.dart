@@ -23,6 +23,7 @@ import 'tv_parental_screen.dart';
 import 'tv_profiles_screen.dart';
 import 'tv_shell.dart';
 import 'tv_sources_screen.dart';
+import 'tv_stats_screen.dart';
 
 class TvSettingsScreen extends StatefulWidget {
   const TvSettingsScreen({super.key});
@@ -197,6 +198,42 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     Icon(Icons.playlist_play_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
                     Text('Mes sources (ajouter / activer / supprimer)',
+                        style: TextStyle(
+                            fontSize: TvDimens.title,
+                            fontWeight: FontWeight.w700,
+                            color: fg)),
+                    const Spacer(),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          // ----- Mes statistiques (temps d'écran, top chaînes — local) -----
+          TvFocusBuilder(
+            scale: TvFocusScale.large,
+            onSelect: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const TvShell(child: TvStatsScreen()),
+              ),
+            ),
+            builder: (BuildContext context, bool focused) {
+              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color fg =
+                  focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+              return Container(
+                width: 760,
+                decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                child: Row(
+                  children: <Widget>[
+                    Icon(Icons.query_stats_rounded, color: fg, size: 26),
+                    const SizedBox(width: 12),
+                    Text('Mes statistiques (temps d\'écran, top chaînes)',
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
