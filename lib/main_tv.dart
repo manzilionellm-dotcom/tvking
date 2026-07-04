@@ -31,6 +31,7 @@ import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
 import 'features/recordings/data/recording_repository.dart';
 import 'features/security/data/parental_controls.dart';
+import 'features/sports/data/sports_repository.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
 import 'features/tv/data/display_settings.dart';
@@ -169,6 +170,13 @@ Future<void> _bootstrap() async {
   // 8) Contrôle parental : on charge l'état du Mode Enfants pour que le 1er
   //    rendu du Direct masque déjà l'Adulte si le parent l'a activé.
   unawaited(ParentalControls.instance.load());
+
+  // 8b) SPORT : charge les équipes favorites dès le boot → les matchs de
+  //     « ton équipe » sont récupérés et les ALARMES « joue bientôt »
+  //     programmées MÊME si le client n'ouvre jamais l'onglet Sport, et le
+  //     bandeau « Grand Match » de l'accueil est chaud dès le 1er rendu.
+  //     Léger : aucune requête si aucune équipe favorite.
+  unawaited(SportsRepository.instance.initialize());
 
   // Réglages d'affichage (overscan / grand texte). Best-effort, non bloquant.
   // Défauts = comportement inchangé, donc aucun risque au 1er rendu.

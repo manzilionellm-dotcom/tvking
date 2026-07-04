@@ -37,6 +37,8 @@ import 'tv_search_screen.dart';
 import 'tv_series_screen.dart';
 import 'tv_settings_screen.dart';
 import 'tv_sports_screen.dart';
+import '../../sports/data/sports_repository.dart';
+import '../../sports/domain/sport_models.dart';
 import '../core/tv_ambience.dart';
 import 'tv_night_comfort.dart';
 import 'tv_shell.dart';
@@ -575,6 +577,14 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   const SizedBox(width: 18),
                   const Expanded(child: _HomeHeader()),
                   const SizedBox(width: 16),
+                  // ⚽ GRAND MATCH : le match (en direct ou à venir) d'une
+                  // équipe favorite, affiché comme la météo. OK → univers
+                  // Sport. Invisible si aucune équipe suivie / aucun match.
+                  _MatchChip(onOpen: () {
+                    setState(() => _selected = TvDest.news);
+                    TvAmbience.instance.set(TvAmbienceKind.sport);
+                  }),
+                  const SizedBox(width: 12),
                   const _ProfileChip(),
                   const SizedBox(width: 12),
                   _CompactNavBar(
@@ -669,6 +679,139 @@ class _HomeHeaderState extends State<_HomeHeader> {
     );
   }
 }
+/// ⚽ Pastille « GRAND MATCH » (en haut de l'accueil, comme la météo) :
+/// le match le plus pertinent des ÉQUIPES FAVORITES du client —
+///   • EN DIRECT (point rouge + score s'il est connu), sinon
+///   • le PROCHAIN match à venir (« France vs Belgique · 14/06 21:00 »).
+/// OK → ouvre l'univers Sport (où l'on choisit aussi ses équipes).
+/// INVISIBLE si aucune équipe suivie ou aucun match connu → zéro bruit.
+class _MatchChip extends StatefulWidget {
+  const _MatchChip({required this.onOpen});
+  final VoidCallback onOpen;
+
+  @override
+  State<_MatchChip> createState() => _MatchChipState();
+}
+
+class _MatchChipState extends State<_MatchChip> {
+  StreamSubscription<void>? _changes;
+  StreamSubscription<List<SportTeam>>? _favs;
+
+  @override
+  void initState() {
+    super.initState();
+    // Déjà initialisé au boot (main_tv) ; l'appel est idempotent.
+    SportsRepository.instance.initialize();
+    _changes = SportsRepository.instance.changesStream
+        .listen((_) => _refresh());
+    _favs = SportsRepository.instance.favoritesStream
+        .listen((_) => _refresh());
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _changes?.cancel();
+    _favs?.cancel();
+    super.dispose();
+  }
+
+  /// Le match à afficher : un match EN COURS (départ il y a moins de 2 h 30)
+  /// prime ; sinon le PROCHAIN à venir (le plus proche), sous 7 jours.
+  (SportEvent, bool)? _pick() {
+    final SportsRepository repo = SportsRepository.instance;
+    final DateTime now = DateTime.now();
+    SportEvent? live;
+    SportEvent? upcoming;
+    for (final SportTeam t in repo.favorites) {
+      final SportsEvents ev = repo.eventsFor(t.id);
+      for (final SportEvent e in <SportEvent>[...ev.next, ...ev.last]) {
+        final DateTime? start = e.startsAt;
+        if (start == null) continue;
+        final Duration d = now.difference(start);
+        if (!d.isNegative && d < const Duration(hours: 2, minutes: 30)) {
+          live ??= e; // un match en cours suffit
+        } else if (start.isAfter(now) &&
+            start.difference(now) < const Duration(days: 7)) {
+          if (upcoming == null || start.isBefore(upcoming.startsAt!)) {
+            upcoming = e;
+          }
+        }
+      }
+    }
+    if (live != null) return (live, true);
+    if (upcoming != null) return (upcoming, false);
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final (SportEvent, bool)? picked = _pick();
+    if (picked == null) return const SizedBox.shrink();
+    final SportEvent e = picked.$1;
+    final bool isLive = picked.$2;
+    final String label = isLive
+        ? (e.hasScore
+            ? '${e.home} ${e.homeScore}–${e.awayScore} ${e.away}'
+            : '${e.home} vs ${e.away}')
+        : '${e.home} vs ${e.away} · ${e.whenLabel}';
+    return TvFocusBuilder(
+      scale: TvFocusScale.medium,
+      onSelect: widget.onOpen,
+      builder: (BuildContext context, bool focused) {
+        final Color fg = focused
+            ? TvTokens.goldBright
+            : (isLive ? TvTokens.text : TvTokens.muted);
+        return Container(
+          height: 50,
+          constraints: const BoxConstraints(maxWidth: 360),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: focused ? TvTokens.sel : Colors.transparent,
+            borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
+            border: Border.all(
+                color: focused
+                    ? TvTokens.gold
+                    : (isLive ? TvTokens.hairline : TvTokens.line),
+                width: 1),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              if (isLive) ...<Widget>[
+                // Point rouge « EN DIRECT » (statique : sobre, pas de strobe).
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                      color: TvTokens.live, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 7),
+              ] else ...<Widget>[
+                const Text('⚽', style: TextStyle(fontSize: 16)),
+                const SizedBox(width: 7),
+              ],
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
+                  style:
+                      TvTokens.ui(14.5, weight: FontWeight.w600, color: fg),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// Pastille du PROFIL ACTIF (en haut, façon Netflix). Un OK ouvre « Qui
 /// regarde ? » pour changer de profil sans quitter l'accueil.
 class _ProfileChip extends StatelessWidget {
