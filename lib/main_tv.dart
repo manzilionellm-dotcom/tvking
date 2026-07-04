@@ -153,10 +153,14 @@ Future<void> _bootstrap() async {
   // Défauts = comportement inchangé, donc aucun risque au 1er rendu.
   unawaited(DisplaySettings.instance.load());
 
-  // Profils famille : charge le profil actif TÔT (les dépôts « par profil »
-  // — récents/recherches/collections — suffixent leurs clés avec lui). Non
-  // bloquant : lecture SharedPreferences quasi instantanée.
-  unawaited(ProfilesRepository.instance.load());
+  // Profils famille : chargés AVANT le 1er rendu (lecture SharedPreferences
+  // quasi instantanée). BLOQUANT car TvGate décide du PREMIER écran avec eux :
+  // « Qui regarde ? » doit s'afficher AVANT l'accueil (comme Netflix), jamais
+  // remplacer un accueil déjà affiché quand le chargement finit en retard.
+  // Timeout de sécurité : ne bloque jamais le démarrage si prefs est lent.
+  await ProfilesRepository.instance
+      .load()
+      .timeout(const Duration(seconds: 2), onTimeout: () {});
 
   // 9) Historique multi-box : on initialise l'historique local PUIS on le
   //    restaure depuis le serveur si la box est neuve (l'historique « suit »

@@ -339,6 +339,13 @@ class _TvGateState extends State<TvGate> {
         !_profileChosen &&
         ProfilesRepository.instance.isLoaded &&
         ProfilesRepository.instance.profiles.length > 1;
+    // VERROU : dès que l'ACCUEIL s'affiche, le choix de profil est considéré
+    // FAIT pour cette session. Sans ça, un changement tardif du dépôt profils
+    // (chargement qui finit après le 1er rendu, création d'un 2e profil depuis
+    // l'écran Profils…) reconstruisait TvGate et REMPLAÇAIT l'accueil par
+    // « Qui regarde ? » en pleine session — perçu comme un bug. Netflix ne
+    // montre cet écran QU'AU LANCEMENT ; ensuite on en change via la pastille.
+    if (showHome && !needProfilePick) _profileChosen = true;
     final Widget home = !showHome
         ? const TvShell(child: TvActivationScreen())
         : needProfilePick
