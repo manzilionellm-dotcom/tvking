@@ -10,6 +10,8 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
+
 import '../../sports/data/sports_repository.dart';
 import '../../sports/domain/sport_models.dart';
 import '../core/tv_dimens.dart';
@@ -158,7 +160,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
                   borderRadius: BorderRadius.circular(TvDimens.cardRadius),
                 ),
                 child: Text(
-                  _q.isEmpty ? 'Choisis une équipe ci-dessous, ou tape un nom…' : _q,
+                  _q.isEmpty ? context.l10n.tvTeamPickerHint : _q,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -206,7 +208,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
     }
     if (_results.isEmpty) {
       return Center(
-        child: Text('Aucune équipe trouvée',
+        child: Text(context.l10n.tvNoTeamFound,
             style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim)),
       );
     }
@@ -343,7 +345,7 @@ class _PickerKeyboard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('Mon équipe',
+        Text(context.l10n.tvMyTeam,
             style: TextStyle(
                 fontSize: TvDimens.displayS,
                 fontWeight: FontWeight.w800,

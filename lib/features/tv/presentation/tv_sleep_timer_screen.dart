@@ -6,6 +6,8 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
+
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -85,7 +87,7 @@ class TvSleepTimerScreen extends StatelessWidget {
                         autofocus: m == SleepTimer.presets.first,
                       ),
                     _choice(
-                      label: 'Désactiver',
+                      label: context.l10n.tvSleepDisable,
                       selected: !t.isActive,
                       onSelect: t.cancel,
                     ),

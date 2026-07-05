@@ -11,6 +11,8 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
+
 import '../../sports/data/sports_repository.dart';
 import '../../sports/domain/sport_models.dart';
 import '../core/tv_dimens.dart';
@@ -77,7 +79,7 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
         if (tickerItems.isNotEmpty) const SizedBox(height: 16),
         Row(
           children: <Widget>[
-            Text('Mes équipes',
+            Text(context.l10n.tvMyTeams,
                 style: TextStyle(
                     fontSize: TvDimens.displayS,
                     fontWeight: FontWeight.w800,
@@ -114,7 +116,7 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
           children: <Widget>[
             const Icon(Icons.sports_soccer_rounded, size: 64, color: TvTokens.mutedDim),
             const SizedBox(height: 16),
-            Text('Choisis tes équipes préférées',
+            Text(context.l10n.tvChooseTeams,
                 style: TvTokens.display(32, color: TvTokens.text)),
             const SizedBox(height: 8),
             SizedBox(
@@ -129,7 +131,7 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
             const SizedBox(height: 22),
             _PillButton(
                 icon: Icons.add_rounded,
-                label: 'Choisir mon équipe',
+                label: context.l10n.tvChooseMyTeam,
                 autofocus: true,
                 onSelect: _addTeam),
           ],
@@ -336,7 +338,7 @@ class _MatchCard extends StatelessWidget {
                   weight: FontWeight.w700, color: TvTokens.mutedDim, spacing: 1.2)),
           const SizedBox(height: 12),
           if (event == null)
-            Text('Aucune donnée',
+            Text(context.l10n.tvNoData,
                 style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim))
           else ...<Widget>[
             Row(

@@ -244,7 +244,7 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
-              'Flèches : naviguer   ·   OK : regarder / ⟲ revoir   ·   ⟨ ⟩ : ±30 min',
+              context.l10n.tvGuideGridHint,
               style: TvTokens.ui(12, color: TvTokens.mutedDim),
             ),
           ),

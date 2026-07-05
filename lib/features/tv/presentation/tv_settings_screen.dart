@@ -306,7 +306,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   children: <Widget>[
                     Icon(Icons.child_care_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
-                    Text('Contrôle parental (Mode Enfants + code PIN)',
+                    Text(context.l10n.tvSettingsParental,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
@@ -342,7 +342,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   children: <Widget>[
                     Icon(Icons.gavel_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
-                    Text('Mentions légales & Conditions d\'utilisation',
+                    Text(context.l10n.tvSettingsLegal,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
@@ -451,7 +451,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     Icon(Icons.collections_bookmark_rounded,
                         color: fg, size: 26),
                     const SizedBox(width: 12),
-                    Text('Mes collections (favoris par thème)',
+                    Text(context.l10n.tvSettingsCollections,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
@@ -487,7 +487,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   children: <Widget>[
                     Icon(Icons.bedtime_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
-                    Text('Minuterie de veille (éteindre après X min)',
+                    Text(context.l10n.tvSettingsSleep,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
@@ -523,7 +523,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   children: <Widget>[
                     Icon(Icons.tv_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
-                    Text('Affichage (marge écran + taille du texte)',
+                    Text(context.l10n.tvSettingsDisplay,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
@@ -559,7 +559,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   children: <Widget>[
                     Icon(Icons.info_outline_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
-                    Text('À propos (version, appareil, vider le cache)',
+                    Text(context.l10n.tvSettingsAbout,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,

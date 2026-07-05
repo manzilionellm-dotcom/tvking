@@ -90,7 +90,7 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
                 style: TvTokens.display(26, color: TvTokens.text)),
             const SizedBox(height: 8),
             Text(
-                'Aucune série pour le moment.\n(Source sans séries, ou compte M3U.)',
+                context.l10n.tvNoSeries,
                 textAlign: TextAlign.center,
                 style: TvTokens.ui(15, color: TvTokens.mutedDim)),
           ],
@@ -245,7 +245,7 @@ class _SeriesHero extends StatelessWidget {
                           children: <Widget>[
                             Icon(Icons.play_arrow_rounded, color: fg, size: 24),
                             const SizedBox(width: 8),
-                            Text('Voir la série',
+                            Text(context.l10n.tvViewSeries,
                                 style: TextStyle(
                                     fontSize: 17,
                                     fontWeight: FontWeight.w800,
@@ -390,7 +390,7 @@ class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
               final List<VodEpisode> eps = snap.data ?? const <VodEpisode>[];
               if (eps.isEmpty) {
                 return Center(
-                  child: Text('Aucun épisode trouvé pour cette série.',
+                  child: Text(context.l10n.tvNoEpisodes,
                       style: TvTokens.ui(16, color: TvTokens.mutedDim)),
                 );
               }

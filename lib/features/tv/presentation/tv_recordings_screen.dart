@@ -14,6 +14,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
+
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
 import '../core/tv_dimens.dart';
@@ -37,7 +39,7 @@ class TvRecordingsScreen extends StatelessWidget {
             icon: Icons.video_library_rounded,
             title: 'Aucun enregistrement',
             subtitle:
-                'Tes enregistrements apparaîtront ici. Pendant la lecture d\'une chaîne, appuie sur le bouton REC pour enregistrer.',
+                context.l10n.tvRecordingsEmpty,
           );
         }
         return Column(

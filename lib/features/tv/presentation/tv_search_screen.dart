@@ -198,7 +198,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                     : ListView(
                         children: <Widget>[
                           if (res.isNotEmpty) ...<Widget>[
-                            _sectionTitle('Chaînes'),
+                            _sectionTitle(context.l10n.tvTabChannels),
                             SizedBox(
                               height: 132,
                               child: ListView.builder(
@@ -421,7 +421,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           const Text(
-            'RECHERCHES RÉCENTES',
+            context.l10n.tvRecentSearches,
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,

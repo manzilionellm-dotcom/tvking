@@ -403,7 +403,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       if (!ok) {
         _relayPlayUrl = null;
         _controller.setUrl(realUrl); // on revient au direct
-        _flash('Échec démarrage enregistrement');
+        _flash(context.l10n.tvRecFailed);
         return;
       }
 
@@ -611,7 +611,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   void _toggleFavorite() {
     final bool wasFav = _isFavorite;
     FavoritesRepository.instance.toggle(_current.id);
-    _flash(wasFav ? 'Retiré des favoris' : 'Ajouté aux favoris ❤');
+    _flash(wasFav ? context.l10n.tvFavRemoved : context.l10n.tvFavAdded);
     _showOverlayTemporarily();
   }
 

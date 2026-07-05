@@ -637,7 +637,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   /// Libellé visible d'une catégorie (les sentinelles sont traduites/ornées).
   String _catLabel(BuildContext context, String cat) {
     if (cat == _kFavCat) return '★ ${context.l10n.navFavorites}';
-    if (cat == _kRecentCat) return '🕒 Récemment';
+    if (cat == _kRecentCat) return context.l10n.tvRecently;
     if (cat == _kForYouCat) return '✨ Pour vous';
     if (cat == _kAllCat) return '📺 Toutes';
     // Catégorie réelle : on NETTOIE le libellé affiché (FR|/UK|, RAW, 60fps,
@@ -1050,7 +1050,7 @@ class _ResumeRail extends StatelessWidget {
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text(
-                    'Tes chaînes récemment regardées apparaîtront ici.',
+                    context.l10n.tvRecentlyEmpty,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TvTokens.ui(14, color: TvTokens.mutedDim),

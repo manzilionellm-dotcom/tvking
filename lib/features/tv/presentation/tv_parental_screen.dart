@@ -11,6 +11,8 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
+
 import '../../security/data/app_pin_settings.dart';
 import '../../security/data/parental_controls.dart';
 import '../core/tv_dimens.dart';
@@ -63,7 +65,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
     if (mounted) {
       setState(() => _usingDefaultPin = def);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Code parental mis à jour ✔')),
+        SnackBar(content: Text(context.l10n.tvParentalUpdated)),
       );
     }
   }
@@ -75,7 +77,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('Contrôle parental',
+          Text(context.l10n.tvParentalTitle,
               style: TextStyle(
                   fontSize: TvDimens.displayM,
                   fontWeight: FontWeight.w800,
@@ -211,7 +213,7 @@ Future<bool> _askPin(BuildContext context, String title) async {
           subtitle: 'Code parental à 4 chiffres',
           onComplete: (String pin) async {
             final bool good = await AppPinSettings.instance.verify(pin);
-            return good ? null : 'Code incorrect, réessaie.';
+            return good ? null : context.l10n.tvParentalWrongCode;
           },
         ),
       ),
