@@ -17,9 +17,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../channels/domain/channel.dart';
+import '../../epg/data/catchup_url_builder.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -107,21 +107,64 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
     );
   }
 
-  // Gauche/Droite = décaler le temps (capturé AVANT le déplacement de focus).
-  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
+  /// Une émission (passée ou en cours) de [channel] est-elle rejouable
+  /// (archive du fournisseur dispo) ? Cf. CatchupUrlBuilder.
+  bool _canReplay(Channel channel, EpgProgram p) {
+    if (p.startDateTime.isAfter(DateTime.now())) return false; // à venir
+    return CatchupUrlBuilder.build(channel: channel, program: p) != null;
+  }
+
+  /// Action au OK sur une CASE d'émission :
+  ///   • en cours  → on regarde la chaîne EN DIRECT ;
+  ///   • passée avec archive → on REJOUE depuis le début (catch-up) ;
+  ///   • sinon (passée sans archive / à venir) → petit message.
+  void _onBlock(int channelIndex, Channel channel, EpgProgram p) {
+    final DateTime now = DateTime.now();
+    final bool onAir = p.startTime <= now.millisecondsSinceEpoch &&
+        now.millisecondsSinceEpoch < p.stopTime;
+    if (onAir) {
+      _play(channelIndex);
+      return;
     }
-    final LogicalKeyboardKey k = event.logicalKey;
-    if (k == LogicalKeyboardKey.arrowLeft) {
-      _shiftWindow(-30);
-      return KeyEventResult.handled;
+    final String? url = _canReplay(channel, p)
+        ? CatchupUrlBuilder.build(channel: channel, program: p)
+        : null;
+    if (url != null) {
+      // Chaîne SYNTHÉTIQUE (URL d'archive, isLive=false) → LECTEUR EXISTANT.
+      final Channel replay = Channel(
+        id: '${channel.id}#catchup${p.startTime}',
+        name: '${channel.cleanName} · ${p.title}',
+        category: channel.category,
+        streamUrl: url,
+        isLive: false,
+        playlistId: channel.playlistId,
+        logoUrl: channel.logoUrl,
+        currentProgram: p.title,
+      );
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              TvPlayerScreen(channels: <Channel>[replay], startIndex: 0),
+        ),
+      );
+      return;
     }
-    if (k == LogicalKeyboardKey.arrowRight) {
-      _shiftWindow(30);
-      return KeyEventResult.handled;
-    }
-    return KeyEventResult.ignored;
+    _toast(p.startDateTime.isAfter(now)
+        ? 'Programme à venir'
+        : 'Replay indisponible pour cette chaîne');
+  }
+
+  void _toast(String msg) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: TvTokens.card,
+        content: Text(msg,
+            style: TextStyle(color: TvTokens.text, fontSize: TvDimens.body)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
@@ -134,9 +177,7 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
         (DateTime.now().millisecondsSinceEpoch - startMs) / 60000 * _pxPerMin;
     final bool nowVisible = nowDx >= 0 && nowDx <= timelineW;
 
-    return Focus(
-      onKeyEvent: _onKey,
-      child: Column(
+    return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           // ----- En-tête : titre + heures -----
@@ -144,12 +185,27 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
             children: <Widget>[
               SizedBox(
                 width: _chanColW,
-                child: Text(
-                  'GRILLE TV',
-                  style: TvTokens.ui(13,
-                      weight: FontWeight.w800,
-                      color: TvTokens.gold,
-                      spacing: 1.6),
+                child: Row(
+                  children: <Widget>[
+                    Text(
+                      'GRILLE TV',
+                      style: TvTokens.ui(13,
+                          weight: FontWeight.w800,
+                          color: TvTokens.gold,
+                          spacing: 1.6),
+                    ),
+                    const Spacer(),
+                    // Décalage du temps par BOUTONS visibles (les flèches sont
+                    // désormais libres pour naviguer entre les cases).
+                    _ShiftChip(
+                        icon: Icons.chevron_left_rounded,
+                        onSelect: () => _shiftWindow(-30)),
+                    const SizedBox(width: 6),
+                    _ShiftChip(
+                        icon: Icons.chevron_right_rounded,
+                        onSelect: () => _shiftWindow(30)),
+                    const SizedBox(width: 8),
+                  ],
                 ),
               ),
               Expanded(
@@ -187,7 +243,7 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
-              '◀ ▶ : avancer/reculer de 30 min   ·   OK : regarder',
+              'Flèches : naviguer   ·   OK : regarder / ⟲ revoir   ·   ⟨ ⟩ : ±30 min',
               style: TvTokens.ui(12, color: TvTokens.mutedDim),
             ),
           ),
@@ -202,6 +258,7 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
                     itemBuilder: (BuildContext context, int i) {
                       // Pagination : on précharge en approchant de la fin.
                       if (i >= _channels.length - 12) _loadMore();
+                      final int idx = i;
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 6),
                         child: _GuideRow(
@@ -213,14 +270,17 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
                           chanColW: _chanColW,
                           rowH: _rowH,
                           nowDx: nowVisible ? nowDx : null,
-                          onPlay: () => _play(i),
+                          onPlay: () => _play(idx),
+                          canReplay: (EpgProgram p) =>
+                              _canReplay(_channels[idx], p),
+                          onBlock: (EpgProgram p) =>
+                              _onBlock(idx, _channels[idx], p),
                         ),
                       );
                     },
                   ),
           ),
         ],
-      ),
     );
   }
 
@@ -231,8 +291,8 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
   }
 }
 
-/// Une LIGNE de la grille : cellule chaîne (focusable, OK = lecture) +
-/// blocs de programmes positionnés sur la timeline (affichage seul).
+/// Une LIGNE de la grille : cellule chaîne (focusable, OK = direct) +
+/// blocs de programmes DÉSORMAIS FOCUSABLES (OK = direct / ⟲ revoir).
 class _GuideRow extends StatelessWidget {
   const _GuideRow({
     required this.channel,
@@ -244,6 +304,8 @@ class _GuideRow extends StatelessWidget {
     required this.rowH,
     required this.nowDx,
     required this.onPlay,
+    required this.canReplay,
+    required this.onBlock,
   });
 
   final Channel channel;
@@ -255,6 +317,12 @@ class _GuideRow extends StatelessWidget {
   final double rowH;
   final double? nowDx;
   final VoidCallback onPlay;
+
+  /// Une émission est-elle rejouable (archive dispo) ? → pastille ⟲.
+  final bool Function(EpgProgram) canReplay;
+
+  /// OK sur une case d'émission.
+  final void Function(EpgProgram) onBlock;
 
   @override
   Widget build(BuildContext context) {
@@ -347,36 +415,89 @@ class _GuideRow extends StatelessWidget {
     final double width =
         (windowW - left - right).clamp(0, windowW).toDouble();
     if (width < 8) return const SizedBox.shrink();
-    final bool onAir = p.startTime <=
-            DateTime.now().millisecondsSinceEpoch &&
-        DateTime.now().millisecondsSinceEpoch < p.stopTime;
+    final int nowMs = DateTime.now().millisecondsSinceEpoch;
+    final bool onAir = p.startTime <= nowMs && nowMs < p.stopTime;
+    final bool replayable = canReplay(p);
     return Positioned(
       left: left,
       top: 3,
       bottom: 3,
       width: width - 3, // petit interstice entre blocs
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: onAir ? TvTokens.badgeBg : TvTokens.sel,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-              color: onAir ? TvTokens.gold : TvTokens.lineSoft),
-        ),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            p.title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: onAir ? FontWeight.w700 : FontWeight.w600,
-              color: onAir ? TvTokens.goldBright : TvTokens.text,
+      // Case FOCUSABLE : OK = regarder (en direct) / ⟲ revoir (passé + archive).
+      child: TvFocusBuilder(
+        scale: TvFocusScale.small,
+        onSelect: () => onBlock(p),
+        builder: (BuildContext context, bool focused) {
+          final Color bg = focused
+              ? TvTokens.gold
+              : (onAir ? TvTokens.badgeBg : TvTokens.sel);
+          final Color fg = focused
+              ? const Color(0xFF1A1206)
+              : (onAir ? TvTokens.goldBright : TvTokens.text);
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                  color: focused
+                      ? TvTokens.gold
+                      : (onAir ? TvTokens.gold : TvTokens.lineSoft),
+                  width: focused ? 2 : 1),
             ),
-          ),
-        ),
+            child: Row(
+              children: <Widget>[
+                if (replayable) ...<Widget>[
+                  Icon(Icons.replay_rounded, size: 13, color: fg),
+                  const SizedBox(width: 4),
+                ],
+                Expanded(
+                  child: Text(
+                    p.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: onAir ? FontWeight.w700 : FontWeight.w600,
+                      color: fg,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
+    );
+  }
+}
+
+/// Petit bouton de décalage du temps (±30 min) dans l'en-tête de la grille.
+class _ShiftChip extends StatelessWidget {
+  const _ShiftChip({required this.icon, required this.onSelect});
+  final IconData icon;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        return Container(
+          width: 34,
+          height: 26,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: focused ? TvTokens.gold : TvTokens.sel,
+            borderRadius: BorderRadius.circular(TvTokens.rSmall),
+            border: Border.all(color: TvTokens.lineSoft),
+          ),
+          child: Icon(icon,
+              size: 20,
+              color: focused ? const Color(0xFF1A1206) : TvTokens.goldBright),
+        );
+      },
     );
   }
 }
