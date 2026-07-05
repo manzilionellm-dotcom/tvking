@@ -19,11 +19,13 @@ import 'package:flutter/material.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../channels/domain/channel.dart';
+import '../../epg/data/catchup_url_builder.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import 'tv_player_screen.dart';
 
 class TvChannelProgramsScreen extends StatefulWidget {
   const TvChannelProgramsScreen({required this.channel, super.key});
@@ -76,6 +78,42 @@ class _TvChannelProgramsScreenState extends State<TvChannelProgramsScreen> {
       _toast('Rappel impossible (trop proche ou rappels désactivés)');
     }
   }
+
+  /// « REVOIR » (catch-up) : rejoue une émission PASSÉE depuis l'ARCHIVE DU
+  /// FOURNISSEUR (jamais un enregistrement local). On fabrique une chaîne
+  /// synthétique — copie de la chaîne live mais avec l'URL d'archive et
+  /// isLive=false — et on la passe AU LECTEUR EXISTANT (ExoPlayer). Aucun
+  /// changement de lecteur, aucun buffer local → qualité/stabilité intactes.
+  void _replay(EpgProgram p) {
+    final String? url = CatchupUrlBuilder.build(channel: widget.channel, program: p);
+    if (url == null) {
+      _toast('Replay indisponible pour cette chaîne');
+      return;
+    }
+    final Channel c = widget.channel;
+    final Channel replayChannel = Channel(
+      id: '${c.id}#catchup${p.startTime}',
+      name: '${c.cleanName} · ${p.title}',
+      category: c.category,
+      streamUrl: url,
+      isLive: false,
+      playlistId: c.playlistId,
+      logoUrl: c.logoUrl,
+      currentProgram: p.title,
+    );
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TvPlayerScreen(
+          channels: <Channel>[replayChannel],
+          startIndex: 0,
+        ),
+      ),
+    );
+  }
+
+  /// Une émission passée est-elle « revoyable » (archive dispo) ?
+  bool _canReplay(EpgProgram p) =>
+      CatchupUrlBuilder.build(channel: widget.channel, program: p) != null;
 
   void _toast(String msg) {
     ScaffoldMessenger.of(context).clearSnackBars();
@@ -141,7 +179,9 @@ class _TvChannelProgramsScreenState extends State<TvChannelProgramsScreen> {
                         program: programs[i],
                         autofocus: i == liveIndex,
                         hasReminder: _reminders.contains(programs[i].startTime),
+                        canReplay: _canReplay(programs[i]),
                         onToggleReminder: () => _toggleReminder(programs[i]),
+                        onReplay: () => _replay(programs[i]),
                       ),
                     );
                   },
@@ -180,13 +220,19 @@ class _ProgramRow extends StatelessWidget {
     required this.program,
     this.autofocus = false,
     this.hasReminder = false,
+    this.canReplay = false,
     this.onToggleReminder,
+    this.onReplay,
   });
 
   final EpgProgram program;
   final bool autofocus;
   final bool hasReminder;
+
+  /// L'émission passée dispose-t-elle d'une archive (catch-up) rejouable ?
+  final bool canReplay;
   final VoidCallback? onToggleReminder;
+  final VoidCallback? onReplay;
 
   _ProgState _stateFor(DateTime now) {
     if (program.isLiveAt(now)) return _ProgState.live;
@@ -199,12 +245,19 @@ class _ProgramRow extends StatelessWidget {
     final _ProgState state = _stateFor(DateTime.now());
     final bool isLive = state == _ProgState.live;
     final bool isFuture = state == _ProgState.future;
+    // « REVOIR » : possible sur une émission PASSÉE, ET sur l'émission EN COURS
+    // (revoir depuis le début — l'exemple du match commencé il y a 1 h). Jamais
+    // sur une émission à venir (rien à rejouer).
+    final bool replayable = canReplay && !isFuture;
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.small,
-      // À VENIR → OK pose/retire un RAPPEL (alarme 5 min avant). LIVE/passé →
-      // OK ne lance rien (le direct continue derrière) ; Retour revient au lecteur.
-      onSelect: isFuture ? onToggleReminder : () {},
+      // À VENIR → OK pose/retire un RAPPEL (alarme 5 min avant).
+      // PASSÉ / EN DIRECT avec archive → OK lance le REPLAY depuis le début.
+      // Sinon → rien (le direct continue derrière) ; Retour revient au lecteur.
+      onSelect: isFuture
+          ? onToggleReminder
+          : (replayable ? onReplay : () {}),
       builder: (BuildContext context, bool focused) {
         final Color border = focused
             ? TvTokens.gold
@@ -265,7 +318,7 @@ class _ProgramRow extends StatelessWidget {
                 ),
               ),
               // À VENIR : indicateur de RAPPEL. Cloche pleine (or) = rappel posé ;
-              // cloche vide = OK pour poser un rappel. (Rien pour live/passé.)
+              // cloche vide = OK pour poser un rappel.
               if (isFuture) ...<Widget>[
                 const SizedBox(width: 12),
                 Icon(
@@ -274,6 +327,38 @@ class _ProgramRow extends StatelessWidget {
                       : Icons.notifications_none_rounded,
                   size: 26,
                   color: hasReminder ? TvTokens.gold : TvTokens.mutedDim,
+                ),
+              ]
+              // PASSÉ / EN DIRECT avec archive : pastille « ⟲ Revoir » →
+              // OK rejoue l'émission depuis le début (catch-up fournisseur).
+              else if (replayable) ...<Widget>[
+                const SizedBox(width: 12),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: focused ? TvTokens.gold : TvTokens.badgeBg,
+                    borderRadius: BorderRadius.circular(TvTokens.rSmall),
+                    border: Border.all(color: TvTokens.hairline),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(Icons.replay_rounded,
+                          size: 18,
+                          color: focused
+                              ? const Color(0xFF1A1206)
+                              : TvTokens.goldBright),
+                      const SizedBox(width: 6),
+                      Text('Revoir',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: focused
+                                  ? const Color(0xFF1A1206)
+                                  : TvTokens.goldBright)),
+                    ],
+                  ),
                 ),
               ],
             ],
