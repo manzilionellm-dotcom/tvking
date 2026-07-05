@@ -30,6 +30,7 @@ import '../../vod/domain/vod_movie.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import '../../vod/data/vod_download_service.dart';
 import 'tv_components.dart';
 import 'tv_player_screen.dart';
 
@@ -273,6 +274,9 @@ class _HeroBanner extends StatelessWidget {
                         primary: false,
                         onSelect: onToggleList,
                       ),
+                      const SizedBox(width: 12),
+                      // « Télécharger » : garde le film pour le regarder hors-ligne.
+                      _HeroDownloadButton(movie: movie),
                     ],
                   ),
                 ],
@@ -291,6 +295,52 @@ class _HeroBanner extends StatelessWidget {
 }
 
 /// Bouton d'action de la vedette (▶ Regarder / + Ma Liste), focusable.
+/// Bouton « Télécharger » de la vedette : écoute VodDownloadService pour
+/// afficher l'état en direct (Télécharger → % → ✓ Téléchargé). OK :
+/// démarre / met en pause / (si terminé) ne refait rien.
+class _HeroDownloadButton extends StatelessWidget {
+  const _HeroDownloadButton({required this.movie});
+  final VodMovie movie;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: VodDownloadService.instance,
+      builder: (BuildContext context, _) {
+        final VodDownload? d = VodDownloadService.instance.byId(movie.id);
+        IconData icon = Icons.download_rounded;
+        String label = 'Télécharger';
+        VoidCallback onSelect =
+            () => VodDownloadService.instance.downloadMovie(movie);
+        if (d != null) {
+          switch (d.status) {
+            case VodDownloadStatus.done:
+              icon = Icons.download_done_rounded;
+              label = 'Téléchargé';
+              onSelect = () {};
+            case VodDownloadStatus.downloading:
+              icon = Icons.pause_rounded;
+              label = '${(d.progress * 100).round()} %';
+              onSelect = () => VodDownloadService.instance.pause(movie.id);
+            case VodDownloadStatus.paused:
+            case VodDownloadStatus.error:
+            case VodDownloadStatus.queued:
+              icon = Icons.download_rounded;
+              label = 'Reprendre';
+              onSelect = () => VodDownloadService.instance.resume(movie.id);
+          }
+        }
+        return _HeroButton(
+          icon: icon,
+          label: label,
+          primary: false,
+          onSelect: onSelect,
+        );
+      },
+    );
+  }
+}
+
 class _HeroButton extends StatelessWidget {
   const _HeroButton({
     required this.icon,

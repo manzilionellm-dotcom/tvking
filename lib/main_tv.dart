@@ -33,6 +33,7 @@ import 'features/recordings/data/recording_repository.dart';
 import 'features/security/data/parental_controls.dart';
 import 'features/sports/data/sports_repository.dart';
 import 'features/stats/data/watch_stats_service.dart';
+import 'features/vod/data/vod_download_service.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
 import 'features/tv/data/display_settings.dart';
@@ -171,6 +172,10 @@ Future<void> _bootstrap() async {
   // 8) Contrôle parental : on charge l'état du Mode Enfants pour que le 1er
   //    rendu du Direct masque déjà l'Adulte si le parent l'a activé.
   unawaited(ParentalControls.instance.load());
+
+  // 8z) TÉLÉCHARGEMENTS HORS-LIGNE : recharge la liste des films téléchargés
+  //     (et l'état des reprises). Lecture SharedPreferences, non bloquant.
+  unawaited(VodDownloadService.instance.load());
 
   // 8a) STATISTIQUES PERSONNELLES : échantillonneur 1 min qui lit NowPlaying
   //     (déjà alimenté par le lecteur pour le panel). Local à la box, par
