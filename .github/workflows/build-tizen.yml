@@ -24,6 +24,23 @@ on:
     paths:
       - 'lib/main_tizen.dart'
       - 'lib/features/tv/presentation/player/tizen_player_screen.dart'
+      # L'app Samsung RÉUTILISE toute l'UI TV + les modules PARTAGÉS (comme
+      # l'Android TV). Sans ces chemins, une amélioration TV (lecteur film,
+      # téléchargements, catch-up, ambiances…) ne reconstruisait JAMAIS le
+      # .tpk Samsung → il restait figé. On s'aligne sur build-tv.yml.
+      - 'lib/features/tv/**'
+      - 'lib/features/device/**'
+      - 'lib/features/subscription/**'
+      - 'lib/features/channels/**'
+      - 'lib/features/playlists/**'
+      - 'lib/features/vod/**'
+      - 'lib/features/epg/**'
+      - 'lib/features/sports/**'
+      - 'lib/features/stats/**'
+      - 'lib/core/**'
+      - 'pubspec.yaml'
+      - 'assets/branding/**'
+      - 'lib/l10n/**'
       - '.github/workflows/build-tizen.yml'
   workflow_dispatch:
 
