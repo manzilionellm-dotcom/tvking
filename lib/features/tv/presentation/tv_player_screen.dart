@@ -550,11 +550,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   void _openMultiView() {
     if (!multiViewSupported()) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(
+        SnackBar(
           behavior: SnackBarBehavior.floating,
-          content: Text('Multi-vue indisponible : appareil trop limité '
-              '(2 flux simultanés non garantis).'),
-          duration: Duration(seconds: 3),
+          content: Text(context.l10n.tvMultiViewUnavailable),
+          duration: const Duration(seconds: 3),
         ),
       );
       _showOverlayTemporarily();
@@ -865,7 +864,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                                 fontWeight: FontWeight.w800,
                                 color: TvTokens.text)),
                         const SizedBox(height: 8),
-                        Text('Chaîne indisponible pour le moment.',
+                        Text(context.l10n.tvChannelUnavailable,
                             style: TextStyle(
                                 fontSize: TvDimens.body,
                                 color: TvTokens.mutedDim)),
@@ -881,7 +880,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                                 color: TvTokens.gold,
                                 width: TvDimens.focusOutline),
                           ),
-                          child: Text('OK : Réessayer   ·   Retour : Quitter',
+                          child: Text(context.l10n.tvRetryQuitHint,
                               style: TextStyle(
                                   fontSize: TvDimens.titleS,
                                   fontWeight: FontWeight.w700,
@@ -1326,12 +1325,12 @@ class _VodControls extends StatelessWidget {
           children: <Widget>[
             _CtrlButton(
                 icon: Icons.replay_10_rounded,
-                label: '10 s',
+                label: context.l10n.tvSkip10,
                 onTap: onSeekBack),
             const SizedBox(width: 34),
             _CtrlButton(
               icon: isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-              label: isPlaying ? 'Pause' : 'Lecture',
+              label: isPlaying ? context.l10n.tvPause : context.l10n.tvPlay,
               onTap: onPlayPause,
               primary: true,
               accent: TvTokens.gold,
@@ -1339,7 +1338,7 @@ class _VodControls extends StatelessWidget {
             const SizedBox(width: 34),
             _CtrlButton(
                 icon: Icons.forward_10_rounded,
-                label: '10 s',
+                label: context.l10n.tvSkip10,
                 onTap: onSeekFwd),
           ],
         ),

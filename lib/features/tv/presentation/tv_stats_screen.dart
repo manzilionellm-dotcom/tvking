@@ -10,6 +10,7 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../stats/data/watch_stats_service.dart';
 import '../core/tv_tokens.dart';
 
@@ -34,50 +35,49 @@ class TvStatsScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Text('Mes statistiques',
-                    style: TextStyle(
+                Text(context.l10n.tvStatsTitle,
+                    style: const TextStyle(
                         fontSize: 30,
                         fontWeight: FontWeight.w800,
                         color: TvTokens.text)),
                 const SizedBox(height: 6),
-                const Text(
-                    'Ton temps d\'écran, rien qu\'à toi — tout reste sur cette box.',
-                    style: TextStyle(fontSize: 14, color: TvTokens.muted)),
+                Text(context.l10n.tvStatsSubtitle,
+                    style: const TextStyle(fontSize: 14, color: TvTokens.muted)),
                 const SizedBox(height: 26),
 
                 // ----- Grands chiffres -----
                 Row(
                   children: <Widget>[
-                    _bigNumber('Aujourd\'hui',
-                        WatchStatsService.fmt(s.todayMinutes)),
+                    _bigNumber(context.l10n.tvStatsToday,
+                        _dur(context, s.todayMinutes)),
                     const SizedBox(width: 16),
-                    _bigNumber('7 derniers jours',
-                        WatchStatsService.fmt(weekTotal)),
+                    _bigNumber(context.l10n.tvStatsSevenDays,
+                        _dur(context, weekTotal)),
                   ],
                 ),
                 // ----- Ce que l'app a APPRIS de toi (affiché seulement
                 //  quand il y a assez de données — on constate, on ne
                 //  devine pas). -----
-                if (s.favoriteMomentLabel() != null ||
-                    s.favoriteWeekdayLabel() != null) ...<Widget>[
+                if (s.favoriteMomentKey() != null ||
+                    s.favoriteWeekday() != null) ...<Widget>[
                   const SizedBox(height: 14),
                   Wrap(
                     spacing: 10,
                     children: <Widget>[
-                      if (s.favoriteMomentLabel() != null)
-                        _insight(
-                            'Ton moment télé : ${s.favoriteMomentLabel()!}'),
-                      if (s.favoriteWeekdayLabel() != null)
-                        _insight(
-                            'Ton jour préféré : ${s.favoriteWeekdayLabel()!}'),
+                      if (s.favoriteMomentKey() != null)
+                        _insight(context.l10n.tvStatsMoment(
+                            _momentLabel(context, s.favoriteMomentKey()!))),
+                      if (s.favoriteWeekday() != null)
+                        _insight(context.l10n.tvStatsFavDay(
+                            _weekdayLabel(context, s.favoriteWeekday()!))),
                     ],
                   ),
                 ],
                 const SizedBox(height: 30),
 
                 // ----- Barres des 7 derniers jours -----
-                const Text('Cette semaine',
-                    style: TextStyle(
+                Text(context.l10n.tvStatsThisWeek,
+                    style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
                         color: TvTokens.text)),
@@ -97,20 +97,19 @@ class TvStatsScreen extends StatelessWidget {
                 const SizedBox(height: 30),
 
                 // ----- Top chaînes -----
-                const Text('Tes chaînes de la semaine',
-                    style: TextStyle(
+                Text(context.l10n.tvStatsTopChannels,
+                    style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
                         color: TvTokens.text)),
                 const SizedBox(height: 12),
                 if (top.isEmpty)
-                  const Text(
-                      'Regarde quelques chaînes et reviens ici : ton palmarès s\'écrira tout seul.',
-                      style:
-                          TextStyle(fontSize: 15, color: TvTokens.mutedDim))
+                  Text(context.l10n.tvStatsEmpty,
+                      style: const TextStyle(
+                          fontSize: 15, color: TvTokens.mutedDim))
                 else
                   for (final ChannelStat c in top) ...<Widget>[
-                    _channelRow(c, maxTop),
+                    _channelRow(context, c, maxTop),
                     const SizedBox(height: 8),
                   ],
               ],
@@ -182,7 +181,51 @@ class TvStatsScreen extends StatelessWidget {
     );
   }
 
-  Widget _channelRow(ChannelStat c, int max) {
+  /// Durée traduite : « 2 h 05 » / « 45 min » selon la langue active.
+  static String _dur(BuildContext ctx, int minutes) {
+    if (minutes < 60) return ctx.l10n.tvDurationMinutes(minutes);
+    final int h = minutes ~/ 60;
+    final int m = minutes % 60;
+    return m == 0
+        ? ctx.l10n.tvDurationHours(h)
+        : ctx.l10n.tvDurationHoursMinutes(h, m.toString().padLeft(2, '0'));
+  }
+
+  /// Clé de moment ('m'/'a'/'s'/'n') → libellé traduit.
+  static String _momentLabel(BuildContext ctx, String key) {
+    switch (key) {
+      case 'm':
+        return ctx.l10n.tvMomentMorning;
+      case 'a':
+        return ctx.l10n.tvMomentAfternoon;
+      case 's':
+        return ctx.l10n.tvMomentEvening;
+      default:
+        return ctx.l10n.tvMomentNight;
+    }
+  }
+
+  /// Jour 1(lundi)..7(dimanche) → libellé traduit.
+  static String _weekdayLabel(BuildContext ctx, int wd) {
+    switch (wd) {
+      case 1:
+        return ctx.l10n.tvWeekdayMonday;
+      case 2:
+        return ctx.l10n.tvWeekdayTuesday;
+      case 3:
+        return ctx.l10n.tvWeekdayWednesday;
+      case 4:
+        return ctx.l10n.tvWeekdayThursday;
+      case 5:
+        return ctx.l10n.tvWeekdayFriday;
+      case 6:
+        return ctx.l10n.tvWeekdaySaturday;
+      default:
+        return ctx.l10n.tvWeekdaySunday;
+    }
+  }
+
+  Widget _channelRow(BuildContext context, ChannelStat c, int max) {
     final double frac = max <= 0 ? 0 : c.minutes / max;
     return Row(
       children: <Widget>[
@@ -223,7 +266,7 @@ class TvStatsScreen extends StatelessWidget {
         const SizedBox(width: 12),
         SizedBox(
           width: 90,
-          child: Text(WatchStatsService.fmt(c.minutes),
+          child: Text(_dur(context, c.minutes),
               textAlign: TextAlign.right,
               style: const TextStyle(
                   fontSize: 15,

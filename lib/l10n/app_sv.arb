@@ -568,5 +568,169 @@
   "tvStay": "Stanna kvar",
   "tvChooseServer": "Välj din server",
   "tvManualServer": "Manuell URL",
-  "tvKeyboardHint": "Tips: du kan skriva med tangentbordet i fjärrkontrollsappen på telefonen (kopiera-klistra funkar)."
+  "tvKeyboardHint": "Tips: du kan skriva med tangentbordet i fjärrkontrollsappen på telefonen (kopiera-klistra funkar).",
+  "tvDownloadsTitle": "Mina nedladdningar",
+  "tvDownloadsSubtitle": "Dina filmer att se offline – på resa eller när uppkopplingen sviktar.",
+  "tvDownloadsEmpty": "Inga nedladdade filmer",
+  "tvDownloadsEmptyHelp": "Välj ”Ladda ner” på en film: den väntar här, även utan internet.",
+  "tvDownloadReady": "Klar · {size}",
+  "@tvDownloadReady": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDownloadInProgress": "Laddar ner {percent}% · tryck för att pausa",
+  "@tvDownloadInProgress": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDownloadPausedAt": "Pausad {percent}% · tryck för att fortsätta",
+  "@tvDownloadPausedAt": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDownloadFailed": "Misslyckades · tryck för att försöka igen",
+  "tvDownloadQueued": "Väntar…",
+  "tvWatch": "Titta",
+  "tvMyList": "Min lista",
+  "tvInMyList": "I Min lista",
+  "tvRailRecent": "Nyligen sedda",
+  "tvDownload": "Ladda ner",
+  "tvDownloaded": "Nedladdad",
+  "tvResume": "Fortsätt",
+  "tvPercent": "{percent} %",
+  "@tvPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvSettingsDownloads": "Mina nedladdningar (offlinefilmer)",
+  "tvSettingsStats": "Min statistik (skärmtid, toppkanaler)",
+  "tvStatsTitle": "Min statistik",
+  "tvStatsSubtitle": "Din skärmtid, bara för dig – allt stannar på den här enheten.",
+  "tvStatsToday": "Idag",
+  "tvStatsSevenDays": "Senaste 7 dagarna",
+  "tvStatsThisWeek": "Denna vecka",
+  "tvStatsTopChannels": "Dina kanaler denna vecka",
+  "tvStatsEmpty": "Titta på några kanaler och kom tillbaka: din topplista skapas av sig själv.",
+  "tvStatsMoment": "Din tv-stund: {moment}",
+  "@tvStatsMoment": {
+    "placeholders": {
+      "moment": {
+        "type": "String"
+      }
+    }
+  },
+  "tvStatsFavDay": "Din favoritdag: {day}",
+  "@tvStatsFavDay": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      }
+    }
+  },
+  "tvMomentMorning": "på morgonen ☕",
+  "tvMomentAfternoon": "på eftermiddagen 🌤️",
+  "tvMomentEvening": "på kvällen 🌆",
+  "tvMomentNight": "på natten 🌙",
+  "tvWeekdayMonday": "måndag",
+  "tvWeekdayTuesday": "tisdag",
+  "tvWeekdayWednesday": "onsdag",
+  "tvWeekdayThursday": "torsdag",
+  "tvWeekdayFriday": "fredag",
+  "tvWeekdaySaturday": "lördag",
+  "tvWeekdaySunday": "söndag",
+  "tvDurationMinutes": "{n} min",
+  "@tvDurationMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDurationHours": "{h} h",
+  "@tvDurationHours": {
+    "placeholders": {
+      "h": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDurationHoursMinutes": "{h} h {m}",
+  "@tvDurationHoursMinutes": {
+    "placeholders": {
+      "h": {
+        "type": "int"
+      },
+      "m": {
+        "type": "String"
+      }
+    }
+  },
+  "tvWhoWatching": "Vem tittar?",
+  "tvManageProfiles": "Hantera profiler",
+  "tvAddProfile": "Lägg till",
+  "tvDisplayTitle": "Visning",
+  "tvOverscanLabel": "Skärmmarginal (overscan)",
+  "tvOverscanHint": "Öka om din TV klipper bort bildens kanter.",
+  "tvTextSizeLabel": "Textstorlek",
+  "tvTextNormal": "Normal",
+  "tvTextLarge": "Stor",
+  "tvNightComfortTitle": "Kunglig natt – nattkomfort",
+  "tvNightComfortHint": "En mycket lätt varm slöja på kvällen: mindre blått ljus, skonsammare för ögonen.",
+  "tvNightOff": "Av",
+  "tvNightAuto": "Auto på kvällen",
+  "tvNightAlways": "Alltid",
+  "tvReplay": "Se igen",
+  "tvReplayUnavailable": "Se igen är inte tillgängligt för den här kanalen",
+  "tvProgramLive": "DIREKT",
+  "tvProgramPast": "SLUT",
+  "tvProgramFuture": "KOMMANDE",
+  "tvProgramUpcoming": "Kommande program",
+  "tvReminderRemoved": "Påminnelse borttagen",
+  "tvReminderSet": "Påminnelse satt · 5 min innan",
+  "tvReminderFailed": "Påminnelse misslyckades (för snart eller avstängda)",
+  "tvGuideGridTitle": "TV-TABLÅ",
+  "tvGuideGridHint": "Pilar: navigera · OK: se / se igen · ⟨ ⟩: ±30 min",
+  "tvPlay": "Spela",
+  "tvPause": "Paus",
+  "tvSkip10": "10 s",
+  "tvHeartLate": "det börjar bli sent 🌙",
+  "tvHeartCoverUp": "klä dig varmt 🧣",
+  "tvHeartDrink": "drick vatten ☀️",
+  "tvHeartCoffee": "ha en god kaffe ☕",
+  "tvHeartWeekend": "trevlig helg 🎉",
+  "tvHeartSunday": "skön söndag 🛋️",
+  "tvHeartMonday": "lycka till 💪",
+  "tvCareStretch": "Redan 3 timmar – sträck på dig och drick lite vatten 💛",
+  "tvCareLate": "Det är sent… TV:n finns kvar imorgon 🌙",
+  "tvSportSoon": "⚽ {team} spelar snart",
+  "@tvSportSoon": {
+    "placeholders": {
+      "team": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSportKickoff": "⚽ Avspark! {match}",
+  "@tvSportKickoff": {
+    "placeholders": {
+      "match": {
+        "type": "String"
+      }
+    }
+  },
+  "tvMultiViewUnavailable": "Flervy ej tillgänglig: enheten för begränsad (2 samtidiga strömmar garanteras inte).",
+  "tvChannelUnavailable": "Kanalen är inte tillgänglig just nu.",
+  "tvRetryQuitHint": "OK: Försök igen   ·   Bakåt: Avsluta"
 }

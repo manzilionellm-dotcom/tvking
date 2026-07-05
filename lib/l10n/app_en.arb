@@ -568,5 +568,169 @@
   "tvStay": "Stay",
   "tvChooseServer": "Choose your server",
   "tvManualServer": "Manual URL",
-  "tvKeyboardHint": "Tip: you can type with your phone's TV-remote app keyboard (copy-paste works)."
+  "tvKeyboardHint": "Tip: you can type with your phone's TV-remote app keyboard (copy-paste works).",
+  "tvDownloadsTitle": "My downloads",
+  "tvDownloadsSubtitle": "Your movies to watch offline — travelling, or when the connection drops.",
+  "tvDownloadsEmpty": "No downloaded movies",
+  "tvDownloadsEmptyHelp": "On a movie, choose “Download”: it will wait for you here, even without Internet.",
+  "tvDownloadReady": "Ready · {size}",
+  "@tvDownloadReady": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDownloadInProgress": "Downloading {percent}% · press to pause",
+  "@tvDownloadInProgress": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDownloadPausedAt": "Paused {percent}% · press to resume",
+  "@tvDownloadPausedAt": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDownloadFailed": "Failed · press to retry",
+  "tvDownloadQueued": "Waiting…",
+  "tvWatch": "Watch",
+  "tvMyList": "My List",
+  "tvInMyList": "In My List",
+  "tvRailRecent": "Recently watched",
+  "tvDownload": "Download",
+  "tvDownloaded": "Downloaded",
+  "tvResume": "Resume",
+  "tvPercent": "{percent}%",
+  "@tvPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvSettingsDownloads": "My downloads (offline movies)",
+  "tvSettingsStats": "My stats (screen time, top channels)",
+  "tvStatsTitle": "My stats",
+  "tvStatsSubtitle": "Your screen time, just for you — everything stays on this box.",
+  "tvStatsToday": "Today",
+  "tvStatsSevenDays": "Last 7 days",
+  "tvStatsThisWeek": "This week",
+  "tvStatsTopChannels": "Your channels this week",
+  "tvStatsEmpty": "Watch a few channels and come back: your ranking will build itself.",
+  "tvStatsMoment": "Your TV moment: {moment}",
+  "@tvStatsMoment": {
+    "placeholders": {
+      "moment": {
+        "type": "String"
+      }
+    }
+  },
+  "tvStatsFavDay": "Your favourite day: {day}",
+  "@tvStatsFavDay": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      }
+    }
+  },
+  "tvMomentMorning": "mornings ☕",
+  "tvMomentAfternoon": "afternoons 🌤️",
+  "tvMomentEvening": "evenings 🌆",
+  "tvMomentNight": "late nights 🌙",
+  "tvWeekdayMonday": "Monday",
+  "tvWeekdayTuesday": "Tuesday",
+  "tvWeekdayWednesday": "Wednesday",
+  "tvWeekdayThursday": "Thursday",
+  "tvWeekdayFriday": "Friday",
+  "tvWeekdaySaturday": "Saturday",
+  "tvWeekdaySunday": "Sunday",
+  "tvDurationMinutes": "{n} min",
+  "@tvDurationMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDurationHours": "{h} h",
+  "@tvDurationHours": {
+    "placeholders": {
+      "h": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDurationHoursMinutes": "{h} h {m}",
+  "@tvDurationHoursMinutes": {
+    "placeholders": {
+      "h": {
+        "type": "int"
+      },
+      "m": {
+        "type": "String"
+      }
+    }
+  },
+  "tvWhoWatching": "Who's watching?",
+  "tvManageProfiles": "Manage profiles",
+  "tvAddProfile": "Add",
+  "tvDisplayTitle": "Display",
+  "tvOverscanLabel": "Screen margin (overscan)",
+  "tvOverscanHint": "Increase if your TV cuts off the edges of the picture.",
+  "tvTextSizeLabel": "Text size",
+  "tvTextNormal": "Normal",
+  "tvTextLarge": "Large",
+  "tvNightComfortTitle": "Royal Night — nighttime comfort",
+  "tvNightComfortHint": "A very light warm veil in the evening: less blue light, gentler on the eyes.",
+  "tvNightOff": "Off",
+  "tvNightAuto": "Auto in the evening",
+  "tvNightAlways": "Always",
+  "tvReplay": "Replay",
+  "tvReplayUnavailable": "Replay unavailable for this channel",
+  "tvProgramLive": "LIVE",
+  "tvProgramPast": "ENDED",
+  "tvProgramFuture": "UPCOMING",
+  "tvProgramUpcoming": "Upcoming programme",
+  "tvReminderRemoved": "Reminder removed",
+  "tvReminderSet": "Reminder set · 5 min before",
+  "tvReminderFailed": "Reminder failed (too soon or reminders off)",
+  "tvGuideGridTitle": "TV GUIDE",
+  "tvGuideGridHint": "Arrows: navigate · OK: watch / replay · ⟨ ⟩: ±30 min",
+  "tvPlay": "Play",
+  "tvPause": "Pause",
+  "tvSkip10": "10 s",
+  "tvHeartLate": "it's getting late 🌙",
+  "tvHeartCoverUp": "wrap up warm 🧣",
+  "tvHeartDrink": "drink some water ☀️",
+  "tvHeartCoffee": "enjoy your coffee ☕",
+  "tvHeartWeekend": "have a great weekend 🎉",
+  "tvHeartSunday": "cosy Sunday 🛋️",
+  "tvHeartMonday": "you've got this 💪",
+  "tvCareStretch": "3 hours already — time to stretch and drink some water 💛",
+  "tvCareLate": "It's late… the TV will still be here tomorrow 🌙",
+  "tvSportSoon": "⚽ {team} plays soon",
+  "@tvSportSoon": {
+    "placeholders": {
+      "team": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSportKickoff": "⚽ Kick-off! {match}",
+  "@tvSportKickoff": {
+    "placeholders": {
+      "match": {
+        "type": "String"
+      }
+    }
+  },
+  "tvMultiViewUnavailable": "Multi-view unavailable: device too limited (2 simultaneous streams not guaranteed).",
+  "tvChannelUnavailable": "Channel unavailable right now.",
+  "tvRetryQuitHint": "OK: Retry   ·   Back: Quit"
 }

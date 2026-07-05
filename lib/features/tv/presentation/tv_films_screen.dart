@@ -160,8 +160,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     // liste ordonnée → pas d'arithmétique d'index fragile.
     final List<({String title, List<VodMovie> movies})> rails =
         <({String title, List<VodMovie> movies})>[
-      if (_watchlist.isNotEmpty) (title: 'Ma Liste', movies: _watchlist),
-      if (_recent.isNotEmpty) (title: 'Derniers vus', movies: _recent),
+      if (_watchlist.isNotEmpty) (title: context.l10n.tvMyList, movies: _watchlist),
+      if (_recent.isNotEmpty) (title: context.l10n.tvRailRecent, movies: _recent),
       for (final String cat in _cats)
         (title: cat, movies: _byCat[cat] ?? const <VodMovie>[]),
     ];
@@ -259,7 +259,7 @@ class _HeroBanner extends StatelessWidget {
                     children: <Widget>[
                       _HeroButton(
                         icon: Icons.play_arrow_rounded,
-                        label: 'Regarder',
+                        label: context.l10n.tvWatch,
                         autofocus: autofocus,
                         primary: true,
                         onSelect: onPlay,
@@ -270,7 +270,7 @@ class _HeroBanner extends StatelessWidget {
                         icon: inList
                             ? Icons.check_rounded
                             : Icons.add_rounded,
-                        label: inList ? 'Dans Ma Liste' : 'Ma Liste',
+                        label: inList ? context.l10n.tvInMyList : context.l10n.tvMyList,
                         primary: false,
                         onSelect: onToggleList,
                       ),
@@ -309,24 +309,24 @@ class _HeroDownloadButton extends StatelessWidget {
       builder: (BuildContext context, _) {
         final VodDownload? d = VodDownloadService.instance.byId(movie.id);
         IconData icon = Icons.download_rounded;
-        String label = 'Télécharger';
+        String label = context.l10n.tvDownload;
         VoidCallback onSelect =
             () => VodDownloadService.instance.downloadMovie(movie);
         if (d != null) {
           switch (d.status) {
             case VodDownloadStatus.done:
               icon = Icons.download_done_rounded;
-              label = 'Téléchargé';
+              label = context.l10n.tvDownloaded;
               onSelect = () {};
             case VodDownloadStatus.downloading:
               icon = Icons.pause_rounded;
-              label = '${(d.progress * 100).round()} %';
+              label = context.l10n.tvPercent((d.progress * 100).round());
               onSelect = () => VodDownloadService.instance.pause(movie.id);
             case VodDownloadStatus.paused:
             case VodDownloadStatus.error:
             case VodDownloadStatus.queued:
               icon = Icons.download_rounded;
-              label = 'Reprendre';
+              label = context.l10n.tvResume;
               onSelect = () => VodDownloadService.instance.resume(movie.id);
           }
         }

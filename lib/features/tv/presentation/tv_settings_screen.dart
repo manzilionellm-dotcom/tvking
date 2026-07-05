@@ -234,7 +234,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   children: <Widget>[
                     Icon(Icons.download_for_offline_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
-                    Text('Mes téléchargements (films hors-ligne)',
+                    Text(context.l10n.tvSettingsDownloads,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
@@ -270,7 +270,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   children: <Widget>[
                     Icon(Icons.query_stats_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
-                    Text('Mes statistiques (temps d\'écran, top chaînes)',
+                    Text(context.l10n.tvSettingsStats,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,

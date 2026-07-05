@@ -8,6 +8,7 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -28,9 +29,9 @@ class TvDisplaySettingsScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Text(
-                  'Affichage',
-                  style: TextStyle(
+                Text(
+                  context.l10n.tvDisplayTitle,
+                  style: const TextStyle(
                     fontSize: 30,
                     fontWeight: FontWeight.w800,
                     color: TvTokens.text,
@@ -39,9 +40,9 @@ class TvDisplaySettingsScreen extends StatelessWidget {
                 const SizedBox(height: 24),
 
                 // ----- Overscan (marge autour de l'image) -----
-                _label('Marge de l\'écran (overscan)'),
+                _label(context.l10n.tvOverscanLabel),
                 const SizedBox(height: 4),
-                _hint('Augmente si les bords de l\'image sont coupés par ta TV.'),
+                _hint(context.l10n.tvOverscanHint),
                 const SizedBox(height: 12),
                 Row(
                   children: <Widget>[
@@ -70,18 +71,18 @@ class TvDisplaySettingsScreen extends StatelessWidget {
                 const SizedBox(height: 30),
 
                 // ----- Taille du texte -----
-                _label('Taille du texte'),
+                _label(context.l10n.tvTextSizeLabel),
                 const SizedBox(height: 12),
                 Row(
                   children: <Widget>[
                     _choice(
-                      label: 'Normale',
+                      label: context.l10n.tvTextNormal,
                       selected: !d.bigText,
                       onSelect: () => d.setBigText(false),
                     ),
                     const SizedBox(width: 12),
                     _choice(
-                      label: 'Grande',
+                      label: context.l10n.tvTextLarge,
                       selected: d.bigText,
                       onSelect: () => d.setBigText(true),
                     ),
@@ -90,30 +91,28 @@ class TvDisplaySettingsScreen extends StatelessWidget {
                 const SizedBox(height: 30),
 
                 // ----- Nuit Royale (confort nocturne) -----
-                _label('Nuit Royale — confort nocturne'),
+                _label(context.l10n.tvNightComfortTitle),
                 const SizedBox(height: 4),
-                _hint(
-                    'Voile chaud très léger le soir : moins de lumière bleue, '
-                    'image plus douce pour les yeux.'),
+                _hint(context.l10n.tvNightComfortHint),
                 const SizedBox(height: 12),
                 Row(
                   children: <Widget>[
                     _choice(
-                      label: 'Désactivé',
+                      label: context.l10n.tvNightOff,
                       selected: d.nightComfort == NightComfortMode.off,
                       onSelect: () =>
                           d.setNightComfort(NightComfortMode.off),
                     ),
                     const SizedBox(width: 12),
                     _choice(
-                      label: 'Auto le soir',
+                      label: context.l10n.tvNightAuto,
                       selected: d.nightComfort == NightComfortMode.auto,
                       onSelect: () =>
                           d.setNightComfort(NightComfortMode.auto),
                     ),
                     const SizedBox(width: 12),
                     _choice(
-                      label: 'Toujours',
+                      label: context.l10n.tvNightAlways,
                       selected: d.nightComfort == NightComfortMode.always,
                       onSelect: () =>
                           d.setNightComfort(NightComfortMode.always),

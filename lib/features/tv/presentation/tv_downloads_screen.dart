@@ -11,6 +11,7 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../vod/data/vod_download_service.dart';
 import '../core/tv_dimens.dart';
@@ -75,19 +76,18 @@ class _TvDownloadsScreenState extends State<TvDownloadsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Text('Mes téléchargements',
-                    style: TextStyle(
+                Text(context.l10n.tvDownloadsTitle,
+                    style: const TextStyle(
                         fontSize: 30,
                         fontWeight: FontWeight.w800,
                         color: TvTokens.text)),
                 const SizedBox(height: 4),
-                const Text(
-                    'Tes films à regarder hors connexion — en voyage, ou quand la ligne faiblit.',
-                    style: TextStyle(fontSize: 14, color: TvTokens.muted)),
+                Text(context.l10n.tvDownloadsSubtitle,
+                    style: const TextStyle(fontSize: 14, color: TvTokens.muted)),
                 const SizedBox(height: 20),
                 Expanded(
                   child: items.isEmpty
-                      ? _empty()
+                      ? _empty(context)
                       : ListView.separated(
                           itemCount: items.length,
                           separatorBuilder: (_, __) =>
@@ -110,20 +110,19 @@ class _TvDownloadsScreenState extends State<TvDownloadsScreen> {
     );
   }
 
-  Widget _empty() => Center(
+  Widget _empty(BuildContext context) => Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Icon(Icons.download_done_rounded,
                 size: 48, color: TvTokens.mutedDim),
             const SizedBox(height: 14),
-            const Text('Aucun film téléchargé',
-                style: TextStyle(fontSize: 18, color: TvTokens.text)),
+            Text(context.l10n.tvDownloadsEmpty,
+                style: const TextStyle(fontSize: 18, color: TvTokens.text)),
             const SizedBox(height: 6),
-            const Text(
-                'Sur un film, choisis « Télécharger » : il t\'attendra ici, même sans internet.',
+            Text(context.l10n.tvDownloadsEmptyHelp,
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: TvTokens.mutedDim)),
+                style: const TextStyle(fontSize: 14, color: TvTokens.mutedDim)),
           ],
         ),
       );
@@ -142,37 +141,38 @@ class _DownloadRow extends StatelessWidget {
   final VoidCallback onDelete;
   final bool autofocus;
 
-  ({IconData icon, String label, Color color}) get _state {
+  ({IconData icon, String label, Color color}) _state(BuildContext context) {
+    final int pct = (d.progress * 100).round();
     switch (d.status) {
       case VodDownloadStatus.done:
         return (
           icon: Icons.play_circle_fill_rounded,
-          label: 'Prêt · ${VodDownloadService.fmtBytes(d.totalBytes)}',
+          label: context.l10n
+              .tvDownloadReady(VodDownloadService.fmtBytes(d.totalBytes)),
           color: TvTokens.gold
         );
       case VodDownloadStatus.downloading:
         return (
           icon: Icons.pause_circle_filled_rounded,
-          label:
-              'Téléchargement ${(d.progress * 100).round()} %  ·  appuie pour mettre en pause',
+          label: context.l10n.tvDownloadInProgress(pct),
           color: TvTokens.goldBright
         );
       case VodDownloadStatus.paused:
         return (
           icon: Icons.download_rounded,
-          label: 'En pause ${(d.progress * 100).round()} %  ·  appuie pour reprendre',
+          label: context.l10n.tvDownloadPausedAt(pct),
           color: TvTokens.muted
         );
       case VodDownloadStatus.error:
         return (
           icon: Icons.refresh_rounded,
-          label: 'Échec  ·  appuie pour réessayer',
+          label: context.l10n.tvDownloadFailed,
           color: TvTokens.live
         );
       case VodDownloadStatus.queued:
         return (
           icon: Icons.hourglass_bottom_rounded,
-          label: 'En attente…',
+          label: context.l10n.tvDownloadQueued,
           color: TvTokens.muted
         );
     }
@@ -180,7 +180,7 @@ class _DownloadRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ({IconData icon, String label, Color color}) s = _state;
+    final ({IconData icon, String label, Color color}) s = _state(context);
     final bool showBar = d.status == VodDownloadStatus.downloading ||
         d.status == VodDownloadStatus.paused;
     return TvFocusBuilder(

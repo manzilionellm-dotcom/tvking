@@ -568,5 +568,169 @@
   "tvStay": "Bli",
   "tvChooseServer": "Velg serveren din",
   "tvManualServer": "Manuell URL",
-  "tvKeyboardHint": "Tips: du kan skrive med tastaturet i fjernkontroll-appen på telefonen (kopier-lim inn fungerer)."
+  "tvKeyboardHint": "Tips: du kan skrive med tastaturet i fjernkontroll-appen på telefonen (kopier-lim inn fungerer).",
+  "tvDownloadsTitle": "Mine nedlastinger",
+  "tvDownloadsSubtitle": "Filmene dine å se frakoblet – på reise eller når nettet svikter.",
+  "tvDownloadsEmpty": "Ingen nedlastede filmer",
+  "tvDownloadsEmptyHelp": "Velg «Last ned» på en film: den venter her, også uten internett.",
+  "tvDownloadReady": "Klar · {size}",
+  "@tvDownloadReady": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDownloadInProgress": "Laster ned {percent}% · trykk for å sette på pause",
+  "@tvDownloadInProgress": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDownloadPausedAt": "Satt på pause {percent}% · trykk for å fortsette",
+  "@tvDownloadPausedAt": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDownloadFailed": "Mislyktes · trykk for å prøve igjen",
+  "tvDownloadQueued": "Venter…",
+  "tvWatch": "Se",
+  "tvMyList": "Min liste",
+  "tvInMyList": "I Min liste",
+  "tvRailRecent": "Nylig sett",
+  "tvDownload": "Last ned",
+  "tvDownloaded": "Nedlastet",
+  "tvResume": "Fortsett",
+  "tvPercent": "{percent} %",
+  "@tvPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvSettingsDownloads": "Mine nedlastinger (frakoblede filmer)",
+  "tvSettingsStats": "Min statistikk (skjermtid, toppkanaler)",
+  "tvStatsTitle": "Min statistikk",
+  "tvStatsSubtitle": "Skjermtiden din, bare for deg – alt blir på denne boksen.",
+  "tvStatsToday": "I dag",
+  "tvStatsSevenDays": "Siste 7 dager",
+  "tvStatsThisWeek": "Denne uken",
+  "tvStatsTopChannels": "Kanalene dine denne uken",
+  "tvStatsEmpty": "Se på noen kanaler og kom tilbake: listen din bygges av seg selv.",
+  "tvStatsMoment": "Ditt tv-øyeblikk: {moment}",
+  "@tvStatsMoment": {
+    "placeholders": {
+      "moment": {
+        "type": "String"
+      }
+    }
+  },
+  "tvStatsFavDay": "Yndlingsdagen din: {day}",
+  "@tvStatsFavDay": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      }
+    }
+  },
+  "tvMomentMorning": "om morgenen ☕",
+  "tvMomentAfternoon": "om ettermiddagen 🌤️",
+  "tvMomentEvening": "om kvelden 🌆",
+  "tvMomentNight": "om natten 🌙",
+  "tvWeekdayMonday": "mandag",
+  "tvWeekdayTuesday": "tirsdag",
+  "tvWeekdayWednesday": "onsdag",
+  "tvWeekdayThursday": "torsdag",
+  "tvWeekdayFriday": "fredag",
+  "tvWeekdaySaturday": "lørdag",
+  "tvWeekdaySunday": "søndag",
+  "tvDurationMinutes": "{n} min",
+  "@tvDurationMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDurationHours": "{h} t",
+  "@tvDurationHours": {
+    "placeholders": {
+      "h": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDurationHoursMinutes": "{h} t {m}",
+  "@tvDurationHoursMinutes": {
+    "placeholders": {
+      "h": {
+        "type": "int"
+      },
+      "m": {
+        "type": "String"
+      }
+    }
+  },
+  "tvWhoWatching": "Hvem ser?",
+  "tvManageProfiles": "Administrer profiler",
+  "tvAddProfile": "Legg til",
+  "tvDisplayTitle": "Skjerm",
+  "tvOverscanLabel": "Skjermmarg (overscan)",
+  "tvOverscanHint": "Øk hvis TV-en din kutter bort kantene av bildet.",
+  "tvTextSizeLabel": "Tekststørrelse",
+  "tvTextNormal": "Normal",
+  "tvTextLarge": "Stor",
+  "tvNightComfortTitle": "Kongelig natt – nattkomfort",
+  "tvNightComfortHint": "Et veldig lett varmt slør om kvelden: mindre blått lys, mildere for øynene.",
+  "tvNightOff": "Av",
+  "tvNightAuto": "Auto om kvelden",
+  "tvNightAlways": "Alltid",
+  "tvReplay": "Se igjen",
+  "tvReplayUnavailable": "Se igjen er utilgjengelig for denne kanalen",
+  "tvProgramLive": "DIREKTE",
+  "tvProgramPast": "FERDIG",
+  "tvProgramFuture": "KOMMER",
+  "tvProgramUpcoming": "Kommende program",
+  "tvReminderRemoved": "Påminnelse fjernet",
+  "tvReminderSet": "Påminnelse satt · 5 min før",
+  "tvReminderFailed": "Påminnelse mislyktes (for snart eller avslått)",
+  "tvGuideGridTitle": "TV-GUIDE",
+  "tvGuideGridHint": "Piler: naviger · OK: se / se igjen · ⟨ ⟩: ±30 min",
+  "tvPlay": "Spill",
+  "tvPause": "Pause",
+  "tvSkip10": "10 s",
+  "tvHeartLate": "det begynner å bli sent 🌙",
+  "tvHeartCoverUp": "kle deg varmt 🧣",
+  "tvHeartDrink": "drikk litt vann ☀️",
+  "tvHeartCoffee": "god kaffe ☕",
+  "tvHeartWeekend": "god helg 🎉",
+  "tvHeartSunday": "koselig søndag 🛋️",
+  "tvHeartMonday": "lykke til 💪",
+  "tvCareStretch": "Allerede 3 timer – strekk på deg og drikk litt vann 💛",
+  "tvCareLate": "Det er sent… TV-en er her fortsatt i morgen 🌙",
+  "tvSportSoon": "⚽ {team} spiller snart",
+  "@tvSportSoon": {
+    "placeholders": {
+      "team": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSportKickoff": "⚽ Avspark! {match}",
+  "@tvSportKickoff": {
+    "placeholders": {
+      "match": {
+        "type": "String"
+      }
+    }
+  },
+  "tvMultiViewUnavailable": "Multivisning utilgjengelig: enheten for begrenset (2 samtidige strømmer ikke garantert).",
+  "tvChannelUnavailable": "Kanalen er utilgjengelig akkurat nå.",
+  "tvRetryQuitHint": "OK: Prøv igjen   ·   Tilbake: Avslutt"
 }

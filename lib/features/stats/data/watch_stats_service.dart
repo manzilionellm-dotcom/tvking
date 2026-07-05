@@ -190,9 +190,10 @@ class WatchStatsService extends ChangeNotifier {
     return 'n';
   }
 
-  /// « Ton moment télé » sur 14 jours — null tant qu'il n'y a pas au moins
-  /// une heure de données (on ne devine pas, on constate).
-  String? favoriteMomentLabel({int days = 14}) {
+  /// « Ton moment télé » sur 14 jours → CLÉ NEUTRE 'm'/'a'/'s'/'n' (l'écran
+  /// la traduit). `null` tant qu'il n'y a pas au moins 1 h de données (on ne
+  /// devine pas, on constate).
+  String? favoriteMomentKey({int days = 14}) {
     final DateTime now = DateTime.now();
     final Map<String, int> slots = <String, int>{};
     for (int i = 0; i < days; i++) {
@@ -206,28 +207,16 @@ class WatchStatsService extends ChangeNotifier {
     }
     final int total = slots.values.fold(0, (int a, int b) => a + b);
     if (total < 60) return null;
-    final String best = (slots.entries.toList()
+    return (slots.entries.toList()
           ..sort((MapEntry<String, int> a, MapEntry<String, int> b) =>
               b.value.compareTo(a.value)))
         .first
         .key;
-    switch (best) {
-      case 'm':
-        return 'le matin ☕';
-      case 'a':
-        return 'l\'après-midi 🌤️';
-      case 's':
-        return 'le soir 🌆';
-      default:
-        return 'la nuit 🌙';
-    }
   }
 
-  /// « Ton jour le plus télé » sur 28 jours — null sous 2 h de données.
-  String? favoriteWeekdayLabel({int days = 28}) {
-    const List<String> names = <String>[
-      'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche',
-    ];
+  /// « Ton jour le plus télé » sur 28 jours → NUMÉRO de jour 1(lundi)..7
+  /// (l'écran le traduit). `null` sous 2 h de données.
+  int? favoriteWeekday({int days = 28}) {
     final DateTime now = DateTime.now();
     final Map<int, int> byWeekday = <int, int>{};
     int total = 0;
@@ -239,19 +228,10 @@ class WatchStatsService extends ChangeNotifier {
       total += mins;
     }
     if (total < 120 || byWeekday.isEmpty) return null;
-    final int best = (byWeekday.entries.toList()
+    return (byWeekday.entries.toList()
           ..sort((MapEntry<int, int> a, MapEntry<int, int> b) =>
               b.value.compareTo(a.value)))
         .first
         .key;
-    return names[best - 1];
-  }
-
-  /// « 2 h 05 » / « 45 min » — libellé humain d'une durée en minutes.
-  static String fmt(int minutes) {
-    if (minutes < 60) return '$minutes min';
-    final int h = minutes ~/ 60;
-    final int m = minutes % 60;
-    return m == 0 ? '$h h' : '$h h ${m.toString().padLeft(2, '0')}';
   }
 }

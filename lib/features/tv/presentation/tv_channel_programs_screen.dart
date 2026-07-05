@@ -60,7 +60,7 @@ class _TvChannelProgramsScreenState extends State<TvChannelProgramsScreen> {
           .cancelProgramReminder(widget.channel.id, p.startTime);
       if (!mounted) return;
       setState(() => _reminders.remove(p.startTime));
-      _toast('Rappel retiré');
+      _toast(context.l10n.tvReminderRemoved);
       return;
     }
     final bool ok = await NotificationService.instance.scheduleProgramReminder(
@@ -72,10 +72,10 @@ class _TvChannelProgramsScreenState extends State<TvChannelProgramsScreen> {
     if (!mounted) return;
     if (ok) {
       setState(() => _reminders.add(p.startTime));
-      _toast('Rappel posé · 5 min avant');
+      _toast(context.l10n.tvReminderSet);
     } else {
       // Échec : créneau trop proche/passé, ou rappels coupés dans les réglages.
-      _toast('Rappel impossible (trop proche ou rappels désactivés)');
+      _toast(context.l10n.tvReminderFailed);
     }
   }
 
@@ -87,7 +87,7 @@ class _TvChannelProgramsScreenState extends State<TvChannelProgramsScreen> {
   void _replay(EpgProgram p) {
     final String? url = CatchupUrlBuilder.build(channel: widget.channel, program: p);
     if (url == null) {
-      _toast('Replay indisponible pour cette chaîne');
+      _toast(context.l10n.tvReplayUnavailable);
       return;
     }
     final Channel c = widget.channel;
@@ -350,7 +350,7 @@ class _ProgramRow extends StatelessWidget {
                               ? const Color(0xFF1A1206)
                               : TvTokens.goldBright),
                       const SizedBox(width: 6),
-                      Text('Revoir',
+                      Text(context.l10n.tvReplay,
                           style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w800,

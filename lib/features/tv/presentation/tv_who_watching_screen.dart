@@ -17,6 +17,7 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/profiles/profiles_repository.dart';
 import '../../channels/data/search_history_repository.dart';
 import '../../playlists/data/favorite_collections_repository.dart';
@@ -86,9 +87,9 @@ class _TvWhoWatchingScreenState extends State<TvWhoWatchingScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                const Text(
-                  'Qui regarde ?',
-                  style: TextStyle(
+                Text(
+                  context.l10n.tvWhoWatching,
+                  style: const TextStyle(
                       fontSize: 40,
                       fontWeight: FontWeight.w800,
                       color: TvTokens.text),
@@ -114,7 +115,7 @@ class _TvWhoWatchingScreenState extends State<TvWhoWatchingScreen> {
                 // ----- Gérer les profils (renommer / supprimer) -----
                 _GhostButton(
                   icon: Icons.manage_accounts_rounded,
-                  label: 'Gérer les profils',
+                  label: context.l10n.tvManageProfiles,
                   onSelect: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) =>
@@ -225,7 +226,7 @@ class _AddTile extends StatelessWidget {
                     color: focused ? TvTokens.goldBright : TvTokens.muted),
               ),
               const SizedBox(height: 12),
-              Text('Ajouter',
+              Text(context.l10n.tvAddProfile,
                   style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,

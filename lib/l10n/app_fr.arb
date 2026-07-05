@@ -59,7 +59,11 @@
   "playerVideo": "Vidéo",
   "playerUpNextIn": "À suivre dans {seconds}s",
   "@playerUpNextIn": {
-    "placeholders": { "seconds": { "type": "int" } }
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
   },
   "playerUpNextCancel": "Annuler",
   "playerUpNextPlay": "Lire",
@@ -1996,5 +2000,169 @@
   "tvStay": "Continuer",
   "tvChooseServer": "Choisis ton serveur",
   "tvManualServer": "URL manuelle",
-  "tvKeyboardHint": "Astuce : tu peux taper avec le clavier de l'appli télécommande de ton téléphone (copier-coller possible)."
+  "tvKeyboardHint": "Astuce : tu peux taper avec le clavier de l'appli télécommande de ton téléphone (copier-coller possible).",
+  "tvDownloadsTitle": "Mes téléchargements",
+  "tvDownloadsSubtitle": "Tes films à regarder hors connexion, en voyage ou quand la ligne faiblit.",
+  "tvDownloadsEmpty": "Aucun film téléchargé",
+  "tvDownloadsEmptyHelp": "Sur un film, choisis « Télécharger » : il t'attendra ici, même sans Internet.",
+  "tvDownloadReady": "Prêt · {size}",
+  "@tvDownloadReady": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDownloadInProgress": "Téléchargement {percent} % · appuie pour mettre en pause",
+  "@tvDownloadInProgress": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDownloadPausedAt": "En pause {percent} % · appuie pour reprendre",
+  "@tvDownloadPausedAt": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDownloadFailed": "Échec · appuie pour réessayer",
+  "tvDownloadQueued": "En attente…",
+  "tvWatch": "Regarder",
+  "tvMyList": "Ma Liste",
+  "tvInMyList": "Dans Ma Liste",
+  "tvRailRecent": "Derniers vus",
+  "tvDownload": "Télécharger",
+  "tvDownloaded": "Téléchargé",
+  "tvResume": "Reprendre",
+  "tvPercent": "{percent} %",
+  "@tvPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvSettingsDownloads": "Mes téléchargements (films hors-ligne)",
+  "tvSettingsStats": "Mes statistiques (temps d'écran, top chaînes)",
+  "tvStatsTitle": "Mes statistiques",
+  "tvStatsSubtitle": "Ton temps d'écran, rien qu'à toi — tout reste sur cette box.",
+  "tvStatsToday": "Aujourd'hui",
+  "tvStatsSevenDays": "7 derniers jours",
+  "tvStatsThisWeek": "Cette semaine",
+  "tvStatsTopChannels": "Tes chaînes de la semaine",
+  "tvStatsEmpty": "Regarde quelques chaînes et reviens ici : ton palmarès s'écrira tout seul.",
+  "tvStatsMoment": "Ton moment télé : {moment}",
+  "@tvStatsMoment": {
+    "placeholders": {
+      "moment": {
+        "type": "String"
+      }
+    }
+  },
+  "tvStatsFavDay": "Ton jour préféré : {day}",
+  "@tvStatsFavDay": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      }
+    }
+  },
+  "tvMomentMorning": "le matin ☕",
+  "tvMomentAfternoon": "l'après-midi 🌤️",
+  "tvMomentEvening": "le soir 🌆",
+  "tvMomentNight": "la nuit 🌙",
+  "tvWeekdayMonday": "lundi",
+  "tvWeekdayTuesday": "mardi",
+  "tvWeekdayWednesday": "mercredi",
+  "tvWeekdayThursday": "jeudi",
+  "tvWeekdayFriday": "vendredi",
+  "tvWeekdaySaturday": "samedi",
+  "tvWeekdaySunday": "dimanche",
+  "tvDurationMinutes": "{n} min",
+  "@tvDurationMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDurationHours": "{h} h",
+  "@tvDurationHours": {
+    "placeholders": {
+      "h": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDurationHoursMinutes": "{h} h {m}",
+  "@tvDurationHoursMinutes": {
+    "placeholders": {
+      "h": {
+        "type": "int"
+      },
+      "m": {
+        "type": "String"
+      }
+    }
+  },
+  "tvWhoWatching": "Qui regarde ?",
+  "tvManageProfiles": "Gérer les profils",
+  "tvAddProfile": "Ajouter",
+  "tvDisplayTitle": "Affichage",
+  "tvOverscanLabel": "Marge de l'écran (overscan)",
+  "tvOverscanHint": "Augmente si les bords de l'image sont coupés par ta TV.",
+  "tvTextSizeLabel": "Taille du texte",
+  "tvTextNormal": "Normale",
+  "tvTextLarge": "Grande",
+  "tvNightComfortTitle": "Nuit Royale — confort nocturne",
+  "tvNightComfortHint": "Voile chaud très léger le soir : moins de lumière bleue, image plus douce pour les yeux.",
+  "tvNightOff": "Désactivé",
+  "tvNightAuto": "Auto le soir",
+  "tvNightAlways": "Toujours",
+  "tvReplay": "Revoir",
+  "tvReplayUnavailable": "Revoir indisponible pour cette chaîne",
+  "tvProgramLive": "EN DIRECT",
+  "tvProgramPast": "TERMINÉ",
+  "tvProgramFuture": "À VENIR",
+  "tvProgramUpcoming": "Programme à venir",
+  "tvReminderRemoved": "Rappel retiré",
+  "tvReminderSet": "Rappel posé · 5 min avant",
+  "tvReminderFailed": "Rappel impossible (trop proche ou rappels désactivés)",
+  "tvGuideGridTitle": "GRILLE TV",
+  "tvGuideGridHint": "Flèches : naviguer · OK : regarder / revoir · ⟨ ⟩ : ±30 min",
+  "tvPlay": "Lecture",
+  "tvPause": "Pause",
+  "tvSkip10": "10 s",
+  "tvHeartLate": "il est tard, mon grand 🌙",
+  "tvHeartCoverUp": "couvre-toi bien 🧣",
+  "tvHeartDrink": "bois de l'eau ☀️",
+  "tvHeartCoffee": "bon café ☕",
+  "tvHeartWeekend": "bon week-end 🎉",
+  "tvHeartSunday": "doux dimanche 🛋️",
+  "tvHeartMonday": "bon courage 💪",
+  "tvCareStretch": "3 heures déjà — pense à t'étirer, boire un peu d'eau 💛",
+  "tvCareLate": "Il est tard… la télé sera encore là demain 🌙",
+  "tvSportSoon": "⚽ {team} joue bientôt",
+  "@tvSportSoon": {
+    "placeholders": {
+      "team": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSportKickoff": "⚽ C'est parti ! {match}",
+  "@tvSportKickoff": {
+    "placeholders": {
+      "match": {
+        "type": "String"
+      }
+    }
+  },
+  "tvMultiViewUnavailable": "Multi-vue indisponible : appareil trop limité (2 flux simultanés non garantis).",
+  "tvChannelUnavailable": "Chaîne indisponible pour le moment.",
+  "tvRetryQuitHint": "OK : Réessayer   ·   Retour : Quitter"
 }

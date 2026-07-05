@@ -18,6 +18,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/catchup_url_builder.dart';
 import '../../epg/data/epg_repository.dart';
@@ -150,8 +151,8 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
       return;
     }
     _toast(p.startDateTime.isAfter(now)
-        ? 'Programme à venir'
-        : 'Replay indisponible pour cette chaîne');
+        ? context.l10n.tvProgramUpcoming
+        : context.l10n.tvReplayUnavailable);
   }
 
   void _toast(String msg) {
@@ -188,7 +189,7 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
                 child: Row(
                   children: <Widget>[
                     Text(
-                      'GRILLE TV',
+                      context.l10n.tvGuideGridTitle,
                       style: TvTokens.ui(13,
                           weight: FontWeight.w800,
                           color: TvTokens.gold,

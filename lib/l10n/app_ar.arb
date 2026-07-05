@@ -568,5 +568,169 @@
   "tvStay": "البقاء",
   "tvChooseServer": "اختر الخادم",
   "tvManualServer": "رابط يدوي",
-  "tvKeyboardHint": "نصيحة: يمكنك الكتابة بلوحة مفاتيح تطبيق ريموت هاتفك (النسخ واللصق يعمل)."
+  "tvKeyboardHint": "نصيحة: يمكنك الكتابة بلوحة مفاتيح تطبيق ريموت هاتفك (النسخ واللصق يعمل).",
+  "tvDownloadsTitle": "تنزيلاتي",
+  "tvDownloadsSubtitle": "أفلامك لمشاهدتها دون اتصال — أثناء السفر أو عند ضعف الشبكة.",
+  "tvDownloadsEmpty": "لا توجد أفلام منزّلة",
+  "tvDownloadsEmptyHelp": "على أي فيلم، اختر «تنزيل»: سينتظرك هنا حتى بدون إنترنت.",
+  "tvDownloadReady": "جاهز · {size}",
+  "@tvDownloadReady": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDownloadInProgress": "جارٍ التنزيل {percent}٪ · اضغط للإيقاف المؤقت",
+  "@tvDownloadInProgress": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDownloadPausedAt": "متوقف مؤقتًا {percent}٪ · اضغط للاستئناف",
+  "@tvDownloadPausedAt": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDownloadFailed": "فشل · اضغط لإعادة المحاولة",
+  "tvDownloadQueued": "في الانتظار…",
+  "tvWatch": "مشاهدة",
+  "tvMyList": "قائمتي",
+  "tvInMyList": "في قائمتي",
+  "tvRailRecent": "شوهدت مؤخرًا",
+  "tvDownload": "تنزيل",
+  "tvDownloaded": "تم التنزيل",
+  "tvResume": "استئناف",
+  "tvPercent": "{percent}٪",
+  "@tvPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvSettingsDownloads": "تنزيلاتي (أفلام دون اتصال)",
+  "tvSettingsStats": "إحصائياتي (وقت الشاشة، أفضل القنوات)",
+  "tvStatsTitle": "إحصائياتي",
+  "tvStatsSubtitle": "وقت الشاشة الخاص بك وحدك — كل شيء يبقى على هذا الجهاز.",
+  "tvStatsToday": "اليوم",
+  "tvStatsSevenDays": "آخر 7 أيام",
+  "tvStatsThisWeek": "هذا الأسبوع",
+  "tvStatsTopChannels": "قنواتك لهذا الأسبوع",
+  "tvStatsEmpty": "شاهد بعض القنوات ثم عُد إلى هنا: سيتكوّن ترتيبك تلقائيًا.",
+  "tvStatsMoment": "وقتك المفضّل للتلفاز: {moment}",
+  "@tvStatsMoment": {
+    "placeholders": {
+      "moment": {
+        "type": "String"
+      }
+    }
+  },
+  "tvStatsFavDay": "يومك المفضّل: {day}",
+  "@tvStatsFavDay": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      }
+    }
+  },
+  "tvMomentMorning": "في الصباح ☕",
+  "tvMomentAfternoon": "بعد الظهر 🌤️",
+  "tvMomentEvening": "في المساء 🌆",
+  "tvMomentNight": "في الليل 🌙",
+  "tvWeekdayMonday": "الاثنين",
+  "tvWeekdayTuesday": "الثلاثاء",
+  "tvWeekdayWednesday": "الأربعاء",
+  "tvWeekdayThursday": "الخميس",
+  "tvWeekdayFriday": "الجمعة",
+  "tvWeekdaySaturday": "السبت",
+  "tvWeekdaySunday": "الأحد",
+  "tvDurationMinutes": "{n} دقيقة",
+  "@tvDurationMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDurationHours": "{h} س",
+  "@tvDurationHours": {
+    "placeholders": {
+      "h": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDurationHoursMinutes": "{h} س {m}",
+  "@tvDurationHoursMinutes": {
+    "placeholders": {
+      "h": {
+        "type": "int"
+      },
+      "m": {
+        "type": "String"
+      }
+    }
+  },
+  "tvWhoWatching": "من يشاهد؟",
+  "tvManageProfiles": "إدارة الملفات الشخصية",
+  "tvAddProfile": "إضافة",
+  "tvDisplayTitle": "العرض",
+  "tvOverscanLabel": "هامش الشاشة (overscan)",
+  "tvOverscanHint": "زِدْه إذا كان تلفازك يقصّ أطراف الصورة.",
+  "tvTextSizeLabel": "حجم النص",
+  "tvTextNormal": "عادي",
+  "tvTextLarge": "كبير",
+  "tvNightComfortTitle": "ليلة ملكية — راحة ليلية",
+  "tvNightComfortHint": "طبقة دافئة خفيفة جدًا في المساء: ضوء أزرق أقل وراحة أكبر للعينين.",
+  "tvNightOff": "معطّل",
+  "tvNightAuto": "تلقائي في المساء",
+  "tvNightAlways": "دائمًا",
+  "tvReplay": "إعادة المشاهدة",
+  "tvReplayUnavailable": "إعادة المشاهدة غير متاحة لهذه القناة",
+  "tvProgramLive": "مباشر",
+  "tvProgramPast": "انتهى",
+  "tvProgramFuture": "قادم",
+  "tvProgramUpcoming": "برنامج قادم",
+  "tvReminderRemoved": "تمت إزالة التذكير",
+  "tvReminderSet": "تم ضبط التذكير · قبل 5 دقائق",
+  "tvReminderFailed": "تعذّر التذكير (قريب جدًا أو التذكيرات معطّلة)",
+  "tvGuideGridTitle": "دليل التلفاز",
+  "tvGuideGridHint": "الأسهم: التنقّل · موافق: مشاهدة / إعادة · ⟨ ⟩: ±30 دقيقة",
+  "tvPlay": "تشغيل",
+  "tvPause": "إيقاف مؤقت",
+  "tvSkip10": "10 ث",
+  "tvHeartLate": "لقد تأخّر الوقت 🌙",
+  "tvHeartCoverUp": "تدفّأ جيدًا 🧣",
+  "tvHeartDrink": "اشرب الماء ☀️",
+  "tvHeartCoffee": "قهوة سعيدة ☕",
+  "tvHeartWeekend": "عطلة سعيدة 🎉",
+  "tvHeartSunday": "أحد هادئ 🛋️",
+  "tvHeartMonday": "بالتوفيق 💪",
+  "tvCareStretch": "ثلاث ساعات بالفعل — تمدّد واشرب بعض الماء 💛",
+  "tvCareLate": "الوقت متأخر… سيبقى التلفاز هنا غدًا 🌙",
+  "tvSportSoon": "⚽ {team} تلعب قريبًا",
+  "@tvSportSoon": {
+    "placeholders": {
+      "team": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSportKickoff": "⚽ انطلقت المباراة! {match}",
+  "@tvSportKickoff": {
+    "placeholders": {
+      "match": {
+        "type": "String"
+      }
+    }
+  },
+  "tvMultiViewUnavailable": "العرض المتعدد غير متاح: الجهاز محدود جدًا (تشغيل تدفقين معًا غير مضمون).",
+  "tvChannelUnavailable": "القناة غير متاحة حاليًا.",
+  "tvRetryQuitHint": "موافق: إعادة المحاولة   ·   رجوع: خروج"
 }

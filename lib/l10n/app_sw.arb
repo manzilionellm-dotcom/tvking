@@ -568,5 +568,169 @@
   "tvStay": "Endelea",
   "tvChooseServer": "Chagua seva yako",
   "tvManualServer": "URL ya mkono",
-  "tvKeyboardHint": "Dokezo: unaweza kuandika kwa kibodi ya programu ya rimoti ya simu yako (nakili-bandika hufanya kazi)."
+  "tvKeyboardHint": "Dokezo: unaweza kuandika kwa kibodi ya programu ya rimoti ya simu yako (nakili-bandika hufanya kazi).",
+  "tvDownloadsTitle": "Vipakuliwa vyangu",
+  "tvDownloadsSubtitle": "Filamu zako za kutazama nje ya mtandao — safarini au mtandao unapodhoofika.",
+  "tvDownloadsEmpty": "Hakuna filamu zilizopakuliwa",
+  "tvDownloadsEmptyHelp": "Kwenye filamu, chagua “Pakua”: itakusubiri hapa, hata bila Intaneti.",
+  "tvDownloadReady": "Tayari · {size}",
+  "@tvDownloadReady": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDownloadInProgress": "Inapakua {percent}% · bonyeza kusitisha",
+  "@tvDownloadInProgress": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDownloadPausedAt": "Imesimama {percent}% · bonyeza kuendelea",
+  "@tvDownloadPausedAt": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDownloadFailed": "Imeshindwa · bonyeza kujaribu tena",
+  "tvDownloadQueued": "Inasubiri…",
+  "tvWatch": "Tazama",
+  "tvMyList": "Orodha yangu",
+  "tvInMyList": "Kwenye orodha yangu",
+  "tvRailRecent": "Zilizotazamwa hivi karibuni",
+  "tvDownload": "Pakua",
+  "tvDownloaded": "Imepakuliwa",
+  "tvResume": "Endelea",
+  "tvPercent": "{percent}%",
+  "@tvPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "tvSettingsDownloads": "Vipakuliwa vyangu (filamu za nje ya mtandao)",
+  "tvSettingsStats": "Takwimu zangu (muda wa skrini, chaneli bora)",
+  "tvStatsTitle": "Takwimu zangu",
+  "tvStatsSubtitle": "Muda wako wa skrini, wako pekee — kila kitu kinabaki kwenye kifaa hiki.",
+  "tvStatsToday": "Leo",
+  "tvStatsSevenDays": "Siku 7 zilizopita",
+  "tvStatsThisWeek": "Wiki hii",
+  "tvStatsTopChannels": "Chaneli zako za wiki hii",
+  "tvStatsEmpty": "Tazama chaneli chache kisha rudi: orodha yako itajijenga yenyewe.",
+  "tvStatsMoment": "Wakati wako wa TV: {moment}",
+  "@tvStatsMoment": {
+    "placeholders": {
+      "moment": {
+        "type": "String"
+      }
+    }
+  },
+  "tvStatsFavDay": "Siku unayoipenda: {day}",
+  "@tvStatsFavDay": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      }
+    }
+  },
+  "tvMomentMorning": "asubuhi ☕",
+  "tvMomentAfternoon": "mchana 🌤️",
+  "tvMomentEvening": "jioni 🌆",
+  "tvMomentNight": "usiku 🌙",
+  "tvWeekdayMonday": "Jumatatu",
+  "tvWeekdayTuesday": "Jumanne",
+  "tvWeekdayWednesday": "Jumatano",
+  "tvWeekdayThursday": "Alhamisi",
+  "tvWeekdayFriday": "Ijumaa",
+  "tvWeekdaySaturday": "Jumamosi",
+  "tvWeekdaySunday": "Jumapili",
+  "tvDurationMinutes": "dakika {n}",
+  "@tvDurationMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDurationHours": "saa {h}",
+  "@tvDurationHours": {
+    "placeholders": {
+      "h": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDurationHoursMinutes": "saa {h} {m}",
+  "@tvDurationHoursMinutes": {
+    "placeholders": {
+      "h": {
+        "type": "int"
+      },
+      "m": {
+        "type": "String"
+      }
+    }
+  },
+  "tvWhoWatching": "Nani anatazama?",
+  "tvManageProfiles": "Dhibiti wasifu",
+  "tvAddProfile": "Ongeza",
+  "tvDisplayTitle": "Onyesho",
+  "tvOverscanLabel": "Ukingo wa skrini (overscan)",
+  "tvOverscanHint": "Ongeza ikiwa TV yako inakata kingo za picha.",
+  "tvTextSizeLabel": "Ukubwa wa maandishi",
+  "tvTextNormal": "Ya kawaida",
+  "tvTextLarge": "Kubwa",
+  "tvNightComfortTitle": "Usiku wa Kifalme — faraja ya usiku",
+  "tvNightComfortHint": "Utando hafifu wa joto jioni: mwanga wa buluu kidogo, laini kwa macho.",
+  "tvNightOff": "Imezimwa",
+  "tvNightAuto": "Otomatiki jioni",
+  "tvNightAlways": "Kila wakati",
+  "tvReplay": "Tazama tena",
+  "tvReplayUnavailable": "Kutazama tena hakupatikani kwa chaneli hii",
+  "tvProgramLive": "MOJA KWA MOJA",
+  "tvProgramPast": "IMEISHA",
+  "tvProgramFuture": "INAKUJA",
+  "tvProgramUpcoming": "Kipindi kinachokuja",
+  "tvReminderRemoved": "Kikumbusho kimeondolewa",
+  "tvReminderSet": "Kikumbusho kimewekwa · dakika 5 kabla",
+  "tvReminderFailed": "Kikumbusho kimeshindwa (karibu mno au vimezimwa)",
+  "tvGuideGridTitle": "MWONGOZO WA TV",
+  "tvGuideGridHint": "Mishale: sogeza · OK: tazama / tazama tena · ⟨ ⟩: ±30 dk",
+  "tvPlay": "Cheza",
+  "tvPause": "Simamisha",
+  "tvSkip10": "sek 10",
+  "tvHeartLate": "ni usiku sasa 🌙",
+  "tvHeartCoverUp": "jifunike vizuri 🧣",
+  "tvHeartDrink": "kunywa maji ☀️",
+  "tvHeartCoffee": "kahawa njema ☕",
+  "tvHeartWeekend": "wikendi njema 🎉",
+  "tvHeartSunday": "Jumapili njema 🛋️",
+  "tvHeartMonday": "uwe na nguvu 💪",
+  "tvCareStretch": "Tayari saa 3 — nyoosha mwili na kunywa maji 💛",
+  "tvCareLate": "Ni usiku… TV itakuwepo tena kesho 🌙",
+  "tvSportSoon": "⚽ {team} watacheza hivi karibuni",
+  "@tvSportSoon": {
+    "placeholders": {
+      "team": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSportKickoff": "⚽ Imeanza! {match}",
+  "@tvSportKickoff": {
+    "placeholders": {
+      "match": {
+        "type": "String"
+      }
+    }
+  },
+  "tvMultiViewUnavailable": "Mwonekano-nyingi haupatikani: kifaa kina kikomo (mitiririko 2 kwa wakati mmoja haihakikishwi).",
+  "tvChannelUnavailable": "Chaneli haipatikani kwa sasa.",
+  "tvRetryQuitHint": "OK: Jaribu tena   ·   Rudi: Toka"
 }

@@ -16,6 +16,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../stats/data/watch_stats_service.dart';
 import '../core/tv_tokens.dart';
 
@@ -64,12 +65,10 @@ class _TvCareNudgeState extends State<TvCareNudge> {
     });
   }
 
-  String get _message {
+  String _message(BuildContext context) {
     final int h = DateTime.now().hour;
-    if (h >= 22 || h < 5) {
-      return 'Il est tard… la télé sera encore là demain 🌙';
-    }
-    return '3 heures déjà — pense à t\'étirer, boire un peu d\'eau 💛';
+    if (h >= 22 || h < 5) return context.l10n.tvCareLate;
+    return context.l10n.tvCareStretch;
   }
 
   @override
@@ -97,7 +96,7 @@ class _TvCareNudgeState extends State<TvCareNudge> {
               ],
             ),
             child: Text(
-              _message,
+              _message(context),
               style: const TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w600,
