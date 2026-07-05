@@ -200,7 +200,9 @@ jobs:
           AUTHOR_P12: ${{ secrets.SAMSUNG_AUTHOR_P12_BASE64 }}
           AUTHOR_PW: ${{ secrets.SAMSUNG_AUTHOR_PASSWORD }}
         run: |
-          set -e
+          # PAS de `set -e` global ici : on veut GÉRER nous-mêmes l'échec du
+          # certificat (le diagnostiquer + retomber en auto-signé) plutôt que de
+          # tuer tout le build sans produire aucun .tpk.
           TZ="$HOME/tizen-studio/tools/ide/bin/tizen"
           PROFILES="$HOME/tizen-studio-data/profile/profiles.xml"
           # Distributeur Tizen PAR DÉFAUT du SDK (présent après l'install). Mot de
@@ -209,22 +211,43 @@ jobs:
           DIST_PW="tizenpkcs12passfordsigner"
           echo "distributeur par défaut : ${DIST:-INTROUVABLE}"
           mkdir -p "$HOME/certs"
-          if [ -n "$AUTHOR_P12" ]; then
-            echo "$AUTHOR_P12" | base64 -d > "$HOME/certs/author.p12"
-            "$TZ" security-profiles add -n TheFewProfile \
-              -a "$HOME/certs/author.p12" -p "$AUTHOR_PW" \
-              -d "$DIST" --dist-password "$DIST_PW" || \
-            "$TZ" security-profiles add -n TheFewProfile \
-              -a "$HOME/certs/author.p12" -p "$AUTHOR_PW" \
-              -d "$DIST" -dp "$DIST_PW"
-            echo "✓ profil signé : TON certificat auteur + distributeur Tizen par défaut."
-          else
-            echo "::warning::Secret SAMSUNG_AUTHOR_P12_BASE64 absent → tentative AUTO-SIGNÉE (validation de la chaîne de build). Pose le secret pour un .tpk signé avec ton identité."
+
+          # Repli AUTO-SIGNÉ (certif jetable) : garantit qu'un .tpk sort toujours.
+          autosign() {
             "$TZ" certificate -a thefew -p thefewpass -f author || true
             "$TZ" security-profiles add -n TheFewProfile \
               -a "$HOME/tizen-studio-data/keystore/author/author.p12" -p thefewpass \
               -d "$DIST" --dist-password "$DIST_PW" || true
+          }
+
+          SIGNED_WITH_AUTHOR=0
+          if [ -n "$AUTHOR_P12" ]; then
+            # 1) Le base64 est-il valide ? (une copie avec espaces/coupures le casse)
+            if echo "$AUTHOR_P12" | base64 -d > "$HOME/certs/author.p12" 2>/dev/null \
+                && [ -s "$HOME/certs/author.p12" ]; then
+              echo "base64 auteur : OK ($(stat -c%s "$HOME/certs/author.p12") octets)."
+              # 2) Le couple certificat + mot de passe est-il bon ?
+              if "$TZ" security-profiles add -n TheFewProfile \
+                    -a "$HOME/certs/author.p12" -p "$AUTHOR_PW" \
+                    -d "$DIST" --dist-password "$DIST_PW" \
+                 || "$TZ" security-profiles add -n TheFewProfile \
+                    -a "$HOME/certs/author.p12" -p "$AUTHOR_PW" \
+                    -d "$DIST" -dp "$DIST_PW"; then
+                SIGNED_WITH_AUTHOR=1
+                echo "✓ profil signé : TON certificat auteur + distributeur Tizen par défaut."
+              else
+                echo "::warning title=Certificat Samsung refusé::author.p12 chargé mais REJETÉ (« Invalid file or password »). Cause quasi certaine : le secret SAMSUNG_AUTHOR_PASSWORD ne correspond PAS au mot de passe du certificat (ou le author.p12 encodé n'est pas le bon). Vérifie/recrée SAMSUNG_AUTHOR_PASSWORD. → .tpk AUTO-SIGNÉ en attendant."
+                autosign
+              fi
+            else
+              echo "::warning title=base64 invalide::SAMSUNG_AUTHOR_P12_BASE64 ne se décode pas en fichier valide (copie tronquée / espaces / retours ligne). Ré-encode SANS saut de ligne et recolle le secret entier. → .tpk AUTO-SIGNÉ en attendant."
+              autosign
+            fi
+          else
+            echo "::warning::Secret SAMSUNG_AUTHOR_P12_BASE64 absent → .tpk AUTO-SIGNÉ (validation de la chaîne de build)."
+            autosign
           fi
+          echo "SIGNED_WITH_AUTHOR=$SIGNED_WITH_AUTHOR" >> "$GITHUB_ENV"
           "$TZ" cli-config "profiles.path=$PROFILES" || true
 
       # Profil « common » : son rootstrap (iot-headed-6.0) est celui qu'on peut
@@ -277,9 +300,16 @@ jobs:
             exit 0
           fi
           cp "$TPK" build/tizen/tpk/thefew-tizen.tpk
-          NOTES="The Few — build Samsung TV (Tizen) de prévisualisation.
+          if [ "${SIGNED_WITH_AUTHOR:-0}" = "1" ]; then
+            SIGN_LINE="✅ Signé avec TON certificat auteur Samsung (+ distributeur Tizen par défaut) — prêt pour le sideload et la soumission au store."
+          else
+            SIGN_LINE="⚠️ AUTO-SIGNÉ (certificat jetable) : le certificat auteur a été refusé ou est absent. Vérifie les secrets SAMSUNG_AUTHOR_P12_BASE64 / SAMSUNG_AUTHOR_PASSWORD (cf. logs de l'étape « Signature »)."
+          fi
+          NOTES="The Few — build Samsung TV (Tizen).
 
-          Auto-signé (auteur) : sideload en Mode Développeur (Tizen 6.0+, TV 2021+).
+          $SIGN_LINE
+
+          Sideload en Mode Développeur : Tizen 6.0+ (TV Samsung 2021+).
           Pour une TV de détail / le store : certificat DISTRIBUTEUR Samsung requis.
 
           Commit : ${{ github.sha }}"
