@@ -764,5 +764,6 @@
   "tvParentalWrongCode": "Forkert kode, prøv igen.",
   "tvEnabled": "Til",
   "tvDisabled": "Fra",
-  "tvSleepDisable": "Deaktiver"
+  "tvSleepDisable": "Deaktiver",
+  "tvNoRecordings": "Ingen optagelser"
 }

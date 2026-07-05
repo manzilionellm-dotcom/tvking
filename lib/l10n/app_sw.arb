@@ -764,5 +764,6 @@
   "tvParentalWrongCode": "Msimbo si sahihi, jaribu tena.",
   "tvEnabled": "Imewashwa",
   "tvDisabled": "Imezimwa",
-  "tvSleepDisable": "Zima"
+  "tvSleepDisable": "Zima",
+  "tvNoRecordings": "Hakuna rekodi"
 }

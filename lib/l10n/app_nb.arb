@@ -764,5 +764,6 @@
   "tvParentalWrongCode": "Feil kode, prøv igjen.",
   "tvEnabled": "På",
   "tvDisabled": "Av",
-  "tvSleepDisable": "Deaktiver"
+  "tvSleepDisable": "Deaktiver",
+  "tvNoRecordings": "Ingen opptak"
 }

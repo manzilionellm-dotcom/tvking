@@ -764,5 +764,6 @@
   "tvParentalWrongCode": "رمز غير صحيح، حاول مجددًا.",
   "tvEnabled": "مُفعّل",
   "tvDisabled": "مُعطّل",
-  "tvSleepDisable": "تعطيل"
+  "tvSleepDisable": "تعطيل",
+  "tvNoRecordings": "لا توجد تسجيلات"
 }

@@ -420,9 +420,9 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text(
+          Text(
             context.l10n.tvRecentSearches,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
               color: TvTokens.mutedDim,

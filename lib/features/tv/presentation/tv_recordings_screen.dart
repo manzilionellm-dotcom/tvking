@@ -35,11 +35,10 @@ class TvRecordingsScreen extends StatelessWidget {
       builder: (BuildContext context, AsyncSnapshot<List<Recording>> snap) {
         final List<Recording> recs = snap.data ?? const <Recording>[];
         if (recs.isEmpty) {
-          return const TvEmptyState(
+          return TvEmptyState(
             icon: Icons.video_library_rounded,
-            title: 'Aucun enregistrement',
-            subtitle:
-                context.l10n.tvRecordingsEmpty,
+            title: context.l10n.tvNoRecordings,
+            subtitle: context.l10n.tvRecordingsEmpty,
           );
         }
         return Column(

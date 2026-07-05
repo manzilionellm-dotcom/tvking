@@ -2196,5 +2196,6 @@
   "tvParentalWrongCode": "Code incorrect, réessaie.",
   "tvEnabled": "Activé",
   "tvDisabled": "Désactivé",
-  "tvSleepDisable": "Désactiver"
+  "tvSleepDisable": "Désactiver",
+  "tvNoRecordings": "Aucun enregistrement"
 }
