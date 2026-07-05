@@ -78,6 +78,25 @@ class TvApp extends StatelessWidget {
         locale: LocaleRepository.instance.locale, // null = langue de la TV
         supportedLocales: AppLocalizations.supportedLocales,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
+        // RÉSOLUTION DE LANGUE — CORRIGÉE. Sans ça, quand la TV est réglée
+        // dans une langue qu'on ne connaît pas, Flutter retombe sur la
+        // PREMIÈRE langue de la liste générée… qui pouvait être l'arabe →
+        // « tout le monde en arabe ». On impose la bonne logique :
+        //   1) choix explicite de l'utilisateur (Réglages) → prioritaire ;
+        //   2) langue de la TV si on la supporte (match par code langue,
+        //      p.ex. en_US → en, ar_MA → ar) ;
+        //   3) repli SÛR = ANGLAIS (jamais l'arabe par défaut).
+        localeResolutionCallback:
+            (Locale? device, Iterable<Locale> supported) {
+          final Locale? forced = LocaleRepository.instance.locale;
+          if (forced != null) return forced;
+          if (device != null) {
+            for (final Locale s in supported) {
+              if (s.languageCode == device.languageCode) return s;
+            }
+          }
+          return const Locale('en');
+        },
         theme: base.copyWith(
           // Police par défaut = Inter (Maison Noir) sur TOUT le texte.
           textTheme: GoogleFonts.interTextTheme(base.textTheme)
