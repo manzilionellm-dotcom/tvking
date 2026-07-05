@@ -1322,6 +1322,53 @@ function isSafeUpstream(rawUrl) {
   return true; // nom de domaine
 }
 
+// GET /vendor/mpegts.js — sert mpegts.js en MÊME ORIGINE que le récepteur Cast.
+// Pourquoi : la page /cast-receiver chargeait mpegts.js depuis cdn.jsdelivr.net ;
+// si le CDN est lent/bloqué sur le réseau de la TV, TOUT le chemin MPEG-TS meurt.
+// Ici le Worker tire la lib une fois (jsdelivr, repli unpkg), la met en cache
+// edge (caches.default) et la sert avec un cache long. Version ÉPINGLÉE — ne pas
+// passer en "latest" (le récepteur doit rester reproductible).
+const MPEGTS_JS_VERSION = '1.7.3';
+const MPEGTS_JS_SOURCES = [
+  `https://cdn.jsdelivr.net/npm/mpegts.js@${MPEGTS_JS_VERSION}/dist/mpegts.js`,
+  `https://unpkg.com/mpegts.js@${MPEGTS_JS_VERSION}/dist/mpegts.js`,
+];
+
+async function handleVendorMpegts(ctx) {
+  const cache = caches.default;
+  // Clé de cache synthétique versionnée : un bump de version invalide
+  // naturellement l'ancienne entrée.
+  const cacheKey = new Request(
+    'https://vendor-cache.internal/mpegts-' + MPEGTS_JS_VERSION + '.js',
+  );
+  const hit = await cache.match(cacheKey);
+  if (hit) return hit;
+  for (const src of MPEGTS_JS_SOURCES) {
+    try {
+      const upstream = await fetch(src);
+      if (!upstream.ok) continue;
+      const body = await upstream.arrayBuffer();
+      const resp = new Response(body, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/javascript; charset=utf-8',
+          // 7 jours : la version est épinglée, le contenu est immuable.
+          'Cache-Control': 'public, max-age=604800, immutable',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+      try { ctx.waitUntil(cache.put(cacheKey, resp.clone())); } catch (_) {}
+      return resp;
+    } catch (_) { /* CDN suivant */ }
+  }
+  // Tous les CDN KO : 502 SANS cache — le <script> de repli de la page
+  // receiver (jsdelivr direct) prend alors le relais côté TV.
+  return new Response('mpegts.js unavailable', {
+    status: 502,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+
 // GET /cast-sign?u=<url> — renvoie l'URL /cast-proxy signée (HMAC + expiration).
 async function handleCastSign(env, url) {
   const secret = env.CAST_PROXY_SECRET;
@@ -3965,6 +4012,14 @@ async function handleRequest(request, env, ctx) {
       return await handleCastProxy(env, url, request.method);
     }
 
+    // /vendor/mpegts.js — lib mpegts.js servie en même origine pour le
+    // récepteur Cast (cache edge, version épinglée, repli multi-CDN).
+    if (segments.length === 2 && segments[0] === 'vendor'
+      && segments[1] === 'mpegts.js') {
+      if (request.method !== 'GET') return badRequest('only GET on /vendor/*');
+      return await handleVendorMpegts(ctx);
+    }
+
     // /cast-receiver — page HTML CAF pour Google Cast Custom Receiver.
     // URL a coller dans la Google Cast SDK Developer Console.
     // Query string ?app=redroom bascule le branding sur Red Room ;
@@ -4079,7 +4134,7 @@ async function handleRequest(request, env, ctx) {
     const RESERVED = new Set([
       'admin', 'config', 'dl', 'install', 'api', 'panel',
       'redroom', 'tv', 'defewtv', 'tvbox', 'defew', '777', '7777', 'tv7',
-      'cast-receiver', 'cast-skin.css',
+      'cast-receiver', 'cast-skin.css', 'vendor',
       'favicon.ico', 'robots.txt', 'sitemap.xml',
     ]);
     if (segments.length === 1 && !RESERVED.has(segments[0].toLowerCase())) {
