@@ -32,6 +32,15 @@ class NativeVideoController extends ChangeNotifier {
   /// Position de lecture courante (avance → « pas gelé », pour le watchdog).
   Duration position = Duration.zero;
 
+  /// Durée totale du média — connue UNIQUEMENT pour un contenu SEEKABLE
+  /// (film / VOD / catch-up). Reste `Duration.zero` pour un DIRECT (durée
+  /// « infinie » côté ExoPlayer) → l'UI n'affiche la barre de progression /
+  /// n'autorise le seek QUE si `duration > 0`.
+  Duration duration = Duration.zero;
+
+  /// Raccourci : le média est-il seekable (film/VOD) ? Faux pour le direct.
+  bool get isSeekable => duration > Duration.zero;
+
   /// True tant qu'ExoPlayer met en mémoire tampon (STATE_BUFFERING).
   bool isBuffering = true;
 
@@ -73,6 +82,10 @@ class NativeVideoController extends ChangeNotifier {
         isPlaying = call.arguments as bool;
       case 'position':
         position = Duration(milliseconds: call.arguments as int);
+      case 'duration':
+        // Émise par le natif quand la durée est connue (média seekable).
+        final int ms = call.arguments as int;
+        duration = ms > 0 ? Duration(milliseconds: ms) : Duration.zero;
       case 'firstFrame':
         firstFrame = true;
         isBuffering = false;
@@ -105,6 +118,23 @@ class NativeVideoController extends ChangeNotifier {
   void play() => _channel?.invokeMethod<void>('play');
 
   void pause() => _channel?.invokeMethod<void>('pause');
+
+  /// Va à une position absolue (film / VOD / catch-up). Sans effet sur un
+  /// direct non-seekable. On borne à [0, duration] pour ne jamais demander
+  /// une position invalide à ExoPlayer. Met à jour `position` localement
+  /// tout de suite → la barre répond instantanément (avant l'écho natif).
+  void seekTo(Duration target) {
+    if (_channel == null) return;
+    Duration t = target;
+    if (t < Duration.zero) t = Duration.zero;
+    if (duration > Duration.zero && t > duration) t = duration;
+    position = t;
+    if (!_disposed) notifyListeners();
+    _channel!.invokeMethod<void>('seekTo', <String, dynamic>{'ms': t.inMilliseconds});
+  }
+
+  /// Avance/recule de [delta] (Netflix : ±10 s) depuis la position courante.
+  void seekBy(Duration delta) => seekTo(position + delta);
 
   /// Règle le volume (0.0 = muet, 1.0 = plein). Sert à la MULTI-VUE : seule la
   /// tuile active garde le son. Conservé pour ré-application au rattachement.

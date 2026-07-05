@@ -273,6 +273,11 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       _recovering = false;
       _recoverAttempts = 0;
       if (_fatal && mounted) setState(() => _fatal = false);
+      // FILM : quand la barre est visible, on la fait AVANCER (tick 500 ms du
+      // natif). Uniquement en VOD + overlay → aucun rebuild inutile en direct.
+      else if (_isVod && _overlay && mounted) {
+        setState(() {});
+      }
     }
     // Logo tant qu'on bufferise OU que la 1re trame n'est pas encore dessinée
     // (au zap, firstFrame est remis à false → logo jusqu'à l'image suivante).
@@ -490,6 +495,11 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // OK / centre du D-pad : ouvre la barre (et surligne Lecture/Pause), ou
   // active le bouton surligné si la barre est déjà ouverte.
   void _okPressed() {
+    // FILM (Netflix) : OK = lecture/pause, tout simplement.
+    if (_isVod) {
+      _togglePlayPause();
+      return;
+    }
     if (!_overlay || _btnFocus < 0) {
       setState(() {
         _overlay = true;
@@ -584,6 +594,20 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     setState(() {});
   }
 
+  // ---- MODE FILM (VOD / catch-up) — commandes façon Netflix ----
+  // Un FILM n'est pas un direct : on l'avance/recule (±10 s), on affiche une
+  // barre de progression, et OK = lecture/pause. Le DIRECT n'utilise RIEN de
+  // tout ça (tout est gardé par `_isVod`) → comportement live 100 % inchangé.
+  bool get _isVod => !_current.isLive;
+
+  /// Avance/recule le film de [delta] (Netflix : ±10 s). Sans effet en direct.
+  void _seekRelative(Duration delta) {
+    if (!_isVod) return;
+    _controller.seekBy(delta);
+    _showOverlayTemporarily();
+    setState(() {}); // la barre reflète tout de suite la nouvelle position
+  }
+
   // Ajoute / retire la chaîne courante des favoris (bouton ❤ / touche F).
   void _toggleFavorite() {
     final bool wasFav = _isFavorite;
@@ -672,17 +696,37 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     if (di < 0) di = _numpad.indexOf(k);
     if (di >= 0) { _onDigit(di); return KeyEventResult.handled; }
 
-    // Haut/Bas (et Ch+/Ch-) = zap direct, même quand la barre est ouverte.
-    if (_isPrev(k)) { _zap(-1); return KeyEventResult.handled; }
-    if (_isNext(k)) { _zap(1); return KeyEventResult.handled; }
+    // Haut/Bas (et Ch+/Ch-) = zap direct — UNIQUEMENT en direct. Sur un FILM,
+    // on ne zappe pas (Netflix) : on montre juste la barre.
+    if (_isPrev(k)) {
+      if (_isVod) { _showOverlayTemporarily(); } else { _zap(-1); }
+      return KeyEventResult.handled;
+    }
+    if (_isNext(k)) {
+      if (_isVod) { _showOverlayTemporarily(); } else { _zap(1); }
+      return KeyEventResult.handled;
+    }
 
-    // Gauche/Droite = déplacer le surlignage entre les boutons de la barre.
+    // Gauche/Droite :
+    //   • FILM  → avance/recul de 10 s (façon Netflix) ;
+    //   • DIRECT → déplace le surlignage entre les boutons de la barre.
     if (k == LogicalKeyboardKey.arrowLeft) {
-      _navBtn(-1);
+      if (_isVod) { _seekRelative(const Duration(seconds: -10)); }
+      else { _navBtn(-1); }
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.arrowRight) {
-      _navBtn(1);
+      if (_isVod) { _seekRelative(const Duration(seconds: 10)); }
+      else { _navBtn(1); }
+      return KeyEventResult.handled;
+    }
+    // Touches média AVANCE/RETOUR (télécommandes qui en ont) → seek sur un film.
+    if (k == LogicalKeyboardKey.mediaRewind) {
+      if (_isVod) _seekRelative(const Duration(seconds: -10));
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.mediaFastForward) {
+      if (_isVod) _seekRelative(const Duration(seconds: 10));
       return KeyEventResult.handled;
     }
 
@@ -872,6 +916,16 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                         onRecord: _toggleRecording,
                         onFavorite: _toggleFavorite,
                         onMulti: _openMultiView,
+                        // ---- Mode FILM (Netflix) ----
+                        isVod: _isVod,
+                        position: _controller.position,
+                        duration: _controller.duration,
+                        isPlaying: _controller.isPlaying,
+                        onSeekBack: () =>
+                            _seekRelative(const Duration(seconds: -10)),
+                        onSeekFwd: () =>
+                            _seekRelative(const Duration(seconds: 10)),
+                        onPlayPause: _togglePlayPause,
                       ),
                     ),
                   ),
@@ -976,6 +1030,13 @@ class _ControlsBar extends StatelessWidget {
     required this.onRecord,
     required this.onFavorite,
     required this.onMulti,
+    required this.isVod,
+    required this.position,
+    required this.duration,
+    required this.isPlaying,
+    required this.onSeekBack,
+    required this.onSeekFwd,
+    required this.onPlayPause,
   });
 
   final Channel channel;
@@ -990,6 +1051,15 @@ class _ControlsBar extends StatelessWidget {
   final VoidCallback onRecord;
   final VoidCallback onFavorite;
   final VoidCallback onMulti;
+
+  // ---- Mode FILM (Netflix) ----
+  final bool isVod;
+  final Duration position;
+  final Duration duration;
+  final bool isPlaying;
+  final VoidCallback onSeekBack;
+  final VoidCallback onSeekFwd;
+  final VoidCallback onPlayPause;
 
   @override
   Widget build(BuildContext context) {
@@ -1018,49 +1088,59 @@ class _ControlsBar extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 18),
-          // ---- Commandes utiles en DIRECT uniquement : Guide, REC, Favori ----
-          // (Lecture/pause et avance/retour n'ont aucun sens en live → retirés.)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              _CtrlButton(
-                icon: Icons.calendar_month_rounded,
-                label: 'Guide',
-                onTap: onGuide,
-                focused: focusedIndex == 0,
-              ),
-              const SizedBox(width: 34),
-              _CtrlButton(
-                icon: isRecording
-                    ? Icons.stop_rounded
-                    : Icons.fiber_manual_record_rounded,
-                label: isRecording ? 'Stop' : 'REC',
-                onTap: onRecord,
-                accent: TvTokens.live,
-                active: isRecording,
-                focused: focusedIndex == 1,
-              ),
-              const SizedBox(width: 34),
-              _CtrlButton(
-                icon: isFavorite
-                    ? Icons.favorite_rounded
-                    : Icons.favorite_border_rounded,
-                label: 'Favori',
-                onTap: onFavorite,
-                accent: TvTokens.gold,
-                active: isFavorite,
-                focused: focusedIndex == 2,
-              ),
-              const SizedBox(width: 34),
-              _CtrlButton(
-                icon: Icons.grid_view_rounded,
-                label: 'Multi',
-                onTap: onMulti,
-                focused: focusedIndex == 3,
-              ),
-            ],
-          ),
+          // FILM → scrubber Netflix (barre + temps + ⏪10 / ▶⏸ / ⏩10).
+          // DIRECT → commandes live habituelles (Guide, REC, Favori, Multi).
+          if (isVod)
+            _VodControls(
+              position: position,
+              duration: duration,
+              isPlaying: isPlaying,
+              onSeekBack: onSeekBack,
+              onSeekFwd: onSeekFwd,
+              onPlayPause: onPlayPause,
+            )
+          else
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                _CtrlButton(
+                  icon: Icons.calendar_month_rounded,
+                  label: 'Guide',
+                  onTap: onGuide,
+                  focused: focusedIndex == 0,
+                ),
+                const SizedBox(width: 34),
+                _CtrlButton(
+                  icon: isRecording
+                      ? Icons.stop_rounded
+                      : Icons.fiber_manual_record_rounded,
+                  label: isRecording ? 'Stop' : 'REC',
+                  onTap: onRecord,
+                  accent: TvTokens.live,
+                  active: isRecording,
+                  focused: focusedIndex == 1,
+                ),
+                const SizedBox(width: 34),
+                _CtrlButton(
+                  icon: isFavorite
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                  label: 'Favori',
+                  onTap: onFavorite,
+                  accent: TvTokens.gold,
+                  active: isFavorite,
+                  focused: focusedIndex == 2,
+                ),
+                const SizedBox(width: 34),
+                _CtrlButton(
+                  icon: Icons.grid_view_rounded,
+                  label: 'Multi',
+                  onTap: onMulti,
+                  focused: focusedIndex == 3,
+                ),
+              ],
+            ),
         ],
       ),
     );
@@ -1154,6 +1234,118 @@ class _ControlsBar extends StatelessWidget {
                 fontWeight: FontWeight.w800,
                 color: TvTokens.text)),
       );
+}
+
+/// Commandes de LECTURE d'un FILM (façon Netflix) : grande barre de
+/// progression dorée + temps écoulé/total, et une rangée ⏪10 · ▶/⏸ · 10⏩.
+/// À la télécommande : Gauche/Droite = ±10 s, OK = lecture/pause (géré par
+/// l'écran) ; ces boutons servent aussi au doigt (TV/tablette tactile).
+class _VodControls extends StatelessWidget {
+  const _VodControls({
+    required this.position,
+    required this.duration,
+    required this.isPlaying,
+    required this.onSeekBack,
+    required this.onSeekFwd,
+    required this.onPlayPause,
+  });
+
+  final Duration position;
+  final Duration duration;
+  final bool isPlaying;
+  final VoidCallback onSeekBack;
+  final VoidCallback onSeekFwd;
+  final VoidCallback onPlayPause;
+
+  static String _fmt(Duration d) {
+    final int s = d.inSeconds < 0 ? 0 : d.inSeconds;
+    final int h = s ~/ 3600;
+    final int m = (s % 3600) ~/ 60;
+    final int sec = s % 60;
+    String two(int n) => n.toString().padLeft(2, '0');
+    return h > 0 ? '$h:${two(m)}:${two(sec)}' : '${two(m)}:${two(sec)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final int totalMs = duration.inMilliseconds;
+    final double frac = totalMs > 0
+        ? (position.inMilliseconds / totalMs).clamp(0.0, 1.0)
+        : 0.0;
+    final Duration remaining =
+        totalMs > 0 ? duration - position : Duration.zero;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        // ---- Barre de progression (dorée, façon Netflix) ----
+        Row(
+          children: <Widget>[
+            SizedBox(
+              width: 74,
+              child: Text(_fmt(position),
+                  style: TextStyle(
+                      fontSize: TvDimens.label,
+                      fontWeight: FontWeight.w700,
+                      color: TvTokens.text)),
+            ),
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: Stack(
+                  children: <Widget>[
+                    Container(height: 6, color: Colors.white24),
+                    FractionallySizedBox(
+                      widthFactor: frac,
+                      child: Container(
+                        height: 6,
+                        decoration:
+                            const BoxDecoration(gradient: TvTokens.ctaGradient),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 74,
+              child: Text(
+                totalMs > 0 ? '-${_fmt(remaining)}' : '--:--',
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                    fontSize: TvDimens.label,
+                    fontWeight: FontWeight.w700,
+                    color: TvTokens.muted),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        // ---- ⏪10 · ▶/⏸ · 10⏩ ----
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            _CtrlButton(
+                icon: Icons.replay_10_rounded,
+                label: '10 s',
+                onTap: onSeekBack),
+            const SizedBox(width: 34),
+            _CtrlButton(
+              icon: isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              label: isPlaying ? 'Pause' : 'Lecture',
+              onTap: onPlayPause,
+              primary: true,
+              accent: TvTokens.gold,
+            ),
+            const SizedBox(width: 34),
+            _CtrlButton(
+                icon: Icons.forward_10_rounded,
+                label: '10 s',
+                onTap: onSeekFwd),
+          ],
+        ),
+      ],
+    );
+  }
 }
 
 /// Bouton de commande « verre » avec animation d'appui (scale), façon lecteur

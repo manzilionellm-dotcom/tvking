@@ -62,10 +62,23 @@ class NativeVideoView(
     private var pendingRetry: Runnable? = null
     private val maxSilentRetries = 8 // au-delà → on prévient Dart (reset complet)
 
+    // Dernière durée émise à Dart — évite de spammer le canal quand elle ne
+    // change pas (elle est stable pour un film, TIME_UNSET pour un direct).
+    private var lastDurationMs = -1L
+
     private val positionPump = object : Runnable {
         override fun run() {
             if (player.isPlaying) {
                 channel.invokeMethod("position", player.currentPosition)
+            }
+            // DURÉE : connue uniquement pour un contenu SEEKABLE (film / VOD /
+            // catch-up). Un DIRECT renvoie TIME_UNSET → on émet 0 (= pas de
+            // barre, pas de seek côté UI). On n'émet que sur changement.
+            val rawDur = player.duration // ms, ou C.TIME_UNSET
+            val durMs = if (rawDur != androidx.media3.common.C.TIME_UNSET && rawDur > 0) rawDur else 0L
+            if (durMs != lastDurationMs) {
+                lastDurationMs = durMs
+                channel.invokeMethod("duration", durMs)
             }
             handler.postDelayed(this, 500)
         }
@@ -198,6 +211,15 @@ class NativeVideoView(
             }
             "pause" -> {
                 player.pause()
+                result.success(null)
+            }
+            "seekTo" -> {
+                // Film / VOD / catch-up : va à une position absolue (ms). Borné
+                // à [0, duration] côté Dart ; ici on re-borne par prudence. Sans
+                // effet utile sur un direct non-seekable (ExoPlayer l'ignore).
+                val ms = (call.argument<Int>("ms") ?: 0).toLong()
+                val safe = ms.coerceAtLeast(0L)
+                player.seekTo(safe)
                 result.success(null)
             }
             "dispose" -> result.success(null)
