@@ -138,6 +138,43 @@ Deux apps dans le MÊME repo (flavors Flutter) :
   (`kMaxRecordingDuration`), callback `onAutoStopped` +
   `finishRecordingByPath` pour finaliser proprement la fiche en base.
 
+- ✅ **Cast Chromecast — page receiver morte au parsing (2026-07-05)** :
+  `cast_receiver.js` est un template literal ; le `join('\n')` de
+  l'overlay debug produisait un VRAI retour à la ligne dans la page
+  générée → SyntaxError → `context.start()` jamais appelé → AUCUNE
+  session Cast possible depuis le commit overlay (eee9b56). Corrigé
+  (`\\n`) + garde-fou : `node --check` sur les scripts générés.
+- ✅ **Cast Chromecast — sender aveugle en lecture TS (2026-07-05)** :
+  le LOAD interceptor `return null` (mpegts.js) ne répondait JAMAIS au
+  téléphone : pas de MediaStatus → `RemoteMediaClient.load()` sans
+  réponse → l'app déclarait « échec » à 25 s TV allumée, et
+  pause/stop étaient morts. Fix pattern « custom player » officiel :
+  interceptor MEDIA_STATUS sortant (playerState/media/mediaSessionId
+  réels du `<video>` TS) + `broadcastStatus(true, requestId)` pour
+  acquitter LOAD/PAUSE/PLAY/STOP + events video → broadcast.
+- ✅ **Cast Chromecast — live TS sans reconnexion (2026-07-05)** : les
+  serveurs IPTV ferment périodiquement la socket ; le receiver fige
+  → reconnexion auto (backoff 1→5 s, 6 tentatives, compteur remis à
+  zéro sur lecture stable), sinon IDLE/ERROR propre vers le sender.
+- ✅ **mpegts.js servi même origine (2026-07-05)** : `/vendor/mpegts.js`
+  (Worker, cache edge, version épinglée 1.7.3, repli unpkg puis CDN
+  direct) — un CDN tiers bloqué sur le réseau TV ne tue plus le TS.
+- ✅ **Découverte — MulticastLock tenu en quasi-permanence (2026-07-05)** :
+  le stream SSDP ne se terminait jamais au timeout (flag `done` relu
+  seulement à l'arrivée d'un device) → socket UDP + lock multicast
+  vivants ~60 s/60 s en warmup (batterie). Fix : `controller.close()`
+  à la deadline + annulation des subscriptions au timeout côté
+  `CastManager.startDiscovery`.
+- ✅ **Warmup écrasait l'état `connecting` (2026-07-05)** : le tick 60 s
+  pouvait lancer une découverte pendant un `castTo` (40 s max) et
+  corrompre l'UI. Garde `connecting` ajoutée.
+- ✅ **Session Cast terminée par la TV : bouton restait « connecté »
+  (2026-07-05)** : l'événement natif `ended` ne nettoyait pas
+  `_device/_selectedDevice/_transport`. Corrigé.
+- ✅ **Toast après `Navigator.pop` dans le picker (2026-07-05)** :
+  `ScaffoldMessenger.of(context)` sur un context désactivé → capture
+  du messenger avant le pop.
+
 ## Bugs connus / pas encore résolus
 
 - ⚠️ Domaine racine `7themotion.com` pas encore Custom Domain
