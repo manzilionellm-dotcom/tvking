@@ -102,10 +102,22 @@ class SsdpDiscovery {
         );
       }
 
-      // Yield les devices jusqu'à expiration
+      // Yield les devices jusqu'à expiration.
+      //
+      // IMPORTANT : au timeout on FERME le controller, pas juste un
+      // flag. L'ancien `done = true` n'était relu qu'à l'arrivée d'un
+      // NOUVEAU device : sans réponse SSDP après la deadline, le
+      // `await for` bloquait indéfiniment, le `finally` (fermeture
+      // socket + release MulticastLock) ne tournait qu'à l'annulation
+      // par le prochain scan (~60s en warmup). Fermer le stream fait
+      // sortir la boucle immédiatement → socket fermée et lock relâché
+      // à l'heure prévue.
       final Future<void> deadline = Future<void>.delayed(timeout);
       bool done = false;
-      deadline.then((_) => done = true);
+      deadline.then((_) {
+        done = true;
+        if (!controller.isClosed) controller.close();
+      });
 
       await for (final CastDevice device in controller.stream) {
         if (done) break;

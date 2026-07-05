@@ -116,11 +116,30 @@ class CastManager extends ChangeNotifier {
     );
     switch (evt.kind) {
       case 'ended':
+        // Le SDK signale la fin DEFINITIVE de la session — on aligne
+        // notre etat. ATTENTION : ne pas appeler disconnect() ici
+        // (boucle : notre disconnect() ferme aussi la session SDK).
+        if (_state == CastState.casting || _state == CastState.paused) {
+          _state = CastState.idle;
+          _setProgress(CastProgress.idle);
+        }
+        // Une session terminee invalide aussi le device/transport et la
+        // cible memorisee (si c'etait un Chromecast). Sans ce nettoyage,
+        // le bouton Cast restait dore "connecte" et le picker montrait
+        // un bandeau Stop pour une session qui n'existe plus, jusqu'a
+        // un disconnect() manuel.
+        _transport = null;
+        _device = null;
+        _currentTitle = null;
+        if (_selectedDevice?.kind == CastDeviceKind.chromecast) {
+          _selectedDevice = null;
+        }
+        notifyListeners();
+        break;
       case 'suspended':
-        // Le SDK signale la fin de la session — on aligne notre etat.
-        // ATTENTION : ne pas appeler disconnect() ici (eviterait une
-        // boucle car notre disconnect() ferme aussi la session SDK).
-        // On reset juste l'etat Dart.
+        // Suspension TEMPORAIRE (changement de reseau, veille) : le SDK
+        // peut la reprendre tout seul (`resumed`). On reflete juste
+        // l'etat sans jeter device/cible — comportement historique.
         if (_state == CastState.casting || _state == CastState.paused) {
           _state = CastState.idle;
           _setProgress(CastProgress.idle);
@@ -368,6 +387,17 @@ class CastManager extends ChangeNotifier {
         MdnsDiscovery.instance.discover(timeout: timeout).listen(onDevice);
 
     _discoveryTimer = Timer(timeout, () {
+      // On COUPE aussi les abonnements au timeout, pas seulement l'état.
+      // Sans ça, les générateurs SSDP/mDNS restaient vivants jusqu'à la
+      // PROCHAINE découverte (60s en warmup) : leur `finally` (fermeture
+      // socket UDP + release du MulticastLock) ne tournait jamais à
+      // temps → lock multicast tenu quasi en permanence (batterie) et
+      // sockets orphelines. Annuler la subscription complète le
+      // générateur async* → son finally s'exécute immédiatement.
+      _discoverySub?.cancel();
+      _mdnsSub?.cancel();
+      _discoverySub = null;
+      _mdnsSub = null;
       if (_state == CastState.discovering) {
         _state = isCasting ? CastState.casting : CastState.idle;
         notifyListeners();
@@ -398,13 +428,25 @@ class CastManager extends ChangeNotifier {
   }) {
     _warmupTimer?.cancel();
     Future<void>.delayed(initialDelay, () {
-      if (_state != CastState.discovering && !isCasting) {
+      if (_state != CastState.discovering &&
+          _state != CastState.connecting &&
+          !isCasting) {
         startDiscovery(timeout: const Duration(seconds: 3));
       }
     });
     _warmupTimer = Timer.periodic(interval, (_) {
-      // On ne dérange jamais une session active ou une discovery en cours
-      if (_state == CastState.discovering || isCasting) return;
+      // On ne dérange jamais une session active, une CONNEXION en cours
+      // ou une discovery en cours. Le garde `connecting` manquait : un
+      // castTo peut durer jusqu'à kCastTotalTimeout (40s) et le tick
+      // warmup (60s) pouvait tomber pendant — startDiscovery écrasait
+      // alors l'état `connecting` par `discovering` puis `idle`,
+      // corrompant l'UI (mini-bar / overlay / picker) en pleine
+      // négociation.
+      if (_state == CastState.discovering ||
+          _state == CastState.connecting ||
+          isCasting) {
+        return;
+      }
       startDiscovery(timeout: const Duration(seconds: 3));
     });
   }
