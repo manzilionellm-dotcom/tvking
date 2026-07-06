@@ -128,6 +128,18 @@ Future<void> _bootstrap() async {
   Timer.periodic(const Duration(hours: 6), (_) {
     SubscriptionState.instance.syncWithBackend();
   });
+
+  // 2b) SOURCES POUSSÉES PAR LE PANEL : re-synchro PÉRIODIQUE courte (5 min),
+  //     tant que l'app tourne. AVANT ce correctif, `RemoteSourceRepository.
+  //     sync()` n'était appelé QU'UNE FOIS au boot (plus bas) → une source
+  //     ajoutée/poussée par le revendeur APRÈS l'ouverture de l'app restait
+  //     invisible tant que le client ne redémarrait pas — pas « fluide et
+  //     instantané ». Léger : un seul GET JSON ; n'ajoute que ce qui manque
+  //     (dédup existante), ne touche jamais aux sources déjà chargées.
+  Timer.periodic(const Duration(minutes: 5), (_) {
+    if (!BootGuard.instance.safeMode) RemoteSourceRepository.sync();
+  });
+
   // 3) Thème distant piloté par le panel (couleur/nom).
   unawaited(RemoteThemeRepository.fetchAndApply());
 

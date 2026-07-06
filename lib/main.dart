@@ -238,16 +238,26 @@ Future<void> bootApp() async {
     PlaylistRepository.instance.refreshStale();
   });
 
+  // SOURCES POUSSÉES PAR LE PANEL : re-synchro PÉRIODIQUE COURTE (5 min),
+  // séparée du gros ré-import ci-dessous. AVANT ce correctif, une source
+  // ajoutée/poussée par le revendeur APRÈS l'ouverture de l'app pouvait
+  // rester invisible jusqu'à 24 h (l'ancien intervalle, partagé avec le
+  // ré-import lourd) → pas « fluide et instantané ». Léger : un seul GET
+  // JSON ; n'ajoute que ce qui manque (dédup existante), ne touche jamais
+  // aux sources déjà chargées.
+  Timer.periodic(const Duration(minutes: 5), (_) {
+    if (!BootGuard.instance.safeMode) RemoteSourceRepository.sync();
+  });
+
   // AUTO-ACTUALISATION toutes les 24 h tant que l'app tourne : recharge
-  // les playlists pour récupérer le contenu que le fournisseur a ajouté,
-  // et re-vérifie la source poussée par MAC. (À l'ouverture de l'app, le
-  // refreshStale ci-dessus couvre déjà le cas "app relancée".) Silencieux.
+  // les playlists pour récupérer le contenu que le fournisseur a ajouté.
+  // (À l'ouverture de l'app, le refreshStale ci-dessus couvre déjà le cas
+  // "app relancée".) Silencieux.
   // P1-1 : en MODE SANS ÉCHEC (boucle de redémarrage détectée), on NE relance
   // PAS ce ré-import lourd (fetch+parse de toute la source = suspect OOM n°1).
   // refreshAll est par ailleurs protégé contre les passes concurrentes (mutex).
   Timer.periodic(const Duration(hours: 24), (_) {
     if (BootGuard.instance.safeMode) return;
-    RemoteSourceRepository.sync();
     PlaylistRepository.instance.refreshAll();
   });
 

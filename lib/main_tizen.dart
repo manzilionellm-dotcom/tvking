@@ -70,4 +70,11 @@ Future<void> _bootstrap() async {
   runApp(const TvApp());
 
   unawaited(RemoteSourceRepository.sync());
+
+  // Re-synchro PÉRIODIQUE (5 min) tant que l'app tourne : une source ajoutée/
+  // poussée par le revendeur APRÈS l'ouverture de l'app reste sinon invisible
+  // jusqu'au redémarrage. Léger (un GET JSON), n'ajoute que ce qui manque.
+  Timer.periodic(const Duration(minutes: 5), (_) {
+    RemoteSourceRepository.sync();
+  });
 }
