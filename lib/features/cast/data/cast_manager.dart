@@ -643,6 +643,15 @@ class CastManager extends ChangeNotifier {
         );
       } else {
         _setProgress(CastProgress.connecting());
+        // Pour Google Cast, on fournit l'URL D'ORIGINE au transport : le
+        // proxy /cast-proxy re-suivra la redirection au play-time (token
+        // IPTV frais côté TV) au lieu de recevoir le token périssable déjà
+        // résolu par le probe du téléphone. Cf. GoogleCastTransport
+        // .originalUpstreamUrl (diag SHIELD 2026-07-06 : redirect /live/).
+        if (_transport is GoogleCastTransport) {
+          (_transport as GoogleCastTransport).originalUpstreamUrl =
+              probe.originalUrl;
+        }
         final Stopwatch sw = Stopwatch()..start();
         try {
           await _transport!.playStream(

@@ -102,6 +102,21 @@ class GoogleCastTransport implements CastTransport {
   /// URL exacte transmise a loadMedia, token signe masque. Null tant qu'aucun cast.
   String? lastCastUrlRedacted;
 
+  /// URL upstream d'ORIGINE (avant que le probe du telephone ne suive les
+  /// redirections). Renseignee par CastManager juste avant [playStream].
+  ///
+  /// Pourquoi : les flux Xtream/IPTV redirigent souvent
+  /// `http://portail/.../ID.ts` vers un endpoint a TOKEN par-connexion
+  /// (`http://IP/live/USER/PASS/ID?token`). Le telephone resout ce token
+  /// pendant le probe, mais il peut etre PERISSABLE : au moment ou la TV
+  /// (via /cast-proxy) va le chercher, il est deja perime → « format non
+  /// pris en charge ». En signant l'URL D'ORIGINE, le Worker /cast-proxy
+  /// re-suit la redirection LUI-MEME au play-time (≤3 sauts) et obtient
+  /// un token FRAIS. Diag terrain SHIELD 2026-07-06 : les 3 sessions
+  /// redirigeaient vers une IP brute /live/ → ce chemin est le bon.
+  /// `null` → on retombe sur l'URL deja resolue (comportement historique).
+  String? originalUpstreamUrl;
+
   @override
   Future<void> playStream({
     required String streamUrl,
@@ -192,9 +207,16 @@ class GoogleCastTransport implements CastTransport {
       //
       // Le proxy Worker suit lui-même les redirects (≤3), donc on lui passe
       // simplement l'URL upstream nettoyée (sans pré-vol réseau côté téléphone).
+      // On PRÉFÈRE l'URL d'origine (avant redirection) : le token IPTV résolu
+      // par le téléphone peut être périmé quand la TV le fetch (cf.
+      // originalUpstreamUrl). Le Worker re-suit la redirection au play-time.
       // Nettoyage minimal : trim + strip des « ? » orphelins de fin (fréquents
       // sur les URLs Xtream .ts) qui perturbent certains parseurs.
-      String upstream = streamUrl.trim();
+      final String signSource =
+          (originalUpstreamUrl != null && originalUpstreamUrl!.trim().isNotEmpty)
+              ? originalUpstreamUrl!
+              : streamUrl;
+      String upstream = signSource.trim();
       while (upstream.endsWith('?')) {
         upstream = upstream.substring(0, upstream.length - 1);
       }
