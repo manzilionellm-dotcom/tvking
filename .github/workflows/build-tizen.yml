@@ -213,10 +213,22 @@ jobs:
           mkdir -p "$HOME/certs"
 
           # Repli AUTO-SIGNÉ (certif jetable) : garantit qu'un .tpk sort toujours.
+          # ⚠️ CORRECTIF : le drapeau mot de passe de « tizen certificate » est
+          # -pw (PAS -p). Avec -p, le p12 était créé avec un AUTRE mot de passe
+          # que celui utilisé au moment de signer → « PKCS12 MAC invalid » et
+          # AUCUN .tpk. On génère donc avec -pw (repli --password), on repart
+          # d'un profil propre, et on vérifie que le p12 s'ouvre bien.
+          AUTHOR_KEYSTORE="$HOME/tizen-studio-data/keystore/author/author.p12"
           autosign() {
-            "$TZ" certificate -a thefew -p thefewpass -f author || true
+            # Profil et certificat propres (une tentative précédente a pu laisser
+            # un profil « TheFewProfile » incohérent dans profiles.xml).
+            "$TZ" security-profiles remove -n TheFewProfile 2>/dev/null || true
+            rm -f "$AUTHOR_KEYSTORE" 2>/dev/null || true
+            "$TZ" certificate -a thefew -pw thefewpass -f author \
+              || "$TZ" certificate --alias thefew --password thefewpass --filename author \
+              || true
             "$TZ" security-profiles add -n TheFewProfile \
-              -a "$HOME/tizen-studio-data/keystore/author/author.p12" -p thefewpass \
+              -a "$AUTHOR_KEYSTORE" -p thefewpass \
               -d "$DIST" --dist-password "$DIST_PW" || true
           }
 
