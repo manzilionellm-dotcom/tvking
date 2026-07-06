@@ -146,7 +146,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _open(reuse: true); // historique / présence pour la 1re chaîne
     // Chien de garde : aucune progression depuis 15 s → reconnexion.
     _watchdog = Timer.periodic(_watchEvery, (_) {
-      if (!_recovering && DateTime.now().difference(_lastProgress) > _frozen) {
+      if (DateTime.now().difference(_lastProgress) > _frozen) {
+        // Toujours gelé un plein cycle _frozen APRÈS la dernière tentative :
+        // cette tentative a échoué → on libère le verrou pour la suivante.
+        // Sans ça, _recovering (remis à false uniquement quand la POSITION
+        // avance) restait vrai à jamais sur un flux qui ne démarre pas :
+        // plus aucune reconnexion, erreurs natives ignorées, et la borne
+        // P1-6 (_kMaxRecover → écran « chaîne vide/bloquée ») inatteignable
+        // — logo + spinner à l'infini au lieu du message clair.
+        _recovering = false;
         _recover();
       }
     });
@@ -278,6 +286,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   /// « Réessayer » manuel depuis l'écran d'erreur : on repart d'un budget neuf.
   void _manualRetry() {
+    _recovering = false;
+    _lastProgress = DateTime.now(); // horloge fraîche : pas de watchdog immédiat
     setState(() {
       _fatal = false;
       _recoverAttempts = 0;
