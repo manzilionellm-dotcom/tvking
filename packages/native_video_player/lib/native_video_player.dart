@@ -38,6 +38,11 @@ class NativeVideoController extends ChangeNotifier {
   /// n'autorise le seek QUE si `duration > 0`.
   Duration duration = Duration.zero;
 
+  /// Avance déjà CHARGÉE en mémoire tampon (façon YouTube) : jusqu'où le
+  /// lecteur a bufferisé EN AVANT de [position]. Sert à dessiner la « ligne
+  /// grise » de la barre VOD. Reste `Duration.zero` pour un direct.
+  Duration buffered = Duration.zero;
+
   /// Raccourci : le média est-il seekable (film/VOD) ? Faux pour le direct.
   bool get isSeekable => duration > Duration.zero;
 
@@ -86,6 +91,11 @@ class NativeVideoController extends ChangeNotifier {
         // Émise par le natif quand la durée est connue (média seekable).
         final int ms = call.arguments as int;
         duration = ms > 0 ? Duration(milliseconds: ms) : Duration.zero;
+      case 'buffered':
+        // Avance chargée (ligne grise). Le natif ne l'émet que pour un média
+        // seekable ; on ignore une valeur négative par prudence.
+        final int bms = call.arguments as int;
+        buffered = bms > 0 ? Duration(milliseconds: bms) : Duration.zero;
       case 'firstFrame':
         firstFrame = true;
         isBuffering = false;
@@ -107,6 +117,7 @@ class NativeVideoController extends ChangeNotifier {
     isBuffering = true;
     firstFrame = false;
     position = Duration.zero;
+    buffered = Duration.zero;
     if (!_disposed) notifyListeners();
     if (_channel != null) {
       _channel!.invokeMethod<void>('setUrl', <String, dynamic>{'url': url});

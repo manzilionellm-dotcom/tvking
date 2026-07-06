@@ -919,6 +919,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                         isVod: _isVod,
                         position: _controller.position,
                         duration: _controller.duration,
+                        buffered: _controller.buffered,
                         isPlaying: _controller.isPlaying,
                         onSeekBack: () =>
                             _seekRelative(const Duration(seconds: -10)),
@@ -1032,6 +1033,7 @@ class _ControlsBar extends StatelessWidget {
     required this.isVod,
     required this.position,
     required this.duration,
+    required this.buffered,
     required this.isPlaying,
     required this.onSeekBack,
     required this.onSeekFwd,
@@ -1055,6 +1057,7 @@ class _ControlsBar extends StatelessWidget {
   final bool isVod;
   final Duration position;
   final Duration duration;
+  final Duration buffered;
   final bool isPlaying;
   final VoidCallback onSeekBack;
   final VoidCallback onSeekFwd;
@@ -1093,6 +1096,7 @@ class _ControlsBar extends StatelessWidget {
             _VodControls(
               position: position,
               duration: duration,
+              buffered: buffered,
               isPlaying: isPlaying,
               onSeekBack: onSeekBack,
               onSeekFwd: onSeekFwd,
@@ -1243,6 +1247,7 @@ class _VodControls extends StatelessWidget {
   const _VodControls({
     required this.position,
     required this.duration,
+    required this.buffered,
     required this.isPlaying,
     required this.onSeekBack,
     required this.onSeekFwd,
@@ -1251,6 +1256,7 @@ class _VodControls extends StatelessWidget {
 
   final Duration position;
   final Duration duration;
+  final Duration buffered;
   final bool isPlaying;
   final VoidCallback onSeekBack;
   final VoidCallback onSeekFwd;
@@ -1270,6 +1276,10 @@ class _VodControls extends StatelessWidget {
     final int totalMs = duration.inMilliseconds;
     final double frac = totalMs > 0
         ? (position.inMilliseconds / totalMs).clamp(0.0, 1.0)
+        : 0.0;
+    // AVANCE CHARGÉE (ligne grise façon YouTube) : jamais en-deçà de la lecture.
+    final double bufferedFrac = totalMs > 0
+        ? (buffered.inMilliseconds / totalMs).clamp(0.0, 1.0)
         : 0.0;
     final Duration remaining =
         totalMs > 0 ? duration - position : Duration.zero;
@@ -1292,7 +1302,16 @@ class _VodControls extends StatelessWidget {
                 borderRadius: BorderRadius.circular(4),
                 child: Stack(
                   children: <Widget>[
+                    // Fond de la barre (partie non chargée).
                     Container(height: 6, color: Colors.white24),
+                    // Avance CHARGÉE en tampon (« ligne grise » YouTube) : un
+                    // gris plus clair qui montre jusqu'où le film est prêt à
+                    // jouer sans coupure, même si Internet faiblit.
+                    FractionallySizedBox(
+                      widthFactor: bufferedFrac,
+                      child: Container(height: 6, color: Colors.white38),
+                    ),
+                    // Position lue (doré, façon Netflix).
                     FractionallySizedBox(
                       widthFactor: frac,
                       child: Container(

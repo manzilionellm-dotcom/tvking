@@ -80,6 +80,13 @@ class NativeVideoView(
                 lastDurationMs = durMs
                 channel.invokeMethod("duration", durMs)
             }
+            // AVANCE CHARGÉE (façon YouTube) : jusqu'où le tampon est déjà
+            // rempli EN AVANT de la lecture. Sert à dessiner la « ligne grise »
+            // sur la barre de progression VOD. Émis uniquement pour un média
+            // seekable (film) — inutile sur un direct.
+            if (durMs > 0) {
+                channel.invokeMethod("buffered", player.bufferedPosition)
+            }
             handler.postDelayed(this, 500)
         }
     }

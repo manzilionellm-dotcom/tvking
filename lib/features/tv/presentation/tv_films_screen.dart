@@ -18,6 +18,8 @@
 //  Données : VodRepository.fetchMovies(). S'il n'y a pas de VOD → message.
 //  Zéro contact avec le lecteur vidéo (on pousse TvPlayerScreen comme avant).
 // =========================================================
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -100,14 +102,23 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   }
 
   /// Adapte un film en Channel pour le lecteur (ExoPlayer lit l'URL du fichier).
-  Channel _asChannel(VodMovie m) => Channel(
-        id: m.id,
-        name: m.name,
-        category: m.category,
-        streamUrl: m.streamUrl,
-        isLive: false,
-        logoUrl: m.posterUrl,
-      );
+  Channel _asChannel(VodMovie m) {
+    // HORS-LIGNE : si le film est déjà téléchargé, on lit le FICHIER LOCAL
+    // (file://) au lieu du flux réseau → lecture sans connexion (avion, train)
+    // et démarrage instantané. Le lecteur natif gère nativement file:// (cf.
+    // NativeVideoView.kt). Sinon, flux réseau habituel (comportement inchangé).
+    final String? local = VodDownloadService.instance.localFile(m.id);
+    final String url =
+        (local != null) ? File(local).uri.toString() : m.streamUrl;
+    return Channel(
+      id: m.id,
+      name: m.name,
+      category: m.category,
+      streamUrl: url,
+      isLive: false,
+      logoUrl: m.posterUrl,
+    );
+  }
 
   /// Lance la lecture de [list] à partir de [index], et mémorise le film dans
   /// « Derniers vus ». Au retour du lecteur, on rafraîchit la rangée.
