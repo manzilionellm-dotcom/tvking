@@ -43,6 +43,7 @@ import '../../player/data/player_settings.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../../vod/domain/vod_series.dart';
 import 'playlist_import_limits.dart';
+import 'source_link_utils.dart';
 
 /// Exception métier pour signaler une erreur Xtream lisible
 /// (login refusé, serveur HS, réponse non-JSON, etc.).
@@ -70,9 +71,16 @@ class XtreamClient {
   final http.Client _http;
   final Duration _timeout;
 
-  /// Normalise le serveur : enlève le slash final éventuel.
-  String get _baseUrl =>
-      serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
+  /// Normalise le serveur : complète http:// si absent (filet défensif —
+  /// le schéma est normalement déjà garanti par l'appelant via
+  /// `SourceLinkUtils.ensureScheme`, cf. `PlaylistRepository`), puis enlève
+  /// le slash final éventuel. Sans schéma, `Uri.parse` dans `_buildUri`
+  /// interprèterait à tort le domaine comme un schéma (ex. « serveur.com »
+  /// devient le « schéma » d'un port/chemin) → connexion cassée pour rien.
+  String get _baseUrl {
+    final String s = SourceLinkUtils.ensureScheme(serverUrl);
+    return s.endsWith('/') ? s.substring(0, s.length - 1) : s;
+  }
 
   // ============================================================
   //  Endpoints publics

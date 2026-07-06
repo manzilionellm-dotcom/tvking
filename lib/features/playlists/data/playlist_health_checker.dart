@@ -40,6 +40,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/observability/structured_logger.dart';
 import '../domain/playlist.dart';
+import 'source_link_utils.dart';
 
 /// Statut sante d'une playlist. Stable — les .name sont serialises
 /// dans les logs structures.
@@ -232,9 +233,14 @@ class PlaylistHealthChecker {
     final Stopwatch sw = Stopwatch()..start();
     HttpClient? client;
     try {
+      // Filet défensif : une source déjà en base d'AVANT ce correctif (ou
+      // poussée par un chemin qui aurait oublié de normaliser) peut ne pas
+      // avoir de schéma → on le complète ici aussi, pour ne jamais afficher
+      // un badge rouge sur une source qui, en réalité, fonctionne très bien.
       client = _newClient();
-      final HttpClientRequest req =
-          await client.getUrl(Uri.parse(url)).timeout(_kHealthCheckTimeout);
+      final HttpClientRequest req = await client
+          .getUrl(Uri.parse(SourceLinkUtils.ensureScheme(url)))
+          .timeout(_kHealthCheckTimeout);
       req.followRedirects = true;
       req.maxRedirects = 5;
       req.headers.add(HttpHeaders.rangeHeader, 'bytes=0-1023');
@@ -277,7 +283,8 @@ class PlaylistHealthChecker {
     final Stopwatch sw = Stopwatch()..start();
     HttpClient? client;
     try {
-      final Uri uri = Uri.parse(server).replace(
+      // Même filet défensif que pour le M3U ci-dessus.
+      final Uri uri = Uri.parse(SourceLinkUtils.ensureScheme(server)).replace(
         path: '/player_api.php',
         queryParameters: <String, String>{
           'username': username,

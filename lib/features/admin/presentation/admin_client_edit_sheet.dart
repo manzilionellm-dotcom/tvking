@@ -19,6 +19,7 @@ import 'package:flutter/services.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../playlists/data/source_link_utils.dart';
 import '../data/admin_client.dart';
 
 class AdminClientEditSheet extends StatefulWidget {
@@ -100,7 +101,43 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
     return null;
   }
 
+  /// Nettoie les liens AVANT validation/enregistrement — ESSENTIEL ici :
+  /// ce panel POUSSE directement la config vers les appareils clients
+  /// (cf. RemoteSourceRepository). Un lien mal formé ici cassait
+  /// silencieusement chez le client, des jours plus tard, sans le moindre
+  /// message d'erreur visible pour l'admin.
+  ///   - complète http:// si seul le domaine a été donné ;
+  ///   - si le fournisseur n'a donné qu'UN lien complet (get.php?username=
+  ///     …&password=…) et qu'il a été collé dans le champ « serveur »
+  ///     alors que utilisateur/mot de passe sont vides, on les en extrait.
+  void _normalizeInputs() {
+    if (_type == 'm3u') {
+      _m3uUrlCtrl.text = SourceLinkUtils.ensureScheme(_m3uUrlCtrl.text);
+      final String epg = _epgUrlCtrl.text.trim();
+      if (epg.isNotEmpty) {
+        _epgUrlCtrl.text = SourceLinkUtils.ensureScheme(epg);
+      }
+      return;
+    }
+    final String rawServer = _serverCtrl.text;
+    _serverCtrl.text = SourceLinkUtils.ensureScheme(rawServer);
+    if (_usernameCtrl.text.trim().isEmpty || _passwordCtrl.text.trim().isEmpty) {
+      final ({String server, String username, String password})? extracted =
+          SourceLinkUtils.tryExtractXtreamCredentials(rawServer);
+      if (extracted != null) {
+        _serverCtrl.text = extracted.server;
+        if (_usernameCtrl.text.trim().isEmpty) {
+          _usernameCtrl.text = extracted.username;
+        }
+        if (_passwordCtrl.text.trim().isEmpty) {
+          _passwordCtrl.text = extracted.password;
+        }
+      }
+    }
+  }
+
   void _save() {
+    _normalizeInputs();
     final String? err = _validate();
     if (err != null) {
       ScaffoldMessenger.of(context).showSnackBar(

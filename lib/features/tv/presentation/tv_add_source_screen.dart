@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../playlists/data/default_servers.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/data/source_link_utils.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_components.dart';
@@ -70,9 +71,24 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
   Future<void> _validate() async {
     final String errFill = context.l10n.tvAddListError;
     final String errConn = context.l10n.tvConnectError;
-    final String server = _serverUrl.trim();
-    final String user = _userC.text.trim();
-    final String pass = _passC.text.trim();
+    // On accepte le lien même sans « http:// » tapé (le revendeur/
+    // fournisseur donne souvent juste le domaine, ex. « serveur.com:8080 »).
+    String server = SourceLinkUtils.ensureScheme(_serverUrl);
+    String user = _userC.text.trim();
+    String pass = _passC.text.trim();
+    // Beaucoup de fournisseurs ne donnent qu'UN SEUL lien complet (celui
+    // pour VLC/Smarters) au lieu de 3 informations séparées. Si c'est ce
+    // qui a été tapé/collé dans le champ « serveur » et que utilisateur/
+    // mot de passe sont vides, on les en extrait tout seul.
+    if (_manual && (user.isEmpty || pass.isEmpty)) {
+      final ({String server, String username, String password})? extracted =
+          SourceLinkUtils.tryExtractXtreamCredentials(_serverUrl);
+      if (extracted != null) {
+        server = extracted.server;
+        user = user.isEmpty ? extracted.username : user;
+        pass = pass.isEmpty ? extracted.password : pass;
+      }
+    }
     if (server.isEmpty || user.isEmpty || pass.isEmpty) {
       setState(() => _error = errFill);
       return;

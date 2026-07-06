@@ -40,6 +40,7 @@ import '../domain/playlist.dart';
 import 'm3u_fetcher.dart';
 import 'm3u_parser.dart';
 import 'playlist_database.dart';
+import 'source_link_utils.dart';
 import 'xtream_client.dart';
 
 /// Résultat individuel d'un import en lot.
@@ -462,6 +463,15 @@ class PlaylistRepository {
     String? epgUrl,
     http.Client? httpClient,
   }) async {
+    // NORMALISATION : complète http:// si l'utilisateur/le panel admin a
+    // donné juste un domaine (« serveur.com/playlist.m3u ») sans schéma —
+    // AVANT toute autre étape, pour que le lien stocké en base soit déjà
+    // propre (refresh, health-check et sources distantes en profitent
+    // automatiquement, sans dupliquer cette correction ailleurs).
+    url = SourceLinkUtils.ensureScheme(url);
+    if (epgUrl != null && epgUrl.trim().isNotEmpty) {
+      epgUrl = SourceLinkUtils.ensureScheme(epgUrl);
+    }
     final http.Client client = httpClient ?? http.Client();
     // On insère la playlist AVANT le download (le parser a besoin de son
     // id pour rattacher les chaînes). MAIS : si une étape échoue ensuite
@@ -631,6 +641,10 @@ class PlaylistRepository {
     required String password,
     http.Client? httpClient,
   }) async {
+    // NORMALISATION : complète http:// si seul le domaine a été donné
+    // (« serveur.com:8080 » sans schéma) — sinon `Uri.parse` en aval
+    // (XtreamClient, health-check) le mécomprend et le rejette à tort.
+    serverUrl = SourceLinkUtils.ensureScheme(serverUrl);
     // 1) Vérifie d'abord les credentials, avant de polluer la base
     final XtreamClient xtream = XtreamClient(
       serverUrl: serverUrl,

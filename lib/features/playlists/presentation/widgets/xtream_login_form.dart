@@ -21,6 +21,7 @@ import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../data/playlist_repository.dart';
+import '../../data/source_link_utils.dart';
 
 class XtreamLoginForm extends StatefulWidget {
   const XtreamLoginForm({
@@ -58,22 +59,27 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
     super.dispose();
   }
 
-  /// Normalise l'URL serveur : si l'utilisateur n'a pas mis de schéma,
-  /// on préfixe `http://` (la majorité des panels Xtream sont en http).
-  String _normalizeServer(String raw) {
-    final String s = raw.trim();
-    if (s.isEmpty) return s;
-    if (s.startsWith('http://') || s.startsWith('https://')) return s;
-    return 'http://$s';
-  }
-
   Future<void> _submit() async {
     // On capture le messenger AVANT le `await` (le contexte peut être
     // démonté si le parent — une feuille — se ferme via onConnected).
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    final String server = _normalizeServer(_serverCtrl.text);
-    final String user = _userCtrl.text.trim();
-    final String pass = _passCtrl.text.trim();
+    String server = SourceLinkUtils.ensureScheme(_serverCtrl.text);
+    String user = _userCtrl.text.trim();
+    String pass = _passCtrl.text.trim();
+
+    // Beaucoup de fournisseurs ne donnent qu'UN SEUL lien complet (celui
+    // pour VLC/Smarters) au lieu de 3 informations séparées. Si c'est ce
+    // qui a été collé dans le champ « serveur » et que utilisateur/mot de
+    // passe sont vides, on les en extrait tout seul.
+    if (user.isEmpty || pass.isEmpty) {
+      final ({String server, String username, String password})? extracted =
+          SourceLinkUtils.tryExtractXtreamCredentials(_serverCtrl.text);
+      if (extracted != null) {
+        server = extracted.server;
+        user = user.isEmpty ? extracted.username : user;
+        pass = pass.isEmpty ? extracted.password : pass;
+      }
+    }
 
     if (server.isEmpty) {
       setState(() => _error = context.l10n.loginServerRequired);

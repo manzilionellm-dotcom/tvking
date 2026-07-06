@@ -31,6 +31,7 @@ import 'package:http/http.dart' as http;
 
 import '../../player/data/player_settings.dart';
 import 'playlist_import_limits.dart';
+import 'source_link_utils.dart';
 
 abstract final class M3uFetcher {
   /// UA « navigateur » historique, gardé comme DERNIER recours dans la
@@ -81,6 +82,12 @@ abstract final class M3uFetcher {
     http.Client? httpClient,
     String? preferredUserAgent,
   }) async {
+    // Filet défensif : complète http:// si absent (le schéma est
+    // normalement déjà garanti par l'appelant via `SourceLinkUtils`, cf.
+    // `PlaylistRepository`). Sans ça, `Uri.parse` sur un lien sans schéma
+    // échoue ou produit une URL invalide → « playlist injoignable » pour
+    // un lien pourtant correct, juste incomplet.
+    url = SourceLinkUtils.ensureScheme(url);
     final http.Client client = httpClient ?? http.Client();
     final bool owns = httpClient == null;
 

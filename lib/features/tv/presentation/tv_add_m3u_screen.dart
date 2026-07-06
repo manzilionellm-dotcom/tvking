@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 
 import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/data/source_link_utils.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
 import 'tv_components.dart';
@@ -34,9 +35,11 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
   }
 
   Future<void> _submit() async {
-    final String url = _urlC.text.trim();
-    if (url.isEmpty || !(url.startsWith('http://') || url.startsWith('https://'))) {
-      setState(() => _error = 'Entre une URL M3U valide (http…).');
+    // On accepte le lien même sans « http:// » tapé (le revendeur/
+    // fournisseur donne parfois juste le domaine) — on le complète.
+    final String url = SourceLinkUtils.ensureScheme(_urlC.text);
+    if (url.isEmpty) {
+      setState(() => _error = 'Entre une URL M3U valide.');
       return;
     }
     setState(() {
@@ -44,10 +47,11 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
       _error = null;
     });
     try {
+      final String epg = _epgC.text.trim();
       await PlaylistRepository.instance.addM3uPlaylist(
         name: _nameC.text.trim().isEmpty ? 'Ma liste M3U' : _nameC.text.trim(),
         url: url,
-        epgUrl: _epgC.text.trim().isEmpty ? null : _epgC.text.trim(),
+        epgUrl: epg.isEmpty ? null : SourceLinkUtils.ensureScheme(epg),
       );
       if (mounted) Navigator.of(context).maybePop();
     } catch (e) {

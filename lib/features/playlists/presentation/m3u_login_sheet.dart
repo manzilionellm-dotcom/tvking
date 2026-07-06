@@ -17,6 +17,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/playlist_repository.dart';
+import '../data/source_link_utils.dart';
 
 Future<void> showM3uLoginSheet(BuildContext context) {
   return showModalBottomSheet<void>(
@@ -65,20 +66,34 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
     setState(() => _error = null);
 
     if (_mode == 'm3u') {
-      final String url = _urlCtrl.text.trim();
-      if (url.isEmpty ||
-          (!url.startsWith('http://') && !url.startsWith('https://'))) {
+      // On accepte le lien même sans « http:// » tapé (le revendeur/
+      // fournisseur donne parfois juste le domaine) — on le complète.
+      final String url = SourceLinkUtils.ensureScheme(_urlCtrl.text);
+      if (url.isEmpty) {
         setState(() => _error = context.l10n.loginInvalidUrl);
         return;
       }
       await _run(() =>
           PlaylistRepository.instance.addM3uPlaylist(name: name, url: url));
     } else {
-      final String server = _serverCtrl.text.trim();
-      final String user = _userCtrl.text.trim();
-      final String pass = _passCtrl.text.trim();
-      if (server.isEmpty ||
-          (!server.startsWith('http://') && !server.startsWith('https://'))) {
+      String server = SourceLinkUtils.ensureScheme(_serverCtrl.text);
+      String user = _userCtrl.text.trim();
+      String pass = _passCtrl.text.trim();
+      // Beaucoup de fournisseurs ne donnent qu'UN SEUL lien complet (celui
+      // pour VLC/Smarters : http://serveur:port/get.php?username=X&
+      // password=Y&type=m3u_plus) au lieu de 3 informations séparées. Si
+      // c'est ce qui a été collé dans le champ « serveur » et que
+      // utilisateur/mot de passe sont vides, on les en extrait tout seul.
+      if (user.isEmpty || pass.isEmpty) {
+        final ({String server, String username, String password})? extracted =
+            SourceLinkUtils.tryExtractXtreamCredentials(_serverCtrl.text);
+        if (extracted != null) {
+          server = extracted.server;
+          user = user.isEmpty ? extracted.username : user;
+          pass = pass.isEmpty ? extracted.password : pass;
+        }
+      }
+      if (server.isEmpty) {
         setState(() => _error = context.l10n.loginInvalidServer);
         return;
       }
