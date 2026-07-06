@@ -4,7 +4,7 @@ import {
   familiesApi, m3uLinkUrl, ApiError,
   type Family, type FamilyMember, type FamilySource, type FamilyLink,
 } from '@/lib/api';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTime, formatMacInput } from '@/lib/utils';
 
 /// Page FAMILLE — UNE ligne Xtream (multi-connexions) partagée par plusieurs
 /// appareils. On crée la famille (nom + source), puis on ajoute les appareils
@@ -229,7 +229,8 @@ export function FamiliesPage({ onLogout }: { onLogout: () => void }) {
                 <p className="text-[10px] uppercase tracking-widest text-ink-tertiary">
                   Ajouter un appareil
                 </p>
-                <input value={mMac} onChange={(e) => setMMac(e.target.value)}
+                <input value={mMac} onChange={(e) => setMMac(formatMacInput(e.target.value))}
+                  maxLength={17}
                   placeholder="MK:1A:2B:3C:4D:5E" className={inputCls + ' font-mono'} />
                 <input value={mLabel} onChange={(e) => setMLabel(e.target.value)}
                   placeholder="Étiquette (ex. Salon, Chambre, Enfant)" className={inputCls} />

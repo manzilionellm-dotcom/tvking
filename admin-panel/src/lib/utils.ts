@@ -34,3 +34,18 @@ export function formatMoney(cents: number, currency = 'EUR'): string {
     return `${(cents / 100).toFixed(2)} ${currency}`;
   }
 }
+
+/// Formate une saisie de MAC EN DIRECT au format attendu par le serveur :
+/// MK:XX:XX:XX:XX:XX (5 paires hexadécimales, cf. MAC_RX côté worker).
+/// L'admin tape juste les chiffres/lettres à la suite — le préfixe « MK: »
+/// et les « : » entre chaque paire s'ajoutent tout seuls, impossible de se
+/// tromper de format (demande : « j'écris des chiffres, les deux points
+/// partent tout seuls, sinon rechercher/corriger prend du temps »).
+/// À utiliser UNIQUEMENT sur un champ qui n'attend QUE la MAC — jamais sur
+/// une barre de recherche libre (MAC OU nom OU serveur), où elle casserait
+/// la saisie d'un nom de client.
+export function formatMacInput(raw: string): string {
+  const hexOnly = raw.toUpperCase().replace(/^MK:?/, '').replace(/[^0-9A-F]/g, '');
+  const pairs = hexOnly.slice(0, 10).match(/.{1,2}/g) || [];
+  return 'MK:' + pairs.join(':');
+}

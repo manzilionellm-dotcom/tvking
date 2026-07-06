@@ -8,7 +8,7 @@ import {
   type App, type PlanCost, type ActivateResult, type DefaultServer,
   type DeviceSourceInput, ApiError,
 } from '@/lib/api';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTime, formatMacInput } from '@/lib/utils';
 
 /// Page ACTIVATION — TOUT-EN-UN (demande client : « un seul qui regroupe
 /// tout »). Une MAC → on pose la licence ET on pousse un TRIO de sources
@@ -186,8 +186,9 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             </label>
             <input
               value={mac}
-              onChange={(e) => setMac(e.target.value)}
+              onChange={(e) => setMac(formatMacInput(e.target.value))}
               autoFocus
+              maxLength={17}
               placeholder="MK:1A:2B:3C:4D:5E"
               className={inputCls + ' font-mono'}
             />

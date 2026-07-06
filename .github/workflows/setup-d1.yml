@@ -141,3 +141,16 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: 'cloudflare'
           command: d1 execute tvking_licensing --remote --file=migrations/009_credit_model.sql
+
+      # Essai gratuit : remet trial_days à 7 (une valeur "30" avait été
+      # enregistrée via le panel Tarifs, qui prime sur le défaut du code).
+      - name: Apply migration 010 (fix trial_days -> 7)
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        env:
+          CI: 'true'
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'cloudflare'
+          command: d1 execute tvking_licensing --remote --file=migrations/010_fix_trial_days.sql

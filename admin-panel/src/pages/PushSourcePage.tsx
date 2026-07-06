@@ -4,6 +4,7 @@ import {
   sourcesApi, serversApi,
   type DefaultServer, type DeviceSourceInput, ApiError,
 } from '@/lib/api';
+import { formatMacInput } from '@/lib/utils';
 
 /// Page « Pousser une playlist » — assigne jusqu'à 3 sources (un TRIO)
 /// IPTV à une MAC, en une seule fois. Le client les charge TOUTES
@@ -134,8 +135,9 @@ export function PushSourcePage({ onLogout }: { onLogout: () => void }) {
           </label>
           <input
             value={mac}
-            onChange={(e) => setMac(e.target.value)}
+            onChange={(e) => setMac(formatMacInput(e.target.value))}
             autoFocus
+            maxLength={17}
             placeholder="MK:1A:2B:3C:4D:5E"
             className={inputCls + ' font-mono'}
           />

@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { transferApi, ApiError } from '@/lib/api';
+import { formatMacInput } from '@/lib/utils';
 
 // =========================================================
 //  TransferPage — déplacer un abonnement vers un nouvel appareil
@@ -70,7 +71,8 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
             </label>
             <input
               value={oldMac}
-              onChange={(e) => setOldMac(e.target.value)}
+              onChange={(e) => setOldMac(formatMacInput(e.target.value))}
+              maxLength={17}
               placeholder="MK:XX:XX:XX:XX:XX"
               className={inputCls}
               autoFocus
@@ -83,7 +85,8 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
             </label>
             <input
               value={newMac}
-              onChange={(e) => setNewMac(e.target.value)}
+              onChange={(e) => setNewMac(formatMacInput(e.target.value))}
+              maxLength={17}
               placeholder="MK:XX:XX:XX:XX:XX"
               className={inputCls}
             />
