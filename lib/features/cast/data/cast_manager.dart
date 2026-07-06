@@ -136,6 +136,14 @@ class CastManager extends ChangeNotifier {
         }
         notifyListeners();
         break;
+      case 'receiver_switching':
+        // Fin de session PILOTÉE par le sender lui-même : bascule de
+        // receiver custom ⇄ Default (GoogleCastTransport, CAST_HANDOFF
+        // §6.2). Le natif re-sélectionne la même TV tout seul et
+        // playStream attend la reconnexion — on ne détruit PAS l'état
+        // (contrairement à 'ended'), sinon le cast en cours
+        // d'établissement perdrait device/transport.
+        break;
       case 'suspended':
         // Suspension TEMPORAIRE (changement de reseau, veille) : le SDK
         // peut la reprendre tout seul (`resumed`). On reflete juste

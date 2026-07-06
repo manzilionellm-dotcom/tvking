@@ -47,6 +47,32 @@ void main() {
     });
   });
 
+  group('receiverAppIdForCastPath (CAST_HANDOFF §6.2)', () {
+    test('relais HLS téléphone (HTTP) → Default Media Receiver', () {
+      // La page receiver custom est HTTPS : mpegts.js ne peut pas fetch un
+      // relais HTTP (mixed content) → le repli passe par le Default Receiver
+      // qui lit le HLS nativement.
+      expect(
+        GoogleCastTransport.receiverAppIdForCastPath('local_hls_relay'),
+        kCastDefaultReceiverAppId,
+      );
+    });
+    test('cast_proxy / direct → receiver custom (prioritaire)', () {
+      expect(
+        GoogleCastTransport.receiverAppIdForCastPath('cast_proxy'),
+        kCastCustomReceiverAppId,
+      );
+      expect(
+        GoogleCastTransport.receiverAppIdForCastPath('direct'),
+        kCastCustomReceiverAppId,
+      );
+    });
+    test('IDs alignés avec CastOptionsProviderImpl.kt', () {
+      expect(kCastCustomReceiverAppId, '5BDFD969');
+      expect(kCastDefaultReceiverAppId, 'CC1AD845');
+    });
+  });
+
   group('sameSubnet (BUG B)', () {
     test('même /24 → joignable', () {
       expect(

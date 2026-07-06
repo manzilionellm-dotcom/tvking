@@ -75,7 +75,26 @@ import 'local_cast_server.dart';
 ///    le proxy n'est pas joignable. cf. playStream (stratégie cast_proxy) +
 ///    worker.js /cast-proxy. DOIT rester SYNCHRONE avec USE_CUSTOM_RECEIVER
 ///    (CastOptionsProviderImpl.kt) — les deux valent `true`.
+/// ⚠️ MISE À JOUR (2026-07-06, CAST_HANDOFF §6.2) : ce flag reste la valeur
+///    INITIALE (compile-time) chargée par l'OptionsProvider Kotlin, mais le
+///    receiver est désormais BASCULÉ DYNAMIQUEMENT par session via
+///    GoogleCastApi.setReceiverApplicationId :
+///      - proxy /cast-proxy DÉLIVRE (2xx)  → custom 5BDFD969 (TS décodé TV,
+///        téléphone éteint possible) — chemin PRIORITAIRE, inchangé ;
+///      - proxy BLOQUÉ par le fournisseur (456/403/512 sur IP datacenter,
+///        diag terrain 2026-07-06 : upstream=456) → relais HLS du téléphone
+///        envoyé au Default Media Receiver CC1AD845 (la page custom HTTPS ne
+///        peut pas fetch un relais HTTP — mixed content).
 const bool kCastUseCustomReceiver = true;
+
+/// App ID du récepteur custom « 7 MOTION TS » (page mpegts.js du Worker).
+/// Doit rester aligné avec CUSTOM_RECEIVER_ID (CastOptionsProviderImpl.kt).
+const String kCastCustomReceiverAppId = '5BDFD969';
+
+/// App ID du Default Media Receiver public de Google. Lit le HLS nativement
+/// (pas de fetch depuis une page HTTPS → pas de blocage mixed-content sur le
+/// relais HTTP du téléphone). Aligné avec DEFAULT_RECEIVER_ID (Kotlin).
+const String kCastDefaultReceiverAppId = 'CC1AD845';
 
 /// Overlay de diagnostic du receiver custom (mpegts.js) : coin haut-gauche,
 /// texte vert, 15 dernieres lignes (LOAD contentId, branche mpegts/CAF,
@@ -141,33 +160,14 @@ class GoogleCastTransport implements CastTransport {
       );
     }
 
-    // 2) Y a-t-il déjà une session active ? (l'utilisateur a déjà
-    //    connecté sa TV via le dialog Cast lors d'un cast précédent)
-    bool hasSession = await api.hasActiveSession();
-
-    // 3) Pas de session → on demande au SDK d'ouvrir SON dialog natif.
-    //    L'utilisateur sélectionne sa TV. Le SDK gère la négociation,
-    //    le pairing, etc. — c'est exactement le flow Netflix / YouTube.
-    if (!hasSession) {
-      await api.showRoutePicker();
-      // Le dialog est asynchrone côté utilisateur (il doit tap sa TV).
-      // On poll hasActiveSession pendant 30s max — au-delà on suppose
-      // que l'utilisateur a annulé.
-      final DateTime deadline =
-          DateTime.now().add(const Duration(seconds: 30));
-      while (DateTime.now().isBefore(deadline)) {
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-        if (await api.hasActiveSession()) {
-          hasSession = true;
-          break;
-        }
-      }
-      if (!hasSession) {
-        throw Exception('Aucune TV sélectionnée.');
-      }
-    }
-
-    // 4) Session OK — on pousse le flux.
+    // 2) DÉCISION DE ROUTAGE — AVANT d'établir la session, parce qu'elle
+    //    détermine QUEL RECEIVER charger sur la TV (CAST_HANDOFF §6.2) :
+    //      - cast_proxy       → custom 5BDFD969 (mpegts.js décode le TS) ;
+    //      - local_hls_relay  → Default CC1AD845 (lit le HLS du téléphone
+    //        nativement ; la page custom HTTPS ne PEUT PAS fetch un relais
+    //        HTTP — mixed content).
+    //    Coût : la signature + vérification du proxy (quelques secondes au
+    //    pire) précède l'ouverture du picker — négligeable en pratique.
     //
     //    Phase 1+/HLS Wrapper (2026-06-01) — DECOUVERTE CLEF :
     //    Google Cast SDK ne supporte PAS officiellement MPEG-TS (.ts)
@@ -220,8 +220,23 @@ class GoogleCastTransport implements CastTransport {
       while (upstream.endsWith('?')) {
         upstream = upstream.substring(0, upstream.length - 1);
       }
-      final String? proxied =
+      String? proxied =
           kCastUseCustomReceiver ? await _signedCastProxyUrl(upstream) : null;
+
+      // NOUVEAU (CAST_HANDOFF §6.1) : ne PAS faire confiance aveuglément au
+      // proxy — le Worker peut être BLOQUÉ par le fournisseur IPTV (IP
+      // datacenter refusée : upstream=456 relevé sur le terrain 2026-07-06).
+      // Dans ce cas mpegts.js recevrait un 502 en boucle → écran noir. On
+      // vérifie que /cast-proxy DÉLIVRE vraiment avant de l'envoyer à la TV.
+      if (proxied != null && !await _proxyDelivers(proxied)) {
+        StructuredLogger.instance.warn(
+          domain: 'cast',
+          event: 'proxy.blocked_fallback_relay',
+          ctx: const <String, Object?>{},
+        );
+        proxied = null; // → bascule sur le relais HLS du téléphone
+      }
+
       if (proxied != null) {
         urlToCast = proxied;
         mime = 'video/mp2t';
@@ -250,6 +265,61 @@ class GoogleCastTransport implements CastTransport {
             'Réessaie sur le même Wi-Fi, ou utilise une TV DLNA (LG/Samsung).',
           );
         }
+      }
+    }
+
+    // 3) RECEIVER ADAPTÉ AU CHEMIN (CAST_HANDOFF §6.2). Le natif change
+    //    l'App ID de session à la volée (CastContext.setReceiverApplicationId) ;
+    //    si une session tournait sur l'AUTRE receiver, il la termine et
+    //    re-sélectionne la même TV tout seul (résultat 'switching').
+    final String desiredReceiver = receiverAppIdForCastPath(castPath);
+    final String switchOutcome = kCastUseCustomReceiver
+        ? await api.setReceiverApplicationId(desiredReceiver)
+        : 'skipped';
+    StructuredLogger.instance.info(
+      domain: 'cast',
+      event: 'google.receiver_select',
+      ctx: <String, Object?>{
+        'path': castPath,
+        'appId': desiredReceiver,
+        'outcome': switchOutcome,
+      },
+    );
+
+    // 4) SESSION sur le bon receiver.
+    bool hasSession;
+    if (switchOutcome == 'switching') {
+      // L'ancienne session (autre receiver) se ferme ; le natif ré-ouvre la
+      // même TV sur le nouveau receiver. On attend cette reconnexion AVANT
+      // de déranger l'utilisateur avec le picker.
+      hasSession = await _waitForSessionOn(
+        api,
+        desiredReceiver,
+        const Duration(seconds: 12),
+      );
+    } else {
+      hasSession = await api.hasActiveSession();
+    }
+
+    // Pas de session → on demande au SDK d'ouvrir SON dialog natif.
+    // L'utilisateur sélectionne sa TV. Le SDK gère la négociation,
+    // le pairing, etc. — c'est exactement le flow Netflix / YouTube.
+    if (!hasSession) {
+      await api.showRoutePicker();
+      // Le dialog est asynchrone côté utilisateur (il doit tap sa TV).
+      // On poll hasActiveSession pendant 30s max — au-delà on suppose
+      // que l'utilisateur a annulé.
+      final DateTime deadline =
+          DateTime.now().add(const Duration(seconds: 30));
+      while (DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        if (await api.hasActiveSession()) {
+          hasSession = true;
+          break;
+        }
+      }
+      if (!hasSession) {
+        throw Exception('Aucune TV sélectionnée.');
       }
     }
 
@@ -341,6 +411,69 @@ class GoogleCastTransport implements CastTransport {
       timer.cancel();
       await sub.cancel();
       await evSub.cancel();
+    }
+  }
+
+  /// Receiver à charger sur la TV selon le chemin de routage (§6.2) :
+  /// le relais HLS du téléphone est en HTTP → la page receiver custom
+  /// (HTTPS, fetch mpegts.js) ne peut PAS le lire (mixed content) → il
+  /// passe par le Default Media Receiver qui lit le HLS nativement.
+  /// Tous les autres chemins gardent le receiver custom (prioritaire :
+  /// TS décodé sur la TV, téléphone éteint possible).
+  @visibleForTesting
+  static String receiverAppIdForCastPath(String castPath) =>
+      castPath == 'local_hls_relay'
+          ? kCastDefaultReceiverAppId
+          : kCastCustomReceiverAppId;
+
+  /// Attend qu'une session soit CONNECTÉE sur le receiver [appId] après une
+  /// bascule ('switching') : l'ancienne session peut encore apparaître
+  /// active pendant sa fermeture, d'où la double condition session + App ID.
+  /// `null` (métadonnées pas encore remontées) est toléré : l'App ID du
+  /// contexte vient d'être changé, toute NOUVELLE session est la bonne.
+  static Future<bool> _waitForSessionOn(
+    GoogleCastApi api,
+    String appId,
+    Duration timeout,
+  ) async {
+    final DateTime deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      if (await api.hasActiveSession()) {
+        final String? current = await api.currentReceiverApplicationId();
+        if (current == null || current == appId) return true;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+    return false;
+  }
+
+  /// Vérifie que /cast-proxy DÉLIVRE réellement le flux (le Worker peut être
+  /// bloqué par le fournisseur IPTV — cf. docs/CAST_HANDOFF.md §3). On lit le
+  /// status puis on coupe : on NE télécharge PAS le flux. `true` = 2xx.
+  static Future<bool> _proxyDelivers(String proxyUrl) async {
+    final HttpClient client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 6);
+    try {
+      final HttpClientRequest req = await client
+          .getUrl(Uri.parse(proxyUrl))
+          .timeout(const Duration(seconds: 6));
+      req.headers.add(HttpHeaders.acceptHeader, '*/*');
+      final HttpClientResponse resp =
+          await req.close().timeout(const Duration(seconds: 8));
+      final int status = resp.statusCode;
+      // X-Upstream-Status = le VRAI code du fournisseur vu par le Worker
+      // (456/403 = IP datacenter refusée) — précieux dans les diagnostics.
+      final String upstream = resp.headers.value('x-upstream-status') ?? '';
+      StructuredLogger.instance.info(
+        domain: 'cast',
+        event: 'proxy.verify',
+        ctx: <String, Object?>{'status': status, 'upstream': upstream},
+      );
+      return status >= 200 && status < 300;
+    } on Exception {
+      return false; // injoignable → on considère le proxy KO
+    } finally {
+      client.close(force: true); // coupe le GET sans vider le flux
     }
   }
 

@@ -43,7 +43,36 @@ TS → fMP4 sur la TV.
 
 ---
 
-## 3. LE DERNIER PROBLÈME (à résoudre)
+> ## ✅ MISE À JOUR 2026-07-06 — diagnostic TRANCHÉ, solution §6 IMPLÉMENTÉE
+>
+> **Diagnostic §4 relevé sur le terrain** (capture overlay TV, 08:57) :
+> `first fetch status=502 … upstream status=456` + reconnexions #3→#5 puis
+> abandon. **`upstream=456`** = le fournisseur IPTV **refuse l'IP datacenter
+> de Cloudflare** (ou limite les connexions). Conclusion du tableau §4 : le
+> proxy cloud est **mort pour ce fournisseur** — aucun correctif Worker
+> possible.
+>
+> **Implémenté dans ce commit (Voie A)** :
+> - §6.1 — `_proxyDelivers()` dans `google_cast_transport.dart` : GET léger
+>   sur l'URL /cast-proxy signée avant de la donner à la TV ; non-2xx →
+>   repli (event `proxy.blocked_fallback_relay`, `proxy.verify` loggue
+>   status + X-Upstream-Status).
+> - §6.2 — bascule DYNAMIQUE de receiver par session :
+>   `GoogleCastApi.setReceiverApplicationId` (Kotlin,
+>   `CastContext.setReceiverApplicationId`) passe sur le **Default Media
+>   Receiver CC1AD845** pour le chemin `local_hls_relay` (HLS HTTP du
+>   téléphone, lu nativement — pas de mixed content) et garde le **custom
+>   5BDFD969** pour `cast_proxy` (prioritaire, téléphone éteint possible).
+>   Si une session tournait sur l'autre receiver, le natif la termine et
+>   re-sélectionne la même TV tout seul (événement `receiver_switching`,
+>   traité en no-op par CastManager — pas de reset d'état).
+>
+> **Reste à faire (terrain)** : valider sur Chromecast PUR que le Default
+> Receiver accepte l'URL HLS HTTP du téléphone (§6.2, point 3 du TODO) ;
+> si bloqué → Voie B (VPS IP résidentielle). Tester aussi le retour
+> proxy→custom chez un fournisseur qui autorise le datacenter.
+
+## 3. LE DERNIER PROBLÈME (résolu par le repli — voir mise à jour ci-dessus)
 
 ### Le flux réel
 ```
@@ -282,15 +311,17 @@ l'overlay ; téléphone éteint pour valider le chemin téléphone-autonome (si 
 ## 8. CHECKLIST DE FIN
 
 ```
-[ ] Diagnostic §4 relevé : upstream=____  (403/404/456/unreachable)
-[ ] Cause tranchée : blocage IP datacenter ?  oui / non
-[ ] Étape 6.1 (détection proxy bloqué) intégrée + testée
-[ ] Étape 6.2 (repli Default Receiver + relais HLS) implémentée
-[ ] Testé sur Chromecast PUR + SHIELD + une Google TV
+[x] Diagnostic §4 relevé : upstream=456 (capture TV 2026-07-06 08:57)
+[x] Cause tranchée : blocage IP datacenter ?  OUI (456 = panel refuse l'IP du Worker)
+[x] Étape 6.1 (détection proxy bloqué) intégrée (_proxyDelivers, event proxy.verify)
+[x] Étape 6.2 (repli Default Receiver + relais HLS) implémentée
+    (setReceiverApplicationId dynamique + re-sélection auto de la route)
+[ ] Testé sur Chromecast PUR + SHIELD + une Google TV   ⬅️ PROCHAINE ÉTAPE (terrain)
 [ ] Chaîne live → image en < 25 s, pause/stop depuis le téléphone OK
 [ ] Reconnexion : coupure > 5 min sans blocage définitif
-[ ] flutter analyze 0 erreur, flutter test vert, smoke worker 6/6
-[ ] kCastUseCustomReceiver ⇔ USE_CUSTOM_RECEIVER cohérents
+[ ] flutter analyze 0 erreur, flutter test vert (CI build-android au push)
+[x] kCastUseCustomReceiver ⇔ USE_CUSTOM_RECEIVER cohérents (valeur INITIALE ;
+    le receiver effectif est désormais choisi PAR SESSION selon le routage)
 [ ] docs/AUDIT-CAST-7MOTION-2026-07-05.md relu (limitations connues)
 ```
 

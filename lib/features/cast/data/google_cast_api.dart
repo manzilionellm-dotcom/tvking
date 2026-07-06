@@ -197,6 +197,47 @@ class GoogleCastApi {
     }
   }
 
+  /// Aligne l'App ID receiver du SDK sur [appId] AVANT le prochain load
+  /// (bascule custom ⇄ Default, cf. google_cast_transport / CAST_HANDOFF
+  /// §6.2). Retourne :
+  ///   - 'ok'          : déjà sur le bon receiver, ou App ID reconfiguré
+  ///                     sans session active à fermer ;
+  ///   - 'switching'   : une session tournait sur un AUTRE receiver → le
+  ///                     natif l'a terminée et re-sélectionne la même TV
+  ///                     tout seul (attendre la reconnexion côté caller) ;
+  ///   - 'unavailable' : SDK absent / méthode non câblée (iOS) — le caller
+  ///                     continue avec le receiver courant.
+  /// Ne jette jamais.
+  Future<String> setReceiverApplicationId(String appId) async {
+    try {
+      final String? result = await _channel.invokeMethod<String>(
+        'setReceiverApplicationId',
+        <String, dynamic>{'appId': appId},
+      );
+      return result ?? 'unavailable';
+    } on PlatformException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[GoogleCast] setReceiverApplicationId: ${e.message}');
+      }
+      return 'unavailable';
+    } on MissingPluginException {
+      return 'unavailable';
+    }
+  }
+
+  /// App ID du receiver de la session ACTUELLEMENT connectée, ou `null`
+  /// (pas de session, métadonnées pas encore remontées, SDK absent).
+  Future<String?> currentReceiverApplicationId() async {
+    try {
+      return await _channel
+          .invokeMethod<String>('currentReceiverApplicationId');
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
   /// Y a-t-il une session Cast active maintenant ?
   /// (l'utilisateur a déjà sélectionné une TV et le SDK est connecté)
   Future<bool> hasActiveSession() async {

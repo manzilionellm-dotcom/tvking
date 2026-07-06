@@ -70,6 +70,15 @@ class CastOptionsProviderImpl : OptionsProvider {
         //
         // ✅ ACTIVÉ (2026-07-01). Garder SYNCHRONE avec kCastUseCustomReceiver
         //    (Dart) — les deux valent `true`.
+        //
+        // ⚠️ MISE À JOUR (2026-07-06, CAST_HANDOFF §6.2) : ce flag ne fixe plus
+        //    que la valeur INITIALE. GoogleCastApi.setReceiverApplicationId
+        //    bascule ensuite l'App ID PAR SESSION selon le chemin de routage :
+        //    custom 5BDFD969 quand le proxy /cast-proxy délivre (2xx), Default
+        //    CC1AD845 quand le fournisseur bloque l'IP datacenter du Worker
+        //    (upstream=456) et qu'on repasse par le relais HLS du téléphone.
+        //    Les IDs ci-dessous DOIVENT rester alignés avec
+        //    kCastCustomReceiverAppId / kCastDefaultReceiverAppId (Dart).
         private const val USE_CUSTOM_RECEIVER = true
 
         // Default Media Receiver public de Google (toujours actif).
