@@ -5,14 +5,13 @@
 #  moteur de lecture change (video_player_avplay / AVPlay natif Samsung) et la
 #  chaîne de build (flutter-tizen au lieu de flutter).
 #
-#  ⚠️ ÉTAT : portage de PRÉVISUALISATION. La chaîne d'outils Tizen est lourde et
-#  ne se teste vraiment que sur une VRAIE TV Samsung 2021+ (Tizen 6.0+). Ce
-#  workflow met en place flutter-tizen + le SDK Tizen, injecte le lecteur AVPlay,
-#  et produit un .tpk SIGNÉ EN AUTO-SIGNÉ (auteur) → utile pour valider la
-#  compilation et le sideload en Mode Développeur. Pour INSTALLER sur une TV de
-#  détail / publier au store, il faut un certificat DISTRIBUTEUR Samsung (compte
-#  Samsung gratuit, créé une fois, puis stocké en secrets CI) — cf. README plus
-#  bas dans les notes de release.
+#  ÉTAT : la chaîne compile et produit un .tpk signé avec le certificat AUTEUR
+#  du client (secrets SAMSUNG_AUTHOR_P12_BASE64 / SAMSUNG_AUTHOR_PASSWORD) + le
+#  distributeur Tizen par défaut du SDK, publié sur la release « tizen-latest ».
+#  Ça suffit pour le sideload en Mode Développeur (TV Samsung 2021+, Tizen
+#  6.0+). Pour INSTALLER sur une TV de détail / publier au store, il faut EN
+#  PLUS un certificat DISTRIBUTEUR Samsung (compte Samsung Seller gratuit) —
+#  cf. notes de release. Sans les secrets → repli auto-signé (validation).
 #
 #  Réf. : github.com/flutter-tizen/flutter-tizen (doc + CI plugins).
 # ============================================================================
@@ -71,6 +70,14 @@ jobs:
           sudo apt-get update || true
           sudo apt-get install -y python3.8 libpython3.8 \
             libncurses5 libpython2.7 zip unzip xz-utils pciutils file curl || true
+          # dbus + gnome-keyring : OBLIGATOIRES pour la signature. Le CLI
+          # `tizen` range le mot de passe du certificat dans le TROUSSEAU
+          # (gnome-keyring via D-Bus) ; le signeur .NET le relit au build.
+          # Sans trousseau, l'ajout du profil « réussit » mais le mot de
+          # passe est irrécupérable → « PKCS12 key store MAC invalid » à la
+          # signature, même avec le BON mot de passe. (C'est la recette du
+          # CI officiel de flutter-tizen : test.yml, job e2e.)
+          sudo apt-get install -y dbus-x11 gnome-keyring gettext
           python3.8 --version || true
 
       - name: Setup Java 17 (Temurin)
@@ -195,14 +202,26 @@ jobs:
       #
       #  Sans le secret auteur → repli AUTO-SIGNÉ best-effort (valide juste que la
       #  chaîne de build compile et embarque la pile vidéo AVPlay).
+      #  ⚠️ TROUSSEAU OBLIGATOIRE : le CLI `tizen` stocke le mot de passe du
+      #  certificat dans gnome-keyring (via D-Bus). Cette étape ET l'étape de
+      #  build tournent donc chacune dans `dbus-run-session` avec le trousseau
+      #  déverrouillé par le MÊME mot de passe : le trousseau persiste sur
+      #  disque ($HOME/.local/share/keyrings) entre les étapes, donc le mot de
+      #  passe rangé ici est relisible au moment de signer. Sans ça, le signeur
+      #  .NET reçoit une valeur irrécupérable → « PKCS12 key store MAC
+      #  invalid » même quand le mot de passe est BON (c'était le bug).
+      #  Recette identique au CI officiel de flutter-tizen (test.yml, job e2e).
       - name: Signature (certif auteur via secret + distributeur Tizen par défaut)
         env:
           AUTHOR_P12: ${{ secrets.SAMSUNG_AUTHOR_P12_BASE64 }}
           AUTHOR_PW: ${{ secrets.SAMSUNG_AUTHOR_PASSWORD }}
         run: |
+          cat > "$RUNNER_TEMP/sign-profile.sh" <<'SCRIPT'
           # PAS de `set -e` global ici : on veut GÉRER nous-mêmes l'échec du
           # certificat (le diagnostiquer + retomber en auto-signé) plutôt que de
           # tuer tout le build sans produire aucun .tpk.
+          # Déverrouille (crée au 1er passage) le trousseau « login ».
+          echo thefewkeyring | gnome-keyring-daemon --unlock
           TZ="$HOME/tizen-studio/tools/ide/bin/tizen"
           PROFILES="$HOME/tizen-studio-data/profile/profiles.xml"
           # Distributeur Tizen PAR DÉFAUT du SDK (présent après l'install). Mot de
@@ -213,11 +232,7 @@ jobs:
           mkdir -p "$HOME/certs"
 
           # Repli AUTO-SIGNÉ (certif jetable) : garantit qu'un .tpk sort toujours.
-          # ⚠️ CORRECTIF : le drapeau mot de passe de « tizen certificate » est
-          # -pw (PAS -p). Avec -p, le p12 était créé avec un AUTRE mot de passe
-          # que celui utilisé au moment de signer → « PKCS12 MAC invalid » et
-          # AUCUN .tpk. On génère donc avec -pw (repli --password), on repart
-          # d'un profil propre, et on vérifie que le p12 s'ouvre bien.
+          # (Le drapeau mot de passe de « tizen certificate » est -pw, PAS -p.)
           AUTHOR_KEYSTORE="$HOME/tizen-studio-data/keystore/author/author.p12"
           autosign() {
             # Profil et certificat propres (une tentative précédente a pu laisser
@@ -261,54 +276,38 @@ jobs:
           fi
           echo "SIGNED_WITH_AUTHOR=$SIGNED_WITH_AUTHOR" >> "$GITHUB_ENV"
           "$TZ" cli-config "profiles.path=$PROFILES" || true
+          SCRIPT
+          dbus-run-session -- bash "$RUNNER_TEMP/sign-profile.sh"
 
       # Profil « common » : son rootstrap (iot-headed-6.0) est celui qu'on peut
       # installer headless (le rootstrap « tv » exige l'extension SDK Samsung TV,
       # non publique). Un TPK common s'installe et tourne sur Tizen TV 6.0+.
-      # continue-on-error : la SIGNATURE auto-signée peut échouer en CI (certif
-      # throwaway). Le PORTAGE, lui, est prouvé : tout compile et la pile vidéo
-      # AVPlay est embarquée. Le .tpk RÉELLEMENT installable sur une TV de détail
-      # exige de toute façon TON certificat DISTRIBUTEUR Samsung (compte gratuit,
-      # une fois) → à brancher en secrets plus tard. On ne bloque donc pas le CI.
+      # continue-on-error : en cas d'échec, l'étape « Archive build output »
+      # publie quand même la sortie de build pour diagnostic, puis l'étape
+      # finale « Vérification » met le run en ROUGE (pas de .tpk = échec).
+      #
+      # Le build tourne dans `dbus-run-session` + trousseau déverrouillé (même
+      # mot de passe que l'étape Signature) : c'est là que le signeur relit le
+      # mot de passe du certificat rangé dans le trousseau. NB : quand la
+      # signature .NET échoue, msbuild n'émet AUCUN .tpk (même pas un brut non
+      # signé) → aucune « signature de repli » n'est possible après coup ;
+      # l'ancienne tentative de repli via `tizen package` était donc sans objet.
       - name: Build .tpk (profil common, rootstrap IOT-Headed 6.0)
         id: buildtpk
         continue-on-error: true
         run: |
-          # PAS de `set -e` : le signeur .NET (Tizen.NET.Sdk 1.1.7) échoue à
-          # RELIRE le mot de passe chiffré dans le profil (« PKCS12 MAC invalid »)
-          # alors que le mot de passe est BON (l'ajout du profil l'a validé). On
-          # laisse donc le build aller au bout (il produit le .tpk NON signé),
-          # puis on le SIGNE avec l'outil `tizen` en ligne de commande — le MÊME
-          # outil qui a chiffré le mot de passe, donc lui SAIT le relire.
-          TZ="$HOME/tizen-studio/tools/ide/bin/tizen"
+          cat > "$RUNNER_TEMP/build-tpk.sh" <<'SCRIPT'
+          set -e
+          echo thefewkeyring | gnome-keyring-daemon --unlock
           flutter-tizen build tpk --device-profile common \
             --security-profile TheFewProfile \
-            --target lib/main_tizen.dart || echo "::warning::build tpk (signeur .NET) a échoué — on tente la signature CLI de repli."
-
-          echo "=== .tpk éventuel (flutter-tizen) ==="
-          ls -lah build/tizen/tpk/ 2>/dev/null || true
-
-          # S'il n'y a pas de .tpk signé, on cherche le .tpk produit par le build
-          # .NET (dans tizen/bin/.../*.tpk), on le copie et on le SIGNE via la CLI.
-          if ! ls build/tizen/tpk/*.tpk >/dev/null 2>&1; then
-            RAW="$(find tizen/bin build -name '*.tpk' 2>/dev/null | head -1 || true)"
-            echo "tpk brut trouvé : ${RAW:-AUCUN}"
-            if [ -n "$RAW" ]; then
-              mkdir -p build/tizen/tpk
-              cp "$RAW" build/tizen/tpk/
-              TPK="build/tizen/tpk/$(basename "$RAW")"
-              echo "=== signature CLI de repli (tizen package) ==="
-              # `tizen package` réutilise le profil actif : il déchiffre le mot de
-              # passe avec le même outil qui l'a écrit → pas de « MAC invalid ».
-              "$TZ" package -t tpk -s TheFewProfile -- "$TPK" \
-                || "$TZ" package -t tpk -s TheFewProfile "$TPK" \
-                || echo "::warning::signature CLI de repli a aussi échoué."
-            fi
-          fi
+            --target lib/main_tizen.dart
+          SCRIPT
+          dbus-run-session -- bash "$RUNNER_TEMP/build-tpk.sh"
 
           echo "=== .tpk final ==="
           ls -lah build/tizen/tpk/ 2>/dev/null || true
-          ls build/tizen/tpk/*.tpk >/dev/null 2>&1 && echo "TPK_OK=1" >> "$GITHUB_ENV" || true
+          ls build/tizen/tpk/*.tpk >/dev/null 2>&1 && echo "TPK_OK=1" >> "$GITHUB_ENV"
 
       # Filet : si la signature a échoué (pas de .tpk), on archive quand même la
       # sortie de build (preuve que le portage compile + embarque AVPlay).
@@ -362,3 +361,16 @@ jobs:
               --title "The Few — Samsung TV (dernier build)" \
               --notes "$NOTES" --prerelease build/tizen/tpk/thefew-tizen.tpk
           fi
+
+      # FINI les runs « verts » sans .tpk : si rien n'est sorti, le run est
+      # ROUGE. (Les artefacts de diagnostic ont déjà été publiés plus haut.)
+      - name: Vérification (échec si aucun .tpk)
+        run: |
+          if [ "${TPK_OK:-0}" != "1" ]; then
+            echo "::error::Aucun .tpk produit — voir les logs de l'étape « Build .tpk » (signature/trousseau ?)."
+            exit 1
+          fi
+          if [ "${SIGNED_WITH_AUTHOR:-0}" != "1" ]; then
+            echo "::warning::.tpk produit mais AUTO-SIGNÉ (certificat auteur absent ou refusé) — voir l'étape « Signature »."
+          fi
+          echo "✓ .tpk présent (signé auteur : ${SIGNED_WITH_AUTHOR:-0})."
