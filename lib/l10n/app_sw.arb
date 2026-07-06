@@ -765,5 +765,15 @@
   "tvEnabled": "Imewashwa",
   "tvDisabled": "Imezimwa",
   "tvSleepDisable": "Zima",
-  "tvNoRecordings": "Hakuna rekodi"
+  "tvNoRecordings": "Hakuna rekodi",
+  "tvSettingsWeather": "Mji wangu (hali ya hewa)",
+  "tvWeatherTitle": "Mji wangu",
+  "tvWeatherHint": "Andika jina la mji wako…",
+  "tvWeatherAuto": "Otomatiki (kulingana na Intaneti)",
+  "tvWeatherAutoDesc": "Programu inakisia mji wako kutokana na muunganisho wako",
+  "tvWeatherAutoSet": "Hali ya hewa imewekwa otomatiki",
+  "tvWeatherSaved": "Hali ya hewa imewekwa kwa {city}",
+  "tvWeatherCurrent": "Mji wa sasa: {city}",
+  "tvWeatherCurrentAuto": "Mji wa sasa: otomatiki (kulingana na Intaneti)",
+  "tvWeatherNoResult": "Hakuna mji uliopatikana"
 }

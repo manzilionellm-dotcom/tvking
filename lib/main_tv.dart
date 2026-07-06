@@ -33,6 +33,7 @@ import 'features/recordings/data/recording_repository.dart';
 import 'features/security/data/parental_controls.dart';
 import 'features/sports/data/sports_repository.dart';
 import 'features/stats/data/watch_stats_service.dart';
+import 'features/tv/data/place_repository.dart';
 import 'features/vod/data/vod_download_service.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
@@ -192,6 +193,11 @@ Future<void> _bootstrap() async {
   // Réglages d'affichage (overscan / grand texte). Best-effort, non bloquant.
   // Défauts = comportement inchangé, donc aucun risque au 1er rendu.
   unawaited(DisplaySettings.instance.load());
+
+  // Ville météo choisie par l'utilisateur (pas de GPS sur TV). Si une ville a
+  // été mémorisée, la météo de l'accueil devient EXACTE ; sinon détection auto
+  // par IP (comportement inchangé). Lecture SharedPreferences, non bloquant.
+  unawaited(PlaceRepository.instance.initialize());
 
   // Profils famille : chargés AVANT le 1er rendu (lecture SharedPreferences
   // quasi instantanée). BLOQUANT car TvGate décide du PREMIER écran avec eux :

@@ -2197,5 +2197,17 @@
   "tvEnabled": "Activé",
   "tvDisabled": "Désactivé",
   "tvSleepDisable": "Désactiver",
-  "tvNoRecordings": "Aucun enregistrement"
+  "tvNoRecordings": "Aucun enregistrement",
+  "tvSettingsWeather": "Ma ville (météo)",
+  "tvWeatherTitle": "Ma ville",
+  "tvWeatherHint": "Tape le nom de ta ville…",
+  "tvWeatherAuto": "Automatique (selon Internet)",
+  "tvWeatherAutoDesc": "L'app devine ta ville d'après ta connexion",
+  "tvWeatherAutoSet": "Météo réglée sur automatique",
+  "tvWeatherSaved": "Météo réglée sur {city}",
+  "@tvWeatherSaved": {"placeholders": {"city": {"type": "String"}}},
+  "tvWeatherCurrent": "Ville actuelle : {city}",
+  "@tvWeatherCurrent": {"placeholders": {"city": {"type": "String"}}},
+  "tvWeatherCurrentAuto": "Ville actuelle : automatique (selon Internet)",
+  "tvWeatherNoResult": "Aucune ville trouvée"
 }

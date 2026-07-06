@@ -765,5 +765,15 @@
   "tvEnabled": "مُفعّل",
   "tvDisabled": "مُعطّل",
   "tvSleepDisable": "تعطيل",
-  "tvNoRecordings": "لا توجد تسجيلات"
+  "tvNoRecordings": "لا توجد تسجيلات",
+  "tvSettingsWeather": "مدينتي (الطقس)",
+  "tvWeatherTitle": "مدينتي",
+  "tvWeatherHint": "اكتب اسم مدينتك…",
+  "tvWeatherAuto": "تلقائي (حسب الإنترنت)",
+  "tvWeatherAutoDesc": "يخمّن التطبيق مدينتك من خلال اتصالك",
+  "tvWeatherAutoSet": "تم ضبط الطقس على تلقائي",
+  "tvWeatherSaved": "تم ضبط الطقس على {city}",
+  "tvWeatherCurrent": "المدينة الحالية: {city}",
+  "tvWeatherCurrentAuto": "المدينة الحالية: تلقائي (حسب الإنترنت)",
+  "tvWeatherNoResult": "لم يتم العثور على مدينة"
 }

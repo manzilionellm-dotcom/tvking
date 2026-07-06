@@ -765,5 +765,15 @@
   "tvEnabled": "Enabled",
   "tvDisabled": "Disabled",
   "tvSleepDisable": "Disable",
-  "tvNoRecordings": "No recordings"
+  "tvNoRecordings": "No recordings",
+  "tvSettingsWeather": "My city (weather)",
+  "tvWeatherTitle": "My city",
+  "tvWeatherHint": "Type your city name…",
+  "tvWeatherAuto": "Automatic (based on Internet)",
+  "tvWeatherAutoDesc": "The app guesses your city from your connection",
+  "tvWeatherAutoSet": "Weather set to automatic",
+  "tvWeatherSaved": "Weather set to {city}",
+  "tvWeatherCurrent": "Current city: {city}",
+  "tvWeatherCurrentAuto": "Current city: automatic (based on Internet)",
+  "tvWeatherNoResult": "No city found"
 }

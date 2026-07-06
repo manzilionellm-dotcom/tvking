@@ -765,5 +765,15 @@
   "tvEnabled": "På",
   "tvDisabled": "Av",
   "tvSleepDisable": "Deaktiver",
-  "tvNoRecordings": "Ingen opptak"
+  "tvNoRecordings": "Ingen opptak",
+  "tvSettingsWeather": "Min by (vær)",
+  "tvWeatherTitle": "Min by",
+  "tvWeatherHint": "Skriv navnet på byen din…",
+  "tvWeatherAuto": "Automatisk (via Internett)",
+  "tvWeatherAutoDesc": "Appen gjetter byen din ut fra tilkoblingen",
+  "tvWeatherAutoSet": "Vær satt til automatisk",
+  "tvWeatherSaved": "Vær satt til {city}",
+  "tvWeatherCurrent": "Nåværende by: {city}",
+  "tvWeatherCurrentAuto": "Nåværende by: automatisk (via Internett)",
+  "tvWeatherNoResult": "Ingen by funnet"
 }

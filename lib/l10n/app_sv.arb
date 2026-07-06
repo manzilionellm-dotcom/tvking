@@ -765,5 +765,15 @@
   "tvEnabled": "På",
   "tvDisabled": "Av",
   "tvSleepDisable": "Inaktivera",
-  "tvNoRecordings": "Inga inspelningar"
+  "tvNoRecordings": "Inga inspelningar",
+  "tvSettingsWeather": "Min stad (väder)",
+  "tvWeatherTitle": "Min stad",
+  "tvWeatherHint": "Skriv namnet på din stad…",
+  "tvWeatherAuto": "Automatiskt (via Internet)",
+  "tvWeatherAutoDesc": "Appen gissar din stad utifrån din anslutning",
+  "tvWeatherAutoSet": "Vädret satt till automatiskt",
+  "tvWeatherSaved": "Vädret satt till {city}",
+  "tvWeatherCurrent": "Nuvarande stad: {city}",
+  "tvWeatherCurrentAuto": "Nuvarande stad: automatiskt (via Internet)",
+  "tvWeatherNoResult": "Ingen stad hittades"
 }
