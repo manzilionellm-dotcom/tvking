@@ -274,12 +274,41 @@ jobs:
         id: buildtpk
         continue-on-error: true
         run: |
-          set -e
+          # PAS de `set -e` : le signeur .NET (Tizen.NET.Sdk 1.1.7) échoue à
+          # RELIRE le mot de passe chiffré dans le profil (« PKCS12 MAC invalid »)
+          # alors que le mot de passe est BON (l'ajout du profil l'a validé). On
+          # laisse donc le build aller au bout (il produit le .tpk NON signé),
+          # puis on le SIGNE avec l'outil `tizen` en ligne de commande — le MÊME
+          # outil qui a chiffré le mot de passe, donc lui SAIT le relire.
+          TZ="$HOME/tizen-studio/tools/ide/bin/tizen"
           flutter-tizen build tpk --device-profile common \
             --security-profile TheFewProfile \
-            --target lib/main_tizen.dart
-          echo "=== .tpk produit ==="
-          ls -lah build/tizen/tpk/ || true
+            --target lib/main_tizen.dart || echo "::warning::build tpk (signeur .NET) a échoué — on tente la signature CLI de repli."
+
+          echo "=== .tpk éventuel (flutter-tizen) ==="
+          ls -lah build/tizen/tpk/ 2>/dev/null || true
+
+          # S'il n'y a pas de .tpk signé, on cherche le .tpk produit par le build
+          # .NET (dans tizen/bin/.../*.tpk), on le copie et on le SIGNE via la CLI.
+          if ! ls build/tizen/tpk/*.tpk >/dev/null 2>&1; then
+            RAW="$(find tizen/bin build -name '*.tpk' 2>/dev/null | head -1 || true)"
+            echo "tpk brut trouvé : ${RAW:-AUCUN}"
+            if [ -n "$RAW" ]; then
+              mkdir -p build/tizen/tpk
+              cp "$RAW" build/tizen/tpk/
+              TPK="build/tizen/tpk/$(basename "$RAW")"
+              echo "=== signature CLI de repli (tizen package) ==="
+              # `tizen package` réutilise le profil actif : il déchiffre le mot de
+              # passe avec le même outil qui l'a écrit → pas de « MAC invalid ».
+              "$TZ" package -t tpk -s TheFewProfile -- "$TPK" \
+                || "$TZ" package -t tpk -s TheFewProfile "$TPK" \
+                || echo "::warning::signature CLI de repli a aussi échoué."
+            fi
+          fi
+
+          echo "=== .tpk final ==="
+          ls -lah build/tizen/tpk/ 2>/dev/null || true
+          ls build/tizen/tpk/*.tpk >/dev/null 2>&1 && echo "TPK_OK=1" >> "$GITHUB_ENV" || true
 
       # Filet : si la signature a échoué (pas de .tpk), on archive quand même la
       # sortie de build (preuve que le portage compile + embarque AVPlay).
