@@ -160,6 +160,13 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // Taille d'une page de grille. ~150 chaînes : un écran TV en montre ~20 ; on
   // garde quelques pages d'avance pour un scroll fluide, RAM bornée.
   static const int _kPageSize = 150;
+
+  // ÉTAPE 1 — source-push « à chaud ». Même une fois des chaînes chargées, on
+  // re-vérifie le panel à intervalle LENT (~5 min) : si le revendeur pousse /
+  // échange la source à distance, la box la récupère SANS redémarrage. Compteur
+  // de ticks du timer 12 s (25 × 12 s ≈ 5 min).
+  int _slowSyncTicks = 0;
+  static const int _kSlowSyncEvery = 25;
   String _mac = '…'; // adresse de CET appareil (à montrer si pas de chaînes)
   // Clé STABLE de la grille : quand le bandeau « Reprendre » apparaît/disparaît,
   // la mise en page change ; cette GlobalKey PRÉSERVE le scroll et le focus.
@@ -199,6 +206,15 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
           _kickSourceSync();
         } else if (_totalCount > 0) {
           _autoSyncAttempts = 0; // la source a fini par charger → on réarme
+          // Re-vérif LENTE du panel (Étape 1, source-push à chaud). Sûr :
+          // sync() est idempotent (dédup) → simple GET tant qu'il n'y a rien
+          // de neuf ; ré-import seulement si la source a réellement changé.
+          // Invisible : _syncing ne pilote que l'état « écran vide ».
+          _slowSyncTicks++;
+          if (_slowSyncTicks >= _kSlowSyncEvery) {
+            _slowSyncTicks = 0;
+            _kickSourceSync();
+          }
         }
       });
     }

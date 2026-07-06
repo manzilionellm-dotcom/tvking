@@ -23,6 +23,7 @@ import '../domain/cast_device.dart';
 import 'cast_progress.dart';
 import 'cast_session_diagnostic.dart';
 import 'cast_transport.dart';
+import 'google_cast_transport.dart';
 import 'dlna_capabilities.dart';
 import 'dlna_profiles.dart';
 import 'google_cast_api.dart';
@@ -115,11 +116,38 @@ class CastManager extends ChangeNotifier {
     );
     switch (evt.kind) {
       case 'ended':
+        // Le SDK signale la fin DEFINITIVE de la session — on aligne
+        // notre etat. ATTENTION : ne pas appeler disconnect() ici
+        // (boucle : notre disconnect() ferme aussi la session SDK).
+        if (_state == CastState.casting || _state == CastState.paused) {
+          _state = CastState.idle;
+          _setProgress(CastProgress.idle);
+        }
+        // Une session terminee invalide aussi le device/transport et la
+        // cible memorisee (si c'etait un Chromecast). Sans ce nettoyage,
+        // le bouton Cast restait dore "connecte" et le picker montrait
+        // un bandeau Stop pour une session qui n'existe plus, jusqu'a
+        // un disconnect() manuel.
+        _transport = null;
+        _device = null;
+        _currentTitle = null;
+        if (_selectedDevice?.kind == CastDeviceKind.chromecast) {
+          _selectedDevice = null;
+        }
+        notifyListeners();
+        break;
+      case 'receiver_switching':
+        // Fin de session PILOTÉE par le sender lui-même : bascule de
+        // receiver custom ⇄ Default (GoogleCastTransport, CAST_HANDOFF
+        // §6.2). Le natif re-sélectionne la même TV tout seul et
+        // playStream attend la reconnexion — on ne détruit PAS l'état
+        // (contrairement à 'ended'), sinon le cast en cours
+        // d'établissement perdrait device/transport.
+        break;
       case 'suspended':
-        // Le SDK signale la fin de la session — on aligne notre etat.
-        // ATTENTION : ne pas appeler disconnect() ici (eviterait une
-        // boucle car notre disconnect() ferme aussi la session SDK).
-        // On reset juste l'etat Dart.
+        // Suspension TEMPORAIRE (changement de reseau, veille) : le SDK
+        // peut la reprendre tout seul (`resumed`). On reflete juste
+        // l'etat sans jeter device/cible — comportement historique.
         if (_state == CastState.casting || _state == CastState.paused) {
           _state = CastState.idle;
           _setProgress(CastProgress.idle);
@@ -367,6 +395,17 @@ class CastManager extends ChangeNotifier {
         MdnsDiscovery.instance.discover(timeout: timeout).listen(onDevice);
 
     _discoveryTimer = Timer(timeout, () {
+      // On COUPE aussi les abonnements au timeout, pas seulement l'état.
+      // Sans ça, les générateurs SSDP/mDNS restaient vivants jusqu'à la
+      // PROCHAINE découverte (60s en warmup) : leur `finally` (fermeture
+      // socket UDP + release du MulticastLock) ne tournait jamais à
+      // temps → lock multicast tenu quasi en permanence (batterie) et
+      // sockets orphelines. Annuler la subscription complète le
+      // générateur async* → son finally s'exécute immédiatement.
+      _discoverySub?.cancel();
+      _mdnsSub?.cancel();
+      _discoverySub = null;
+      _mdnsSub = null;
       if (_state == CastState.discovering) {
         _state = isCasting ? CastState.casting : CastState.idle;
         notifyListeners();
@@ -397,13 +436,25 @@ class CastManager extends ChangeNotifier {
   }) {
     _warmupTimer?.cancel();
     Future<void>.delayed(initialDelay, () {
-      if (_state != CastState.discovering && !isCasting) {
+      if (_state != CastState.discovering &&
+          _state != CastState.connecting &&
+          !isCasting) {
         startDiscovery(timeout: const Duration(seconds: 3));
       }
     });
     _warmupTimer = Timer.periodic(interval, (_) {
-      // On ne dérange jamais une session active ou une discovery en cours
-      if (_state == CastState.discovering || isCasting) return;
+      // On ne dérange jamais une session active, une CONNEXION en cours
+      // ou une discovery en cours. Le garde `connecting` manquait : un
+      // castTo peut durer jusqu'à kCastTotalTimeout (40s) et le tick
+      // warmup (60s) pouvait tomber pendant — startDiscovery écrasait
+      // alors l'état `connecting` par `discovering` puis `idle`,
+      // corrompant l'UI (mini-bar / overlay / picker) en pleine
+      // négociation.
+      if (_state == CastState.discovering ||
+          _state == CastState.connecting ||
+          isCasting) {
+        return;
+      }
       startDiscovery(timeout: const Duration(seconds: 3));
     });
   }
@@ -600,6 +651,15 @@ class CastManager extends ChangeNotifier {
         );
       } else {
         _setProgress(CastProgress.connecting());
+        // Pour Google Cast, on fournit l'URL D'ORIGINE au transport : le
+        // proxy /cast-proxy re-suivra la redirection au play-time (token
+        // IPTV frais côté TV) au lieu de recevoir le token périssable déjà
+        // résolu par le probe du téléphone. Cf. GoogleCastTransport
+        // .originalUpstreamUrl (diag SHIELD 2026-07-06 : redirect /live/).
+        if (_transport is GoogleCastTransport) {
+          (_transport as GoogleCastTransport).originalUpstreamUrl =
+              probe.originalUrl;
+        }
         final Stopwatch sw = Stopwatch()..start();
         try {
           await _transport!.playStream(
@@ -607,23 +667,37 @@ class CastManager extends ChangeNotifier {
             title: title,
             imageUrl: imageUrl,
           );
+          // Le vrai chemin de routage ('cast_proxy'/'local_hls_relay'/'direct')
+          // n'est connu qu'apres coup, expose par GoogleCastTransport.
+          final GoogleCastTransport? gct =
+              _transport is GoogleCastTransport
+                  ? _transport as GoogleCastTransport
+                  : null;
+          final String realPath = gct?.lastCastPath ?? 'direct';
           diag.attempts.add(AttemptResult(
             strategyIndex: 0,
-            strategyName: 'direct',
-            urlKind: 'direct',
+            strategyName: realPath,
+            urlKind: realPath,
             metadataMode: 'n/a',
             durationMs: sw.elapsedMilliseconds,
             success: true,
+            lastCastUrlRedacted: gct?.lastCastUrlRedacted,
           ));
         } on Exception catch (e) {
+          final GoogleCastTransport? gctF =
+              _transport is GoogleCastTransport
+                  ? _transport as GoogleCastTransport
+                  : null;
+          final String realPathF = gctF?.lastCastPath ?? 'direct';
           diag.attempts.add(AttemptResult(
             strategyIndex: 0,
-            strategyName: 'direct',
-            urlKind: 'direct',
+            strategyName: realPathF,
+            urlKind: realPathF,
             metadataMode: 'n/a',
             durationMs: sw.elapsedMilliseconds,
             success: false,
             errorMessage: e.toString(),
+            lastCastUrlRedacted: gctF?.lastCastUrlRedacted,
           ));
           rethrow;
         }

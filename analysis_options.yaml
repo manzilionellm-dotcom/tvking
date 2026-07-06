@@ -22,6 +22,11 @@ linter:
     file_names: true
 
 analyzer:
+  # Le lecteur Samsung dépend de video_player_avplay (plugin TIZEN uniquement,
+  # injecté par la CI build-tizen dans SON pubspec) : il ne peut pas être
+  # analysé avec le pubspec Android — on l'exclut ici, la CI Tizen le compile.
+  exclude:
+    - lib/features/tv/presentation/player/tizen_player_screen.dart
   # Considérer les warnings comme des erreurs en CI (plus strict).
   errors:
     invalid_annotation_target: ignore

@@ -31,6 +31,7 @@ on:
       - 'feature/**'
     paths:
       - '.github/workflows/build-ios.yml'
+      - 'ci/ios/**'
       - 'pubspec.yaml'
 
 permissions:
@@ -85,26 +86,12 @@ jobs:
             grep -n "platform :ios" ios/Podfile || true
           fi
 
-      # Info.plist : autorisations réseau nécessaires à une app IPTV.
-      #   - HTTP en clair (flux + relay) : équivalent du usesCleartextTraffic
-      #     d'Android. Sans ça iOS bloque les flux http://.
-      #   - Réseau local + Bonjour : découverte des TV (Chromecast/DLNA).
-      # (Pour le simple check de compilation ce n'est pas obligatoire,
-      #  mais c'est requis pour que l'app FONCTIONNE plus tard — on le
-      #  met dès maintenant.)
-      - name: Patch Info.plist (réseau local + HTTP clair)
-        run: |
-          PL=ios/Runner/Info.plist
-          PB=/usr/libexec/PlistBuddy
-          if [ -f "$PL" ]; then
-            "$PB" -c "Add :NSAppTransportSecurity dict" "$PL" || true
-            "$PB" -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PL" || true
-            "$PB" -c "Add :NSLocalNetworkUsageDescription string '7 MOTION recherche les TV (Chromecast / DLNA) sur ton réseau Wi-Fi.'" "$PL" || true
-            "$PB" -c "Add :NSBonjourServices array" "$PL" || true
-            "$PB" -c "Add :NSBonjourServices:0 string _googlecast._tcp" "$PL" || true
-            "$PB" -c "Add :NSBonjourServices:1 string _airplay._tcp" "$PL" || true
-            echo "--- Info.plist patché ---"
-          fi
+      # Info.plist : config complète pour qu'une app IPTV FONCTIONNE sur
+      # iOS (ATS HTTP clair, audio en arrière-plan, réseau local + Bonjour
+      # pour le cast). Script PARTAGÉ avec build-ios-release.yml → une seule
+      # source de vérité. Détail des clés : docs/ios-app-store-playbook.md.
+      - name: Patch Info.plist (script partagé)
+        run: bash ci/ios/patch_info_plist.sh ios/Runner/Info.plist
 
       # Compile pour iOS device SANS signature (pas besoin de compte
       # Apple). Échoue = il reste du travail d'adaptation iOS ; réussit

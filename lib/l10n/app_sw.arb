@@ -732,6 +732,7 @@
   },
   "tvMultiViewUnavailable": "Mwonekano-nyingi haupatikani: kifaa kina kikomo (mitiririko 2 kwa wakati mmoja haihakikishwi).",
   "tvChannelUnavailable": "Chaneli haipatikani kwa sasa.",
+  "tvChannelBlockedBySource": "Kituo ni tupu au kimezuiwa na chanzo chako.",
   "tvRetryQuitHint": "OK: Jaribu tena   ·   Rudi: Toka",
   "tvSettingsParental": "Udhibiti wa wazazi (Hali ya Watoto + PIN)",
   "tvSettingsLegal": "Taarifa za kisheria na Masharti ya matumizi",

@@ -79,6 +79,8 @@ void main() {
       final Exception e = Exception('UPnP Play a échoué : Action Failed');
       final String msg = mgr.friendlyMessageFor(e);
       expect(msg, contains('format'));
+      // Message reformulé (2026) : « Ta TV n'accepte pas ce format. Essaie
+      // une autre chaîne. » — plus d'allusion au QR code.
       expect(msg, contains('chaîne'));
     });
 

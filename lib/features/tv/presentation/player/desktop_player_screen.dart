@@ -315,7 +315,11 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
                 child: Video(
                   controller: _videoController,
                   fit: BoxFit.contain,
-                  controls: NoVideoControls,
+                  // Pas de contrôles media_kit : l'overlay TV (D-pad) gère tout.
+                  // (builder typé plutôt que NoVideoControls : la constante est
+                  // vue `dynamic` selon la version de media_kit_video → refusée
+                  // par strict-casts.)
+                  controls: (VideoState state) => const SizedBox.shrink(),
                 ),
               ),
               // Écran de marque pendant l'ouverture / le zap.

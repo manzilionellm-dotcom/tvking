@@ -26,11 +26,14 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/notifications/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/live_badge.dart';
 import '../../cast/data/cast_manager.dart';
+import '../../cast/data/local_cast_server.dart';
 import '../../cast/presentation/cast_picker_sheet.dart';
+import '../../cast/presentation/screen_cast_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
@@ -138,6 +141,39 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // de widgets, le moteur media_kit continue de décoder/jouer l'audio.
   // Préférence de session uniquement (remise à false à chaque écran).
   bool _audioOnly = false;
+
+  // « Revoir le but » (replay live) : on est revenu en arrière dans le
+  // back-buffer du live (demuxer-max-back-bytes). `true` = on est en
+  // différé → on affiche le bouton « ● EN DIRECT » pour revenir au direct.
+  bool _behindLive = false;
+
+  // ── Chien de garde anti-gel (TIER 1) ──────────────────────────────
+  // Les flux IPTV live peuvent GELER sans émettre d'erreur : la socket
+  // reste ouverte mais ne livre plus d'octets. libmpv croit alors
+  // « jouer » (playing=true, buffering=false) alors que l'image est
+  // figée — l'app resterait bloquée sur une image noire jusqu'à ce que
+  // l'utilisateur tape « réessayer ». Le watchdog surveille la POSITION :
+  // si elle n'avance plus pendant ~15 s alors qu'on est censé lire (et
+  // qu'on ne bufferise pas), on rouvre la source tout seul (reconnexion
+  // automatique, façon _retry). Budget de reconnexions BORNÉ pour ne pas
+  // marteler un serveur réellement mort ; ré-armé après 30 s de lecture
+  // saine. Live uniquement (la VOD est seekable : sa position s'arrête
+  // légitimement en pause / fin de fichier).
+  Timer? _watchdogTimer;
+  Duration _lastWatchdogPos = Duration.zero;
+  int _watchdogStaleTicks = 0;
+  int _watchdogGoodTicks = 0;
+  int _watchdogRecoveries = 0;
+  // Id de la chaîne ayant DÉJÀ atteint l'état « playing » (= une vraie image a
+  // été reçue/décodée). Sert à distinguer « la source n'envoie RIEN » (jamais
+  // joué → chaîne vide / black.ts / bloquée par le fournisseur) d'un flux qui a
+  // joué puis coupé (problème réseau). Auto-réinitialisé au zap : si l'id
+  // courant ≠ cet id, la chaîne courante n'a jamais joué.
+  String? _playedChannelId;
+  static const Duration _kWatchdogInterval = Duration(seconds: 5);
+  static const int _kWatchdogStaleTicksBeforeRecover = 3; // ~15 s figé
+  static const int _kWatchdogGoodTicksToReset = 6; // ~30 s sains
+  static const int _kWatchdogMaxRecoveries = 4;
 
   // Autoplay « À suivre » (façon YouTube / Netflix) : quand un contenu
   // FINI se termine (VOD, replay/catch-up, enregistrement) et qu'une
@@ -274,6 +310,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             _hasError = false;
             _errorMessage = null;
           }
+          // La lecture a réellement démarré pour CETTE chaîne → on mémorise son
+          // id. Une erreur ultérieure ne sera donc plus attribuée à une « source
+          // vide » (cf. listener d'erreur ci-dessous).
+          if (p) _playedChannelId = _currentChannel.id;
         });
       }
       // Signal au natif Android pour le PiP auto : "lecture en
@@ -319,7 +359,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       }
       setState(() {
         _hasError = true;
-        _errorMessage = e;
+        // Si la chaîne n'a JAMAIS atteint la lecture, la source n'a envoyé
+        // aucune vidéo décodable (chaîne vide / black.ts d'1 octet / bloquée
+        // par le fournisseur). On affiche un message CLAIR au lieu de l'erreur
+        // libmpv brute (souvent « codec non supporté ») qui faisait croire à un
+        // bug de l'app alors que le flux est mort en amont.
+        _errorMessage = _playedChannelId == _currentChannel.id
+            ? e
+            : 'Chaîne indisponible : aucune vidéo reçue. Elle est vide ou '
+                'bloquée par ta source — essaie une autre chaîne.';
       });
     }));
 
@@ -350,6 +398,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
 
     _scheduleHideOverlay();
+    _startWatchdog();
   }
 
   // ----- Zapping -----
@@ -444,6 +493,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _hasError = false;
       _errorMessage = null;
       _isBuffering = true;
+      // Nouvelle chaîne → on repart au DIRECT (on n'est plus en différé).
+      _behindLive = false;
       // (la chaîne change → on le rapporte juste après le setState)
     });
     RecentlyWatchedRepository.instance.record(next.id);
@@ -955,6 +1006,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _hideOverlayTimer?.cancel();
     _presenceTimer?.cancel();
     _upNextTimer?.cancel();
+    _watchdogTimer?.cancel();
     // Mode « Écouteurs » : on coupe le service audio de fond et on lève le
     // drapeau natif (sinon le son continuerait après la fermeture du
     // lecteur). Idempotent / fail-open.
@@ -1050,6 +1102,86 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _openMedia(url);
   }
 
+  // ----- Chien de garde anti-gel -----
+
+  /// Démarre le chien de garde anti-gel. Idempotent (annule l'ancien).
+  void _startWatchdog() {
+    _watchdogTimer?.cancel();
+    _lastWatchdogPos = _player.state.position;
+    _watchdogStaleTicks = 0;
+    _watchdogGoodTicks = 0;
+    _watchdogTimer = Timer.periodic(_kWatchdogInterval, (_) => _watchdogTick());
+  }
+
+  void _watchdogTick() {
+    if (!mounted) return;
+    // Live uniquement : la VOD/catch-up est seekable, sa position
+    // s'arrête légitimement (pause, fin) → ce ne serait pas un gel.
+    if (!_liveViaRelay) return;
+    // Un VRAI gel = mpv se croit en lecture, ne bufferise pas, aucune
+    // erreur affichée, mais la position stagne. Sinon on ne compte rien
+    // et on resynchronise la position de référence.
+    if (!_isPlaying || _isBuffering || _hasError) {
+      _lastWatchdogPos = _player.state.position;
+      _watchdogStaleTicks = 0;
+      return;
+    }
+    final Duration pos = _player.state.position;
+    if (pos == _lastWatchdogPos) {
+      _watchdogStaleTicks++;
+      if (_watchdogStaleTicks >= _kWatchdogStaleTicksBeforeRecover) {
+        _watchdogRecover();
+      }
+    } else {
+      _lastWatchdogPos = pos;
+      _watchdogStaleTicks = 0;
+      // Lecture qui progresse : après ~30 s saines on ré-arme le budget
+      // de reconnexions (une longue session ne doit pas l'épuiser à
+      // cause de gels transitoires espacés).
+      if (++_watchdogGoodTicks >= _kWatchdogGoodTicksToReset) {
+        _watchdogGoodTicks = 0;
+        _watchdogRecoveries = 0;
+      }
+    }
+  }
+
+  /// Flux gelé détecté → rouvre la source courante (reconnexion auto,
+  /// façon `_retry` mais sans intervention de l'utilisateur).
+  void _watchdogRecover() {
+    _watchdogStaleTicks = 0;
+    _watchdogGoodTicks = 0;
+    if (_watchdogRecoveries >= _kWatchdogMaxRecoveries) {
+      // Trop de reconnexions sans lecture saine durable → flux
+      // probablement mort. On affiche l'erreur (bouton « réessayer »)
+      // et on arrête de marteler le serveur.
+      debugPrint(
+          '[Player] watchdog: abandon après $_watchdogRecoveries reconnexions');
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          // Jamais joué → source vide/bloquée ; sinon → vraie coupure réseau.
+          _errorMessage = _playedChannelId == _currentChannel.id
+              ? 'Flux interrompu. Vérifie ta connexion puis réessaie.'
+              : 'Chaîne indisponible : aucune vidéo reçue. Elle est vide ou '
+                  'bloquée par ta source — essaie une autre chaîne.';
+        });
+      }
+      return;
+    }
+    _watchdogRecoveries++;
+    debugPrint(
+        '[Player] watchdog: flux gelé → reconnexion automatique #$_watchdogRecoveries');
+    if (mounted) {
+      setState(() {
+        _isBuffering = true;
+        // Un gel pendant un replay → on revient au direct à la reconnexion.
+        _behindLive = false;
+      });
+    }
+    final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+    _openMedia(url);
+  }
+
   Future<void> _openTracks() async {
     _hideOverlayTimer?.cancel();
     await showModalBottomSheet<void>(
@@ -1076,6 +1208,37 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       title: title,
       imageUrl: imageUrl,
     );
+    _scheduleHideOverlay();
+  }
+
+  /// « Caster sur un écran » : QR/code vers un navigateur de TV
+  /// (n'importe quel écran, même hors du Wi-Fi du téléphone). Tout passe
+  /// par le Worker — cf. screen_cast_sheet.dart.
+  Future<void> _openScreenCast() async {
+    final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+    final String title = widget.overrideTitle ?? _currentChannel.cleanName;
+    _hideOverlayTimer?.cancel();
+    bool handedOff = false;
+    await showScreenCastSheet(
+      context,
+      streamUrl: url,
+      title: title,
+      // Handoff : dès que l'écran est prêt, on STOPPE la lecture du
+      // téléphone pour libérer la connexion IPTV (sinon 2 connexions
+      // simultanées = souvent refusé par l'abonnement). Le watchdog se met
+      // en veille tout seul (plus de lecture en cours).
+      onActive: () {
+        if (!mounted) return;
+        handedOff = true;
+        _player.stop();
+      },
+    );
+    // La feuille est fermée → on coupe le cast écran, et si on avait rendu
+    // la main à l'écran, on REPREND la lecture sur le téléphone.
+    LocalCastServer.instance.stopBrowser();
+    if (mounted && handedOff) {
+      _openMedia(url);
+    }
     _scheduleHideOverlay();
   }
 
@@ -1159,7 +1322,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     PipService.instance.setAudioOnlyMode(enabling);
     if (enabling) {
       final String title = widget.overrideTitle ?? _currentChannel.cleanName;
-      PipService.instance.startBackgroundAudio(title);
+      // Android 13+ : sans POST_NOTIFICATIONS accordée, la notification du
+      // foreground service ne S'AFFICHE PAS (l'utilisateur croit que le mode
+      // Écouteurs est cassé). On la demande MAINTENANT — l'app est encore au
+      // premier plan, moment idéal pour la pop-up système — puis on démarre le
+      // service que la permission soit accordée ou non (le son continue dans
+      // tous les cas ; seule la notif dépend de la permission). Fail-open.
+      unawaited(
+        NotificationService.instance
+            .requestPermission()
+            .whenComplete(() => PipService.instance.startBackgroundAudio(title)),
+      );
     } else {
       PipService.instance.stopBackgroundAudio();
     }
@@ -1207,6 +1380,33 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       label = secs >= 0 ? '⟳ +${secs}s' : '⟲ ${secs}s';
     }
     _toast(label);
+  }
+
+  // ============================================================
+  //  « Revoir le but » — replay instantané sur le LIVE
+  // ============================================================
+  //  Le live garde un back-buffer (demuxer-max-back-bytes = 64 MiB),
+  //  donc on peut revenir ~20 s en arrière SANS rien télécharger : on
+  //  rejoue depuis le tampon déjà en mémoire. Un seul tap → on revoit
+  //  l'action. Tant qu'on est en différé, on propose « ● EN DIRECT »
+  //  pour resauter au direct (bord du buffer).
+  void _replayMoment() {
+    final Duration target =
+        _player.state.position - const Duration(seconds: 20);
+    _player.seek(target < Duration.zero ? Duration.zero : target);
+    if (mounted) setState(() => _behindLive = true);
+    _toast('↺ Revoir');
+    _scheduleHideOverlay();
+  }
+
+  /// Resaute au DIRECT (bord du buffer = position la plus récente
+  /// disponible). En live, `state.duration` suit le bord du live.
+  void _goToLive() {
+    final Duration end = _player.state.duration;
+    if (end > Duration.zero) _player.seek(end);
+    if (mounted) setState(() => _behindLive = false);
+    _toast('● En direct');
+    _scheduleHideOverlay();
   }
 
   /// Handler clavier / télécommande. Branché sur le `Focus` parent
@@ -1879,10 +2079,44 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                               ),
                             ],
                           )
-                        : _PlayPauseButton(
-                            isPlaying: _isPlaying,
-                            onTap: _togglePlayPause,
-                          ),
+                        : _liveViaRelay
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: <Widget>[
+                                  // ↺ Revoir le but : rejoue ~20 s en arrière
+                                  // depuis le back-buffer du live (1 tap, zéro
+                                  // téléchargement). Bouton DÉLIBÉRÉ et labellisé
+                                  // — rien à voir avec l'ancienne barre trompeuse.
+                                  _SeekIconButton(
+                                    icon: Icons.replay_rounded,
+                                    semanticsLabel: 'Revoir',
+                                    onTap: _replayMoment,
+                                  ),
+                                  const SizedBox(width: 24),
+                                  _PlayPauseButton(
+                                    isPlaying: _isPlaying,
+                                    onTap: _togglePlayPause,
+                                  ),
+                                  const SizedBox(width: 24),
+                                  // ● EN DIRECT : visible UNIQUEMENT en différé,
+                                  // resaute au bord du live. Sinon un spacer de
+                                  // même largeur garde le play/pause centré.
+                                  if (_behindLive)
+                                    _SeekIconButton(
+                                      icon: Icons.sensors_rounded,
+                                      semanticsLabel: 'En direct',
+                                      color: AppColors.live,
+                                      onTap: _goToLive,
+                                    )
+                                  else
+                                    const SizedBox(width: 64),
+                                ],
+                              )
+                            : _PlayPauseButton(
+                                isPlaying: _isPlaying,
+                                onTap: _togglePlayPause,
+                              ),
               ),
             ),
 
@@ -1937,6 +2171,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         : context.l10n.playerAudioOnly,
                     iconColor: _audioOnly ? AppColors.accent : null,
                     onTap: _toggleAudioOnly,
+                  ),
+                  // Caster sur n'importe quel écran avec un navigateur
+                  // (QR/code, via le Worker — marche même hors Wi-Fi local).
+                  _ControlButton(
+                    icon: Icons.screen_share_rounded,
+                    label: 'Écran',
+                    onTap: _openScreenCast,
                   ),
                 ],
               ),
@@ -2068,11 +2309,13 @@ class _SeekIconButton extends StatelessWidget {
     required this.icon,
     required this.onTap,
     required this.semanticsLabel,
+    this.color = Colors.white,
   });
 
   final IconData icon;
   final VoidCallback onTap;
   final String semanticsLabel;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -2088,7 +2331,7 @@ class _SeekIconButton extends StatelessWidget {
             padding: const EdgeInsets.all(10),
             child: Icon(
               icon,
-              color: Colors.white,
+              color: color,
               size: 44,
               shadows: const <Shadow>[
                 Shadow(color: Colors.black54, blurRadius: 16),

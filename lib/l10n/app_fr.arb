@@ -2164,6 +2164,7 @@
   },
   "tvMultiViewUnavailable": "Multi-vue indisponible : appareil trop limité (2 flux simultanés non garantis).",
   "tvChannelUnavailable": "Chaîne indisponible pour le moment.",
+  "tvChannelBlockedBySource": "Chaîne vide ou bloquée par ta source.",
   "tvRetryQuitHint": "OK : Réessayer   ·   Retour : Quitter",
   "tvSettingsParental": "Contrôle parental (Mode Enfants + code PIN)",
   "tvSettingsLegal": "Mentions légales & Conditions d'utilisation",

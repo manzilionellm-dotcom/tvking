@@ -55,6 +55,14 @@ class LocalCastServer {
   final Map<String, _RelayEntry> _relays = <String, _RelayEntry>{};
   static const int _kMaxRelays = 8;
 
+  /// Mode « Caster sur un écran » EN LOCAL (même Wi-Fi) : le PC / la TV
+  /// ouvre http://<ip-téléphone>:<port>/screen dans son navigateur. Le
+  /// flux est relayé par le TÉLÉPHONE (IP résidentielle → autorisée par
+  /// les fournisseurs qui bloquent le cloud, erreur 456). `_browserToken`
+  /// = la session courante exposée à la page via /current.
+  String? _browserToken;
+  String _browserTitle = '';
+
   /// Lance le serveur (idempotent — réutilise l'instance existante).
   /// Renvoie le port d'écoute, ou jette une exception si bind échoue.
   Future<int> start() async {
@@ -110,6 +118,16 @@ class LocalCastServer {
       }
       if (path.startsWith('/relay/')) {
         await _serveRelay(req);
+        return;
+      }
+      // Mode « Caster sur un écran » LOCAL (additif — ne touche pas au
+      // cast DLNA/Chromecast existant) : page récepteur + état courant.
+      if (path == '/screen' || path == '/') {
+        await _serveScreenPage(req);
+        return;
+      }
+      if (path == '/current') {
+        await _serveCurrent(req);
         return;
       }
       req.response.statusCode = HttpStatus.notFound;
@@ -447,4 +465,112 @@ class LocalCastServer {
     return null;
   }
 
+  // ============================================================
+  //  « Caster sur un écran » LOCAL (même Wi-Fi) — phone → navigateur
+  // ============================================================
+  //  Contourne le blocage cloud (456) : c'est le TÉLÉPHONE (IP
+  //  résidentielle, autorisée) qui récupère le flux et le sert au PC /
+  //  à la TV via son navigateur. Le PC ouvre http://<ip>:<port>/screen.
+  //  100 % additif — n'affecte ni le relais DLNA ni le cast Chromecast.
+
+  /// Démarre (ou met à jour) le flux exposé au navigateur. Renvoie
+  /// l'URL à ouvrir sur le PC / la TV (même Wi-Fi), ou `null` si l'IP
+  /// locale est introuvable.
+  Future<String?> serveBrowser({
+    required String upstreamUrl,
+    String title = '',
+  }) async {
+    await start();
+    // Une seule session navigateur à la fois : on remplace la précédente.
+    if (_browserToken != null) _relays.remove(_browserToken);
+    final DlnaProfile profile =
+        DlnaProfiles.select(url: upstreamUrl, finalMime: null);
+    final String token = _randomToken();
+    _relays[token] = _RelayEntry(
+      upstreamUrl: upstreamUrl,
+      profile: profile,
+      createdAt: DateTime.now(),
+    );
+    _browserToken = token;
+    _browserTitle = title;
+    final String? lanIp = await _lanIpFor('');
+    if (lanIp == null) return null;
+    return 'http://$lanIp:$_port/screen';
+  }
+
+  /// Arrête la session navigateur (l'écran repassera en « attente »).
+  void stopBrowser() {
+    if (_browserToken != null) {
+      _relays.remove(_browserToken);
+      _browserToken = null;
+    }
+  }
+
+  Future<void> _serveCurrent(HttpRequest req) async {
+    req.response.headers
+      ..set('Content-Type', 'application/json; charset=utf-8')
+      ..set('Cache-Control', 'no-store, no-cache')
+      ..set('Access-Control-Allow-Origin', '*');
+    final String? tok = _browserToken;
+    final _RelayEntry? e = tok != null ? _relays[tok] : null;
+    if (tok == null || e == null) {
+      req.response.write('{"url":null}');
+    } else {
+      final String ext = e.profile.fileExtension;
+      final String t =
+          _browserTitle.replaceAll('"', '').replaceAll(r'\', '');
+      req.response.write('{"url":"/relay/$tok.$ext","title":"$t"}');
+    }
+    await req.response.close();
+  }
+
+  Future<void> _serveScreenPage(HttpRequest req) async {
+    req.response.headers
+      ..set('Content-Type', 'text/html; charset=utf-8')
+      ..set('Cache-Control', 'no-store, no-cache');
+    req.response.write(_screenHtml);
+    await req.response.close();
+  }
+
+  // Page récepteur servie EN LOCAL (http) → pas de « mixed content »
+  // (la page http peut charger le relais http du même origin ; le script
+  // mpegts.js vient d'un CDN https, ce qui est autorisé depuis du http).
+  static const String _screenHtml = r'''<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>7 MOTION - Ecran</title>
+<script src="//cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
+<style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;
+background:#0A0A0C;color:#fff;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;overflow:hidden}
+#v{position:fixed;inset:0;width:100%;height:100%;background:#000;object-fit:contain;display:none}
+#m{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;
+padding:6vh 5vw;font-size:clamp(16px,2.6vw,28px);color:#9aa;line-height:1.5}
+#m b{color:#D63A30}</style></head>
+<body><video id="v" playsinline webkit-playsinline autoplay></video>
+<div id="m"><span>7&nbsp;<b>MOTION</b> &mdash; en attente d'une chaine depuis le telephone...</span></div>
+<script>(function(){
+var v=document.getElementById('v'),m=document.getElementById('m');
+var player=null,curUrl=null;
+function show(t){m.innerHTML='<span>'+t+'</span>';m.style.display='flex';v.style.display='none';}
+function teardown(){try{if(player){player.destroy();player=null;}}catch(e){}}
+function play(url){teardown();
+  if(!window.mpegts||!mpegts.isSupported()){show("Navigateur non compatible. Essaie Chrome ou Edge.");return;}
+  try{player=mpegts.createPlayer({type:'mpegts',isLive:true,url:url},
+    {liveBufferLatencyChasing:true,lazyLoad:false,enableWorker:true});
+  player.attachMediaElement(v);
+  player.on(mpegts.Events.ERROR,function(t,d){
+    if(t==='MediaError'){show("Codec non lisible sur cet ecran (souvent HEVC). Essaie Chromecast/DLNA.");}
+    else{show("Flux interrompu. Le telephone joue-t-il toujours la chaine ?");}
+  });
+  player.load();curUrl=url;m.style.display='none';v.style.display='block';v.muted=false;
+  var p=v.play();if(p&&p.catch)p.catch(function(){v.muted=true;v.play().catch(function(){});});
+  }catch(e){show("Lecture impossible.");}}
+var fails=0;
+function poll(){fetch('/current',{cache:'no-store'}).then(function(r){return r.json();})
+  .then(function(s){fails=0;
+    if(s&&s.url){if(s.url!==curUrl)play(s.url);}
+    else{teardown();curUrl=null;show("7&nbsp;<b>MOTION</b> &mdash; en attente d'une chaine depuis le telephone...");}})
+  .catch(function(){fails++;if(fails===5)show("Connexion au telephone perdue. Meme Wi-Fi ?");})
+  .then(function(){setTimeout(poll,1500);});}
+poll();})();</script></body></html>''';
 }

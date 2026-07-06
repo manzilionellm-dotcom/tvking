@@ -732,6 +732,7 @@
   },
   "tvMultiViewUnavailable": "Multivista no disponible: dispositivo demasiado limitado (2 flujos simultáneos no garantizados).",
   "tvChannelUnavailable": "Canal no disponible por ahora.",
+  "tvChannelBlockedBySource": "Canal vacío o bloqueado por tu fuente.",
   "tvRetryQuitHint": "OK: Reintentar   ·   Atrás: Salir",
   "tvSettingsParental": "Control parental (Modo infantil + PIN)",
   "tvSettingsLegal": "Aviso legal y Condiciones de uso",

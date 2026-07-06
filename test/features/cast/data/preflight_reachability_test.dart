@@ -31,7 +31,9 @@ void main() {
         Exception('TV injoignable sur le réseau (192.168.8.4:1178) '
             '— no route to host (pré-vol TCP)'),
       );
-      expect(msg, contains('même WiFi'));
+      // Le message dit « …sur le MÊME WiFi… » (casse changée en 2026) →
+      // on compare en minuscules pour rester robuste au wording.
+      expect(msg.toLowerCase(), contains('même wifi'));
       expect(msg.toLowerCase(), contains('isolation'));
     });
 
@@ -41,7 +43,8 @@ void main() {
             '(OS Error: No route to host, errno = 113)'),
       );
       expect(msg.toLowerCase(), contains('isolation'));
-      expect(msg, contains('QR code'));
+      // Message reformulé (2026) : nomme « AP isolation » au lieu du QR code.
+      expect(msg.toLowerCase(), contains('ap isolation'));
     });
 
     test('errno 101 (network unreachable) → même guidance', () {

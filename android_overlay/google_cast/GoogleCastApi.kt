@@ -24,9 +24,12 @@ package com.manzilionellm.tvking
 
 import android.app.Activity
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.fragment.app.FragmentActivity
 import androidx.mediarouter.app.MediaRouteChooserDialog
+import androidx.mediarouter.media.MediaRouter
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaLoadRequestData
 import com.google.android.gms.cast.MediaMetadata
@@ -76,6 +79,22 @@ class GoogleCastApi(
 
     private val sessionManager: SessionManager? = castContext?.sessionManager
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /**
+     * Bascule de receiver EN COURS (CAST_HANDOFF §6.2) : on a nous-mêmes
+     * demandé la fin de la session (changement d'App ID custom ⇄ Default) et
+     * on va re-sélectionner la même TV. Tant que ce flag est vrai,
+     * onSessionEnded émet "receiver_switching" au lieu de "ended" pour que le
+     * CastManager Dart ne détruise pas son état de cast en plein
+     * établissement. Remis à false quand la nouvelle session démarre (ou par
+     * le filet de sécurité 15 s si la reconnexion n'aboutit jamais).
+     */
+    @Volatile private var switchingReceiver = false
+
+    /** Route (TV) à re-sélectionner dès que l'ancienne session est fermée. */
+    private var pendingSwitchRoute: MediaRouter.RouteInfo? = null
+
     /**
      * Phase 1+/G2 — Synchronisation bidirectionnelle.
      *
@@ -101,6 +120,7 @@ class GoogleCastApi(
 
     private val sessionListener = object : SessionManagerListener<CastSession> {
         override fun onSessionStarted(session: CastSession, sessionId: String) {
+            switchingReceiver = false
             attachMediaCallback()
             emitSessionEvent("started")
         }
@@ -110,7 +130,26 @@ class GoogleCastApi(
         }
         override fun onSessionEnded(session: CastSession, error: Int) {
             detachMediaCallback()
-            emitSessionEvent("ended")
+            if (switchingReceiver) {
+                // Fin PILOTÉE par setReceiverApplicationId : la route vient
+                // d'être libérée → on re-sélectionne la même TV pour rouvrir
+                // une session sur le NOUVEAU receiver, sans repasser par le
+                // picker. Dart traite "receiver_switching" comme un no-op.
+                emitSessionEvent("receiver_switching")
+                val route = pendingSwitchRoute
+                pendingSwitchRoute = null
+                if (route != null) {
+                    mainHandler.postDelayed({
+                        try {
+                            MediaRouter.getInstance(activity).selectRoute(route)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "re-select route après switch receiver: $e")
+                        }
+                    }, 400)
+                }
+            } else {
+                emitSessionEvent("ended")
+            }
         }
         override fun onSessionSuspended(session: CastSession, reason: Int) {
             detachMediaCallback()
@@ -120,6 +159,7 @@ class GoogleCastApi(
         override fun onSessionResuming(session: CastSession, sessionId: String) {}
         override fun onSessionEnding(session: CastSession) {}
         override fun onSessionStartFailed(session: CastSession, error: Int) {
+            switchingReceiver = false
             emitSessionEvent("start_failed", error)
         }
         override fun onSessionResumeFailed(session: CastSession, error: Int) {
@@ -232,6 +272,16 @@ class GoogleCastApi(
                     sessionManager?.currentCastSession?.isConnected == true,
                 )
                 "showRoutePicker" -> showRoutePicker(result)
+                "setReceiverApplicationId" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val args = call.arguments as? Map<String, Any?> ?: emptyMap()
+                    setReceiverApplicationId(args["appId"] as? String, result)
+                }
+                "currentReceiverApplicationId" -> result.success(
+                    sessionManager?.currentCastSession
+                        ?.takeIf { it.isConnected }
+                        ?.applicationMetadata?.applicationId,
+                )
                 "loadMedia" -> {
                     @Suppress("UNCHECKED_CAST")
                     val args = call.arguments as? Map<String, Any?> ?: emptyMap()
@@ -263,6 +313,62 @@ class GoogleCastApi(
 
     private fun remoteMediaClient(): RemoteMediaClient? =
         sessionManager?.currentCastSession?.remoteMediaClient
+
+    /**
+     * Bascule dynamique du receiver (CAST_HANDOFF §6.2) : custom `5BDFD969`
+     * pour le chemin cast_proxy (mpegts.js décode le TS sur la TV), Default
+     * `CC1AD845` pour le relais HLS du téléphone (la page custom HTTPS ne
+     * peut pas fetch un relais HTTP — mixed content).
+     *
+     * Le SDK termine la session courante quand l'App ID change
+     * (CastContext.setReceiverApplicationId). Dans ce cas on mémorise la
+     * route sélectionnée AVANT le changement et onSessionEnded la
+     * re-sélectionne → nouvelle session sur la même TV avec le nouveau
+     * receiver, sans repasser par le picker.
+     *
+     * Répond : "ok" (déjà bon / rien à fermer), "switching" (session fermée,
+     * reconnexion auto en cours), "unavailable" (SDK absent ou échec).
+     */
+    private fun setReceiverApplicationId(appId: String?, result: MethodChannel.Result) {
+        if (appId.isNullOrBlank()) {
+            result.error("INVALID_ARGS", "appId manquant ou vide", null)
+            return
+        }
+        val ctx = castContext
+        if (ctx == null) {
+            result.success("unavailable")
+            return
+        }
+        try {
+            val session = sessionManager?.currentCastSession
+            val connected = session?.isConnected == true
+            val currentId = session?.applicationMetadata?.applicationId
+            if (connected && currentId == appId) {
+                result.success("ok")
+                return
+            }
+            val router = MediaRouter.getInstance(activity)
+            val route = router.selectedRoute
+            val willSwitch = connected && !route.isDefault
+            if (willSwitch) {
+                switchingReceiver = true
+                pendingSwitchRoute = route
+                // Filet de sécurité : si la reconnexion n'aboutit jamais, on
+                // rétablit la sémantique normale de "ended" après 15 s.
+                mainHandler.postDelayed({ switchingReceiver = false }, 15_000)
+            }
+            ctx.setReceiverApplicationId(appId)
+            Log.i(TAG, "receiver app id → $appId (willSwitch=$willSwitch)")
+            result.success(if (willSwitch) "switching" else "ok")
+        } catch (e: Throwable) {
+            // Throwable (et pas Exception) : couvre aussi un NoSuchMethodError
+            // si un vieux play-services-cast-framework traîne sur l'appareil.
+            switchingReceiver = false
+            pendingSwitchRoute = null
+            Log.e(TAG, "setReceiverApplicationId: $e")
+            result.success("unavailable")
+        }
+    }
 
     private fun isGmsAvailable(context: Context): Boolean {
         val availability = GoogleApiAvailability.getInstance()
@@ -334,6 +440,7 @@ class GoogleCastApi(
         val mime = args["mime"] as? String ?: "video/mp2t"
         val imageUrl = args["imageUrl"] as? String
         val subtitle = args["subtitle"] as? String
+        val debugOverlay = (args["debug"] as? Boolean) ?: false
 
         if (streamUrl.isNullOrBlank()) {
             result.error("INVALID_ARGS", "streamUrl manquant ou vide", null)
@@ -364,10 +471,19 @@ class GoogleCastApi(
                 MediaInfo.STREAM_TYPE_BUFFERED
             }
 
+            // Overlay debug du receiver custom : on passe {debug:true} en
+            // customData. Le receiver l'active alors (sans effet sur le
+            // Default Media Receiver, qui ignore customData inconnu).
+            val customData = if (debugOverlay) {
+                org.json.JSONObject().apply { put("debug", true) }
+            } else {
+                null
+            }
             val mediaInfo = MediaInfo.Builder(streamUrl)
                 .setStreamType(streamType)
                 .setContentType(mime)
                 .setMetadata(metadata)
+                .apply { if (customData != null) setCustomData(customData) }
                 .build()
 
             val loadRequest = MediaLoadRequestData.Builder()

@@ -48,6 +48,16 @@ on:
       # il faut redéployer le worker quand il change, sinon le nouveau
       # receiver Cast (mpegts.js) ne part jamais en production.
       - 'cloudflare/cast_receiver.js'
+      # screen_receiver.js est IMPORTÉ par worker.js (récepteur « Caster
+      # sur un écran ») → redéployer le worker quand il change.
+      - 'cloudflare/screen_receiver.js'
+      # landing.js est IMPORTÉ par worker.js (page d'accueil sur /) → redéployer
+      # le worker quand le site change.
+      - 'cloudflare/landing.js'
+      # pwa_assets.js (manifeste + service worker + icônes) IMPORTÉ par worker.js.
+      - 'cloudflare/pwa_assets.js'
+      # portal.js (« Mon espace » : le client gère sa playlist) IMPORTÉ par worker.js.
+      - 'cloudflare/portal.js'
       - 'cloudflare/wrangler.toml'
       - '.github/workflows/deploy-worker.yml'
 

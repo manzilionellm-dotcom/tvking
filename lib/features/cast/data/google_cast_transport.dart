@@ -19,16 +19,15 @@
 //  SDK qui peut découvrir des récepteurs que mDNS rate (cas du
 //  multi-VLAN avec Bonjour gateway).
 //
-//  ⚠️ ÉTAT ACTUEL (2026-06) — CHROMECAST EN MODE DÉGRADÉ.
-//  Le Default Media Receiver (CC1AD845) ne décode PAS le MPEG-TS brut
-//  des flux IPTV. On le contourne en remuxant le .ts en HLS-fMP4 via le
-//  VPS `cast.7themotion.com` (_kCastRemuxBase). CE VPS EST ACTUELLEMENT
-//  ÉTEINT → un cast Chromecast sur un flux .ts donnerait un écran noir.
-//  Tant qu'il ne tourne pas, on DÉTECTE son indisponibilité (HEAD 3 s)
-//  et on remonte une erreur claire au lieu de tenter le load (cf.
-//  _remuxReachable). On NE supprime PAS le code VPS : il redeviendra
-//  fonctionnel dès le VPS rallumé. Le DLNA (LG/Samsung) n'est PAS
-//  concerné — il joue le .ts en direct.
+//  ⚠️ ÉTAT ACTUEL (2026-07) — CHROMECAST via RÉCEPTEUR CUSTOM + PROXY.
+//  Le Default Media Receiver (CC1AD845) ne décode PAS le MPEG-TS brut des
+//  flux IPTV. On charge donc le récepteur custom (5BDFD969, mpegts.js) qui
+//  décode le TS sur la TV, et on lui envoie l'URL HTTPS de MÊME origine
+//  https://app.7themotion.com/cast-proxy?u=… (signée par le Worker) : cela
+//  lève le blocage contenu mixte / CORS du fetch depuis la page récepteur.
+//  Repli si le proxy est injoignable : le RELAIS HLS du téléphone
+//  (registerRelay/wrapInHls). Le DLNA (LG/Samsung) n'est PAS concerné — il
+//  joue le .ts en direct.
 // =========================================================
 
 import 'dart:async';
@@ -65,26 +64,79 @@ import 'local_cast_server.dart';
 ///    mpegts.js decode le MPEG-TS sur la TV → on envoie le .ts DIRECT, sans
 ///    VPS, et la box reapparait dans le picker (le filtre par app id publie
 ///    ne cache plus les appareils).
+///
+/// ✅ REACTIVÉ (2026-07-01) — le blocage CORS / contenu mixte du 2026-06-29 est
+///    RESOLU. On n'envoie plus le .ts HTTP brut au custom receiver : on envoie
+///    l'URL HTTPS `https://app.7themotion.com/cast-proxy?u=…` (MÊME origine que
+///    la page receiver, en-tetes CORS ouverts, re-type video/mp2t). Le LOAD
+///    interceptor du receiver route video/mp2t vers mpegts.js, qui fetch cette
+///    URL HTTPS sans contenu mixte ni CORS → la TV decode le TS elle-meme et le
+///    telephone peut etre eteint. Le RELAIS HLS du telephone reste le repli si
+///    le proxy n'est pas joignable. cf. playStream (stratégie cast_proxy) +
+///    worker.js /cast-proxy. DOIT rester SYNCHRONE avec USE_CUSTOM_RECEIVER
+///    (CastOptionsProviderImpl.kt) — les deux valent `true`.
+/// ⚠️ MISE À JOUR (2026-07-06, CAST_HANDOFF §6.2) : ce flag reste la valeur
+///    INITIALE (compile-time) chargée par l'OptionsProvider Kotlin, mais le
+///    receiver est désormais BASCULÉ DYNAMIQUEMENT par session via
+///    GoogleCastApi.setReceiverApplicationId :
+///      - proxy /cast-proxy DÉLIVRE (2xx)  → custom 5BDFD969 (TS décodé TV,
+///        téléphone éteint possible) — chemin PRIORITAIRE, inchangé ;
+///      - proxy BLOQUÉ par le fournisseur (456/403/512 sur IP datacenter,
+///        diag terrain 2026-07-06 : upstream=456) → relais HLS du téléphone
+///        envoyé au Default Media Receiver CC1AD845 (la page custom HTTPS ne
+///        peut pas fetch un relais HTTP — mixed content).
 const bool kCastUseCustomReceiver = true;
 
-/// Base du service de remux VPS (cf. server/cast-remux) qui transforme le
-/// MPEG-TS live en HLS-fMP4 — le SEUL format que le recepteur Cast par
-/// defaut (Shaka) lit nativement. A faire pointer (DNS A) vers ton VPS.
-const String _kCastRemuxBase = 'https://cast.7themotion.com';
+/// App ID du récepteur custom « 7 MOTION TS » (page mpegts.js du Worker).
+/// Doit rester aligné avec CUSTOM_RECEIVER_ID (CastOptionsProviderImpl.kt).
+const String kCastCustomReceiverAppId = '5BDFD969';
 
-/// Construit l'URL HLS-fMP4 (servie par le VPS remux en HTTPS) pour un flux
-/// MPEG-TS brut. L'upstream est encode en base64url dans le chemin → le
-/// service reste stateless (cf. server/cast-remux/server.js).
-String _castRemuxUrl(String upstreamUrl) {
-  final String b64 =
-      base64Url.encode(utf8.encode(upstreamUrl)).replaceAll('=', '');
-  return '$_kCastRemuxBase/live/$b64/master.m3u8';
-}
+/// App ID du Default Media Receiver public de Google. Lit le HLS nativement
+/// (pas de fetch depuis une page HTTPS → pas de blocage mixed-content sur le
+/// relais HTTP du téléphone). Aligné avec DEFAULT_RECEIVER_ID (Kotlin).
+const String kCastDefaultReceiverAppId = 'CC1AD845';
+
+/// Overlay de diagnostic du receiver custom (mpegts.js) : coin haut-gauche,
+/// texte vert, 15 dernieres lignes (LOAD contentId, branche mpegts/CAF,
+/// mpegts ERROR + MEDIA_INFO codecs, events du <video>, status du 1er fetch).
+/// Passe `{debug:true}` en customData du LOAD. Repasser a `false` en prod
+/// une fois le bug trouve. Sans effet sur le Default Media Receiver.
+/// PROD (tronc client) : `false` — les clients ne doivent pas voir le texte
+/// vert. La branche cast de diagnostic le garde a `true`.
+const bool kCastDebugOverlay = false;
+
+/// Base du Worker (même domaine que le récepteur Cast custom) qui signe et sert
+/// le proxy Cast. Le secret HMAC vit UNIQUEMENT côté Worker : l'app demande une
+/// URL signée à `/cast-sign`, elle n'embarque aucun secret.
+const String _kCastProxyBase = 'https://app.7themotion.com';
 
 class GoogleCastTransport implements CastTransport {
   GoogleCastTransport(this.device);
 
   final CastDevice device;
+
+  /// Dernier chemin de routage reellement emprunte par [playStream] :
+  /// 'cast_proxy' | 'local_hls_relay' | 'direct'. Lu par CastManager pour
+  /// etiqueter correctement l'AttemptResult (au lieu de 'direct' en dur).
+  String lastCastPath = 'direct';
+
+  /// URL exacte transmise a loadMedia, token signe masque. Null tant qu'aucun cast.
+  String? lastCastUrlRedacted;
+
+  /// URL upstream d'ORIGINE (avant que le probe du telephone ne suive les
+  /// redirections). Renseignee par CastManager juste avant [playStream].
+  ///
+  /// Pourquoi : les flux Xtream/IPTV redirigent souvent
+  /// `http://portail/.../ID.ts` vers un endpoint a TOKEN par-connexion
+  /// (`http://IP/live/USER/PASS/ID?token`). Le telephone resout ce token
+  /// pendant le probe, mais il peut etre PERISSABLE : au moment ou la TV
+  /// (via /cast-proxy) va le chercher, il est deja perime → « format non
+  /// pris en charge ». En signant l'URL D'ORIGINE, le Worker /cast-proxy
+  /// re-suit la redirection LUI-MEME au play-time (≤3 sauts) et obtient
+  /// un token FRAIS. Diag terrain SHIELD 2026-07-06 : les 3 sessions
+  /// redirigeaient vers une IP brute /live/ → ce chemin est le bon.
+  /// `null` → on retombe sur l'URL deja resolue (comportement historique).
+  String? originalUpstreamUrl;
 
   @override
   Future<void> playStream({
@@ -92,6 +144,10 @@ class GoogleCastTransport implements CastTransport {
     String title = '7 MOTION',
     String? imageUrl,
   }) async {
+    // Reset des marqueurs de diagnostic : evite d'afficher le chemin
+    // du cast precedent si celui-ci echoue avant la decision de routage.
+    lastCastPath = 'direct';
+    lastCastUrlRedacted = null;
     final GoogleCastApi api = GoogleCastApi.instance;
 
     // 1) Le SDK Cast est-il disponible sur ce device ?
@@ -106,33 +162,14 @@ class GoogleCastTransport implements CastTransport {
       );
     }
 
-    // 2) Y a-t-il déjà une session active ? (l'utilisateur a déjà
-    //    connecté sa TV via le dialog Cast lors d'un cast précédent)
-    bool hasSession = await api.hasActiveSession();
-
-    // 3) Pas de session → on demande au SDK d'ouvrir SON dialog natif.
-    //    L'utilisateur sélectionne sa TV. Le SDK gère la négociation,
-    //    le pairing, etc. — c'est exactement le flow Netflix / YouTube.
-    if (!hasSession) {
-      await api.showRoutePicker();
-      // Le dialog est asynchrone côté utilisateur (il doit tap sa TV).
-      // On poll hasActiveSession pendant 30s max — au-delà on suppose
-      // que l'utilisateur a annulé.
-      final DateTime deadline =
-          DateTime.now().add(const Duration(seconds: 30));
-      while (DateTime.now().isBefore(deadline)) {
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-        if (await api.hasActiveSession()) {
-          hasSession = true;
-          break;
-        }
-      }
-      if (!hasSession) {
-        throw Exception('Aucune TV sélectionnée.');
-      }
-    }
-
-    // 4) Session OK — on pousse le flux.
+    // 2) DÉCISION DE ROUTAGE — AVANT d'établir la session, parce qu'elle
+    //    détermine QUEL RECEIVER charger sur la TV (CAST_HANDOFF §6.2) :
+    //      - cast_proxy       → custom 5BDFD969 (mpegts.js décode le TS) ;
+    //      - local_hls_relay  → Default CC1AD845 (lit le HLS du téléphone
+    //        nativement ; la page custom HTTPS ne PEUT PAS fetch un relais
+    //        HTTP — mixed content).
+    //    Coût : la signature + vérification du proxy (quelques secondes au
+    //    pire) précède l'ouverture du picker — négligeable en pratique.
     //
     //    Phase 1+/HLS Wrapper (2026-06-01) — DECOUVERTE CLEF :
     //    Google Cast SDK ne supporte PAS officiellement MPEG-TS (.ts)
@@ -156,27 +193,136 @@ class GoogleCastTransport implements CastTransport {
 
     // Decision de routage du flux pour le Cast :
     //   1. On ne touche PAS un flux deja adaptatif (HLS/DASH).
-    //   2. Pour le MPEG-TS brut (.ts / Xtream /live/) :
-    //      - custom receiver ACTIF (kCastUseCustomReceiver==true) :
-    //        la page mpegts.js (5BDFD969 -> /cast-receiver) decode le TS
-    //        ELLE-MEME sur la TV → on envoie l'URL .ts DIRECTE en
-    //        video/mp2t, SANS VPS. La TV tire le flux seule.
-    //      - custom receiver INACTIF : le Default Media Receiver ne lit
-    //        pas le TS brut → on remuxe en HLS-fMP4 via le VPS
-    //        (_castRemuxUrl, ffmpeg -c copy). Code conserve derriere le
-    //        flag, reutilisable, mais inactif tant que le custom est ON.
+    //   2. Pour le MPEG-TS brut (.ts / Xtream /live/) : la page mpegts.js
+    //      (5BDFD969 -> /cast-receiver) decode le TS sur la TV, alimentee par
+    //      le proxy HTTPS de meme origine /cast-proxy (contourne contenu mixte
+    //      + CORS). Repli : relais HLS du telephone si le proxy est injoignable.
     if (!isHlsOrDash(streamUrl) && _looksLikeRawMpegTs(streamUrl)) {
-      // On passe par un booleen LOCAL (pas le const directement) pour que
-      // les DEUX branches restent du code vivant pour l'analyzer : le repli
-      // VPS (_castRemuxUrl) demeure reference et reutilisable, juste inactif
-      // au runtime tant que le custom receiver est ON.
-      final bool useCustomReceiver = kCastUseCustomReceiver;
-      // Custom receiver mpegts.js (5BDFD969 -> /cast-receiver) : il decode le
-      // .ts LUI-MEME → on envoie l'URL .ts brute DIRECTE, sans VPS.
-      // Sinon (Default Media Receiver) : repli remux HLS-fMP4 via le VPS.
-      urlToCast = useCustomReceiver ? streamUrl : _castRemuxUrl(streamUrl);
-      mime = useCustomReceiver ? 'video/mp2t' : 'application/x-mpegURL';
-      castPath = useCustomReceiver ? 'direct_ts_custom_receiver' : 'remux_hls';
+      // CHEMIN PRINCIPAL (2026-07-01) — PROXY CAST via le récepteur custom.
+      // Le récepteur custom (mpegts.js) décode le MPEG-TS sur la TV, mais il ne
+      // peut PAS fetch un flux IPTV HTTP brut (contenu mixte) ni sans en-tête
+      // CORS. On lui envoie donc l'URL HTTPS de MÊME origine
+      // /cast-proxy?u=… (signée par le Worker) : mpegts.js la lit sans blocage
+      // et le téléphone peut être éteint (la TV tire le flux directement). On
+      // NE renvoie PLUS jamais le .ts brut au Default Media Receiver
+      // (structurellement indécodable → « format non supporté »).
+      //
+      // Le proxy Worker suit lui-même les redirects (≤3), donc on lui passe
+      // simplement l'URL upstream nettoyée (sans pré-vol réseau côté téléphone).
+      // On PRÉFÈRE l'URL d'origine (avant redirection) : le token IPTV résolu
+      // par le téléphone peut être périmé quand la TV le fetch (cf.
+      // originalUpstreamUrl). Le Worker re-suit la redirection au play-time.
+      // Nettoyage minimal : trim + strip des « ? » orphelins de fin (fréquents
+      // sur les URLs Xtream .ts) qui perturbent certains parseurs.
+      final String signSource =
+          (originalUpstreamUrl != null && originalUpstreamUrl!.trim().isNotEmpty)
+              ? originalUpstreamUrl!
+              : streamUrl;
+      String upstream = signSource.trim();
+      while (upstream.endsWith('?')) {
+        upstream = upstream.substring(0, upstream.length - 1);
+      }
+      String? proxied =
+          kCastUseCustomReceiver ? await _signedCastProxyUrl(upstream) : null;
+
+      // NOUVEAU (CAST_HANDOFF §6.1) : ne PAS faire confiance aveuglément au
+      // proxy — le Worker peut être BLOQUÉ par le fournisseur IPTV (IP
+      // datacenter refusée : upstream=456 relevé sur le terrain 2026-07-06).
+      // Dans ce cas mpegts.js recevrait un 502 en boucle → écran noir. On
+      // vérifie que /cast-proxy DÉLIVRE vraiment avant de l'envoyer à la TV.
+      if (proxied != null && !await _proxyDelivers(proxied)) {
+        StructuredLogger.instance.warn(
+          domain: 'cast',
+          event: 'proxy.blocked_fallback_relay',
+          ctx: const <String, Object?>{},
+        );
+        proxied = null; // → bascule sur le relais HLS du téléphone
+      }
+
+      if (proxied != null) {
+        urlToCast = proxied;
+        mime = 'video/mp2t';
+        castPath = 'cast_proxy';
+      } else {
+        // REPLI — RELAIS HLS DU TÉLÉPHONE. Le téléphone tire le flux (client
+        // natif, ni CORS ni contenu mixte) et sert une playlist HLS que le
+        // récepteur lit. registerRelay renvoie null si la TV n'est pas
+        // joignable depuis l'IP LAN du téléphone (réseaux séparés / isolation
+        // AP) → on remonte alors une erreur claire.
+        final DlnaProfile profile =
+            DlnaProfiles.select(url: streamUrl, finalMime: null);
+        final String? hlsRelay = await LocalCastServer.instance.registerRelay(
+          upstreamUrl: streamUrl,
+          profile: profile,
+          receiverHost: device.host,
+          wrapInHls: true,
+        );
+        if (hlsRelay != null) {
+          urlToCast = hlsRelay;
+          mime = 'application/x-mpegURL';
+          castPath = 'local_hls_relay';
+        } else {
+          throw Exception(
+            'Le cast vers cette TV est indisponible (réseau incompatible). '
+            'Réessaie sur le même Wi-Fi, ou utilise une TV DLNA (LG/Samsung).',
+          );
+        }
+      }
+    }
+
+    // 3) RECEIVER ADAPTÉ AU CHEMIN (CAST_HANDOFF §6.2). Le natif change
+    //    l'App ID de session à la volée (CastContext.setReceiverApplicationId) ;
+    //    si une session tournait sur l'AUTRE receiver, il la termine et
+    //    re-sélectionne la même TV tout seul (résultat 'switching').
+    final String desiredReceiver = receiverAppIdForCastPath(castPath);
+    final String switchOutcome = kCastUseCustomReceiver
+        ? await api.setReceiverApplicationId(desiredReceiver)
+        : 'skipped';
+    StructuredLogger.instance.info(
+      domain: 'cast',
+      event: 'google.receiver_select',
+      ctx: <String, Object?>{
+        'path': castPath,
+        'appId': desiredReceiver,
+        'outcome': switchOutcome,
+      },
+    );
+
+    // 4) SESSION sur le bon receiver.
+    bool hasSession;
+    if (switchOutcome == 'switching') {
+      // L'ancienne session (autre receiver) se ferme ; le natif ré-ouvre la
+      // même TV sur le nouveau receiver. On attend cette reconnexion AVANT
+      // de déranger l'utilisateur avec le picker.
+      hasSession = await _waitForSessionOn(
+        api,
+        desiredReceiver,
+        const Duration(seconds: 12),
+      );
+    } else {
+      hasSession = await api.hasActiveSession();
+    }
+
+    // Pas de session → on demande au SDK d'ouvrir SON dialog natif.
+    // L'utilisateur sélectionne sa TV. Le SDK gère la négociation,
+    // le pairing, etc. — c'est exactement le flow Netflix / YouTube.
+    if (!hasSession) {
+      await api.showRoutePicker();
+      // Le dialog est asynchrone côté utilisateur (il doit tap sa TV).
+      // On poll hasActiveSession pendant 30s max — au-delà on suppose
+      // que l'utilisateur a annulé.
+      final DateTime deadline =
+          DateTime.now().add(const Duration(seconds: 30));
+      while (DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        if (await api.hasActiveSession()) {
+          hasSession = true;
+          break;
+        }
+      }
+      if (!hasSession) {
+        throw Exception('Aucune TV sélectionnée.');
+      }
     }
 
     // DIAGNOSTIC (brief §4.3) — tracer EXACTEMENT l'URL et le MIME
@@ -194,31 +340,15 @@ class GoogleCastTransport implements CastTransport {
       },
     );
 
-    // GARDE-FOU CHROMECAST (mode dégradé) : le chemin remux dépend du VPS
-    // cast.7themotion.com. S'il ne répond pas, le Default Media Receiver
-    // recevrait une URL morte → écran noir avec le titre affiché. On
-    // détecte l'indisponibilité (HEAD court) et on remonte une erreur
-    // claire AVANT de tenter le load, plutôt que d'infliger l'écran noir.
-    if (castPath == 'remux_hls') {
-      final bool remuxUp = await _remuxReachable();
-      if (!remuxUp) {
-        StructuredLogger.instance.warn(
-          domain: 'cast',
-          event: 'google.remux_unavailable',
-          ctx: <String, Object?>{'base': _kCastRemuxBase},
-        );
-        throw Exception(
-          'Le cast vers Chromecast est temporairement indisponible. '
-          'Utilise une TV compatible DLNA (LG/Samsung) ou réessaie plus tard.',
-        );
-      }
-    }
+    lastCastPath = castPath;
+    lastCastUrlRedacted = _redactCastToken(redactStreamUrl(urlToCast));
 
     final bool loaded = await api.loadMedia(
       streamUrl: urlToCast,
       title: title,
       mime: mime,
       imageUrl: imageUrl,
+      debug: kCastDebugOverlay,
     );
     if (!loaded) {
       throw Exception('La TV a refusé le flux.');
@@ -261,11 +391,91 @@ class GoogleCastTransport implements CastTransport {
         }
       }
     });
+    // Le SDK natif remonte AUSSI le verdict du LOAD (RemoteMediaClient.load) :
+    // `load_failed(code)` = la commande LOAD elle-même a été rejetée (URL
+    // injoignable depuis la TV, MediaInfo invalide, récepteur custom KO…),
+    // DISTINCT d'un passage PLAYING→IDLE:error (codec/conteneur non décodable).
+    // On inclut le code natif pour trancher entre « LOAD échoué » et « rejet
+    // codec » à la simple lecture du message d'erreur.
+    final StreamSubscription<CastNativeSessionEvent> evSub =
+        api.sessionEventStream.listen((CastNativeSessionEvent e) {
+      if (e.kind == 'load_failed' && !done.isCompleted) {
+        done.completeError(Exception(
+          'La TV a refusé la commande de lecture (LOAD échoué, code '
+          '${e.errorCode}) — flux injoignable depuis la TV ou récepteur '
+          'indisponible, distinct d\'un rejet codec.',
+        ));
+      }
+    });
     try {
       await done.future;
     } finally {
       timer.cancel();
       await sub.cancel();
+      await evSub.cancel();
+    }
+  }
+
+  /// Receiver à charger sur la TV selon le chemin de routage (§6.2) :
+  /// le relais HLS du téléphone est en HTTP → la page receiver custom
+  /// (HTTPS, fetch mpegts.js) ne peut PAS le lire (mixed content) → il
+  /// passe par le Default Media Receiver qui lit le HLS nativement.
+  /// Tous les autres chemins gardent le receiver custom (prioritaire :
+  /// TS décodé sur la TV, téléphone éteint possible).
+  @visibleForTesting
+  static String receiverAppIdForCastPath(String castPath) =>
+      castPath == 'local_hls_relay'
+          ? kCastDefaultReceiverAppId
+          : kCastCustomReceiverAppId;
+
+  /// Attend qu'une session soit CONNECTÉE sur le receiver [appId] après une
+  /// bascule ('switching') : l'ancienne session peut encore apparaître
+  /// active pendant sa fermeture, d'où la double condition session + App ID.
+  /// `null` (métadonnées pas encore remontées) est toléré : l'App ID du
+  /// contexte vient d'être changé, toute NOUVELLE session est la bonne.
+  static Future<bool> _waitForSessionOn(
+    GoogleCastApi api,
+    String appId,
+    Duration timeout,
+  ) async {
+    final DateTime deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      if (await api.hasActiveSession()) {
+        final String? current = await api.currentReceiverApplicationId();
+        if (current == null || current == appId) return true;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+    return false;
+  }
+
+  /// Vérifie que /cast-proxy DÉLIVRE réellement le flux (le Worker peut être
+  /// bloqué par le fournisseur IPTV — cf. docs/CAST_HANDOFF.md §3). On lit le
+  /// status puis on coupe : on NE télécharge PAS le flux. `true` = 2xx.
+  static Future<bool> _proxyDelivers(String proxyUrl) async {
+    final HttpClient client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 6);
+    try {
+      final HttpClientRequest req = await client
+          .getUrl(Uri.parse(proxyUrl))
+          .timeout(const Duration(seconds: 6));
+      req.headers.add(HttpHeaders.acceptHeader, '*/*');
+      final HttpClientResponse resp =
+          await req.close().timeout(const Duration(seconds: 8));
+      final int status = resp.statusCode;
+      // X-Upstream-Status = le VRAI code du fournisseur vu par le Worker
+      // (456/403 = IP datacenter refusée) — précieux dans les diagnostics.
+      final String upstream = resp.headers.value('x-upstream-status') ?? '';
+      StructuredLogger.instance.info(
+        domain: 'cast',
+        event: 'proxy.verify',
+        ctx: <String, Object?>{'status': status, 'upstream': upstream},
+      );
+      return status >= 200 && status < 300;
+    } on Exception {
+      return false; // injoignable → on considère le proxy KO
+    } finally {
+      client.close(force: true); // coupe le GET sans vider le flux
     }
   }
 
@@ -376,28 +586,51 @@ class GoogleCastTransport implements CastTransport {
     return 'video/mp2t';
   }
 
-  /// Teste si le VPS de remux ([_kCastRemuxBase]) répond, avec un timeout
-  /// court (3 s). On fait un GET sur la racine (le HEAD n'est pas garanti
-  /// supporté) et on l'annule dès la réponse — on veut juste savoir si le
-  /// serveur est joignable, pas lire un corps. Tolérant : n'importe quel
-  /// code HTTP = serveur debout ; seules une exception réseau / un timeout
-  /// = injoignable. Best-effort, ne jette jamais.
-  Future<bool> _remuxReachable() async {
+  /// Demande au Worker une URL `/cast-proxy` SIGNÉE pour [upstreamUrl] : le
+  /// secret HMAC reste côté serveur (jamais dans l'app). Renvoie l'URL HTTPS de
+  /// même origine que le récepteur à lui envoyer, ou `null` si la signature
+  /// échoue (→ repli relais HLS du téléphone). Best-effort, ne jette jamais.
+  /// DIAGNOSTIC RÉSEAU — expose la MÊME fonction que [playStream] utilise pour
+  /// décider proxy vs relais (check 6 du diagnostic réseau). Retourne l'URL
+  /// /cast-proxy signée, ou null si /cast-sign n'a pas répondu {ok:true} → dans
+  /// ce cas playStream retombe sur le relais HLS. Ne jette jamais.
+  static Future<String?> diagnosticSignedCastProxyUrl(String upstreamUrl) =>
+      _signedCastProxyUrl(upstreamUrl);
+
+  static Future<String?> _signedCastProxyUrl(String upstreamUrl) async {
     final HttpClient client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 3);
+      ..connectionTimeout = const Duration(seconds: 6);
     try {
-      final Uri base = Uri.parse(_kCastRemuxBase);
+      final Uri uri = Uri.parse('$_kCastProxyBase/cast-sign')
+          .replace(queryParameters: <String, String>{'u': upstreamUrl});
       final HttpClientRequest req =
-          await client.getUrl(base).timeout(const Duration(seconds: 3));
+          await client.getUrl(uri).timeout(const Duration(seconds: 6));
+      req.headers.add(HttpHeaders.acceptHeader, 'application/json');
       final HttpClientResponse resp =
-          await req.close().timeout(const Duration(seconds: 3));
-      // N'importe quelle réponse HTTP prouve que le serveur est debout.
-      await resp.listen(null, cancelOnError: true).cancel();
-      return true;
-    } on Exception {
-      return false;
+          await req.close().timeout(const Duration(seconds: 6));
+      if (resp.statusCode != 200) {
+        await resp.drain<void>();
+        return null;
+      }
+      final String body = await resp.transform(utf8.decoder).join();
+      final Object? decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic> &&
+          decoded['ok'] == true &&
+          decoded['url'] is String) {
+        return decoded['url'] as String;
+      }
+      return null;
+    } on Exception catch (e) {
+      if (kDebugMode) debugPrint('[Cast] cast-sign KO: $e');
+      return null;
     } finally {
       client.close(force: true);
     }
+  }
+
+  /// Masque le parametre `t=` (token signe du proxy) dans une URL deja
+  /// passee par redactStreamUrl (qui ne masque que password/token/pass/pwd).
+  static String _redactCastToken(String url) {
+    return url.replaceAll(RegExp(r'([?&]t=)[^&]*'), r'$1***');
   }
 }

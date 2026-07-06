@@ -62,6 +62,17 @@ import { runMigration } from './migrate_kv_to_d1.js';
 // hebergee a /cast-receiver, URL a coller dans la Google Cast SDK
 // Developer Console pour obtenir un Receiver Application ID.
 import { castReceiverHtml } from './cast_receiver.js';
+// Récepteur « Caster sur un écran » (cf. cloudflare/screen_receiver.js) —
+// page générique servie à /e/<CODE> que n'importe quel navigateur de TV
+// ouvre. Voir handleScreen() pour l'appairage + la signalisation.
+import { screenReceiverHtml, screenPairHtml } from './screen_receiver.js';
+// Page d'accueil officielle (site VIP) servie sur la racine /. Source éditable :
+// marketing/website/index.html → régénérer cloudflare/landing.js après modif.
+import { landingHtml } from './landing.js';
+// « Mon espace » : page client (façon IBO Player Pro) pour gérer sa playlist.
+import { portalHtml } from './portal.js';
+// PWA : manifeste, service worker et icônes (le site s'installe comme une app).
+import { PWA_MANIFEST, PWA_SW, PWA_ICON_192, PWA_ICON_512, PWA_APPLE_ICON, OG_IMAGE } from './pwa_assets.js';
 
 // ----- Constantes APK / téléchargement -----
 //
@@ -617,160 +628,7 @@ async function updateDeviceInfo(env, mac, body) {
   }
 }
 
-// Landing page HTML servie sur la racine. Style Maison Noir :
-// fond noir, ember rouge, typo sobre. Optimisée pour téléphones
-// ET pour les navigateurs intégrés des Smart TV (pas de JS).
-const LANDING_HTML = `<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>BLACK7 ROYAL — Téléchargement</title>
-  <meta name="description" content="Lecteur IPTV premium BLACK7 ROYAL. Téléchargez l'APK Android/Fire TV/Android TV.">
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: #0A0A0C;
-      color: #F2F2F4;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-    }
-    .card {
-      max-width: 520px;
-      width: 100%;
-      padding: 32px;
-      border-radius: 18px;
-      background: linear-gradient(180deg, #16161A 0%, #0E0E12 100%);
-      border: 1px solid rgba(214, 174, 96, 0.25);
-      box-shadow: 0 0 40px rgba(214, 174, 96, 0.08);
-    }
-    .brand {
-      display: flex;
-      align-items: baseline;
-      gap: 10px;
-      justify-content: center;
-      margin-bottom: 8px;
-    }
-    .brand h1 {
-      font-size: 32px;
-      letter-spacing: 4px;
-      font-weight: 700;
-      color: #F2F2F4;
-    }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      background: #3897F0;
-      color: white;
-      font-size: 14px;
-      font-weight: 900;
-    }
-    .tagline {
-      text-align: center;
-      color: #8E8E94;
-      font-size: 12px;
-      letter-spacing: 2px;
-      margin-bottom: 32px;
-    }
-    .dl {
-      display: block;
-      width: 100%;
-      padding: 18px;
-      border-radius: 12px;
-      background: #D6AE60;
-      color: #0A0A0C;
-      text-align: center;
-      font-size: 18px;
-      font-weight: 700;
-      text-decoration: none;
-      letter-spacing: 0.5px;
-      transition: transform 0.15s;
-    }
-    .dl:hover { transform: translateY(-1px); }
-    .dl small {
-      display: block;
-      font-size: 11px;
-      font-weight: 500;
-      opacity: 0.8;
-      margin-top: 4px;
-      letter-spacing: 1px;
-    }
-    .steps {
-      margin-top: 28px;
-      padding-top: 20px;
-      border-top: 1px solid rgba(214, 174, 96, 0.18);
-    }
-    .steps h2 {
-      font-size: 13px;
-      letter-spacing: 1.5px;
-      color: #D6AE60;
-      margin-bottom: 12px;
-      text-transform: uppercase;
-    }
-    .steps ol {
-      padding-left: 22px;
-      color: #C4C4CA;
-      font-size: 13px;
-      line-height: 1.7;
-    }
-    .steps code {
-      background: #1F1F25;
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 12px;
-      color: #D6AE60;
-    }
-    .legal {
-      margin-top: 24px;
-      padding-top: 16px;
-      border-top: 1px solid rgba(214, 174, 96, 0.12);
-      font-size: 10.5px;
-      color: #6E6E74;
-      line-height: 1.5;
-      text-align: center;
-    }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="brand">
-      <h1>BLACK7 ROYAL</h1>
-      <span class="badge">&check;</span>
-    </div>
-    <p class="tagline">THE FEW &middot; NOT FOR EVERYONE</p>
-
-    <a class="dl" href="/dl">
-      Télécharger l'APK
-      <small>Android &middot; Fire TV &middot; Android TV</small>
-    </a>
-
-    <div class="steps">
-      <h2>Installation via Downloader</h2>
-      <ol>
-        <li>Lance <strong>Downloader</strong> sur ta Fire TV / Android TV</li>
-        <li>Tape l'URL : <code>__HOST__/dl</code>
-            <br>ou un code court : <code>__HOST__/1</code>, <code>__HOST__/666666</code></li>
-        <li>Bouton <strong>GO</strong> &rarr; téléchargement automatique</li>
-        <li>Bouton <strong>Install</strong> quand le téléchargement finit</li>
-      </ol>
-    </div>
-
-    <p class="legal">
-      BLACK7 ROYAL ne vend, ne distribue et ne fournit aucun flux IPTV,
-      aucune chaîne ni aucun contenu. Apportez votre propre
-      abonnement auprès du fournisseur de votre choix.
-    </p>
-  </div>
-</body>
-</html>`;
+// Landing page : voir cloudflare/landing.js (landingHtml), servie sur la racine /.
 
 // ============================================================
 //  Panel admin web — page HTML autonome servie à /admin/panel
@@ -1460,6 +1318,241 @@ const TEXT_HEADERS = {
 
 // Regex MAC virtuelle BLACK7 ROYAL : MK:XX:XX:XX:XX:XX en hex.
 const MAC_RX = /^MK(?::[0-9A-F]{2}){5}$/i;
+
+// Décode une MAC reçue dans le PATH : un client web peut encoder les « : » en
+// %3A (encodeURIComponent). `url.pathname` n'étant pas décodé, on le fait ici,
+// sinon MAC_RX rejette « MK%3A24%3A… » (invalid mac). Tolérant si déjà en clair.
+function decodeMacPath(mac) {
+  try { return decodeURIComponent(String(mac || '')); } catch (_) { return String(mac || ''); }
+}
+
+// =========================================================
+//  Proxy Cast (/cast-sign + /cast-proxy)
+// =========================================================
+//  Le récepteur Cast custom (mpegts.js, /cast-receiver) tourne en HTTPS ; il ne
+//  peut PAS fetch un flux IPTV .ts en HTTP (contenu mixte) ni sans en-têtes CORS.
+//  /cast-proxy sert d'intermédiaire : MÊME origine que le récepteur, en HTTPS,
+//  CORS ouvert, et re-typé video/mp2t → mpegts.js le lit. On protège l'endpoint
+//  par un token HMAC signé par /cast-sign (secret Worker CAST_PROXY_SECRET, JAMAIS
+//  embarqué dans l'app) + un anti-SSRF (refus des IP privées / hôtes locaux).
+
+// UA « lecteur connu » : des panels Xtream ne servent le vrai flux qu'aux
+// signatures de lecteurs répandus.
+const CAST_PROXY_UA = 'VLC/3.0.20 LibVLC/3.0.20';
+
+// HMAC-SHA256(secret, message) → hex. Web Crypto (dispo dans le runtime Worker).
+async function hmacHex(secret, message) {
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// (La comparaison à temps constant `safeEqual` est déjà définie plus bas dans
+//  ce fichier — réutilisée ici pour vérifier le token du proxy Cast.)
+
+// Anti-SSRF : n'autorise que http(s) vers un hôte PUBLIC. Refuse localhost, les
+// domaines *.local et les IP littérales privées / réservées (RFC1918, loopback,
+// link-local, CGNAT, IPv6 ULA/loopback/link-local). Un hôte en nom de domaine
+// est laissé passer (le runtime Worker ne route de toute façon pas vers les
+// réseaux privés), mais une IP littérale privée est bloquée nettement.
+function isSafeUpstream(rawUrl) {
+  let u;
+  try { u = new URL(rawUrl); } catch (_) { return false; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+  let host = u.hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal')) return false;
+  // IPv6 littéral entre crochets → new URL garde les crochets dans hostname.
+  if (host.startsWith('[')) host = host.slice(1, -1);
+  // IPv4 littérale ?
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const o = m.slice(1).map((n) => parseInt(n, 10));
+    if (o.some((n) => n > 255)) return false;
+    const [a, b] = o;
+    if (a === 10) return false;                       // 10.0.0.0/8
+    if (a === 127) return false;                      // loopback
+    if (a === 0) return false;                        // 0.0.0.0/8
+    if (a === 169 && b === 254) return false;         // link-local
+    if (a === 172 && b >= 16 && b <= 31) return false; // 172.16.0.0/12
+    if (a === 192 && b === 168) return false;         // 192.168.0.0/16
+    if (a === 100 && b >= 64 && b <= 127) return false; // CGNAT 100.64.0.0/10
+    if (a >= 224) return false;                       // multicast / réservé
+    return true;
+  }
+  // IPv6 littérale : bloque loopback (::1), ULA (fc00::/7), link-local (fe80::/10),
+  // non-spécifié (::). Laisse passer le reste (adresses globales).
+  if (host.includes(':')) {
+    if (host === '::1' || host === '::') return false;
+    if (host.startsWith('fc') || host.startsWith('fd')) return false;
+    if (host.startsWith('fe8') || host.startsWith('fe9') ||
+        host.startsWith('fea') || host.startsWith('feb')) return false;
+    return true;
+  }
+  return true; // nom de domaine
+}
+
+// GET /vendor/mpegts.js — sert mpegts.js en MÊME ORIGINE que le récepteur Cast.
+// Pourquoi : la page /cast-receiver chargeait mpegts.js depuis cdn.jsdelivr.net ;
+// si le CDN est lent/bloqué sur le réseau de la TV, TOUT le chemin MPEG-TS meurt.
+// Ici le Worker tire la lib une fois (jsdelivr, repli unpkg), la met en cache
+// edge (caches.default) et la sert avec un cache long. Version ÉPINGLÉE — ne pas
+// passer en "latest" (le récepteur doit rester reproductible).
+const MPEGTS_JS_VERSION = '1.7.3';
+const MPEGTS_JS_SOURCES = [
+  `https://cdn.jsdelivr.net/npm/mpegts.js@${MPEGTS_JS_VERSION}/dist/mpegts.js`,
+  `https://unpkg.com/mpegts.js@${MPEGTS_JS_VERSION}/dist/mpegts.js`,
+];
+
+async function handleVendorMpegts(ctx) {
+  const cache = caches.default;
+  // Clé de cache synthétique versionnée : un bump de version invalide
+  // naturellement l'ancienne entrée.
+  const cacheKey = new Request(
+    'https://vendor-cache.internal/mpegts-' + MPEGTS_JS_VERSION + '.js',
+  );
+  const hit = await cache.match(cacheKey);
+  if (hit) return hit;
+  for (const src of MPEGTS_JS_SOURCES) {
+    try {
+      const upstream = await fetch(src);
+      if (!upstream.ok) continue;
+      const body = await upstream.arrayBuffer();
+      const resp = new Response(body, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/javascript; charset=utf-8',
+          // 7 jours : la version est épinglée, le contenu est immuable.
+          'Cache-Control': 'public, max-age=604800, immutable',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+      try { ctx.waitUntil(cache.put(cacheKey, resp.clone())); } catch (_) {}
+      return resp;
+    } catch (_) { /* CDN suivant */ }
+  }
+  // Tous les CDN KO : 502 SANS cache — le <script> de repli de la page
+  // receiver (jsdelivr direct) prend alors le relais côté TV.
+  return new Response('mpegts.js unavailable', {
+    status: 502,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+
+// GET /cast-sign?u=<url> — renvoie l'URL /cast-proxy signée (HMAC + expiration).
+async function handleCastSign(env, url) {
+  const secret = env.CAST_PROXY_SECRET;
+  if (!secret) return json({ ok: false, error: 'proxy_unconfigured' }, 503);
+  const u = url.searchParams.get('u') || '';
+  if (!u || !isSafeUpstream(u)) return badRequest('invalid or private upstream url');
+  const exp = Math.floor(Date.now() / 1000) + 12 * 3600; // 12 h
+  const sig = (await hmacHex(secret, u + '\n' + exp)).slice(0, 32);
+  const origin = url.origin || 'https://app.7themotion.com';
+  const proxyUrl = origin + '/cast-proxy?u=' + encodeURIComponent(u) +
+    '&e=' + exp + '&t=' + sig;
+  return json({ ok: true, url: proxyUrl, expires_at: exp });
+}
+
+// GET/HEAD /cast-proxy?u=&e=&t= — vérifie le token puis STREAME l'upstream.
+// Reponse d'erreur du proxy Cast AVEC en-tetes CORS : sans ACAO, le
+// receiver (mpegts.js/fetch cross-origin) ne peut PAS lire le status de
+// l'erreur → echec muet, debug impossible. On expose donc l'erreur.
+function castProxyError(msg, status, upstreamStatus) {
+  const headers = {
+    'Content-Type': 'text/plain; charset=UTF-8',
+    'Access-Control-Allow-Origin': '*',
+    // L'overlay debug du receiver (fetch cross-origin) doit pouvoir LIRE
+    // cet en-tête : sans Expose-Headers, X-Upstream-Status est invisible.
+    'Access-Control-Expose-Headers': 'X-Upstream-Status',
+    'Cache-Control': 'no-store',
+  };
+  if (upstreamStatus != null) headers['X-Upstream-Status'] = String(upstreamStatus);
+  return new Response(msg, { status, headers });
+}
+
+async function handleCastProxy(env, url, method) {
+  const secret = env.CAST_PROXY_SECRET;
+  if (!secret) return castProxyError('proxy unconfigured', 503);
+  const u = url.searchParams.get('u') || '';
+  const e = url.searchParams.get('e') || '';
+  const t = url.searchParams.get('t') || '';
+  if (!u || !e || !t) return castProxyError('missing params', 400);
+
+  // Expiration (borne aussi le futur pour éviter un token « éternel »).
+  const exp = parseInt(e, 10);
+  const now = Math.floor(Date.now() / 1000);
+  if (!Number.isFinite(exp) || exp < now || exp > now + 24 * 3600) {
+    return castProxyError('token expired', 403);
+  }
+  // Token HMAC.
+  const expected = (await hmacHex(secret, u + '\n' + e)).slice(0, 32);
+  if (!safeEqual(t, expected)) return castProxyError('bad token', 403);
+  // Anti-SSRF (revalidé à chaque appel, indépendamment de la signature).
+  if (!isSafeUpstream(u)) return castProxyError('forbidden upstream', 403);
+
+  // Suivi MANUEL des redirects (≤3), avec re-validation anti-SSRF de chaque saut.
+  //
+  // DIAGNOSTIC (2026-07-06) : on distingue désormais 3 échecs différents,
+  // parce que « upstream error 502 » générique ne disait pas POURQUOI la TV
+  // n'avait pas d'image. Les 3 causes typiques quand le TÉLÉPHONE lit le flux
+  // mais que le WORKER (IP datacenter Cloudflare) échoue :
+  //   • status 4xx/5xx renvoyé par le fournisseur  → il RÉPOND mais REFUSE
+  //     (403/456 = IP datacenter blacklistée ou limite de connexions ;
+  //      404 = token de redirection périmé).
+  //   • fetch qui JETTE (connexion refusée / reset) → le fournisseur DROP
+  //     carrément la connexion depuis l'IP Cloudflare.
+  // On remonte le vrai status (corps + en-tête X-Upstream-Status) pour que
+  // l'overlay debug du receiver et le diagnostic réseau le montrent.
+  let target = u;
+  let resp = null;
+  let threw = null;
+  for (let i = 0; i <= 3; i++) {
+    try {
+      resp = await fetch(target, {
+        method: method === 'HEAD' ? 'HEAD' : 'GET',
+        redirect: 'manual',
+        headers: { 'User-Agent': CAST_PROXY_UA, Accept: '*/*' },
+      });
+    } catch (e) {
+      threw = e;
+      resp = null;
+      break;
+    }
+    if (resp.status >= 300 && resp.status < 400) {
+      const loc = resp.headers.get('location');
+      if (!loc) break;
+      let next;
+      try { next = new URL(loc, target).toString(); } catch (_) { break; }
+      if (!isSafeUpstream(next)) return castProxyError('forbidden redirect', 403);
+      target = next;
+      continue;
+    }
+    break;
+  }
+  if (!resp) {
+    // Le fournisseur a coupé la connexion depuis l'IP Cloudflare (blocage
+    // datacenter le plus souvent). Message explicite pour le diagnostic.
+    const why = (threw && threw.message) ? String(threw.message).slice(0, 80) : 'no response';
+    return castProxyError('upstream unreachable from proxy: ' + why, 502, 0);
+  }
+  if (resp.status >= 400) {
+    // Le fournisseur RÉPOND mais refuse : on renvoie SON status pour lever
+    // l'ambiguïté (403/456 = blocage IP/connexions, 404 = token périmé).
+    return castProxyError('upstream status=' + resp.status, 502, resp.status);
+  }
+
+  const headers = {
+    'Content-Type': 'video/mp2t',
+    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'no-store',
+  };
+  // HEAD : pas de corps ; GET : STREAM pass-through (resp.body est un
+  // ReadableStream → aucune mise en tampon complète côté Worker).
+  if (method === 'HEAD') return new Response(null, { status: 200, headers });
+  return new Response(resp.body, { status: 200, headers });
+}
 
 // ----- Helpers réponse -----
 
@@ -3184,6 +3277,254 @@ async function handlePublicDeviceSource(env, mac) {
   return jsonPrivate({ mac: MAC, source: null });
 }
 
+// /api/self-source/:mac — SELF-SERVICE « Mon espace » (façon IBO Player Pro).
+//  Le client gère LUI-MÊME PLUSIEURS playlists (M3U ou Xtream) sur SA propre MAC
+//  depuis /mon-espace : les LIRE (GET), en AJOUTER / MODIFIER (POST), en
+//  SUPPRIMER (DELETE). L'app lit ensuite /api/device-source/:mac et charge
+//  TOUTES les sources (elle boucle sur le tableau `sources`).
+//
+//  MODÈLE MULTI-LISTES : une MAC = un tableau `sources_json` d'items. Chaque item
+//  porte une `origin` : 'self' (posé par le client, MODIFIABLE) ou 'panel'
+//  (assigné par TON panel = client payant, VERROUILLÉ). Un item sans origin est
+//  traité comme 'panel' (défaut SÛR) — SAUF migration : si l'ancienne ligne
+//  entière était marquée origin='self' (v1 mono-liste), ses items héritent
+//  'self' (on ne casse pas le contrôle d'un client déjà passé par /mon-espace).
+//
+//  SÉCURITÉ :
+//   1. VERROU PAYANTS : les items 'panel' ne sont JAMAIS modifiés/supprimés ici.
+//      Le client peut TOUJOURS AJOUTER les siens à côté (« ça avale toujours »).
+//   2. Le mot de passe Xtream n'est JAMAIS relu (GET ne le renvoie pas).
+//   3. Plafond MAX_SELF_SOURCES items 'self' (anti-abus). Rate-limité (bucket
+//      'dev'). La route GET /api/device-source/:mac (lue par l'app) reste
+//      100 % INCHANGÉE.
+const MAX_SELF_SOURCES = 20;
+
+// Crée la table si besoin + garantit la colonne `origin` (migration idempotente).
+async function ensureDeviceSourcesTable(env) {
+  try {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS device_sources (
+         mac TEXT PRIMARY KEY, type TEXT NOT NULL, label TEXT, server_url TEXT,
+         username TEXT, password TEXT, m3u_url TEXT, epg_url TEXT,
+         sources_json TEXT, updated_at INTEGER NOT NULL)`,
+    ).run();
+  } catch (_) { /* déjà créée par le panel */ }
+  try { await env.DB.prepare('ALTER TABLE device_sources ADD COLUMN origin TEXT').run(); } catch (_) { /* déjà là */ }
+}
+
+// Lit la liste d'items d'une MAC, NORMALISÉE : chaque item a une `origin`
+// ('self'|'panel') et, pour les 'self', un `id` stable. Renvoie aussi si une
+// écriture est nécessaire pour PERSISTER des ids fraîchement attribués.
+async function readDeviceSourceItems(env, MAC) {
+  let row;
+  try {
+    row = await env.DB.prepare(
+      `SELECT type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin
+         FROM device_sources WHERE mac = ?`,
+    ).bind(MAC).first();
+  } catch (_) { row = null; }
+  if (!row) return { items: [], needsPersist: false };
+
+  let items = [];
+  if (row.sources_json) {
+    try { items = JSON.parse(row.sources_json) || []; } catch (_) { items = []; }
+  }
+  if (!Array.isArray(items) || !items.length) {
+    // Repli ligne « simple » historique → 1 item depuis les colonnes plates.
+    items = [{
+      type: row.type, label: row.label, server_url: row.server_url,
+      username: row.username, password: row.password, m3u_url: row.m3u_url, epg_url: row.epg_url,
+    }];
+  }
+  // Migration douce : item sans origin → hérite de l'origin LIGNE si elle vaut
+  // 'self' (client v1 mono-liste), sinon 'panel' (défaut sûr, protège payants).
+  const rowSelf = String(row.origin || '') === 'self';
+  let needsPersist = false;
+  items = items.map((s) => {
+    const it = { ...s };
+    if (it.origin !== 'self' && it.origin !== 'panel') {
+      it.origin = rowSelf ? 'self' : 'panel';
+      needsPersist = true;
+    }
+    if (it.origin === 'self' && !it.id) { it.id = crypto.randomUUID(); needsPersist = true; }
+    return it;
+  });
+  return { items, needsPersist };
+}
+
+// Écrit la liste complète : colonnes plates = items[0] (compat app/panel), plus
+// `sources_json` (tableau entier) + `origin` ligne (= 'self' si TOUT est self).
+async function writeDeviceSourceItems(env, MAC, items) {
+  if (!items.length) {
+    await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(MAC).run();
+    return;
+  }
+  const first = items[0];
+  const rowOrigin = items.every((s) => s.origin === 'self') ? 'self' : 'panel';
+  const jsonStr = JSON.stringify(items);
+  await env.DB.prepare(
+    `INSERT INTO device_sources
+       (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(mac) DO UPDATE SET
+       type=excluded.type, label=excluded.label, server_url=excluded.server_url,
+       username=excluded.username, password=excluded.password, m3u_url=excluded.m3u_url,
+       epg_url=excluded.epg_url, sources_json=excluded.sources_json,
+       origin=excluded.origin, updated_at=excluded.updated_at`,
+  ).bind(
+    MAC, first.type, first.label || null, first.server_url || null, first.username || null,
+    first.password || null, first.m3u_url || null, first.epg_url || null, jsonStr, rowOrigin, Date.now(),
+  ).run();
+}
+
+// Vue publique d'un item : SANS mot de passe, avec l'info de verrouillage.
+function publicItemView(it, idx) {
+  const locked = it.origin !== 'self';
+  return {
+    id: it.id || (locked ? ('panel-' + idx) : null),
+    origin: it.origin,
+    locked,
+    type: it.type || 'm3u',
+    label: it.label || 'Ma playlist',
+    server_url: it.server_url || null,
+    username: it.username || null,
+    m3u_url: it.m3u_url || null,
+    epg_url: it.epg_url || null,
+    has_password: !!it.password,
+  };
+}
+
+// Valide + construit un item à partir du corps de requête (POST).
+function buildSourceFromBody(body) {
+  const type = String(body.type || '').trim().toLowerCase();
+  const label = (String(body.label || '').trim() || 'Ma playlist').slice(0, 80);
+  const epgRaw = String(body.epg_url || '').trim();
+  const epg = epgRaw && /^https?:\/\//i.test(epgRaw) ? epgRaw.slice(0, 2048) : null;
+  if (type === 'xtream') {
+    const server = String(body.server_url || '').trim().slice(0, 2048);
+    const user = String(body.username || '').trim().slice(0, 256);
+    const pass = String(body.password || '').trim().slice(0, 256);
+    if (!server || !user || !pass) return { error: 'xtream requires server_url, username, password' };
+    if (!/^https?:\/\//i.test(server)) return { error: 'server_url must start with http(s)://' };
+    return { source: { type: 'xtream', label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg } };
+  }
+  if (type === 'm3u') {
+    const m3u = String(body.m3u_url || '').trim().slice(0, 2048);
+    if (!m3u) return { error: 'm3u requires m3u_url' };
+    if (!/^https?:\/\//i.test(m3u)) return { error: 'm3u_url must start with http(s)://' };
+    return { source: { type: 'm3u', label, server_url: null, username: null, password: null, m3u_url: m3u, epg_url: epg } };
+  }
+  return { error: "type must be 'xtream' or 'm3u'" };
+}
+
+// GET /api/self-source/:mac — liste des playlists de « Mon espace ».
+async function handleSelfSourceGet(env, mac) {
+  if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const MAC = mac.toUpperCase();
+  await ensureDeviceSourcesTable(env);
+  const { items, needsPersist } = await readDeviceSourceItems(env, MAC);
+  // Persiste les ids/origins fraîchement attribués (migration douce, one-shot).
+  if (needsPersist && items.length) {
+    try { await writeDeviceSourceItems(env, MAC, items); } catch (_) { /* best-effort */ }
+  }
+  const view = items.map(publicItemView);
+  const selfCount = items.filter((s) => s.origin === 'self').length;
+  return json({
+    ok: true, mac: MAC,
+    items: view,
+    count: view.length,
+    canAdd: selfCount < MAX_SELF_SOURCES,
+    maxItems: MAX_SELF_SOURCES,
+  });
+}
+
+// POST /api/self-source/:mac — AJOUTE un item 'self' (ou MODIFIE un item 'self'
+// existant si `id` est fourni). Ne touche JAMAIS un item 'panel'. « Avale
+// toujours » : jamais bloqué par la présence d'une source panel.
+async function handleSelfSource(env, mac, request) {
+  if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const MAC = mac.toUpperCase();
+
+  let body;
+  try { body = await request.json(); } catch (_) { return badRequest('invalid json'); }
+
+  const built = buildSourceFromBody(body);
+  if (built.error) return badRequest(built.error);
+  const source = built.source;
+
+  await ensureDeviceSourcesTable(env);
+  const { items } = await readDeviceSourceItems(env, MAC);
+  const editId = body.id ? String(body.id) : null;
+
+  if (editId) {
+    // MODIFICATION : uniquement un item 'self' existant (panel = interdit).
+    const idx = items.findIndex((s) => s.origin === 'self' && s.id === editId);
+    if (idx < 0) {
+      return json({ ok: false, reason: 'not_found', message: "Cette playlist n'existe pas ou est protégée." }, 404);
+    }
+    items[idx] = { ...source, origin: 'self', id: editId };
+  } else {
+    // AJOUT : plafond anti-abus sur les items 'self'.
+    const selfCount = items.filter((s) => s.origin === 'self').length;
+    if (selfCount >= MAX_SELF_SOURCES) {
+      return json({
+        ok: false, reason: 'too_many',
+        message: 'Limite atteinte (' + MAX_SELF_SOURCES + ' playlists). Supprimez-en une pour en ajouter une autre.',
+      }, 409);
+    }
+    items.push({ ...source, origin: 'self', id: crypto.randomUUID() });
+  }
+
+  try {
+    await writeDeviceSourceItems(env, MAC, items);
+  } catch (_) {
+    return json({ ok: false, error: 'db_write_failed' }, 500);
+  }
+  return json({
+    ok: true,
+    message: editId
+      ? 'Playlist mise à jour ! Ouvrez (ou redémarrez) l\'app.'
+      : "Playlist ajoutée ! Ouvrez l'app (ou redémarrez-la) : vos chaînes vont apparaître.",
+  });
+}
+
+// DELETE /api/self-source/:mac?id=<id> — supprime UN item 'self' (jamais panel).
+//  Sans `id` : supprime TOUS les items 'self' (garde les 'panel' intacts).
+async function handleSelfSourceDelete(env, mac, request) {
+  if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const MAC = mac.toUpperCase();
+  await ensureDeviceSourcesTable(env);
+
+  let delId = null;
+  try { delId = new URL(request.url).searchParams.get('id'); } catch (_) { delId = null; }
+
+  const { items } = await readDeviceSourceItems(env, MAC);
+  if (!items.length) return json({ ok: true, message: 'Aucune playlist à supprimer.' });
+
+  let kept;
+  if (delId) {
+    const target = items.find((s) => s.id === delId);
+    if (!target) return json({ ok: false, reason: 'not_found', message: 'Playlist introuvable.' }, 404);
+    if (target.origin !== 'self') {
+      return json({ ok: false, reason: 'locked', message: 'Cette playlist est gérée par votre conseiller.' }, 409);
+    }
+    kept = items.filter((s) => s.id !== delId);
+  } else {
+    // Purge de toutes les 'self', on garde les 'panel'.
+    kept = items.filter((s) => s.origin !== 'self');
+  }
+
+  try {
+    await writeDeviceSourceItems(env, MAC, kept);
+  } catch (_) {
+    return json({ ok: false, error: 'db_write_failed' }, 500);
+  }
+  return json({ ok: true, message: 'Playlist supprimée.' });
+}
+
 // /api/history/:mac — renvoie l'historique de visionnage (ids de chaînes)
 // stocké pour cette MAC (rempli par le heartbeat). L'app le lit au démarrage
 // pour restaurer « Récemment » / « Pour vous » sur une 2e box. Lecture seule,
@@ -3333,21 +3674,22 @@ async function handleDeviceBackup(request, env, mac, method) {
 }
 
 // /api/ai/search — public POST. Traduit une phrase en LANGAGE NATUREL en
-//  un FILTRE de recherche structuré (JSON) via Claude. L'app applique
+//  un FILTRE de recherche structuré (JSON) via Mistral. L'app applique
 //  ensuite ce filtre LOCALEMENT a son catalogue (le catalogue ne quitte
 //  jamais l'appareil → prive + peu couteux).
 //
-//  La cle Anthropic vit en SECRET cote Worker (env.ANTHROPIC_API_KEY) —
+//  La cle Mistral vit en SECRET cote Worker (env.MISTRAL_API_KEY) —
 //  jamais dans l'app. Tant que le secret n'est pas defini, l'endpoint
 //  repond 503 (fonctionnalite dormante, aucun cout).
 //
-//  Modele par defaut : claude-haiku-4-5 (rapide + peu cher, adapte a une
-//  recherche tapee a chaque requete). Surchargeable via env.AI_MODEL.
+//  Modele par defaut : mistral-small-latest (rapide + peu cher, adapte a
+//  une recherche tapee a chaque requete). Surchargeable via env.AI_MODEL.
+//  API OpenAI-compatible : https://api.mistral.ai/v1/chat/completions.
 async function handleAiSearch(request, env) {
   if (request.method !== 'POST') {
     return badRequest('only POST supported on /api/ai/search');
   }
-  const key = env.ANTHROPIC_API_KEY;
+  const key = env.MISTRAL_API_KEY;
   if (!key) {
     return json(
       { error: 'ai_disabled', message: 'Recherche IA non configurée.' },
@@ -3365,69 +3707,69 @@ async function handleAiSearch(request, env) {
   if (!query) return badRequest('query required');
   if (query.length > 300) return badRequest('query too long');
 
-  const model = env.AI_MODEL || 'claude-haiku-4-5';
+  const model = env.AI_MODEL || 'mistral-small-latest';
 
   const system =
     "Tu convertis une requête utilisateur en langage naturel en un FILTRE de " +
     "recherche pour une application de lecteur multimédia (IPTV). Réponds " +
-    "UNIQUEMENT avec le filtre structuré. Champs : keywords (mots-clés " +
-    "simples, en minuscules, sans articles, dans la langue de la requête) ; " +
-    "type ('live' pour chaînes/direct, 'movie' pour films, 'series' pour " +
-    "séries, 'any' si indéterminé) ; genres (ex: sport, football, " +
+    "UNIQUEMENT par un objet JSON valide, sans texte autour, sans bloc de " +
+    "code. Champs obligatoires : keywords (tableau de mots-clés simples, en " +
+    "minuscules, sans articles, dans la langue de la requête) ; type " +
+    "('live' pour chaînes/direct, 'movie' pour films, 'series' pour séries, " +
+    "'any' si indéterminé) ; genres (tableau ; ex: sport, football, " +
     "actualités, enfants, musique, cinéma, documentaire) ; title_contains " +
-    "(un titre précis si l'utilisateur en cite un, sinon vide) ; language " +
-    "(langue si mentionnée, sinon vide). Laisse un champ vide ([] ou '') " +
-    "s'il n'est pas pertinent.";
-
-  const schema = {
-    type: 'object',
-    properties: {
-      keywords: { type: 'array', items: { type: 'string' } },
-      type: { type: 'string', enum: ['live', 'movie', 'series', 'any'] },
-      genres: { type: 'array', items: { type: 'string' } },
-      title_contains: { type: 'string' },
-      language: { type: 'string' },
-    },
-    required: ['keywords', 'type', 'genres', 'title_contains', 'language'],
-    additionalProperties: false,
-  };
+    "(un titre précis si l'utilisateur en cite un, sinon chaîne vide) ; " +
+    "language (langue si mentionnée, sinon chaîne vide). Laisse un champ " +
+    "vide ([] ou '') s'il n'est pas pertinent. Exemple de réponse : " +
+    '{"keywords":["foot","ligue 1"],"type":"live","genres":["sport",' +
+    '"football"],"title_contains":"","language":"fr"}';
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    const resp = await fetch('https://api.mistral.ai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
+        authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({
         model,
         max_tokens: 400,
-        system,
-        messages: [{ role: 'user', content: query }],
-        output_config: { format: { type: 'json_schema', schema } },
+        temperature: 0,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: query },
+        ],
       }),
+      // Time-out dur : une recherche doit rester rapide, et un amont qui pend
+      // ne doit pas bloquer le worker. AbortSignal.timeout est supporté sur
+      // le runtime Workers.
+      signal: AbortSignal.timeout(8000),
     });
     if (!resp.ok) {
-      // On NE renvoie PAS le corps amont au client (peut contenir des détails
-      // internes / la clé en écho selon le fournisseur). Log serveur uniquement.
-      try {
-        const t = await resp.text();
-        console.error('[ai] upstream error', resp.status, t.slice(0, 300));
-      } catch (_) { /* best-effort */ }
+      // On NE log PAS le corps amont : selon le fournisseur il peut contenir
+      // des détails internes (voire la clé en écho). On ne garde que le STATUT,
+      // suffisant pour diagnostiquer (429/5xx/auth). Le corps n'est ni lu ni
+      // renvoyé au client.
+      console.error('[ai] upstream error', resp.status);
       return json({ error: 'ai_upstream', status: resp.status }, 502);
     }
     const data = await resp.json();
-    // Structured outputs → le 1er bloc texte contient le JSON valide.
+    // API OpenAI-compatible → le contenu du 1er choix est le JSON demandé.
     let filter = null;
-    if (Array.isArray(data.content)) {
-      const textBlock = data.content.find((b) => b && b.type === 'text');
-      if (textBlock && typeof textBlock.text === 'string') {
-        try {
-          filter = JSON.parse(textBlock.text);
-        } catch (_) {
-          filter = null;
-        }
+    const content =
+      data &&
+      Array.isArray(data.choices) &&
+      data.choices[0] &&
+      data.choices[0].message &&
+      typeof data.choices[0].message.content === 'string'
+        ? data.choices[0].message.content
+        : null;
+    if (content) {
+      try {
+        filter = JSON.parse(content);
+      } catch (_) {
+        filter = null;
       }
     }
     if (!filter) return json({ error: 'ai_parse' }, 502);
@@ -3436,6 +3778,129 @@ async function handleAiSearch(request, env) {
     try { console.error('[ai] error', String(e && e.stack ? e.stack : e)); } catch (_) {}
     return json({ error: 'ai_error' }, 502);
   }
+}
+
+// =========================================================
+//  « Caster sur un écran » — appairage + signalisation (cross-réseau)
+// =========================================================
+//  Le téléphone crée une session (code court), affiche un QR pointant
+//  vers /e/<CODE>. La TV ouvre ce lien (screen_receiver.js) et POLL
+//  l'état. Le téléphone pousse des commandes (play/pause/stop). Le flux
+//  IPTV est lu par la TV via la route proxy /cs/<b64>.ts (HTTPS) → pas
+//  besoin que TV et téléphone soient sur le même réseau.
+//
+//  Stockage : table D1 `screen_sessions` (créée à la volée). Pas de
+//  WebSocket → pas de Durable Objects. Signalisation = polling léger.
+async function ensureScreenTable(env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS screen_sessions (
+       code        TEXT PRIMARY KEY,
+       state_json  TEXT,
+       created_at  INTEGER,
+       updated_at  INTEGER,
+       expires_at  INTEGER
+     )`,
+  ).run();
+}
+
+function newScreenCode() {
+  // 4 caractères base32 SANS ambigus (pas de 0/O/1/I) → facile à recopier.
+  const ALPHA = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const r = crypto.getRandomValues(new Uint8Array(4));
+  let c = '';
+  for (let i = 0; i < 4; i++) c += ALPHA[r[i] % ALPHA.length];
+  return c;
+}
+
+// base64url compatible avec le décodeur de la route /cs/ (UTF-8 safe).
+function screenB64Url(str) {
+  const b = btoa(unescape(encodeURIComponent(str)));
+  return b.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function handleScreen(request, env, segments) {
+  if (!env.DB) return json({ error: 'db_unbound' }, 503);
+  await ensureScreenTable(env);
+  const now = Date.now();
+  const TTL = 6 * 60 * 60 * 1000; // 6 h
+  const origin = new URL(request.url).origin;
+
+  // POST /api/screen/new — le téléphone crée une session.
+  if (segments[2] === 'new' && request.method === 'POST') {
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code = newScreenCode();
+      const ex = await env.DB.prepare(
+        'SELECT code FROM screen_sessions WHERE code = ?',
+      ).bind(code).first();
+      if (!ex) break;
+    }
+    await env.DB.prepare(
+      `INSERT INTO screen_sessions (code, state_json, created_at, updated_at, expires_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).bind(code, JSON.stringify({ action: 'idle', seq: 0 }), now, now, now + TTL).run();
+    return json({ ok: true, code, url: `${origin}/e/${code}` });
+  }
+
+  const code = String(segments[2] || '').toUpperCase();
+  if (!/^[2-9A-Z]{4}$/.test(code)) return badRequest('bad code');
+
+  // GET /api/screen/:code — l'écran lit l'état courant (polling).
+  if (segments.length === 3 && request.method === 'GET') {
+    const row = await env.DB.prepare(
+      'SELECT state_json, expires_at FROM screen_sessions WHERE code = ?',
+    ).bind(code).first();
+    if (!row || (row.expires_at || 0) < now) return json({ action: 'expired' });
+    let st;
+    try { st = JSON.parse(row.state_json || '{}'); } catch (_) { st = { action: 'idle', seq: 0 }; }
+    return json(st);
+  }
+
+  // POST /api/screen/:code/command — le téléphone pousse une commande.
+  if (segments[3] === 'command' && request.method === 'POST') {
+    const row = await env.DB.prepare(
+      'SELECT state_json FROM screen_sessions WHERE code = ?',
+    ).bind(code).first();
+    if (!row) return json({ error: 'no_session' }, 404);
+    let body;
+    try { body = await request.json(); } catch (_) { return badRequest('bad json'); }
+    let prev;
+    try { prev = JSON.parse(row.state_json || '{}'); } catch (_) { prev = {}; }
+    const seq = (prev.seq || 0) + 1;
+    const action = String((body && body.action) || '');
+    let state;
+    if (action === 'play') {
+      const raw = String((body && body.url) || '');
+      if (!raw) return badRequest('url required');
+      // Flux lu par la TV via le proxy HTTPS du Worker (cross-réseau).
+      // On passe tout par /cs/<b64>.ts + mpegts.js (cas dominant IPTV) ;
+      // un codec non lisible (HEVC) déclenche le repli côté récepteur.
+      const playUrl = `${origin}/cs/${screenB64Url(raw)}.ts`;
+      state = {
+        action: 'play',
+        type: 'ts',
+        playUrl,
+        title: String((body && body.title) || ''),
+        paused: false,
+        seq,
+      };
+    } else if (action === 'pause') {
+      state = { ...prev, action: 'control', paused: true, seq };
+    } else if (action === 'resume') {
+      state = { ...prev, action: 'control', paused: false, seq };
+    } else if (action === 'stop') {
+      state = { action: 'idle', seq };
+    } else {
+      return badRequest('bad action');
+    }
+    const t = Date.now();
+    await env.DB.prepare(
+      'UPDATE screen_sessions SET state_json = ?, updated_at = ?, expires_at = ? WHERE code = ?',
+    ).bind(JSON.stringify(state), t, t + TTL, code).run();
+    return json({ ok: true, seq });
+  }
+
+  return badRequest('unsupported screen route');
 }
 
 // ----- Routeur -----
@@ -3523,12 +3988,17 @@ async function handleRequest(request, env, ctx) {
         if (seg1 === 'ai') rl = ['ai', 30];                        // 30 / min (LLM payant)
         else if (seg1 === 'device-source' || seg1 === 'backup'
           || seg1 === 'status' || seg1 === 'history'
-          || seg1 === 'family') rl = ['dev', 120]; // anti-énumération MAC + anti-brute-force code famille
+          || seg1 === 'family'
+          || seg1 === 'self-source') rl = ['dev', 120]; // anti-énumération MAC + anti-brute-force code famille
         else if (seg1 === 'heartbeat' || seg1 === 'trending'
           || seg1 === 'announcement' || seg1 === 'sports'
           || seg1 === 'feedback' || seg1 === 'm3u') rl = ['pub', 240];
+        // L'écran récepteur poll ~40×/min ; on laisse large (TV + téléphone).
+        else if (seg1 === 'screen') rl = ['scr', 600];
       } else if (seg0 === 'config') {
         rl = ['cfg', 120]; // /config/:mac — même protection anti-énumération
+      } else if (seg0 === 'cast-proxy' || seg0 === 'cast-sign') {
+        rl = ['dev', 240]; // proxy Cast : 1 requête par session de cast, large
       }
       if (rl && !(await rateLimitOk(env, request, rl[0], rl[1], 60 * 1000))) {
         return tooManyRequests();
@@ -3573,6 +4043,17 @@ async function handleRequest(request, env, ctx) {
         return badRequest('only GET supported on /api/device-source/:mac');
       }
       return await handlePublicDeviceSource(env, segments[2]);
+    }
+
+    // /api/self-source/:mac — self-service « Mon espace » : le client LIT (GET),
+    // AJOUTE/REMPLACE (POST) ou SUPPRIME (DELETE) SA propre playlist. Une source
+    // posée par le panel (payante) reste verrouillée (cf. handlers, garde-fous).
+    if (segments[0] === 'api' && segments[1] === 'self-source' && segments.length === 3) {
+      const smac = decodeMacPath(segments[2]);
+      if (request.method === 'GET') return await handleSelfSourceGet(env, smac);
+      if (request.method === 'POST') return await handleSelfSource(env, smac, request);
+      if (request.method === 'DELETE') return await handleSelfSourceDelete(env, smac, request);
+      return badRequest('only GET, POST or DELETE supported on /api/self-source/:mac');
     }
 
     // /api/history/:mac — public, historique de visionnage synchronisé.
@@ -3796,8 +4277,65 @@ async function handleRequest(request, env, ctx) {
     // à la place du placeholder __HOST__ : ainsi la page affiche TON
     // domaine (ex. tondomaine.com/dl) et n'expose jamais 7themotion.com.
     if (segments.length === 0) {
-      const html = LANDING_HTML.replaceAll('__HOST__', url.host);
-      return new Response(html, { headers: HTML_HEADERS });
+      return new Response(landingHtml(), { headers: HTML_HEADERS });
+    }
+
+    // /mon-espace — page client « Gérer ma playlist » (façon IBO Player Pro).
+    // Le client entre sa MAC → ajoute / modifie / supprime SA playlist lui-même
+    // (cf. portal.js + /api/self-source/:mac). noindex (outil, pas marketing).
+    if (segments.length === 1 &&
+        (segments[0] === 'mon-espace' || segments[0] === 'espace')) {
+      return new Response(portalHtml(), { headers: HTML_HEADERS });
+    }
+
+    // ===== PWA : le site s'installe comme une application =====
+    if (segments.length === 1) {
+      const f = segments[0];
+      if (f === 'manifest.webmanifest') {
+        return new Response(PWA_MANIFEST, {
+          headers: {
+            'Content-Type': 'application/manifest+json; charset=utf-8',
+            'Cache-Control': 'public, max-age=3600',
+            'Access-Control-Allow-Origin': '*',
+          },
+        });
+      }
+      if (f === 'sw.js') {
+        return new Response(PWA_SW, {
+          headers: {
+            'Content-Type': 'application/javascript; charset=utf-8',
+            'Cache-Control': 'no-cache',
+            'Service-Worker-Allowed': '/',
+          },
+        });
+      }
+      if (f === 'icon-192.png' || f === 'icon-512.png' || f === 'apple-touch-icon.png'
+          || f === 'og-image.png') {
+        const b64 = f === 'icon-192.png' ? PWA_ICON_192
+          : f === 'icon-512.png' ? PWA_ICON_512
+          : f === 'og-image.png' ? OG_IMAGE : PWA_APPLE_ICON;
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        return new Response(bytes, {
+          headers: {
+            'Content-Type': 'image/png',
+            'Cache-Control': 'public, max-age=31536000, immutable',
+          },
+        });
+      }
+      // SEO : robots.txt + sitemap.xml
+      if (f === 'robots.txt') {
+        return new Response(
+          'User-agent: *\nAllow: /\nSitemap: https://app.7themotion.com/sitemap.xml\n',
+          { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } },
+        );
+      }
+      if (f === 'sitemap.xml') {
+        const sm = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+          '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+          '  <url><loc>https://app.7themotion.com/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>\n' +
+          '</urlset>\n';
+        return new Response(sm, { headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
+      }
     }
 
     // /confidentialite (et /privacy) — politique de confidentialité hébergée.
@@ -3867,13 +4405,25 @@ async function handleRequest(request, env, ctx) {
           return new Response('bad proto', { status: 400 });
         }
         const up = await fetch(dst.toString(), {
-          headers: { 'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18' },
+          headers: {
+            'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18',
+            // Certains serveurs Xtream filtrent sur Referer/Accept ; on
+            // se présente comme un lecteur normal du même hôte.
+            'Referer': `${dst.protocol}//${dst.host}/`,
+            'Accept': '*/*',
+          },
           redirect: 'follow',
         });
         const h = new Headers();
         h.set('Content-Type', 'video/mp2t');
         h.set('Cache-Control', 'no-store, no-cache');
         h.set('Access-Control-Allow-Origin', '*');
+        // Diagnostic : on EXPOSE le vrai code HTTP du serveur IPTV au
+        // récepteur (sinon mpegts.js ne montre qu'un « HttpStatusCodeInvalid »
+        // générique). Permet de distinguer 403 (IP bloquée), limite de
+        // connexions, 404 (URL), etc.
+        h.set('X-Upstream-Status', String(up.status));
+        h.set('Access-Control-Expose-Headers', 'X-Upstream-Status');
         // En-tetes DLNA pour les renderers UPnP (LG webOS, Samsung...) qui
         // sondent l'URL avant de jouer : flux LIVE en streaming, pas de seek.
         h.set('transferMode.dlna.org', 'Streaming');
@@ -3951,6 +4501,37 @@ async function handleRequest(request, env, ctx) {
     //  /nova n'existent plus — ces variantes ont été supprimées du projet.
     //  Seule l'app mobile 7 MOTION est distribuée, via /royal /get /install.)
 
+    // /cast-sign?u=<url> — signe une URL upstream pour le proxy Cast.
+    //  Le secret HMAC vit UNIQUEMENT côté Worker (jamais dans l'app publique).
+    //  L'app appelle cet endpoint pour obtenir l'URL /cast-proxy signée à
+    //  envoyer au récepteur custom. Renvoie { ok, url } (url = proxy signé,
+    //  valable ~12 h). Refuse les URL non http(s) / IP privées (anti-SSRF).
+    if (segments.length === 1 && segments[0] === 'cast-sign') {
+      if (request.method !== 'GET') return badRequest('only GET on /cast-sign');
+      return await handleCastSign(env, url);
+    }
+
+    // /cast-proxy?u=<url>&e=<exp>&t=<hmac> — proxy pass-through HTTPS→upstream
+    //  pour le récepteur Cast custom (mpegts.js). Résout le blocage contenu
+    //  mixte / CORS : le récepteur (page HTTPS) fetch cette URL HTTPS de MÊME
+    //  origine (en-têtes CORS ouverts) au lieu du .ts HTTP brut. Vérifie le
+    //  token HMAC (anti open-proxy), refuse les IP privées, suit ≤3 redirects,
+    //  et STREAME la réponse en video/mp2t (pas de mise en tampon complète).
+    if (segments.length === 1 && segments[0] === 'cast-proxy') {
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        return badRequest('only GET/HEAD on /cast-proxy');
+      }
+      return await handleCastProxy(env, url, request.method);
+    }
+
+    // /vendor/mpegts.js — lib mpegts.js servie en même origine pour le
+    // récepteur Cast (cache edge, version épinglée, repli multi-CDN).
+    if (segments.length === 2 && segments[0] === 'vendor'
+      && segments[1] === 'mpegts.js') {
+      if (request.method !== 'GET') return badRequest('only GET on /vendor/*');
+      return await handleVendorMpegts(ctx);
+    }
+
     // /cast-receiver — page HTML CAF pour Google Cast Custom Receiver.
     // URL a coller dans la Google Cast SDK Developer Console.
     // Query string ?app=redroom bascule le branding sur Red Room ;
@@ -3966,6 +4547,41 @@ async function handleRequest(request, env, ctx) {
           'Access-Control-Allow-Origin': '*',
         },
       });
+    }
+
+    // /ecran (et alias /screen) — page d'APPAIRAGE : la TV n'a pas de
+    // caméra, donc on lui fait OUVRIR cette adresse fixe puis TAPER le
+    // code à 4 caractères (modèle YouTube/Netflix). Redirige vers /e/<CODE>.
+    if (segments.length === 1 &&
+        (segments[0] === 'ecran' || segments[0] === 'screen')) {
+      return new Response(screenPairHtml(), {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'public, max-age=600',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+
+    // /e/<CODE> — récepteur « Caster sur un écran » (n'importe quel
+    // navigateur de TV). Cf. screen_receiver.js + handleScreen().
+    if (segments.length === 2 && segments[0] === 'e') {
+      const sc = String(segments[1] || '').toUpperCase();
+      if (!/^[2-9A-Z]{4}$/.test(sc)) {
+        return new Response('code invalide', { status: 400 });
+      }
+      return new Response(screenReceiverHtml(sc), {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+
+    // /api/screen/* — création de session, état (polling), commandes.
+    if (segments[0] === 'api' && segments[1] === 'screen') {
+      return handleScreen(request, env, segments);
     }
 
     // /cast-skin.css — feuille de style pour Google Cast Styled
@@ -4030,7 +4646,7 @@ async function handleRequest(request, env, ctx) {
     const RESERVED = new Set([
       'admin', 'config', 'dl', 'install', 'api', 'panel',
       'redroom', 'tv', 'defewtv', 'tvbox', 'defew', '777', '7777', 'tv7',
-      'cast-receiver', 'cast-skin.css',
+      'cast-receiver', 'cast-skin.css', 'vendor',
       'favicon.ico', 'robots.txt', 'sitemap.xml',
     ]);
     if (segments.length === 1 && !RESERVED.has(segments[0].toLowerCase())) {

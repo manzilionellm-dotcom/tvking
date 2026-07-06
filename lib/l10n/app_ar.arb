@@ -732,6 +732,7 @@
   },
   "tvMultiViewUnavailable": "العرض المتعدد غير متاح: الجهاز محدود جدًا (تشغيل تدفقين معًا غير مضمون).",
   "tvChannelUnavailable": "القناة غير متاحة حاليًا.",
+  "tvChannelBlockedBySource": "القناة فارغة أو محظورة من مصدرك.",
   "tvRetryQuitHint": "موافق: إعادة المحاولة   ·   رجوع: خروج",
   "tvSettingsParental": "الرقابة الأبوية (وضع الأطفال + رمز PIN)",
   "tvSettingsLegal": "إشعار قانوني وشروط الاستخدام",

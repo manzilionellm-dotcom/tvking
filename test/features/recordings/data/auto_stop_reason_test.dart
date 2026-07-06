@@ -39,9 +39,13 @@ void main() {
     });
   });
 
-  test('kMaxRecordingDuration reste a 6h (limite stockage planifiee)', () {
-    // Doc : un changement de cette duree impacte la com utilisateur
-    // ("limite de 6 h atteinte") et les estimations storage.
-    expect(kMaxRecordingDuration, const Duration(hours: 6));
+  test('kMaxRecordingDuration = 30 jours (plafond anti-fuite)', () {
+    // CONFIRMÉ (2026-06-29) : la demande produit est « enregistrements
+    // ILLIMITÉS » ; 30 jours est un garde-fou anti-fuite (si l'utilisateur
+    // oublie d'arrêter), PAS une durée cible. Les anciennes mentions « 6 h »
+    // étaient un design antérieur et ne subsistaient que dans des debugPrint
+    // (jamais affichées à l'utilisateur). Test verrouillé sur la vraie valeur :
+    // un changement (ex. cap storage-aware) doit être conscient.
+    expect(kMaxRecordingDuration, const Duration(days: 30));
   });
 }

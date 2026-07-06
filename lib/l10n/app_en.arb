@@ -732,6 +732,7 @@
   },
   "tvMultiViewUnavailable": "Multi-view unavailable: device too limited (2 simultaneous streams not guaranteed).",
   "tvChannelUnavailable": "Channel unavailable right now.",
+  "tvChannelBlockedBySource": "Channel empty or blocked by your source.",
   "tvRetryQuitHint": "OK: Retry   ·   Back: Quit",
   "tvSettingsParental": "Parental controls (Kids Mode + PIN)",
   "tvSettingsLegal": "Legal notice & Terms of use",

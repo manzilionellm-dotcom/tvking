@@ -979,6 +979,11 @@ async function handleBackup(env) {
   ];
   const dump = {};
   for (const tbl of tables) {
+    // Défense en profondeur : `tbl` vient déjà d'une liste blanche EN DUR
+    // ci-dessus (aucune entrée utilisateur), mais on valide quand même le
+    // nom comme identifiant SQL pur — si quelqu'un ajoute un jour une valeur
+    // dynamique à `tables`, l'interpolation reste inoffensive.
+    if (!/^[a-z_]+$/.test(tbl)) continue;
     try {
       const rs = await env.DB.prepare('SELECT * FROM ' + tbl).all();
       dump[tbl] = (rs && rs.results) || [];
@@ -2142,6 +2147,13 @@ async function ensureSourcesTable(env) {
   } catch (_) {
     /* colonne déjà présente */
   }
+  // origin : 'panel' (assignée ici = client payant, VERROUILLÉE côté self-service)
+  // ou 'self' (posée par le client depuis /mon-espace). Cf. worker.js self-source.
+  try {
+    await env.DB.prepare('ALTER TABLE device_sources ADD COLUMN origin TEXT').run();
+  } catch (_) {
+    /* colonne déjà présente */
+  }
 }
 
 /// Normalise + valide un objet source venant du panel. Retourne
@@ -2176,18 +2188,39 @@ function normalizeSource(raw) {
 /// (compat avec l'ancienne app qui ne lit qu'une source).
 async function upsertDeviceSource(env, mac, sources) {
   await ensureSourcesTable(env);
-  const first = sources[0];
-  const json = JSON.stringify(sources);
+  // Les sources assignées ICI (payant) sont marquées origin='panel' → VERROUILLÉES
+  // côté self-service (le client ne peut ni les modifier ni les supprimer).
+  const panelItems = (sources || []).map((s) => ({ ...s, origin: 'panel' }));
+  // PRÉSERVE les playlists 'self' que le client a ajoutées via /mon-espace : une
+  // (ré)assignation panel NE DOIT PAS effacer les listes personnelles du client
+  // (modèle multi-listes). On relit l'existant et on ré-empile les 'self' après.
+  let selfItems = [];
+  try {
+    const prev = await env.DB
+      .prepare('SELECT sources_json FROM device_sources WHERE mac = ?')
+      .bind(mac).first();
+    if (prev && prev.sources_json) {
+      let arr = [];
+      try { arr = JSON.parse(prev.sources_json) || []; } catch (_) { arr = []; }
+      selfItems = arr.filter((s) => s && s.origin === 'self');
+    }
+  } catch (_) { /* pas de précédent → rien à préserver */ }
+
+  const merged = [...panelItems, ...selfItems];
+  const first = merged[0] || {};
+  const json = JSON.stringify(merged);
   await env.DB
     .prepare(
+      // Colonnes plates = 1re source PANEL (compat app/panel). origin ligne =
+      // 'panel' (la source prioritaire/flat est payante et verrouillée).
       `INSERT INTO device_sources
-         (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'panel', ?)
        ON CONFLICT(mac) DO UPDATE SET
          type=excluded.type, label=excluded.label, server_url=excluded.server_url,
          username=excluded.username, password=excluded.password,
          m3u_url=excluded.m3u_url, epg_url=excluded.epg_url,
-         sources_json=excluded.sources_json, updated_at=excluded.updated_at`,
+         sources_json=excluded.sources_json, origin='panel', updated_at=excluded.updated_at`,
     )
     .bind(mac, first.type, first.label, first.server_url, first.username,
           first.password, first.m3u_url, first.epg_url, json, Date.now())
@@ -3032,8 +3065,10 @@ async function handleChangeOwnPassword(request, env, user, actor) {
   }
   const current = body.current_password || '';
   const next = body.new_password || '';
-  if (!next || next.length < 4) {
-    return errResp('weak_password', 'Le nouveau mot de passe doit faire au moins 4 caracteres', 400);
+  // Comptes admin/revendeur = accès à TOUT le parc clients → minimum 8.
+  // (4 était trop faible pour des identifiants à fort privilège.)
+  if (!next || next.length < 8) {
+    return errResp('weak_password', 'Le nouveau mot de passe doit faire au moins 8 caracteres', 400);
   }
   const table = user.role === 'reseller' ? 'resellers' : 'admin_users';
   const row = await env.DB

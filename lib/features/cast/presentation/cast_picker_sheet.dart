@@ -117,12 +117,14 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
     if (_isGlobalMode) {
       mgr.selectDevice(device);
       if (!mounted) return;
+      // Messenger + libellé capturés AVANT le pop : après pop, le
+      // context du sheet est désactivé et ScaffoldMessenger.of(context)
+      // lèverait ("deactivated widget's ancestor").
+      final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+      final String label =
+          context.l10n.castConnectedTapChannel(device.displayName);
       Navigator.of(context).pop();
-      _toast(
-        context,
-        context.l10n.castConnectedTapChannel(device.displayName),
-        accent: true,
-      );
+      _toastWith(messenger, label, accent: true);
       return;
     }
 
@@ -139,9 +141,11 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
         imageUrl: widget.imageUrl,
       );
       if (!mounted) return;
+      // Même précaution : capture avant pop (context désactivé après).
+      final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+      final String label = context.l10n.castSendingTo(device.displayName);
       Navigator.of(context).pop();
-      _toast(context, context.l10n.castSendingTo(device.displayName),
-          accent: true);
+      _toastWith(messenger, label, accent: true);
     } on Exception catch (_) {
       if (!mounted) return;
       // Le CastManager a déjà transformé l'exception en message friendly
@@ -173,8 +177,16 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
 
   void _toast(BuildContext context, String message,
       {bool error = false, bool accent = false}) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
+    _toastWith(ScaffoldMessenger.of(context), message,
+        error: error, accent: accent);
+  }
+
+  /// Variante sûre post-`Navigator.pop` : le messenger a été résolu
+  /// PENDANT que le context du sheet était encore monté.
+  void _toastWith(ScaffoldMessengerState messenger, String message,
+      {bool error = false, bool accent = false}) {
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
         backgroundColor: error

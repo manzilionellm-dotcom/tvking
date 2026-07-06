@@ -55,11 +55,30 @@ class CastOptionsProviderImpl : OptionsProvider {
         // aucun numéro de série à enregistrer) et la box réapparaît dans le
         // picker.
         //
-        //   false : Default Media Receiver public CC1AD845 (ne décode pas le
-        //     MPEG-TS brut → dépendait d'un wrap HLS / VPS).
-        //   true (ACTUEL) : custom receiver 5BDFD969 (mpegts.js,
-        //     /cast-receiver) → décode le MPEG-TS sur la TV, .ts direct, SANS
-        //     VPS, téléphone éteignable.
+        //   false : Default Media Receiver public CC1AD845. Il ne décode PAS le
+        //     MPEG-TS brut → il fallait lui servir le relais HLS du téléphone,
+        //     mais un flux IPTV .ts (codecs HEVC/AC3, segment unique) reste
+        //     refusé par le Shaka du DMR (« format non supporté » ~10 s).
+        //   true (ACTUEL) : custom receiver 5BDFD969 (mpegts.js, /cast-receiver).
+        //     Il décode le MPEG-TS LUI-MÊME sur la TV. L'échec CORS / contenu
+        //     mixte du diagnostic 2026-06-29 (fetch HTTPS→HTTP sans CORS) est
+        //     désormais RÉSOLU : le sender n'envoie plus le .ts HTTP brut mais
+        //     l'URL HTTPS https://app.7themotion.com/cast-proxy?u=… (même origine
+        //     que le receiver, en-têtes CORS ouverts) → mpegts.js la fetch sans
+        //     blocage. cf. google_cast_transport.dart playStream (stratégie
+        //     cast_proxy) + worker.js route /cast-proxy.
+        //
+        // ✅ ACTIVÉ (2026-07-01). Garder SYNCHRONE avec kCastUseCustomReceiver
+        //    (Dart) — les deux valent `true`.
+        //
+        // ⚠️ MISE À JOUR (2026-07-06, CAST_HANDOFF §6.2) : ce flag ne fixe plus
+        //    que la valeur INITIALE. GoogleCastApi.setReceiverApplicationId
+        //    bascule ensuite l'App ID PAR SESSION selon le chemin de routage :
+        //    custom 5BDFD969 quand le proxy /cast-proxy délivre (2xx), Default
+        //    CC1AD845 quand le fournisseur bloque l'IP datacenter du Worker
+        //    (upstream=456) et qu'on repasse par le relais HLS du téléphone.
+        //    Les IDs ci-dessous DOIVENT rester alignés avec
+        //    kCastCustomReceiverAppId / kCastDefaultReceiverAppId (Dart).
         private const val USE_CUSTOM_RECEIVER = true
 
         // Default Media Receiver public de Google (toujours actif).

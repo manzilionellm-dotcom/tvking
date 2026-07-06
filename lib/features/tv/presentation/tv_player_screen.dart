@@ -169,6 +169,11 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   int _recoverAttempts = 0;
   static const int _kMaxRecover = 5;
   bool _fatal = false;
+  // True dès qu'une vraie image a été affichée pour la chaîne courante. Si on
+  // échoue SANS jamais avoir eu d'image → source vide / bloquée par le
+  // fournisseur (≠ coupure réseau d'un flux qui jouait). Remis à false à chaque
+  // ouverture (_open).
+  bool _everShownFrame = false;
 
   Channel get _current => widget.channels[_index];
 
@@ -202,7 +207,15 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _open(reuse: true); // historique / présence pour la 1re chaîne
     // Chien de garde : aucune progression depuis 15 s → reconnexion.
     _watchdog = Timer.periodic(_watchEvery, (_) {
-      if (!_recovering && DateTime.now().difference(_lastProgress) > _frozen) {
+      if (DateTime.now().difference(_lastProgress) > _frozen) {
+        // Toujours gelé un plein cycle _frozen APRÈS la dernière tentative :
+        // cette tentative a échoué → on libère le verrou pour la suivante.
+        // Sans ça, _recovering (remis à false uniquement quand la POSITION
+        // avance) restait vrai à jamais sur un flux qui ne démarre pas :
+        // plus aucune reconnexion, erreurs natives ignorées, et la borne
+        // P1-6 (_kMaxRecover → écran « chaîne vide/bloquée ») inatteignable
+        // — logo + spinner à l'infini au lieu du message clair.
+        _recovering = false;
         _recover();
       }
     });
@@ -279,6 +292,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         setState(() {});
       }
     }
+    // Une vraie image a été dessinée → la source envoie bien de la vidéo.
+    if (_controller.firstFrame) _everShownFrame = true;
     // Logo tant qu'on bufferise OU que la 1re trame n'est pas encore dessinée
     // (au zap, firstFrame est remis à false → logo jusqu'à l'image suivante).
     final bool buffering = _controller.isBuffering || !_controller.firstFrame;
@@ -294,6 +309,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   void _open({bool reuse = false}) {
     _lastProgress = DateTime.now();
     _lastPos = Duration.zero;
+    _everShownFrame = false; // nouvelle ouverture → pas encore d'image
     // Nouvelle chaîne → budget de reconnexion neuf, on lève tout état d'erreur.
     _recoverAttempts = 0;
     _recovering = false;
@@ -360,6 +376,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
 
   /// « Réessayer » manuel depuis l'écran d'erreur : on repart d'un budget neuf.
   void _manualRetry() {
+    _recovering = false;
+    _lastProgress = DateTime.now(); // horloge fraîche : pas de watchdog immédiat
     setState(() {
       _fatal = false;
       _recoverAttempts = 0;
@@ -864,7 +882,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                                 fontWeight: FontWeight.w800,
                                 color: TvTokens.text)),
                         const SizedBox(height: 8),
-                        Text(context.l10n.tvChannelUnavailable,
+                        Text(
+                            _everShownFrame
+                                ? context.l10n.tvChannelUnavailable
+                                : context.l10n.tvChannelBlockedBySource,
                             style: TextStyle(
                                 fontSize: TvDimens.body,
                                 color: TvTokens.mutedDim)),

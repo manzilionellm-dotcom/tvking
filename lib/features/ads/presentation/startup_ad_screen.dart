@@ -91,7 +91,11 @@ class _StartupAdScreenState extends State<StartupAdScreen> {
           Positioned.fill(
             child: Video(
               controller: _controller,
-              controls: NoVideoControls,
+              // Même forme typée que le player principal (video_player_screen):
+              // `NoVideoControls` est exposé en `dynamic` par la version
+              // installée de media_kit_video → erreur d'analyse. Le builder
+              // explicite « pas de contrôles » est équivalent et compile.
+              controls: (VideoState _) => const SizedBox.shrink(),
               fit: BoxFit.contain,
             ),
           ),

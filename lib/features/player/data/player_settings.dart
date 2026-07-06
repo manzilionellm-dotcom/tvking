@@ -129,12 +129,21 @@ class PlayerSettings extends ChangeNotifier {
   String get userAgent =>
       _userAgent.trim().isEmpty ? kDefaultUserAgent : _userAgent;
 
-  /// Nombre de secondes de vidéo à pré-charger avant de (re)démarrer la
-  /// lecture en mode anti-coupure. C'est le "matelas" dans lequel le
-  /// lecteur puise quand le réseau faiblit. On le dérive du buffer
-  /// configuré, borné entre 8 et 45 s pour rester raisonnable au
-  /// démarrage tout en offrant un vrai coussin.
-  int get antiFreezePrerollSeconds => _bufferSeconds.clamp(8, 45);
+  /// Coussin (en secondes) à pré-charger AVANT d'afficher la 1re image, et
+  /// seuil de reprise après une micro-coupure. Volontairement COURT (~3 s)
+  /// pour un démarrage / zapping RAPIDE (sensation de fluidité « grandes
+  /// apps » : la chaîne s'ouvre vite). La VRAIE protection anti-coupure n'est
+  /// PAS ici : la grosse avance (readahead 60 s, cf. antiFreezeReadaheadSeconds
+  /// + tampon 192 MiB) continue de se remplir en arrière-plan une fois la
+  /// lecture lancée. On gagne donc la réactivité SANS perdre la fluidité en
+  /// cours de lecture, et la reprise après coupure devient plus rapide aussi.
+  /// Plancher à 3 s (≈ « 3 segments », reco 2026) pour éviter le « thrash »
+  /// (jouer 1 s puis re-bufferiser en boucle).
+  ///
+  /// Avant : dérivé du buffer (8–45 s) → la chaîne pouvait mettre jusqu'à
+  /// ~20 s à démarrer alors que c'était inutile (le matelas profond se
+  /// remplit très bien APRÈS le 1er affichage).
+  int get antiFreezePrerollSeconds => 3;
 
   /// Secondes d'avance à lire (readahead) en mode anti-coupure. On vise
   /// large (au moins 60 s) pour absorber de longues faiblesses réseau.
