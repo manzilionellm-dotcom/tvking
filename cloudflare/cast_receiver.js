@@ -377,8 +377,22 @@ export function castReceiverHtml(flavor) {
           var to = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 8000) : null;
           fetch(url, { method: 'GET', signal: ctrl ? ctrl.signal : undefined })
             .then(function (r) {
-              dbg('first fetch status=' + r.status + ' ct=' + (r.headers.get('content-type') || '?'));
-              try { if (r.body && r.body.cancel) r.body.cancel(); } catch (e) {}
+              var us = r.headers.get('x-upstream-status') || '';
+              // 2xx = OK (on coupe le corps sans le lire). Sinon on LIT le
+              // corps texte : le proxy y met le vrai status upstream
+              // (« upstream status=403 » = fournisseur bloque l'IP proxy,
+              //  « upstream status=404 » = token périmé, « unreachable » =
+              //  connexion coupée). C'est LA ligne qui dit pourquoi ça échoue.
+              if (r.status >= 200 && r.status < 300) {
+                dbg('first fetch OK status=' + r.status + ' ct=' + (r.headers.get('content-type') || '?'));
+                try { if (r.body && r.body.cancel) r.body.cancel(); } catch (e) {}
+                return;
+              }
+              return r.text().then(function (t) {
+                dbg('first fetch status=' + r.status +
+                    (us ? ' upstream=' + us : '') +
+                    ' body=' + (t || '').slice(0, 100));
+              });
             })
             .catch(function (e) { dbg('first fetch FAILED ' + (e && e.name) + ': ' + (e && e.message)); })
             .then(function () { if (to) clearTimeout(to); });

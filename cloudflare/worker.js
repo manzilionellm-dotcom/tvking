@@ -1387,15 +1387,17 @@ async function handleCastSign(env, url) {
 // Reponse d'erreur du proxy Cast AVEC en-tetes CORS : sans ACAO, le
 // receiver (mpegts.js/fetch cross-origin) ne peut PAS lire le status de
 // l'erreur → echec muet, debug impossible. On expose donc l'erreur.
-function castProxyError(msg, status) {
-  return new Response(msg, {
-    status,
-    headers: {
-      'Content-Type': 'text/plain; charset=UTF-8',
-      'Access-Control-Allow-Origin': '*',
-      'Cache-Control': 'no-store',
-    },
-  });
+function castProxyError(msg, status, upstreamStatus) {
+  const headers = {
+    'Content-Type': 'text/plain; charset=UTF-8',
+    'Access-Control-Allow-Origin': '*',
+    // L'overlay debug du receiver (fetch cross-origin) doit pouvoir LIRE
+    // cet en-tête : sans Expose-Headers, X-Upstream-Status est invisible.
+    'Access-Control-Expose-Headers': 'X-Upstream-Status',
+    'Cache-Control': 'no-store',
+  };
+  if (upstreamStatus != null) headers['X-Upstream-Status'] = String(upstreamStatus);
+  return new Response(msg, { status, headers });
 }
 
 async function handleCastProxy(env, url, method) {
@@ -1419,14 +1421,33 @@ async function handleCastProxy(env, url, method) {
   if (!isSafeUpstream(u)) return castProxyError('forbidden upstream', 403);
 
   // Suivi MANUEL des redirects (≤3), avec re-validation anti-SSRF de chaque saut.
+  //
+  // DIAGNOSTIC (2026-07-06) : on distingue désormais 3 échecs différents,
+  // parce que « upstream error 502 » générique ne disait pas POURQUOI la TV
+  // n'avait pas d'image. Les 3 causes typiques quand le TÉLÉPHONE lit le flux
+  // mais que le WORKER (IP datacenter Cloudflare) échoue :
+  //   • status 4xx/5xx renvoyé par le fournisseur  → il RÉPOND mais REFUSE
+  //     (403/456 = IP datacenter blacklistée ou limite de connexions ;
+  //      404 = token de redirection périmé).
+  //   • fetch qui JETTE (connexion refusée / reset) → le fournisseur DROP
+  //     carrément la connexion depuis l'IP Cloudflare.
+  // On remonte le vrai status (corps + en-tête X-Upstream-Status) pour que
+  // l'overlay debug du receiver et le diagnostic réseau le montrent.
   let target = u;
   let resp = null;
+  let threw = null;
   for (let i = 0; i <= 3; i++) {
-    resp = await fetch(target, {
-      method: method === 'HEAD' ? 'HEAD' : 'GET',
-      redirect: 'manual',
-      headers: { 'User-Agent': CAST_PROXY_UA, Accept: '*/*' },
-    });
+    try {
+      resp = await fetch(target, {
+        method: method === 'HEAD' ? 'HEAD' : 'GET',
+        redirect: 'manual',
+        headers: { 'User-Agent': CAST_PROXY_UA, Accept: '*/*' },
+      });
+    } catch (e) {
+      threw = e;
+      resp = null;
+      break;
+    }
     if (resp.status >= 300 && resp.status < 400) {
       const loc = resp.headers.get('location');
       if (!loc) break;
@@ -1438,8 +1459,16 @@ async function handleCastProxy(env, url, method) {
     }
     break;
   }
-  if (!resp || resp.status >= 400) {
-    return castProxyError('upstream error', 502);
+  if (!resp) {
+    // Le fournisseur a coupé la connexion depuis l'IP Cloudflare (blocage
+    // datacenter le plus souvent). Message explicite pour le diagnostic.
+    const why = (threw && threw.message) ? String(threw.message).slice(0, 80) : 'no response';
+    return castProxyError('upstream unreachable from proxy: ' + why, 502, 0);
+  }
+  if (resp.status >= 400) {
+    // Le fournisseur RÉPOND mais refuse : on renvoie SON status pour lever
+    // l'ambiguïté (403/456 = blocage IP/connexions, 404 = token périmé).
+    return castProxyError('upstream status=' + resp.status, 502, resp.status);
   }
 
   const headers = {
