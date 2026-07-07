@@ -26,6 +26,7 @@ import 'core/notifications/notification_service.dart';
 import 'core/profiles/profiles_repository.dart';
 import 'features/channels/data/recently_watched_repository.dart';
 import 'features/device/data/device_identity.dart';
+import 'features/player/data/player_settings.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
@@ -205,6 +206,13 @@ Future<void> _bootstrap() async {
   // Réglages d'affichage (overscan / grand texte). Best-effort, non bloquant.
   // Défauts = comportement inchangé, donc aucun risque au 1er rendu.
   unawaited(DisplaySettings.instance.load());
+
+  // Signature de lecteur (User-Agent) persistée : si le diagnostic multi-UA
+  // (cf. tv_player_screen.dart _declareChannelBlocked) a déjà trouvé la
+  // signature qui débloque le fournisseur du client, elle doit survivre à un
+  // redémarrage de l'app — sans ce load(), PlayerSettings ne lirait jamais
+  // la valeur sauvegardée et reviendrait au défaut VLC à chaque lancement.
+  unawaited(PlayerSettings.instance.load());
 
   // Ville météo choisie par l'utilisateur (pas de GPS sur TV). Si une ville a
   // été mémorisée, la météo de l'accueil devient EXACTE ; sinon détection auto

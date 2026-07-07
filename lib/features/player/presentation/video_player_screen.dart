@@ -32,6 +32,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/live_badge.dart';
 import '../../cast/data/cast_manager.dart';
 import '../../cast/data/local_cast_server.dart';
+import '../../cast/data/stream_probe.dart';
 import '../../cast/presentation/cast_picker_sheet.dart';
 import '../../cast/presentation/screen_cast_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
@@ -181,6 +182,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // joué puis coupé (problème réseau). Auto-réinitialisé au zap : si l'id
   // courant ≠ cet id, la chaîne courante n'a jamais joué.
   String? _playedChannelId;
+  // Diagnostic multi-signature (« ça marche sur IBO, pas chez nous ») : id de
+  // la chaîne pour laquelle on a DÉJÀ tenté la sonde multi-User-Agent, pour ne
+  // JAMAIS boucler diagnostic→bascule→échec→diagnostic si le vrai problème
+  // n'est pas la signature. Se réinitialise naturellement au zap (comparé à
+  // `_currentChannel.id`, jamais remis à null explicitement).
+  String? _uaFixAttemptedForChannelId;
+  bool _uaDiagnosisInFlight = false;
   static const Duration _kWatchdogInterval = Duration(seconds: 5);
   static const int _kWatchdogStaleTicksBeforeRecover = 3; // ~15 s figé
   static const int _kWatchdogGoodTicksToReset = 6; // ~30 s sains
@@ -382,17 +390,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         debugPrint('[Player] Erreur reçue pendant la lecture, ignorée : $e');
         return;
       }
-      setState(() {
-        _hasError = true;
-        // Si la chaîne n'a JAMAIS atteint la lecture, la source n'a envoyé
-        // aucune vidéo décodable (chaîne vide / black.ts d'1 octet / bloquée
-        // par le fournisseur). On affiche un message CLAIR au lieu de l'erreur
-        // libmpv brute (souvent « codec non supporté ») qui faisait croire à un
-        // bug de l'app alors que le flux est mort en amont.
-        _errorMessage = _playedChannelId == _currentChannel.id
-            ? e
-            : _kChannelBlockedMessage;
-      });
+      // Si la chaîne n'a JAMAIS atteint la lecture, la source n'a peut-être
+      // envoyé aucune vidéo décodable (chaîne vide / black.ts d'1 octet /
+      // bloquée par le fournisseur) — MAIS ça peut aussi être une signature
+      // de lecteur refusée (diagnostic multi-UA avant d'abandonner, cf.
+      // _declareChannelBlocked). Sinon (déjà jouée) : erreur libmpv brute
+      // affichée telle quelle, comme avant.
+      if (_playedChannelId == _currentChannel.id) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = e;
+        });
+      } else {
+        _declareChannelBlocked();
+      }
     }));
 
     // Listener pour les changements de réglages → réapplication immédiate
@@ -1130,6 +1141,69 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   // ----- Chien de garde anti-gel -----
 
+  /// Chaîne jamais lue avec succès → probablement bloquée par le
+  /// fournisseur. AVANT d'abandonner, sonde plusieurs signatures de lecteur
+  /// connues (VLC, ExoPlayer/IBO, Smarters…) sur l'URL réelle : beaucoup de
+  /// fournisseurs IPTV whitelistent UNE signature précise et servent une
+  /// page vide aux autres — c'est souvent ÇA « la chaîne marche sur IBO
+  /// mais pas chez nous », pas une vraie panne réseau. Si une AUTRE
+  /// signature obtient une vraie réponse média, on l'adopte (persistée
+  /// via PlayerSettings) et on relance automatiquement, sans même montrer
+  /// d'erreur au client. Une seule tentative de diagnostic par chaîne
+  /// (`_uaFixAttemptedForChannelId`) : si le vrai problème n'est pas la
+  /// signature, on ne boucle pas diagnostic→bascule→échec→diagnostic.
+  Future<void> _declareChannelBlocked() async {
+    final Channel channel = _currentChannel;
+    final bool alreadyTried = _uaFixAttemptedForChannelId == channel.id;
+    if (_uaDiagnosisInFlight || alreadyTried) {
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = _kChannelBlockedMessage;
+        });
+      }
+      return;
+    }
+    _uaFixAttemptedForChannelId = channel.id;
+    _uaDiagnosisInFlight = true;
+    final String current = PlayerSettings.instance.userAgent;
+    final UserAgentProbeResult probe;
+    try {
+      probe = await StreamProbe.instance.probeUserAgents(
+        channel.streamUrl,
+        candidates: <String>[
+          current,
+          ...PlayerSettings.userAgentPresets.values,
+        ],
+      );
+    } finally {
+      _uaDiagnosisInFlight = false;
+    }
+    // L'utilisateur a zappé pendant la sonde → cette chaîne n'est plus
+    // affichée, rien à faire (le nouvel écran gère son propre état).
+    if (!mounted || channel.id != _currentChannel.id) return;
+
+    if (probe.workingUserAgent != null && probe.workingUserAgent != current) {
+      debugPrint(
+          '[Player] "$current" bloqué mais "${probe.workingUserAgent}" '
+          'fonctionne sur cette source → bascule automatique + relance.');
+      await PlayerSettings.instance.setUserAgent(probe.workingUserAgent!);
+      if (!mounted || channel.id != _currentChannel.id) return;
+      _watchdogRecoveries = 0; // budget neuf : cette signature a de vraies chances
+      _openMedia(widget.overrideUrl ?? channel.streamUrl);
+      return; // pas d'erreur affichée : on retente silencieusement
+    }
+
+    setState(() {
+      _hasError = true;
+      _errorMessage = probe.isLikelyNetworkBlocked
+          ? '$_kChannelBlockedMessage\n\nÇa ressemble à un blocage réseau '
+              '(FAI ou DNS) plutôt qu\'à un problème de l\'app — un VPN '
+              'peut aider si cette chaîne fonctionne ailleurs.'
+          : _kChannelBlockedMessage;
+    });
+  }
+
   /// Borne l'ATTENTE DE DÉMARRAGE d'une ouverture : si `playing` n'est
   /// jamais atteint dans les [_kStartupTimeout], on montre l'erreur claire
   /// (le watchdog, lui, ne surveille que la lecture déjà démarrée).
@@ -1137,12 +1211,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _startupTimer?.cancel();
     _startupTimer = Timer(_kStartupTimeout, () {
       if (!mounted || _isPlaying || _hasError) return;
-      setState(() {
-        _hasError = true;
-        _errorMessage = _playedChannelId == _currentChannel.id
-            ? 'Flux interrompu. Vérifie ta connexion puis réessaie.'
-            : _kChannelBlockedMessage;
-      });
+      if (_playedChannelId == _currentChannel.id) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = 'Flux interrompu. Vérifie ta connexion puis réessaie.';
+        });
+      } else {
+        _declareChannelBlocked();
+      }
     });
   }
 
@@ -1198,14 +1274,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // et on arrête de marteler le serveur.
       debugPrint(
           '[Player] watchdog: abandon après $_watchdogRecoveries reconnexions');
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-          // Jamais joué → source vide/bloquée ; sinon → vraie coupure réseau.
-          _errorMessage = _playedChannelId == _currentChannel.id
-              ? 'Flux interrompu. Vérifie ta connexion puis réessaie.'
-              : _kChannelBlockedMessage;
-        });
+      // Jamais joué → source vide/bloquée (diagnostic multi-UA avant
+      // d'abandonner) ; sinon → vraie coupure réseau (message direct).
+      if (_playedChannelId == _currentChannel.id) {
+        if (mounted) {
+          setState(() {
+            _hasError = true;
+            _errorMessage = 'Flux interrompu. Vérifie ta connexion puis réessaie.';
+          });
+        }
+      } else {
+        _declareChannelBlocked();
       }
       return;
     }

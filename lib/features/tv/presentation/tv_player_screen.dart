@@ -26,9 +26,11 @@ import 'package:native_video_player/native_video_player.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/observability/structured_logger.dart';
 import '../core/tv_tokens.dart';
+import '../../cast/data/stream_probe.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/data/local_stream_relay.dart';
+import '../../player/data/player_settings.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
@@ -174,6 +176,17 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // fournisseur (≠ coupure réseau d'un flux qui jouait). Remis à false à chaque
   // ouverture (_open).
   bool _everShownFrame = false;
+  // Diagnostic multi-signature (« ça marche sur IBO, pas chez nous ») : id de
+  // la chaîne pour laquelle on a DÉJÀ tenté la sonde multi-User-Agent, pour
+  // ne JAMAIS boucler diagnostic→bascule→échec→diagnostic si le vrai
+  // problème n'est pas la signature. Comparé à `_current.id`, jamais remis
+  // à null explicitement (le zap change naturellement la comparaison).
+  String? _uaFixAttemptedForChannelId;
+  bool _uaDiagnosisInFlight = false;
+  // `true` si le diagnostic a conclu à un blocage RÉSEAU (DNS/timeout)
+  // plutôt qu'à un souci de signature — affiche un indice VPN/FAI en plus
+  // du message existant. Remis à false à chaque ouverture (_open).
+  bool _fatalNetworkHint = false;
 
   Channel get _current => widget.channels[_index];
 
@@ -314,6 +327,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _freeze.openChannel(DateTime.now());
     _lastPos = Duration.zero;
     _everShownFrame = false; // nouvelle ouverture → pas encore d'image
+    _fatalNetworkHint = false;
     if (mounted) setState(() {
       _buffering = true;
       _fatal = false;
@@ -366,12 +380,88 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         // sinon l'URL directe. = reconnexion au direct sans casser l'enreg.
         _controller.setUrl(_relayPlayUrl ?? _current.streamUrl);
       case FreezeAction.fatal:
-        if (mounted) {
+        // Jamais joué → source vide/bloquée (diagnostic multi-UA avant
+        // d'abandonner, cf. _declareChannelBlocked) ; sinon → vraie coupure
+        // réseau, message direct existant.
+        if (!_everShownFrame) {
+          _declareChannelBlocked();
+        } else if (mounted) {
           setState(() {
             _fatal = true;
             _buffering = false;
           });
         }
+    }
+  }
+
+  /// Chaîne jamais lue avec succès → probablement bloquée par le
+  /// fournisseur. AVANT d'abandonner, sonde plusieurs signatures de lecteur
+  /// connues (VLC, ExoPlayer/IBO, Smarters…) sur l'URL réelle : beaucoup de
+  /// fournisseurs IPTV whitelistent UNE signature précise et servent une
+  /// page vide aux autres — c'est souvent ÇA « la chaîne marche sur IBO
+  /// mais pas chez nous », pas une vraie panne réseau. Si une AUTRE
+  /// signature obtient une vraie réponse média, on l'adopte (persistée via
+  /// PlayerSettings, réutilisée par le natif à chaque reconnexion) et on
+  /// relance automatiquement, sans même montrer d'erreur au client. Une
+  /// seule tentative de diagnostic par chaîne (`_uaFixAttemptedForChannelId`)
+  /// pour ne jamais boucler si le vrai problème n'est pas la signature.
+  Future<void> _declareChannelBlocked() async {
+    final Channel channel = _current;
+    final bool alreadyTried = _uaFixAttemptedForChannelId == channel.id;
+    if (_uaDiagnosisInFlight || alreadyTried) {
+      if (mounted) {
+        setState(() {
+          _fatal = true;
+          _buffering = false;
+        });
+      }
+      return;
+    }
+    _uaFixAttemptedForChannelId = channel.id;
+    _uaDiagnosisInFlight = true;
+    final String current = PlayerSettings.instance.userAgent;
+    final UserAgentProbeResult probe;
+    try {
+      probe = await StreamProbe.instance.probeUserAgents(
+        channel.streamUrl,
+        candidates: <String>[
+          current,
+          ...PlayerSettings.userAgentPresets.values,
+        ],
+      );
+    } finally {
+      _uaDiagnosisInFlight = false;
+    }
+    // L'utilisateur a zappé pendant la sonde → cette chaîne n'est plus
+    // affichée, rien à faire (le nouvel écran gère son propre état).
+    if (!mounted || channel.id != _current.id) return;
+
+    if (probe.workingUserAgent != null && probe.workingUserAgent != current) {
+      StructuredLogger.instance.info(
+        domain: 'native',
+        event: 'tv_player.ua_autoswitch',
+        ctx: <String, Object?>{
+          'from': current,
+          'to': probe.workingUserAgent,
+          'channelId': channel.id,
+        },
+      );
+      await PlayerSettings.instance.setUserAgent(probe.workingUserAgent!);
+      if (!mounted || channel.id != _current.id) return;
+      _freeze.openChannel(DateTime.now()); // budget neuf : cette signature a de vraies chances
+      _controller.setUrl(
+        _relayPlayUrl ?? channel.streamUrl,
+        userAgent: probe.workingUserAgent,
+      );
+      return; // pas d'erreur affichée : on retente silencieusement
+    }
+
+    if (mounted) {
+      setState(() {
+        _fatal = true;
+        _buffering = false;
+        _fatalNetworkHint = probe.isLikelyNetworkBlocked;
+      });
     }
   }
 
@@ -888,6 +978,17 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                             style: TextStyle(
                                 fontSize: TvDimens.body,
                                 color: TvTokens.mutedDim)),
+                        // Indice réseau/VPN : uniquement quand le diagnostic
+                        // multi-UA a conclu à un blocage réseau (DNS/timeout)
+                        // plutôt qu'à un simple souci de signature de lecteur.
+                        if (_fatalNetworkHint) ...<Widget>[
+                          const SizedBox(height: 6),
+                          Text(context.l10n.tvChannelNetworkHint,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  fontSize: TvDimens.body * 0.85,
+                                  color: TvTokens.mutedDim)),
+                        ],
                         const SizedBox(height: 20),
                         Container(
                           padding: const EdgeInsets.symmetric(

@@ -114,6 +114,45 @@ class StreamProbeResult {
   }
 }
 
+/// Résultat d'une sonde sur PLUSIEURS signatures de lecteur (User-Agent) pour
+/// une même URL — cf. `StreamProbe.probeUserAgents`. Beaucoup de fournisseurs
+/// IPTV whitelistent la signature d'un lecteur connu (VLC, ExoPlayer/IBO,
+/// Smarters…) et servent une page vide/erreur aux autres : une chaîne qui
+/// "marche sur IBO mais pas chez nous" est souvent CE problème, pas une
+/// vraie panne réseau.
+@immutable
+class UserAgentProbeResult {
+  const UserAgentProbeResult({
+    required this.workingUserAgent,
+    required this.attempts,
+  });
+
+  /// Signature qui a obtenu une vraie réponse média, ou `null` si aucune
+  /// des signatures essayées n'a fonctionné.
+  final String? workingUserAgent;
+
+  /// Résultat détaillé par signature essayée, dans l'ordre d'essai.
+  final Map<String, StreamProbeResult> attempts;
+
+  /// `true` si AUCUNE signature n'a marché ET que les échecs ressemblent à
+  /// un blocage RÉSEAU (DNS, timeout, connexion refusée) plutôt qu'à un
+  /// simple refus de signature — changer de User-Agent n'aiderait alors pas,
+  /// le souci est en amont (FAI, DNS, ou un VPN serait nécessaire).
+  bool get isLikelyNetworkBlocked {
+    if (workingUserAgent != null) return false;
+    if (attempts.isEmpty) return false;
+    return attempts.values.every(_isNetworkLevelFailure);
+  }
+
+  static bool _isNetworkLevelFailure(StreamProbeResult r) {
+    if (r.success) return false;
+    if (StreamProbe.isDnsFailure(r)) return true;
+    final String reason = (r.errorReason ?? '').toLowerCase();
+    return reason.contains('ne répond pas') ||
+        reason.contains('connexion impossible');
+  }
+}
+
 class StreamProbe {
   StreamProbe._();
   static final StreamProbe instance = StreamProbe._();
@@ -190,11 +229,13 @@ class StreamProbe {
     int maxRedirects = 5,
     int dnsRetries = 1,
     Duration dnsRetryDelay = const Duration(milliseconds: 1500),
+    String? userAgent,
   }) async {
     StreamProbeResult result = await _probeOnce(
       url,
       timeout: timeout,
       maxRedirects: maxRedirects,
+      userAgent: userAgent,
     );
 
     int retriesUsed = 0;
@@ -215,6 +256,7 @@ class StreamProbe {
         url,
         timeout: timeout,
         maxRedirects: maxRedirects,
+        userAgent: userAgent,
       );
     }
 
@@ -238,10 +280,59 @@ class StreamProbe {
     return result;
   }
 
+  /// Sonde [url] avec CHAQUE signature de [candidates] (dans l'ordre — la
+  /// PREMIÈRE doit être la signature actuellement utilisée, pour savoir si
+  /// le souci vient vraiment d'elle) et s'arrête dès qu'une obtient une
+  /// vraie réponse média. Diagnostic « la chaîne marche sur IBO mais pas
+  /// chez nous » : beaucoup de fournisseurs whitelistent la signature d'un
+  /// lecteur connu (VLC, ExoPlayer/IBO, Smarters…) et servent une page
+  /// vide/erreur aux autres — sans jamais renvoyer une vraie erreur réseau.
+  ///
+  /// Un seul essai par signature (pas de retry DNS ici — le but est de
+  /// comparer les signatures vite, pas de retenter une signature qui a
+  /// déjà échoué). Les doublons dans [candidates] ne sont essayés qu'une
+  /// fois.
+  Future<UserAgentProbeResult> probeUserAgents(
+    String url, {
+    required List<String> candidates,
+    Duration timeout = const Duration(seconds: 6),
+  }) async {
+    final Map<String, StreamProbeResult> attempts =
+        <String, StreamProbeResult>{};
+    String? working;
+    for (final String ua in candidates) {
+      if (ua.trim().isEmpty || attempts.containsKey(ua)) continue;
+      final StreamProbeResult r =
+          await _probeOnce(url, timeout: timeout, userAgent: ua);
+      attempts[ua] = r;
+      if (r.success && _looksLikeRealMedia(r)) {
+        working = ua;
+        break; // 1re signature qui marche suffit — inutile de tester le reste
+      }
+    }
+    return UserAgentProbeResult(workingUserAgent: working, attempts: attempts);
+  }
+
+  /// `true` si la réponse ressemble à un VRAI flux média (pas une page
+  /// d'erreur/placeholder HTML servie avec un 200 trompeur). Beaucoup de
+  /// serveurs IPTV ne renvoient aucun Content-Type sur un live → on
+  /// accepte l'absence de MIME comme "probablement OK" (le `success` du
+  /// probe a déjà vérifié le statut 2xx/206).
+  static bool _looksLikeRealMedia(StreamProbeResult r) {
+    if (!r.success) return false;
+    final String m = (r.mime ?? '').toLowerCase();
+    if (m.isEmpty) return true;
+    if (m.contains('html') || m.contains('json') || m.startsWith('text/')) {
+      return false;
+    }
+    return true;
+  }
+
   Future<StreamProbeResult> _probeOnce(
     String url, {
     Duration timeout = const Duration(seconds: 6),
     int maxRedirects = 5,
+    String? userAgent,
   }) async {
     // Phase 1+/B3 (2026-06-01) : strip d'un eventuel `?` de fin
     // (cas observe sur les URLs Xtream "http://.../live/USER/PASS/ID.ts?").
@@ -254,7 +345,7 @@ class StreamProbe {
     final HttpClient client = HttpClient()
       ..connectionTimeout = timeout
       ..idleTimeout = timeout
-      ..userAgent = _kUserAgent
+      ..userAgent = userAgent ?? _kUserAgent
       // On gère les redirects à la main pour les COMPTER et les EXPOSER
       // dans le résultat (info essentielle pour `shouldUseRelay`).
       ..autoUncompress = false;

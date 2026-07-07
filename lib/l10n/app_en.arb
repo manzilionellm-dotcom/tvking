@@ -733,6 +733,7 @@
   "tvMultiViewUnavailable": "Multi-view unavailable: device too limited (2 simultaneous streams not guaranteed).",
   "tvChannelUnavailable": "Channel unavailable right now.",
   "tvChannelBlockedBySource": "Channel empty or blocked by your source. Check it isn't already open on another device.",
+  "tvChannelNetworkHint": "This looks like a network block (ISP or DNS) — a VPN may help if this channel works elsewhere.",
   "tvRetryQuitHint": "OK: Retry   ·   Back: Quit",
   "tvSettingsParental": "Parental controls (Kids Mode + PIN)",
   "tvSettingsLegal": "Legal notice & Terms of use",

@@ -45,17 +45,25 @@ import io.flutter.plugin.platform.PlatformView
  */
 @UnstableApi
 class NativeVideoView(
-    context: Context,
+    private val appContext: Context,
     messenger: BinaryMessenger,
     id: Int,
 ) : PlatformView, MethodChannel.MethodCallHandler, Player.Listener {
 
-    private val surfaceView = SurfaceView(context)
+    private val surfaceView = SurfaceView(appContext)
     private val channel = MethodChannel(messenger, "native_video_player/$id")
     private val player: ExoPlayer
     private val handler = Handler(Looper.getMainLooper())
 
     private var currentUrl: String? = null
+
+    // Signature de lecteur CUSTOM pour la chaîne courante (diagnostic
+    // multi-UA côté Dart, cf. video_player_screen.dart / tv_player_screen.dart
+    // "ça marche sur IBO, pas chez nous" — beaucoup de fournisseurs
+    // whitelistent une signature précise). `null` = User-Agent par défaut du
+    // httpFactory construit dans init{}. Mémorisée pour que les reconnexions
+    // SILENCIEUSES (scheduleRetry) gardent la signature qui a marché.
+    private var currentUserAgent: String? = null
 
     // Reconnexion auto silencieuse.
     private var retryCount = 0
@@ -120,7 +128,7 @@ class NativeVideoView(
             .build()
 
         // Décodage matériel (MediaCodec) avec repli logiciel si l'init échoue.
-        val renderersFactory = DefaultRenderersFactory(context)
+        val renderersFactory = DefaultRenderersFactory(appContext)
             .setEnableDecoderFallback(true)
 
         // User-Agent type lecteur connu + redirections cross-protocole : des
@@ -139,7 +147,7 @@ class NativeVideoView(
         // lecteur externe (open_filex) qui, sur cette box, tombait sur la Galerie
         // → FATAL EXCEPTION (gallery3d) qui tuait l'app. Le direct reste 100 %
         // inchangé (http passe toujours par le même httpFactory).
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+        val dataSourceFactory = DefaultDataSource.Factory(appContext, httpFactory)
 
         // Politique de ré-essai réseau AGRESSIVE : on retente beaucoup avant
         // d'abandonner un chargement (le direct IPTV coupe souvent brièvement).
@@ -157,7 +165,7 @@ class NativeVideoView(
         //     QualityIncrease long) → pas de yo-yo, image stable.
         // Aucun plafond fixe : sur bonne connexion, la HD revient toute seule.
         val trackSelector = DefaultTrackSelector(
-            context,
+            appContext,
             AdaptiveTrackSelection.Factory(
                 15_000, // minDurationForQualityIncreaseMs (remonte prudemment)
                 18_000, // maxDurationForQualityDecreaseMs (descend vite)
@@ -166,7 +174,7 @@ class NativeVideoView(
             ),
         )
 
-        player = ExoPlayer.Builder(context, renderersFactory)
+        player = ExoPlayer.Builder(appContext, renderersFactory)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
             .setTrackSelector(trackSelector)
@@ -192,6 +200,9 @@ class NativeVideoView(
                     result.error("no_url", "setUrl appelé sans url", null)
                     return
                 }
+                // Signature de lecteur CUSTOM (diagnostic multi-UA côté Dart,
+                // cf. currentUserAgent) — absente/vide = User-Agent par défaut.
+                val ua = call.argument<String>("userAgent")?.takeIf { it.isNotBlank() }
                 cancelRetry()
                 // On ne remet le budget de reconnexion silencieuse à zéro QUE
                 // pour une VRAIE nouvelle chaîne (URL différente). Si Dart
@@ -200,9 +211,8 @@ class NativeVideoView(
                 // Dart au lieu de relancer 8 essais à l'infini (boucle CPU/réseau).
                 if (url != currentUrl) retryCount = 0
                 currentUrl = url
-                player.setMediaItem(buildMediaItem(url))
-                player.prepare()
-                player.playWhenReady = true
+                currentUserAgent = ua
+                setMedia(url, ua)
                 result.success(null)
             }
             "play" -> {
@@ -306,14 +316,46 @@ class NativeVideoView(
             )
             .build()
 
+    /**
+     * Construit un [DefaultMediaSourceFactory] à la volée avec la signature
+     * [userAgent] demandée. Le httpFactory par défaut (construit dans init{})
+     * reste inchangé pour tout appel SANS UA custom — ce factory-ci ne sert
+     * QUE le temps d'une lecture avec signature alternative (diagnostic
+     * multi-UA "ça marche sur IBO, pas chez nous").
+     */
+    private fun mediaSourceFactoryFor(userAgent: String): DefaultMediaSourceFactory {
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(userAgent)
+            .setAllowCrossProtocolRedirects(true)
+            .setKeepPostFor302Redirects(true)
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(15_000)
+        val dataSourceFactory = DefaultDataSource.Factory(appContext, httpFactory)
+        return DefaultMediaSourceFactory(dataSourceFactory)
+            .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(6))
+    }
+
+    /** Charge [url] avec la signature [userAgent] (`null` = défaut de l'init). */
+    private fun setMedia(url: String, userAgent: String?) {
+        if (userAgent != null) {
+            player.setMediaSource(
+                mediaSourceFactoryFor(userAgent).createMediaSource(buildMediaItem(url)),
+            )
+        } else {
+            player.setMediaItem(buildMediaItem(url))
+        }
+        player.prepare()
+        player.playWhenReady = true
+    }
+
     private fun scheduleRetry(delayMs: Long) {
         cancelRetry()
         val r = Runnable {
             val url = currentUrl
             if (url != null) {
-                player.setMediaItem(buildMediaItem(url))
-                player.prepare()
-                player.playWhenReady = true
+                // Garde la MÊME signature que la session courante (celle qui
+                // a marché si un diagnostic multi-UA a déjà eu lieu).
+                setMedia(url, currentUserAgent)
             } else {
                 player.prepare()
             }

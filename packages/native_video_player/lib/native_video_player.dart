@@ -126,7 +126,12 @@ class NativeVideoController extends ChangeNotifier {
   /// Charge (ou recharge) une URL : zap vers une autre chaîne, ou reconnexion
   /// sur la MÊME URL. Réinitialise l'état d'affichage (logo le temps que la
   /// nouvelle 1re trame arrive).
-  void setUrl(String url) {
+  /// [userAgent] : signature de lecteur CUSTOM pour cet appel (diagnostic
+  /// multi-UA — "ça marche sur IBO, pas chez nous"). `null` = signature par
+  /// défaut du plugin natif. Ignoré si la vue n'est pas encore attachée (le
+  /// 1er channel n'a jamais besoin d'un diagnostic, il n'a pas encore pu
+  /// échouer).
+  void setUrl(String url, {String? userAgent}) {
     hasError = false;
     isEnded = false;
     isBuffering = true;
@@ -135,7 +140,10 @@ class NativeVideoController extends ChangeNotifier {
     buffered = Duration.zero;
     if (!_disposed) notifyListeners();
     if (_channel != null) {
-      _channel!.invokeMethod<void>('setUrl', <String, dynamic>{'url': url});
+      _channel!.invokeMethod<void>('setUrl', <String, dynamic>{
+        'url': url,
+        if (userAgent != null) 'userAgent': userAgent,
+      });
     } else {
       _pendingUrl = url; // pas encore rattaché : on jouera ça à l'attach.
     }
