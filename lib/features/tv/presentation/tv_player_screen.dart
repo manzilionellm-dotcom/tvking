@@ -24,6 +24,7 @@ import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/observability/structured_logger.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
@@ -289,6 +290,22 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     }
     // Erreur / fin de flux live → reconnexion.
     if (_controller.hasError || _controller.isEnded) {
+      // Diagnostic terrain (P1-6) : errorCodeName est une constante Media3
+      // STABLE (ex. "ERROR_CODE_IO_BAD_HTTP_STATUS") — bien plus exploitable
+      // à distance que le message brut, souvent vague ("Source error").
+      if (_controller.hasError) {
+        StructuredLogger.instance.warn(
+          domain: 'native',
+          event: 'tv_player.error',
+          ctx: <String, Object?>{
+            'channelId': _current.id,
+            'everShownFrame': _everShownFrame,
+            'errorCodeName': _controller.lastErrorCodeName,
+            'errorCode': _controller.lastErrorCode,
+            'message': _controller.lastErrorMessage,
+          },
+        );
+      }
       _onFreezeAction(_freeze.onPlayerError(DateTime.now()));
     }
   }

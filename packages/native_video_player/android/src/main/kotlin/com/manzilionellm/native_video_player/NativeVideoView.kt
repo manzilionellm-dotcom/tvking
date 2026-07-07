@@ -267,7 +267,22 @@ class NativeVideoView(
             scheduleRetry(delay)
         } else {
             // Trop d'échecs d'affilée → on laisse Dart faire un reset complet.
-            channel.invokeMethod("error", error.message)
+            // Diagnostic terrain : avant, seul `error.message` (souvent vague,
+            // ex. "Source error") remontait — impossible de distinguer un
+            // codec non supporté d'un timeout réseau sans lire le logcat de
+            // la box. `errorCodeName` (constante stable Media3, ex.
+            // "ERROR_CODE_IO_BAD_HTTP_STATUS") + le message de la CAUSE racine
+            // (souvent plus parlant que le message de façade) donnent au
+            // sender de quoi journaliser un diagnostic exploitable à distance.
+            channel.invokeMethod(
+                "error",
+                mapOf(
+                    "message" to error.message,
+                    "errorCode" to error.errorCode,
+                    "errorCodeName" to error.errorCodeName,
+                    "causeMessage" to error.cause?.message,
+                ),
+            )
         }
     }
 

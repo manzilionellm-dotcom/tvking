@@ -58,6 +58,15 @@ class NativeVideoController extends ChangeNotifier {
   /// Erreur de lecture remontée par ExoPlayer (l'écran déclenche _recover).
   bool hasError = false;
 
+  /// Détail de la DERNIÈRE erreur native (diagnostic terrain — le message brut
+  /// est souvent vague ; `errorCodeName` est une constante Media3 stable, ex.
+  /// "ERROR_CODE_IO_BAD_HTTP_STATUS", qui distingue un codec non supporté
+  /// d'un timeout réseau sans lire le logcat de la box). `null` tant qu'aucune
+  /// erreur fatale n'est survenue.
+  String? lastErrorMessage;
+  String? lastErrorCodeName;
+  int? lastErrorCode;
+
   /// Flux terminé (rare en direct, mais on reconnecte si ça arrive).
   bool isEnded = false;
 
@@ -103,6 +112,12 @@ class NativeVideoController extends ChangeNotifier {
         isEnded = true;
       case 'error':
         hasError = true;
+        final Object? args = call.arguments;
+        if (args is Map) {
+          lastErrorMessage = args['message'] as String?;
+          lastErrorCodeName = args['errorCodeName'] as String?;
+          lastErrorCode = args['errorCode'] as int?;
+        }
     }
     if (!_disposed) notifyListeners();
     return null;
