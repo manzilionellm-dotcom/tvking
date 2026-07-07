@@ -62,7 +62,18 @@ jobs:
           channel: 'stable'
           cache: true
 
+      # Retry manuel (2 tentatives) : sdkmanager télécharge parfois une
+      # archive SDK CORROMPUE côté serveurs Google (« Error on ZipFile
+      # unknown archive », constaté 2026-07-06 sur le run #222) — panne
+      # transitoire de l'infra, pas un problème de ce dépôt. On rejoue
+      # l'action une seule fois si elle échoue avant d'abandonner le build.
       - name: Setup Android SDK
+        id: setup_android
+        uses: android-actions/setup-android@v3
+        continue-on-error: true
+
+      - name: Setup Android SDK (retry après échec transitoire)
+        if: steps.setup_android.outcome == 'failure'
         uses: android-actions/setup-android@v3
 
       - name: Accept Android licenses
