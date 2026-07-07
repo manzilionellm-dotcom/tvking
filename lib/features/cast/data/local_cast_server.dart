@@ -509,8 +509,16 @@ class LocalCastServer {
   Future<void> _serveCurrent(HttpRequest req) async {
     req.response.headers
       ..set('Content-Type', 'application/json; charset=utf-8')
-      ..set('Cache-Control', 'no-store, no-cache')
-      ..set('Access-Control-Allow-Origin', '*');
+      ..set('Cache-Control', 'no-store, no-cache');
+    // PAS de Access-Control-Allow-Origin ici (audit sécurité 2026-07-05,
+    // AUDIT-CAST-7MOTION §5.3) : le SEUL appelant légitime est le poll() de
+    // _screenHtml, servie par CE MÊME serveur → requête same-origin, aucun
+    // CORS requis. Le wildcard précédent exposait le token du relais (donc
+    // l'accès au flux abonné, via /relay/<token>) à N'IMPORTE QUEL script
+    // JS tournant sur le LAN (page tierce ouverte dans un navigateur du même
+    // Wi-Fi), qui pouvait le lire silencieusement en arrière-plan sans que
+    // l'utilisateur n'ouvre jamais /screen. Aucun code de ce dépôt ne fait de
+    // fetch cross-origin vers /current (vérifié) — retrait sans régression.
     final String? tok = _browserToken;
     final _RelayEntry? e = tok != null ? _relays[tok] : null;
     if (tok == null || e == null) {
