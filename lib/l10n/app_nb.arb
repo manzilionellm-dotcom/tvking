@@ -732,7 +732,7 @@
   },
   "tvMultiViewUnavailable": "Multivisning utilgjengelig: enheten for begrenset (2 samtidige strømmer ikke garantert).",
   "tvChannelUnavailable": "Kanalen er utilgjengelig akkurat nå.",
-  "tvChannelBlockedBySource": "Kanalen er tom eller blokkert av kilden din.",
+  "tvChannelBlockedBySource": "Kanalen er tom eller blokkert av kilden din. Sjekk at den ikke allerede er åpen på en annen enhet.",
   "tvRetryQuitHint": "OK: Prøv igjen   ·   Tilbake: Avslutt",
   "tvSettingsParental": "Foreldrekontroll (barnemodus + PIN)",
   "tvSettingsLegal": "Juridisk info og bruksvilkår",

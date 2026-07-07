@@ -103,6 +103,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   late final Player _player;
   late final VideoController _videoController;
 
+  /// Message affiché quand une chaîne n'a JAMAIS atteint la lecture (source
+  /// vide / black.ts / bloquée par le fournisseur). Le rappel sur la limite
+  /// de connexions est une SUGGESTION, pas un diagnostic : beaucoup de
+  /// panels IPTV limitent à 1-2 connexions simultanées, et jouer déjà la
+  /// même chaîne ailleurs (téléphone + TV, ou cast en cours de test) en est
+  /// une cause fréquente — mais la chaîne peut aussi être simplement morte.
+  static const String _kChannelBlockedMessage =
+      'Chaîne indisponible : aucune vidéo reçue. Elle est vide ou bloquée '
+      'par ta source — vérifie qu\'elle n\'est pas déjà ouverte sur un '
+      'autre appareil, sinon essaie une autre chaîne.';
+
   bool _overlayVisible = true;
   Timer? _hideOverlayTimer;
   // Heartbeat périodique pendant le visionnage → garde l'app « en ligne »
@@ -380,8 +391,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         // bug de l'app alors que le flux est mort en amont.
         _errorMessage = _playedChannelId == _currentChannel.id
             ? e
-            : 'Chaîne indisponible : aucune vidéo reçue. Elle est vide ou '
-                'bloquée par ta source — essaie une autre chaîne.';
+            : _kChannelBlockedMessage;
       });
     }));
 
@@ -1131,8 +1141,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _hasError = true;
         _errorMessage = _playedChannelId == _currentChannel.id
             ? 'Flux interrompu. Vérifie ta connexion puis réessaie.'
-            : 'Chaîne indisponible : aucune vidéo reçue. Elle est vide ou '
-                'bloquée par ta source — essaie une autre chaîne.';
+            : _kChannelBlockedMessage;
       });
     });
   }
@@ -1195,8 +1204,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           // Jamais joué → source vide/bloquée ; sinon → vraie coupure réseau.
           _errorMessage = _playedChannelId == _currentChannel.id
               ? 'Flux interrompu. Vérifie ta connexion puis réessaie.'
-              : 'Chaîne indisponible : aucune vidéo reçue. Elle est vide ou '
-                  'bloquée par ta source — essaie une autre chaîne.';
+              : _kChannelBlockedMessage;
         });
       }
       return;
