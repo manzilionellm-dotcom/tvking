@@ -132,6 +132,24 @@ class XtreamClient {
         'Compte non-actif côté serveur (status=$status).',
       );
     }
+    // FORMAT DE SORTIE LIVE : les serveurs déclarent les conteneurs
+    // autorisés dans `allowed_output_formats` (ex. ["m3u8"] seulement sur
+    // les panels « sécurisés »). IBO/Smarters le respectent ; nous on
+    // forçait `.ts` → HTTP 200 avec page vide → ÉCRAN NOIR alors que la
+    // même chaîne marche sur IBO. Si `ts` n'est PAS autorisé mais que
+    // `m3u8` l'est, on bascule les URLs live en HLS.
+    final Object? formats = userInfo['allowed_output_formats'];
+    if (formats is List) {
+      final Set<String> allowed = formats
+          .map((Object? e) => e?.toString().trim().toLowerCase() ?? '')
+          .where((String e) => e.isNotEmpty)
+          .toSet();
+      if (allowed.isNotEmpty &&
+          !allowed.contains('ts') &&
+          allowed.contains('m3u8')) {
+        _liveExtension = 'm3u8';
+      }
+    }
   }
 
   /// Récupère la liste des catégories Live (map id → nom).
@@ -472,11 +490,21 @@ class XtreamClient {
   //  Helpers internes
   // ============================================================
 
-  /// URL de stream live au format standard Xtream.
-  /// `.ts` est le format brut MPEG-TS reconnu par 100% des serveurs.
-  /// (On essaiera `.m3u8` plus tard si on rencontre un fournisseur
-  /// qui ne sert que du HLS.)
+  /// Conteneur live : `.ts` (MPEG-TS brut, marche sur la plupart des
+  /// serveurs) par défaut ; basculé sur `.m3u8` par [verifyCredentials]
+  /// quand le serveur déclare ne PAS autoriser `ts`
+  /// (allowed_output_formats). Les deux chemins d'import (ajout +
+  /// rafraîchissement) vérifient les identifiants AVANT de construire
+  /// les URLs, donc l'extension est déjà la bonne ici.
+  String _liveExtension = 'ts';
+
+  /// URL de stream live au format standard Xtream. En HLS, le serveur
+  /// sert la playlist sous le préfixe `/live/` (forme standard Xtream) ;
+  /// en `.ts` la forme courte sans préfixe marche partout.
   String _buildLiveStreamUrl(String streamId) {
+    if (_liveExtension == 'm3u8') {
+      return '$_baseUrl/live/$_userEnc/$_passEnc/$streamId.m3u8';
+    }
     return '$_baseUrl/$_userEnc/$_passEnc/$streamId.ts';
   }
 

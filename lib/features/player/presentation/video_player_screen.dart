@@ -189,6 +189,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // `_currentChannel.id`, jamais remis à null explicitement).
   String? _uaFixAttemptedForChannelId;
   bool _uaDiagnosisInFlight = false;
+  // Repli de FORMAT (.ts ↔ .m3u8) adopté par le diagnostic : certains
+  // serveurs n'autorisent que le HLS pour le live → notre URL `.ts`
+  // renvoie une page vide (écran noir) alors que la variante `.m3u8`
+  // joue (c'est ce que fait IBO). Quand la sonde valide la variante, on
+  // la mémorise ici pour que TOUTES les réouvertures (retry, watchdog,
+  // retour de cast…) réutilisent la bonne URL. Remis à null au zap.
+  String? _adoptedAltUrl;
+
+  /// URL effective à (ré)ouvrir : catch-up (overrideUrl) > variante de
+  /// format adoptée par le diagnostic > URL live de la chaîne.
+  String get _effectiveUrl =>
+      widget.overrideUrl ?? _adoptedAltUrl ?? _currentChannel.streamUrl;
   static const Duration _kWatchdogInterval = Duration(seconds: 5);
   static const int _kWatchdogStaleTicksBeforeRecover = 3; // ~15 s figé
   static const int _kWatchdogGoodTicksToReset = 6; // ~30 s sains
@@ -424,7 +436,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
 
     // URL effective : overrideUrl (catch-up) sinon stream live
-    final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+    final String url = _effectiveUrl;
     _openMedia(url);
 
     // Restaure la dernière vitesse
@@ -530,6 +542,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _isBuffering = true;
       // Nouvelle chaîne → on repart au DIRECT (on n'est plus en différé).
       _behindLive = false;
+      // La variante de format adoptée était propre à l'ANCIENNE chaîne.
+      _adoptedAltUrl = null;
       // (la chaîne change → on le rapporte juste après le setState)
     });
     RecentlyWatchedRepository.instance.record(next.id);
@@ -690,7 +704,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         programTitle: widget.overrideTitle,
       );
 
-      final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+      final String url = _effectiveUrl;
 
       bool ok;
       if (_liveViaRelay) {
@@ -745,7 +759,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     try {
       final Recording? rec = _activeRecording;
       final String url = rec?.streamUrl ??
-          (widget.overrideUrl ?? _currentChannel.streamUrl);
+          (_effectiveUrl);
 
       // On arrête le bon moteur selon le mode.
       int bytes = 0;
@@ -1031,7 +1045,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     } else {
       // Cast termine / echoue / annule → on reprend sur le telephone
       // en re-ouvrant le flux (stop() a ferme le media).
-      final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+      final String url = _effectiveUrl;
       _openMedia(url);
     }
     setState(() {});
@@ -1135,7 +1149,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _errorMessage = null;
       _isBuffering = true;
     });
-    final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+    final String url = _effectiveUrl;
     _openMedia(url);
   }
 
@@ -1194,6 +1208,44 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return; // pas d'erreur affichée : on retente silencieusement
     }
 
+    // Repli de FORMAT (.ts ↔ .m3u8) : aucune signature n'a débloqué l'URL
+    // telle quelle. Certains serveurs n'autorisent que le HLS pour le live
+    // (allowed_output_formats sans « ts ») : notre `.ts` renvoie une page
+    // vide → écran noir, alors que la variante `.m3u8` joue (c'est ce que
+    // lit IBO). On sonde la variante avec les mêmes signatures ; si elle
+    // répond, on l'adopte pour toute la session de cette chaîne.
+    final String? alt =
+        _alternateFormatUrl(widget.overrideUrl ?? channel.streamUrl);
+    if (alt != null) {
+      _uaDiagnosisInFlight = true;
+      final UserAgentProbeResult altProbe;
+      try {
+        altProbe = await StreamProbe.instance.probeUserAgents(
+          alt,
+          candidates: <String>[
+            current,
+            ...PlayerSettings.userAgentPresets.values,
+          ],
+        );
+      } finally {
+        _uaDiagnosisInFlight = false;
+      }
+      if (!mounted || channel.id != _currentChannel.id) return;
+      if (altProbe.workingUserAgent != null) {
+        debugPrint(
+            '[Player] format bloqué mais la variante « $alt » répond '
+            '(signature "${altProbe.workingUserAgent}") → bascule + relance.');
+        if (altProbe.workingUserAgent != current) {
+          await PlayerSettings.instance.setUserAgent(altProbe.workingUserAgent!);
+          if (!mounted || channel.id != _currentChannel.id) return;
+        }
+        _adoptedAltUrl = alt;
+        _watchdogRecoveries = 0;
+        _openMedia(alt);
+        return; // pas d'erreur affichée : la variante a de vraies chances
+      }
+    }
+
     setState(() {
       _hasError = true;
       _errorMessage = probe.isLikelyNetworkBlocked
@@ -1202,6 +1254,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               'peut aider si cette chaîne fonctionne ailleurs.'
           : _kChannelBlockedMessage;
     });
+  }
+
+  /// Variante de conteneur d'une URL live Xtream : `…/user/pass/id.ts` ↔
+  /// `…/live/user/pass/id.m3u8`. Le serveur Xtream sert le HLS sous le
+  /// préfixe `/live/` (forme standard) ; le `.ts` court marche avec ou
+  /// sans. Renvoie `null` si l'URL n'a pas d'extension connue — on ne
+  /// tente alors rien.
+  static String? _alternateFormatUrl(String url) {
+    final Uri? u = Uri.tryParse(url);
+    if (u == null || u.path.isEmpty) return null;
+    final String p = u.path;
+    if (p.endsWith('.ts')) {
+      String np = '${p.substring(0, p.length - 3)}.m3u8';
+      if (!np.startsWith('/live/')) np = '/live$np';
+      return u.replace(path: np).toString();
+    }
+    if (p.endsWith('.m3u8')) {
+      final String np = '${p.substring(0, p.length - 5)}.ts';
+      return u.replace(path: np).toString();
+    }
+    return null;
   }
 
   /// Borne l'ATTENTE DE DÉMARRAGE d'une ouverture : si `playing` n'est
@@ -1298,7 +1371,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _behindLive = false;
       });
     }
-    final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+    final String url = _effectiveUrl;
     _openMedia(url);
   }
 
@@ -1314,7 +1387,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _openCastPicker() async {
-    final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+    final String url = _effectiveUrl;
     final String title = widget.overrideTitle ?? _currentChannel.cleanName;
     // Phase 1+/G1 : on transmet le logo de la chaine pour que le
     // recepteur (TV / Chromecast / SHIELD) l'affiche sur son ecran
@@ -1335,7 +1408,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// (n'importe quel écran, même hors du Wi-Fi du téléphone). Tout passe
   /// par le Worker — cf. screen_cast_sheet.dart.
   Future<void> _openScreenCast() async {
-    final String url = widget.overrideUrl ?? _currentChannel.streamUrl;
+    final String url = _effectiveUrl;
     final String title = widget.overrideTitle ?? _currentChannel.cleanName;
     _hideOverlayTimer?.cancel();
     bool handedOff = false;

@@ -261,7 +261,12 @@ class LocalStreamRelay {
         // User-Agent configurable : certains serveurs IPTV n'autorisent le
         // vrai flux QU'AUX signatures de lecteurs connus (sinon ils servent
         // une pub/placeholder). Modifiable dans Réglages → Lecteur.
-        ..userAgent = PlayerSettings.instance.userAgent;
+        ..userAgent = PlayerSettings.instance.userAgent
+        // Serveurs IPTV https à certificat auto-signé/expiré : les lecteurs
+        // du marché (IBO, VLC…) les acceptent — sans ça, écran noir sur ces
+        // sources alors que le flux est bon (cf. iptv_http.dart).
+        ..badCertificateCallback =
+            ((X509Certificate cert, String host, int port) => true);
 
       final HttpClientRequest cReq =
           await session.client!.getUrl(Uri.parse(url));

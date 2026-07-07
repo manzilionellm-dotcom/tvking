@@ -348,7 +348,11 @@ class StreamProbe {
       ..userAgent = userAgent ?? _kUserAgent
       // On gère les redirects à la main pour les COMPTER et les EXPOSER
       // dans le résultat (info essentielle pour `shouldUseRelay`).
-      ..autoUncompress = false;
+      ..autoUncompress = false
+      // Serveurs IPTV https à certificat auto-signé/expiré : la sonde doit
+      // les traiter comme joignables (le relais/lecteur les accepte aussi).
+      ..badCertificateCallback =
+          ((X509Certificate cert, String host, int port) => true);
 
     String currentUrl = url;
     int redirects = 0;

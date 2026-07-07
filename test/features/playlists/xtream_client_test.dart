@@ -155,4 +155,42 @@ void main() {
           'http://s.com:8080/user%20%401/p%26ss%2Fw%23/42.ts');
     });
   });
+
+  group('allowed_output_formats (serveurs HLS-only → écran noir en .ts)', () {
+    test('serveur sans « ts » → URLs live en /live/…/id.m3u8', () async {
+      final XtreamClient c = XtreamClient(
+        serverUrl: 'http://s.com:8080',
+        username: 'u',
+        password: 'p',
+        httpClient: _mockServer(userInfo: <String, Object>{
+          'auth': 1,
+          'status': 'Active',
+          'allowed_output_formats': <String>['m3u8'],
+        }),
+      );
+      await c.verifyCredentials();
+      final List<Channel> channels =
+          await c.fetchLiveChannels(playlistId: 1);
+      expect(channels.first.streamUrl,
+          'http://s.com:8080/live/u/p/42.m3u8');
+    });
+
+    test('serveur autorisant ts → on garde le .ts (comportement actuel)',
+        () async {
+      final XtreamClient c = XtreamClient(
+        serverUrl: 'http://s.com:8080',
+        username: 'u',
+        password: 'p',
+        httpClient: _mockServer(userInfo: <String, Object>{
+          'auth': 1,
+          'status': 'Active',
+          'allowed_output_formats': <String>['m3u8', 'ts', 'rtmp'],
+        }),
+      );
+      await c.verifyCredentials();
+      final List<Channel> channels =
+          await c.fetchLiveChannels(playlistId: 1);
+      expect(channels.first.streamUrl, 'http://s.com:8080/u/p/42.ts');
+    });
+  });
 }
