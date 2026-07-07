@@ -79,6 +79,13 @@ const APK_URL =
 const TV_APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-latest/defew-tv.apk';
 
+// .tpk Samsung TV (Tizen) — release `tizen-latest` (écrasée à chaque build
+// CI, cf. build-tizen.yml). Servi via la route propre `/samsung` : un lien
+// sur NOTRE domaine, qui pointe TOUJOURS vers le dernier build, au lieu de
+// donner un lien brut github.com/releases/download/... à qui que ce soit.
+const TIZEN_TPK_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/tizen-latest/thefew-tizen.tpk';
+
 // NB : les variantes TV (Android TV / Fire TV, wrappers WebView, NOVA+)
 // et Red Room ont été RETIRÉES du projet. Seule l'app mobile 7 MOTION
 // (`APK_URL` ci-dessus) est encore construite et distribuée.
@@ -110,7 +117,7 @@ const TV_APK_URL =
 //    - Bytes count vers la requete quotidienne Worker (100k/jour
 //      free) mais pas vers la bandwidth.
 //
-async function proxyApk(upstreamUrl, suggestedFilename, bust) {
+async function proxyApk(upstreamUrl, suggestedFilename, bust, contentType) {
   let response;
   // ANTI-CACHE : si un parametre ?v=... est fourni, on contourne le cache
   // edge — on ajoute un cache-buster a l'URL upstream (nouvelle cle de
@@ -153,7 +160,9 @@ async function proxyApk(upstreamUrl, suggestedFilename, bust) {
     'Content-Disposition',
     `attachment; filename="${suggestedFilename}"`,
   );
-  headers.set('Content-Type', 'application/vnd.android.package-archive');
+  // Par défaut APK (comportement inchangé) ; un appelant (ex. Tizen .tpk)
+  // peut imposer un autre type MIME via le 4e paramètre.
+  headers.set('Content-Type', contentType || 'application/vnd.android.package-archive');
   headers.set('Cache-Control', 'public, max-age=300');
   return new Response(response.body, {
     status: 200,
@@ -3919,6 +3928,23 @@ async function handleRequest(request, env, ctx) {
           .includes(segments[0].toLowerCase())
     ) {
       return proxyApk(TV_APK_URL, 'DeFewTV.apk', url.searchParams.get('v'));
+    }
+
+    // /samsung, /tizen, /samsungtv — alias de téléchargement DIRECT du .tpk
+    // Samsung TV (Tizen). TIZEN_TPK_URL pointe sur le tag `tizen-latest` →
+    // TOUJOURS le dernier build. Lien sur NOTRE domaine, jamais un lien
+    // github.com brut. À sideloader via Tizen Studio (pas de « Downloader »
+    // sur Samsung — ce lien sert à récupérer le fichier facilement).
+    if (
+      segments.length === 1 &&
+      ['samsung', 'tizen', 'samsungtv'].includes(segments[0].toLowerCase())
+    ) {
+      return proxyApk(
+        TIZEN_TPK_URL,
+        'TheFew-Samsung.tpk',
+        url.searchParams.get('v'),
+        'application/octet-stream',
+      );
     }
 
     // /privacy — Politique de confidentialité (exigée par Google Play,
