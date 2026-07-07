@@ -42,6 +42,7 @@ import '../../channels/domain/channel.dart';
 import '../../player/data/player_settings.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../../vod/domain/vod_series.dart';
+import 'iptv_http.dart';
 import 'playlist_import_limits.dart';
 import 'source_link_utils.dart';
 
@@ -62,7 +63,7 @@ class XtreamClient {
     required this.password,
     http.Client? httpClient,
     Duration timeout = const Duration(seconds: 20),
-  })  : _http = httpClient ?? http.Client(),
+  })  : _http = httpClient ?? createIptvHttpClient(),
         _timeout = timeout;
 
   final String serverUrl;
@@ -71,16 +72,24 @@ class XtreamClient {
   final http.Client _http;
   final Duration _timeout;
 
-  /// Normalise le serveur : complète http:// si absent (filet défensif —
-  /// le schéma est normalement déjà garanti par l'appelant via
-  /// `SourceLinkUtils.ensureScheme`, cf. `PlaylistRepository`), puis enlève
-  /// le slash final éventuel. Sans schéma, `Uri.parse` dans `_buildUri`
-  /// interprèterait à tort le domaine comme un schéma (ex. « serveur.com »
-  /// devient le « schéma » d'un port/chemin) → connexion cassée pour rien.
-  String get _baseUrl {
-    final String s = SourceLinkUtils.ensureScheme(serverUrl);
-    return s.endsWith('/') ? s.substring(0, s.length - 1) : s;
-  }
+  /// Normalise le serveur (filet défensif — normalement déjà fait par
+  /// l'appelant, cf. `PlaylistRepository`) : complète http:// si absent,
+  /// purge les caractères invisibles, et RÉDUIT un lien complet collé tel
+  /// quel (get.php?username=…, portail /c/, player_api.php…) au vrai
+  /// serveur. Sans ça, `_buildUri` fabriquait `…/get.php?…/player_api.php`
+  /// → réponse M3U/HTML au lieu de JSON → code valide refusé.
+  String get _baseUrl => SourceLinkUtils.sanitizeXtreamServer(serverUrl);
+
+  /// Identifiants encodés pour URL. Un mot de passe contenant `@ & # + /`
+  /// ou un espace cassait les URLs de flux/EPG construites par
+  /// concaténation (le login passait, mais AUCUNE chaîne ne se lançait).
+  String get _userEnc => Uri.encodeComponent(username.trim());
+  String get _passEnc => Uri.encodeComponent(password.trim());
+
+  /// Timeout de LECTURE du corps, plus généreux que celui d'établissement :
+  /// un `get_live_streams` global de gros bouquet pèse des dizaines de Mo —
+  /// 20 s ne suffisaient pas sur une connexion moyenne (le M3U laisse 90 s).
+  static const Duration _bodyTimeout = Duration(seconds: 90);
 
   // ============================================================
   //  Endpoints publics
@@ -97,16 +106,28 @@ class XtreamClient {
         'Réponse serveur invalide (pas de user_info).',
       );
     }
-    final String auth = (userInfo['auth']?.toString() ?? '0');
-    if (auth != '1') {
+    // Le protocole Xtream n'est pas normalisé : selon le panel, `auth`
+    // vaut 1, "1", true ou "true" quand c'est bon — et certains panels
+    // (forks XUI.one…) ne renvoient PAS le champ du tout alors que le
+    // compte est valide (user_info présent avec status/exp_date). On ne
+    // refuse donc que sur un refus EXPLICITE (0/false) — c'était le motif
+    // n°1 du « ce code marche sur IBO mais pas chez nous ».
+    final String auth =
+        userInfo['auth']?.toString().trim().toLowerCase() ?? '';
+    if (auth == '0' || auth == 'false') {
       throw XtreamException(
-        'Identifiants refusés (auth=$auth). Vérifie ton login/mot de passe.',
+        'Identifiants refusés par le serveur. Vérifie ton login/mot de passe.',
       );
     }
-    final String status = userInfo['status']?.toString() ?? '';
-    if (status.isNotEmpty &&
-        status.toLowerCase() != 'active' &&
-        status != '1') {
+    // Statut : on ne refuse que les états clairement BLOQUANTS connus.
+    // Un statut exotique inconnu (« Enabled », « Trial », vide…) passe —
+    // le vrai test est l'import des chaînes juste après.
+    final String status =
+        userInfo['status']?.toString().trim().toLowerCase() ?? '';
+    const Set<String> blocked = <String>{
+      'banned', 'disabled', 'expired', 'suspended', 'blocked', 'inactive',
+    };
+    if (blocked.contains(status)) {
       throw XtreamException(
         'Compte non-actif côté serveur (status=$status).',
       );
@@ -337,7 +358,7 @@ class XtreamClient {
 
   /// URL d'un film VOD au format standard Xtream.
   String _buildVodStreamUrl(String streamId, String ext) {
-    return '$_baseUrl/movie/$username/$password/$streamId.$ext';
+    return '$_baseUrl/movie/$_userEnc/$_passEnc/$streamId.$ext';
   }
 
   // ============================================================
@@ -430,7 +451,7 @@ class XtreamClient {
               title: title,
               season: season,
               episodeNum: epNum,
-              streamUrl: '$_baseUrl/series/$username/$password/$id.$ext',
+              streamUrl: '$_baseUrl/series/$_userEnc/$_passEnc/$id.$ext',
               containerExt: ext,
             ),
           );
@@ -456,7 +477,7 @@ class XtreamClient {
   /// (On essaiera `.m3u8` plus tard si on rencontre un fournisseur
   /// qui ne sert que du HLS.)
   String _buildLiveStreamUrl(String streamId) {
-    return '$_baseUrl/$username/$password/$streamId.ts';
+    return '$_baseUrl/$_userEnc/$_passEnc/$streamId.ts';
   }
 
   /// Signature (User-Agent) qui a fonctionné pour ce serveur. Mémorisée
@@ -513,7 +534,7 @@ class XtreamClient {
           final List<int> bytes = await _readCapped(
             resp.stream,
             kMaxXtreamJsonBytes,
-          ).timeout(_timeout);
+          ).timeout(_bodyTimeout);
           // Xtream sert du JSON (UTF-8). allowMalformed pour ne jamais planter
           // sur un octet douteux d'un backend exotique.
           return utf8.decode(bytes, allowMalformed: true);

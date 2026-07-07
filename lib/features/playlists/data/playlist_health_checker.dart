@@ -403,6 +403,10 @@ class PlaylistHealthChecker {
     return HttpClient()
       ..connectionTimeout = _kHealthCheckTimeout
       ..idleTimeout = _kHealthCheckTimeout
-      ..userAgent = 'VLC/3.0.20 LibVLC/3.0.20 (The Few HealthChecker)';
+      ..userAgent = 'VLC/3.0.20 LibVLC/3.0.20 (The Few HealthChecker)'
+      // Même tolérance que le fetch (cf. iptv_http.dart) : un serveur IPTV
+      // https à certificat auto-signé/expiré n'est PAS une source morte.
+      ..badCertificateCallback =
+          ((X509Certificate cert, String host, int port) => true);
   }
 }

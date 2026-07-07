@@ -30,6 +30,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../player/data/player_settings.dart';
+import 'iptv_http.dart';
 import 'playlist_import_limits.dart';
 import 'source_link_utils.dart';
 
@@ -88,7 +89,10 @@ abstract final class M3uFetcher {
     // échoue ou produit une URL invalide → « playlist injoignable » pour
     // un lien pourtant correct, juste incomplet.
     url = SourceLinkUtils.ensureScheme(url);
-    final http.Client client = httpClient ?? http.Client();
+    // Client TOLÉRANT aux certificats invalides (auto-signés/expirés, très
+    // courants sur les serveurs IPTV) — cf. iptv_http.dart. Sans ça, un
+    // panel https « sécurisé maison » était rejeté avant même la requête.
+    final http.Client client = httpClient ?? createIptvHttpClient();
     final bool owns = httpClient == null;
 
     try {
@@ -147,7 +151,11 @@ abstract final class M3uFetcher {
           final bool looksHtml = head.startsWith('<');
           final bool looksM3u = headUpper.contains('#EXTM3U') ||
               headUpper.contains('#EXTINF') ||
-              head.contains('://');
+              head.contains('://') ||
+              // Même repli que M3uParser._looksLikeUrl : playlist « brute »
+              // de chemins SANS schéma mais avec extension média connue —
+              // le parseur l'accepte, le fetcher ne doit pas la refuser.
+              _hasMediaExtension(head);
           if (looksHtml && !looksM3u) {
             lastError = Exception(
               'Le serveur a renvoyé une page web (HTML), pas une playlist.',
@@ -211,6 +219,22 @@ abstract final class M3uFetcher {
         'Smarters, TiviMate, Kodi…). Vérifie que l\'URL est correcte et '
         'que l\'abonnement est actif ; un lien « localhost » ne marche pas '
         'depuis cet appareil.$detail';
+  }
+
+  /// Repli du test « ça ressemble à un M3U » : une extension média connue
+  /// dans les premiers Ko suffit (aligné sur M3uParser._looksLikeUrl).
+  /// On ne balaie que le DÉBUT du corps (le corps peut faire 60 Mo).
+  static bool _hasMediaExtension(String body) {
+    final String sample =
+        (body.length > 8192 ? body.substring(0, 8192) : body).toLowerCase();
+    const List<String> mediaExt = <String>[
+      '.m3u8', '.ts', '.mp4', '.mkv', '.mpd', '.flv', '.avi', '.mov',
+      '.webm', '.m4v', '.aac', '.mp3',
+    ];
+    for (final String ext in mediaExt) {
+      if (sample.contains(ext)) return true;
+    }
+    return false;
   }
 
   /// Lit [stream] en accumulant les octets, mais COUPE à [maxBytes] : au-delà,

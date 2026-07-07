@@ -631,7 +631,11 @@ class PlaylistRepository {
     final String base = serverUrl.endsWith('/')
         ? serverUrl.substring(0, serverUrl.length - 1)
         : serverUrl;
-    return '$base/xmltv.php?username=$username&password=$password';
+    // Encodage des identifiants : un mot de passe avec `& # + @` cassait
+    // l'URL XMLTV (paramètres tronqués côté serveur → EPG jamais chargé).
+    final String u = Uri.encodeQueryComponent(username);
+    final String p = Uri.encodeQueryComponent(password);
+    return '$base/xmltv.php?username=$u&password=$p';
   }
 
   Future<Playlist> addXtreamPlaylist({
@@ -641,10 +645,18 @@ class PlaylistRepository {
     required String password,
     http.Client? httpClient,
   }) async {
-    // NORMALISATION : complète http:// si seul le domaine a été donné
-    // (« serveur.com:8080 » sans schéma) — sinon `Uri.parse` en aval
-    // (XtreamClient, health-check) le mécomprend et le rejette à tort.
-    serverUrl = SourceLinkUtils.ensureScheme(serverUrl);
+    // NORMALISATION CENTRALE (tous les points d'entrée passent ici —
+    // panneaux mobile/TV, panel admin via push MAC, restauration cloud) :
+    //  • serveur : http:// complété si absent, caractères invisibles
+    //    purgés, et lien COMPLET collé tel quel (get.php?…, /c/, …)
+    //    réduit au vrai serveur — même si identifiant/mot de passe sont
+    //    déjà remplis (cas où l'extraction des formulaires ne joue pas) ;
+    //  • identifiants : caractères invisibles de messagerie purgés
+    //    (U+200B, marques RTL…) qui rendaient un code visuellement
+    //    correct réellement faux.
+    serverUrl = SourceLinkUtils.sanitizeXtreamServer(serverUrl);
+    username = SourceLinkUtils.cleanInput(username);
+    password = SourceLinkUtils.cleanInput(password);
     // 1) Vérifie d'abord les credentials, avant de polluer la base
     final XtreamClient xtream = XtreamClient(
       serverUrl: serverUrl,
