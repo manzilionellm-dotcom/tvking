@@ -148,6 +148,41 @@ jobs:
             echo "✓ media_kit retiré du pubspec (build TV uniquement)"
           fi
 
+      # ANALYSE TV-ONLY (CI, non commité) : media_kit vient d'être retiré du
+      # pubspec (étape précédente) POUR CE BUILD SEULEMENT, mais TOUS les
+      # fichiers qui l'importent restent dans lib/ (mobile/Windows le gardent
+      # dans LEUR pubspec, analysé normalement par LEUR CI). `flutter
+      # analyze` scanne TOUT lib/ sans notion de --target : sans exclure ces
+      # fichiers ICI, le build TV échouerait sur des erreurs qui ne le
+      # concernent pas. DÉCOUVERTE DYNAMIQUE (grep) plutôt qu'une liste figée
+      # à la main : un fichier media_kit oublié dans la liste a déjà fait
+      # échouer ce build (2026-07-07) — le grep ne peut pas se démoder.
+      - name: Exclure les fichiers non-TV de l'analyse (media_kit retiré)
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          import subprocess
+          out = subprocess.run(
+              ["grep", "-rl", "package:media_kit", "lib/", "--include=*.dart"],
+              capture_output=True, text=True,
+          ).stdout
+          media_kit_files = sorted(out.split())
+          print("fichiers media_kit détectés :", media_kit_files)
+
+          f = "analysis_options.yaml"
+          s = open(f).read()
+          marker = "    - lib/features/tv/presentation/player/tizen_player_screen.dart\n"
+          if marker not in s:
+              raise SystemExit("marker introuvable dans analysis_options.yaml")
+          extra = "".join(f"    - {p}\n" for p in media_kit_files if f"- {p}\n" not in s)
+          if extra:
+              s = s.replace(marker, marker + extra, 1)
+              open(f, "w").write(s)
+              print("excludes TV-only ajoutés :\n" + extra)
+          else:
+              print("déjà tous présents")
+          PYEOF
+
       - name: Flutter pub get
         run: flutter pub get
 
