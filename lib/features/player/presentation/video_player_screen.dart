@@ -50,6 +50,8 @@ import '../../recordings/domain/recording.dart';
 import '../data/local_stream_relay.dart';
 import '../data/pip_service.dart';
 import '../data/player_settings.dart';
+import '../data/stream_diagnostics.dart';
+import 'stream_debug_screen.dart';
 import 'widgets/player_settings_sheet.dart';
 import 'widgets/player_stats_overlay.dart';
 import 'widgets/player_tracks_sheet.dart';
@@ -374,6 +376,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }));
     _subs.add(_player.stream.error.listen((String e) {
       if (!mounted) return;
+      // Boîte noire : TOUTES les erreurs libmpv, exactes, y compris
+      // celles que l'UI filtre. `fatal` est ajusté plus bas si on
+      // découvre que c'est un simple warning.
       // Filtre les messages non-fatals de libmpv. Liste basée
       // sur les messages courants qui ne bloquent PAS la lecture :
       //   - "force-seekable" : seek impossible (normal pour le live)
@@ -394,14 +399,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (isWarning) {
         // On log mais on n'affiche pas l'overlay d'erreur
         debugPrint('[Player] WARNING (ignoré) : $e');
+        StreamDiagnostics.instance.recordPlayerError(e, fatal: false);
         return;
       }
       // Si la lecture est déjà active, c'est probablement aussi
       // un warning tardif — on ne casse pas l'expérience.
       if (_isPlaying) {
         debugPrint('[Player] Erreur reçue pendant la lecture, ignorée : $e');
+        StreamDiagnostics.instance.recordPlayerError(e, fatal: false);
         return;
       }
+      StreamDiagnostics.instance.recordPlayerError(e);
       // Si la chaîne n'a JAMAIS atteint la lecture, la source n'a peut-être
       // envoyé aucune vidéo décodable (chaîne vide / black.ts d'1 octet /
       // bloquée par le fournisseur) — MAIS ça peut aussi être une signature
@@ -415,6 +423,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         });
       } else {
         _declareChannelBlocked();
+      }
+    }));
+
+    // Boîte noire : codecs / résolution détectés par libmpv une fois le
+    // flux ouvert — consultables dans l'écran debug caché (appui long
+    // sur la version, écran À propos). Même source que l'overlay stats.
+    _subs.add(_player.stream.tracks.listen((_) {
+      StreamDiagnostics.instance.recordCodecs(
+        video: _player.state.track.video.codec,
+        audio: _player.state.track.audio.codec,
+      );
+    }));
+    _subs.add(_player.stream.height.listen((int? h) {
+      final int? w = _player.state.width;
+      if (h != null && w != null && h > 0 && w > 0) {
+        StreamDiagnostics.instance.recordCodecs(resolution: '$w×$h');
       }
     }));
 
@@ -613,6 +637,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _openMedia(String realUrl) async {
     _autoSubtitleApplied = false; // nouvelle vidéo → on réévalue les sous-titres
+    // Boîte noire : nouvelle tentative d'ouverture (URL réelle + UA).
+    // Le relais / la sonde compléteront avec le statut HTTP, libmpv
+    // avec les codecs et les erreurs exactes.
+    StreamDiagnostics.instance.beginSession(
+      url: realUrl,
+      userAgent: PlayerSettings.instance.userAgent,
+      title: widget.overrideTitle ?? _currentChannel.cleanName,
+    );
     _armStartupTimeout();
     if (widget.overrideUrl != null) {
       _player.open(Media(realUrl));
@@ -1181,6 +1213,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _uaFixAttemptedForChannelId = channel.id;
     _uaDiagnosisInFlight = true;
     final String current = PlayerSettings.instance.userAgent;
+    StreamDiagnostics.instance.recordEvent(
+      'probe',
+      'Chaîne jamais lue → sonde multi-signatures (User-Agent)…',
+      level: 'warn',
+    );
     final UserAgentProbeResult probe;
     try {
       probe = await StreamProbe.instance.probeUserAgents(
@@ -1193,6 +1230,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     } finally {
       _uaDiagnosisInFlight = false;
     }
+    _recordProbeAttempts(probe);
     // L'utilisateur a zappé pendant la sonde → cette chaîne n'est plus
     // affichée, rien à faire (le nouvel écran gère son propre état).
     if (!mounted || channel.id != _currentChannel.id) return;
@@ -1201,6 +1239,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       debugPrint(
           '[Player] "$current" bloqué mais "${probe.workingUserAgent}" '
           'fonctionne sur cette source → bascule automatique + relance.');
+      StreamDiagnostics.instance.recordEvent(
+        'probe',
+        'Signature "$current" refusée mais "${probe.workingUserAgent}" '
+            'acceptée → bascule automatique + relance',
+      );
       await PlayerSettings.instance.setUserAgent(probe.workingUserAgent!);
       if (!mounted || channel.id != _currentChannel.id) return;
       _watchdogRecoveries = 0; // budget neuf : cette signature a de vraies chances
@@ -1230,11 +1273,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       } finally {
         _uaDiagnosisInFlight = false;
       }
+      _recordProbeAttempts(altProbe, label: 'variante de format');
       if (!mounted || channel.id != _currentChannel.id) return;
       if (altProbe.workingUserAgent != null) {
         debugPrint(
             '[Player] format bloqué mais la variante « $alt » répond '
             '(signature "${altProbe.workingUserAgent}") → bascule + relance.');
+        StreamDiagnostics.instance.recordEvent(
+          'probe',
+          'Format bloqué mais la variante '
+              '${StreamDiagnostics.maskCredentials(alt)} répond '
+              '(UA "${altProbe.workingUserAgent}") → bascule + relance',
+        );
         if (altProbe.workingUserAgent != current) {
           await PlayerSettings.instance.setUserAgent(altProbe.workingUserAgent!);
           if (!mounted || channel.id != _currentChannel.id) return;
@@ -1246,6 +1296,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       }
     }
 
+    StreamDiagnostics.instance.recordEvent(
+      'probe',
+      probe.isLikelyNetworkBlocked
+          ? 'Aucune signature ne passe — échecs de niveau RÉSEAU '
+              '(DNS/timeout) : blocage FAI probable'
+          : 'Aucune signature ni variante de format ne débloque ce flux',
+      level: 'error',
+    );
     setState(() {
       _hasError = true;
       _errorMessage = probe.isLikelyNetworkBlocked
@@ -1254,6 +1312,34 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               'peut aider si cette chaîne fonctionne ailleurs.'
           : _kChannelBlockedMessage;
     });
+  }
+
+  /// Verse le détail d'une sonde multi-signatures dans la boîte noire :
+  /// une ligne par User-Agent essayé (statut HTTP ou raison d'échec).
+  /// Le statut de la signature ACTIVE alimente aussi l'instantané HTTP
+  /// (utile pour la VOD, qui ne passe pas par le relais).
+  void _recordProbeAttempts(UserAgentProbeResult probe, {String? label}) {
+    final StreamDiagnostics d = StreamDiagnostics.instance;
+    final String prefix = label == null ? '' : '[$label] ';
+    probe.attempts.forEach((String ua, StreamProbeResult r) {
+      final String verdict = r.success
+          ? 'OK (HTTP 2xx${r.mime == null ? '' : ' · ${r.mime}'})'
+          : (r.errorCode != null
+              ? 'HTTP ${r.errorCode} — ${r.errorReason ?? 'refusé'}'
+              : (r.errorReason ?? 'échec'));
+      d.recordEvent('probe', '${prefix}UA "$ua" → $verdict',
+          level: r.success ? 'info' : 'warn');
+    });
+    final StreamProbeResult? currentAttempt =
+        probe.attempts[PlayerSettings.instance.userAgent];
+    if (currentAttempt != null && d.httpStatus == null) {
+      d.recordHttp(
+        status: currentAttempt.errorCode ?? (currentAttempt.success ? 200 : null),
+        finalUrl: currentAttempt.finalUrl,
+        mime: currentAttempt.mime,
+        source: 'probe',
+      );
+    }
   }
 
   /// Variante de conteneur d'une URL live Xtream : `…/user/pass/id.ts` ↔
@@ -1364,6 +1450,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _watchdogRecoveries++;
     debugPrint(
         '[Player] watchdog: flux gelé → reconnexion automatique #$_watchdogRecoveries');
+    StreamDiagnostics.instance.recordEvent(
+      'watchdog',
+      'Flux gelé (position immobile) → reconnexion automatique '
+          '#$_watchdogRecoveries',
+      level: 'warn',
+    );
     if (mounted) {
       setState(() {
         _isBuffering = true;
@@ -2452,6 +2544,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   label: Text(context.l10n.buttonRetry),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            // Porte discrète vers la boîte noire : codec, statut HTTP,
+            // User-Agent envoyé, erreur exacte du moteur. Un écran noir
+            // ne doit JAMAIS rester muet — le détail est à un tap.
+            TextButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const StreamDebugScreen(),
+                  ),
+                );
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white54,
+              ),
+              icon: const Icon(Icons.bug_report_outlined, size: 16),
+              label: const Text(
+                'Détails techniques',
+                style: TextStyle(fontSize: 12),
+              ),
             ),
           ],
         ),
