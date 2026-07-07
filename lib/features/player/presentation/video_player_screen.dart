@@ -175,6 +175,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   static const int _kWatchdogGoodTicksToReset = 6; // ~30 s sains
   static const int _kWatchdogMaxRecoveries = 4;
 
+  // ── Borne de DÉMARRAGE (angle mort du watchdog) ────────────────────
+  // Le watchdog ne surveille que la lecture EN COURS (`_isPlaying`). Une
+  // chaîne qui ne démarre JAMAIS sans erreur mpv (source noire type
+  // `black.ts` : la socket s'ouvre, aucun octet utile n'arrive) laissait
+  // un spinner éternel. Ce timer one-shot, armé à chaque _openMedia et
+  // annulé au 1er `playing`, borne l'attente : au-delà, on affiche
+  // l'erreur claire (avec « réessayer ») au lieu du spinner infini.
+  // Même philosophie que le fix TV (verrou _recovering, 2026-07-06).
+  Timer? _startupTimer;
+  static const Duration _kStartupTimeout = Duration(seconds: 25);
+
   // Autoplay « À suivre » (façon YouTube / Netflix) : quand un contenu
   // FINI se termine (VOD, replay/catch-up, enregistrement) et qu'une
   // chaîne suivante existe, on propose un compte à rebours de 10 s qui
@@ -313,7 +324,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           // La lecture a réellement démarré pour CETTE chaîne → on mémorise son
           // id. Une erreur ultérieure ne sera donc plus attribuée à une « source
           // vide » (cf. listener d'erreur ci-dessous).
-          if (p) _playedChannelId = _currentChannel.id;
+          if (p) {
+            _playedChannelId = _currentChannel.id;
+            _startupTimer?.cancel(); // le démarrage a eu lieu → borne levée
+          }
         });
       }
       // Signal au natif Android pour le PiP auto : "lecture en
@@ -564,6 +578,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _openMedia(String realUrl) async {
     _autoSubtitleApplied = false; // nouvelle vidéo → on réévalue les sous-titres
+    _armStartupTimeout();
     if (widget.overrideUrl != null) {
       _player.open(Media(realUrl));
       return;
@@ -1007,6 +1022,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _presenceTimer?.cancel();
     _upNextTimer?.cancel();
     _watchdogTimer?.cancel();
+    _startupTimer?.cancel();
     // Mode « Écouteurs » : on coupe le service audio de fond et on lève le
     // drapeau natif (sinon le son continuerait après la fermeture du
     // lecteur). Idempotent / fail-open.
@@ -1103,6 +1119,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   // ----- Chien de garde anti-gel -----
+
+  /// Borne l'ATTENTE DE DÉMARRAGE d'une ouverture : si `playing` n'est
+  /// jamais atteint dans les [_kStartupTimeout], on montre l'erreur claire
+  /// (le watchdog, lui, ne surveille que la lecture déjà démarrée).
+  void _armStartupTimeout() {
+    _startupTimer?.cancel();
+    _startupTimer = Timer(_kStartupTimeout, () {
+      if (!mounted || _isPlaying || _hasError) return;
+      setState(() {
+        _hasError = true;
+        _errorMessage = _playedChannelId == _currentChannel.id
+            ? 'Flux interrompu. Vérifie ta connexion puis réessaie.'
+            : 'Chaîne indisponible : aucune vidéo reçue. Elle est vide ou '
+                'bloquée par ta source — essaie une autre chaîne.';
+      });
+    });
+  }
 
   /// Démarre le chien de garde anti-gel. Idempotent (annule l'ancien).
   void _startWatchdog() {

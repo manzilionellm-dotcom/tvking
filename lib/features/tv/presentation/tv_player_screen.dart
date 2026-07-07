@@ -33,6 +33,7 @@ import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../data/freeze_recovery_policy.dart';
 import '../core/tv_dimens.dart';
 import 'tv_channel_programs_screen.dart';
 import 'tv_components.dart';
@@ -156,18 +157,16 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   bool get _isFavorite => _favIds.contains(_current.id);
 
   // Anti-gel : on suit la progression réelle (position qui avance).
-  DateTime _lastProgress = DateTime.now();
   Duration _lastPos = Duration.zero;
-  bool _recovering = false;
-  static const Duration _frozen = Duration(seconds: 15);
   static const Duration _watchEvery = Duration(seconds: 4);
-  // Reconnexion BORNÉE (P1-6) : on compte les ré-ouvertures sur la MÊME chaîne.
-  // Au-delà de _kMaxRecover sans reprise, on ARRÊTE la boucle (CPU/réseau/chauffe)
-  // et on montre une erreur claire + bouton « Réessayer » au lieu de boucler à
-  // l'infini sur un flux mort. Remis à zéro dès qu'une image revient (progression)
-  // ou au changement de chaîne.
-  int _recoverAttempts = 0;
-  static const int _kMaxRecover = 5;
+  // Machine à états anti-gel EXTRAITE + TESTÉE (cf. freeze_recovery_policy.dart
+  // et son test unitaire) : gel détecté après 15 s sans progression, 5
+  // reconnexions bornées (P1-6) avant l'écran d'erreur avec « Réessayer ».
+  // Le bug du spinner infini (2026-07-06 : verrou jamais relâché, borne
+  // inatteignable) vivait dans cette logique — elle est désormais isolée du
+  // widget pour ne plus jamais régresser silencieusement.
+  final FreezeRecoveryPolicy _freeze =
+      FreezeRecoveryPolicy(now: DateTime.now());
   bool _fatal = false;
   // True dès qu'une vraie image a été affichée pour la chaîne courante. Si on
   // échoue SANS jamais avoir eu d'image → source vide / bloquée par le
@@ -205,20 +204,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       if (mounted) setState(() => _favIds = ids);
     });
     _open(reuse: true); // historique / présence pour la 1re chaîne
-    // Chien de garde : aucune progression depuis 15 s → reconnexion.
-    _watchdog = Timer.periodic(_watchEvery, (_) {
-      if (DateTime.now().difference(_lastProgress) > _frozen) {
-        // Toujours gelé un plein cycle _frozen APRÈS la dernière tentative :
-        // cette tentative a échoué → on libère le verrou pour la suivante.
-        // Sans ça, _recovering (remis à false uniquement quand la POSITION
-        // avance) restait vrai à jamais sur un flux qui ne démarre pas :
-        // plus aucune reconnexion, erreurs natives ignorées, et la borne
-        // P1-6 (_kMaxRecover → écran « chaîne vide/bloquée ») inatteignable
-        // — logo + spinner à l'infini au lieu du message clair.
-        _recovering = false;
-        _recover();
-      }
-    });
+    // Chien de garde : aucune progression depuis 15 s → reconnexion
+    // (décision déléguée à _freeze, cf. FreezeRecoveryPolicy.onTick).
+    _watchdog = Timer.periodic(
+        _watchEvery, (_) => _onFreezeAction(_freeze.onTick(DateTime.now())));
     // Garde l'app « en ligne » + chaîne à jour pendant le visionnage.
     _presenceTimer = Timer.periodic(const Duration(minutes: 3),
         (_) => SubscriptionState.instance.syncWithBackend());
@@ -282,9 +271,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // zéro le budget de reconnexion (et on lève un éventuel état d'erreur).
     if (_controller.position != _lastPos) {
       _lastPos = _controller.position;
-      _lastProgress = DateTime.now();
-      _recovering = false;
-      _recoverAttempts = 0;
+      _freeze.onProgress(DateTime.now());
       if (_fatal && mounted) setState(() => _fatal = false);
       // FILM : quand la barre est visible, on la fait AVANCER (tick 500 ms du
       // natif). Uniquement en VOD + overlay → aucun rebuild inutile en direct.
@@ -302,17 +289,14 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     }
     // Erreur / fin de flux live → reconnexion.
     if (_controller.hasError || _controller.isEnded) {
-      _recover();
+      _onFreezeAction(_freeze.onPlayerError(DateTime.now()));
     }
   }
 
   void _open({bool reuse = false}) {
-    _lastProgress = DateTime.now();
+    _freeze.openChannel(DateTime.now());
     _lastPos = Duration.zero;
     _everShownFrame = false; // nouvelle ouverture → pas encore d'image
-    // Nouvelle chaîne → budget de reconnexion neuf, on lève tout état d'erreur.
-    _recoverAttempts = 0;
-    _recovering = false;
     if (mounted) setState(() {
       _buffering = true;
       _fatal = false;
@@ -354,33 +338,31 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _open();
   }
 
-  void _recover() {
-    if (_recovering || _fatal) return;
-    // BORNE (P1-6) : au-delà de _kMaxRecover ré-ouvertures sans reprise, on
-    // ARRÊTE la boucle de reconnexion et on bascule en erreur explicite avec
-    // « Réessayer » manuel — fini la boucle CPU/réseau infinie sur flux mort.
-    if (_recoverAttempts >= _kMaxRecover) {
-      if (mounted) setState(() {
-        _fatal = true;
-        _buffering = false;
-      });
-      return;
+  /// Applique la décision de [FreezeRecoveryPolicy] : rien à faire, reconnexion,
+  /// ou budget épuisé → écran d'erreur borné (P1-6, « Réessayer » manuel).
+  void _onFreezeAction(FreezeAction action) {
+    switch (action) {
+      case FreezeAction.none:
+        break;
+      case FreezeAction.reopen:
+        // Ré-ouvre la MÊME source : l'URL locale du relais si on enregistre,
+        // sinon l'URL directe. = reconnexion au direct sans casser l'enreg.
+        _controller.setUrl(_relayPlayUrl ?? _current.streamUrl);
+      case FreezeAction.fatal:
+        if (mounted) {
+          setState(() {
+            _fatal = true;
+            _buffering = false;
+          });
+        }
     }
-    _recoverAttempts++;
-    _recovering = true;
-    _lastProgress = DateTime.now();
-    // Ré-ouvre la MÊME source : l'URL locale du relais si on enregistre, sinon
-    // l'URL directe. = reconnexion au direct sans casser l'enregistrement.
-    _controller.setUrl(_relayPlayUrl ?? _current.streamUrl);
   }
 
   /// « Réessayer » manuel depuis l'écran d'erreur : on repart d'un budget neuf.
   void _manualRetry() {
-    _recovering = false;
-    _lastProgress = DateTime.now(); // horloge fraîche : pas de watchdog immédiat
+    _freeze.openChannel(DateTime.now()); // horloge fraîche : pas de watchdog immédiat
     setState(() {
       _fatal = false;
-      _recoverAttempts = 0;
       _buffering = true;
     });
     _controller.setUrl(_relayPlayUrl ?? _current.streamUrl);
