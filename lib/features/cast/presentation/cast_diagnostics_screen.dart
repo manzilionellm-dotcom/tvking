@@ -23,6 +23,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../data/cast_black_box.dart';
 import '../data/cast_diagnostics.dart';
 import '../data/cast_manager.dart';
 import '../data/cast_network_diagnostic.dart';
@@ -152,6 +153,11 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
                   const _IntroCard(),
+                  const SizedBox(height: 16),
+                  // Boîte noire du cast : données RÉELLES de la dernière
+                  // tentative (routage, Worker, App ID, erreurs natives),
+                  // rafraîchies en direct pendant un cast.
+                  const _BlackBoxCard(),
                   const SizedBox(height: 20),
                   _DevicePicker(
                     selected: _selectedDevice,
@@ -808,6 +814,220 @@ class _NetworkReportCard extends StatelessWidget {
                   fontSize: 11,
                   height: 1.4,
                 ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+//  Boîte noire cast — données réelles de la dernière tentative
+// ============================================================
+//  S'abonne à CastDiagnostics (le singleton boîte noire) et montre :
+//  découverte (nb d'appareils vus), étapes de la tentative en cours ou
+//  de la dernière (routage, statuts Worker, App ID demandé/connecté,
+//  contentType, erreurs du framework avec code numérique) + les
+//  dernières lignes du journal. Rapport JSON complet copiable.
+
+class _BlackBoxCard extends StatelessWidget {
+  const _BlackBoxCard();
+
+  Future<void> _copy(BuildContext context) async {
+    await Clipboard.setData(
+      ClipboardData(text: CastDiagnostics.instance.exportReport()),
+    );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Rapport cast copié dans le presse-papier')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: CastDiagnostics.instance,
+      builder: (BuildContext context, _) {
+        final CastDiagnostics box = CastDiagnostics.instance;
+        final CastAttemptSnapshot? snap = box.latest;
+        final List<CastBlackBoxEvent> tail = box.events.length > 10
+            ? box.events.sublist(box.events.length - 10)
+            : box.events;
+        return Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Icon(Icons.flight_takeoff_rounded,
+                      color: AppColors.accent, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Boîte noire (temps réel)',
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _copy(context),
+                    icon: const Icon(Icons.copy_rounded, size: 16),
+                    label: const Text('Copier'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              _kv(
+                'Découverte',
+                box.lastDiscoveryEndedAt == null
+                    ? (box.lastDiscoveryStartedAt == null
+                        ? 'aucun scan encore'
+                        : 'scan en cours…')
+                    : '${box.devicesSeenTotal} appareil(s), '
+                        'dont ${box.devicesSeenChromecast} Google Cast',
+              ),
+              if (snap == null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Aucune tentative de cast enregistrée — lance un cast '
+                    'puis reviens ici (les données restent en mémoire).',
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                )
+              else ...<Widget>[
+                _kv('Cible',
+                    '${snap.deviceName} (${snap.deviceKind}) ${snap.deviceHost}'),
+                if (snap.channelName != null) _kv('Chaîne', snap.channelName!),
+                _kv('Étape', snap.stage,
+                    color: snap.stage == 'failed'
+                        ? AppColors.live
+                        : (snap.stage == 'playing' ? AppColors.success : null)),
+                if (snap.castPath != null) _kv('Chemin', snap.castPath!),
+                if (snap.contentType != null)
+                  _kv('contentType', snap.contentType!),
+                if (snap.requestedAppId != null)
+                  _kv(
+                    'App ID',
+                    '${snap.requestedAppId}'
+                        '${snap.receiverSwitchOutcome != null ? ' (${snap.receiverSwitchOutcome})' : ''}'
+                        '${snap.connectedAppId != null ? ' → connecté: ${snap.connectedAppId}' : ''}',
+                    color: snap.connectedAppId != null &&
+                            snap.connectedAppId != snap.requestedAppId
+                        ? AppColors.warning
+                        : null,
+                  ),
+                _kv('Receiver', snap.receiverPageUrl),
+                if (snap.castSignStatus != null || snap.castSignOk == false)
+                  _kv(
+                    '/cast-sign',
+                    snap.castSignStatus != null
+                        ? 'HTTP ${snap.castSignStatus}'
+                        : 'injoignable',
+                    color:
+                        snap.castSignOk == true ? null : AppColors.warning,
+                  ),
+                if (snap.proxyVerifyStatus != null)
+                  _kv(
+                    '/cast-proxy',
+                    'HTTP ${snap.proxyVerifyStatus}'
+                        '${snap.proxyUpstreamStatus != null ? ' · upstream=${snap.proxyUpstreamStatus}' : ''}',
+                    color: snap.proxyVerifyStatus! >= 200 &&
+                            snap.proxyVerifyStatus! < 300
+                        ? null
+                        : AppColors.warning,
+                  ),
+                if (snap.mediaUrlRedacted != null)
+                  _kv('URL média', snap.mediaUrlRedacted!),
+                if (snap.frameworkErrorCode != null)
+                  _kv(
+                    'Erreur framework',
+                    '${snap.frameworkErrorKind} '
+                        'code=${snap.frameworkErrorCode}',
+                    color: AppColors.live,
+                  ),
+                if (snap.finalError != null)
+                  _kv('Erreur finale', snap.finalError!,
+                      color: AppColors.live),
+                if (snap.totalDurationMs != null)
+                  _kv('Durée', '${snap.totalDurationMs} ms'),
+              ],
+              if (tail.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.background,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: tail
+                        .map(
+                          (CastBlackBoxEvent e) => Text(
+                            '${e.at.toIso8601String().substring(11, 19)} '
+                            '${e.kind}  ${e.message}',
+                            style: TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 10,
+                              height: 1.45,
+                              color: switch (e.level) {
+                                CastBlackBoxLevel.error => AppColors.live,
+                                CastBlackBoxLevel.warn => AppColors.warning,
+                                CastBlackBoxLevel.info =>
+                                  AppColors.textSecondary,
+                              },
+                            ),
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _kv(String label, String value, {Color? color}) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            width: 110,
+            child: Text(
+              label,
+              style: AppTextStyles.bodyMedium.copyWith(
+                fontSize: 11,
+                color: AppColors.textTertiary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: AppTextStyles.bodyMedium.copyWith(
+                fontSize: 11,
+                color: color ?? AppColors.textPrimary,
+                fontFamily: 'monospace',
               ),
             ),
           ),

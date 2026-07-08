@@ -38,6 +38,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/observability/structured_logger.dart';
 import '../domain/cast_device.dart';
+import 'cast_black_box.dart';
 import 'cast_session_diagnostic.dart' show redactStreamUrl;
 import 'cast_transport.dart';
 import 'dlna_profiles.dart';
@@ -244,6 +245,11 @@ class GoogleCastTransport implements CastTransport {
         mime = 'video/mp2t';
         castPath = 'cast_proxy';
       } else {
+        CastDiagnostics.instance.logEvent(
+          'route.fallback_relay',
+          'proxy Worker indisponible ou bloqué → relais HLS du téléphone',
+          level: CastBlackBoxLevel.warn,
+        );
         // REPLI — RELAIS HLS DU TÉLÉPHONE. Le téléphone tire le flux (client
         // natif, ni CORS ni contenu mixte) et sert une playlist HLS que le
         // récepteur lit. registerRelay renvoie null si la TV n'est pas
@@ -275,9 +281,23 @@ class GoogleCastTransport implements CastTransport {
     //    si une session tournait sur l'AUTRE receiver, il la termine et
     //    re-sélectionne la même TV tout seul (résultat 'switching').
     final String desiredReceiver = receiverAppIdForCastPath(castPath);
+    // BOÎTE NOIRE — la décision de routage est prise : chemin, MIME,
+    // URL média (masquée) et App ID demandé sont désormais connus.
+    CastDiagnostics.instance.updateCurrent((CastAttemptSnapshot snap) {
+      snap.castPath = castPath;
+      snap.contentType = mime;
+      snap.mediaUrlRedacted = redactCastUrl(urlToCast);
+      snap.requestedAppId = desiredReceiver;
+    });
     final String switchOutcome = kCastUseCustomReceiver
         ? await api.setReceiverApplicationId(desiredReceiver)
         : 'skipped';
+    CastDiagnostics.instance.updateCurrent(
+        (CastAttemptSnapshot snap) => snap.receiverSwitchOutcome = switchOutcome);
+    CastDiagnostics.instance.logEvent(
+      'receiver.select',
+      'App ID $desiredReceiver (chemin $castPath) → $switchOutcome',
+    );
     StructuredLogger.instance.info(
       domain: 'cast',
       event: 'google.receiver_select',
@@ -303,10 +323,17 @@ class GoogleCastTransport implements CastTransport {
       hasSession = await api.hasActiveSession();
     }
 
+    CastDiagnostics.instance
+        .updateCurrent((CastAttemptSnapshot snap) => snap.stage = 'connecting');
+
     // Pas de session → on demande au SDK d'ouvrir SON dialog natif.
     // L'utilisateur sélectionne sa TV. Le SDK gère la négociation,
     // le pairing, etc. — c'est exactement le flow Netflix / YouTube.
     if (!hasSession) {
+      CastDiagnostics.instance.logEvent(
+        'session.picker',
+        'aucune session active → ouverture du picker natif (30 s max)',
+      );
       await api.showRoutePicker();
       // Le dialog est asynchrone côté utilisateur (il doit tap sa TV).
       // On poll hasActiveSession pendant 30s max — au-delà on suppose
@@ -321,9 +348,27 @@ class GoogleCastTransport implements CastTransport {
         }
       }
       if (!hasSession) {
+        CastDiagnostics.instance.logEvent(
+          'session.no_selection',
+          'pas de session après 30 s — picker annulé ou connexion refusée',
+          level: CastBlackBoxLevel.error,
+        );
         throw Exception('Aucune TV sélectionnée.');
       }
     }
+
+    // BOÎTE NOIRE — App ID réellement connecté (métadonnées de session).
+    // S'il diverge de requestedAppId, la bascule custom ⇄ Default n'a
+    // pas pris : c'est le point b de l'audit, visible d'un coup d'œil.
+    final String? connectedAppId = await api.currentReceiverApplicationId();
+    CastDiagnostics.instance.updateCurrent((CastAttemptSnapshot snap) {
+      snap.stage = 'connected';
+      snap.connectedAppId = connectedAppId;
+    });
+    CastDiagnostics.instance.logEvent(
+      'session.connected',
+      'session active — App ID connecté: ${connectedAppId ?? '(inconnu)'}',
+    );
 
     // DIAGNOSTIC (brief §4.3) — tracer EXACTEMENT l'URL et le MIME
     // pousses au recepteur (URL redactee, pas de fuite credentials).
@@ -342,6 +387,13 @@ class GoogleCastTransport implements CastTransport {
 
     lastCastPath = castPath;
     lastCastUrlRedacted = _redactCastToken(redactStreamUrl(urlToCast));
+
+    CastDiagnostics.instance
+        .updateCurrent((CastAttemptSnapshot snap) => snap.stage = 'loading');
+    CastDiagnostics.instance.logEvent(
+      'media.load',
+      'loadMedia mime=$mime url=${redactCastUrl(urlToCast)}',
+    );
 
     final bool loaded = await api.loadMedia(
       streamUrl: urlToCast,
@@ -372,6 +424,11 @@ class GoogleCastTransport implements CastTransport {
     final Completer<void> done = Completer<void>();
     final Timer timer = Timer(const Duration(seconds: 25), () {
       if (!done.isCompleted) {
+        CastDiagnostics.instance.logEvent(
+          'media.playback_timeout',
+          'aucun état PLAYING reçu en 25 s (la TV n\'a jamais démarré)',
+          level: CastBlackBoxLevel.error,
+        );
         done.completeError(Exception(
           'La TV n\'a pas démarré la lecture — format probablement non '
           'pris en charge par le récepteur Cast.',
@@ -471,8 +528,24 @@ class GoogleCastTransport implements CastTransport {
         event: 'proxy.verify',
         ctx: <String, Object?>{'status': status, 'upstream': upstream},
       );
-      return status >= 200 && status < 300;
-    } on Exception {
+      CastDiagnostics.instance.updateCurrent((CastAttemptSnapshot snap) {
+        snap.proxyVerifyStatus = status;
+        if (upstream.isNotEmpty) snap.proxyUpstreamStatus = upstream;
+      });
+      final bool delivers = status >= 200 && status < 300;
+      CastDiagnostics.instance.logEvent(
+        'worker.proxy_verify',
+        'GET /cast-proxy → $status'
+            '${upstream.isNotEmpty ? ' (upstream=$upstream)' : ''}',
+        level: delivers ? CastBlackBoxLevel.info : CastBlackBoxLevel.warn,
+      );
+      return delivers;
+    } on Exception catch (e) {
+      CastDiagnostics.instance.logEvent(
+        'worker.proxy_verify',
+        'GET /cast-proxy injoignable: $e',
+        level: CastBlackBoxLevel.warn,
+      );
       return false; // injoignable → on considère le proxy KO
     } finally {
       client.close(force: true); // coupe le GET sans vider le flux
@@ -608,7 +681,18 @@ class GoogleCastTransport implements CastTransport {
       req.headers.add(HttpHeaders.acceptHeader, 'application/json');
       final HttpClientResponse resp =
           await req.close().timeout(const Duration(seconds: 6));
+      CastDiagnostics.instance.updateCurrent((CastAttemptSnapshot snap) {
+        snap.castSignStatus = resp.statusCode;
+        snap.castSignOk = resp.statusCode == 200;
+      });
       if (resp.statusCode != 200) {
+        // 503 = CAST_PROXY_SECRET absent côté Worker — LA cause classique
+        // du repli systématique en relais HLS (cf. cast_network_diagnostic).
+        CastDiagnostics.instance.logEvent(
+          'worker.sign',
+          'GET /cast-sign → HTTP ${resp.statusCode}',
+          level: CastBlackBoxLevel.warn,
+        );
         await resp.drain<void>();
         return null;
       }
@@ -617,11 +701,25 @@ class GoogleCastTransport implements CastTransport {
       if (decoded is Map<String, dynamic> &&
           decoded['ok'] == true &&
           decoded['url'] is String) {
+        CastDiagnostics.instance
+            .logEvent('worker.sign', 'GET /cast-sign → 200 (URL signée)');
         return decoded['url'] as String;
       }
+      CastDiagnostics.instance.logEvent(
+        'worker.sign',
+        'GET /cast-sign → 200 mais réponse inattendue (pas de {ok,url})',
+        level: CastBlackBoxLevel.warn,
+      );
       return null;
     } on Exception catch (e) {
       if (kDebugMode) debugPrint('[Cast] cast-sign KO: $e');
+      CastDiagnostics.instance.updateCurrent(
+          (CastAttemptSnapshot snap) => snap.castSignOk = false);
+      CastDiagnostics.instance.logEvent(
+        'worker.sign',
+        'GET /cast-sign injoignable: $e',
+        level: CastBlackBoxLevel.warn,
+      );
       return null;
     } finally {
       client.close(force: true);
@@ -630,7 +728,12 @@ class GoogleCastTransport implements CastTransport {
 
   /// Masque le parametre `t=` (token signe du proxy) dans une URL deja
   /// passee par redactStreamUrl (qui ne masque que password/token/pass/pwd).
+  /// replaceAllMapped obligatoire : replaceAll ne substitue PAS `$1` (l'URL
+  /// affichee contenait un `$1***` litteral et perdait le separateur `&`).
   static String _redactCastToken(String url) {
-    return url.replaceAll(RegExp(r'([?&]t=)[^&]*'), r'$1***');
+    return url.replaceAllMapped(
+      RegExp(r'([?&]t=)[^&]*'),
+      (Match m) => '${m[1]}***',
+    );
   }
 }

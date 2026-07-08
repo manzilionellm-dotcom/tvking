@@ -20,6 +20,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/observability/structured_logger.dart';
 import '../domain/cast_device.dart';
+import 'cast_black_box.dart';
 import 'cast_progress.dart';
 import 'cast_session_diagnostic.dart';
 import 'cast_transport.dart';
@@ -367,6 +368,7 @@ class CastManager extends ChangeNotifier {
     if (_state == CastState.discovering) return;
     if (!keepExisting) _discovered.clear();
     _state = CastState.discovering;
+    CastDiagnostics.instance.discoveryStarted();
     notifyListeners();
 
     _discoverySub?.cancel();
@@ -383,6 +385,7 @@ class CastManager extends ChangeNotifier {
           (e.host == d.host && e.port == d.port));
       if (already) return;
       _discovered.add(d);
+      CastDiagnostics.instance.discoveryDevice(d);
       notifyListeners();
     }
 
@@ -406,6 +409,12 @@ class CastManager extends ChangeNotifier {
       _mdnsSub?.cancel();
       _discoverySub = null;
       _mdnsSub = null;
+      CastDiagnostics.instance.discoveryEnded(
+        total: _discovered.length,
+        chromecast: _discovered
+            .where((CastDevice d) => d.kind == CastDeviceKind.chromecast)
+            .length,
+      );
       if (_state == CastState.discovering) {
         _state = isCasting ? CastState.casting : CastState.idle;
         notifyListeners();
@@ -586,6 +595,14 @@ class CastManager extends ChangeNotifier {
       channelName: channelName,
       channelGenre: channelGenre,
     );
+    // BOÎTE NOIRE — ouvre l'instantané de CETTE tentative ; il sera
+    // enrichi par GoogleCastTransport (routage, Worker, App ID, load)
+    // et clôturé dans le finally quoi qu'il arrive.
+    CastDiagnostics.instance.beginAttempt(
+      device: device,
+      streamUrl: streamUrl,
+      channelName: channelName,
+    );
     final Stopwatch totalSw = Stopwatch()..start();
 
     try {
@@ -630,6 +647,15 @@ class CastManager extends ChangeNotifier {
         requiresAuth: probe.requiresAuth,
         errorCode: probe.errorCode,
         errorReason: probe.errorReason,
+      );
+      CastDiagnostics.instance.logEvent(
+        'probe.result',
+        probe.success
+            ? 'pré-vol OK — HTTP ok, mime=${probe.mime ?? '?'}, '
+                '${probe.redirectCount} redirection(s)'
+            : 'pré-vol KO — ${probe.errorReason ?? 'flux indisponible'}'
+                '${probe.errorCode != null ? ' (HTTP ${probe.errorCode})' : ''}',
+        level: probe.success ? CastBlackBoxLevel.info : CastBlackBoxLevel.error,
       );
       if (!probe.success) {
         throw Exception(probe.errorReason ?? 'Flux indisponible');
@@ -750,6 +776,10 @@ class CastManager extends ChangeNotifier {
       diag.totalDurationMs = totalSw.elapsedMilliseconds;
       diag.finalUserMessage = _progress.message;
       _archiveDiagnostic(diag);
+      CastDiagnostics.instance.endAttempt(
+        success: diag.success,
+        error: diag.success ? null : diag.finalErrorMessage,
+      );
     }
   }
 
