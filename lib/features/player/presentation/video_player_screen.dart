@@ -49,6 +49,7 @@ import '../../playlists/domain/playlist.dart' as pl;
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
+import '../data/hls_preflight.dart';
 import '../data/local_stream_relay.dart';
 import '../data/pip_service.dart';
 import '../data/player_settings.dart';
@@ -722,6 +723,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _player.open(Media(realUrl));
       return;
     }
+    // HLS (.m3u8) : BYPASS du relais — mpv gère nativement master/media
+    // playlists, segments, redirections et tokens (User-Agent déjà posé
+    // via la propriété mpv). Le relais est un tuyau d'octets TS
+    // CONTINUS : sur une playlist (document court) il « reconnectait »
+    // en boucle sur chaque EOF et servait à mpv du texte m3u8 concaténé
+    // → 0 frame (bug terrain du 2026-07-08 après la victoire de la
+    // cascade). La sonde HLS trace playlist + segments dans la boîte
+    // noire, en parallèle, sans toucher à la lecture.
+    if (HlsPreflight.isHlsUrl(realUrl)) {
+      StreamDiagnostics.instance.recordEvent(
+        'hls',
+        'HLS détecté → lecture DIRECTE par mpv (relais bypassé, réservé '
+            'aux flux TS continus)',
+      );
+      // Plus aucune lecture ne passera par le relais : on ferme les
+      // sessions TS restantes (zap TS → HLS).
+      LocalStreamRelay.instance.closeOtherPlaybacks(realUrl);
+      unawaited(HlsPreflight.run(realUrl)); // diagnostic fire-and-forget
+      _player.open(Media(realUrl));
+      return;
+    }
     try {
       final String localUrl =
           await LocalStreamRelay.instance.playUrlFor(realUrl);
@@ -796,9 +818,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _scheduleHideOverlay();
   }
 
-  /// `true` si la lecture passe par le mini-relais (cas LIVE). Pour le
-  /// catch-up / VOD (overrideUrl présent), on garde l'ancien moteur natif.
-  bool get _liveViaRelay => widget.overrideUrl == null;
+  /// `true` si la lecture passe par le mini-relais — LIVE non-HLS
+  /// uniquement. Le catch-up/VOD (overrideUrl) et le HLS (lu en direct
+  /// par mpv, cf. _openMedia) n'y passent jamais ; leur enregistrement
+  /// utilise le moteur natif.
+  bool get _liveViaRelay =>
+      widget.overrideUrl == null && !HlsPreflight.isHlsUrl(_effectiveUrl);
 
   Future<void> _startRecording() async {
     try {
@@ -1314,9 +1339,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _watchdogTick() {
     if (!mounted) return;
-    // Live uniquement : la VOD/catch-up est seekable, sa position
-    // s'arrête légitimement (pause, fin) → ce ne serait pas un gel.
-    if (!_liveViaRelay) return;
+    // Live uniquement (relais TS OU HLS direct) : la VOD/catch-up est
+    // seekable, sa position s'arrête légitimement (pause, fin) → ce ne
+    // serait pas un gel.
+    if (widget.overrideUrl != null) return;
     // Un VRAI gel = mpv se croit en lecture, ne bufferise pas, aucune
     // erreur affichée, mais la position stagne. Sinon on ne compte rien
     // et on resynchronise la position de référence.

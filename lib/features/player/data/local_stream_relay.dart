@@ -354,6 +354,10 @@ class LocalStreamRelay {
 
       final HttpClientResponse cResp = await cReq.close();
       session.lastUpstreamStatus = cResp.statusCode;
+      final String upstreamMime =
+          cResp.headers.contentType?.mimeType.toLowerCase() ?? '';
+      session.upstreamIsPlaylist = upstreamMime.contains('mpegurl') ||
+          Uri.tryParse(url)?.path.toLowerCase().endsWith('.m3u8') == true;
       // Boîte noire : le statut HTTP RÉEL vu par la connexion de lecture
       // (+ URL finale si le serveur a redirigé, + MIME). C'est LA donnée
       // qui manquait pour diagnostiquer un écran noir : l'écran debug
@@ -398,6 +402,24 @@ class LocalStreamRelay {
         _scheduleReconnect(session);
       },
       onDone: () {
+        if (session.upstreamIsPlaylist) {
+          // Une playlist HLS est un DOCUMENT : l'EOF est sa fin normale.
+          // Reconnecter re-servirait la playlist en boucle à mpv (texte
+          // m3u8 concaténé = 0 frame, bug terrain 2026-07-08). On ferme
+          // proprement — le HLS se lit en direct, pas via le relais.
+          if (kDebugMode) {
+            debugPrint('[Relay] playlist HLS servie → fermeture propre');
+          }
+          StreamDiagnostics.instance.recordEvent(
+            'relay',
+            'Upstream = playlist HLS (document servi en entier) → session '
+                'fermée SANS reconnexion. Le HLS doit être lu en direct '
+                'par le lecteur, pas via le relais TS.',
+            level: 'warn',
+          );
+          _closeSession(session);
+          return;
+        }
         if (kDebugMode) {
           debugPrint('[Relay] upstream fermé par le serveur, reconnexion');
         }
@@ -588,6 +610,12 @@ class _RelaySession {
   /// `true` dès que la session a diffusé AU MOINS un octet. Avant ça,
   /// un 4xx est définitif et le budget de retry transitoire est réduit.
   bool everStreamed = false;
+
+  /// `true` si l'upstream est une PLAYLIST HLS (mime mpegurl ou URL
+  /// .m3u8) : document COURT, pas un flux continu. À l'EOF on ferme
+  /// proprement au lieu de « reconnecter » en boucle (le HLS doit être
+  /// lu en DIRECT par mpv — cf. HlsPreflight.isHlsUrl côté lecteur).
+  bool upstreamIsPlaylist = false;
 
   /// Lecteurs branchés (mpv). En pratique 0 ou 1, mais on supporte
   /// plusieurs (mpv ouvre parfois une connexion de sonde + une de
