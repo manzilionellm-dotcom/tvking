@@ -212,6 +212,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // Même philosophie que le fix TV (verrou _recovering, 2026-07-06).
   Timer? _startupTimer;
   Timer? _zapDebounce;
+  // Chrono « zap → première frame » (mesure fluidité, cible < 2 s).
+  final Stopwatch _zapClock = Stopwatch();
   static const Duration _kStartupTimeout = Duration(seconds: 25);
 
   // Autoplay « À suivre » (façon YouTube / Netflix) : quand un contenu
@@ -366,8 +368,32 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       PipService.instance.setPlaybackActive(p);
     }));
     // Fin de lecture d'un contenu FINI → autoplay « À suivre ».
+    // REPRISE INTELLIGENTE (phase fluidité) : sur un LIVE qui décodait,
+    // un EOF est une MICRO-COUPURE réseau (edge recyclé) → reprise
+    // SILENCIEUSE sous ~1 s, sans écran d'erreur. L'erreur visible
+    // n'apparaît que si la reprise échoue (budget watchdog, puis
+    // diagnostic complet).
     _subs.add(_player.stream.completed.listen((bool done) {
-      if (done && mounted) _maybeStartUpNext();
+      if (!done || !mounted) return;
+      final bool liveDecoded = widget.overrideUrl == null &&
+          _currentChannel.isLive &&
+          _playedChannelId == _currentChannel.id;
+      if (liveDecoded) {
+        if (_watchdogRecoveries >= _kWatchdogMaxRecoveries) return;
+        _watchdogRecoveries++;
+        StreamDiagnostics.instance.recordEvent(
+          'player',
+          'Micro-coupure (EOF live) → reprise silencieuse '
+              '#$_watchdogRecoveries',
+          level: 'warn',
+        );
+        Timer(const Duration(milliseconds: 800), () {
+          if (!mounted || _hasError) return;
+          _openMedia(_effectiveUrl);
+        });
+        return;
+      }
+      _maybeStartUpNext();
     }));
     _subs.add(_player.stream.error.listen((String e) {
       if (!mounted) return;
@@ -503,6 +529,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     // URL effective : overrideUrl (catch-up) sinon stream live
     final String url = _effectiveUrl;
+    _zapClock
+      ..reset()
+      ..start(); // mesure « ouverture → première frame »
     _openMedia(url);
 
     // Restaure la dernière vitesse
@@ -634,6 +663,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // suite ; l'ouverture RÉSEAU n'a lieu qu'après 300 ms sans nouveau
     // zap — seule la chaîne où l'on s'arrête se connecte.
     _zapDebounce?.cancel();
+    _zapClock
+      ..reset()
+      ..start(); // la mesure inclut le debounce : c'est le ressenti réel
     _zapDebounce = Timer(const Duration(milliseconds: 300), () {
       if (!mounted || _currentChannel.id != next.id) return;
       _openMedia(next.streamUrl);
@@ -1362,11 +1394,58 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _startupTimer?.cancel(); // le démarrage a VRAIMENT eu lieu → borne levée
     if (_playedChannelId != _currentChannel.id) {
       _playedChannelId = _currentChannel.id;
+      // MESURE FLUIDITÉ : temps « zap → première frame » (cible < 2000 ms).
+      final int? zapMs =
+          _zapClock.isRunning ? _zapClock.elapsedMilliseconds : null;
+      _zapClock.stop();
       StreamDiagnostics.instance.recordEvent(
-        'player',
-        'Première frame décodée — la chaîne a réellement joué',
+        'perf',
+        'Première frame décodée'
+            '${zapMs == null ? '' : ' — zap → première frame : $zapMs ms '
+                '(cible < 2000)'}',
+        level: (zapMs ?? 0) > 2500 ? 'warn' : 'info',
       );
+      // PROFIL 2 TEMPS : démarré sur ~1 s de coussin (réactivité), on
+      // monte MAINTENANT au régime établi (5-10 s) pour absorber les
+      // à-coups réseau sans re-bufferiser.
+      unawaited(_setMpvProperty(
+        'demuxer-readahead-secs',
+        PlayerSettings.instance.antiFreezeReadaheadSeconds.toString(),
+      ));
+      unawaited(_logPlaybackMetrics('première frame'));
     }
+  }
+
+  /// Photo FLUIDITÉ dans la boîte noire : décodage matériel réellement
+  /// actif (hwdec-current), codec, fps estimés, frames PERDUES — la
+  /// mesure objective du « zéro saccade ». Appelée à la première frame
+  /// puis toutes les ~30 s de lecture stable (via le watchdog).
+  Future<void> _logPlaybackMetrics(String moment) async {
+    Future<String?> prop(String name) async {
+      try {
+        // ignore: invalid_use_of_protected_member
+        final dynamic native = (_player.platform as dynamic);
+        final dynamic v = await native?.getProperty(name);
+        final String out = '$v'.trim();
+        return out.isEmpty || out == 'null' ? null : out;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final String? hwdec = await prop('hwdec-current');
+    final String? codec = await prop('video-codec');
+    final String? fps = await prop('estimated-vf-fps');
+    final String? dropped = await prop('frame-drop-count');
+    final bool hwActive =
+        hwdec != null && hwdec != 'no' && hwdec != 'none';
+    StreamDiagnostics.instance.recordEvent(
+      'perf',
+      '[$moment] hwdec: ${hwActive ? 'ACTIF ($hwdec)' : 'logiciel'} · '
+          'codec: ${codec ?? '—'} · fps: ${fps ?? '—'} · '
+          'frames perdues: ${dropped ?? '0'}',
+      level: hwActive ? 'info' : 'warn',
+    );
   }
 
   void _retry() {
@@ -1444,6 +1523,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (++_watchdogGoodTicks >= _kWatchdogGoodTicksToReset) {
         _watchdogGoodTicks = 0;
         _watchdogRecoveries = 0;
+        // Photo fluidité périodique (~30 s de lecture stable).
+        unawaited(_logPlaybackMetrics('lecture stable'));
       }
     }
   }
@@ -1951,6 +2032,45 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     );
   }
 
+  /// Splash de ZAP : logo + nom de la chaîne + spinner discret, affiché
+  /// dès le zap et jusqu'à la première frame décodée. C'est la
+  /// « perception TiviMate » : l'écran répond immédiatement, l'image
+  /// suit 1-2 s après.
+  Widget _buildZapSplash() {
+    final Channel ch = _currentChannel;
+    return Container(
+      color: Colors.black.withValues(alpha: 0.82),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          ChannelLogo(channel: ch, size: ChannelLogoSize.large),
+          const SizedBox(height: 18),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: Text(
+              ch.cleanName,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.headlineMedium
+                  .copyWith(color: Colors.white, fontSize: 22),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const SizedBox(
+            width: 26,
+            height: 26,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.4,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white54),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Surface de lecture : la vidéo + spinner + stats + overlays.
   /// Extraite pour pouvoir être ré-utilisée à l'identique dans le
   /// PageView et dans le mode mono-page (TV / playlist absente).
@@ -1990,14 +2110,28 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                           ),
                   ),
 
+                // ----- 1a. SPLASH DE ZAP (perception de fluidité) -----
+                //  Réaction IMMÉDIATE au zap : tant que la première frame
+                //  de la chaîne COURANTE n'est pas décodée, on affiche son
+                //  logo + son nom + un spinner discret par-dessus la
+                //  dernière image (ou le noir). L'utilisateur « sent » le
+                //  zap instantanément, même si l'image met 1-2 s.
+                if (!_hasError &&
+                    !_audioOnly &&
+                    _playedChannelId != _currentChannel.id)
+                  _buildZapSplash(),
+
                 // ----- 1bis. Badge discret "● REC" -----
                 //  L'enregistrement passe par le mini-relais (1 connexion)
                 //  sans couper la lecture. On signale juste l'état par un
                 //  petit badge en haut, tapable pour arrêter.
                 if (_isRecording) _buildRecordingBadge(),
 
-                // ----- 2. Spinner pendant le buffering -----
-                if (_isBuffering && !_hasError)
+                // ----- 2. Spinner pendant le buffering (hors splash de
+                //         zap, qui a le sien) -----
+                if (_isBuffering &&
+                    !_hasError &&
+                    _playedChannelId == _currentChannel.id)
                   const Center(
                     child: SizedBox(
                       width: 56,

@@ -143,12 +143,16 @@ class PlayerSettings extends ChangeNotifier {
   /// Avant : dérivé du buffer (8–45 s) → la chaîne pouvait mettre jusqu'à
   /// ~20 s à démarrer alors que c'était inutile (le matelas profond se
   /// remplit très bien APRÈS le 1er affichage).
-  int get antiFreezePrerollSeconds => 3;
+  int get antiFreezePrerollSeconds => 1;
 
-  /// Secondes d'avance à lire (readahead) en mode anti-coupure. On vise
-  /// large (au moins 60 s) pour absorber de longues faiblesses réseau.
-  int get antiFreezeReadaheadSeconds =>
-      _bufferSeconds < 60 ? 60 : _bufferSeconds;
+  /// Secondes d'avance à lire (readahead) en RÉGIME ÉTABLI. Phase
+  /// FLUIDITÉ (2026-07-08) : profil low-latency niveau TiviMate —
+  /// 5-10 s suffisent à absorber les à-coups réseau d'un live IPTV, et
+  /// un readahead de 60 s poussait certains panels (débit bridé au
+  /// temps réel) à voir l'app comme un aspirateur. Le démarrage, lui,
+  /// n'attend que ~1 s (antiFreezePrerollSeconds) : le lecteur monte à
+  /// ce régime APRÈS la première frame (_markPlaybackStarted).
+  int get antiFreezeReadaheadSeconds => _bufferSeconds.clamp(5, 10);
 
   /// Taille du buffer en octets pour la config de media_kit.
   /// On vise ~1 Mo/s pour du HD, ~5 Mo/s pour du 4K, ~20 Mo/s
