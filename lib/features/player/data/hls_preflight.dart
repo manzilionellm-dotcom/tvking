@@ -50,6 +50,37 @@ class HlsPreflight {
   static void _log(String message, {String level = 'info'}) =>
       StreamDiagnostics.instance.recordEvent('hls', message, level: level);
 
+  /// Résout la chaîne de redirections d'une playlist (panel → CDN
+  /// tokenisé) et renvoie l'URL FINALE — celle qu'il faut donner à mpv
+  /// pour que les URIs RELATIVES des segments se résolvent contre la
+  /// bonne base (et que le token soit dans l'URL de travail). Renvoie
+  /// `null` en cas d'échec (l'appelant garde l'URL d'origine).
+  static Future<String?> resolveFinalPlaylistUrl(String url) async {
+    final HttpClient client = HttpClient()
+      ..connectionTimeout = kTimeout
+      ..userAgent = PlayerSettings.instance.userAgent
+      ..badCertificateCallback =
+          ((X509Certificate cert, String host, int port) => true);
+    try {
+      final HttpClientRequest req =
+          await client.getUrl(Uri.parse(url)).timeout(kTimeout);
+      req.followRedirects = true;
+      req.maxRedirects = 8;
+      final HttpClientResponse resp = await req.close().timeout(kTimeout);
+      await resp.listen(null, cancelOnError: true).cancel();
+      if (resp.statusCode >= 400) return null;
+      if (resp.redirects.isEmpty) return url;
+      return Uri.parse(url)
+          .resolveUri(resp.redirects.last.location)
+          .toString();
+    } catch (e) {
+      _log('Résolution de redirection impossible : $e', level: 'warn');
+      return null;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   /// Sonde de DIAGNOSTIC (fire-and-forget) : suit la chaîne
   /// playlist → (master ?) → media playlist → 1er segment, en suivant
   /// les redirections et en préservant les query/tokens, et journalise
@@ -100,6 +131,11 @@ class HlsPreflight {
               'd\'écran noir)' : ''}');
       if (segments.isEmpty) return;
 
+      // SIGNATURE BINAIRE du 1er segment, téléchargé avec LES MÊMES
+      // en-têtes que mpv (même User-Agent — ffmpeg propage `user-agent`
+      // aux sous-requêtes HLS). Un TS valide commence par 0x47 ; un
+      // fMP4 par « ....ftyp » ; « <htm » = page d'erreur DÉGUISÉE en
+      // 200 (le serveur filtre les segments) — indétectable autrement.
       final String segUrl =
           media.finalUri.resolve(segments.first).toString();
       final HttpClientRequest req =
@@ -108,11 +144,54 @@ class HlsPreflight {
       req.headers.add(HttpHeaders.rangeHeader, 'bytes=0-4095');
       final HttpClientResponse resp = await req.close().timeout(kTimeout);
       final int status = resp.statusCode;
-      await resp.listen(null, cancelOnError: true).cancel();
+      final List<int> head = <int>[];
+      final Completer<void> firstChunk = Completer<void>();
+      final StreamSubscription<List<int>> sub = resp.listen(
+        (List<int> c) {
+          head.addAll(c);
+          if (!firstChunk.isCompleted) firstChunk.complete();
+        },
+        onDone: () {
+          if (!firstChunk.isCompleted) firstChunk.complete();
+        },
+        onError: (Object _) {
+          if (!firstChunk.isCompleted) firstChunk.complete();
+        },
+        cancelOnError: true,
+      );
+      await firstChunk.future.timeout(kTimeout, onTimeout: () {});
+      await sub.cancel();
+      final String hex = head
+          .take(4)
+          .map((int b) => b.toRadixString(16).padLeft(2, '0').toUpperCase())
+          .join(' ');
+      final String ascii = String.fromCharCodes(
+          head.take(16).where((int b) => b >= 0x20 && b < 0x7F));
+      final String verdict;
+      if (head.isEmpty) {
+        verdict = 'AUCUN OCTET reçu';
+      } else if (head.first == 0x47) {
+        verdict = 'TS VALIDE (sync 0x47)';
+      } else if (head.length >= 8 &&
+          String.fromCharCodes(head.sublist(4, 8)) == 'ftyp') {
+        verdict = 'fMP4 VALIDE (ftyp)';
+      } else if (ascii.toLowerCase().contains('<htm') ||
+          ascii.trimLeft().startsWith('{')) {
+        verdict = 'PAGE D\'ERREUR DÉGUISÉE EN $status '
+            '(« $ascii » — le serveur filtre les segments : '
+            'signature/UA/token ?)';
+      } else {
+        verdict = 'signature inconnue (« $ascii »)';
+      }
+      final bool healthy = status < 400 &&
+          head.isNotEmpty &&
+          (head.first == 0x47 || verdict.startsWith('fMP4'));
       _log(
         'Segment 1 (${StreamDiagnostics.maskCredentials(segUrl)}) → '
-            'HTTP $status',
-        level: status < 400 ? 'info' : 'error',
+            'HTTP $status · ${head.length} octet(s) · '
+            '4 premiers octets: ${hex.isEmpty ? '—' : hex} → $verdict '
+            '(UA "${PlayerSettings.instance.userAgent}")',
+        level: healthy ? 'info' : 'error',
       );
     } catch (e) {
       _log('Sonde HLS interrompue : $e', level: 'warn');

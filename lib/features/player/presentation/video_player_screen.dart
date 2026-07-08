@@ -420,6 +420,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       }
     }));
 
+    // LOGS MPV BRUTS (niveau warn/error, cf. logLevel de la config) →
+    // boîte noire. Sans ça on était AVEUGLES sur le moteur : terrain du
+    // 2026-07-08, « Dernière erreur du moteur : aucune » alors que RIEN
+    // ne décodait — les warns demuxer/ffmpeg/http de mpv n'étaient
+    // captés nulle part (stream.error ne porte que les erreurs fatales
+    // remontées par media_kit). Indispensable pour diagnostiquer un HLS
+    // en 200 qui n'affiche aucune frame.
+    _subs.add(_player.stream.log.listen((PlayerLog l) {
+      final bool isError = l.level == 'error' || l.level == 'fatal';
+      StreamDiagnostics.instance.recordEvent(
+        'mpv',
+        '[${l.prefix}] ${l.text}'.trim(),
+        level: isError ? 'error' : 'warn',
+      );
+    }));
+
     // Boîte noire : codecs / résolution détectés par libmpv une fois le
     // flux ouvert — consultables dans l'écran debug caché (appui long
     // sur la version, écran À propos). Même source que l'overlay stats.
@@ -740,8 +756,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // Plus aucune lecture ne passera par le relais : on ferme les
       // sessions TS restantes (zap TS → HLS).
       LocalStreamRelay.instance.closeOtherPlaybacks(realUrl);
-      unawaited(HlsPreflight.run(realUrl)); // diagnostic fire-and-forget
-      _player.open(Media(realUrl));
+      // Redirection (panel → CDN tokenisé) RÉSOLUE AVANT mpv : certains
+      // empilements ffmpeg résolvent mal les URIs RELATIVES des
+      // segments après une redirection de playlist (base URL = l'URL
+      // d'origine au lieu de la finale). On donne à mpv l'URL FINALE,
+      // token compris — plus d'ambiguïté de base. Best-effort : en cas
+      // de pépin on ouvre l'URL d'origine, comme avant.
+      String hlsUrl = realUrl;
+      final String? finalUrl =
+          await HlsPreflight.resolveFinalPlaylistUrl(realUrl);
+      if (!mounted) return;
+      if (finalUrl != null && finalUrl != realUrl) {
+        StreamDiagnostics.instance.recordEvent(
+          'hls',
+          'Redirection résolue AVANT mpv → lecture sur l\'URL finale '
+              '${StreamDiagnostics.maskCredentials(finalUrl)} '
+              '(base segments correcte, token conservé)',
+        );
+        hlsUrl = finalUrl;
+      }
+      unawaited(HlsPreflight.run(hlsUrl)); // diagnostic fire-and-forget
+      _player.open(Media(hlsUrl));
       return;
     }
     try {

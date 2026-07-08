@@ -146,6 +146,12 @@ void main() {
         reason: 'le contenu de la media playlist doit être visible');
     expect(journal, contains('Segment 1'),
         reason: 'le statut du 1er segment doit être visible');
+    expect(journal, contains('4 premiers octets: 47 47 47 47'),
+        reason: 'la signature binaire du segment doit être journalisée');
+    expect(journal, contains('TS VALIDE (sync 0x47)'),
+        reason: 'un vrai TS doit être reconnu');
+    expect(journal, contains('UA "'),
+        reason: 'le User-Agent utilisé doit être visible');
     expect(journal, isNot(contains('USER/PASS')),
         reason: 'identifiants toujours masqués');
 
@@ -159,6 +165,45 @@ void main() {
     }
     // ignore: avoid_print
     print('===== FIN EXTRAIT =====');
+  });
+
+  test('segment HTML déguisé en 200 → verdict « PAGE D\'ERREUR » '
+      'avec les 4 premiers octets', () async {
+    final HttpServer evil =
+        await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    evil.listen((HttpRequest req) async {
+      if (req.uri.path.endsWith('.m3u8')) {
+        req.response.headers.contentType =
+            ContentType.parse('application/x-mpegurl');
+        req.response.write('#EXTM3U\n#EXTINF:4.0,\nseg0.ts\n');
+      } else {
+        // 200 trompeur : page HTML à la place des octets TS.
+        req.response.headers.contentType = ContentType.html;
+        req.response.write('<html><body>forbidden</body></html>');
+      }
+      await req.response.close();
+    });
+    final String url = 'http://127.0.0.1:${evil.port}/hls/chunks.m3u8';
+
+    await HlsPreflight.run(url);
+
+    final String journal = _journal();
+    expect(journal, contains("PAGE D'ERREUR DÉGUISÉE EN 200"),
+        reason: 'le faux segment doit être démasqué');
+    expect(journal, contains('4 premiers octets: 3C 68 74 6D'),
+        reason: '« <htm » en hexadécimal — la preuve binaire');
+    await evil.close(force: true);
+  });
+
+  test('resolveFinalPlaylistUrl : suit la redirection tokenisée et '
+      'renvoie l\'URL FINALE (base des segments)', () async {
+    final String? resolved =
+        await HlsPreflight.resolveFinalPlaylistUrl(m3u8Url);
+    expect(resolved, 'http://127.0.0.1:${panel.port}/hls/master.m3u8?token=abc');
+    // Sans redirection : l'URL est renvoyée telle quelle.
+    final String direct =
+        'http://127.0.0.1:${panel.port}/hls/chunks.m3u8?token=abc';
+    expect(await HlsPreflight.resolveFinalPlaylistUrl(direct), direct);
   });
 }
 
