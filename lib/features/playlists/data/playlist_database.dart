@@ -27,7 +27,9 @@ class PlaylistDatabase {
   // v2 ajoute la colonne `epg_url` à la table playlists.
   // v5 ajoute `http_headers` à la table channels (User-Agent/Referer par
   // chaîne, imposés par certains panels IPTV — sinon 403 à la lecture).
-  static const int _kDbVersion = 5;
+  // v6 ajoute `url_formats` à la table playlists (format d'URL gagnant
+  // mémorisé PAR SOURCE par la cascade Xtream — zapping sans re-sonde).
+  static const int _kDbVersion = 6;
 
   Database? _db;
 
@@ -77,7 +79,8 @@ class PlaylistDatabase {
         created_at INTEGER NOT NULL,
         last_synced_at INTEGER,
         channel_count INTEGER NOT NULL DEFAULT 0,
-        is_active INTEGER NOT NULL DEFAULT 0
+        is_active INTEGER NOT NULL DEFAULT 0,
+        url_formats TEXT
       )
     ''');
     await db.execute(
@@ -196,6 +199,15 @@ class PlaylistDatabase {
       // JSON. Colonne ajoutée NULL → les chaînes déjà en base la rempliront
       // au prochain rafraîchissement de la playlist.
       await db.execute('ALTER TABLE channels ADD COLUMN http_headers TEXT');
+    }
+    if (oldVersion < 6) {
+      // v6 (2026-07-08) : format d'URL GAGNANT mémorisé PAR SOURCE
+      // (JSON {"live":"live:m3u8","movie":"none:"…}). Rempli par la
+      // cascade de variantes Xtream quand une variante débloque un
+      // flux : les chaînes suivantes de la même source utilisent
+      // directement ce format (zapping instantané, pas de re-sonde).
+      // Cf. XtreamUrlFormatStore.
+      await db.execute('ALTER TABLE playlists ADD COLUMN url_formats TEXT');
     }
   }
 }

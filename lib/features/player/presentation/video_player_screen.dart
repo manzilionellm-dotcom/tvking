@@ -45,6 +45,8 @@ import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/data/source_link_utils.dart';
+import '../../playlists/data/xtream_url_format_store.dart';
 // Préfixé : media_kit exporte aussi un type `Playlist` (ambiguïté).
 import '../../playlists/domain/playlist.dart' as pl;
 import '../../recordings/data/recording_repository.dart';
@@ -54,7 +56,7 @@ import '../data/local_stream_relay.dart';
 import '../data/pip_service.dart';
 import '../data/player_settings.dart';
 import '../data/stream_diagnostics.dart';
-import '../data/xtream_live_url_variants.dart';
+import '../data/xtream_url_variants.dart';
 import 'stream_debug_screen.dart';
 import 'widgets/player_settings_sheet.dart';
 import 'widgets/player_stats_overlay.dart';
@@ -641,6 +643,34 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _openMedia(String realUrl) async {
     _autoSubtitleApplied = false; // nouvelle vidéo → on réévalue les sous-titres
+    // FORMAT MÉMORISÉ (zapping instantané) : si la cascade a déjà trouvé
+    // le format d'URL gagnant pour cette source (et ce type de contenu),
+    // on l'applique DIRECTEMENT — pas de re-cascade à chaque zap. On ne
+    // le fait que si aucune variante n'est déjà adoptée pour la session
+    // (`_adoptedAltUrl`), jamais pour le catch-up (`overrideUrl`).
+    if (widget.overrideUrl == null && _adoptedAltUrl == null) {
+      final pl.Playlist? src = _xtreamPlaylistFor(_currentChannel);
+      if (src?.id != null) {
+        final XtreamContentType type = _contentTypeOf(_currentChannel);
+        final String? code = await XtreamUrlFormatStore.instance
+            .winningFormat(src!.id!, type);
+        if (code != null) {
+          final String? remembered =
+              XtreamUrlVariants.applyFormat(realUrl, code);
+          if (remembered != null && remembered != realUrl) {
+            _adoptedAltUrl = remembered;
+            realUrl = remembered;
+            StreamDiagnostics.instance.recordEvent(
+              'probe',
+              'Format mémorisé « $code » appliqué : '
+                  '${StreamDiagnostics.maskCredentials(remembered)} '
+                  '— zapping sans cascade',
+            );
+          }
+        }
+        if (!mounted) return;
+      }
+    }
     // Boîte noire : nouvelle tentative d'ouverture (URL réelle + UA).
     // Le relais / la sonde compléteront avec le statut HTTP, libmpv
     // avec les codecs et les erreurs exactes.
@@ -1218,9 +1248,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _uaFixAttemptedForChannelId = channel.id;
     _uaDiagnosisInFlight = true;
     final String current = PlayerSettings.instance.userAgent;
+    // Source Xtream (par playlistId, sinon par host:port pour les
+    // Channels VOD ad-hoc) + type de contenu : nécessaires au repli en
+    // cascade et à la mémorisation du format gagnant.
+    final pl.Playlist? src = _xtreamPlaylistFor(channel);
+    final XtreamContentType contentType = _contentTypeOf(channel);
     StreamDiagnostics.instance.recordEvent(
       'probe',
-      'Chaîne jamais lue → sonde multi-signatures (User-Agent)…',
+      'Contenu jamais lu → sonde multi-signatures (User-Agent)…',
       level: 'warn',
     );
     final UserAgentProbeResult probe;
@@ -1240,18 +1275,44 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // affichée, rien à faire (le nouvel écran gère son propre état).
     if (!mounted || channel.id != _currentChannel.id) return;
 
-    if (probe.workingUserAgent != null && probe.workingUserAgent != current) {
-      debugPrint(
-          '[Player] "$current" bloqué mais "${probe.workingUserAgent}" '
-          'fonctionne sur cette source → bascule automatique + relance.');
-      StreamDiagnostics.instance.recordEvent(
-        'probe',
-        'Signature "$current" refusée mais "${probe.workingUserAgent}" '
-            'acceptée → bascule automatique + relance',
-      );
-      await PlayerSettings.instance.setUserAgent(probe.workingUserAgent!);
-      if (!mounted || channel.id != _currentChannel.id) return;
-      _watchdogRecoveries = 0; // budget neuf : cette signature a de vraies chances
+    // L'URL D'ORIGINE répond à la sonde. Deux cas (cumulables) :
+    //  - la signature active était refusée → bascule UA + relance ;
+    //  - RE-VALIDATION : un format mémorisé/adopté avait réécrit l'URL
+    //    et c'est LUI qui ne répond plus (panel reconfiguré), alors que
+    //    l'origine marche → on OUBLIE le format mémorisé et on revient
+    //    à l'URL d'origine.
+    final bool altWasApplied = _adoptedAltUrl != null;
+    if (probe.workingUserAgent != null &&
+        (probe.workingUserAgent != current || altWasApplied)) {
+      if (probe.workingUserAgent != current) {
+        debugPrint(
+            '[Player] "$current" bloqué mais "${probe.workingUserAgent}" '
+            'fonctionne sur cette source → bascule automatique + relance.');
+        StreamDiagnostics.instance.recordEvent(
+          'probe',
+          'Signature "$current" refusée mais "${probe.workingUserAgent}" '
+              'acceptée → bascule automatique + relance',
+        );
+        await PlayerSettings.instance.setUserAgent(probe.workingUserAgent!);
+        if (!mounted || channel.id != _currentChannel.id) return;
+      }
+      if (altWasApplied) {
+        _adoptedAltUrl = null;
+        if (src?.id != null) {
+          final bool forgot = await XtreamUrlFormatStore.instance
+              .clearWinningFormat(src!.id!, contentType);
+          if (forgot) {
+            StreamDiagnostics.instance.recordEvent(
+              'probe',
+              'Le format mémorisé ne répond plus mais l\'URL d\'origine '
+                  'oui → format oublié, retour à l\'origine',
+              level: 'warn',
+            );
+          }
+          if (!mounted || channel.id != _currentChannel.id) return;
+        }
+      }
+      _watchdogRecoveries = 0; // budget neuf : cette piste a de vraies chances
       _openMedia(widget.overrideUrl ?? channel.streamUrl);
       return; // pas d'erreur affichée : on retente silencieusement
     }
@@ -1264,16 +1325,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // chez nous, OK dans IBO »). On sonde chaque variante dans l'ordre,
     // avec les mêmes signatures, et on s'arrête au premier succès.
     //
-    // GATE STRICT : uniquement pour le LIVE (pas de catch-up/VOD) d'une
-    // source de type XTREAM. Une playlist M3U générique garde son URL
-    // INTACTE (ses URLs peuvent ressembler au schéma U/P/ID par hasard —
-    // les réécrire casserait des flux valides).
-    if (widget.overrideUrl == null && _isFromXtreamSource(channel)) {
-      final List<String> variants =
-          XtreamLiveUrlVariants.cascade(channel.streamUrl);
+    // GATE STRICT : uniquement pour une source de type XTREAM (live,
+    // film ou épisode — le catch-up `overrideUrl` reste intact). Une
+    // playlist M3U générique garde son URL INTACTE (ses URLs peuvent
+    // ressembler au schéma U/P/ID par hasard — les réécrire casserait
+    // des flux valides).
+    if (widget.overrideUrl == null && src != null) {
+      final List<XtreamUrlCandidate> variants =
+          XtreamUrlVariants.cascadeFor(channel.streamUrl, contentType);
       // variants[0] = URL d'origine, déjà sondée ci-dessus → on la saute.
       for (int i = 1; i < variants.length; i++) {
-        final String alt = variants[i];
+        final XtreamUrlCandidate candidate = variants[i];
+        final String alt = candidate.url;
         StreamDiagnostics.instance.recordEvent(
           'probe',
           'Variante ${i + 1}/${variants.length} : '
@@ -1310,10 +1373,44 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           if (!mounted || channel.id != _currentChannel.id) return;
         }
         _adoptedAltUrl = alt;
+        // MÉMORISATION : le format gagnant est persisté PAR SOURCE →
+        // les prochains contenus de cette source (même type) partiront
+        // DIRECTEMENT sur ce format à l'ouverture, sans re-cascade
+        // (zapping instantané, cf. _openMedia).
+        if (src.id != null) {
+          await XtreamUrlFormatStore.instance.saveWinningFormat(
+            src.id!,
+            contentType,
+            candidate.formatCode,
+          );
+          StreamDiagnostics.instance.recordEvent(
+            'probe',
+            'Format « ${candidate.formatCode} » mémorisé pour la source '
+                '« ${src.name} » (${contentType.name}) — les prochains '
+                'contenus l\'utiliseront directement',
+          );
+          if (!mounted || channel.id != _currentChannel.id) return;
+        }
         _watchdogRecoveries = 0;
         _openMedia(alt);
         return; // pas d'erreur affichée : la variante a de vraies chances
       }
+    }
+
+    // Échec TOTAL : si un format était mémorisé pour cette source, il ne
+    // débloque plus rien non plus → on l'oublie pour que la prochaine
+    // tentative reparte de zéro (RE-VALIDATION, panel reconfiguré).
+    if (src?.id != null) {
+      final bool forgot = await XtreamUrlFormatStore.instance
+          .clearWinningFormat(src!.id!, contentType);
+      if (forgot) {
+        StreamDiagnostics.instance.recordEvent(
+          'probe',
+          'Format mémorisé oublié (plus aucune variante ne répond)',
+          level: 'warn',
+        );
+      }
+      if (!mounted || channel.id != _currentChannel.id) return;
     }
 
     StreamDiagnostics.instance.recordEvent(
@@ -1324,6 +1421,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           : 'Aucune signature ni variante de format ne débloque ce flux',
       level: 'error',
     );
+    if (!mounted) return;
     setState(() {
       _hasError = true;
       _errorMessage = probe.isLikelyNetworkBlocked
@@ -1362,17 +1460,52 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  /// `true` si la chaîne vient d'une playlist de type XTREAM — condition
-  /// du repli en cascade de variantes d'URL (une M3U générique doit
-  /// garder son URL intacte). Best-effort : playlist introuvable en
-  /// cache → on considère que ce n'est PAS de l'Xtream (pas de réécriture).
-  static bool _isFromXtreamSource(Channel channel) {
+  /// Playlist XTREAM d'où vient ce contenu, ou `null` (source M3U
+  /// générique, fichier local, inconnu) — condition du repli en cascade
+  /// et clé de mémorisation du format gagnant.
+  ///
+  /// Résolution : par `playlistId` quand la chaîne vient de la base ;
+  /// par host:port du serveur sinon (les écrans VOD/séries fabriquent
+  /// des `Channel` ad-hoc SANS playlistId, mais leurs URLs pointent le
+  /// serveur Xtream de la source). Best-effort : introuvable → pas de
+  /// réécriture.
+  static pl.Playlist? _xtreamPlaylistFor(Channel channel) {
+    final List<pl.Playlist> all = PlaylistRepository.instance.currentPlaylists;
     final int? pid = channel.playlistId;
-    if (pid == null) return false;
-    for (final pl.Playlist p in PlaylistRepository.instance.currentPlaylists) {
-      if (p.id == pid) return p.type == pl.PlaylistType.xtream;
+    if (pid != null) {
+      for (final pl.Playlist p in all) {
+        if (p.id == pid) {
+          return p.type == pl.PlaylistType.xtream ? p : null;
+        }
+      }
+      return null;
     }
-    return false;
+    final Uri? u = Uri.tryParse(channel.streamUrl);
+    if (u == null || !u.hasAuthority) return null; // fichier local, etc.
+    for (final pl.Playlist p in all) {
+      if (p.type != pl.PlaylistType.xtream) continue;
+      final Uri? server = Uri.tryParse(
+          SourceLinkUtils.sanitizeXtreamServer(p.xtreamServer ?? ''));
+      if (server != null &&
+          server.host.isNotEmpty &&
+          server.host == u.host &&
+          server.port == u.port) {
+        return p;
+      }
+    }
+    return null;
+  }
+
+  /// Type de contenu Xtream de cette chaîne : le PRÉFIXE de l'URL fait
+  /// foi (`/movie/`, `/series/`, `/live/`), sinon on tranche avec ce
+  /// que la playlist sait du contenu (`isLive`). Une URL nue non-live
+  /// est traitée comme un film (nos épisodes de séries sont toujours
+  /// construits avec le préfixe `/series/` par XtreamClient).
+  static XtreamContentType _contentTypeOf(Channel channel) {
+    final XtreamContentType? fromUrl =
+        XtreamUrlVariants.detectType(channel.streamUrl);
+    if (fromUrl != null) return fromUrl;
+    return channel.isLive ? XtreamContentType.live : XtreamContentType.movie;
   }
 
   /// Borne l'ATTENTE DE DÉMARRAGE d'une ouverture : si `playing` n'est
