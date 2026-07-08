@@ -40,7 +40,6 @@ import '../domain/playlist.dart';
 import 'm3u_fetcher.dart';
 import 'm3u_parser.dart';
 import 'playlist_database.dart';
-import 'playlist_import_limits.dart';
 import 'source_link_utils.dart';
 import 'xtream_client.dart';
 
@@ -464,17 +463,24 @@ class PlaylistRepository {
   // ============================================================
 
   /// Ajout d'un lien M3U avec REPLI Xtream automatique (terrain
-  /// 2026-07-08 : `get.php` en HTTP 503 sur les 9 signatures alors que
-  /// le compte est actif — beaucoup de panels désactivent ou throttlent
-  /// la génération M3U tout en laissant l'API Xtream ouverte ; IBO et
-  /// Smarters s'en sortent car ils convertissent le lien en compte).
+  /// 2026-07-08). Deux échecs distincts du `get.php` que le repli résout,
+  /// dès que le lien porte des identifiants (get.php?username=…&password=…) :
+  ///
+  ///   • `get.php` en HTTP 503 / signatures refusées alors que le compte
+  ///     est actif (panels qui throttlent la génération M3U mais laissent
+  ///     l'API Xtream ouverte — IBO/Smarters convertissent le lien en
+  ///     compte) ;
+  ///   • M3U TROP VOLUMINEUX (> 60 Mo) : un `type=m3u_plus` renvoie TOUT
+  ///     le catalogue (live + VOD + séries) en un seul fichier. L'API
+  ///     Xtream, elle, importe le live catégorie par catégorie EN FLUX
+  ///     (anti-OOM, cf. importLiveChannelsStreamed) → aucune limite de
+  ///     taille. C'est LE bon repli, pas un message « réduis ta source ».
   ///
   /// 1. tente le téléchargement M3U normal ;
-  /// 2. s'il échoue ET que le lien porte des identifiants Xtream
-  ///    (get.php?username=…&password=…), importe le MÊME compte via
-  ///    l'API player_api ;
-  /// 3. si le repli échoue aussi, renvoie l'erreur D'ORIGINE (celle du
-  ///    lien réellement collé, la plus parlante pour l'utilisateur).
+  /// 2. s'il échoue (refus OU trop gros) et que le lien porte des
+  ///    identifiants Xtream, importe le MÊME compte via l'API player_api ;
+  /// 3. si le repli échoue aussi, renvoie l'erreur D'ORIGINE (la plus
+  ///    parlante pour l'utilisateur).
   Future<Playlist> addM3uPlaylistSmart({
     required String name,
     required String url,
@@ -484,12 +490,10 @@ class PlaylistRepository {
     try {
       return await addM3uPlaylist(
           name: name, url: url, epgUrl: epgUrl, httpClient: httpClient);
-    } on PlaylistImportTooLarge {
-      rethrow; // la taille ne dépend pas du protocole : message dédié
-    } on Exception catch (original) {
+    } on Object catch (original) {
       final ({String server, String username, String password})? creds =
           SourceLinkUtils.tryExtractXtreamCredentials(url);
-      if (creds == null) rethrow;
+      if (creds == null) rethrow; // vrai M3U sans identifiants : rien à replier
       if (kDebugMode) {
         debugPrint('[Repo] M3U KO → repli API Xtream (même compte) : '
             '$original');
