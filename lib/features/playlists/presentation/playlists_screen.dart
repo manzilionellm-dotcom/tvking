@@ -22,6 +22,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../data/playlist_repository.dart';
 import '../domain/playlist.dart';
 import '../../channels/presentation/widgets/source_choice_sheet.dart';
+import 'source_calibration_sheet.dart';
 
 class PlaylistsScreen extends StatelessWidget {
   const PlaylistsScreen({super.key});
@@ -244,6 +245,17 @@ class _PlaylistTile extends StatelessWidget {
                 : context.l10n.playlistTapToActivate,
             onPressed:
                 playlist.isActive ? null : () => _activate(context),
+          ),
+          // « Optimiser la source » : calibration automatique (compte,
+          // format d'URL gagnant, signature, temps de démarrage). Or
+          // royal Maison Noir — geste premium, jamais critique.
+          IconButton(
+            icon: const Icon(
+              Icons.auto_fix_high_rounded,
+              color: AppColors.royalGold,
+            ),
+            tooltip: context.l10n.calibrateAction,
+            onPressed: () => showSourceCalibrationSheet(context, playlist),
           ),
           IconButton(
             icon: Icon(

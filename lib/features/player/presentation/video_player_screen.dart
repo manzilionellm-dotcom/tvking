@@ -668,6 +668,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             );
           }
         }
+        // Signature (UA) mémorisée pour cette source (calibration
+        // « Optimiser ») : appliquée avant l'ouverture — le relais et
+        // mpv lisent PlayerSettings au moment de connecter.
+        final String? sourceUa =
+            await XtreamUrlFormatStore.instance.sourceUserAgent(src.id!);
+        if (sourceUa != null &&
+            sourceUa != PlayerSettings.instance.userAgent) {
+          await PlayerSettings.instance.setUserAgent(sourceUa);
+          StreamDiagnostics.instance.recordEvent(
+            'probe',
+            'Signature mémorisée pour cette source appliquée : "$sourceUa"',
+          );
+        }
         if (!mounted) return;
       }
     }

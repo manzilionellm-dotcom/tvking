@@ -83,6 +83,30 @@ class XtreamUrlFormatStore {
     return true;
   }
 
+  // ----- Signature (User-Agent) gagnante par source -----
+  //  Rangée dans le MÊME JSON `url_formats` sous la clé 'ua' (les clés
+  //  de format sont les noms de XtreamContentType : pas de collision).
+  //  Remplie par la calibration « Optimiser la source » ; appliquée par
+  //  le lecteur à l'ouverture d'un contenu de cette source.
+
+  static const String _kUaKey = 'ua';
+
+  /// Signature gagnante mémorisée pour cette source, ou `null`.
+  Future<String?> sourceUserAgent(int playlistId) async {
+    await _ensureLoaded(playlistId);
+    return _cache[playlistId]?[_kUaKey];
+  }
+
+  /// Mémorise la signature gagnante de cette source.
+  Future<void> saveSourceUserAgent(int playlistId, String ua) async {
+    await _ensureLoaded(playlistId);
+    final Map<String, String> formats =
+        _cache.putIfAbsent(playlistId, () => <String, String>{});
+    if (formats[_kUaKey] == ua) return;
+    formats[_kUaKey] = ua;
+    await _persist(playlistId, formats);
+  }
+
   /// Vide le cache mémoire (tests / resynchronisation).
   @visibleForTesting
   void resetCache() {

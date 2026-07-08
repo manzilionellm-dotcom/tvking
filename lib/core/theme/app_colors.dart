@@ -126,6 +126,15 @@ abstract final class AppColors {
   static Color get editorialCreamSurface =>
       const Color(0xFFE8D9C0).withValues(alpha: 0.10);
 
+  /// Or royal Maison Noir — réservé aux actions « premium » ponctuelles
+  /// (baguette « Optimiser la source », badges VIP). Plus soutenu que
+  /// `editorialCream`, jamais utilisé pour du critique.
+  static const Color royalGold = Color(0xFFCCB089);
+
+  /// Voile or — fond mat des surfaces « premium » (boutons Optimiser).
+  static Color get royalGoldSurface =>
+      const Color(0xFFCCB089).withValues(alpha: 0.14);
+
   // -------------------------------------------------------
   //  TEXTE
   // -------------------------------------------------------
