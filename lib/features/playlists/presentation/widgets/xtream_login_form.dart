@@ -81,8 +81,11 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
         setState(() => _error = context.l10n.loginInvalidUrl);
         return;
       }
+      // « Smart » : si get.php est refusé (503, signatures bloquées)
+      // mais que le lien porte des identifiants Xtream, le MÊME compte
+      // est importé via l'API player_api — comme IBO/Smarters.
       await _run(messenger, () => PlaylistRepository.instance
-          .addM3uPlaylist(name: 'Mon abonnement', url: url));
+          .addM3uPlaylistSmart(name: 'Mon abonnement', url: url));
       return;
     }
 

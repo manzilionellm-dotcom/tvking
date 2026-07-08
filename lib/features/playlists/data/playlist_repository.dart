@@ -40,6 +40,7 @@ import '../domain/playlist.dart';
 import 'm3u_fetcher.dart';
 import 'm3u_parser.dart';
 import 'playlist_database.dart';
+import 'playlist_import_limits.dart';
 import 'source_link_utils.dart';
 import 'xtream_client.dart';
 
@@ -461,6 +462,51 @@ class PlaylistRepository {
   // ============================================================
   //  AJOUT PLAYLIST — M3U
   // ============================================================
+
+  /// Ajout d'un lien M3U avec REPLI Xtream automatique (terrain
+  /// 2026-07-08 : `get.php` en HTTP 503 sur les 9 signatures alors que
+  /// le compte est actif — beaucoup de panels désactivent ou throttlent
+  /// la génération M3U tout en laissant l'API Xtream ouverte ; IBO et
+  /// Smarters s'en sortent car ils convertissent le lien en compte).
+  ///
+  /// 1. tente le téléchargement M3U normal ;
+  /// 2. s'il échoue ET que le lien porte des identifiants Xtream
+  ///    (get.php?username=…&password=…), importe le MÊME compte via
+  ///    l'API player_api ;
+  /// 3. si le repli échoue aussi, renvoie l'erreur D'ORIGINE (celle du
+  ///    lien réellement collé, la plus parlante pour l'utilisateur).
+  Future<Playlist> addM3uPlaylistSmart({
+    required String name,
+    required String url,
+    String? epgUrl,
+    http.Client? httpClient,
+  }) async {
+    try {
+      return await addM3uPlaylist(
+          name: name, url: url, epgUrl: epgUrl, httpClient: httpClient);
+    } on PlaylistImportTooLarge {
+      rethrow; // la taille ne dépend pas du protocole : message dédié
+    } on Exception catch (original) {
+      final ({String server, String username, String password})? creds =
+          SourceLinkUtils.tryExtractXtreamCredentials(url);
+      if (creds == null) rethrow;
+      if (kDebugMode) {
+        debugPrint('[Repo] M3U KO → repli API Xtream (même compte) : '
+            '$original');
+      }
+      try {
+        return await addXtreamPlaylist(
+          name: name,
+          serverUrl: creds.server,
+          username: creds.username,
+          password: creds.password,
+          httpClient: httpClient,
+        );
+      } catch (_) {
+        throw original;
+      }
+    }
+  }
 
   /// Télécharge le .m3u puis stocke les chaînes en base.
   ///

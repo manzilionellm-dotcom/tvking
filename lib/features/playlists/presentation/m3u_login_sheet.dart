@@ -75,8 +75,10 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
         setState(() => _error = context.l10n.loginInvalidUrl);
         return;
       }
-      await _run(() =>
-          PlaylistRepository.instance.addM3uPlaylist(name: name, url: url));
+      // « Smart » : repli automatique get.php → API Xtream si le
+      // téléchargement M3U est refusé (cf. addM3uPlaylistSmart).
+      await _run(() => PlaylistRepository.instance
+          .addM3uPlaylistSmart(name: name, url: url));
     } else {
       String server = SourceLinkUtils.ensureScheme(_serverCtrl.text);
       String user = _userCtrl.text.trim();

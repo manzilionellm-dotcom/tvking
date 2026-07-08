@@ -48,7 +48,9 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
     });
     try {
       final String epg = _epgC.text.trim();
-      await PlaylistRepository.instance.addM3uPlaylist(
+      // « Smart » : repli automatique get.php → API Xtream si le
+      // téléchargement M3U est refusé (cf. addM3uPlaylistSmart).
+      await PlaylistRepository.instance.addM3uPlaylistSmart(
         name: _nameC.text.trim().isEmpty ? 'Ma liste M3U' : _nameC.text.trim(),
         url: url,
         epgUrl: epg.isEmpty ? null : SourceLinkUtils.ensureScheme(epg),
