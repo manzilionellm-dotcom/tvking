@@ -1750,6 +1750,10 @@
   "@loginXtreamIntro": {
     "description": "Texte UI : loginXtreamIntro"
   },
+  "loginM3uIntro": "Colle le lien M3U que t'a donné ton revendeur.\nTes chaînes seront chargées en quelques secondes.",
+  "@loginM3uIntro": {
+    "description": "Texte UI : loginM3uIntro (mode M3U du formulaire de connexion)"
+  },
   "loginServer": "Serveur",
   "@loginServer": {
     "description": "Texte UI : loginServer"

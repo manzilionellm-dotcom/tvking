@@ -469,6 +469,7 @@
   "loginLoadChannels": "Load my channels",
   "loginTitle": "Sign in",
   "loginXtreamIntro": "Choose your server then enter the code your reseller gave you.\nYour channels will load in a few seconds.",
+  "loginM3uIntro": "Paste the M3U link your reseller gave you.\nYour channels will load in a few seconds.",
   "loginServer": "Server",
   "loginConnecting": "Connecting to the server...",
   "loginConnectLoad": "Sign in and load",
