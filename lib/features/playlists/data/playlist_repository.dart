@@ -463,51 +463,58 @@ class PlaylistRepository {
   // ============================================================
 
   /// Ajout d'un lien M3U avec REPLI Xtream automatique (terrain
-  /// 2026-07-08). Deux échecs distincts du `get.php` que le repli résout,
-  /// dès que le lien porte des identifiants (get.php?username=…&password=…) :
+  /// 2026-07-08).
   ///
-  ///   • `get.php` en HTTP 503 / signatures refusées alors que le compte
-  ///     est actif (panels qui throttlent la génération M3U mais laissent
-  ///     l'API Xtream ouverte — IBO/Smarters convertissent le lien en
-  ///     compte) ;
-  ///   • M3U TROP VOLUMINEUX (> 60 Mo) : un `type=m3u_plus` renvoie TOUT
-  ///     le catalogue (live + VOD + séries) en un seul fichier. L'API
-  ///     Xtream, elle, importe le live catégorie par catégorie EN FLUX
-  ///     (anti-OOM, cf. importLiveChannelsStreamed) → aucune limite de
-  ///     taille. C'est LE bon repli, pas un message « réduis ta source ».
+  /// STRATÉGIE (identique à IBO/Smarters) : si le lien porte des
+  /// identifiants (get.php?username=…&password=…), on passe par l'API
+  /// XTREAM EN PRIORITÉ, PAS par le téléchargement du fichier M3U.
+  /// Pourquoi : un `type=m3u_plus` renvoie TOUT le catalogue (live + VOD
+  /// + séries) en un seul fichier souvent > 60 Mo — long à télécharger
+  /// (surtout sur une box TV en Wi-Fi) et rejeté par le plafond anti-OOM,
+  /// alors que l'API player_api importe le live catégorie par catégorie
+  /// EN FLUX (importLiveChannelsStreamed : léger, rapide, sans limite de
+  /// taille). Ça résout d'un coup les deux échecs terrain : get.php en
+  /// 503/refus de signature, ET M3U trop volumineux.
   ///
-  /// 1. tente le téléchargement M3U normal ;
-  /// 2. s'il échoue (refus OU trop gros) et que le lien porte des
-  ///    identifiants Xtream, importe le MÊME compte via l'API player_api ;
-  /// 3. si le repli échoue aussi, renvoie l'erreur D'ORIGINE (la plus
-  ///    parlante pour l'utilisateur).
+  /// 1. lien AVEC identifiants → API Xtream d'abord ; si elle échoue,
+  ///    repli sur le téléchargement M3U brut (certains panels ont
+  ///    player_api coupé mais get.php ouvert) ; si les deux échouent,
+  ///    on renvoie l'erreur XTREAM (la plus parlante — compte/DNS) ;
+  /// 2. lien SANS identifiants (vraie playlist .m3u statique) →
+  ///    téléchargement M3U direct, seul chemin possible.
   Future<Playlist> addM3uPlaylistSmart({
     required String name,
     required String url,
     String? epgUrl,
     http.Client? httpClient,
   }) async {
-    try {
-      return await addM3uPlaylist(
+    final ({String server, String username, String password})? creds =
+        SourceLinkUtils.tryExtractXtreamCredentials(url);
+
+    // Vraie playlist M3U (pas d'identifiants) : un seul chemin possible.
+    if (creds == null) {
+      return addM3uPlaylist(
           name: name, url: url, epgUrl: epgUrl, httpClient: httpClient);
-    } on Object catch (original) {
-      final ({String server, String username, String password})? creds =
-          SourceLinkUtils.tryExtractXtreamCredentials(url);
-      if (creds == null) rethrow; // vrai M3U sans identifiants : rien à replier
+    }
+
+    // Lien Xtream : l'API d'abord (voie royale, anti-OOM, rapide).
+    try {
+      return await addXtreamPlaylist(
+        name: name,
+        serverUrl: creds.server,
+        username: creds.username,
+        password: creds.password,
+        httpClient: httpClient,
+      );
+    } on Object catch (xtErr) {
       if (kDebugMode) {
-        debugPrint('[Repo] M3U KO → repli API Xtream (même compte) : '
-            '$original');
+        debugPrint('[Repo] API Xtream KO → repli sur le M3U brut : $xtErr');
       }
       try {
-        return await addXtreamPlaylist(
-          name: name,
-          serverUrl: creds.server,
-          username: creds.username,
-          password: creds.password,
-          httpClient: httpClient,
-        );
+        return await addM3uPlaylist(
+            name: name, url: url, epgUrl: epgUrl, httpClient: httpClient);
       } catch (_) {
-        throw original;
+        throw xtErr; // erreur Xtream = la plus parlante (compte / DNS)
       }
     }
   }
