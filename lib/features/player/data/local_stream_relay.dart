@@ -78,6 +78,19 @@ class LocalStreamRelay {
   HttpServer? _server;
   int _port = 0;
 
+  /// ÉCHECS DÉFINITIFS (4xx dès la 1re réponse, session jamais diffusée) :
+  /// le relais l'annonce EXPLICITEMENT ici, avec l'URL RÉELLE concernée.
+  /// C'est le lecteur (VideoPlayerScreen) qui s'y abonne pour déclencher
+  /// IMMÉDIATEMENT sa sonde + cascade de variantes — bug terrain du
+  /// 2026-07-08 11:37 : on comptait sur la réaction de mpv à un flux
+  /// vide (EOF), qui n'arrive pas de façon fiable → la cascade ne
+  /// s'exécutait jamais sur le chemin de lecture réel.
+  final StreamController<String> _definitiveFailures =
+      StreamController<String>.broadcast();
+
+  /// URL réelles dont la session vient d'échouer DÉFINITIVEMENT.
+  Stream<String> get definitiveFailures => _definitiveFailures.stream;
+
   /// Sessions actives, indexées par l'URL RÉELLE du flux (la clé est
   /// l'URL upstream, pas l'URL locale). Une session = une chaîne tirée
   /// une seule fois et distribuée à ses consommateurs.
@@ -291,7 +304,12 @@ class LocalStreamRelay {
               'retry (la cascade de variantes prend la main)',
           level: 'error',
         );
+        final String failedUrl = session.realUrl;
         _closeSession(session);
+        // APRÈS la fermeture : on prévient explicitement le lecteur
+        // (URL réelle, brute) pour qu'il lance sa cascade TOUT DE SUITE
+        // — sans attendre que mpv réagisse au flux vide.
+        _definitiveFailures.add(failedUrl);
         return;
       }
       _scheduleReconnect(session);
@@ -467,7 +485,13 @@ class LocalStreamRelay {
             '— abandon de la session',
         level: 'error',
       );
+      final bool neverStreamed = !session.everStreamed;
+      final String failedUrl = session.realUrl;
       _closeSession(session);
+      // Session qui n'a JAMAIS diffusé et que le serveur ignore : on
+      // prévient aussi le lecteur — il sondera (diagnostic réseau vs
+      // signature) au lieu d'attendre son timeout de démarrage.
+      if (neverStreamed) _definitiveFailures.add(failedUrl);
       return;
     }
 

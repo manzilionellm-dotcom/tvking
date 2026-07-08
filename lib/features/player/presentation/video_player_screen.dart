@@ -56,6 +56,7 @@ import '../data/local_stream_relay.dart';
 import '../data/pip_service.dart';
 import '../data/player_settings.dart';
 import '../data/stream_diagnostics.dart';
+import '../data/xtream_cascade_prober.dart';
 import '../data/xtream_url_variants.dart';
 import 'stream_debug_screen.dart';
 import 'widgets/player_settings_sheet.dart';
@@ -445,6 +446,38 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       final int? w = _player.state.width;
       if (h != null && w != null && h > 0 && w > 0) {
         StreamDiagnostics.instance.recordCodecs(resolution: '$w×$h');
+      }
+    }));
+
+    // ÉCHEC DÉFINITIF signalé par le RELAIS (4xx dès la 1re réponse ou
+    // serveur muet, session jamais diffusée) : c'est LE déclencheur
+    // FIABLE de la cascade de variantes sur le chemin de lecture réel.
+    // Bug terrain du 2026-07-08 11:37 : on comptait sur la réaction de
+    // mpv au flux vide (EOF) pour arriver dans _declareChannelBlocked —
+    // elle n'arrive pas de façon fiable → « la session se ferme et
+    // c'est tout », la cascade ne tournait jamais. Désormais le relais
+    // nous préviens EXPLICITEMENT et on sonde immédiatement.
+    _subs.add(LocalStreamRelay.instance.definitiveFailures
+        .listen((String failedUrl) {
+      if (!mounted || _hasError) return;
+      // Seule l'URL en cours de lecture nous concerne (les sessions
+      // d'anciennes chaînes sont fermées au zap, sans événement).
+      if (failedUrl != _effectiveUrl) return;
+      StreamDiagnostics.instance.recordEvent(
+        'cascade',
+        'Relais : échec définitif signalé → diagnostic immédiat '
+            '(sonde + variantes)',
+      );
+      if (_playedChannelId == _currentChannel.id) {
+        // La chaîne avait DÉJÀ joué : vraie coupure, pas un format
+        // refusé — message direct, pas de cascade.
+        setState(() {
+          _hasError = true;
+          _errorMessage =
+              'Flux interrompu. Vérifie ta connexion puis réessaie.';
+        });
+      } else {
+        _declareChannelBlocked();
       }
     }));
 
@@ -1343,49 +1376,53 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // playlist M3U générique garde son URL INTACTE (ses URLs peuvent
     // ressembler au schéma U/P/ID par hasard — les réécrire casserait
     // des flux valides).
-    if (widget.overrideUrl == null && src != null) {
-      final List<XtreamUrlCandidate> variants =
-          XtreamUrlVariants.cascadeFor(channel.streamUrl, contentType);
-      // variants[0] = URL d'origine, déjà sondée ci-dessus → on la saute.
-      for (int i = 1; i < variants.length; i++) {
-        final XtreamUrlCandidate candidate = variants[i];
-        final String alt = candidate.url;
-        StreamDiagnostics.instance.recordEvent(
-          'probe',
-          'Variante ${i + 1}/${variants.length} : '
-              '${StreamDiagnostics.maskCredentials(alt)}…',
+    if (widget.overrideUrl != null) {
+      StreamDiagnostics.instance.recordEvent(
+        'cascade',
+        '[cascade] catch-up/replay (overrideUrl) → URL laissée intacte, '
+            'pas de variantes',
+        level: 'warn',
+      );
+    } else if (src == null) {
+      // LE gate qui, muet, rendait le bug terrain indiagnosticable :
+      // désormais on écrit POURQUOI aucune variante n'est essayée.
+      StreamDiagnostics.instance.recordEvent(
+        'cascade',
+        '[cascade] source non-Xtream ou introuvable '
+            '(playlistId=${channel.playlistId ?? '—'}, '
+            'host=${Uri.tryParse(channel.streamUrl)?.host ?? '?'}) '
+            '→ URL laissée intacte, pas de variantes',
+        level: 'error',
+      );
+    } else {
+      // Sonde des variantes via le code PARTAGÉ (même code en prod et
+      // dans le test d'intégration). Chaque essai écrit sa ligne
+      // « [cascade] essai i/N : … → HTTP xxx » dans la boîte noire.
+      _uaDiagnosisInFlight = true;
+      final CascadeWin? win;
+      try {
+        win = await XtreamCascadeProber.findWorkingVariant(
+          channel.streamUrl, // URL BRUTE (identifiants réels)
+          contentType,
+          uaCandidates: <String>[
+            current,
+            ...PlayerSettings.userAgentPresets.values,
+          ],
+          isCancelled: () => !mounted || channel.id != _currentChannel.id,
         );
-        _uaDiagnosisInFlight = true;
-        final UserAgentProbeResult altProbe;
-        try {
-          altProbe = await StreamProbe.instance.probeUserAgents(
-            alt,
-            candidates: <String>[
-              current,
-              ...PlayerSettings.userAgentPresets.values,
-            ],
-          );
-        } finally {
-          _uaDiagnosisInFlight = false;
-        }
-        _recordProbeAttempts(altProbe,
-            label: 'variante ${i + 1}/${variants.length}');
-        if (!mounted || channel.id != _currentChannel.id) return;
-        if (altProbe.workingUserAgent == null) continue; // suivante
+      } finally {
+        _uaDiagnosisInFlight = false;
+      }
+      if (!mounted || channel.id != _currentChannel.id) return;
+      if (win != null) {
         debugPrint(
-            '[Player] format bloqué mais la variante « $alt » répond '
-            '(signature "${altProbe.workingUserAgent}") → bascule + relance.');
-        StreamDiagnostics.instance.recordEvent(
-          'probe',
-          'Variante ${StreamDiagnostics.maskCredentials(alt)} répond '
-              '(UA "${altProbe.workingUserAgent}") → bascule + relance',
-        );
-        if (altProbe.workingUserAgent != current) {
-          await PlayerSettings.instance
-              .setUserAgent(altProbe.workingUserAgent!);
+            '[Player] format bloqué mais la variante « ${win.url} » répond '
+            '(signature "${win.userAgent}") → bascule + relance.');
+        if (win.userAgent != current) {
+          await PlayerSettings.instance.setUserAgent(win.userAgent);
           if (!mounted || channel.id != _currentChannel.id) return;
         }
-        _adoptedAltUrl = alt;
+        _adoptedAltUrl = win.url;
         // MÉMORISATION : le format gagnant est persisté PAR SOURCE →
         // les prochains contenus de cette source (même type) partiront
         // DIRECTEMENT sur ce format à l'ouverture, sans re-cascade
@@ -1394,18 +1431,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           await XtreamUrlFormatStore.instance.saveWinningFormat(
             src.id!,
             contentType,
-            candidate.formatCode,
+            win.formatCode,
           );
           StreamDiagnostics.instance.recordEvent(
-            'probe',
-            'Format « ${candidate.formatCode} » mémorisé pour la source '
-                '« ${src.name} » (${contentType.name}) — les prochains '
-                'contenus l\'utiliseront directement',
+            'cascade',
+            '[cascade] format « ${win.formatCode} » mémorisé pour la '
+                'source « ${src.name} » (${contentType.name}) — les '
+                'prochains contenus l\'utiliseront directement',
           );
           if (!mounted || channel.id != _currentChannel.id) return;
         }
         _watchdogRecoveries = 0;
-        _openMedia(alt);
+        _openMedia(win.url);
         return; // pas d'erreur affichée : la variante a de vraies chances
       }
     }
