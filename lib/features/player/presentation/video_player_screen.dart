@@ -32,7 +32,6 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/live_badge.dart';
 import '../../cast/data/cast_manager.dart';
 import '../../cast/data/local_cast_server.dart';
-import '../../cast/data/stream_probe.dart';
 import '../../cast/presentation/cast_picker_sheet.dart';
 import '../../cast/presentation/screen_cast_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
@@ -44,17 +43,19 @@ import '../../onboarding/data/device_class_repository.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../playlists/data/favorites_repository.dart';
-import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/data/xtream_url_format_store.dart';
 // Préfixé : media_kit exporte aussi un type `Playlist` (ambiguïté).
 import '../../playlists/domain/playlist.dart' as pl;
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
+import '../data/hls_preflight.dart';
 import '../data/local_stream_relay.dart';
 import '../data/pip_service.dart';
 import '../data/player_settings.dart';
+import '../data/stream_blocked_fallback.dart';
 import '../data/stream_diagnostics.dart';
-import '../data/xtream_live_url_variants.dart';
+import '../data/xtream_url_variants.dart';
 import 'stream_debug_screen.dart';
 import 'widgets/player_settings_sheet.dart';
 import 'widgets/player_stats_overlay.dart';
@@ -107,19 +108,31 @@ class VideoPlayerScreen extends StatefulWidget {
 }
 
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
-  late final Player _player;
-  late final VideoController _videoController;
+  // INSTANCE mpv JETABLE (fix connexions 2026-07-08 17:07) : réutiliser
+  // la même instance laissait FUIR des connexions à chaque échec
+  // (« [lavf] Leaking 1 nested connections (FFmpeg bug) ») — sur un
+  // compte 1-connexion le panel voyait 2/1 et refusait les chaînes
+  // suivantes. On RECRÉE donc l'instance (dispose + new) avant CHAQUE
+  // nouvelle ouverture — cf. _recyclePlayer(). Non-final pour ça.
+  late Player _player;
+  late VideoController _videoController;
 
-  /// Message affiché quand une chaîne n'a JAMAIS atteint la lecture (source
-  /// vide / black.ts / bloquée par le fournisseur). Le rappel sur la limite
-  /// de connexions est une SUGGESTION, pas un diagnostic : beaucoup de
-  /// panels IPTV limitent à 1-2 connexions simultanées, et jouer déjà la
-  /// même chaîne ailleurs (téléphone + TV, ou cast en cours de test) en est
-  /// une cause fréquente — mais la chaîne peut aussi être simplement morte.
-  static const String _kChannelBlockedMessage =
-      'Chaîne indisponible : aucune vidéo reçue. Elle est vide ou bloquée '
-      'par ta source — vérifie qu\'elle n\'est pas déjà ouverte sur un '
-      'autre appareil, sinon essaie une autre chaîne.';
+  /// Epoch d'instance : change à chaque recréation du player, sert de
+  /// clé au widget `Video` pour forcer son remontage sur le NOUVEAU
+  /// VideoController.
+  int _playerEpoch = 0;
+
+  /// `true` dès qu'un `open()` a été lancé sur l'instance courante — la
+  /// prochaine ouverture doit alors passer par le recyclage (une
+  /// instance jamais ouverte est neuve : rien à fermer).
+  bool _playerOpenedOnce = false;
+
+  /// SÉRIALISATION des ouvertures : chaque _openMedia s'enchaîne à la
+  /// précédente — JAMAIS deux lectures en vol (comptes 1-connexion).
+  /// `_openGeneration` invalide les ouvertures dépassées par un zap.
+  Future<void> _openChain = Future<void>.value();
+  int _openGeneration = 0;
+
 
   bool _overlayVisible = true;
   Timer? _hideOverlayTimer;
@@ -189,12 +202,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // courant ≠ cet id, la chaîne courante n'a jamais joué.
   String? _playedChannelId;
   // Diagnostic multi-signature (« ça marche sur IBO, pas chez nous ») : id de
-  // la chaîne pour laquelle on a DÉJÀ tenté la sonde multi-User-Agent, pour ne
-  // JAMAIS boucler diagnostic→bascule→échec→diagnostic si le vrai problème
-  // n'est pas la signature. Se réinitialise naturellement au zap (comparé à
-  // `_currentChannel.id`, jamais remis à null explicitement).
-  String? _uaFixAttemptedForChannelId;
-  bool _uaDiagnosisInFlight = false;
+  // Chaîne « échec → sonde → cascade » : extraite dans un contrôleur
+  // TESTABLE de bout en bout (StreamBlockedFallback) — le widget ne
+  // garde que les liaisons. C'est lui qui possède l'anti-boucle
+  // par chaîne et l'abonnement aux échecs définitifs du relais.
+  late final StreamBlockedFallback _fallback;
   // Repli de FORMAT (.ts ↔ .m3u8) adopté par le diagnostic : certains
   // serveurs n'autorisent que le HLS pour le live → notre URL `.ts`
   // renvoie une page vide (écran noir) alors que la variante `.m3u8`
@@ -221,6 +233,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // l'erreur claire (avec « réessayer ») au lieu du spinner infini.
   // Même philosophie que le fix TV (verrou _recovering, 2026-07-06).
   Timer? _startupTimer;
+  Timer? _zapDebounce;
+  // Chaîne en attente derrière le debounce : si un nouveau zap arrive
+  // avant l'échéance, elle est « absorbée » (zéro requête émise) — on
+  // le journalise pour prouver le comportement 1-connexion.
+  Channel? _pendingZapChannel;
+  // Chrono « zap → première frame » (mesure fluidité, cible < 2 s).
+  final Stopwatch _zapClock = Stopwatch();
   static const Duration _kStartupTimeout = Duration(seconds: 25);
 
   // Autoplay « À suivre » (façon YouTube / Netflix) : quand un contenu
@@ -321,6 +340,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // Charge d'abord les réglages persistés
     PlayerSettings.instance.load();
 
+    // Crée l'instance mpv + controller + options + abonnements. Elle
+    // sera RECRÉÉE avant chaque ouverture suivante (instance jetable —
+    // parade au leak de connexions FFmpeg, cf. _recyclePlayer).
+    _createPlayer();
+    _initStateAfterPlayer();
+  }
+
+  /// Crée une instance mpv NEUVE (+ controller, options, abonnements,
+  /// vitesse persistée). Appelée par initState puis par _recyclePlayer
+  /// avant chaque nouvelle ouverture.
+  void _createPlayer() {
+    _playerEpoch++;
+    _playerOpenedOnce = false;
     // Configure le Player avec un buffer généreux (pour 4K/8K)
     _player = Player(
       configuration: PlayerConfiguration(
@@ -334,7 +366,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // Applique les options libmpv pour hardware decoding + cache
     _applyMpvOptions();
 
-    // Abonne aux événements
+    _attachPlayerListeners();
+
+    // Restaure la dernière vitesse (une instance neuve repart à 1.0).
+    if (PlayerSettings.instance.lastSpeed != 1.0) {
+      _player.setRate(PlayerSettings.instance.lastSpeed);
+    }
+  }
+
+  /// Abonne l'instance mpv COURANTE aux événements. Les abonnements
+  /// vivent dans `_subs` : annulés puis re-créés à chaque recyclage.
+  void _attachPlayerListeners() {
     _subs.add(_player.stream.buffering.listen((bool b) {
       if (mounted) setState(() => _isBuffering = b);
     }));
@@ -358,13 +400,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             _hasError = false;
             _errorMessage = null;
           }
-          // La lecture a réellement démarré pour CETTE chaîne → on mémorise son
-          // id. Une erreur ultérieure ne sera donc plus attribuée à une « source
-          // vide » (cf. listener d'erreur ci-dessous).
-          if (p) {
-            _playedChannelId = _currentChannel.id;
-            _startupTimer?.cancel(); // le démarrage a eu lieu → borne levée
-          }
+          // NB (bug terrain 2026-07-08 14:43) : `playing == true` signifie
+          // seulement « pas en pause » — mpv l'émet dès l'ouverture, AVANT
+          // toute frame décodée. Poser ici le drapeau « a joué » (et lever
+          // la borne de démarrage) faisait passer un 404 pour une « coupure
+          // réseau » et court-circuitait la cascade. Le drapeau est posé
+          // par _markPlaybackStarted() : 1re frame vidéo décodée
+          // (width/height) ou position qui avance (flux audio-only).
         });
       }
       // Signal au natif Android pour le PiP auto : "lecture en
@@ -375,8 +417,32 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       PipService.instance.setPlaybackActive(p);
     }));
     // Fin de lecture d'un contenu FINI → autoplay « À suivre ».
+    // REPRISE INTELLIGENTE (phase fluidité) : sur un LIVE qui décodait,
+    // un EOF est une MICRO-COUPURE réseau (edge recyclé) → reprise
+    // SILENCIEUSE sous ~1 s, sans écran d'erreur. L'erreur visible
+    // n'apparaît que si la reprise échoue (budget watchdog, puis
+    // diagnostic complet).
     _subs.add(_player.stream.completed.listen((bool done) {
-      if (done && mounted) _maybeStartUpNext();
+      if (!done || !mounted) return;
+      final bool liveDecoded = widget.overrideUrl == null &&
+          _currentChannel.isLive &&
+          _playedChannelId == _currentChannel.id;
+      if (liveDecoded) {
+        if (_watchdogRecoveries >= _kWatchdogMaxRecoveries) return;
+        _watchdogRecoveries++;
+        StreamDiagnostics.instance.recordEvent(
+          'player',
+          'Micro-coupure (EOF live) → reprise silencieuse '
+              '#$_watchdogRecoveries',
+          level: 'warn',
+        );
+        Timer(const Duration(milliseconds: 800), () {
+          if (!mounted || _hasError) return;
+          _openMedia(_effectiveUrl);
+        });
+        return;
+      }
+      _maybeStartUpNext();
     }));
     _subs.add(_player.stream.error.listen((String e) {
       if (!mounted) return;
@@ -426,8 +492,30 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           _errorMessage = e;
         });
       } else {
-        _declareChannelBlocked();
+        // Refus AVANT toute frame (« Error when loading first segment »,
+        // EOF immédiat…) : sur un compte 1-connexion c'est souvent le
+        // slot encore occupé par la lecture qu'on vient de quitter →
+        // BACKOFF 3 s + UN retry silencieux d'abord ; le diagnostic
+        // complet (sonde + cascade) ne part que si le retry échoue.
+        _fallback.onPlaybackRefused(
+            'mpv refuse le flux avant toute frame (« $e »)');
       }
+    }));
+
+    // LOGS MPV BRUTS (niveau warn/error, cf. logLevel de la config) →
+    // boîte noire. Sans ça on était AVEUGLES sur le moteur : terrain du
+    // 2026-07-08, « Dernière erreur du moteur : aucune » alors que RIEN
+    // ne décodait — les warns demuxer/ffmpeg/http de mpv n'étaient
+    // captés nulle part (stream.error ne porte que les erreurs fatales
+    // remontées par media_kit). Indispensable pour diagnostiquer un HLS
+    // en 200 qui n'affiche aucune frame.
+    _subs.add(_player.stream.log.listen((PlayerLog l) {
+      final bool isError = l.level == 'error' || l.level == 'fatal';
+      StreamDiagnostics.instance.recordEvent(
+        'mpv',
+        '[${l.prefix}] ${l.text}'.trim(),
+        level: isError ? 'error' : 'warn',
+      );
     }));
 
     // Boîte noire : codecs / résolution détectés par libmpv une fois le
@@ -443,8 +531,43 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       final int? w = _player.state.width;
       if (h != null && w != null && h > 0 && w > 0) {
         StreamDiagnostics.instance.recordCodecs(resolution: '$w×$h');
+        // Des dimensions vidéo = AU MOINS une frame décodée : c'est LE
+        // signal fiable « la lecture a réellement démarré ».
+        _markPlaybackStarted();
       }
     }));
+    // Flux audio-only (radio) : pas de frame vidéo, mais la position
+    // avance dès que le son décode — même signal de vrai démarrage.
+    _subs.add(_player.stream.position.listen((Duration pos) {
+      if (pos > const Duration(milliseconds: 400)) _markPlaybackStarted();
+    }));
+  }
+
+  /// Suite d'initState APRÈS la création du player (exécutée UNE fois —
+  /// contrairement à _createPlayer qui rejoue à chaque recyclage).
+  void _initStateAfterPlayer() {
+    // Chaîne « échec → sonde → cascade » : le contrôleur possède
+    // l'abonnement aux échecs définitifs du relais (déclencheur FIABLE,
+    // indépendant de la réaction de mpv au flux vide) et TOUT le
+    // diagnostic. Chaque sortie est journalisée — plus de chemin muet.
+    _fallback = StreamBlockedFallback(
+      getChannel: () => _currentChannel,
+      getOverrideUrl: () => widget.overrideUrl,
+      getEffectiveUrl: () => _effectiveUrl,
+      isAlive: () => mounted,
+      hasDecodedFrames: () => _playedChannelId == _currentChannel.id,
+      getAdoptedAltUrl: () => _adoptedAltUrl,
+      setAdoptedAltUrl: (String? url) => _adoptedAltUrl = url,
+      resetWatchdogBudget: () => _watchdogRecoveries = 0,
+      reopen: _openMedia,
+      showBlocked: (String message) {
+        if (!mounted) return;
+        setState(() {
+          _hasError = true;
+          _errorMessage = message;
+        });
+      },
+    )..attach();
 
     // Listener pour les changements de réglages → réapplication immédiate
     PlayerSettings.instance.addListener(_onSettingsChanged);
@@ -465,15 +588,54 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     // URL effective : overrideUrl (catch-up) sinon stream live
     final String url = _effectiveUrl;
+    _zapClock
+      ..reset()
+      ..start(); // mesure « ouverture → première frame »
     _openMedia(url);
-
-    // Restaure la dernière vitesse
-    if (PlayerSettings.instance.lastSpeed != 1.0) {
-      _player.setRate(PlayerSettings.instance.lastSpeed);
-    }
 
     _scheduleHideOverlay();
     _startWatchdog();
+  }
+
+  /// FERMETURE ATTENDUE + INSTANCE NEUVE — le cœur du comportement
+  /// « client 1-connexion parfait » (mission 2026-07-08 17:07) :
+  ///   1. STOP ATTENDU et MESURÉ : le panel doit voir l'ancienne socket
+  ///      FERMÉE avant qu'une nouvelle lecture ne se connecte (sinon il
+  ///      compte 2/1 et refuse les chaînes suivantes) ;
+  ///   2. instance mpv JETABLE (dispose + new) : l'instance réutilisée
+  ///      laissait fuir des connexions à chaque échec — « [lavf] Leaking
+  ///      1 nested connections (FFmpeg bug) » dans les logs terrain.
+  ///      Une instance neuve ne peut rien laisser fuir.
+  /// Le coût est journalisé pour prouver qu'on ne dégrade pas le
+  /// « zap → première frame » (590 ms mesurés pour 2000 visés).
+  Future<void> _recyclePlayer() async {
+    if (!_playerOpenedOnce) return; // instance jamais ouverte : neuve
+    final Stopwatch sw = Stopwatch()..start();
+    // Les abonnements appartiennent à l'ANCIENNE instance.
+    for (final StreamSubscription<dynamic> s in _subs) {
+      unawaited(s.cancel());
+    }
+    _subs.clear();
+    final Player old = _player;
+    try {
+      await old.stop().timeout(const Duration(seconds: 5));
+    } catch (_) {}
+    final int stopMs = sw.elapsedMilliseconds;
+    StreamDiagnostics.instance.recordEvent(
+      'player',
+      'session fermée (attendue) en $stopMs ms',
+    );
+    try {
+      await old.dispose().timeout(const Duration(seconds: 5));
+    } catch (_) {}
+    _createPlayer();
+    StreamDiagnostics.instance.recordEvent(
+      'player',
+      'instance mpv recréée en ${sw.elapsedMilliseconds - stopMs} ms '
+          '(jetable — parade au « Leaking nested connections » de FFmpeg)',
+    );
+    // Le widget Video doit remonter sur le NOUVEAU controller.
+    if (mounted) setState(() {});
   }
 
   // ----- Zapping -----
@@ -572,6 +734,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _behindLive = false;
       // La variante de format adoptée était propre à l'ANCIENNE chaîne.
       _adoptedAltUrl = null;
+      // Nouvelle SESSION de lecture : le drapeau « a réellement joué »
+      // repart à zéro (il ne doit jamais survivre à un zap, même en
+      // revenant sur une chaîne qui avait décodé plus tôt).
+      _playedChannelId = null;
       // (la chaîne change → on le rapporte juste après le setState)
     });
     RecentlyWatchedRepository.instance.record(next.id);
@@ -586,8 +752,34 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           channelName: next.cleanName,
         )
         .then((int id) => _watchSessionId = id);
-    _openMedia(next.streamUrl);
-    _reportNowPlaying(); // panel « En ligne » : nouvelle chaîne
+    // FIX CONNEXIONS — DEBOUNCE 400 ms du zapping : un zap en rafale
+    // (molette / swipes rapides) ouvrait une connexion par chaîne
+    // traversée (journal terrain : 5 ouvertures en 10 s → 2/1 côté
+    // panel). L'UI change tout de suite ; les chaînes INTERMÉDIAIRES
+    // n'émettent AUCUNE requête (ni playlist, ni segment, ni sonde, ni
+    // heartbeat) — seule la chaîne où l'on s'arrête se connecte, et le
+    // zap absorbé est journalisé (preuve terrain).
+    if (_zapDebounce?.isActive ?? false) {
+      final Channel? absorbed = _pendingZapChannel;
+      StreamDiagnostics.instance.recordEvent(
+        'zap',
+        'Zap absorbé (rafale) : '
+            '« ${absorbed?.cleanName ?? '?'} » — aucune requête émise',
+      );
+    }
+    _zapDebounce?.cancel();
+    _pendingZapChannel = next;
+    _zapClock
+      ..reset()
+      ..start(); // la mesure inclut le debounce : c'est le ressenti réel
+    _zapDebounce = Timer(const Duration(milliseconds: 400), () {
+      _pendingZapChannel = null;
+      if (!mounted || _currentChannel.id != next.id) return;
+      // Seule la chaîne FINALE est rapportée au panel « En ligne »
+      // (le heartbeat des intermédiaires était aussi une requête).
+      _reportNowPlaying();
+      _openMedia(next.streamUrl);
+    });
     _scheduleHideOverlay();
   }
 
@@ -639,8 +831,73 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  Future<void> _openMedia(String realUrl) async {
+  /// Point d'entrée UNIQUE des ouvertures. SÉRIALISÉ : chaque ouverture
+  /// attend la fin de la précédente (fermeture attendue comprise) —
+  /// jamais deux lectures en vol. Une ouverture dépassée par un zap plus
+  /// récent est abandonnée (garde de génération, journalisée).
+  Future<void> _openMedia(String realUrl) {
+    final int gen = ++_openGeneration;
+    _openChain = _openChain.then((_) => _openMediaInner(realUrl, gen));
+    return _openChain;
+  }
+
+  Future<void> _openMediaInner(String realUrl, int gen) async {
+    if (!mounted) return;
+    if (gen != _openGeneration) {
+      StreamDiagnostics.instance.recordEvent(
+        'player',
+        'Ouverture obsolète abandonnée (un zap plus récent est en file) : '
+            '${StreamDiagnostics.maskCredentials(realUrl)}',
+      );
+      return;
+    }
+    // FERMETURE ATTENDUE + instance mpv neuve AVANT toute connexion.
+    await _recyclePlayer();
+    if (!mounted || gen != _openGeneration) return;
     _autoSubtitleApplied = false; // nouvelle vidéo → on réévalue les sous-titres
+    // FORMAT MÉMORISÉ (zapping instantané) : si la cascade a déjà trouvé
+    // le format d'URL gagnant pour cette source (et ce type de contenu),
+    // on l'applique DIRECTEMENT — pas de re-cascade à chaque zap. On ne
+    // le fait que si aucune variante n'est déjà adoptée pour la session
+    // (`_adoptedAltUrl`), jamais pour le catch-up (`overrideUrl`).
+    if (widget.overrideUrl == null && _adoptedAltUrl == null) {
+      final pl.Playlist? src =
+          StreamBlockedFallback.xtreamPlaylistFor(_currentChannel);
+      if (src?.id != null) {
+        final XtreamContentType type =
+            StreamBlockedFallback.contentTypeOf(_currentChannel);
+        final String? code = await XtreamUrlFormatStore.instance
+            .winningFormat(src!.id!, type);
+        if (code != null) {
+          final String? remembered =
+              XtreamUrlVariants.applyFormat(realUrl, code);
+          if (remembered != null && remembered != realUrl) {
+            _adoptedAltUrl = remembered;
+            realUrl = remembered;
+            StreamDiagnostics.instance.recordEvent(
+              'probe',
+              'Format mémorisé « $code » appliqué : '
+                  '${StreamDiagnostics.maskCredentials(remembered)} '
+                  '— zapping sans cascade',
+            );
+          }
+        }
+        // Signature (UA) mémorisée pour cette source (calibration
+        // « Optimiser ») : appliquée avant l'ouverture — le relais et
+        // mpv lisent PlayerSettings au moment de connecter.
+        final String? sourceUa =
+            await XtreamUrlFormatStore.instance.sourceUserAgent(src.id!);
+        if (sourceUa != null &&
+            sourceUa != PlayerSettings.instance.userAgent) {
+          await PlayerSettings.instance.setUserAgent(sourceUa);
+          StreamDiagnostics.instance.recordEvent(
+            'probe',
+            'Signature mémorisée pour cette source appliquée : "$sourceUa"',
+          );
+        }
+        if (!mounted || gen != _openGeneration) return;
+      }
+    }
     // Boîte noire : nouvelle tentative d'ouverture (URL réelle + UA).
     // Le relais / la sonde compléteront avec le statut HTTP, libmpv
     // avec les codecs et les erreurs exactes.
@@ -652,18 +909,83 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     );
     _armStartupTimeout();
     if (widget.overrideUrl != null) {
+      _playerOpenedOnce = true;
       _player.open(Media(realUrl));
+      return;
+    }
+    // HLS (.m3u8) : BYPASS du relais — mpv gère nativement master/media
+    // playlists, segments, redirections et tokens (User-Agent déjà posé
+    // via la propriété mpv). Le relais est un tuyau d'octets TS
+    // CONTINUS : sur une playlist (document court) il « reconnectait »
+    // en boucle sur chaque EOF et servait à mpv du texte m3u8 concaténé
+    // → 0 frame (bug terrain du 2026-07-08 après la victoire de la
+    // cascade). La sonde HLS trace playlist + segments dans la boîte
+    // noire, en parallèle, sans toucher à la lecture.
+    if (HlsPreflight.isHlsUrl(realUrl)) {
+      StreamDiagnostics.instance.recordEvent(
+        'hls',
+        'HLS détecté → lecture DIRECTE par mpv (relais bypassé, réservé '
+            'aux flux TS continus)',
+      );
+      // Plus aucune lecture ne passera par le relais : on ferme les
+      // sessions TS restantes (zap TS → HLS).
+      LocalStreamRelay.instance.closeOtherPlaybacks(realUrl);
+      // Redirection (panel → CDN tokenisé) RÉSOLUE AVANT mpv : certains
+      // empilements ffmpeg résolvent mal les URIs RELATIVES des
+      // segments après une redirection de playlist (base URL = l'URL
+      // d'origine au lieu de la finale). On donne à mpv l'URL FINALE,
+      // token compris — plus d'ambiguïté de base. Best-effort : en cas
+      // de pépin on ouvre l'URL d'origine, comme avant.
+      String hlsUrl = realUrl;
+      final String? finalUrl =
+          await HlsPreflight.resolveFinalPlaylistUrl(realUrl);
+      if (!mounted || gen != _openGeneration) return;
+      if (finalUrl != null && finalUrl != realUrl) {
+        StreamDiagnostics.instance.recordEvent(
+          'hls',
+          'Redirection résolue AVANT mpv → base des segments = URL finale '
+              '${StreamDiagnostics.maskCredentials(finalUrl)} '
+              '(token conservé)',
+        );
+        hlsUrl = finalUrl;
+      }
+      // CAUSE RACINE terrain (logs mpv « Reading plaintext playlist » /
+      // « Failed to recognize file format » sur segments TS pourtant
+      // valides) : la playlist du panel n'a pas #EXTM3U en position 0
+      // (BOM/blancs/CR, voire balise absente). mpv lit donc la PLAYLIST
+      // NORMALISÉE par le relais local (route /hls : re-téléchargée à
+      // chaque poll live, #EXTM3U garanti, URIs de segments ABSOLUES →
+      // les octets vidéo partent en DIRECT vers le CDN).
+      final String normalizedUrl =
+          await LocalStreamRelay.instance.hlsPlaylistUrlFor(hlsUrl);
+      if (!mounted || gen != _openGeneration) return;
+      // FILET : force le démuxeur HLS de ffmpeg sur ce contenu, au cas
+      // où un panel servirait un document encore plus exotique. Remis à
+      // « auto » sur le chemin TS (_applyMpvOptions n'y touche pas).
+      final bool forced =
+          await _setMpvProperty('demuxer-lavf-format', 'hls');
+      StreamDiagnostics.instance.recordEvent(
+        'hls',
+        'Playlist normalisée servie en local → mpv ; démuxeur HLS forcé : '
+            '${forced ? 'oui' : 'non (propriété refusée)'}',
+      );
+      // (la fermeture attendue a déjà eu lieu dans _recyclePlayer :
+      // l'instance est NEUVE, aucune socket précédente à chevaucher)
+      _playerOpenedOnce = true;
+      _player.open(Media(normalizedUrl));
       return;
     }
     try {
       final String localUrl =
           await LocalStreamRelay.instance.playUrlFor(realUrl);
-      if (!mounted) return;
+      if (!mounted || gen != _openGeneration) return;
+      _playerOpenedOnce = true;
       _player.open(Media(localUrl));
     } catch (e) {
       // Si le relais ne démarre pas (cas improbable), on retombe sur la
       // lecture directe pour ne jamais priver l'utilisateur de l'image.
       debugPrint('[Player] relais indisponible, lecture directe: $e');
+      _playerOpenedOnce = true;
       _player.open(Media(realUrl));
     }
   }
@@ -729,9 +1051,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _scheduleHideOverlay();
   }
 
-  /// `true` si la lecture passe par le mini-relais (cas LIVE). Pour le
-  /// catch-up / VOD (overrideUrl présent), on garde l'ancien moteur natif.
-  bool get _liveViaRelay => widget.overrideUrl == null;
+  /// `true` si la lecture passe par le mini-relais — LIVE non-HLS
+  /// uniquement. Le catch-up/VOD (overrideUrl) et le HLS (lu en direct
+  /// par mpv, cf. _openMedia) n'y passent jamais ; leur enregistrement
+  /// utilise le moteur natif.
+  bool get _liveViaRelay =>
+      widget.overrideUrl == null && !HlsPreflight.isHlsUrl(_effectiveUrl);
 
   Future<void> _startRecording() async {
     try {
@@ -1095,6 +1420,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _upNextTimer?.cancel();
     _watchdogTimer?.cancel();
     _startupTimer?.cancel();
+    _zapDebounce?.cancel();
     // Mode « Écouteurs » : on coupe le service audio de fond et on lève le
     // drapeau natif (sinon le son continuerait après la fermeture du
     // lecteur). Idempotent / fail-open.
@@ -1107,6 +1433,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     for (final StreamSubscription<dynamic> s in _subs) {
       s.cancel();
     }
+    // Désabonne le diagnostic des échecs définitifs du relais.
+    _fallback.detach();
     // Ferme proprement la session de visionnage. Si l'app est killée
     // sans dispose, _cleanupAbandoned() au prochain boot rattrape.
     if (_watchSessionId > 0) {
@@ -1180,6 +1508,70 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _scheduleHideOverlay();
   }
 
+  /// Marque la chaîne courante comme AYANT RÉELLEMENT JOUÉ — appelé
+  /// UNIQUEMENT sur preuve de décodage (1re frame vidéo, ou position qui
+  /// avance pour l'audio-only). JAMAIS sur le simple état `playing` de
+  /// mpv, qui est vrai dès l'ouverture même quand le serveur a répondu
+  /// 404. C'est ce drapeau qui décide « coupure réseau » (erreur
+  /// directe) vs « jamais lu » (sonde + cascade de variantes).
+  void _markPlaybackStarted() {
+    _startupTimer?.cancel(); // le démarrage a VRAIMENT eu lieu → borne levée
+    if (_playedChannelId != _currentChannel.id) {
+      _playedChannelId = _currentChannel.id;
+      // MESURE FLUIDITÉ : temps « zap → première frame » (cible < 2000 ms).
+      final int? zapMs =
+          _zapClock.isRunning ? _zapClock.elapsedMilliseconds : null;
+      _zapClock.stop();
+      StreamDiagnostics.instance.recordEvent(
+        'perf',
+        'Première frame décodée'
+            '${zapMs == null ? '' : ' — zap → première frame : $zapMs ms '
+                '(cible < 2000)'}',
+        level: (zapMs ?? 0) > 2500 ? 'warn' : 'info',
+      );
+      // PROFIL 2 TEMPS : démarré sur ~1 s de coussin (réactivité), on
+      // monte MAINTENANT au régime établi (5-10 s) pour absorber les
+      // à-coups réseau sans re-bufferiser.
+      unawaited(_setMpvProperty(
+        'demuxer-readahead-secs',
+        PlayerSettings.instance.antiFreezeReadaheadSeconds.toString(),
+      ));
+      unawaited(_logPlaybackMetrics('première frame'));
+    }
+  }
+
+  /// Photo FLUIDITÉ dans la boîte noire : décodage matériel réellement
+  /// actif (hwdec-current), codec, fps estimés, frames PERDUES — la
+  /// mesure objective du « zéro saccade ». Appelée à la première frame
+  /// puis toutes les ~30 s de lecture stable (via le watchdog).
+  Future<void> _logPlaybackMetrics(String moment) async {
+    Future<String?> prop(String name) async {
+      try {
+        // ignore: invalid_use_of_protected_member
+        final dynamic native = (_player.platform as dynamic);
+        final dynamic v = await native?.getProperty(name);
+        final String out = '$v'.trim();
+        return out.isEmpty || out == 'null' ? null : out;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final String? hwdec = await prop('hwdec-current');
+    final String? codec = await prop('video-codec');
+    final String? fps = await prop('estimated-vf-fps');
+    final String? dropped = await prop('frame-drop-count');
+    final bool hwActive =
+        hwdec != null && hwdec != 'no' && hwdec != 'none';
+    StreamDiagnostics.instance.recordEvent(
+      'perf',
+      '[$moment] hwdec: ${hwActive ? 'ACTIF ($hwdec)' : 'logiciel'} · '
+          'codec: ${codec ?? '—'} · fps: ${fps ?? '—'} · '
+          'frames perdues: ${dropped ?? '0'}',
+      level: hwActive ? 'info' : 'warn',
+    );
+  }
+
   void _retry() {
     setState(() {
       _hasError = false;
@@ -1192,188 +1584,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   // ----- Chien de garde anti-gel -----
 
-  /// Chaîne jamais lue avec succès → probablement bloquée par le
-  /// fournisseur. AVANT d'abandonner, sonde plusieurs signatures de lecteur
-  /// connues (VLC, ExoPlayer/IBO, Smarters…) sur l'URL réelle : beaucoup de
-  /// fournisseurs IPTV whitelistent UNE signature précise et servent une
-  /// page vide aux autres — c'est souvent ÇA « la chaîne marche sur IBO
-  /// mais pas chez nous », pas une vraie panne réseau. Si une AUTRE
-  /// signature obtient une vraie réponse média, on l'adopte (persistée
-  /// via PlayerSettings) et on relance automatiquement, sans même montrer
-  /// d'erreur au client. Une seule tentative de diagnostic par chaîne
-  /// (`_uaFixAttemptedForChannelId`) : si le vrai problème n'est pas la
-  /// signature, on ne boucle pas diagnostic→bascule→échec→diagnostic.
-  Future<void> _declareChannelBlocked() async {
-    final Channel channel = _currentChannel;
-    final bool alreadyTried = _uaFixAttemptedForChannelId == channel.id;
-    if (_uaDiagnosisInFlight || alreadyTried) {
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-          _errorMessage = _kChannelBlockedMessage;
-        });
-      }
-      return;
-    }
-    _uaFixAttemptedForChannelId = channel.id;
-    _uaDiagnosisInFlight = true;
-    final String current = PlayerSettings.instance.userAgent;
-    StreamDiagnostics.instance.recordEvent(
-      'probe',
-      'Chaîne jamais lue → sonde multi-signatures (User-Agent)…',
-      level: 'warn',
-    );
-    final UserAgentProbeResult probe;
-    try {
-      probe = await StreamProbe.instance.probeUserAgents(
-        channel.streamUrl,
-        candidates: <String>[
-          current,
-          ...PlayerSettings.userAgentPresets.values,
-        ],
-      );
-    } finally {
-      _uaDiagnosisInFlight = false;
-    }
-    _recordProbeAttempts(probe);
-    // L'utilisateur a zappé pendant la sonde → cette chaîne n'est plus
-    // affichée, rien à faire (le nouvel écran gère son propre état).
-    if (!mounted || channel.id != _currentChannel.id) return;
-
-    if (probe.workingUserAgent != null && probe.workingUserAgent != current) {
-      debugPrint(
-          '[Player] "$current" bloqué mais "${probe.workingUserAgent}" '
-          'fonctionne sur cette source → bascule automatique + relance.');
-      StreamDiagnostics.instance.recordEvent(
-        'probe',
-        'Signature "$current" refusée mais "${probe.workingUserAgent}" '
-            'acceptée → bascule automatique + relance',
-      );
-      await PlayerSettings.instance.setUserAgent(probe.workingUserAgent!);
-      if (!mounted || channel.id != _currentChannel.id) return;
-      _watchdogRecoveries = 0; // budget neuf : cette signature a de vraies chances
-      _openMedia(widget.overrideUrl ?? channel.streamUrl);
-      return; // pas d'erreur affichée : on retente silencieusement
-    }
-
-    // Repli d'URL — CASCADE DE VARIANTES XTREAM : aucune signature n'a
-    // débloqué l'URL telle quelle. Les panels Xtream servent le même flux
-    // sous plusieurs formes (`/live/U/P/ID.m3u8`, `/live/U/P/ID.ts`,
-    // `U/P/ID.m3u8`) et beaucoup répondent 404 + page HTML sur la forme
-    // qu'on a construite alors qu'une autre joue (cas « France 2 : 404
-    // chez nous, OK dans IBO »). On sonde chaque variante dans l'ordre,
-    // avec les mêmes signatures, et on s'arrête au premier succès.
-    //
-    // GATE STRICT : uniquement pour le LIVE (pas de catch-up/VOD) d'une
-    // source de type XTREAM. Une playlist M3U générique garde son URL
-    // INTACTE (ses URLs peuvent ressembler au schéma U/P/ID par hasard —
-    // les réécrire casserait des flux valides).
-    if (widget.overrideUrl == null && _isFromXtreamSource(channel)) {
-      final List<String> variants =
-          XtreamLiveUrlVariants.cascade(channel.streamUrl);
-      // variants[0] = URL d'origine, déjà sondée ci-dessus → on la saute.
-      for (int i = 1; i < variants.length; i++) {
-        final String alt = variants[i];
-        StreamDiagnostics.instance.recordEvent(
-          'probe',
-          'Variante ${i + 1}/${variants.length} : '
-              '${StreamDiagnostics.maskCredentials(alt)}…',
-        );
-        _uaDiagnosisInFlight = true;
-        final UserAgentProbeResult altProbe;
-        try {
-          altProbe = await StreamProbe.instance.probeUserAgents(
-            alt,
-            candidates: <String>[
-              current,
-              ...PlayerSettings.userAgentPresets.values,
-            ],
-          );
-        } finally {
-          _uaDiagnosisInFlight = false;
-        }
-        _recordProbeAttempts(altProbe,
-            label: 'variante ${i + 1}/${variants.length}');
-        if (!mounted || channel.id != _currentChannel.id) return;
-        if (altProbe.workingUserAgent == null) continue; // suivante
-        debugPrint(
-            '[Player] format bloqué mais la variante « $alt » répond '
-            '(signature "${altProbe.workingUserAgent}") → bascule + relance.');
-        StreamDiagnostics.instance.recordEvent(
-          'probe',
-          'Variante ${StreamDiagnostics.maskCredentials(alt)} répond '
-              '(UA "${altProbe.workingUserAgent}") → bascule + relance',
-        );
-        if (altProbe.workingUserAgent != current) {
-          await PlayerSettings.instance
-              .setUserAgent(altProbe.workingUserAgent!);
-          if (!mounted || channel.id != _currentChannel.id) return;
-        }
-        _adoptedAltUrl = alt;
-        _watchdogRecoveries = 0;
-        _openMedia(alt);
-        return; // pas d'erreur affichée : la variante a de vraies chances
-      }
-    }
-
-    StreamDiagnostics.instance.recordEvent(
-      'probe',
-      probe.isLikelyNetworkBlocked
-          ? 'Aucune signature ne passe — échecs de niveau RÉSEAU '
-              '(DNS/timeout) : blocage FAI probable'
-          : 'Aucune signature ni variante de format ne débloque ce flux',
-      level: 'error',
-    );
-    setState(() {
-      _hasError = true;
-      _errorMessage = probe.isLikelyNetworkBlocked
-          ? '$_kChannelBlockedMessage\n\nÇa ressemble à un blocage réseau '
-              '(FAI ou DNS) plutôt qu\'à un problème de l\'app — un VPN '
-              'peut aider si cette chaîne fonctionne ailleurs.'
-          : _kChannelBlockedMessage;
-    });
-  }
-
-  /// Verse le détail d'une sonde multi-signatures dans la boîte noire :
-  /// une ligne par User-Agent essayé (statut HTTP ou raison d'échec).
-  /// Le statut de la signature ACTIVE alimente aussi l'instantané HTTP
-  /// (utile pour la VOD, qui ne passe pas par le relais).
-  void _recordProbeAttempts(UserAgentProbeResult probe, {String? label}) {
-    final StreamDiagnostics d = StreamDiagnostics.instance;
-    final String prefix = label == null ? '' : '[$label] ';
-    probe.attempts.forEach((String ua, StreamProbeResult r) {
-      final String verdict = r.success
-          ? 'OK (HTTP 2xx${r.mime == null ? '' : ' · ${r.mime}'})'
-          : (r.errorCode != null
-              ? 'HTTP ${r.errorCode} — ${r.errorReason ?? 'refusé'}'
-              : (r.errorReason ?? 'échec'));
-      d.recordEvent('probe', '${prefix}UA "$ua" → $verdict',
-          level: r.success ? 'info' : 'warn');
-    });
-    final StreamProbeResult? currentAttempt =
-        probe.attempts[PlayerSettings.instance.userAgent];
-    if (currentAttempt != null && d.httpStatus == null) {
-      d.recordHttp(
-        status: currentAttempt.errorCode ?? (currentAttempt.success ? 200 : null),
-        finalUrl: currentAttempt.finalUrl,
-        mime: currentAttempt.mime,
-        source: 'probe',
-      );
-    }
-  }
-
-  /// `true` si la chaîne vient d'une playlist de type XTREAM — condition
-  /// du repli en cascade de variantes d'URL (une M3U générique doit
-  /// garder son URL intacte). Best-effort : playlist introuvable en
-  /// cache → on considère que ce n'est PAS de l'Xtream (pas de réécriture).
-  static bool _isFromXtreamSource(Channel channel) {
-    final int? pid = channel.playlistId;
-    if (pid == null) return false;
-    for (final pl.Playlist p in PlaylistRepository.instance.currentPlaylists) {
-      if (p.id == pid) return p.type == pl.PlaylistType.xtream;
-    }
-    return false;
-  }
+  /// Contenu jamais lu avec succès → diagnostic complet (sonde
+  /// multi-signatures + re-validation du format mémorisé + CASCADE de
+  /// variantes). Toute la logique vit dans [StreamBlockedFallback],
+  /// testable de bout en bout avec le vrai relais et la vraie sonde —
+  /// le widget ne fait que déléguer.
+  Future<void> _declareChannelBlocked() => _fallback.run();
 
   /// Borne l'ATTENTE DE DÉMARRAGE d'une ouverture : si `playing` n'est
   /// jamais atteint dans les [_kStartupTimeout], on montre l'erreur claire
@@ -1404,9 +1620,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _watchdogTick() {
     if (!mounted) return;
-    // Live uniquement : la VOD/catch-up est seekable, sa position
-    // s'arrête légitimement (pause, fin) → ce ne serait pas un gel.
-    if (!_liveViaRelay) return;
+    // Live uniquement (relais TS OU HLS direct) : la VOD/catch-up est
+    // seekable, sa position s'arrête légitimement (pause, fin) → ce ne
+    // serait pas un gel.
+    if (widget.overrideUrl != null) return;
     // Un VRAI gel = mpv se croit en lecture, ne bufferise pas, aucune
     // erreur affichée, mais la position stagne. Sinon on ne compte rien
     // et on resynchronise la position de référence.
@@ -1430,6 +1647,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (++_watchdogGoodTicks >= _kWatchdogGoodTicksToReset) {
         _watchdogGoodTicks = 0;
         _watchdogRecoveries = 0;
+        // Photo fluidité périodique (~30 s de lecture stable).
+        unawaited(_logPlaybackMetrics('lecture stable'));
       }
     }
   }
@@ -1937,6 +2156,45 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     );
   }
 
+  /// Splash de ZAP : logo + nom de la chaîne + spinner discret, affiché
+  /// dès le zap et jusqu'à la première frame décodée. C'est la
+  /// « perception TiviMate » : l'écran répond immédiatement, l'image
+  /// suit 1-2 s après.
+  Widget _buildZapSplash() {
+    final Channel ch = _currentChannel;
+    return Container(
+      color: Colors.black.withValues(alpha: 0.82),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          ChannelLogo(channel: ch, size: ChannelLogoSize.large),
+          const SizedBox(height: 18),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: Text(
+              ch.cleanName,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.headlineMedium
+                  .copyWith(color: Colors.white, fontSize: 22),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const SizedBox(
+            width: 26,
+            height: 26,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.4,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white54),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Surface de lecture : la vidéo + spinner + stats + overlays.
   /// Extraite pour pouvoir être ré-utilisée à l'identique dans le
   /// PageView et dans le mode mono-page (TV / playlist absente).
@@ -1960,6 +2218,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   Center(
                     child: _forcedAspect(mode) == null
                         ? Video(
+                            // Remonté à chaque recréation du player
+                            // (instance jetable → nouveau controller).
+                            key: ValueKey<int>(_playerEpoch),
                             controller: _videoController,
                             controls: (VideoState _) => const SizedBox.shrink(),
                             fit: _fitFromMode(mode),
@@ -1968,6 +2229,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         : AspectRatio(
                             aspectRatio: _forcedAspect(mode)!,
                             child: Video(
+                              key: ValueKey<int>(_playerEpoch),
                               controller: _videoController,
                               controls: (VideoState _) => const SizedBox.shrink(),
                               fit: _fitFromMode(mode),
@@ -1976,14 +2238,28 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                           ),
                   ),
 
+                // ----- 1a. SPLASH DE ZAP (perception de fluidité) -----
+                //  Réaction IMMÉDIATE au zap : tant que la première frame
+                //  de la chaîne COURANTE n'est pas décodée, on affiche son
+                //  logo + son nom + un spinner discret par-dessus la
+                //  dernière image (ou le noir). L'utilisateur « sent » le
+                //  zap instantanément, même si l'image met 1-2 s.
+                if (!_hasError &&
+                    !_audioOnly &&
+                    _playedChannelId != _currentChannel.id)
+                  _buildZapSplash(),
+
                 // ----- 1bis. Badge discret "● REC" -----
                 //  L'enregistrement passe par le mini-relais (1 connexion)
                 //  sans couper la lecture. On signale juste l'état par un
                 //  petit badge en haut, tapable pour arrêter.
                 if (_isRecording) _buildRecordingBadge(),
 
-                // ----- 2. Spinner pendant le buffering -----
-                if (_isBuffering && !_hasError)
+                // ----- 2. Spinner pendant le buffering (hors splash de
+                //         zap, qui a le sien) -----
+                if (_isBuffering &&
+                    !_hasError &&
+                    _playedChannelId == _currentChannel.id)
                   const Center(
                     child: SizedBox(
                       width: 56,

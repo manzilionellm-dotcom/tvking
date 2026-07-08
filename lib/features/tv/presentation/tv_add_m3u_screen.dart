@@ -48,7 +48,9 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
     });
     try {
       final String epg = _epgC.text.trim();
-      await PlaylistRepository.instance.addM3uPlaylist(
+      // « Smart » : repli automatique get.php → API Xtream si le
+      // téléchargement M3U est refusé (cf. addM3uPlaylistSmart).
+      await PlaylistRepository.instance.addM3uPlaylistSmart(
         name: _nameC.text.trim().isEmpty ? 'Ma liste M3U' : _nameC.text.trim(),
         url: url,
         epgUrl: epg.isEmpty ? null : SourceLinkUtils.ensureScheme(epg),
@@ -56,7 +58,11 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
       if (mounted) Navigator.of(context).maybePop();
     } catch (e) {
       if (mounted) {
-        setState(() => _error = 'Échec : liste injoignable ou vide.');
+        // On affiche le VRAI message (indice DNS opérateur, détail HTTP
+        // 503…) — même diagnostic que sur téléphone, plus de générique
+        // « injoignable » qui masquait la cause.
+        setState(() =>
+            _error = e.toString().replaceFirst('Exception: ', ''));
       }
     } finally {
       if (mounted) setState(() => _busy = false);

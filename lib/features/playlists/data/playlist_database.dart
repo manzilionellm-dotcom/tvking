@@ -27,7 +27,9 @@ class PlaylistDatabase {
   // v2 ajoute la colonne `epg_url` à la table playlists.
   // v5 ajoute `http_headers` à la table channels (User-Agent/Referer par
   // chaîne, imposés par certains panels IPTV — sinon 403 à la lecture).
-  static const int _kDbVersion = 5;
+  // v6 ajoute `url_formats` à la table playlists (format d'URL gagnant
+  // mémorisé PAR SOURCE par la cascade Xtream — zapping sans re-sonde).
+  static const int _kDbVersion = 6;
 
   Database? _db;
 
@@ -63,6 +65,12 @@ class PlaylistDatabase {
     await db.execute('PRAGMA foreign_keys = ON');
   }
 
+  /// Accès de TEST à la migration (bug terrain du 2026-07-08 : une base
+  /// portant déjà une colonne re-migrée doit passer sans erreur).
+  @visibleForTesting
+  Future<void> debugUpgrade(Database db, int oldVersion, int newVersion) =>
+      _onUpgrade(db, oldVersion, newVersion);
+
   Future<void> _onCreate(Database db, int version) async {
     await db.execute('''
       CREATE TABLE playlists (
@@ -77,7 +85,8 @@ class PlaylistDatabase {
         created_at INTEGER NOT NULL,
         last_synced_at INTEGER,
         channel_count INTEGER NOT NULL DEFAULT 0,
-        is_active INTEGER NOT NULL DEFAULT 0
+        is_active INTEGER NOT NULL DEFAULT 0,
+        url_formats TEXT
       )
     ''');
     await db.execute(
@@ -131,13 +140,41 @@ class PlaylistDatabase {
     if (kDebugMode) debugPrint('[DB] Schéma v$version créé.');
   }
 
+  /// `ALTER TABLE … ADD COLUMN` IDEMPOTENT : ne fait rien si la colonne
+  /// existe déjà. Indispensable sur le terrain (bug 2026-07-08 : « ça
+  /// n'accepte pas M3U depuis le premier jour ») : certaines
+  /// installations ont une base où la colonne est DÉJÀ présente alors
+  /// que le numéro de version est resté en arrière (APK réinstallés
+  /// dans le désordre — même versionCode —, migration rejouée après une
+  /// interruption…). Le « duplicate column name » faisait alors échouer
+  /// TOUTE la migration, et avec elle l'ouverture de la base → plus
+  /// aucun ajout de source possible sur l'appareil.
+  Future<void> _addColumnIfMissing(
+    Database db,
+    String table,
+    String column,
+    String definition,
+  ) async {
+    final List<Map<String, Object?>> cols =
+        await db.rawQuery('PRAGMA table_info($table)');
+    final bool exists = cols.any((Map<String, Object?> c) =>
+        (c['name'] as String?)?.toLowerCase() == column.toLowerCase());
+    if (exists) {
+      if (kDebugMode) {
+        debugPrint('[DB] $table.$column existe déjà — migration ignorée');
+      }
+      return;
+    }
+    await db.execute('ALTER TABLE $table ADD COLUMN $column $definition');
+  }
+
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (kDebugMode) {
       debugPrint('[DB] Migration $oldVersion → $newVersion');
     }
     if (oldVersion < 2) {
       // v2 : ajoute epg_url
-      await db.execute('ALTER TABLE playlists ADD COLUMN epg_url TEXT');
+      await _addColumnIfMissing(db, 'playlists', 'epg_url', 'TEXT');
     }
     if (oldVersion < 3) {
       // v3 : ajoute la table watch_sessions pour le tracking précis
@@ -172,9 +209,8 @@ class PlaylistDatabase {
       // Migration : si une playlist existe deja (cas user single
       // serveur jusqu'a aujourd'hui), on la marque automatiquement
       // active pour ne pas casser son experience.
-      await db.execute(
-        'ALTER TABLE playlists ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0',
-      );
+      await _addColumnIfMissing(
+          db, 'playlists', 'is_active', 'INTEGER NOT NULL DEFAULT 0');
       // Marque la PREMIERE playlist (par created_at ASC = la plus
       // ancienne, probablement celle que l'user utilise actuellement)
       // comme active. SQLite n'a pas de UPDATE LIMIT 1 -> on passe par
@@ -195,7 +231,19 @@ class PlaylistDatabase {
       // pas ». Le parser M3U les remplit désormais ; ils sont stockés ici en
       // JSON. Colonne ajoutée NULL → les chaînes déjà en base la rempliront
       // au prochain rafraîchissement de la playlist.
-      await db.execute('ALTER TABLE channels ADD COLUMN http_headers TEXT');
+      await _addColumnIfMissing(db, 'channels', 'http_headers', 'TEXT');
+    }
+    if (oldVersion < 6) {
+      // v6 (2026-07-08) : format d'URL GAGNANT mémorisé PAR SOURCE
+      // (JSON {"live":"live:m3u8","movie":"none:"…}). Rempli par la
+      // cascade de variantes Xtream quand une variante débloque un
+      // flux : les chaînes suivantes de la même source utilisent
+      // directement ce format (zapping instantané, pas de re-sonde).
+      // Cf. XtreamUrlFormatStore. IDEMPOTENT : c'est cette migration
+      // qui échouait en « duplicate column name: url_formats » sur les
+      // appareils dont la base portait déjà la colonne (bug terrain du
+      // 2026-07-08 — l'ajout de source était impossible).
+      await _addColumnIfMissing(db, 'playlists', 'url_formats', 'TEXT');
     }
   }
 }

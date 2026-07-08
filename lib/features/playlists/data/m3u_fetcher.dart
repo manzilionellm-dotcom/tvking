@@ -199,7 +199,7 @@ abstract final class M3uFetcher {
       }
 
       // Aucune signature n'a fonctionné → message clair.
-      throw Exception(_friendlyFailure(lastError, url, userAgents.length));
+      throw Exception(friendlyFailure(lastError, url, userAgents.length));
     } finally {
       if (owns) client.close();
     }
@@ -209,11 +209,33 @@ abstract final class M3uFetcher {
   /// signatures. On y mentionne qu'on a essayé plusieurs lecteurs pour
   /// que l'utilisateur comprenne que le souci vient du serveur (et non
   /// d'un simple « mauvais UA » réglable à la main).
-  static String _friendlyFailure(Object? lastError, String url, int tried) {
+  /// Public + visibleForTesting : le choix du message (DNS vs refus
+  /// serveur) est testé sans réseau.
+  @visibleForTesting
+  static String friendlyFailure(Object? lastError, String url, int tried) {
     final String detail = lastError == null
         ? ''
         : '\n\nDernière réponse : '
             '${lastError.toString().replaceFirst('Exception: ', '')}';
+    // ÉCHEC DNS (terrain 2026-07-08 : « Failed host lookup » sur un
+    // domaine qui résout parfaitement depuis l'extérieur) : ce n'est ni
+    // l'URL ni l'abonnement — c'est le RÉSEAU de l'appareil qui ne
+    // résout pas le domaine (blocage DNS opérateur, très courant sur
+    // l'IPTV, ou domaine réellement mort). Le message générique
+    // « vérifie l'URL » envoyait l'utilisateur sur une fausse piste.
+    final String s = lastError?.toString().toLowerCase() ?? '';
+    final bool dnsFailure = s.contains('host lookup') ||
+        s.contains('no address associated') ||
+        s.contains('name or service not known') ||
+        s.contains('nodename nor servname');
+    if (dnsFailure) {
+      return 'Le domaine de cette source est introuvable depuis ton réseau '
+          '(résolution DNS impossible). Si cette source marche ailleurs, '
+          'ton opérateur bloque probablement ce domaine : essaie en Wi-Fi, '
+          'avec un DNS privé (Réglages Android → Réseau → DNS privé → '
+          'dns.google) ou un VPN. Sinon, demande un nouveau lien à ton '
+          'revendeur.$detail';
+    }
     return 'Impossible de récupérer la playlist : le serveur a refusé les '
         '$tried signatures de lecteur testées (VLC, IBO/ExoPlayer, '
         'Smarters, TiviMate, Kodi…). Vérifie que l\'URL est correcte et '
