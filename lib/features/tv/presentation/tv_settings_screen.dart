@@ -15,6 +15,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import 'tv_about_screen.dart';
 import 'tv_city_screen.dart';
+import 'tv_diagnostics_screen.dart';
 import 'tv_collections_screen.dart';
 import 'tv_display_settings_screen.dart';
 import 'tv_family_screen.dart';
@@ -597,6 +598,43 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     Icon(Icons.info_outline_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsAbout,
+                        style: TextStyle(
+                            fontSize: TvDimens.title,
+                            fontWeight: FontWeight.w700,
+                            color: fg)),
+                    const Spacer(),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          // ----- Boîte noire (diagnostic) : accès DIRECT depuis les
+          //       réglages (avant elle était cachée dans À propos → Version).
+          TvFocusBuilder(
+            scale: TvFocusScale.large,
+            onSelect: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const TvShell(child: TvDiagnosticsScreen()),
+              ),
+            ),
+            builder: (BuildContext context, bool focused) {
+              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color fg =
+                  focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+              return Container(
+                width: 760,
+                decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                child: Row(
+                  children: <Widget>[
+                    Icon(Icons.bug_report_rounded, color: fg, size: 26),
+                    const SizedBox(width: 12),
+                    Text('Boîte noire (diagnostic)',
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
