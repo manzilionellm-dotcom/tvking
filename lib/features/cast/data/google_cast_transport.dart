@@ -696,8 +696,24 @@ class GoogleCastTransport implements CastTransport {
         await resp.drain<void>();
         return null;
       }
-      final String body = await resp.transform(utf8.decoder).join();
-      final Object? decoded = jsonDecode(body);
+      // Corps lu en OCTETS puis décodé en tolérant : un 200 NON-UTF-8
+      // (page d'interception FAI, réponse compressée exotique…) jetait
+      // « FormatException: Unexpected extension byte » et le diagnostic
+      // ne montrait RIEN du corps (capture terrain SHIELD 2026-07-08).
+      // On journalise le Content-Type, la présence de cf-ray (preuve que
+      // c'est bien Cloudflare qui répond, pas un intercepteur) et le
+      // début du corps pour trancher en une lecture.
+      final List<int> raw = await resp
+          .fold<List<int>>(<int>[], (List<int> a, List<int> b) => a..addAll(b));
+      final String body = utf8.decode(raw, allowMalformed: true);
+      final String respCt = resp.headers.value('content-type') ?? '?';
+      final bool viaCloudflare = resp.headers.value('cf-ray') != null;
+      Object? decoded;
+      try {
+        decoded = jsonDecode(body);
+      } on FormatException {
+        decoded = null;
+      }
       if (decoded is Map<String, dynamic> &&
           decoded['ok'] == true &&
           decoded['url'] is String) {
@@ -705,9 +721,14 @@ class GoogleCastTransport implements CastTransport {
             .logEvent('worker.sign', 'GET /cast-sign → 200 (URL signée)');
         return decoded['url'] as String;
       }
+      final String preview = body
+          .substring(0, body.length < 80 ? body.length : 80)
+          .replaceAll(RegExp(r'\s+'), ' ');
       CastDiagnostics.instance.logEvent(
         'worker.sign',
-        'GET /cast-sign → 200 mais réponse inattendue (pas de {ok,url})',
+        'GET /cast-sign → 200 mais réponse inattendue — ct=$respCt '
+            'cloudflare=${viaCloudflare ? 'oui' : 'NON (intercepté ?)'} '
+            'corps=«$preview»',
         level: CastBlackBoxLevel.warn,
       );
       return null;
