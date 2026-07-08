@@ -146,9 +146,13 @@ class _StreamDebugScreenState extends State<StreamDebugScreen> {
   }
 
   Future<void> _copyReport() async {
-    await Clipboard.setData(
-      ClipboardData(text: StreamDiagnostics.instance.buildReport()),
-    );
+    // Le rapport principal embarque AUSSI la boîte noire cast : les
+    // testeurs copient naturellement CE bouton-là — sans la concat, le
+    // support recevait le rapport flux et jamais celui du cast.
+    final String report = '${StreamDiagnostics.instance.buildReport()}\n\n'
+        '=== CAST (boîte noire) ===\n'
+        '${CastDiagnostics.instance.exportReport()}';
+    await Clipboard.setData(ClipboardData(text: report));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Rapport copié dans le presse-papiers')),
