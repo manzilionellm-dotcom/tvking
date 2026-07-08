@@ -52,6 +52,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/net/doh_resolver.dart';
 import '../../../core/observability/structured_logger.dart';
 import 'hls_playlist_normalizer.dart';
 import 'player_settings.dart';
@@ -188,6 +189,7 @@ class LocalStreamRelay {
       ..userAgent = PlayerSettings.instance.userAgent
       ..badCertificateCallback =
           ((X509Certificate cert, String host, int port) => true);
+    installDohResolution(client); // domaines panel bloqués par le DNS FAI
     try {
       final HttpClientRequest up =
           await client.getUrl(Uri.parse(realUrl));
@@ -472,6 +474,7 @@ class LocalStreamRelay {
         // sources alors que le flux est bon (cf. iptv_http.dart).
         ..badCertificateCallback =
             ((X509Certificate cert, String host, int port) => true);
+      installDohResolution(session.client!); // DNS FAI bloqué → DoH
 
       final HttpClientRequest cReq =
           await session.client!.getUrl(Uri.parse(url));
