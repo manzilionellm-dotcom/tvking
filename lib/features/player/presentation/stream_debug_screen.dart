@@ -28,6 +28,9 @@ import 'package:flutter/services.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../cast/data/stream_probe.dart';
+import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/data/xtream_client.dart';
+import '../../playlists/domain/playlist.dart';
 import '../data/player_settings.dart';
 import '../data/stream_diagnostics.dart';
 
@@ -40,6 +43,71 @@ class StreamDebugScreen extends StatefulWidget {
 
 class _StreamDebugScreenState extends State<StreamDebugScreen> {
   bool _probing = false;
+  bool _checkingAccount = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Contrôle AUTO du compte à l'ouverture de l'écran si on n'a pas
+    // déjà une photo récente (< 2 min) : l'utilisateur arrive ici pour
+    // comprendre un échec — l'état du compte est la première chose à
+    // regarder (code mort vs mauvais format d'URL).
+    final DateTime? checked = StreamDiagnostics.instance.xtreamCheckedAt;
+    final bool fresh = checked != null &&
+        DateTime.now().difference(checked) < const Duration(minutes: 2);
+    if (!fresh) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _checkAccountNow());
+    }
+  }
+
+  /// Playlist Xtream à contrôler : celle du flux courant si connue,
+  /// sinon la première source Xtream chargée (cas « rien joué encore »).
+  Playlist? _xtreamPlaylist() {
+    final List<Playlist> all = PlaylistRepository.instance.currentPlaylists;
+    final int? pid = StreamDiagnostics.instance.playlistId;
+    if (pid != null) {
+      for (final Playlist p in all) {
+        if (p.id == pid) {
+          return p.type == PlaylistType.xtream ? p : null;
+        }
+      }
+    }
+    for (final Playlist p in all) {
+      if (p.type == PlaylistType.xtream) return p;
+    }
+    return null;
+  }
+
+  /// Interroge player_api.php (user_info) : statut du compte, date
+  /// d'expiration, connexions max/actives. But : trancher en un coup
+  /// d'œil « code mort » vs « mauvais format d'URL de flux ».
+  Future<void> _checkAccountNow() async {
+    final Playlist? p = _xtreamPlaylist();
+    if (p == null ||
+        p.xtreamServer == null ||
+        p.xtreamUsername == null ||
+        p.xtreamPassword == null ||
+        _checkingAccount) {
+      return;
+    }
+    setState(() => _checkingAccount = true);
+    final StreamDiagnostics d = StreamDiagnostics.instance;
+    d.recordEvent('xtream', 'Contrôle du compte (player_api.php)…');
+    try {
+      // fetchAccountInfo enregistre lui-même le résultat dans la
+      // boîte noire (statut / expiration / connexions).
+      await XtreamClient(
+        serverUrl: p.xtreamServer!,
+        username: p.xtreamUsername!,
+        password: p.xtreamPassword!,
+      ).fetchAccountInfo();
+    } catch (e) {
+      d.recordEvent('xtream', 'Contrôle du compte impossible : $e',
+          level: 'error');
+    } finally {
+      if (mounted) setState(() => _checkingAccount = false);
+    }
+  }
 
   /// Re-teste l'URL de la session courante avec le User-Agent actif.
   /// Le résultat part dans le journal + l'instantané HTTP.
@@ -217,6 +285,77 @@ class _StreamDebugScreenState extends State<StreamDebugScreen> {
                           ? AppColors.textMuted
                           : AppColors.live,
                     ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+
+              // ----- Compte Xtream (affiché dès qu'une source Xtream
+              //       existe, même sans flux ouvert) -----
+              if (_xtreamPlaylist() != null) ...<Widget>[
+                _sectionTitle('Compte Xtream'),
+                _card(
+                  child: Column(
+                    children: <Widget>[
+                      _row(
+                        'Statut',
+                        d.xtreamStatus ?? '— (pas encore contrôlé)',
+                        valueColor: d.xtreamStatus == null
+                            ? null
+                            : (d.xtreamStatus!.trim().toLowerCase() ==
+                                    'active'
+                                ? AppColors.success
+                                : AppColors.live),
+                      ),
+                      _row(
+                        'Expire le',
+                        d.xtreamExpDate == null
+                            ? '—'
+                            : d.xtreamExpDate
+                                .toString()
+                                .split('.')
+                                .first,
+                        valueColor: d.xtreamExpDate == null
+                            ? null
+                            : (d.xtreamExpDate!.isAfter(DateTime.now())
+                                ? AppColors.success
+                                : AppColors.live),
+                      ),
+                      _row(
+                        'Connexions',
+                        d.xtreamMaxConnections == null &&
+                                d.xtreamActiveCons == null
+                            ? '—'
+                            : '${d.xtreamActiveCons ?? '?'} active(s) / '
+                                '${d.xtreamMaxConnections ?? '?'} max',
+                      ),
+                      _row(
+                        'Contrôlé à',
+                        d.xtreamCheckedAt == null
+                            ? '—'
+                            : d.xtreamCheckedAt
+                                .toString()
+                                .split('.')
+                                .first,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                FilledButton.icon(
+                  onPressed: _checkingAccount ? null : _checkAccountNow,
+                  icon: _checkingAccount
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child:
+                              CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.verified_user_outlined, size: 18),
+                  label: Text(
+                    _checkingAccount
+                        ? 'Contrôle en cours…'
+                        : 'Vérifier le compte maintenant',
                   ),
                 ),
                 const SizedBox(height: 14),

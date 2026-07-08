@@ -72,6 +72,10 @@ class StreamDiagnostics extends ChangeNotifier {
   /// Titre lisible (nom de chaîne / film) pour se repérer.
   String? title;
 
+  /// Playlist d'où vient le flux courant (pour retrouver le compte
+  /// Xtream depuis l'écran debug). `null` = inconnu / hors playlist.
+  int? playlistId;
+
   /// Statut HTTP réellement observé sur la connexion upstream
   /// (rempli par le relais pour le live ; par la sonde sinon).
   int? httpStatus;
@@ -93,6 +97,25 @@ class StreamDiagnostics extends ChangeNotifier {
 
   DateTime? sessionStart;
 
+  // ----- État du compte Xtream (niveau COMPTE, pas flux) -----
+  //  Rempli au chargement/sync d'un compte Xtream (verifyCredentials)
+  //  et par le bouton « Vérifier le compte » de l'écran debug. Survit
+  //  à beginSession : le but est de trancher en un coup d'œil entre
+  //  « code mort/expiré » et « mauvais format d'URL de flux ».
+
+  /// Statut renvoyé par player_api.php (`Active`, `Expired`, `Banned`…).
+  String? xtreamStatus;
+
+  /// Date d'expiration du compte (`exp_date`, epoch → DateTime locale).
+  DateTime? xtreamExpDate;
+
+  /// Connexions simultanées autorisées / actives au moment du contrôle.
+  int? xtreamMaxConnections;
+  int? xtreamActiveCons;
+
+  /// Quand ce contrôle a été fait (l'info se périme vite).
+  DateTime? xtreamCheckedAt;
+
   final List<StreamDiagEvent> _events = <StreamDiagEvent>[];
 
   /// Journal, du plus récent au plus ancien.
@@ -107,10 +130,12 @@ class StreamDiagnostics extends ChangeNotifier {
     required String url,
     required String userAgent,
     String? title,
+    int? playlistId,
   }) {
     streamUrl = url;
     this.userAgent = userAgent;
     this.title = title;
+    this.playlistId = playlistId;
     httpStatus = null;
     httpFinalUrl = null;
     httpMime = null;
@@ -190,6 +215,33 @@ class StreamDiagnostics extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// État du compte Xtream constaté via player_api.php (user_info).
+  /// Appelé au chargement/sync du compte et depuis l'écran debug.
+  void recordXtreamAccount({
+    String? status,
+    DateTime? expDate,
+    int? maxConnections,
+    int? activeCons,
+  }) {
+    xtreamStatus = status;
+    xtreamExpDate = expDate;
+    xtreamMaxConnections = maxConnections;
+    xtreamActiveCons = activeCons;
+    xtreamCheckedAt = DateTime.now();
+    final StringBuffer b = StringBuffer('Compte: ${status ?? 'inconnu'}');
+    if (expDate != null) {
+      b.write(' · expire ${expDate.toString().split('.').first}');
+    }
+    if (maxConnections != null || activeCons != null) {
+      b.write(' · connexions ${activeCons ?? '?'}/${maxConnections ?? '?'}');
+    }
+    final bool healthy =
+        (status ?? '').trim().toLowerCase() == 'active' &&
+            (expDate == null || expDate.isAfter(DateTime.now()));
+    _add('xtream', b.toString(), level: healthy ? 'info' : 'error');
+    notifyListeners();
+  }
+
   void _add(String tag, String message, {String level = 'info'}) {
     _events.add(StreamDiagEvent(tag: tag, message: message, level: level));
     if (_events.length > _kMaxEvents) _events.removeAt(0);
@@ -217,6 +269,11 @@ class StreamDiagnostics extends ChangeNotifier {
       ..writeln('Codec audio  : ${audioCodec ?? '—'}')
       ..writeln('Résolution   : ${resolution ?? '—'}')
       ..writeln('Erreur player: ${lastPlayerError ?? '—'}')
+      ..writeln('')
+      ..writeln('Compte Xtream: ${xtreamStatus ?? '—'}'
+          '${xtreamExpDate == null ? '' : ' · expire $xtreamExpDate'}'
+          '${xtreamMaxConnections == null && xtreamActiveCons == null ? '' : ' · connexions ${xtreamActiveCons ?? '?'}/${xtreamMaxConnections ?? '?'}'}'
+          '${xtreamCheckedAt == null ? '' : ' (vérifié $xtreamCheckedAt)'}')
       ..writeln('')
       ..writeln('--- Journal (récent → ancien) ---');
     for (final StreamDiagEvent e in events) {

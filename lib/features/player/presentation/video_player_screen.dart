@@ -44,6 +44,9 @@ import '../../onboarding/data/device_class_repository.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../playlists/data/favorites_repository.dart';
+import '../../playlists/data/playlist_repository.dart';
+// Préfixé : media_kit exporte aussi un type `Playlist` (ambiguïté).
+import '../../playlists/domain/playlist.dart' as pl;
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
@@ -51,6 +54,7 @@ import '../data/local_stream_relay.dart';
 import '../data/pip_service.dart';
 import '../data/player_settings.dart';
 import '../data/stream_diagnostics.dart';
+import '../data/xtream_live_url_variants.dart';
 import 'stream_debug_screen.dart';
 import 'widgets/player_settings_sheet.dart';
 import 'widgets/player_stats_overlay.dart';
@@ -644,6 +648,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       url: realUrl,
       userAgent: PlayerSettings.instance.userAgent,
       title: widget.overrideTitle ?? _currentChannel.cleanName,
+      playlistId: _currentChannel.playlistId,
     );
     _armStartupTimeout();
     if (widget.overrideUrl != null) {
@@ -1251,42 +1256,57 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return; // pas d'erreur affichée : on retente silencieusement
     }
 
-    // Repli de FORMAT (.ts ↔ .m3u8) : aucune signature n'a débloqué l'URL
-    // telle quelle. Certains serveurs n'autorisent que le HLS pour le live
-    // (allowed_output_formats sans « ts ») : notre `.ts` renvoie une page
-    // vide → écran noir, alors que la variante `.m3u8` joue (c'est ce que
-    // lit IBO). On sonde la variante avec les mêmes signatures ; si elle
-    // répond, on l'adopte pour toute la session de cette chaîne.
-    final String? alt =
-        _alternateFormatUrl(widget.overrideUrl ?? channel.streamUrl);
-    if (alt != null) {
-      _uaDiagnosisInFlight = true;
-      final UserAgentProbeResult altProbe;
-      try {
-        altProbe = await StreamProbe.instance.probeUserAgents(
-          alt,
-          candidates: <String>[
-            current,
-            ...PlayerSettings.userAgentPresets.values,
-          ],
+    // Repli d'URL — CASCADE DE VARIANTES XTREAM : aucune signature n'a
+    // débloqué l'URL telle quelle. Les panels Xtream servent le même flux
+    // sous plusieurs formes (`/live/U/P/ID.m3u8`, `/live/U/P/ID.ts`,
+    // `U/P/ID.m3u8`) et beaucoup répondent 404 + page HTML sur la forme
+    // qu'on a construite alors qu'une autre joue (cas « France 2 : 404
+    // chez nous, OK dans IBO »). On sonde chaque variante dans l'ordre,
+    // avec les mêmes signatures, et on s'arrête au premier succès.
+    //
+    // GATE STRICT : uniquement pour le LIVE (pas de catch-up/VOD) d'une
+    // source de type XTREAM. Une playlist M3U générique garde son URL
+    // INTACTE (ses URLs peuvent ressembler au schéma U/P/ID par hasard —
+    // les réécrire casserait des flux valides).
+    if (widget.overrideUrl == null && _isFromXtreamSource(channel)) {
+      final List<String> variants =
+          XtreamLiveUrlVariants.cascade(channel.streamUrl);
+      // variants[0] = URL d'origine, déjà sondée ci-dessus → on la saute.
+      for (int i = 1; i < variants.length; i++) {
+        final String alt = variants[i];
+        StreamDiagnostics.instance.recordEvent(
+          'probe',
+          'Variante ${i + 1}/${variants.length} : '
+              '${StreamDiagnostics.maskCredentials(alt)}…',
         );
-      } finally {
-        _uaDiagnosisInFlight = false;
-      }
-      _recordProbeAttempts(altProbe, label: 'variante de format');
-      if (!mounted || channel.id != _currentChannel.id) return;
-      if (altProbe.workingUserAgent != null) {
+        _uaDiagnosisInFlight = true;
+        final UserAgentProbeResult altProbe;
+        try {
+          altProbe = await StreamProbe.instance.probeUserAgents(
+            alt,
+            candidates: <String>[
+              current,
+              ...PlayerSettings.userAgentPresets.values,
+            ],
+          );
+        } finally {
+          _uaDiagnosisInFlight = false;
+        }
+        _recordProbeAttempts(altProbe,
+            label: 'variante ${i + 1}/${variants.length}');
+        if (!mounted || channel.id != _currentChannel.id) return;
+        if (altProbe.workingUserAgent == null) continue; // suivante
         debugPrint(
             '[Player] format bloqué mais la variante « $alt » répond '
             '(signature "${altProbe.workingUserAgent}") → bascule + relance.');
         StreamDiagnostics.instance.recordEvent(
           'probe',
-          'Format bloqué mais la variante '
-              '${StreamDiagnostics.maskCredentials(alt)} répond '
+          'Variante ${StreamDiagnostics.maskCredentials(alt)} répond '
               '(UA "${altProbe.workingUserAgent}") → bascule + relance',
         );
         if (altProbe.workingUserAgent != current) {
-          await PlayerSettings.instance.setUserAgent(altProbe.workingUserAgent!);
+          await PlayerSettings.instance
+              .setUserAgent(altProbe.workingUserAgent!);
           if (!mounted || channel.id != _currentChannel.id) return;
         }
         _adoptedAltUrl = alt;
@@ -1342,25 +1362,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  /// Variante de conteneur d'une URL live Xtream : `…/user/pass/id.ts` ↔
-  /// `…/live/user/pass/id.m3u8`. Le serveur Xtream sert le HLS sous le
-  /// préfixe `/live/` (forme standard) ; le `.ts` court marche avec ou
-  /// sans. Renvoie `null` si l'URL n'a pas d'extension connue — on ne
-  /// tente alors rien.
-  static String? _alternateFormatUrl(String url) {
-    final Uri? u = Uri.tryParse(url);
-    if (u == null || u.path.isEmpty) return null;
-    final String p = u.path;
-    if (p.endsWith('.ts')) {
-      String np = '${p.substring(0, p.length - 3)}.m3u8';
-      if (!np.startsWith('/live/')) np = '/live$np';
-      return u.replace(path: np).toString();
+  /// `true` si la chaîne vient d'une playlist de type XTREAM — condition
+  /// du repli en cascade de variantes d'URL (une M3U générique doit
+  /// garder son URL intacte). Best-effort : playlist introuvable en
+  /// cache → on considère que ce n'est PAS de l'Xtream (pas de réécriture).
+  static bool _isFromXtreamSource(Channel channel) {
+    final int? pid = channel.playlistId;
+    if (pid == null) return false;
+    for (final pl.Playlist p in PlaylistRepository.instance.currentPlaylists) {
+      if (p.id == pid) return p.type == pl.PlaylistType.xtream;
     }
-    if (p.endsWith('.m3u8')) {
-      final String np = '${p.substring(0, p.length - 5)}.ts';
-      return u.replace(path: np).toString();
-    }
-    return null;
+    return false;
   }
 
   /// Borne l'ATTENTE DE DÉMARRAGE d'une ouverture : si `playing` n'est
