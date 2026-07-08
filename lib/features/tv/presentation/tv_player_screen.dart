@@ -332,15 +332,49 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       _buffering = true;
       _fatal = false;
     });
-    if (!reuse) {
-      // Nouvelle chaîne → on charge la nouvelle URL dans le MÊME lecteur.
-      _controller.setUrl(_current.streamUrl);
-    }
+    // Charge la chaîne courante VIA LE RELAIS (parité téléphone) : le
+    // relais ouvre l'unique connexion, gère la reconnexion, et surtout
+    // résout les domaines bloqués par le DNS opérateur en DoH
+    // (installDohResolution) — le lecteur natif ExoPlayer, lui, fait sa
+    // propre résolution et échouerait sur ces domaines. `reuse` n'a plus
+    // d'effet sur l'URL : même à la 1re ouverture on bascule sur le
+    // relais (le lecteur a été créé sur l'URL directe le temps d'un
+    // battement).
+    unawaited(_loadCurrentUrl());
     // Historique (reprise « Continuer à regarder », favoris, reco).
     RecentlyWatchedRepository.instance.record(_current.id);
     NowPlaying.instance.set(_current.cleanName);
     SubscriptionState.instance.syncWithBackend();
     _showOverlayTemporarily();
+  }
+
+  /// Pointe le lecteur sur la chaîne courante EN PASSANT PAR LE RELAIS
+  /// pour le live TS (1 connexion + reconnexion + résolution DoH des
+  /// domaines bloqués par le FAI). Le HLS (.m3u8) reste en DIRECT : le
+  /// relais est un tuyau TS, et ExoPlayer gère le HLS nativement (seule
+  /// limite : le DoH ne couvre pas ce cas natif sur TV). Best-effort :
+  /// si le relais ne démarre pas, on retombe sur l'URL directe.
+  Future<void> _loadCurrentUrl({String? userAgent}) async {
+    final Channel channel = _current;
+    final String realUrl = channel.streamUrl;
+    final String lower = realUrl.toLowerCase();
+    final bool isHls = lower.contains('.m3u8') || lower.contains('.m3u');
+    if (isHls) {
+      _relayPlayUrl = null;
+      _controller.setUrl(realUrl, userAgent: userAgent);
+      return;
+    }
+    try {
+      final String localUrl =
+          await LocalStreamRelay.instance.playUrlFor(realUrl);
+      if (!mounted || channel.id != _current.id) return;
+      _relayPlayUrl = localUrl;
+      _controller.setUrl(localUrl, userAgent: userAgent);
+    } catch (_) {
+      if (!mounted || channel.id != _current.id) return;
+      _relayPlayUrl = null;
+      _controller.setUrl(realUrl, userAgent: userAgent);
+    }
   }
 
   void _zap(int delta) {
@@ -449,10 +483,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       await PlayerSettings.instance.setUserAgent(probe.workingUserAgent!);
       if (!mounted || channel.id != _current.id) return;
       _freeze.openChannel(DateTime.now()); // budget neuf : cette signature a de vraies chances
-      _controller.setUrl(
-        _relayPlayUrl ?? channel.streamUrl,
-        userAgent: probe.workingUserAgent,
-      );
+      // Reconstruit la session (relais TS avec la nouvelle signature, que
+      // le relais lit à la connexion ; direct pour le HLS).
+      unawaited(_loadCurrentUrl(userAgent: probe.workingUserAgent));
       return; // pas d'erreur affichée : on retente silencieusement
     }
 

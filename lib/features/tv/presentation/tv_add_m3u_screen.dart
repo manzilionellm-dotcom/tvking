@@ -58,7 +58,11 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
       if (mounted) Navigator.of(context).maybePop();
     } catch (e) {
       if (mounted) {
-        setState(() => _error = 'Échec : liste injoignable ou vide.');
+        // On affiche le VRAI message (indice DNS opérateur, détail HTTP
+        // 503…) — même diagnostic que sur téléphone, plus de générique
+        // « injoignable » qui masquait la cause.
+        setState(() =>
+            _error = e.toString().replaceFirst('Exception: ', ''));
       }
     } finally {
       if (mounted) setState(() => _busy = false);

@@ -70,7 +70,6 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
 
   Future<void> _validate() async {
     final String errFill = context.l10n.tvAddListError;
-    final String errConn = context.l10n.tvConnectError;
     // On accepte le lien même sans « http:// » tapé (le revendeur/
     // fournisseur donne souvent juste le domaine, ex. « serveur.com:8080 »).
     String server = SourceLinkUtils.ensureScheme(_serverUrl);
@@ -107,8 +106,16 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
         password: pass,
       );
       if (mounted) Navigator.of(context).pop(); // le gate ouvre l'app
-    } catch (_) {
-      if (mounted) setState(() { _busy = false; _error = errConn; });
+    } catch (e) {
+      // Vrai message (indice DNS opérateur, statut HTTP…) — même
+      // diagnostic que sur téléphone, plus de « Erreur de connexion »
+      // générique qui masquait la cause.
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = e.toString().replaceFirst('Exception: ', '');
+        });
+      }
     }
   }
 
