@@ -347,13 +347,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             _hasError = false;
             _errorMessage = null;
           }
-          // La lecture a réellement démarré pour CETTE chaîne → on mémorise son
-          // id. Une erreur ultérieure ne sera donc plus attribuée à une « source
-          // vide » (cf. listener d'erreur ci-dessous).
-          if (p) {
-            _playedChannelId = _currentChannel.id;
-            _startupTimer?.cancel(); // le démarrage a eu lieu → borne levée
-          }
+          // NB (bug terrain 2026-07-08 14:43) : `playing == true` signifie
+          // seulement « pas en pause » — mpv l'émet dès l'ouverture, AVANT
+          // toute frame décodée. Poser ici le drapeau « a joué » (et lever
+          // la borne de démarrage) faisait passer un 404 pour une « coupure
+          // réseau » et court-circuitait la cascade. Le drapeau est posé
+          // par _markPlaybackStarted() : 1re frame vidéo décodée
+          // (width/height) ou position qui avance (flux audio-only).
         });
       }
       // Signal au natif Android pour le PiP auto : "lecture en
@@ -432,7 +432,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       final int? w = _player.state.width;
       if (h != null && w != null && h > 0 && w > 0) {
         StreamDiagnostics.instance.recordCodecs(resolution: '$w×$h');
+        // Des dimensions vidéo = AU MOINS une frame décodée : c'est LE
+        // signal fiable « la lecture a réellement démarré ».
+        _markPlaybackStarted();
       }
+    }));
+    // Flux audio-only (radio) : pas de frame vidéo, mais la position
+    // avance dès que le son décode — même signal de vrai démarrage.
+    _subs.add(_player.stream.position.listen((Duration pos) {
+      if (pos > const Duration(milliseconds: 400)) _markPlaybackStarted();
     }));
 
     // Chaîne « échec → sonde → cascade » : le contrôleur possède
@@ -444,7 +452,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       getOverrideUrl: () => widget.overrideUrl,
       getEffectiveUrl: () => _effectiveUrl,
       isAlive: () => mounted,
-      hasCurrentChannelPlayed: () => _playedChannelId == _currentChannel.id,
+      hasDecodedFrames: () => _playedChannelId == _currentChannel.id,
       getAdoptedAltUrl: () => _adoptedAltUrl,
       setAdoptedAltUrl: (String? url) => _adoptedAltUrl = url,
       resetWatchdogBudget: () => _watchdogRecoveries = 0,
@@ -584,6 +592,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _behindLive = false;
       // La variante de format adoptée était propre à l'ANCIENNE chaîne.
       _adoptedAltUrl = null;
+      // Nouvelle SESSION de lecture : le drapeau « a réellement joué »
+      // repart à zéro (il ne doit jamais survivre à un zap, même en
+      // revenant sur une chaîne qui avait décodé plus tôt).
+      _playedChannelId = null;
       // (la chaîne change → on le rapporte juste après le setState)
     });
     RecentlyWatchedRepository.instance.record(next.id);
@@ -1235,6 +1247,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _player.play();
     }
     _scheduleHideOverlay();
+  }
+
+  /// Marque la chaîne courante comme AYANT RÉELLEMENT JOUÉ — appelé
+  /// UNIQUEMENT sur preuve de décodage (1re frame vidéo, ou position qui
+  /// avance pour l'audio-only). JAMAIS sur le simple état `playing` de
+  /// mpv, qui est vrai dès l'ouverture même quand le serveur a répondu
+  /// 404. C'est ce drapeau qui décide « coupure réseau » (erreur
+  /// directe) vs « jamais lu » (sonde + cascade de variantes).
+  void _markPlaybackStarted() {
+    _startupTimer?.cancel(); // le démarrage a VRAIMENT eu lieu → borne levée
+    if (_playedChannelId != _currentChannel.id) {
+      _playedChannelId = _currentChannel.id;
+      StreamDiagnostics.instance.recordEvent(
+        'player',
+        'Première frame décodée — la chaîne a réellement joué',
+      );
+    }
   }
 
   void _retry() {

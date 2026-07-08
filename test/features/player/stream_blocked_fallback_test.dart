@@ -97,7 +97,7 @@ void main() {
       getOverrideUrl: () => null,
       getEffectiveUrl: effectiveUrl,
       isAlive: () => true,
-      hasCurrentChannelPlayed: () => false,
+      hasDecodedFrames: () => false,
       getAdoptedAltUrl: () => adoptedAltUrl,
       setAdoptedAltUrl: (String? url) => adoptedAltUrl = url,
       resetWatchdogBudget: () {},
@@ -137,8 +137,10 @@ void main() {
     expect(bytes, greaterThan(0),
         reason: 'la lecture doit repartir sur la variante gagnante');
 
-    // ----- 4) Contrats de journal (mission, 3e itération) -------------
+    // ----- 4) Contrats de journal (missions des 3e et 4e itérations) --
     final String journal = _journal();
+    expect(journal, contains('frames décodées: 0 → décision: cascade'),
+        reason: 'la décision doit être journalisée avec le drapeau');
     expect(journal, contains('[cascade] DÉMARRAGE : 3 variante(s)'),
         reason: 'log d\'entrée INCONDITIONNEL de la cascade');
     expect(journal, contains('[cascade] essai 2/4'),
@@ -191,7 +193,7 @@ void main() {
       getOverrideUrl: () => null,
       getEffectiveUrl: () => tsUrl,
       isAlive: () => true,
-      hasCurrentChannelPlayed: () => false,
+      hasDecodedFrames: () => false,
       getAdoptedAltUrl: () => null,
       setAdoptedAltUrl: (_) {},
       resetWatchdogBudget: () {},
@@ -207,6 +209,61 @@ void main() {
     expect(_journal(), contains('Diagnostic déjà TENTÉ'),
         reason: 'la garde anti-boucle ne doit plus être muette');
 
+    await dead.close(force: true);
+  });
+
+  test('frames ≥1 (la chaîne DÉCODAIT) + échec relais → erreur directe '
+      '« coupure réseau », PAS de cascade', () async {
+    final HttpServer dead =
+        await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    dead.listen((HttpRequest req) async {
+      req.response.statusCode = 404;
+      await req.response.close();
+    });
+    final String tsUrl = 'http://127.0.0.1:${dead.port}/USER/PASS/5.ts';
+    PlaylistRepository.instance.debugSeedPlaylists(const <Playlist>[]);
+    final Channel channel = Channel(
+      id: 'chan-5',
+      name: 'Jouait avant',
+      category: 'x',
+      streamUrl: tsUrl,
+      isLive: true,
+    );
+    final List<String> blockedMessages = <String>[];
+    bool cascadeReopened = false;
+    final StreamBlockedFallback fallback = StreamBlockedFallback(
+      getChannel: () => channel,
+      getOverrideUrl: () => null,
+      getEffectiveUrl: () => tsUrl,
+      isAlive: () => true,
+      hasDecodedFrames: () => true, // ≥1 frame décodée dans CETTE session
+      getAdoptedAltUrl: () => null,
+      setAdoptedAltUrl: (_) {},
+      resetWatchdogBudget: () {},
+      reopen: (_) => cascadeReopened = true,
+      showBlocked: blockedMessages.add,
+    )..attach();
+
+    // « _openMedia » sur la .ts → 404 définitif → événement relais.
+    final LocalStreamRelay relay = LocalStreamRelay.instance;
+    final String localTs = await relay.playUrlFor(tsUrl);
+    final HttpClient client = HttpClient();
+    final HttpClientResponse resp =
+        await (await client.getUrl(Uri.parse(localTs))).close();
+    await resp.drain<void>().timeout(const Duration(seconds: 5));
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+
+    expect(blockedMessages, isNotEmpty,
+        reason: 'coupure sur une chaîne qui décodait → erreur directe');
+    expect(blockedMessages.first, contains('Flux interrompu'));
+    expect(cascadeReopened, isFalse,
+        reason: 'pas de cascade quand la lecture avait réellement démarré');
+    expect(_journal(),
+        contains('frames décodées: ≥1 → décision: erreur directe'),
+        reason: 'la décision doit être journalisée avec le drapeau');
+
+    fallback.detach();
+    client.close(force: true);
     await dead.close(force: true);
   });
 }

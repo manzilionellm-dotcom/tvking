@@ -63,7 +63,7 @@ class StreamBlockedFallback {
     required this.getOverrideUrl,
     required this.getEffectiveUrl,
     required this.isAlive,
-    required this.hasCurrentChannelPlayed,
+    required this.hasDecodedFrames,
     required this.getAdoptedAltUrl,
     required this.setAdoptedAltUrl,
     required this.resetWatchdogBudget,
@@ -84,9 +84,14 @@ class StreamBlockedFallback {
   /// `mounted` du widget.
   final bool Function() isAlive;
 
-  /// `true` si la chaîne COURANTE a déjà atteint la lecture (une
-  /// coupure sur une chaîne qui jouait = problème réseau, pas format).
-  final bool Function() hasCurrentChannelPlayed;
+  /// `true` UNIQUEMENT si au moins une frame a été DÉCODÉE pour la
+  /// chaîne courante dans CETTE session de lecture (1re frame vidéo, ou
+  /// position qui avance pour l'audio-only) — PAS « ouverture tentée »,
+  /// PAS l'état `playing` de mpv (vrai dès l'ouverture, même sur un
+  /// 404), PAS persisté entre chaînes ni entre lancements. Une coupure
+  /// sur une chaîne qui décodait = problème réseau ; sinon = format /
+  /// signature à diagnostiquer (cascade TOUJOURS).
+  final bool Function() hasDecodedFrames;
 
   final String? Function() getAdoptedAltUrl;
   final void Function(String? url) setAdoptedAltUrl;
@@ -143,9 +148,15 @@ class StreamBlockedFallback {
     }
     _log('Relais : échec définitif signalé → diagnostic immédiat '
         '(sonde + variantes)');
-    if (hasCurrentChannelPlayed()) {
-      _log('La chaîne avait déjà joué → coupure réseau, pas un format '
-          'refusé. Erreur directe, pas de cascade.');
+    // RÈGLE DE DÉCISION (mission 2026-07-08 14:43) : la branche
+    // « coupure réseau » ne s'applique QUE si la lecture avait
+    // réellement démarré (≥ 1 frame décodée). Sinon — et notamment sur
+    // un HTTP définitif 404/403 — la CASCADE tourne TOUJOURS. La valeur
+    // du drapeau est journalisée AU MOMENT de la décision.
+    final bool frames = hasDecodedFrames();
+    _log('frames décodées: ${frames ? '≥1' : '0'} → décision: '
+        '${frames ? 'erreur directe (coupure réseau)' : 'cascade'}');
+    if (frames) {
       showBlocked('Flux interrompu. Vérifie ta connexion puis réessaie.');
       return;
     }
