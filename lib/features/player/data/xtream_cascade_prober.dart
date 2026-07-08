@@ -65,21 +65,26 @@ class XtreamCascadeProber {
   }) async {
     final List<XtreamUrlCandidate> variants =
         XtreamUrlVariants.cascadeFor(rawUrl, type);
+    // LOG D'ENTRÉE INCONDITIONNEL (mission 2026-07-08, 3e itération) :
+    // si cette ligne n'apparaît pas dans un journal terrain, c'est que
+    // findWorkingVariant n'a JAMAIS été appelé — chercher en amont
+    // (abonnement relais, gardes du fallback), pas ici.
+    StreamDiagnostics.instance.recordEvent(
+      'cascade',
+      '[cascade] DÉMARRAGE : ${variants.length - 1} variante(s) à tester '
+          'pour ${StreamDiagnostics.maskCredentials(rawUrl)} '
+          '(type ${type.name})',
+      level: variants.length <= 1 ? 'warn' : 'info',
+    );
     if (variants.length <= 1) {
       StreamDiagnostics.instance.recordEvent(
         'cascade',
-        '[cascade] URL sans variante possible '
-            '(${StreamDiagnostics.maskCredentials(rawUrl)}) — rien à essayer',
+        '[cascade] URL sans variante possible (schéma non-Xtream) '
+            '— rien à essayer',
         level: 'warn',
       );
       return null;
     }
-    StreamDiagnostics.instance.recordEvent(
-      'cascade',
-      '[cascade] ${variants.length - 1} variante(s) à essayer pour '
-          '${type.name} (original : '
-          '${StreamDiagnostics.maskCredentials(rawUrl)})',
-    );
 
     for (int i = 1; i < variants.length; i++) {
       if (isCancelled?.call() ?? false) {

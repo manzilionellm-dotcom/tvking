@@ -32,7 +32,6 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/live_badge.dart';
 import '../../cast/data/cast_manager.dart';
 import '../../cast/data/local_cast_server.dart';
-import '../../cast/data/stream_probe.dart';
 import '../../cast/presentation/cast_picker_sheet.dart';
 import '../../cast/presentation/screen_cast_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
@@ -44,8 +43,6 @@ import '../../onboarding/data/device_class_repository.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../playlists/data/favorites_repository.dart';
-import '../../playlists/data/playlist_repository.dart';
-import '../../playlists/data/source_link_utils.dart';
 import '../../playlists/data/xtream_url_format_store.dart';
 // Préfixé : media_kit exporte aussi un type `Playlist` (ambiguïté).
 import '../../playlists/domain/playlist.dart' as pl;
@@ -55,8 +52,8 @@ import '../../recordings/domain/recording.dart';
 import '../data/local_stream_relay.dart';
 import '../data/pip_service.dart';
 import '../data/player_settings.dart';
+import '../data/stream_blocked_fallback.dart';
 import '../data/stream_diagnostics.dart';
-import '../data/xtream_cascade_prober.dart';
 import '../data/xtream_url_variants.dart';
 import 'stream_debug_screen.dart';
 import 'widgets/player_settings_sheet.dart';
@@ -113,16 +110,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   late final Player _player;
   late final VideoController _videoController;
 
-  /// Message affiché quand une chaîne n'a JAMAIS atteint la lecture (source
-  /// vide / black.ts / bloquée par le fournisseur). Le rappel sur la limite
-  /// de connexions est une SUGGESTION, pas un diagnostic : beaucoup de
-  /// panels IPTV limitent à 1-2 connexions simultanées, et jouer déjà la
-  /// même chaîne ailleurs (téléphone + TV, ou cast en cours de test) en est
-  /// une cause fréquente — mais la chaîne peut aussi être simplement morte.
-  static const String _kChannelBlockedMessage =
-      'Chaîne indisponible : aucune vidéo reçue. Elle est vide ou bloquée '
-      'par ta source — vérifie qu\'elle n\'est pas déjà ouverte sur un '
-      'autre appareil, sinon essaie une autre chaîne.';
 
   bool _overlayVisible = true;
   Timer? _hideOverlayTimer;
@@ -192,12 +179,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // courant ≠ cet id, la chaîne courante n'a jamais joué.
   String? _playedChannelId;
   // Diagnostic multi-signature (« ça marche sur IBO, pas chez nous ») : id de
-  // la chaîne pour laquelle on a DÉJÀ tenté la sonde multi-User-Agent, pour ne
-  // JAMAIS boucler diagnostic→bascule→échec→diagnostic si le vrai problème
-  // n'est pas la signature. Se réinitialise naturellement au zap (comparé à
-  // `_currentChannel.id`, jamais remis à null explicitement).
-  String? _uaFixAttemptedForChannelId;
-  bool _uaDiagnosisInFlight = false;
+  // Chaîne « échec → sonde → cascade » : extraite dans un contrôleur
+  // TESTABLE de bout en bout (StreamBlockedFallback) — le widget ne
+  // garde que les liaisons. C'est lui qui possède l'anti-boucle
+  // par chaîne et l'abonnement aux échecs définitifs du relais.
+  late final StreamBlockedFallback _fallback;
   // Repli de FORMAT (.ts ↔ .m3u8) adopté par le diagnostic : certains
   // serveurs n'autorisent que le HLS pour le live → notre URL `.ts`
   // renvoie une page vide (écran noir) alors que la variante `.m3u8`
@@ -449,37 +435,28 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       }
     }));
 
-    // ÉCHEC DÉFINITIF signalé par le RELAIS (4xx dès la 1re réponse ou
-    // serveur muet, session jamais diffusée) : c'est LE déclencheur
-    // FIABLE de la cascade de variantes sur le chemin de lecture réel.
-    // Bug terrain du 2026-07-08 11:37 : on comptait sur la réaction de
-    // mpv au flux vide (EOF) pour arriver dans _declareChannelBlocked —
-    // elle n'arrive pas de façon fiable → « la session se ferme et
-    // c'est tout », la cascade ne tournait jamais. Désormais le relais
-    // nous préviens EXPLICITEMENT et on sonde immédiatement.
-    _subs.add(LocalStreamRelay.instance.definitiveFailures
-        .listen((String failedUrl) {
-      if (!mounted || _hasError) return;
-      // Seule l'URL en cours de lecture nous concerne (les sessions
-      // d'anciennes chaînes sont fermées au zap, sans événement).
-      if (failedUrl != _effectiveUrl) return;
-      StreamDiagnostics.instance.recordEvent(
-        'cascade',
-        'Relais : échec définitif signalé → diagnostic immédiat '
-            '(sonde + variantes)',
-      );
-      if (_playedChannelId == _currentChannel.id) {
-        // La chaîne avait DÉJÀ joué : vraie coupure, pas un format
-        // refusé — message direct, pas de cascade.
+    // Chaîne « échec → sonde → cascade » : le contrôleur possède
+    // l'abonnement aux échecs définitifs du relais (déclencheur FIABLE,
+    // indépendant de la réaction de mpv au flux vide) et TOUT le
+    // diagnostic. Chaque sortie est journalisée — plus de chemin muet.
+    _fallback = StreamBlockedFallback(
+      getChannel: () => _currentChannel,
+      getOverrideUrl: () => widget.overrideUrl,
+      getEffectiveUrl: () => _effectiveUrl,
+      isAlive: () => mounted,
+      hasCurrentChannelPlayed: () => _playedChannelId == _currentChannel.id,
+      getAdoptedAltUrl: () => _adoptedAltUrl,
+      setAdoptedAltUrl: (String? url) => _adoptedAltUrl = url,
+      resetWatchdogBudget: () => _watchdogRecoveries = 0,
+      reopen: _openMedia,
+      showBlocked: (String message) {
+        if (!mounted) return;
         setState(() {
           _hasError = true;
-          _errorMessage =
-              'Flux interrompu. Vérifie ta connexion puis réessaie.';
+          _errorMessage = message;
         });
-      } else {
-        _declareChannelBlocked();
-      }
-    }));
+      },
+    )..attach();
 
     // Listener pour les changements de réglages → réapplication immédiate
     PlayerSettings.instance.addListener(_onSettingsChanged);
@@ -682,9 +659,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // le fait que si aucune variante n'est déjà adoptée pour la session
     // (`_adoptedAltUrl`), jamais pour le catch-up (`overrideUrl`).
     if (widget.overrideUrl == null && _adoptedAltUrl == null) {
-      final pl.Playlist? src = _xtreamPlaylistFor(_currentChannel);
+      final pl.Playlist? src =
+          StreamBlockedFallback.xtreamPlaylistFor(_currentChannel);
       if (src?.id != null) {
-        final XtreamContentType type = _contentTypeOf(_currentChannel);
+        final XtreamContentType type =
+            StreamBlockedFallback.contentTypeOf(_currentChannel);
         final String? code = await XtreamUrlFormatStore.instance
             .winningFormat(src!.id!, type);
         if (code != null) {
@@ -1183,6 +1162,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     for (final StreamSubscription<dynamic> s in _subs) {
       s.cancel();
     }
+    // Désabonne le diagnostic des échecs définitifs du relais.
+    _fallback.detach();
     // Ferme proprement la session de visionnage. Si l'app est killée
     // sans dispose, _cleanupAbandoned() au prochain boot rattrape.
     if (_watchSessionId > 0) {
@@ -1268,295 +1249,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   // ----- Chien de garde anti-gel -----
 
-  /// Chaîne jamais lue avec succès → probablement bloquée par le
-  /// fournisseur. AVANT d'abandonner, sonde plusieurs signatures de lecteur
-  /// connues (VLC, ExoPlayer/IBO, Smarters…) sur l'URL réelle : beaucoup de
-  /// fournisseurs IPTV whitelistent UNE signature précise et servent une
-  /// page vide aux autres — c'est souvent ÇA « la chaîne marche sur IBO
-  /// mais pas chez nous », pas une vraie panne réseau. Si une AUTRE
-  /// signature obtient une vraie réponse média, on l'adopte (persistée
-  /// via PlayerSettings) et on relance automatiquement, sans même montrer
-  /// d'erreur au client. Une seule tentative de diagnostic par chaîne
-  /// (`_uaFixAttemptedForChannelId`) : si le vrai problème n'est pas la
-  /// signature, on ne boucle pas diagnostic→bascule→échec→diagnostic.
-  Future<void> _declareChannelBlocked() async {
-    final Channel channel = _currentChannel;
-    final bool alreadyTried = _uaFixAttemptedForChannelId == channel.id;
-    if (_uaDiagnosisInFlight || alreadyTried) {
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-          _errorMessage = _kChannelBlockedMessage;
-        });
-      }
-      return;
-    }
-    _uaFixAttemptedForChannelId = channel.id;
-    _uaDiagnosisInFlight = true;
-    final String current = PlayerSettings.instance.userAgent;
-    // Source Xtream (par playlistId, sinon par host:port pour les
-    // Channels VOD ad-hoc) + type de contenu : nécessaires au repli en
-    // cascade et à la mémorisation du format gagnant.
-    final pl.Playlist? src = _xtreamPlaylistFor(channel);
-    final XtreamContentType contentType = _contentTypeOf(channel);
-    StreamDiagnostics.instance.recordEvent(
-      'probe',
-      'Contenu jamais lu → sonde multi-signatures (User-Agent)…',
-      level: 'warn',
-    );
-    final UserAgentProbeResult probe;
-    try {
-      probe = await StreamProbe.instance.probeUserAgents(
-        channel.streamUrl,
-        candidates: <String>[
-          current,
-          ...PlayerSettings.userAgentPresets.values,
-        ],
-      );
-    } finally {
-      _uaDiagnosisInFlight = false;
-    }
-    _recordProbeAttempts(probe);
-    // L'utilisateur a zappé pendant la sonde → cette chaîne n'est plus
-    // affichée, rien à faire (le nouvel écran gère son propre état).
-    if (!mounted || channel.id != _currentChannel.id) return;
-
-    // L'URL D'ORIGINE répond à la sonde. Deux cas (cumulables) :
-    //  - la signature active était refusée → bascule UA + relance ;
-    //  - RE-VALIDATION : un format mémorisé/adopté avait réécrit l'URL
-    //    et c'est LUI qui ne répond plus (panel reconfiguré), alors que
-    //    l'origine marche → on OUBLIE le format mémorisé et on revient
-    //    à l'URL d'origine.
-    final bool altWasApplied = _adoptedAltUrl != null;
-    if (probe.workingUserAgent != null &&
-        (probe.workingUserAgent != current || altWasApplied)) {
-      if (probe.workingUserAgent != current) {
-        debugPrint(
-            '[Player] "$current" bloqué mais "${probe.workingUserAgent}" '
-            'fonctionne sur cette source → bascule automatique + relance.');
-        StreamDiagnostics.instance.recordEvent(
-          'probe',
-          'Signature "$current" refusée mais "${probe.workingUserAgent}" '
-              'acceptée → bascule automatique + relance',
-        );
-        await PlayerSettings.instance.setUserAgent(probe.workingUserAgent!);
-        if (!mounted || channel.id != _currentChannel.id) return;
-      }
-      if (altWasApplied) {
-        _adoptedAltUrl = null;
-        if (src?.id != null) {
-          final bool forgot = await XtreamUrlFormatStore.instance
-              .clearWinningFormat(src!.id!, contentType);
-          if (forgot) {
-            StreamDiagnostics.instance.recordEvent(
-              'probe',
-              'Le format mémorisé ne répond plus mais l\'URL d\'origine '
-                  'oui → format oublié, retour à l\'origine',
-              level: 'warn',
-            );
-          }
-          if (!mounted || channel.id != _currentChannel.id) return;
-        }
-      }
-      _watchdogRecoveries = 0; // budget neuf : cette piste a de vraies chances
-      _openMedia(widget.overrideUrl ?? channel.streamUrl);
-      return; // pas d'erreur affichée : on retente silencieusement
-    }
-
-    // Repli d'URL — CASCADE DE VARIANTES XTREAM : aucune signature n'a
-    // débloqué l'URL telle quelle. Les panels Xtream servent le même flux
-    // sous plusieurs formes (`/live/U/P/ID.m3u8`, `/live/U/P/ID.ts`,
-    // `U/P/ID.m3u8`) et beaucoup répondent 404 + page HTML sur la forme
-    // qu'on a construite alors qu'une autre joue (cas « France 2 : 404
-    // chez nous, OK dans IBO »). On sonde chaque variante dans l'ordre,
-    // avec les mêmes signatures, et on s'arrête au premier succès.
-    //
-    // GATE STRICT : uniquement pour une source de type XTREAM (live,
-    // film ou épisode — le catch-up `overrideUrl` reste intact). Une
-    // playlist M3U générique garde son URL INTACTE (ses URLs peuvent
-    // ressembler au schéma U/P/ID par hasard — les réécrire casserait
-    // des flux valides).
-    if (widget.overrideUrl != null) {
-      StreamDiagnostics.instance.recordEvent(
-        'cascade',
-        '[cascade] catch-up/replay (overrideUrl) → URL laissée intacte, '
-            'pas de variantes',
-        level: 'warn',
-      );
-    } else if (src == null) {
-      // LE gate qui, muet, rendait le bug terrain indiagnosticable :
-      // désormais on écrit POURQUOI aucune variante n'est essayée.
-      StreamDiagnostics.instance.recordEvent(
-        'cascade',
-        '[cascade] source non-Xtream ou introuvable '
-            '(playlistId=${channel.playlistId ?? '—'}, '
-            'host=${Uri.tryParse(channel.streamUrl)?.host ?? '?'}) '
-            '→ URL laissée intacte, pas de variantes',
-        level: 'error',
-      );
-    } else {
-      // Sonde des variantes via le code PARTAGÉ (même code en prod et
-      // dans le test d'intégration). Chaque essai écrit sa ligne
-      // « [cascade] essai i/N : … → HTTP xxx » dans la boîte noire.
-      _uaDiagnosisInFlight = true;
-      final CascadeWin? win;
-      try {
-        win = await XtreamCascadeProber.findWorkingVariant(
-          channel.streamUrl, // URL BRUTE (identifiants réels)
-          contentType,
-          uaCandidates: <String>[
-            current,
-            ...PlayerSettings.userAgentPresets.values,
-          ],
-          isCancelled: () => !mounted || channel.id != _currentChannel.id,
-        );
-      } finally {
-        _uaDiagnosisInFlight = false;
-      }
-      if (!mounted || channel.id != _currentChannel.id) return;
-      if (win != null) {
-        debugPrint(
-            '[Player] format bloqué mais la variante « ${win.url} » répond '
-            '(signature "${win.userAgent}") → bascule + relance.');
-        if (win.userAgent != current) {
-          await PlayerSettings.instance.setUserAgent(win.userAgent);
-          if (!mounted || channel.id != _currentChannel.id) return;
-        }
-        _adoptedAltUrl = win.url;
-        // MÉMORISATION : le format gagnant est persisté PAR SOURCE →
-        // les prochains contenus de cette source (même type) partiront
-        // DIRECTEMENT sur ce format à l'ouverture, sans re-cascade
-        // (zapping instantané, cf. _openMedia).
-        if (src.id != null) {
-          await XtreamUrlFormatStore.instance.saveWinningFormat(
-            src.id!,
-            contentType,
-            win.formatCode,
-          );
-          StreamDiagnostics.instance.recordEvent(
-            'cascade',
-            '[cascade] format « ${win.formatCode} » mémorisé pour la '
-                'source « ${src.name} » (${contentType.name}) — les '
-                'prochains contenus l\'utiliseront directement',
-          );
-          if (!mounted || channel.id != _currentChannel.id) return;
-        }
-        _watchdogRecoveries = 0;
-        _openMedia(win.url);
-        return; // pas d'erreur affichée : la variante a de vraies chances
-      }
-    }
-
-    // Échec TOTAL : si un format était mémorisé pour cette source, il ne
-    // débloque plus rien non plus → on l'oublie pour que la prochaine
-    // tentative reparte de zéro (RE-VALIDATION, panel reconfiguré).
-    if (src?.id != null) {
-      final bool forgot = await XtreamUrlFormatStore.instance
-          .clearWinningFormat(src!.id!, contentType);
-      if (forgot) {
-        StreamDiagnostics.instance.recordEvent(
-          'probe',
-          'Format mémorisé oublié (plus aucune variante ne répond)',
-          level: 'warn',
-        );
-      }
-      if (!mounted || channel.id != _currentChannel.id) return;
-    }
-
-    StreamDiagnostics.instance.recordEvent(
-      'probe',
-      probe.isLikelyNetworkBlocked
-          ? 'Aucune signature ne passe — échecs de niveau RÉSEAU '
-              '(DNS/timeout) : blocage FAI probable'
-          : 'Aucune signature ni variante de format ne débloque ce flux',
-      level: 'error',
-    );
-    if (!mounted) return;
-    setState(() {
-      _hasError = true;
-      _errorMessage = probe.isLikelyNetworkBlocked
-          ? '$_kChannelBlockedMessage\n\nÇa ressemble à un blocage réseau '
-              '(FAI ou DNS) plutôt qu\'à un problème de l\'app — un VPN '
-              'peut aider si cette chaîne fonctionne ailleurs.'
-          : _kChannelBlockedMessage;
-    });
-  }
-
-  /// Verse le détail d'une sonde multi-signatures dans la boîte noire :
-  /// une ligne par User-Agent essayé (statut HTTP ou raison d'échec).
-  /// Le statut de la signature ACTIVE alimente aussi l'instantané HTTP
-  /// (utile pour la VOD, qui ne passe pas par le relais).
-  void _recordProbeAttempts(UserAgentProbeResult probe, {String? label}) {
-    final StreamDiagnostics d = StreamDiagnostics.instance;
-    final String prefix = label == null ? '' : '[$label] ';
-    probe.attempts.forEach((String ua, StreamProbeResult r) {
-      final String verdict = r.success
-          ? 'OK (HTTP 2xx${r.mime == null ? '' : ' · ${r.mime}'})'
-          : (r.errorCode != null
-              ? 'HTTP ${r.errorCode} — ${r.errorReason ?? 'refusé'}'
-              : (r.errorReason ?? 'échec'));
-      d.recordEvent('probe', '${prefix}UA "$ua" → $verdict',
-          level: r.success ? 'info' : 'warn');
-    });
-    final StreamProbeResult? currentAttempt =
-        probe.attempts[PlayerSettings.instance.userAgent];
-    if (currentAttempt != null && d.httpStatus == null) {
-      d.recordHttp(
-        status: currentAttempt.errorCode ?? (currentAttempt.success ? 200 : null),
-        finalUrl: currentAttempt.finalUrl,
-        mime: currentAttempt.mime,
-        source: 'probe',
-      );
-    }
-  }
-
-  /// Playlist XTREAM d'où vient ce contenu, ou `null` (source M3U
-  /// générique, fichier local, inconnu) — condition du repli en cascade
-  /// et clé de mémorisation du format gagnant.
-  ///
-  /// Résolution : par `playlistId` quand la chaîne vient de la base ;
-  /// par host:port du serveur sinon (les écrans VOD/séries fabriquent
-  /// des `Channel` ad-hoc SANS playlistId, mais leurs URLs pointent le
-  /// serveur Xtream de la source). Best-effort : introuvable → pas de
-  /// réécriture.
-  static pl.Playlist? _xtreamPlaylistFor(Channel channel) {
-    final List<pl.Playlist> all = PlaylistRepository.instance.currentPlaylists;
-    final int? pid = channel.playlistId;
-    if (pid != null) {
-      for (final pl.Playlist p in all) {
-        if (p.id == pid) {
-          return p.type == pl.PlaylistType.xtream ? p : null;
-        }
-      }
-      return null;
-    }
-    final Uri? u = Uri.tryParse(channel.streamUrl);
-    if (u == null || !u.hasAuthority) return null; // fichier local, etc.
-    for (final pl.Playlist p in all) {
-      if (p.type != pl.PlaylistType.xtream) continue;
-      final Uri? server = Uri.tryParse(
-          SourceLinkUtils.sanitizeXtreamServer(p.xtreamServer ?? ''));
-      if (server != null &&
-          server.host.isNotEmpty &&
-          server.host == u.host &&
-          server.port == u.port) {
-        return p;
-      }
-    }
-    return null;
-  }
-
-  /// Type de contenu Xtream de cette chaîne : le PRÉFIXE de l'URL fait
-  /// foi (`/movie/`, `/series/`, `/live/`), sinon on tranche avec ce
-  /// que la playlist sait du contenu (`isLive`). Une URL nue non-live
-  /// est traitée comme un film (nos épisodes de séries sont toujours
-  /// construits avec le préfixe `/series/` par XtreamClient).
-  static XtreamContentType _contentTypeOf(Channel channel) {
-    final XtreamContentType? fromUrl =
-        XtreamUrlVariants.detectType(channel.streamUrl);
-    if (fromUrl != null) return fromUrl;
-    return channel.isLive ? XtreamContentType.live : XtreamContentType.movie;
-  }
+  /// Contenu jamais lu avec succès → diagnostic complet (sonde
+  /// multi-signatures + re-validation du format mémorisé + CASCADE de
+  /// variantes). Toute la logique vit dans [StreamBlockedFallback],
+  /// testable de bout en bout avec le vrai relais et la vraie sonde —
+  /// le widget ne fait que déléguer.
+  Future<void> _declareChannelBlocked() => _fallback.run();
 
   /// Borne l'ATTENTE DE DÉMARRAGE d'une ouverture : si `playing` n'est
   /// jamais atteint dans les [_kStartupTimeout], on montre l'erreur claire

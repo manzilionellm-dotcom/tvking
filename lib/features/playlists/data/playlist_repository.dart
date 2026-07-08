@@ -103,6 +103,15 @@ class PlaylistRepository {
   /// Snapshot synchrone des playlists actuellement chargées.
   List<Playlist> get currentPlaylists => _playlistsCache;
 
+  /// TESTS UNIQUEMENT : injecte le cache mémoire des playlists. Les
+  /// tests d'intégration du lecteur (cascade sur le chemin réel) n'ont
+  /// pas de base SQLite — c'est le seul moyen de donner une source
+  /// Xtream au gate du diagnostic.
+  @visibleForTesting
+  void debugSeedPlaylists(List<Playlist> playlists) {
+    _playlistsCache = List<Playlist>.unmodifiable(playlists);
+  }
+
   /// Charge initialement les chaînes depuis la base et émet sur le stream.
   /// À appeler une fois au démarrage de l'app.
   Future<void> initialize() async {
