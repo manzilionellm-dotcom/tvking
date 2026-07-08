@@ -56,10 +56,18 @@ import 'player_settings.dart';
 import 'stream_diagnostics.dart';
 
 /// Nombre d'échecs de reconnexion CONSÉCUTIFS tolérés avant d'abandonner
-/// l'upstream. Tant qu'une reconnexion réussit, le compteur repart à 0,
-/// donc un flux qui hoquette longtemps continue. On n'abandonne que si le
-/// serveur reste injoignable plusieurs essais d'affilée.
+/// l'upstream, pour une session qui a DÉJÀ diffusé des octets (coupure en
+/// cours de lecture : on s'accroche). Tant qu'une reconnexion réussit, le
+/// compteur repart à 0, donc un flux qui hoquette longtemps continue.
 const int _kMaxReconnectFailures = 12;
+
+/// Même budget mais pour une session qui n'a JAMAIS encore reçu un octet
+/// (échec dès l'ouverture). Boucler 13× sur une URL morte retardait la
+/// cascade de variantes côté lecteur (bug terrain du 2026-07-08 : 404 sur
+/// `.ts` réessayé en boucle au lieu de basculer sur `/live/….m3u8`).
+/// On ne retente que les échecs TRANSITOIRES (DNS/socket/5xx) — un 4xx
+/// définitif ferme la session immédiatement, sans aucun retry.
+const int _kMaxInitialFailures = 3;
 
 /// Relais singleton. Une instance pour toute l'app : un seul serveur HTTP
 /// local, qui multiplexe N chaînes (sessions) si besoin.
@@ -85,8 +93,34 @@ class LocalStreamRelay {
   /// automatiquement côté serveur via `queryParameters`).
   Future<String> playUrlFor(String realUrl) async {
     await _ensureServer();
+    // ZAP / bascule de variante : une seule lecture à la fois. On ferme
+    // toute session d'une AUTRE URL (sauf enregistrement en cours) —
+    // sinon les relais des chaînes quittées continuaient leurs
+    // reconnexions en boucle en parallèle (sessions zombies, bug terrain
+    // du 2026-07-08 : France 2 → 3 → 4 = 3 boucles simultanées).
+    closeOtherPlaybacks(realUrl);
     final String token = Uri.encodeComponent(realUrl);
     return 'http://127.0.0.1:$_port/s?u=$token';
+  }
+
+  /// Ferme toutes les sessions de lecture SAUF celle de [keepRealUrl].
+  /// Les sessions qui enregistrent sont préservées (l'enregistrement
+  /// d'une chaîne survit au zapping vers une autre).
+  void closeOtherPlaybacks(String keepRealUrl) {
+    for (final _RelaySession s
+        in List<_RelaySession>.from(_sessions.values)) {
+      if (s.realUrl == keepRealUrl) continue;
+      if (s.recordSink != null) continue;
+      if (kDebugMode) {
+        debugPrint('[Relay] zap → fermeture session ${_short(s.realUrl)}');
+      }
+      StreamDiagnostics.instance.recordEvent(
+        'relay',
+        'Changement de chaîne → session précédente fermée '
+            '(${StreamDiagnostics.maskCredentials(s.realUrl)})',
+      );
+      _closeSession(s);
+    }
   }
 
   /// Démarre l'écriture du flux EN COURS vers `filePath`, en se branchant
@@ -234,8 +268,32 @@ class LocalStreamRelay {
     final HttpClientResponse? resp =
         await _openUpstream(session, session.realUrl);
     if (resp == null) {
-      // Échec d'ouverture → on tente de reconnecter (avec back-off) tant
-      // qu'il reste des consommateurs.
+      // ÉCHEC DÉFINITIF vs TRANSITOIRE — le cœur du correctif terrain :
+      //   - 4xx (404/403/401/410…) dès la 1re réponse, session jamais
+      //     diffusée = le serveur a RÉPONDU et refuse CETTE URL. Boucler
+      //     ne changera rien : on ferme tout de suite → mpv voit la fin
+      //     de flux → le lecteur lance sa sonde + CASCADE DE VARIANTES
+      //     (`/live/….m3u8`…) sans attendre 13 retries.
+      //   - erreur réseau (DNS/socket/timeout) ou 5xx = transitoire →
+      //     le retry avec back-off reste justifié.
+      // Un 4xx sur une session qui a DÉJÀ joué garde le comportement
+      // reconnexion (token/edge recyclé en cours de live).
+      final int? st = session.lastUpstreamStatus;
+      final bool definitive = st != null &&
+          st >= 400 &&
+          st < 500 &&
+          st != 408 && // Request Timeout : transitoire
+          st != 429; //  Too Many Requests : transitoire
+      if (definitive && !session.everStreamed) {
+        StreamDiagnostics.instance.recordEvent(
+          'relay',
+          'HTTP $st définitif dès la 1re réponse → session fermée sans '
+              'retry (la cascade de variantes prend la main)',
+          level: 'error',
+        );
+        _closeSession(session);
+        return;
+      }
       _scheduleReconnect(session);
       return;
     }
@@ -251,6 +309,7 @@ class LocalStreamRelay {
     _RelaySession session,
     String url,
   ) async {
+    session.lastUpstreamStatus = null; // nouvelle tentative
     try {
       try {
         session.client?.close(force: true);
@@ -276,6 +335,7 @@ class LocalStreamRelay {
       cReq.headers.set(HttpHeaders.acceptHeader, '*/*');
 
       final HttpClientResponse cResp = await cReq.close();
+      session.lastUpstreamStatus = cResp.statusCode;
       // Boîte noire : le statut HTTP RÉEL vu par la connexion de lecture
       // (+ URL finale si le serveur a redirigé, + MIME). C'est LA donnée
       // qui manquait pour diagnostiquer un écran noir : l'écran debug
@@ -332,6 +392,10 @@ class LocalStreamRelay {
   /// Recopie un paquet vers TOUS les consommateurs : le(s) lecteur(s) et
   /// le fichier d'enregistrement s'il est actif.
   void _fanout(_RelaySession session, List<int> chunk) {
+    // Premier octet reçu = la session a réellement diffusé : les
+    // coupures ULTÉRIEURES redeviennent des reconnexions légitimes
+    // (même sur un 4xx — token/edge recyclé en cours de live).
+    session.everStreamed = true;
     // Lecteurs : on écrit, on retire ceux dont la socket est morte.
     final List<_PlayerConsumer> dead = <_PlayerConsumer>[];
     for (final _PlayerConsumer c in session.players) {
@@ -382,7 +446,13 @@ class LocalStreamRelay {
     session.sub = null;
 
     session.reconnectFailures++;
-    if (session.reconnectFailures > _kMaxReconnectFailures) {
+    // Budget adapté : une session qui n'a JAMAIS diffusé un octet
+    // n'a droit qu'à quelques retries transitoires — le lecteur doit
+    // vite reprendre la main (sonde + cascade) plutôt que d'attendre.
+    final int maxFailures = session.everStreamed
+        ? _kMaxReconnectFailures
+        : _kMaxInitialFailures;
+    if (session.reconnectFailures > maxFailures) {
       if (kDebugMode) {
         debugPrint('[Relay] serveur injoignable, abandon ${_short(session.realUrl)}');
       }
@@ -484,6 +554,16 @@ class _RelaySession {
   StreamSubscription<List<int>>? sub;
   bool upstreamActive = false;
   int reconnectFailures = 0;
+
+  /// Statut HTTP de la DERNIÈRE tentative upstream (null = pas de
+  /// réponse : erreur réseau/DNS/timeout). Sert à distinguer un échec
+  /// DÉFINITIF (4xx → fermer, laisser la cascade jouer) d'un échec
+  /// TRANSITOIRE (retry avec back-off).
+  int? lastUpstreamStatus;
+
+  /// `true` dès que la session a diffusé AU MOINS un octet. Avant ça,
+  /// un 4xx est définitif et le budget de retry transitoire est réduit.
+  bool everStreamed = false;
 
   /// Lecteurs branchés (mpv). En pratique 0 ou 1, mais on supporte
   /// plusieurs (mpv ouvre parfois une connexion de sonde + une de
