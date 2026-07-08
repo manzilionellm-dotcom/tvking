@@ -22,6 +22,7 @@ import '../../../core/app/device_memory.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import 'tv_diagnostics_screen.dart';
 
 class TvAboutScreen extends StatefulWidget {
   const TvAboutScreen({super.key});
@@ -109,7 +110,27 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
               ),
               child: Column(
                 children: <Widget>[
-                  _InfoRow(label: 'Version', value: version),
+                  // Version FOCUSABLE : la sélectionner ouvre la boîte
+                  // noire (équivalent D-pad de l'appui long sur la
+                  // version côté mobile — accès support, semi-caché).
+                  TvFocusBuilder(
+                    scale: TvFocusScale.small,
+                    onSelect: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const TvDiagnosticsScreen(),
+                      ),
+                    ),
+                    builder: (BuildContext context, bool focused) => Container(
+                      decoration: BoxDecoration(
+                        color: focused ? TvTokens.sel : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color:
+                                focused ? TvTokens.gold : Colors.transparent),
+                      ),
+                      child: _InfoRow(label: 'Version', value: version),
+                    ),
+                  ),
                   _InfoRow(
                       label: 'Système', value: Platform.operatingSystemVersion),
                   _InfoRow(label: 'Mémoire (RAM)', value: _ramLabel),
