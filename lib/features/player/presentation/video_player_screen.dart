@@ -44,12 +44,18 @@ import '../../onboarding/data/device_class_repository.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../playlists/data/favorites_repository.dart';
+import '../../playlists/data/playlist_repository.dart';
+// Préfixé : media_kit exporte aussi un type `Playlist` (ambiguïté).
+import '../../playlists/domain/playlist.dart' as pl;
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
 import '../data/local_stream_relay.dart';
 import '../data/pip_service.dart';
 import '../data/player_settings.dart';
+import '../data/stream_diagnostics.dart';
+import '../data/xtream_live_url_variants.dart';
+import 'stream_debug_screen.dart';
 import 'widgets/player_settings_sheet.dart';
 import 'widgets/player_stats_overlay.dart';
 import 'widgets/player_tracks_sheet.dart';
@@ -374,6 +380,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }));
     _subs.add(_player.stream.error.listen((String e) {
       if (!mounted) return;
+      // Boîte noire : TOUTES les erreurs libmpv, exactes, y compris
+      // celles que l'UI filtre. `fatal` est ajusté plus bas si on
+      // découvre que c'est un simple warning.
       // Filtre les messages non-fatals de libmpv. Liste basée
       // sur les messages courants qui ne bloquent PAS la lecture :
       //   - "force-seekable" : seek impossible (normal pour le live)
@@ -394,14 +403,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (isWarning) {
         // On log mais on n'affiche pas l'overlay d'erreur
         debugPrint('[Player] WARNING (ignoré) : $e');
+        StreamDiagnostics.instance.recordPlayerError(e, fatal: false);
         return;
       }
       // Si la lecture est déjà active, c'est probablement aussi
       // un warning tardif — on ne casse pas l'expérience.
       if (_isPlaying) {
         debugPrint('[Player] Erreur reçue pendant la lecture, ignorée : $e');
+        StreamDiagnostics.instance.recordPlayerError(e, fatal: false);
         return;
       }
+      StreamDiagnostics.instance.recordPlayerError(e);
       // Si la chaîne n'a JAMAIS atteint la lecture, la source n'a peut-être
       // envoyé aucune vidéo décodable (chaîne vide / black.ts d'1 octet /
       // bloquée par le fournisseur) — MAIS ça peut aussi être une signature
@@ -415,6 +427,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         });
       } else {
         _declareChannelBlocked();
+      }
+    }));
+
+    // Boîte noire : codecs / résolution détectés par libmpv une fois le
+    // flux ouvert — consultables dans l'écran debug caché (appui long
+    // sur la version, écran À propos). Même source que l'overlay stats.
+    _subs.add(_player.stream.tracks.listen((_) {
+      StreamDiagnostics.instance.recordCodecs(
+        video: _player.state.track.video.codec,
+        audio: _player.state.track.audio.codec,
+      );
+    }));
+    _subs.add(_player.stream.height.listen((int? h) {
+      final int? w = _player.state.width;
+      if (h != null && w != null && h > 0 && w > 0) {
+        StreamDiagnostics.instance.recordCodecs(resolution: '$w×$h');
       }
     }));
 
@@ -613,6 +641,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> _openMedia(String realUrl) async {
     _autoSubtitleApplied = false; // nouvelle vidéo → on réévalue les sous-titres
+    // Boîte noire : nouvelle tentative d'ouverture (URL réelle + UA).
+    // Le relais / la sonde compléteront avec le statut HTTP, libmpv
+    // avec les codecs et les erreurs exactes.
+    StreamDiagnostics.instance.beginSession(
+      url: realUrl,
+      userAgent: PlayerSettings.instance.userAgent,
+      title: widget.overrideTitle ?? _currentChannel.cleanName,
+      playlistId: _currentChannel.playlistId,
+    );
     _armStartupTimeout();
     if (widget.overrideUrl != null) {
       _player.open(Media(realUrl));
@@ -1181,6 +1218,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _uaFixAttemptedForChannelId = channel.id;
     _uaDiagnosisInFlight = true;
     final String current = PlayerSettings.instance.userAgent;
+    StreamDiagnostics.instance.recordEvent(
+      'probe',
+      'Chaîne jamais lue → sonde multi-signatures (User-Agent)…',
+      level: 'warn',
+    );
     final UserAgentProbeResult probe;
     try {
       probe = await StreamProbe.instance.probeUserAgents(
@@ -1193,6 +1235,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     } finally {
       _uaDiagnosisInFlight = false;
     }
+    _recordProbeAttempts(probe);
     // L'utilisateur a zappé pendant la sonde → cette chaîne n'est plus
     // affichée, rien à faire (le nouvel écran gère son propre état).
     if (!mounted || channel.id != _currentChannel.id) return;
@@ -1201,6 +1244,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       debugPrint(
           '[Player] "$current" bloqué mais "${probe.workingUserAgent}" '
           'fonctionne sur cette source → bascule automatique + relance.');
+      StreamDiagnostics.instance.recordEvent(
+        'probe',
+        'Signature "$current" refusée mais "${probe.workingUserAgent}" '
+            'acceptée → bascule automatique + relance',
+      );
       await PlayerSettings.instance.setUserAgent(probe.workingUserAgent!);
       if (!mounted || channel.id != _currentChannel.id) return;
       _watchdogRecoveries = 0; // budget neuf : cette signature a de vraies chances
@@ -1208,35 +1256,57 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       return; // pas d'erreur affichée : on retente silencieusement
     }
 
-    // Repli de FORMAT (.ts ↔ .m3u8) : aucune signature n'a débloqué l'URL
-    // telle quelle. Certains serveurs n'autorisent que le HLS pour le live
-    // (allowed_output_formats sans « ts ») : notre `.ts` renvoie une page
-    // vide → écran noir, alors que la variante `.m3u8` joue (c'est ce que
-    // lit IBO). On sonde la variante avec les mêmes signatures ; si elle
-    // répond, on l'adopte pour toute la session de cette chaîne.
-    final String? alt =
-        _alternateFormatUrl(widget.overrideUrl ?? channel.streamUrl);
-    if (alt != null) {
-      _uaDiagnosisInFlight = true;
-      final UserAgentProbeResult altProbe;
-      try {
-        altProbe = await StreamProbe.instance.probeUserAgents(
-          alt,
-          candidates: <String>[
-            current,
-            ...PlayerSettings.userAgentPresets.values,
-          ],
+    // Repli d'URL — CASCADE DE VARIANTES XTREAM : aucune signature n'a
+    // débloqué l'URL telle quelle. Les panels Xtream servent le même flux
+    // sous plusieurs formes (`/live/U/P/ID.m3u8`, `/live/U/P/ID.ts`,
+    // `U/P/ID.m3u8`) et beaucoup répondent 404 + page HTML sur la forme
+    // qu'on a construite alors qu'une autre joue (cas « France 2 : 404
+    // chez nous, OK dans IBO »). On sonde chaque variante dans l'ordre,
+    // avec les mêmes signatures, et on s'arrête au premier succès.
+    //
+    // GATE STRICT : uniquement pour le LIVE (pas de catch-up/VOD) d'une
+    // source de type XTREAM. Une playlist M3U générique garde son URL
+    // INTACTE (ses URLs peuvent ressembler au schéma U/P/ID par hasard —
+    // les réécrire casserait des flux valides).
+    if (widget.overrideUrl == null && _isFromXtreamSource(channel)) {
+      final List<String> variants =
+          XtreamLiveUrlVariants.cascade(channel.streamUrl);
+      // variants[0] = URL d'origine, déjà sondée ci-dessus → on la saute.
+      for (int i = 1; i < variants.length; i++) {
+        final String alt = variants[i];
+        StreamDiagnostics.instance.recordEvent(
+          'probe',
+          'Variante ${i + 1}/${variants.length} : '
+              '${StreamDiagnostics.maskCredentials(alt)}…',
         );
-      } finally {
-        _uaDiagnosisInFlight = false;
-      }
-      if (!mounted || channel.id != _currentChannel.id) return;
-      if (altProbe.workingUserAgent != null) {
+        _uaDiagnosisInFlight = true;
+        final UserAgentProbeResult altProbe;
+        try {
+          altProbe = await StreamProbe.instance.probeUserAgents(
+            alt,
+            candidates: <String>[
+              current,
+              ...PlayerSettings.userAgentPresets.values,
+            ],
+          );
+        } finally {
+          _uaDiagnosisInFlight = false;
+        }
+        _recordProbeAttempts(altProbe,
+            label: 'variante ${i + 1}/${variants.length}');
+        if (!mounted || channel.id != _currentChannel.id) return;
+        if (altProbe.workingUserAgent == null) continue; // suivante
         debugPrint(
             '[Player] format bloqué mais la variante « $alt » répond '
             '(signature "${altProbe.workingUserAgent}") → bascule + relance.');
+        StreamDiagnostics.instance.recordEvent(
+          'probe',
+          'Variante ${StreamDiagnostics.maskCredentials(alt)} répond '
+              '(UA "${altProbe.workingUserAgent}") → bascule + relance',
+        );
         if (altProbe.workingUserAgent != current) {
-          await PlayerSettings.instance.setUserAgent(altProbe.workingUserAgent!);
+          await PlayerSettings.instance
+              .setUserAgent(altProbe.workingUserAgent!);
           if (!mounted || channel.id != _currentChannel.id) return;
         }
         _adoptedAltUrl = alt;
@@ -1246,6 +1316,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       }
     }
 
+    StreamDiagnostics.instance.recordEvent(
+      'probe',
+      probe.isLikelyNetworkBlocked
+          ? 'Aucune signature ne passe — échecs de niveau RÉSEAU '
+              '(DNS/timeout) : blocage FAI probable'
+          : 'Aucune signature ni variante de format ne débloque ce flux',
+      level: 'error',
+    );
     setState(() {
       _hasError = true;
       _errorMessage = probe.isLikelyNetworkBlocked
@@ -1256,25 +1334,45 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
   }
 
-  /// Variante de conteneur d'une URL live Xtream : `…/user/pass/id.ts` ↔
-  /// `…/live/user/pass/id.m3u8`. Le serveur Xtream sert le HLS sous le
-  /// préfixe `/live/` (forme standard) ; le `.ts` court marche avec ou
-  /// sans. Renvoie `null` si l'URL n'a pas d'extension connue — on ne
-  /// tente alors rien.
-  static String? _alternateFormatUrl(String url) {
-    final Uri? u = Uri.tryParse(url);
-    if (u == null || u.path.isEmpty) return null;
-    final String p = u.path;
-    if (p.endsWith('.ts')) {
-      String np = '${p.substring(0, p.length - 3)}.m3u8';
-      if (!np.startsWith('/live/')) np = '/live$np';
-      return u.replace(path: np).toString();
+  /// Verse le détail d'une sonde multi-signatures dans la boîte noire :
+  /// une ligne par User-Agent essayé (statut HTTP ou raison d'échec).
+  /// Le statut de la signature ACTIVE alimente aussi l'instantané HTTP
+  /// (utile pour la VOD, qui ne passe pas par le relais).
+  void _recordProbeAttempts(UserAgentProbeResult probe, {String? label}) {
+    final StreamDiagnostics d = StreamDiagnostics.instance;
+    final String prefix = label == null ? '' : '[$label] ';
+    probe.attempts.forEach((String ua, StreamProbeResult r) {
+      final String verdict = r.success
+          ? 'OK (HTTP 2xx${r.mime == null ? '' : ' · ${r.mime}'})'
+          : (r.errorCode != null
+              ? 'HTTP ${r.errorCode} — ${r.errorReason ?? 'refusé'}'
+              : (r.errorReason ?? 'échec'));
+      d.recordEvent('probe', '${prefix}UA "$ua" → $verdict',
+          level: r.success ? 'info' : 'warn');
+    });
+    final StreamProbeResult? currentAttempt =
+        probe.attempts[PlayerSettings.instance.userAgent];
+    if (currentAttempt != null && d.httpStatus == null) {
+      d.recordHttp(
+        status: currentAttempt.errorCode ?? (currentAttempt.success ? 200 : null),
+        finalUrl: currentAttempt.finalUrl,
+        mime: currentAttempt.mime,
+        source: 'probe',
+      );
     }
-    if (p.endsWith('.m3u8')) {
-      final String np = '${p.substring(0, p.length - 5)}.ts';
-      return u.replace(path: np).toString();
+  }
+
+  /// `true` si la chaîne vient d'une playlist de type XTREAM — condition
+  /// du repli en cascade de variantes d'URL (une M3U générique doit
+  /// garder son URL intacte). Best-effort : playlist introuvable en
+  /// cache → on considère que ce n'est PAS de l'Xtream (pas de réécriture).
+  static bool _isFromXtreamSource(Channel channel) {
+    final int? pid = channel.playlistId;
+    if (pid == null) return false;
+    for (final pl.Playlist p in PlaylistRepository.instance.currentPlaylists) {
+      if (p.id == pid) return p.type == pl.PlaylistType.xtream;
     }
-    return null;
+    return false;
   }
 
   /// Borne l'ATTENTE DE DÉMARRAGE d'une ouverture : si `playing` n'est
@@ -1364,6 +1462,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _watchdogRecoveries++;
     debugPrint(
         '[Player] watchdog: flux gelé → reconnexion automatique #$_watchdogRecoveries');
+    StreamDiagnostics.instance.recordEvent(
+      'watchdog',
+      'Flux gelé (position immobile) → reconnexion automatique '
+          '#$_watchdogRecoveries',
+      level: 'warn',
+    );
     if (mounted) {
       setState(() {
         _isBuffering = true;
@@ -2452,6 +2556,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   label: Text(context.l10n.buttonRetry),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            // Porte discrète vers la boîte noire : codec, statut HTTP,
+            // User-Agent envoyé, erreur exacte du moteur. Un écran noir
+            // ne doit JAMAIS rester muet — le détail est à un tap.
+            TextButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const StreamDebugScreen(),
+                  ),
+                );
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white54,
+              ),
+              icon: const Icon(Icons.bug_report_outlined, size: 16),
+              label: const Text(
+                'Détails techniques',
+                style: TextStyle(fontSize: 12),
+              ),
             ),
           ],
         ),

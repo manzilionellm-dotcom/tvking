@@ -9,6 +9,7 @@
 // =========================================================
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -21,6 +22,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/legal_disclaimer.dart';
 import '../../device/presentation/device_id_card.dart';
+import '../../player/presentation/stream_debug_screen.dart';
 import '../data/update_checker.dart';
 
 class AboutScreen extends StatefulWidget {
@@ -117,20 +119,34 @@ class _AboutScreenState extends State<AboutScreen> {
                   ),
                   const SizedBox(height: 12),
                   if (_pkg != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceHigh,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        'v${_pkg!.version} • build ${_pkg!.buildNumber}',
-                        style: AppTextStyles.bodyMedium.copyWith(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
+                    // Appui LONG = écran debug flux caché (codec détecté,
+                    // statut HTTP, User-Agent envoyé, erreur exacte du
+                    // moteur). Volontairement invisible : outil de
+                    // diagnostic terrain, pas une feature grand public.
+                    GestureDetector(
+                      onLongPress: () {
+                        HapticFeedback.mediumImpact();
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const StreamDebugScreen(),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceHigh,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'v${_pkg!.version} • build ${_pkg!.buildNumber}',
+                          style: AppTextStyles.bodyMedium.copyWith(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
                         ),
                       ),
                     ),

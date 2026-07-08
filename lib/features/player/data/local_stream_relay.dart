@@ -53,6 +53,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/observability/structured_logger.dart';
 import 'player_settings.dart';
+import 'stream_diagnostics.dart';
 
 /// Nombre d'échecs de reconnexion CONSÉCUTIFS tolérés avant d'abandonner
 /// l'upstream. Tant qu'une reconnexion réussit, le compteur repart à 0,
@@ -275,6 +276,19 @@ class LocalStreamRelay {
       cReq.headers.set(HttpHeaders.acceptHeader, '*/*');
 
       final HttpClientResponse cResp = await cReq.close();
+      // Boîte noire : le statut HTTP RÉEL vu par la connexion de lecture
+      // (+ URL finale si le serveur a redirigé, + MIME). C'est LA donnée
+      // qui manquait pour diagnostiquer un écran noir : l'écran debug
+      // caché la montre telle quelle.
+      final String finalUrl = cResp.redirects.isEmpty
+          ? url
+          : cResp.redirects.last.location.toString();
+      StreamDiagnostics.instance.recordHttp(
+        status: cResp.statusCode,
+        finalUrl: finalUrl,
+        mime: cResp.headers.contentType?.mimeType,
+        source: 'relay',
+      );
       if (cResp.statusCode != 200 && cResp.statusCode != 206) {
         if (kDebugMode) {
           debugPrint('[Relay] HTTP ${cResp.statusCode} sur ${_short(url)}');
@@ -287,6 +301,10 @@ class LocalStreamRelay {
       return cResp;
     } catch (e) {
       if (kDebugMode) debugPrint('[Relay] _openUpstream KO: $e');
+      StreamDiagnostics.instance.recordHttp(
+        error: 'connexion upstream impossible : $e',
+        source: 'relay',
+      );
       return null;
     }
   }
@@ -373,10 +391,22 @@ class LocalStreamRelay {
         event: 'relay.upstream_dead',
         ctx: <String, Object?>{'failures': session.reconnectFailures},
       );
+      StreamDiagnostics.instance.recordEvent(
+        'relay',
+        'Serveur injoignable après ${session.reconnectFailures} tentatives '
+            '— abandon de la session',
+        level: 'error',
+      );
       _closeSession(session);
       return;
     }
 
+    StreamDiagnostics.instance.recordEvent(
+      'relay',
+      'Connexion upstream perdue → reconnexion '
+          '#${session.reconnectFailures}',
+      level: 'warn',
+    );
     final int wait = (2 * session.reconnectFailures).clamp(2, 16);
     await Future<void>.delayed(Duration(seconds: wait));
     if (!session.hasConsumers) {
