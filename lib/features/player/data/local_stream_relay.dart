@@ -47,11 +47,13 @@
 // =========================================================
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
 import '../../../core/observability/structured_logger.dart';
+import 'hls_playlist_normalizer.dart';
 import 'player_settings.dart';
 import 'stream_diagnostics.dart';
 
@@ -136,6 +138,112 @@ class LocalStreamRelay {
     }
   }
 
+  /// URLs de playlists dont la preuve brute a déjà été journalisée (mpv
+  /// re-télécharge la playlist toutes les ~TARGETDURATION secondes en
+  /// live : on ne journalise la preuve + les réparations qu'UNE fois
+  /// par URL pour ne pas noyer la boîte noire).
+  final Set<String> _hlsProvenUrls = <String>{};
+
+  /// URL locale de la PLAYLIST HLS NORMALISÉE pour [realUrl].
+  ///
+  /// Cause racine terrain (2026-07-08) : mpv lisait la playlist du
+  /// panel en « plaintext » (« Failed to recognize file format ») —
+  /// `#EXTM3U` absent/décalé (BOM, blancs, \r\n). La route `/hls`
+  /// re-télécharge la playlist AMONT à CHAQUE requête de mpv (c'est le
+  /// rafraîchissement live : mpv poll selon #EXT-X-TARGETDURATION), la
+  /// NORMALISE (HlsPlaylistNormalizer) et la sert avec le bon
+  /// Content-Type. Les SEGMENTS restent en DIRECT vers le CDN (URIs
+  /// absolues) — seul le petit document texte transite ici.
+  Future<String> hlsPlaylistUrlFor(String realUrl) async {
+    await _ensureServer();
+    // Une seule lecture à la fois : ferme les sessions TS restantes.
+    closeOtherPlaybacks(realUrl);
+    final String token = Uri.encodeComponent(realUrl);
+    return 'http://127.0.0.1:$_port/hls?u=$token';
+  }
+
+  /// Sert la playlist normalisée (route `/hls?u=…`).
+  Future<void> _serveNormalizedPlaylist(
+    HttpRequest req,
+    String realUrl,
+  ) async {
+    final bool firstServe = _hlsProvenUrls.add(realUrl);
+    final HttpClient client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 8)
+      ..userAgent = PlayerSettings.instance.userAgent
+      ..badCertificateCallback =
+          ((X509Certificate cert, String host, int port) => true);
+    try {
+      final HttpClientRequest up =
+          await client.getUrl(Uri.parse(realUrl));
+      up.followRedirects = true;
+      up.maxRedirects = 8;
+      final HttpClientResponse resp = await up.close();
+      final Uri finalUri = resp.redirects.isEmpty
+          ? Uri.parse(realUrl)
+          : Uri.parse(realUrl).resolveUri(resp.redirects.last.location);
+      final String raw = await resp
+          .transform(const Utf8Decoder(allowMalformed: true))
+          .join();
+      if (resp.statusCode >= 400) {
+        StreamDiagnostics.instance.recordEvent(
+          'hls',
+          'Playlist amont HTTP ${resp.statusCode} '
+              '(${StreamDiagnostics.maskCredentials(realUrl)}) — 502 à mpv',
+          level: 'error',
+        );
+        req.response.statusCode = HttpStatus.badGateway;
+        await req.response.close();
+        return;
+      }
+      final NormalizedPlaylist normalized = HlsPlaylistNormalizer.normalize(
+        raw,
+        finalUri,
+        rewriteSubPlaylist: (String abs) =>
+            'http://127.0.0.1:$_port/hls?u=${Uri.encodeComponent(abs)}',
+      );
+      if (firstServe) {
+        // PREUVE demandée : les 3 premières lignes BRUTES, octets
+        // invisibles rendus visibles + les réparations appliquées.
+        StreamDiagnostics.instance.recordEvent(
+          'hls',
+          '3 premières lignes BRUTES de la playlist amont : '
+              '${normalized.rawHead}',
+          level: normalized.hadExtM3uAtStart ? 'info' : 'error',
+        );
+        StreamDiagnostics.instance.recordEvent(
+          'hls',
+          normalized.repairs.isEmpty
+              ? 'Playlist saine (#EXTM3U en position 0) — servie '
+                  'normalisée par précaution'
+              : 'Playlist RÉPARÉE : ${normalized.repairs.join(' ; ')} — '
+                  'servie à mpv en local, segments en direct CDN',
+          level: normalized.repairs.isEmpty ? 'info' : 'warn',
+        );
+      }
+      req.response.statusCode = HttpStatus.ok;
+      req.response.headers.contentType =
+          ContentType.parse('application/vnd.apple.mpegurl');
+      req.response.headers
+          .set(HttpHeaders.cacheControlHeader, 'no-cache, no-store');
+      req.response.write(normalized.text);
+      await req.response.close();
+    } catch (e) {
+      StreamDiagnostics.instance.recordEvent(
+        'hls',
+        'Normalisation playlist impossible '
+            '(${StreamDiagnostics.maskCredentials(realUrl)}) : $e',
+        level: 'error',
+      );
+      try {
+        req.response.statusCode = HttpStatus.badGateway;
+        await req.response.close();
+      } catch (_) {}
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   /// Démarre l'écriture du flux EN COURS vers `filePath`, en se branchant
   /// sur la connexion DÉJÀ ouverte pour la lecture (aucune 2e connexion).
   /// Si aucune session n'existe encore pour cette URL (cas limite), on
@@ -213,10 +321,14 @@ class LocalStreamRelay {
   }
 
   Future<void> _handleRequest(HttpRequest req) async {
-    // On n'accepte que /s?u=<token>. Tout le reste → 404.
-    // `queryParameters` percent-décode déjà la valeur → on récupère
-    // directement l'URL IPTV réelle.
+    // Deux routes : /s?u=<token> (relais d'octets TS) et /hls?u=<token>
+    // (playlist HLS NORMALISÉE — document servi puis connexion fermée,
+    // segments en direct CDN). Tout le reste → 404.
     final String? realUrl = req.uri.queryParameters['u'];
+    if (req.uri.path == '/hls' && realUrl != null && realUrl.isNotEmpty) {
+      await _serveNormalizedPlaylist(req, realUrl);
+      return;
+    }
     if (req.uri.path != '/s' || realUrl == null || realUrl.isEmpty) {
       req.response.statusCode = HttpStatus.notFound;
       await req.response.close();

@@ -211,6 +211,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // l'erreur claire (avec « réessayer ») au lieu du spinner infini.
   // Même philosophie que le fix TV (verrou _recovering, 2026-07-06).
   Timer? _startupTimer;
+  Timer? _zapDebounce;
   static const Duration _kStartupTimeout = Duration(seconds: 25);
 
   // Autoplay « À suivre » (façon YouTube / Netflix) : quand un contenu
@@ -627,7 +628,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           channelName: next.cleanName,
         )
         .then((int id) => _watchSessionId = id);
-    _openMedia(next.streamUrl);
+    // FIX CONNEXIONS — DEBOUNCE du zapping : un zap en rafale (molette /
+    // swipes rapides) ouvrait une connexion par chaîne traversée
+    // (journal terrain : 4 connexions / max 1). L'UI change tout de
+    // suite ; l'ouverture RÉSEAU n'a lieu qu'après 300 ms sans nouveau
+    // zap — seule la chaîne où l'on s'arrête se connecte.
+    _zapDebounce?.cancel();
+    _zapDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted || _currentChannel.id != next.id) return;
+      _openMedia(next.streamUrl);
+    });
     _reportNowPlaying(); // panel « En ligne » : nouvelle chaîne
     _scheduleHideOverlay();
   }
@@ -769,20 +779,52 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (finalUrl != null && finalUrl != realUrl) {
         StreamDiagnostics.instance.recordEvent(
           'hls',
-          'Redirection résolue AVANT mpv → lecture sur l\'URL finale '
+          'Redirection résolue AVANT mpv → base des segments = URL finale '
               '${StreamDiagnostics.maskCredentials(finalUrl)} '
-              '(base segments correcte, token conservé)',
+              '(token conservé)',
         );
         hlsUrl = finalUrl;
       }
-      unawaited(HlsPreflight.run(hlsUrl)); // diagnostic fire-and-forget
-      _player.open(Media(hlsUrl));
+      // CAUSE RACINE terrain (logs mpv « Reading plaintext playlist » /
+      // « Failed to recognize file format » sur segments TS pourtant
+      // valides) : la playlist du panel n'a pas #EXTM3U en position 0
+      // (BOM/blancs/CR, voire balise absente). mpv lit donc la PLAYLIST
+      // NORMALISÉE par le relais local (route /hls : re-téléchargée à
+      // chaque poll live, #EXTM3U garanti, URIs de segments ABSOLUES →
+      // les octets vidéo partent en DIRECT vers le CDN).
+      final String normalizedUrl =
+          await LocalStreamRelay.instance.hlsPlaylistUrlFor(hlsUrl);
+      if (!mounted) return;
+      // FILET : force le démuxeur HLS de ffmpeg sur ce contenu, au cas
+      // où un panel servirait un document encore plus exotique. Remis à
+      // « auto » sur le chemin TS (_applyMpvOptions n'y touche pas).
+      final bool forced =
+          await _setMpvProperty('demuxer-lavf-format', 'hls');
+      StreamDiagnostics.instance.recordEvent(
+        'hls',
+        'Playlist normalisée servie en local → mpv ; démuxeur HLS forcé : '
+            '${forced ? 'oui' : 'non (propriété refusée)'}',
+      );
+      // FIX CONNEXIONS : STOP attendu AVANT la nouvelle lecture — mpv
+      // ferme sa socket précédente (abonnements 1-connexion : l'ancienne
+      // lecture ne doit pas chevaucher la nouvelle).
+      try {
+        await _player.stop();
+      } catch (_) {}
+      _player.open(Media(normalizedUrl));
       return;
     }
     try {
       final String localUrl =
           await LocalStreamRelay.instance.playUrlFor(realUrl);
       if (!mounted) return;
+      // Chemin TS : démuxeur re-détecté automatiquement (annule le
+      // filet HLS éventuel) + STOP attendu avant la nouvelle lecture
+      // (fix connexions — pas de chevauchement de sockets mpv).
+      await _setMpvProperty('demuxer-lavf-format', '');
+      try {
+        await _player.stop();
+      } catch (_) {}
       _player.open(Media(localUrl));
     } catch (e) {
       // Si le relais ne démarre pas (cas improbable), on retombe sur la
@@ -1222,6 +1264,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _upNextTimer?.cancel();
     _watchdogTimer?.cancel();
     _startupTimer?.cancel();
+    _zapDebounce?.cancel();
     // Mode « Écouteurs » : on coupe le service audio de fond et on lève le
     // drapeau natif (sinon le son continuerait après la fermeture du
     // lecteur). Idempotent / fail-open.

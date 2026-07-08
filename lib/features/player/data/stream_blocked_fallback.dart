@@ -40,6 +40,7 @@ import '../../playlists/data/xtream_url_format_store.dart';
 // Préfixé par cohérence avec le widget (media_kit y exporte aussi un
 // type `Playlist`).
 import '../../playlists/domain/playlist.dart' as pl;
+import 'hls_preflight.dart';
 import 'local_stream_relay.dart';
 import 'player_settings.dart';
 import 'stream_diagnostics.dart';
@@ -209,6 +210,19 @@ class StreamBlockedFallback {
 
   Future<void> _runInner(Channel channel) async {
     bool stillCurrent() => isAlive() && channel.id == getChannel().id;
+
+    // Diagnostic HLS SUR ÉCHEC uniquement (séquentiel — la sonde ne
+    // tourne plus EN MÊME TEMPS que la lecture : sur un abonnement
+    // 1-connexion elle comptait comme une connexion de plus, journal
+    // terrain « 4/1 »). La lecture est déjà morte ici : on peut sonder.
+    final String effective = getEffectiveUrl();
+    if (HlsPreflight.isHlsUrl(effective)) {
+      await HlsPreflight.run(effective);
+      if (!stillCurrent()) {
+        _log('Diagnostic abandonné pendant la sonde HLS (zap)');
+        return;
+      }
+    }
 
     final String currentUa = PlayerSettings.instance.userAgent;
     final pl.Playlist? src = xtreamPlaylistFor(channel);
