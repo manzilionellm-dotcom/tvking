@@ -71,6 +71,18 @@ const int _kMaxReconnectFailures = 12;
 /// définitif ferme la session immédiatement, sans aucun retry.
 const int _kMaxInitialFailures = 3;
 
+/// Échec DÉFINITIF annoncé par le relais : l'URL réelle concernée et le
+/// dernier statut HTTP vu (`null` = échec réseau / serveur muet, aucune
+/// réponse HTTP). Le statut permet au diagnostic de choisir la bonne
+/// parade : 403 « slot 1-connexion encore occupé » → backoff + retry ;
+/// 404 « mauvais format d'URL » → cascade de variantes directe.
+class RelayFailure {
+  const RelayFailure({required this.url, this.status});
+
+  final String url;
+  final int? status;
+}
+
 /// Relais singleton. Une instance pour toute l'app : un seul serveur HTTP
 /// local, qui multiplexe N chaînes (sessions) si besoin.
 class LocalStreamRelay {
@@ -87,11 +99,14 @@ class LocalStreamRelay {
   /// 2026-07-08 11:37 : on comptait sur la réaction de mpv à un flux
   /// vide (EOF), qui n'arrive pas de façon fiable → la cascade ne
   /// s'exécutait jamais sur le chemin de lecture réel.
-  final StreamController<String> _definitiveFailures =
-      StreamController<String>.broadcast();
+  final StreamController<RelayFailure> _definitiveFailures =
+      StreamController<RelayFailure>.broadcast();
 
-  /// URL réelles dont la session vient d'échouer DÉFINITIVEMENT.
-  Stream<String> get definitiveFailures => _definitiveFailures.stream;
+  /// Échecs DÉFINITIFS (URL réelle + statut HTTP). Le statut permet au
+  /// fallback de distinguer un 403 « connexion encore occupée » (backoff
+  /// 3 s + retry, comptes 1-connexion) d'un 404 « mauvais format d'URL »
+  /// (cascade de variantes immédiate).
+  Stream<RelayFailure> get definitiveFailures => _definitiveFailures.stream;
 
   /// Sessions actives, indexées par l'URL RÉELLE du flux (la clé est
   /// l'URL upstream, pas l'URL locale). Une session = une chaîne tirée
@@ -413,15 +428,15 @@ class LocalStreamRelay {
         StreamDiagnostics.instance.recordEvent(
           'relay',
           'HTTP $st définitif dès la 1re réponse → session fermée sans '
-              'retry (la cascade de variantes prend la main)',
+              'retry (le lecteur décide : backoff 1-connexion ou cascade)',
           level: 'error',
         );
         final String failedUrl = session.realUrl;
         _closeSession(session);
         // APRÈS la fermeture : on prévient explicitement le lecteur
-        // (URL réelle, brute) pour qu'il lance sa cascade TOUT DE SUITE
-        // — sans attendre que mpv réagisse au flux vide.
-        _definitiveFailures.add(failedUrl);
+        // (URL réelle brute + statut) pour qu'il décide TOUT DE SUITE —
+        // sans attendre que mpv réagisse au flux vide.
+        _definitiveFailures.add(RelayFailure(url: failedUrl, status: st));
         return;
       }
       _scheduleReconnect(session);
@@ -621,11 +636,15 @@ class LocalStreamRelay {
       );
       final bool neverStreamed = !session.everStreamed;
       final String failedUrl = session.realUrl;
+      final int? lastStatus = session.lastUpstreamStatus;
       _closeSession(session);
       // Session qui n'a JAMAIS diffusé et que le serveur ignore : on
       // prévient aussi le lecteur — il sondera (diagnostic réseau vs
       // signature) au lieu d'attendre son timeout de démarrage.
-      if (neverStreamed) _definitiveFailures.add(failedUrl);
+      if (neverStreamed) {
+        _definitiveFailures
+            .add(RelayFailure(url: failedUrl, status: lastStatus));
+      }
       return;
     }
 

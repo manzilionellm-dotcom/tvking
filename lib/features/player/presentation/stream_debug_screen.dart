@@ -45,20 +45,12 @@ class _StreamDebugScreenState extends State<StreamDebugScreen> {
   bool _probing = false;
   bool _checkingAccount = false;
 
-  @override
-  void initState() {
-    super.initState();
-    // Contrôle AUTO du compte à l'ouverture de l'écran si on n'a pas
-    // déjà une photo récente (< 2 min) : l'utilisateur arrive ici pour
-    // comprendre un échec — l'état du compte est la première chose à
-    // regarder (code mort vs mauvais format d'URL).
-    final DateTime? checked = StreamDiagnostics.instance.xtreamCheckedAt;
-    final bool fresh = checked != null &&
-        DateTime.now().difference(checked) < const Duration(minutes: 2);
-    if (!fresh) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _checkAccountNow());
-    }
-  }
+  // PAS de contrôle automatique du compte à l'ouverture (mission
+  // 2026-07-08 17:07) : sur un abonnement 1-connexion, CHAQUE requête
+  // réseau non sollicitée compte — le journal terrain montrait encore
+  // « un probe + 2 player_api en 10 s » après la lecture, dont ce
+  // contrôle auto. Ici TOUT est manuel : boutons « Vérifier le compte »
+  // et « Tester le flux » uniquement.
 
   /// Playlist Xtream à contrôler : celle du flux courant si connue,
   /// sinon la première source Xtream chargée (cas « rien joué encore »).

@@ -71,6 +71,7 @@ class StreamBlockedFallback {
     required this.reopen,
     required this.showBlocked,
     this.uaProbeTimeout = const Duration(milliseconds: 2500),
+    this.retryBackoff = const Duration(seconds: 3),
   });
 
   /// Chaîne affichée à l'écran (change au zap).
@@ -110,9 +111,16 @@ class StreamBlockedFallback {
   /// pas laisser l'écran muet une minute).
   final Duration uaProbeTimeout;
 
+  /// BACKOFF 1-CONNEXION : attente avant le retry silencieux unique
+  /// quand le premier refus ressemble à « le panel n'a pas encore
+  /// libéré l'ancienne session » (403, ou EOF immédiat sans frame).
+  /// 3 s sur le terrain ; injectable court dans les tests.
+  final Duration retryBackoff;
+
   String? _attemptedForChannelId;
+  String? _backoffConsumedForChannelId;
   bool _inFlight = false;
-  StreamSubscription<String>? _relaySub;
+  StreamSubscription<RelayFailure>? _relaySub;
 
   static void _log(String message, {String level = 'info'}) =>
       StreamDiagnostics.instance
@@ -135,8 +143,9 @@ class StreamBlockedFallback {
     _relaySub = null;
   }
 
-  void _onRelayFailure(String failedUrl) {
+  void _onRelayFailure(RelayFailure failure) {
     if (!isAlive()) return; // écran fermé : rien à faire ni à journaliser
+    final String failedUrl = failure.url;
     final String current = getEffectiveUrl();
     if (failedUrl != current) {
       _log(
@@ -147,23 +156,75 @@ class StreamBlockedFallback {
       );
       return;
     }
-    _log('Relais : échec définitif signalé → diagnostic immédiat '
-        '(sonde + variantes)');
+    _log('Relais : échec définitif signalé '
+        '(HTTP ${failure.status ?? '— (réseau)'}) → décision immédiate');
     // RÈGLE DE DÉCISION (mission 2026-07-08 14:43) : la branche
     // « coupure réseau » ne s'applique QUE si la lecture avait
     // réellement démarré (≥ 1 frame décodée). Sinon — et notamment sur
-    // un HTTP définitif 404/403 — la CASCADE tourne TOUJOURS. La valeur
-    // du drapeau est journalisée AU MOMENT de la décision.
+    // un HTTP définitif 404/403 — le diagnostic tourne TOUJOURS. La
+    // valeur du drapeau est journalisée AU MOMENT de la décision.
     final bool frames = hasDecodedFrames();
     _log('frames décodées: ${frames ? '≥1' : '0'} → décision: '
-        '${frames ? 'erreur directe (coupure réseau)' : 'cascade'}');
+        '${frames ? 'erreur directe (coupure réseau)' : 'diagnostic'}');
     if (frames) {
       showBlocked('Flux interrompu. Vérifie ta connexion puis réessaie.');
+      return;
+    }
+    // BACKOFF 1-CONNEXION (mission 2026-07-08 17:07) : un 403 dès la
+    // 1re réponse sur une chaîne jamais décodée = très probablement le
+    // slot de connexion encore occupé par la lecture qu'on vient de
+    // quitter (le panel le libère en ~1 s). Sonder/cascader tout de
+    // suite AGGRAVERAIT le problème (chaque sonde = une connexion de
+    // plus). On attend, on retente UNE fois en silence — le diagnostic
+    // complet ne part que si le retry échoue aussi. Un 404, lui, est
+    // déterministe (mauvais format d'URL) → cascade directe.
+    if ((failure.status == 403 || failure.status == 429) &&
+        _tryScheduleBackoffRetry(
+            'HTTP ${failure.status} dès la 1re réponse (slot 1-connexion '
+            'probablement encore occupé)')) {
       return;
     }
     // Fire-and-forget VOLONTAIRE : run() a son propre catch-all — aucune
     // exception ne peut se perdre dans la zone async du listener.
     run();
+  }
+
+  /// Déclenché par le lecteur quand mpv refuse le flux AVANT toute frame
+  /// (« Error when loading first segment », EOF immédiat…). Même parade
+  /// 1-connexion que pour le 403 du relais : UN retry silencieux après
+  /// [retryBackoff], puis le diagnostic complet si ça échoue encore.
+  void onPlaybackRefused(String reason) {
+    if (!hasDecodedFrames() && _tryScheduleBackoffRetry(reason)) return;
+    // Fire-and-forget : run() a son propre catch-all.
+    run();
+  }
+
+  /// Programme le retry silencieux unique du backoff 1-connexion.
+  /// Renvoie `false` si le backoff a DÉJÀ été consommé pour cette chaîne
+  /// (le prochain échec doit partir en diagnostic complet).
+  bool _tryScheduleBackoffRetry(String reason) {
+    final Channel channel = getChannel();
+    if (_backoffConsumedForChannelId == channel.id) {
+      _log('[backoff] déjà consommé pour « ${channel.cleanName} » → '
+          'place au diagnostic complet');
+      return false;
+    }
+    _backoffConsumedForChannelId = channel.id;
+    _log('[backoff] $reason → attente de '
+        '${retryBackoff.inMilliseconds} ms (le panel libère l\'ancienne '
+        'session) puis UN retry automatique et silencieux');
+    Future<void>.delayed(retryBackoff).then((_) {
+      if (!isAlive() || channel.id != getChannel().id) {
+        _log('[backoff] retry abandonné (zap ou écran fermé pendant '
+            'l\'attente)');
+        return;
+      }
+      resetWatchdogBudget();
+      _log('[backoff] retry silencieux → réouverture de '
+          '${StreamDiagnostics.maskCredentials(getEffectiveUrl())}');
+      reopen(getEffectiveUrl());
+    });
+    return true;
   }
 
   // ---------------------------------------------------------------

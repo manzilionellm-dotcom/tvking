@@ -108,8 +108,30 @@ class VideoPlayerScreen extends StatefulWidget {
 }
 
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
-  late final Player _player;
-  late final VideoController _videoController;
+  // INSTANCE mpv JETABLE (fix connexions 2026-07-08 17:07) : réutiliser
+  // la même instance laissait FUIR des connexions à chaque échec
+  // (« [lavf] Leaking 1 nested connections (FFmpeg bug) ») — sur un
+  // compte 1-connexion le panel voyait 2/1 et refusait les chaînes
+  // suivantes. On RECRÉE donc l'instance (dispose + new) avant CHAQUE
+  // nouvelle ouverture — cf. _recyclePlayer(). Non-final pour ça.
+  late Player _player;
+  late VideoController _videoController;
+
+  /// Epoch d'instance : change à chaque recréation du player, sert de
+  /// clé au widget `Video` pour forcer son remontage sur le NOUVEAU
+  /// VideoController.
+  int _playerEpoch = 0;
+
+  /// `true` dès qu'un `open()` a été lancé sur l'instance courante — la
+  /// prochaine ouverture doit alors passer par le recyclage (une
+  /// instance jamais ouverte est neuve : rien à fermer).
+  bool _playerOpenedOnce = false;
+
+  /// SÉRIALISATION des ouvertures : chaque _openMedia s'enchaîne à la
+  /// précédente — JAMAIS deux lectures en vol (comptes 1-connexion).
+  /// `_openGeneration` invalide les ouvertures dépassées par un zap.
+  Future<void> _openChain = Future<void>.value();
+  int _openGeneration = 0;
 
 
   bool _overlayVisible = true;
@@ -212,6 +234,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // Même philosophie que le fix TV (verrou _recovering, 2026-07-06).
   Timer? _startupTimer;
   Timer? _zapDebounce;
+  // Chaîne en attente derrière le debounce : si un nouveau zap arrive
+  // avant l'échéance, elle est « absorbée » (zéro requête émise) — on
+  // le journalise pour prouver le comportement 1-connexion.
+  Channel? _pendingZapChannel;
   // Chrono « zap → première frame » (mesure fluidité, cible < 2 s).
   final Stopwatch _zapClock = Stopwatch();
   static const Duration _kStartupTimeout = Duration(seconds: 25);
@@ -314,6 +340,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // Charge d'abord les réglages persistés
     PlayerSettings.instance.load();
 
+    // Crée l'instance mpv + controller + options + abonnements. Elle
+    // sera RECRÉÉE avant chaque ouverture suivante (instance jetable —
+    // parade au leak de connexions FFmpeg, cf. _recyclePlayer).
+    _createPlayer();
+    _initStateAfterPlayer();
+  }
+
+  /// Crée une instance mpv NEUVE (+ controller, options, abonnements,
+  /// vitesse persistée). Appelée par initState puis par _recyclePlayer
+  /// avant chaque nouvelle ouverture.
+  void _createPlayer() {
+    _playerEpoch++;
+    _playerOpenedOnce = false;
     // Configure le Player avec un buffer généreux (pour 4K/8K)
     _player = Player(
       configuration: PlayerConfiguration(
@@ -327,7 +366,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // Applique les options libmpv pour hardware decoding + cache
     _applyMpvOptions();
 
-    // Abonne aux événements
+    _attachPlayerListeners();
+
+    // Restaure la dernière vitesse (une instance neuve repart à 1.0).
+    if (PlayerSettings.instance.lastSpeed != 1.0) {
+      _player.setRate(PlayerSettings.instance.lastSpeed);
+    }
+  }
+
+  /// Abonne l'instance mpv COURANTE aux événements. Les abonnements
+  /// vivent dans `_subs` : annulés puis re-créés à chaque recyclage.
+  void _attachPlayerListeners() {
     _subs.add(_player.stream.buffering.listen((bool b) {
       if (mounted) setState(() => _isBuffering = b);
     }));
@@ -443,7 +492,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           _errorMessage = e;
         });
       } else {
-        _declareChannelBlocked();
+        // Refus AVANT toute frame (« Error when loading first segment »,
+        // EOF immédiat…) : sur un compte 1-connexion c'est souvent le
+        // slot encore occupé par la lecture qu'on vient de quitter →
+        // BACKOFF 3 s + UN retry silencieux d'abord ; le diagnostic
+        // complet (sonde + cascade) ne part que si le retry échoue.
+        _fallback.onPlaybackRefused(
+            'mpv refuse le flux avant toute frame (« $e »)');
       }
     }));
 
@@ -486,7 +541,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _subs.add(_player.stream.position.listen((Duration pos) {
       if (pos > const Duration(milliseconds: 400)) _markPlaybackStarted();
     }));
+  }
 
+  /// Suite d'initState APRÈS la création du player (exécutée UNE fois —
+  /// contrairement à _createPlayer qui rejoue à chaque recyclage).
+  void _initStateAfterPlayer() {
     // Chaîne « échec → sonde → cascade » : le contrôleur possède
     // l'abonnement aux échecs définitifs du relais (déclencheur FIABLE,
     // indépendant de la réaction de mpv au flux vide) et TOUT le
@@ -534,13 +593,49 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       ..start(); // mesure « ouverture → première frame »
     _openMedia(url);
 
-    // Restaure la dernière vitesse
-    if (PlayerSettings.instance.lastSpeed != 1.0) {
-      _player.setRate(PlayerSettings.instance.lastSpeed);
-    }
-
     _scheduleHideOverlay();
     _startWatchdog();
+  }
+
+  /// FERMETURE ATTENDUE + INSTANCE NEUVE — le cœur du comportement
+  /// « client 1-connexion parfait » (mission 2026-07-08 17:07) :
+  ///   1. STOP ATTENDU et MESURÉ : le panel doit voir l'ancienne socket
+  ///      FERMÉE avant qu'une nouvelle lecture ne se connecte (sinon il
+  ///      compte 2/1 et refuse les chaînes suivantes) ;
+  ///   2. instance mpv JETABLE (dispose + new) : l'instance réutilisée
+  ///      laissait fuir des connexions à chaque échec — « [lavf] Leaking
+  ///      1 nested connections (FFmpeg bug) » dans les logs terrain.
+  ///      Une instance neuve ne peut rien laisser fuir.
+  /// Le coût est journalisé pour prouver qu'on ne dégrade pas le
+  /// « zap → première frame » (590 ms mesurés pour 2000 visés).
+  Future<void> _recyclePlayer() async {
+    if (!_playerOpenedOnce) return; // instance jamais ouverte : neuve
+    final Stopwatch sw = Stopwatch()..start();
+    // Les abonnements appartiennent à l'ANCIENNE instance.
+    for (final StreamSubscription<dynamic> s in _subs) {
+      unawaited(s.cancel());
+    }
+    _subs.clear();
+    final Player old = _player;
+    try {
+      await old.stop().timeout(const Duration(seconds: 5));
+    } catch (_) {}
+    final int stopMs = sw.elapsedMilliseconds;
+    StreamDiagnostics.instance.recordEvent(
+      'player',
+      'session fermée (attendue) en $stopMs ms',
+    );
+    try {
+      await old.dispose().timeout(const Duration(seconds: 5));
+    } catch (_) {}
+    _createPlayer();
+    StreamDiagnostics.instance.recordEvent(
+      'player',
+      'instance mpv recréée en ${sw.elapsedMilliseconds - stopMs} ms '
+          '(jetable — parade au « Leaking nested connections » de FFmpeg)',
+    );
+    // Le widget Video doit remonter sur le NOUVEAU controller.
+    if (mounted) setState(() {});
   }
 
   // ----- Zapping -----
@@ -657,20 +752,34 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           channelName: next.cleanName,
         )
         .then((int id) => _watchSessionId = id);
-    // FIX CONNEXIONS — DEBOUNCE du zapping : un zap en rafale (molette /
-    // swipes rapides) ouvrait une connexion par chaîne traversée
-    // (journal terrain : 4 connexions / max 1). L'UI change tout de
-    // suite ; l'ouverture RÉSEAU n'a lieu qu'après 300 ms sans nouveau
-    // zap — seule la chaîne où l'on s'arrête se connecte.
+    // FIX CONNEXIONS — DEBOUNCE 400 ms du zapping : un zap en rafale
+    // (molette / swipes rapides) ouvrait une connexion par chaîne
+    // traversée (journal terrain : 5 ouvertures en 10 s → 2/1 côté
+    // panel). L'UI change tout de suite ; les chaînes INTERMÉDIAIRES
+    // n'émettent AUCUNE requête (ni playlist, ni segment, ni sonde, ni
+    // heartbeat) — seule la chaîne où l'on s'arrête se connecte, et le
+    // zap absorbé est journalisé (preuve terrain).
+    if (_zapDebounce?.isActive ?? false) {
+      final Channel? absorbed = _pendingZapChannel;
+      StreamDiagnostics.instance.recordEvent(
+        'zap',
+        'Zap absorbé (rafale) : '
+            '« ${absorbed?.cleanName ?? '?'} » — aucune requête émise',
+      );
+    }
     _zapDebounce?.cancel();
+    _pendingZapChannel = next;
     _zapClock
       ..reset()
       ..start(); // la mesure inclut le debounce : c'est le ressenti réel
-    _zapDebounce = Timer(const Duration(milliseconds: 300), () {
+    _zapDebounce = Timer(const Duration(milliseconds: 400), () {
+      _pendingZapChannel = null;
       if (!mounted || _currentChannel.id != next.id) return;
+      // Seule la chaîne FINALE est rapportée au panel « En ligne »
+      // (le heartbeat des intermédiaires était aussi une requête).
+      _reportNowPlaying();
       _openMedia(next.streamUrl);
     });
-    _reportNowPlaying(); // panel « En ligne » : nouvelle chaîne
     _scheduleHideOverlay();
   }
 
@@ -722,7 +831,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  Future<void> _openMedia(String realUrl) async {
+  /// Point d'entrée UNIQUE des ouvertures. SÉRIALISÉ : chaque ouverture
+  /// attend la fin de la précédente (fermeture attendue comprise) —
+  /// jamais deux lectures en vol. Une ouverture dépassée par un zap plus
+  /// récent est abandonnée (garde de génération, journalisée).
+  Future<void> _openMedia(String realUrl) {
+    final int gen = ++_openGeneration;
+    _openChain = _openChain.then((_) => _openMediaInner(realUrl, gen));
+    return _openChain;
+  }
+
+  Future<void> _openMediaInner(String realUrl, int gen) async {
+    if (!mounted) return;
+    if (gen != _openGeneration) {
+      StreamDiagnostics.instance.recordEvent(
+        'player',
+        'Ouverture obsolète abandonnée (un zap plus récent est en file) : '
+            '${StreamDiagnostics.maskCredentials(realUrl)}',
+      );
+      return;
+    }
+    // FERMETURE ATTENDUE + instance mpv neuve AVANT toute connexion.
+    await _recyclePlayer();
+    if (!mounted || gen != _openGeneration) return;
     _autoSubtitleApplied = false; // nouvelle vidéo → on réévalue les sous-titres
     // FORMAT MÉMORISÉ (zapping instantané) : si la cascade a déjà trouvé
     // le format d'URL gagnant pour cette source (et ce type de contenu),
@@ -764,7 +895,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             'Signature mémorisée pour cette source appliquée : "$sourceUa"',
           );
         }
-        if (!mounted) return;
+        if (!mounted || gen != _openGeneration) return;
       }
     }
     // Boîte noire : nouvelle tentative d'ouverture (URL réelle + UA).
@@ -778,6 +909,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     );
     _armStartupTimeout();
     if (widget.overrideUrl != null) {
+      _playerOpenedOnce = true;
       _player.open(Media(realUrl));
       return;
     }
@@ -807,7 +939,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       String hlsUrl = realUrl;
       final String? finalUrl =
           await HlsPreflight.resolveFinalPlaylistUrl(realUrl);
-      if (!mounted) return;
+      if (!mounted || gen != _openGeneration) return;
       if (finalUrl != null && finalUrl != realUrl) {
         StreamDiagnostics.instance.recordEvent(
           'hls',
@@ -826,7 +958,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // les octets vidéo partent en DIRECT vers le CDN).
       final String normalizedUrl =
           await LocalStreamRelay.instance.hlsPlaylistUrlFor(hlsUrl);
-      if (!mounted) return;
+      if (!mounted || gen != _openGeneration) return;
       // FILET : force le démuxeur HLS de ffmpeg sur ce contenu, au cas
       // où un panel servirait un document encore plus exotique. Remis à
       // « auto » sur le chemin TS (_applyMpvOptions n'y touche pas).
@@ -837,31 +969,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         'Playlist normalisée servie en local → mpv ; démuxeur HLS forcé : '
             '${forced ? 'oui' : 'non (propriété refusée)'}',
       );
-      // FIX CONNEXIONS : STOP attendu AVANT la nouvelle lecture — mpv
-      // ferme sa socket précédente (abonnements 1-connexion : l'ancienne
-      // lecture ne doit pas chevaucher la nouvelle).
-      try {
-        await _player.stop();
-      } catch (_) {}
+      // (la fermeture attendue a déjà eu lieu dans _recyclePlayer :
+      // l'instance est NEUVE, aucune socket précédente à chevaucher)
+      _playerOpenedOnce = true;
       _player.open(Media(normalizedUrl));
       return;
     }
     try {
       final String localUrl =
           await LocalStreamRelay.instance.playUrlFor(realUrl);
-      if (!mounted) return;
-      // Chemin TS : démuxeur re-détecté automatiquement (annule le
-      // filet HLS éventuel) + STOP attendu avant la nouvelle lecture
-      // (fix connexions — pas de chevauchement de sockets mpv).
-      await _setMpvProperty('demuxer-lavf-format', '');
-      try {
-        await _player.stop();
-      } catch (_) {}
+      if (!mounted || gen != _openGeneration) return;
+      _playerOpenedOnce = true;
       _player.open(Media(localUrl));
     } catch (e) {
       // Si le relais ne démarre pas (cas improbable), on retombe sur la
       // lecture directe pour ne jamais priver l'utilisateur de l'image.
       debugPrint('[Player] relais indisponible, lecture directe: $e');
+      _playerOpenedOnce = true;
       _player.open(Media(realUrl));
     }
   }
@@ -2094,6 +2218,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   Center(
                     child: _forcedAspect(mode) == null
                         ? Video(
+                            // Remonté à chaque recréation du player
+                            // (instance jetable → nouveau controller).
+                            key: ValueKey<int>(_playerEpoch),
                             controller: _videoController,
                             controls: (VideoState _) => const SizedBox.shrink(),
                             fit: _fitFromMode(mode),
@@ -2102,6 +2229,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         : AspectRatio(
                             aspectRatio: _forcedAspect(mode)!,
                             child: Video(
+                              key: ValueKey<int>(_playerEpoch),
                               controller: _videoController,
                               controls: (VideoState _) => const SizedBox.shrink(),
                               fit: _fitFromMode(mode),

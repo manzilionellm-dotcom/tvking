@@ -73,9 +73,9 @@ void main() {
     //  Sur échec définitif de l'URL en cours : cascade via le code de
     //  prod, puis réouverture du relais sur la variante gagnante.
     final Completer<String> playbackRestarted = Completer<String>();
-    final StreamSubscription<String> playerWiring =
-        relay.definitiveFailures.listen((String failedUrl) async {
-      if (failedUrl != tsUrl) return; // pas notre lecture en cours
+    final StreamSubscription<RelayFailure> playerWiring =
+        relay.definitiveFailures.listen((RelayFailure failure) async {
+      if (failure.url != tsUrl) return; // pas notre lecture en cours
       final CascadeWin? win = await XtreamCascadeProber.findWorkingVariant(
         tsUrl, // URL BRUTE, comme le fait _declareChannelBlocked
         XtreamContentType.live,

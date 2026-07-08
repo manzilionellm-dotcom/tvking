@@ -139,7 +139,7 @@ void main() {
 
     // ----- 4) Contrats de journal (missions des 3e et 4e itérations) --
     final String journal = _journal();
-    expect(journal, contains('frames décodées: 0 → décision: cascade'),
+    expect(journal, contains('frames décodées: 0 → décision: diagnostic'),
         reason: 'la décision doit être journalisée avec le drapeau');
     expect(journal, contains('[cascade] DÉMARRAGE : 3 variante(s)'),
         reason: 'log d\'entrée INCONDITIONNEL de la cascade');
