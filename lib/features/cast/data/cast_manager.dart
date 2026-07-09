@@ -931,6 +931,11 @@ class CastManager extends ChangeNotifier {
       );
     }
 
+    // RÉGLAGE PAR MARQUE (recherche 2026-07-09, sourcée — MediaTomb/
+    // SamyGO/minidlna/Serviio/BubbleUPnP) : le MÊME flux TS doit être
+    // étiqueté différemment selon le constructeur pour être accepté.
+    profile = brandTunedProfile(device: transport.device, base: profile);
+
     diag.profile = ProfileSummary.from(profile);
 
     // Si le profil n'est pas du tout annoncé dans la Sink, on log mais
@@ -1254,6 +1259,53 @@ class CastManager extends ChangeNotifier {
     final bool usable =
         u.startsWith('http://') || u.startsWith('https://');
     return usable ? u : finalUrl;
+  }
+
+  /// Étiquetage DLNA PAR MARQUE pour le MPEG-TS live (recherche sourcée
+  /// 2026-07-09) :
+  ///   - SAMSUNG (Tizen) : ne JAMAIS commencer par `video/mp2t` — le
+  ///     protocolInfo rapporté fonctionnel est `video/mpeg` +
+  ///     `MPEG_TS_HD_NA_ISO` (MediaTomb/SamyGO). Nos FLAGS live
+  ///     `01700000…` correspondent déjà aux valeurs validées.
+  ///   - PANASONIC (Viera) : client STRICT sur le DLNA_PN (minidlna
+  ///     FLAG_DLNA) ; les profils Serviio qui marchent mappent
+  ///     `video/vnd.dlna.mpeg-tts` + `AVC_TS_MP_HD_AC3`.
+  ///   - HISENSE (VIDAA) : renderer fragile, profil générique —
+  ///     `video/mpeg` SANS PN (best-effort, les variantes altmime
+  ///     couvrent le reste).
+  /// Les autres marques gardent le profil de base (LG a déjà sa règle
+  /// adaptée à sa Sink). Ne touche que les MIME MPEG-TS.
+  @visibleForTesting
+  static DlnaProfile brandTunedProfile({
+    required CastDevice device,
+    required DlnaProfile base,
+  }) {
+    const Set<String> tsMimes = <String>{
+      'video/mp2t',
+      'video/vnd.dlna.mpeg-tts',
+      'video/mpeg',
+    };
+    if (!tsMimes.contains(base.mime)) return base;
+    final String hay =
+        '${device.name} ${device.manufacturer ?? ''} ${device.model ?? ''}'
+            .toLowerCase();
+    DlnaProfile retag(String mime, String? pn) => DlnaProfile(
+          mime: mime,
+          profileName: pn,
+          transferMode: base.transferMode,
+          objectClass: base.objectClass,
+          fileExtension: base.fileExtension,
+        );
+    if (hay.contains('samsung') || hay.contains('tizen')) {
+      return retag('video/mpeg', 'MPEG_TS_HD_NA_ISO');
+    }
+    if (hay.contains('panasonic') || hay.contains('viera')) {
+      return retag('video/vnd.dlna.mpeg-tts', 'AVC_TS_MP_HD_AC3');
+    }
+    if (hay.contains('hisense') || hay.contains('vidaa')) {
+      return retag('video/mpeg', null);
+    }
+    return base;
   }
 
   /// Pur + statique → testable sans stack réseau (cf. tests cast).
