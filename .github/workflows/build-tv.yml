@@ -586,6 +586,11 @@ jobs:
           # branches continuent d'écrire "tv-latest".
           if [ "${{ github.ref_name }}" = "claude/iptv-chromecast-cast-WeAyo" ]; then
             TAG="cast-fix-tv-latest"
+          elif [ "${{ github.ref_name }}" = "claude/m3u-stream-playback-fix-cfdr2f" ]; then
+            # Release DÉDIÉE à la branche de correctifs lecture : la
+            # « tv-latest » est écrasée par d'autres branches → l'APK/.aab
+            # avec les correctifs y disparaissait. Ici rien ne l'écrase.
+            TAG="tv-fix-latest"
           else
             TAG="tv-latest"
           fi
