@@ -27,7 +27,9 @@ import 'dart:math' show Random;
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/observability/structured_logger.dart';
 import 'dlna_profiles.dart';
+import 'hls_relay_session.dart';
 
 /// Entrée dans la table des relays actifs. Une par session de cast.
 class _RelayEntry {
@@ -54,6 +56,18 @@ class LocalCastServer {
   /// le caller oublie de clearRelay (failover qui crash, etc.).
   final Map<String, _RelayEntry> _relays = <String, _RelayEntry>{};
   static const int _kMaxRelays = 8;
+
+  /// Sessions HLS live (vraie segmentation TS → segments finis +
+  /// playlist glissante) pour le repli Google Cast. Indexées par le
+  /// MÊME token que `_relays`. Une session tire le flux upstream en
+  /// continu → on n'en garde qu'un petit nombre en vie.
+  final Map<String, HlsRelaySession> _hlsSessions =
+      <String, HlsRelaySession>{};
+  static const int _kMaxHlsSessions = 2;
+
+  /// UA envoyé aux serveurs IPTV (filtres anti-bot Xtream).
+  static const String _kUpstreamUserAgent =
+      'VLC/3.0.20 LibVLC/3.0.20 (7 MOTION Relay)';
 
   /// Mode « Caster sur un écran » EN LOCAL (même Wi-Fi) : le PC / la TV
   /// ouvre http://<ip-téléphone>:<port>/screen dans son navigateur. Le
@@ -87,6 +101,10 @@ class LocalCastServer {
   }
 
   Future<void> stop() async {
+    for (final HlsRelaySession s in _hlsSessions.values) {
+      s.stop();
+    }
+    _hlsSessions.clear();
     await _server?.close(force: true);
     _server = null;
   }
@@ -101,20 +119,38 @@ class LocalCastServer {
   Future<void> _handleRequest(HttpRequest req) async {
     try {
       final String path = req.uri.path;
-      // Phase 1+/HLS Wrapper (2026-06-01) : /hls/<token>.m3u8
-      // genere une playlist HLS minimale pointant vers le segment
-      // .ts. Decouverte clef : Google Cast SDK ne supporte PAS
-      // officiellement MPEG-TS (.ts) en LIVE — seulement HLS et
-      // DASH. Pour faire passer un flux .ts brut a un Chromecast,
-      // on le wrap dans une playlist HLS synthetique. Le segment
-      // sous-jacent est servi tel quel via /hls/<token>.ts.
-      if (path.startsWith('/hls/') && path.endsWith('.m3u8')) {
-        await _serveHlsManifest(req);
-        return;
-      }
-      if (path.startsWith('/hls/') && path.endsWith('.ts')) {
-        await _serveHlsSegment(req);
-        return;
+      // VRAI HLS live (2026-07-09) : /hls/<token>.m3u8 = playlist
+      // GLISSANTE (segments finis ~3 s découpés par TsHlsSegmenter),
+      // /hls/<token>/<seq>.ts = segment fini. Le Default Media
+      // Receiver (CAF/Shaka) télécharge chaque segment EN ENTIER
+      // avant de le décoder : l'ancien « segment unique infini »
+      // (/hls/<token>.ts) ne produisait jamais une frame → 100 %
+      // d'échecs « codec/format non supporté » sur SHIELD & co.
+      // Le récepteur fetch en XHR cross-origin → CORS obligatoire
+      // sur la playlist ET les segments.
+      if (path.startsWith('/hls/')) {
+        if (req.method == 'OPTIONS') {
+          _setCorsHeaders(req.response);
+          req.response.statusCode = HttpStatus.noContent;
+          await req.response.close();
+          return;
+        }
+        final List<String> segs = req.uri.pathSegments; // [hls, ...]
+        if (segs.length == 3 && segs[2].endsWith('.ts')) {
+          await _serveHlsLiveSegment(req, token: segs[1], seqName: segs[2]);
+          return;
+        }
+        if (path.endsWith('.m3u8')) {
+          await _serveHlsManifest(req);
+          return;
+        }
+        if (path.endsWith('.ts')) {
+          // Legacy : pass-through direct (plus référencé par les
+          // playlists générées, conservé pour un récepteur qui aurait
+          // encore l'ancienne URL en cache).
+          await _serveHlsSegment(req);
+          return;
+        }
       }
       if (path.startsWith('/relay/')) {
         await _serveRelay(req);
@@ -140,54 +176,100 @@ class LocalCastServer {
     }
   }
 
-  /// Phase 1+/HLS Wrapper — sert une playlist HLS minimale qui
-  /// reference le segment .ts comme s'il etait un VOD/Event-style
-  /// HLS valide.
-  ///
-  /// Format genere :
-  ///   #EXTM3U
-  ///   #EXT-X-VERSION:3
-  ///   #EXT-X-TARGETDURATION:9
-  ///   #EXT-X-MEDIA-SEQUENCE:0
-  ///   #EXT-X-PLAYLIST-TYPE:EVENT
-  ///   #EXTINF:8.0,
-  ///   /hls/<token>.ts
-  ///   #EXT-X-ENDLIST
-  ///
-  /// L'EXT-X-ENDLIST tag est present meme pour du live IPTV parce
-  /// que le segment unique n'a pas de fin connue cote receveur — le
-  /// Chromecast joue jusqu'a fermeture de la connexion TCP. C'est
-  /// la technique standard "single-segment HLS" utilisee par
-  /// BubbleUPnP / IPTV Proxy / etc.
+  /// En-têtes CORS pour les routes /hls/* : la page du Default Media
+  /// Receiver (origine gstatic.com) fetch playlist et segments en XHR
+  /// cross-origin — sans CORS, Shaka échoue AVANT toute décodage et la
+  /// TV remonte un « format non supporté » trompeur.
+  void _setCorsHeaders(HttpResponse resp) {
+    resp.headers
+      ..set('Access-Control-Allow-Origin', '*')
+      ..set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
+      ..set('Access-Control-Allow-Headers', 'Range, Origin, Content-Type')
+      ..set('Access-Control-Expose-Headers', 'Content-Length, Content-Range');
+  }
+
+  /// Sert la playlist LIVE GLISSANTE d'une session HLS. Au premier
+  /// appel on attend que le segmenteur ait produit assez de matière
+  /// (2 segments ≈ 6 s de flux) — le récepteur vient d'être lancé,
+  /// son LOAD tolère largement ce délai (budget 25 s côté sender).
   Future<void> _serveHlsManifest(HttpRequest req) async {
     final String last = req.uri.pathSegments.last; // <token>.m3u8
     final int dot = last.indexOf('.');
     final String token = dot > 0 ? last.substring(0, dot) : last;
-    final _RelayEntry? entry = _relays[token];
-    if (entry == null) {
+    final HlsRelaySession? session = _hlsSessions[token];
+    if (session == null) {
       req.response.statusCode = HttpStatus.notFound;
       await req.response.close();
       return;
     }
-    // Playlist HLS LIVE a segment unique "infini". PAS de
-    // #EXT-X-ENDLIST : avec lui, le receiver croit a un VOD de 8 s et
-    // arrete la lecture au bout de 8 s (ecran "cast" bleu sans image
-    // pour du live). PLAYLIST-TYPE:EVENT = playlist live append-only ;
-    // le segment .ts est un flux continu que le receiver lit jusqu'a
-    // fermeture TCP. Technique "single infinite segment" des proxys
-    // IPTV->Cast.
-    final String manifest = '#EXTM3U\n'
-        '#EXT-X-VERSION:3\n'
-        '#EXT-X-TARGETDURATION:10\n'
-        '#EXT-X-MEDIA-SEQUENCE:0\n'
-        '#EXT-X-PLAYLIST-TYPE:EVENT\n'
-        '#EXTINF:10.0,\n'
-        '/hls/$token.ts\n';
+    session.touch();
+    final bool ready =
+        await session.waitForSegments(2, const Duration(seconds: 15));
+    if (!ready) {
+      // Upstream mort ou trop lent : 503 → le récepteur remonte une
+      // vraie erreur réseau (pas un faux « codec »).
+      _setCorsHeaders(req.response);
+      req.response.statusCode = HttpStatus.serviceUnavailable;
+      await req.response.close();
+      return;
+    }
+    if (!session.readyLogged) {
+      session.readyLogged = true;
+      // Le codec compte : HEVC-dans-TS n'est pas décodé par le Default
+      // Media Receiver des vrais Chromecast (limite CAF, pas un bug du
+      // relais) — la SHIELD, elle, le décode.
+      StructuredLogger.instance.info(
+        domain: 'cast',
+        event: 'hls_relay.ready',
+        ctx: <String, Object?>{
+          'codec': session.videoCodec,
+          'segments': session.segmentCount,
+        },
+      );
+    }
+    // URIs RELATIVES à la playlist (/hls/<token>.m3u8) :
+    // `<token>/<seq>.ts` → /hls/<token>/<seq>.ts.
+    final String manifest = session.playlist(segmentUriPrefix: '$token/');
+    _setCorsHeaders(req.response);
     req.response.headers
       ..set('Content-Type', 'application/vnd.apple.mpegurl')
-      ..set('Cache-Control', 'no-store, no-cache')
-      ..set('Access-Control-Allow-Origin', '*');
+      ..set('Cache-Control', 'no-store, no-cache');
     req.response.write(manifest);
+    await req.response.close();
+  }
+
+  /// Sert un segment FINI de la fenêtre live (Content-Length connu —
+  /// le récepteur télécharge, décode, enchaîne).
+  Future<void> _serveHlsLiveSegment(
+    HttpRequest req, {
+    required String token,
+    required String seqName,
+  }) async {
+    final HlsRelaySession? session = _hlsSessions[token];
+    final int dot = seqName.indexOf('.');
+    final int? seq =
+        int.tryParse(dot > 0 ? seqName.substring(0, dot) : seqName);
+    if (session == null || seq == null) {
+      req.response.statusCode = HttpStatus.notFound;
+      await req.response.close();
+      return;
+    }
+    session.touch();
+    final HlsLiveSegment? segment = session.segment(seq);
+    if (segment == null) {
+      // Segment déjà évincé (récepteur trop en retard) ou pas encore
+      // produit : 404 → Shaka recharge la playlist et se recale.
+      _setCorsHeaders(req.response);
+      req.response.statusCode = HttpStatus.notFound;
+      await req.response.close();
+      return;
+    }
+    _setCorsHeaders(req.response);
+    req.response.headers
+      ..set('Content-Type', 'video/mp2t')
+      ..set('Cache-Control', 'no-store, no-cache')
+      ..set('Content-Length', segment.bytes.length);
+    req.response.add(segment.bytes);
     await req.response.close();
   }
 
@@ -272,23 +354,54 @@ class LocalCastServer {
     );
 
     final String? lanIp = await _lanIpFor(receiverHost);
-    if (lanIp == null) return null;
-    // Phase 1+/HLS Wrapper : route /hls/<token>.m3u8 pour Google
-    // Cast, /relay/<token>.<ext> pour DLNA legacy.
+    if (lanIp == null) {
+      _relays.remove(token);
+      return null;
+    }
+    // Google Cast : VRAIE session HLS live (segmentation TS côté
+    // téléphone, playlist glissante). Démarrée tout de suite : les
+    // premiers segments s'accumulent PENDANT que le sender établit la
+    // session Cast (bascule receiver + picker = plusieurs secondes).
+    // DLNA garde le pass-through /relay/<token>.<ext> direct.
     if (wrapInHls) {
+      _evictOldestHlsSessionsIfNeeded();
+      final HlsRelaySession session = HlsRelaySession(
+        upstreamUrl: upstreamUrl,
+        userAgent: _kUpstreamUserAgent,
+      );
+      _hlsSessions[token] = session;
+      session.start();
+      StructuredLogger.instance.info(
+        domain: 'cast',
+        event: 'hls_relay.start',
+        ctx: <String, Object?>{'token': token},
+      );
       return 'http://$lanIp:$_port/hls/$token.m3u8';
     }
     return 'http://$lanIp:$_port/relay/$token.${profile.fileExtension}';
   }
 
+  /// Les sessions HLS tirent le flux upstream en continu — on n'en
+  /// tolère que [_kMaxHlsSessions] : au-delà, la plus ancienne (déjà
+  /// remplacée par un zap en pratique) est arrêtée.
+  void _evictOldestHlsSessionsIfNeeded() {
+    while (_hlsSessions.length >= _kMaxHlsSessions) {
+      final String oldest = _hlsSessions.keys.first;
+      _hlsSessions.remove(oldest)?.stop();
+      _relays.remove(oldest);
+    }
+  }
+
   void clearRelay(String relayUrl) {
     // L'URL contient le token : http://ip:port/relay/<token>.<ext>
+    // ou http://ip:port/hls/<token>.m3u8
     final Uri uri = Uri.tryParse(relayUrl) ?? Uri();
     if (uri.pathSegments.length < 2) return;
     final String segment = uri.pathSegments.last;
     final int dot = segment.indexOf('.');
     final String token = dot > 0 ? segment.substring(0, dot) : segment;
     _relays.remove(token);
+    _hlsSessions.remove(token)?.stop();
   }
 
   String _randomToken() {

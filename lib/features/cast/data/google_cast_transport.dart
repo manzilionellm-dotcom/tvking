@@ -245,8 +245,12 @@ class GoogleCastTransport implements CastTransport {
         castPath = 'cast_proxy';
       } else {
         // REPLI — RELAIS HLS DU TÉLÉPHONE. Le téléphone tire le flux (client
-        // natif, ni CORS ni contenu mixte) et sert une playlist HLS que le
-        // récepteur lit. registerRelay renvoie null si la TV n'est pas
+        // natif, ni CORS ni contenu mixte), le DÉCOUPE en vrais segments
+        // (~3 s, TsHlsSegmenter) et sert une playlist HLS LIVE GLISSANTE que
+        // le Default Media Receiver lit nativement. (L'ancienne playlist à
+        // « segment unique infini » était structurellement illisible par le
+        // récepteur CAF moderne — cause du 8/8 d'échecs SHIELD 2026-07-09.)
+        // registerRelay renvoie null si la TV n'est pas
         // joignable depuis l'IP LAN du téléphone (réseaux séparés / isolation
         // AP) → on remonte alors une erreur claire.
         final DlnaProfile profile =
