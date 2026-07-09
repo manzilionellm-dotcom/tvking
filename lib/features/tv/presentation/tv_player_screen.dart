@@ -26,11 +26,15 @@ import 'package:native_video_player/native_video_player.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/observability/structured_logger.dart';
 import '../core/tv_tokens.dart';
-import '../../cast/data/stream_probe.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/data/local_stream_relay.dart';
 import '../../player/data/player_settings.dart';
+import '../../player/data/stream_blocked_fallback.dart';
+import '../../player/data/stream_diagnostics.dart';
+import '../../player/data/xtream_url_variants.dart';
+import '../../playlists/data/xtream_url_format_store.dart';
+import '../../playlists/domain/playlist.dart' as pl;
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
@@ -176,19 +180,31 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // fournisseur (≠ coupure réseau d'un flux qui jouait). Remis à false à chaque
   // ouverture (_open).
   bool _everShownFrame = false;
-  // Diagnostic multi-signature (« ça marche sur IBO, pas chez nous ») : id de
-  // la chaîne pour laquelle on a DÉJÀ tenté la sonde multi-User-Agent, pour
-  // ne JAMAIS boucler diagnostic→bascule→échec→diagnostic si le vrai
-  // problème n'est pas la signature. Comparé à `_current.id`, jamais remis
-  // à null explicitement (le zap change naturellement la comparaison).
-  String? _uaFixAttemptedForChannelId;
-  bool _uaDiagnosisInFlight = false;
+  // Erreur ExoPlayer déjà journalisée pour cette ouverture (le listener
+  // est appelé à chaque tick — on n'écrit qu'une fois). Remis à false
+  // dans _open.
+  bool _errorLoggedThisOpen = false;
   // `true` si le diagnostic a conclu à un blocage RÉSEAU (DNS/timeout)
   // plutôt qu'à un souci de signature — affiche un indice VPN/FAI en plus
   // du message existant. Remis à false à chaque ouverture (_open).
   bool _fatalNetworkHint = false;
 
+  // Chaîne « échec → sonde → cascade de formats » : LE MÊME contrôleur que
+  // sur téléphone (StreamBlockedFallback), branché sur les échecs définitifs
+  // du relais. Terrain 2026-07-09 : ce panel sert l'URL NUE
+  // `host/USER/PASS/ID.ts` en 404 — il faut la variante `/live/…m3u8` (ce
+  // que fait IBO). La TV n'avait qu'une sonde de signature, jamais la
+  // cascade de formats → écran noir. Ce contrôleur apporte les deux.
+  late final StreamBlockedFallback _fallback;
+  // Variante de format adoptée par la cascade (`.ts` → `/live/…m3u8`…),
+  // réutilisée à chaque (ré)ouverture. Remise à null au zap.
+  String? _adoptedAltUrl;
+
   Channel get _current => widget.channels[_index];
+
+  /// URL effective à (ré)ouvrir : variante adoptée par la cascade sinon
+  /// l'URL live de la chaîne.
+  String get _effectiveUrl => _adoptedAltUrl ?? _current.streamUrl;
 
   static const List<LogicalKeyboardKey> _digits = <LogicalKeyboardKey>[
     LogicalKeyboardKey.digit0, LogicalKeyboardKey.digit1, LogicalKeyboardKey.digit2,
@@ -212,6 +228,26 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // contente de piloter l'URL et d'écouter l'état.
     _controller = NativeVideoController(initialUrl: _current.streamUrl);
     _controller.addListener(_onPlayer);
+    // Cascade « échec → sonde → formats » (parité téléphone) : branchée sur
+    // les échecs définitifs du relais. Elle possède l'anti-boucle par chaîne.
+    _fallback = StreamBlockedFallback(
+      getChannel: () => _current,
+      getOverrideUrl: () => null, // TV live (le replay a son propre écran)
+      getEffectiveUrl: () => _effectiveUrl,
+      isAlive: () => mounted,
+      hasDecodedFrames: () => _everShownFrame,
+      getAdoptedAltUrl: () => _adoptedAltUrl,
+      setAdoptedAltUrl: (String? url) => _adoptedAltUrl = url,
+      resetWatchdogBudget: () => _freeze.openChannel(DateTime.now()),
+      reopen: (String _) => unawaited(_loadCurrentUrl()),
+      showBlocked: (String _) {
+        if (!mounted) return;
+        setState(() {
+          _fatal = true;
+          _buffering = false;
+        });
+      },
+    )..attach();
     // Favoris en direct (le ❤ se met à jour tout seul).
     FavoritesRepository.instance.initialize();
     _favSub = FavoritesRepository.instance.favoritesStream.listen((Set<String> ids) {
@@ -263,6 +299,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _watchdog?.cancel();
     _toastTimer?.cancel();
     _favSub?.cancel();
+    _fallback.detach();
     // Si on quitte le lecteur en plein enregistrement : on finalise proprement
     // (arrêt du relais + clôture en base), sans toucher au controller détruit.
     if (_activeRecording != null) {
@@ -318,6 +355,20 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
             'message': _controller.lastErrorMessage,
           },
         );
+        // BOÎTE NOIRE : l'erreur ExoPlayer, UNE fois par ouverture. Sans
+        // ça la lecture HLS directe (qui contourne le relais) échouait en
+        // SILENCE — journal vide alors que l'écran est noir (terrain
+        // 2026-07-09). Rend visible le vrai code Media3.
+        if (!_errorLoggedThisOpen) {
+          _errorLoggedThisOpen = true;
+          StreamDiagnostics.instance.recordEvent(
+            'exoplayer',
+            'ExoPlayer : ${_controller.lastErrorCodeName ?? 'erreur'}'
+                '${_controller.lastErrorCode == null ? '' : ' (${_controller.lastErrorCode})'}'
+                ' — ${_controller.lastErrorMessage ?? 'lecture impossible'}',
+            level: 'error',
+          );
+        }
       }
       _onFreezeAction(_freeze.onPlayerError(DateTime.now()));
     }
@@ -328,19 +379,97 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _lastPos = Duration.zero;
     _everShownFrame = false; // nouvelle ouverture → pas encore d'image
     _fatalNetworkHint = false;
+    _errorLoggedThisOpen = false; // nouvelle ouverture → on re-journalise
+    _adoptedAltUrl = null; // la variante adoptée était propre à l'ancienne chaîne
     if (mounted) setState(() {
       _buffering = true;
       _fatal = false;
     });
-    if (!reuse) {
-      // Nouvelle chaîne → on charge la nouvelle URL dans le MÊME lecteur.
-      _controller.setUrl(_current.streamUrl);
-    }
+    // Charge la chaîne courante VIA LE RELAIS (parité téléphone) : le
+    // relais ouvre l'unique connexion, gère la reconnexion, et surtout
+    // résout les domaines bloqués par le DNS opérateur en DoH
+    // (installDohResolution) — le lecteur natif ExoPlayer, lui, fait sa
+    // propre résolution et échouerait sur ces domaines. `reuse` n'a plus
+    // d'effet sur l'URL : même à la 1re ouverture on bascule sur le
+    // relais (le lecteur a été créé sur l'URL directe le temps d'un
+    // battement).
+    unawaited(_loadCurrentUrl());
     // Historique (reprise « Continuer à regarder », favoris, reco).
     RecentlyWatchedRepository.instance.record(_current.id);
     NowPlaying.instance.set(_current.cleanName);
     SubscriptionState.instance.syncWithBackend();
     _showOverlayTemporarily();
+  }
+
+  /// Pointe le lecteur sur la chaîne courante EN PASSANT PAR LE RELAIS
+  /// pour le live TS (1 connexion + reconnexion + résolution DoH des
+  /// domaines bloqués par le FAI). Le HLS (.m3u8) reste en DIRECT : le
+  /// relais est un tuyau TS, et ExoPlayer gère le HLS nativement (seule
+  /// limite : le DoH ne couvre pas ce cas natif sur TV). Best-effort :
+  /// si le relais ne démarre pas, on retombe sur l'URL directe.
+  Future<void> _loadCurrentUrl({String? userAgent}) async {
+    final Channel channel = _current;
+    String realUrl = _effectiveUrl; // variante adoptée > URL chaîne
+    // FORMAT MÉMORISÉ (parité téléphone — corrige la tempête de connexions
+    // terrain du 2026-07-09 02:20 : la TV re-cascadait à CHAQUE chaîne
+    // depuis l'URL nue .ts → 8 sondes + cascade × zap → compte 1-connexion
+    // saturé « 3/1 » → 404 partout). Si la cascade a déjà trouvé le format
+    // gagnant pour cette source (ex. « live:m3u8 »), on l'applique DIRECT :
+    // la chaîne ouvre sur /live/…m3u8 sans re-sonder. Seule la 1re chaîne
+    // d'une source neuve cascade encore.
+    if (_adoptedAltUrl == null) {
+      final pl.Playlist? src =
+          StreamBlockedFallback.xtreamPlaylistFor(channel);
+      if (src?.id != null) {
+        final XtreamContentType type =
+            StreamBlockedFallback.contentTypeOf(channel);
+        final String? code =
+            await XtreamUrlFormatStore.instance.winningFormat(src!.id!, type);
+        if (!mounted || channel.id != _current.id) return;
+        // AUTO-CORRECTIF : on IGNORE un format HLS mémorisé pour du LIVE
+        // (« live:m3u8 » / « none:m3u8 ») — il ouvre plusieurs connexions
+        // et sature les comptes « max 1 connexion » → écran noir (terrain
+        // 2026-07-09). La cascade re-valide (préférence .ts = 1 connexion)
+        // et re-mémorise le bon format.
+        final bool hlsLiveMemorized = type == XtreamContentType.live &&
+            code != null &&
+            code.contains('m3u8');
+        if (code != null && !hlsLiveMemorized) {
+          final String? remembered =
+              XtreamUrlVariants.applyFormat(realUrl, code);
+          if (remembered != null && remembered != realUrl) {
+            _adoptedAltUrl = remembered;
+            realUrl = remembered;
+          }
+        }
+        final String? sourceUa =
+            await XtreamUrlFormatStore.instance.sourceUserAgent(src.id!);
+        if (!mounted || channel.id != _current.id) return;
+        if (sourceUa != null &&
+            sourceUa != PlayerSettings.instance.userAgent) {
+          await PlayerSettings.instance.setUserAgent(sourceUa);
+          userAgent ??= sourceUa;
+        }
+      }
+    }
+    final String lower = realUrl.toLowerCase();
+    final bool isHls = lower.contains('.m3u8') || lower.contains('.m3u');
+    if (isHls) {
+      _relayPlayUrl = null;
+      _controller.setUrl(realUrl, userAgent: userAgent);
+      return;
+    }
+    try {
+      final String localUrl =
+          await LocalStreamRelay.instance.playUrlFor(realUrl);
+      if (!mounted || channel.id != _current.id) return;
+      _relayPlayUrl = localUrl;
+      _controller.setUrl(localUrl, userAgent: userAgent);
+    } catch (_) {
+      if (!mounted || channel.id != _current.id) return;
+      _relayPlayUrl = null;
+      _controller.setUrl(realUrl, userAgent: userAgent);
+    }
   }
 
   void _zap(int delta) {
@@ -405,65 +534,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   /// relance automatiquement, sans même montrer d'erreur au client. Une
   /// seule tentative de diagnostic par chaîne (`_uaFixAttemptedForChannelId`)
   /// pour ne jamais boucler si le vrai problème n'est pas la signature.
-  Future<void> _declareChannelBlocked() async {
-    final Channel channel = _current;
-    final bool alreadyTried = _uaFixAttemptedForChannelId == channel.id;
-    if (_uaDiagnosisInFlight || alreadyTried) {
-      if (mounted) {
-        setState(() {
-          _fatal = true;
-          _buffering = false;
-        });
-      }
-      return;
-    }
-    _uaFixAttemptedForChannelId = channel.id;
-    _uaDiagnosisInFlight = true;
-    final String current = PlayerSettings.instance.userAgent;
-    final UserAgentProbeResult probe;
-    try {
-      probe = await StreamProbe.instance.probeUserAgents(
-        channel.streamUrl,
-        candidates: <String>[
-          current,
-          ...PlayerSettings.userAgentPresets.values,
-        ],
-      );
-    } finally {
-      _uaDiagnosisInFlight = false;
-    }
-    // L'utilisateur a zappé pendant la sonde → cette chaîne n'est plus
-    // affichée, rien à faire (le nouvel écran gère son propre état).
-    if (!mounted || channel.id != _current.id) return;
-
-    if (probe.workingUserAgent != null && probe.workingUserAgent != current) {
-      StructuredLogger.instance.info(
-        domain: 'native',
-        event: 'tv_player.ua_autoswitch',
-        ctx: <String, Object?>{
-          'from': current,
-          'to': probe.workingUserAgent,
-          'channelId': channel.id,
-        },
-      );
-      await PlayerSettings.instance.setUserAgent(probe.workingUserAgent!);
-      if (!mounted || channel.id != _current.id) return;
-      _freeze.openChannel(DateTime.now()); // budget neuf : cette signature a de vraies chances
-      _controller.setUrl(
-        _relayPlayUrl ?? channel.streamUrl,
-        userAgent: probe.workingUserAgent,
-      );
-      return; // pas d'erreur affichée : on retente silencieusement
-    }
-
-    if (mounted) {
-      setState(() {
-        _fatal = true;
-        _buffering = false;
-        _fatalNetworkHint = probe.isLikelyNetworkBlocked;
-      });
-    }
-  }
+  Future<void> _declareChannelBlocked() => _fallback.run();
 
   /// « Réessayer » manuel depuis l'écran d'erreur : on repart d'un budget neuf.
   void _manualRetry() {

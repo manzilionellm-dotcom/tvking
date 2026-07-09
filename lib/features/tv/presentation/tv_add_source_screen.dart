@@ -21,6 +21,7 @@ import '../core/tv_tokens.dart';
 import 'tv_components.dart';
 
 const String _kManual = '__manual__';
+const String _kM3u = '__m3u__';
 
 class TvAddSourceScreen extends StatefulWidget {
   const TvAddSourceScreen({super.key});
@@ -32,13 +33,15 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
   final TextEditingController _serverC = TextEditingController();
   final TextEditingController _userC = TextEditingController();
   final TextEditingController _passC = TextEditingController();
+  final TextEditingController _m3uC = TextEditingController();
 
   List<DefaultServer> _servers = const <DefaultServer>[];
-  String _choice = _kManual; // id du serveur choisi, ou _kManual
+  String _choice = _kManual; // id du serveur choisi, _kManual ou _kM3u
   bool _busy = false;
   String? _error;
 
   bool get _manual => _choice == _kManual;
+  bool get _isM3u => _choice == _kM3u;
   String get _serverUrl => _manual
       ? _serverC.text.trim()
       : (_servers
@@ -65,12 +68,40 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
     _serverC.dispose();
     _userC.dispose();
     _passC.dispose();
+    _m3uC.dispose();
     super.dispose();
   }
 
   Future<void> _validate() async {
     final String errFill = context.l10n.tvAddListError;
-    final String errConn = context.l10n.tvConnectError;
+
+    // ----- Mode M3U : un seul champ (lien direct), pipeline COMPLET
+    //       (addM3uPlaylistSmart : DoH pour les domaines bloqués par le
+    //       FAI, repli get.php→API Xtream si 503/refus ou fichier > 60 Mo).
+    if (_isM3u) {
+      final String url = SourceLinkUtils.ensureScheme(_m3uC.text);
+      if (url.isEmpty) {
+        setState(() => _error = errFill);
+        return;
+      }
+      setState(() { _busy = true; _error = null; });
+      try {
+        await PlaylistRepository.instance
+            .addM3uPlaylistSmart(name: 'Ma liste', url: url);
+        if (mounted) Navigator.of(context).pop();
+      } catch (e) {
+        // Vrai message (indice DNS opérateur, statut HTTP…), comme sur
+        // téléphone — plus de générique qui masque la cause.
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _error = e.toString().replaceFirst('Exception: ', '');
+          });
+        }
+      }
+      return;
+    }
+
     // On accepte le lien même sans « http:// » tapé (le revendeur/
     // fournisseur donne souvent juste le domaine, ex. « serveur.com:8080 »).
     String server = SourceLinkUtils.ensureScheme(_serverUrl);
@@ -107,8 +138,16 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
         password: pass,
       );
       if (mounted) Navigator.of(context).pop(); // le gate ouvre l'app
-    } catch (_) {
-      if (mounted) setState(() { _busy = false; _error = errConn; });
+    } catch (e) {
+      // Vrai message (indice DNS opérateur, statut HTTP…) — même
+      // diagnostic que sur téléphone, plus de « Erreur de connexion »
+      // générique qui masquait la cause.
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = e.toString().replaceFirst('Exception: ', '');
+        });
+      }
     }
   }
 
@@ -129,54 +168,76 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
                   style: TvTokens.ui(16, color: TvTokens.mutedDim)),
               const SizedBox(height: 18),
 
-              // ----- Choix du serveur (ceux du panel) + « URL manuelle » -----
-              if (_servers.isNotEmpty) ...<Widget>[
-                Text(context.l10n.tvChooseServer.toUpperCase(),
-                    style: TvTokens.ui(11,
-                        weight: FontWeight.w600, color: TvTokens.mutedDim, spacing: 2)),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: <Widget>[
-                    for (final DefaultServer s in _servers)
-                      _ServerChip(
-                        label: s.label,
-                        selected: _choice == s.id,
-                        onSelect: () => setState(() => _choice = s.id),
-                      ),
+              // ----- Choix de la source : serveurs du panel + « URL
+              //       manuelle » (Xtream) + « M3U » (lien direct). Toujours
+              //       affiché → le mode M3U est atteignable même sans serveur.
+              Text(
+                  (_servers.isNotEmpty
+                          ? context.l10n.tvChooseServer
+                          : 'Choisis ta source')
+                      .toUpperCase(),
+                  style: TvTokens.ui(11,
+                      weight: FontWeight.w600,
+                      color: TvTokens.mutedDim,
+                      spacing: 2)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  for (final DefaultServer s in _servers)
                     _ServerChip(
-                      label: context.l10n.tvManualServer,
-                      selected: _manual,
-                      onSelect: () => setState(() => _choice = _kManual),
+                      label: s.label,
+                      selected: _choice == s.id,
+                      onSelect: () => setState(() => _choice = s.id),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-              ],
+                  _ServerChip(
+                    label: context.l10n.tvManualServer,
+                    selected: _manual,
+                    onSelect: () => setState(() => _choice = _kManual),
+                  ),
+                  _ServerChip(
+                    label: 'M3U',
+                    selected: _isM3u,
+                    onSelect: () => setState(() => _choice = _kM3u),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
 
               // ----- Champs texte (clavier téléphone / physique + coller) -----
-              if (_manual) ...<Widget>[
+              if (_isM3u) ...<Widget>[
+                // Mode M3U : UN seul champ, le lien direct.
                 _TextField(
-                  controller: _serverC,
-                  label: context.l10n.tvFieldServer,
-                  hint: 'http://serveur.com:8080',
+                  controller: _m3uC,
+                  label: 'URL M3U',
+                  hint: 'http://serveur.com/get.php?username=…',
                   autofocus: true,
                   keyboardType: TextInputType.url,
                 ),
+              ] else ...<Widget>[
+                if (_manual) ...<Widget>[
+                  _TextField(
+                    controller: _serverC,
+                    label: context.l10n.tvFieldServer,
+                    hint: 'http://serveur.com:8080',
+                    autofocus: true,
+                    keyboardType: TextInputType.url,
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                _TextField(
+                  controller: _userC,
+                  label: context.l10n.tvFieldUser,
+                  autofocus: !_manual,
+                ),
                 const SizedBox(height: 10),
+                _TextField(
+                  controller: _passC,
+                  label: context.l10n.tvFieldPass,
+                  obscure: true,
+                ),
               ],
-              _TextField(
-                controller: _userC,
-                label: context.l10n.tvFieldUser,
-                autofocus: !_manual,
-              ),
-              const SizedBox(height: 10),
-              _TextField(
-                controller: _passC,
-                label: context.l10n.tvFieldPass,
-                obscure: true,
-              ),
 
               const SizedBox(height: 10),
               Text(context.l10n.tvKeyboardHint,

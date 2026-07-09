@@ -47,18 +47,42 @@
 // =========================================================
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/net/doh_resolver.dart';
 import '../../../core/observability/structured_logger.dart';
+import 'hls_playlist_normalizer.dart';
 import 'player_settings.dart';
+import 'stream_diagnostics.dart';
 
 /// Nombre d'échecs de reconnexion CONSÉCUTIFS tolérés avant d'abandonner
-/// l'upstream. Tant qu'une reconnexion réussit, le compteur repart à 0,
-/// donc un flux qui hoquette longtemps continue. On n'abandonne que si le
-/// serveur reste injoignable plusieurs essais d'affilée.
+/// l'upstream, pour une session qui a DÉJÀ diffusé des octets (coupure en
+/// cours de lecture : on s'accroche). Tant qu'une reconnexion réussit, le
+/// compteur repart à 0, donc un flux qui hoquette longtemps continue.
 const int _kMaxReconnectFailures = 12;
+
+/// Même budget mais pour une session qui n'a JAMAIS encore reçu un octet
+/// (échec dès l'ouverture). Boucler 13× sur une URL morte retardait la
+/// cascade de variantes côté lecteur (bug terrain du 2026-07-08 : 404 sur
+/// `.ts` réessayé en boucle au lieu de basculer sur `/live/….m3u8`).
+/// On ne retente que les échecs TRANSITOIRES (DNS/socket/5xx) — un 4xx
+/// définitif ferme la session immédiatement, sans aucun retry.
+const int _kMaxInitialFailures = 3;
+
+/// Échec DÉFINITIF annoncé par le relais : l'URL réelle concernée et le
+/// dernier statut HTTP vu (`null` = échec réseau / serveur muet, aucune
+/// réponse HTTP). Le statut permet au diagnostic de choisir la bonne
+/// parade : 403 « slot 1-connexion encore occupé » → backoff + retry ;
+/// 404 « mauvais format d'URL » → cascade de variantes directe.
+class RelayFailure {
+  const RelayFailure({required this.url, this.status});
+
+  final String url;
+  final int? status;
+}
 
 /// Relais singleton. Une instance pour toute l'app : un seul serveur HTTP
 /// local, qui multiplexe N chaînes (sessions) si besoin.
@@ -68,6 +92,22 @@ class LocalStreamRelay {
 
   HttpServer? _server;
   int _port = 0;
+
+  /// ÉCHECS DÉFINITIFS (4xx dès la 1re réponse, session jamais diffusée) :
+  /// le relais l'annonce EXPLICITEMENT ici, avec l'URL RÉELLE concernée.
+  /// C'est le lecteur (VideoPlayerScreen) qui s'y abonne pour déclencher
+  /// IMMÉDIATEMENT sa sonde + cascade de variantes — bug terrain du
+  /// 2026-07-08 11:37 : on comptait sur la réaction de mpv à un flux
+  /// vide (EOF), qui n'arrive pas de façon fiable → la cascade ne
+  /// s'exécutait jamais sur le chemin de lecture réel.
+  final StreamController<RelayFailure> _definitiveFailures =
+      StreamController<RelayFailure>.broadcast();
+
+  /// Échecs DÉFINITIFS (URL réelle + statut HTTP). Le statut permet au
+  /// fallback de distinguer un 403 « connexion encore occupée » (backoff
+  /// 3 s + retry, comptes 1-connexion) d'un 404 « mauvais format d'URL »
+  /// (cascade de variantes immédiate).
+  Stream<RelayFailure> get definitiveFailures => _definitiveFailures.stream;
 
   /// Sessions actives, indexées par l'URL RÉELLE du flux (la clé est
   /// l'URL upstream, pas l'URL locale). Une session = une chaîne tirée
@@ -84,8 +124,141 @@ class LocalStreamRelay {
   /// automatiquement côté serveur via `queryParameters`).
   Future<String> playUrlFor(String realUrl) async {
     await _ensureServer();
+    // ZAP / bascule de variante : une seule lecture à la fois. On ferme
+    // toute session d'une AUTRE URL (sauf enregistrement en cours) —
+    // sinon les relais des chaînes quittées continuaient leurs
+    // reconnexions en boucle en parallèle (sessions zombies, bug terrain
+    // du 2026-07-08 : France 2 → 3 → 4 = 3 boucles simultanées).
+    closeOtherPlaybacks(realUrl);
     final String token = Uri.encodeComponent(realUrl);
     return 'http://127.0.0.1:$_port/s?u=$token';
+  }
+
+  /// Ferme toutes les sessions de lecture SAUF celle de [keepRealUrl].
+  /// Les sessions qui enregistrent sont préservées (l'enregistrement
+  /// d'une chaîne survit au zapping vers une autre).
+  void closeOtherPlaybacks(String keepRealUrl) {
+    for (final _RelaySession s
+        in List<_RelaySession>.from(_sessions.values)) {
+      if (s.realUrl == keepRealUrl) continue;
+      if (s.recordSink != null) continue;
+      if (kDebugMode) {
+        debugPrint('[Relay] zap → fermeture session ${_short(s.realUrl)}');
+      }
+      StreamDiagnostics.instance.recordEvent(
+        'relay',
+        'Changement de chaîne → session précédente fermée '
+            '(${StreamDiagnostics.maskCredentials(s.realUrl)})',
+      );
+      _closeSession(s);
+    }
+  }
+
+  /// URLs de playlists dont la preuve brute a déjà été journalisée (mpv
+  /// re-télécharge la playlist toutes les ~TARGETDURATION secondes en
+  /// live : on ne journalise la preuve + les réparations qu'UNE fois
+  /// par URL pour ne pas noyer la boîte noire).
+  final Set<String> _hlsProvenUrls = <String>{};
+
+  /// URL locale de la PLAYLIST HLS NORMALISÉE pour [realUrl].
+  ///
+  /// Cause racine terrain (2026-07-08) : mpv lisait la playlist du
+  /// panel en « plaintext » (« Failed to recognize file format ») —
+  /// `#EXTM3U` absent/décalé (BOM, blancs, \r\n). La route `/hls`
+  /// re-télécharge la playlist AMONT à CHAQUE requête de mpv (c'est le
+  /// rafraîchissement live : mpv poll selon #EXT-X-TARGETDURATION), la
+  /// NORMALISE (HlsPlaylistNormalizer) et la sert avec le bon
+  /// Content-Type. Les SEGMENTS restent en DIRECT vers le CDN (URIs
+  /// absolues) — seul le petit document texte transite ici.
+  Future<String> hlsPlaylistUrlFor(String realUrl) async {
+    await _ensureServer();
+    // Une seule lecture à la fois : ferme les sessions TS restantes.
+    closeOtherPlaybacks(realUrl);
+    final String token = Uri.encodeComponent(realUrl);
+    return 'http://127.0.0.1:$_port/hls?u=$token';
+  }
+
+  /// Sert la playlist normalisée (route `/hls?u=…`).
+  Future<void> _serveNormalizedPlaylist(
+    HttpRequest req,
+    String realUrl,
+  ) async {
+    final bool firstServe = _hlsProvenUrls.add(realUrl);
+    final HttpClient client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 8)
+      ..userAgent = PlayerSettings.instance.userAgent
+      ..badCertificateCallback =
+          ((X509Certificate cert, String host, int port) => true);
+    installDohResolution(client); // domaines panel bloqués par le DNS FAI
+    try {
+      final HttpClientRequest up =
+          await client.getUrl(Uri.parse(realUrl));
+      up.followRedirects = true;
+      up.maxRedirects = 8;
+      final HttpClientResponse resp = await up.close();
+      final Uri finalUri = resp.redirects.isEmpty
+          ? Uri.parse(realUrl)
+          : Uri.parse(realUrl).resolveUri(resp.redirects.last.location);
+      final String raw = await resp
+          .transform(const Utf8Decoder(allowMalformed: true))
+          .join();
+      if (resp.statusCode >= 400) {
+        StreamDiagnostics.instance.recordEvent(
+          'hls',
+          'Playlist amont HTTP ${resp.statusCode} '
+              '(${StreamDiagnostics.maskCredentials(realUrl)}) — 502 à mpv',
+          level: 'error',
+        );
+        req.response.statusCode = HttpStatus.badGateway;
+        await req.response.close();
+        return;
+      }
+      final NormalizedPlaylist normalized = HlsPlaylistNormalizer.normalize(
+        raw,
+        finalUri,
+        rewriteSubPlaylist: (String abs) =>
+            'http://127.0.0.1:$_port/hls?u=${Uri.encodeComponent(abs)}',
+      );
+      if (firstServe) {
+        // PREUVE demandée : les 3 premières lignes BRUTES, octets
+        // invisibles rendus visibles + les réparations appliquées.
+        StreamDiagnostics.instance.recordEvent(
+          'hls',
+          '3 premières lignes BRUTES de la playlist amont : '
+              '${normalized.rawHead}',
+          level: normalized.hadExtM3uAtStart ? 'info' : 'error',
+        );
+        StreamDiagnostics.instance.recordEvent(
+          'hls',
+          normalized.repairs.isEmpty
+              ? 'Playlist saine (#EXTM3U en position 0) — servie '
+                  'normalisée par précaution'
+              : 'Playlist RÉPARÉE : ${normalized.repairs.join(' ; ')} — '
+                  'servie à mpv en local, segments en direct CDN',
+          level: normalized.repairs.isEmpty ? 'info' : 'warn',
+        );
+      }
+      req.response.statusCode = HttpStatus.ok;
+      req.response.headers.contentType =
+          ContentType.parse('application/vnd.apple.mpegurl');
+      req.response.headers
+          .set(HttpHeaders.cacheControlHeader, 'no-cache, no-store');
+      req.response.write(normalized.text);
+      await req.response.close();
+    } catch (e) {
+      StreamDiagnostics.instance.recordEvent(
+        'hls',
+        'Normalisation playlist impossible '
+            '(${StreamDiagnostics.maskCredentials(realUrl)}) : $e',
+        level: 'error',
+      );
+      try {
+        req.response.statusCode = HttpStatus.badGateway;
+        await req.response.close();
+      } catch (_) {}
+    } finally {
+      client.close(force: true);
+    }
   }
 
   /// Démarre l'écriture du flux EN COURS vers `filePath`, en se branchant
@@ -165,10 +338,14 @@ class LocalStreamRelay {
   }
 
   Future<void> _handleRequest(HttpRequest req) async {
-    // On n'accepte que /s?u=<token>. Tout le reste → 404.
-    // `queryParameters` percent-décode déjà la valeur → on récupère
-    // directement l'URL IPTV réelle.
+    // Deux routes : /s?u=<token> (relais d'octets TS) et /hls?u=<token>
+    // (playlist HLS NORMALISÉE — document servi puis connexion fermée,
+    // segments en direct CDN). Tout le reste → 404.
     final String? realUrl = req.uri.queryParameters['u'];
+    if (req.uri.path == '/hls' && realUrl != null && realUrl.isNotEmpty) {
+      await _serveNormalizedPlaylist(req, realUrl);
+      return;
+    }
     if (req.uri.path != '/s' || realUrl == null || realUrl.isEmpty) {
       req.response.statusCode = HttpStatus.notFound;
       await req.response.close();
@@ -233,8 +410,37 @@ class LocalStreamRelay {
     final HttpClientResponse? resp =
         await _openUpstream(session, session.realUrl);
     if (resp == null) {
-      // Échec d'ouverture → on tente de reconnecter (avec back-off) tant
-      // qu'il reste des consommateurs.
+      // ÉCHEC DÉFINITIF vs TRANSITOIRE — le cœur du correctif terrain :
+      //   - 4xx (404/403/401/410…) dès la 1re réponse, session jamais
+      //     diffusée = le serveur a RÉPONDU et refuse CETTE URL. Boucler
+      //     ne changera rien : on ferme tout de suite → mpv voit la fin
+      //     de flux → le lecteur lance sa sonde + CASCADE DE VARIANTES
+      //     (`/live/….m3u8`…) sans attendre 13 retries.
+      //   - erreur réseau (DNS/socket/timeout) ou 5xx = transitoire →
+      //     le retry avec back-off reste justifié.
+      // Un 4xx sur une session qui a DÉJÀ joué garde le comportement
+      // reconnexion (token/edge recyclé en cours de live).
+      final int? st = session.lastUpstreamStatus;
+      final bool definitive = st != null &&
+          st >= 400 &&
+          st < 500 &&
+          st != 408 && // Request Timeout : transitoire
+          st != 429; //  Too Many Requests : transitoire
+      if (definitive && !session.everStreamed) {
+        StreamDiagnostics.instance.recordEvent(
+          'relay',
+          'HTTP $st définitif dès la 1re réponse → session fermée sans '
+              'retry (le lecteur décide : backoff 1-connexion ou cascade)',
+          level: 'error',
+        );
+        final String failedUrl = session.realUrl;
+        _closeSession(session);
+        // APRÈS la fermeture : on prévient explicitement le lecteur
+        // (URL réelle brute + statut) pour qu'il décide TOUT DE SUITE —
+        // sans attendre que mpv réagisse au flux vide.
+        _definitiveFailures.add(RelayFailure(url: failedUrl, status: st));
+        return;
+      }
       _scheduleReconnect(session);
       return;
     }
@@ -250,6 +456,7 @@ class LocalStreamRelay {
     _RelaySession session,
     String url,
   ) async {
+    session.lastUpstreamStatus = null; // nouvelle tentative
     try {
       try {
         session.client?.close(force: true);
@@ -267,6 +474,7 @@ class LocalStreamRelay {
         // sources alors que le flux est bon (cf. iptv_http.dart).
         ..badCertificateCallback =
             ((X509Certificate cert, String host, int port) => true);
+      installDohResolution(session.client!); // DNS FAI bloqué → DoH
 
       final HttpClientRequest cReq =
           await session.client!.getUrl(Uri.parse(url));
@@ -275,6 +483,24 @@ class LocalStreamRelay {
       cReq.headers.set(HttpHeaders.acceptHeader, '*/*');
 
       final HttpClientResponse cResp = await cReq.close();
+      session.lastUpstreamStatus = cResp.statusCode;
+      final String upstreamMime =
+          cResp.headers.contentType?.mimeType.toLowerCase() ?? '';
+      session.upstreamIsPlaylist = upstreamMime.contains('mpegurl') ||
+          Uri.tryParse(url)?.path.toLowerCase().endsWith('.m3u8') == true;
+      // Boîte noire : le statut HTTP RÉEL vu par la connexion de lecture
+      // (+ URL finale si le serveur a redirigé, + MIME). C'est LA donnée
+      // qui manquait pour diagnostiquer un écran noir : l'écran debug
+      // caché la montre telle quelle.
+      final String finalUrl = cResp.redirects.isEmpty
+          ? url
+          : cResp.redirects.last.location.toString();
+      StreamDiagnostics.instance.recordHttp(
+        status: cResp.statusCode,
+        finalUrl: finalUrl,
+        mime: cResp.headers.contentType?.mimeType,
+        source: 'relay',
+      );
       if (cResp.statusCode != 200 && cResp.statusCode != 206) {
         if (kDebugMode) {
           debugPrint('[Relay] HTTP ${cResp.statusCode} sur ${_short(url)}');
@@ -287,6 +513,10 @@ class LocalStreamRelay {
       return cResp;
     } catch (e) {
       if (kDebugMode) debugPrint('[Relay] _openUpstream KO: $e');
+      StreamDiagnostics.instance.recordHttp(
+        error: 'connexion upstream impossible : $e',
+        source: 'relay',
+      );
       return null;
     }
   }
@@ -302,6 +532,24 @@ class LocalStreamRelay {
         _scheduleReconnect(session);
       },
       onDone: () {
+        if (session.upstreamIsPlaylist) {
+          // Une playlist HLS est un DOCUMENT : l'EOF est sa fin normale.
+          // Reconnecter re-servirait la playlist en boucle à mpv (texte
+          // m3u8 concaténé = 0 frame, bug terrain 2026-07-08). On ferme
+          // proprement — le HLS se lit en direct, pas via le relais.
+          if (kDebugMode) {
+            debugPrint('[Relay] playlist HLS servie → fermeture propre');
+          }
+          StreamDiagnostics.instance.recordEvent(
+            'relay',
+            'Upstream = playlist HLS (document servi en entier) → session '
+                'fermée SANS reconnexion. Le HLS doit être lu en direct '
+                'par le lecteur, pas via le relais TS.',
+            level: 'warn',
+          );
+          _closeSession(session);
+          return;
+        }
         if (kDebugMode) {
           debugPrint('[Relay] upstream fermé par le serveur, reconnexion');
         }
@@ -314,6 +562,10 @@ class LocalStreamRelay {
   /// Recopie un paquet vers TOUS les consommateurs : le(s) lecteur(s) et
   /// le fichier d'enregistrement s'il est actif.
   void _fanout(_RelaySession session, List<int> chunk) {
+    // Premier octet reçu = la session a réellement diffusé : les
+    // coupures ULTÉRIEURES redeviennent des reconnexions légitimes
+    // (même sur un 4xx — token/edge recyclé en cours de live).
+    session.everStreamed = true;
     // Lecteurs : on écrit, on retire ceux dont la socket est morte.
     final List<_PlayerConsumer> dead = <_PlayerConsumer>[];
     for (final _PlayerConsumer c in session.players) {
@@ -364,7 +616,13 @@ class LocalStreamRelay {
     session.sub = null;
 
     session.reconnectFailures++;
-    if (session.reconnectFailures > _kMaxReconnectFailures) {
+    // Budget adapté : une session qui n'a JAMAIS diffusé un octet
+    // n'a droit qu'à quelques retries transitoires — le lecteur doit
+    // vite reprendre la main (sonde + cascade) plutôt que d'attendre.
+    final int maxFailures = session.everStreamed
+        ? _kMaxReconnectFailures
+        : _kMaxInitialFailures;
+    if (session.reconnectFailures > maxFailures) {
       if (kDebugMode) {
         debugPrint('[Relay] serveur injoignable, abandon ${_short(session.realUrl)}');
       }
@@ -373,10 +631,32 @@ class LocalStreamRelay {
         event: 'relay.upstream_dead',
         ctx: <String, Object?>{'failures': session.reconnectFailures},
       );
+      StreamDiagnostics.instance.recordEvent(
+        'relay',
+        'Serveur injoignable après ${session.reconnectFailures} tentatives '
+            '— abandon de la session',
+        level: 'error',
+      );
+      final bool neverStreamed = !session.everStreamed;
+      final String failedUrl = session.realUrl;
+      final int? lastStatus = session.lastUpstreamStatus;
       _closeSession(session);
+      // Session qui n'a JAMAIS diffusé et que le serveur ignore : on
+      // prévient aussi le lecteur — il sondera (diagnostic réseau vs
+      // signature) au lieu d'attendre son timeout de démarrage.
+      if (neverStreamed) {
+        _definitiveFailures
+            .add(RelayFailure(url: failedUrl, status: lastStatus));
+      }
       return;
     }
 
+    StreamDiagnostics.instance.recordEvent(
+      'relay',
+      'Connexion upstream perdue → reconnexion '
+          '#${session.reconnectFailures}',
+      level: 'warn',
+    );
     final int wait = (2 * session.reconnectFailures).clamp(2, 16);
     await Future<void>.delayed(Duration(seconds: wait));
     if (!session.hasConsumers) {
@@ -454,6 +734,22 @@ class _RelaySession {
   StreamSubscription<List<int>>? sub;
   bool upstreamActive = false;
   int reconnectFailures = 0;
+
+  /// Statut HTTP de la DERNIÈRE tentative upstream (null = pas de
+  /// réponse : erreur réseau/DNS/timeout). Sert à distinguer un échec
+  /// DÉFINITIF (4xx → fermer, laisser la cascade jouer) d'un échec
+  /// TRANSITOIRE (retry avec back-off).
+  int? lastUpstreamStatus;
+
+  /// `true` dès que la session a diffusé AU MOINS un octet. Avant ça,
+  /// un 4xx est définitif et le budget de retry transitoire est réduit.
+  bool everStreamed = false;
+
+  /// `true` si l'upstream est une PLAYLIST HLS (mime mpegurl ou URL
+  /// .m3u8) : document COURT, pas un flux continu. À l'EOF on ferme
+  /// proprement au lieu de « reconnecter » en boucle (le HLS doit être
+  /// lu en DIRECT par mpv — cf. HlsPreflight.isHlsUrl côté lecteur).
+  bool upstreamIsPlaylist = false;
 
   /// Lecteurs branchés (mpv). En pratique 0 ou 1, mais on supporte
   /// plusieurs (mpv ouvre parfois une connexion de sonde + une de

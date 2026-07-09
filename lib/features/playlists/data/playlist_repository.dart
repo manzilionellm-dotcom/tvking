@@ -103,6 +103,15 @@ class PlaylistRepository {
   /// Snapshot synchrone des playlists actuellement chargées.
   List<Playlist> get currentPlaylists => _playlistsCache;
 
+  /// TESTS UNIQUEMENT : injecte le cache mémoire des playlists. Les
+  /// tests d'intégration du lecteur (cascade sur le chemin réel) n'ont
+  /// pas de base SQLite — c'est le seul moyen de donner une source
+  /// Xtream au gate du diagnostic.
+  @visibleForTesting
+  void debugSeedPlaylists(List<Playlist> playlists) {
+    _playlistsCache = List<Playlist>.unmodifiable(playlists);
+  }
+
   /// Charge initialement les chaînes depuis la base et émet sur le stream.
   /// À appeler une fois au démarrage de l'app.
   Future<void> initialize() async {
@@ -452,6 +461,63 @@ class PlaylistRepository {
   // ============================================================
   //  AJOUT PLAYLIST — M3U
   // ============================================================
+
+  /// Ajout d'un lien M3U avec REPLI Xtream automatique (terrain
+  /// 2026-07-08).
+  ///
+  /// STRATÉGIE (identique à IBO/Smarters) : si le lien porte des
+  /// identifiants (get.php?username=…&password=…), on passe par l'API
+  /// XTREAM EN PRIORITÉ, PAS par le téléchargement du fichier M3U.
+  /// Pourquoi : un `type=m3u_plus` renvoie TOUT le catalogue (live + VOD
+  /// + séries) en un seul fichier souvent > 60 Mo — long à télécharger
+  /// (surtout sur une box TV en Wi-Fi) et rejeté par le plafond anti-OOM,
+  /// alors que l'API player_api importe le live catégorie par catégorie
+  /// EN FLUX (importLiveChannelsStreamed : léger, rapide, sans limite de
+  /// taille). Ça résout d'un coup les deux échecs terrain : get.php en
+  /// 503/refus de signature, ET M3U trop volumineux.
+  ///
+  /// 1. lien AVEC identifiants → API Xtream d'abord ; si elle échoue,
+  ///    repli sur le téléchargement M3U brut (certains panels ont
+  ///    player_api coupé mais get.php ouvert) ; si les deux échouent,
+  ///    on renvoie l'erreur XTREAM (la plus parlante — compte/DNS) ;
+  /// 2. lien SANS identifiants (vraie playlist .m3u statique) →
+  ///    téléchargement M3U direct, seul chemin possible.
+  Future<Playlist> addM3uPlaylistSmart({
+    required String name,
+    required String url,
+    String? epgUrl,
+    http.Client? httpClient,
+  }) async {
+    final ({String server, String username, String password})? creds =
+        SourceLinkUtils.tryExtractXtreamCredentials(url);
+
+    // Vraie playlist M3U (pas d'identifiants) : un seul chemin possible.
+    if (creds == null) {
+      return addM3uPlaylist(
+          name: name, url: url, epgUrl: epgUrl, httpClient: httpClient);
+    }
+
+    // Lien Xtream : l'API d'abord (voie royale, anti-OOM, rapide).
+    try {
+      return await addXtreamPlaylist(
+        name: name,
+        serverUrl: creds.server,
+        username: creds.username,
+        password: creds.password,
+        httpClient: httpClient,
+      );
+    } on Object catch (xtErr) {
+      if (kDebugMode) {
+        debugPrint('[Repo] API Xtream KO → repli sur le M3U brut : $xtErr');
+      }
+      try {
+        return await addM3uPlaylist(
+            name: name, url: url, epgUrl: epgUrl, httpClient: httpClient);
+      } catch (_) {
+        throw xtErr; // erreur Xtream = la plus parlante (compte / DNS)
+      }
+    }
+  }
 
   /// Télécharge le .m3u puis stocke les chaînes en base.
   ///

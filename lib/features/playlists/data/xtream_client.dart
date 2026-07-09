@@ -40,6 +40,7 @@ import '../../../core/app/device_memory.dart';
 import '../../../core/crash/crash_reporting.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/data/player_settings.dart';
+import '../../player/data/stream_diagnostics.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../../vod/domain/vod_series.dart';
 import 'iptv_http.dart';
@@ -54,6 +55,34 @@ class XtreamException implements Exception {
 
   @override
   String toString() => 'XtreamException: $message';
+}
+
+/// Photo de l'état d'un compte Xtream, extraite du `user_info` de
+/// player_api.php. Sert au diagnostic « code mort vs mauvais format
+/// d'URL » : un statut ≠ Active ou une date passée explique 100 % des
+/// échecs de flux sans qu'on ait à soupçonner l'app.
+@immutable
+class XtreamAccountInfo {
+  const XtreamAccountInfo({
+    this.status,
+    this.expDate,
+    this.maxConnections,
+    this.activeCons,
+  });
+
+  /// `Active`, `Expired`, `Banned`, `Disabled`… tel que renvoyé
+  /// par le panel (non normalisé par le protocole).
+  final String? status;
+
+  /// Date d'expiration (`exp_date` epoch secondes). `null` = illimité
+  /// ou non communiqué.
+  final DateTime? expDate;
+
+  /// Connexions simultanées autorisées (`max_connections`).
+  final int? maxConnections;
+
+  /// Connexions actives au moment de l'appel (`active_cons`).
+  final int? activeCons;
 }
 
 class XtreamClient {
@@ -106,6 +135,10 @@ class XtreamClient {
         'Réponse serveur invalide (pas de user_info).',
       );
     }
+    // Boîte noire : photo du compte (statut / expiration / connexions)
+    // prise AU CHARGEMENT du compte — consultable dans l'écran debug
+    // caché pour trancher « code mort » vs « mauvais format d'URL ».
+    _recordAccountInfo(parseAccountInfo(userInfo));
     // Le protocole Xtream n'est pas normalisé : selon le panel, `auth`
     // vaut 1, "1", true ou "true" quand c'est bon — et certains panels
     // (forks XUI.one…) ne renvoient PAS le champ du tout alors que le
@@ -150,6 +183,57 @@ class XtreamClient {
         _liveExtension = 'm3u8';
       }
     }
+  }
+
+  /// Re-demande l'état du compte à player_api.php (user_info) et le
+  /// renvoie. Utilisé par le bouton « Vérifier le compte » de l'écran
+  /// debug caché. Enregistre aussi le résultat dans la boîte noire.
+  Future<XtreamAccountInfo> fetchAccountInfo() async {
+    final Map<String, dynamic> data = await _callApi(action: null);
+    final Map<String, dynamic>? userInfo =
+        data['user_info'] as Map<String, dynamic>?;
+    if (userInfo == null) {
+      throw XtreamException('Réponse serveur invalide (pas de user_info).');
+    }
+    final XtreamAccountInfo info = parseAccountInfo(userInfo);
+    _recordAccountInfo(info);
+    return info;
+  }
+
+  /// Extrait les champs utiles du `user_info` (protocole non normalisé :
+  /// nombres tantôt int, tantôt String ; `exp_date` epoch secondes,
+  /// parfois `null`/vide pour « illimité »). Public + visibleForTesting
+  /// pour tester le parsing sans réseau.
+  @visibleForTesting
+  static XtreamAccountInfo parseAccountInfo(Map<String, dynamic> userInfo) {
+    int? asInt(Object? v) {
+      if (v == null) return null;
+      if (v is int) return v;
+      return int.tryParse(v.toString().trim());
+    }
+
+    DateTime? expDate;
+    final int? expEpoch = asInt(userInfo['exp_date']);
+    if (expEpoch != null && expEpoch > 0) {
+      expDate = DateTime.fromMillisecondsSinceEpoch(expEpoch * 1000);
+    }
+
+    final String? status = userInfo['status']?.toString().trim();
+    return XtreamAccountInfo(
+      status: (status == null || status.isEmpty) ? null : status,
+      expDate: expDate,
+      maxConnections: asInt(userInfo['max_connections']),
+      activeCons: asInt(userInfo['active_cons']),
+    );
+  }
+
+  void _recordAccountInfo(XtreamAccountInfo info) {
+    StreamDiagnostics.instance.recordXtreamAccount(
+      status: info.status,
+      expDate: info.expDate,
+      maxConnections: info.maxConnections,
+      activeCons: info.activeCons,
+    );
   }
 
   /// Récupère la liste des catégories Live (map id → nom).

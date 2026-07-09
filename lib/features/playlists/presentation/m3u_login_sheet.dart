@@ -18,6 +18,8 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/playlist_repository.dart';
 import '../data/source_link_utils.dart';
+import '../domain/playlist.dart';
+import 'source_calibration_sheet.dart';
 
 Future<void> showM3uLoginSheet(BuildContext context) {
   return showModalBottomSheet<void>(
@@ -73,8 +75,10 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
         setState(() => _error = context.l10n.loginInvalidUrl);
         return;
       }
-      await _run(() =>
-          PlaylistRepository.instance.addM3uPlaylist(name: name, url: url));
+      // « Smart » : repli automatique get.php → API Xtream si le
+      // téléchargement M3U est refusé (cf. addM3uPlaylistSmart).
+      await _run(() => PlaylistRepository.instance
+          .addM3uPlaylistSmart(name: name, url: url));
     } else {
       String server = SourceLinkUtils.ensureScheme(_serverCtrl.text);
       String user = _userCtrl.text.trim();
@@ -118,7 +122,10 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
     try {
       await action();
       if (!mounted) return;
-      Navigator.of(context).pop();
+      // Le NavigatorState survit au pop de la feuille — c'est lui qui
+      // portera la proposition « Optimiser » juste après.
+      final NavigatorState nav = Navigator.of(context);
+      nav.pop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           behavior: SnackBarBehavior.floating,
@@ -126,6 +133,18 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
               style: AppTextStyles.bodyMedium),
         ),
       );
+      // Calibration proposée automatiquement à la FIN de l'ajout : on
+      // retrouve la source qui vient d'être créée (la plus récente) et
+      // on ouvre la feuille « Optimiser » en mode proposition.
+      final List<Playlist> all =
+          PlaylistRepository.instance.currentPlaylists;
+      if (all.isNotEmpty) {
+        final Playlist added = all.reduce(
+            (Playlist a, Playlist b) => a.createdAt >= b.createdAt ? a : b);
+        if (added.id != null && nav.mounted) {
+          showSourceCalibrationSheet(nav.context, added, proposal: true);
+        }
+      }
     } on Exception catch (e) {
       if (!mounted) return;
       setState(() {
