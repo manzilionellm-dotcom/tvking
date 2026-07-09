@@ -19,6 +19,7 @@ import 'dart:io' show Socket;
 import 'package:flutter/foundation.dart';
 
 import '../../../core/observability/structured_logger.dart';
+import '../../player/data/pip_service.dart';
 import '../domain/cast_device.dart';
 import 'cast_progress.dart';
 import 'cast_session_diagnostic.dart';
@@ -576,6 +577,11 @@ class CastManager extends ChangeNotifier {
     _state = CastState.connecting;
     _device = device;
     _errorMessage = null;
+    // Libere le relais de la session precedente (zap) : sinon la
+    // session HLS continuait de tirer le flux jusqu'au GC d'inactivite.
+    if (_currentRelayUrl != null) {
+      LocalCastServer.instance.clearRelay(_currentRelayUrl!);
+    }
     _currentRelayUrl = null;
     _setProgress(CastProgress.validating);
 
@@ -708,9 +714,25 @@ class CastManager extends ChangeNotifier {
       _state = CastState.casting;
       _setProgress(CastProgress.live);
       diag.success = true;
+      // CAST AUTONOME (« je pars a la douche, ca continue ») : si le
+      // flux passe par le TELEPHONE (relais HLS Chromecast — le relais
+      // DLNA pose deja _currentRelayUrl), on memorise l'URL pour la
+      // liberer au disconnect, et on demarre le foreground service
+      // (notification + wakelock + wifilock) : sans lui, Android
+      // suspend l'app ecran eteint / en arriere-plan → saccades puis
+      // gel sur la TV au bout de quelques dizaines de secondes.
+      if (_transport is GoogleCastTransport) {
+        final String? relayUrl =
+            (_transport as GoogleCastTransport).lastRelayUrl;
+        if (relayUrl != null) _currentRelayUrl = relayUrl;
+      }
+      _updateRelayKeepAlive(title);
     } on Exception catch (e) {
       _state = CastState.error;
       _errorMessage = e.toString();
+      // Le cast a echoue → plus personne a alimenter : coupe le
+      // foreground service d'une eventuelle session relais precedente.
+      _stopRelayKeepAlive();
       // Phase 1 / F-12 + B1 (2026-06-01) : le hint "WiFi isolation"
       // ne doit s'afficher QUE quand les deux strategies relay ont
       // timeout (= la TV ne joint pas notre serveur). Si elles ont
@@ -1416,8 +1438,35 @@ class CastManager extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// `true` quand le foreground service « cast relais » est actif.
+  bool _relayKeepAliveActive = false;
+
+  /// Le telephone alimente-t-il la TV ? Alors il doit SURVIVRE a
+  /// l'ecran eteint : foreground service + wakelock + wifilock (le
+  /// meme PlaybackForegroundService que le mode « Ecouteurs », avec un
+  /// libelle adapte). Sans relais (cast_proxy/direct : la TV tire le
+  /// flux elle-meme), on s'assure au contraire que le service est coupe.
+  void _updateRelayKeepAlive(String title) {
+    if (_currentRelayUrl != null) {
+      _relayKeepAliveActive = true;
+      unawaited(PipService.instance.startBackgroundAudio(
+        title,
+        body: 'Diffusion sur la TV — garde le téléphone sur ce WiFi',
+      ));
+    } else {
+      _stopRelayKeepAlive();
+    }
+  }
+
+  void _stopRelayKeepAlive() {
+    if (!_relayKeepAliveActive) return;
+    _relayKeepAliveActive = false;
+    unawaited(PipService.instance.stopBackgroundAudio());
+  }
+
   Future<void> disconnect() async {
     _stopDlnaWatchdog();
+    _stopRelayKeepAlive();
     try {
       await _transport?.stop();
     } catch (_) {}

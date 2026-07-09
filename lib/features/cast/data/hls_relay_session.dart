@@ -59,13 +59,15 @@ class HlsRelaySession {
   final String userAgent;
   final TsHlsSegmenter Function() _segmenterFactory;
 
-  /// Fenêtre annoncée dans la playlist (5 × ~3 s ≈ 15 s de live).
-  static const int kPlaylistWindow = 5;
+  /// Fenêtre annoncée dans la playlist (6 × ~3 s ≈ 18 s de live) —
+  /// élargie après le diag fluidité 2026-07-09 : plus de marge de
+  /// buffer côté récepteur = moins de saccades sur WiFi chargé.
+  static const int kPlaylistWindow = 6;
 
   /// Rétention mémoire : on garde quelques segments de plus que la
   /// playlist — le récepteur peut encore demander un segment qui vient
   /// de sortir de la fenêtre.
-  static const int kRetention = 8;
+  static const int kRetention = 10;
 
   /// Reconnexions upstream avant abandon (compteur remis à zéro dès
   /// qu'une connexion a produit au moins un segment).
@@ -80,9 +82,10 @@ class HlsRelaySession {
   final List<HlsLiveSegment> _segments = <HlsLiveSegment>[];
   int _nextSequence = 0;
   int _discontinuitySequence = 0;
-  bool _pendingDiscontinuity = false;
 
   TsHlsSegmenter _segmenter = TsHlsSegmenter();
+  bool _reconnected = false;
+  double? _prevConnectionLastPcr;
   HttpClient? _client;
   bool _stopped = false;
   String? _fatalError;
@@ -92,8 +95,11 @@ class HlsRelaySession {
 
   /// Codec vidéo vu dans la PMT ('h264', 'hevc', …) — pour les
   /// diagnostics (HEVC = limite connue du Default Media Receiver sur
-  /// les vrais Chromecast ; la SHIELD le décode).
-  String get videoCodec => _segmenter.videoCodec;
+  /// les vrais Chromecast ; la SHIELD le décode). PERSISTÉ au niveau
+  /// session : le segmenteur est remplacé à chaque reconnexion (et une
+  /// connexion vide ne voit jamais la PMT).
+  String get videoCodec => _videoCodec;
+  String _videoCodec = 'unknown';
 
   bool get isStopped => _stopped;
   String? get fatalError => _fatalError;
@@ -102,6 +108,16 @@ class HlsRelaySession {
   /// Marqueur « première playlist servie déjà journalisée » (posé par
   /// LocalCastServer pour ne logger le codec qu'une fois par session).
   bool readyLogged = false;
+
+  /// Compteurs de requêtes du RÉCEPTEUR (posés par LocalCastServer).
+  /// Précieux dans les messages d'erreur : « format non supporté » avec
+  /// 0 segment servi = la TV n'a jamais rien téléchargé (réseau), avec
+  /// N segments servis = elle a téléchargé mais pas décodé (codec).
+  int playlistServed = 0;
+  int segmentsServed = 0;
+
+  /// Nombre total de segments produits depuis le début de la session.
+  int get totalSegmentsProduced => _nextSequence;
 
   /// Démarre la boucle de fetch upstream (non bloquant).
   void start() {
@@ -250,23 +266,44 @@ class HlsRelaySession {
         stop();
         break;
       }
-      // Nouvelle connexion = nouvelle horloge PCR potentielle →
-      // segmenteur neuf + discontinuité annoncée dans la playlist.
+      // Nouvelle connexion = segmenteur neuf. La discontinuité n'est
+      // décidée qu'à la publication du 1er segment suivant : si la PCR
+      // CONTINUE (même encodeur, simple coupure de socket Xtream), la
+      // transition est invisible — pas de EXT-X-DISCONTINUITY, pas de
+      // réinitialisation du décodeur TV (à-coup évité toutes les 1-2
+      // min). Si l'horloge saute, on l'annonce.
+      _prevConnectionLastPcr =
+          _segmenter.lastPcrSeen ?? _prevConnectionLastPcr;
       _segmenter = _segmenterFactory();
-      _pendingDiscontinuity = true;
+      _reconnected = true;
       await Future<void>.delayed(
           Duration(milliseconds: 400 * (consecutiveFailures + 1)));
     }
   }
 
   void _publish(TsSegment seg) {
+    if (_segmenter.videoCodec != 'unknown') {
+      _videoCodec = _segmenter.videoCodec;
+    }
+    bool discontinuity = false;
+    if (_reconnected) {
+      _reconnected = false;
+      final double? first = _segmenter.firstPcrSeen;
+      final double? prev = _prevConnectionLastPcr;
+      // Continuité : la nouvelle connexion reprend l'horloge là où la
+      // précédente s'était arrêtée (tolérance -1 s / +15 s).
+      final bool seamless = first != null &&
+          prev != null &&
+          first >= prev - 1.0 &&
+          first - prev <= 15.0;
+      discontinuity = !seamless;
+    }
     _segments.add(HlsLiveSegment(
       sequence: _nextSequence++,
       bytes: seg.bytes,
       durationSec: seg.durationSec,
-      discontinuity: _pendingDiscontinuity,
+      discontinuity: discontinuity,
     ));
-    _pendingDiscontinuity = false;
     while (_segments.length > kRetention) {
       final HlsLiveSegment evicted = _segments.removeAt(0);
       // Un marqueur DISCONTINUITY qui sort de la fenêtre doit être

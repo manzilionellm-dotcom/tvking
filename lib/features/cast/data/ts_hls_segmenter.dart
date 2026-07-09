@@ -86,6 +86,13 @@ class TsHlsSegmenter {
   bool _started = false; // on n'accumule qu'à partir de PAT+PMT+keyframe
   double? _segStartPcr;
   double? _lastPcr;
+  double? _firstPcr;
+
+  /// Première / dernière PCR observées sur CE flux. Utilisées par la
+  /// session pour détecter qu'une re-connexion upstream CONTINUE la
+  /// même horloge (transition invisible, pas de EXT-X-DISCONTINUITY).
+  double? get firstPcrSeen => _firstPcr;
+  double? get lastPcrSeen => _lastPcr;
   DateTime? _segStartWall;
   DateTime? _firstVideoWall;
 
@@ -175,6 +182,7 @@ class TsHlsSegmenter {
       if (afLen >= 7 && (p[5] & 0x10) != 0) {
         pcr = _readPcrSeconds(p, 6);
         if (pcr != null) {
+          _firstPcr ??= pcr;
           // Saut d'horloge (wrap 33 bits / discontinuité serveur) :
           // on repart de là plutôt que de produire une durée délirante.
           if (_lastPcr != null && (pcr < _lastPcr! || pcr - _lastPcr! > 10)) {

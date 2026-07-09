@@ -56,6 +56,13 @@ class PlaybackForegroundService : Service() {
         const val ACTION_START = "com.manzilionellm.tvking.playback.START"
         const val ACTION_STOP = "com.manzilionellm.tvking.playback.STOP"
         const val EXTRA_TITLE = "title"
+
+        /// Texte de la 2e ligne de la notification. Par défaut le mode
+        /// « Écouteurs » historique ; le CAST RELAIS (le téléphone
+        /// alimente la TV, écran éteint possible) passe son propre
+        /// libellé — même service, mêmes locks CPU/WiFi.
+        const val EXTRA_BODY = "body"
+        private const val DEFAULT_BODY = "Lecture audio en arrière-plan"
     }
 
     private var wakeLock: PowerManager.WakeLock? = null
@@ -67,9 +74,10 @@ class PlaybackForegroundService : Service() {
         when (intent?.action) {
             ACTION_START -> {
                 val title = intent.getStringExtra(EXTRA_TITLE) ?: "7 MOTION"
-                Log.i(TAG, "START background audio: $title")
+                val body = intent.getStringExtra(EXTRA_BODY) ?: DEFAULT_BODY
+                Log.i(TAG, "START background keep-alive: $title ($body)")
                 createChannelIfNeeded()
-                startForeground(NOTIFICATION_ID, buildNotification(title))
+                startForeground(NOTIFICATION_ID, buildNotification(title, body))
                 acquireLocks()
             }
             ACTION_STOP -> {
@@ -116,7 +124,7 @@ class PlaybackForegroundService : Service() {
         super.onDestroy()
     }
 
-    private fun buildNotification(title: String): Notification {
+    private fun buildNotification(title: String, body: String = DEFAULT_BODY): Notification {
         // Tap sur la notification → ramène l'app au premier plan.
         val launch = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
@@ -146,7 +154,7 @@ class PlaybackForegroundService : Service() {
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
-            .setContentText("Lecture audio en arrière-plan")
+            .setContentText(body)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

@@ -123,6 +123,13 @@ class GoogleCastTransport implements CastTransport {
   /// URL exacte transmise a loadMedia, token signe masque. Null tant qu'aucun cast.
   String? lastCastUrlRedacted;
 
+  /// URL REELLE du relais HLS local quand le chemin est
+  /// 'local_hls_relay' (null sinon). Le CastManager s'en sert pour :
+  ///   1. liberer la session (clearRelay) au disconnect / au zap ;
+  ///   2. activer le maintien en vie (foreground service) — le
+  ///      telephone alimente la TV, il ne doit pas s'endormir.
+  String? lastRelayUrl;
+
   /// URL upstream d'ORIGINE (avant que le probe du telephone ne suive les
   /// redirections). Renseignee par CastManager juste avant [playStream].
   ///
@@ -148,6 +155,7 @@ class GoogleCastTransport implements CastTransport {
     // du cast precedent si celui-ci echoue avant la decision de routage.
     lastCastPath = 'direct';
     lastCastUrlRedacted = null;
+    lastRelayUrl = null;
     final GoogleCastApi api = GoogleCastApi.instance;
 
     // 1) Le SDK Cast est-il disponible sur ce device ?
@@ -265,6 +273,7 @@ class GoogleCastTransport implements CastTransport {
           urlToCast = hlsRelay;
           mime = 'application/x-mpegURL';
           castPath = 'local_hls_relay';
+          lastRelayUrl = hlsRelay;
         } else {
           throw Exception(
             'Le cast vers cette TV est indisponible (réseau incompatible). '
@@ -363,7 +372,25 @@ class GoogleCastTransport implements CastTransport {
     // Sur un .ts non decodable on voyait l'icone "cast" bleue sans
     // image, mais le diagnostic affichait "succes". On attend donc la
     // lecture REELLE (etat PLAYING) avant de declarer le succes.
-    await _awaitRealPlayback(api);
+    try {
+      await _awaitRealPlayback(api);
+    } on Exception catch (e) {
+      // Sur le chemin relais, enrichit l'erreur avec l'etat REEL de la
+      // session HLS (codec vu en PMT + compteurs de requetes du
+      // recepteur) : « codec/format non supporte » avec 0 segment servi
+      // = probleme RESEAU, pas codec — indispensable pour trancher a
+      // distance (diag SHIELD 2026-07-09 : 2 chaines encore en echec).
+      if (castPath == 'local_hls_relay' && lastRelayUrl != null) {
+        final String? info =
+            LocalCastServer.instance.hlsSessionDebugInfo(lastRelayUrl!);
+        if (info != null) {
+          final String base =
+              e.toString().replaceFirst('Exception: ', '');
+          throw Exception('$base [relais: $info]');
+        }
+      }
+      rethrow;
+    }
   }
 
   /// Attend que le recepteur passe REELLEMENT en lecture.

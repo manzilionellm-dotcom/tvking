@@ -69,8 +69,9 @@ void main() {
         expect(playlist, contains('#EXTM3U'));
         expect(playlist, isNot(contains('#EXT-X-ENDLIST')),
             reason: 'playlist LIVE : jamais de ENDLIST');
-        expect(playlist, contains('#EXT-X-DISCONTINUITY'),
-            reason: 'la reconnexion upstream doit être annoncée');
+        expect(playlist, contains('#EXT-X-DISCONTINUITY\n'),
+            reason: 'saut de PCR à la reconnexion → doit être annoncé '
+                '(le tag inline, pas seulement DISCONTINUITY-SEQUENCE)');
         // Fenêtre glissante : le 1er segment listé n'est plus le 0.
         final RegExp seqRe = RegExp(r'#EXT-X-MEDIA-SEQUENCE:(\d+)');
         final int mediaSeq =
@@ -86,6 +87,44 @@ void main() {
           expect(s, isNotNull);
           expect(s!.bytes.length % 188, 0);
         }
+      } finally {
+        session.stop();
+        await upstream.close(force: true);
+      }
+    });
+
+    test('reconnexion avec PCR CONTINUE → transition sans discontinuité',
+        () async {
+      // Burst 1 : PCR 10→30 ; burst 2 : PCR reprend à 30.5 (même
+      // encodeur, simple coupure de socket Xtream) → AUCUN
+      // EXT-X-DISCONTINUITY ne doit apparaître (à-coup TV évité).
+      final HttpServer upstream =
+          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      int connections = 0;
+      upstream.listen((HttpRequest req) async {
+        connections++;
+        req.response.headers.set('Content-Type', 'video/mp2t');
+        if (connections == 1) {
+          req.response.add(syntheticStream(seconds: 20.0, startPcr: 10.0));
+        } else if (connections == 2) {
+          req.response.add(syntheticStream(seconds: 7.0, startPcr: 30.5));
+        }
+        await req.response.close();
+      });
+      final HlsRelaySession session = HlsRelaySession(
+        upstreamUrl: 'http://127.0.0.1:${upstream.port}/live/x/y/1.ts',
+        userAgent: 'test',
+      );
+      session.start();
+      try {
+        final bool ready = await session.waitForSegments(
+            9, const Duration(seconds: 20));
+        expect(ready, isTrue,
+            reason: 'erreur: ${session.fatalError}');
+        final String playlist = session.playlist(segmentUriPrefix: 'tok/');
+        expect(playlist, isNot(contains('#EXT-X-DISCONTINUITY\n')),
+            reason: 'PCR continue → pas de réinitialisation décodeur');
+        expect(playlist, contains('#EXT-X-DISCONTINUITY-SEQUENCE:0'));
       } finally {
         session.stop();
         await upstream.close(force: true);
@@ -167,8 +206,17 @@ void main() {
         expect(total % 188, 0, reason: 'segment TS aligné');
         client.close(force: true);
 
+        // Le debug info (utilisé dans les messages d'erreur du cast)
+        // reflète le codec et ce que la « TV » a téléchargé.
+        final String? info = server.hlsSessionDebugInfo(url);
+        expect(info, isNotNull);
+        expect(info, contains('codec=h264'));
+        expect(info, contains('playlists servies=1'));
+        expect(info, contains('segments servis=1'));
+
         // clearRelay arrête la session (plus de fetch upstream).
         server.clearRelay(url);
+        expect(server.hlsSessionDebugInfo(url), isNull);
       } finally {
         await upstream.close(force: true);
         await server.stop();

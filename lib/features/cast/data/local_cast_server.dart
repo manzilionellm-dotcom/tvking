@@ -190,8 +190,8 @@ class LocalCastServer {
 
   /// Sert la playlist LIVE GLISSANTE d'une session HLS. Au premier
   /// appel on attend que le segmenteur ait produit assez de matière
-  /// (2 segments ≈ 6 s de flux) — le récepteur vient d'être lancé,
-  /// son LOAD tolère largement ce délai (budget 25 s côté sender).
+  /// (3 segments ≈ 9 s de flux = matelas anti-saccades) — le récepteur
+  /// vient d'être lancé, son LOAD tolère ce délai (budget 25 s sender).
   Future<void> _serveHlsManifest(HttpRequest req) async {
     final String last = req.uri.pathSegments.last; // <token>.m3u8
     final int dot = last.indexOf('.');
@@ -203,8 +203,12 @@ class LocalCastServer {
       return;
     }
     session.touch();
+    session.playlistServed++;
+    // 3 segments (~9 s) avant la premiere reponse : demarre la lecture
+    // avec un vrai matelas de buffer (diag fluidite 2026-07-09). Les
+    // rafraichissements suivants repondent immediatement.
     final bool ready =
-        await session.waitForSegments(2, const Duration(seconds: 15));
+        await session.waitForSegments(3, const Duration(seconds: 15));
     if (!ready) {
       // Upstream mort ou trop lent : 503 → le récepteur remonte une
       // vraie erreur réseau (pas un faux « codec »).
@@ -255,6 +259,7 @@ class LocalCastServer {
       return;
     }
     session.touch();
+    session.segmentsServed++;
     final HlsLiveSegment? segment = session.segment(seq);
     if (segment == null) {
       // Segment déjà évincé (récepteur trop en retard) ou pas encore
@@ -393,15 +398,34 @@ class LocalCastServer {
   }
 
   void clearRelay(String relayUrl) {
-    // L'URL contient le token : http://ip:port/relay/<token>.<ext>
-    // ou http://ip:port/hls/<token>.m3u8
-    final Uri uri = Uri.tryParse(relayUrl) ?? Uri();
-    if (uri.pathSegments.length < 2) return;
-    final String segment = uri.pathSegments.last;
-    final int dot = segment.indexOf('.');
-    final String token = dot > 0 ? segment.substring(0, dot) : segment;
+    final String? token = _tokenFromUrl(relayUrl);
+    if (token == null) return;
     _relays.remove(token);
     _hlsSessions.remove(token)?.stop();
+  }
+
+  /// Etat REEL de la session HLS derriere [relayUrl], pour enrichir les
+  /// messages d'erreur du cast : codec vu dans la PMT + ce que la TV a
+  /// effectivement telecharge. `null` si la session est inconnue.
+  String? hlsSessionDebugInfo(String relayUrl) {
+    final String? token = _tokenFromUrl(relayUrl);
+    final HlsRelaySession? s = token != null ? _hlsSessions[token] : null;
+    if (s == null) return null;
+    return 'codec=${s.videoCodec}'
+        ', segments produits=${s.totalSegmentsProduced}'
+        ', playlists servies=${s.playlistServed}'
+        ', segments servis=${s.segmentsServed}'
+        '${s.fatalError != null ? ', upstream KO: ${s.fatalError}' : ''}';
+  }
+
+  /// Extrait le token d'une URL relais :
+  /// http://ip:port/relay/<token>.<ext> ou /hls/<token>.m3u8
+  static String? _tokenFromUrl(String relayUrl) {
+    final Uri uri = Uri.tryParse(relayUrl) ?? Uri();
+    if (uri.pathSegments.length < 2) return null;
+    final String segment = uri.pathSegments.last;
+    final int dot = segment.indexOf('.');
+    return dot > 0 ? segment.substring(0, dot) : segment;
   }
 
   String _randomToken() {

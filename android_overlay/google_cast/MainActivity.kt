@@ -214,7 +214,8 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                     "startBackgroundAudio" -> {
                         val title = call.argument<String>("title") ?: "7 MOTION"
-                        startBackgroundAudio(title)
+                        val body = call.argument<String>("body")
+                        startBackgroundAudio(title, body)
                         result.success(null)
                     }
                     "stopBackgroundAudio" -> {
@@ -265,11 +266,14 @@ class MainActivity : FlutterFragmentActivity() {
     /// Démarre le service audio de fond (mode « Écouteurs »). Appelé
     /// pendant que l'app est VISIBLE (tap utilisateur) → pas de
     /// restriction Android 12+ sur le démarrage d'un foreground service.
-    private fun startBackgroundAudio(title: String) {
+    private fun startBackgroundAudio(title: String, body: String? = null) {
         try {
             val intent = Intent(this, PlaybackForegroundService::class.java).apply {
                 action = PlaybackForegroundService.ACTION_START
                 putExtra(PlaybackForegroundService.EXTRA_TITLE, title)
+                if (body != null) {
+                    putExtra(PlaybackForegroundService.EXTRA_BODY, body)
+                }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(intent)
