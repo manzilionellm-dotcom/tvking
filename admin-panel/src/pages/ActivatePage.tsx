@@ -1,38 +1,23 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { CopyLink } from '@/components/CopyLink';
 import {
-  activateApi, appsApi, planCostsApi, meApi, serversApi, sourcesApi,
+  activateApi, appsApi, planCostsApi, meApi,
   getCurrentUser, isOwnerRole, userCan, DOWNLOAD_URL, DOWNLOADER_CODE,
-  type App, type PlanCost, type ActivateResult, type DefaultServer,
-  type DeviceSourceInput, ApiError,
+  type App, type PlanCost, type ActivateResult, ApiError,
 } from '@/lib/api';
 import { formatDateTime, formatMacInput } from '@/lib/utils';
 
-/// Page ACTIVATION — TOUT-EN-UN (demande client : « un seul qui regroupe
-/// tout »). Une MAC → on pose la licence ET on pousse un TRIO de sources
-/// (0 à 3). Le client est débloqué et configuré automatiquement à
-/// distance. La page « Pousser une playlist » est fusionnée ici.
-
-type SrcDraft = {
-  type: 'xtream' | 'm3u';
-  serverChoice: string;
-  serverUrl: string;
-  xtUser: string;
-  xtPass: string;
-  m3uUrl: string;
-};
-const blankSrc = (): SrcDraft => ({
-  type: 'xtream', serverChoice: 'custom', serverUrl: '',
-  xtUser: '', xtPass: '', m3uUrl: '',
-});
-const MAX_SOURCES = 3;
+/// Page ACTIVATION — UNIQUEMENT l'abonnement (licence). La gestion des
+/// sources M3U/Xtream vit dans SA page dédiée « Sources » (demande
+/// produit : « l'activation des apps doit être séparée de l'ajout de
+/// M3U et de l'Xtream — c'est mélangé »). Après une activation réussie,
+/// un bouton envoie directement sur Sources avec la MAC pré-remplie.
 
 export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const user = getCurrentUser();
   const isReseller = !isOwnerRole(user?.role);
-  // Pousser des sources = capacité 'sources' (revendeur standard+ ou admin).
   const canPushSources = userCan(user, 'sources');
 
   // MAC pré-remplie si on arrive depuis la fiche appareil (?mac=…).
@@ -43,9 +28,6 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const [apps, setApps] = useState<App[]>([]);
   const [costs, setCosts] = useState<PlanCost[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
-  const [servers, setServers] = useState<DefaultServer[]>([]);
-  // TRIO : 0 à 3 sources poussées avec l'activation (optionnel).
-  const [items, setItems] = useState<SrcDraft[]>([]);
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -71,38 +53,8 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
     meApi.get()
       .then((r) => { if (active) setBalance(r.user.credit_balance ?? null); })
       .catch(() => {});
-    serversApi.list()
-      .then((r) => { if (active) setServers(r.items); })
-      .catch(() => {});
     return () => { active = false; };
   }, [onLogout]);
-
-  // ----- helpers TRIO -----
-  function patch(i: number, p: Partial<SrcDraft>) {
-    setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...p } : it)));
-  }
-  function addItem() {
-    if (items.length < MAX_SOURCES) {
-      const s = blankSrc();
-      if (servers[0]) { s.serverChoice = servers[0].id; s.serverUrl = servers[0].url; }
-      setItems((prev) => [...prev, s]);
-    }
-  }
-  function removeItem(i: number) {
-    setItems((prev) => prev.filter((_, idx) => idx !== i));
-  }
-  function buildSource(it: SrcDraft): DeviceSourceInput | null {
-    if (it.type === 'xtream') {
-      if (!it.serverUrl.trim() || !it.xtUser.trim() || !it.xtPass.trim()) return null;
-      const chosen = servers.find((s) => s.id === it.serverChoice);
-      return {
-        type: 'xtream', label: chosen?.label ?? null,
-        server_url: it.serverUrl.trim(), username: it.xtUser.trim(), password: it.xtPass.trim(),
-      };
-    }
-    if (!it.m3uUrl.trim()) return null;
-    return { type: 'm3u', m3u_url: it.m3uUrl.trim() };
-  }
 
   const costFor = (p: string): number | null => {
     if (p.startsWith('trial')) return 0;
@@ -121,26 +73,11 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
       setBusy(false);
       return;
     }
-    // Construit le trio (chaque bloc ajouté doit être complet).
-    const sources: DeviceSourceInput[] = [];
-    for (let i = 0; i < items.length; i++) {
-      const s = buildSource(items[i]);
-      if (!s) {
-        setErr(`Source ${i + 1} incomplète (serveur/identifiant/mot de passe ou URL M3U).`);
-        setBusy(false);
-        return;
-      }
-      sources.push(s);
-    }
     try {
-      // 1) Licence (débloque l'app). 2) Trio de sources (auto-chargé).
       const res = await activateApi.activate({
         mac: m, plan, app_id: appId,
         customer_name: customerName.trim() || undefined,
       });
-      if (sources.length > 0) {
-        await sourcesApi.setMany(m, sources);
-      }
       setResult(res);
       if (res.credit_balance !== null) setBalance(res.credit_balance);
     } catch (e: any) {
@@ -166,7 +103,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       title="Activer un appareil"
-      subtitle="Une MAC → licence + sources, tout d'un coup. Le client est configuré automatiquement."
+      subtitle="Abonnement uniquement — instantané sur la TV. Les sources M3U/Xtream ont leur page dédiée."
       onLogout={onLogout}
       actions={
         isReseller && balance !== null ? (
@@ -282,79 +219,18 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             />
           </div>
 
-          {/* ===== TRIO de sources (0 à 3) — masqué si niveau insuffisant ===== */}
+          {/* Renvoi clair vers la page dédiée — plus de mélange ici. */}
           {canPushSources && (
-          <div className="rounded-lg border border-white/5 bg-slate/40 p-3">
-            <label className="mb-2 block text-[10px] uppercase tracking-widest text-ink-tertiary">
-              Sources du client — chargées automatiquement (jusqu'à 3)
-            </label>
-
-            {items.map((it, i) => (
-              <div key={i} className="mb-2 rounded-md border border-white/10 bg-slate/30 p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[10px] uppercase tracking-widest text-ink-tertiary">Source {i + 1}</span>
-                  <button type="button" onClick={() => removeItem(i)} className="text-xs text-ink-tertiary hover:text-accent-bright">
-                    Retirer
-                  </button>
-                </div>
-                <div className="mb-2 grid grid-cols-2 gap-2">
-                  {(['xtream', 'm3u'] as const).map((t) => (
-                    <button
-                      type="button"
-                      key={t}
-                      onClick={() => patch(i, { type: t })}
-                      className={
-                        'rounded-md border px-3 py-2 text-sm transition ' +
-                        (it.type === t
-                          ? 'border-accent bg-accent/10 text-ink-primary'
-                          : 'border-white/5 bg-slate text-ink-secondary hover:border-white/20')
-                      }
-                    >
-                      {t === 'xtream' ? 'Xtream Codes' : 'M3U'}
-                    </button>
-                  ))}
-                </div>
-                {it.type === 'xtream' && (
-                  <div className="space-y-2">
-                    {servers.length > 0 && (
-                      <select
-                        value={it.serverChoice}
-                        onChange={(e) => {
-                          const s = servers.find((x) => x.id === e.target.value);
-                          patch(i, { serverChoice: e.target.value, serverUrl: s ? s.url : it.serverUrl });
-                        }}
-                        className={inputCls}
-                      >
-                        {servers.map((s) => (<option key={s.id} value={s.id}>{s.label}</option>))}
-                        <option value="custom">URL manuelle…</option>
-                      </select>
-                    )}
-                    {(it.serverChoice === 'custom' || servers.length === 0) && (
-                      <input value={it.serverUrl} onChange={(e) => patch(i, { serverUrl: e.target.value })}
-                        placeholder="http://serveur.com:8080" className={inputCls + ' font-mono'} />
-                    )}
-                    <input value={it.xtUser} onChange={(e) => patch(i, { xtUser: e.target.value })}
-                      placeholder="Utilisateur" className={inputCls} />
-                    <input value={it.xtPass} onChange={(e) => patch(i, { xtPass: e.target.value })}
-                      placeholder="Mot de passe" className={inputCls} />
-                  </div>
-                )}
-                {it.type === 'm3u' && (
-                  <input value={it.m3uUrl} onChange={(e) => patch(i, { m3uUrl: e.target.value })}
-                    placeholder="http://serveur.com/get.php?username=…&type=m3u_plus" className={inputCls + ' font-mono'} />
-                )}
-              </div>
-            ))}
-
-            {items.length < MAX_SOURCES && (
-              <button type="button" onClick={addItem}
-                className="w-full rounded-md border border-dashed border-white/15 px-3 py-2 text-sm text-ink-secondary transition hover:border-accent/50 hover:text-accent-bright">
-                {items.length === 0
-                  ? '+ Ajouter une source'
-                  : `+ Ajouter une source (trio — ${items.length}/${MAX_SOURCES})`}
-              </button>
-            )}
-          </div>
+            <div className="rounded-md border border-white/10 bg-slate/30 px-3 py-2 text-xs text-ink-tertiary">
+              Les playlists M3U / Xtream se gèrent dans{' '}
+              <Link
+                to={/^MK(?::[0-9A-F]{2}){5}$/i.test(mac.trim()) ? `/sources?mac=${encodeURIComponent(mac.trim().toUpperCase())}` : '/sources'}
+                className="font-medium text-accent-bright hover:underline"
+              >
+                Sources M3U / Xtream
+              </Link>{' '}
+              — test en direct et livraison instantanée.
+            </div>
           )}
 
           {err && (
@@ -381,14 +257,15 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
         <div className="rounded-xl border border-white/5 bg-obsidian p-6">
           {!result && (
             <p className="text-sm text-ink-tertiary">
-              Le résultat de l'activation s'affichera ici. L'appareil est débloqué et
-              configuré (licence + sources) à distance dès la prochaine vérification de l'app.
+              Le résultat de l'activation s'affichera ici. L'appareil est
+              débloqué INSTANTANÉMENT : l'app détecte l'activation en
+              quelques secondes, sans redémarrage.
             </p>
           )}
           {result && (
             <div className="space-y-3 text-sm">
               <div className="inline-flex rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success">
-                {result.renewed ? 'Licence renouvelée' : 'Appareil activé'}
+                {result.renewed ? 'Licence renouvelée' : 'Appareil activé'} · livré à l'appareil
               </div>
               <Row k="MAC" v={result.mac} mono />
               <Row k="Plan" v={result.plan} />
@@ -397,7 +274,14 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
               {result.credit_balance !== null && (
                 <Row k="Solde restant" v={String(result.credit_balance)} />
               )}
-              {items.length > 0 && <Row k="Sources poussées" v={String(items.length)} />}
+              {canPushSources && (
+                <Link
+                  to={`/sources?mac=${encodeURIComponent(result.mac)}`}
+                  className="mt-2 block w-full rounded-md border border-accent/40 bg-accent/10 px-4 py-2.5 text-center text-sm font-semibold text-accent-bright transition hover:bg-accent/20"
+                >
+                  Étape suivante : pousser ses sources M3U / Xtream →
+                </Link>
+              )}
             </div>
           )}
         </div>

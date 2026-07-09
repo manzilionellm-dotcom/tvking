@@ -31,6 +31,7 @@ import 'features/device/data/device_identity.dart';
 import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
+import 'features/playlists/data/remote_sync_poller.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
 import 'features/tv/presentation/player/tizen_player_screen.dart';
@@ -74,7 +75,13 @@ Future<void> _bootstrap() async {
   // Re-synchro PÉRIODIQUE (5 min) tant que l'app tourne : une source ajoutée/
   // poussée par le revendeur APRÈS l'ouverture de l'app reste sinon invisible
   // jusqu'au redémarrage. Léger (un GET JSON), n'ajoute que ce qui manque.
-  Timer.periodic(const Duration(minutes: 5), (_) {
-    RemoteSourceRepository.sync();
-  });
+  // LIVRAISON INSTANTANÉE (cf. remote_sync_poller.dart) : re-synchro en
+  // quelques secondes après une action panel, repli 5 min sinon.
+  RemoteSyncPoller.instance.start(
+    onChange: () async {
+      await RemoteSourceRepository.sync();
+      await SubscriptionState.instance.syncWithBackend();
+    },
+    onFallback: () => RemoteSourceRepository.sync().then((_) {}),
+  );
 }

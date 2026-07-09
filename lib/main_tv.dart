@@ -30,6 +30,7 @@ import 'features/player/data/player_settings.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
+import 'features/playlists/data/remote_sync_poller.dart';
 import 'features/recordings/data/recording_repository.dart';
 import 'features/security/data/parental_controls.dart';
 import 'features/sports/data/sports_repository.dart';
@@ -130,16 +131,21 @@ Future<void> _bootstrap() async {
     SubscriptionState.instance.syncWithBackend();
   });
 
-  // 2b) SOURCES POUSSÉES PAR LE PANEL : re-synchro PÉRIODIQUE courte (5 min),
-  //     tant que l'app tourne. AVANT ce correctif, `RemoteSourceRepository.
-  //     sync()` n'était appelé QU'UNE FOIS au boot (plus bas) → une source
-  //     ajoutée/poussée par le revendeur APRÈS l'ouverture de l'app restait
-  //     invisible tant que le client ne redémarrait pas — pas « fluide et
-  //     instantané ». Léger : un seul GET JSON ; n'ajoute que ce qui manque
-  //     (dédup existante), ne touche jamais aux sources déjà chargées.
-  Timer.periodic(const Duration(minutes: 5), (_) {
-    if (!BootGuard.instance.safeMode) RemoteSourceRepository.sync();
-  });
+  // 2b) LIVRAISON INSTANTANÉE : poll ultra-léger de /api/sync/:mac (~20 s).
+  // Une action panel (activation, source poussée, gel/dégel…) est visible
+  // sur la TV en quelques secondes — sans redémarrer l'app — au lieu de
+  // 5 min (sources) / 6 h (statut d'abonnement). Repli automatique sur
+  // l'ancien cycle 5 min si le Worker n'expose pas encore /api/sync.
+  RemoteSyncPoller.instance.start(
+    onChange: () async {
+      if (BootGuard.instance.safeMode) return;
+      await RemoteSourceRepository.sync();
+      await SubscriptionState.instance.syncWithBackend();
+    },
+    onFallback: () async {
+      if (!BootGuard.instance.safeMode) await RemoteSourceRepository.sync();
+    },
+  );
 
   // 3) Thème distant piloté par le panel (couleur/nom).
   unawaited(RemoteThemeRepository.fetchAndApply());

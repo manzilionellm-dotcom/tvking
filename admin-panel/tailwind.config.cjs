@@ -36,6 +36,17 @@ module.exports = {
           DEFAULT: '#E8D9C0',
           deep: '#B39B7C',
         },
+        // Etats. `success` etait deja utilise par les pages (badges
+        // "Appareil active", plans d'essai…) mais jamais defini dans la
+        // palette → les classes ne generaient RIEN (badges invisibles).
+        success: {
+          DEFAULT: '#3FB950',
+          bright: '#56D364',
+        },
+        warn: {
+          DEFAULT: '#D29922',
+          bright: '#E3B341',
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],

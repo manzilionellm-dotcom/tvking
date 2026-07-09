@@ -1,0 +1,19 @@
+# =========================================================
+#  _headers — en-têtes de sécurité Cloudflare Pages (panel)
+# =========================================================
+#  Copié tel quel dans dist/ par Vite (dossier public/), lu par
+#  Cloudflare Pages au déploiement. Durcit le panel contre le
+#  clickjacking, le MIME-sniffing et l'injection de scripts tiers.
+#
+#  CSP : le panel est 100 % auto-hébergé (aucun CDN) ; les appels
+#  API partent vers le Worker (connect-src). `unsafe-inline` est
+#  requis uniquement pour les styles (Tailwind injecte du CSS via
+#  <style> en runtime dev — en prod le CSS est en fichier, mais on
+#  reste permissif sur style pour ne rien casser).
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self' data:; connect-src 'self' https://app.7themotion.com https://*.workers.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self'

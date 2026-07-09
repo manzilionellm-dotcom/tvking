@@ -48,5 +48,33 @@ ok(body.error === 'internal_error' && !!body.request_id,
 ok(!JSON.stringify(body).includes('SECRET-INTERNAL-XYZ'),
   'no internal message leak in 500 body');
 
+// 5) SYNC INSTANTANÉ : /api/sync/:mac sans D1 → rev 0 stable (fail-open,
+//    l'app garde son cycle lent), MAC invalide → 400.
+r = await worker.fetch(
+  new Request('https://app.x/api/sync/MK:11:22:33:44:55'), {}, ctx);
+let sync = await r.json();
+ok(r.status === 200 && sync.ok === true && sync.rev === 0,
+  '/api/sync/:mac sans D1 -> {ok, rev:0} (fail-open)');
+r = await worker.fetch(new Request('https://app.x/api/sync/xx'), {}, ctx);
+ok(r.status === 400, '/api/sync MAC invalide -> 400');
+
+// 6) ACCÈS APP : sans D1 → mode 'open' par défaut (jamais de blocage à tort).
+r = await worker.fetch(new Request('https://app.x/api/app-access'), {}, ctx);
+let access = await r.json();
+ok(r.status === 200 && access.mode === 'open',
+  '/api/app-access sans D1 -> open (fail-open)');
+
+// 7) PRODUITS : sans D1 → liste vide, jamais d'erreur.
+r = await worker.fetch(new Request('https://app.x/api/products'), {}, ctx);
+let prods = await r.json();
+ok(r.status === 200 && Array.isArray(prods.items) && prods.items.length === 0,
+  '/api/products sans D1 -> items []');
+
+// 8) CLÉ API inconnue → 401 (jamais de fallback silencieux vers le JWT).
+r = await worker.fetch(new Request('https://app.x/api/v1/devices', {
+  headers: { Authorization: 'Bearer 7mk_deadbeefdeadbeefdeadbeefdeadbeefdeadbeef' },
+}), { DB: null }, ctx);
+ok(r.status >= 400, 'API key inconnue -> refusée');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -49,3 +49,28 @@ export function formatMacInput(raw: string): string {
   const pairs = hexOnly.slice(0, 10).match(/.{1,2}/g) || [];
   return 'MK:' + pairs.join(':');
 }
+
+/// Exporte des lignes en CSV téléchargeable (Excel/Sheets). Échappe les
+/// guillemets et préfixe un BOM UTF-8 pour qu'Excel lise les accents.
+export function downloadCsv(
+  filename: string,
+  headers: string[],
+  rows: (string | number | null | undefined)[][],
+) {
+  const esc = (v: string | number | null | undefined) => {
+    const s = v === null || v === undefined ? '' : String(v);
+    return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = '﻿'
+    + headers.map(esc).join(';') + '\n'
+    + rows.map((r) => r.map(esc).join(';')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

@@ -28,6 +28,10 @@ import { HistoryPage } from '@/pages/HistoryPage';
 import { ReferencesPage } from '@/pages/ReferencesPage';
 import { TransferPage } from '@/pages/TransferPage';
 import { FamiliesPage } from '@/pages/FamiliesPage';
+import { SourcesPage } from '@/pages/SourcesPage';
+import { AppAccessPage } from '@/pages/AppAccessPage';
+import { ProductsPage } from '@/pages/ProductsPage';
+import { IntegrationsPage } from '@/pages/IntegrationsPage';
 
 /// Etats possibles de l'app :
 ///   - bootstrapping : on verifie si le token est encore valide
@@ -96,8 +100,12 @@ export default function App() {
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/"            element={<DashboardPage   onLogout={handleLogout} />} />
       <Route path="/activate"    element={<ActivatePage    onLogout={handleLogout} />} />
-      {/* Fusionné dans « Activer un appareil » — on redirige l'ancienne URL. */}
-      <Route path="/playlists"   element={<Navigate to="/activate" replace />} />
+      {/* SOURCES M3U/Xtream — page dédiée, SÉPARÉE de l'activation. */}
+      <Route path="/sources"     element={<SourcesPage     onLogout={handleLogout} />} />
+      <Route path="/playlists"   element={<Navigate to="/sources" replace />} />
+      <Route path="/app-access"  element={<AppAccessPage   onLogout={handleLogout} />} />
+      <Route path="/products"    element={<ProductsPage    onLogout={handleLogout} />} />
+      <Route path="/integrations" element={<IntegrationsPage onLogout={handleLogout} />} />
       <Route path="/notifications" element={<NotificationsPage onLogout={handleLogout} />} />
       <Route path="/control-center" element={<ControlCenterPage onLogout={handleLogout} />} />
       <Route path="/home-manager" element={<HomeManagerPage onLogout={handleLogout} />} />

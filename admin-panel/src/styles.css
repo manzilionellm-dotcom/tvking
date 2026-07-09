@@ -2,7 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+/* NB : l'ancien @import Google Fonts (Inter) était placé APRÈS les
+   directives Tailwind → invalide, ignoré par les navigateurs (la police
+   ne se chargeait jamais en prod). Retiré : la CSP du panel (voir
+   public/_headers) n'autorise de toute façon aucune ressource tierce —
+   on s'appuie sur la pile système (Inter s'applique si installée). */
 
 /* =========================================================
    Global resets and base

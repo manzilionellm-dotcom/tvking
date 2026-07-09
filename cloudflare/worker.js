@@ -54,7 +54,11 @@
 
 // API v1 — App Licensing Platform (cf. cloudflare/api_v1.js)
 // Routee depuis le bas du fetch() en haut de la chaine de match.
-import { apiV1 } from './api_v1.js';
+// readSyncRev/bumpDeviceSync = moteur de LIVRAISON INSTANTANÉE (l'app
+// poll /api/sync/:mac) ; handleProductsList = catalogue publiable.
+import {
+  apiV1, readSyncRev, bumpDeviceSync, handleProductsList,
+} from './api_v1.js';
 // Migration KV → D1 (cf. cloudflare/migrate_kv_to_d1.js) — exposee
 // via POST /admin/migrate-to-d1 et protegee par X-Admin-Secret.
 import { runMigration } from './migrate_kv_to_d1.js';
@@ -3442,6 +3446,48 @@ async function handleSelfSourceGet(env, mac) {
 // POST /api/self-source/:mac — AJOUTE un item 'self' (ou MODIFIE un item 'self'
 // existant si `id` est fourni). Ne touche JAMAIS un item 'panel'. « Avale
 // toujours » : jamais bloqué par la présence d'une source panel.
+// =========================================================
+//  SYNC INSTANTANÉ + ACCÈS APP (endpoints publics légers)
+// =========================================================
+
+/// GET /api/sync/:mac → { ok, rev, access, next }.
+///  - rev    : révision de synchro (bougé = re-synchroniser MAINTENANT).
+///  - access : mode d'accès global ('open'|'maintenance'|'locked').
+///  - next   : délai conseillé (s) avant le prochain poll — piloté côté
+///             serveur pour pouvoir ralentir tout le parc sans mise à jour.
+async function handlePublicSync(env, mac) {
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const MAC = mac.toUpperCase();
+  const rev = await readSyncRev(env, MAC);
+  let access = 'open';
+  try {
+    access = (await readAppConfigStr(env, 'app_access_mode')) || 'open';
+  } catch (_) { /* table absente → open */ }
+  return json({ ok: true, rev, access, next: 20 });
+}
+
+/// Lecture d'une clé texte d'app_config (best-effort, '' si absente).
+async function readAppConfigStr(env, key) {
+  if (!env.DB) return '';
+  try {
+    const row = await env.DB
+      .prepare('SELECT value FROM app_config WHERE key = ?')
+      .bind(key).first();
+    return row && row.value != null ? String(row.value) : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+/// GET /api/app-access?platform=tv → { mode, message }.
+async function handlePublicAppAccess(env, platform) {
+  const sfx = platform === 'tv' ? '_tv' : '';
+  const mode = (await readAppConfigStr(env, 'app_access_mode' + sfx)) || 'open';
+  const message = await readAppConfigStr(env, 'app_access_msg' + sfx);
+  const valid = ['open', 'maintenance', 'locked'];
+  return json({ mode: valid.includes(mode) ? mode : 'open', message });
+}
+
 async function handleSelfSource(env, mac, request) {
   if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
@@ -3482,11 +3528,13 @@ async function handleSelfSource(env, mac, request) {
   } catch (_) {
     return json({ ok: false, error: 'db_write_failed' }, 500);
   }
+  // L'app détecte le changement en < 20 s (poll /api/sync/:mac).
+  await bumpDeviceSync(env, MAC);
   return json({
     ok: true,
     message: editId
-      ? 'Playlist mise à jour ! Ouvrez (ou redémarrez) l\'app.'
-      : "Playlist ajoutée ! Ouvrez l'app (ou redémarrez-la) : vos chaînes vont apparaître.",
+      ? 'Playlist mise à jour ! Vos chaînes se rechargent d\'elles-mêmes dans l\'app.'
+      : "Playlist ajoutée ! Vos chaînes apparaissent dans l'app d'ici quelques secondes.",
   });
 }
 
@@ -3522,6 +3570,7 @@ async function handleSelfSourceDelete(env, mac, request) {
   } catch (_) {
     return json({ ok: false, error: 'db_write_failed' }, 500);
   }
+  await bumpDeviceSync(env, MAC);
   return json({ ok: true, message: 'Playlist supprimée.' });
 }
 
@@ -3970,7 +4019,7 @@ async function handleRequest(request, env, ctx) {
     // Coexiste avec les anciens /admin/* et /api/* qui restent
     // intacts (compat ascendante apps mobiles deployees).
     if (url.pathname.startsWith('/api/v1/')) {
-      return apiV1(request, env);
+      return apiV1(request, env, ctx);
     }
 
     const segments = url.pathname.split('/').filter(Boolean);
@@ -3992,7 +4041,12 @@ async function handleRequest(request, env, ctx) {
           || seg1 === 'self-source') rl = ['dev', 120]; // anti-énumération MAC + anti-brute-force code famille
         else if (seg1 === 'heartbeat' || seg1 === 'trending'
           || seg1 === 'announcement' || seg1 === 'sports'
-          || seg1 === 'feedback' || seg1 === 'm3u') rl = ['pub', 240];
+          || seg1 === 'feedback' || seg1 === 'm3u'
+          || seg1 === 'products' || seg1 === 'app-access') rl = ['pub', 240];
+        // /api/sync/:mac — poll de synchro instantanée : ~3 req/min par
+        // appareil, mais plusieurs box derrière la même IP (CGNAT/foyer)
+        // → fenêtre large dédiée, réponse ultra-légère.
+        else if (seg1 === 'sync') rl = ['sync', 600];
         // L'écran récepteur poll ~40×/min ; on laisse large (TV + téléphone).
         else if (seg1 === 'screen') rl = ['scr', 600];
       } else if (seg0 === 'config') {
@@ -4043,6 +4097,39 @@ async function handleRequest(request, env, ctx) {
         return badRequest('only GET supported on /api/device-source/:mac');
       }
       return await handlePublicDeviceSource(env, segments[2]);
+    }
+
+    // /api/sync/:mac — public, ULTRA-LÉGER. L'app poll cette révision
+    // toutes les ~20 s : si elle a bougé (activation, source poussée,
+    // gel, publication…), elle déclenche la vraie re-synchro tout de
+    // suite. C'est ce qui rend les actions du panel INSTANTANÉES sur la
+    // TV, sans redémarrage. Un SELECT indexé, pas de payload sensible.
+    if (segments[0] === 'api' && segments[1] === 'sync' && segments.length === 3) {
+      if (request.method !== 'GET') {
+        return badRequest('only GET supported on /api/sync/:mac');
+      }
+      return await handlePublicSync(env, segments[2]);
+    }
+
+    // /api/products — public, catalogue publié par l'owner (nouveaux
+    // produits, offres, accès). Lecture seule ; l'écriture passe par
+    // /api/v1/products (panel).
+    if (segments[0] === 'api' && segments[1] === 'products' && segments.length === 2) {
+      if (request.method !== 'GET') {
+        return badRequest('only GET supported on /api/products');
+      }
+      if (!env.DB) return json({ items: [] });
+      return await handleProductsList(env, { all: false });
+    }
+
+    // /api/app-access — public, interrupteur d'accès global de l'app
+    // (?platform=tv pour DeFew TV). L'app le lit au démarrage et à
+    // chaque bump de synchro : 'open' | 'maintenance' | 'locked'.
+    if (segments[0] === 'api' && segments[1] === 'app-access' && segments.length === 2) {
+      if (request.method !== 'GET') {
+        return badRequest('only GET supported on /api/app-access');
+      }
+      return await handlePublicAppAccess(env, url.searchParams.get('platform'));
     }
 
     // /api/self-source/:mac — self-service « Mon espace » : le client LIT (GET),

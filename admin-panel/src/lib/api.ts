@@ -968,3 +968,157 @@ export const planCostsApi = {
       body: { costs },
     }),
 };
+
+// =========================================================
+//  TEST DE SOURCE EN DIRECT (avant de pousser)
+// =========================================================
+//  Vérifie en quelques secondes qu'une source répond VRAIMENT :
+//  identifiants Xtream valides (statut, échéance, connexions) ou
+//  playlist M3U qui répond avec des chaînes. Zéro devinette.
+export interface SourceCheckResult {
+  ok: boolean;
+  type: 'xtream' | 'm3u';
+  ms: number;
+  reachable?: boolean;
+  code?: string | null;          // 'bad_credentials' | 'http_404' | 'not_m3u' | 'network'…
+  message?: string;
+  // Xtream
+  status?: string;               // 'Active'…
+  expires_at?: number | null;
+  max_connections?: number | null;
+  active_connections?: number | null;
+  // M3U
+  sample_channels?: number;
+}
+export const sourceCheckApi = {
+  check: (source: DeviceSourceInput) =>
+    request<SourceCheckResult>('/api/v1/source-check', {
+      method: 'POST',
+      body: { source },
+    }),
+};
+
+// =========================================================
+//  SYNC INSTANTANÉ — révision de synchro d'un appareil
+// =========================================================
+//  Après un push, le panel peut vérifier que la révision a bien été
+//  bumpée (— la TV re-synchronise en < 20 s dès qu'elle la voit).
+export const deviceSyncApi = {
+  get: (mac: string) =>
+    request<{ mac: string; rev: number; updated_at: number | null }>(
+      `/api/v1/sync/${encodeURIComponent(mac)}`,
+    ),
+};
+
+// =========================================================
+//  ACCÈS APP — interrupteur global (owner)
+// =========================================================
+export type AppAccessMode = 'open' | 'maintenance' | 'locked';
+export interface AppAccessConfig {
+  mode: AppAccessMode;
+  message: string;
+}
+export const appAccessApi = {
+  get: (platform?: string) =>
+    request<AppAccessConfig>(`/api/v1/app-access${_plat(platform)}`),
+  save: (cfg: AppAccessConfig, platform?: string) =>
+    request<{ ok: boolean } & AppAccessConfig>(`/api/v1/app-access${_plat(platform)}`, {
+      method: 'PUT',
+      body: cfg,
+    }),
+};
+
+// =========================================================
+//  PRODUITS — catalogue publiable (owner)
+// =========================================================
+export interface Product {
+  id: string;
+  title: string;
+  description: string | null;
+  image_url: string | null;
+  price_label: string | null;
+  cta_label: string | null;
+  cta_url: string | null;
+  badge: string | null;
+  position: number;
+  active: number;
+  created_at: number;
+  updated_at: number;
+}
+export const productsApi = {
+  list: () => request<{ items: Product[] }>('/api/v1/products'),
+  create: (payload: Partial<Product>) =>
+    request<{ ok: boolean; id: string }>('/api/v1/products', {
+      method: 'POST',
+      body: payload,
+    }),
+  update: (id: string, payload: Partial<Product>) =>
+    request<{ ok: boolean; updated: number }>(`/api/v1/products/${id}`, {
+      method: 'PATCH',
+      body: payload,
+    }),
+  remove: (id: string) =>
+    request<{ ok: boolean }>(`/api/v1/products/${id}`, { method: 'DELETE' }),
+};
+
+// =========================================================
+//  INTÉGRATIONS — clés API + webhooks (owner)
+// =========================================================
+export const API_KEY_SCOPES: { key: string; label: string; hint: string }[] = [
+  { key: 'activate', label: 'Activer', hint: 'POST /api/v1/activate' },
+  { key: 'sources', label: 'Sources', hint: 'GET/PUT/DELETE /api/v1/sources/:mac + source-check' },
+  { key: 'read', label: 'Lecture', hint: 'GET devices / licenses / customers / stats' },
+  { key: 'publish', label: 'Publier', hint: 'POST products / announcements' },
+];
+export const WEBHOOK_EVENTS: { key: string; label: string }[] = [
+  { key: 'activation.created', label: 'Activation créée' },
+  { key: 'activation.renewed', label: 'Activation renouvelée' },
+  { key: 'source.updated', label: 'Source poussée' },
+  { key: 'source.cleared', label: 'Source retirée' },
+  { key: 'device.blocked', label: 'Appareil gelé/banni' },
+];
+export interface ApiKey {
+  id: string;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  created_at: number;
+  last_used_at: number | null;
+  revoked_at: number | null;
+}
+export interface Webhook {
+  id: string;
+  url: string;
+  events: string[];
+  active: number;
+  created_at: number;
+  last_fired_at: number | null;
+  last_status: string | null;
+}
+export const integrationsApi = {
+  listKeys: () => request<{ items: ApiKey[] }>('/api/v1/integrations/keys'),
+  createKey: (name: string, scopes: string[]) =>
+    request<{ ok: boolean; id: string; key: string; name: string; scopes: string[] }>(
+      '/api/v1/integrations/keys',
+      { method: 'POST', body: { name, scopes } },
+    ),
+  revokeKey: (id: string) =>
+    request<{ ok: boolean }>(`/api/v1/integrations/keys/${id}`, { method: 'DELETE' }),
+  listWebhooks: () => request<{ items: Webhook[] }>('/api/v1/integrations/webhooks'),
+  createWebhook: (url: string, events: string[]) =>
+    request<{ ok: boolean; id: string; url: string; events: string[]; secret: string }>(
+      '/api/v1/integrations/webhooks',
+      { method: 'POST', body: { url, events } },
+    ),
+  updateWebhook: (id: string, payload: { active?: boolean; events?: string[] }) =>
+    request<{ ok: boolean }>(`/api/v1/integrations/webhooks/${id}`, {
+      method: 'PATCH',
+      body: payload,
+    }),
+  deleteWebhook: (id: string) =>
+    request<{ ok: boolean }>(`/api/v1/integrations/webhooks/${id}`, { method: 'DELETE' }),
+  testWebhook: (id: string) =>
+    request<{ ok: boolean; sent: boolean }>(`/api/v1/integrations/webhooks/${id}/test`, {
+      method: 'POST',
+    }),
+};

@@ -22,6 +22,8 @@ type NavSection = { titleKey: string; items: NavItem[] };
 
 const OWNER_NAV: NavSection[] = [
   {
+    // ACTIVATION = uniquement l'abonnement/licence — les sources IPTV
+    // vivent dans LEUR section (séparation demandée par le produit).
     titleKey: 'navsec.activation',
     items: [
       { key: 'nav.activate',    to: '/activate' },
@@ -31,37 +33,50 @@ const OWNER_NAV: NavSection[] = [
       { key: 'nav.resellers',   to: '/resellers' },
       { key: 'nav.families',    to: '/families' },
       { key: 'nav.transfer',    to: '/transfer' },
-      { key: 'nav.pricing',     to: '/tarifs' },
       { key: 'nav.references',  to: '/references' },
     ],
   },
   {
     titleKey: 'navsec.channels',
     items: [
+      { key: 'nav.sources',     to: '/sources' },
       { key: 'nav.servers',     to: '/servers' },
     ],
   },
   {
+    // PUBLICATION : ce que les clients VOIENT (annonces, produits,
+    // habillage, accueil…).
     titleKey: 'navsec.content',
     items: [
-      { key: 'nav.controlCenter', to: '/control-center' },
-      { key: 'nav.homeManager',   to: '/home-manager' },
-      { key: 'nav.featured',      to: '/featured' },
-      { key: 'nav.theme',         to: '/theme' },
-      { key: 'nav.ad',            to: '/ad' },
       { key: 'nav.notifications', to: '/notifications' },
-      { key: 'nav.forceUpdate',   to: '/force-update' },
+      { key: 'nav.products',      to: '/products' },
+      { key: 'nav.featured',      to: '/featured' },
+      { key: 'nav.homeManager',   to: '/home-manager' },
+      { key: 'nav.theme',         to: '/theme' },
+      { key: 'nav.controlCenter', to: '/control-center' },
       { key: 'nav.reviews',       to: '/reviews' },
     ],
   },
   {
+    // MONÉTISATION : prix, pubs.
+    titleKey: 'navsec.monetization',
+    items: [
+      { key: 'nav.pricing',     to: '/tarifs' },
+      { key: 'nav.ad',          to: '/ad' },
+    ],
+  },
+  {
+    // SYSTÈME & SÉCURITÉ : interrupteurs maîtres, intégrations, audit.
     titleKey: 'navsec.system',
     items: [
-      { key: 'nav.dashboard', to: '/' },
-      { key: 'nav.online',    to: '/online' },
-      { key: 'nav.apps',      to: '/apps' },
-      { key: 'nav.history',   to: '/history' },
-      { key: 'nav.account',   to: '/account' },
+      { key: 'nav.dashboard',    to: '/' },
+      { key: 'nav.online',       to: '/online' },
+      { key: 'nav.appAccess',    to: '/app-access' },
+      { key: 'nav.forceUpdate',  to: '/force-update' },
+      { key: 'nav.integrations', to: '/integrations' },
+      { key: 'nav.apps',         to: '/apps' },
+      { key: 'nav.history',      to: '/history' },
+      { key: 'nav.account',      to: '/account' },
     ],
   },
 ];
@@ -78,6 +93,12 @@ const RESELLER_NAV: NavSection[] = [
       { key: 'nav.myDevices',     to: '/devices',     cap: 'devices' },
       { key: 'nav.myActivations', to: '/activations', cap: 'activations' },
       { key: 'nav.references',    to: '/references',  cap: 'activations' },
+    ],
+  },
+  {
+    titleKey: 'navsec.channels',
+    items: [
+      { key: 'nav.sources',       to: '/sources',     cap: 'sources' },
     ],
   },
   {

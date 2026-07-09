@@ -6,7 +6,7 @@ import {
   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
   type DeviceLicense, type DevicePresence, ApiError,
 } from '@/lib/api';
-import { formatDateTime } from '@/lib/utils';
+import { downloadCsv, formatDateTime } from '@/lib/utils';
 
 /// Libellés FR lisibles des plans (clé technique → texte).
 const PLAN_LABELS: Record<string, string> = {
@@ -60,6 +60,25 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
       title="Appareils"
       subtitle={`${items.length} appareil(s)`}
       onLogout={onLogout}
+      actions={
+        <button
+          onClick={() =>
+            downloadCsv(
+              `appareils-${new Date().toISOString().slice(0, 10)}.csv`,
+              ['MAC', 'Label', 'Client', 'Email', 'Modèle', 'Plateforme', 'Statut', 'Première vue', 'Dernière vue'],
+              items.map((d) => [
+                d.mac, d.label, d.customer_name, d.customer_email,
+                d.device_model, d.platform, d.block_status || 'actif',
+                formatDateTime(d.first_seen_at), formatDateTime(d.last_seen_at),
+              ]),
+            )
+          }
+          disabled={items.length === 0}
+          className="rounded-md border border-white/10 px-3 py-1.5 text-xs font-semibold text-ink-secondary transition hover:border-accent/40 hover:text-ink-primary disabled:opacity-50"
+        >
+          ⬇ Export CSV
+        </button>
+      }
     >
       <input
         type="search"

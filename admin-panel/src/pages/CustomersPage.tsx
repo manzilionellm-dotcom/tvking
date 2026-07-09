@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { customersApi, type Customer, ApiError } from '@/lib/api';
-import { formatDateTime } from '@/lib/utils';
+import { downloadCsv, formatDateTime } from '@/lib/utils';
 
 /// Phase 1.A : liste lue de D1 + recherche basique.
 /// Phase 1.B : creation/edition complete + filtres + bulk actions.
@@ -33,12 +33,27 @@ export function CustomersPage({ onLogout }: { onLogout: () => void }) {
       subtitle={`${items.length} clients ${q ? `matching « ${q} »` : ''}`}
       onLogout={onLogout}
       actions={
-        <button
-          onClick={() => navigate('/activate')}
-          className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black hover:bg-accent-bright"
-        >
-          + Activer un client
-        </button>
+        <>
+          <button
+            onClick={() =>
+              downloadCsv(
+                `clients-${new Date().toISOString().slice(0, 10)}.csv`,
+                ['Nom', 'Email', 'Téléphone', 'Créé le'],
+                items.map((c) => [c.name, c.email, c.phone, formatDateTime(c.created_at)]),
+              )
+            }
+            disabled={items.length === 0}
+            className="rounded-md border border-white/10 px-3 py-1.5 text-xs font-semibold text-ink-secondary transition hover:border-accent/40 hover:text-ink-primary disabled:opacity-50"
+          >
+            ⬇ Export CSV
+          </button>
+          <button
+            onClick={() => navigate('/activate')}
+            className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black hover:bg-accent-bright"
+          >
+            + Activer un client
+          </button>
+        </>
       }
     >
       <input

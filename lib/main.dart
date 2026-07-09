@@ -57,6 +57,7 @@ import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/cloud_backup_repository.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
+import 'features/playlists/data/remote_sync_poller.dart';
 import 'features/pricing/data/pricing_repository.dart';
 import 'core/flavor/flavor.dart';
 import 'features/security/data/age_gate_settings.dart';
@@ -238,16 +239,22 @@ Future<void> bootApp() async {
     PlaylistRepository.instance.refreshStale();
   });
 
-  // SOURCES POUSSÉES PAR LE PANEL : re-synchro PÉRIODIQUE COURTE (5 min),
-  // séparée du gros ré-import ci-dessous. AVANT ce correctif, une source
-  // ajoutée/poussée par le revendeur APRÈS l'ouverture de l'app pouvait
-  // rester invisible jusqu'à 24 h (l'ancien intervalle, partagé avec le
-  // ré-import lourd) → pas « fluide et instantané ». Léger : un seul GET
-  // JSON ; n'ajoute que ce qui manque (dédup existante), ne touche jamais
-  // aux sources déjà chargées.
-  Timer.periodic(const Duration(minutes: 5), (_) {
-    if (!BootGuard.instance.safeMode) RemoteSourceRepository.sync();
-  });
+  // LIVRAISON INSTANTANÉE : poll ultra-léger de /api/sync/:mac (~20 s).
+  // Une action panel (activation, source poussée, gel/dégel, publication…)
+  // déclenche la re-synchro COMPLÈTE (sources + statut d'abonnement) en
+  // quelques secondes au lieu de 5 min / 6 h. Repli automatique sur
+  // l'ancien cycle 5 min si le Worker n'expose pas encore /api/sync.
+  RemoteSyncPoller.instance.start(
+    onChange: () async {
+      if (BootGuard.instance.safeMode) return;
+      await RemoteSourceRepository.sync();
+      await PlaylistRepository.instance.pruneEmptyPlaylists();
+      await SubscriptionState.instance.syncWithBackend();
+    },
+    onFallback: () async {
+      if (!BootGuard.instance.safeMode) await RemoteSourceRepository.sync();
+    },
+  );
 
   // AUTO-ACTUALISATION toutes les 24 h tant que l'app tourne : recharge
   // les playlists pour récupérer le contenu que le fournisseur a ajouté.

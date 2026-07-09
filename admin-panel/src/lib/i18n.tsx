@@ -57,12 +57,17 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.transfer': { fr: 'Transférer', en: 'Transfer', ar: 'نقل' },
   'nav.families': { fr: 'Famille', en: 'Family', ar: 'العائلة' },
   'nav.account': { fr: 'Mon compte', en: 'My account', ar: 'حسابي' },
+  'nav.sources': { fr: 'Sources M3U / Xtream', en: 'M3U / Xtream sources', ar: 'مصادر M3U / Xtream' },
+  'nav.appAccess': { fr: "Accès à l'app", en: 'App access', ar: 'الوصول إلى التطبيق' },
+  'nav.products': { fr: 'Produits & publications', en: 'Products & publishing', ar: 'المنتجات والنشر' },
+  'nav.integrations': { fr: 'API & intégrations', en: 'API & integrations', ar: 'الواجهات والتكاملات' },
 
   // --- Sections du menu (regroupement Sidebar) ---
   'navsec.activation': { fr: 'Activation & abonnés', en: 'Activation & subscribers', ar: 'التفعيل والمشتركون' },
   'navsec.channels': { fr: 'Chaînes & sources', en: 'Channels & sources', ar: 'القنوات والمصادر' },
-  'navsec.content': { fr: 'App & contenu', en: 'App & content', ar: 'التطبيق والمحتوى' },
-  'navsec.system': { fr: 'Système', en: 'System', ar: 'النظام' },
+  'navsec.content': { fr: 'Publication & contenu', en: 'Publishing & content', ar: 'النشر والمحتوى' },
+  'navsec.monetization': { fr: 'Monétisation', en: 'Monetization', ar: 'تحقيق الدخل' },
+  'navsec.system': { fr: 'Système & sécurité', en: 'System & security', ar: 'النظام والأمان' },
 
   // --- Commun ---
   'common.credits': { fr: 'Crédits', en: 'Credits', ar: 'الأرصدة' },

@@ -271,7 +271,58 @@ async function requireAuth(request, env) {
   if (!m) return { error: errResp('no_auth', 'Missing Authorization header', 401) };
   const claims = await verifyJwt(m[1], env.ADMIN_SECRET || 'dev-secret');
   if (!claims) return { error: errResp('bad_token', 'Invalid or expired token', 401) };
+  // RÉVOCATION : un JWT valide 7 jours ne suffit pas — si le compte a été
+  // désactivé/suspendu ou si le mot de passe a changé APRÈS l'émission du
+  // jeton, on le refuse. Un jeton volé meurt donc dès que l'owner change
+  // le mot de passe, sans attendre l'expiration.
+  if (!(await accountStillValid(env, claims))) {
+    return { error: errResp('bad_token', 'Session révoquée — reconnecte-toi', 401) };
+  }
   return { user: claims };
+}
+
+// Colonne de révocation (date du dernier changement de mot de passe).
+// ALTER best-effort, idempotent : ignore l'erreur si déjà présente.
+async function ensureSecurityColumns(env) {
+  try { await env.DB.prepare('ALTER TABLE admin_users ADD COLUMN password_changed_at INTEGER').run(); } catch (_) { /* déjà là */ }
+  try { await env.DB.prepare('ALTER TABLE resellers ADD COLUMN password_changed_at INTEGER').run(); } catch (_) { /* déjà là */ }
+}
+
+// Cache par isolate (60 s) pour ne pas payer un SELECT à CHAQUE requête
+// du panel. Invalidé localement quand on change un mot de passe ici-même.
+const _authCheckCache = new Map(); // sub → { ok, exp }
+function _authCacheInvalidate(sub) { _authCheckCache.delete(sub); }
+
+async function accountStillValid(env, claims) {
+  try {
+    if (!claims || !claims.sub) return false;
+    const now = Date.now();
+    const hit = _authCheckCache.get(claims.sub);
+    if (hit && hit.exp > now) return hit.ok;
+    let ok = true;
+    if (claims.role === 'reseller') {
+      const r = await env.DB
+        .prepare('SELECT status, password_changed_at FROM resellers WHERE id = ?')
+        .bind(claims.sub).first();
+      // Marge de 2 s : un jeton émis DANS la même seconde que le
+      // changement (ex. login par clé maître qui resynchronise le hash
+      // puis signe aussitôt) ne doit pas être révoqué par erreur.
+      ok = !!r && r.status !== 'suspended'
+        && !(r.password_changed_at && (claims.iat || 0) * 1000 + 2000 < r.password_changed_at);
+    } else {
+      const r = await env.DB
+        .prepare('SELECT is_active, password_changed_at FROM admin_users WHERE id = ?')
+        .bind(claims.sub).first();
+      ok = !!r && Number(r.is_active) === 1
+        && !(r.password_changed_at && (claims.iat || 0) * 1000 + 2000 < r.password_changed_at);
+    }
+    _authCheckCache.set(claims.sub, { ok, exp: now + 60 * 1000 });
+    return ok;
+  } catch (_) {
+    // Colonne/table absente (migration pas encore passée) → FAIL-OPEN :
+    // la sécurité additionnelle ne doit pas casser le panel existant.
+    return true;
+  }
 }
 
 // ---------------------------------------------------------
@@ -443,18 +494,18 @@ async function logAudit(env, request, actor, action, target, before, after) {
 // le navigateur le voit comme une panne réseau et le panel affiche
 // "Connexion impossible" au lieu du vrai message. Avec ce filet, on voit
 // l'erreur réelle (ex. "no such table: admin_users") et on peut la régler.
-export async function apiV1(request, env) {
+export async function apiV1(request, env, ctx) {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: JSON_HEADERS });
   }
   try {
-    return await apiV1Inner(request, env);
+    return await apiV1Inner(request, env, ctx);
   } catch (e) {
     return errResp('internal_error', (e && e.message) || String(e), 500);
   }
 }
 
-async function apiV1Inner(request, env) {
+async function apiV1Inner(request, env, ctx) {
   if (!env.DB) {
     return errResp(
       'db_unbound',
@@ -486,6 +537,15 @@ async function apiV1Inner(request, env) {
       if (a.error) return a.error;
       return jsonResp({ user: a.user });
     }
+  }
+
+  // --- Accès PROGRAMMATIQUE par clé API (page « Intégrations ») ---
+  //  Un Bearer commençant par '7mk_' n'est PAS un JWT : c'est une clé
+  //  API créée par l'owner, à portée LIMITÉE (scopes). Route dédiée,
+  //  liste blanche stricte — une clé ne donne jamais accès à tout.
+  {
+    const bm = (request.headers.get('Authorization') || '').match(/^Bearer\s+(7mk_[A-Za-z0-9]+)$/i);
+    if (bm) return apiV1ForApiKey(request, env, ctx, url, parts, bm[1]);
   }
 
   // --- Tout le reste requiert un JWT ---
@@ -573,7 +633,7 @@ async function apiV1Inner(request, env) {
     if (!resellerCan(a.user, 'activate')) {
       return errResp('forbidden', 'Ton compte n\'a pas le droit d\'activer des appareils.', 403);
     }
-    return handleActivate(request, env, a.user, actor);
+    return handleActivate(request, env, a.user, actor, ctx);
   }
 
   // /transfer — déplacer un abonnement d'une ancienne MAC vers une
@@ -831,8 +891,8 @@ async function apiV1Inner(request, env) {
         && !resellerCan(a.user, 'sources')) {
       return errResp('forbidden', 'Ton niveau ne permet pas de pousser une source.', 403);
     }
-    if (request.method === 'PUT') return handleSourcePut(request, env, mac, actor);
-    if (request.method === 'DELETE') return handleSourceDelete(request, env, mac, actor);
+    if (request.method === 'PUT') return handleSourcePut(request, env, mac, actor, ctx);
+    if (request.method === 'DELETE') return handleSourceDelete(request, env, mac, actor, ctx);
   }
 
   // /customers
@@ -860,7 +920,7 @@ async function apiV1Inner(request, env) {
     if (parts.length === 2) {
       const did = parts[1];
       // Geler / bannir / reactiver (block_status).
-      if (request.method === 'PATCH') return handleDeviceUpdate(request, env, did, actor, a.user);
+      if (request.method === 'PATCH') return handleDeviceUpdate(request, env, did, actor, a.user, ctx);
       // Supprimer la MAC.
       if (request.method === 'DELETE') return handleDeviceDelete(env, did, actor, a.user);
     }
@@ -882,6 +942,82 @@ async function apiV1Inner(request, env) {
     }
     if (parts.length === 3 && parts[2] === 'renew') {
       return handleLicensesRenew(request, env, parts[1], actor);
+    }
+  }
+
+  // /source-check — TESTE une source (Xtream/M3U) EN DIRECT depuis le
+  // panel AVANT de la pousser : identifiants valides ? combien de
+  // connexions ? la playlist répond ? Zéro devinette côté client.
+  if (parts[0] === 'source-check' && parts.length === 1 && request.method === 'POST') {
+    if (!resellerCan(a.user, 'sources')) {
+      return errResp('forbidden', 'Ton niveau ne permet pas de tester une source.', 403);
+    }
+    return handleSourceCheck(request, env);
+  }
+
+  // /sync/:mac — révision de synchro d'un appareil (vue panel : permet
+  // d'afficher « livré à l'appareil » après un push).
+  if (parts[0] === 'sync' && parts.length === 2 && request.method === 'GET') {
+    return handleAdminSyncGet(env, parts[1]);
+  }
+
+  // /app-access — CONTRÔLE D'ACCÈS GLOBAL de l'app (owner) : ouvert /
+  // maintenance / verrouillé + message affiché aux clients. Par
+  // plateforme (?platform=tv pour DeFew TV, rien = mobile).
+  if (parts[0] === 'app-access' && parts.length === 1) {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    const aaPlatform = url.searchParams.get('platform');
+    if (request.method === 'GET') return handleAppAccessGet(env, aaPlatform);
+    if (request.method === 'PUT') return handleAppAccessPut(request, env, actor, aaPlatform);
+  }
+
+  // /products — CATALOGUE PUBLIABLE (nouveaux produits, offres, accès…).
+  // L'owner publie/dépublie ; l'app lit GET /api/products (public).
+  if (parts[0] === 'products') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (parts.length === 1) {
+      if (request.method === 'GET') return handleProductsList(env, { all: true });
+      if (request.method === 'POST') return handleProductsCreate(request, env, actor);
+    }
+    if (parts.length === 2) {
+      if (request.method === 'PATCH') return handleProductsUpdate(request, env, parts[1], actor);
+      if (request.method === 'DELETE') return handleProductsDelete(request, env, parts[1], actor);
+    }
+  }
+
+  // /integrations/* — CLÉS API (accès programmatique scellé par scopes)
+  // et WEBHOOKS (le backend notifie TES systèmes : activation, source
+  // poussée, appareil bloqué…). Owner uniquement.
+  if (parts[0] === 'integrations') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (parts[1] === 'keys') {
+      if (parts.length === 2) {
+        if (request.method === 'GET') return handleApiKeysList(env);
+        if (request.method === 'POST') return handleApiKeysCreate(request, env, actor);
+      }
+      if (parts.length === 3 && request.method === 'DELETE') {
+        return handleApiKeysRevoke(request, env, parts[2], actor);
+      }
+    }
+    if (parts[1] === 'webhooks') {
+      if (parts.length === 2) {
+        if (request.method === 'GET') return handleWebhooksList(env);
+        if (request.method === 'POST') return handleWebhooksCreate(request, env, actor);
+      }
+      if (parts.length === 3) {
+        if (request.method === 'PATCH') return handleWebhooksUpdate(request, env, parts[2], actor);
+        if (request.method === 'DELETE') return handleWebhooksDelete(request, env, parts[2], actor);
+      }
+      // /integrations/webhooks/:id/test — envoie un événement de test.
+      if (parts.length === 4 && parts[3] === 'test' && request.method === 'POST') {
+        return handleWebhookTest(request, env, ctx, parts[2]);
+      }
     }
   }
 
@@ -923,6 +1059,8 @@ async function handleLogin(request, env) {
     .first();
 
   if (!row || !row.is_active) {
+    await logAudit(env, request, { type: 'system', id: 'auth' }, 'auth.login_failed',
+      { type: 'admin', id: email }, null, null);
     return errResp('bad_credentials', 'Invalid credentials', 401);
   }
   let ok = await verifyPassword(password, row.password_hash);
@@ -938,13 +1076,19 @@ async function handleLogin(request, env) {
       && env.ADMIN_SECRET
       && password === env.ADMIN_SECRET) {
     const synced = await hashPassword(env.ADMIN_SECRET);
+    await ensureSecurityColumns(env);
+    // Récupération par clé maître = on RÉVOQUE aussi les anciens jetons
+    // (si l'owner récupère son compte, une session volée doit mourir).
     await env.DB
-      .prepare('UPDATE admin_users SET password_hash = ? WHERE id = ?')
-      .bind(synced, row.id)
+      .prepare('UPDATE admin_users SET password_hash = ?, password_changed_at = ? WHERE id = ?')
+      .bind(synced, Date.now(), row.id)
       .run();
+    _authCacheInvalidate(row.id);
     ok = true;
   }
   if (!ok) {
+    await logAudit(env, request, { type: 'system', id: 'auth' }, 'auth.login_failed',
+      { type: 'admin', id: email }, null, null);
     return errResp('bad_credentials', 'Invalid credentials', 401);
   }
   await rateLimitReset(env, request, 'login'); // succès → on libère l'IP
@@ -952,6 +1096,8 @@ async function handleLogin(request, env) {
     .prepare('UPDATE admin_users SET last_login_at = ? WHERE id = ?')
     .bind(Date.now(), row.id)
     .run();
+  await logAudit(env, request, { type: 'admin', id: row.id }, 'auth.login',
+    { type: 'admin', id: row.id }, null, { email: row.email });
 
   const token = await signJwt(
     { sub: row.id, email: row.email, role: row.role, name: row.name },
@@ -1802,6 +1948,8 @@ async function handleGrantTrialAll(request, env, actor) {
     .bind(newExpiry, now, newExpiry)
     .run();
   const updated = (res && res.meta && res.meta.changes) || 0;
+  // Action de masse → bump GLOBAL : tout le parc re-synchronise vite.
+  await bumpGlobalSync(env);
   await logAudit(env, request, actor, 'licenses.grant_trial_all',
     { type: 'license', id: null }, null, { days, updated, expires_at: newExpiry });
   return jsonResp({ ok: true, days, updated, expires_at: newExpiry });
@@ -2225,6 +2373,9 @@ async function upsertDeviceSource(env, mac, sources) {
     .bind(mac, first.type, first.label, first.server_url, first.username,
           first.password, first.m3u_url, first.epg_url, json, Date.now())
     .run();
+  // LIVRAISON INSTANTANÉE : l'appareil détecte le changement en < 20 s
+  // via GET /api/sync/:mac (au lieu d'attendre le cycle de 5 min).
+  await bumpDeviceSync(env, mac);
 }
 
 // Décode une MAC reçue dans le PATH : le front encode les « : » en
@@ -2259,7 +2410,7 @@ async function handleSourceGet(env, mac) {
   return jsonResp({ mac: m, source: sources[0] || null, sources });
 }
 
-async function handleSourcePut(request, env, mac, actor) {
+async function handleSourcePut(request, env, mac, actor, ctx) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
@@ -2285,15 +2436,20 @@ async function handleSourcePut(request, env, mac, actor) {
   await logAudit(env, request, actor, 'source.set',
     { type: 'device_source', id: m }, null,
     { count: sources.length, types: sources.map((s) => s.type) });
+  await dispatchWebhooks(env, ctx, 'source.updated', {
+    mac: m, count: sources.length, types: sources.map((s) => s.type),
+  });
   return jsonResp({ ok: true, mac: m, count: sources.length });
 }
 
-async function handleSourceDelete(request, env, mac, actor) {
+async function handleSourceDelete(request, env, mac, actor, ctx) {
   await ensureSourcesTable(env);
   const m = decodeMac(mac).trim().toUpperCase();
   await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run();
+  await bumpDeviceSync(env, m);
   await logAudit(env, request, actor, 'source.clear',
     { type: 'device_source', id: m }, null, null);
+  await dispatchWebhooks(env, ctx, 'source.cleared', { mac: m });
   return jsonResp({ ok: true, mac: m });
 }
 
@@ -2519,6 +2675,7 @@ async function handleFamilyRemoveMember(env, familyId, mac, actor) {
     .bind(familyId, m).run();
   // Retire la source → l'appareil n'a plus l'accès famille.
   try { await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run(); } catch (_) {}
+  await bumpDeviceSync(env, m);
   await logAudit(env, { headers: new Headers() }, actor, 'family.member.remove',
     { type: 'family', id: familyId }, null, { mac: m });
   return jsonResp({ ok: true, family_id: familyId, mac: m });
@@ -2689,7 +2846,7 @@ async function deviceForActor(env, id, user) {
 
 // PATCH /devices/:id { block_status: 'active'|'frozen'|'banned' }
 // Geler (rappel de paiement), bannir (abus), ou reactiver une MAC.
-async function handleDeviceUpdate(request, env, id, actor, user) {
+async function handleDeviceUpdate(request, env, id, actor, user, ctx) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
@@ -2703,8 +2860,13 @@ async function handleDeviceUpdate(request, env, id, actor, user) {
   }
   await env.DB.prepare('UPDATE devices SET block_status = ? WHERE id = ?')
     .bind(next ?? null, id).run();
+  // Gel/ban/réactivation = effet quasi immédiat sur l'appareil (sync poll).
+  await bumpDeviceSync(env, r.dev.mac);
   await logAudit(env, request, actor, 'device.block',
     { type: 'device', id }, { block_status: r.dev.block_status }, { block_status: next });
+  await dispatchWebhooks(env, ctx, 'device.blocked', {
+    mac: r.dev.mac, block_status: next,
+  });
   return jsonResp({ updated: 1, block_status: next });
 }
 
@@ -2715,6 +2877,7 @@ async function handleDeviceDelete(env, id, actor, user) {
   const r = await deviceForActor(env, id, user);
   if (r.error) return r.error;
   await env.DB.prepare('DELETE FROM devices WHERE id = ?').bind(id).run();
+  await bumpDeviceSync(env, r.dev.mac);
   await logAudit(env, null, actor, 'device.delete',
     { type: 'device', id }, { mac: r.dev.mac }, null);
   return jsonResp({ deleted: 1 });
@@ -2875,6 +3038,12 @@ async function handleLicensesRenew(request, env, id, actor) {
     )
     .bind(body.plan || before.plan, newExpiry, now, id)
     .run();
+  // Bump de synchro : l'appareil voit son renouvellement sans redémarrer.
+  try {
+    const dev = await env.DB.prepare('SELECT mac FROM devices WHERE id = ?')
+      .bind(before.device_id).first();
+    if (dev) await bumpDeviceSync(env, dev.mac);
+  } catch (_) { /* best-effort */ }
   await logAudit(env, request, actor, 'license.renew',
     { type: 'license', id }, before, { plan: body.plan, expires_at: newExpiry });
   return jsonResp({ updated: 1, expires_at: newExpiry });
@@ -3078,8 +3247,12 @@ async function handleChangeOwnPassword(request, env, user, actor) {
   const ok = await verifyPassword(current, row.password_hash);
   if (!ok) return errResp('bad_current', 'Mot de passe actuel incorrect', 401);
   const hash = await hashPassword(next);
-  await env.DB.prepare(`UPDATE ${table} SET password_hash = ? WHERE id = ?`)
-    .bind(hash, user.sub).run();
+  await ensureSecurityColumns(env);
+  await env.DB.prepare(`UPDATE ${table} SET password_hash = ?, password_changed_at = ? WHERE id = ?`)
+    .bind(hash, Date.now(), user.sub).run();
+  // Tous les jetons émis AVANT ce changement sont révoqués (dont celui-ci :
+  // le panel redemande une connexion — comportement attendu).
+  _authCacheInvalidate(user.sub);
   await logAudit(env, request, actor, 'password.change_self',
     { type: user.role === 'reseller' ? 'reseller' : 'admin', id: user.sub }, null, null);
   return jsonResp({ ok: true });
@@ -3272,11 +3445,27 @@ async function handleResellersUpdate(request, env, id, actor, user) {
   if (body.commission_rate !== undefined && isOwner(user)) {
     sets.push('commission_rate = ?'); vals.push(Number(body.commission_rate));
   }
-  if (body.password) { sets.push('password_hash = ?'); vals.push(await hashPassword(body.password)); }
+  if (body.password) {
+    // Mots de passe revendeur = accès à des clients → minimum 8 caractères.
+    if (String(body.password).length < 8) {
+      return errResp('weak_password', 'Le mot de passe doit faire au moins 8 caracteres', 400);
+    }
+    await ensureSecurityColumns(env);
+    sets.push('password_hash = ?'); vals.push(await hashPassword(body.password));
+    // Révoque les jetons émis avant ce reset (compte peut-être compromis).
+    sets.push('password_changed_at = ?'); vals.push(Date.now());
+    _authCacheInvalidate(id);
+  }
+  if (body.status !== undefined) _authCacheInvalidate(id); // suspension immédiate
   if (sets.length === 0) return jsonResp({ updated: 0 });
   vals.push(id);
   await env.DB.prepare(`UPDATE resellers SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run();
-  await logAudit(env, request, actor, 'reseller.update', { type: 'reseller', id }, before, body);
+  // On ne journalise JAMAIS de secret dans l'audit : ni le nouveau mot de
+  // passe (body), ni le hash existant (before contenait password_hash).
+  const auditBody = { ...body };
+  if (auditBody.password) auditBody.password = '(modifié)';
+  const { password_hash: _ph, ...auditBefore } = before;
+  await logAudit(env, request, actor, 'reseller.update', { type: 'reseller', id }, auditBefore, auditBody);
   return jsonResp({ updated: 1 });
 }
 
@@ -3454,6 +3643,9 @@ async function handleDeviceTransfer(request, env, user, actor) {
   } catch (_) { /* pas de source à déplacer */ }
 
   // L'ancien appareil n'a plus de licence → il redevient inactif tout seul.
+  // Les DEUX appareils re-synchronisent immédiatement (poll /api/sync).
+  await bumpDeviceSync(env, oldMac);
+  await bumpDeviceSync(env, newMac);
   await logAudit(env, request, actor, 'device.transfer',
     { type: 'device', id: oldDev.id },
     { old_mac: oldMac }, { new_mac: newMac, moved_licenses: licRows.length });
@@ -3470,7 +3662,7 @@ async function handleDeviceTransfer(request, env, user, actor) {
 //  Trouve-ou-cree le client + le device (cle = MAC), cree OU renouvelle
 //  la licence pour l'app, et DEBITE les credits du revendeur selon le
 //  cout du plan. C'est l'endpoint que le portail revendeur appelle.
-async function handleActivate(request, env, user, actor) {
+async function handleActivate(request, env, user, actor, ctx) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
@@ -3617,9 +3809,18 @@ async function handleActivate(request, env, user, actor) {
     ]);
   }
 
+  // LIVRAISON INSTANTANÉE : l'app détecte l'activation en < 20 s via
+  // /api/sync/:mac (les écrans d'activation pollent déjà toutes les 2-5 s).
+  await bumpDeviceSync(env, mac);
+
   await logAudit(env, request, actor, renewed ? 'activate.renew' : 'activate.create',
     { type: 'license', id: licenseId }, null,
     { mac, plan, app_id: appId, cost, reseller_id: chargeResellerId });
+  await dispatchWebhooks(env, ctx, renewed ? 'activation.renewed' : 'activation.created', {
+    mac, plan, app_id: appId, expires_at: finalExpiry,
+    credits_charged: chargeResellerId ? cost : 0,
+    reseller_id: chargeResellerId,
+  });
 
   return jsonResp({
     ok: true,
@@ -3633,4 +3834,668 @@ async function handleActivate(request, env, user, actor) {
     credit_balance: balanceAfter,
     renewed,
   }, 201);
+}
+
+// =========================================================
+//  SYNC INSTANTANÉ — livraison temps réel des actions panel
+// =========================================================
+//  Chaque action panel qui concerne un appareil (activation, source
+//  poussée/retirée, gel/ban, transfert…) INCRÉMENTE une révision par
+//  MAC. L'app poll un endpoint ultra-léger `GET /api/sync/:mac`
+//  (worker.js) toutes les ~20 s : si la révision a bougé, elle
+//  déclenche IMMÉDIATEMENT la re-synchro (sources + statut) au lieu
+//  d'attendre l'ancien cycle de 5 min / 6 h. Coût : un SELECT indexé.
+//
+//  La ligne spéciale mac='*' est la révision GLOBALE (actions de
+//  masse : grant-trial-all, accès app…). La révision effective d'un
+//  appareil = rev(mac) + rev('*') — monotone, bouge dans les 2 cas.
+
+async function ensureDeviceSyncTable(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS device_sync (' +
+    'mac TEXT PRIMARY KEY, rev INTEGER NOT NULL DEFAULT 0, ' +
+    'updated_at INTEGER NOT NULL)',
+  ).run();
+}
+
+/// Incrémente la révision d'une MAC. BEST-EFFORT : ne fait jamais
+/// échouer l'écriture métier qui l'appelle.
+export async function bumpDeviceSync(env, mac) {
+  try {
+    if (!env.DB || !mac) return;
+    await ensureDeviceSyncTable(env);
+    await env.DB.prepare(
+      'INSERT INTO device_sync (mac, rev, updated_at) VALUES (?, 1, ?) ' +
+      'ON CONFLICT(mac) DO UPDATE SET rev = rev + 1, updated_at = excluded.updated_at',
+    ).bind(String(mac).toUpperCase(), Date.now()).run();
+  } catch (_) { /* best-effort */ }
+}
+
+/// Incrémente la révision GLOBALE (tous les appareils re-synchronisent).
+export async function bumpGlobalSync(env) {
+  return bumpDeviceSync(env, '*');
+}
+
+/// Révision effective d'une MAC (per-mac + globale). Utilisée par le
+/// endpoint public /api/sync/:mac (worker.js) et par la vue panel.
+export async function readSyncRev(env, mac) {
+  try {
+    if (!env.DB) return 0;
+    const row = await env.DB.prepare(
+      "SELECT COALESCE(SUM(rev), 0) AS r FROM device_sync WHERE mac IN (?, '*')",
+    ).bind(String(mac).toUpperCase()).first();
+    return row ? Number(row.r) || 0 : 0;
+  } catch (_) {
+    return 0; // table absente → révision 0 stable (l'app garde son cycle lent)
+  }
+}
+
+/// GET /api/v1/sync/:mac — vue panel : révision + date du dernier bump.
+async function handleAdminSyncGet(env, mac) {
+  const m = decodeMac(mac).trim().toUpperCase();
+  const rev = await readSyncRev(env, m);
+  let updatedAt = null;
+  try {
+    const row = await env.DB.prepare(
+      'SELECT MAX(updated_at) AS u FROM device_sync WHERE mac IN (?, \'*\')',
+    ).bind(m).first();
+    updatedAt = row && row.u ? Number(row.u) : null;
+  } catch (_) { /* table absente */ }
+  return jsonResp({ mac: m, rev, updated_at: updatedAt });
+}
+
+// =========================================================
+//  SOURCE-CHECK — tester une source IPTV en direct (panel)
+// =========================================================
+//  POST /api/v1/source-check { source: {type, server_url, username,
+//  password | m3u_url} } → vérifie EN QUELQUES SECONDES que la source
+//  répond : identifiants Xtream valides (player_api), ou playlist M3U
+//  qui commence bien par #EXTM3U. L'admin sait AVANT de pousser.
+
+async function fetchWithTimeout(url, ms, init) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  try {
+    return await fetch(url, { ...(init || {}), signal: ctl.signal, redirect: 'follow' });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function handleSourceCheck(request, env) {
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const norm = normalizeSource(body.source || body);
+  if (norm.error) return errResp('bad_source', norm.error, 400);
+  const src = norm.source;
+  const started = Date.now();
+  const done = (extra) => jsonResp({ ms: Date.now() - started, ...extra });
+
+  try {
+    if (src.type === 'xtream') {
+      const base = src.server_url.replace(/\/+$/, '');
+      if (!/^https?:\/\//i.test(base)) {
+        return errResp('bad_url', 'server_url doit commencer par http:// ou https://', 400);
+      }
+      const u = base + '/player_api.php?username=' + encodeURIComponent(src.username)
+        + '&password=' + encodeURIComponent(src.password);
+      const resp = await fetchWithTimeout(u, 8000);
+      if (!resp.ok) {
+        return done({ ok: false, type: 'xtream', reachable: false, code: 'http_' + resp.status });
+      }
+      let data = null;
+      try { data = await resp.json(); } catch (_) { /* réponse non-JSON */ }
+      const ui = data && data.user_info;
+      if (!ui || String(ui.auth) !== '1') {
+        return done({ ok: false, type: 'xtream', reachable: true, code: 'bad_credentials' });
+      }
+      return done({
+        ok: true,
+        type: 'xtream',
+        status: ui.status || '',
+        // exp_date Xtream = secondes epoch (string) ; null/0 = illimité.
+        expires_at: ui.exp_date ? Number(ui.exp_date) * 1000 : null,
+        max_connections: Number(ui.max_connections) || null,
+        active_connections: Number.isFinite(Number(ui.active_cons)) ? Number(ui.active_cons) : null,
+      });
+    }
+
+    // ----- M3U : on lit le DÉBUT de la playlist (≤ 256 Ko), pas tout -----
+    if (!/^https?:\/\//i.test(src.m3u_url)) {
+      return errResp('bad_url', 'm3u_url doit commencer par http:// ou https://', 400);
+    }
+    const resp = await fetchWithTimeout(src.m3u_url, 8000, {
+      headers: { Range: 'bytes=0-262143', Accept: '*/*' },
+    });
+    if (!resp.ok && resp.status !== 206) {
+      return done({ ok: false, type: 'm3u', reachable: false, code: 'http_' + resp.status });
+    }
+    let text = '';
+    if (resp.body) {
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder('utf-8', { fatal: false });
+      let bytes = 0;
+      while (bytes < 262144) {
+        const { done: eof, value } = await reader.read();
+        if (eof) break;
+        bytes += value.byteLength;
+        text += decoder.decode(value, { stream: true });
+      }
+      try { await reader.cancel(); } catch (_) { /* déjà fermé */ }
+    } else {
+      text = (await resp.text()).slice(0, 262144);
+    }
+    const isM3u = /#EXTM3U/i.test(text.slice(0, 4096));
+    const sampleChannels = (text.match(/#EXTINF/gi) || []).length;
+    return done({
+      ok: isM3u,
+      type: 'm3u',
+      reachable: true,
+      code: isM3u ? null : 'not_m3u',
+      // Chaînes vues dans l'échantillon lu (la playlist complète en a
+      // souvent bien plus) — sert de preuve de vie, pas de comptage exact.
+      sample_channels: sampleChannels,
+    });
+  } catch (e) {
+    return done({
+      ok: false,
+      type: src.type,
+      reachable: false,
+      code: 'network',
+      message: String((e && e.message) || e).slice(0, 200),
+    });
+  }
+}
+
+// =========================================================
+//  ACCÈS APP — interrupteur global (owner)
+// =========================================================
+//  Modes : 'open' (normal), 'maintenance' (l'app affiche le message et
+//  laisse regarder ce qui est déjà chargé), 'locked' (accès suspendu,
+//  message affiché). Stocké dans app_config (clé par plateforme).
+//  L'app lit GET /api/app-access (public, worker.js) au démarrage et
+//  via le poller de synchro (un changement = bump global → <20 s).
+
+const APP_ACCESS_MODES = ['open', 'maintenance', 'locked'];
+
+function _accessSfx(platform) { return platform === 'tv' ? '_tv' : ''; }
+
+async function handleAppAccessGet(env, platform) {
+  await ensureAppConfigTable(env);
+  const s = _accessSfx(platform);
+  const mode = (await _cfgGetStr(env, 'app_access_mode' + s)) || 'open';
+  const message = (await _cfgGetStr(env, 'app_access_msg' + s)) || '';
+  return jsonResp({
+    mode: APP_ACCESS_MODES.includes(mode) ? mode : 'open',
+    message,
+  });
+}
+
+async function handleAppAccessPut(request, env, actor, platform) {
+  await ensureAppConfigTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const mode = (body.mode || 'open').toString();
+  if (!APP_ACCESS_MODES.includes(mode)) {
+    return errResp('bad_mode', "mode doit être 'open', 'maintenance' ou 'locked'", 400);
+  }
+  const message = (body.message || '').toString().slice(0, 500);
+  const s = _accessSfx(platform);
+  await _cfgSet(env, 'app_access_mode' + s, mode);
+  await _cfgSet(env, 'app_access_msg' + s, message);
+  // Changement d'accès = TOUT le parc doit le voir vite → bump global.
+  await bumpGlobalSync(env);
+  await logAudit(env, request, actor, 'app_access.set',
+    { type: 'app_config', id: 'app_access' + s }, null, { mode, message });
+  return jsonResp({ ok: true, mode, message });
+}
+
+// =========================================================
+//  PRODUITS — catalogue publiable (owner)
+// =========================================================
+//  « Publier quelque chose : un nouveau produit, un accès… » — l'owner
+//  crée des cartes produit (titre, description, image, prix, bouton)
+//  et les publie/dépublie. L'app lit GET /api/products (public).
+
+async function ensureProductsTable(env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS products (
+       id          TEXT PRIMARY KEY,
+       title       TEXT NOT NULL,
+       description TEXT,
+       image_url   TEXT,
+       price_label TEXT,
+       cta_label   TEXT,
+       cta_url     TEXT,
+       badge       TEXT,
+       position    INTEGER NOT NULL DEFAULT 0,
+       active      INTEGER NOT NULL DEFAULT 1,
+       created_at  INTEGER NOT NULL,
+       updated_at  INTEGER NOT NULL
+     )`,
+  ).run();
+}
+
+/// Liste des produits. { all: true } (panel) = tout ; sinon actifs
+/// seulement (vue app). Exportée pour le endpoint public (worker.js).
+export async function handleProductsList(env, opts) {
+  try {
+    await ensureProductsTable(env);
+    const where = opts && opts.all ? '' : 'WHERE active = 1';
+    const rs = await env.DB.prepare(
+      `SELECT * FROM products ${where} ORDER BY position ASC, created_at DESC LIMIT 200`,
+    ).all();
+    return jsonResp({ items: rs.results || [] });
+  } catch (_) {
+    return jsonResp({ items: [] });
+  }
+}
+
+function normalizeProduct(body) {
+  const title = (body.title || '').toString().trim();
+  if (!title) return { error: 'title required' };
+  const str = (v, max) => (v === undefined || v === null) ? null : v.toString().trim().slice(0, max) || null;
+  // Les URLs (image, bouton) doivent être http(s) — pas de javascript: etc.
+  const url = (v) => {
+    const s = str(v, 1000);
+    if (s && !/^https?:\/\//i.test(s)) return undefined; // invalide
+    return s;
+  };
+  const imageUrl = url(body.image_url);
+  const ctaUrl = url(body.cta_url);
+  if (imageUrl === undefined || ctaUrl === undefined) {
+    return { error: 'image_url / cta_url doivent commencer par http(s)://' };
+  }
+  return {
+    product: {
+      title: title.slice(0, 200),
+      description: str(body.description, 2000),
+      image_url: imageUrl,
+      price_label: str(body.price_label, 100),
+      cta_label: str(body.cta_label, 100),
+      cta_url: ctaUrl,
+      badge: str(body.badge, 40),
+      position: Number.isFinite(Number(body.position)) ? Number(body.position) : 0,
+      active: body.active === undefined ? 1 : (body.active ? 1 : 0),
+    },
+  };
+}
+
+async function handleProductsCreate(request, env, actor) {
+  await ensureProductsTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const norm = normalizeProduct(body);
+  if (norm.error) return errResp('bad_product', norm.error, 400);
+  const p = norm.product;
+  const id = genId('prd');
+  const now = Date.now();
+  await env.DB.prepare(
+    `INSERT INTO products
+       (id, title, description, image_url, price_label, cta_label, cta_url,
+        badge, position, active, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(id, p.title, p.description, p.image_url, p.price_label, p.cta_label,
+         p.cta_url, p.badge, p.position, p.active, now, now).run();
+  await bumpGlobalSync(env); // publication = visible partout, vite
+  await logAudit(env, request, actor, 'product.create',
+    { type: 'product', id }, null, { title: p.title, active: p.active });
+  return jsonResp({ ok: true, id }, 201);
+}
+
+async function handleProductsUpdate(request, env, id, actor) {
+  await ensureProductsTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const before = await env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first();
+  if (!before) return errResp('not_found', 'Product not found', 404);
+  // PATCH partiel : on fusionne avec l'existant puis on re-valide tout.
+  const merged = { ...before, ...body };
+  const norm = normalizeProduct(merged);
+  if (norm.error) return errResp('bad_product', norm.error, 400);
+  const p = norm.product;
+  await env.DB.prepare(
+    `UPDATE products SET title=?, description=?, image_url=?, price_label=?,
+       cta_label=?, cta_url=?, badge=?, position=?, active=?, updated_at=?
+     WHERE id=?`,
+  ).bind(p.title, p.description, p.image_url, p.price_label, p.cta_label,
+         p.cta_url, p.badge, p.position, p.active, Date.now(), id).run();
+  await bumpGlobalSync(env);
+  await logAudit(env, request, actor, 'product.update',
+    { type: 'product', id }, { active: before.active }, { active: p.active, title: p.title });
+  return jsonResp({ ok: true, updated: 1 });
+}
+
+async function handleProductsDelete(request, env, id, actor) {
+  await ensureProductsTable(env);
+  const before = await env.DB.prepare('SELECT title FROM products WHERE id = ?').bind(id).first();
+  await env.DB.prepare('DELETE FROM products WHERE id = ?').bind(id).run();
+  await bumpGlobalSync(env);
+  await logAudit(env, request, actor, 'product.delete',
+    { type: 'product', id }, before || null, null);
+  return jsonResp({ ok: true, deleted: 1 });
+}
+
+// =========================================================
+//  CLÉS API — accès programmatique scellé par scopes (owner)
+// =========================================================
+//  L'owner crée une clé (affichée UNE SEULE fois, stockée hachée
+//  SHA-256) avec des SCOPES précis. Un système externe (site web, bot,
+//  n8n/Zapier…) l'utilise en `Authorization: Bearer 7mk_…` sur une
+//  LISTE BLANCHE de routes. Révocable à tout moment.
+//
+//  Scopes :
+//    'activate' → POST /api/v1/activate
+//    'sources'  → GET/PUT/DELETE /api/v1/sources/:mac, POST /api/v1/source-check
+//    'read'     → GET devices / licenses / customers / stats / references
+//    'publish'  → POST/PATCH/DELETE /api/v1/products, POST /api/v1/announcements
+
+const API_KEY_SCOPES = ['activate', 'sources', 'read', 'publish'];
+
+async function ensureApiKeysTable(env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS api_keys (
+       id           TEXT PRIMARY KEY,
+       name         TEXT NOT NULL,
+       prefix       TEXT NOT NULL,
+       key_hash     TEXT NOT NULL,
+       scopes       TEXT NOT NULL,
+       created_at   INTEGER NOT NULL,
+       last_used_at INTEGER,
+       revoked_at   INTEGER
+     )`,
+  ).run();
+}
+
+async function sha256Hex(s) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function handleApiKeysList(env) {
+  await ensureApiKeysTable(env);
+  const rs = await env.DB.prepare(
+    `SELECT id, name, prefix, scopes, created_at, last_used_at, revoked_at
+     FROM api_keys ORDER BY created_at DESC LIMIT 100`,
+  ).all();
+  const items = (rs.results || []).map((r) => ({
+    ...r,
+    scopes: (() => { try { return JSON.parse(r.scopes) || []; } catch (_) { return []; } })(),
+  }));
+  return jsonResp({ items });
+}
+
+async function handleApiKeysCreate(request, env, actor) {
+  await ensureApiKeysTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const name = (body.name || '').toString().trim().slice(0, 100);
+  if (!name) return errResp('missing_name', 'name required', 400);
+  const scopes = Array.isArray(body.scopes)
+    ? body.scopes.filter((s) => API_KEY_SCOPES.includes(s))
+    : [];
+  if (scopes.length === 0) {
+    return errResp('missing_scopes',
+      `scopes requis (au moins un parmi : ${API_KEY_SCOPES.join(', ')})`, 400);
+  }
+  // 20 octets aléatoires → 40 hex. Affichée UNE seule fois, jamais relue.
+  const raw = Array.from(crypto.getRandomValues(new Uint8Array(20)))
+    .map((b) => b.toString(16).padStart(2, '0')).join('');
+  const key = `7mk_${raw}`;
+  const id = genId('key');
+  await env.DB.prepare(
+    `INSERT INTO api_keys (id, name, prefix, key_hash, scopes, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).bind(id, name, key.slice(0, 12) + '…', await sha256Hex(key),
+         JSON.stringify(scopes), Date.now()).run();
+  await logAudit(env, request, actor, 'api_key.create',
+    { type: 'api_key', id }, null, { name, scopes });
+  // La clé en clair part UNE fois dans cette réponse — à copier tout de suite.
+  return jsonResp({ ok: true, id, key, name, scopes }, 201);
+}
+
+async function handleApiKeysRevoke(request, env, id, actor) {
+  await ensureApiKeysTable(env);
+  await env.DB.prepare('UPDATE api_keys SET revoked_at = ? WHERE id = ?')
+    .bind(Date.now(), id).run();
+  await logAudit(env, request, actor, 'api_key.revoke',
+    { type: 'api_key', id }, null, null);
+  return jsonResp({ ok: true });
+}
+
+/// Routeur DÉDIÉ aux requêtes authentifiées par clé API. Liste blanche
+/// stricte : tout ce qui n'est pas explicitement couvert par un scope
+/// de la clé → 403. Les clés n'ouvrent JAMAIS la gestion des admins,
+/// des revendeurs, des autres clés, du backup, etc.
+async function apiV1ForApiKey(request, env, ctx, url, parts, presentedKey) {
+  // Anti-brute-force sur les clés : 120 essais/min par IP.
+  if (!await rateLimitHit(env, request, 'apikey', 120, 60 * 1000)) {
+    return errResp('rate_limited', 'Too many requests', 429);
+  }
+  await ensureApiKeysTable(env);
+  const hash = await sha256Hex(presentedKey);
+  const row = await env.DB.prepare(
+    'SELECT id, name, scopes, revoked_at FROM api_keys WHERE key_hash = ?',
+  ).bind(hash).first();
+  if (!row || row.revoked_at) {
+    return errResp('bad_api_key', 'Invalid or revoked API key', 401);
+  }
+  let scopes = [];
+  try { scopes = JSON.parse(row.scopes) || []; } catch (_) { scopes = []; }
+  const can = (s) => scopes.includes(s);
+  // Trace d'usage, en best-effort (jamais bloquant).
+  try {
+    await env.DB.prepare('UPDATE api_keys SET last_used_at = ? WHERE id = ?')
+      .bind(Date.now(), row.id).run();
+  } catch (_) { /* best-effort */ }
+
+  const actor = { type: 'api_key', id: row.id };
+  // Acteur synthétique : PAS un rôle admin — les handlers ne voient ni
+  // owner ni revendeur, et la liste blanche ci-dessous fait la police.
+  const user = { sub: `key:${row.id}`, role: 'api', name: row.name };
+
+  if (parts[0] === 'activate' && parts.length === 1 && request.method === 'POST') {
+    if (!can('activate')) return errResp('forbidden', 'Scope "activate" requis', 403);
+    return handleActivate(request, env, user, actor, ctx);
+  }
+  if (parts[0] === 'sources' && parts.length === 2) {
+    if (!can('sources')) return errResp('forbidden', 'Scope "sources" requis', 403);
+    const mac = parts[1];
+    if (request.method === 'GET') return handleSourceGet(env, mac);
+    if (request.method === 'PUT') return handleSourcePut(request, env, mac, actor, ctx);
+    if (request.method === 'DELETE') return handleSourceDelete(request, env, mac, actor);
+  }
+  if (parts[0] === 'source-check' && parts.length === 1 && request.method === 'POST') {
+    if (!can('sources')) return errResp('forbidden', 'Scope "sources" requis', 403);
+    return handleSourceCheck(request, env);
+  }
+  if (request.method === 'GET' && can('read')) {
+    if (parts[0] === 'devices' && parts.length === 1) return handleDevicesList(request, env, user);
+    if (parts[0] === 'devices' && parts.length === 3 && parts[2] === 'overview') {
+      return handleDeviceOverview(env, parts[1], user);
+    }
+    if (parts[0] === 'licenses' && parts.length === 1) return handleLicensesList(request, env, user);
+    if (parts[0] === 'customers' && parts.length === 1) return handleCustomersList(request, env, user);
+    if (parts[0] === 'stats' && parts[1] === 'overview') return handleStatsOverview(env, user);
+    if (parts[0] === 'references' && parts.length === 1) return handleReferencesList(env, user);
+    if (parts[0] === 'sync' && parts.length === 2) return handleAdminSyncGet(env, parts[1]);
+  }
+  if (can('publish')) {
+    if (parts[0] === 'products') {
+      if (parts.length === 1 && request.method === 'GET') return handleProductsList(env, { all: true });
+      if (parts.length === 1 && request.method === 'POST') return handleProductsCreate(request, env, actor);
+      if (parts.length === 2 && request.method === 'PATCH') return handleProductsUpdate(request, env, parts[1], actor);
+      if (parts.length === 2 && request.method === 'DELETE') return handleProductsDelete(request, env, parts[1], actor);
+    }
+    if (parts[0] === 'announcements' && parts.length === 1 && request.method === 'POST') {
+      return handleAnnouncementsCreate(request, env, actor);
+    }
+  }
+  return errResp('forbidden',
+    'Route non couverte par les scopes de cette clé API', 403);
+}
+
+// =========================================================
+//  WEBHOOKS — le backend notifie TES systèmes (owner)
+// =========================================================
+//  L'owner enregistre une URL + les événements qui l'intéressent.
+//  À chaque événement, le Worker POSTe un JSON signé HMAC-SHA256
+//  (en-tête X-Signature-256: sha256=<hex>) — le destinataire vérifie
+//  la signature avec le secret du webhook. Envoi en arrière-plan
+//  (waitUntil) : ne ralentit JAMAIS l'action du panel.
+
+const WEBHOOK_EVENTS = [
+  'activation.created', 'activation.renewed', 'source.updated',
+  'source.cleared', 'device.blocked', 'test',
+];
+
+async function ensureWebhooksTable(env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS webhooks (
+       id            TEXT PRIMARY KEY,
+       url           TEXT NOT NULL,
+       secret        TEXT NOT NULL,
+       events        TEXT NOT NULL,
+       active        INTEGER NOT NULL DEFAULT 1,
+       created_at    INTEGER NOT NULL,
+       last_fired_at INTEGER,
+       last_status   TEXT
+     )`,
+  ).run();
+}
+
+async function handleWebhooksList(env) {
+  await ensureWebhooksTable(env);
+  const rs = await env.DB.prepare(
+    `SELECT id, url, events, active, created_at, last_fired_at, last_status
+     FROM webhooks ORDER BY created_at DESC LIMIT 50`,
+  ).all();
+  const items = (rs.results || []).map((r) => ({
+    ...r,
+    events: (() => { try { return JSON.parse(r.events) || []; } catch (_) { return []; } })(),
+  }));
+  return jsonResp({ items });
+}
+
+async function handleWebhooksCreate(request, env, actor) {
+  await ensureWebhooksTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const whUrl = (body.url || '').toString().trim();
+  if (!/^https:\/\//i.test(whUrl)) {
+    return errResp('bad_url', 'url doit être en https://', 400);
+  }
+  const events = Array.isArray(body.events)
+    ? body.events.filter((e) => WEBHOOK_EVENTS.includes(e))
+    : [];
+  if (events.length === 0) {
+    return errResp('missing_events',
+      `events requis (parmi : ${WEBHOOK_EVENTS.join(', ')})`, 400);
+  }
+  const id = genId('wh');
+  // Secret de signature généré côté serveur, montré une fois à la création.
+  const secret = 'whs_' + Array.from(crypto.getRandomValues(new Uint8Array(20)))
+    .map((b) => b.toString(16).padStart(2, '0')).join('');
+  await env.DB.prepare(
+    `INSERT INTO webhooks (id, url, secret, events, active, created_at)
+     VALUES (?, ?, ?, ?, 1, ?)`,
+  ).bind(id, whUrl, secret, JSON.stringify(events), Date.now()).run();
+  await logAudit(env, request, actor, 'webhook.create',
+    { type: 'webhook', id }, null, { url: whUrl, events });
+  return jsonResp({ ok: true, id, url: whUrl, events, secret }, 201);
+}
+
+async function handleWebhooksUpdate(request, env, id, actor) {
+  await ensureWebhooksTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const row = await env.DB.prepare('SELECT id, active FROM webhooks WHERE id = ?').bind(id).first();
+  if (!row) return errResp('not_found', 'Webhook not found', 404);
+  if (body.active !== undefined) {
+    await env.DB.prepare('UPDATE webhooks SET active = ? WHERE id = ?')
+      .bind(body.active ? 1 : 0, id).run();
+  }
+  if (Array.isArray(body.events)) {
+    const events = body.events.filter((e) => WEBHOOK_EVENTS.includes(e));
+    if (events.length === 0) return errResp('missing_events', 'events requis', 400);
+    await env.DB.prepare('UPDATE webhooks SET events = ? WHERE id = ?')
+      .bind(JSON.stringify(events), id).run();
+  }
+  await logAudit(env, request, actor, 'webhook.update',
+    { type: 'webhook', id }, { active: row.active }, { active: body.active });
+  return jsonResp({ ok: true });
+}
+
+async function handleWebhooksDelete(request, env, id, actor) {
+  await ensureWebhooksTable(env);
+  await env.DB.prepare('DELETE FROM webhooks WHERE id = ?').bind(id).run();
+  await logAudit(env, request, actor, 'webhook.delete',
+    { type: 'webhook', id }, null, null);
+  return jsonResp({ ok: true });
+}
+
+async function handleWebhookTest(request, env, ctx, id) {
+  await ensureWebhooksTable(env);
+  const row = await env.DB.prepare('SELECT id FROM webhooks WHERE id = ?').bind(id).first();
+  if (!row) return errResp('not_found', 'Webhook not found', 404);
+  await dispatchWebhooks(env, ctx, 'test', { message: 'Ping du panel 7 MOTION' }, id);
+  return jsonResp({ ok: true, sent: true });
+}
+
+/// Envoie `event` + `payload` à tous les webhooks actifs abonnés (ou au
+/// seul webhook `onlyId`). Best-effort TOTAL : jamais d'exception vers
+/// l'appelant, exécution en waitUntil si dispo (réponse pas ralentie).
+async function dispatchWebhooks(env, ctx, event, payload, onlyId) {
+  try {
+    await ensureWebhooksTable(env);
+    const rs = await env.DB.prepare(
+      'SELECT id, url, secret, events FROM webhooks WHERE active = 1',
+    ).all();
+    const hooks = (rs.results || []).filter((h) => {
+      if (onlyId && h.id !== onlyId) return false;
+      try { return (JSON.parse(h.events) || []).includes(event); } catch (_) { return false; }
+    });
+    if (hooks.length === 0) return;
+    const body = JSON.stringify({ event, at: Date.now(), data: payload });
+    const work = Promise.allSettled(hooks.map(async (h) => {
+      let status = 'error';
+      try {
+        const sig = await hmacSha256(h.secret, body);
+        const resp = await fetchWithTimeout(h.url, 5000, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Event': event,
+            'X-Signature-256': 'sha256=' + Array.from(sig)
+              .map((b) => b.toString(16).padStart(2, '0')).join(''),
+          },
+          body,
+        });
+        status = String(resp.status);
+      } catch (e) {
+        status = 'error:' + String((e && e.message) || e).slice(0, 80);
+      }
+      try {
+        await env.DB.prepare(
+          'UPDATE webhooks SET last_fired_at = ?, last_status = ? WHERE id = ?',
+        ).bind(Date.now(), status, h.id).run();
+      } catch (_) { /* best-effort */ }
+    }));
+    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(work);
+    else await work;
+  } catch (_) { /* les webhooks ne cassent JAMAIS l'action métier */ }
 }
