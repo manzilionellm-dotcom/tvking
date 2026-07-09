@@ -1993,6 +1993,7 @@
   "tvAddListError": "Remplis le serveur, l'identifiant et le mot de passe.",
   "tvConnectError": "Connexion impossible. Vérifie les infos.",
   "tvConnecting": "Connexion…",
+  "tvConnectingHint": "Connexion au serveur… Les très gros abonnements peuvent prendre jusqu'à une minute — ne quitte pas l'écran.",
   "tvAddListValidate": "Valider et charger ma liste",
   "tvSearchingChannels": "Recherche de tes chaînes…",
   "tvRetry": "Réessayer",

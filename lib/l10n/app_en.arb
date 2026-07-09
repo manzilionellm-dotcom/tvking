@@ -558,6 +558,7 @@
   "tvAddListError": "Fill in the server, username and password.",
   "tvConnectError": "Can't connect. Check your details.",
   "tvConnecting": "Connecting…",
+  "tvConnectingHint": "Connecting to the server… Very large subscriptions can take up to a minute — stay on this screen.",
   "tvAddListValidate": "Confirm and load my list",
   "tvSearchingChannels": "Looking for your channels…",
   "tvRetry": "Retry",

@@ -112,6 +112,18 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
               expand: false,
               onSelect: _busy ? null : _submit,
             ),
+            // Attente honnête : sans ce message, « Ajout… » figé semblait
+            // planté (le repli M3U brut peut prendre ~1 min sur un très
+            // gros abonnement ; les liens get.php passent par l'API Xtream
+            // en quelques secondes).
+            if (_busy) ...<Widget>[
+              const SizedBox(height: 10),
+              Text(
+                  'Connexion au serveur… Les très gros abonnements peuvent '
+                  "prendre jusqu'à une minute — ne quitte pas l'écran.",
+                  style: TextStyle(
+                      fontSize: TvDimens.label, color: TvTokens.mutedDim)),
+            ],
           ],
         ),
       ),

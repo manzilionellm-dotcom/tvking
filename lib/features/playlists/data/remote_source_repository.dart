@@ -31,6 +31,7 @@ import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 import '../domain/playlist.dart';
 import 'playlist_repository.dart';
+import 'source_link_utils.dart';
 
 /// Résultat d'une synchro de source distante — sert à afficher un
 /// message PRÉCIS côté UI au lieu d'un vague « pas de chaînes ».
@@ -175,12 +176,29 @@ abstract final class RemoteSourceRepository {
       final String m3u = (src['m3u_url'] as String?)?.trim() ?? '';
       if (m3u.isEmpty) return RemoteSyncResult.sourceFailed;
 
+      // Un lien « M3U » poussé par le panel est TRÈS souvent un compte
+      // Xtream déguisé (get.php?username=…&password=…) : le lien VLC du
+      // fournisseur. On le reconnaît AVANT la dédup pour :
+      //  1. dédupliquer aussi contre la playlist XTREAM équivalente —
+      //     sinon, une fois convertie, elle serait ré-importée à CHAQUE
+      //     synchro (l'URL m3u ne matcherait plus rien) ;
+      //  2. charger via l'API Xtream (streamée, rapide, structurée) au
+      //     lieu de télécharger le fichier M3U géant — c'est ce qui
+      //     rendait l'ajout poussé « pas fluide » sur la TV.
+      final ({String server, String username, String password})? creds =
+          SourceLinkUtils.tryExtractXtreamCredentials(m3u);
       final bool already = existing.any((Playlist p) =>
-          p.type == PlaylistType.m3u && p.m3uUrl == m3u);
+          (p.type == PlaylistType.m3u && p.m3uUrl == m3u) ||
+          (creds != null &&
+              p.type == PlaylistType.xtream &&
+              p.xtreamServer == creds.server &&
+              p.xtreamUsername == creds.username));
       if (already) return RemoteSyncResult.loaded;
 
       try {
-        await PlaylistRepository.instance.addM3uPlaylist(
+        // Smart : API Xtream d'abord si le lien porte des identifiants,
+        // repli automatique sur le M3U brut sinon/en cas d'échec.
+        await PlaylistRepository.instance.addM3uPlaylistSmart(
           name: label,
           url: m3u,
           epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,

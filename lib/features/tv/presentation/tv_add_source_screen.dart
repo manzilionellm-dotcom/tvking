@@ -253,6 +253,16 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
                 label: _busy ? context.l10n.tvConnecting : context.l10n.tvAddListValidate,
                 onSelect: _busy ? null : _validate,
               ),
+              // Pendant l'import, un message d'attente HONNÊTE : sans lui,
+              // « Connexion… » figé donnait l'impression que rien ne se
+              // passait (les liens get.php passent par l'API Xtream en
+              // quelques secondes ; le repli M3U brut peut prendre ~1 min).
+              if (_busy) ...<Widget>[
+                const SizedBox(height: 10),
+                Text(context.l10n.tvConnectingHint,
+                    textAlign: TextAlign.center,
+                    style: TvTokens.ui(13, color: TvTokens.mutedDim)),
+              ],
             ],
           ),
         ),

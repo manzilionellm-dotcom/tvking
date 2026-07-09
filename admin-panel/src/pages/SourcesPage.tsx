@@ -40,6 +40,30 @@ const blank = (): SrcDraft => ({
 const MAX_SOURCES = 3;
 const MAC_OK = /^MK(?::[0-9A-F]{2}){5}$/i;
 
+/// Détecte un lien « M3U » qui est en réalité un compte Xtream déguisé
+/// (get.php?username=…&password=… — le lien VLC du fournisseur). Miroir
+/// de SourceLinkUtils.tryExtractXtreamCredentials côté app. Poussé en
+/// Xtream, il se charge via l'API (secondes) au lieu du fichier M3U
+/// géant (minutes) → c'est LE bon format à envoyer.
+function extractXtreamFromM3u(
+  raw: string,
+): { server: string; username: string; password: string } | null {
+  const s = raw.trim();
+  if (!s) return null;
+  try {
+    const u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? s : `http://${s}`);
+    const username = u.searchParams.get('username');
+    const password = u.searchParams.get('password');
+    if (!username || !password) return null;
+    const path = u.pathname
+      .replace(/\/(get|player_api|panel_api|xmltv|portal|enigma2?)\.php$/i, '')
+      .replace(/\/+$/, '');
+    return { server: `${u.protocol}//${u.host}${path}`, username, password };
+  } catch {
+    return null;
+  }
+}
+
 export function SourcesPage({ onLogout }: { onLogout: () => void }) {
   // MAC pré-remplie si on arrive depuis « Activer » ou une fiche appareil.
   const [sp] = useSearchParams();
@@ -300,10 +324,40 @@ export function SourcesPage({ onLogout }: { onLogout: () => void }) {
               )}
 
               {it.type === 'm3u' && (
-                <input value={it.m3uUrl}
-                  onChange={(e) => patch(i, { m3uUrl: e.target.value, check: null })}
-                  placeholder="http://serveur.com/get.php?username=…&type=m3u_plus"
-                  className={inputCls + ' font-mono'} />
+                <>
+                  <input value={it.m3uUrl}
+                    onChange={(e) => patch(i, { m3uUrl: e.target.value, check: null })}
+                    placeholder="http://serveur.com/get.php?username=…&type=m3u_plus"
+                    className={inputCls + ' font-mono'} />
+                  {(() => {
+                    const creds = extractXtreamFromM3u(it.m3uUrl);
+                    if (!creds) return null;
+                    return (
+                      <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-warn/30 bg-warn/10 px-3 py-2">
+                        <span className="text-[11px] leading-snug text-warn-bright">
+                          Ce lien M3U est un compte <b>Xtream</b> déguisé. En Xtream,
+                          l'app le charge en quelques secondes (API) au lieu de
+                          télécharger tout le fichier M3U.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => patch(i, {
+                            type: 'xtream',
+                            serverChoice: 'custom',
+                            serverUrl: creds.server,
+                            xtUser: creds.username,
+                            xtPass: creds.password,
+                            m3uUrl: '',
+                            check: null,
+                          })}
+                          className="shrink-0 rounded-md border border-warn/40 px-2.5 py-1.5 text-xs font-semibold text-warn-bright transition hover:bg-warn/20"
+                        >
+                          Convertir ⚡
+                        </button>
+                      </div>
+                    );
+                  })()}
+                </>
               )}
 
               <input value={it.epgUrl}
