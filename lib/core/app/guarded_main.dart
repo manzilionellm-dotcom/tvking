@@ -24,7 +24,7 @@
 //  (journal local + Crashlytics si configuré) — sans jamais bloquer.
 // =========================================================
 import 'dart:async';
-import 'dart:io' show Directory;
+import 'dart:io' show Directory, SocketException;
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
@@ -123,6 +123,10 @@ void runGuarded(Future<void> Function() body) {
 
       // 3) Erreurs async/plateforme non rattrapées → « gérées », pas de crash.
       PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+        if (isBenignNetworkNoise(error)) {
+          CrashReporting.instance.log('bruit réseau ignoré: $error');
+          return true;
+        }
         CrashReporting.instance
             .recordError(error, stack, context: 'PlatformDispatcher');
         return true;
@@ -155,7 +159,29 @@ void runGuarded(Future<void> Function() body) {
     },
     // 4) Filet ultime.
     (Object error, StackTrace stack) {
+      if (isBenignNetworkNoise(error)) {
+        // Diag terrain 2026-07-09 : la découverte mDNS/SSDP émet en
+        // multicast toutes les 60 s ; quand Android bloque l'émission
+        // en arrière-plan (EPERM), le paquet multicast_dns laisse fuir
+        // l'exception dans la zone — 5+ « erreurs non rattrapées » par
+        // heure dans la boîte noire pour un non-événement. Breadcrumb,
+        // pas erreur.
+        CrashReporting.instance.log('bruit réseau ignoré: $error');
+        return;
+      }
       CrashReporting.instance.recordError(error, stack, context: 'Zone');
     },
   );
+}
+
+/// « Bruit » réseau attendu et sans gravité : émission UDP multicast
+/// refusée par l'OS quand l'app est en arrière-plan (découverte
+/// mDNS/SSDP, errno=1 EPERM / réseau coupé). Pur + statique → testé.
+@visibleForTesting
+bool isBenignNetworkNoise(Object error) {
+  if (error is! SocketException) return false;
+  final String msg = error.message;
+  return msg.contains('Send failed') ||
+      error.osError?.errorCode == 1 || // EPERM (multicast bloqué)
+      error.osError?.errorCode == 101; // ENETUNREACH (réseau coupé)
 }

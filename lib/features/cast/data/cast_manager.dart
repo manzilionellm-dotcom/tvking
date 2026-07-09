@@ -50,6 +50,14 @@ import 'upnp_av_transport.dart';
 /// le cas median reste rapide ; seul l'echec complet va jusqu'a 40 s.
 const Duration kCastTotalTimeout = Duration(seconds: 40);
 
+/// Budget global DLNA — plus large que le Chromecast : l'échelle de
+/// failover (jusqu'à 9 stratégies, SOAP 15 s chacune) + les rendeurs
+/// LENTS (diag Nebula 2026-07-09 : relay+full réussit en ~30 s à lui
+/// seul) ne tiennent pas dans 40 s. Le timeout tuait des sessions
+/// PENDANT que la stratégie gagnante travaillait (« Nouvel essai en
+/// mode compatible (5/9)… » figé en échec).
+const Duration kCastTotalTimeoutDlna = Duration(seconds: 90);
+
 /// Phase 1+/B5 — Exception interne levee par `_checkCancelled` quand
 /// une session inner a ete supersede par un timeout outer ou une
 /// nouvelle castTo. Type dedie pour pouvoir la distinguer d'une vraie
@@ -512,7 +520,9 @@ class CastManager extends ChangeNotifier {
         channelName: channelName,
         channelGenre: channelGenre,
         imageUrl: imageUrl,
-      ).timeout(kCastTotalTimeout);
+      ).timeout(device.kind == CastDeviceKind.dlna
+          ? kCastTotalTimeoutDlna
+          : kCastTotalTimeout);
     } on TimeoutException {
       // Phase 1+/B5 (2026-06-01) — Annulation cooperative.
       // Bump `_sessionSeq` immediatement. L'inner orphelin verra
@@ -525,7 +535,10 @@ class CastManager extends ChangeNotifier {
         ctx: <String, Object?>{
           'deviceKind': device.kind.name,
           'deviceName': device.name,
-          'timeoutSeconds': kCastTotalTimeout.inSeconds,
+          'timeoutSeconds': (device.kind == CastDeviceKind.dlna
+                  ? kCastTotalTimeoutDlna
+                  : kCastTotalTimeout)
+              .inSeconds,
           'newSessionSeq': _sessionSeq,
         },
       );
@@ -562,7 +575,8 @@ class CastManager extends ChangeNotifier {
         CastProgress.failure(
           'La TV met trop de temps à répondre. Réessaie ou choisis une '
               'autre TV.',
-          details: 'castTo timeout after ${kCastTotalTimeout.inSeconds}s',
+          details: 'castTo timeout after '
+              '${(device.kind == CastDeviceKind.dlna ? kCastTotalTimeoutDlna : kCastTotalTimeout).inSeconds}s',
         ),
       );
       throw Exception(_errorMessage);
