@@ -426,7 +426,15 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         final String? code =
             await XtreamUrlFormatStore.instance.winningFormat(src!.id!, type);
         if (!mounted || channel.id != _current.id) return;
-        if (code != null) {
+        // AUTO-CORRECTIF : on IGNORE un format HLS mémorisé pour du LIVE
+        // (« live:m3u8 » / « none:m3u8 ») — il ouvre plusieurs connexions
+        // et sature les comptes « max 1 connexion » → écran noir (terrain
+        // 2026-07-09). La cascade re-valide (préférence .ts = 1 connexion)
+        // et re-mémorise le bon format.
+        final bool hlsLiveMemorized = type == XtreamContentType.live &&
+            code != null &&
+            code.contains('m3u8');
+        if (code != null && !hlsLiveMemorized) {
           final String? remembered =
               XtreamUrlVariants.applyFormat(realUrl, code);
           if (remembered != null && remembered != realUrl) {

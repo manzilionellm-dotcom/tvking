@@ -868,7 +868,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             StreamBlockedFallback.contentTypeOf(_currentChannel);
         final String? code = await XtreamUrlFormatStore.instance
             .winningFormat(src!.id!, type);
-        if (code != null) {
+        // AUTO-CORRECTIF (terrain 2026-07-09) : un format HLS mémorisé
+        // pour du LIVE (« live:m3u8 » / « none:m3u8 ») ouvre PLUSIEURS
+        // connexions (playlist repollée + segments) et sature les comptes
+        // « max 1 connexion » → écran noir. On IGNORE ce format mémorisé
+        // et on laisse la cascade re-valider — elle préfère désormais le
+        // « .ts » (1 connexion via le relais). Le bon format sera
+        // re-mémorisé (les panels m3u8-only re-mémoriseront m3u8).
+        final bool hlsLiveMemorized = type == XtreamContentType.live &&
+            code != null &&
+            code.contains('m3u8');
+        if (code != null && !hlsLiveMemorized) {
           final String? remembered =
               XtreamUrlVariants.applyFormat(realUrl, code);
           if (remembered != null && remembered != realUrl) {
@@ -881,6 +891,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   '— zapping sans cascade',
             );
           }
+        } else if (hlsLiveMemorized) {
+          StreamDiagnostics.instance.recordEvent(
+            'probe',
+            'Format HLS mémorisé « $code » ignoré → re-validation vers '
+                '.ts (1 connexion, anti-saturation compte 1-connexion)',
+            level: 'warn',
+          );
         }
         // Signature (UA) mémorisée pour cette source (calibration
         // « Optimiser ») : appliquée avant l'ouverture — le relais et
