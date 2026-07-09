@@ -31,6 +31,7 @@ import '../../channels/domain/channel.dart';
 import '../../player/data/local_stream_relay.dart';
 import '../../player/data/player_settings.dart';
 import '../../player/data/stream_blocked_fallback.dart';
+import '../../player/data/stream_diagnostics.dart';
 import '../../player/data/xtream_url_variants.dart';
 import '../../playlists/data/xtream_url_format_store.dart';
 import '../../playlists/domain/playlist.dart' as pl;
@@ -179,6 +180,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // fournisseur (≠ coupure réseau d'un flux qui jouait). Remis à false à chaque
   // ouverture (_open).
   bool _everShownFrame = false;
+  // Erreur ExoPlayer déjà journalisée pour cette ouverture (le listener
+  // est appelé à chaque tick — on n'écrit qu'une fois). Remis à false
+  // dans _open.
+  bool _errorLoggedThisOpen = false;
   // `true` si le diagnostic a conclu à un blocage RÉSEAU (DNS/timeout)
   // plutôt qu'à un souci de signature — affiche un indice VPN/FAI en plus
   // du message existant. Remis à false à chaque ouverture (_open).
@@ -350,6 +355,20 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
             'message': _controller.lastErrorMessage,
           },
         );
+        // BOÎTE NOIRE : l'erreur ExoPlayer, UNE fois par ouverture. Sans
+        // ça la lecture HLS directe (qui contourne le relais) échouait en
+        // SILENCE — journal vide alors que l'écran est noir (terrain
+        // 2026-07-09). Rend visible le vrai code Media3.
+        if (!_errorLoggedThisOpen) {
+          _errorLoggedThisOpen = true;
+          StreamDiagnostics.instance.recordEvent(
+            'exoplayer',
+            'ExoPlayer : ${_controller.lastErrorCodeName ?? 'erreur'}'
+                '${_controller.lastErrorCode == null ? '' : ' (${_controller.lastErrorCode})'}'
+                ' — ${_controller.lastErrorMessage ?? 'lecture impossible'}',
+            level: 'error',
+          );
+        }
       }
       _onFreezeAction(_freeze.onPlayerError(DateTime.now()));
     }
@@ -360,6 +379,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _lastPos = Duration.zero;
     _everShownFrame = false; // nouvelle ouverture → pas encore d'image
     _fatalNetworkHint = false;
+    _errorLoggedThisOpen = false; // nouvelle ouverture → on re-journalise
     _adoptedAltUrl = null; // la variante adoptée était propre à l'ancienne chaîne
     if (mounted) setState(() {
       _buffering = true;
