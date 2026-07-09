@@ -392,7 +392,19 @@ class GoogleCastTransport implements CastTransport {
         if (info != null) {
           final String base =
               e.toString().replaceFirst('Exception: ', '');
-          throw Exception('$base [relais: $info]');
+          // Cas tranché sur le terrain (M6 ᴿᴬᵂ, 2026-07-09) : la TV
+          // télécharge playlist + segments puis rejette → HEVC-dans-TS,
+          // que le Default Media Receiver ne décode pas (limite CAF,
+          // le transmux TS ne gère que le H.264). Message actionnable.
+          final bool hevcDecodeReject = info.contains('codec=hevc') &&
+              !info.contains('segments servis=0');
+          final String hint = hevcDecodeReject
+              ? ' Cette chaîne émet en HEVC (H.265) que le récepteur '
+                  'Cast standard ne sait pas décoder depuis du TS — '
+                  'essaie la déclinaison H.264/FHD de la même chaîne '
+                  '(sans « RAW »).'
+              : '';
+          throw Exception('$base [relais: $info]$hint');
         }
       }
       rethrow;

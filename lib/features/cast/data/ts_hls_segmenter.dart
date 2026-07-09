@@ -75,11 +75,21 @@ class TsHlsSegmenter {
   int _pmtPid = -1;
   int _videoPid = -1;
 
+  /// `true` si une section PSI s'étale sur plusieurs paquets : on ne
+  /// la ré-injecte pas en tête de segment, elle vit dans le flux.
+  bool _psiInline = false;
+
   /// Codec vidéo annoncé par la PMT ('h264' | 'hevc' | 'mpeg2' |
   /// 'mpeg4' | 'unknown'). Publié dans les diagnostics : un flux HEVC
   /// qui échoue sur Chromecast 1-3 est une LIMITE du récepteur (HEVC
   /// exige du fMP4 côté CAF), pas un bug du relais.
   String videoCodec = 'unknown';
+
+  /// Codec audio annoncé par la PMT ('aac' | 'aac-latm' | 'mp2' |
+  /// 'ac3' | 'eac3' | 'private' | 'unknown'). Précieux pour trancher
+  /// les plaintes « son de vieille radio » : une piste mp2 mono bas
+  /// débit côté fournisseur n'est PAS un bug de lecture.
+  String audioCodec = 'unknown';
 
   // ---- État de découpe ----
   final BytesBuilder _segment = BytesBuilder(copy: false);
@@ -164,15 +174,28 @@ class TsHlsSegmenter {
     final int afc = (p[3] >> 4) & 0x3;
 
     // --- PSI : PAT (PID 0) et PMT ---
+    // Revue 2026-07-09 (MINEUR 5) : une section PSI qui NE TIENT PAS
+    // dans son paquet (PMT chargée en pistes/descripteurs) ne peut pas
+    // etre re-injectee en tete de segment (elle serait tronquee, et
+    // ses paquets de continuation resteraient orphelins). Dans ce cas
+    // on la laisse DANS le flux (elle se repete ~2x/s) et on ne cache
+    // rien.
     if (pid == 0 && pusi) {
       _parsePat(p);
-      _patPacket = Uint8List.fromList(p);
-      return null; // PAT/PMT sont ré-injectés en tête de segment
-    }
-    if (pid == _pmtPid && pusi) {
+      if (_sectionFitsInPacket(p)) {
+        _patPacket = Uint8List.fromList(p);
+        return null; // ré-injecté en tête de segment
+      }
+      _patPacket = null;
+      _psiInline = true;
+    } else if (pid == _pmtPid && pusi) {
       _parsePmt(p);
-      _pmtPacket = Uint8List.fromList(p);
-      return null;
+      if (_sectionFitsInPacket(p)) {
+        _pmtPacket = Uint8List.fromList(p);
+        return null;
+      }
+      _pmtPacket = null;
+      _psiInline = true;
     }
 
     // --- PCR (sur n'importe quel PID qui en porte) ---
@@ -209,7 +232,10 @@ class TsHlsSegmenter {
     if (!_started) {
       // Démarrage : il faut PAT + PMT (sinon rien n'est décodable) et
       // une image-clé — ou la preuve que le flux n'en signale pas.
-      final bool psiReady = _patPacket != null && _pmtPacket != null;
+      // PSI multi-paquets : elles restent dans le flux (_psiInline),
+      // le récepteur les retrouvera dans le segment lui-même.
+      final bool psiReady =
+          _psiInline || (_patPacket != null && _pmtPacket != null);
       final bool startNow =
           psiReady && isVideo && pusi && (keyframe || _raiUnusable);
       if (!startNow) return null;
@@ -262,6 +288,15 @@ class TsHlsSegmenter {
 
   // ---- Parsing PSI ----
 
+  /// La section PSI démarrée dans [p] tient-elle ENTIÈREMENT dans ce
+  /// paquet ? (section_length + en-tête ≤ payload disponible)
+  bool _sectionFitsInPacket(Uint8List p) {
+    final Uint8List? s = _sectionOf(p);
+    if (s == null || s.length < 3) return false;
+    final int sectionLen = ((s[1] & 0x0F) << 8) | s[2];
+    return 3 + sectionLen <= s.length;
+  }
+
   /// Section pointée par pointer_field, ou null si le paquet est
   /// trop court / malformé (on ignore alors sans casser le flux).
   Uint8List? _sectionOf(Uint8List p) {
@@ -310,6 +345,10 @@ class TsHlsSegmenter {
         _videoPid = pid;
         videoCodec = codec;
       }
+      final String? audio = _audioCodecOf(streamType);
+      if (audio != null && audioCodec == 'unknown') {
+        audioCodec = audio;
+      }
       i += 5 + esInfoLen;
     }
   }
@@ -325,6 +364,27 @@ class TsHlsSegmenter {
         return 'h264';
       case 0x24:
         return 'hevc';
+    }
+    return null;
+  }
+
+  static String? _audioCodecOf(int streamType) {
+    switch (streamType) {
+      case 0x03:
+      case 0x04:
+        return 'mp2';
+      case 0x0F:
+        return 'aac';
+      case 0x11:
+        return 'aac-latm';
+      case 0x81:
+        return 'ac3';
+      case 0x87:
+        return 'eac3';
+      case 0x06:
+        // PES privé : souvent AC-3/DVB-sub selon les descripteurs (non
+        // parsés ici) — on le signale sans trancher.
+        return 'private';
     }
     return null;
   }

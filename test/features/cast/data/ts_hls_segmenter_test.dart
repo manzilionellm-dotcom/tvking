@@ -78,11 +78,12 @@ Uint8List patPacket({int cc = 0}) {
   return tsPacket(pid: 0, pusi: true, cc: cc, payload: section);
 }
 
-Uint8List pmtPacket({int cc = 0, int streamType = 0x1B}) {
+Uint8List pmtPacket({int cc = 0, int streamType = 0x1B, int? audioType = 0x0F}) {
+  final int audioCount = audioType != null ? 1 : 0;
   final List<int> section = <int>[
     0x00, // pointer_field
     0x02, // table_id PMT
-    0xB0, 18, // length : 9 + 5 (un flux) + CRC 4
+    0xB0, 13 + 5 + 5 * audioCount, // 9 + 5/flux + CRC 4
     0x00, 0x01, // program_number
     0xC1,
     0x00, 0x00,
@@ -91,6 +92,11 @@ Uint8List pmtPacket({int cc = 0, int streamType = 0x1B}) {
     streamType,
     0xE0 | ((kVideoPid >> 8) & 0x1F), kVideoPid & 0xFF,
     0xF0, 0x00, // ES_info_length 0
+    if (audioType != null) ...<int>[
+      audioType,
+      0xE0 | (((kVideoPid + 1) >> 8) & 0x1F), (kVideoPid + 1) & 0xFF,
+      0xF0, 0x00,
+    ],
     0xDE, 0xAD, 0xBE, 0xEF,
   ];
   return tsPacket(pid: kPmtPid, pusi: true, cc: cc, payload: section);
@@ -157,6 +163,8 @@ void main() {
         expect(s.durationSec, inInclusiveRange(2.5, 4.5));
       }
       expect(seg.videoCodec, 'h264');
+      expect(seg.audioCodec, 'aac',
+          reason: 'piste audio AAC annoncée dans la PMT synthétique');
     });
 
     test('codec HEVC lu dans la PMT', () {

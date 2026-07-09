@@ -135,6 +135,16 @@ class CastManager extends ChangeNotifier {
         if (_selectedDevice?.kind == CastDeviceKind.chromecast) {
           _selectedDevice = null;
         }
+        // Revue 2026-07-09 (MAJEUR 2) : la fin de session peut venir de
+        // la TV elle-meme (stop TV, extinction) — sans ce nettoyage, le
+        // foreground service (wakelock + wifilock, notification
+        // « Diffusion sur la TV ») et la session relais tournaient
+        // indefiniment, plus rien ne declenchant disconnect().
+        _stopRelayKeepAlive();
+        if (_currentRelayUrl != null) {
+          LocalCastServer.instance.clearRelay(_currentRelayUrl!);
+          _currentRelayUrl = null;
+        }
         notifyListeners();
         break;
       case 'receiver_switching':
@@ -709,6 +719,12 @@ class CastManager extends ChangeNotifier {
         }
       }
 
+      // Revue 2026-07-09 (MAJEUR 1) : playStream peut durer plus que le
+      // timeout global (picker 30 s + lecture 25 s > 40 s) — cette
+      // session est peut-etre devenue ORPHELINE (zap, timeout) pendant
+      // l'attente. Ne JAMAIS ecraser l'etat/le relais/le keep-alive de
+      // la session plus recente.
+      _checkCancelled(mySeq);
       _currentTitle = title;
       _selectedDevice = device;
       _state = CastState.casting;
@@ -728,6 +744,23 @@ class CastManager extends ChangeNotifier {
       }
       _updateRelayKeepAlive(title);
     } on Exception catch (e) {
+      // Revue 2026-07-09 (MAJEUR 1) : une session ORPHELINE (zap ou
+      // timeout global — mySeq depasse) qui echoue tardivement ne doit
+      // toucher NI l'etat NI le keep-alive : une session plus recente
+      // est peut-etre en train d'alimenter la TV. On libere seulement
+      // le relais que CE playStream aurait enregistre (fuite sinon,
+      // MINEUR 7) et on sort.
+      final GoogleCastTransport? gctLeak =
+          _transport is GoogleCastTransport
+              ? _transport as GoogleCastTransport
+              : null;
+      final String? leakedRelay = gctLeak?.lastRelayUrl;
+      if (leakedRelay != null && leakedRelay != _currentRelayUrl) {
+        LocalCastServer.instance.clearRelay(leakedRelay);
+      }
+      if (mySeq != _sessionSeq) {
+        return;
+      }
       _state = CastState.error;
       _errorMessage = e.toString();
       // Le cast a echoue → plus personne a alimenter : coupe le
@@ -1102,6 +1135,15 @@ class CastManager extends ChangeNotifier {
           durationMs: attemptSw.elapsedMilliseconds,
           success: true,
         ));
+        // Revue 2026-07-09 (MINEUR 6) : si une strategie RELAIS a
+        // echoue avant qu'une strategie DIRECTE ne gagne,
+        // _currentRelayUrl est reste pose → le keep-alive foreground
+        // (wakelock/wifilock) demarrait pour rien (la TV tire le flux
+        // elle-meme). On libere le relais inutilise.
+        if (urlKind == 'direct' && _currentRelayUrl != null) {
+          LocalCastServer.instance.clearRelay(_currentRelayUrl!);
+          _currentRelayUrl = null;
+        }
         // Lecture confirmée PLAYING → on arme la surveillance de session
         // (reconnexion auto si le flux coupe). On relance sur l'URL
         // GAGNANTE (`urlToCast`), donc avec la même stratégie/profil.

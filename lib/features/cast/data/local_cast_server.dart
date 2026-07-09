@@ -227,6 +227,7 @@ class LocalCastServer {
         event: 'hls_relay.ready',
         ctx: <String, Object?>{
           'codec': session.videoCodec,
+          'audio': session.audioCodec,
           'segments': session.segmentCount,
         },
       );
@@ -412,6 +413,7 @@ class LocalCastServer {
     final HlsRelaySession? s = token != null ? _hlsSessions[token] : null;
     if (s == null) return null;
     return 'codec=${s.videoCodec}'
+        ', audio=${s.audioCodec}'
         ', segments produits=${s.totalSegmentsProduced}'
         ', playlists servies=${s.playlistServed}'
         ', segments servis=${s.segmentsServed}'

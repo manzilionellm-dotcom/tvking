@@ -20,7 +20,9 @@ void main() {
 
   setUp(() async {
     tmp = await Directory.systemTemp.createTemp('blackbox_test_');
-    StructuredLogger.instance.clearSinks();
+    // NB : pas de clearSinks() ici — la boîte noire ne s'abonne au
+    // logger qu'UNE fois par process (revue 2026-07-09, MINEUR 4) ;
+    // vider les sinks la débrancherait pour tous les tests suivants.
   });
 
   tearDown(() async {
@@ -61,7 +63,6 @@ void main() {
     // Post-mortem : une nouvelle « session » (re-init) retrouve la
     // queue de la précédente.
     await BlackBox.instance.dispose();
-    StructuredLogger.instance.clearSinks();
     await BlackBox.instance.initialize(directory: tmp);
     expect(BlackBox.instance.previousSessionTail, isNotEmpty);
     expect(

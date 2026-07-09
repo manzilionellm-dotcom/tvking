@@ -85,6 +85,10 @@ class BlackBox {
   Timer? _flushTimer;
   bool _initialized = false;
 
+  /// Hooks logger/crash posés une seule fois par process (pas d'API de
+  /// retrait côté logger — cf. MINEUR 4 de la revue 2026-07-09).
+  bool _hooksAttached = false;
+
   /// Lignes de la session PRÉCÉDENTE retrouvées sur disque au boot
   /// (la fin du fichier). Non vide après un crash = or massif.
   List<String> previousSessionTail = <String>[];
@@ -98,6 +102,7 @@ class BlackBox {
   Future<void> initialize({required Directory directory}) async {
     if (_initialized) return;
     _initialized = true;
+    final bool firstAttach = !_hooksAttached;
     try {
       _dir = Directory('${directory.path}/black_box');
       await _dir!.create(recursive: true);
@@ -119,21 +124,27 @@ class BlackBox {
     }
 
     // ---- CAPTURE ----
-    // 1. Tout ce qui passe par le StructuredLogger (déjà sérialisé).
-    StructuredLogger.instance.addSink(_recordRaw);
-    // 2. Toutes les erreurs signalées au CrashReporting (filet global
-    //    FlutterError / PlatformDispatcher / runZonedGuarded compris).
-    CrashReporting.instance.addLocalListener(
-      (String line, {required bool fatal}) {
-        _recordRaw(jsonEncode(<String, Object?>{
-          'ts': DateTime.now().toUtc().toIso8601String(),
-          'lvl': fatal ? 'fatal' : 'err',
-          'domain': 'crash',
-          'event': fatal ? 'fatal_error' : 'error',
-          'ctx': <String, Object?>{'message': line},
-        }));
-      },
-    );
+    // Revue 2026-07-09 (MINEUR 4) : ni le logger ni le CrashReporting
+    // n'ont de « removeSink » — on ne s'abonne qu'UNE fois par process,
+    // même si initialize() est rappelé après dispose() (tests).
+    if (firstAttach) {
+      _hooksAttached = true;
+      // 1. Tout ce qui passe par le StructuredLogger (déjà sérialisé).
+      StructuredLogger.instance.addSink(_recordRaw);
+      // 2. Toutes les erreurs signalées au CrashReporting (filet global
+      //    FlutterError / PlatformDispatcher / runZonedGuarded compris).
+      CrashReporting.instance.addLocalListener(
+        (String line, {required bool fatal}) {
+          _recordRaw(jsonEncode(<String, Object?>{
+            'ts': DateTime.now().toUtc().toIso8601String(),
+            'lvl': fatal ? 'fatal' : 'err',
+            'domain': 'crash',
+            'event': fatal ? 'fatal_error' : 'error',
+            'ctx': <String, Object?>{'message': line},
+          }));
+        },
+      );
+    }
 
     _recordRaw(jsonEncode(<String, Object?>{
       'ts': DateTime.now().toUtc().toIso8601String(),
@@ -150,9 +161,14 @@ class BlackBox {
 
   /// Enregistre une ligne (JSON de préférence). JAMAIS bloquant.
   void _recordRaw(String line) {
+    if (!_initialized) return; // post-dispose (tests) : on ignore
     _ring.add(line);
     if (_ring.length > kMaxRingEntries) _ring.removeAt(0);
-    _pendingWrites.writeln(line);
+    // Revue 2026-07-09 (MAJEUR 3) : en mode « mémoire seule » (disque
+    // indisponible) le buffer d'écriture n'était jamais vidé →
+    // croissance illimitée sur une longue session. Sans fichier, on
+    // n'accumule tout simplement pas.
+    if (_file != null) _pendingWrites.writeln(line);
   }
 
   /// Événement applicatif direct (pour du code qui ne passe pas par le
@@ -405,6 +421,7 @@ class BlackBox {
     _flushTimer = null;
     await _flushToDisk();
     _initialized = false;
+    _pendingWrites.clear();
     _ring.clear();
     previousSessionTail = <String>[];
   }

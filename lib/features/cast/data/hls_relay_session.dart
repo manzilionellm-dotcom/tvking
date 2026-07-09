@@ -101,6 +101,12 @@ class HlsRelaySession {
   String get videoCodec => _videoCodec;
   String _videoCodec = 'unknown';
 
+  /// Codec audio vu dans la PMT — persisté comme le codec vidéo.
+  /// Sert aux diagnostics « son dégradé » (mp2 mono côté fournisseur ≠
+  /// bug de l'app).
+  String get audioCodec => _audioCodec;
+  String _audioCodec = 'unknown';
+
   bool get isStopped => _stopped;
   String? get fatalError => _fatalError;
   int get segmentCount => _segments.length;
@@ -284,6 +290,9 @@ class HlsRelaySession {
   void _publish(TsSegment seg) {
     if (_segmenter.videoCodec != 'unknown') {
       _videoCodec = _segmenter.videoCodec;
+    }
+    if (_segmenter.audioCodec != 'unknown') {
+      _audioCodec = _segmenter.audioCodec;
     }
     bool discontinuity = false;
     if (_reconnected) {
