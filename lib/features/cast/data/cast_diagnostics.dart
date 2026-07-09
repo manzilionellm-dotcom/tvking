@@ -16,6 +16,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/observability/black_box.dart';
 import '../../channels/domain/channel.dart';
 import '../domain/cast_device.dart';
 import 'cast_manager.dart';
@@ -236,6 +237,14 @@ class DiagnosticBatchRunner extends ChangeNotifier {
         'averageSuccessLatencyMs': averageSuccessLatencyMs,
         'winningStrategies': winningStrategyCounts,
       },
+      // Constats de la BOÎTE NOIRE au moment de l'export : le rapport
+      // colle en un bloc les échecs de cast ET l'état général de l'app
+      // (proxy bloqué, crashs, relais mort…) — plus besoin de croiser
+      // deux exports pour diagnostiquer.
+      'blackBox': BlackBox.instance
+          .analyze()
+          .map((BlackBoxFinding f) => f.toString())
+          .toList(growable: false),
       'sessions': _results
           .map((CastSessionDiagnostic d) => d.toJson())
           .toList(growable: false),

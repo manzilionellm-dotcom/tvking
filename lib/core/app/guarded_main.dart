@@ -24,13 +24,17 @@
 //  (journal local + Crashlytics si configuré) — sans jamais bloquer.
 // =========================================================
 import 'dart:async';
+import 'dart:io' show Directory;
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import 'package:path_provider/path_provider.dart';
+
 import '../crash/crash_reporting.dart';
 import '../crash/crash_reporting_firebase.dart';
+import '../observability/black_box.dart';
 import 'device_memory.dart';
 
 /// Ajuste le cache d'images selon la RAM réelle. Le défaut posé au boot est
@@ -126,6 +130,22 @@ void runGuarded(Future<void> Function() body) {
 
       // Collecteur prêt AVANT le boot : toute erreur de démarrage est captée.
       await CrashReporting.instance.initialize();
+
+      // BOÎTE NOIRE (2026-07-09) : enregistreur persistant qui capture
+      // StructuredLogger + CrashReporting sur disque (survit aux crashs)
+      // et sait produire des constats automatiques. Best-effort : si le
+      // disque est indisponible, elle continue en mémoire seule.
+      try {
+        final dir = await getApplicationSupportDirectory();
+        await BlackBox.instance.initialize(directory: dir);
+      } catch (e) {
+        debugPrint('[BlackBox] dossier support KO, repli temp: $e');
+        try {
+          await BlackBox.instance.initialize(
+            directory: Directory.systemTemp,
+          );
+        } catch (_) {/* la capture mémoire du logger reste sans disque */}
+      }
 
       // Crashlytics si (et seulement si) le projet est configuré. Best-effort,
       // jamais bloquant ni fatal : sans google-services.json, no-op silencieux.
