@@ -19,8 +19,8 @@ void main() {
           'http://host.tv:8080/USER/PASS/1234.ts');
       expect(v, <String>[
         'http://host.tv:8080/USER/PASS/1234.ts', //      a) original
-        'http://host.tv:8080/live/USER/PASS/1234.m3u8', // b)
-        'http://host.tv:8080/live/USER/PASS/1234.ts', //   c)
+        'http://host.tv:8080/live/USER/PASS/1234.ts', //   b) TS d'abord
+        'http://host.tv:8080/live/USER/PASS/1234.m3u8', // c) HLS ensuite
         'http://host.tv:8080/USER/PASS/1234.m3u8', //      d)
       ]);
     });
@@ -60,8 +60,8 @@ void main() {
           XtreamUrlVariants.cascade('http://host.tv/USER/PASS/99');
       expect(v, <String>[
         'http://host.tv/USER/PASS/99',
-        'http://host.tv/live/USER/PASS/99.m3u8',
         'http://host.tv/live/USER/PASS/99.ts',
+        'http://host.tv/live/USER/PASS/99.m3u8',
         'http://host.tv/USER/PASS/99.m3u8',
       ]);
     });
@@ -93,7 +93,8 @@ void main() {
       );
       expect(
         v.map((XtreamUrlCandidate c) => c.formatCode),
-        <String>['none:ts', 'live:m3u8', 'live:ts', 'none:m3u8'],
+        // TS préfixé AVANT le HLS (1 connexion continue, compte max-1).
+        <String>['none:ts', 'live:ts', 'live:m3u8', 'none:m3u8'],
       );
     });
   });

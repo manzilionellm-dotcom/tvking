@@ -182,15 +182,23 @@ class XtreamUrlVariants {
         if (shape.ext != null && !liveExtensions.contains(shape.ext)) {
           return <XtreamUrlCandidate>[original];
         }
+        // ORDRE : on préfère le `.ts` (préfixé `/live/`) au HLS. Un `.ts`
+        // = UNE seule connexion continue via le relais (regarder +
+        // enregistrer sur 1 socket), idéal pour les comptes « max 1
+        // connexion » — c'est ce que fait IBO. Le HLS (`.m3u8`) ouvre au
+        // contraire plusieurs connexions (playlist repollée + segments)
+        // et sature un compte 1-connexion → écran noir (terrain
+        // 2026-07-09, compte « connexions 3/1 »). On ne retombe sur le
+        // HLS que si le `.ts` préfixé échoue.
         ordered = <XtreamUrlCandidate>[
           original,
           XtreamUrlCandidate(
-            url: shape.build(newPrefix: 'live', newExt: 'm3u8'),
-            formatCode: 'live:m3u8',
-          ),
-          XtreamUrlCandidate(
             url: shape.build(newPrefix: 'live', newExt: 'ts'),
             formatCode: 'live:ts',
+          ),
+          XtreamUrlCandidate(
+            url: shape.build(newPrefix: 'live', newExt: 'm3u8'),
+            formatCode: 'live:m3u8',
           ),
           XtreamUrlCandidate(
             url: shape.build(newPrefix: null, newExt: 'm3u8'),
