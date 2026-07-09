@@ -28,6 +28,7 @@ import '../../../core/observability/structured_logger.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
+import '../../../core/net/family_relay.dart';
 import '../../player/data/local_stream_relay.dart';
 import '../../player/data/player_settings.dart';
 import '../../player/data/stream_blocked_fallback.dart';
@@ -450,6 +451,19 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
           await PlayerSettings.instance.setUserAgent(sourceUa);
           userAgent ??= sourceUa;
         }
+      }
+    }
+    // FLUX MUTUALISÉ (option famille) : lecture via le relais CENTRAL
+    // (server/cast-remux) qui mutualise les spectateurs d'une même chaîne
+    // → le fournisseur voit 1 connexion par chaîne, pas par appareil. On
+    // BYPASSE le relais LOCAL (le central fait déjà le tuyau) ; il sert du
+    // HLS-fMP4 lu nativement par ExoPlayer.
+    if (FamilyRelay.instance.isActive) {
+      final String shared = FamilyRelay.instance.wrapLive(realUrl);
+      if (shared != realUrl) {
+        _relayPlayUrl = null;
+        _controller.setUrl(shared, userAgent: userAgent);
+        return;
       }
     }
     final String lower = realUrl.toLowerCase();

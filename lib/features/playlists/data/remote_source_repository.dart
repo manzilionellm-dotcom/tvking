@@ -29,6 +29,7 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
+import '../../../core/net/family_relay.dart';
 import '../../../core/net/iptv_exit.dart';
 import '../domain/playlist.dart';
 import 'playlist_repository.dart';
@@ -75,6 +76,9 @@ abstract final class RemoteSourceRepository {
       final String proxy = (body['proxy'] as String?)?.trim() ?? '';
       final String label = (body['label'] as String?)?.trim() ?? '';
       IptvExit.instance.update(proxy: proxy, label: label);
+      // FLUX MUTUALISÉ (option famille) : base du relais central, ou vide.
+      final String relay = (body['relay'] as String?)?.trim() ?? '';
+      FamilyRelay.instance.update(relay);
     } catch (e) {
       if (kDebugMode) debugPrint('[RemoteSource] exit sync error: $e');
     }

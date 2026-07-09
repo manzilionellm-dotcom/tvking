@@ -2,7 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import {
-  netExitsApi, deviceNetApi, getCurrentUser, isOwnerRole,
+  netExitsApi, deviceNetApi, familyRelayApi, getCurrentUser, isOwnerRole,
   type NetExit, type DeviceNet, ApiError,
 } from '@/lib/api';
 import { formatDateTime, formatMacInput } from '@/lib/utils';
@@ -41,9 +41,82 @@ export function NetworkPage({ onLogout }: { onLogout: () => void }) {
     >
       <div className="grid max-w-5xl gap-6 lg:grid-cols-2">
         <AssignExit exits={exits} onLogout={onLogout} />
-        {owner && <ManageExits exits={exits} onSaved={reloadExits} onLogout={onLogout} />}
+        <div className="space-y-6">
+          {owner && <ManageExits exits={exits} onSaved={reloadExits} onLogout={onLogout} />}
+          {owner && <FamilyRelayCard onLogout={onLogout} />}
+        </div>
       </div>
     </AppLayout>
+  );
+}
+
+/// Relais de FLUX MUTUALISÉ (option famille) — owner. Une base https vers
+/// le serveur server/cast-remux : quand un appareil est en « flux
+/// mutualisé », il lit ses chaînes via ce relais → les spectateurs d'une
+/// même chaîne partagent UNE connexion fournisseur (1 flux par chaîne, pas
+/// par appareil).
+function FamilyRelayCard({ onLogout }: { onLogout: () => void }) {
+  const [base, setBase] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    familyRelayApi.get()
+      .then((r) => setBase(r.base))
+      .catch((e) => { if (e instanceof ApiError && e.status === 401) onLogout(); })
+      .finally(() => setLoading(false));
+  }, [onLogout]);
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await familyRelayApi.save(base.trim());
+      setBase(r.base);
+      setMsg({ ok: true, text: r.base ? 'Relais enregistré. Active « flux mutualisé » sur les appareils voulus.' : 'Relais retiré (flux mutualisé coupé partout).' });
+    } catch (e: any) {
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      setMsg({ ok: false, text: e instanceof ApiError ? e.message : 'Échec.' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const inputCls =
+    'w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent';
+
+  return (
+    <div className="space-y-3 rounded-xl border border-white/5 bg-obsidian p-6">
+      <h2 className="text-sm font-semibold">Flux mutualisé (option famille)</h2>
+      <p className="text-[11px] leading-relaxed text-ink-tertiary">
+        Colle l'adresse de ton relais <span className="font-mono">server/cast-remux</span>{' '}
+        (un petit VPS, guide dans le dépôt). Quand un appareil est en « flux
+        mutualisé », les membres d'une famille qui regardent la <b>même chaîne</b>{' '}
+        partagent <b>une seule</b> connexion fournisseur. Chaînes différentes =
+        connexions différentes (limite physique).
+      </p>
+      {loading ? (
+        <p className="text-sm text-ink-tertiary">Chargement…</p>
+      ) : (
+        <>
+          <input value={base} onChange={(e) => setBase(e.target.value)}
+            placeholder="https://relais.mon-infra.net" className={inputCls + ' font-mono'} />
+          {msg && (
+            <div className={
+              'rounded-md px-3 py-2 text-xs ' +
+              (msg.ok ? 'border border-success/30 bg-success/10 text-success'
+                      : 'border border-accent/30 bg-accent/10 text-accent-bright')
+            }>
+              {msg.text}
+            </div>
+          )}
+          <button onClick={save} disabled={busy}
+            className="w-full rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black transition hover:bg-accent-bright disabled:opacity-50">
+            {busy ? 'Enregistrement…' : 'Enregistrer le relais'}
+          </button>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -151,6 +224,45 @@ function AssignExit({ exits, onLogout }: { exits: NetExit[]; onLogout: () => voi
           ) : (
             <span className="text-ink-tertiary">Cet appareil est en <b>direct</b> (IP réelle du client).</span>
           )}
+        </div>
+      )}
+
+      {/* ===== Flux mutualisé (option famille) — bascule indépendante ===== */}
+      {macOk && (
+        <div className="rounded-md border border-white/10 bg-slate/30 p-3">
+          <label className="flex items-start gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={!!current?.shared}
+              disabled={busy || loading || !current?.relay_configured}
+              onChange={async (e) => {
+                const m = mac.trim().toUpperCase();
+                setBusy(true); setMsg(null);
+                try {
+                  await deviceNetApi.setShared(m, e.target.checked);
+                  const r = await deviceNetApi.get(m).catch(() => null);
+                  if (r) setCurrent(r);
+                  setMsg({ ok: true, text: e.target.checked
+                    ? `Flux mutualisé activé sur ${m} — 1 connexion fournisseur par chaîne partagée.`
+                    : `Flux mutualisé coupé sur ${m}.` });
+                } catch (err: any) {
+                  if (err instanceof ApiError && err.status === 401) { onLogout(); return; }
+                  setMsg({ ok: false, text: err instanceof ApiError ? err.message : 'Échec.' });
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            />
+            <span>
+              <span className="font-medium">Flux mutualisé (option famille)</span>
+              <span className="mt-0.5 block text-[11px] text-ink-tertiary">
+                {current?.relay_configured
+                  ? 'Les membres qui regardent la même chaîne partagent une seule connexion fournisseur.'
+                  : 'Configure d\'abord le relais famille (carte à droite) pour activer cette option.'}
+              </span>
+            </span>
+          </label>
         </div>
       )}
 

@@ -26,6 +26,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/net/family_relay.dart';
 import '../../../core/net/iptv_exit.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -930,6 +931,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _playerOpenedOnce = true;
       _player.open(Media(realUrl));
       return;
+    }
+    // FLUX MUTUALISÉ (option famille) : on lit via le relais CENTRAL
+    // (server/cast-remux) qui mutualise les spectateurs d'une même chaîne
+    // → le fournisseur voit 1 connexion par chaîne, pas par appareil. On
+    // ouvre directement l'URL du relais (HLS-fMP4) en bypassant le relais
+    // LOCAL et la sonde (le central fait déjà le tuyau).
+    if (FamilyRelay.instance.isActive) {
+      final String shared = FamilyRelay.instance.wrapLive(realUrl);
+      if (shared != realUrl) {
+        StreamDiagnostics.instance.recordEvent(
+          'player',
+          'Flux mutualisé (famille) → relais central : '
+              '${StreamDiagnostics.maskCredentials(shared)}',
+        );
+        LocalStreamRelay.instance.closeOtherPlaybacks(realUrl);
+        _playerOpenedOnce = true;
+        _player.open(Media(shared));
+        return;
+      }
     }
     // HLS (.m3u8) : BYPASS du relais — mpv gère nativement master/media
     // playlists, segments, redirections et tokens (User-Agent déjà posé

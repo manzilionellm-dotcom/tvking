@@ -81,8 +81,8 @@ ok(r.status >= 400, 'API key inconnue -> refusée');
 r = await worker.fetch(
   new Request('https://app.x/api/device-net/MK:11:22:33:44:55'), {}, ctx);
 let net = await r.json();
-ok(r.status === 200 && net.proxy === '' && 'label' in net,
-  '/api/device-net sans D1 -> direct (proxy vide)');
+ok(r.status === 200 && net.proxy === '' && 'label' in net && net.relay === '',
+  '/api/device-net sans D1 -> direct (proxy + relais vides)');
 r = await worker.fetch(new Request('https://app.x/api/device-net/nope'), {}, ctx);
 ok(r.status === 400, '/api/device-net MAC invalide -> 400');
 

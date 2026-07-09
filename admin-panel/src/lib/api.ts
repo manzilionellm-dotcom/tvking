@@ -1173,6 +1173,8 @@ export interface DeviceNet {
   mac: string;
   proxy: string;   // '' = direct (aucune sortie)
   label: string;
+  shared?: boolean;          // flux mutualisé (option famille) actif
+  relay_configured?: boolean; // un relais famille est configuré côté owner
   updated_at: number | null;
 }
 export const netExitsApi = {
@@ -1186,15 +1188,32 @@ export const netExitsApi = {
 export const deviceNetApi = {
   get: (mac: string) =>
     request<DeviceNet>(`/api/v1/device-net/${encodeURIComponent(mac)}`),
-  // proxy vide = repasse le client en direct (efface la sortie).
-  set: (mac: string, proxy: string, label = '') =>
-    request<{ ok: boolean; mac: string; assigned: boolean; label: string }>(
+  // proxy vide = repasse le client en direct (efface la sortie IP).
+  // shared (optionnel) = active/coupe le flux mutualisé (option famille).
+  set: (mac: string, proxy: string, label = '', shared?: boolean) =>
+    request<{ ok: boolean; mac: string; assigned: boolean; label: string; shared: boolean }>(
       `/api/v1/device-net/${encodeURIComponent(mac)}`,
-      { method: 'PUT', body: { proxy, label } },
+      { method: 'PUT', body: { proxy, label, ...(shared === undefined ? {} : { shared }) } },
+    ),
+  // Change UNIQUEMENT le flux mutualisé, sans toucher au proxy IP existant.
+  setShared: (mac: string, shared: boolean) =>
+    request<{ ok: boolean; mac: string; shared: boolean }>(
+      `/api/v1/device-net/${encodeURIComponent(mac)}`,
+      { method: 'PUT', body: { shared } },
     ),
   clear: (mac: string) =>
     request<{ ok: boolean; mac: string }>(
       `/api/v1/device-net/${encodeURIComponent(mac)}`,
       { method: 'DELETE' },
     ),
+};
+
+// Relais de FLUX MUTUALISÉ (option famille) — base https du server/cast-remux.
+export const familyRelayApi = {
+  get: () => request<{ base: string }>('/api/v1/family-relay'),
+  save: (base: string) =>
+    request<{ ok: boolean; base: string }>('/api/v1/family-relay', {
+      method: 'PUT',
+      body: { base },
+    }),
 };

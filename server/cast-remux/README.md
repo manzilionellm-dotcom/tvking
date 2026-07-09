@@ -1,9 +1,18 @@
-# cast-remux — caster l'IPTV vers N'IMPORTE QUEL Chromecast
+# cast-remux — relais IPTV mutualisé (Cast + option famille)
 
 Remux **MPEG-TS live → HLS-fMP4** (format lu nativement par tous les
-Chromecast / Google TV / récepteur Cast par défaut). `ffmpeg -c copy` :
-**aucun ré-encodage**, juste un changement de conteneur → ~1-2 % CPU par
-chaîne, un petit VPS suffit.
+Chromecast / Google TV / récepteur Cast par défaut, et par mpv/ExoPlayer).
+`ffmpeg -c copy` : **aucun ré-encodage**, juste un changement de conteneur
+→ ~1-2 % CPU par chaîne, un petit VPS suffit.
+
+> **Double usage.** Ce service sert AUSSI de **relais de flux mutualisé**
+> pour l'**option famille** : plusieurs appareils qui regardent la MÊME
+> chaîne partagent UN seul ffmpeg → **une seule connexion** vers le
+> fournisseur (au lieu d'une par appareil). Dans le panel, colle son URL
+> https dans **Réseau & localisation → Flux mutualisé**, puis coche « flux
+> mutualisé » sur les appareils de la famille. Limite physique : ça ne
+> collapse que les spectateurs d'une même chaîne — 5 chaînes différentes =
+> 5 connexions (contenus différents, impossible à réduire).
 
 ## Pourquoi ce service
 Le récepteur Cast par défaut (Shaka) ne sait pas lire du MPEG-TS brut.

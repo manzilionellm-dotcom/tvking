@@ -622,6 +622,13 @@ async function apiV1Inner(request, env, ctx) {
     if (request.method === 'PUT') return handleNetExitsSave(request, env, actor);
   }
 
+  // /family-relay — base du relais de FLUX MUTUALISÉ (server/cast-remux). Owner.
+  if (parts[0] === 'family-relay' && parts.length === 1) {
+    if (a.user.role !== 'super_admin') return errResp('forbidden', 'Owner only', 403);
+    if (request.method === 'GET') return handleFamilyRelayGet(env);
+    if (request.method === 'PUT') return handleFamilyRelayPut(request, env, actor);
+  }
+
   // /device-net/:mac — SORTIE RÉSEAU (IP) assignée à un appareil. Changer
   // l'IP fait partie du dépannage client → même capacité 'sources'.
   if (parts[0] === 'device-net' && parts.length === 2) {
@@ -4768,6 +4775,49 @@ async function ensureDeviceNetTable(env) {
        updated_at INTEGER NOT NULL
      )`,
   ).run();
+  // FLUX MUTUALISÉ (option famille) : quand activé sur un appareil, celui-ci
+  // lit ses chaînes via le relais central (server/cast-remux) au lieu du
+  // fournisseur → les spectateurs d'une MÊME chaîne partagent UNE connexion
+  // amont. Le fournisseur voit 1 flux par chaîne (pas par appareil). ALTER
+  // best-effort, idempotent.
+  try { await env.DB.prepare('ALTER TABLE device_net ADD COLUMN shared_stream INTEGER').run(); }
+  catch (_) { /* colonne déjà présente */ }
+}
+
+/// Base du relais de flux mutualisé (server/cast-remux), déclarée par
+/// l'owner. Vide = fonction OFF (aucun appareil ne mutualise, même si le
+/// flag est coché) — filet de sécurité.
+async function familyRelayBase(env) {
+  const b = (await _cfgGetStr(env, 'family_relay_base')) || '';
+  return b.replace(/\/+$/, '');
+}
+
+async function handleFamilyRelayGet(env) {
+  await ensureAppConfigTable(env);
+  return jsonResp({ base: await familyRelayBase(env) });
+}
+
+async function handleFamilyRelayPut(request, env, actor) {
+  await ensureAppConfigTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const raw = (body.base == null ? '' : String(body.base)).trim();
+  if (raw !== '') {
+    // Le relais DOIT être en https (le flux part vers l'app / TV).
+    let u;
+    try { u = new URL(raw); } catch (_) { return errResp('bad_url', 'URL de relais invalide', 400); }
+    if (u.protocol !== 'https:') {
+      return errResp('bad_url', 'Le relais doit être en https:// (ex. https://relais.mon-infra.net)', 400);
+    }
+  }
+  await _cfgSet(env, 'family_relay_base', raw.replace(/\/+$/, ''));
+  // Tous les appareils en flux mutualisé doivent re-basculer vite.
+  await bumpGlobalSync(env);
+  await logAudit(env, request, actor, 'family_relay.set',
+    { type: 'app_config', id: 'family_relay_base' }, null, { set: raw !== '' });
+  return jsonResp({ ok: true, base: raw.replace(/\/+$/, '') });
 }
 
 /// Valide sommairement un proxy : schéma http/https/socks(5) + host:port.
@@ -4823,16 +4873,18 @@ async function handleNetExitsSave(request, env, actor) {
   return jsonResp({ ok: true, items });
 }
 
-/// Assignation par MAC (vue panel : proxy + label lisibles).
+/// Assignation par MAC (vue panel : proxy + label + flux mutualisé).
 async function handleDeviceNetGet(env, mac) {
   await ensureDeviceNetTable(env);
   const m = decodeMac(mac).trim().toUpperCase();
-  const row = await env.DB.prepare('SELECT proxy, label, updated_at FROM device_net WHERE mac = ?')
+  const row = await env.DB.prepare('SELECT proxy, label, shared_stream, updated_at FROM device_net WHERE mac = ?')
     .bind(m).first();
   return jsonResp({
     mac: m,
     proxy: row ? String(row.proxy || '') : '',
     label: row ? String(row.label || '') : '',
+    shared: row ? Number(row.shared_stream) === 1 : false,
+    relay_configured: (await familyRelayBase(env)) !== '',
     updated_at: row ? Number(row.updated_at) : null,
   });
 }
@@ -4852,23 +4904,38 @@ async function handleDeviceNetPut(request, env, mac, actor, ctx) {
     return errResp('bad_proxy', 'Proxy invalide. Attendu : http://[user:pass@]host:port ou socks5://host:port', 400);
   }
   const label = (body.label == null ? '' : String(body.label)).trim().slice(0, 60);
-  if (proxy === '') {
-    // Vide = retour au direct : on efface l'assignation.
+  // Flux mutualisé (option famille) : booléen indépendant du proxy IP.
+  // undefined dans le corps = on garde la valeur existante.
+  let shared = null;
+  if (body.shared !== undefined) shared = body.shared ? 1 : 0;
+
+  // La ligne existe si proxy OU flux mutualisé est actif. On lit l'existant
+  // pour fusionner (changer l'un sans effacer l'autre).
+  const prev = await env.DB.prepare('SELECT proxy, label, shared_stream FROM device_net WHERE mac = ?')
+    .bind(m).first();
+  const finalProxy = body.proxy === undefined && prev ? String(prev.proxy || '') : proxy;
+  const finalLabel = body.label === undefined && prev ? String(prev.label || '') : label;
+  const finalShared = shared === null ? (prev ? Number(prev.shared_stream) || 0 : 0) : shared;
+
+  if (finalProxy === '' && finalShared === 0) {
+    // Plus rien d'assigné → on efface (retour au direct total).
     await env.DB.prepare('DELETE FROM device_net WHERE mac = ?').bind(m).run();
   } else {
     await env.DB.prepare(
-      `INSERT INTO device_net (mac, proxy, label, updated_at) VALUES (?, ?, ?, ?)
-       ON CONFLICT(mac) DO UPDATE SET proxy=excluded.proxy, label=excluded.label, updated_at=excluded.updated_at`,
-    ).bind(m, proxy, label, Date.now()).run();
+      `INSERT INTO device_net (mac, proxy, label, shared_stream, updated_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(mac) DO UPDATE SET proxy=excluded.proxy, label=excluded.label,
+         shared_stream=excluded.shared_stream, updated_at=excluded.updated_at`,
+    ).bind(m, finalProxy, finalLabel, finalShared, Date.now()).run();
   }
-  // LIVRAISON INSTANTANÉE : l'app applique la nouvelle sortie en < 20 s.
+  // LIVRAISON INSTANTANÉE : l'app applique en < 20 s.
   await bumpDeviceSync(env, m);
   await logAudit(env, request, actor, 'device_net.set',
     { type: 'device_net', id: m }, null,
     // On NE journalise PAS le proxy complet (peut contenir user:pass) — juste l'état.
-    { assigned: proxy !== '', label });
-  await dispatchWebhooks(env, ctx, 'device.exit_changed', { mac: m, assigned: proxy !== '', label });
-  return jsonResp({ ok: true, mac: m, assigned: proxy !== '', label });
+    { assigned: finalProxy !== '', label: finalLabel, shared: finalShared === 1 });
+  await dispatchWebhooks(env, ctx, 'device.exit_changed',
+    { mac: m, assigned: finalProxy !== '', label: finalLabel, shared: finalShared === 1 });
+  return jsonResp({ ok: true, mac: m, assigned: finalProxy !== '', label: finalLabel, shared: finalShared === 1 });
 }
 
 async function handleDeviceNetDelete(request, env, mac, actor, ctx) {
@@ -4882,19 +4949,23 @@ async function handleDeviceNetDelete(request, env, mac, actor, ctx) {
   return jsonResp({ ok: true, mac: m });
 }
 
-/// Lecture publique (app) : proxy + label de CE device. Exportée pour le
-/// endpoint public dans worker.js.
+/// Lecture publique (app) : proxy + label + relais de flux mutualisé de CE
+/// device. `relay` n'est renseigné que si l'appareil est en flux mutualisé
+/// ET que l'owner a configuré un relais. Exportée pour worker.js.
 export async function readDeviceNet(env, mac) {
   try {
-    if (!env.DB) return { proxy: '', label: '' };
+    if (!env.DB) return { proxy: '', label: '', relay: '' };
     await ensureDeviceNetTable(env);
-    const row = await env.DB.prepare('SELECT proxy, label FROM device_net WHERE mac = ?')
+    const row = await env.DB.prepare('SELECT proxy, label, shared_stream FROM device_net WHERE mac = ?')
       .bind(String(mac).toUpperCase()).first();
+    const shared = row ? Number(row.shared_stream) === 1 : false;
+    const relay = shared ? await familyRelayBase(env) : '';
     return {
       proxy: row ? String(row.proxy || '') : '',
       label: row ? String(row.label || '') : '',
+      relay,
     };
   } catch (_) {
-    return { proxy: '', label: '' };
+    return { proxy: '', label: '', relay: '' };
   }
 }
