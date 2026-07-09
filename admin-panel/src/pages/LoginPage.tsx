@@ -31,6 +31,10 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
+  // 2FA : le champ code n'apparaît que si le serveur le demande
+  // (erreur 'otp_required' après un mot de passe correct).
+  const [otpNeeded, setOtpNeeded] = useState(false);
+  const [otp, setOtp] = useState('');
 
   function switchMode(m: 'admin' | 'reseller') {
     setMode(m);
@@ -59,10 +63,16 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
       }
       const res = mode === 'reseller'
         ? await authApi.resellerLogin(email.trim(), password)
-        : await authApi.login(email.trim(), password);
+        : await authApi.login(email.trim(), password, otp.trim() || undefined);
       setToken(res.token);
       onLoggedIn();
     } catch (e: any) {
+      if (e instanceof ApiError && e.code === 'otp_required') {
+        // Mot de passe OK, compte protégé par 2FA → on demande le code.
+        setOtpNeeded(true);
+        setErr(null);
+        return;
+      }
       const msg = e instanceof ApiError ? e.message : t('login.fail');
       setErr(msg);
     } finally {
@@ -165,6 +175,25 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
               placeholder="••••••••"
             />
           </div>
+          {otpNeeded && mode === 'admin' && (
+            <div>
+              <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+                Code de vérification (2FA)
+              </label>
+              <input
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                autoFocus
+                inputMode="numeric"
+                maxLength={6}
+                className="w-full rounded-md border border-accent/40 bg-slate px-3 py-2 text-center font-mono text-lg tracking-[0.4em] outline-none ring-accent focus:ring-1"
+                placeholder="000000"
+              />
+              <p className="mt-1 text-[11px] text-ink-tertiary">
+                Ouvre ton app d'authentification (Google Authenticator, Authy…).
+              </p>
+            </div>
+          )}
         </div>
 
         {err && (

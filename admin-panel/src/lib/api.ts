@@ -149,10 +149,12 @@ export function isOwnerRole(role?: string | null): boolean {
 }
 
 export const authApi = {
-  login: (email: string, password: string) =>
+  // `otp` = code 2FA (6 chiffres) — requis seulement si le compte a
+  // activé la double authentification (erreur 'otp_required' sinon).
+  login: (email: string, password: string, otp?: string) =>
     request<AuthLoginResponse>('/api/v1/auth/login', {
       method: 'POST',
-      body: { email, password },
+      body: { email, password, ...(otp ? { otp } : {}) },
       noAuth: true,
     }),
   // Login d'un compte revendeur (table resellers, role 'reseller').
@@ -1121,4 +1123,36 @@ export const integrationsApi = {
     request<{ ok: boolean; sent: boolean }>(`/api/v1/integrations/webhooks/${id}/test`, {
       method: 'POST',
     }),
+};
+
+// =========================================================
+//  2FA TOTP (comptes admin) + SANTÉ SYSTÈME
+// =========================================================
+export const twoFaApi = {
+  status: () => request<{ enabled: boolean; pending: boolean }>('/api/v1/me/2fa'),
+  setup: () =>
+    request<{ ok: boolean; secret: string; otpauth: string }>('/api/v1/me/2fa/setup', {
+      method: 'POST',
+      body: {},
+    }),
+  enable: (code: string) =>
+    request<{ ok: boolean; enabled: boolean }>('/api/v1/me/2fa/enable', {
+      method: 'POST',
+      body: { code },
+    }),
+  disable: (password: string, code: string) =>
+    request<{ ok: boolean; enabled: boolean }>('/api/v1/me/2fa/disable', {
+      method: 'POST',
+      body: { password, code },
+    }),
+};
+
+export interface HealthStatus {
+  ok: boolean;
+  db_ok: boolean;
+  db_ms: number | null;
+  time: number;
+}
+export const healthApi = {
+  get: () => request<HealthStatus>('/api/v1/health'),
 };

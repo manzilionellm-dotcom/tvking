@@ -1,5 +1,5 @@
 import { ReactNode, useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import {
   devicesApi, activateApi, flagEmoji,
@@ -16,7 +16,9 @@ const PLAN_LABELS: Record<string, string> = {
 
 export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<Device[]>([]);
-  const [q, setQ] = useState('');
+  // Recherche pré-remplie via ?q=… (palette de commandes, dashboard).
+  const [sp] = useSearchParams();
+  const [q, setQ] = useState(sp.get('q') || '');
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);

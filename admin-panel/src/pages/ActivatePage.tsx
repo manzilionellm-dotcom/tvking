@@ -33,6 +33,14 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [result, setResult] = useState<ActivateResult | null>(null);
 
+  // MODE LOT : activer PLUSIEURS MACs d'un coup (même plan). Une MAC par
+  // ligne — pratique pour provisionner un stock de box ou migrer un parc.
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchText, setBatchText] = useState('');
+  const [batchResults, setBatchResults] = useState<
+    { mac: string; ok: boolean; detail: string }[] | null
+  >(null);
+
   // UN SEUL produit : on filtre les autres applis (NOVA+, Red Room, TV…)
   // — le client n'a qu'une app. On prend la 1re « vraie » appli.
   const primaryApp =
@@ -67,6 +75,49 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
     setBusy(true);
     setErr(null);
     setResult(null);
+    setBatchResults(null);
+
+    // ----- MODE LOT : une MAC par ligne, activations séquentielles -----
+    if (batchMode) {
+      const macs = Array.from(new Set(
+        batchText
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean)
+          .map((l) => {
+            const hex = l.toUpperCase().replace(/^MK[:\s]*/, '').replace(/[^0-9A-F]/g, '');
+            return hex.length === 10 ? 'MK:' + (hex.match(/.{2}/g) || []).join(':') : l.toUpperCase();
+          }),
+      ));
+      if (macs.length === 0) {
+        setErr('Colle au moins une MAC (une par ligne).');
+        setBusy(false);
+        return;
+      }
+      const results: { mac: string; ok: boolean; detail: string }[] = [];
+      for (const m of macs) {
+        if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
+          results.push({ mac: m, ok: false, detail: 'MAC invalide' });
+          continue;
+        }
+        try {
+          const r = await activateApi.activate({ mac: m, plan, app_id: appId });
+          results.push({
+            mac: m, ok: true,
+            detail: (r.renewed ? 'renouvelé' : 'activé')
+              + (r.expires_at ? ` → ${formatDateTime(r.expires_at)}` : ' → à vie'),
+          });
+          if (r.credit_balance !== null) setBalance(r.credit_balance);
+        } catch (e: any) {
+          if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+          results.push({ mac: m, ok: false, detail: e instanceof ApiError ? e.message : 'Échec' });
+        }
+        setBatchResults([...results]); // progression visible au fil de l'eau
+      }
+      setBusy(false);
+      return;
+    }
+
     const m = mac.trim().toUpperCase();
     if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
       setErr('MAC invalide. Format attendu : MK:XX:XX:XX:XX:XX');
@@ -117,19 +168,57 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
       <div className="grid max-w-4xl gap-6 md:grid-cols-2">
         {/* ===== Formulaire ===== */}
         <form onSubmit={submit} className="space-y-4 rounded-xl border border-white/5 bg-midnight p-6">
-          <div>
-            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
-              Adresse MAC de l'appareil
-            </label>
-            <input
-              value={mac}
-              onChange={(e) => setMac(formatMacInput(e.target.value))}
-              autoFocus
-              maxLength={17}
-              placeholder="MK:1A:2B:3C:4D:5E"
-              className={inputCls + ' font-mono'}
-            />
+          {/* Un appareil ↔ Lot (plusieurs MACs, même plan) */}
+          <div className="grid grid-cols-2 gap-2">
+            {([['single', 'Un appareil'], ['batch', 'En lot (plusieurs MACs)']] as const).map(([m, label]) => {
+              const selected = batchMode === (m === 'batch');
+              return (
+                <button
+                  type="button"
+                  key={m}
+                  onClick={() => { setBatchMode(m === 'batch'); setErr(null); setResult(null); setBatchResults(null); }}
+                  className={
+                    'rounded-md border px-3 py-2 text-sm transition ' +
+                    (selected
+                      ? 'border-accent bg-accent/10 text-ink-primary'
+                      : 'border-white/5 bg-slate text-ink-secondary hover:border-white/20')
+                  }
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
+
+          {!batchMode && (
+            <div>
+              <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+                Adresse MAC de l'appareil
+              </label>
+              <input
+                value={mac}
+                onChange={(e) => setMac(formatMacInput(e.target.value))}
+                autoFocus
+                maxLength={17}
+                placeholder="MK:1A:2B:3C:4D:5E"
+                className={inputCls + ' font-mono'}
+              />
+            </div>
+          )}
+          {batchMode && (
+            <div>
+              <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+                MACs à activer — une par ligne (doublons ignorés)
+              </label>
+              <textarea
+                value={batchText}
+                onChange={(e) => setBatchText(e.target.value)}
+                rows={6}
+                placeholder={'MK:1A:2B:3C:4D:5E\nMK:AA:BB:CC:DD:EE\n…'}
+                className={inputCls + ' resize-y font-mono'}
+              />
+            </div>
+          )}
 
           {/* Téléchargement à donner au client : le lien propre OU le code
               Downloader officiel (TV / Fire TV). Domaine app.7themotion.com. */}
@@ -207,17 +296,19 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             </div>
           </div>
 
-          <div>
-            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
-              Nom du client (optionnel)
-            </label>
-            <input
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="Ex. Salon de Karim"
-              className={inputCls}
-            />
-          </div>
+          {!batchMode && (
+            <div>
+              <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+                Nom du client (optionnel)
+              </label>
+              <input
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="Ex. Salon de Karim"
+                className={inputCls}
+              />
+            </div>
+          )}
 
           {/* Renvoi clair vers la page dédiée — plus de mélange ici. */}
           {canPushSources && (
@@ -239,28 +330,49 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
 
           <button
             type="submit"
-            disabled={busy || mac.trim().length < 8}
+            disabled={busy || (batchMode ? !batchText.trim() : mac.trim().length < 8)}
             className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy
               ? 'Activation…'
-              : !isReseller
-                /* Owner : activation gratuite et illimitée, jamais de crédit. */
-                ? 'Activer'
-                : costFor(plan) === 0
-                  ? 'Activer (gratuit)'
-                  : `Activer (${costFor(plan) ?? '?'} crédits)`}
+              : batchMode
+                ? `Activer le lot${isReseller && costFor(plan) ? ` (${costFor(plan)} cr. / MAC)` : ''}`
+                : !isReseller
+                  /* Owner : activation gratuite et illimitée, jamais de crédit. */
+                  ? 'Activer'
+                  : costFor(plan) === 0
+                    ? 'Activer (gratuit)'
+                    : `Activer (${costFor(plan) ?? '?'} crédits)`}
           </button>
         </form>
 
         {/* ===== Résultat ===== */}
         <div className="rounded-xl border border-white/5 bg-obsidian p-6">
-          {!result && (
+          {!result && !batchResults && (
             <p className="text-sm text-ink-tertiary">
               Le résultat de l'activation s'affichera ici. L'appareil est
               débloqué INSTANTANÉMENT : l'app détecte l'activation en
               quelques secondes, sans redémarrage.
             </p>
+          )}
+          {batchResults && (
+            <div className="space-y-2 text-sm">
+              <div className="inline-flex rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success">
+                Lot : {batchResults.filter((r) => r.ok).length}/{batchResults.length} activé(s)
+              </div>
+              <ul className="max-h-96 space-y-1 overflow-y-auto">
+                {batchResults.map((r, i) => (
+                  <li key={i}
+                    className={
+                      'flex items-center justify-between gap-2 rounded-md border px-3 py-1.5 text-xs ' +
+                      (r.ok ? 'border-success/20 bg-success/5' : 'border-accent/20 bg-accent/5')
+                    }>
+                    <span className="font-mono">{r.mac}</span>
+                    <span className={r.ok ? 'text-success' : 'text-accent-bright'}>{r.detail}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           {result && (
             <div className="space-y-3 text-sm">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { customersApi, type Customer, ApiError } from '@/lib/api';
 import { downloadCsv, formatDateTime } from '@/lib/utils';
@@ -9,7 +9,9 @@ import { downloadCsv, formatDateTime } from '@/lib/utils';
 export function CustomersPage({ onLogout }: { onLogout: () => void }) {
   const navigate = useNavigate();
   const [items, setItems] = useState<Customer[]>([]);
-  const [q, setQ] = useState('');
+  // Recherche pré-remplie via ?q=… (palette de commandes).
+  const [sp] = useSearchParams();
+  const [q, setQ] = useState(sp.get('q') || '');
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import {
-  statsApi, backupApi, onlineApi, auditApi,
+  statsApi, backupApi, onlineApi, auditApi, healthApi,
   type StatsOverview, type OnlineSnapshot, type AuditLog, ApiError,
   getCurrentUser, isOwnerRole,
 } from '@/lib/api';
@@ -17,6 +17,8 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
   const [stats, setStats] = useState<StatsOverview | null>(null);
   const [online, setOnline] = useState<OnlineSnapshot | null>(null);
   const [activity, setActivity] = useState<AuditLog[]>([]);
+  // Santé : latence API mesurée côté navigateur + latence D1 (serveur).
+  const [health, setHealth] = useState<{ apiMs: number; dbMs: number | null; ok: boolean } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [backupBusy, setBackupBusy] = useState(false);
@@ -63,6 +65,12 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
       if (owner) {
         onlineApi.get().then((o) => { if (active) setOnline(o); }).catch(() => {});
         auditApi.list().then((r) => { if (active) setActivity(r.items.slice(0, 12)); }).catch(() => {});
+        const t0 = performance.now();
+        healthApi.get()
+          .then((h) => {
+            if (active) setHealth({ apiMs: Math.round(performance.now() - t0), dbMs: h.db_ms, ok: h.ok });
+          })
+          .catch(() => { if (active) setHealth({ apiMs: Math.round(performance.now() - t0), dbMs: null, ok: false }); });
       }
     };
     load();
@@ -120,6 +128,27 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
                 value={formatMoney(stats.revenue_30d_cents ?? 0)}
                 wide
               />
+              {/* Santé système : latence mesurée en vrai, pas décorative. */}
+              <div className="col-span-2 rounded-xl border border-white/5 bg-midnight px-5 py-4">
+                <p className="text-[10px] uppercase tracking-widest text-ink-tertiary">
+                  Santé système
+                </p>
+                <div className="mt-2 flex items-center gap-4">
+                  <span className={
+                    'h-2.5 w-2.5 rounded-full ' +
+                    (health === null ? 'bg-white/20' : health.ok ? 'bg-success' : 'bg-accent')
+                  } />
+                  <span className="text-sm text-ink-secondary">
+                    {health === null
+                      ? 'Mesure…'
+                      : health.ok
+                        ? <>API <span className="font-semibold text-ink-primary">{health.apiMs} ms</span>
+                          {health.dbMs !== null && <> · Base <span className="font-semibold text-ink-primary">{health.dbMs} ms</span></>}
+                          <span className="text-success"> · opérationnel</span></>
+                        : <span className="text-accent-bright">Incident — la base ne répond pas</span>}
+                  </span>
+                </div>
+              </div>
             </>
           ) : (
             <KpiCard

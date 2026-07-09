@@ -1,5 +1,6 @@
 import { ReactNode, useState } from 'react';
 import { Sidebar } from './Sidebar';
+import { CommandPalette } from './CommandPalette';
 import { useT } from '@/lib/i18n';
 
 interface AppLayoutProps {
@@ -74,6 +75,8 @@ export function AppLayout({
           {/* Actions de page + bouton DÉCONNEXION (visible partout, y
               compris mobile, sans avoir à ouvrir le menu latéral). */}
           <div className="flex shrink-0 items-center gap-2">
+            {/* Recherche globale (Ctrl+K) — pages, MACs, clients, actions. */}
+            <CommandPalette />
             {actions}
             <button
               onClick={onLogout}

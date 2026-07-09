@@ -113,7 +113,7 @@ const STR: Record<string, Record<Lang, string>> = {
   'account.update': { fr: 'Mettre à jour', en: 'Update', ar: 'تحديث' },
   'account.updating': { fr: 'Modification…', en: 'Updating…', ar: 'جارٍ التحديث…' },
   'account.pwdOk': { fr: 'Mot de passe modifié ✔', en: 'Password changed ✔', ar: 'تم تغيير كلمة المرور ✔' },
-  'account.pwdShort': { fr: 'Le mot de passe doit faire au moins 4 caractères.', en: 'Password must be at least 4 characters.', ar: 'يجب ألا تقل كلمة المرور عن 4 أحرف.' },
+  'account.pwdShort': { fr: 'Le mot de passe doit faire au moins 8 caractères.', en: 'Password must be at least 8 characters.', ar: 'يجب ألا تقل كلمة المرور عن 8 أحرف.' },
   'account.pwdMismatch': { fr: 'La confirmation ne correspond pas.', en: 'Confirmation does not match.', ar: 'التأكيد غير مطابق.' },
 };
 

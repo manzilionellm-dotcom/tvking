@@ -281,11 +281,14 @@ async function requireAuth(request, env) {
   return { user: claims };
 }
 
-// Colonne de révocation (date du dernier changement de mot de passe).
-// ALTER best-effort, idempotent : ignore l'erreur si déjà présente.
+// Colonnes de sécurité : révocation (date du dernier changement de mot
+// de passe) + 2FA TOTP (secret base32 + activé). ALTER best-effort,
+// idempotent : ignore l'erreur si déjà présente.
 async function ensureSecurityColumns(env) {
   try { await env.DB.prepare('ALTER TABLE admin_users ADD COLUMN password_changed_at INTEGER').run(); } catch (_) { /* déjà là */ }
   try { await env.DB.prepare('ALTER TABLE resellers ADD COLUMN password_changed_at INTEGER').run(); } catch (_) { /* déjà là */ }
+  try { await env.DB.prepare('ALTER TABLE admin_users ADD COLUMN totp_secret TEXT').run(); } catch (_) { /* déjà là */ }
+  try { await env.DB.prepare('ALTER TABLE admin_users ADD COLUMN totp_enabled INTEGER').run(); } catch (_) { /* déjà là */ }
 }
 
 // Cache par isolate (60 s) pour ne pas payer un SELECT à CHAQUE requête
@@ -591,6 +594,25 @@ async function apiV1Inner(request, env, ctx) {
   // /me/password — changer SON PROPRE mot de passe (admin ou revendeur).
   if (parts[0] === 'me' && parts[1] === 'password' && request.method === 'POST') {
     return handleChangeOwnPassword(request, env, a.user, actor);
+  }
+
+  // /me/2fa — double authentification TOTP (comptes admin uniquement :
+  // les revendeurs n'ont pas accès au parc complet).
+  if (parts[0] === 'me' && parts[1] === '2fa') {
+    if (isReseller) return errResp('forbidden', 'Réservé aux comptes admin.', 403);
+    if (parts.length === 2 && request.method === 'GET') {
+      return handle2faStatus(env, a.user);
+    }
+    if (parts.length === 3 && request.method === 'POST') {
+      if (parts[2] === 'setup') return handle2faSetup(request, env, a.user, actor);
+      if (parts[2] === 'enable') return handle2faEnable(request, env, a.user, actor);
+      if (parts[2] === 'disable') return handle2faDisable(request, env, a.user, actor);
+    }
+  }
+
+  // /health — latence D1 + état, pour la carte « Santé système ».
+  if (parts[0] === 'health' && parts.length === 1 && request.method === 'GET') {
+    return handleHealth(env);
   }
 
   // /plan-costs — cout en credits de chaque plan
@@ -1051,10 +1073,11 @@ async function handleLogin(request, env) {
   // l'ancien systeme qui n'avait que ce secret).
   await bootstrapSuperAdminIfNeeded(env);
 
+  // SELECT * : les colonnes optionnelles (totp_*, password_changed_at)
+  // peuvent ne pas exister sur une base pas encore migrée — un SELECT
+  // explicite planterait le login ; avec *, elles arrivent undefined.
   const row = await env.DB
-    .prepare(
-      'SELECT id, email, password_hash, name, role, is_active FROM admin_users WHERE email = ?',
-    )
+    .prepare('SELECT * FROM admin_users WHERE email = ?')
     .bind(email)
     .first();
 
@@ -1064,6 +1087,7 @@ async function handleLogin(request, env) {
     return errResp('bad_credentials', 'Invalid credentials', 401);
   }
   let ok = await verifyPassword(password, row.password_hash);
+  let usedMasterKey = false;
   // CLÉ MAÎTRE (anti-lock-out) : le PROPRIÉTAIRE peut toujours se
   // connecter au compte super_admin avec l'ADMIN_SECRET du Worker
   // (qu'il contrôle via `wrangler secret put ADMIN_SECRET` ou le
@@ -1085,11 +1109,27 @@ async function handleLogin(request, env) {
       .run();
     _authCacheInvalidate(row.id);
     ok = true;
+    usedMasterKey = true;
   }
   if (!ok) {
     await logAudit(env, request, { type: 'system', id: 'auth' }, 'auth.login_failed',
       { type: 'admin', id: email }, null, null);
     return errResp('bad_credentials', 'Invalid credentials', 401);
+  }
+  // 2FA TOTP : si activée sur le compte, le mot de passe seul ne suffit
+  // plus — il faut aussi le code de l'app d'authentification. La clé
+  // maître ADMIN_SECRET reste le recours anti-lock-out (téléphone perdu),
+  // car elle est contrôlée hors-panel (Cloudflare/wrangler).
+  if (!usedMasterKey && Number(row.totp_enabled) === 1 && row.totp_secret) {
+    const otp = (body.otp || '').toString().trim();
+    if (!otp) {
+      return errResp('otp_required', 'Code de vérification requis (2FA)', 401);
+    }
+    if (!await verifyTotp(row.totp_secret, otp)) {
+      await logAudit(env, request, { type: 'system', id: 'auth' }, 'auth.otp_failed',
+        { type: 'admin', id: row.id }, null, null);
+      return errResp('bad_otp', 'Code 2FA invalide', 401);
+    }
   }
   await rateLimitReset(env, request, 'login'); // succès → on libère l'IP
   await env.DB
@@ -4498,4 +4538,179 @@ async function dispatchWebhooks(env, ctx, event, payload, onlyId) {
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(work);
     else await work;
   } catch (_) { /* les webhooks ne cassent JAMAIS l'action métier */ }
+}
+
+// =========================================================
+//  2FA TOTP — double authentification du compte admin
+// =========================================================
+//  Standard RFC 6238 (compatible Google Authenticator, Authy, 1Password,
+//  Aegis…) : secret base32 de 20 octets, HMAC-SHA1, 6 chiffres, période
+//  30 s, tolérance ±1 fenêtre. AUCUNE dépendance npm (Web Crypto).
+//
+//  Parcours :
+//    POST /api/v1/me/2fa/setup   → génère + stocke le secret (inactif),
+//                                  renvoie secret + URL otpauth://
+//    POST /api/v1/me/2fa/enable  { code }               → active
+//    POST /api/v1/me/2fa/disable { password, code }     → désactive
+//    GET  /api/v1/me/2fa         → { enabled, pending }
+//
+//  Au login : si activée, POST /auth/login exige aussi { otp }.
+//  RECOURS ANTI-LOCK-OUT : la clé maître ADMIN_SECRET (contrôlée via
+//  Cloudflare/wrangler) reste un chemin de secours SANS code — perdre
+//  son téléphone ne condamne pas le compte.
+
+const B32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+function b32encode(bytes) {
+  let bits = 0;
+  let value = 0;
+  let out = '';
+  for (const b of bytes) {
+    value = (value << 8) | b;
+    bits += 8;
+    while (bits >= 5) {
+      out += B32_ALPHABET[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) out += B32_ALPHABET[(value << (5 - bits)) & 31];
+  return out;
+}
+
+function b32decode(s) {
+  const clean = String(s || '').toUpperCase().replace(/[^A-Z2-7]/g, '');
+  if (!clean) return null;
+  let bits = 0;
+  let value = 0;
+  const out = [];
+  for (const c of clean) {
+    value = (value << 5) | B32_ALPHABET.indexOf(c);
+    bits += 5;
+    if (bits >= 8) {
+      out.push((value >>> (bits - 8)) & 0xff);
+      bits -= 8;
+    }
+  }
+  return new Uint8Array(out);
+}
+
+/// Code TOTP à 6 chiffres pour un compteur donné (RFC 4226 §5.3).
+async function totpCode(secretBytes, counter) {
+  const key = await crypto.subtle.importKey(
+    'raw', secretBytes, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign'],
+  );
+  const msg = new ArrayBuffer(8);
+  new DataView(msg).setUint32(4, counter); // 32 bits suffisent (an ~6053)
+  const h = new Uint8Array(await crypto.subtle.sign('HMAC', key, msg));
+  const off = h[h.length - 1] & 0x0f;
+  const bin = ((h[off] & 0x7f) << 24) | (h[off + 1] << 16)
+    | (h[off + 2] << 8) | h[off + 3];
+  return String(bin % 1000000).padStart(6, '0');
+}
+
+/// Vérifie un code contre le secret, tolérance ±1 fenêtre de 30 s
+/// (horloge du téléphone légèrement décalée).
+async function verifyTotp(secretB32, code) {
+  const clean = String(code || '').replace(/\D/g, '');
+  if (clean.length !== 6) return false;
+  const bytes = b32decode(secretB32);
+  if (!bytes || bytes.length < 10) return false;
+  const counter = Math.floor(Date.now() / 30000);
+  for (const w of [0, -1, 1]) {
+    if (await totpCode(bytes, counter + w) === clean) return true;
+  }
+  return false;
+}
+
+async function _adminRow(env, id) {
+  return env.DB.prepare('SELECT * FROM admin_users WHERE id = ?').bind(id).first();
+}
+
+async function handle2faStatus(env, user) {
+  await ensureSecurityColumns(env);
+  const row = await _adminRow(env, user.sub);
+  if (!row) return errResp('not_found', 'Compte introuvable', 404);
+  const enabled = Number(row.totp_enabled) === 1;
+  return jsonResp({ enabled, pending: !enabled && !!row.totp_secret });
+}
+
+async function handle2faSetup(request, env, user, actor) {
+  await ensureSecurityColumns(env);
+  const row = await _adminRow(env, user.sub);
+  if (!row) return errResp('not_found', 'Compte introuvable', 404);
+  if (Number(row.totp_enabled) === 1) {
+    return errResp('already_enabled', 'La 2FA est déjà active — désactive-la d\'abord.', 409);
+  }
+  const secret = b32encode(crypto.getRandomValues(new Uint8Array(20)));
+  await env.DB.prepare('UPDATE admin_users SET totp_secret = ?, totp_enabled = 0 WHERE id = ?')
+    .bind(secret, user.sub).run();
+  const label = encodeURIComponent('7MOTION:' + (row.email || 'admin'));
+  const otpauth = `otpauth://totp/${label}?secret=${secret}`
+    + '&issuer=7MOTION%20Admin&algorithm=SHA1&digits=6&period=30';
+  await logAudit(env, request, actor, '2fa.setup',
+    { type: 'admin', id: user.sub }, null, null);
+  // Le secret part UNE fois : à saisir dans l'app d'authentification.
+  return jsonResp({ ok: true, secret, otpauth });
+}
+
+async function handle2faEnable(request, env, user, actor) {
+  await ensureSecurityColumns(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const row = await _adminRow(env, user.sub);
+  if (!row || !row.totp_secret) {
+    return errResp('no_setup', 'Lance d\'abord la configuration (setup).', 400);
+  }
+  if (!await verifyTotp(row.totp_secret, body.code)) {
+    return errResp('bad_otp', 'Code invalide — vérifie l\'heure de ton téléphone.', 401);
+  }
+  await env.DB.prepare('UPDATE admin_users SET totp_enabled = 1 WHERE id = ?')
+    .bind(user.sub).run();
+  await logAudit(env, request, actor, '2fa.enable',
+    { type: 'admin', id: user.sub }, null, null);
+  return jsonResp({ ok: true, enabled: true });
+}
+
+async function handle2faDisable(request, env, user, actor) {
+  await ensureSecurityColumns(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const row = await _adminRow(env, user.sub);
+  if (!row) return errResp('not_found', 'Compte introuvable', 404);
+  // Désactiver exige le MOT DE PASSE + un CODE valide (vol de session ≠
+  // droit de retirer la 2FA).
+  if (!await verifyPassword(body.password || '', row.password_hash)) {
+    return errResp('bad_current', 'Mot de passe incorrect', 401);
+  }
+  if (Number(row.totp_enabled) === 1 && !await verifyTotp(row.totp_secret, body.code)) {
+    return errResp('bad_otp', 'Code 2FA invalide', 401);
+  }
+  await env.DB.prepare('UPDATE admin_users SET totp_secret = NULL, totp_enabled = 0 WHERE id = ?')
+    .bind(user.sub).run();
+  await logAudit(env, request, actor, '2fa.disable',
+    { type: 'admin', id: user.sub }, null, null);
+  return jsonResp({ ok: true, enabled: false });
+}
+
+// =========================================================
+//  SANTÉ SYSTÈME — GET /api/v1/health (tout acteur connecté)
+// =========================================================
+//  Mesure réelle : un aller-retour D1 chronométré. Le panel affiche la
+//  latence API (mesurée côté navigateur) + la latence D1 (renvoyée ici).
+async function handleHealth(env) {
+  const t0 = Date.now();
+  let dbOk = false;
+  let dbMs = null;
+  try {
+    await env.DB.prepare('SELECT 1').first();
+    dbOk = true;
+    dbMs = Date.now() - t0;
+  } catch (_) {
+    dbOk = false;
+  }
+  return jsonResp({ ok: dbOk, db_ok: dbOk, db_ms: dbMs, time: Date.now() });
 }
