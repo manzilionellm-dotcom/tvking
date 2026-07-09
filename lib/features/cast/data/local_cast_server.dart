@@ -42,6 +42,10 @@ class _RelayEntry {
   final String upstreamUrl;
   final DlnaProfile profile;
   final DateTime createdAt;
+
+  /// Reconnexions upstream effectuées SANS couper la TV (flux live).
+  /// Journalisé à la première pour le diagnostic terrain.
+  int upstreamReconnects = 0;
 }
 
 class LocalCastServer {
@@ -299,6 +303,7 @@ class LocalCastServer {
       req,
       entry,
       forcedContentType: 'video/mp2t',
+      token: token,
     );
   }
 
@@ -451,82 +456,148 @@ class LocalCastServer {
       await req.response.close();
       return;
     }
-    await _proxyUpstream(req, entry);
+    await _proxyUpstream(req, entry, token: token);
   }
 
   /// Phase 1+/HLS Wrapper — factorisation du pass-through HTTP pour
   /// que `_serveRelay` (DLNA) et `_serveHlsSegment` (Google Cast)
-  /// partagent la meme plomberie. Pas de buffer en RAM, addStream
-  /// pur ; les headers DLNA sont injectes sauf si
-  /// [forcedContentType] est fourni (cas HLS ou on veut un MIME
-  /// strict `video/mp2t` pour le segment).
+  /// partagent la meme plomberie. Pas de buffer en RAM ; les headers
+  /// DLNA sont injectes sauf si [forcedContentType] est fourni (cas
+  /// HLS ou on veut un MIME strict `video/mp2t` pour le segment).
+  ///
+  /// RECONNEXION UPSTREAM (2026-07-09) : pour un flux LIVE (longueur
+  /// inconnue, pas de Range), une coupure upstream ne DOIT PLUS couper
+  /// la TV. Les serveurs Xtream ferment périodiquement la socket d'un
+  /// live (comportement normal) et un creux WiFi côté téléphone casse
+  /// le GET — avant ce fix, la TV voyait EOF, passait STOPPED, et il
+  /// fallait re-dérouler tout le failover SOAP (le relais HLS
+  /// Chromecast, lui, reconnectait déjà). Ici on RE-GET l'upstream
+  /// (URL portail d'origine → token frais, redirections re-suivies) et
+  /// on continue d'écrire dans la MÊME réponse TV : le tampon interne
+  /// du renderer absorbe le trou, MPEG-TS se resynchronise tout seul
+  /// (PAT/PMT périodiques).
   Future<void> _proxyUpstream(
     HttpRequest req,
     _RelayEntry entry, {
     String? forcedContentType,
+    String? token,
   }) async {
-    final HttpClient client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 8)
-      // idleTimeout doit être LARGE — un flux LIVE peut avoir des creux
-      // de quelques secondes entre les segments. À 30s on coupait après
-      // ~5s sur certaines TVs LG (popup natif "périphérique déconnecté").
-      ..idleTimeout = const Duration(minutes: 10)
-      ..userAgent = 'VLC/3.0.20 LibVLC/3.0.20 (7 MOTION Relay)'
-      ..autoUncompress = false;
-
-    try {
-      final Uri upstream = Uri.parse(entry.upstreamUrl);
-
-      // HEAD du récepteur → réponse 200 + headers DLNA SANS interroger
-      // l'upstream. Beaucoup de TVs (Samsung, LG) sondent en HEAD avant
-      // le GET ; or les serveurs Xtream gèrent MAL les HEAD (coupure de
-      // socket, 404) et leurs tokens sont par-connexion — forwarder le
-      // HEAD consommait le token et/ou renvoyait 502 → la TV concluait
-      // « Resource not found » AVANT même le GET (diag LG 2026-07-09).
-      // Le relais SAIT ce qu'il servira (profil DLNA connu) : il répond
-      // pour lui-même, comme le font les proxys IPTV/BubbleUPnP.
-      if (req.method == 'HEAD') {
+    // HEAD du récepteur → réponse 200 + headers DLNA SANS interroger
+    // l'upstream. Beaucoup de TVs (Samsung, LG) sondent en HEAD avant
+    // le GET ; or les serveurs Xtream gèrent MAL les HEAD (coupure de
+    // socket, 404) et leurs tokens sont par-connexion — forwarder le
+    // HEAD consommait le token et/ou renvoyait 502 → la TV concluait
+    // « Resource not found » AVANT même le GET (diag LG 2026-07-09).
+    // Le relais SAIT ce qu'il servira (profil DLNA connu) : il répond
+    // pour lui-même, comme le font les proxys IPTV/BubbleUPnP.
+    if (req.method == 'HEAD') {
+      try {
         _writeRelayHeadersLocal(req.response, entry,
             forcedContentType: forcedContentType);
         req.response.statusCode = HttpStatus.ok;
         await req.response.close();
-        return;
-      }
-
-      // GET (avec ou sans Range)
-      final HttpClientRequest up = await client.getUrl(upstream);
-      up.followRedirects = true;
-      up.maxRedirects = 5;
-      final String? rangeHeader =
-          req.headers.value(HttpHeaders.rangeHeader);
-      if (rangeHeader != null) {
-        up.headers.add(HttpHeaders.rangeHeader, rangeHeader);
-      }
-      final HttpClientResponse upResp = await up.close();
-
-      _writeRelayHeaders(req.response, upResp, entry,
-          forcedContentType: forcedContentType);
-      // Status code (200 / 206) — recopié de l'upstream
-      req.response.statusCode = upResp.statusCode;
-
-      // Pipe streaming pur. addStream avale les chunks au fil de l'eau,
-      // pas de buffer côté serveur. Si le client (TV) ferme, on coupe
-      // la connexion upstream automatiquement.
-      try {
-        await req.response.addStream(upResp);
-      } on Exception catch (e) {
-        if (kDebugMode) debugPrint('[Relay] stream broken: $e');
-      }
-      await req.response.close();
-    } on Exception catch (e) {
-      if (kDebugMode) debugPrint('[Relay] $e');
-      try {
-        req.response.statusCode = HttpStatus.badGateway;
-        await req.response.close();
       } catch (_) {}
-    } finally {
-      client.close(force: false);
+      return;
     }
+
+    final HttpResponse out = req.response;
+    final String? rangeHeader = req.headers.value(HttpHeaders.rangeHeader);
+    bool headersWritten = false;
+    bool clientGone = false;
+    // `done` complète (souvent avec erreur) dès que la TV ferme la
+    // connexion — c'est notre signal d'arrêt de la boucle.
+    unawaited(out.done.then<void>(
+      (_) => clientGone = true,
+      onError: (Object _) => clientGone = true,
+    ));
+
+    // `true` une fois constaté que l'upstream est un flux SANS fin
+    // connue (live) : seul cas où la reconnexion est saine. Une VOD
+    // (Content-Length connu ou Range) reprise à zéro corromprait la
+    // lecture → pas de reconnexion, comportement historique.
+    bool unbounded = false;
+    int consecutiveNoData = 0;
+    const int kMaxConsecutiveNoData = 6;
+
+    while (!clientGone) {
+      final HttpClient client = HttpClient()
+        ..connectionTimeout = const Duration(seconds: 8)
+        // idleTimeout doit être LARGE — un flux LIVE peut avoir des
+        // creux de quelques secondes entre les segments. À 30s on
+        // coupait après ~5s sur certaines TVs LG (popup natif
+        // "périphérique déconnecté").
+        ..idleTimeout = const Duration(minutes: 10)
+        ..userAgent = _kUpstreamUserAgent
+        ..autoUncompress = false;
+      bool gotData = false;
+      try {
+        final HttpClientRequest up =
+            await client.getUrl(Uri.parse(entry.upstreamUrl));
+        up.followRedirects = true;
+        up.maxRedirects = 5;
+        if (rangeHeader != null) {
+          up.headers.add(HttpHeaders.rangeHeader, rangeHeader);
+        }
+        final HttpClientResponse upResp = await up.close();
+        if (upResp.statusCode < 200 || upResp.statusCode >= 300) {
+          await upResp.drain<void>();
+          throw HttpException('upstream HTTP ${upResp.statusCode}');
+        }
+
+        if (!headersWritten) {
+          _writeRelayHeaders(out, upResp, entry,
+              forcedContentType: forcedContentType);
+          // Status code (200 / 206) — recopié de l'upstream
+          out.statusCode = upResp.statusCode;
+          headersWritten = true;
+          unbounded = upResp.contentLength == -1 && rangeHeader == null;
+        }
+
+        // Pipe manuel chunk par chunk (au lieu de addStream) : le
+        // `flush()` par chunk donne la BACKPRESSURE (on ne bufferise
+        // pas pour une TV lente) et surface immédiatement l'erreur
+        // d'écriture quand la TV coupe.
+        await for (final List<int> chunk in upResp) {
+          if (clientGone) break;
+          out.add(chunk);
+          await out.flush();
+          gotData = true;
+          consecutiveNoData = 0;
+        }
+        // Fin de socket upstream « propre » : reconnexion si live.
+      } on Object catch (e) {
+        if (kDebugMode) debugPrint('[Relay] $e');
+        if (!headersWritten) {
+          // Premier contact upstream raté → 502, comme avant.
+          try {
+            out.statusCode = HttpStatus.badGateway;
+            await out.close();
+          } catch (_) {}
+          return;
+        }
+      } finally {
+        client.close(force: true);
+      }
+
+      if (clientGone || !unbounded) break;
+      // Session libérée (zap / disconnect) pendant qu'on servait → stop.
+      if (token != null && !_relays.containsKey(token)) break;
+      if (!gotData) consecutiveNoData++;
+      if (consecutiveNoData > kMaxConsecutiveNoData) break;
+      entry.upstreamReconnects++;
+      if (entry.upstreamReconnects == 1) {
+        StructuredLogger.instance.info(
+          domain: 'cast',
+          event: 'relay.upstream_reconnect',
+          ctx: <String, Object?>{'token': token},
+        );
+      }
+      await Future<void>.delayed(
+          Duration(milliseconds: 400 * (consecutiveNoData + 1)));
+    }
+    try {
+      await out.close();
+    } catch (_) {}
   }
 
   /// Headers DLNA construits LOCALEMENT (réponse HEAD) : aucun aller-

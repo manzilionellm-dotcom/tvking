@@ -30,6 +30,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
 
+import '../../../core/observability/structured_logger.dart';
 import '../domain/cast_device.dart';
 import 'multicast_lock.dart';
 import 'roku_ecp_transport.dart';
@@ -93,14 +94,54 @@ class SsdpDiscovery {
         'roku:ecp',
         'ssdp:all',
       ];
-      for (final String st in targets) {
-        final String msg = _buildSearchMessage(st);
-        socket.send(
-          msg.codeUnits,
-          InternetAddress(_kMulticastIp),
-          _kSsdpPort,
-        );
+      bool socketClosed = false;
+      bool sendErrorLogged = false;
+      void sendSearches() {
+        if (socketClosed) return;
+        for (final String st in targets) {
+          final String msg = _buildSearchMessage(st);
+          try {
+            socket.send(
+              msg.codeUnits,
+              InternetAddress(_kMulticastIp),
+              _kSsdpPort,
+            );
+          } catch (e) {
+            // Envoi multicast refusé par l'OS (errno 1 réseau tombé /
+            // app restreinte en arrière-plan) ou socket déjà fermée
+            // (course avec la deadline) : on journalise UNE fois en
+            // warn cast au lieu de laisser l'erreur avorter le scan.
+            if (!sendErrorLogged) {
+              sendErrorLogged = true;
+              StructuredLogger.instance.warn(
+                domain: 'cast',
+                event: 'ssdp.send_error',
+                ctx: <String, Object?>{'error': e.toString()},
+              );
+            }
+          }
+        }
       }
+
+      // SALVES RÉPÉTÉES (2026-07-09) : un M-SEARCH est de l'UDP
+      // multicast — il se PERD facilement (WiFi chargé, téléphone loin
+      // du routeur, TV qui rate une trame). Les control points de
+      // référence (BubbleUPnP, VLC) émettent 2-3 salves espacées ;
+      // on fait pareil pour que la TV apparaisse au premier scan même
+      // en conditions radio médiocres. Coût : ~400 octets de plus.
+      sendSearches();
+      final List<Timer> resendTimers = <Timer>[
+        Timer(const Duration(seconds: 1), sendSearches),
+        Timer(const Duration(milliseconds: 2500), sendSearches),
+      ];
+      // Les timers sont neutralisés à la sortie (socketClosed) — le
+      // `finally` ci-dessous tourne à la deadline OU à l'annulation.
+      controller.done.whenComplete(() {
+        socketClosed = true;
+        for (final Timer t in resendTimers) {
+          t.cancel();
+        }
+      });
 
       // Yield les devices jusqu'à expiration.
       //

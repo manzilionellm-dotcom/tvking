@@ -58,6 +58,36 @@ const Duration kCastTotalTimeout = Duration(seconds: 40);
 /// mode compatible (5/9)… » figé en échec).
 const Duration kCastTotalTimeoutDlna = Duration(seconds: 90);
 
+/// Fenêtre de validité de la mémoire de chemin DLNA. Passé ce délai
+/// sans nouvel échec, l'appareil retrouve le comportement par défaut
+/// (direct d'abord, timeout SOAP plein) — les conditions réseau ont
+/// pu changer, on re-sonde le chemin le plus autonome.
+const Duration kDlnaPathMemoTtl = Duration(minutes: 15);
+
+/// Timeout SOAP raccourci pour une tentative DIRECTE quand l'appareil
+/// vient de timeout en direct. 8 s couvre encore les TVs lentes au
+/// réveil (LG webOS : 8-12 s constatés SEULEMENT à la sortie de
+/// standby — or ici la TV vient de nous parler, elle n'est pas en
+/// standby) tout en divisant par ~2 le coût d'un direct muet.
+const Duration kDlnaShortSoapTimeout = Duration(seconds: 8);
+
+/// Mémoire de chemin DLNA par appareil (clé : `device.id`).
+///
+/// Diag boîte noire Nebula 2026-07-09 : le MÊME appareil accepte le
+/// direct en ~3 s la plupart du temps, puis reste muet 15 s (timeout
+/// SOAP) par vagues — et chaque vague coûtait 15 s de direct + ~22 s
+/// de relais = sessions à 40-70 s. Cette mémoire apprend :
+///   - 1 échec CONNEXION direct récent  → timeout direct raccourci (8 s)
+///   - 2 échecs consécutifs ou plus     → on démarre directement au
+///     relais (stratégie 3) tant que la fenêtre [kDlnaPathMemoTtl]
+///     n'a pas expiré, puis on re-sonde le direct.
+/// Un SUCCÈS direct remet le compteur à zéro — un appareil sain garde
+/// exactement le comportement historique.
+class _DlnaPathMemo {
+  int directConnFailStreak = 0;
+  DateTime? lastDirectConnFail;
+}
+
 /// Phase 1+/B5 — Exception interne levee par `_checkCancelled` quand
 /// une session inner a ete supersede par un timeout outer ou une
 /// nouvelle castTo. Type dedie pour pouvoir la distinguer d'une vraie
@@ -305,6 +335,16 @@ class CastManager extends ChangeNotifier {
   /// pour pouvoir la libérer dans `disconnect()`.
   String? _currentRelayUrl;
 
+  /// Mémoire de chemin DLNA par appareil (cf. [_DlnaPathMemo]).
+  final Map<String, _DlnaPathMemo> _dlnaPathMemos = <String, _DlnaPathMemo>{};
+
+  /// Dernier cast RÉUSSI par appareil (clé : `device.id`). Sert au
+  /// pré-vol TCP « soft-pass » : un appareil qui vient de jouer une
+  /// chaîne il y a quelques secondes n'est PAS derrière une isolation
+  /// AP — un refus de connexion ponctuel est un artefact de zapping
+  /// (renderer mono-connexion occupé), pas une TV injoignable.
+  final Map<String, DateTime> _lastCastSuccessAt = <String, DateTime>{};
+
   // ----- Surveillance de session DLNA (reconnexion auto) -----
   //  En DLNA, c'est le lecteur INTERNE de la TV qui bufferise (pas l'app) :
   //  on ne peut PAS faire un buffer « façon YouTube » côté sender. Le maximum
@@ -315,6 +355,16 @@ class CastManager extends ChangeNotifier {
   String? _dlnaLiveTitle;
   final List<DateTime> _dlnaReconnects = <DateTime>[];
   bool _dlnaReconnecting = false;
+
+  /// Contexte de REPLI RELAIS pour la reconnexion auto : URL upstream
+  /// (portail d'origine — token frais à chaque connexion) et profil
+  /// DLNA gagnant. Posés au démarrage du watchdog. Permettent, quand le
+  /// replay DIRECT reste muet (timeout connexion), de retenter UNE fois
+  /// via le relais du téléphone au lieu d'abandonner la session
+  /// (boîte noire 2026-07-09 : `dlna.auto_reconnect_fail` après 15 s,
+  /// l'utilisateur devait re-caster à la main).
+  String? _dlnaRelayFallbackUpstream;
+  DlnaProfile? _dlnaRelayFallbackProfile;
 
   /// Progression friendly-french exposée à l'UI. Le picker, la
   /// mini-bar et le VideoPlayerScreen s'abonnent via ListenableBuilder
@@ -636,12 +686,35 @@ class CastManager extends ChangeNotifier {
         final bool reachable = await _probeDeviceReachable(device);
         diag.deviceReachable = reachable;
         if (!reachable) {
-          // Message contient "no route to host" → friendlyMessageFor le
-          // route vers le hint réseau/AP-isolation dédié (Phase 1+/B4).
-          throw Exception(
-            'TV injoignable sur le réseau (${device.host}:${device.port}) '
-            '— no route to host (pré-vol TCP)',
-          );
+          // SOFT-PASS (boîte noire 2026-07-09, 15:51) : 4 sessions
+          // consécutives déclarées « TV ne répond pas » en 2,5 s
+          // (attempts:0) alors que la MÊME TV castait avec succès 5 s
+          // avant ET 5 s après. Un renderer occupé (zapping rapide,
+          // socket de contrôle mono-connexion) peut refuser une
+          // connexion TCP ponctuellement SANS être injoignable. Si
+          // l'appareil a réussi un cast très récemment, on laisse la
+          // chaîne de failover trancher au lieu d'accuser le réseau.
+          final DateTime? lastOk = _lastCastSuccessAt[device.id];
+          final bool recentlyCasting = lastOk != null &&
+              DateTime.now().difference(lastOk) < const Duration(minutes: 2);
+          if (recentlyCasting) {
+            StructuredLogger.instance.warn(
+              domain: 'cast',
+              event: 'preflight.soft_pass',
+              ctx: <String, Object?>{
+                'deviceName': device.name,
+                'lastSuccessAgoMs':
+                    DateTime.now().difference(lastOk).inMilliseconds,
+              },
+            );
+          } else {
+            // Message contient "no route to host" → friendlyMessageFor
+            // le route vers le hint réseau/AP-isolation dédié (B4).
+            throw Exception(
+              'TV injoignable sur le réseau (${device.host}:${device.port}) '
+              '— no route to host (pré-vol TCP)',
+            );
+          }
         }
       }
 
@@ -744,6 +817,8 @@ class CastManager extends ChangeNotifier {
       _state = CastState.casting;
       _setProgress(CastProgress.live);
       diag.success = true;
+      // Horodatage pour le soft-pass du pré-vol TCP (cf. étape 0).
+      _lastCastSuccessAt[device.id] = DateTime.now();
       // CAST AUTONOME (« je pars a la douche, ca continue ») : si le
       // flux passe par le TELEPHONE (relais HLS Chromecast — le relais
       // DLNA pose deja _currentRelayUrl), on memorise l'URL pour la
@@ -1031,7 +1106,39 @@ class CastManager extends ChangeNotifier {
     // TV qui caste déjà (LG) réussit en stratégie 0 et n'atteint JAMAIS ces
     // variantes — son comportement est strictement inchangé.
     final int totalStrategies = 5 + altCount * 2;
-    final int startStrategy = 0;
+    // MÉMOIRE DE CHEMIN (2026-07-09, boîte noire Nebula) : si ce même
+    // appareil vient d'enchaîner ≥ 2 échecs CONNEXION en direct, on
+    // démarre directement au relais (s=3) — le direct muet coûtait
+    // 15 s de SOAP timeout à CHAQUE session pendant la vague. La
+    // fenêtre expire (kDlnaPathMemoTtl) : le direct — plus autonome
+    // (téléphone-éteint-TV-continue) — est re-sondé ensuite.
+    final _DlnaPathMemo memo =
+        _dlnaPathMemos.putIfAbsent(transport.device.id, _DlnaPathMemo.new);
+    final DateTime nowForMemo = DateTime.now();
+    final int startStrategy = dlnaStartStrategyFor(
+      failStreak: memo.directConnFailStreak,
+      lastFail: memo.lastDirectConnFail,
+      now: nowForMemo,
+    );
+    if (startStrategy > 0) {
+      StructuredLogger.instance.info(
+        domain: 'cast',
+        event: 'failover.start_at_relay',
+        ctx: <String, Object?>{
+          'deviceName': transport.device.name,
+          'directConnFailStreak': memo.directConnFailStreak,
+        },
+      );
+    }
+    // Timeout SOAP adaptatif pour les tentatives DIRECTES : plein
+    // (15 s) par défaut, raccourci (8 s) si le direct vient déjà de
+    // rester muet sur cet appareil. Les stratégies RELAIS gardent
+    // toujours le timeout plein.
+    final Duration directSoapTimeout = dlnaDirectSoapTimeoutFor(
+      failStreak: memo.directConnFailStreak,
+      lastFail: memo.lastDirectConnFail,
+      now: nowForMemo,
+    );
     final int budget = totalStrategies;
 
     Exception? lastError;
@@ -1050,6 +1157,9 @@ class CastManager extends ChangeNotifier {
       final bool isAltRelay = s >= 5 + altCount;
       final String urlKind =
           (s < 3 || isAltDirect) ? 'direct' : 'relay';
+      transport.soapTimeout = urlKind == 'direct'
+          ? directSoapTimeout
+          : UpnpAvTransport.kDefaultSoapTimeout;
       final String strategyName =
           (s >= 5) ? '$urlKind+altmime' : _strategyName(s);
       final String metaName = (s == 1 || s == 4) ? 'minimal' : (s == 2 ? 'none' : 'full');
@@ -1149,6 +1259,12 @@ class CastManager extends ChangeNotifier {
           durationMs: attemptSw.elapsedMilliseconds,
           success: true,
         ));
+        // Mémoire de chemin : un SUCCÈS direct efface l'historique
+        // d'échecs — l'appareil retrouve le comportement par défaut.
+        if (urlKind == 'direct') {
+          memo.directConnFailStreak = 0;
+          memo.lastDirectConnFail = null;
+        }
         // Revue 2026-07-09 (MINEUR 6) : si une strategie RELAIS a
         // echoue avant qu'une strategie DIRECTE ne gagne,
         // _currentRelayUrl est reste pose → le keep-alive foreground
@@ -1160,8 +1276,21 @@ class CastManager extends ChangeNotifier {
         }
         // Lecture confirmée PLAYING → on arme la surveillance de session
         // (reconnexion auto si le flux coupe). On relance sur l'URL
-        // GAGNANTE (`urlToCast`), donc avec la même stratégie/profil.
-        _startDlnaWatchdog(transport, urlToCast, title, mySeq);
+        // GAGNANTE (`urlToCast`), donc avec la même stratégie/profil ;
+        // le contexte de repli relais (upstream d'origine + profil
+        // EFFECTIF de la tentative gagnante) permet au watchdog de
+        // basculer sur le relais si le replay direct reste muet.
+        _startDlnaWatchdog(
+          transport,
+          urlToCast,
+          title,
+          mySeq,
+          relayFallbackUpstream: relayUpstreamUrlFor(
+            originalUrl: probe.originalUrl,
+            finalUrl: probe.finalUrl,
+          ),
+          relayFallbackProfile: transport.profile,
+        );
         return; // succès
       } on Exception catch (e) {
         lastError = e;
@@ -1198,6 +1327,11 @@ class CastManager extends ChangeNotifier {
               'reason': e.toString(),
             },
           );
+          // Mémoire de chemin : cet appareil vient (encore) de rester
+          // muet en direct — la prochaine session raccourcira son
+          // timeout direct, puis démarrera au relais dès 2 échecs.
+          memo.directConnFailStreak++;
+          memo.lastDirectConnFail = DateTime.now();
           s = 2; // la boucle fera s++ -> s=3 (relay+full)
         }
 
@@ -1268,6 +1402,37 @@ class CastManager extends ChangeNotifier {
   /// `DLNA.ORG_PN` : étiquette MIME nue). Liste vide si le flux n'est pas du
   /// MPEG-TS (mp4/mkv… → aucune variante).
   ///
+  /// Stratégie de DÉPART de l'échelle DLNA selon la mémoire de chemin.
+  /// 0 = comportement historique (direct d'abord) ; 3 = relais d'abord
+  /// (≥ 2 échecs CONNEXION direct consécutifs dans la fenêtre
+  /// [kDlnaPathMemoTtl]). Pur + statique → testable sans stack réseau.
+  @visibleForTesting
+  static int dlnaStartStrategyFor({
+    required int failStreak,
+    required DateTime? lastFail,
+    required DateTime now,
+  }) {
+    final bool recent =
+        lastFail != null && now.difference(lastFail) < kDlnaPathMemoTtl;
+    return (recent && failStreak >= 2) ? 3 : 0;
+  }
+
+  /// Timeout SOAP des tentatives DIRECTES selon la mémoire de chemin :
+  /// plein (15 s) par défaut, raccourci (8 s) dès 1 échec CONNEXION
+  /// direct récent. Pur + statique → testable sans stack réseau.
+  @visibleForTesting
+  static Duration dlnaDirectSoapTimeoutFor({
+    required int failStreak,
+    required DateTime? lastFail,
+    required DateTime now,
+  }) {
+    final bool recent =
+        lastFail != null && now.difference(lastFail) < kDlnaPathMemoTtl;
+    return (recent && failStreak >= 1)
+        ? kDlnaShortSoapTimeout
+        : UpnpAvTransport.kDefaultSoapTimeout;
+  }
+
   /// Pur + statique → testable (simulation Samsung/LG sans stack réseau).
   @visibleForTesting
   static List<DlnaProfile> buildAltMimeProfiles(DlnaProfile base) {
@@ -1409,24 +1574,45 @@ class CastManager extends ChangeNotifier {
   /// timeout. Ce pré-vol détecte le cas en ~2,5s et permet d'afficher
   /// tout de suite le bon diagnostic (cf. friendlyMessageFor).
   ///
-  /// 2,5s = assez pour un LAN WiFi normal (RTT < 50ms, connexion en
-  /// quelques ms), assez court pour ne pas faire patienter sur une TV
-  /// réellement injoignable.
+  /// 2026-07-09 : le tir UNIQUE de 2,5 s produisait des FAUX NÉGATIFS
+  /// en rafale de zapping (renderer occupé qui ignore un SYN) → message
+  /// « TV ne répond pas » à tort (boîte noire, 4 échecs attempts:0
+  /// encadrés de succès). On tente désormais jusqu'à 3 connexions
+  /// courtes (1,2 s / 1,2 s / 2,5 s, pause 250 ms) : une TV vraiment
+  /// injoignable échoue toujours en ~5,4 s, une TV momentanément
+  /// occupée est récupérée dès le 2e essai.
   Future<bool> _probeDeviceReachable(CastDevice device) async {
-    try {
-      final Socket socket = await Socket.connect(
-        device.host,
-        device.port,
-        timeout: const Duration(milliseconds: 2500),
-      );
-      socket.destroy();
-      return true;
-    } on Exception {
-      // SocketException (timeout, no route to host, connection refused)
-      // → injoignable. On ne log pas ici : le caller throw un message
-      // dédié qui sera archivé dans le diagnostic.
-      return false;
+    const List<Duration> attempts = <Duration>[
+      Duration(milliseconds: 1200),
+      Duration(milliseconds: 1200),
+      Duration(milliseconds: 2500),
+    ];
+    for (int i = 0; i < attempts.length; i++) {
+      try {
+        final Socket socket = await Socket.connect(
+          device.host,
+          device.port,
+          timeout: attempts[i],
+        );
+        socket.destroy();
+        if (i > 0) {
+          StructuredLogger.instance.info(
+            domain: 'cast',
+            event: 'preflight.retry_success',
+            ctx: <String, Object?>{'attempt': i + 1},
+          );
+        }
+        return true;
+      } on Exception {
+        // SocketException (timeout, no route to host, connection
+        // refused) → on retente ; le diagnostic final est porté par le
+        // caller (message dédié archivé dans le diag de session).
+        if (i + 1 < attempts.length) {
+          await Future<void>.delayed(const Duration(milliseconds: 250));
+        }
+      }
     }
+    return false;
   }
 
   /// Convertit une Exception interne en message court pour l'UI.
@@ -1643,11 +1829,15 @@ class CastManager extends ChangeNotifier {
     UpnpAvTransport transport,
     String url,
     String title,
-    int mySeq,
-  ) {
+    int mySeq, {
+    String? relayFallbackUpstream,
+    DlnaProfile? relayFallbackProfile,
+  }) {
     _dlnaWatchdog?.cancel();
     _dlnaLiveUrl = url;
     _dlnaLiveTitle = title;
+    _dlnaRelayFallbackUpstream = relayFallbackUpstream;
+    _dlnaRelayFallbackProfile = relayFallbackProfile;
     _dlnaReconnects.clear();
     _dlnaReconnecting = false;
     _dlnaWatchdog =
@@ -1711,8 +1901,65 @@ class CastManager extends ChangeNotifier {
         event: 'dlna.auto_reconnect_fail',
         ctx: <String, Object?>{'error': e.toString()},
       );
+      // REPLI RELAIS (2026-07-09) : le replay DIRECT est resté muet au
+      // niveau CONNEXION alors que la TV jouait il y a ~10 s. Même
+      // logique que le skip direct→relais du failover initial, mais
+      // sans re-dérouler castTo : on registre le relais et on rejoue
+      // UNE fois. En cas de succès, la session continue sur le relais
+      // (keep-alive téléphone activé) au lieu de mourir en silence.
+      await _dlnaReconnectViaRelay(transport, url, mySeq, directError: e);
     } finally {
       _dlnaReconnecting = false;
+    }
+  }
+
+  /// Tente la reprise de session via le RELAIS du téléphone après un
+  /// replay direct muet. Best-effort : toute erreur est journalisée et
+  /// la main revient au tick suivant du watchdog (rate-limité 3/min).
+  Future<void> _dlnaReconnectViaRelay(
+    UpnpAvTransport transport,
+    String failedUrl,
+    int mySeq, {
+    required Exception directError,
+  }) async {
+    final String? upstream = _dlnaRelayFallbackUpstream;
+    final DlnaProfile? prof = _dlnaRelayFallbackProfile;
+    if (!_looksLikeConnFailure(directError.toString())) return;
+    if (upstream == null || prof == null) return;
+    // Déjà sur le relais → rejouer la même URL au prochain tick suffit.
+    if (failedUrl.contains('/relay/')) return;
+    if (mySeq != _sessionSeq || _transport == null) return;
+    try {
+      final String? relayUrl = await LocalCastServer.instance.registerRelay(
+        upstreamUrl: upstream,
+        profile: prof,
+        receiverHost: transport.device.host,
+      );
+      if (relayUrl == null) return;
+      if (mySeq != _sessionSeq || _transport == null) {
+        LocalCastServer.instance.clearRelay(relayUrl);
+        return;
+      }
+      await transport.playStream(
+        streamUrl: relayUrl,
+        title: _dlnaLiveTitle ?? '7 MOTION',
+      );
+      _currentRelayUrl = relayUrl;
+      _dlnaLiveUrl = relayUrl;
+      // Le téléphone alimente désormais la TV : foreground service
+      // (wakelock + wifilock) pour survivre à l'écran éteint.
+      _updateRelayKeepAlive(_dlnaLiveTitle ?? '7 MOTION');
+      StructuredLogger.instance.info(
+        domain: 'cast',
+        event: 'dlna.auto_reconnect_relay',
+        ctx: <String, Object?>{'deviceName': transport.device.name},
+      );
+    } on Exception catch (e2) {
+      StructuredLogger.instance.warn(
+        domain: 'cast',
+        event: 'dlna.auto_reconnect_relay_fail',
+        ctx: <String, Object?>{'error': e2.toString()},
+      );
     }
   }
 
@@ -1723,5 +1970,7 @@ class CastManager extends ChangeNotifier {
     _dlnaReconnecting = false;
     _dlnaLiveUrl = null;
     _dlnaLiveTitle = null;
+    _dlnaRelayFallbackUpstream = null;
+    _dlnaRelayFallbackProfile = null;
   }
 }
