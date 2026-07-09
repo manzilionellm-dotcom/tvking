@@ -24,6 +24,7 @@ const OWNER_PAGES: { label: string; to: string; keywords: string }[] = [
   { label: 'Tableau de bord', to: '/', keywords: 'dashboard accueil stats' },
   { label: 'Activer un appareil', to: '/activate', keywords: 'activation licence abonnement mac' },
   { label: 'Sources M3U / Xtream', to: '/sources', keywords: 'playlist m3u xtream source pousser' },
+  { label: 'Réseau & localisation', to: '/network', keywords: 'ip proxy pays voyage sortie localisation bloque' },
   { label: 'Serveurs', to: '/servers', keywords: 'serveur iptv defaut' },
   { label: 'Activations', to: '/activations', keywords: 'licences abonnements' },
   { label: 'Clients', to: '/customers', keywords: 'customers acheteurs' },
@@ -130,6 +131,7 @@ export function CommandPalette() {
       }
       if (userCan(user, 'sources')) {
         out.push({ id: 'src', group: 'Actions', label: `Pousser des sources sur ${mac}`, hint: 'M3U / Xtream', to: `/sources?mac=${encodeURIComponent(mac)}` });
+        out.push({ id: 'net', group: 'Actions', label: `Changer l'IP de ${mac}`, hint: 'réseau / voyage', to: `/network?mac=${encodeURIComponent(mac)}` });
       }
       out.push({ id: 'dev', group: 'Actions', label: `Voir la fiche de ${mac}`, hint: 'appareil', to: `/devices?q=${encodeURIComponent(mac)}` });
       return out;

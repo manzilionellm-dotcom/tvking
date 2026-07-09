@@ -23,6 +23,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../../../../core/net/iptv_exit.dart';
 import '../../../channels/data/recently_watched_repository.dart';
 import '../../../channels/domain/channel.dart';
 import '../../../playlists/data/favorites_repository.dart';
@@ -137,6 +138,9 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
     try {
       // ignore: invalid_use_of_protected_member
       final dynamic native = (_player.platform as dynamic);
+      // Sortie réseau (IP) assignée à l'appareil : la vidéo sort par cette
+      // IP. Vide = direct (inchangé).
+      await native?.setProperty('http-proxy', IptvExit.instance.mpvProxy);
       await native?.setProperty('cache', 'yes');
       await native?.setProperty('cache-secs', '30');
       await native?.setProperty('network-timeout', '60');

@@ -40,6 +40,7 @@ const OWNER_NAV: NavSection[] = [
     titleKey: 'navsec.channels',
     items: [
       { key: 'nav.sources',     to: '/sources' },
+      { key: 'nav.network',     to: '/network' },
       { key: 'nav.servers',     to: '/servers' },
     ],
   },
@@ -99,6 +100,7 @@ const RESELLER_NAV: NavSection[] = [
     titleKey: 'navsec.channels',
     items: [
       { key: 'nav.sources',       to: '/sources',     cap: 'sources' },
+      { key: 'nav.network',       to: '/network',     cap: 'sources' },
     ],
   },
   {

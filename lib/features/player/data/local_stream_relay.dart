@@ -53,6 +53,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/net/doh_resolver.dart';
+import '../../../core/net/iptv_exit.dart';
 import '../../../core/observability/structured_logger.dart';
 import 'hls_playlist_normalizer.dart';
 import 'player_settings.dart';
@@ -190,6 +191,7 @@ class LocalStreamRelay {
       ..badCertificateCallback =
           ((X509Certificate cert, String host, int port) => true);
     installDohResolution(client); // domaines panel bloqués par le DNS FAI
+    IptvExit.instance.applyTo(client); // sortie réseau (IP) assignée à l'appareil
     try {
       final HttpClientRequest up =
           await client.getUrl(Uri.parse(realUrl));
@@ -475,6 +477,7 @@ class LocalStreamRelay {
         ..badCertificateCallback =
             ((X509Certificate cert, String host, int port) => true);
       installDohResolution(session.client!); // DNS FAI bloqué → DoH
+      IptvExit.instance.applyTo(session.client!); // sortie réseau (IP) de l'appareil
 
       final HttpClientRequest cReq =
           await session.client!.getUrl(Uri.parse(url));

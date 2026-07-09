@@ -615,6 +615,26 @@ async function apiV1Inner(request, env, ctx) {
     return handleHealth(env);
   }
 
+  // /net-exits — sorties réseau PRÉDÉFINIES (proxys pays). Owner.
+  if (parts[0] === 'net-exits' && parts.length === 1) {
+    if (a.user.role !== 'super_admin') return errResp('forbidden', 'Owner only', 403);
+    if (request.method === 'GET') return handleNetExitsList(env);
+    if (request.method === 'PUT') return handleNetExitsSave(request, env, actor);
+  }
+
+  // /device-net/:mac — SORTIE RÉSEAU (IP) assignée à un appareil. Changer
+  // l'IP fait partie du dépannage client → même capacité 'sources'.
+  if (parts[0] === 'device-net' && parts.length === 2) {
+    const nmac = parts[1];
+    if (request.method === 'GET') return handleDeviceNetGet(env, nmac);
+    if ((request.method === 'PUT' || request.method === 'DELETE')
+        && !resellerCan(a.user, 'sources')) {
+      return errResp('forbidden', "Ton niveau ne permet pas de changer l'IP d'un client.", 403);
+    }
+    if (request.method === 'PUT') return handleDeviceNetPut(request, env, nmac, actor, ctx);
+    if (request.method === 'DELETE') return handleDeviceNetDelete(request, env, nmac, actor, ctx);
+  }
+
   // /plan-costs — cout en credits de chaque plan
   if (parts[0] === 'plan-costs' && parts.length === 1) {
     if (request.method === 'GET') return handlePlanCostsList(env);
@@ -4359,6 +4379,13 @@ async function apiV1ForApiKey(request, env, ctx, url, parts, presentedKey) {
     if (!can('sources')) return errResp('forbidden', 'Scope "sources" requis', 403);
     return handleSourceCheck(request, env);
   }
+  if (parts[0] === 'device-net' && parts.length === 2) {
+    if (!can('sources')) return errResp('forbidden', 'Scope "sources" requis', 403);
+    const nmac = parts[1];
+    if (request.method === 'GET') return handleDeviceNetGet(env, nmac);
+    if (request.method === 'PUT') return handleDeviceNetPut(request, env, nmac, actor, ctx);
+    if (request.method === 'DELETE') return handleDeviceNetDelete(request, env, nmac, actor, ctx);
+  }
   if (request.method === 'GET' && can('read')) {
     if (parts[0] === 'devices' && parts.length === 1) return handleDevicesList(request, env, user);
     if (parts[0] === 'devices' && parts.length === 3 && parts[2] === 'overview') {
@@ -4396,7 +4423,7 @@ async function apiV1ForApiKey(request, env, ctx, url, parts, presentedKey) {
 
 const WEBHOOK_EVENTS = [
   'activation.created', 'activation.renewed', 'source.updated',
-  'source.cleared', 'device.blocked', 'test',
+  'source.cleared', 'device.blocked', 'device.exit_changed', 'test',
 ];
 
 async function ensureWebhooksTable(env) {
@@ -4713,4 +4740,161 @@ async function handleHealth(env) {
     dbOk = false;
   }
   return jsonResp({ ok: dbOk, db_ok: dbOk, db_ms: dbMs, time: Date.now() });
+}
+
+// =========================================================
+//  SORTIE RÉSEAU (IP) PAR APPAREIL — « changer l'IP d'un client »
+// =========================================================
+//  PROBLÈME MÉTIER : un fournisseur IPTV verrouille souvent le compte
+//  Xtream sur UNE IP. Le client voyage (Suède → Allemagne) → le
+//  fournisseur voit une autre IP et coupe. L'admin assigne ici une
+//  SORTIE (un proxy que l'admin contrôle, situé dans le bon pays) à
+//  l'appareil : tout le trafic IPTV de ce client sort alors par cette
+//  IP fixe. Livré INSTANTANÉMENT (bump de synchro). L'app lit la sortie
+//  via GET /api/device-net/:mac.
+//
+//  Deux briques (modèle identique aux « serveurs par défaut ») :
+//   • sorties PRÉDÉFINIES (app_config 'net_exits') : l'admin déclare
+//     ses proxys UNE fois (id, label pays, proxy), puis les assigne d'un
+//     clic. Chaque proxy : 'http://[user:pass@]host:port' ou 'socks5://…'.
+//   • assignation PAR MAC (table device_net).
+
+async function ensureDeviceNetTable(env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS device_net (
+       mac        TEXT PRIMARY KEY,
+       proxy      TEXT NOT NULL,
+       label      TEXT,
+       updated_at INTEGER NOT NULL
+     )`,
+  ).run();
+}
+
+/// Valide sommairement un proxy : schéma http/https/socks(5) + host:port.
+/// Renvoie la chaîne nettoyée, ou null si invalide. '' (vide) = autorisé
+/// (= « repasser en direct », on efface la sortie).
+function normalizeProxy(raw) {
+  const s = (raw == null ? '' : String(raw)).trim();
+  if (s === '') return '';
+  const withScheme = /:\/\//.test(s) ? s : 'http://' + s;
+  let u;
+  try { u = new URL(withScheme); } catch (_) { return null; }
+  const okScheme = ['http:', 'https:', 'socks:', 'socks5:'].includes(u.protocol);
+  if (!okScheme || !u.hostname || !u.port) return null;
+  return withScheme;
+}
+
+/// Sorties prédéfinies (déclarées par l'admin). Stockées en JSON dans
+/// app_config. Format : [{ id, label, proxy }].
+async function readNetExits(env) {
+  const raw = await _cfgGetStr(env, 'net_exits');
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch (_) { return []; }
+}
+
+async function handleNetExitsList(env) {
+  await ensureAppConfigTable(env);
+  return jsonResp({ items: await readNetExits(env) });
+}
+
+async function handleNetExitsSave(request, env, actor) {
+  await ensureAppConfigTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const rawItems = Array.isArray(body.items) ? body.items : [];
+  const items = [];
+  for (const it of rawItems.slice(0, 50)) {
+    const label = (it && it.label ? String(it.label) : '').trim().slice(0, 60);
+    const proxy = normalizeProxy(it && it.proxy);
+    if (!label || !proxy) {
+      return errResp('bad_exit', 'Chaque sortie exige un label et un proxy valide (http://[user:pass@]host:port).', 400);
+    }
+    const id = (it && it.id ? String(it.id) : '').trim() || genId('nx');
+    items.push({ id, label, proxy });
+  }
+  await _cfgSet(env, 'net_exits', JSON.stringify(items));
+  await logAudit(env, request, actor, 'net_exits.save',
+    { type: 'app_config', id: 'net_exits' }, null, { count: items.length });
+  return jsonResp({ ok: true, items });
+}
+
+/// Assignation par MAC (vue panel : proxy + label lisibles).
+async function handleDeviceNetGet(env, mac) {
+  await ensureDeviceNetTable(env);
+  const m = decodeMac(mac).trim().toUpperCase();
+  const row = await env.DB.prepare('SELECT proxy, label, updated_at FROM device_net WHERE mac = ?')
+    .bind(m).first();
+  return jsonResp({
+    mac: m,
+    proxy: row ? String(row.proxy || '') : '',
+    label: row ? String(row.label || '') : '',
+    updated_at: row ? Number(row.updated_at) : null,
+  });
+}
+
+async function handleDeviceNetPut(request, env, mac, actor, ctx) {
+  await ensureDeviceNetTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const m = decodeMac(mac).trim().toUpperCase();
+  if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
+    return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
+  }
+  const proxy = normalizeProxy(body.proxy);
+  if (proxy === null) {
+    return errResp('bad_proxy', 'Proxy invalide. Attendu : http://[user:pass@]host:port ou socks5://host:port', 400);
+  }
+  const label = (body.label == null ? '' : String(body.label)).trim().slice(0, 60);
+  if (proxy === '') {
+    // Vide = retour au direct : on efface l'assignation.
+    await env.DB.prepare('DELETE FROM device_net WHERE mac = ?').bind(m).run();
+  } else {
+    await env.DB.prepare(
+      `INSERT INTO device_net (mac, proxy, label, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(mac) DO UPDATE SET proxy=excluded.proxy, label=excluded.label, updated_at=excluded.updated_at`,
+    ).bind(m, proxy, label, Date.now()).run();
+  }
+  // LIVRAISON INSTANTANÉE : l'app applique la nouvelle sortie en < 20 s.
+  await bumpDeviceSync(env, m);
+  await logAudit(env, request, actor, 'device_net.set',
+    { type: 'device_net', id: m }, null,
+    // On NE journalise PAS le proxy complet (peut contenir user:pass) — juste l'état.
+    { assigned: proxy !== '', label });
+  await dispatchWebhooks(env, ctx, 'device.exit_changed', { mac: m, assigned: proxy !== '', label });
+  return jsonResp({ ok: true, mac: m, assigned: proxy !== '', label });
+}
+
+async function handleDeviceNetDelete(request, env, mac, actor, ctx) {
+  await ensureDeviceNetTable(env);
+  const m = decodeMac(mac).trim().toUpperCase();
+  await env.DB.prepare('DELETE FROM device_net WHERE mac = ?').bind(m).run();
+  await bumpDeviceSync(env, m);
+  await logAudit(env, request, actor, 'device_net.clear',
+    { type: 'device_net', id: m }, null, null);
+  await dispatchWebhooks(env, ctx, 'device.exit_changed', { mac: m, assigned: false });
+  return jsonResp({ ok: true, mac: m });
+}
+
+/// Lecture publique (app) : proxy + label de CE device. Exportée pour le
+/// endpoint public dans worker.js.
+export async function readDeviceNet(env, mac) {
+  try {
+    if (!env.DB) return { proxy: '', label: '' };
+    await ensureDeviceNetTable(env);
+    const row = await env.DB.prepare('SELECT proxy, label FROM device_net WHERE mac = ?')
+      .bind(String(mac).toUpperCase()).first();
+    return {
+      proxy: row ? String(row.proxy || '') : '',
+      label: row ? String(row.label || '') : '',
+    };
+  } catch (_) {
+    return { proxy: '', label: '' };
+  }
 }

@@ -38,6 +38,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/net/iptv_exit.dart';
 import '../../../core/observability/structured_logger.dart';
 import '../domain/playlist.dart';
 import 'source_link_utils.dart';
@@ -400,7 +401,7 @@ class PlaylistHealthChecker {
   }
 
   HttpClient _newClient() {
-    return HttpClient()
+    final HttpClient c = HttpClient()
       ..connectionTimeout = _kHealthCheckTimeout
       ..idleTimeout = _kHealthCheckTimeout
       ..userAgent = 'VLC/3.0.20 LibVLC/3.0.20 (The Few HealthChecker)'
@@ -408,5 +409,9 @@ class PlaylistHealthChecker {
       // https à certificat auto-signé/expiré n'est PAS une source morte.
       ..badCertificateCallback =
           ((X509Certificate cert, String host, int port) => true);
+    // Sortie réseau : la sonde doit sortir par LA MÊME IP que le flux, sinon
+    // elle exposerait une 2e IP au fournisseur (risque de verrou).
+    IptvExit.instance.applyTo(c);
+    return c;
   }
 }

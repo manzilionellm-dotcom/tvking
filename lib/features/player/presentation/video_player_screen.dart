@@ -26,6 +26,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/net/iptv_exit.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -1276,6 +1277,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     try {
       // ignore: invalid_use_of_protected_member
       final dynamic native = (_player.platform as dynamic);
+      // SORTIE RÉSEAU (IP) : si l'admin a assigné un proxy à cet appareil,
+      // la VIDÉO elle-même sort par cette IP (le fournisseur voit une seule
+      // adresse, où que voyage le client). Chaîne vide = pas de proxy → mpv
+      // repasse en direct (comportement historique, aucune régression).
+      await native?.setProperty('http-proxy', IptvExit.instance.mpvProxy);
       await native?.setProperty('hwdec', hwdec);
       await native?.setProperty('cache', 'yes');
       // Secondes de cache conservées. En mode anti-coupure on garde une

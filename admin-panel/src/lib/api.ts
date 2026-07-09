@@ -1156,3 +1156,45 @@ export interface HealthStatus {
 export const healthApi = {
   get: () => request<HealthStatus>('/api/v1/health'),
 };
+
+// =========================================================
+//  SORTIE RÉSEAU (IP) PAR APPAREIL — « changer l'IP d'un client »
+// =========================================================
+//  Un fournisseur verrouille le compte sur une IP ; le client voyage,
+//  tout casse. L'admin assigne une SORTIE (un proxy qu'il contrôle,
+//  situé dans le bon pays) à la MAC : tout le trafic IPTV du client
+//  sort par cette IP fixe. Livré instantanément.
+export interface NetExit {
+  id: string;
+  label: string;   // ex. « Suède 🇸🇪 »
+  proxy: string;   // 'http://[user:pass@]host:port' ou 'socks5://host:port'
+}
+export interface DeviceNet {
+  mac: string;
+  proxy: string;   // '' = direct (aucune sortie)
+  label: string;
+  updated_at: number | null;
+}
+export const netExitsApi = {
+  list: () => request<{ items: NetExit[] }>('/api/v1/net-exits'),
+  save: (items: NetExit[]) =>
+    request<{ ok: boolean; items: NetExit[] }>('/api/v1/net-exits', {
+      method: 'PUT',
+      body: { items },
+    }),
+};
+export const deviceNetApi = {
+  get: (mac: string) =>
+    request<DeviceNet>(`/api/v1/device-net/${encodeURIComponent(mac)}`),
+  // proxy vide = repasse le client en direct (efface la sortie).
+  set: (mac: string, proxy: string, label = '') =>
+    request<{ ok: boolean; mac: string; assigned: boolean; label: string }>(
+      `/api/v1/device-net/${encodeURIComponent(mac)}`,
+      { method: 'PUT', body: { proxy, label } },
+    ),
+  clear: (mac: string) =>
+    request<{ ok: boolean; mac: string }>(
+      `/api/v1/device-net/${encodeURIComponent(mac)}`,
+      { method: 'DELETE' },
+    ),
+};

@@ -57,7 +57,7 @@
 // readSyncRev/bumpDeviceSync = moteur de LIVRAISON INSTANTANÉE (l'app
 // poll /api/sync/:mac) ; handleProductsList = catalogue publiable.
 import {
-  apiV1, readSyncRev, bumpDeviceSync, handleProductsList,
+  apiV1, readSyncRev, bumpDeviceSync, handleProductsList, readDeviceNet,
 } from './api_v1.js';
 // Migration KV → D1 (cf. cloudflare/migrate_kv_to_d1.js) — exposee
 // via POST /admin/migrate-to-d1 et protegee par X-Admin-Secret.
@@ -4037,7 +4037,7 @@ async function handleRequest(request, env, ctx) {
         if (seg1 === 'ai') rl = ['ai', 30];                        // 30 / min (LLM payant)
         else if (seg1 === 'device-source' || seg1 === 'backup'
           || seg1 === 'status' || seg1 === 'history'
-          || seg1 === 'family'
+          || seg1 === 'family' || seg1 === 'device-net'
           || seg1 === 'self-source') rl = ['dev', 120]; // anti-énumération MAC + anti-brute-force code famille
         else if (seg1 === 'heartbeat' || seg1 === 'trending'
           || seg1 === 'announcement' || seg1 === 'sports'
@@ -4097,6 +4097,20 @@ async function handleRequest(request, env, ctx) {
         return badRequest('only GET supported on /api/device-source/:mac');
       }
       return await handlePublicDeviceSource(env, segments[2]);
+    }
+
+    // /api/device-net/:mac — public. SORTIE RÉSEAU (proxy/IP) assignée à
+    // cet appareil par l'admin. L'app l'applique à tout son trafic IPTV →
+    // le fournisseur voit une IP fixe, où que voyage le client. Réponse
+    // PRIVÉE (jsonPrivate, pas de CORS '*') : un proxy peut contenir des
+    // identifiants. { proxy: 'http://…' | '', label: 'Suède 🇸🇪' }.
+    if (segments[0] === 'api' && segments[1] === 'device-net' && segments.length === 3) {
+      if (request.method !== 'GET') {
+        return badRequest('only GET supported on /api/device-net/:mac');
+      }
+      if (!MAC_RX.test(segments[2])) return badRequest('invalid mac');
+      const net = await readDeviceNet(env, segments[2].toUpperCase());
+      return jsonPrivate(net);
     }
 
     // /api/sync/:mac — public, ULTRA-LÉGER. L'app poll cette révision

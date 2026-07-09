@@ -21,6 +21,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
 import '../../../core/net/doh_resolver.dart';
+import '../../../core/net/iptv_exit.dart';
 
 /// Crée un client HTTP tolérant aux certificats invalides, destiné aux
 /// serveurs IPTV tiers uniquement. À fermer (`close()`) après usage,
@@ -34,5 +35,10 @@ http.Client createIptvHttpClient() {
     ..badCertificateCallback =
         (X509Certificate cert, String host, int port) => true;
   installDohResolution(inner);
+  // SORTIE RÉSEAU (IP) : si l'admin a assigné un proxy à cet appareil, tout
+  // le contrôle IPTV (login Xtream, playlist, refresh, health) sort par cette
+  // IP fixe → le fournisseur voit toujours la même adresse, où que voyage le
+  // client. No-op si aucune sortie n'est assignée (trafic direct, inchangé).
+  IptvExit.instance.applyTo(inner);
   return IOClient(inner);
 }

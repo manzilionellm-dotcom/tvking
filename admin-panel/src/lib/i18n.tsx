@@ -58,6 +58,7 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.families': { fr: 'Famille', en: 'Family', ar: 'العائلة' },
   'nav.account': { fr: 'Mon compte', en: 'My account', ar: 'حسابي' },
   'nav.sources': { fr: 'Sources M3U / Xtream', en: 'M3U / Xtream sources', ar: 'مصادر M3U / Xtream' },
+  'nav.network': { fr: 'Réseau & localisation', en: 'Network & location', ar: 'الشبكة والموقع' },
   'nav.appAccess': { fr: "Accès à l'app", en: 'App access', ar: 'الوصول إلى التطبيق' },
   'nav.products': { fr: 'Produits & publications', en: 'Products & publishing', ar: 'المنتجات والنشر' },
   'nav.integrations': { fr: 'API & intégrations', en: 'API & integrations', ar: 'الواجهات والتكاملات' },

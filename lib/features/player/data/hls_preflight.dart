@@ -31,6 +31,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/net/doh_resolver.dart';
+import '../../../core/net/iptv_exit.dart';
 import 'player_settings.dart';
 import 'stream_diagnostics.dart';
 
@@ -63,6 +64,7 @@ class HlsPreflight {
       ..badCertificateCallback =
           ((X509Certificate cert, String host, int port) => true);
     installDohResolution(client); // DNS FAI bloqué → DoH
+    IptvExit.instance.applyTo(client); // même sortie IP que le flux
     try {
       final HttpClientRequest req =
           await client.getUrl(Uri.parse(url)).timeout(kTimeout);
@@ -95,6 +97,7 @@ class HlsPreflight {
       ..badCertificateCallback =
           ((X509Certificate cert, String host, int port) => true);
     installDohResolution(client); // DNS FAI bloqué → DoH
+    IptvExit.instance.applyTo(client); // même sortie IP que le flux
     try {
       // ----- 1. Playlist telle que le lecteur l'ouvre -----
       final _Fetched? first = await _fetchText(client, url);

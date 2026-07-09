@@ -32,6 +32,7 @@ import { SourcesPage } from '@/pages/SourcesPage';
 import { AppAccessPage } from '@/pages/AppAccessPage';
 import { ProductsPage } from '@/pages/ProductsPage';
 import { IntegrationsPage } from '@/pages/IntegrationsPage';
+import { NetworkPage } from '@/pages/NetworkPage';
 
 /// Etats possibles de l'app :
 ///   - bootstrapping : on verifie si le token est encore valide
@@ -103,6 +104,7 @@ export default function App() {
       {/* SOURCES M3U/Xtream — page dédiée, SÉPARÉE de l'activation. */}
       <Route path="/sources"     element={<SourcesPage     onLogout={handleLogout} />} />
       <Route path="/playlists"   element={<Navigate to="/sources" replace />} />
+      <Route path="/network"     element={<NetworkPage     onLogout={handleLogout} />} />
       <Route path="/app-access"  element={<AppAccessPage   onLogout={handleLogout} />} />
       <Route path="/products"    element={<ProductsPage    onLogout={handleLogout} />} />
       <Route path="/integrations" element={<IntegrationsPage onLogout={handleLogout} />} />

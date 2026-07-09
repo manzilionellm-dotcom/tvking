@@ -29,6 +29,7 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
+import '../../../core/net/iptv_exit.dart';
 import '../domain/playlist.dart';
 import 'playlist_repository.dart';
 import 'source_link_utils.dart';
@@ -54,10 +55,39 @@ abstract final class RemoteSourceRepository {
   /// Récupère la source assignée à cet appareil et la charge si besoin.
   /// Best effort, idempotent (la dédup évite de réimporter à chaque boot).
   /// Renvoie un [RemoteSyncResult] pour permettre un diagnostic précis.
+  /// Récupère la SORTIE RÉSEAU (proxy/IP) assignée à cet appareil par le
+  /// panel et l'applique globalement (IptvExit). Le fournisseur IPTV verra
+  /// alors toujours la même IP, où que voyage le client. Best-effort : en
+  /// cas d'échec on garde la sortie actuelle (jamais de coupure).
+  static Future<void> syncExit() async {
+    try {
+      final String mac = await DeviceIdentity.instance.mac;
+      if (!mac.startsWith('MK:')) return;
+      final http.Response resp = await http
+          .get(
+            Uri.parse('$kSubscriptionBaseUrl/api/device-net/$mac'),
+            headers: const <String, String>{'Accept': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 6));
+      if (resp.statusCode != 200) return;
+      final Map<String, dynamic> body =
+          jsonDecode(resp.body) as Map<String, dynamic>;
+      final String proxy = (body['proxy'] as String?)?.trim() ?? '';
+      final String label = (body['label'] as String?)?.trim() ?? '';
+      IptvExit.instance.update(proxy: proxy, label: label);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[RemoteSource] exit sync error: $e');
+    }
+  }
+
   static Future<RemoteSyncResult> sync() async {
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
+
+      // Sortie réseau (IP) AVANT tout appel IPTV : si l'admin a changé l'IP
+      // du client, les requêtes qui suivent partent déjà par la bonne sortie.
+      await syncExit();
 
       final http.Response resp = await http
           .get(

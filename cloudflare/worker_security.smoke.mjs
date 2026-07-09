@@ -76,5 +76,15 @@ r = await worker.fetch(new Request('https://app.x/api/v1/devices', {
 }), { DB: null }, ctx);
 ok(r.status >= 400, 'API key inconnue -> refusée');
 
+// 9) SORTIE RÉSEAU : /api/device-net/:mac sans D1 → { proxy:'', label:'' }
+//    (fail-open : jamais de proxy imposé à tort → le client reste en direct).
+r = await worker.fetch(
+  new Request('https://app.x/api/device-net/MK:11:22:33:44:55'), {}, ctx);
+let net = await r.json();
+ok(r.status === 200 && net.proxy === '' && 'label' in net,
+  '/api/device-net sans D1 -> direct (proxy vide)');
+r = await worker.fetch(new Request('https://app.x/api/device-net/nope'), {}, ctx);
+ok(r.status === 400, '/api/device-net MAC invalide -> 400');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
