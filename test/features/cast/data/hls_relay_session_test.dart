@@ -17,6 +17,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tv_king/features/cast/data/cast_manager.dart';
 import 'package:tv_king/features/cast/data/dlna_profiles.dart';
 import 'package:tv_king/features/cast/data/hls_relay_session.dart';
 import 'package:tv_king/features/cast/data/local_cast_server.dart';
@@ -152,6 +153,71 @@ void main() {
         session.stop();
       }
     }, timeout: const Timeout(Duration(seconds: 40)));
+  });
+
+  group('CastManager.relayUpstreamUrlFor — tokens Xtream par-connexion', () {
+    test('préfère l\'URL portail d\'origine, nettoyée des ? orphelins', () {
+      expect(
+        CastManager.relayUpstreamUrlFor(
+          originalUrl: 'http://portail.example/user/pass/123.ts?',
+          finalUrl: 'http://1.2.3.4/live/user/pass/123?token=perime',
+        ),
+        'http://portail.example/user/pass/123.ts',
+      );
+    });
+
+    test('retombe sur finalUrl si l\'origine est vide ou invalide', () {
+      expect(
+        CastManager.relayUpstreamUrlFor(
+          originalUrl: '  ',
+          finalUrl: 'http://1.2.3.4/live/u/p/1',
+        ),
+        'http://1.2.3.4/live/u/p/1',
+      );
+    });
+  });
+
+  group('LocalCastServer — HEAD relais (sonde DLNA des TVs)', () {
+    test('répond 200 + headers DLNA SANS contacter l\'upstream', () async {
+      // Upstream qui compte les connexions : le HEAD de la TV ne doit
+      // PAS lui coûter un token par-connexion (diag LG 2026-07-09).
+      int upstreamHits = 0;
+      final HttpServer upstream =
+          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      upstream.listen((HttpRequest req) async {
+        upstreamHits++;
+        req.response.statusCode = HttpStatus.notFound;
+        await req.response.close();
+      });
+      final LocalCastServer server = LocalCastServer.instance;
+      final String? url = await server.registerRelay(
+        upstreamUrl: 'http://127.0.0.1:${upstream.port}/live/x/y/1.ts',
+        profile: DlnaProfiles.select(url: 'http://x/1.ts', finalMime: null),
+        receiverHost: '127.0.0.1',
+      );
+      if (url == null) {
+        markTestSkipped('aucune IP LAN — environnement sans réseau');
+        await upstream.close(force: true);
+        return;
+      }
+      try {
+        final Uri headUri = Uri.parse(url).replace(host: '127.0.0.1');
+        final HttpClient client = HttpClient();
+        final HttpClientRequest req = await client.openUrl('HEAD', headUri);
+        final HttpClientResponse resp = await req.close();
+        expect(resp.statusCode, 200);
+        expect(resp.headers.value('contentFeatures.dlna.org'), isNotNull);
+        expect(resp.headers.value('transferMode.dlna.org'), isNotNull);
+        await resp.drain<void>();
+        client.close(force: true);
+        expect(upstreamHits, 0,
+            reason: 'le HEAD ne doit consommer AUCUNE connexion upstream');
+        server.clearRelay(url);
+      } finally {
+        await upstream.close(force: true);
+        await server.stop();
+      }
+    });
   });
 
   group('LocalCastServer — routes /hls', () {

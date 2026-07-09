@@ -1039,7 +1039,12 @@ class CastManager extends ChangeNotifier {
             break;
           case 3:
             urlToCast = await _ensureRelayUrl(
-              upstreamUrl: probe.finalUrl,
+              // URL D'ORIGINE, pas finalUrl : token Xtream frais a
+              // chaque connexion du relais (cf. relayUpstreamUrlFor).
+              upstreamUrl: relayUpstreamUrlFor(
+                originalUrl: probe.originalUrl,
+                finalUrl: probe.finalUrl,
+              ),
               profile: profile,
               receiverHost: transport.device.host,
             );
@@ -1047,7 +1052,10 @@ class CastManager extends ChangeNotifier {
             break;
           case 4:
             urlToCast = await _ensureRelayUrl(
-              upstreamUrl: probe.finalUrl,
+              upstreamUrl: relayUpstreamUrlFor(
+                originalUrl: probe.originalUrl,
+                finalUrl: probe.finalUrl,
+              ),
               profile: profile,
               receiverHost: transport.device.host,
             );
@@ -1064,7 +1072,10 @@ class CastManager extends ChangeNotifier {
               transport.metadataMode = MetadataMode.full;
               urlToCast = isAltRelay
                   ? await _ensureRelayUrl(
-                      upstreamUrl: probe.finalUrl,
+                      upstreamUrl: relayUpstreamUrlFor(
+                        originalUrl: probe.originalUrl,
+                        finalUrl: probe.finalUrl,
+                      ),
                       profile: altProfiles[altIdx],
                       receiverHost: transport.device.host,
                     )
@@ -1220,6 +1231,29 @@ class CastManager extends ChangeNotifier {
       }
     }
     return out;
+  }
+
+  /// URL upstream que le RELAIS du téléphone doit tirer. TOUJOURS
+  /// l'URL PORTAIL D'ORIGINE quand on l'a : les serveurs Xtream
+  /// redirigent vers un endpoint à TOKEN PAR-CONNEXION — celui de
+  /// `probe.finalUrl` a déjà été consommé par le probe du téléphone.
+  /// Le re-donner au relais (ou à la TV) = « Resource not found » /
+  /// timeout (diag LG QNED816QA 2026-07-09 : 6/8 échecs, seuls les
+  /// serveurs à token réutilisable passaient). Le relais, lui, suit
+  /// la redirection à CHAQUE connexion → token frais, IP du téléphone.
+  /// Nettoie les « ? » orphelins de fin (fréquents sur les URLs Xtream).
+  @visibleForTesting
+  static String relayUpstreamUrlFor({
+    required String originalUrl,
+    required String finalUrl,
+  }) {
+    String u = originalUrl.trim();
+    while (u.endsWith('?')) {
+      u = u.substring(0, u.length - 1);
+    }
+    final bool usable =
+        u.startsWith('http://') || u.startsWith('https://');
+    return usable ? u : finalUrl;
   }
 
   /// Pur + statique → testable sans stack réseau (cf. tests cast).

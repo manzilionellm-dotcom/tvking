@@ -263,8 +263,14 @@ class GoogleCastTransport implements CastTransport {
         // AP) → on remonte alors une erreur claire.
         final DlnaProfile profile =
             DlnaProfiles.select(url: streamUrl, finalMime: null);
+        // `upstream` = URL PORTAIL D'ORIGINE nettoyée (calculée plus
+        // haut), PAS l'URL déjà résolue : les tokens Xtream sont
+        // par-connexion — celui de `streamUrl` a déjà été consommé par
+        // le probe. La session relais re-suit la redirection à CHAQUE
+        // (re)connexion → token frais (cause probable des 2 échecs
+        // résiduels SHIELD du 2026-07-09 : M6, EURO CRIME).
         final String? hlsRelay = await LocalCastServer.instance.registerRelay(
-          upstreamUrl: streamUrl,
+          upstreamUrl: upstream,
           profile: profile,
           receiverHost: device.host,
           wrapInHls: true,

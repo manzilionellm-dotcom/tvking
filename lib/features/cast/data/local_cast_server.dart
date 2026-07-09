@@ -475,15 +475,18 @@ class LocalCastServer {
     try {
       final Uri upstream = Uri.parse(entry.upstreamUrl);
 
-      // HEAD du récepteur → on répond avec les headers DLNA sans body.
-      // Indispensable : beaucoup de TVs Samsung font un HEAD AVANT
-      // le GET pour vérifier le profile et la disponibilité.
+      // HEAD du récepteur → réponse 200 + headers DLNA SANS interroger
+      // l'upstream. Beaucoup de TVs (Samsung, LG) sondent en HEAD avant
+      // le GET ; or les serveurs Xtream gèrent MAL les HEAD (coupure de
+      // socket, 404) et leurs tokens sont par-connexion — forwarder le
+      // HEAD consommait le token et/ou renvoyait 502 → la TV concluait
+      // « Resource not found » AVANT même le GET (diag LG 2026-07-09).
+      // Le relais SAIT ce qu'il servira (profil DLNA connu) : il répond
+      // pour lui-même, comme le font les proxys IPTV/BubbleUPnP.
       if (req.method == 'HEAD') {
-        final HttpClientRequest probe = await client.headUrl(upstream);
-        final HttpClientResponse pResp = await probe.close();
-        _writeRelayHeaders(req.response, pResp, entry,
+        _writeRelayHeadersLocal(req.response, entry,
             forcedContentType: forcedContentType);
-        await pResp.drain<void>();
+        req.response.statusCode = HttpStatus.ok;
         await req.response.close();
         return;
       }
@@ -522,6 +525,27 @@ class LocalCastServer {
     } finally {
       client.close(force: false);
     }
+  }
+
+  /// Headers DLNA construits LOCALEMENT (réponse HEAD) : aucun aller-
+  /// retour upstream, pas de Content-Length (flux live sans fin connue).
+  void _writeRelayHeadersLocal(
+    HttpResponse out,
+    _RelayEntry entry, {
+    String? forcedContentType,
+  }) {
+    out.headers.set(
+      HttpHeaders.contentTypeHeader,
+      forcedContentType ?? entry.profile.mime,
+    );
+    final String profileTag = entry.profile.buildProtocolInfo();
+    final String contentFeatures =
+        profileTag.replaceFirst(RegExp(r'^http-get:\*:[^:]+:'), '');
+    out.headers.set('contentFeatures.dlna.org', contentFeatures);
+    out.headers.set('getcontentFeatures.dlna.org', contentFeatures);
+    out.headers
+        .set('transferMode.dlna.org', entry.profile.transferMode.header);
+    out.headers.set('Cache-Control', 'no-store, no-cache');
   }
 
   /// Recopie les headers utiles de l'upstream et AJOUTE les headers
