@@ -29,7 +29,11 @@ import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/data/local_stream_relay.dart';
+import '../../player/data/player_settings.dart';
 import '../../player/data/stream_blocked_fallback.dart';
+import '../../player/data/xtream_url_variants.dart';
+import '../../playlists/data/xtream_url_format_store.dart';
+import '../../playlists/domain/playlist.dart' as pl;
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
@@ -385,7 +389,41 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   /// si le relais ne démarre pas, on retombe sur l'URL directe.
   Future<void> _loadCurrentUrl({String? userAgent}) async {
     final Channel channel = _current;
-    final String realUrl = _effectiveUrl; // variante adoptée > URL chaîne
+    String realUrl = _effectiveUrl; // variante adoptée > URL chaîne
+    // FORMAT MÉMORISÉ (parité téléphone — corrige la tempête de connexions
+    // terrain du 2026-07-09 02:20 : la TV re-cascadait à CHAQUE chaîne
+    // depuis l'URL nue .ts → 8 sondes + cascade × zap → compte 1-connexion
+    // saturé « 3/1 » → 404 partout). Si la cascade a déjà trouvé le format
+    // gagnant pour cette source (ex. « live:m3u8 »), on l'applique DIRECT :
+    // la chaîne ouvre sur /live/…m3u8 sans re-sonder. Seule la 1re chaîne
+    // d'une source neuve cascade encore.
+    if (_adoptedAltUrl == null) {
+      final pl.Playlist? src =
+          StreamBlockedFallback.xtreamPlaylistFor(channel);
+      if (src?.id != null) {
+        final XtreamContentType type =
+            StreamBlockedFallback.contentTypeOf(channel);
+        final String? code =
+            await XtreamUrlFormatStore.instance.winningFormat(src!.id!, type);
+        if (!mounted || channel.id != _current.id) return;
+        if (code != null) {
+          final String? remembered =
+              XtreamUrlVariants.applyFormat(realUrl, code);
+          if (remembered != null && remembered != realUrl) {
+            _adoptedAltUrl = remembered;
+            realUrl = remembered;
+          }
+        }
+        final String? sourceUa =
+            await XtreamUrlFormatStore.instance.sourceUserAgent(src.id!);
+        if (!mounted || channel.id != _current.id) return;
+        if (sourceUa != null &&
+            sourceUa != PlayerSettings.instance.userAgent) {
+          await PlayerSettings.instance.setUserAgent(sourceUa);
+          userAgent ??= sourceUa;
+        }
+      }
+    }
     final String lower = realUrl.toLowerCase();
     final bool isHls = lower.contains('.m3u8') || lower.contains('.m3u');
     if (isHls) {
