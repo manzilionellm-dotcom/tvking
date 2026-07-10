@@ -17,6 +17,13 @@
 //
 //  Données : VodRepository.fetchMovies(). S'il n'y a pas de VOD → message.
 //  Zéro contact avec le lecteur vidéo (on pousse TvPlayerScreen comme avant).
+//
+//  NAVIGATION (façon Netflix) : OK sur une AFFICHE ouvre la FICHE DÉTAIL
+//  (tv_movie_detail_screen — synopsis, casting, backdrop) et la lecture se
+//  lance depuis la fiche. Deux exceptions voulues : la rangée « Continuer à
+//  regarder » reprend DIRECTEMENT la lecture (un seul OK), et le bouton
+//  ▶ Regarder de la vedette lance aussi direct (c'est un bouton de lecture
+//  explicite, pas une vignette).
 // =========================================================
 import 'dart:io';
 
@@ -25,6 +32,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
+import '../../vod/data/playback_position_repository.dart';
 import '../../vod/data/recent_vod_repository.dart';
 import '../../vod/data/vod_repository.dart';
 import '../../vod/data/vod_watchlist_repository.dart';
@@ -34,6 +42,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../../vod/data/vod_download_service.dart';
 import 'tv_components.dart';
+import 'tv_movie_detail_screen.dart';
 import 'tv_player_screen.dart';
 
 class TvFilmsScreen extends StatefulWidget {
@@ -56,7 +65,23 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   @override
   void initState() {
     super.initState();
+    // La rangée « Continuer à regarder » et les barres de progression sous
+    // les affiches se rafraîchissent TOUTES SEULES quand une position change
+    // (sauvegarde périodique du lecteur, sortie de lecture) — sans ça, la
+    // barre resterait figée jusqu'au prochain rechargement du catalogue.
+    PlaybackPositionRepository.instance.addListener(_onPositionsChanged);
     _load();
+  }
+
+  @override
+  void dispose() {
+    PlaybackPositionRepository.instance.removeListener(_onPositionsChanged);
+    super.dispose();
+  }
+
+  void _onPositionsChanged() {
+    // Les données (entries/progress) sont lues directement dans build().
+    if (mounted) setState(() {});
   }
 
   Future<void> _load({bool force = false}) async {
@@ -65,6 +90,9 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
         await VodRepository.instance.fetchMovies(forceRefresh: force);
     await RecentVodRepository.instance.load();
     await VodWatchlistRepository.instance.load();
+    // Positions de reprise (« Continuer à regarder ») : chargées une seule
+    // fois — le vrai load() est branché au démarrage, ceci est un filet.
+    await PlaybackPositionRepository.instance.ensureLoaded();
     if (!mounted) return;
     // Groupement UNE fois par catégorie (ordre d'apparition). Les listes
     // référencent les mêmes objets VodMovie → pas de duplication mémoire.
@@ -137,6 +165,67 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     });
   }
 
+  /// OK sur une vignette de film → FICHE DÉTAIL (façon Netflix) : synopsis,
+  /// casting, backdrop, et c'est LÀ que la lecture se lance. Au retour, on
+  /// rafraîchit « Derniers vus » ET « Ma Liste » (les deux peuvent avoir
+  /// changé depuis la fiche : lecture lancée, toggle Ma Liste).
+  void _openDetail(VodMovie m) {
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(
+          builder: (_) => TvMovieDetailScreen(movie: m),
+        ))
+        .then((_) {
+      if (!mounted) return;
+      setState(() {
+        _recent = RecentVodRepository.instance.items;
+        _watchlist = VodWatchlistRepository.instance.items;
+        _inList = _watchlist.map((VodMovie e) => e.id).toSet();
+      });
+    });
+  }
+
+  /// Lance un contenu de la rangée « Continuer à regarder ». Le SEEK vers la
+  /// position sauvegardée est fait par le LECTEUR lui-même (il consulte
+  /// PlaybackPositionRepository à l'ouverture) — ici on ne fait que lancer.
+  void _playResume(PlaybackPosition e) {
+    // Film encore au catalogue → chemin normal (_play) : on profite du
+    // fichier local éventuel (hors-ligne) et de la mémoire « Derniers vus ».
+    for (final VodMovie m in _all) {
+      if (m.id == e.key) {
+        _play(<VodMovie>[m], 0);
+        return;
+      }
+    }
+    // Épisode de série (ou film disparu du catalogue) : lecture directe
+    // depuis les métadonnées mémorisées avec la position — pas besoin de
+    // re-télécharger la fiche série pour reprendre son épisode.
+    final Channel c = Channel(
+      id: e.key,
+      name: e.name,
+      category: '',
+      streamUrl: e.streamUrl,
+      isLive: false,
+      logoUrl: e.posterUrl,
+    );
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            TvPlayerScreen(channels: <Channel>[c], startIndex: 0),
+      ),
+    );
+  }
+
+  /// Adapte une entrée de reprise en VodMovie D'AFFICHAGE (vignette de la
+  /// rangée « Continuer à regarder ») — jamais persisté tel quel.
+  static VodMovie _entryAsMovie(PlaybackPosition e) => VodMovie(
+        id: e.key,
+        name: e.name,
+        category: '',
+        streamUrl: e.streamUrl,
+        containerExt: 'mp4',
+        posterUrl: e.posterUrl,
+      );
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -166,15 +255,38 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     // Film mis en avant : le dernier vu, sinon le premier du catalogue.
     final VodMovie hero = _recent.isNotEmpty ? _recent.first : _all.first;
 
-    // Rangées, dans l'ordre façon Netflix : Ma Liste (si non vide), puis
-    // Derniers vus, puis une rangée par catégorie. On les assemble en une
-    // liste ordonnée → pas d'arithmétique d'index fragile.
-    final List<({String title, List<VodMovie> movies})> rails =
-        <({String title, List<VodMovie> movies})>[
-      if (_watchlist.isNotEmpty) (title: context.l10n.tvMyList, movies: _watchlist),
-      if (_recent.isNotEmpty) (title: context.l10n.tvRailRecent, movies: _recent),
+    // Reprises en cours (« Continuer à regarder ») : lues directement dans le
+    // repo (≤ 100 entrées triées, O(1)) — films ET épisodes de séries.
+    final List<PlaybackPosition> resume =
+        PlaybackPositionRepository.instance.entries;
+    final List<VodMovie> resumeMovies =
+        resume.map(_entryAsMovie).toList(growable: false);
+    // Fraction déjà vue par contenu → petite barre dorée sous l'affiche,
+    // sur TOUTES les rangées (un film entamé se repère aussi dans sa
+    // catégorie, comme sur Netflix). Map minuscule (≤ 100 entrées).
+    final Map<String, double> progress = <String, double>{
+      for (final PlaybackPosition e in resume) e.key: e.progress,
+    };
+
+    // Rangées, dans l'ordre façon Netflix : Continuer à regarder (si non
+    // vide), puis Ma Liste, puis Derniers vus, puis une rangée par catégorie.
+    // On les assemble en une liste ordonnée → pas d'arithmétique d'index
+    // fragile. `resume: true` = la rangée lance via _playResume (et n'a pas
+    // de « Ma Liste » au long-press : une entrée peut être un épisode).
+    final List<({String title, List<VodMovie> movies, bool resume})> rails =
+        <({String title, List<VodMovie> movies, bool resume})>[
+      if (resumeMovies.isNotEmpty)
+        (
+          title: context.l10n.tvRailContinueWatching,
+          movies: resumeMovies,
+          resume: true
+        ),
+      if (_watchlist.isNotEmpty)
+        (title: context.l10n.tvMyList, movies: _watchlist, resume: false),
+      if (_recent.isNotEmpty)
+        (title: context.l10n.tvRailRecent, movies: _recent, resume: false),
       for (final String cat in _cats)
-        (title: cat, movies: _byCat[cat] ?? const <VodMovie>[]),
+        (title: cat, movies: _byCat[cat] ?? const <VodMovie>[], resume: false),
     ];
 
     return ListView.builder(
@@ -191,13 +303,22 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
             onToggleList: () => _toggleList(hero),
           );
         }
-        final ({String title, List<VodMovie> movies}) rail = rails[i - 1];
+        final ({String title, List<VodMovie> movies, bool resume}) rail =
+            rails[i - 1];
         return _Rail(
           title: rail.title,
           movies: rail.movies,
           inList: _inList,
-          onPlay: (int j) => _play(rail.movies, j),
-          onToggleList: (int j) => _toggleList(rail.movies[j]),
+          progress: progress,
+          // OK sur une affiche → FICHE détail. EXCEPTION Netflix : la rangée
+          // « Continuer à regarder » relance DIRECTEMENT la lecture (le but
+          // de cette rangée est de reprendre en un seul OK).
+          onPlay: (int j) => rail.resume
+              ? _playResume(resume[j])
+              : _openDetail(rail.movies[j]),
+          onToggleList: (int j) {
+            if (!rail.resume) _toggleList(rail.movies[j]);
+          },
         );
       },
     );
@@ -437,6 +558,7 @@ class _Rail extends StatelessWidget {
     required this.title,
     required this.movies,
     required this.inList,
+    required this.progress,
     required this.onPlay,
     required this.onToggleList,
   });
@@ -444,6 +566,10 @@ class _Rail extends StatelessWidget {
   final String title;
   final List<VodMovie> movies;
   final Set<String> inList;
+
+  /// Fraction déjà vue par id de contenu (reprise de lecture) : dessine la
+  /// petite barre dorée sous l'affiche. Absent de la map = rien à afficher.
+  final Map<String, double> progress;
   final void Function(int index) onPlay;
   final void Function(int index) onToggleList;
 
@@ -479,6 +605,7 @@ class _Rail extends StatelessWidget {
                 child: _PosterCard(
                   movie: movies[i],
                   inList: inList.contains(movies[i].id),
+                  progress: progress[movies[i].id],
                   onPlay: () => onPlay(i),
                   onToggleList: () => onToggleList(i),
                 ),
@@ -491,18 +618,23 @@ class _Rail extends StatelessWidget {
   }
 }
 
-/// Affiche d'un film (poster 2:3) + titre, focusable. OK = lecture.
+/// Affiche d'un film (poster 2:3) + titre, focusable. OK = fiche détail
+/// (sauf rangée « Continuer à regarder » : OK = reprise directe).
 class _PosterCard extends StatelessWidget {
   const _PosterCard({
     required this.movie,
     required this.inList,
     required this.onPlay,
     required this.onToggleList,
+    this.progress,
   });
   final VodMovie movie;
   final bool inList;
   final VoidCallback onPlay;
   final VoidCallback onToggleList;
+
+  /// Fraction déjà vue (0..1) — null = pas de reprise en cours pour ce film.
+  final double? progress;
 
   @override
   Widget build(BuildContext context) {
@@ -522,6 +654,36 @@ class _PosterCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: <Widget>[
                   _poster(),
+                  // Barre de progression de REPRISE (façon Netflix) : filet
+                  // doré en bas de l'affiche = fraction déjà vue. Même
+                  // pattern Stack + FractionallySizedBox que la barre du
+                  // lecteur (tv_player_screen) — zéro widget animé, zéro
+                  // coût quand `progress` est null (rien n'est construit).
+                  if (progress != null)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: SizedBox(
+                        height: 5,
+                        child: Stack(
+                          children: <Widget>[
+                            // Fond sombre : la barre se lit sur toute affiche.
+                            Container(
+                                color: Colors.black.withValues(alpha: 0.55)),
+                            FractionallySizedBox(
+                              // Jamais < 4 % : une reprise à 2 min d'un film
+                              // de 3 h doit rester VISIBLE (repère « entamé »).
+                              widthFactor: progress!.clamp(0.04, 1.0),
+                              child: Container(
+                                decoration: const BoxDecoration(
+                                    gradient: TvTokens.ctaGradient),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   // Pastille ✓ quand le film est dans « Ma Liste ».
                   if (inList)
                     Positioned(

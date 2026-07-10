@@ -30,6 +30,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../app/app_platform.dart';
 import 'build_flags.dart';
 
 class UpdateInfo {
@@ -50,9 +51,21 @@ class UpdateService {
   UpdateService._();
   static final UpdateService instance = UpdateService._();
 
+  /// Tag de la release TV où le CI publie `version.json` + `defew-tv.apk`.
+  /// Passé au build par --dart-define (le workflow TV publie sur `tv-latest`,
+  /// ou sur une release dédiée pour certaines branches — anti-clobber).
+  /// Défaut `tv-latest` : un APK TV construit sans le define reste correct.
+  static const String _tvUpdateTag =
+      String.fromEnvironment('TV_UPDATE_TAG', defaultValue: 'tv-latest');
+
   /// `version.json` publie par le CI sur la release `latest`.
-  static const String manifestUrl =
-      'https://github.com/manzilionellm-dotcom/tvking/releases/download/latest/version.json';
+  /// La TV (DeFew TV) a SON propre canal : l'APK mobile et l'APK TV sont
+  /// des builds différents (targets, versionCode epoch vs run_number) —
+  /// pointer la box sur le manifeste mobile lui ferait télécharger le
+  /// mauvais APK. D'où l'aiguillage par plateforme, posé au boot.
+  static String get manifestUrl => AppPlatform.isTv
+      ? 'https://github.com/manzilionellm-dotcom/tvking/releases/download/$_tvUpdateTag/version.json'
+      : 'https://github.com/manzilionellm-dotcom/tvking/releases/download/latest/version.json';
 
   /// Retourne les infos de MAJ si une version PLUS RECENTE est dispo,
   /// sinon `null`. Fail-open : toute erreur → `null`.

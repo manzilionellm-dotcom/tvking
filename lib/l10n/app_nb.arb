@@ -603,9 +603,54 @@
   "tvMyList": "Min liste",
   "tvInMyList": "I Min liste",
   "tvRailRecent": "Nylig sett",
+  "tvRailContinueWatching": "Fortsett å se",
+  "tvResumedAt": "Gjenopptatt ved {time}",
+  "@tvResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpNext": "Neste",
+  "tvUpNextAutoIn": "Spilles av om {seconds} s",
+  "@tvUpNextAutoIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "tvUpNextPlayNow": "Spill av nå",
+  "tvUpNextPressOk": "Er du der fortsatt? Trykk OK for å spille av neste episode.",
   "tvDownload": "Last ned",
   "tvDownloaded": "Nedlastet",
   "tvResume": "Fortsett",
+  "tvResumeAt": "Fortsett fra {time}",
+  "@tvResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvStartOver": "Start på nytt",
+  "tvDetailWithCast": "Med {cast}",
+  "@tvDetailWithCast": {
+    "placeholders": {
+      "cast": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDetailByDirector": "Regissert av {director}",
+  "@tvDetailByDirector": {
+    "placeholders": {
+      "director": {
+        "type": "String"
+      }
+    }
+  },
   "tvPercent": "{percent} %",
   "@tvPercent": {
     "placeholders": {

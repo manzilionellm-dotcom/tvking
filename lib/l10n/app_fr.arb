@@ -2035,9 +2035,54 @@
   "tvMyList": "Ma Liste",
   "tvInMyList": "Dans Ma Liste",
   "tvRailRecent": "Derniers vus",
+  "tvRailContinueWatching": "Continuer à regarder",
+  "tvResumedAt": "Reprise à {time}",
+  "@tvResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpNext": "À suivre",
+  "tvUpNextAutoIn": "Lecture dans {seconds} s",
+  "@tvUpNextAutoIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "tvUpNextPlayNow": "Lire maintenant",
+  "tvUpNextPressOk": "Toujours là ? OK pour lancer l'épisode suivant.",
   "tvDownload": "Télécharger",
   "tvDownloaded": "Téléchargé",
   "tvResume": "Reprendre",
+  "tvResumeAt": "Reprendre à {time}",
+  "@tvResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvStartOver": "Reprendre du début",
+  "tvDetailWithCast": "Avec {cast}",
+  "@tvDetailWithCast": {
+    "placeholders": {
+      "cast": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDetailByDirector": "De {director}",
+  "@tvDetailByDirector": {
+    "placeholders": {
+      "director": {
+        "type": "String"
+      }
+    }
+  },
   "tvPercent": "{percent} %",
   "@tvPercent": {
     "placeholders": {

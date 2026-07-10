@@ -603,9 +603,54 @@
   "tvMyList": "قائمتي",
   "tvInMyList": "في قائمتي",
   "tvRailRecent": "شوهدت مؤخرًا",
+  "tvRailContinueWatching": "متابعة المشاهدة",
+  "tvResumedAt": "استئناف عند {time}",
+  "@tvResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpNext": "التالي",
+  "tvUpNextAutoIn": "التشغيل خلال {seconds} ث",
+  "@tvUpNextAutoIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "tvUpNextPlayNow": "تشغيل الآن",
+  "tvUpNextPressOk": "هل ما زلت هنا؟ اضغط OK لتشغيل الحلقة التالية.",
   "tvDownload": "تنزيل",
   "tvDownloaded": "تم التنزيل",
   "tvResume": "استئناف",
+  "tvResumeAt": "استئناف عند {time}",
+  "@tvResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvStartOver": "البدء من جديد",
+  "tvDetailWithCast": "بطولة {cast}",
+  "@tvDetailWithCast": {
+    "placeholders": {
+      "cast": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDetailByDirector": "إخراج {director}",
+  "@tvDetailByDirector": {
+    "placeholders": {
+      "director": {
+        "type": "String"
+      }
+    }
+  },
   "tvPercent": "{percent}٪",
   "@tvPercent": {
     "placeholders": {

@@ -1,19 +1,39 @@
 // =========================================================
 //  tv_add_m3u_screen.dart — Ajouter une liste M3U (URL)
 // =========================================================
-//  Le client colle l'URL de son fichier .m3u (+ URL EPG optionnelle). On
-//  télécharge/parse via PlaylistRepository.addM3uPlaylist, puis on revient.
+//  Le client colle/tape l'URL de son fichier .m3u (+ EPG optionnelle),
+//  100 % à la télécommande : clavier D-pad intégré (TvUrlKeyboard) avec
+//  chips d'insertion rapide (http://, .m3u…). Les vrais TextField restent
+//  disponibles via le bouton ⌨ (IME, clavier physique, copier-coller).
+//
+//  PRÉ-VOL avant l'ajout : on télécharge SEULEMENT LE DÉBUT du fichier
+//  (anti-OOM) pour vérifier que c'est une vraie liste, puis import VIVANT
+//  (étapes ✓, compteur de chaînes qui monte) — jamais un spinner muet.
 // =========================================================
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
+import '../../playlists/data/iptv_http.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/data/source_input_normalizer.dart';
 import '../../playlists/data/source_link_utils.dart';
+import '../../playlists/data/source_preflight.dart';
+import '../../playlists/domain/playlist.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
 import 'tv_components.dart';
+import 'tv_import_progress.dart';
+import 'tv_url_keyboard.dart';
+
+/// Champ actuellement CIBLE du clavier intégré.
+enum _Field { name, url, epg }
 
 class TvAddM3uScreen extends StatefulWidget {
-  const TvAddM3uScreen({super.key});
+  const TvAddM3uScreen({super.key, this.initialUrl, this.initialName});
+
+  /// Pré-remplissage (venant de l'aiguillage intelligent). Null = vide.
+  final String? initialUrl;
+  final String? initialName;
 
   @override
   State<TvAddM3uScreen> createState() => _TvAddM3uScreenState();
@@ -23,134 +43,266 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
   final TextEditingController _nameC = TextEditingController();
   final TextEditingController _urlC = TextEditingController();
   final TextEditingController _epgC = TextEditingController();
+
+  _Field _target = _Field.url;
   bool _busy = false;
+  bool _cancelled = false;
+  http.Client? _client; // client du test en cours → close() = annuler
+  final TvImportProgress _progress = TvImportProgress();
+
   String? _error;
+  String? _fixNote; // « On a corrigé l'adresse : … »
+
+  bool _success = false;
+  int _doneChannels = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _urlC.text = widget.initialUrl ?? '';
+    _nameC.text = widget.initialName ?? '';
+  }
 
   @override
   void dispose() {
     _nameC.dispose();
     _urlC.dispose();
     _epgC.dispose();
+    _progress.dispose();
+    _client?.close();
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    // On accepte le lien même sans « http:// » tapé (le revendeur/
-    // fournisseur donne parfois juste le domaine) — on le complète.
-    final String url = SourceLinkUtils.ensureScheme(_urlC.text);
+  TextEditingController get _targetC {
+    switch (_target) {
+      case _Field.name:
+        return _nameC;
+      case _Field.url:
+        return _urlC;
+      case _Field.epg:
+        return _epgC;
+    }
+  }
+
+  String get _targetLabel {
+    switch (_target) {
+      case _Field.name:
+        return 'Nom';
+      case _Field.url:
+        return 'URL M3U';
+      case _Field.epg:
+        return 'URL EPG';
+    }
+  }
+
+  Future<void> _testAndAdd() async {
+    // TOLÉRANCE AUX FAUTES : espaces, virgules, htp://… réparés AVANT le
+    // réseau, et on retient ce qui a été corrigé pour le dire (confiance).
+    final NormalizedInput n = SourceInputNormalizer.normalizeUrl(_urlC.text);
+    final String url = n.value;
     if (url.isEmpty) {
       setState(() => _error = 'Entre une URL M3U valide.');
       return;
     }
     setState(() {
       _busy = true;
+      _cancelled = false;
       _error = null;
+      _fixNote = n.fixes.isEmpty
+          ? null
+          : 'On a corrigé l\'adresse : ${n.fixes.join(' · ')}';
     });
+    _progress.reset();
+    final http.Client client = createIptvHttpClient();
+    _client = client;
     try {
-      final String epg = _epgC.text.trim();
-      await PlaylistRepository.instance.addM3uPlaylist(
+      // 1) PRÉ-VOL : le DÉBUT du fichier seulement (anti-OOM) — est-ce
+      //    bien une liste de chaînes ? Rien n'est écrit en base ici.
+      _progress.startStage('Test du lien…');
+      await SourcePreflight.probeM3u(url, httpClient: client);
+      if (_abortRequested()) return;
+      _progress.completeStage('Ta liste est bonne');
+
+      // 2) IMPORT VIVANT : téléchargement complet + compteur qui monte.
+      _progress.startStage('Téléchargement des chaînes…');
+      final String epg = SourceLinkUtils.cleanInput(_epgC.text);
+      final Playlist saved = await PlaylistRepository.instance.addM3uPlaylist(
         name: _nameC.text.trim().isEmpty ? 'Ma liste M3U' : _nameC.text.trim(),
         url: url,
         epgUrl: epg.isEmpty ? null : SourceLinkUtils.ensureScheme(epg),
+        httpClient: client,
+        onProgress: _progress.onChannels,
       );
-      if (mounted) Navigator.of(context).maybePop();
+      if (_abortRequested()) return;
+      _progress.completeStage('Terminé');
+      setState(() {
+        _busy = false;
+        _success = true;
+        _doneChannels = saved.channelCount;
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() => _error = 'Échec : liste injoignable ou vide.');
-      }
+      // Annulé au Retour : le repository a déjà retiré la playlist
+      // orpheline (son catch) → la base reste propre.
+      if (!mounted) return;
+      _progress.reset();
+      setState(() {
+        _busy = false;
+        _error = _cancelled ? 'Ajout annulé.' : SourcePreflight.humanize(e);
+      });
     } finally {
-      if (mounted) setState(() => _busy = false);
+      _client = null;
+      client.close();
     }
+  }
+
+  /// Retour pendant le test/import = ANNULATION propre : on coupe le
+  /// client HTTP, l'attente s'interrompt, la base reste propre.
+  void _cancelBusy() {
+    _cancelled = true;
+    _client?.close();
+  }
+
+  /// Après CHAQUE await : si l'annulation est tombée pile entre deux
+  /// étapes, ne jamais rester bloqué en `_busy`.
+  bool _abortRequested() {
+    if (!mounted) return true;
+    if (!_cancelled) return false;
+    _progress.reset();
+    setState(() {
+      _busy = false;
+      _error = 'Ajout annulé.';
+    });
+    return true;
   }
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
+    return PopScope(
+      canPop: !_busy,
+      onPopInvokedWithResult: (bool didPop, Object? _) {
+        if (!didPop && _busy) _cancelBusy();
+      },
+      child: _success ? _buildSuccess(context) : _buildForm(context),
+    );
+  }
+
+  Widget _buildSuccess(BuildContext context) {
+    return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
+        constraints: const BoxConstraints(maxWidth: 640),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Text('Ajouter une liste M3U',
-                style: TextStyle(
-                    fontSize: TvDimens.displayS,
-                    fontWeight: FontWeight.w800,
-                    color: TvTokens.text)),
-            const SizedBox(height: 6),
-            Text('Colle l\'URL de ton fichier .m3u (et l\'EPG si tu en as une).',
-                style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted)),
-            const SizedBox(height: 22),
-            _Field(controller: _nameC, label: 'Nom (optionnel)', hint: 'Ma liste'),
-            const SizedBox(height: 14),
-            _Field(
-                controller: _urlC,
-                label: 'URL M3U',
-                hint: 'http://serveur.com/playlist.m3u'),
-            const SizedBox(height: 14),
-            _Field(
-                controller: _epgC,
-                label: 'URL EPG (optionnel)',
-                hint: 'http://serveur.com/xmltv.php'),
-            if (_error != null) ...<Widget>[
-              const SizedBox(height: 14),
-              Text(_error!,
-                  style: TextStyle(
-                      fontSize: TvDimens.label,
-                      fontWeight: FontWeight.w600,
-                      color: TvTokens.live)),
-            ],
-            const SizedBox(height: 22),
+            const Icon(Icons.check_circle_rounded,
+                size: 64, color: TvTokens.success),
+            const SizedBox(height: 18),
+            Text('${tvFormatCount(_doneChannels)} chaînes prêtes',
+                textAlign: TextAlign.center,
+                style: TvTokens.display(34, color: TvTokens.text)),
+            const SizedBox(height: 8),
+            Text('Ta liste est chargée. Bon visionnage !',
+                textAlign: TextAlign.center,
+                style: TvTokens.ui(16, color: TvTokens.muted)),
+            const SizedBox(height: 26),
             TvCtaButton(
-              label: _busy ? 'Ajout…' : 'Ajouter la liste',
+              label: 'Regarder maintenant',
               autofocus: true,
-              expand: false,
-              onSelect: _busy ? null : _submit,
+              onSelect: () => Navigator.of(context).pop(true),
             ),
           ],
         ),
       ),
     );
   }
-}
 
-class _Field extends StatelessWidget {
-  const _Field({required this.controller, required this.label, this.hint});
-  final TextEditingController controller;
-  final String label;
-  final String? hint;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
+  Widget _buildForm(BuildContext context) {
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(label,
-            style: TextStyle(
-                fontSize: TvDimens.label,
-                fontWeight: FontWeight.w600,
-                color: TvTokens.mutedDim)),
-        const SizedBox(height: 6),
-        TextField(
-          controller: controller,
-          style: TextStyle(fontSize: TvDimens.title, color: TvTokens.text),
-          cursorColor: TvTokens.gold,
-          keyboardType: TextInputType.url,
-          autocorrect: false,
-          enableSuggestions: false,
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: TvTokens.mutedDim),
-            filled: true,
-            fillColor: TvTokens.card,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-              borderSide: BorderSide(color: TvTokens.lineSoft),
+        // ----- Colonne gauche : champs + états -----
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Text('Ajouter une liste M3U',
+                    style: TextStyle(
+                        fontSize: TvDimens.displayS,
+                        fontWeight: FontWeight.w800,
+                        color: TvTokens.text)),
+                const SizedBox(height: 6),
+                Text(
+                    'Colle ou tape l\'URL de ton fichier .m3u '
+                    '(et l\'EPG si tu en as une).',
+                    style: TextStyle(
+                        fontSize: TvDimens.body, color: TvTokens.muted)),
+                const SizedBox(height: 20),
+                TvKeyboardField(
+                  controller: _urlC,
+                  label: 'URL M3U',
+                  hint: 'http://serveur.com/playlist.m3u',
+                  autofocus: true,
+                  active: _target == _Field.url,
+                  onActivate: () => setState(() => _target = _Field.url),
+                ),
+                const SizedBox(height: 10),
+                TvKeyboardField(
+                  controller: _nameC,
+                  label: 'Nom (optionnel)',
+                  hint: 'Ma liste',
+                  active: _target == _Field.name,
+                  onActivate: () => setState(() => _target = _Field.name),
+                ),
+                const SizedBox(height: 10),
+                TvKeyboardField(
+                  controller: _epgC,
+                  label: 'URL EPG (optionnel)',
+                  hint: 'http://serveur.com/xmltv.php',
+                  active: _target == _Field.epg,
+                  onActivate: () => setState(() => _target = _Field.epg),
+                ),
+
+                if (_fixNote != null) ...<Widget>[
+                  const SizedBox(height: 10),
+                  Text(_fixNote!, style: TvTokens.ui(13, color: TvTokens.gold)),
+                ],
+                if (_error != null) ...<Widget>[
+                  const SizedBox(height: 10),
+                  Text(_error!,
+                      style: TextStyle(
+                          fontSize: TvDimens.label,
+                          fontWeight: FontWeight.w600,
+                          color: TvTokens.live)),
+                ],
+                const SizedBox(height: 12),
+                TvImportProgressView(progress: _progress),
+                if (_busy) ...<Widget>[
+                  const SizedBox(height: 6),
+                  Text('Appuie sur Retour pour annuler.',
+                      style: TvTokens.ui(12, color: TvTokens.mutedDim)),
+                ],
+                const SizedBox(height: 16),
+                TvCtaButton(
+                  label: _busy ? 'Test en cours…' : 'Tester et ajouter',
+                  expand: false,
+                  onSelect: _busy ? null : _testAndAdd,
+                ),
+              ],
             ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-              borderSide: const BorderSide(color: TvTokens.gold, width: 2),
+          ),
+        ),
+        const SizedBox(width: 22),
+        // ----- Colonne droite : clavier D-pad intégré -----
+        SizedBox(
+          width: 540,
+          child: SingleChildScrollView(
+            child: TvUrlKeyboard(
+              controller: _targetC,
+              fieldLabel: _targetLabel,
+              // Chips URL partout sauf pour le nom de la liste.
+              showUrlChips: _target != _Field.name,
             ),
           ),
         ),

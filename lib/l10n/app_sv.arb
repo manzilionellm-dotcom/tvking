@@ -603,9 +603,54 @@
   "tvMyList": "Min lista",
   "tvInMyList": "I Min lista",
   "tvRailRecent": "Nyligen sedda",
+  "tvRailContinueWatching": "Fortsätt titta",
+  "tvResumedAt": "Återupptagen vid {time}",
+  "@tvResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpNext": "Nästa",
+  "tvUpNextAutoIn": "Spelas upp om {seconds} s",
+  "@tvUpNextAutoIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "tvUpNextPlayNow": "Spela upp nu",
+  "tvUpNextPressOk": "Är du kvar? Tryck OK för att spela upp nästa avsnitt.",
   "tvDownload": "Ladda ner",
   "tvDownloaded": "Nedladdad",
   "tvResume": "Fortsätt",
+  "tvResumeAt": "Fortsätt från {time}",
+  "@tvResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvStartOver": "Börja om",
+  "tvDetailWithCast": "Med {cast}",
+  "@tvDetailWithCast": {
+    "placeholders": {
+      "cast": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDetailByDirector": "Regisserad av {director}",
+  "@tvDetailByDirector": {
+    "placeholders": {
+      "director": {
+        "type": "String"
+      }
+    }
+  },
   "tvPercent": "{percent} %",
   "@tvPercent": {
     "placeholders": {

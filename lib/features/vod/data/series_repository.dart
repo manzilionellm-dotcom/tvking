@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/xtream_client.dart';
 import '../../playlists/domain/playlist.dart';
+import '../domain/vod_info.dart';
 import '../domain/vod_series.dart';
 
 class SeriesRepository {
@@ -60,13 +61,22 @@ class SeriesRepository {
 
   /// Épisodes d'une série (chargés à la demande, non mis en cache global).
   Future<List<VodEpisode>> fetchEpisodes(String seriesId) async {
+    return (await fetchDetail(seriesId)).episodes;
+  }
+
+  /// Fiche COMPLÈTE d'une série : épisodes + métadonnées riches (synopsis,
+  /// casting, genre, image de fond) — le MÊME appel `get_series_info` sert
+  /// les deux, aucun réseau supplémentaire. `info` est `null` si le serveur
+  /// n'en fournit pas (fail-open : la fiche s'affiche avec ce qu'elle a).
+  Future<({VodInfo? info, List<VodEpisode> episodes})> fetchDetail(
+      String seriesId) async {
     final XtreamClient? client = await _client();
-    if (client == null) return const <VodEpisode>[];
+    if (client == null) return (info: null, episodes: const <VodEpisode>[]);
     try {
-      return await client.fetchSeriesEpisodes(seriesId);
+      return await client.fetchSeriesDetail(seriesId);
     } catch (e) {
-      if (kDebugMode) debugPrint('[Series] episodes error: $e');
-      return const <VodEpisode>[];
+      if (kDebugMode) debugPrint('[Series] detail error: $e');
+      return (info: null, episodes: const <VodEpisode>[]);
     } finally {
       client.dispose();
     }

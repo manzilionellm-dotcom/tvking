@@ -40,6 +40,7 @@ import '../../../core/app/device_memory.dart';
 import '../../../core/crash/crash_reporting.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/data/player_settings.dart';
+import '../../vod/domain/vod_info.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../../vod/domain/vod_series.dart';
 import 'iptv_http.dart';
@@ -261,6 +262,11 @@ class XtreamClient {
     required int playlistId,
     Map<String, String>? categories,
     required Future<void> Function(List<Channel> batch) onBatch,
+    // PROGRESSION VIVANTE (écrans TV d'ajout) : appelé après chaque lot
+    // inséré, avec le TOTAL courant et la catégorie en cours (« Sport »…)
+    // → l'UI affiche un compteur qui monte au lieu d'un spinner muet.
+    // OPTIONNEL et non-cassant : les appelants existants ne passent rien.
+    void Function(int totalChannels, String? categoryName)? onProgress,
   }) async {
     final Map<String, String> cats =
         categories ?? await fetchLiveCategories();
@@ -292,6 +298,7 @@ class XtreamClient {
       if (batch.isNotEmpty) {
         await onBatch(batch);
         total += batch.length;
+        onProgress?.call(total, entry.value);
         CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
             'xtream.stream.batch', channels: total);
       }
@@ -307,6 +314,7 @@ class XtreamClient {
       if (all.isNotEmpty) {
         await onBatch(all);
         total = all.length;
+        onProgress?.call(total, null);
       }
     }
     return total;
@@ -379,6 +387,24 @@ class XtreamClient {
     return '$_baseUrl/movie/$_userEnc/$_passEnc/$streamId.$ext';
   }
 
+  /// Fiche DÉTAILLÉE d'un film (`get_vod_info`) : synopsis, casting,
+  /// réalisateur, genre, durée, image de fond… — tout ce que le catalogue
+  /// (`get_vod_streams`) ne fournit pas.
+  ///
+  /// FAIL-OPEN : toute erreur (serveur HS, timeout, JSON exotique) renvoie
+  /// `null` — la fiche film s'affiche alors avec les seules infos de la
+  /// vignette (nom, affiche, note) au lieu de planter ou de bloquer.
+  Future<VodInfo?> fetchVodInfo(String streamId) async {
+    try {
+      final Map<String, dynamic> data =
+          await _callApi(action: 'get_vod_info', vodId: streamId);
+      return VodInfo.fromJson(data);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[XtreamClient] get_vod_info: $e');
+      return null;
+    }
+  }
+
   // ============================================================
   //  SÉRIES (saisons + épisodes)
   // ============================================================
@@ -439,10 +465,28 @@ class XtreamClient {
   }
 
   /// Épisodes d'une série (tous saisons confondues, triés saison/épisode).
-  /// get_series_info renvoie `{ episodes: { "1": [...], "2": [...] } }`.
+  /// Conservé pour compatibilité — délègue à [fetchSeriesDetail].
   Future<List<VodEpisode>> fetchSeriesEpisodes(String seriesId) async {
+    return (await fetchSeriesDetail(seriesId)).episodes;
+  }
+
+  /// Fiche COMPLÈTE d'une série (`get_series_info`) : les épisodes ET les
+  /// métadonnées riches (synopsis, casting, genre, image de fond…) — le
+  /// même appel réseau sert les deux, on ne paie pas un fetch de plus.
+  /// `info` est `null` si le serveur n'en fournit pas (fail-open).
+  /// get_series_info renvoie `{ info: {...}, episodes: { "1": [...] } }`.
+  Future<({VodInfo? info, List<VodEpisode> episodes})> fetchSeriesDetail(
+      String seriesId) async {
     final Map<String, dynamic> data =
         await _callApi(action: 'get_series_info', seriesId: seriesId);
+    // Métadonnées riches : parsing DÉFENSIF partagé avec les films (mêmes
+    // clés dans le sous-objet `info`). Jamais bloquant : erreur → null.
+    VodInfo? seriesInfo;
+    try {
+      seriesInfo = VodInfo.fromJson(data);
+    } catch (_) {
+      seriesInfo = null;
+    }
     final dynamic eps = data['episodes'];
     final List<VodEpisode> out = <VodEpisode>[];
     if (eps is Map<String, dynamic>) {
@@ -480,7 +524,7 @@ class XtreamClient {
       final int s = a.season.compareTo(b.season);
       return s != 0 ? s : a.episodeNum.compareTo(b.episodeNum);
     });
-    return out;
+    return (info: seriesInfo, episodes: out);
   }
 
   /// Ferme proprement le client HTTP. À appeler en fin de cycle.
@@ -607,8 +651,8 @@ class XtreamClient {
 
   /// Appel API qui retourne une Map JSON (cas verifyCredentials).
   Future<Map<String, dynamic>> _callApi(
-      {required String? action, String? seriesId}) async {
-    final Uri uri = _buildUri(action: action, seriesId: seriesId);
+      {required String? action, String? seriesId, String? vodId}) async {
+    final Uri uri = _buildUri(action: action, seriesId: seriesId, vodId: vodId);
     final String body = await _getBody(uri);
     try {
       final dynamic decoded = jsonDecode(body);
@@ -658,7 +702,12 @@ class XtreamClient {
   // Point d'entrée de l'isolate pour le décodage JSON (cf. _callApiList).
   // Doit rester top-level/statique pour être envoyable à `compute`.
 
-  Uri _buildUri({required String? action, String? categoryId, String? seriesId}) {
+  Uri _buildUri({
+    required String? action,
+    String? categoryId,
+    String? seriesId,
+    String? vodId,
+  }) {
     final Uri base = Uri.parse('$_baseUrl/player_api.php');
     final Map<String, String> queryParameters = <String, String>{
       ...base.queryParameters,
@@ -670,6 +719,8 @@ class XtreamClient {
       if (categoryId != null && categoryId.isNotEmpty) 'category_id': categoryId,
       // Fiche série (get_series_info) : identifiant de la série demandée.
       if (seriesId != null && seriesId.isNotEmpty) 'series_id': seriesId,
+      // Fiche film (get_vod_info) : identifiant du film demandé.
+      if (vodId != null && vodId.isNotEmpty) 'vod_id': vodId,
     };
     return base.replace(queryParameters: queryParameters);
   }

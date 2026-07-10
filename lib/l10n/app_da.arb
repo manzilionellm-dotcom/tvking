@@ -603,9 +603,54 @@
   "tvMyList": "Min liste",
   "tvInMyList": "På Min liste",
   "tvRailRecent": "Senest sete",
+  "tvRailContinueWatching": "Fortsæt med at se",
+  "tvResumedAt": "Genoptaget ved {time}",
+  "@tvResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpNext": "Næste",
+  "tvUpNextAutoIn": "Afspiller om {seconds} s",
+  "@tvUpNextAutoIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "tvUpNextPlayNow": "Afspil nu",
+  "tvUpNextPressOk": "Er du der stadig? Tryk OK for at afspille næste afsnit.",
   "tvDownload": "Download",
   "tvDownloaded": "Downloadet",
   "tvResume": "Fortsæt",
+  "tvResumeAt": "Genoptag ved {time}",
+  "@tvResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvStartOver": "Start forfra",
+  "tvDetailWithCast": "Med {cast}",
+  "@tvDetailWithCast": {
+    "placeholders": {
+      "cast": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDetailByDirector": "Instrueret af {director}",
+  "@tvDetailByDirector": {
+    "placeholders": {
+      "director": {
+        "type": "String"
+      }
+    }
+  },
   "tvPercent": "{percent} %",
   "@tvPercent": {
     "placeholders": {

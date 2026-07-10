@@ -15,6 +15,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
+import '../../../core/update/update_prompt.dart';
 import '../../../core/profiles/profiles_repository.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../channels/domain/channel.dart';
@@ -360,6 +361,16 @@ class TvGate extends StatefulWidget {
 class _TvGateState extends State<TvGate> {
   StreamSubscription<List<Channel>>? _sub;
 
+  // MISE À JOUR IN-APP (sideload) : la box n'a PAS de Play Store — sans ce
+  // branchement, une box allumée en continu ne se mettait JAMAIS à jour
+  // (le revendeur devait re-sideloader à la main). On vérifie 30 s après
+  // l'ouverture (laisser le boot respirer), puis toutes les 12 h (box
+  // always-on). `maybePromptUpdate` est fail-open : rien de neuf ou réseau
+  // KO → il ne se passe rien, jamais de crash. Le dialogue standard est
+  // pilotable au D-pad (boutons focusables) sur toutes les télécommandes.
+  Timer? _updateKick;
+  Timer? _updateTick;
+
   // « Qui regarde ? » (façon Netflix) : montré UNE fois par ouverture d'app,
   // AVANT l'accueil, quand la famille a plusieurs profils. Une fois le profil
   // choisi (ou s'il n'y a qu'un profil), on file directement à l'accueil.
@@ -371,6 +382,14 @@ class _TvGateState extends State<TvGate> {
     SubscriptionState.instance.addListener(_onChange);
     ProfilesRepository.instance.addListener(_onChange);
     _sub = PlaylistRepository.instance.channelsStream.listen((_) => _onChange());
+    _updateKick = Timer(const Duration(seconds: 30), _checkUpdate);
+    _updateTick =
+        Timer.periodic(const Duration(hours: 12), (_) => _checkUpdate());
+  }
+
+  void _checkUpdate() {
+    if (!mounted) return;
+    unawaited(maybePromptUpdate(context));
   }
 
   @override
@@ -378,6 +397,8 @@ class _TvGateState extends State<TvGate> {
     SubscriptionState.instance.removeListener(_onChange);
     ProfilesRepository.instance.removeListener(_onChange);
     _sub?.cancel();
+    _updateKick?.cancel();
+    _updateTick?.cancel();
     super.dispose();
   }
 

@@ -13,7 +13,9 @@ import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
+import '../../vod/data/playback_position_repository.dart';
 import '../../vod/data/series_repository.dart';
+import '../../vod/domain/vod_info.dart';
 import '../../vod/domain/vod_series.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -335,8 +337,14 @@ class _SeriesPoster extends StatelessWidget {
 }
 
 // =========================================================
-//  FICHE SÉRIE — saisons + épisodes
+//  FICHE SÉRIE — en-tête enrichi (backdrop, synopsis, casting)
+//  + saisons + épisodes
 // =========================================================
+//  L'en-tête est ENRICHI « gratuitement » : `get_series_info` (déjà appelé
+//  pour les épisodes) renvoie aussi synopsis/casting/genre/backdrop —
+//  SeriesRepository.fetchDetail livre les deux d'un SEUL appel réseau.
+//  Le titre et le synopsis du catalogue (VodSeries.plot) s'affichent
+//  IMMÉDIATEMENT ; la fiche riche complète dès que la réponse arrive.
 class TvSeriesDetailScreen extends StatefulWidget {
   const TvSeriesDetailScreen({required this.series, super.key});
   final VodSeries series;
@@ -346,13 +354,30 @@ class TvSeriesDetailScreen extends StatefulWidget {
 }
 
 class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
-  late Future<List<VodEpisode>> _future;
+  late Future<({VodInfo? info, List<VodEpisode> episodes})> _future;
   int _season = 0; // 0 = pas encore choisi → on prend la 1re saison dispo
 
   @override
   void initState() {
     super.initState();
-    _future = SeriesRepository.instance.fetchEpisodes(widget.series.id);
+    _future = SeriesRepository.instance.fetchDetail(widget.series.id);
+    // Reprise de lecture : les barres de progression des épisodes se mettent
+    // à jour toutes seules (retour du lecteur, sauvegarde périodique). Le
+    // ensureLoaded est un filet — le vrai load() est branché au démarrage.
+    PlaybackPositionRepository.instance.addListener(_onPositionsChanged);
+    PlaybackPositionRepository.instance
+        .ensureLoaded()
+        .then((_) => _onPositionsChanged());
+  }
+
+  @override
+  void dispose() {
+    PlaybackPositionRepository.instance.removeListener(_onPositionsChanged);
+    super.dispose();
+  }
+
+  void _onPositionsChanged() {
+    if (mounted) setState(() {}); // progress lu directement dans build()
   }
 
   void _playEpisode(List<VodEpisode> seasonEps, int index) {
@@ -377,78 +402,164 @@ class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: TvTokens.bg,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(48, 32, 48, 24),
-          child: FutureBuilder<List<VodEpisode>>(
-            future: _future,
-            builder: (BuildContext context,
-                AsyncSnapshot<List<VodEpisode>> snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final List<VodEpisode> eps = snap.data ?? const <VodEpisode>[];
-              if (eps.isEmpty) {
-                return Center(
-                  child: Text(context.l10n.tvNoEpisodes,
-                      style: TvTokens.ui(16, color: TvTokens.mutedDim)),
-                );
-              }
-              // Saisons disponibles (triées).
-              final List<int> seasons =
-                  eps.map((VodEpisode e) => e.season).toSet().toList()..sort();
-              final int currentSeason =
-                  seasons.contains(_season) ? _season : seasons.first;
-              final List<VodEpisode> seasonEps = eps
-                  .where((VodEpisode e) => e.season == currentSeason)
-                  .toList(growable: false);
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(widget.series.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TvTokens.display(28, color: TvTokens.text)),
-                  const SizedBox(height: 14),
-                  // ----- Sélecteur de saison (si plusieurs) -----
-                  if (seasons.length > 1)
-                    SizedBox(
-                      height: 44,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: seasons.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 10),
-                        itemBuilder: (BuildContext context, int i) {
-                          final int s = seasons[i];
-                          return _SeasonChip(
-                            label: 'Saison $s',
-                            selected: s == currentSeason,
-                            autofocus: i == 0,
-                            onSelect: () => setState(() => _season = s),
-                          );
-                        },
-                      ),
-                    ),
-                  if (seasons.length > 1) const SizedBox(height: 14),
-                  // ----- Épisodes de la saison -----
-                  Expanded(
-                    child: ListView.separated(
-                      addAutomaticKeepAlives: false,
-                      itemCount: seasonEps.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (BuildContext context, int i) => _EpisodeRow(
-                        episode: seasonEps[i],
-                        autofocus: seasons.length <= 1 && i == 0,
-                        onPlay: () => _playEpisode(seasonEps, i),
-                      ),
+      body: FutureBuilder<({VodInfo? info, List<VodEpisode> episodes})>(
+        future: _future,
+        builder: (BuildContext context,
+            AsyncSnapshot<({VodInfo? info, List<VodEpisode> episodes})>
+                snap) {
+          final VodInfo? info = snap.data?.info;
+          final bool waiting =
+              snap.connectionState == ConnectionState.waiting;
+          // En-tête TOUJOURS affiché tout de suite : le catalogue connaît
+          // déjà nom/synopsis/note (VodSeries) — get_series_info ne fait
+          // qu'enrichir (casting, genre, backdrop). Jamais d'écran vide.
+          final String? plot = info?.plot ?? widget.series.plot;
+          final String? year = info?.year ?? widget.series.year;
+          final String? rating = info?.rating ?? widget.series.rating;
+          final String meta = <String>[
+            if (year != null && year.isNotEmpty) year,
+            if (info?.genre != null) info!.genre!,
+            if (rating != null && rating.isNotEmpty) '★ $rating',
+          ].join('   ·   ');
+
+          return Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              // ----- BACKDROP plein écran (si le serveur en fournit un),
+              //  décodage borné anti-OOM + scrim sombre : la liste des
+              //  épisodes doit rester parfaitement lisible par-dessus. -----
+              if (info?.backdropUrl != null)
+                CachedNetworkImage(
+                  imageUrl: info!.backdropUrl!,
+                  fit: BoxFit.cover,
+                  memCacheWidth: 960,
+                  fadeInDuration: const Duration(milliseconds: 250),
+                  placeholder: (_, __) => const SizedBox.shrink(),
+                  errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              if (info?.backdropUrl != null)
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: <Color>[Color(0xD908080A), Color(0xF508080A)],
                     ),
                   ),
-                ],
-              );
-            },
+                ),
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(48, 32, 48, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(widget.series.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TvTokens.display(28, color: TvTokens.text)),
+                      if (meta.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 6),
+                        Text(meta,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TvTokens.ui(14,
+                                weight: FontWeight.w600,
+                                color: TvTokens.muted)),
+                      ],
+                      if (plot != null && plot.trim().isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: 640, // colonne de lecture 10-foot
+                          child: Text(plot,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: TvTokens.ui(14, color: TvTokens.text)
+                                  .copyWith(height: 1.45)),
+                        ),
+                      ],
+                      if (info?.cast != null) ...<Widget>[
+                        const SizedBox(height: 6),
+                        Text(context.l10n.tvDetailWithCast(info!.cast!),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TvTokens.ui(13, color: TvTokens.muted)),
+                      ],
+                      const SizedBox(height: 14),
+                      // ----- Zone saisons + épisodes -----
+                      Expanded(
+                        child: waiting
+                            ? const Center(child: CircularProgressIndicator())
+                            : _episodesArea(
+                                snap.data?.episodes ?? const <VodEpisode>[]),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Sélecteur de saison + liste des épisodes (inchangé fonctionnellement —
+  /// simplement extrait pour que l'en-tête enrichi reste lisible).
+  Widget _episodesArea(List<VodEpisode> eps) {
+    if (eps.isEmpty) {
+      return Center(
+        child: Text(context.l10n.tvNoEpisodes,
+            style: TvTokens.ui(16, color: TvTokens.mutedDim)),
+      );
+    }
+    // Saisons disponibles (triées).
+    final List<int> seasons =
+        eps.map((VodEpisode e) => e.season).toSet().toList()..sort();
+    final int currentSeason =
+        seasons.contains(_season) ? _season : seasons.first;
+    final List<VodEpisode> seasonEps = eps
+        .where((VodEpisode e) => e.season == currentSeason)
+        .toList(growable: false);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        // ----- Sélecteur de saison (si plusieurs) -----
+        if (seasons.length > 1)
+          SizedBox(
+            height: 44,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: seasons.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (BuildContext context, int i) {
+                final int s = seasons[i];
+                return _SeasonChip(
+                  label: 'Saison $s',
+                  selected: s == currentSeason,
+                  autofocus: i == 0,
+                  onSelect: () => setState(() => _season = s),
+                );
+              },
+            ),
+          ),
+        if (seasons.length > 1) const SizedBox(height: 14),
+        // ----- Épisodes de la saison -----
+        Expanded(
+          child: ListView.separated(
+            addAutomaticKeepAlives: false,
+            itemCount: seasonEps.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (BuildContext context, int i) => _EpisodeRow(
+              episode: seasonEps[i],
+              autofocus: seasons.length <= 1 && i == 0,
+              // Fraction déjà vue (reprise) — null si jamais entamé.
+              progress: PlaybackPositionRepository.instance
+                  .progressFor(seasonEps[i].id),
+              onPlay: () => _playEpisode(seasonEps, i),
+            ),
           ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -500,10 +611,15 @@ class _EpisodeRow extends StatelessWidget {
   const _EpisodeRow({
     required this.episode,
     required this.onPlay,
+    this.progress,
     this.autofocus = false,
   });
   final VodEpisode episode;
   final VoidCallback onPlay;
+
+  /// Fraction déjà vue (0..1) — null si l'épisode n'a pas de reprise en
+  /// cours. Affiche un fin filet doré sous le titre (repère « entamé »).
+  final double? progress;
   final bool autofocus;
 
   @override
@@ -528,13 +644,45 @@ class _EpisodeRow extends StatelessWidget {
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: Text(episode.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: TvDimens.title,
-                      fontWeight: FontWeight.w600,
-                      color: TvTokens.text)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(episode.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: TvDimens.title,
+                          fontWeight: FontWeight.w600,
+                          color: TvTokens.text)),
+                  // Barre de reprise (façon Netflix) : même pattern
+                  // Stack + FractionallySizedBox que le lecteur — rien
+                  // n'est construit quand il n'y a pas de reprise.
+                  if (progress != null) ...<Widget>[
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 4,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: Stack(
+                          children: <Widget>[
+                            Container(color: Colors.white24),
+                            FractionallySizedBox(
+                              // Jamais < 4 % : une reprise toute fraîche
+                              // doit rester visible.
+                              widthFactor: progress!.clamp(0.04, 1.0),
+                              child: Container(
+                                decoration: const BoxDecoration(
+                                    gradient: TvTokens.ctaGradient),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
             const SizedBox(width: 12),
             Icon(Icons.play_circle_outline_rounded,

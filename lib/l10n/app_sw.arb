@@ -603,9 +603,54 @@
   "tvMyList": "Orodha yangu",
   "tvInMyList": "Kwenye orodha yangu",
   "tvRailRecent": "Zilizotazamwa hivi karibuni",
+  "tvRailContinueWatching": "Endelea kutazama",
+  "tvResumedAt": "Imeendelea kutoka {time}",
+  "@tvResumedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpNext": "Inayofuata",
+  "tvUpNextAutoIn": "Itachezwa baada ya sekunde {seconds}",
+  "@tvUpNextAutoIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "tvUpNextPlayNow": "Cheza sasa",
+  "tvUpNextPressOk": "Bado upo? Bonyeza OK kucheza kipindi kinachofuata.",
   "tvDownload": "Pakua",
   "tvDownloaded": "Imepakuliwa",
   "tvResume": "Endelea",
+  "tvResumeAt": "Endelea kutoka {time}",
+  "@tvResumeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "tvStartOver": "Anza upya",
+  "tvDetailWithCast": "Wakiwemo {cast}",
+  "@tvDetailWithCast": {
+    "placeholders": {
+      "cast": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDetailByDirector": "Imeongozwa na {director}",
+  "@tvDetailByDirector": {
+    "placeholders": {
+      "director": {
+        "type": "String"
+      }
+    }
+  },
   "tvPercent": "{percent}%",
   "@tvPercent": {
     "placeholders": {
