@@ -205,6 +205,35 @@ void main() {
     });
   });
 
+  group('TsHlsSegmenter — rampe de démarrage (fluidité zapping)', () {
+    test('startupSegments: 2 → deux premiers segments courts, puis cible',
+        () {
+      final TsHlsSegmenter seg =
+          TsHlsSegmenter(startupSegments: 2, startupTargetSec: 1.8);
+      final List<TsSegment> out = seg.ingest(syntheticStream(seconds: 14.0));
+      expect(out.length, greaterThanOrEqualTo(4));
+      // GOP 1 s → coupes possibles chaque seconde : la rampe coupe à 2 s
+      // (première keyframe ≥ 1,8 s), la cible pleine à 3 s.
+      expect(out[0].durationSec, inInclusiveRange(1.5, 2.4),
+          reason: 'segment de démarrage court = playlist servable plus tôt');
+      expect(out[1].durationSec, inInclusiveRange(1.5, 2.4));
+      expect(out[2].durationSec, inInclusiveRange(2.5, 4.5),
+          reason: 'retour à la cible pleine dès le 3e segment (stabilité)');
+      // Les segments restent décodables indépendamment (PAT puis PMT).
+      for (final TsSegment s in out) {
+        expect(pidOfPacket(s.bytes, 0), 0);
+        expect(pidOfPacket(s.bytes, 1), kPmtPid);
+      }
+    });
+
+    test('défaut startupSegments: 0 = comportement historique inchangé', () {
+      final TsHlsSegmenter seg = TsHlsSegmenter();
+      final List<TsSegment> out = seg.ingest(syntheticStream(seconds: 14.0));
+      expect(out.first.durationSec, inInclusiveRange(2.5, 4.5),
+          reason: 'sans rampe, le 1er segment vise déjà la cible pleine');
+    });
+  });
+
   group('TsHlsSegmenter — flux sans random_access_indicator', () {
     test('démarre et découpe quand même (repli sans keyframe)', () {
       // Horloge injectée : le give-up RAI (8 s) est piloté par le test.

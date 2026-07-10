@@ -193,9 +193,9 @@ class LocalCastServer {
   }
 
   /// Sert la playlist LIVE GLISSANTE d'une session HLS. Au premier
-  /// appel on attend que le segmenteur ait produit assez de matière
-  /// (3 segments ≈ 9 s de flux = matelas anti-saccades) — le récepteur
-  /// vient d'être lancé, son LOAD tolère ce délai (budget 25 s sender).
+  /// appel on attend que le segmenteur ait produit assez de matière —
+  /// le récepteur vient d'être lancé, son LOAD tolère ce délai
+  /// (budget 25 s sender).
   Future<void> _serveHlsManifest(HttpRequest req) async {
     final String last = req.uri.pathSegments.last; // <token>.m3u8
     final int dot = last.indexOf('.');
@@ -208,11 +208,14 @@ class LocalCastServer {
     }
     session.touch();
     session.playlistServed++;
-    // 3 segments (~9 s) avant la premiere reponse : demarre la lecture
-    // avec un vrai matelas de buffer (diag fluidite 2026-07-09). Les
+    // 2 segments avant la premiere reponse (fluidite 2026-07-10 : avec
+    // la rampe de demarrage du segmenteur, 2 segments courts ~1,8 s
+    // arrivent vite → premiere image nettement plus tot au zapping).
+    // Le matelas anti-saccades se reconstitue tout seul : la fenetre
+    // continue de grossir pendant que le recepteur demarre, et les
     // rafraichissements suivants repondent immediatement.
     final bool ready =
-        await session.waitForSegments(3, const Duration(seconds: 15));
+        await session.waitForSegments(2, const Duration(seconds: 15));
     if (!ready) {
       // Upstream mort ou trop lent : 503 → le récepteur remonte une
       // vraie erreur réseau (pas un faux « codec »).

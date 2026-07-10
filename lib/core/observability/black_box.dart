@@ -306,11 +306,13 @@ class BlackBox {
     );
     addIf(
       countWhere((Map<String, Object?> e) =>
-          e['event'] == 'proxy.blocked_fallback_relay'),
+          e['event'] == 'proxy.blocked_fallback_relay' ||
+          e['event'] == 'proxy.memo_blocked_skip'),
       severity: 'info',
       title: 'Bascule proxy → relais téléphone',
       detail: 'Le chemin prioritaire /cast-proxy était indisponible ; le '
-          'relais HLS local a pris le relais.',
+          'relais HLS local a pris le relais (memo_blocked_skip = verdict '
+          '« bloqué » mémorisé, bascule immédiate sans re-tester).',
     );
 
     // --- cast : la TV a rejeté la lecture ---

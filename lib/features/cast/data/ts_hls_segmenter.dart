@@ -45,12 +45,26 @@ class TsHlsSegmenter {
   TsHlsSegmenter({
     this.targetDurationSec = 3.0,
     this.maxDurationSec = 6.0,
+    this.startupSegments = 0,
+    this.startupTargetSec = 1.8,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
   /// Durée visée d'un segment. 3 s = compromis latence de zapping /
   /// nombre de requêtes HTTP côté TV.
   final double targetDurationSec;
+
+  /// Démarrage progressif (fluidité 2026-07-10) : les [startupSegments]
+  /// premiers segments visent [startupTargetSec] au lieu de
+  /// [targetDurationSec]. Le récepteur obtient sa matière initiale
+  /// (2 segments) presque deux fois plus vite → première image plus
+  /// tôt au zapping, puis on revient aux segments longs (stabilité,
+  /// moins de requêtes). `0` = comportement historique (segments
+  /// uniformes), défaut pour ne pas surprendre les autres usages.
+  final int startupSegments;
+
+  /// Durée visée des segments de démarrage (voir [startupSegments]).
+  final double startupTargetSec;
 
   /// Au-delà, on coupe au prochain début de PES vidéo MÊME sans
   /// image-clé (certains encodeurs IPTV ne posent jamais le
@@ -105,6 +119,13 @@ class TsHlsSegmenter {
   double? get lastPcrSeen => _lastPcr;
   DateTime? _segStartWall;
   DateTime? _firstVideoWall;
+
+  /// Segments déjà émis — pilote la rampe de démarrage.
+  int _emitted = 0;
+
+  /// Cible effective du segment EN COURS (rampe de démarrage).
+  double get _currentTargetSec =>
+      _emitted < startupSegments ? startupTargetSec : targetDurationSec;
 
   // Fiabilité du random_access_indicator : si on voit beaucoup de
   // débuts de PES vidéo sans jamais un seul RAI, l'encodeur ne le pose
@@ -243,9 +264,9 @@ class TsHlsSegmenter {
     } else if (isVideo && pusi) {
       // Frontière de découpe possible (début d'une nouvelle PES vidéo).
       final double elapsed = _elapsedSec();
-      final bool cutOnKey = keyframe && elapsed >= targetDurationSec;
+      final bool cutOnKey = keyframe && elapsed >= _currentTargetSec;
       final bool cutNoKey =
-          elapsed >= (_raiUnusable ? targetDurationSec : maxDurationSec);
+          elapsed >= (_raiUnusable ? _currentTargetSec : maxDurationSec);
       if ((cutOnKey || cutNoKey) && _segment.length >= kMinSegmentBytes) {
         completed = _emit();
         _beginSegment();
@@ -283,6 +304,7 @@ class TsHlsSegmenter {
     final TsSegment seg =
         TsSegment(bytes: _segment.takeBytes(), durationSec: dur);
     _segment.clear();
+    _emitted++;
     return seg;
   }
 

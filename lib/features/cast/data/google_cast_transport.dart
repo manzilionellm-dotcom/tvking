@@ -110,6 +110,59 @@ const bool kCastDebugOverlay = false;
 /// URL signée à `/cast-sign`, elle n'embarque aucun secret.
 const String _kCastProxyBase = 'https://app.7themotion.com';
 
+/// Mémo du verdict `/cast-proxy` PAR HÔTE UPSTREAM (fluidité 2026-07-10).
+///
+/// Terrain (diag SHIELD 2026-07-10, 9 casts) : le fournisseur IPTV refuse
+/// les IP datacenter du Worker (upstream 403/456/458) de façon STABLE —
+/// or l'app re-signait et re-vérifiait le proxy À CHAQUE zap : ~0,5 s au
+/// mieux, plusieurs secondes au pire (timeouts), plus un 502 martelé sur
+/// le Worker pour rien. On mémorise donc le verdict par hôte du portail :
+///   - « bloqué »  (TTL 10 min) → zap suivant : DIRECT au relais téléphone,
+///     zéro aller-retour réseau ;
+///   - « délivre » (TTL 2 min)  → on signe (obligatoire, URL périssable)
+///     mais on saute la re-vérification GET.
+/// À l'expiration on re-teste vraiment — un fournisseur qui débloque (ou
+/// bloque) le datacenter est pris en compte en ≤ TTL.
+@visibleForTesting
+class CastProxyVerdictMemo {
+  CastProxyVerdictMemo({DateTime Function()? clock})
+      : _clock = clock ?? DateTime.now;
+
+  /// Instance partagée par tous les [GoogleCastTransport] (un transport
+  /// est recréé à chaque cast — le mémo doit leur survivre).
+  static final CastProxyVerdictMemo instance = CastProxyVerdictMemo();
+
+  static const Duration kBlockedTtl = Duration(minutes: 10);
+  static const Duration kDeliversTtl = Duration(minutes: 2);
+
+  final DateTime Function() _clock;
+  final Map<String, _ProxyVerdict> _byHost = <String, _ProxyVerdict>{};
+
+  /// `true` = proxy bloqué pour cet hôte, `false` = il délivre,
+  /// `null` = inconnu ou verdict expiré (→ vérification réelle requise).
+  bool? cachedBlocked(String host) {
+    final _ProxyVerdict? v = _byHost[host];
+    if (v == null) return null;
+    final Duration ttl = v.blocked ? kBlockedTtl : kDeliversTtl;
+    if (_clock().difference(v.at) > ttl) {
+      _byHost.remove(host);
+      return null;
+    }
+    return v.blocked;
+  }
+
+  void remember(String host, {required bool blocked}) {
+    if (host.isEmpty) return;
+    _byHost[host] = _ProxyVerdict(blocked: blocked, at: _clock());
+  }
+}
+
+class _ProxyVerdict {
+  const _ProxyVerdict({required this.blocked, required this.at});
+  final bool blocked;
+  final DateTime at;
+}
+
 class GoogleCastTransport implements CastTransport {
   GoogleCastTransport(this.device);
 
@@ -230,21 +283,48 @@ class GoogleCastTransport implements CastTransport {
       while (upstream.endsWith('?')) {
         upstream = upstream.substring(0, upstream.length - 1);
       }
-      String? proxied =
-          kCastUseCustomReceiver ? await _signedCastProxyUrl(upstream) : null;
 
-      // NOUVEAU (CAST_HANDOFF §6.1) : ne PAS faire confiance aveuglément au
-      // proxy — le Worker peut être BLOQUÉ par le fournisseur IPTV (IP
-      // datacenter refusée : upstream=456 relevé sur le terrain 2026-07-06).
-      // Dans ce cas mpegts.js recevrait un 502 en boucle → écran noir. On
-      // vérifie que /cast-proxy DÉLIVRE vraiment avant de l'envoyer à la TV.
-      if (proxied != null && !await _proxyDelivers(proxied)) {
-        StructuredLogger.instance.warn(
+      // MÉMO DE VERDICT (fluidité 2026-07-10) : si ce portail a déjà été vu
+      // « bloqué côté datacenter » il y a < 10 min, on part DIRECT au relais
+      // téléphone — pas de signature, pas de GET de vérification, pas de 502
+      // martelé. Verdict « délivre » (< 2 min) : on signe (URL périssable)
+      // mais on saute la re-vérification.
+      final String upstreamHost = Uri.tryParse(upstream)?.host ?? '';
+      final bool? memoBlocked = upstreamHost.isEmpty
+          ? null
+          : CastProxyVerdictMemo.instance.cachedBlocked(upstreamHost);
+
+      String? proxied;
+      if (kCastUseCustomReceiver && memoBlocked == true) {
+        StructuredLogger.instance.info(
           domain: 'cast',
-          event: 'proxy.blocked_fallback_relay',
-          ctx: const <String, Object?>{},
+          event: 'proxy.memo_blocked_skip',
+          ctx: <String, Object?>{'host': upstreamHost},
         );
-        proxied = null; // → bascule sur le relais HLS du téléphone
+      } else if (kCastUseCustomReceiver) {
+        proxied = await _signedCastProxyUrl(upstream);
+
+        // NOUVEAU (CAST_HANDOFF §6.1) : ne PAS faire confiance aveuglément au
+        // proxy — le Worker peut être BLOQUÉ par le fournisseur IPTV (IP
+        // datacenter refusée : upstream=456 relevé sur le terrain 2026-07-06).
+        // Dans ce cas mpegts.js recevrait un 502 en boucle → écran noir. On
+        // vérifie que /cast-proxy DÉLIVRE vraiment avant de l'envoyer à la TV
+        // (sauf verdict « délivre » tout frais dans le mémo).
+        if (proxied != null && memoBlocked != false) {
+          if (await _proxyDelivers(proxied)) {
+            CastProxyVerdictMemo.instance
+                .remember(upstreamHost, blocked: false);
+          } else {
+            StructuredLogger.instance.warn(
+              domain: 'cast',
+              event: 'proxy.blocked_fallback_relay',
+              ctx: const <String, Object?>{},
+            );
+            CastProxyVerdictMemo.instance
+                .remember(upstreamHost, blocked: true);
+            proxied = null; // → bascule sur le relais HLS du téléphone
+          }
+        }
       }
 
       if (proxied != null) {
@@ -396,14 +476,29 @@ class GoogleCastTransport implements CastTransport {
           // télécharge playlist + segments puis rejette → HEVC-dans-TS,
           // que le Default Media Receiver ne décode pas (limite CAF,
           // le transmux TS ne gère que le H.264). Message actionnable.
-          final bool hevcDecodeReject = info.contains('codec=hevc') &&
-              !info.contains('segments servis=0');
-          final String hint = hevcDecodeReject
-              ? ' Cette chaîne émet en HEVC (H.265) que le récepteur '
-                  'Cast standard ne sait pas décoder depuis du TS — '
-                  'essaie la déclinaison H.264/FHD de la même chaîne '
-                  '(sans « RAW »).'
-              : '';
+          final bool downloaded = !info.contains('segments servis=0');
+          final bool hevcDecodeReject =
+              info.contains('codec=hevc') && downloaded;
+          // Même famille (BBC 1 ᴿᴬᵂ, 2026-07-10) : vidéo h264 OK mais
+          // audio Dolby (AC-3/E-AC-3) — la TV télécharge (8 playlists,
+          // 6 segments) sans jamais démarrer : le transmux TS du
+          // récepteur ne sort pas l'audio Dolby. Sans ce hint, l'échec
+          // restait muet 30 s.
+          final bool dolbyStall = !hevcDecodeReject &&
+              downloaded &&
+              RegExp('audio=(ac3|eac3)').hasMatch(info);
+          String hint = '';
+          if (hevcDecodeReject) {
+            hint = ' Cette chaîne émet en HEVC (H.265) que le récepteur '
+                'Cast standard ne sait pas décoder depuis du TS — '
+                'essaie la déclinaison H.264/FHD de la même chaîne '
+                '(sans « RAW »).';
+          } else if (dolbyStall) {
+            hint = ' Cette chaîne émet en audio Dolby (AC-3) que le '
+                'récepteur Cast standard ne démarre pas depuis du TS — '
+                'essaie la déclinaison de la même chaîne sans « RAW » '
+                '(audio AAC).';
+          }
           throw Exception('$base [relais: $info]$hint');
         }
       }

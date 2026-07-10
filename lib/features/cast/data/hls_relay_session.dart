@@ -52,8 +52,14 @@ class HlsRelaySession {
     required this.upstreamUrl,
     required this.userAgent,
     TsHlsSegmenter Function()? segmenterFactory,
-  }) : _segmenterFactory =
-            segmenterFactory ?? (() => TsHlsSegmenter());
+  }) : _segmenterFactory = segmenterFactory ??
+            // Rampe de démarrage (fluidité 2026-07-10) : les 2 premiers
+            // segments visent ~1,8 s au lieu de 3 s → la playlist devient
+            // servable presque deux fois plus vite au zapping. Une
+            // reconnexion upstream repasse par la rampe (segmenteur
+            // neuf) : sans conséquence, 2 segments courts au raccord
+            // aident même le récepteur à se recaler.
+            (() => TsHlsSegmenter(startupSegments: 2));
 
   final String upstreamUrl;
   final String userAgent;
