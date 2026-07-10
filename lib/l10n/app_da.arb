@@ -786,6 +786,7 @@
   "tvSettingsSleep": "Sluk-timer (sluk efter X min)",
   "tvSettingsDisplay": "Skærm (margen + tekststørrelse)",
   "tvSettingsAbout": "Om (version, enhed, ryd cache)",
+  "tvSettingsBlackBox": "Sort boks (diagnose & samlet rapport)",
   "tvMyTeams": "Mine hold",
   "tvChooseTeams": "Vælg dine yndlingshold",
   "tvChooseMyTeam": "Vælg mit hold",

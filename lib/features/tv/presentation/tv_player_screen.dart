@@ -42,7 +42,9 @@ import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../vod/data/playback_position_repository.dart';
 import '../data/autoplay_policy.dart';
+import '../data/failure_explainer.dart';
 import '../data/freeze_recovery_policy.dart';
+import '../data/playback_failure_log.dart';
 import '../core/tv_dimens.dart';
 import 'tv_channel_programs_screen.dart';
 import 'tv_components.dart';
@@ -265,6 +267,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       resetWatchdogBudget: () => _freeze.openChannel(DateTime.now()),
       reopen: (String _) => unawaited(_loadCurrentUrl()),
       showBlocked: (String _) {
+        // Échec DÉFINITIF (toute la cascade signatures + formats a échoué) →
+        // gravé dans le journal de la Boîte noire des Réglages. La cascade
+        // possède le contexte fin ; ici on capture les codes ExoPlayer réels.
+        _recordPlaybackFailure();
         if (!mounted) return;
         setState(() {
           _fatal = true;
@@ -580,12 +586,56 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         // réseau, message direct existant.
         if (!_everShownFrame) {
           _declareChannelBlocked();
-        } else if (mounted) {
-          setState(() {
-            _fatal = true;
-            _buffering = false;
-          });
+        } else {
+          // ÉCHEC DÉFINITIF après lecture OK (reconnexions épuisées) →
+          // gravé dans le journal durable de la Boîte noire (Réglages).
+          _recordPlaybackFailure();
+          if (mounted) {
+            setState(() {
+              _fatal = true;
+              _buffering = false;
+            });
+          }
         }
+    }
+  }
+
+  /// Grave un ÉCHEC DÉFINITIF de lecture dans le journal durable consulté
+  /// par la Boîte noire des Réglages (playback_failure_log.dart). GREFFÉ sur
+  /// les chemins d'erreur existants sans en changer la logique : appelé
+  /// uniquement quand le lecteur ABANDONNE (budget de reconnexion épuisé /
+  /// chaîne déclarée bloquée), jamais sur une reconnexion silencieuse.
+  /// Fire-and-forget et fail-open : le journal ne bloque JAMAIS le lecteur.
+  void _recordPlaybackFailure({int uaTried = 0, bool networkBlocked = false}) {
+    try {
+      final Channel c = _current;
+      final String? codeName = _controller.lastErrorCodeName;
+      final int? code = _controller.lastErrorCode;
+      final String? cause =
+          _controller.lastErrorCauseMessage ?? _controller.lastErrorMessage;
+      // Verdict humain calculé AU MOMENT DES FAITS (le contexte — image déjà
+      // affichée ? blocage réseau conclu par la sonde multi-UA ? — ne sera
+      // plus reconstituable plus tard).
+      final PlaybackFailureExplanation why = explainPlaybackFailure(
+        errorCodeName: codeName,
+        errorCode: code,
+        cause: cause,
+        everShownFrame: _everShownFrame,
+        dnsFailed: networkBlocked,
+      );
+      unawaited(PlaybackFailureLog.instance.record(PlaybackFailureEntry(
+        timestamp: DateTime.now(),
+        channelName: c.cleanName,
+        // VIE PRIVÉE : l'HÔTE seul, jamais l'URL complète (identifiants).
+        streamHost: Uri.tryParse(c.streamUrl)?.host ?? '',
+        errorCodeName: codeName,
+        errorCode: code,
+        cause: cause,
+        uaTriedCount: uaTried,
+        verdict: why.why,
+      )));
+    } on Object {
+      // le journal ne fait JAMAIS planter le lecteur
     }
   }
 

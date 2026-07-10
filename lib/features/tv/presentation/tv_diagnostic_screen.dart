@@ -20,29 +20,26 @@
 //    4. Lecture de la source poussée (GET /api/device-source/<MAC>)
 //    5. Sonde ExoPlayer/Media3 (mini instance native, 1re image ou erreur)
 //
+//  REFACTOR 2026-07-10 : la LOGIQUE des vérifications vit désormais dans
+//  TvDiagnosticsService (partagée avec la Boîte noire des Réglages) — cet
+//  écran n'est plus que l'AFFICHAGE. Comportement et textes identiques.
+//
 //  Chaque ligne est aussi écrite dans logcat (tag DEFEW_DIAG) pour relire le
 //  test à froid via `adb logcat -s DEFEW_DIAG`.
 // =========================================================
 import 'dart:async';
 import 'dart:developer' as developer;
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:native_video_player/native_video_player.dart';
 
 import '../../channels/domain/channel.dart';
-import '../../device/data/device_identity.dart';
 import '../../playlists/data/playlist_repository.dart';
-import '../../subscription/data/subscription_backend.dart'
-    show kSubscriptionBaseUrl;
+import '../data/tv_diagnostics_service.dart';
 
 /// Tag logcat — `adb logcat -s DEFEW_DIAG`.
 const String _kLogTag = 'DEFEW_DIAG';
-
-/// Time-out commun à chaque vérif.
-const Duration _kCheckTimeout = Duration(seconds: 8);
 
 enum _Stat { pending, running, ok, fail, timeout, unknown }
 
@@ -148,172 +145,72 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
     _log('===== FIN DIAGNOSTIC — VERDICT: ${_verdictLabel()} =====');
   }
 
-  // 1. Portail captif : un 204 « nu » = sortie Internet libre. Un 200 avec
-  // corps, un 302 ou un autre code = portail captif / interception.
+  /// Traduit le statut du service partagé vers l'état d'affichage local.
+  _Stat _fromService(TvCheckStatus s) {
+    switch (s) {
+      case TvCheckStatus.ok:
+        return _Stat.ok;
+      case TvCheckStatus.fail:
+        return _Stat.fail;
+      case TvCheckStatus.timeout:
+        return _Stat.timeout;
+      case TvCheckStatus.unknown:
+        return _Stat.unknown;
+    }
+  }
+
+  void _apply(_Check c, TvCheckResult r) =>
+      _set(c, _fromService(r.status), r.detail);
+
+  // 1. Portail captif : un 204 « nu » = sortie Internet libre.
   Future<void> _runCaptive() async {
     _set(_captive, _Stat.running, 'requête generate_204…');
-    try {
-      final http.Response r = await http
-          .get(Uri.parse('http://connectivitycheck.gstatic.com/generate_204'))
-          .timeout(_kCheckTimeout);
-      if (r.statusCode == 204 && r.body.isEmpty) {
-        _set(_captive, _Stat.ok, 'HTTP 204 (sortie Internet libre)');
-      } else {
-        _set(_captive, _Stat.fail,
-            'HTTP ${r.statusCode} corps=${r.body.length}o → portail captif probable');
-      }
-    } on TimeoutException {
-      _set(_captive, _Stat.timeout, 'pas de réponse en 8 s');
-    } catch (e) {
-      _set(_captive, _Stat.fail, _err(e));
-    }
+    _apply(_captive, await TvDiagnosticsService.instance.checkCaptivePortal());
   }
 
   // 2. DNS : on résout l'hôte de la chaîne courante. Pas de chaîne = INCONNU.
   Future<void> _runDns(String? host) async {
-    if (host == null || host.isEmpty) {
-      _set(_dns, _Stat.unknown, 'aucune chaîne chargée → hôte INCONNU');
-      return;
+    if (host != null && host.isNotEmpty) {
+      _set(_dns, _Stat.running, 'lookup $host…');
     }
-    _set(_dns, _Stat.running, 'lookup $host…');
-    try {
-      final List<InternetAddress> ips = await InternetAddress.lookup(host)
-          .timeout(_kCheckTimeout);
-      if (ips.isEmpty) {
-        _set(_dns, _Stat.fail, '$host → aucune IP');
-      } else {
-        _set(_dns, _Stat.ok,
-            '$host → ${ips.map((InternetAddress a) => a.address).join(', ')}');
-      }
-    } on TimeoutException {
-      _set(_dns, _Stat.timeout, '$host : pas de réponse DNS en 8 s');
-    } catch (e) {
-      _set(_dns, _Stat.fail, '$host : ${_err(e)}');
-    }
+    _apply(_dns, await TvDiagnosticsService.instance.checkDns(host));
   }
 
-  // 3. Joignabilité du flux : HEAD (léger) puis repli GET. On AFFICHE le code.
+  // 3. Joignabilité du flux : HEAD puis repli GET, on AFFICHE le code HTTP.
   // 456 = blocage fournisseur (IP datacenter/cloud) — ici on est sur l'IP de
   // la box, donc un 456 prouverait que le fournisseur bloque même le LAN.
   Future<void> _runStream(String? streamUrl) async {
-    if (streamUrl == null || streamUrl.isEmpty) {
-      _set(_stream, _Stat.unknown, 'aucune chaîne chargée → URL INCONNUE');
-      return;
+    if (streamUrl != null && streamUrl.isNotEmpty) {
+      _set(_stream, _Stat.running, 'HEAD du flux…');
     }
-    _set(_stream, _Stat.running, 'HEAD du flux…');
-    final Uri uri = Uri.parse(streamUrl);
-    try {
-      int code;
-      try {
-        final http.Response h = await http.head(uri).timeout(_kCheckTimeout);
-        code = h.statusCode;
-      } catch (_) {
-        // Beaucoup de serveurs IPTV refusent HEAD → on retente en GET (sans
-        // lire tout le flux : le code de statut arrive avec les en-têtes). On
-        // ANNULE aussitôt le corps : sinon la connexion live resterait ouverte
-        // et pourrait bloquer la sonde lecteur (5) sur un abonnement 1 connexion.
-        final http.Request req = http.Request('GET', uri);
-        final http.StreamedResponse g =
-            await req.send().timeout(_kCheckTimeout);
-        code = g.statusCode;
-        await g.stream.listen((_) {}).cancel();
-      }
-      if (code == 456) {
-        _set(_stream, _Stat.fail, 'HTTP 456 — fournisseur bloque cette IP');
-      } else if (code >= 200 && code < 400) {
-        _set(_stream, _Stat.ok, 'HTTP $code (flux joignable)');
-      } else {
-        _set(_stream, _Stat.fail, 'HTTP $code');
-      }
-    } on TimeoutException {
-      _set(_stream, _Stat.timeout, 'pas de réponse en 8 s');
-    } catch (e) {
-      _set(_stream, _Stat.fail, _err(e));
-    }
+    _apply(_stream,
+        await TvDiagnosticsService.instance.checkStreamReachability(streamUrl));
   }
 
-  // 4. Source poussée : GET /api/device-source/<MAC>. Lecture seule. On montre
-  // le code + si une source est assignée à cette box.
+  // 4. Source poussée : GET /api/device-source/<MAC>. Lecture seule.
   Future<void> _runSource() async {
     _set(_source, _Stat.running, 'lecture MAC…');
-    String mac;
-    try {
-      mac = await DeviceIdentity.instance.mac;
-    } catch (_) {
-      mac = DeviceIdentity.instance.macSync;
-    }
-    if (!mac.startsWith('MK:')) {
-      _set(_source, _Stat.unknown, 'MAC INCONNUE ($mac)');
-      return;
-    }
-    _set(_source, _Stat.running, 'GET device-source ($mac)…');
-    try {
-      final http.Response r = await http
-          .get(
-            Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
-            headers: const <String, String>{'Accept': 'application/json'},
-          )
-          .timeout(_kCheckTimeout);
-      if (r.statusCode != 200) {
-        _set(_source, _Stat.fail, 'HTTP ${r.statusCode}');
-        return;
-      }
-      // On ne fait que CONSTATER la présence d'une source (pas de parsing
-      // métier ni de chargement : c'est un diagnostic, lecture seule).
-      final String b = r.body;
-      final bool hasSource =
-          (b.contains('"source"') && !b.contains('"source":null')) ||
-              (b.contains('"sources"') && b.contains('{'));
-      _set(_source, hasSource ? _Stat.ok : _Stat.fail,
-          hasSource ? 'HTTP 200 — source assignée' : 'HTTP 200 — aucune source assignée');
-    } on TimeoutException {
-      _set(_source, _Stat.timeout, 'pas de réponse en 8 s');
-    } catch (e) {
-      _set(_source, _Stat.fail, _err(e));
-    }
+    _apply(_source, await TvDiagnosticsService.instance.checkPushedSource());
   }
 
-  // 5. Sonde lecteur : on monte une MINI NativeVideoView (Media3/ExoPlayer,
-  // même moteur que le lecteur de prod) sur l'URL de la chaîne courante et on
-  // attend la 1re image (OK) ou une erreur (FAIL). On détruit tout après.
+  // 5. Sonde lecteur : le service monte une MINI NativeVideoView
+  // (Media3/ExoPlayer, même moteur que la prod) via le callback ci-dessous ;
+  // on attend la 1re image (OK) ou une erreur (FAIL). Tout est détruit après.
   Future<void> _runPlayer(String? streamUrl) async {
-    if (streamUrl == null || streamUrl.isEmpty) {
-      _set(_player, _Stat.unknown, 'aucune chaîne chargée → URL INCONNUE');
-      return;
+    if (streamUrl != null && streamUrl.isNotEmpty) {
+      _set(_player, _Stat.running, 'ouverture sonde ExoPlayer…');
     }
-    _set(_player, _Stat.running, 'ouverture sonde ExoPlayer…');
-    final Completer<_Stat> c = Completer<_Stat>();
-    final NativeVideoController ctrl =
-        NativeVideoController(initialUrl: streamUrl);
-    void listener() {
-      if (c.isCompleted) return;
-      if (ctrl.firstFrame) {
-        c.complete(_Stat.ok);
-      } else if (ctrl.hasError) {
-        c.complete(_Stat.fail);
-      }
-    }
-
-    ctrl.addListener(listener);
-    if (mounted) setState(() => _probe = ctrl); // monte la vue → attach → play
-    try {
-      final _Stat s = await c.future.timeout(_kCheckTimeout);
-      _set(_player, s,
-          s == _Stat.ok ? '1re image décodée et affichée' : 'ExoPlayer a renvoyé une erreur');
-    } on TimeoutException {
-      _set(_player, _Stat.timeout, 'aucune image en 8 s');
-    } catch (e) {
-      _set(_player, _Stat.fail, _err(e));
-    } finally {
-      ctrl.removeListener(listener);
-      ctrl.dispose();
-      if (mounted) setState(() => _probe = null);
-    }
-  }
-
-  String _err(Object e) {
-    final String s = e.toString();
-    return s.length > 80 ? '${s.substring(0, 80)}…' : s;
+    final TvCheckResult r = await TvDiagnosticsService.instance.probePlayer(
+      streamUrl,
+      onProbeController: (NativeVideoController? ctrl) {
+        if (mounted) {
+          setState(() => _probe = ctrl); // monte/démonte la vue native
+        } else {
+          _probe = ctrl;
+        }
+      },
+    );
+    _apply(_player, r);
   }
 
   // ------------------------------------------------------------------

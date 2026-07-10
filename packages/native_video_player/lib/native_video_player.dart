@@ -67,6 +67,12 @@ class NativeVideoController extends ChangeNotifier {
   String? lastErrorCodeName;
   int? lastErrorCode;
 
+  /// Message de la CAUSE RACINE (souvent plus parlant que le message de
+  /// façade — ex. « Response code: 456 » y transporte le code HTTP réel).
+  /// Déjà émis par le natif (NativeVideoView.kt) ; capturé ici pour le
+  /// journal des échecs de lecture (Boîte noire des Réglages).
+  String? lastErrorCauseMessage;
+
   /// Flux terminé (rare en direct, mais on reconnecte si ça arrive).
   bool isEnded = false;
 
@@ -117,6 +123,7 @@ class NativeVideoController extends ChangeNotifier {
           lastErrorMessage = args['message'] as String?;
           lastErrorCodeName = args['errorCodeName'] as String?;
           lastErrorCode = args['errorCode'] as int?;
+          lastErrorCauseMessage = args['causeMessage'] as String?;
         }
     }
     if (!_disposed) notifyListeners();

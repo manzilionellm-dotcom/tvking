@@ -2222,6 +2222,7 @@
   "tvSettingsSleep": "Minuterie de veille (éteindre après X min)",
   "tvSettingsDisplay": "Affichage (marge écran + taille du texte)",
   "tvSettingsAbout": "À propos (version, appareil, vider le cache)",
+  "tvSettingsBlackBox": "Boîte noire (diagnostic & compte rendu)",
   "tvMyTeams": "Mes équipes",
   "tvChooseTeams": "Choisis tes équipes préférées",
   "tvChooseMyTeam": "Choisir mon équipe",
