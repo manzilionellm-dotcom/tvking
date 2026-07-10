@@ -36,8 +36,10 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
   @override
   void initState() {
     super.initState();
+    // Code NU (sans « MK: ») : le panel du revendeur rajoute déjà « MK »,
+    // donc on n'affiche/copie/envoie QUE les octets pour éviter le doublon.
     DeviceIdentity.instance.mac.then((String m) {
-      if (mounted) setState(() => _mac = m);
+      if (mounted) setState(() => _mac = DeviceIdentity.stripPrefix(m));
     });
     // Activation instantanée : revérifie toutes les 5 s.
     _poll = Timer.periodic(const Duration(seconds: 5),

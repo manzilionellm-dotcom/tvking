@@ -52,7 +52,11 @@ class MacActivationView extends StatelessWidget {
       future: DeviceIdentity.instance.mac,
       builder: (BuildContext context, AsyncSnapshot<String> snap) {
         final String? mac = snap.data;
-        final String macDisplay = mac ?? 'MK:??:??:??:??:??';
+        // Code NU (sans « MK: ») : le revendeur le colle dans un panel qui
+        // rajoute déjà « MK » → « MK:… » collé le doublerait (« MKMK:… »).
+        final String? macNu =
+            mac == null ? null : DeviceIdentity.stripPrefix(mac);
+        final String macDisplay = macNu ?? '??:??:??:??:??';
         return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -103,16 +107,16 @@ class MacActivationView extends StatelessWidget {
               children: <Widget>[
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: mac == null
+                    onPressed: macNu == null
                         ? null
                         : () async {
-                            await Clipboard.setData(ClipboardData(text: mac));
+                            await Clipboard.setData(ClipboardData(text: macNu));
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 behavior: SnackBarBehavior.floating,
                                 content: Text(
-                                  context.l10n.idCopied(mac),
+                                  context.l10n.idCopied(macNu),
                                   style: AppTextStyles.bodyMedium,
                                 ),
                               ),
@@ -125,15 +129,15 @@ class MacActivationView extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: mac == null
+                    onPressed: macNu == null
                         ? null
                         : () async {
-                            // Envoi direct via WhatsApp (MAC pré-remplie) ;
+                            // Envoi direct via WhatsApp (code pré-rempli) ;
                             // sinon on ouvre le choix de canaux de support.
                             final bool ok = await VipSupport.openWhatsApp(
                               customMessage:
                                   'Bonjour, voici mon identifiant pour '
-                                  'activer mes chaînes :\n\n$mac',
+                                  'activer mes chaînes :\n\n$macNu',
                             );
                             if (!context.mounted) return;
                             if (!ok) {
@@ -141,7 +145,7 @@ class MacActivationView extends StatelessWidget {
                                 context,
                                 customMessage:
                                     'Bonjour, voici mon identifiant pour '
-                                    'activer mes chaînes :\n\n$mac',
+                                    'activer mes chaînes :\n\n$macNu',
                               );
                             }
                           },

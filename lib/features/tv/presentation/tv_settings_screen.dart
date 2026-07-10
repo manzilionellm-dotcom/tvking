@@ -42,8 +42,10 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   @override
   void initState() {
     super.initState();
+    // Code NU (sans « MK: ») : évite le doublon quand le revendeur le colle
+    // dans un panel qui préfixe déjà « MK ».
     DeviceIdentity.instance.mac.then((String m) {
-      if (mounted) setState(() => _mac = m);
+      if (mounted) setState(() => _mac = DeviceIdentity.stripPrefix(m));
     });
   }
 

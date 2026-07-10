@@ -50,11 +50,13 @@ class _DeviceIdCardState extends State<DeviceIdCard> {
 
   Future<void> _copy() async {
     if (_mac == null) return;
-    await Clipboard.setData(ClipboardData(text: _mac!));
+    // Code NU (sans « MK: ») : évite le doublon dans le panel revendeur.
+    final String nu = DeviceIdentity.stripPrefix(_mac!);
+    await Clipboard.setData(ClipboardData(text: nu));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(context.l10n.idCopied(_mac!)),
+        content: Text(context.l10n.idCopied(nu)),
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
       ),
@@ -63,7 +65,8 @@ class _DeviceIdCardState extends State<DeviceIdCard> {
 
   @override
   Widget build(BuildContext context) {
-    final String display = _mac ?? 'MK:??:??:??:??:??';
+    final String display =
+        _mac == null ? '??:??:??:??:??' : DeviceIdentity.stripPrefix(_mac!);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(

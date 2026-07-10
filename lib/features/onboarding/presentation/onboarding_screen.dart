@@ -316,8 +316,10 @@ class _MacHandoffSlideState extends State<_MacHandoffSlide> {
   @override
   void initState() {
     super.initState();
+    // Code NU (sans « MK: ») pour l'affichage/copie/envoi : le panel du
+    // revendeur préfixe déjà « MK » → « MK:… » collé le doublerait.
     DeviceIdentity.instance.mac.then((String value) {
-      if (mounted) setState(() => _mac = value);
+      if (mounted) setState(() => _mac = DeviceIdentity.stripPrefix(value));
     });
   }
 
@@ -350,7 +352,7 @@ class _MacHandoffSlideState extends State<_MacHandoffSlide> {
 
   @override
   Widget build(BuildContext context) {
-    final String display = _mac ?? 'MK:??:??:??:??:??';
+    final String display = _mac ?? '??:??:??:??:??';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),

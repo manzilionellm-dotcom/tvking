@@ -192,9 +192,10 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // recharge alors le catalogue (agrégat SQL) — on n'absorbe plus la liste.
     _sub = PlaylistRepository.instance.channelsStream
         .listen((_) => _scheduleCatalogRefresh());
-    // MAC affichée sur l'état vide.
+    // Code affiché sur l'état vide — NU (sans « MK: ») : le panel du
+    // revendeur préfixe déjà « MK », on évite le doublon au collage.
     DeviceIdentity.instance.mac.then((String m) {
-      if (mounted) setState(() => _mac = m);
+      if (mounted) setState(() => _mac = DeviceIdentity.stripPrefix(m));
     });
     // MODE SANS ÉCHEC : on NE relance PAS le ré-import automatique (étape
     // gourmande qu'on veut éviter pour casser la boucle). Bouton manuel restant.

@@ -127,6 +127,22 @@ class DeviceIdentity {
   /// Valeur synchrone si déjà chargée, sinon "MK:??:??:??:??:??".
   String get macSync => _cached ?? 'MK:??:??:??:??:??';
 
+  /// Le CODE NU, SANS le préfixe historique « MK: » — juste les octets
+  /// (« 24:2A:D0:0E:F3 »).
+  ///
+  /// À utiliser PARTOUT où le CLIENT lit / copie / envoie son code à son
+  /// revendeur : la plupart des panels (MAG, Xtream) AJOUTENT déjà « MK »
+  /// par défaut, donc coller « MK:… » le DOUBLE (« MKMK:… ») et casse
+  /// l'activation. L'identité INTERNE (matching admin, config distante,
+  /// heartbeat) conserve TOUJOURS le préfixe — seul l'affichage est nu.
+  static String stripPrefix(String value) {
+    final int sep = value.indexOf(':');
+    if (sep <= 0) return value;
+    return value.substring(0, sep).toUpperCase() == _kPrefix
+        ? value.substring(sep + 1)
+        : value;
+  }
+
   /// Pré-charge — à appeler une fois au démarrage de l'app.
   Future<void> preload() async {
     await mac;

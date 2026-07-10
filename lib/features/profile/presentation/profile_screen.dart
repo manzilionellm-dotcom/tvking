@@ -51,8 +51,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    // Code NU (sans « MK: ») : le panel du revendeur préfixe déjà « MK »,
+    // on n'affiche que les octets pour éviter le doublon au collage.
     DeviceIdentity.instance.mac.then((String v) {
-      if (mounted) setState(() => _mac = v);
+      if (mounted) setState(() => _mac = DeviceIdentity.stripPrefix(v));
     });
   }
 
@@ -192,7 +194,7 @@ class _AccountCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String display = mac ?? 'MK:??:??:??:??:??';
+    final String display = mac ?? '??:??:??:??:??';
     return Container(
       padding: const EdgeInsets.all(CinematicSpacing.m),
       decoration: BoxDecoration(
