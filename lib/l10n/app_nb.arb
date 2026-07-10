@@ -786,6 +786,7 @@
   "tvSettingsSleep": "Sovtimer (slå av etter X min)",
   "tvSettingsDisplay": "Skjerm (marg + tekststørrelse)",
   "tvSettingsAbout": "Om (versjon, enhet, tøm buffer)",
+  "tvSettingsBlackBox": "Svart boks (diagnose og full rapport)",
   "tvMyTeams": "Lagene mine",
   "tvChooseTeams": "Velg favorittlagene dine",
   "tvChooseMyTeam": "Velg laget mitt",

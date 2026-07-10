@@ -787,6 +787,7 @@
   "tvSettingsSleep": "Sleep timer (turn off after X min)",
   "tvSettingsDisplay": "Display (screen margin + text size)",
   "tvSettingsAbout": "About (version, device, clear cache)",
+  "tvSettingsBlackBox": "Black box (diagnostics & full report)",
   "tvMyTeams": "My teams",
   "tvChooseTeams": "Choose your favourite teams",
   "tvChooseMyTeam": "Choose my team",

@@ -786,6 +786,7 @@
   "tvSettingsSleep": "Inssomningstimer (stäng av efter X min)",
   "tvSettingsDisplay": "Visning (skärmmarginal + textstorlek)",
   "tvSettingsAbout": "Om (version, enhet, rensa cache)",
+  "tvSettingsBlackBox": "Svart låda (diagnostik & fullständig rapport)",
   "tvMyTeams": "Mina lag",
   "tvChooseTeams": "Välj dina favoritlag",
   "tvChooseMyTeam": "Välj mitt lag",
