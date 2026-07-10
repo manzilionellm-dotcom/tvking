@@ -43,6 +43,8 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
   }
 
   Future<void> _load() async {
+    // Libellé du rayon « Autres » capturé AVANT les await (contexte sûr).
+    final String othersLabel = context.l10n.tvOthers;
     if (mounted) setState(() => _loading = true);
     final List<VodSeries> series =
         await SeriesRepository.instance.fetchSeries();
@@ -53,7 +55,8 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     final List<String> cats = <String>[];
     final Map<String, List<VodSeries>> byCat = <String, List<VodSeries>>{};
     for (final VodSeries s in series) {
-      final String c = s.category.trim().isEmpty ? 'Autres' : s.category.trim();
+      final String c =
+          s.category.trim().isEmpty ? othersLabel : s.category.trim();
       final List<VodSeries>? existing = byCat[c];
       if (existing == null) {
         cats.add(c);
@@ -534,7 +537,7 @@ class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
               itemBuilder: (BuildContext context, int i) {
                 final int s = seasons[i];
                 return _SeasonChip(
-                  label: 'Saison $s',
+                  label: context.l10n.tvSeriesSeason(s),
                   selected: s == currentSeason,
                   autofocus: i == 0,
                   onSelect: () => setState(() => _season = s),

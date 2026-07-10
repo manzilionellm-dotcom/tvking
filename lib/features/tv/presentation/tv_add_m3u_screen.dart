@@ -13,6 +13,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../playlists/data/iptv_http.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/source_input_normalizer.dart';
@@ -87,11 +88,11 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
   String get _targetLabel {
     switch (_target) {
       case _Field.name:
-        return 'Nom';
+        return context.l10n.tvSourceFieldName;
       case _Field.url:
-        return 'URL M3U';
+        return context.l10n.loginUrlM3u;
       case _Field.epg:
-        return 'URL EPG';
+        return context.l10n.tvSourceFieldEpgUrl;
     }
   }
 
@@ -101,7 +102,7 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
     final NormalizedInput n = SourceInputNormalizer.normalizeUrl(_urlC.text);
     final String url = n.value;
     if (url.isEmpty) {
-      setState(() => _error = 'Entre une URL M3U valide.');
+      setState(() => _error = context.l10n.tvSourceEnterValidM3u);
       return;
     }
     setState(() {
@@ -110,7 +111,7 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
       _error = null;
       _fixNote = n.fixes.isEmpty
           ? null
-          : 'On a corrigé l\'adresse : ${n.fixes.join(' · ')}';
+          : context.l10n.tvSourceFixedAddress(n.fixes.join(' · '));
     });
     _progress.reset();
     final http.Client client = createIptvHttpClient();
@@ -118,23 +119,25 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
     try {
       // 1) PRÉ-VOL : le DÉBUT du fichier seulement (anti-OOM) — est-ce
       //    bien une liste de chaînes ? Rien n'est écrit en base ici.
-      _progress.startStage('Test du lien…');
+      _progress.startStage(context.l10n.tvSourceTestingLink);
       await SourcePreflight.probeM3u(url, httpClient: client);
       if (_abortRequested()) return;
-      _progress.completeStage('Ta liste est bonne');
+      _progress.completeStage(context.l10n.tvSourceListOk);
 
       // 2) IMPORT VIVANT : téléchargement complet + compteur qui monte.
-      _progress.startStage('Téléchargement des chaînes…');
+      _progress.startStage(context.l10n.tvSourceDownloadingChannels);
       final String epg = SourceLinkUtils.cleanInput(_epgC.text);
       final Playlist saved = await PlaylistRepository.instance.addM3uPlaylist(
-        name: _nameC.text.trim().isEmpty ? 'Ma liste M3U' : _nameC.text.trim(),
+        name: _nameC.text.trim().isEmpty
+            ? context.l10n.tvSourceDefaultM3uName
+            : _nameC.text.trim(),
         url: url,
         epgUrl: epg.isEmpty ? null : SourceLinkUtils.ensureScheme(epg),
         httpClient: client,
         onProgress: _progress.onImportProgress,
       );
       if (_abortRequested()) return;
-      _progress.completeStage('Terminé');
+      _progress.completeStage(context.l10n.tvSourceDone);
       setState(() {
         _busy = false;
         _success = true;
@@ -147,7 +150,9 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
       _progress.reset();
       setState(() {
         _busy = false;
-        _error = _cancelled ? 'Ajout annulé.' : SourcePreflight.humanize(e);
+        _error = _cancelled
+            ? context.l10n.tvSourceAddCancelled
+            : SourcePreflight.humanize(e);
       });
     } finally {
       _client = null;
@@ -170,7 +175,7 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
     _progress.reset();
     setState(() {
       _busy = false;
-      _error = 'Ajout annulé.';
+      _error = context.l10n.tvSourceAddCancelled;
     });
     return true;
   }
@@ -197,16 +202,16 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
             const Icon(Icons.check_circle_rounded,
                 size: 64, color: TvTokens.success),
             const SizedBox(height: 18),
-            Text('${tvFormatCount(_doneChannels)} chaînes prêtes',
+            Text(context.l10n.tvSourceChannelsReady(tvFormatCount(_doneChannels)),
                 textAlign: TextAlign.center,
                 style: TvTokens.display(34, color: TvTokens.text)),
             const SizedBox(height: 8),
-            Text('Ta liste est chargée. Bon visionnage !',
+            Text(context.l10n.tvSourceListLoaded,
                 textAlign: TextAlign.center,
                 style: TvTokens.ui(16, color: TvTokens.muted)),
             const SizedBox(height: 26),
             TvCtaButton(
-              label: 'Regarder maintenant',
+              label: context.l10n.tvSourceWatchNow,
               autofocus: true,
               onSelect: () => Navigator.of(context).pop(true),
             ),
@@ -227,21 +232,19 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Text('Ajouter une liste M3U',
+                Text(context.l10n.tvSourceAddM3uTitle,
                     style: TextStyle(
                         fontSize: TvDimens.displayS,
                         fontWeight: FontWeight.w800,
                         color: TvTokens.text)),
                 const SizedBox(height: 6),
-                Text(
-                    'Colle ou tape l\'URL de ton fichier .m3u '
-                    '(et l\'EPG si tu en as une).',
+                Text(context.l10n.tvSourceAddM3uSubtitle,
                     style: TextStyle(
                         fontSize: TvDimens.body, color: TvTokens.muted)),
                 const SizedBox(height: 20),
                 TvKeyboardField(
                   controller: _urlC,
-                  label: 'URL M3U',
+                  label: context.l10n.loginUrlM3u,
                   hint: 'http://serveur.com/playlist.m3u',
                   autofocus: true,
                   active: _target == _Field.url,
@@ -250,15 +253,15 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
                 const SizedBox(height: 10),
                 TvKeyboardField(
                   controller: _nameC,
-                  label: 'Nom (optionnel)',
-                  hint: 'Ma liste',
+                  label: context.l10n.loginNameOptional,
+                  hint: context.l10n.tvSourceDefaultListName,
                   active: _target == _Field.name,
                   onActivate: () => setState(() => _target = _Field.name),
                 ),
                 const SizedBox(height: 10),
                 TvKeyboardField(
                   controller: _epgC,
-                  label: 'URL EPG (optionnel)',
+                  label: context.l10n.tvSourceFieldEpgOptional,
                   hint: 'http://serveur.com/xmltv.php',
                   active: _target == _Field.epg,
                   onActivate: () => setState(() => _target = _Field.epg),
@@ -280,12 +283,14 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
                 TvImportProgressView(progress: _progress),
                 if (_busy) ...<Widget>[
                   const SizedBox(height: 6),
-                  Text('Appuie sur Retour pour annuler.',
+                  Text(context.l10n.tvSourcePressBackToCancel,
                       style: TvTokens.ui(12, color: TvTokens.mutedDim)),
                 ],
                 const SizedBox(height: 16),
                 TvCtaButton(
-                  label: _busy ? 'Test en cours…' : 'Tester et ajouter',
+                  label: _busy
+                      ? context.l10n.tvSourceTesting
+                      : context.l10n.tvSourceTestAndAdd,
                   expand: false,
                   onSelect: _busy ? null : _testAndAdd,
                 ),

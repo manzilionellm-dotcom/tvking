@@ -18,6 +18,7 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../playlists/data/source_input_normalizer.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -63,7 +64,7 @@ class _TvSmartAddScreenState extends State<TvSmartAddScreen> {
     final SourceInputAnalysis a = SourceInputNormalizer.analyze(_linkC.text);
     if (a.url.isEmpty) {
       setState(() {
-        _error = 'Colle ou tape ton lien pour commencer.';
+        _error = context.l10n.tvSmartAddEmptyError;
         _pendingChoice = null;
       });
       return;
@@ -75,7 +76,7 @@ class _TvSmartAddScreenState extends State<TvSmartAddScreen> {
       // l'app travaille AVEC lui, pas contre lui.
       _fixNote = a.fixes.isEmpty
           ? null
-          : 'On a corrigé l\'adresse : ${a.fixes.join(' · ')}';
+          : context.l10n.tvSourceFixedAddress(a.fixes.join(' · '));
     });
 
     switch (a.kind) {
@@ -106,18 +107,16 @@ class _TvSmartAddScreenState extends State<TvSmartAddScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Text('Ajouter une source',
+                Text(context.l10n.tvSourceAddTitle,
                     style: TvTokens.display(34, color: TvTokens.text)),
                 const SizedBox(height: 6),
-                Text(
-                    'Colle ou tape le lien donné par ton fournisseur — '
-                    'on reconnaît tout seul de quel type de liste il s\'agit.',
+                Text(context.l10n.tvSmartAddSubtitle,
                     style: TvTokens.ui(16, color: TvTokens.mutedDim)),
                 const SizedBox(height: 18),
 
                 TvKeyboardField(
                   controller: _linkC,
-                  label: 'Colle ou tape ton lien',
+                  label: context.l10n.tvSmartAddFieldLabel,
                   hint: 'http://serveur.com:8080/get.php?username=…',
                   autofocus: true,
                   active: true,
@@ -135,21 +134,20 @@ class _TvSmartAddScreenState extends State<TvSmartAddScreen> {
                 ],
                 const SizedBox(height: 16),
 
-                TvCtaButton(label: 'Continuer', onSelect: _continue),
+                TvCtaButton(
+                    label: context.l10n.buttonContinue, onSelect: _continue),
 
                 // ----- Question simple quand on ne peut pas deviner -----
                 if (_pendingChoice != null) ...<Widget>[
                   const SizedBox(height: 18),
-                  Text('Dernière question : qu\'est-ce que ton fournisseur '
-                      't\'a donné avec ce lien ?',
+                  Text(context.l10n.tvSmartAddLastQuestion,
                       style: TvTokens.ui(15,
                           weight: FontWeight.w600, color: TvTokens.text)),
                   const SizedBox(height: 10),
                   _ChoiceCard(
                     icon: Icons.badge_outlined,
-                    title: 'Un identifiant et un mot de passe',
-                    subtitle: 'On garde ton lien comme adresse du serveur, '
-                        'tu ajoutes tes codes.',
+                    title: context.l10n.tvSmartAddChoiceCredsTitle,
+                    subtitle: context.l10n.tvSmartAddChoiceCredsSubtitle,
                     autofocus: true,
                     onSelect: () => _push(TvAddSourceScreen(
                         initialServer: _pendingChoice!.url)),
@@ -157,8 +155,8 @@ class _TvSmartAddScreenState extends State<TvSmartAddScreen> {
                   const SizedBox(height: 10),
                   _ChoiceCard(
                     icon: Icons.playlist_play_rounded,
-                    title: 'Juste ce lien, rien d\'autre',
-                    subtitle: 'On le traite comme une liste M3U directe.',
+                    title: context.l10n.tvSmartAddChoiceLinkTitle,
+                    subtitle: context.l10n.tvSmartAddChoiceLinkSubtitle,
                     onSelect: () =>
                         _push(TvAddM3uScreen(initialUrl: _pendingChoice!.url)),
                   ),
@@ -166,7 +164,7 @@ class _TvSmartAddScreenState extends State<TvSmartAddScreen> {
 
                 // ----- Raccourcis pour ceux qui savent -----
                 const SizedBox(height: 24),
-                Text('OU DIRECTEMENT',
+                Text(context.l10n.tvSmartAddOrDirectly,
                     style: TvTokens.ui(11,
                         weight: FontWeight.w600,
                         color: TvTokens.mutedDim,
@@ -178,12 +176,12 @@ class _TvSmartAddScreenState extends State<TvSmartAddScreen> {
                   children: <Widget>[
                     _ShortcutChip(
                       icon: Icons.vpn_key_rounded,
-                      label: 'Code Xtream (serveur + identifiants)',
+                      label: context.l10n.tvSmartAddShortcutXtream,
                       onSelect: () => _push(const TvAddSourceScreen()),
                     ),
                     _ShortcutChip(
                       icon: Icons.playlist_add_rounded,
-                      label: 'Lien M3U',
+                      label: context.l10n.tvSmartAddShortcutM3u,
                       onSelect: () => _push(const TvAddM3uScreen()),
                     ),
                   ],
@@ -199,7 +197,7 @@ class _TvSmartAddScreenState extends State<TvSmartAddScreen> {
           child: SingleChildScrollView(
             child: TvUrlKeyboard(
               controller: _linkC,
-              fieldLabel: 'Ton lien',
+              fieldLabel: context.l10n.tvSmartAddYourLink,
             ),
           ),
         ),

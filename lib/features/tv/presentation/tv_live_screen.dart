@@ -655,8 +655,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   String _catLabel(BuildContext context, String cat) {
     if (cat == _kFavCat) return '★ ${context.l10n.navFavorites}';
     if (cat == _kRecentCat) return context.l10n.tvRecently;
-    if (cat == _kForYouCat) return '✨ Pour vous';
-    if (cat == _kAllCat) return '📺 Toutes';
+    if (cat == _kForYouCat) return context.l10n.tvLiveForYou;
+    if (cat == _kAllCat) return '📺 ${context.l10n.filterAll}';
     // Catégorie réelle : on NETTOIE le libellé affiché (FR|/UK|, RAW, 60fps,
     // hevc…) via le curateur PARTAGÉ (lecture seule) + polissage TV. La clé brute
     // reste INTACTE pour le filtrage SQL.
@@ -1055,7 +1055,7 @@ class _ResumeRail extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text('REPRENDRE',
+            Text(context.l10n.resumeEyebrow,
                 style: TvTokens.ui(13,
                     weight: FontWeight.w800,
                     color: TvTokens.mutedDim,
@@ -1085,7 +1085,7 @@ class _ResumeRail extends StatelessWidget {
       children: <Widget>[
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
-          child: Text('REPRENDRE',
+          child: Text(context.l10n.resumeEyebrow,
               style: TvTokens.ui(13,
                   weight: FontWeight.w800,
                   color: TvTokens.mutedDim,
@@ -1334,7 +1334,7 @@ class _LiveHeroState extends State<_LiveHero> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: <Widget>[
-                          Text('EN CE MOMENT · ${p.title}',
+                          Text(context.l10n.tvLiveNowPlaying(p.title),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -1435,7 +1435,7 @@ class _LivePillState extends State<_LivePill>
             ),
           ),
           const SizedBox(width: 7),
-          Text('EN DIRECT',
+          Text(context.l10n.tvProgramLive,
               style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
@@ -1968,8 +1968,10 @@ class _ExpiryBanner extends StatelessWidget {
         if (!sub.isExpiringSoon) return const SizedBox.shrink();
         final int d = sub.daysUntilExpiry ?? 0;
         final String quand = d <= 0
-            ? "aujourd'hui"
-            : (d == 1 ? 'demain' : 'dans $d jours');
+            ? context.l10n.tvLiveExpiryToday
+            : (d == 1
+                ? context.l10n.tvLiveExpiryTomorrow
+                : context.l10n.tvLiveExpiryInDays(d));
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1985,8 +1987,7 @@ class _ExpiryBanner extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Ton abonnement expire $quand. Pense à le renouveler '
-                  'auprès de ton revendeur pour ne pas être coupé.',
+                  context.l10n.tvLiveExpiryBanner(quand),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TvTokens.ui(15,

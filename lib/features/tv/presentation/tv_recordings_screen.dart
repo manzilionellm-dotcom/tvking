@@ -46,7 +46,7 @@ class TvRecordingsScreen extends StatelessWidget {
           children: <Widget>[
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 14),
-              child: Text('Mes enregistrements',
+              child: Text(context.l10n.recordingsTitle,
                   style: TextStyle(
                       fontSize: TvDimens.displayS,
                       fontWeight: FontWeight.w800,
@@ -90,16 +90,19 @@ class _RecordingRow extends StatelessWidget {
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
         backgroundColor: TvTokens.card,
-        title: Text('Supprimer ?', style: TextStyle(color: TvTokens.text)),
-        content: Text('Supprimer définitivement « ${rec.channelName} » ?',
+        title: Text(ctx.l10n.tvRecDeleteTitle,
+            style: TextStyle(color: TvTokens.text)),
+        content: Text(ctx.l10n.tvRecDeleteConfirm(rec.channelName),
             style: TextStyle(color: TvTokens.muted)),
         actions: <Widget>[
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Annuler', style: TextStyle(color: TvTokens.muted))),
+              child: Text(ctx.l10n.buttonCancel,
+                  style: TextStyle(color: TvTokens.muted))),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Supprimer', style: TextStyle(color: TvTokens.live))),
+              child: Text(ctx.l10n.buttonDelete,
+                  style: TextStyle(color: TvTokens.live))),
         ],
       ),
     );

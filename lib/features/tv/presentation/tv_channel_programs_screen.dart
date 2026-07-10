@@ -385,17 +385,17 @@ class _StateChip extends StatelessWidget {
         bg = TvTokens.live;
         fg = Colors.white;
         icon = Icons.fiber_manual_record_rounded;
-        label = 'EN DIRECT';
+        label = context.l10n.tvProgramLive;
       case _ProgState.past:
         bg = TvTokens.sel;
         fg = TvTokens.mutedDim;
         icon = Icons.history_rounded;
-        label = 'TERMINÉ';
+        label = context.l10n.tvProgramPast;
       case _ProgState.future:
         bg = TvTokens.sel;
         fg = TvTokens.muted;
         icon = Icons.schedule_rounded;
-        label = 'À VENIR';
+        label = context.l10n.tvProgramFuture;
     }
     return Container(
       width: 92,

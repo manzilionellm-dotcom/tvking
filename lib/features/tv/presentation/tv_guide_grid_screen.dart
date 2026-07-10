@@ -151,7 +151,7 @@ class _TvGuideGridScreenState extends State<TvGuideGridScreen> {
                       children: <Widget>[
                         Icon(Icons.grid_view_rounded, size: 18, color: fg),
                         const SizedBox(width: 8),
-                        Text('Grille horaire',
+                        Text(context.l10n.tvGuideTimelineButton,
                             style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w700,
@@ -299,7 +299,7 @@ class _GuideRowState extends State<_GuideRow> {
                       if (next != null) ...<Widget>[
                         const SizedBox(height: 6),
                         Text(
-                          'À suivre · ${next.title}',
+                          context.l10n.tvGuideUpNextProgram(next.title),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(

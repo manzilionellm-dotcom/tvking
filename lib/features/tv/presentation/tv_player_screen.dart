@@ -133,6 +133,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   Timer? _numTimer;
   Timer? _watchdog;
   Timer? _toastTimer;
+  Timer? _zapSettle;
   String _numBuffer = ''; // saisie d'un numéro de chaîne (touches 0-9)
 
   // ----- « Dernière chaîne » (recall, style câble US) -----
@@ -358,6 +359,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _stillTimer?.cancel();
     _watchdog?.cancel();
     _toastTimer?.cancel();
+    _zapSettle?.cancel();
     _upNextTimer?.cancel();
     _favSub?.cancel();
     _fallback.detach();
@@ -583,7 +585,34 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _prevIndex = _index; // mémoire « dernière chaîne » (recall)
     _resetStabilitySession(); // zap choisi → session d'adaptation neuve
     setState(() => _index = (_index + delta) % n);
-    _open();
+    _scheduleOpen();
+  }
+
+  /// ZAPPING RAPIDE (fluide même sur box à faible RAM) : l'HABILLAGE change
+  /// TOUT DE SUITE (nom, logo, numéro, écran de marque) mais l'ouverture
+  /// RÉSEAU ne part qu'après un court répit sans nouvel appui. Quand le
+  /// client enchaîne Ch+ Ch+ Ch+, les chaînes traversées n'ouvrent AUCUNE
+  /// connexion et ne réveillent jamais le décodeur — seule celle où il
+  /// s'arrête se charge. Résultat : zéro création/destruction de session
+  /// par chaîne traversée (c'est ça qui saturait les petites box), et les
+  /// comptes « 1 connexion » ne voient plus de tempête d'ouvertures.
+  static const Duration _kZapSettle = Duration(milliseconds: 280);
+
+  void _scheduleOpen() {
+    _zapSettle?.cancel();
+    // Quitter la chaîne = couper son son immédiatement (l'image est déjà
+    // recouverte par l'écran de marque via _buffering).
+    _controller.pause();
+    if (mounted) {
+      setState(() {
+        _buffering = true;
+        _fatal = false;
+      });
+    }
+    _showOverlayTemporarily();
+    _zapSettle = Timer(_kZapSettle, () {
+      if (mounted) _open();
+    });
   }
 
   /// « Dernière chaîne » (recall) : retourne à la chaîne d'AVANT le dernier
@@ -598,7 +627,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _prevIndex = _index;
     _resetStabilitySession(); // choix utilisateur → session neuve
     setState(() => _index = p);
-    _open();
+    _scheduleOpen();
   }
 
   /// Applique la décision de [FreezeRecoveryPolicy] : rien à faire, reconnexion,
@@ -699,7 +728,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       level: 'warn',
     );
     _switchChannelForQuality(target);
-    _flash('Connexion faible — qualité adaptée : ${sibling.quality.badge}');
+    _flash(context.l10n.tvPlayerQualityDown(sibling.quality.badge));
   }
 
   /// Remonte à la chaîne d'origine (la connexion est stable depuis assez
@@ -722,7 +751,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
           '« ${_current.name} » → « ${back.name} »',
     );
     _switchChannelForQuality(origin);
-    _flash('Connexion stable — retour en ${back.quality.badge}');
+    _flash(context.l10n.tvPlayerQualityRestored(back.quality.badge));
   }
 
   /// Changement de chaîne AUTOMATIQUE (bascule de qualité) : même chemin
@@ -855,10 +884,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       );
       if (mounted) {
         setState(() => _activeRecording = rec);
-        _flash('Enregistrement en cours…');
+        _flash(context.l10n.tvPlayerRecStarted);
       }
     } catch (e) {
-      _flash('Erreur enregistrement');
+      if (mounted) _flash(context.l10n.tvPlayerRecError);
     }
   }
 
@@ -886,8 +915,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     }
     if (mounted) {
       _flash(bytes > 0
-          ? 'Enregistrement sauvegardé (${_humanSize(bytes)})'
-          : 'Enregistrement vide');
+          ? context.l10n.tvPlayerRecSaved(_humanSize(bytes))
+          : context.l10n.tvPlayerRecEmpty);
     }
   }
 
@@ -900,13 +929,17 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     });
   }
 
-  static String _humanSize(int bytes) {
-    if (bytes < 1024) return '$bytes o';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} Ko';
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} Mo';
+  String _humanSize(int bytes) {
+    if (bytes < 1024) return context.l10n.tvPlayerSizeB('$bytes');
+    if (bytes < 1024 * 1024) {
+      return context.l10n.tvPlayerSizeKb((bytes / 1024).toStringAsFixed(0));
     }
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} Go';
+    if (bytes < 1024 * 1024 * 1024) {
+      return context.l10n
+          .tvPlayerSizeMb((bytes / (1024 * 1024)).toStringAsFixed(1));
+    }
+    return context.l10n
+        .tvPlayerSizeGb((bytes / (1024 * 1024 * 1024)).toStringAsFixed(2));
   }
 
   void _showOverlayTemporarily() {
@@ -1467,14 +1500,14 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                         const Icon(Icons.nightlight_round,
                             color: TvTokens.gold, size: 52),
                         const SizedBox(height: 18),
-                        Text('Tu regardes encore ?',
+                        Text(context.l10n.tvPlayerStillWatching,
                             style: TextStyle(
                                 fontSize: TvDimens.title + 6,
                                 fontWeight: FontWeight.w800,
                                 color: TvTokens.text)),
                         const SizedBox(height: 10),
                         Text(
-                            'Appuie sur n\'importe quelle touche pour continuer.',
+                            context.l10n.tvPlayerPressAnyKey,
                             style: TextStyle(
                                 fontSize: TvDimens.body,
                                 color: TvTokens.muted)),
@@ -1622,7 +1655,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                         Icon(Icons.fiber_manual_record_rounded,
                             color: TvTokens.live, size: 16),
                         const SizedBox(width: 8),
-                        Text('REC',
+                        Text(context.l10n.playerRec,
                             style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,
@@ -1781,7 +1814,7 @@ class _ControlsBar extends StatelessWidget {
               children: <Widget>[
                 _CtrlButton(
                   icon: Icons.calendar_month_rounded,
-                  label: 'Guide',
+                  label: context.l10n.tvNavGuide,
                   onTap: onGuide,
                   focused: focusedIndex == 0,
                 ),
@@ -1790,7 +1823,9 @@ class _ControlsBar extends StatelessWidget {
                   icon: isRecording
                       ? Icons.stop_rounded
                       : Icons.fiber_manual_record_rounded,
-                  label: isRecording ? 'Stop' : 'REC',
+                  label: isRecording
+                      ? context.l10n.tvPlayerStop
+                      : context.l10n.playerRec,
                   onTap: onRecord,
                   accent: TvTokens.live,
                   active: isRecording,
@@ -1801,7 +1836,7 @@ class _ControlsBar extends StatelessWidget {
                   icon: isFavorite
                       ? Icons.favorite_rounded
                       : Icons.favorite_border_rounded,
-                  label: 'Favori',
+                  label: context.l10n.tvPlayerFavorite,
                   onTap: onFavorite,
                   accent: TvTokens.gold,
                   active: isFavorite,
@@ -1810,7 +1845,7 @@ class _ControlsBar extends StatelessWidget {
                 const SizedBox(width: 34),
                 _CtrlButton(
                   icon: Icons.grid_view_rounded,
-                  label: 'Multi',
+                  label: context.l10n.tvPlayerMulti,
                   onTap: onMulti,
                   focused: focusedIndex == 3,
                 ),

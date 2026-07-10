@@ -16,6 +16,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../cast/data/stream_probe.dart';
 import '../../player/data/player_settings.dart';
 import '../../player/data/stream_diagnostics.dart';
@@ -63,7 +64,7 @@ class _TvDiagnosticsScreenState extends State<TvDiagnosticsScreen> {
         p.xtreamUsername == null ||
         p.xtreamPassword == null ||
         _busyAccount) {
-      _setFlash('Aucun compte Xtream à contrôler');
+      _setFlash(context.l10n.tvBlackBoxNoXtreamAccount);
       return;
     }
     setState(() => _busyAccount = true);
@@ -76,11 +77,11 @@ class _TvDiagnosticsScreenState extends State<TvDiagnosticsScreen> {
         username: p.xtreamUsername!,
         password: p.xtreamPassword!,
       ).fetchAccountInfo();
-      _setFlash('Compte contrôlé ✓');
+      if (mounted) _setFlash(context.l10n.tvBlackBoxAccountChecked);
     } catch (e) {
       d.recordEvent('xtream', 'Contrôle du compte impossible : $e',
           level: 'error');
-      _setFlash('Contrôle impossible');
+      if (mounted) _setFlash(context.l10n.tvBlackBoxCheckFailed);
     } finally {
       if (mounted) setState(() => _busyAccount = false);
     }
@@ -90,7 +91,7 @@ class _TvDiagnosticsScreenState extends State<TvDiagnosticsScreen> {
     final StreamDiagnostics d = StreamDiagnostics.instance;
     final String? url = d.streamUrl;
     if (url == null || url.isEmpty || _busyProbe) {
-      _setFlash('Aucun flux à tester');
+      _setFlash(context.l10n.tvBlackBoxNoStream);
       return;
     }
     setState(() => _busyProbe = true);
@@ -115,10 +116,14 @@ class _TvDiagnosticsScreenState extends State<TvDiagnosticsScreen> {
                 '${r.errorCode != null ? '(HTTP ${r.errorCode})' : ''}',
         level: r.success ? 'info' : 'error',
       );
-      _setFlash(r.success ? 'Flux OK ✓' : 'Flux en échec');
+      if (mounted) {
+        _setFlash(r.success
+            ? context.l10n.tvBlackBoxStreamOk
+            : context.l10n.tvBlackBoxStreamFailed);
+      }
     } catch (e) {
       d.recordEvent('probe', 'Test impossible : $e', level: 'error');
-      _setFlash('Test impossible');
+      if (mounted) _setFlash(context.l10n.tvBlackBoxTestFailed);
     } finally {
       if (mounted) setState(() => _busyProbe = false);
     }
@@ -128,7 +133,7 @@ class _TvDiagnosticsScreenState extends State<TvDiagnosticsScreen> {
     await Clipboard.setData(
       ClipboardData(text: StreamDiagnostics.instance.buildReport()),
     );
-    _setFlash('Rapport copié ✓');
+    if (mounted) _setFlash(context.l10n.tvBlackBoxReportCopied);
   }
 
   void _setFlash(String msg) {
@@ -150,18 +155,18 @@ class _TvDiagnosticsScreenState extends State<TvDiagnosticsScreen> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  const Text(
-                    'Boîte noire',
-                    style: TextStyle(
+                  Text(
+                    context.l10n.tvBlackBoxTitle,
+                    style: const TextStyle(
                       fontSize: 30,
                       fontWeight: FontWeight.w800,
                       color: TvTokens.text,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
-                    'Diagnostic du dernier flux — journal complet',
-                    style: TextStyle(fontSize: 15, color: TvTokens.muted),
+                  Text(
+                    context.l10n.tvBlackBoxLastStreamSubtitle,
+                    style: const TextStyle(fontSize: 15, color: TvTokens.muted),
                   ),
                   const SizedBox(height: 16),
                   // ----- Actions (D-pad) -----
@@ -169,20 +174,24 @@ class _TvDiagnosticsScreenState extends State<TvDiagnosticsScreen> {
                     children: <Widget>[
                       _ActionButton(
                         icon: Icons.verified_user_rounded,
-                        label: _busyAccount ? 'Contrôle…' : 'Vérifier le compte',
+                        label: _busyAccount
+                            ? context.l10n.tvBlackBoxChecking
+                            : context.l10n.tvBlackBoxCheckAccount,
                         autofocus: true,
                         onSelect: _checkAccount,
                       ),
                       const SizedBox(width: 12),
                       _ActionButton(
                         icon: Icons.wifi_tethering_rounded,
-                        label: _busyProbe ? 'Test…' : 'Tester le flux',
+                        label: _busyProbe
+                            ? context.l10n.tvBlackBoxTesting
+                            : context.l10n.tvBlackBoxTestStream,
                         onSelect: _probe,
                       ),
                       const SizedBox(width: 12),
                       _ActionButton(
                         icon: Icons.copy_rounded,
-                        label: 'Copier le rapport',
+                        label: context.l10n.tvBlackBoxCopyReport,
                         onSelect: _copyReport,
                       ),
                     ],
@@ -199,8 +208,8 @@ class _TvDiagnosticsScreenState extends State<TvDiagnosticsScreen> {
                   // ----- Instantané -----
                   _snapshot(d),
                   const SizedBox(height: 14),
-                  const Text('JOURNAL  (récent → ancien)',
-                      style: TextStyle(
+                  Text(context.l10n.tvBlackBoxJournalHeader,
+                      style: const TextStyle(
                           fontSize: 12,
                           letterSpacing: 2,
                           fontWeight: FontWeight.w700,
@@ -221,19 +230,19 @@ class _TvDiagnosticsScreenState extends State<TvDiagnosticsScreen> {
     String mask(String? u) =>
         u == null ? '—' : StreamDiagnostics.maskCredentials(u);
     final List<({String k, String v})> rows = <({String k, String v})>[
-      (k: 'Titre', v: d.title ?? '—'),
+      (k: context.l10n.tvBlackBoxRowTitle, v: d.title ?? '—'),
       (k: 'URL', v: mask(d.streamUrl)),
       (k: 'HTTP', v: d.httpStatus?.toString() ?? '—'),
       (k: 'MIME', v: d.httpMime ?? '—'),
       (k: 'Codec', v: '${d.videoCodec ?? '—'} / ${d.audioCodec ?? '—'}'
           '${d.resolution == null ? '' : ' · ${d.resolution}'}'),
       (
-        k: 'Compte',
+        k: context.l10n.tvBlackBoxRowAccount,
         v: '${d.xtreamStatus ?? '—'}'
             '${d.xtreamMaxConnections == null && d.xtreamActiveCons == null ? '' : ' · ${d.xtreamActiveCons ?? '?'}/${d.xtreamMaxConnections ?? '?'}'}'
       ),
       if (d.lastPlayerError != null)
-        (k: 'Erreur', v: d.lastPlayerError!),
+        (k: context.l10n.tvBlackBoxRowError, v: d.lastPlayerError!),
     ];
     return Container(
       width: double.infinity,
@@ -277,8 +286,8 @@ class _TvDiagnosticsScreenState extends State<TvDiagnosticsScreen> {
   Widget _journal(StreamDiagnostics d) {
     final List<StreamDiagEvent> events = d.events; // récent → ancien
     if (events.isEmpty) {
-      return const Text('Aucun événement pour le moment.',
-          style: TextStyle(fontSize: 15, color: TvTokens.mutedDim));
+      return Text(context.l10n.tvBlackBoxNoEvents,
+          style: const TextStyle(fontSize: 15, color: TvTokens.mutedDim));
     }
     return ListView.builder(
       itemCount: events.length,

@@ -21,6 +21,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../playlists/data/import_progress.dart';
 import '../core/tv_tokens.dart';
 
@@ -203,7 +204,7 @@ class TvImportProgressView extends StatelessWidget {
                             weight: FontWeight.w700,
                             color: TvTokens.goldBright)),
                     TextSpan(
-                        text: '  chaînes ajoutées…',
+                        text: '  ${context.l10n.tvSourceChannelsAddedSuffix}',
                         style: TvTokens.ui(15, color: TvTokens.muted)),
                   ]),
                 ),
@@ -218,7 +219,7 @@ class TvImportProgressView extends StatelessWidget {
               ],
               if (p.patience && p.running) ...<Widget>[
                 const SizedBox(height: 8),
-                Text('Grosse liste — encore un instant, on prépare tout pour toi.',
+                Text(context.l10n.tvSourcePatienceMsg,
                     style: TvTokens.ui(14, color: TvTokens.gold)),
               ],
             ],

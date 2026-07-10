@@ -216,7 +216,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                             const SizedBox(height: 18),
                           ],
                           if (_films.isNotEmpty) ...<Widget>[
-                            _sectionTitle('Films'),
+                            _sectionTitle(context.l10n.tvNavFilms),
                             SizedBox(
                               height: 214,
                               child: ListView.builder(
@@ -234,7 +234,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                             const SizedBox(height: 18),
                           ],
                           if (_series.isNotEmpty) ...<Widget>[
-                            _sectionTitle('Séries'),
+                            _sectionTitle(context.l10n.tvNavSeries),
                             SizedBox(
                               height: 214,
                               child: ListView.builder(
@@ -447,7 +447,9 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                   if (mounted) setState(() {});
                 },
                 child: _chip(
-                    icon: Icons.close_rounded, label: 'Effacer', muted: true),
+                    icon: Icons.close_rounded,
+                    label: context.l10n.buttonClear,
+                    muted: true),
               ),
             ],
           ),

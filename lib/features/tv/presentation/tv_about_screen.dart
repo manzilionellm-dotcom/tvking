@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/app/device_memory.dart';
+import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -53,18 +54,21 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
     cache.clear();
     cache.clearLiveImages();
     setState(() {
-      _cacheStatus =
-          'Cache image vidé ✓  (${(freed / (1024 * 1024)).toStringAsFixed(1)} Mo libérés)';
+      _cacheStatus = context.l10n
+          .tvAboutCacheCleared((freed / (1024 * 1024)).toStringAsFixed(1));
     });
   }
 
-  String get _ramLabel {
+  String _ramLabel(BuildContext context) {
     if (!DeviceMemory.isLoaded || DeviceMemory.totalMb <= 0) {
-      return 'inconnue';
+      return context.l10n.tvAboutRamUnknown;
     }
     final double gb = DeviceMemory.totalMb / 1024;
-    final String tier = DeviceMemory.lowRam ? ' (faible)' : '';
-    return '${gb.toStringAsFixed(1)} Go$tier';
+    final String value =
+        context.l10n.tvAboutRamValue(gb.toStringAsFixed(1));
+    return DeviceMemory.lowRam
+        ? '$value ${context.l10n.tvAboutRamLowTag}'
+        : value;
   }
 
   @override
@@ -72,7 +76,7 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
     final String version = _info == null
         ? '…'
         : '${_info!.version} (build ${_info!.buildNumber})';
-    final String appName = _info?.appName ?? 'The Few';
+    final String appName = _info?.appName ?? context.l10n.appName;
 
     return SafeArea(
       child: Padding(
@@ -80,9 +84,9 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const Text(
-              'À propos',
-              style: TextStyle(
+            Text(
+              context.l10n.aboutTitle,
+              style: const TextStyle(
                 fontSize: 30,
                 fontWeight: FontWeight.w800,
                 color: TvTokens.text,
@@ -128,15 +132,20 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
                             color:
                                 focused ? TvTokens.gold : Colors.transparent),
                       ),
-                      child: _InfoRow(label: 'Version', value: version),
+                      child: _InfoRow(
+                          label: context.l10n.tvAboutVersion, value: version),
                     ),
                   ),
                   _InfoRow(
-                      label: 'Système', value: Platform.operatingSystemVersion),
-                  _InfoRow(label: 'Mémoire (RAM)', value: _ramLabel),
+                      label: context.l10n.tvAboutSystem,
+                      value: Platform.operatingSystemVersion),
                   _InfoRow(
-                      label: 'Capacité chaînes',
-                      value: '${DeviceMemory.channelCap} max',
+                      label: context.l10n.tvAboutRamLabel,
+                      value: _ramLabel(context)),
+                  _InfoRow(
+                      label: context.l10n.tvAboutChannelCap,
+                      value: context.l10n
+                          .tvAboutChannelCapValue(DeviceMemory.channelCap),
                       last: true),
                 ],
               ),
@@ -163,7 +172,7 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
                       Icon(Icons.cleaning_services_rounded, color: fg, size: 26),
                       const SizedBox(width: 12),
                       Text(
-                        'Vider le cache (libère de la mémoire)',
+                        context.l10n.tvAboutClearCache,
                         style: TextStyle(
                           fontSize: TvDimens.title,
                           fontWeight: FontWeight.w700,

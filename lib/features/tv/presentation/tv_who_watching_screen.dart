@@ -176,7 +176,8 @@ class _AvatarTile extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                profile.name,
+                // Profil par défaut → nom localisé (« Famille »/« Family »…).
+                tvProfileDisplayName(context, profile),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,

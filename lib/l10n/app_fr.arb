@@ -2257,9 +2257,21 @@
   "tvWeatherAutoDesc": "L'app devine ta ville d'après ta connexion",
   "tvWeatherAutoSet": "Météo réglée sur automatique",
   "tvWeatherSaved": "Météo réglée sur {city}",
-  "@tvWeatherSaved": {"placeholders": {"city": {"type": "String"}}},
+  "@tvWeatherSaved": {
+    "placeholders": {
+      "city": {
+        "type": "String"
+      }
+    }
+  },
   "tvWeatherCurrent": "Ville actuelle : {city}",
-  "@tvWeatherCurrent": {"placeholders": {"city": {"type": "String"}}},
+  "@tvWeatherCurrent": {
+    "placeholders": {
+      "city": {
+        "type": "String"
+      }
+    }
+  },
   "tvWeatherCurrentAuto": "Ville actuelle : automatique (selon Internet)",
   "tvWeatherNoResult": "Aucune ville trouvée",
   "calibrateAction": "Optimiser",
@@ -2269,7 +2281,16 @@
   "calibrateLaterButton": "Plus tard",
   "calibrateProposalTitle": "Source ajoutée !",
   "calibrateStepLabel": "Étape {step}/{total}",
-  "@calibrateStepLabel": {"placeholders": {"step": {"type": "int"}, "total": {"type": "int"}}},
+  "@calibrateStepLabel": {
+    "placeholders": {
+      "step": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "calibrateStepAccount": "Vérification du compte",
   "calibrateStepFormat": "Détection du format optimal",
   "calibrateStepSignature": "Réglage de la signature",
@@ -2277,17 +2298,648 @@
   "calibrateDoneTitle": "Source optimisée",
   "calibrateCheckAccountOk": "Compte actif",
   "calibrateCheckAccountOkUntil": "Compte actif (expire le {date})",
-  "@calibrateCheckAccountOkUntil": {"placeholders": {"date": {"type": "String"}}},
+  "@calibrateCheckAccountOkUntil": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "calibrateCheckFormatOk": "Format optimal détecté",
   "calibrateCheckFormatKept": "Format d'origine déjà optimal",
   "calibrateCheckSignatureOk": "Signature réglée",
   "calibrateCheckSignatureKept": "Signature actuelle conservée",
   "calibrateCheckStartup": "Démarrage moyen : {seconds} s",
-  "@calibrateCheckStartup": {"placeholders": {"seconds": {"type": "String"}}},
+  "@calibrateCheckStartup": {
+    "placeholders": {
+      "seconds": {
+        "type": "String"
+      }
+    }
+  },
   "calibrateFailExpired": "Ton abonnement est expiré ou désactivé. Contacte ton fournisseur pour le renouveler.",
   "calibrateFailUnreachable": "Le serveur de la source ne répond pas. Vérifie ta connexion Internet, puis réessaie.",
   "calibrateFailRefused": "Le serveur répond mais refuse tous les formats testés. Un VPN peut débloquer la lecture si ton opérateur interfère.",
   "calibrateFailNoChannels": "Cette source ne contient aucune chaîne à tester. Synchronise-la d'abord.",
   "calibrateCancelledMsg": "Optimisation annulée.",
-  "calibrateClose": "Fermer"
+  "calibrateClose": "Fermer",
+  "tvPlayerQualityDown": "Connexion faible — qualité adaptée : {badge}",
+  "@tvPlayerQualityDown": {
+    "placeholders": {
+      "badge": {
+        "type": "String"
+      }
+    }
+  },
+  "tvPlayerQualityRestored": "Connexion stable — retour en {badge}",
+  "@tvPlayerQualityRestored": {
+    "placeholders": {
+      "badge": {
+        "type": "String"
+      }
+    }
+  },
+  "tvPlayerRecStarted": "Enregistrement en cours…",
+  "tvPlayerRecError": "Erreur enregistrement",
+  "tvPlayerRecSaved": "Enregistrement sauvegardé ({size})",
+  "@tvPlayerRecSaved": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvPlayerRecEmpty": "Enregistrement vide",
+  "tvPlayerSizeB": "{n} o",
+  "@tvPlayerSizeB": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "tvPlayerSizeKb": "{n} Ko",
+  "@tvPlayerSizeKb": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "tvPlayerSizeMb": "{n} Mo",
+  "@tvPlayerSizeMb": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "tvPlayerSizeGb": "{n} Go",
+  "@tvPlayerSizeGb": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "tvPlayerStillWatching": "Tu regardes encore ?",
+  "tvPlayerPressAnyKey": "Appuie sur n'importe quelle touche pour continuer.",
+  "tvPlayerStop": "Stop",
+  "tvPlayerFavorite": "Favori",
+  "tvPlayerMulti": "Multi",
+  "tvPlayerRetryQuitHintDesktop": "Entrée : Réessayer   ·   Échap : Quitter",
+  "tvLiveForYou": "✨ Pour vous",
+  "tvLiveNowPlaying": "EN CE MOMENT · {title}",
+  "@tvLiveNowPlaying": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "tvLiveExpiryToday": "aujourd'hui",
+  "tvLiveExpiryTomorrow": "demain",
+  "tvLiveExpiryInDays": "dans {days} jours",
+  "@tvLiveExpiryInDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "tvLiveExpiryBanner": "Ton abonnement expire {when}. Pense à le renouveler auprès de ton revendeur pour ne pas être coupé.",
+  "@tvLiveExpiryBanner": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "tvGuideTimelineButton": "Grille horaire",
+  "tvGuideUpNextProgram": "À suivre · {title}",
+  "@tvGuideUpNextProgram": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "tvRecNotFoundTitle": "Enregistrement introuvable",
+  "tvRecPlayErrorTitle": "Lecture impossible",
+  "tvRecNotFoundBody": "Le fichier de cet enregistrement est introuvable ou vide.",
+  "tvRecDecodeErrorBody": "Ce fichier n'a pas pu être décodé.",
+  "tvRecEndedTitle": "Lecture terminée",
+  "tvRecEndedBody": "Appuie sur Retour pour revenir à tes enregistrements.",
+  "tvRecDeleteTitle": "Supprimer ?",
+  "tvRecDeleteConfirm": "Supprimer définitivement « {name} » ?",
+  "@tvRecDeleteConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvFilmsEmpty": "Aucun film pour le moment.\n(Source sans VOD, ou compte M3U sans films.)",
+  "tvSeriesSeason": "Saison {n}",
+  "@tvSeriesSeason": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "tvSportPickIntro": "Tu verras leurs scores et leurs prochains matchs, un bandeau d'actu qui défile, et une alarme ~1 h avant chaque match.",
+  "tvSportLastMatch": "Dernier match",
+  "tvSportNextMatch": "Prochain match",
+  "tvSportNews": "ACTU",
+  "tvSportVersus": "vs",
+  "tvSportTeamNotFound": "« {name} » introuvable — essaie la recherche.",
+  "@tvSportTeamNotFound": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSleepTitle": "Minuterie de veille",
+  "tvSleepHelp": "L'application se ferme toute seule à la fin du minuteur (le flux s'arrête). Pratique le soir.",
+  "tvSleepCountdown": "Extinction dans {remaining}",
+  "@tvSleepCountdown": {
+    "placeholders": {
+      "remaining": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSourceFixedAddress": "On a corrigé l'adresse : {fixes}",
+  "@tvSourceFixedAddress": {
+    "placeholders": {
+      "fixes": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSourceFixCredsFromLink": "identifiants lus dans le lien",
+  "tvSourceListOk": "Ta liste est bonne",
+  "tvSourceEditBtn": "Modifier",
+  "tvSourceLoadMyList": "Charger ma liste",
+  "tvSourceDownloadingChannels": "Téléchargement des chaînes…",
+  "tvSourceDone": "Terminé",
+  "tvSourceAddCancelled": "Ajout annulé.",
+  "tvSourceChannelsReady": "{count} chaînes prêtes",
+  "@tvSourceChannelsReady": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSourceCategoriesCount": "{count} catégories",
+  "@tvSourceCategoriesCount": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSourceListLoaded": "Ta liste est chargée. Bon visionnage !",
+  "tvSourceWatchNow": "Regarder maintenant",
+  "tvSourcePressBackToCancel": "Appuie sur Retour pour annuler.",
+  "tvSourceTestAndAdd": "Tester et ajouter",
+  "tvSourceDefaultListName": "Ma liste",
+  "tvSourceDefaultM3uName": "Ma liste M3U",
+  "tvSourceEnterValidM3u": "Entre une URL M3U valide.",
+  "tvSourceTestingLink": "Test du lien…",
+  "tvSourceTesting": "Test en cours…",
+  "tvSourceAddM3uTitle": "Ajouter une liste M3U",
+  "tvSourceAddM3uSubtitle": "Colle ou tape l'URL de ton fichier .m3u (et l'EPG si tu en as une).",
+  "tvSourceFieldName": "Nom",
+  "tvSourceFieldEpgUrl": "URL EPG",
+  "tvSourceFieldEpgOptional": "URL EPG (optionnel)",
+  "tvSourceAddTitle": "Ajouter une source",
+  "tvSourcesTitle": "Mes sources",
+  "tvSourcesEmpty": "Aucune source pour le moment.\nAppuie sur « Ajouter une source » et colle ton lien : on s'occupe du reste.",
+  "tvSourceDeleteConfirmTitle": "Supprimer ?",
+  "tvSourceDeleteConfirmBody": "Supprimer la source « {name} » ?",
+  "@tvSourceDeleteConfirmBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSourceActivate": "Activer",
+  "tvSourceActiveSuffix": "✓ active",
+  "tvSourceShowValue": "Afficher",
+  "tvSourceHideValue": "Masquer",
+  "tvSourceSystemKeyboard": "Clavier système",
+  "tvSourceChannelsAddedSuffix": "chaînes ajoutées…",
+  "tvSourcePatienceMsg": "Grosse liste — encore un instant, on prépare tout pour toi.",
+  "tvSmartAddEmptyError": "Colle ou tape ton lien pour commencer.",
+  "tvSmartAddSubtitle": "Colle ou tape le lien donné par ton fournisseur — on reconnaît tout seul de quel type de liste il s'agit.",
+  "tvSmartAddFieldLabel": "Colle ou tape ton lien",
+  "tvSmartAddLastQuestion": "Dernière question : qu'est-ce que ton fournisseur t'a donné avec ce lien ?",
+  "tvSmartAddChoiceCredsTitle": "Un identifiant et un mot de passe",
+  "tvSmartAddChoiceCredsSubtitle": "On garde ton lien comme adresse du serveur, tu ajoutes tes codes.",
+  "tvSmartAddChoiceLinkTitle": "Juste ce lien, rien d'autre",
+  "tvSmartAddChoiceLinkSubtitle": "On le traite comme une liste M3U directe.",
+  "tvSmartAddOrDirectly": "OU DIRECTEMENT",
+  "tvSmartAddShortcutXtream": "Code Xtream (serveur + identifiants)",
+  "tvSmartAddShortcutM3u": "Lien M3U",
+  "tvSmartAddYourLink": "Ton lien",
+  "tvActivationFamilyCode": "J'ai un code famille",
+  "tvActivationLegal": "Lecteur multimédia — ne vend ni ne fournit aucune chaîne ni lien M3U. Le contenu est apporté par l'utilisateur. Conditions : app.7themotion.com/terms",
+  "tvDiagTitle": "DIAGNOSTIC ON-DEVICE — DeFew TV",
+  "tvDiagSubtitle": "Teste si la box peut jouer le flux depuis sa propre IP.",
+  "tvDiagBackToQuit": "RETOUR pour quitter",
+  "tvDiagVerdictRunning": "DIAGNOSTIC EN COURS…",
+  "tvDiagVerdictPivotOk": "PIVOT ON-DEVICE VALIDÉ",
+  "tvDiagVerdictNetworkBlock": "BLOCAGE CÔTÉ RÉSEAU",
+  "tvDiagVerdictPlayerBug": "BUG PLAYER",
+  "tvDiagVerdictPartial": "DIAGNOSTIC PARTIEL",
+  "tvDiagCheckCaptive": "1. Portail captif (204)",
+  "tvDiagCheckDns": "2. Résolution DNS hôte IPTV",
+  "tvDiagCheckStream": "3. Joignabilité flux (HTTP / 456)",
+  "tvDiagCheckSource": "4. Source poussée (device-source)",
+  "tvDiagCheckPlayer": "5. Sonde ExoPlayer / Media3",
+  "tvDiagRunningCaptive": "requête generate_204…",
+  "tvDiagRunningDns": "lookup {host}…",
+  "@tvDiagRunningDns": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDiagRunningStream": "HEAD du flux…",
+  "tvDiagRunningSource": "lecture MAC…",
+  "tvDiagRunningPlayer": "ouverture sonde ExoPlayer…",
+  "tvBlackBoxTitle": "Boîte noire",
+  "tvBlackBoxSubtitle": "Diagnostic & compte rendu — pourquoi une chaîne ne s'ouvre pas.",
+  "tvBlackBoxLastStreamSubtitle": "Diagnostic du dernier flux — journal complet",
+  "tvBlackBoxChecking": "Contrôle…",
+  "tvBlackBoxCheckAccount": "Vérifier le compte",
+  "tvBlackBoxTesting": "Test…",
+  "tvBlackBoxTestStream": "Tester le flux",
+  "tvBlackBoxCopyReport": "Copier le rapport",
+  "tvBlackBoxNoXtreamAccount": "Aucun compte Xtream à contrôler",
+  "tvBlackBoxAccountChecked": "Compte contrôlé ✓",
+  "tvBlackBoxCheckFailed": "Contrôle impossible",
+  "tvBlackBoxNoStream": "Aucun flux à tester",
+  "tvBlackBoxStreamOk": "Flux OK ✓",
+  "tvBlackBoxStreamFailed": "Flux en échec",
+  "tvBlackBoxTestFailed": "Test impossible",
+  "tvBlackBoxReportCopied": "Rapport copié ✓",
+  "tvBlackBoxJournalHeader": "JOURNAL  (récent → ancien)",
+  "tvBlackBoxRowTitle": "Titre",
+  "tvBlackBoxRowAccount": "Compte",
+  "tvBlackBoxRowError": "Erreur",
+  "tvBlackBoxNoEvents": "Aucun événement pour le moment.",
+  "tvBlackBoxTabReport": "Compte rendu",
+  "tvBlackBoxTabFailures": "Chaînes qui ne s'ouvrent pas",
+  "tvBlackBoxTabJournal": "Journal de vol",
+  "tvBlackBoxAllGood": "✓ Tout va bien — aucune anomalie détectée.",
+  "tvBlackBoxProblemsDetected": "⚠ {count, plural, =1{1 problème détecté} other{{count} problèmes détectés}} : {problems}",
+  "@tvBlackBoxProblemsDetected": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "problems": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxSectionVersions": "Versions (tout ce que le support peut demander)",
+  "tvBlackBoxSectionHealth": "Santé de l'application",
+  "tvBlackBoxSectionLastBoot": "Dernier démarrage",
+  "tvBlackBoxRowApp": "Application",
+  "tvBlackBoxRowVersion": "Version",
+  "tvBlackBoxRowCommit": "Commit (build)",
+  "tvBlackBoxRowPlatform": "Plateforme",
+  "tvBlackBoxRowSystem": "Système",
+  "tvBlackBoxRowRam": "Mémoire (RAM)",
+  "tvBlackBoxRowLanguage": "Langue",
+  "tvBlackBoxRowSubscription": "Abonnement",
+  "tvBlackBoxRowBackend": "Backend actif",
+  "tvBlackBoxBackendBackup": "adresse de SECOURS (domaine maison indisponible)",
+  "tvBlackBoxBackendPrimary": "domaine maison",
+  "tvBlackBoxRowSources": "Sources",
+  "tvBlackBoxRowChannels": "Chaînes (live)",
+  "tvBlackBoxRowEpg": "Programmes EPG",
+  "tvBlackBoxRowDownloads": "Téléchargements",
+  "tvBlackBoxRowRss": "Mémoire utilisée (process)",
+  "tvBlackBoxRamUnknown": "inconnue",
+  "tvBlackBoxRamGb": "{gb} Go",
+  "@tvBlackBoxRamGb": {
+    "placeholders": {
+      "gb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxRamLowSuffix": "(classe FAIBLE)",
+  "tvBlackBoxMbValue": "{mb} Mo",
+  "@tvBlackBoxMbValue": {
+    "placeholders": {
+      "mb": {
+        "type": "int"
+      }
+    }
+  },
+  "tvBlackBoxRowSafeMode": "Mode sans échec",
+  "tvBlackBoxSafeModeYes": "OUI (boucle détectée)",
+  "tvBlackBoxNo": "non",
+  "tvBlackBoxRowBootPhase": "Phase atteinte au boot précédent",
+  "tvBlackBoxRowBootFails": "Démarrages non réussis d'affilée",
+  "tvBlackBoxBootFailsUnknown": "inconnu",
+  "tvBlackBoxBootFailsValue": "{count} (0 = démarrage sain)",
+  "@tvBlackBoxBootFailsValue": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvBlackBoxSubPaid": "actif (payé)",
+  "tvBlackBoxSubTrial": "essai ({days} j restants)",
+  "@tvBlackBoxSubTrial": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "tvBlackBoxSubTrialExpired": "essai expiré",
+  "tvBlackBoxSubFrozen": "gelé",
+  "tvBlackBoxSubBanned": "bloqué",
+  "tvBlackBoxSubUnknown": "inconnu",
+  "tvBlackBoxPhaseNone": "aucune (première installation)",
+  "tvBlackBoxPhaseFlutterUp": "moteur démarré (avant le 1er écran)",
+  "tvBlackBoxPhaseFirstFrame": "1er écran affiché",
+  "tvBlackBoxPhaseImportStart": "import de la source COMMENCÉ (suspect n°1 si crash)",
+  "tvBlackBoxPhaseImportDone": "import terminé",
+  "tvBlackBoxPhaseHomeReady": "accueil prêt (boot réussi)",
+  "tvBlackBoxProblemBanned": "Compte bloqué (banni)",
+  "tvBlackBoxProblemFrozen": "Compte gelé",
+  "tvBlackBoxProblemTrialExpired": "Essai expiré",
+  "tvBlackBoxProblemSafeMode": "Mode sans échec actif (boucle de redémarrage)",
+  "tvBlackBoxProblemRecentFails": "{count, plural, =1{1 chaîne en échec dans les dernières 24 h} other{{count} chaînes en échec dans les dernières 24 h}}",
+  "@tvBlackBoxProblemRecentFails": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvBlackBoxStepInternet": "1. Internet de la box (portail captif)",
+  "tvBlackBoxStepDns": "2. DNS (résolution de l'hôte du fournisseur)",
+  "tvBlackBoxStepServer": "3. Serveur du fournisseur joignable",
+  "tvBlackBoxStepHttp": "4. Réponse du flux (code HTTP)",
+  "tvBlackBoxStepSignatures": "5. Signatures de lecteur (multi-UA)",
+  "tvBlackBoxStepDecoder": "6. Sonde de décodage (ExoPlayer)",
+  "tvBlackBoxDiagTitleFor": "Diagnostic — {name}",
+  "@tvBlackBoxDiagTitleFor": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxNoChannelLoaded": "aucune chaîne chargée",
+  "tvBlackBoxStepChecking": "vérification…",
+  "tvBlackBoxVerdictNoInternet": "La box n'a pas de sortie internet (portail captif ou réseau coupé).",
+  "tvBlackBoxAdviceNoInternet": "Vérifie le Wi-Fi/câble de la box et la connexion du routeur.",
+  "tvBlackBoxVerdictDns": "Internet marche, mais le DNS ne trouve pas le serveur du fournisseur — blocage FAI ou DNS malade.",
+  "tvBlackBoxAdviceDns": "Change le DNS de la box (ex. 8.8.8.8) ou essaie un VPN.",
+  "tvBlackBoxVerdictServerDown": "Le serveur du fournisseur est injoignable (il ne répond plus).",
+  "tvBlackBoxAdviceServerDown": "C'est côté fournisseur : réessaie plus tard ou préviens-le.",
+  "tvBlackBoxVerdictSignatures": "Le serveur répond mais refuse TOUTES les signatures de lecteur testées.",
+  "tvBlackBoxAdviceSignatures": "Vérifie l'abonnement chez le fournisseur (compte expiré ou flux réservé à une autre app).",
+  "tvBlackBoxVerdictDecode": "Le réseau est bon mais la box n'affiche aucune image — problème de décodage (codec) ou flux vide.",
+  "tvBlackBoxAdviceDecode": "Essaie la version SD/HD de la chaîne ; si rien ne passe, cette box ne supporte pas ce format.",
+  "tvBlackBoxVerdictChannelGone": "Internet, DNS et serveur répondent — mais la chaîne n'est plus dans la liste, impossible de tester son flux.",
+  "tvBlackBoxAdviceChannelGone": "Actualise ta source (Réglages → Mes sources) puis réessaie la chaîne.",
+  "tvBlackBoxVerdictAllOk": "Tout est passé ✓ — la chaîne devrait s'ouvrir maintenant (l'échec était probablement passager).",
+  "tvBlackBoxAdviceAllOk": "Retourne sur la chaîne et relance la lecture.",
+  "tvBlackBoxDiagRunning": "Diagnostic en cours…",
+  "tvBlackBoxDiagNow": "Diagnostiquer maintenant (point par point)",
+  "tvBlackBoxSectionFailures": "Derniers échecs de lecture ({count})",
+  "@tvBlackBoxSectionFailures": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvBlackBoxNoFailures": "Aucun échec enregistré — les chaînes se sont toutes ouvertes. Si une chaîne reste noire, son échec apparaîtra ici avec le POURQUOI.",
+  "tvBlackBoxUnknownChannel": "(chaîne inconnue)",
+  "tvBlackBoxWhy": "Pourquoi : {why}",
+  "@tvBlackBoxWhy": {
+    "placeholders": {
+      "why": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxNoCode": "sans code",
+  "tvBlackBoxServerLabel": "serveur {host}",
+  "@tvBlackBoxServerLabel": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxSignaturesTested": "{count} signatures testées",
+  "@tvBlackBoxSignaturesTested": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvBlackBoxOkToDiagnose": "OK = diagnostiquer cette chaîne",
+  "tvBlackBoxVerdictLabel": "Verdict : {verdict}",
+  "@tvBlackBoxVerdictLabel": {
+    "placeholders": {
+      "verdict": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxAdviceLabel": "Conseil : {advice}",
+  "@tvBlackBoxAdviceLabel": {
+    "placeholders": {
+      "advice": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxSupportCode": "Code support à donner au revendeur :",
+  "tvBlackBoxSectionFindings": "Constats automatiques ({count})",
+  "@tvBlackBoxSectionFindings": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvBlackBoxNoFindings": "Aucune anomalie connue détectée sur la fenêtre enregistrée.",
+  "tvBlackBoxSectionCurrentSession": "Session courante (récent → ancien, {count} lignes)",
+  "@tvBlackBoxSectionCurrentSession": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvBlackBoxSectionPreviousSession": "Session PRÉCÉDENTE (post-mortem, {count} lignes)",
+  "@tvBlackBoxSectionPreviousSession": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvNavNews": "Actu",
+  "tvProfileFamily": "Famille",
+  "tvSettingsSources": "Mes sources (ajouter / activer / supprimer)",
+  "tvSettingsFamily": "Abonnement Famille (partager, 5 appareils)",
+  "tvSettingsProfiles": "Profils (chacun son univers)",
+  "tvSettingsDiagnostics": "Boîte noire (diagnostic)",
+  "tvSettingsPlayerDisclaimer": "Cette application est un LECTEUR multimédia. Elle ne vend, ne fournit et n'héberge aucune chaîne, aucun flux ni aucun lien M3U. Le contenu est fourni par l'utilisateur, seul responsable de sa licéité.",
+  "tvAboutCacheCleared": "Cache image vidé ✓ ({mb} Mo libérés)",
+  "@tvAboutCacheCleared": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvAboutRamUnknown": "inconnue",
+  "tvAboutRamValue": "{gb} Go",
+  "@tvAboutRamValue": {
+    "placeholders": {
+      "gb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvAboutRamLowTag": "(faible)",
+  "tvAboutVersion": "Version",
+  "tvAboutSystem": "Système",
+  "tvAboutRamLabel": "Mémoire (RAM)",
+  "tvAboutChannelCap": "Capacité chaînes",
+  "tvAboutChannelCapValue": "{count} max",
+  "@tvAboutChannelCapValue": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvAboutClearCache": "Vider le cache (libère de la mémoire)",
+  "tvLegalTitle": "Mentions légales & Conditions",
+  "tvLegalIntro": "Cette application est un lecteur. Elle ne vend ni ne fournit aucune chaîne ni lien. Haut/Bas pour faire défiler, Retour pour quitter.",
+  "tvProfilesTitle": "Profils",
+  "tvProfilesSubtitle": "Chacun son univers : derniers films vus, recherches et collections sont propres à chaque profil. Les favoris restent partagés par la famille.",
+  "tvProfileActiveBadge": "Actif",
+  "tvConfirmAsk": "Confirmer ?",
+  "tvProfileAddSection": "AJOUTER UN PROFIL",
+  "tvProfilePresetDad": "Papa",
+  "tvProfilePresetMom": "Maman",
+  "tvProfilePresetKids": "Enfants",
+  "tvProfilePresetTeen": "Ado",
+  "tvFamilyTitle": "Abonnement Famille",
+  "tvFamilySubtitle": "Partage ton abonnement avec 4 proches (5 appareils au total, comme Netflix). Tu génères un code, ton proche le tape sur son appareil — c'est tout.",
+  "tvFamilyNetworkError": "Connexion impossible. Réessaie plus tard.",
+  "tvFamilyErrNotPaid": "Réservé aux abonnements ACTIFS (payés). Active d'abord cet appareil.",
+  "tvFamilyErrIsMember": "Cet appareil est déjà rattaché à une famille — il ne peut pas inviter.",
+  "tvFamilyErrFull": "Famille complète (limite du plan atteinte).",
+  "tvFamilyErrPlanRequired": "Le PLAN FAMILLE est une option de ton abonnement. Demande à ton vendeur de l'activer. 👑",
+  "tvFamilyErrGeneric": "Impossible pour le moment. Réessaie plus tard.",
+  "tvFamilyAttachedTo": "Cet appareil est rattaché à l'abonnement famille {owner}.",
+  "@tvFamilyAttachedTo": {
+    "placeholders": {
+      "owner": {
+        "type": "String"
+      }
+    }
+  },
+  "tvFamilyBusy": "Un instant…",
+  "tvFamilyLeave": "Quitter la famille",
+  "tvFamilyPlanTitle": "PLAN FAMILLE",
+  "tvFamilyPlanPitch": "Partage ton abonnement avec tes proches (jusqu'à 5 appareils, comme Netflix) : chacun son appareil, un seul abonnement.\n\nCette option n'est pas encore activée sur ton compte — contacte ton vendeur pour l'ajouter. 👑",
+  "tvFamilyPlanCheck": "J'ai activé l'option — Vérifier",
+  "tvFamilyInviteCodeLabel": "CODE D'INVITATION (valable 48 h)",
+  "tvFamilyInviteHelp": "Sur l'appareil de ton proche : écran d'activation → « J'ai un code famille » → taper ce code.",
+  "tvFamilyGenerateCode": "Générer un code d'invitation",
+  "tvFamilyGenerateNewCode": "Générer un NOUVEAU code",
+  "tvFamilyMembersHeader": "MA FAMILLE ({count}/{max} proches + cet appareil)",
+  "@tvFamilyMembersHeader": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "tvFamilyNoMembers": "Aucun appareil rattaché pour l'instant.",
+  "tvFamilyNameChild1": "Enfant 1",
+  "tvFamilyNameChild2": "Enfant 2",
+  "tvFamilyNameLivingRoom": "Salon",
+  "tvFamilyNameBedroom": "Chambre",
+  "tvFamilySimultaneousNote": "Le nombre d'appareils qui regardent EN MÊME TEMPS dépend de ton abonnement (connexions simultanées de la ligne).",
+  "tvFamilyJoinTitle": "J'ai un code famille",
+  "tvFamilyJoinSubtitle": "Tape le code à 6 chiffres affiché sur l'appareil de ton proche (Réglages → Abonnement Famille).",
+  "tvFamilyJoinNetworkError": "Connexion impossible. Vérifie le réseau et réessaie.",
+  "tvFamilyJoinSuccess": "🎉 C'est fait ! Cet appareil est rattaché à l'abonnement famille {owner}. L'app se débloque dans quelques secondes…",
+  "@tvFamilyJoinSuccess": {
+    "placeholders": {
+      "owner": {
+        "type": "String"
+      }
+    }
+  },
+  "tvFamilyJoinErrInvalid": "Code invalide ou expiré. Redemande un code.",
+  "tvFamilyJoinErrFull": "Cette famille est complète (limite du plan atteinte).",
+  "tvFamilyJoinErrOwnerNotPaid": "L'abonnement du propriétaire n'est plus actif.",
+  "tvFamilyJoinErrPlanRequired": "Le propriétaire n'a pas l'option PLAN FAMILLE — il doit la demander à son vendeur.",
+  "tvFamilyJoinErrOwnCode": "C'est ton propre code 🙂 — il est pour tes proches.",
+  "tvParentalIntro": "Le Mode Enfants masque automatiquement toutes les chaînes Adulte. Sa désactivation et le changement de code demandent le code parental.",
+  "tvParentalKidsMode": "Mode Enfants",
+  "tvParentalKidsOn": "Activé — le contenu Adulte est masqué.",
+  "tvParentalKidsOff": "Désactivé — toutes les chaînes sont visibles.",
+  "tvParentalPinTitle": "Code parental",
+  "tvParentalDefaultPinWarning": "Tu utilises encore le code par défaut 0000. Change-le pour protéger le Mode Enfants.",
+  "tvParentalCustomPinSet": "Un code personnalisé est en place.",
+  "tvParentalChangePin": "Changer le code PIN",
+  "tvParentalEnterCode": "Entre le code parental",
+  "tvParentalCurrentCode": "Code actuel",
+  "tvParentalPinSubtitle": "Code parental à 4 chiffres",
+  "tvParentalNewCode": "Nouveau code",
+  "tvParentalNewCodeSubtitle": "Choisis 4 chiffres, puis confirme",
+  "tvParentalCodesMismatch": "Les deux codes ne correspondent pas.",
+  "tvParentalConfirmCode": "Confirme le code",
+  "tvCollectionsTitle": "Mes collections",
+  "tvCollectionsSubtitle": "Range tes chaînes favorites par thème. Une collection = une liste que tu ouvres en un clic.",
+  "tvCollectionsEmpty": "Aucune collection pour l'instant — crée la première ci-dessous. 👇",
+  "tvCollectionsCreateSection": "CRÉER UNE COLLECTION",
+  "tvCollectionsInCollection": "DANS LA COLLECTION ({count})",
+  "@tvCollectionsInCollection": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvCollectionsEmptyDetail": "Vide. Ajoute des chaînes depuis tes favoris ci-dessous. 👇",
+  "tvCollectionsFavsSection": "MES FAVORIS — OK pour ajouter/retirer",
+  "tvCollectionsNoFavorites": "Aucun favori pour l'instant. Mets des chaînes en favori (appui long sur OK dans le Direct), puis reviens ici.",
+  "tvCollectionsPresetNews": "Actus",
+  "tvCollectionsPresetCustom1": "Perso 1",
+  "tvCollectionsPresetCustom2": "Perso 2"
 }

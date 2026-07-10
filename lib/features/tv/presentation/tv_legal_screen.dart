@@ -16,6 +16,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
 
@@ -137,16 +138,14 @@ class _TvLegalScreenState extends State<TvLegalScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text('Mentions légales & Conditions',
+            Text(context.l10n.tvLegalTitle,
                 style: TextStyle(
                     fontSize: TvDimens.displayM,
                     fontWeight: FontWeight.w800,
                     color: TvTokens.text)),
             const SizedBox(height: 8),
             Text(
-              'Cette application est un lecteur. Elle ne vend ni ne fournit '
-              'aucune chaîne ni lien. Haut/Bas pour faire défiler, Retour pour '
-              'quitter.',
+              context.l10n.tvLegalIntro,
               style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim),
             ),
             const SizedBox(height: 24),

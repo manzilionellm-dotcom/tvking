@@ -10,6 +10,7 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/family_backend.dart';
 import '../core/tv_dimens.dart';
@@ -32,10 +33,17 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
   String? _confirmRemove; // MAC du membre en attente de confirmation
   String? _renamingMember; // MAC du membre en cours de nommage (chips)
 
-  /// Noms proposés pour les membres (un clic, pas de clavier).
-  static const List<String> _kMemberNames = <String>[
-    'Papa', 'Maman', 'Enfant 1', 'Enfant 2', 'Ado', 'Salon', 'Chambre',
-  ];
+  /// Noms proposés pour les membres (un clic, pas de clavier), traduits
+  /// dans la langue active.
+  List<String> _memberNames(BuildContext context) => <String>[
+        context.l10n.tvProfilePresetDad,
+        context.l10n.tvProfilePresetMom,
+        context.l10n.tvFamilyNameChild1,
+        context.l10n.tvFamilyNameChild2,
+        context.l10n.tvProfilePresetTeen,
+        context.l10n.tvFamilyNameLivingRoom,
+        context.l10n.tvFamilyNameBedroom,
+      ];
 
   @override
   void initState() {
@@ -51,7 +59,7 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
     setState(() {
       _info = info;
       _loading = false;
-      _error = info == null ? 'Connexion impossible. Réessaie plus tard.' : null;
+      _error = info == null ? context.l10n.tvFamilyNetworkError : null;
     });
   }
 
@@ -62,20 +70,17 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
     if (!mounted) return;
     setState(() => _busy = false);
     if (r == null) {
-      setState(() => _error = 'Connexion impossible. Réessaie plus tard.');
+      setState(() => _error = context.l10n.tvFamilyNetworkError);
       return;
     }
     if (r['ok'] != true) {
       final String err = (r['error'] ?? '').toString();
       setState(() => _error = switch (err) {
-            'not_paid' =>
-              'Réservé aux abonnements ACTIFS (payés). Active d\'abord cet appareil.',
-            'is_member' =>
-              'Cet appareil est déjà rattaché à une famille — il ne peut pas inviter.',
-            'family_full' => 'Famille complète (limite du plan atteinte).',
-            'plan_required' =>
-              'Le PLAN FAMILLE est une option de ton abonnement. Demande à ton vendeur de l\'activer. 👑',
-            _ => 'Impossible pour le moment. Réessaie plus tard.',
+            'not_paid' => context.l10n.tvFamilyErrNotPaid,
+            'is_member' => context.l10n.tvFamilyErrIsMember,
+            'family_full' => context.l10n.tvFamilyErrFull,
+            'plan_required' => context.l10n.tvFamilyErrPlanRequired,
+            _ => context.l10n.tvFamilyErrGeneric,
           });
       return;
     }
@@ -113,19 +118,17 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
             ? const Center(child: CircularProgressIndicator())
             : ListView(
                 children: <Widget>[
-                  const Text(
-                    'Abonnement Famille',
-                    style: TextStyle(
+                  Text(
+                    context.l10n.tvFamilyTitle,
+                    style: const TextStyle(
                         fontSize: 30,
                         fontWeight: FontWeight.w800,
                         color: TvTokens.text),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
-                    'Partage ton abonnement avec 4 proches (5 appareils au '
-                    'total, comme Netflix). Tu génères un code, ton proche le '
-                    'tape sur son appareil — c\'est tout.',
-                    style: TextStyle(fontSize: 15, color: TvTokens.muted),
+                  Text(
+                    context.l10n.tvFamilySubtitle,
+                    style: const TextStyle(fontSize: 15, color: TvTokens.muted),
                   ),
                   const SizedBox(height: 22),
                   if (_error != null) ...<Widget>[
@@ -158,7 +161,7 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
       return <Widget>[
         _goldButton(
           icon: Icons.refresh_rounded,
-          label: 'Réessayer',
+          label: context.l10n.tvRetry,
           onSelect: _refresh,
           autofocus: true,
         ),
@@ -175,8 +178,8 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
             const SizedBox(width: 14),
             Expanded(
               child: Text(
-                'Cet appareil est rattaché à l\'abonnement famille '
-                '${info['owner'] ?? ''}.',
+                context.l10n
+                    .tvFamilyAttachedTo((info['owner'] ?? '').toString()),
                 style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w600,
@@ -188,7 +191,8 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
         const SizedBox(height: 16),
         _goldButton(
           icon: Icons.logout_rounded,
-          label: _busy ? 'Un instant…' : 'Quitter la famille',
+          label:
+              _busy ? context.l10n.tvFamilyBusy : context.l10n.tvFamilyLeave,
           onSelect: _busy ? null : _leave,
           autofocus: true,
         ),
@@ -208,26 +212,23 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
       return <Widget>[
         _card(Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const <Widget>[
-            Text('👨‍👩‍👧  PLAN FAMILLE',
-                style: TextStyle(
+          children: <Widget>[
+            Text('👨‍👩‍👧  ${context.l10n.tvFamilyPlanTitle}',
+                style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                     color: TvTokens.goldBright)),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             Text(
-              'Partage ton abonnement avec tes proches (jusqu\'à 5 appareils, '
-              'comme Netflix) : chacun son appareil, un seul abonnement.\n\n'
-              'Cette option n\'est pas encore activée sur ton compte — '
-              'contacte ton vendeur pour l\'ajouter. 👑',
-              style: TextStyle(fontSize: 15, color: TvTokens.muted),
+              context.l10n.tvFamilyPlanPitch,
+              style: const TextStyle(fontSize: 15, color: TvTokens.muted),
             ),
           ],
         )),
         const SizedBox(height: 16),
         _goldButton(
           icon: Icons.refresh_rounded,
-          label: 'J\'ai activé l\'option — Vérifier',
+          label: context.l10n.tvFamilyPlanCheck,
           onSelect: _refresh,
           autofocus: true,
         ),
@@ -240,8 +241,8 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
         _card(Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const Text('CODE D\'INVITATION (valable 48 h)',
-                style: TextStyle(
+            Text(context.l10n.tvFamilyInviteCodeLabel,
+                style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: TvTokens.mutedDim,
@@ -256,10 +257,9 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
                   color: TvTokens.goldBright),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Sur l\'appareil de ton proche : écran d\'activation → '
-              '« J\'ai un code famille » → taper ce code.',
-              style: TextStyle(fontSize: 14, color: TvTokens.muted),
+            Text(
+              context.l10n.tvFamilyInviteHelp,
+              style: const TextStyle(fontSize: 14, color: TvTokens.muted),
             ),
           ],
         )),
@@ -268,16 +268,16 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
       _goldButton(
         icon: Icons.qr_code_rounded,
         label: _busy
-            ? 'Un instant…'
+            ? context.l10n.tvFamilyBusy
             : (code == null
-                ? 'Générer un code d\'invitation'
-                : 'Générer un NOUVEAU code'),
+                ? context.l10n.tvFamilyGenerateCode
+                : context.l10n.tvFamilyGenerateNewCode),
         onSelect: _busy ? null : _invite,
         autofocus: true,
       ),
       const SizedBox(height: 24),
       Text(
-        'MA FAMILLE (${members.length}/$maxM proches + cet appareil)',
+        context.l10n.tvFamilyMembersHeader(members.length, maxM),
         style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
@@ -286,8 +286,8 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
       ),
       const SizedBox(height: 12),
       if (members.isEmpty)
-        const Text('Aucun appareil rattaché pour l\'instant.',
-            style: TextStyle(fontSize: 15, color: TvTokens.mutedDim))
+        Text(context.l10n.tvFamilyNoMembers,
+            style: const TextStyle(fontSize: 15, color: TvTokens.mutedDim))
       else
         for (final dynamic m in members)
           Padding(
@@ -401,7 +401,7 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
                           Icon(Icons.link_off_rounded, size: 20, color: fg),
                           if (confirming) ...<Widget>[
                             const SizedBox(width: 6),
-                            Text('Confirmer ?',
+                            Text(context.l10n.tvConfirmAsk,
                                 style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
@@ -423,7 +423,7 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
                       spacing: 8,
                       runSpacing: 8,
                       children: <Widget>[
-                        for (final String name in _kMemberNames)
+                        for (final String name in _memberNames(context))
                           TvFocusBuilder(
                             scale: TvFocusScale.small,
                             onSelect: () async {
@@ -467,10 +467,9 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
           ),
       const SizedBox(height: 18),
       // Rappel honnête pour le revendeur ET le client.
-      _card(const Text(
-        'ℹ️ Le nombre d\'appareils qui regardent EN MÊME TEMPS dépend de '
-        'ton abonnement (connexions simultanées de la ligne).',
-        style: TextStyle(fontSize: 13, color: TvTokens.mutedDim),
+      _card(Text(
+        'ℹ️ ${context.l10n.tvFamilySimultaneousNote}',
+        style: const TextStyle(fontSize: 13, color: TvTokens.mutedDim),
       )),
     ];
   }

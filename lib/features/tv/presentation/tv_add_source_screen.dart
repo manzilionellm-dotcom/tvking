@@ -176,7 +176,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
           server = ex.server;
           user = user.isEmpty ? ex.username : user;
           pass = pass.isEmpty ? ex.password : pass;
-          fixes.add('identifiants lus dans le lien');
+          fixes.add(context.l10n.tvSourceFixCredsFromLink);
         }
       }
     } else {
@@ -192,15 +192,16 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
       _busy = true;
       _cancelled = false;
       _error = null;
-      _fixNote =
-          fixes.isEmpty ? null : 'On a corrigé l\'adresse : ${fixes.join(' · ')}';
+      _fixNote = fixes.isEmpty
+          ? null
+          : context.l10n.tvSourceFixedAddress(fixes.join(' · '));
     });
     _progress.reset();
     final http.Client client = createIptvHttpClient();
     _client = client;
     try {
       // 1) PRÉ-VOL : le compte est-il bon ? (rien n'est écrit en base ici)
-      _progress.startStage('Connexion au serveur…');
+      _progress.startStage(context.l10n.loginConnecting);
       await XtreamClient(
         serverUrl: server,
         username: user,
@@ -208,7 +209,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
         httpClient: client,
       ).verifyCredentials();
       if (_abortRequested()) return;
-      _progress.completeStage('Ta liste est bonne');
+      _progress.completeStage(context.l10n.tvSourceListOk);
 
       // 2) RÉSUMÉ avant validation : le client relit ce qui va être ajouté.
       final bool confirmed = await _confirmSummary(server, user, pass);
@@ -220,15 +221,17 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
       }
 
       // 3) IMPORT VIVANT : compteur de chaînes + catégorie en cours.
-      _progress.startStage('Téléchargement des chaînes…');
+      _progress.startStage(context.l10n.tvSourceDownloadingChannels);
       final Playlist saved =
           await PlaylistRepository.instance.addXtreamPlaylist(
         name: _manual
-            ? 'Ma liste'
+            ? context.l10n.tvSourceDefaultListName
             : (_servers
                 .firstWhere((DefaultServer s) => s.id == _choice,
-                    orElse: () =>
-                        const DefaultServer(id: '', label: 'Ma liste', url: ''))
+                    orElse: () => DefaultServer(
+                        id: '',
+                        label: context.l10n.tvSourceDefaultListName,
+                        url: ''))
                 .label),
         serverUrl: server,
         username: user,
@@ -237,7 +240,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
         onProgress: _progress.onImportProgress,
       );
       if (_abortRequested()) return;
-      _progress.completeStage('Terminé');
+      _progress.completeStage(context.l10n.tvSourceDone);
       setState(() {
         _busy = false;
         _success = true;
@@ -251,7 +254,9 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
       _progress.reset();
       setState(() {
         _busy = false;
-        _error = _cancelled ? 'Ajout annulé.' : SourcePreflight.humanize(e);
+        _error = _cancelled
+            ? context.l10n.tvSourceAddCancelled
+            : SourcePreflight.humanize(e);
       });
     } finally {
       _client = null;
@@ -272,7 +277,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
             const Icon(Icons.check_circle_rounded,
                 color: TvTokens.success, size: 26),
             const SizedBox(width: 10),
-            Text('Ta liste est bonne',
+            Text(ctx.l10n.tvSourceListOk,
                 style: TvTokens.ui(20,
                     weight: FontWeight.w700, color: TvTokens.text)),
           ],
@@ -290,12 +295,13 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Modifier', style: TvTokens.ui(15, color: TvTokens.muted)),
+            child: Text(ctx.l10n.tvSourceEditBtn,
+                style: TvTokens.ui(15, color: TvTokens.muted)),
           ),
           TextButton(
             autofocus: true,
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Charger ma liste',
+            child: Text(ctx.l10n.tvSourceLoadMyList,
                 style: TvTokens.ui(15,
                     weight: FontWeight.w700, color: TvTokens.goldBright)),
           ),
@@ -322,7 +328,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
     _progress.reset();
     setState(() {
       _busy = false;
-      _error = 'Ajout annulé.';
+      _error = context.l10n.tvSourceAddCancelled;
     });
     return true;
   }
@@ -341,7 +347,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
   // ---- Récap final chaleureux + « Regarder maintenant » ----
   Widget _buildSuccess(BuildContext context) {
     final String cats = _doneCategories > 0
-        ? ' · ${tvFormatCount(_doneCategories)} catégories'
+        ? ' · ${context.l10n.tvSourceCategoriesCount(tvFormatCount(_doneCategories))}'
         : '';
     return Center(
       child: ConstrainedBox(
@@ -354,17 +360,17 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
                 size: 64, color: TvTokens.success),
             const SizedBox(height: 18),
             Text(
-              '${tvFormatCount(_doneChannels)} chaînes prêtes$cats',
+              '${context.l10n.tvSourceChannelsReady(tvFormatCount(_doneChannels))}$cats',
               textAlign: TextAlign.center,
               style: TvTokens.display(34, color: TvTokens.text),
             ),
             const SizedBox(height: 8),
-            Text('Ta liste est chargée. Bon visionnage !',
+            Text(context.l10n.tvSourceListLoaded,
                 textAlign: TextAlign.center,
                 style: TvTokens.ui(16, color: TvTokens.muted)),
             const SizedBox(height: 26),
             TvCtaButton(
-              label: 'Regarder maintenant',
+              label: context.l10n.tvSourceWatchNow,
               autofocus: true,
               onSelect: () => Navigator.of(context).pop(true),
             ),
@@ -469,13 +475,15 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
                 TvImportProgressView(progress: _progress),
                 if (_busy) ...<Widget>[
                   const SizedBox(height: 6),
-                  Text('Appuie sur Retour pour annuler.',
+                  Text(context.l10n.tvSourcePressBackToCancel,
                       style: TvTokens.ui(12, color: TvTokens.mutedDim)),
                 ],
                 const SizedBox(height: 14),
 
                 TvCtaButton(
-                  label: _busy ? context.l10n.tvChecking : 'Tester et ajouter',
+                  label: _busy
+                      ? context.l10n.tvChecking
+                      : context.l10n.tvSourceTestAndAdd,
                   onSelect: _busy ? null : _testAndAdd,
                 ),
               ],

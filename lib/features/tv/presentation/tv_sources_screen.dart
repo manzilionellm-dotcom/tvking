@@ -7,6 +7,7 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
 import '../core/tv_dimens.dart';
@@ -25,7 +26,7 @@ class TvSourcesScreen extends StatelessWidget {
       children: <Widget>[
         Row(
           children: <Widget>[
-            Text('Mes sources',
+            Text(context.l10n.tvSourcesTitle,
                 style: TextStyle(
                     fontSize: TvDimens.displayS,
                     fontWeight: FontWeight.w800,
@@ -36,7 +37,7 @@ class TvSourcesScreen extends StatelessWidget {
             // plus à choisir un jargon qu'il ne connaît pas.
             _Pill(
               icon: Icons.add_rounded,
-              label: 'Ajouter une source',
+              label: context.l10n.tvSourceAddTitle,
               autofocus: true,
               onSelect: () => Navigator.of(context).push(
                 MaterialPageRoute<bool>(
@@ -56,7 +57,7 @@ class TvSourcesScreen extends StatelessWidget {
               if (items.isEmpty) {
                 return Center(
                   child: Text(
-                    'Aucune source pour le moment.\nAppuie sur « Ajouter une source » et colle ton lien : on s\'occupe du reste.',
+                    context.l10n.tvSourcesEmpty,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         fontSize: TvDimens.body, color: TvTokens.mutedDim),
@@ -89,16 +90,19 @@ class _SourceRow extends StatelessWidget {
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
         backgroundColor: TvTokens.card,
-        title: Text('Supprimer ?', style: TextStyle(color: TvTokens.text)),
-        content: Text('Supprimer la source « ${playlist.name} » ?',
+        title: Text(ctx.l10n.tvSourceDeleteConfirmTitle,
+            style: TextStyle(color: TvTokens.text)),
+        content: Text(ctx.l10n.tvSourceDeleteConfirmBody(playlist.name),
             style: TextStyle(color: TvTokens.muted)),
         actions: <Widget>[
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Annuler', style: TextStyle(color: TvTokens.muted))),
+              child: Text(ctx.l10n.buttonCancel,
+                  style: TextStyle(color: TvTokens.muted))),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Supprimer', style: TextStyle(color: TvTokens.live))),
+              child: Text(ctx.l10n.buttonDelete,
+                  style: TextStyle(color: TvTokens.live))),
         ],
       ),
     );
@@ -150,8 +154,8 @@ class _SourceRow extends StatelessWidget {
                         color: TvTokens.text)),
                 const SizedBox(height: 2),
                 Text(
-                    '${playlist.channelCount} chaînes'
-                    '${playlist.isActive ? '  ·  ✓ active' : ''}',
+                    '${context.l10n.channelCount(playlist.channelCount)}'
+                    '${playlist.isActive ? '  ·  ${context.l10n.tvSourceActiveSuffix}' : ''}',
                     style: TextStyle(
                         fontSize: TvDimens.label,
                         color: playlist.isActive
@@ -163,7 +167,7 @@ class _SourceRow extends StatelessWidget {
           if (!playlist.isActive && playlist.id != null) ...<Widget>[
             _Pill(
                 icon: Icons.play_arrow_rounded,
-                label: 'Activer',
+                label: context.l10n.tvSourceActivate,
                 onSelect: () =>
                     PlaylistRepository.instance.setActivePlaylist(playlist.id!)),
             const SizedBox(width: 10),

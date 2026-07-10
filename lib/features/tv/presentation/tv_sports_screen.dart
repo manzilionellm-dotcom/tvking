@@ -86,7 +86,9 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
                     color: TvTokens.text)),
             const Spacer(),
             _PillButton(
-                icon: Icons.add_rounded, label: 'Ajouter', onSelect: _addTeam),
+                icon: Icons.add_rounded,
+                label: context.l10n.buttonAdd,
+                onSelect: _addTeam),
           ],
         ),
         const SizedBox(height: 14),
@@ -122,8 +124,7 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
             SizedBox(
               width: 560,
               child: Text(
-                'Tu verras leurs scores et leurs prochains matchs, un bandeau d\'actu '
-                'qui défile, et une alarme ~1 h avant chaque match.',
+                context.l10n.tvSportPickIntro,
                 textAlign: TextAlign.center,
                 style: TvTokens.ui(16, color: TvTokens.mutedDim),
               ),
@@ -203,13 +204,13 @@ class _TeamSection extends StatelessWidget {
             children: <Widget>[
               Expanded(
                 child: _MatchCard(
-                    title: 'Dernier match',
+                    title: context.l10n.tvSportLastMatch,
                     event: events.last.isNotEmpty ? events.last.first : null),
               ),
               const SizedBox(width: TvDimens.gutter),
               Expanded(
                 child: _MatchCard(
-                    title: 'Prochain match',
+                    title: context.l10n.tvSportNextMatch,
                     event: events.next.isNotEmpty ? events.next.first : null),
               ),
             ],
@@ -279,8 +280,8 @@ class _TickerState extends State<_Ticker> {
                 bottomLeft: Radius.circular(TvDimens.cardRadius),
               ),
             ),
-            child: const Text('ACTU',
-                style: TextStyle(
+            child: Text(context.l10n.tvSportNews,
+                style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1.5,
@@ -358,7 +359,7 @@ class _MatchCard extends StatelessWidget {
                   child: Text(
                       event!.hasScore
                           ? '${event!.homeScore} – ${event!.awayScore}'
-                          : 'vs',
+                          : context.l10n.tvSportVersus,
                       style: TextStyle(
                           fontSize: event!.hasScore ? 28 : 18,
                           fontWeight: FontWeight.w800,

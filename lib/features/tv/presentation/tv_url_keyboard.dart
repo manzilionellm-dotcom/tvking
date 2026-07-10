@@ -27,6 +27,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 
@@ -635,7 +636,9 @@ class _TvKeyboardFieldState extends State<TvKeyboardField> {
             icon: widget.obscured
                 ? Icons.visibility_rounded
                 : Icons.visibility_off_rounded,
-            tooltip: widget.obscured ? 'Afficher' : 'Masquer',
+            tooltip: widget.obscured
+                ? context.l10n.tvSourceShowValue
+                : context.l10n.tvSourceHideValue,
             onSelect: widget.onToggleObscure!,
           ),
         ],
@@ -645,7 +648,7 @@ class _TvKeyboardFieldState extends State<TvKeyboardField> {
         // ici — les autres ne le croisent jamais par accident.
         _FieldIconButton(
           icon: Icons.keyboard_alt_outlined,
-          tooltip: 'Clavier système',
+          tooltip: context.l10n.tvSourceSystemKeyboard,
           onSelect: () => _imeNode.requestFocus(),
         ),
       ],

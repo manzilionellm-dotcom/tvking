@@ -54,7 +54,7 @@ class TvDisplaySettingsScreen extends StatelessWidget {
                       width: 120,
                       alignment: Alignment.center,
                       child: Text(
-                        '${d.overscanPct} %',
+                        context.l10n.tvPercent(d.overscanPct),
                         style: const TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.w800,

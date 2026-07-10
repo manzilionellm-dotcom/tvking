@@ -1,5 +1,6 @@
 package com.manzilionellm.native_video_player
 
+import android.app.ActivityManager
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
@@ -157,21 +158,36 @@ class NativeVideoView(
         // Tampons anti-coupure MAIS PRUDENTS EN MÉMOIRE (box à RAM limitée).
         // ⚠️ LEÇON : un buffer trop gros (90 s / 64 Mo) faisait planter les box
         // par MANQUE DE MÉMOIRE (OOM → l'OS tue l'app → boucle de redémarrage).
-        // On garde donc une résilience RÉELLE mais un plafond mémoire SÛR :
-        //   • minBuffer = 15 s, maxBuffer = 40 s : de l'avance pour absorber les
-        //     hoquets, sans exploser la RAM (avant : 30 s → on améliore un peu).
-        //   • bufferForPlayback = 2 s : 1re image rapide.
-        //   • bufferForPlaybackAfterRebuffer = 4 s : après une coupure, on attend
-        //     4 s de réserve avant de repartir (on ne se re-bloque pas aussitôt).
-        // Plafond MÉMOIRE à 24 Mo (setTargetBufferBytes + prioritize=false) :
-        // c'est LA garde anti-OOM. Sur une connexion lente (débit bas), 24 Mo =
-        // déjà beaucoup de secondes d'avance ; sur un flux haut débit, on borne
-        // la RAM → plus de crash sur box.
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(15_000, 40_000, 2_000, 4_000)
-            .setTargetBufferBytes(24 * 1024 * 1024)
-            .setPrioritizeTimeOverSizeThresholds(false)
-            .build()
+        // ADAPTATION À LA BOX : on lit la RAM réelle de l'appareil et on
+        // dimensionne les tampons en conséquence — une box « low RAM »
+        // (isLowRamDevice, ou ≤ 1,2 Go de RAM totale) reçoit des tampons plus
+        // courts et un plafond mémoire plus bas : moins de pression GC, zap
+        // plus réactif, zéro OOM ; une box confortable garde la résilience
+        // maximale. Dans les deux cas :
+        //   • bufferForPlayback = 1,5 s : 1re image rapide au zap.
+        //   • bufferForPlaybackAfterRebuffer : petite réserve avant de
+        //     repartir après une coupure (on ne se re-bloque pas aussitôt).
+        // Le plafond octets (setTargetBufferBytes + prioritize=false) reste
+        // LA garde anti-OOM.
+        val activityManager =
+            appContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        val memInfo = ActivityManager.MemoryInfo()
+        activityManager?.getMemoryInfo(memInfo)
+        val lowRam = (activityManager?.isLowRamDevice == true) ||
+            (memInfo.totalMem in 1..(1_200L * 1024 * 1024))
+        val loadControl = if (lowRam) {
+            DefaultLoadControl.Builder()
+                .setBufferDurationsMs(10_000, 25_000, 1_500, 3_000)
+                .setTargetBufferBytes(12 * 1024 * 1024)
+                .setPrioritizeTimeOverSizeThresholds(false)
+                .build()
+        } else {
+            DefaultLoadControl.Builder()
+                .setBufferDurationsMs(15_000, 40_000, 1_500, 4_000)
+                .setTargetBufferBytes(24 * 1024 * 1024)
+                .setPrioritizeTimeOverSizeThresholds(false)
+                .build()
+        }
 
         // Décodage matériel (MediaCodec) avec repli logiciel si l'init échoue.
         val renderersFactory = DefaultRenderersFactory(appContext)
@@ -230,6 +246,11 @@ class NativeVideoView(
         player.setVideoSurfaceView(surfaceView)
         player.addListener(this)
         player.playWhenReady = true
+        // ZAP FLUIDE : garde les décodeurs MediaCodec « chauds » entre deux
+        // préparations (setUrl au zap, retry silencieux). Sans ça, ExoPlayer
+        // relâche le codec matériel à chaque stop/prepare et la box (surtout
+        // à faible RAM) paie ~300-800 ms de ré-initialisation par chaîne.
+        player.setForegroundMode(true)
 
         // Reprise réseau instantanée : actif toute la vie du lecteur (un
         // callback réseau enregistré est quasi gratuit ; il ne FAIT quelque
@@ -433,6 +454,7 @@ class NativeVideoView(
         cancelRetry()
         handler.removeCallbacks(positionPump)
         player.removeListener(this)
+        player.setForegroundMode(false) // relâche les codecs avant release
         player.release()
         channel.setMethodCallHandler(null)
     }

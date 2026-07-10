@@ -35,6 +35,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/app/app_platform.dart';
 import '../../../core/app/boot_guard.dart';
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/app/device_memory.dart';
 import '../../../core/backend/backend_hosts.dart';
 import '../../../core/observability/black_box.dart';
@@ -164,18 +165,18 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
     }
     switch (SubscriptionState.instance.status) {
       case SubscriptionStatus.banned:
-        out.add('Compte bloqué (banni)');
+        out.add(context.l10n.tvBlackBoxProblemBanned);
       case SubscriptionStatus.frozen:
-        out.add('Compte gelé');
+        out.add(context.l10n.tvBlackBoxProblemFrozen);
       case SubscriptionStatus.trialExpired:
-        out.add('Essai expiré');
+        out.add(context.l10n.tvBlackBoxProblemTrialExpired);
       case SubscriptionStatus.paid:
       case SubscriptionStatus.trialActive:
       case SubscriptionStatus.unknown:
         break;
     }
     if (BootGuard.instance.isInSafeMode) {
-      out.add('Mode sans échec actif (boucle de redémarrage)');
+      out.add(context.l10n.tvBlackBoxProblemSafeMode);
     }
     // Échecs de lecture des dernières 24 h : signal fort côté client.
     final DateTime dayAgo = DateTime.now().subtract(const Duration(hours: 24));
@@ -183,7 +184,7 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
         .where((PlaybackFailureEntry e) => e.timestamp.isAfter(dayAgo))
         .length;
     if (recentFails > 0) {
-      out.add('$recentFails chaîne(s) en échec dans les dernières 24 h');
+      out.add(context.l10n.tvBlackBoxProblemRecentFails(recentFails));
     }
     return out;
   }
@@ -227,19 +228,19 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
         : (uri?.scheme == 'https' ? 443 : 80);
 
     final List<_DiagStep> steps = <_DiagStep>[
-      _DiagStep('1. Internet de la box (portail captif)'),
-      _DiagStep('2. DNS (résolution de l\'hôte du fournisseur)'),
-      _DiagStep('3. Serveur du fournisseur joignable'),
-      _DiagStep('4. Réponse du flux (code HTTP)'),
-      _DiagStep('5. Signatures de lecteur (multi-UA)'),
-      _DiagStep('6. Sonde de décodage (ExoPlayer)'),
+      _DiagStep(context.l10n.tvBlackBoxStepInternet),
+      _DiagStep(context.l10n.tvBlackBoxStepDns),
+      _DiagStep(context.l10n.tvBlackBoxStepServer),
+      _DiagStep(context.l10n.tvBlackBoxStepHttp),
+      _DiagStep(context.l10n.tvBlackBoxStepSignatures),
+      _DiagStep(context.l10n.tvBlackBoxStepDecoder),
     ];
     setState(() {
       _diag = steps;
       _diagRunning = true;
-      _diagTitle = entry != null
-          ? 'Diagnostic — ${entry.channelName}'
-          : 'Diagnostic — ${target?.cleanName ?? 'aucune chaîne chargée'}';
+      _diagTitle = context.l10n.tvBlackBoxDiagTitleFor(entry != null
+          ? entry.channelName
+          : (target?.cleanName ?? context.l10n.tvBlackBoxNoChannelLoaded));
       _diagVerdict = '';
       _diagAdvice = '';
     });
@@ -274,7 +275,7 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
       if (!mounted) return; // l'utilisateur a quitté l'écran → on arrête tout
       setState(() {
         steps[i].running = true;
-        steps[i].detail = 'vérification…';
+        steps[i].detail = context.l10n.tvBlackBoxStepChecking;
       });
       TvCheckResult r;
       try {
@@ -290,8 +291,8 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
       });
     }
 
-    final (String verdict, String advice) = _concludeDiagnosis(steps, entry);
     if (mounted) {
+      final (String verdict, String advice) = _concludeDiagnosis(steps, entry);
       setState(() {
         _diagRunning = false;
         _diagVerdict = verdict;
@@ -311,21 +312,20 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
 
     if (ko(0)) {
       return (
-        'La box n\'a pas de sortie internet (portail captif ou réseau coupé).',
-        'Vérifie le Wi-Fi/câble de la box et la connexion du routeur.'
+        context.l10n.tvBlackBoxVerdictNoInternet,
+        context.l10n.tvBlackBoxAdviceNoInternet
       );
     }
     if (ko(1)) {
       return (
-        'Internet marche, mais le DNS ne trouve pas le serveur du '
-            'fournisseur — blocage FAI ou DNS malade.',
-        'Change le DNS de la box (ex. 8.8.8.8) ou essaie un VPN.'
+        context.l10n.tvBlackBoxVerdictDns,
+        context.l10n.tvBlackBoxAdviceDns
       );
     }
     if (ko(2)) {
       return (
-        'Le serveur du fournisseur est injoignable (il ne répond plus).',
-        'C\'est côté fournisseur : réessaie plus tard ou préviens-le.'
+        context.l10n.tvBlackBoxVerdictServerDown,
+        context.l10n.tvBlackBoxAdviceServerDown
       );
     }
     if (ko(3)) {
@@ -340,10 +340,8 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
     }
     if (ko(4)) {
       return (
-        'Le serveur répond mais refuse TOUTES les signatures de lecteur '
-            'testées.',
-        'Vérifie l\'abonnement chez le fournisseur (compte expiré ou flux '
-            'réservé à une autre app).'
+        context.l10n.tvBlackBoxVerdictSignatures,
+        context.l10n.tvBlackBoxAdviceSignatures
       );
     }
     if (ko(5)) {
@@ -359,25 +357,20 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
         return (e.why, e.advice);
       }
       return (
-        'Le réseau est bon mais la box n\'affiche aucune image — problème '
-            'de décodage (codec) ou flux vide.',
-        'Essaie la version SD/HD de la chaîne ; si rien ne passe, cette box '
-            'ne supporte pas ce format.'
+        context.l10n.tvBlackBoxVerdictDecode,
+        context.l10n.tvBlackBoxAdviceDecode
       );
     }
     final bool allKnownOk = ok(0) && ok(1) && ok(2);
     if (allKnownOk && s[3].status == TvCheckStatus.unknown) {
       return (
-        'Internet, DNS et serveur répondent — mais la chaîne n\'est plus '
-            'dans la liste, impossible de tester son flux.',
-        'Actualise ta source (Réglages → Mes sources) puis réessaie la '
-            'chaîne.'
+        context.l10n.tvBlackBoxVerdictChannelGone,
+        context.l10n.tvBlackBoxAdviceChannelGone
       );
     }
     return (
-      'Tout est passé ✓ — la chaîne devrait s\'ouvrir maintenant (l\'échec '
-          'était probablement passager).',
-      'Retourne sur la chaîne et relance la lecture.'
+      context.l10n.tvBlackBoxVerdictAllOk,
+      context.l10n.tvBlackBoxAdviceAllOk
     );
   }
 
@@ -390,33 +383,36 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const Row(
+        Row(
           children: <Widget>[
-            Icon(Icons.shield_rounded, color: TvTokens.gold, size: 34),
-            SizedBox(width: 12),
-            Text('Boîte noire',
-                style: TextStyle(
+            const Icon(Icons.shield_rounded, color: TvTokens.gold, size: 34),
+            const SizedBox(width: 12),
+            Text(context.l10n.tvBlackBoxTitle,
+                style: const TextStyle(
                     fontSize: TvDimens.displayS,
                     fontWeight: FontWeight.w800,
                     color: TvTokens.text)),
           ],
         ),
         const SizedBox(height: 4),
-        const Text(
-          'Diagnostic & compte rendu — pourquoi une chaîne ne s\'ouvre pas.',
-          style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
+        Text(
+          context.l10n.tvBlackBoxSubtitle,
+          style:
+              const TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
         ),
         const SizedBox(height: 18),
         // ----- Volets (D-pad Gauche/Droite entre les onglets) -----
         Row(
           children: <Widget>[
-            _tabChip(0, 'Compte rendu', Icons.summarize_rounded,
+            _tabChip(0, context.l10n.tvBlackBoxTabReport,
+                Icons.summarize_rounded,
                 autofocus: true),
             const SizedBox(width: 12),
-            _tabChip(1, 'Chaînes qui ne s\'ouvrent pas',
+            _tabChip(1, context.l10n.tvBlackBoxTabFailures,
                 Icons.report_problem_rounded),
             const SizedBox(width: 12),
-            _tabChip(2, 'Journal de vol', Icons.flight_rounded),
+            _tabChip(2, context.l10n.tvBlackBoxTabJournal,
+                Icons.flight_rounded),
           ],
         ),
         const SizedBox(height: 18),
@@ -503,9 +499,9 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
               Expanded(
                 child: Text(
                   healthy
-                      ? '✓ Tout va bien — aucune anomalie détectée.'
-                      : '⚠ ${problems.length} problème(s) détecté(s) : '
-                          '${problems.join(' · ')}',
+                      ? context.l10n.tvBlackBoxAllGood
+                      : context.l10n.tvBlackBoxProblemsDetected(
+                          problems.length, problems.join(' · ')),
                   style: TextStyle(
                       fontSize: TvDimens.title,
                       fontWeight: FontWeight.w800,
@@ -516,41 +512,50 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        _sectionTitle('Versions (tout ce que le support peut demander)'),
-        _infoRow('Application', _pkg?.appName ?? '…'),
-        _infoRow('Version', version),
-        _infoRow('Commit (build)', commit),
-        _infoRow('Plateforme', AppPlatform.id),
-        _infoRow('Système', Platform.operatingSystemVersion),
-        _infoRow('Mémoire (RAM)', _ramLabel()),
-        _infoRow('Langue', Localizations.localeOf(context).toString()),
+        _sectionTitle(context.l10n.tvBlackBoxSectionVersions),
+        _infoRow(context.l10n.tvBlackBoxRowApp, _pkg?.appName ?? '…'),
+        _infoRow(context.l10n.tvBlackBoxRowVersion, version),
+        _infoRow(context.l10n.tvBlackBoxRowCommit, commit),
+        _infoRow(context.l10n.tvBlackBoxRowPlatform, AppPlatform.id),
+        _infoRow(context.l10n.tvBlackBoxRowSystem,
+            Platform.operatingSystemVersion),
+        _infoRow(context.l10n.tvBlackBoxRowRam, _ramLabel()),
+        _infoRow(context.l10n.tvBlackBoxRowLanguage,
+            Localizations.localeOf(context).toString()),
         const SizedBox(height: 16),
-        _sectionTitle('Santé de l\'application'),
-        _infoRow('Abonnement', sub.label, valueColor: sub.color),
+        _sectionTitle(context.l10n.tvBlackBoxSectionHealth),
+        _infoRow(context.l10n.tvBlackBoxRowSubscription, sub.label,
+            valueColor: sub.color),
         _infoRow(
-            'Backend actif',
+            context.l10n.tvBlackBoxRowBackend,
             backupBackend
-                ? 'adresse de SECOURS (domaine maison indisponible)'
-                : 'domaine maison'),
-        _infoRow('Sources', count(_sourceCount)),
-        _infoRow('Chaînes (live)', count(_channelCount)),
-        _infoRow('Programmes EPG', count(_epgCount)),
-        _infoRow('Enregistrements', count(_recordingCount)),
-        _infoRow('Téléchargements', count(_downloadCount)),
-        _infoRow('Mémoire utilisée (process)',
-            _rssMb > 0 ? '$_rssMb Mo' : 'inconnue'),
-        const SizedBox(height: 16),
-        _sectionTitle('Dernier démarrage'),
-        _infoRow('Mode sans échec',
-            BootGuard.instance.isInSafeMode ? 'OUI (boucle détectée)' : 'non'),
-        _infoRow('Phase atteinte au boot précédent',
-            _bootPhaseLabel(BootGuard.instance.lastFailedPhase)),
+                ? context.l10n.tvBlackBoxBackendBackup
+                : context.l10n.tvBlackBoxBackendPrimary),
+        _infoRow(context.l10n.tvBlackBoxRowSources, count(_sourceCount)),
+        _infoRow(context.l10n.tvBlackBoxRowChannels, count(_channelCount)),
+        _infoRow(context.l10n.tvBlackBoxRowEpg, count(_epgCount)),
+        _infoRow(context.l10n.settingsRecordings, count(_recordingCount)),
+        _infoRow(context.l10n.tvBlackBoxRowDownloads, count(_downloadCount)),
         _infoRow(
-            'Démarrages non réussis d\'affilée',
+            context.l10n.tvBlackBoxRowRss,
+            _rssMb > 0
+                ? context.l10n.tvBlackBoxMbValue(_rssMb)
+                : context.l10n.tvBlackBoxRamUnknown),
+        const SizedBox(height: 16),
+        _sectionTitle(context.l10n.tvBlackBoxSectionLastBoot),
+        _infoRow(
+            context.l10n.tvBlackBoxRowSafeMode,
+            BootGuard.instance.isInSafeMode
+                ? context.l10n.tvBlackBoxSafeModeYes
+                : context.l10n.tvBlackBoxNo),
+        _infoRow(context.l10n.tvBlackBoxRowBootPhase,
+            _bootPhaseLabel(context, BootGuard.instance.lastFailedPhase)),
+        _infoRow(
+            context.l10n.tvBlackBoxRowBootFails,
             _bootFailCount == null
-                ? 'inconnu'
-                : '${_bootFailCount == 0 ? 0 : _bootFailCount! - 1} '
-                    '(0 = démarrage sain)'),
+                ? context.l10n.tvBlackBoxBootFailsUnknown
+                : context.l10n.tvBlackBoxBootFailsValue(
+                    _bootFailCount == 0 ? 0 : _bootFailCount! - 1)),
         const SizedBox(height: 24),
       ],
     );
@@ -559,42 +564,62 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
   ({String label, Color color}) _subscriptionLabel() {
     switch (SubscriptionState.instance.status) {
       case SubscriptionStatus.paid:
-        return (label: 'actif (payé)', color: const Color(0xFF3FBE7C));
+        return (
+          label: context.l10n.tvBlackBoxSubPaid,
+          color: const Color(0xFF3FBE7C)
+        );
       case SubscriptionStatus.trialActive:
         final int d = SubscriptionState.instance.trialDaysRemaining;
-        return (label: 'essai ($d j restants)', color: const Color(0xFF5AA0E8));
+        return (
+          label: context.l10n.tvBlackBoxSubTrial(d),
+          color: const Color(0xFF5AA0E8)
+        );
       case SubscriptionStatus.trialExpired:
-        return (label: 'essai expiré', color: const Color(0xFFE8B23A));
+        return (
+          label: context.l10n.tvBlackBoxSubTrialExpired,
+          color: const Color(0xFFE8B23A)
+        );
       case SubscriptionStatus.frozen:
-        return (label: 'gelé', color: const Color(0xFFE8B23A));
+        return (
+          label: context.l10n.tvBlackBoxSubFrozen,
+          color: const Color(0xFFE8B23A)
+        );
       case SubscriptionStatus.banned:
-        return (label: 'bloqué', color: const Color(0xFFFF5A4A));
+        return (
+          label: context.l10n.tvBlackBoxSubBanned,
+          color: const Color(0xFFFF5A4A)
+        );
       case SubscriptionStatus.unknown:
-        return (label: 'inconnu', color: TvTokens.mutedDim);
+        return (
+          label: context.l10n.tvBlackBoxSubUnknown,
+          color: TvTokens.mutedDim
+        );
     }
   }
 
   String _ramLabel() {
-    if (!DeviceMemory.isLoaded || DeviceMemory.totalMb <= 0) return 'inconnue';
+    if (!DeviceMemory.isLoaded || DeviceMemory.totalMb <= 0) {
+      return context.l10n.tvBlackBoxRamUnknown;
+    }
     final double gb = DeviceMemory.totalMb / 1024;
-    return '${gb.toStringAsFixed(1)} Go'
-        '${DeviceMemory.lowRam ? ' (classe FAIBLE)' : ''}';
+    return '${context.l10n.tvBlackBoxRamGb(gb.toStringAsFixed(1))}'
+        '${DeviceMemory.lowRam ? ' ${context.l10n.tvBlackBoxRamLowSuffix}' : ''}';
   }
 
-  static String _bootPhaseLabel(BootPhase p) {
+  String _bootPhaseLabel(BuildContext context, BootPhase p) {
     switch (p) {
       case BootPhase.none:
-        return 'aucune (première installation)';
+        return context.l10n.tvBlackBoxPhaseNone;
       case BootPhase.flutterUp:
-        return 'moteur démarré (avant le 1er écran)';
+        return context.l10n.tvBlackBoxPhaseFlutterUp;
       case BootPhase.firstFrame:
-        return '1er écran affiché';
+        return context.l10n.tvBlackBoxPhaseFirstFrame;
       case BootPhase.importStart:
-        return 'import de la source COMMENCÉ (suspect n°1 si crash)';
+        return context.l10n.tvBlackBoxPhaseImportStart;
       case BootPhase.importDone:
-        return 'import terminé';
+        return context.l10n.tvBlackBoxPhaseImportDone;
       case BootPhase.homeReady:
-        return 'accueil prêt (boot réussi)';
+        return context.l10n.tvBlackBoxPhaseHomeReady;
     }
   }
 
@@ -625,8 +650,8 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
                   const SizedBox(width: 12),
                   Text(
                     _diagRunning
-                        ? 'Diagnostic en cours…'
-                        : 'Diagnostiquer maintenant (point par point)',
+                        ? context.l10n.tvBlackBoxDiagRunning
+                        : context.l10n.tvBlackBoxDiagNow,
                     style: TextStyle(
                         fontSize: TvDimens.title,
                         fontWeight: FontWeight.w700,
@@ -643,15 +668,13 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
           _diagnosisPanel(),
         ],
         const SizedBox(height: 18),
-        _sectionTitle('Derniers échecs de lecture (${_failures.length})'),
+        _sectionTitle(context.l10n.tvBlackBoxSectionFailures(_failures.length)),
         if (_failures.isEmpty)
           _focusableCard(
-            child: const Text(
-              'Aucun échec enregistré — les chaînes se sont toutes ouvertes. '
-              'Si une chaîne reste noire, son échec apparaîtra ici avec le '
-              'POURQUOI.',
-              style:
-                  TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
+            child: Text(
+              context.l10n.tvBlackBoxNoFailures,
+              style: const TextStyle(
+                  fontSize: TvDimens.body, color: TvTokens.muted),
             ),
           )
         else
@@ -672,7 +695,9 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
             cause: e.cause,
           ).why;
     final String code = e.errorCodeName ??
-        (e.errorCode != null ? 'CODE_${e.errorCode}' : 'sans code');
+        (e.errorCode != null
+            ? 'CODE_${e.errorCode}'
+            : context.l10n.tvBlackBoxNoCode);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TvFocusBuilder(
@@ -695,7 +720,9 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
                   children: <Widget>[
                     Expanded(
                       child: Text(
-                        e.channelName.isEmpty ? '(chaîne inconnue)' : e.channelName,
+                        e.channelName.isEmpty
+                            ? context.l10n.tvBlackBoxUnknownChannel
+                            : e.channelName,
                         style: const TextStyle(
                             fontSize: TvDimens.titleS,
                             fontWeight: FontWeight.w800,
@@ -709,7 +736,7 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
                   ],
                 ),
                 const SizedBox(height: 6),
-                Text('Pourquoi : $why',
+                Text(context.l10n.tvBlackBoxWhy(why),
                     style: const TextStyle(
                         fontSize: TvDimens.body,
                         height: 1.3,
@@ -717,9 +744,9 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
                 const SizedBox(height: 6),
                 Text(
                   '$code'
-                  '${e.streamHost.isNotEmpty ? ' · serveur ${e.streamHost}' : ''}'
-                  '${e.uaTriedCount > 0 ? ' · ${e.uaTriedCount} signatures testées' : ''}'
-                  '  —  OK = diagnostiquer cette chaîne',
+                  '${e.streamHost.isNotEmpty ? ' · ${context.l10n.tvBlackBoxServerLabel(e.streamHost)}' : ''}'
+                  '${e.uaTriedCount > 0 ? ' · ${context.l10n.tvBlackBoxSignaturesTested(e.uaTriedCount)}' : ''}'
+                  '  —  ${context.l10n.tvBlackBoxOkToDiagnose}',
                   style: const TextStyle(
                       fontSize: TvDimens.label, color: TvTokens.mutedDim),
                 ),
@@ -805,14 +832,14 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text('Verdict : $_diagVerdict',
+                  Text(context.l10n.tvBlackBoxVerdictLabel(_diagVerdict),
                       style: const TextStyle(
                           fontSize: TvDimens.body,
                           fontWeight: FontWeight.w800,
                           height: 1.3,
                           color: TvTokens.goldBright)),
                   const SizedBox(height: 6),
-                  Text('Conseil : $_diagAdvice',
+                  Text(context.l10n.tvBlackBoxAdviceLabel(_diagAdvice),
                       style: const TextStyle(
                           fontSize: TvDimens.label,
                           height: 1.3,
@@ -883,10 +910,10 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
               const Icon(Icons.support_agent_rounded,
                   color: TvTokens.gold, size: 28),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Code support à donner au revendeur :',
-                  style: TextStyle(
+                  context.l10n.tvBlackBoxSupportCode,
+                  style: const TextStyle(
                       fontSize: TvDimens.body, color: TvTokens.muted),
                 ),
               ),
@@ -897,13 +924,13 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        _sectionTitle('Constats automatiques (${_findings.length})'),
+        _sectionTitle(context.l10n.tvBlackBoxSectionFindings(_findings.length)),
         if (_findings.isEmpty)
           _focusableCard(
-            child: const Text(
-              'Aucune anomalie connue détectée sur la fenêtre enregistrée.',
-              style:
-                  TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
+            child: Text(
+              context.l10n.tvBlackBoxNoFindings,
+              style: const TextStyle(
+                  fontSize: TvDimens.body, color: TvTokens.muted),
             ),
           )
         else
@@ -931,12 +958,13 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
               ),
             ),
         const SizedBox(height: 16),
-        _sectionTitle('Session courante (récent → ancien, ${recent.length} lignes)'),
+        _sectionTitle(
+            context.l10n.tvBlackBoxSectionCurrentSession(recent.length)),
         for (final String line in recent) _journalLine(line),
         if (previous.isNotEmpty) ...<Widget>[
           const SizedBox(height: 16),
           _sectionTitle(
-              'Session PRÉCÉDENTE (post-mortem, ${previous.length} lignes)'),
+              context.l10n.tvBlackBoxSectionPreviousSession(previous.length)),
           for (final String line in previous) _journalLine(line),
         ],
         const SizedBox(height: 24),

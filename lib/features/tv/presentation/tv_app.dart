@@ -44,6 +44,7 @@ import '../../sports/domain/sport_models.dart';
 import '../core/tv_ambience.dart';
 import 'tv_care_nudge.dart';
 import 'tv_night_comfort.dart';
+import 'tv_profiles_screen.dart' show tvProfileDisplayName;
 import 'tv_shell.dart';
 import 'tv_who_watching_screen.dart';
 
@@ -507,7 +508,7 @@ extension on TvDest {
       case TvDest.live:
         return context.l10n.tvNavLive;
       case TvDest.news:
-        return 'Actu';
+        return context.l10n.tvNavNews;
       case TvDest.films:
         return context.l10n.tvNavFilms;
       case TvDest.series:
@@ -515,7 +516,7 @@ extension on TvDest {
       case TvDest.guide:
         return context.l10n.tvNavGuide;
       case TvDest.recordings:
-        return 'Enregistrements';
+        return context.l10n.settingsRecordings;
       case TvDest.search:
         return context.l10n.tvNavSearch;
       case TvDest.settings:
@@ -971,7 +972,8 @@ class _ProfileChip extends StatelessWidget {
                   Text(p.emoji, style: const TextStyle(fontSize: 20)),
                   const SizedBox(width: 8),
                   Text(
-                    p.name,
+                    // Profil par défaut → nom localisé (« Famille »/« Family »…).
+                    tvProfileDisplayName(context, p),
                     maxLines: 1,
                     softWrap: false,
                     style: TvTokens.ui(15, weight: FontWeight.w600, color: fg),

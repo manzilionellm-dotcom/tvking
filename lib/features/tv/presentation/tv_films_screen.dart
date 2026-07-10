@@ -85,6 +85,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   }
 
   Future<void> _load({bool force = false}) async {
+    // Libellé du rayon « Autres » capturé AVANT les await (contexte sûr).
+    final String othersLabel = context.l10n.tvOthers;
     if (mounted) setState(() => _loading = true);
     final List<VodMovie> movies =
         await VodRepository.instance.fetchMovies(forceRefresh: force);
@@ -99,7 +101,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     final List<String> cats = <String>[];
     final Map<String, List<VodMovie>> byCat = <String, List<VodMovie>>{};
     for (final VodMovie m in movies) {
-      final String c = m.category.trim().isEmpty ? 'Autres' : m.category.trim();
+      final String c =
+          m.category.trim().isEmpty ? othersLabel : m.category.trim();
       final List<VodMovie>? existing = byCat[c];
       if (existing == null) {
         cats.add(c);
@@ -243,8 +246,7 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
             Text(context.l10n.tvNavFilms,
                 style: TvTokens.display(26, color: TvTokens.text)),
             const SizedBox(height: 8),
-            Text(
-                'Aucun film pour le moment.\n(Source sans VOD, ou compte M3U sans films.)',
+            Text(context.l10n.tvFilmsEmpty,
                 textAlign: TextAlign.center,
                 style: TvTokens.ui(15, color: TvTokens.mutedDim)),
           ],

@@ -8,6 +8,7 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/family_backend.dart';
 import '../../subscription/data/subscription_state.dart';
@@ -51,7 +52,7 @@ class _TvFamilyJoinScreenState extends State<TvFamilyJoinScreen> {
     if (r == null) {
       setState(() {
         _busy = false;
-        _message = 'Connexion impossible. Vérifie le réseau et réessaie.';
+        _message = context.l10n.tvFamilyJoinNetworkError;
       });
       return;
     }
@@ -60,9 +61,7 @@ class _TvFamilyJoinScreenState extends State<TvFamilyJoinScreen> {
         _busy = false;
         _joined = true;
         _message =
-            '🎉 C\'est fait ! Cet appareil est rattaché à l\'abonnement '
-            'famille ${r['owner'] ?? ''}. L\'app se débloque dans quelques '
-            'secondes…';
+            context.l10n.tvFamilyJoinSuccess((r['owner'] ?? '').toString());
       });
       // Pousse le rafraîchissement tout de suite (sans attendre le poll 5 s).
       await SubscriptionState.instance.syncWithBackend();
@@ -73,14 +72,12 @@ class _TvFamilyJoinScreenState extends State<TvFamilyJoinScreen> {
       _busy = false;
       _code = '';
       _message = switch (err) {
-        'code_invalid' => 'Code invalide ou expiré. Redemande un code.',
-        'family_full' => 'Cette famille est complète (limite du plan atteinte).',
-        'owner_not_paid' =>
-          'L\'abonnement du propriétaire n\'est plus actif.',
-        'plan_required' =>
-          'Le propriétaire n\'a pas l\'option PLAN FAMILLE — il doit la demander à son vendeur.',
-        'own_code' => 'C\'est ton propre code 🙂 — il est pour tes proches.',
-        _ => 'Impossible pour le moment. Réessaie plus tard.',
+        'code_invalid' => context.l10n.tvFamilyJoinErrInvalid,
+        'family_full' => context.l10n.tvFamilyJoinErrFull,
+        'owner_not_paid' => context.l10n.tvFamilyJoinErrOwnerNotPaid,
+        'plan_required' => context.l10n.tvFamilyJoinErrPlanRequired,
+        'own_code' => context.l10n.tvFamilyJoinErrOwnCode,
+        _ => context.l10n.tvFamilyErrGeneric,
       };
     });
   }
@@ -99,18 +96,17 @@ class _TvFamilyJoinScreenState extends State<TvFamilyJoinScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const Text(
-              'J\'ai un code famille',
-              style: TextStyle(
+            Text(
+              context.l10n.tvFamilyJoinTitle,
+              style: const TextStyle(
                   fontSize: 30,
                   fontWeight: FontWeight.w800,
                   color: TvTokens.text),
             ),
             const SizedBox(height: 6),
-            const Text(
-              'Tape le code à 6 chiffres affiché sur l\'appareil de ton '
-              'proche (Réglages → Abonnement Famille).',
-              style: TextStyle(fontSize: 15, color: TvTokens.muted),
+            Text(
+              context.l10n.tvFamilyJoinSubtitle,
+              style: const TextStyle(fontSize: 15, color: TvTokens.muted),
             ),
             const SizedBox(height: 24),
             // ----- Code en cours -----

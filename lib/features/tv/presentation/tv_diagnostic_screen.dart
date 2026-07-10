@@ -34,6 +34,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../data/tv_diagnostics_service.dart';
@@ -164,14 +165,16 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
 
   // 1. Portail captif : un 204 « nu » = sortie Internet libre.
   Future<void> _runCaptive() async {
-    _set(_captive, _Stat.running, 'requête generate_204…');
+    if (mounted) {
+      _set(_captive, _Stat.running, context.l10n.tvDiagRunningCaptive);
+    }
     _apply(_captive, await TvDiagnosticsService.instance.checkCaptivePortal());
   }
 
   // 2. DNS : on résout l'hôte de la chaîne courante. Pas de chaîne = INCONNU.
   Future<void> _runDns(String? host) async {
-    if (host != null && host.isNotEmpty) {
-      _set(_dns, _Stat.running, 'lookup $host…');
+    if (host != null && host.isNotEmpty && mounted) {
+      _set(_dns, _Stat.running, context.l10n.tvDiagRunningDns(host));
     }
     _apply(_dns, await TvDiagnosticsService.instance.checkDns(host));
   }
@@ -180,8 +183,8 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
   // 456 = blocage fournisseur (IP datacenter/cloud) — ici on est sur l'IP de
   // la box, donc un 456 prouverait que le fournisseur bloque même le LAN.
   Future<void> _runStream(String? streamUrl) async {
-    if (streamUrl != null && streamUrl.isNotEmpty) {
-      _set(_stream, _Stat.running, 'HEAD du flux…');
+    if (streamUrl != null && streamUrl.isNotEmpty && mounted) {
+      _set(_stream, _Stat.running, context.l10n.tvDiagRunningStream);
     }
     _apply(_stream,
         await TvDiagnosticsService.instance.checkStreamReachability(streamUrl));
@@ -189,7 +192,9 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
 
   // 4. Source poussée : GET /api/device-source/<MAC>. Lecture seule.
   Future<void> _runSource() async {
-    _set(_source, _Stat.running, 'lecture MAC…');
+    if (mounted) {
+      _set(_source, _Stat.running, context.l10n.tvDiagRunningSource);
+    }
     _apply(_source, await TvDiagnosticsService.instance.checkPushedSource());
   }
 
@@ -197,8 +202,8 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
   // (Media3/ExoPlayer, même moteur que la prod) via le callback ci-dessous ;
   // on attend la 1re image (OK) ou une erreur (FAIL). Tout est détruit après.
   Future<void> _runPlayer(String? streamUrl) async {
-    if (streamUrl != null && streamUrl.isNotEmpty) {
-      _set(_player, _Stat.running, 'ouverture sonde ExoPlayer…');
+    if (streamUrl != null && streamUrl.isNotEmpty && mounted) {
+      _set(_player, _Stat.running, context.l10n.tvDiagRunningPlayer);
     }
     final TvCheckResult r = await TvDiagnosticsService.instance.probePlayer(
       streamUrl,
@@ -241,6 +246,8 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
     }
   }
 
+  /// Libellé TECHNIQUE (français) réservé au journal logcat — le libellé
+  /// AFFICHÉ passe par l10n (cf. [_verdictLabelUi]).
   String _verdictLabel() {
     switch (_verdict) {
       case _Verdict.running:
@@ -253,6 +260,39 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
         return 'BUG PLAYER';
       case _Verdict.partial:
         return 'DIAGNOSTIC PARTIEL';
+    }
+  }
+
+  /// Libellé du verdict affiché à l'écran (traduit).
+  String _verdictLabelUi(BuildContext context) {
+    switch (_verdict) {
+      case _Verdict.running:
+        return context.l10n.tvDiagVerdictRunning;
+      case _Verdict.pivotOk:
+        return context.l10n.tvDiagVerdictPivotOk;
+      case _Verdict.networkBlock:
+        return context.l10n.tvDiagVerdictNetworkBlock;
+      case _Verdict.playerBug:
+        return context.l10n.tvDiagVerdictPlayerBug;
+      case _Verdict.partial:
+        return context.l10n.tvDiagVerdictPartial;
+    }
+  }
+
+  /// Libellé AFFICHÉ d'une ligne de vérif (traduit) — le champ `name` des
+  /// [_Check] reste en français pour le journal logcat.
+  String _checkLabel(BuildContext context, int index) {
+    switch (index) {
+      case 0:
+        return context.l10n.tvDiagCheckCaptive;
+      case 1:
+        return context.l10n.tvDiagCheckDns;
+      case 2:
+        return context.l10n.tvDiagCheckStream;
+      case 3:
+        return context.l10n.tvDiagCheckSource;
+      default:
+        return context.l10n.tvDiagCheckPlayer;
     }
   }
 
@@ -317,9 +357,9 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  const Text(
-                    'DIAGNOSTIC ON-DEVICE — DeFew TV',
-                    style: TextStyle(
+                  Text(
+                    context.l10n.tvDiagTitle,
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 30,
                       fontWeight: FontWeight.w800,
@@ -327,9 +367,9 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
-                    'Teste si la box peut jouer le flux depuis sa propre IP.',
-                    style: TextStyle(color: Colors.white54, fontSize: 18),
+                  Text(
+                    context.l10n.tvDiagSubtitle,
+                    style: const TextStyle(color: Colors.white54, fontSize: 18),
                   ),
                   const SizedBox(height: 20),
                   // ----- Verdict -----
@@ -362,7 +402,7 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
                         const SizedBox(width: 16),
                         Expanded(
                           child: Text(
-                            _verdictLabel(),
+                            _verdictLabelUi(context),
                             style: TextStyle(
                               color: _verdictColor(),
                               fontSize: 30,
@@ -397,7 +437,7 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: <Widget>[
                                   Text(
-                                    c.name,
+                                    _checkLabel(context, i),
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 22,
@@ -424,9 +464,10 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
                   const SizedBox(height: 12),
                   Row(
                     children: <Widget>[
-                      const Text(
-                        'RETOUR pour quitter',
-                        style: TextStyle(color: Colors.white38, fontSize: 16),
+                      Text(
+                        context.l10n.tvDiagBackToQuit,
+                        style: const TextStyle(
+                            color: Colors.white38, fontSize: 16),
                       ),
                       const Spacer(),
                       // Sonde lecteur (5) : mini-vue native montée seulement

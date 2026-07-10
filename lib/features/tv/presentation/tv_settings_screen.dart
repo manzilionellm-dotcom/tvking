@@ -203,7 +203,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   children: <Widget>[
                     Icon(Icons.playlist_play_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
-                    Text('Mes sources (ajouter / activer / supprimer)',
+                    Text(context.l10n.tvSettingsSources,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
@@ -422,7 +422,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   children: <Widget>[
                     Icon(Icons.family_restroom_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
-                    Text('Abonnement Famille (partager, 5 appareils)',
+                    Text(context.l10n.tvSettingsFamily,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
@@ -458,7 +458,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   children: <Widget>[
                     Icon(Icons.people_alt_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
-                    Text('Profils (chacun son univers)',
+                    Text(context.l10n.tvSettingsProfiles,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
@@ -676,7 +676,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   children: <Widget>[
                     Icon(Icons.bug_report_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
-                    Text('Boîte noire (diagnostic)',
+                    Text(context.l10n.tvSettingsDiagnostics,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
@@ -699,10 +699,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               border: Border.all(color: TvTokens.lineSoft),
             ),
             child: Text(
-              'Cette application est un LECTEUR multimédia. Elle ne vend, ne '
-              'fournit et n\'héberge aucune chaîne, aucun flux ni aucun lien '
-              'M3U. Le contenu est fourni par l\'utilisateur, seul responsable '
-              'de sa licéité.',
+              context.l10n.tvSettingsPlayerDisclaimer,
               style: TextStyle(
                   fontSize: TvDimens.label,
                   height: 1.45,

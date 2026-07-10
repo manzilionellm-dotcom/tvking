@@ -83,7 +83,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
     if (!mounted) return;
     setState(() => _resolving = false);
     if (r.isEmpty) {
-      _flash('« $name » introuvable — essaie la recherche.');
+      _flash(context.l10n.tvSportTeamNotFound(name));
       return;
     }
     final SportTeam best = r.firstWhere(
