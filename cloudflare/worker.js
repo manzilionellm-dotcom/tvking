@@ -1542,6 +1542,19 @@ async function handleCastProxy(env, url, method) {
     // l'ambiguïté (403/456 = blocage IP/connexions, 404 = token périmé).
     return castProxyError('upstream status=' + resp.status, 502, resp.status);
   }
+  // ANTI PAGE D'ERREUR (terrain 2026-07-10, panel thekung) : certains
+  // panels répondent 200 avec une page HTML (« limite de connexions »,
+  // portail anti-bot) au lieu du flux. La re-typer video/mp2t enverrait
+  // du HTML à mpegts.js → la TV reste en « loading » pour toujours
+  // (aucune frame, 8/8 échecs silencieux). Un vrai flux IPTV arrive en
+  // video/mp2t, application/octet-stream ou sans Content-Type — tout
+  // corps explicitement textuel est une page d'erreur déguisée.
+  const upCt = (resp.headers.get('content-type') || '').toLowerCase();
+  if (upCt.startsWith('text/') || upCt.includes('html') ||
+      upCt.includes('json') || upCt.includes('xml')) {
+    return castProxyError(
+      'upstream content-type=' + upCt.slice(0, 40), 502, resp.status);
+  }
 
   const headers = {
     'Content-Type': 'video/mp2t',

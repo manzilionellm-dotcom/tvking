@@ -382,58 +382,59 @@ class GoogleCastTransport implements CastTransport {
       }
     }
 
-    // 3) RECEIVER ADAPTÉ AU CHEMIN (CAST_HANDOFF §6.2). Le natif change
-    //    l'App ID de session à la volée (CastContext.setReceiverApplicationId) ;
-    //    si une session tournait sur l'AUTRE receiver, il la termine et
-    //    re-sélectionne la même TV tout seul (résultat 'switching').
-    final String desiredReceiver = receiverAppIdForCastPath(castPath);
-    final String switchOutcome = kCastUseCustomReceiver
-        ? await api.setReceiverApplicationId(desiredReceiver)
-        : 'skipped';
-    StructuredLogger.instance.info(
-      domain: 'cast',
-      event: 'google.receiver_select',
-      ctx: <String, Object?>{
-        'path': castPath,
-        'appId': desiredReceiver,
-        'outcome': switchOutcome,
-      },
-    );
+    // 3+4) RECEIVER ADAPTÉ AU CHEMIN + SESSION (factorisé : les replis
+    //      cast_proxy → direct_tv/relais re-routent la session en cours
+    //      de playStream, cf. _ensureSessionOn).
+    await _ensureSessionOn(api, castPath);
 
-    // 4) SESSION sur le bon receiver.
-    bool hasSession;
-    if (switchOutcome == 'switching') {
-      // L'ancienne session (autre receiver) se ferme ; le natif ré-ouvre la
-      // même TV sur le nouveau receiver. On attend cette reconnexion AVANT
-      // de déranger l'utilisateur avec le picker.
-      hasSession = await _waitForSessionOn(
-        api,
-        desiredReceiver,
-        const Duration(seconds: 12),
-      );
-    } else {
-      hasSession = await api.hasActiveSession();
-    }
-
-    // Pas de session → on demande au SDK d'ouvrir SON dialog natif.
-    // L'utilisateur sélectionne sa TV. Le SDK gère la négociation,
-    // le pairing, etc. — c'est exactement le flow Netflix / YouTube.
-    if (!hasSession) {
-      await api.showRoutePicker();
-      // Le dialog est asynchrone côté utilisateur (il doit tap sa TV).
-      // On poll hasActiveSession pendant 30s max — au-delà on suppose
-      // que l'utilisateur a annulé.
-      final DateTime deadline =
-          DateTime.now().add(const Duration(seconds: 30));
-      while (DateTime.now().isBefore(deadline)) {
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-        if (await api.hasActiveSession()) {
-          hasSession = true;
-          break;
+    // TENTATIVE CAST_PROXY avec repli (terrain 2026-07-10 soir, panel
+    // thekung) : le verify du proxy peut passer (2xx, type correct) et la
+    // TV échouer QUAND MÊME (flux coupé sous contention « 1 connexion »,
+    // page d'erreur intermittente…). Avant : échec sec de la session
+    // (8/8, « la TV n'a pas démarré la lecture »). Désormais : bascule
+    // AUTOMATIQUE vers TV-direct puis relais téléphone, DANS la même
+    // session — et le mémo évite de re-payer ce budget au prochain zap.
+    if (castPath == 'cast_proxy') {
+      try {
+        await _loadAndAwaitPlaying(
+          api,
+          urlToCast: urlToCast,
+          mime: mime,
+          castPath: castPath,
+          title: title,
+          imageUrl: imageUrl,
+          budget: const Duration(seconds: 25),
+        );
+        return; // La TV tire le flux via le Worker — téléphone libre.
+      } on Exception catch (e) {
+        CastProxyVerdictMemo.instance
+            .remember(upstreamHost, blocked: true);
+        StructuredLogger.instance.warn(
+          domain: 'cast',
+          event: 'cast_proxy.playback_fallback',
+          ctx: <String, Object?>{'error': e.toString()},
+        );
+        String? direct;
+        if (isExoPlayerReceiver(device) &&
+            CastProxyVerdictMemo.directTv.cachedBlocked(upstreamHost) !=
+                true) {
+          direct = await directTvCandidate(upstreamForRelay);
         }
-      }
-      if (!hasSession) {
-        throw Exception('Aucune TV sélectionnée.');
+        if (direct != null) {
+          urlToCast = direct;
+          mime = _guessMime(direct);
+          castPath = 'direct_tv';
+        } else {
+          urlToCast = await _registerHlsRelay(
+            upstream: upstreamForRelay,
+            profileUrl: streamUrl,
+          );
+          mime = 'application/x-mpegURL';
+          castPath = 'local_hls_relay';
+          lastRelayUrl = urlToCast;
+        }
+        // custom 5BDFD969 → Default CC1AD845 : re-route la session.
+        await _ensureSessionOn(api, castPath);
       }
     }
 
@@ -683,6 +684,63 @@ class GoogleCastTransport implements CastTransport {
           ? kCastDefaultReceiverAppId
           : kCastCustomReceiverAppId;
 
+  /// Sélectionne le receiver adapté à [castPath] puis garantit une
+  /// session dessus (bascule d'App ID à la volée, attente de la
+  /// reconnexion, picker natif en dernier recours). Appelé au routage
+  /// initial ET par les replis qui changent de receiver en cours de
+  /// playStream (cast_proxy custom → relais/direct sur le Default).
+  Future<void> _ensureSessionOn(GoogleCastApi api, String castPath) async {
+    final String desiredReceiver = receiverAppIdForCastPath(castPath);
+    final String switchOutcome = kCastUseCustomReceiver
+        ? await api.setReceiverApplicationId(desiredReceiver)
+        : 'skipped';
+    StructuredLogger.instance.info(
+      domain: 'cast',
+      event: 'google.receiver_select',
+      ctx: <String, Object?>{
+        'path': castPath,
+        'appId': desiredReceiver,
+        'outcome': switchOutcome,
+      },
+    );
+
+    bool hasSession;
+    if (switchOutcome == 'switching') {
+      // L'ancienne session (autre receiver) se ferme ; le natif ré-ouvre la
+      // même TV sur le nouveau receiver. On attend cette reconnexion AVANT
+      // de déranger l'utilisateur avec le picker.
+      hasSession = await _waitForSessionOn(
+        api,
+        desiredReceiver,
+        const Duration(seconds: 12),
+      );
+    } else {
+      hasSession = await api.hasActiveSession();
+    }
+
+    // Pas de session → on demande au SDK d'ouvrir SON dialog natif.
+    // L'utilisateur sélectionne sa TV. Le SDK gère la négociation,
+    // le pairing, etc. — c'est exactement le flow Netflix / YouTube.
+    if (!hasSession) {
+      await api.showRoutePicker();
+      // Le dialog est asynchrone côté utilisateur (il doit tap sa TV).
+      // On poll hasActiveSession pendant 30s max — au-delà on suppose
+      // que l'utilisateur a annulé.
+      final DateTime deadline =
+          DateTime.now().add(const Duration(seconds: 30));
+      while (DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        if (await api.hasActiveSession()) {
+          hasSession = true;
+          break;
+        }
+      }
+      if (!hasSession) {
+        throw Exception('Aucune TV sélectionnée.');
+      }
+    }
+  }
+
   /// Attend qu'une session soit CONNECTÉE sur le receiver [appId] après une
   /// bascule ('switching') : l'ancienne session peut encore apparaître
   /// active pendant sa fermeture, d'où la double condition session + App ID.
@@ -751,7 +809,15 @@ class GoogleCastTransport implements CastTransport {
       req.maxRedirects = 5;
       final HttpClientResponse resp =
           await req.close().timeout(const Duration(seconds: 5));
-      return resp.statusCode >= 200 && resp.statusCode < 300;
+      final String ct =
+          (resp.headers.contentType?.mimeType ?? '').toLowerCase();
+      // Page d'erreur 200 (« limite de connexions ») : un corps textuel
+      // n'est jamais un flux — la TV resterait en loading pour toujours.
+      final bool textual = ct.startsWith('text/') ||
+          ct.contains('html') ||
+          ct.contains('json') ||
+          ct.contains('xml');
+      return resp.statusCode >= 200 && resp.statusCode < 300 && !textual;
     } on Object {
       return false;
     } finally {
@@ -776,12 +842,25 @@ class GoogleCastTransport implements CastTransport {
       // X-Upstream-Status = le VRAI code du fournisseur vu par le Worker
       // (456/403 = IP datacenter refusée) — précieux dans les diagnostics.
       final String upstream = resp.headers.value('x-upstream-status') ?? '';
+      final String ct =
+          (resp.headers.contentType?.mimeType ?? '').toLowerCase();
+      // Page d'erreur 200 déguisée (terrain 2026-07-10) : le Worker la
+      // filtre désormais, mais on garde la ceinture côté app — un corps
+      // textuel n'est JAMAIS un flux.
+      final bool textual = ct.startsWith('text/') ||
+          ct.contains('html') ||
+          ct.contains('json') ||
+          ct.contains('xml');
       StructuredLogger.instance.info(
         domain: 'cast',
         event: 'proxy.verify',
-        ctx: <String, Object?>{'status': status, 'upstream': upstream},
+        ctx: <String, Object?>{
+          'status': status,
+          'upstream': upstream,
+          if (textual) 'contentType': ct,
+        },
       );
-      return status >= 200 && status < 300;
+      return status >= 200 && status < 300 && !textual;
     } on Exception {
       return false; // injoignable → on considère le proxy KO
     } finally {

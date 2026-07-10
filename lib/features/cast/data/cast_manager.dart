@@ -49,7 +49,14 @@ import 'upnp_av_transport.dart';
 /// 40 s laisse la place a "1 direct (15 s) + relais (jusqu'a ~20 s)".
 /// Couple a la regle skip-direct->relais (cf. _castDlnaWithFailover),
 /// le cas median reste rapide ; seul l'echec complet va jusqu'a 40 s.
-const Duration kCastTotalTimeout = Duration(seconds: 40);
+/// 2026-07-10 : releve de 40 s -> 90 s. Le chemin Chromecast a
+/// desormais une cascade complete cast_proxy (25 s) -> bascule de
+/// receiver (~12 s) -> TV-direct (12 s) -> relais telephone (25 s) :
+/// 40 s tuait la session PENDANT que le repli gagnant travaillait.
+/// Le cas median reste rapide (le premier chemin marche, et les memos
+/// par hote evitent de re-derouler la cascade a chaque zap) ; seul
+/// l'echec complet va au bout du budget.
+const Duration kCastTotalTimeout = Duration(seconds: 90);
 
 /// Budget global DLNA — plus large que le Chromecast : l'échelle de
 /// failover (jusqu'à 9 stratégies, SOAP 15 s chacune) + les rendeurs
