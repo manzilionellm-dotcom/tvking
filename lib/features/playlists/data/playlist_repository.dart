@@ -37,6 +37,7 @@ import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
 import '../domain/playlist.dart';
+import 'import_progress.dart';
 import 'm3u_fetcher.dart';
 import 'm3u_parser.dart';
 import 'playlist_database.dart';
@@ -487,6 +488,7 @@ class PlaylistRepository {
     required String url,
     String? epgUrl,
     http.Client? httpClient,
+    ImportProgressCallback? onProgress,
   }) async {
     final ({String server, String username, String password})? creds =
         SourceLinkUtils.tryExtractXtreamCredentials(url);
@@ -494,7 +496,11 @@ class PlaylistRepository {
     // Vraie playlist M3U (pas d'identifiants) : un seul chemin possible.
     if (creds == null) {
       return addM3uPlaylist(
-          name: name, url: url, epgUrl: epgUrl, httpClient: httpClient);
+          name: name,
+          url: url,
+          epgUrl: epgUrl,
+          httpClient: httpClient,
+          onProgress: onProgress);
     }
 
     // Lien Xtream : l'API d'abord (voie royale, anti-OOM, rapide).
@@ -505,6 +511,7 @@ class PlaylistRepository {
         username: creds.username,
         password: creds.password,
         httpClient: httpClient,
+        onProgress: onProgress,
       );
     } on Object catch (xtErr) {
       if (kDebugMode) {
@@ -512,7 +519,11 @@ class PlaylistRepository {
       }
       try {
         return await addM3uPlaylist(
-            name: name, url: url, epgUrl: epgUrl, httpClient: httpClient);
+            name: name,
+            url: url,
+            epgUrl: epgUrl,
+            httpClient: httpClient,
+            onProgress: onProgress);
       } catch (_) {
         throw xtErr; // erreur Xtream = la plus parlante (compte / DNS)
       }
@@ -528,6 +539,7 @@ class PlaylistRepository {
     required String url,
     String? epgUrl,
     http.Client? httpClient,
+    ImportProgressCallback? onProgress,
   }) async {
     // NORMALISATION : complète http:// si l'utilisateur/le panel admin a
     // donné juste un domaine (« serveur.com/playlist.m3u ») sans schéma —
@@ -556,15 +568,29 @@ class PlaylistRepository {
       );
       playlistId = await _insertPlaylist(newPlaylist);
 
+      onProgress?.call(const ImportProgress(phase: ImportPhase.connecting));
+
       // 2) Télécharge le contenu M3U via le fetcher robuste
       //    (User-Agent navigateur + UTF-8 / Latin-1 fallback +
       //    strip BOM + timeout 90s — gère les serveurs paranos
       //    ou les exports Windows-1252 mal étiquetés).
+      //    La progression (octets reçus) alimente la barre vivante.
       if (kDebugMode) debugPrint('[Repo] GET $url');
-      final String body = await M3uFetcher.fetch(url, httpClient: client);
+      final String body = await M3uFetcher.fetch(
+        url,
+        httpClient: client,
+        onBytes: onProgress == null
+            ? null
+            : (int received, int? total) => onProgress(ImportProgress(
+                  phase: ImportPhase.downloading,
+                  bytesReceived: received,
+                  totalBytes: total,
+                )),
+      );
 
       // 3) Parse (dans un ISOLATE → pas de gel UI) + insertion en batch.
       //    Plafond chaînes ADAPTÉ À LA RAM passé à l'isolate (anti-OOM).
+      onProgress?.call(const ImportProgress(phase: ImportPhase.analyzing));
       final M3uParseResult parsed = await M3uParser.parseInBackground(
         body,
         playlistId: playlistId,
@@ -582,6 +608,10 @@ class PlaylistRepository {
         );
       }
 
+      onProgress?.call(ImportProgress(
+        phase: ImportPhase.saving,
+        channelsFound: parsed.channels.length,
+      ));
       await _insertChannels(parsed.channels);
       final Playlist saved = newPlaylist.copyWith(
         id: playlistId,
@@ -589,6 +619,10 @@ class PlaylistRepository {
         lastSyncedAt: DateTime.now().millisecondsSinceEpoch,
       );
       await _updatePlaylistMetrics(saved);
+      onProgress?.call(ImportProgress(
+        phase: ImportPhase.done,
+        channelsFound: parsed.channels.length,
+      ));
 
       // CORRECTIF « les chaînes n'arrivent jamais » : on ACTIVE la
       // playlist qu'on vient d'ajouter. Sans ça, seule la TOUTE 1re
@@ -710,6 +744,7 @@ class PlaylistRepository {
     required String username,
     required String password,
     http.Client? httpClient,
+    ImportProgressCallback? onProgress,
   }) async {
     // NORMALISATION CENTRALE (tous les points d'entrée passent ici —
     // panneaux mobile/TV, panel admin via push MAC, restauration cloud) :
@@ -734,6 +769,7 @@ class PlaylistRepository {
     // (cf. `catch`) → on ne stocke QUE les comptes valides.
     int? playlistId;
     try {
+      onProgress?.call(const ImportProgress(phase: ImportPhase.connecting));
       await xtream.verifyCredentials();
 
       // 2) Crée la playlist en base (avec EPG URL auto-générée)
@@ -760,6 +796,8 @@ class PlaylistRepository {
       //    collecte que les IDS (légers) pour filtrer l'EPG ensuite.
       final Map<String, String> cats = await xtream.fetchLiveCategories();
       final Set<String> epgIds = <String>{};
+      int running = 0;
+      onProgress?.call(const ImportProgress(phase: ImportPhase.analyzing));
       final int count = await xtream.importLiveChannelsStreamed(
         playlistId: playlistId,
         categories: cats,
@@ -768,6 +806,13 @@ class PlaylistRepository {
           for (final Channel c in batch) {
             epgIds.add(c.id);
           }
+          // Compteur VIVANT : chaque lot importé fait grimper le total
+          // affiché à l'écran (le client voit que « ça avance »).
+          running += batch.length;
+          onProgress?.call(ImportProgress(
+            phase: ImportPhase.analyzing,
+            channelsFound: running,
+          ));
         },
       );
 
@@ -778,12 +823,16 @@ class PlaylistRepository {
         );
       }
 
+      onProgress?.call(
+          ImportProgress(phase: ImportPhase.saving, channelsFound: count));
       final Playlist saved = newPlaylist.copyWith(
         id: playlistId,
         channelCount: count,
         lastSyncedAt: DateTime.now().millisecondsSinceEpoch,
       );
       await _updatePlaylistMetrics(saved);
+      onProgress?.call(
+          ImportProgress(phase: ImportPhase.done, channelsFound: count));
 
       // CORRECTIF « les chaînes n'arrivent jamais » : on ACTIVE la
       // playlist Xtream qu'on vient d'ajouter (même raison que pour le

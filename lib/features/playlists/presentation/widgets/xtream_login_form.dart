@@ -22,8 +22,11 @@ import 'package:flutter/material.dart';
 import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../data/import_progress.dart';
 import '../../data/playlist_repository.dart';
 import '../../data/source_link_utils.dart';
+import '../../domain/playlist.dart';
+import '../import_progress_screen.dart';
 
 class XtreamLoginForm extends StatefulWidget {
   const XtreamLoginForm({
@@ -84,8 +87,11 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
       // « Smart » : si get.php est refusé (503, signatures bloquées)
       // mais que le lien porte des identifiants Xtream, le MÊME compte
       // est importé via l'API player_api — comme IBO/Smarters.
-      await _run(messenger, () => PlaylistRepository.instance
-          .addM3uPlaylistSmart(name: 'Mon abonnement', url: url));
+      await _run(
+          messenger,
+          (ImportProgressCallback op) => PlaylistRepository.instance
+              .addM3uPlaylistSmart(
+                  name: 'Mon abonnement', url: url, onProgress: op));
       return;
     }
 
@@ -116,49 +122,59 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
       setState(() => _error = context.l10n.loginCredsRequired);
       return;
     }
-    await _run(messenger, () => PlaylistRepository.instance.addXtreamPlaylist(
-          name: 'Mon abonnement',
-          serverUrl: server,
-          username: user,
-          password: pass,
-        ));
+    await _run(
+        messenger,
+        (ImportProgressCallback op) =>
+            PlaylistRepository.instance.addXtreamPlaylist(
+              name: 'Mon abonnement',
+              serverUrl: server,
+              username: user,
+              password: pass,
+              onProgress: op,
+            ));
   }
 
-  /// Exécute l'ajout (M3U ou Xtream) avec l'état occupé/erreur partagé.
+  /// Exécute l'ajout (M3U ou Xtream) via le plein-écran d'import VIVANT
+  /// (barre + compteur de chaînes + chrono) au lieu d'un spinner figé.
   Future<void> _run(
     ScaffoldMessengerState messenger,
-    Future<void> Function() action,
+    Future<Playlist> Function(ImportProgressCallback onProgress) task,
   ) async {
     setState(() {
       _busy = true;
       _error = null;
     });
-    try {
-      await action();
-      if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: Text(
-            context.l10n.loginConnected,
-            style: AppTextStyles.bodyMedium,
-          ),
-        ),
-      );
-      widget.onConnected?.call();
-    } on Exception catch (e) {
-      if (!mounted) return;
+    final ImportOutcome<Playlist> outcome =
+        await runImportWithProgress<Playlist>(
+      context,
+      title: 'IMPORT DE TA SOURCE',
+      task: task,
+    );
+    if (!mounted) return;
+
+    if (!outcome.ok) {
+      final Object? e = outcome.error;
       setState(() {
         _busy = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = e == null
+            ? null
+            : (e is Exception
+                ? e.toString().replaceFirst('Exception: ', '')
+                : context.l10n.errorWithMessage('$e'));
       });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _error = context.l10n.errorWithMessage('$e');
-      });
+      return;
     }
+
+    messenger.showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text(
+          context.l10n.loginConnected,
+          style: AppTextStyles.bodyMedium,
+        ),
+      ),
+    );
+    widget.onConnected?.call();
   }
 
   @override

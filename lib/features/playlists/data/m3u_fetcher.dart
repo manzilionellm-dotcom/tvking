@@ -78,10 +78,15 @@ abstract final class M3uFetcher {
   ///
   /// [preferredUserAgent] : signature à tenter en premier (sinon on prend
   /// celle configurée dans les réglages lecteur).
+  /// [onBytes] : rappel de progression du téléchargement, appelé au fil
+  /// des morceaux reçus avec (octetsReçus, tailleTotaleOuNull). La taille
+  /// totale vaut `null` quand le serveur répond en « chunked » (fréquent
+  /// en IPTV) — l'UI bascule alors sur un compteur d'octets animé.
   static Future<String> fetch(
     String url, {
     http.Client? httpClient,
     String? preferredUserAgent,
+    void Function(int received, int? total)? onBytes,
   }) async {
     // Filet défensif : complète http:// si absent (le schéma est
     // normalement déjà garanti par l'appelant via `SourceLinkUtils`, cf.
@@ -131,8 +136,14 @@ abstract final class M3uFetcher {
           // Lecture BORNÉE : on accumule les octets mais on COUPE le flux dès
           // kMaxM3uBytes → on ne charge JAMAIS une source géante d'un bloc en
           // RAM (cause racine OOM box faibles). Dépassement → PlaylistImportTooLarge.
+          // On rapporte la progression au fil de l'eau (barre vivante).
+          final int? total =
+              (resp.contentLength != null && resp.contentLength! > 0)
+                  ? resp.contentLength
+                  : null;
           final List<int> bytes =
-              await _readCapped(resp.stream, kMaxM3uBytes).timeout(_timeout);
+              await _readCapped(resp.stream, kMaxM3uBytes, onBytes, total)
+                  .timeout(_timeout);
           final String body = _decodeBytes(bytes);
           final String head = body.trimLeft();
           if (head.isEmpty) {
@@ -263,7 +274,11 @@ abstract final class M3uFetcher {
   /// on lève [PlaylistImportTooLarge] (le `for await` s'arrête, l'abonnement est
   /// annulé) → on ne matérialise JAMAIS une source géante d'un bloc. Anti-OOM.
   static Future<List<int>> _readCapped(
-      Stream<List<int>> stream, int maxBytes) async {
+    Stream<List<int>> stream,
+    int maxBytes, [
+    void Function(int received, int? total)? onBytes,
+    int? totalBytes,
+  ]) async {
     final BytesBuilder builder = BytesBuilder(copy: false);
     int total = 0;
     await for (final List<int> chunk in stream) {
@@ -275,6 +290,7 @@ abstract final class M3uFetcher {
         );
       }
       builder.add(chunk);
+      onBytes?.call(total, totalBytes);
     }
     return builder.takeBytes();
   }

@@ -6,8 +6,11 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../playlists/data/import_progress.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/source_link_utils.dart';
+import '../../playlists/domain/playlist.dart';
+import '../../playlists/presentation/import_progress_screen.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
 import 'tv_components.dart';
@@ -46,26 +49,39 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
       _busy = true;
       _error = null;
     });
-    try {
-      final String epg = _epgC.text.trim();
-      // « Smart » : repli automatique get.php → API Xtream si le
-      // téléchargement M3U est refusé (cf. addM3uPlaylistSmart).
-      await PlaylistRepository.instance.addM3uPlaylistSmart(
-        name: _nameC.text.trim().isEmpty ? 'Ma liste M3U' : _nameC.text.trim(),
+    final String epg = _epgC.text.trim();
+    final String name =
+        _nameC.text.trim().isEmpty ? 'Ma liste M3U' : _nameC.text.trim();
+    // Plein-écran d'import VIVANT (barre + compteur + chrono) au lieu
+    // d'un « Ajout… » figé.
+    final ImportOutcome<Playlist> outcome =
+        await runImportWithProgress<Playlist>(
+      context,
+      title: 'IMPORT DE TA LISTE',
+      scale: 1.6,
+      task: (ImportProgressCallback op) =>
+          PlaylistRepository.instance.addM3uPlaylistSmart(
+        name: name,
         url: url,
         epgUrl: epg.isEmpty ? null : SourceLinkUtils.ensureScheme(epg),
-      );
-      if (mounted) Navigator.of(context).maybePop();
-    } catch (e) {
-      if (mounted) {
-        // On affiche le VRAI message (indice DNS opérateur, détail HTTP
-        // 503…) — même diagnostic que sur téléphone, plus de générique
-        // « injoignable » qui masquait la cause.
-        setState(() =>
-            _error = e.toString().replaceFirst('Exception: ', ''));
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
+        onProgress: op,
+      ),
+    );
+    if (!mounted) return;
+    if (outcome.ok) {
+      Navigator.of(context).maybePop();
+    } else {
+      // On affiche le VRAI message (indice DNS opérateur, détail HTTP
+      // 503…) — même diagnostic que sur téléphone.
+      final Object? e = outcome.error;
+      setState(() {
+        _busy = false;
+        _error = e == null
+            ? null
+            : (e is Exception
+                ? e.toString().replaceFirst('Exception: ', '')
+                : '$e');
+      });
     }
   }
 

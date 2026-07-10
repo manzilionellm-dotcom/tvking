@@ -14,8 +14,11 @@ import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../playlists/data/default_servers.dart';
+import '../../playlists/data/import_progress.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/source_link_utils.dart';
+import '../../playlists/domain/playlist.dart';
+import '../../playlists/presentation/import_progress_screen.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_components.dart';
@@ -85,19 +88,24 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
         return;
       }
       setState(() { _busy = true; _error = null; });
-      try {
-        await PlaylistRepository.instance
-            .addM3uPlaylistSmart(name: 'Ma liste', url: url);
-        if (mounted) Navigator.of(context).pop();
-      } catch (e) {
+      final ImportOutcome<Playlist> outcome =
+          await runImportWithProgress<Playlist>(
+        context,
+        title: 'IMPORT DE TA LISTE',
+        scale: 1.6,
+        task: (ImportProgressCallback op) => PlaylistRepository.instance
+            .addM3uPlaylistSmart(name: 'Ma liste', url: url, onProgress: op),
+      );
+      if (!mounted) return;
+      if (outcome.ok) {
+        Navigator.of(context).pop();
+      } else {
         // Vrai message (indice DNS opérateur, statut HTTP…), comme sur
         // téléphone — plus de générique qui masque la cause.
-        if (mounted) {
-          setState(() {
-            _busy = false;
-            _error = e.toString().replaceFirst('Exception: ', '');
-          });
-        }
+        setState(() {
+          _busy = false;
+          _error = _errorText(outcome.error);
+        });
       }
       return;
     }
@@ -124,31 +132,47 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
       setState(() => _error = errFill);
       return;
     }
+    final String label = _manual
+        ? 'Ma liste'
+        : (_servers
+            .firstWhere((DefaultServer s) => s.id == _choice,
+                orElse: () =>
+                    const DefaultServer(id: '', label: 'Ma liste', url: ''))
+            .label);
     setState(() { _busy = true; _error = null; });
-    try {
-      await PlaylistRepository.instance.addXtreamPlaylist(
-        name: _manual
-            ? 'Ma liste'
-            : (_servers
-                .firstWhere((DefaultServer s) => s.id == _choice,
-                    orElse: () => const DefaultServer(id: '', label: 'Ma liste', url: ''))
-                .label),
+    final ImportOutcome<Playlist> outcome =
+        await runImportWithProgress<Playlist>(
+      context,
+      title: 'IMPORT DE TA LISTE',
+      scale: 1.6,
+      task: (ImportProgressCallback op) =>
+          PlaylistRepository.instance.addXtreamPlaylist(
+        name: label,
         serverUrl: server,
         username: user,
         password: pass,
-      );
-      if (mounted) Navigator.of(context).pop(); // le gate ouvre l'app
-    } catch (e) {
+        onProgress: op,
+      ),
+    );
+    if (!mounted) return;
+    if (outcome.ok) {
+      Navigator.of(context).pop(); // le gate ouvre l'app
+    } else {
       // Vrai message (indice DNS opérateur, statut HTTP…) — même
       // diagnostic que sur téléphone, plus de « Erreur de connexion »
       // générique qui masquait la cause.
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _error = e.toString().replaceFirst('Exception: ', '');
-        });
-      }
+      setState(() {
+        _busy = false;
+        _error = _errorText(outcome.error);
+      });
     }
+  }
+
+  /// Message d'erreur lisible depuis l'échec d'un import.
+  String? _errorText(Object? e) {
+    if (e == null) return null;
+    if (e is Exception) return e.toString().replaceFirst('Exception: ', '');
+    return '$e';
   }
 
   @override

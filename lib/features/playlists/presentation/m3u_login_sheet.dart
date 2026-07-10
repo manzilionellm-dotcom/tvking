@@ -16,9 +16,11 @@ import 'package:flutter/material.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../data/import_progress.dart';
 import '../data/playlist_repository.dart';
 import '../data/source_link_utils.dart';
 import '../domain/playlist.dart';
+import 'import_progress_screen.dart';
 import 'source_calibration_sheet.dart';
 
 Future<void> showM3uLoginSheet(BuildContext context) {
@@ -77,8 +79,8 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
       }
       // « Smart » : repli automatique get.php → API Xtream si le
       // téléchargement M3U est refusé (cf. addM3uPlaylistSmart).
-      await _run(() => PlaylistRepository.instance
-          .addM3uPlaylistSmart(name: name, url: url));
+      await _run((ImportProgressCallback op) => PlaylistRepository.instance
+          .addM3uPlaylistSmart(name: name, url: url, onProgress: op));
     } else {
       String server = SourceLinkUtils.ensureScheme(_serverCtrl.text);
       String user = _userCtrl.text.trim();
@@ -105,58 +107,68 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
         setState(() => _error = context.l10n.loginCredsRequired);
         return;
       }
-      await _run(() => PlaylistRepository.instance.addXtreamPlaylist(
+      await _run((ImportProgressCallback op) =>
+          PlaylistRepository.instance.addXtreamPlaylist(
             name: name,
             serverUrl: server,
             username: user,
             password: pass,
+            onProgress: op,
           ));
     }
   }
 
-  Future<void> _run(Future<void> Function() action) async {
+  Future<void> _run(
+    Future<Playlist> Function(ImportProgressCallback onProgress) task,
+  ) async {
     setState(() {
       _busy = true;
       _error = null;
     });
-    try {
-      await action();
-      if (!mounted) return;
-      // Le NavigatorState survit au pop de la feuille — c'est lui qui
-      // portera la proposition « Optimiser » juste après.
-      final NavigatorState nav = Navigator.of(context);
-      nav.pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: Text(context.l10n.loginSourceAdded,
-              style: AppTextStyles.bodyMedium),
-        ),
-      );
-      // Calibration proposée automatiquement à la FIN de l'ajout : on
-      // retrouve la source qui vient d'être créée (la plus récente) et
-      // on ouvre la feuille « Optimiser » en mode proposition.
-      final List<Playlist> all =
-          PlaylistRepository.instance.currentPlaylists;
-      if (all.isNotEmpty) {
-        final Playlist added = all.reduce(
-            (Playlist a, Playlist b) => a.createdAt >= b.createdAt ? a : b);
-        if (added.id != null && nav.mounted) {
-          showSourceCalibrationSheet(nav.context, added, proposal: true);
-        }
+    // Plein-écran d'import VIVANT (barre + compteur de chaînes + chrono)
+    // au lieu du mini-spinner figé : l'utilisateur VOIT que ça avance.
+    final ImportOutcome<Playlist> outcome =
+        await runImportWithProgress<Playlist>(
+      context,
+      title: 'IMPORT DE TA SOURCE',
+      task: task,
+    );
+    if (!mounted) return;
+
+    if (!outcome.ok) {
+      final Object? e = outcome.error;
+      setState(() {
+        _busy = false;
+        _error = e == null
+            ? null
+            : (e is Exception
+                ? e.toString().replaceFirst('Exception: ', '')
+                : context.l10n.errorWithMessage('$e'));
+      });
+      return;
+    }
+
+    // Le NavigatorState survit au pop de la feuille — c'est lui qui
+    // portera la proposition « Optimiser » juste après.
+    final NavigatorState nav = Navigator.of(context);
+    nav.pop();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text(context.l10n.loginSourceAdded,
+            style: AppTextStyles.bodyMedium),
+      ),
+    );
+    // Calibration proposée automatiquement à la FIN de l'ajout : on
+    // retrouve la source qui vient d'être créée (la plus récente) et
+    // on ouvre la feuille « Optimiser » en mode proposition.
+    final List<Playlist> all = PlaylistRepository.instance.currentPlaylists;
+    if (all.isNotEmpty) {
+      final Playlist added = all.reduce(
+          (Playlist a, Playlist b) => a.createdAt >= b.createdAt ? a : b);
+      if (added.id != null && nav.mounted) {
+        showSourceCalibrationSheet(nav.context, added, proposal: true);
       }
-    } on Exception catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _error = context.l10n.errorWithMessage('$e');
-      });
     }
   }
 
