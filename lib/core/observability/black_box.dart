@@ -315,6 +315,16 @@ class BlackBox {
           '« bloqué » mémorisé, bascule immédiate sans re-tester).',
     );
 
+    addIf(
+      countWhere((Map<String, Object?> e) =>
+          e['event'] == 'direct_tv.fallback_relay'),
+      severity: 'info',
+      title: 'TV-direct refusé → relais téléphone',
+      detail: 'La TV n\'a pas pu lire le flux du fournisseur en direct '
+          '(UA refusé, forme d\'URL non servie ou TS indécodable) ; le '
+          'relais HLS local a pris le relais. Verdict mémorisé 10 min.',
+    );
+
     // --- cast : la TV a rejeté la lecture ---
     addIf(
       countWhere((Map<String, Object?> e) =>

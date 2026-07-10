@@ -657,6 +657,23 @@ class CastManager extends ChangeNotifier {
       LocalCastServer.instance.clearRelay(_currentRelayUrl!);
     }
     _currentRelayUrl = null;
+    // Zap depuis un cast ou la TV tire ELLE-MEME le flux fournisseur
+    // (direct_tv, cast_proxy) : sur les comptes 1-connexion, cette
+    // connexion encore ouverte ferait refuser le probe de la NOUVELLE
+    // chaine (« limite atteinte »). On arrete la lecture de la TV
+    // d'abord — media stop SEULEMENT, la session Cast reste ouverte
+    // (la re-etablir couterait 5-20 s).
+    final GoogleCastTransport? prevGct =
+        _transport is GoogleCastTransport
+            ? _transport as GoogleCastTransport
+            : null;
+    if (prevGct != null &&
+        (prevGct.lastCastPath == 'direct_tv' ||
+            prevGct.lastCastPath == 'cast_proxy')) {
+      try {
+        await GoogleCastApi.instance.stop();
+      } on Exception catch (_) {/* best-effort : le probe tranchera */}
+    }
     _setProgress(CastProgress.validating);
 
     final CastSessionDiagnostic diag = CastSessionDiagnostic(

@@ -38,6 +38,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/observability/structured_logger.dart';
 import '../domain/cast_device.dart';
+import '../../player/data/xtream_url_variants.dart';
 import 'cast_session_diagnostic.dart' show redactStreamUrl;
 import 'cast_transport.dart';
 import 'dlna_profiles.dart';
@@ -131,6 +132,13 @@ class CastProxyVerdictMemo {
   /// Instance partagée par tous les [GoogleCastTransport] (un transport
   /// est recréé à chaque cast — le mémo doit leur survivre).
   static final CastProxyVerdictMemo instance = CastProxyVerdictMemo();
+
+  /// Mémo du chemin « TV-DIRECT » (la TV tire le flux fournisseur
+  /// elle-même, téléphone au repos). Un échec y est stable (UA de la TV
+  /// refusé par le panel, forme d'URL non servie, TS indécodable par ce
+  /// firmware…) → on ne repaie pas le budget de tentative à chaque zap.
+  /// Mêmes TTL que le proxy : « bloqué » 10 min, « marche » 2 min.
+  static final CastProxyVerdictMemo directTv = CastProxyVerdictMemo();
 
   static const Duration kBlockedTtl = Duration(minutes: 10);
   static const Duration kDeliversTtl = Duration(minutes: 2);
@@ -251,6 +259,10 @@ class GoogleCastTransport implements CastTransport {
     String urlToCast = streamUrl;
     String mime = _guessMime(streamUrl);
     String castPath = 'direct';
+    // Hissés hors du bloc TS : réutilisés par la bascule TV-direct →
+    // relais téléphone après l'établissement de la session (plus bas).
+    String upstreamForRelay = '';
+    String upstreamHost = '';
 
     // Decision de routage du flux pour le Cast :
     //   1. On ne touche PAS un flux deja adaptatif (HLS/DASH).
@@ -289,7 +301,8 @@ class GoogleCastTransport implements CastTransport {
       // téléphone — pas de signature, pas de GET de vérification, pas de 502
       // martelé. Verdict « délivre » (< 2 min) : on signe (URL périssable)
       // mais on saute la re-vérification.
-      final String upstreamHost = Uri.tryParse(upstream)?.host ?? '';
+      upstreamForRelay = upstream;
+      upstreamHost = Uri.tryParse(upstream)?.host ?? '';
       final bool? memoBlocked = upstreamHost.isEmpty
           ? null
           : CastProxyVerdictMemo.instance.cachedBlocked(upstreamHost);
@@ -332,39 +345,39 @@ class GoogleCastTransport implements CastTransport {
         mime = 'video/mp2t';
         castPath = 'cast_proxy';
       } else {
-        // REPLI — RELAIS HLS DU TÉLÉPHONE. Le téléphone tire le flux (client
-        // natif, ni CORS ni contenu mixte), le DÉCOUPE en vrais segments
-        // (~3 s, TsHlsSegmenter) et sert une playlist HLS LIVE GLISSANTE que
-        // le Default Media Receiver lit nativement. (L'ancienne playlist à
-        // « segment unique infini » était structurellement illisible par le
-        // récepteur CAF moderne — cause du 8/8 d'échecs SHIELD 2026-07-09.)
-        // registerRelay renvoie null si la TV n'est pas
-        // joignable depuis l'IP LAN du téléphone (réseaux séparés / isolation
-        // AP) → on remonte alors une erreur claire.
-        final DlnaProfile profile =
-            DlnaProfiles.select(url: streamUrl, finalMime: null);
-        // `upstream` = URL PORTAIL D'ORIGINE nettoyée (calculée plus
-        // haut), PAS l'URL déjà résolue : les tokens Xtream sont
-        // par-connexion — celui de `streamUrl` a déjà été consommé par
-        // le probe. La session relais re-suit la redirection à CHAQUE
-        // (re)connexion → token frais (cause probable des 2 échecs
-        // résiduels SHIELD du 2026-07-09 : M6, EURO CRIME).
-        final String? hlsRelay = await LocalCastServer.instance.registerRelay(
-          upstreamUrl: upstream,
-          profile: profile,
-          receiverHost: device.host,
-          wrapInHls: true,
-        );
-        if (hlsRelay != null) {
-          urlToCast = hlsRelay;
+        // CHEMIN TV-DIRECT (fluidité 2026-07-10) — priorité au récepteur.
+        // Sur les TV à player NATIF ExoPlayer (SHIELD, dongles Google TV),
+        // le Default Media Receiver lit le HLS Xtream (voire le .ts brut)
+        // DIRECTEMENT chez le fournisseur : plus de relais, le téléphone
+        // ne tire plus rien, ne segmente plus rien, peut s'éteindre — et
+        // les saccades liées au double-WiFi (down + up sur le téléphone)
+        // disparaissent. Interdit sur les vrais Chromecast (récepteur web
+        // MSE : CORS requis, que les panels IPTV n'envoient jamais).
+        // Budget d'essai court + mémo d'échec 10 min (voir plus bas) : si
+        // cette TV/ce panel ne le supporte pas, on retombe sur le relais
+        // dans la MÊME session, et les zaps suivants n'essaient plus.
+        String? direct;
+        if (isExoPlayerReceiver(device) &&
+            CastProxyVerdictMemo.directTv.cachedBlocked(upstreamHost) !=
+                true) {
+          direct = await directTvCandidate(upstream);
+        }
+        if (direct != null) {
+          urlToCast = direct;
+          mime = _guessMime(direct);
+          castPath = 'direct_tv';
+        } else {
+          // REPLI — RELAIS HLS DU TÉLÉPHONE. Le téléphone tire le flux
+          // (client natif, ni CORS ni contenu mixte), le DÉCOUPE en vrais
+          // segments (TsHlsSegmenter) et sert une playlist HLS LIVE
+          // GLISSANTE que le Default Media Receiver lit nativement.
+          urlToCast = await _registerHlsRelay(
+            upstream: upstream,
+            profileUrl: streamUrl,
+          );
           mime = 'application/x-mpegURL';
           castPath = 'local_hls_relay';
-          lastRelayUrl = hlsRelay;
-        } else {
-          throw Exception(
-            'Le cast vers cette TV est indisponible (réseau incompatible). '
-            'Réessaie sur le même Wi-Fi, ou utilise une TV DLNA (LG/Samsung).',
-          );
+          lastRelayUrl = urlToCast;
         }
       }
     }
@@ -424,6 +437,97 @@ class GoogleCastTransport implements CastTransport {
       }
     }
 
+    if (castPath == 'direct_tv') {
+      // TENTATIVE TV-DIRECT : budget COURT (12 s, pas 25) — en cas
+      // d'échec on bascule sur le relais téléphone DANS LA MÊME session
+      // (même receiver CC1AD845, pas de re-sélection ni de picker), et
+      // le mémo évite de repayer ce budget au prochain zap.
+      try {
+        await _loadAndAwaitPlaying(
+          api,
+          urlToCast: urlToCast,
+          mime: mime,
+          castPath: castPath,
+          title: title,
+          imageUrl: imageUrl,
+          budget: const Duration(seconds: 12),
+        );
+        CastProxyVerdictMemo.directTv
+            .remember(upstreamHost, blocked: false);
+        // La TV tire le flux CHEZ LE FOURNISSEUR : pas de relais, pas de
+        // foreground service, le téléphone est au repos (lastRelayUrl
+        // reste null → CastManager ne démarre pas le keep-alive).
+        return;
+      } on Exception catch (e) {
+        CastProxyVerdictMemo.directTv
+            .remember(upstreamHost, blocked: true);
+        StructuredLogger.instance.warn(
+          domain: 'cast',
+          event: 'direct_tv.fallback_relay',
+          ctx: <String, Object?>{'error': e.toString()},
+        );
+        urlToCast = await _registerHlsRelay(
+          upstream: upstreamForRelay,
+          profileUrl: streamUrl,
+        );
+        mime = 'application/x-mpegURL';
+        castPath = 'local_hls_relay';
+        lastRelayUrl = urlToCast;
+      }
+    }
+
+    await _loadAndAwaitPlaying(
+      api,
+      urlToCast: urlToCast,
+      mime: mime,
+      castPath: castPath,
+      title: title,
+      imageUrl: imageUrl,
+      budget: const Duration(seconds: 25),
+    );
+  }
+
+  /// Enregistre la session relais HLS du téléphone et renvoie son URL
+  /// LAN. [upstream] = URL PORTAIL D'ORIGINE nettoyée, PAS l'URL déjà
+  /// résolue : les tokens Xtream sont par-connexion — celui du probe a
+  /// déjà été consommé. La session relais re-suit la redirection à
+  /// CHAQUE (re)connexion → token frais. Jette une erreur claire si la
+  /// TV n'est pas joignable depuis l'IP LAN du téléphone (réseaux
+  /// séparés / isolation AP).
+  Future<String> _registerHlsRelay({
+    required String upstream,
+    required String profileUrl,
+  }) async {
+    final DlnaProfile profile =
+        DlnaProfiles.select(url: profileUrl, finalMime: null);
+    final String? hlsRelay = await LocalCastServer.instance.registerRelay(
+      upstreamUrl: upstream,
+      profile: profile,
+      receiverHost: device.host,
+      wrapInHls: true,
+    );
+    if (hlsRelay == null) {
+      throw Exception(
+        'Le cast vers cette TV est indisponible (réseau incompatible). '
+        'Réessaie sur le même Wi-Fi, ou utilise une TV DLNA (LG/Samsung).',
+      );
+    }
+    return hlsRelay;
+  }
+
+  /// LOAD + attente de la lecture RÉELLE, avec journalisation et
+  /// enrichissement d'erreur du chemin relais. Factorisé : la tentative
+  /// TV-direct (budget court) et le chemin final (budget plein) passent
+  /// par la même plomberie.
+  Future<void> _loadAndAwaitPlaying(
+    GoogleCastApi api, {
+    required String urlToCast,
+    required String mime,
+    required String castPath,
+    required String title,
+    String? imageUrl,
+    required Duration budget,
+  }) async {
     // DIAGNOSTIC (brief §4.3) — tracer EXACTEMENT l'URL et le MIME
     // pousses au recepteur (URL redactee, pas de fuite credentials).
     StructuredLogger.instance.info(
@@ -459,7 +563,7 @@ class GoogleCastTransport implements CastTransport {
     // image, mais le diagnostic affichait "succes". On attend donc la
     // lecture REELLE (etat PLAYING) avant de declarer le succes.
     try {
-      await _awaitRealPlayback(api);
+      await _awaitRealPlayback(api, budget: budget);
     } on Exception catch (e) {
       // Sur le chemin relais, enrichit l'erreur avec l'etat REEL de la
       // session HLS (codec vu en PMT + compteurs de requetes du
@@ -509,12 +613,17 @@ class GoogleCastTransport implements CastTransport {
   /// Attend que le recepteur passe REELLEMENT en lecture.
   /// - PLAYING -> succes.
   /// - IDLE + idleReason "error" -> la TV a rejete le flux.
-  /// - timeout (25 s) -> la lecture n'a jamais demarre (format non lu).
-  ///   25 s (et non 18) : le transmux mpegts.js du custom receiver peut
-  ///   mettre quelques secondes a produire le 1er segment fMP4.
-  Future<void> _awaitRealPlayback(GoogleCastApi api) async {
+  /// - timeout [budget] -> la lecture n'a jamais demarre (format non lu).
+  ///   25 s par defaut (et non 18) : le transmux mpegts.js du custom
+  ///   receiver peut mettre quelques secondes a produire le 1er segment
+  ///   fMP4. La tentative TV-direct passe un budget court (12 s) : son
+  ///   echec a une porte de sortie (bascule relais), pas besoin d'attendre.
+  Future<void> _awaitRealPlayback(
+    GoogleCastApi api, {
+    Duration budget = const Duration(seconds: 25),
+  }) async {
     final Completer<void> done = Completer<void>();
-    final Timer timer = Timer(const Duration(seconds: 25), () {
+    final Timer timer = Timer(budget, () {
       if (!done.isCompleted) {
         done.completeError(Exception(
           'La TV n\'a pas démarré la lecture — format probablement non '
@@ -561,14 +670,16 @@ class GoogleCastTransport implements CastTransport {
   }
 
   /// Receiver à charger sur la TV selon le chemin de routage (§6.2) :
-  /// le relais HLS du téléphone est en HTTP → la page receiver custom
-  /// (HTTPS, fetch mpegts.js) ne peut PAS le lire (mixed content) → il
-  /// passe par le Default Media Receiver qui lit le HLS nativement.
-  /// Tous les autres chemins gardent le receiver custom (prioritaire :
-  /// TS décodé sur la TV, téléphone éteint possible).
+  /// le relais HLS du téléphone ET le flux fournisseur du chemin
+  /// TV-direct sont en HTTP → la page receiver custom (HTTPS, fetch
+  /// mpegts.js) ne peut PAS les lire (mixed content) → ils passent par
+  /// le Default Media Receiver qui les lit nativement (player ExoPlayer
+  /// de la TV pour direct_tv). Tous les autres chemins gardent le
+  /// receiver custom (prioritaire : TS décodé sur la TV via /cast-proxy,
+  /// téléphone éteint possible).
   @visibleForTesting
   static String receiverAppIdForCastPath(String castPath) =>
-      castPath == 'local_hls_relay'
+      castPath == 'local_hls_relay' || castPath == 'direct_tv'
           ? kCastDefaultReceiverAppId
           : kCastCustomReceiverAppId;
 
@@ -591,6 +702,61 @@ class GoogleCastTransport implements CastTransport {
       await Future<void>.delayed(const Duration(milliseconds: 500));
     }
     return false;
+  }
+
+  /// Candidat du chemin TV-DIRECT pour [upstream] (URL portail d'origine
+  /// nettoyée, déjà validée par le probe du CastManager quelques instants
+  /// plus tôt) :
+  ///   1. la variante HLS Xtream (`…/live/USER/PASS/ID.m3u8`) si l'URL a le
+  ///      schéma Xtream LIVE et que le panel la sert (GET rapide côté
+  ///      téléphone : les panels « allowed_output_formats » sans m3u8
+  ///      répondent 404 tout de suite) — le HLS est le format live le plus
+  ///      robuste pour l'ExoPlayer de la TV (fenêtre gérée par le panel,
+  ///      reprise sur coupure SANS le téléphone) ;
+  ///   2. sinon le `.ts` brut tel quel — l'ExoPlayer natif des SHIELD /
+  ///      Google TV le décode en progressif (pas de re-probe : le
+  ///      CastManager vient de le faire).
+  /// Les préfixes VOD (movie/series) ne sont JAMAIS réécrits (règle
+  /// xtream_url_variants) ; une URL non-Xtream part telle quelle.
+  @visibleForTesting
+  Future<String> directTvCandidate(String upstream) async {
+    final XtreamUrlShape? shape = XtreamUrlShape.parse(upstream);
+    final bool liveShape = shape != null &&
+        (shape.prefix == 'live' ||
+            (shape.prefix == null && shape.ext == 'ts'));
+    if (liveShape) {
+      final String hls = shape.build(newPrefix: 'live', newExt: 'm3u8');
+      if (await _urlDelivers(hls)) return hls;
+      // Forme nue (panels sans préfixe) : deuxième et dernière chance HLS.
+      if (shape.prefix == null) {
+        final String nakedHls = shape.build(newPrefix: null, newExt: 'm3u8');
+        if (await _urlDelivers(nakedHls)) return nakedHls;
+      }
+    }
+    return upstream;
+  }
+
+  /// GET rapide côté téléphone : l'URL candidate du chemin TV-direct
+  /// répond-elle 2xx ? On lit le status puis on coupe — on NE télécharge
+  /// PAS le flux. UA VLC (mêmes filtres anti-bot que le relais).
+  static Future<bool> _urlDelivers(String url) async {
+    final HttpClient client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 4)
+      ..userAgent = 'VLC/3.0.20 LibVLC/3.0.20 (7 MOTION direct)';
+    try {
+      final HttpClientRequest req = await client
+          .getUrl(Uri.parse(url))
+          .timeout(const Duration(seconds: 4));
+      req.followRedirects = true;
+      req.maxRedirects = 5;
+      final HttpClientResponse resp =
+          await req.close().timeout(const Duration(seconds: 5));
+      return resp.statusCode >= 200 && resp.statusCode < 300;
+    } on Object {
+      return false;
+    } finally {
+      client.close(force: true); // coupe le GET sans vider le flux
+    }
   }
 
   /// Vérifie que /cast-proxy DÉLIVRE réellement le flux (le Worker peut être

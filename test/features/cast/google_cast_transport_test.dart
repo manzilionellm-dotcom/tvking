@@ -7,6 +7,8 @@
 //    - sameSubnet : la TV doit joindre le serveur HLS local.
 // =========================================================
 
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tv_king/features/cast/data/google_cast_transport.dart';
 import 'package:tv_king/features/cast/domain/cast_device.dart';
@@ -57,6 +59,15 @@ void main() {
         kCastDefaultReceiverAppId,
       );
     });
+    test('TV-direct (flux fournisseur HTTP) → Default Media Receiver', () {
+      // Le chemin direct_tv (fluidité 2026-07-10) donne le flux HTTP du
+      // fournisseur au player NATIF de la TV — même contrainte mixed
+      // content que le relais : jamais la page receiver custom HTTPS.
+      expect(
+        GoogleCastTransport.receiverAppIdForCastPath('direct_tv'),
+        kCastDefaultReceiverAppId,
+      );
+    });
     test('cast_proxy / direct → receiver custom (prioritaire)', () {
       expect(
         GoogleCastTransport.receiverAppIdForCastPath('cast_proxy'),
@@ -70,6 +81,64 @@ void main() {
     test('IDs alignés avec CastOptionsProviderImpl.kt', () {
       expect(kCastCustomReceiverAppId, '5BDFD969');
       expect(kCastDefaultReceiverAppId, 'CC1AD845');
+    });
+  });
+
+  group('directTvCandidate (chemin TV-direct, fluidité 2026-07-10)', () {
+    test('panel qui sert le m3u8 → variante HLS Xtream préférée', () async {
+      final HttpServer panel =
+          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      panel.listen((HttpRequest req) async {
+        req.response.statusCode =
+            req.uri.path.endsWith('.m3u8') ? 200 : 404;
+        await req.response.close();
+      });
+      try {
+        final GoogleCastTransport t = GoogleCastTransport(_dev());
+        final String out = await t.directTvCandidate(
+            'http://127.0.0.1:${panel.port}/live/u/p/42.ts');
+        expect(out, 'http://127.0.0.1:${panel.port}/live/u/p/42.m3u8',
+            reason: 'HLS = format live le plus robuste pour la TV');
+      } finally {
+        await panel.close(force: true);
+      }
+    });
+
+    test('panel sans m3u8 (404) → .ts brut inchangé', () async {
+      final HttpServer panel =
+          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      panel.listen((HttpRequest req) async {
+        req.response.statusCode = 404;
+        await req.response.close();
+      });
+      try {
+        final GoogleCastTransport t = GoogleCastTransport(_dev());
+        final String url = 'http://127.0.0.1:${panel.port}/live/u/p/42.ts';
+        expect(await t.directTvCandidate(url), url,
+            reason: 'allowed_output_formats sans m3u8 → on ne casse rien');
+      } finally {
+        await panel.close(force: true);
+      }
+    });
+
+    test('VOD (movie/series) → JAMAIS réécrit, aucune requête réseau',
+        () async {
+      // Port fermé : toute requête échouerait — le test prouve qu'aucune
+      // n'est émise pour un préfixe VOD (règle xtream_url_variants).
+      final ServerSocket probe =
+          await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final int deadPort = probe.port;
+      await probe.close();
+      final GoogleCastTransport t = GoogleCastTransport(_dev());
+      final String vod = 'http://127.0.0.1:$deadPort/movie/u/p/9.mp4';
+      expect(await t.directTvCandidate(vod), vod);
+    });
+
+    test('URL non-Xtream → telle quelle', () async {
+      final GoogleCastTransport t = GoogleCastTransport(_dev());
+      const String odd = 'http://cdn.example/stream/abc.ts';
+      expect(await t.directTvCandidate(odd), odd,
+          reason: 'schéma inconnu : ne jamais réécrire (règle variants)');
     });
   });
 
