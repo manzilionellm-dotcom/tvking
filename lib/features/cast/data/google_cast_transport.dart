@@ -811,12 +811,16 @@ class GoogleCastTransport implements CastTransport {
           await req.close().timeout(const Duration(seconds: 5));
       final String ct =
           (resp.headers.contentType?.mimeType ?? '').toLowerCase();
-      // Page d'erreur 200 (« limite de connexions ») : un corps textuel
-      // n'est jamais un flux — la TV resterait en loading pour toujours.
-      final bool textual = ct.startsWith('text/') ||
-          ct.contains('html') ||
+      // Page d'erreur 200 (« limite de connexions ») : du HTML n'est
+      // jamais un flux — la TV resterait en loading pour toujours.
+      // NUANCE : une playlist .m3u8 EST du texte (beaucoup de panels la
+      // servent en text/plain) — pour elle, seul html/json/xml trahit
+      // une page d'erreur ; pour un flux .ts, tout textuel est suspect.
+      final bool playlistExpected = url.toLowerCase().contains('.m3u8');
+      final bool textual = ct.contains('html') ||
           ct.contains('json') ||
-          ct.contains('xml');
+          ct.contains('xml') ||
+          (!playlistExpected && ct.startsWith('text/'));
       return resp.statusCode >= 200 && resp.statusCode < 300 && !textual;
     } on Object {
       return false;
