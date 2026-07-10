@@ -90,9 +90,9 @@ const APK_URL =
 const TV_APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-latest/defew-tv.apk';
 
-// NB : les variantes TV (Android TV / Fire TV, wrappers WebView, NOVA+)
-// et Red Room ont été RETIRÉES du projet. Seule l'app mobile 7 MOTION
-// (`APK_URL` ci-dessus) est encore construite et distribuée.
+// NB : les wrappers WebView / NOVA+ et Red Room ont été RETIRÉS du
+// projet. Deux apps sont distribuées : 7 MOTION mobile (`APK_URL`) et
+// DeFew TV (`TV_APK_URL`), chacune via son lien court (/app et /tv).
 
 // ===========================================================
 //  Proxy APK avec cache edge Cloudflare (perf Downloader)
@@ -3960,15 +3960,19 @@ async function handleRequest(request, env, ctx) {
     //  workers.dev, l'hôte reste visible mais l'URL GitHub, elle, est
     //  cachée.
     //
-    //  Liens disponibles (insensibles à la casse) :
-    //    /royal    et /get   → BLACK7 ROYAL (7motion.apk)
+    //  Liens disponibles (insensibles à la casse) — TOUJOURS la dernière
+    //  version (les tags `latest` / `tv-latest` sont réécrits par la CI à
+    //  chaque build, donc ces liens ne périment jamais) :
+    //    /app  /royal  /get  → 7 MOTION mobile (7motion.apk)
+    //    /tv                 → DeFew TV (defew-tv.apk, Downloader/Fire TV)
     {
       const slug = url.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
-      const GH = 'https://github.com/manzilionellm-dotcom/tvking/releases/download';
       const DOWNLOADS = {
-        royal: `${GH}/latest/7motion.apk`,
-        get: `${GH}/latest/7motion.apk`,
-        black7: `${GH}/latest/7motion.apk`,
+        app: APK_URL,
+        royal: APK_URL,
+        get: APK_URL,
+        black7: APK_URL,
+        tv: TV_APK_URL,
       };
       if (DOWNLOADS[slug]) {
         if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -4510,9 +4514,9 @@ async function handleRequest(request, env, ctx) {
       });
     }
 
-    // (Routes TV et Red Room retirées : /redroom, /tv, /7tv, /seventv,
-    //  /nova n'existent plus — ces variantes ont été supprimées du projet.
-    //  Seule l'app mobile 7 MOTION est distribuée, via /royal /get /install.)
+    // (Red Room et les wrappers retirés : /redroom, /7tv, /seventv, /nova
+    //  n'existent plus. Les téléchargements vivent en tête de handler :
+    //  /app /royal /get → mobile, /tv → DeFew TV.)
 
     // /cast-sign?u=<url> — signe une URL upstream pour le proxy Cast.
     //  Le secret HMAC vit UNIQUEMENT côté Worker (jamais dans l'app publique).
