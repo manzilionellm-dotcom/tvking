@@ -20,6 +20,7 @@ import '../../../core/observability/black_box.dart';
 import '../../channels/domain/channel.dart';
 import '../domain/cast_device.dart';
 import 'cast_manager.dart';
+import 'cast_url_resolver.dart';
 import 'cast_session_diagnostic.dart';
 
 /// Commit Git injecte au build via --dart-define=GIT_SHA=... (CI).
@@ -132,9 +133,13 @@ class DiagnosticBatchRunner extends ChangeNotifier {
         // 1) Cast — on encaisse l'exception, le diagnostic est déjà
         //    archivé par le CastManager dans tous les cas (finally).
         try {
+          // Même résolution d'URL que playChannel (format Xtream
+          // mémorisé) : le testeur doit refléter le vrai chemin de cast,
+          // pas échouer sur la forme brute d'un panel « /live/ requis ».
+          final String castUrl = await CastUrlResolver.resolve(ch);
           await CastManager.instance.castTo(
             device,
-            streamUrl: ch.streamUrl,
+            streamUrl: castUrl,
             title: ch.name,
             channelName: ch.name,
             channelGenre: ch.genre.label,

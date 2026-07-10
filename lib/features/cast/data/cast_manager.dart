@@ -20,6 +20,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/observability/structured_logger.dart';
 import '../../player/data/pip_service.dart';
+import '../../player/data/xtream_url_variants.dart';
 import '../domain/cast_device.dart';
 import 'cast_progress.dart';
 import 'cast_session_diagnostic.dart';
@@ -737,8 +738,40 @@ class CastManager extends ChangeNotifier {
 
       // (1) Pré-vol : on vérifie l'URL avant de la pousser au récepteur.
       _checkCancelled(mySeq);
-      final StreamProbeResult probe =
-          await StreamProbe.instance.probe(streamUrl);
+      StreamProbeResult probe = await StreamProbe.instance.probe(streamUrl);
+      // CASCADE DE SECOURS (terrain 2026-07-10, panel « /live/ requis ») :
+      // certains panels Xtream repondent 404 (page HTML) sur la forme
+      // brute `host/U/P/ID.ts` mais servent `host/live/U/P/ID.ts` — le
+      // lecteur du telephone se corrige via le format memorise, le cast
+      // doit savoir faire pareil TOUT SEUL (y compris depuis le picker
+      // « flux maintenant » qui n'a pas de Channel). cascadeFor se
+      // protege : URL non-Xtream → [originale] uniquement, donc aucun
+      // risque de reecrire un flux CDN/M3U exotique. On n'adopte une
+      // variante QUE si l'originale est morte ET que la variante repond.
+      if (!probe.success) {
+        final XtreamContentType cascadeType =
+            XtreamUrlVariants.detectType(streamUrl) ?? XtreamContentType.live;
+        for (final XtreamUrlCandidate cand
+            in XtreamUrlVariants.cascadeFor(streamUrl, cascadeType)) {
+          if (cand.url == streamUrl) continue;
+          _checkCancelled(mySeq);
+          final StreamProbeResult alt =
+              await StreamProbe.instance.probe(cand.url);
+          if (alt.success) {
+            StructuredLogger.instance.info(
+              domain: 'cast',
+              event: 'probe.variant_adopted',
+              ctx: <String, Object?>{
+                'formatCode': cand.formatCode,
+                'url': redactStreamUrl(cand.url),
+              },
+            );
+            streamUrl = cand.url;
+            probe = alt;
+            break;
+          }
+        }
+      }
       diag.probe = ProbeSummary(
         success: probe.success,
         finalUrl: probe.finalUrl, // redacté à l'export JSON

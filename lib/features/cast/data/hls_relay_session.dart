@@ -85,7 +85,7 @@ class HlsRelaySession {
   /// TARGETDURATION : un lecteur collé au bord re-bufferise à CHAQUE
   /// à-coup (WiFi chargé, reconnexion upstream). Publié via
   /// #EXT-X-START:TIME-OFFSET, honoré par ExoPlayer (SHIELD) et Shaka.
-  static const double kJoinHoldBackSec = 8.0;
+  static const double kJoinHoldBackSec = 10.0;
 
   /// Sans AUCUNE requête du récepteur pendant ce délai, la session
   /// s'arrête seule (récepteur mort sans clearRelay → épargne

@@ -32,6 +32,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/network/cellular_guard.dart';
 import '../../cast/data/cast_manager.dart';
+import '../../cast/data/cast_url_resolver.dart';
 import '../../cast/domain/cast_device.dart';
 import '../../cast/presentation/cast_button.dart';
 import '../../channels/data/recently_watched_repository.dart';
@@ -58,9 +59,15 @@ Future<void> playChannel(
   if (target != null) {
     final String title = overrideTitle ?? channel.cleanName;
     try {
+      // Même URL que le lecteur : format Xtream mémorisé appliqué
+      // (terrain 2026-07-10 : panel « /live/ requis » → 404 sur l'URL
+      // brute alors que le téléphone jouait très bien). Le CastManager
+      // garde en plus une cascade de secours si le pré-vol échoue.
+      final String castUrl =
+          overrideUrl ?? await CastUrlResolver.resolve(channel);
       await mgr.castTo(
         target,
-        streamUrl: overrideUrl ?? channel.streamUrl,
+        streamUrl: castUrl,
         title: title,
         channelGenre: channel.category,
         imageUrl: channel.logoUrl,

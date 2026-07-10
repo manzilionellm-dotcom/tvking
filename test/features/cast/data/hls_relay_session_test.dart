@@ -73,7 +73,7 @@ void main() {
         // Anti-découpage : join épinglé ~8 s derrière le bord live
         // (RFC 8216bis HOLD-BACK) — la fenêtre pleine (~17 s) permet la
         // cible entière.
-        expect(playlist, contains('#EXT-X-START:TIME-OFFSET=-8.0'),
+        expect(playlist, contains('#EXT-X-START:TIME-OFFSET=-10.0'),
             reason: 'sans recul de join, chaque à-coup WiFi = coupure');
         expect(await session.waitForBufferedSeconds(8.0, Duration.zero),
             isTrue,
@@ -166,7 +166,7 @@ void main() {
   group('HlsRelaySession — coussin anti-découpage (startTimeOffsetFor)', () {
     test('cible 8 s, bornée par la matière disponible', () {
       // Fenêtre pleine (18 s) → recul cible entier.
-      expect(HlsRelaySession.startTimeOffsetFor(18.0), 8.0);
+      expect(HlsRelaySession.startTimeOffsetFor(18.0), 10.0);
       // Join précoce (9,5 s de matière) → tout ce que la fenêtre permet.
       expect(HlsRelaySession.startTimeOffsetFor(9.5), 7.5);
       expect(HlsRelaySession.startTimeOffsetFor(5.0), 3.0);
