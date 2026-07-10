@@ -137,13 +137,19 @@ class PipService extends ChangeNotifier {
     }
   }
 
-  /// Démarre le service audio de fond (notification + locks). `title`
-  /// s'affiche dans la notification (nom de la chaîne en cours).
-  Future<void> startBackgroundAudio(String title) async {
+  /// Démarre le service de fond (notification + wakelock + wifilock).
+  /// `title` s'affiche dans la notification (nom de la chaîne).
+  /// `body` remplace la 2e ligne (« Lecture audio en arrière-plan »
+  /// par défaut) — utilisé par le CAST RELAIS : le téléphone alimente
+  /// la TV et doit rester réveillé même écran éteint / app en fond.
+  Future<void> startBackgroundAudio(String title, {String? body}) async {
     try {
       await _channel.invokeMethod<void>(
         'startBackgroundAudio',
-        <String, Object>{'title': title},
+        <String, Object>{
+          'title': title,
+          if (body != null) 'body': body,
+        },
       );
     } catch (e) {
       if (kDebugMode) debugPrint('[PiP] startBackgroundAudio failed: $e');

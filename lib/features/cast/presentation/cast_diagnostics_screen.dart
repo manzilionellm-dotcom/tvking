@@ -19,6 +19,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/observability/black_box.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../channels/domain/channel.dart';
@@ -129,6 +130,18 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
     );
   }
 
+  /// BOÎTE NOIRE : rapport complet (constats automatiques + journal
+  /// persistant + post-mortem de la session précédente si crash).
+  Future<void> _copyBlackBox() async {
+    final String report = BlackBox.instance.buildReport();
+    await Clipboard.setData(ClipboardData(text: report));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+          content: Text('Boîte noire copiée dans le presse-papier')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -187,6 +200,15 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
                         onCopy: _copyNetReport,
                       ),
                     ],
+                    const SizedBox(height: 12),
+                    // BOÎTE NOIRE — tout l'historique persistant de
+                    // l'app (erreurs, cast, lecteur, crashs) + les
+                    // constats automatiques, en un seul bloc collable.
+                    OutlinedButton.icon(
+                      onPressed: _copyBlackBox,
+                      icon: const Icon(Icons.flight_takeoff_rounded),
+                      label: const Text('Copier la boîte noire (A→Z)'),
+                    ),
                   ] else ...<Widget>[
                     _RunHeader(runner: _runner!),
                     const SizedBox(height: 12),

@@ -123,6 +123,13 @@ class GoogleCastTransport implements CastTransport {
   /// URL exacte transmise a loadMedia, token signe masque. Null tant qu'aucun cast.
   String? lastCastUrlRedacted;
 
+  /// URL REELLE du relais HLS local quand le chemin est
+  /// 'local_hls_relay' (null sinon). Le CastManager s'en sert pour :
+  ///   1. liberer la session (clearRelay) au disconnect / au zap ;
+  ///   2. activer le maintien en vie (foreground service) — le
+  ///      telephone alimente la TV, il ne doit pas s'endormir.
+  String? lastRelayUrl;
+
   /// URL upstream d'ORIGINE (avant que le probe du telephone ne suive les
   /// redirections). Renseignee par CastManager juste avant [playStream].
   ///
@@ -148,6 +155,7 @@ class GoogleCastTransport implements CastTransport {
     // du cast precedent si celui-ci echoue avant la decision de routage.
     lastCastPath = 'direct';
     lastCastUrlRedacted = null;
+    lastRelayUrl = null;
     final GoogleCastApi api = GoogleCastApi.instance;
 
     // 1) Le SDK Cast est-il disponible sur ce device ?
@@ -245,14 +253,24 @@ class GoogleCastTransport implements CastTransport {
         castPath = 'cast_proxy';
       } else {
         // REPLI — RELAIS HLS DU TÉLÉPHONE. Le téléphone tire le flux (client
-        // natif, ni CORS ni contenu mixte) et sert une playlist HLS que le
-        // récepteur lit. registerRelay renvoie null si la TV n'est pas
+        // natif, ni CORS ni contenu mixte), le DÉCOUPE en vrais segments
+        // (~3 s, TsHlsSegmenter) et sert une playlist HLS LIVE GLISSANTE que
+        // le Default Media Receiver lit nativement. (L'ancienne playlist à
+        // « segment unique infini » était structurellement illisible par le
+        // récepteur CAF moderne — cause du 8/8 d'échecs SHIELD 2026-07-09.)
+        // registerRelay renvoie null si la TV n'est pas
         // joignable depuis l'IP LAN du téléphone (réseaux séparés / isolation
         // AP) → on remonte alors une erreur claire.
         final DlnaProfile profile =
             DlnaProfiles.select(url: streamUrl, finalMime: null);
+        // `upstream` = URL PORTAIL D'ORIGINE nettoyée (calculée plus
+        // haut), PAS l'URL déjà résolue : les tokens Xtream sont
+        // par-connexion — celui de `streamUrl` a déjà été consommé par
+        // le probe. La session relais re-suit la redirection à CHAQUE
+        // (re)connexion → token frais (cause probable des 2 échecs
+        // résiduels SHIELD du 2026-07-09 : M6, EURO CRIME).
         final String? hlsRelay = await LocalCastServer.instance.registerRelay(
-          upstreamUrl: streamUrl,
+          upstreamUrl: upstream,
           profile: profile,
           receiverHost: device.host,
           wrapInHls: true,
@@ -261,6 +279,7 @@ class GoogleCastTransport implements CastTransport {
           urlToCast = hlsRelay;
           mime = 'application/x-mpegURL';
           castPath = 'local_hls_relay';
+          lastRelayUrl = hlsRelay;
         } else {
           throw Exception(
             'Le cast vers cette TV est indisponible (réseau incompatible). '
@@ -359,7 +378,37 @@ class GoogleCastTransport implements CastTransport {
     // Sur un .ts non decodable on voyait l'icone "cast" bleue sans
     // image, mais le diagnostic affichait "succes". On attend donc la
     // lecture REELLE (etat PLAYING) avant de declarer le succes.
-    await _awaitRealPlayback(api);
+    try {
+      await _awaitRealPlayback(api);
+    } on Exception catch (e) {
+      // Sur le chemin relais, enrichit l'erreur avec l'etat REEL de la
+      // session HLS (codec vu en PMT + compteurs de requetes du
+      // recepteur) : « codec/format non supporte » avec 0 segment servi
+      // = probleme RESEAU, pas codec — indispensable pour trancher a
+      // distance (diag SHIELD 2026-07-09 : 2 chaines encore en echec).
+      if (castPath == 'local_hls_relay' && lastRelayUrl != null) {
+        final String? info =
+            LocalCastServer.instance.hlsSessionDebugInfo(lastRelayUrl!);
+        if (info != null) {
+          final String base =
+              e.toString().replaceFirst('Exception: ', '');
+          // Cas tranché sur le terrain (M6 ᴿᴬᵂ, 2026-07-09) : la TV
+          // télécharge playlist + segments puis rejette → HEVC-dans-TS,
+          // que le Default Media Receiver ne décode pas (limite CAF,
+          // le transmux TS ne gère que le H.264). Message actionnable.
+          final bool hevcDecodeReject = info.contains('codec=hevc') &&
+              !info.contains('segments servis=0');
+          final String hint = hevcDecodeReject
+              ? ' Cette chaîne émet en HEVC (H.265) que le récepteur '
+                  'Cast standard ne sait pas décoder depuis du TS — '
+                  'essaie la déclinaison H.264/FHD de la même chaîne '
+                  '(sans « RAW »).'
+              : '';
+          throw Exception('$base [relais: $info]$hint');
+        }
+      }
+      rethrow;
+    }
   }
 
   /// Attend que le recepteur passe REELLEMENT en lecture.

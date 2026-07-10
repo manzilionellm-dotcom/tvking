@@ -24,13 +24,17 @@
 //  (journal local + Crashlytics si configuré) — sans jamais bloquer.
 // =========================================================
 import 'dart:async';
+import 'dart:io' show Directory, SocketException;
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import 'package:path_provider/path_provider.dart';
+
 import '../crash/crash_reporting.dart';
 import '../crash/crash_reporting_firebase.dart';
+import '../observability/black_box.dart';
 import 'device_memory.dart';
 
 /// Ajuste le cache d'images selon la RAM réelle. Le défaut posé au boot est
@@ -119,6 +123,10 @@ void runGuarded(Future<void> Function() body) {
 
       // 3) Erreurs async/plateforme non rattrapées → « gérées », pas de crash.
       PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+        if (isBenignNetworkNoise(error)) {
+          CrashReporting.instance.log('bruit réseau ignoré: $error');
+          return true;
+        }
         CrashReporting.instance
             .recordError(error, stack, context: 'PlatformDispatcher');
         return true;
@@ -126,6 +134,22 @@ void runGuarded(Future<void> Function() body) {
 
       // Collecteur prêt AVANT le boot : toute erreur de démarrage est captée.
       await CrashReporting.instance.initialize();
+
+      // BOÎTE NOIRE (2026-07-09) : enregistreur persistant qui capture
+      // StructuredLogger + CrashReporting sur disque (survit aux crashs)
+      // et sait produire des constats automatiques. Best-effort : si le
+      // disque est indisponible, elle continue en mémoire seule.
+      try {
+        final dir = await getApplicationSupportDirectory();
+        await BlackBox.instance.initialize(directory: dir);
+      } catch (e) {
+        debugPrint('[BlackBox] dossier support KO, repli temp: $e');
+        try {
+          await BlackBox.instance.initialize(
+            directory: Directory.systemTemp,
+          );
+        } catch (_) {/* la capture mémoire du logger reste sans disque */}
+      }
 
       // Crashlytics si (et seulement si) le projet est configuré. Best-effort,
       // jamais bloquant ni fatal : sans google-services.json, no-op silencieux.
@@ -135,7 +159,29 @@ void runGuarded(Future<void> Function() body) {
     },
     // 4) Filet ultime.
     (Object error, StackTrace stack) {
+      if (isBenignNetworkNoise(error)) {
+        // Diag terrain 2026-07-09 : la découverte mDNS/SSDP émet en
+        // multicast toutes les 60 s ; quand Android bloque l'émission
+        // en arrière-plan (EPERM), le paquet multicast_dns laisse fuir
+        // l'exception dans la zone — 5+ « erreurs non rattrapées » par
+        // heure dans la boîte noire pour un non-événement. Breadcrumb,
+        // pas erreur.
+        CrashReporting.instance.log('bruit réseau ignoré: $error');
+        return;
+      }
       CrashReporting.instance.recordError(error, stack, context: 'Zone');
     },
   );
+}
+
+/// « Bruit » réseau attendu et sans gravité : émission UDP multicast
+/// refusée par l'OS quand l'app est en arrière-plan (découverte
+/// mDNS/SSDP, errno=1 EPERM / réseau coupé). Pur + statique → testé.
+@visibleForTesting
+bool isBenignNetworkNoise(Object error) {
+  if (error is! SocketException) return false;
+  final String msg = error.message;
+  return msg.contains('Send failed') ||
+      error.osError?.errorCode == 1 || // EPERM (multicast bloqué)
+      error.osError?.errorCode == 101; // ENETUNREACH (réseau coupé)
 }

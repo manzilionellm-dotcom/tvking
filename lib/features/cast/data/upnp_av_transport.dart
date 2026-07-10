@@ -94,7 +94,16 @@ class UpnpAvTransport implements CastTransport {
   /// vient juste de s'allumer (mode standby). On passe à 15s — large
   /// pour ne pas timeout sur les TVs lentes, sans bloquer l'UX trop
   /// longtemps en cas de TV vraiment morte.
-  static const Duration _kSoapTimeout = Duration(seconds: 15);
+  static const Duration kDefaultSoapTimeout = Duration(seconds: 15);
+
+  /// Timeout SOAP EFFECTIF pour les prochaines commandes. Le
+  /// CastManager le raccourcit (8 s) sur les tentatives DIRECTES
+  /// quand l'appareil vient de timeout en direct (mémoire de chemin
+  /// DLNA, diag Nebula 2026-07-09 : chaque direct muet coûtait 15 s
+  /// avant la bascule relais alors que la TV répond en < 4 s quand
+  /// elle répond). Toujours remis à [kDefaultSoapTimeout] pour les
+  /// stratégies relais et par défaut.
+  Duration soapTimeout = kDefaultSoapTimeout;
 
   /// Détection LG WebOS / NetCast. Certaines TVs LG sont strictes
   /// sur le User-Agent et n'acceptent les commandes SOAP que si
@@ -462,7 +471,7 @@ class UpnpAvTransport implements CastTransport {
           headers: headers,
           body: envelope,
         )
-        .timeout(_kSoapTimeout);
+        .timeout(soapTimeout);
 
     if (kDebugMode && resp.statusCode != 200) {
       debugPrint(

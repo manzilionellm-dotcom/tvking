@@ -48,6 +48,19 @@ class CrashReporting {
   /// Puits distant optionnel (Crashlytics…). Null tant que rien n'est branché.
   CrashBackend? _backend;
 
+  /// Auditeurs LOCAUX (boîte noire…) : reçoivent la même ligne que le
+  /// ring. Plusieurs possibles, jamais lançants (erreurs avalées).
+  final List<void Function(String line, {required bool fatal})>
+      _localListeners = <void Function(String line, {required bool fatal})>[];
+
+  /// Branche un auditeur local (ex. BlackBox). Contrairement à
+  /// [attachBackend] (slot unique, réservé au puits distant), on peut
+  /// en ajouter plusieurs.
+  void addLocalListener(
+    void Function(String line, {required bool fatal}) listener,
+  ) =>
+      _localListeners.add(listener);
+
   bool _ready = false;
 
   /// Init best-effort. Ne fait (volontairement) presque rien ici : la couche
@@ -82,6 +95,15 @@ class CrashReporting {
     if (_ring.length > _maxRing) _ring.removeAt(0);
 
     debugPrint('[CrashReporting] $line');
+
+    for (final void Function(String line, {required bool fatal}) l
+        in _localListeners) {
+      try {
+        l(line, fatal: fatal);
+      } catch (_) {
+        // un auditeur défaillant ne doit pas devenir une source de crash
+      }
+    }
 
     final CrashBackend? backend = _backend;
     if (backend != null) {
