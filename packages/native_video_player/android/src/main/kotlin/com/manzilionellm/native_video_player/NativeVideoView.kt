@@ -1,6 +1,8 @@
 package com.manzilionellm.native_video_player
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Handler
 import android.os.Looper
 import android.view.SurfaceView
@@ -69,6 +71,50 @@ class NativeVideoView(
     private var retryCount = 0
     private var pendingRetry: Runnable? = null
     private val maxSilentRetries = 8 // au-delà → on prévient Dart (reset complet)
+
+    // REPRISE RÉSEAU INSTANTANÉE (façon Netflix) : pendant qu'un retry
+    // attend son back-off (jusqu'à 8 s), si Android annonce que le réseau
+    // par défaut est REVENU (Wi-Fi raccroché, 4G rétablie), on relance
+    // IMMÉDIATEMENT au lieu de finir d'attendre. Sur une box dont le Wi-Fi
+    // hoquette, c'est plusieurs secondes d'écran figé économisées à chaque
+    // micro-coupure. Permission requise : ACCESS_NETWORK_STATE (normale,
+    // déclarée dans le manifest du plugin).
+    private val connectivityManager =
+        appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+    private var networkCallbackRegistered = false
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            // Callback hors thread principal → on repasse par le handler.
+            handler.post {
+                val retry = pendingRetry ?: return@post
+                handler.removeCallbacks(retry)
+                pendingRetry = null
+                retry.run()
+            }
+        }
+    }
+
+    /** Enregistre le callback réseau (API 24+ ; best-effort, jamais bloquant). */
+    private fun registerNetworkCallback() {
+        if (networkCallbackRegistered) return
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N) return
+        try {
+            connectivityManager?.registerDefaultNetworkCallback(networkCallback)
+            networkCallbackRegistered = true
+        } catch (_: Exception) {
+            // SecurityException (permission absente) / TooManyRequests :
+            // on vit sans — le back-off existant reste le filet.
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        if (!networkCallbackRegistered) return
+        networkCallbackRegistered = false
+        try {
+            connectivityManager?.unregisterNetworkCallback(networkCallback)
+        } catch (_: Exception) {
+        }
+    }
 
     // Dernière durée émise à Dart — évite de spammer le canal quand elle ne
     // change pas (elle est stable pour un film, TIME_UNSET pour un direct).
@@ -184,6 +230,11 @@ class NativeVideoView(
         player.setVideoSurfaceView(surfaceView)
         player.addListener(this)
         player.playWhenReady = true
+
+        // Reprise réseau instantanée : actif toute la vie du lecteur (un
+        // callback réseau enregistré est quasi gratuit ; il ne FAIT quelque
+        // chose que si un retry attend son back-off).
+        registerNetworkCallback()
 
         handler.postDelayed(positionPump, 500)
     }
@@ -350,14 +401,20 @@ class NativeVideoView(
 
     private fun scheduleRetry(delayMs: Long) {
         cancelRetry()
-        val r = Runnable {
-            val url = currentUrl
-            if (url != null) {
-                // Garde la MÊME signature que la session courante (celle qui
-                // a marché si un diagnostic multi-UA a déjà eu lieu).
-                setMedia(url, currentUserAgent)
-            } else {
-                player.prepare()
+        val r = object : Runnable {
+            override fun run() {
+                // Un retry ne s'exécute qu'UNE fois : consommé ici, qu'il
+                // arrive par le back-off ou par le retour du réseau
+                // (networkCallback) — jamais les deux.
+                if (pendingRetry === this) pendingRetry = null
+                val url = currentUrl
+                if (url != null) {
+                    // Garde la MÊME signature que la session courante (celle
+                    // qui a marché si un diagnostic multi-UA a déjà eu lieu).
+                    setMedia(url, currentUserAgent)
+                } else {
+                    player.prepare()
+                }
             }
         }
         pendingRetry = r
@@ -372,6 +429,7 @@ class NativeVideoView(
     // ---- cycle de vie -------------------------------------------------------
 
     override fun dispose() {
+        unregisterNetworkCallback()
         cancelRetry()
         handler.removeCallbacks(positionPump)
         player.removeListener(this)

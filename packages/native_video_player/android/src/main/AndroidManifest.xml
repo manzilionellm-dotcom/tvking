@@ -1,4 +1,7 @@
 <!-- Le namespace du module est défini dans build.gradle (AGP 8+) : ce
-     manifest reste vide, sans attribut package. -->
+     manifest ne porte pas d'attribut package. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Reprise réseau instantanée (NativeVideoView.registerNetworkCallback) :
+         permission NORMALE (accordée à l'installation, aucun dialogue). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 </manifest>

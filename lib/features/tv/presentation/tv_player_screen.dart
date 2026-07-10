@@ -45,6 +45,8 @@ import '../data/autoplay_policy.dart';
 import '../data/failure_explainer.dart';
 import '../data/freeze_recovery_policy.dart';
 import '../data/playback_failure_log.dart';
+import '../data/quality_ladder.dart';
+import '../data/stream_stability_monitor.dart';
 import '../core/tv_dimens.dart';
 import 'tv_channel_programs_screen.dart';
 import 'tv_components.dart';
@@ -215,6 +217,24 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // du message existant. Remis à false à chaque ouverture (_open).
   bool _fatalNetworkHint = false;
 
+  // ----- ABR MAISON (« la qualité s'adapte, la connexion reste ») -----
+  // L'ABR classique (Netflix) n'existe pas sur un flux TS mono-débit. Notre
+  // équivalent : le moniteur de stabilité (machine à états PURE et testée,
+  // cf. stream_stability_monitor.dart) écoute les gels + le débit
+  // d'ingestion du relais ; quand la connexion ne suit plus, on bascule
+  // AUTOMATIQUEMENT sur la déclinaison de qualité inférieure de la MÊME
+  // chaîne trouvée dans la liste (« TF1 FHD » → « TF1 HD », cf.
+  // quality_ladder.dart), et on remonte tout seul quand c'est stable.
+  final StreamStabilityMonitor _stability = StreamStabilityMonitor();
+  // Index de la chaîne D'ORIGINE quand on joue une déclinaison dégradée
+  // (null = on est à la qualité choisie par l'utilisateur).
+  int? _qualityOriginIndex;
+  // Compteur de pertes upstream du relais déjà comptabilisées (delta →
+  // incidents du moniteur).
+  int _seenUpstreamReconnects = 0;
+  // Dernier état "buffering" observé (détection des transitions).
+  bool _wasBuffering = true;
+
   // Chaîne « échec → sonde → cascade de formats » : LE MÊME contrôleur que
   // sur téléphone (StreamBlockedFallback), branché sur les échecs définitifs
   // du relais. Terrain 2026-07-09 : ce panel sert l'URL NUE
@@ -289,9 +309,11 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Le MÊME tick (toutes les 4 s) sert AUSSI de sauvegarde périodique de la
     // position VOD (reprise « Reprendre à 42:15 ») : pas de timer de plus →
     // zéro réveil supplémentaire, zéro coût quand on est en DIRECT (no-op).
+    _stability.openChannel(DateTime.now());
     _watchdog = Timer.periodic(_watchEvery, (_) {
       _onFreezeAction(_freeze.onTick(DateTime.now()));
       _savePlaybackPosition();
+      _stabilityTick();
     });
     // Garde l'app « en ligne » + chaîne à jour pendant le visionnage.
     _presenceTimer = Timer.periodic(const Duration(minutes: 3),
@@ -382,6 +404,13 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Logo tant qu'on bufferise OU que la 1re trame n'est pas encore dessinée
     // (au zap, firstFrame est remis à false → logo jusqu'à l'image suivante).
     final bool buffering = _controller.isBuffering || !_controller.firstFrame;
+    // Capteur ABR : un REBUFFER réel (l'image tournait, elle s'interrompt)
+    // = incident pour le moniteur de stabilité. Le buffering INITIAL d'une
+    // ouverture/zap n'en est pas un (gardé par _everShownFrame).
+    if (buffering && !_wasBuffering && _everShownFrame && !_isVod) {
+      _stability.onIncident(DateTime.now());
+    }
+    _wasBuffering = buffering;
     if (mounted && buffering != _buffering) {
       setState(() => _buffering = buffering);
     }
@@ -552,6 +581,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // En Dart, `a % n` est TOUJOURS dans [0, n) pour n > 0 → pas de wrap négatif
     // à corriger (l'ancienne ligne `if (_index < 0)` était du code mort).
     _prevIndex = _index; // mémoire « dernière chaîne » (recall)
+    _resetStabilitySession(); // zap choisi → session d'adaptation neuve
     setState(() => _index = (_index + delta) % n);
     _open();
   }
@@ -566,6 +596,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _savePlaybackPosition(); // no-op en direct (cf. _zap)
     if (_isRecording) _finalizeRecording(resumeDirect: false);
     _prevIndex = _index;
+    _resetStabilitySession(); // choix utilisateur → session neuve
     setState(() => _index = p);
     _open();
   }
@@ -598,6 +629,119 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
           }
         }
     }
+  }
+
+  // ----- ABR maison : tick, bascule, remontée -----
+
+  /// Tick périodique (même Timer que le watchdog anti-gel : zéro réveil de
+  /// plus). Alimente le moniteur de stabilité avec les capteurs du relais
+  /// et applique sa décision. Ne concerne QUE le direct : un film se met en
+  /// pause/tampon, il ne se « dégrade » pas ; et jamais pendant un
+  /// enregistrement (le fichier .ts est lié à l'URL en cours).
+  void _stabilityTick() {
+    if (!mounted || _isVod || _isRecording || _fatal) return;
+    if (!_controller.isPlaying && !_controller.isBuffering) {
+      return; // pause volontaire (« tu regardes encore ? ») : pas un signal
+    }
+    final DateTime now = DateTime.now();
+    final LocalStreamRelay relay = LocalStreamRelay.instance;
+    // Pertes de connexion upstream vues par le relais depuis le dernier
+    // tick : chacune est un incident (même si ExoPlayer a été servi par le
+    // tampon et n'a RIEN montré à l'écran — c'est le signal précoce).
+    final int reconnects = relay.upstreamReconnects(_effectiveUrl);
+    if (reconnects > _seenUpstreamReconnects) {
+      for (int i = _seenUpstreamReconnects; i < reconnects; i++) {
+        _stability.onIncident(now);
+      }
+    }
+    _seenUpstreamReconnects = reconnects;
+    switch (_stability.onSample(
+      now,
+      ingestBytesPerSecond: relay.ingestBytesPerSecond(_effectiveUrl),
+    )) {
+      case StabilityAction.none:
+        break;
+      case StabilityAction.downshift:
+        _shiftQualityDown();
+      case StabilityAction.restore:
+        _restoreQuality();
+    }
+  }
+
+  /// Descend d'UNE marche de qualité : bascule sur la déclinaison inférieure
+  /// de la même chaîne (« TF1 FHD » → « TF1 HD »). Silencieusement absent si
+  /// le panel ne publie pas de déclinaison (on le mémorise pour ne pas
+  /// re-chercher à chaque tick).
+  void _shiftQualityDown() {
+    final Channel? sibling =
+        QualityLadder.lowerQualitySibling(_current, widget.channels);
+    final int target = sibling == null
+        ? -1
+        : widget.channels.indexWhere((Channel c) => c.id == sibling.id);
+    if (sibling == null || target < 0) {
+      _stability.noteDownshiftUnavailable();
+      StreamDiagnostics.instance.recordEvent(
+        'abr',
+        'Connexion trop faible pour « ${_current.name} » mais aucune '
+            'déclinaison de qualité inférieure dans la liste — on tient '
+            'avec le tampon et les reconnexions',
+        level: 'warn',
+      );
+      return;
+    }
+    final DateTime now = DateTime.now();
+    _stability.noteShifted(now);
+    _qualityOriginIndex ??= _index;
+    StreamDiagnostics.instance.recordEvent(
+      'abr',
+      'Connexion faible → bascule de qualité : « ${_current.name} » → '
+          '« ${sibling.name} » (retour auto quand la connexion se stabilise)',
+      level: 'warn',
+    );
+    _switchChannelForQuality(target);
+    _flash('Connexion faible — qualité adaptée : ${sibling.quality.badge}');
+  }
+
+  /// Remonte à la chaîne d'origine (la connexion est stable depuis assez
+  /// longtemps, cf. StreamStabilityMonitor.stableForRestore).
+  void _restoreQuality() {
+    final DateTime now = DateTime.now();
+    final int? origin = _qualityOriginIndex;
+    _qualityOriginIndex = null;
+    _stability.noteRestored(now);
+    if (origin == null ||
+        origin == _index ||
+        origin < 0 ||
+        origin >= widget.channels.length) {
+      return;
+    }
+    final Channel back = widget.channels[origin];
+    StreamDiagnostics.instance.recordEvent(
+      'abr',
+      'Connexion stable → retour à la qualité d\'origine : '
+          '« ${_current.name} » → « ${back.name} »',
+    );
+    _switchChannelForQuality(origin);
+    _flash('Connexion stable — retour en ${back.quality.badge}');
+  }
+
+  /// Changement de chaîne AUTOMATIQUE (bascule de qualité) : même chemin
+  /// que le zap (_open : relais, cascade, historique) mais SANS toucher la
+  /// mémoire « dernière chaîne » (_prevIndex) ni la session du moniteur —
+  /// c'est le moniteur lui-même qui pilote.
+  void _switchChannelForQuality(int target) {
+    if (!mounted) return;
+    _seenUpstreamReconnects = 0; // nouvelle session relais
+    setState(() => _index = target);
+    _open();
+  }
+
+  /// Zap CHOISI par l'utilisateur : la session d'adaptation de qualité de
+  /// l'ancienne chaîne est close (rien ne fuit d'une chaîne à l'autre).
+  void _resetStabilitySession() {
+    _stability.openChannel(DateTime.now());
+    _qualityOriginIndex = null;
+    _seenUpstreamReconnects = 0;
   }
 
   /// Grave un ÉCHEC DÉFINITIF de lecture dans le journal durable consulté
@@ -1090,6 +1234,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     if (n == null || n <= 0) { setState(() {}); return; }
     _savePlaybackPosition(); // no-op en direct (cf. _zap)
     _prevIndex = _index; // mémoire « dernière chaîne » (recall)
+    _resetStabilitySession(); // choix utilisateur → session neuve
     setState(() => _index = (n - 1).clamp(0, widget.channels.length - 1));
     _open();
   }

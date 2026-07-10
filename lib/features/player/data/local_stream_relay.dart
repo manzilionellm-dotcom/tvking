@@ -57,6 +57,7 @@ import '../../../core/observability/structured_logger.dart';
 import 'hls_playlist_normalizer.dart';
 import 'player_settings.dart';
 import 'stream_diagnostics.dart';
+import 'ts_stream_conditioner.dart';
 
 /// Nombre d'échecs de reconnexion CONSÉCUTIFS tolérés avant d'abandonner
 /// l'upstream, pour une session qui a DÉJÀ diffusé des octets (coupure en
@@ -117,6 +118,21 @@ class LocalStreamRelay {
   /// `true` si une chaîne donnée est en cours d'enregistrement via le relais.
   bool isRecording(String realUrl) =>
       _sessions[realUrl]?.recordSink != null;
+
+  /// Débit d'INGESTION mesuré (octets/seconde, fenêtre glissante ~10 s) de
+  /// la session de [realUrl]. `null` si pas de session active ou pas assez
+  /// de recul pour une moyenne honnête. C'est le capteur du moniteur de
+  /// stabilité du lecteur TV : un débit d'arrivée durablement inférieur au
+  /// débit nominal du flux = gel imminent → le lecteur peut réagir AVANT
+  /// l'écran figé (bascule sur la déclinaison HD/SD de la même chaîne).
+  double? ingestBytesPerSecond(String realUrl) =>
+      _sessions[realUrl]?.rateMeter.bytesPerSecond(DateTime.now());
+
+  /// Nombre de reconnexions upstream de la session en cours (0 si aucune
+  /// session). Deuxième capteur du moniteur de stabilité : des reconnexions
+  /// répétées = connexion/serveur instable même si le débit moyen semble bon.
+  int upstreamReconnects(String realUrl) =>
+      _sessions[realUrl]?.reconnectCount ?? 0;
 
   /// Démarre le serveur local si besoin et renvoie l'URL LOCALE que le
   /// lecteur doit ouvrir à la place de l'URL IPTV réelle. L'URL réelle
@@ -364,6 +380,24 @@ class LocalStreamRelay {
     res.bufferOutput = false;
 
     final _PlayerConsumer consumer = _PlayerConsumer(res);
+    // DÉMARRAGE À CHAUD (façon TiviMate / tuner DVB) : si la session a déjà
+    // diffusé, on envoie D'ABORD la mémoire des derniers octets (alignée sur
+    // une frontière de paquet TS). Le démuxeur retrouve immédiatement
+    // PAT/PMT + une image clé récente → quand ExoPlayer re-prépare après un
+    // gel ou un retry silencieux, l'image revient en une fraction de seconde
+    // au lieu d'attendre les prochaines tables au fil de l'eau (1-3 s
+    // d'écran noir en moins). Envoi SYNCHRONE avant l'ajout à la liste des
+    // lecteurs : aucun risque d'entrelacement avec le fan-out (mono-thread).
+    if (session.everStreamed) {
+      final List<int> warmup = session.ring.alignedSnapshot();
+      if (warmup.isNotEmpty) {
+        try {
+          res.add(warmup);
+        } catch (_) {
+          consumer.markClosed();
+        }
+      }
+    }
     session.players.add(consumer);
 
     // Quand mpv ferme la connexion (pause prolongée, zap, dispose), la
@@ -445,6 +479,18 @@ class LocalStreamRelay {
       return;
     }
     session.reconnectFailures = 0;
+    if (session.upstreamIsPlaylist) {
+      // Playlist HLS = document texte : ni alignement TS ni mémoire.
+      session.aligner = null;
+    } else {
+      // (Re)connexion TS : un aligneur NEUF jette les octets de milieu de
+      // paquet (le serveur repart d'un endroit arbitraire du flux). La
+      // mémoire de démarrage à chaud est vidée : son contenu d'AVANT la
+      // coupure ne se raccorde plus, octet pour octet, au flux réaligné
+      // qui suit (le comptage de frontières deviendrait faux).
+      session.aligner = TsSyncAligner();
+      session.ring.clear();
+    }
     _attachUpstreamListener(session, resp);
   }
 
@@ -529,6 +575,7 @@ class LocalStreamRelay {
       (List<int> chunk) => _fanout(session, chunk),
       onError: (Object e, StackTrace s) {
         if (kDebugMode) debugPrint('[Relay] upstream onError: $e');
+        session.reconnectCount++;
         _scheduleReconnect(session);
       },
       onDone: () {
@@ -553,6 +600,7 @@ class LocalStreamRelay {
         if (kDebugMode) {
           debugPrint('[Relay] upstream fermé par le serveur, reconnexion');
         }
+        session.reconnectCount++;
         _scheduleReconnect(session);
       },
       cancelOnError: true,
@@ -562,10 +610,24 @@ class LocalStreamRelay {
   /// Recopie un paquet vers TOUS les consommateurs : le(s) lecteur(s) et
   /// le fichier d'enregistrement s'il est actif.
   void _fanout(_RelaySession session, List<int> chunk) {
+    // HYGIÈNE TS : après chaque (re)connexion, l'aligneur jette les octets
+    // de milieu de paquet (le décodeur ne doit JAMAIS voir un demi-paquet
+    // collé au flux précédent — artefacts, voire décrochage complet).
+    // Les playlists HLS (aligner == null) passent telles quelles.
+    List<int> data = chunk;
+    final TsSyncAligner? aligner = session.aligner;
+    if (aligner != null) {
+      data = aligner.feed(chunk);
+      if (data.isEmpty) return; // toujours en recherche de synchro
+    }
     // Premier octet reçu = la session a réellement diffusé : les
     // coupures ULTÉRIEURES redeviennent des reconnexions légitimes
     // (même sur un 4xx — token/edge recyclé en cours de live).
     session.everStreamed = true;
+    // Débitmètre (capteur du moniteur de stabilité TV) + mémoire de
+    // démarrage à chaud (burst servi aux lecteurs qui se rebranchent).
+    session.rateMeter.addBytes(data.length, DateTime.now());
+    if (aligner != null) session.ring.add(data);
     // Lecteurs : on écrit, on retire ceux dont la socket est morte.
     final List<_PlayerConsumer> dead = <_PlayerConsumer>[];
     for (final _PlayerConsumer c in session.players) {
@@ -574,7 +636,7 @@ class LocalStreamRelay {
         continue;
       }
       try {
-        c.res.add(chunk);
+        c.res.add(data);
       } catch (_) {
         c.markClosed();
         dead.add(c);
@@ -588,8 +650,8 @@ class LocalStreamRelay {
     final IOSink? sink = session.recordSink;
     if (sink != null) {
       try {
-        sink.add(chunk);
-        session.recordBytes += chunk.length;
+        sink.add(data);
+        session.recordBytes += data.length;
       } catch (e) {
         // Erreur disque (plein, carte éjectée) → on coupe l'enregistrement
         // mais on NE casse PAS la lecture.
@@ -734,6 +796,26 @@ class _RelaySession {
   StreamSubscription<List<int>>? sub;
   bool upstreamActive = false;
   int reconnectFailures = 0;
+
+  /// Nombre TOTAL de pertes de connexion upstream depuis l'ouverture de la
+  /// session (≠ [reconnectFailures] qui compte les échecs CONSÉCUTIFS et
+  /// retombe à 0 dès qu'une reconnexion réussit). Capteur du moniteur de
+  /// stabilité du lecteur TV.
+  int reconnectCount = 0;
+
+  /// Réaligneur TS de la CONNEXION EN COURS (recréé à chaque (re)connexion,
+  /// null pour une playlist HLS). Garantit que lecteurs/fichier ne voient
+  /// jamais un demi-paquet après une coupure serveur.
+  TsSyncAligner? aligner;
+
+  /// Mémoire glissante des derniers octets alignés : burst de démarrage à
+  /// chaud pour un lecteur qui se (re)branche (image de retour quasi
+  /// instantanée après un gel, cf. _handleRequest).
+  final TsRingBuffer ring = TsRingBuffer();
+
+  /// Débit d'ingestion (fenêtre glissante) — exposé au lecteur TV via
+  /// [LocalStreamRelay.ingestBytesPerSecond].
+  final IngestRateMeter rateMeter = IngestRateMeter();
 
   /// Statut HTTP de la DERNIÈRE tentative upstream (null = pas de
   /// réponse : erreur réseau/DNS/timeout). Sert à distinguer un échec
