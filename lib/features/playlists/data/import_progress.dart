@@ -45,7 +45,12 @@ class ImportProgress {
     this.channelsFound = 0,
     this.bytesReceived = 0,
     this.totalBytes,
+    this.categoryName,
   });
+
+  /// Catégorie en cours d'import (Xtream, écrans TV) — `null` hors
+  /// import par catégories.
+  final String? categoryName;
 
   /// Phase courante.
   final ImportPhase phase;
@@ -73,12 +78,14 @@ class ImportProgress {
     int? channelsFound,
     int? bytesReceived,
     int? totalBytes,
+    String? categoryName,
   }) {
     return ImportProgress(
       phase: phase ?? this.phase,
       channelsFound: channelsFound ?? this.channelsFound,
       bytesReceived: bytesReceived ?? this.bytesReceived,
       totalBytes: totalBytes ?? this.totalBytes,
+      categoryName: categoryName ?? this.categoryName,
     );
   }
 }

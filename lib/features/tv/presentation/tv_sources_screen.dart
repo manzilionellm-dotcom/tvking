@@ -12,9 +12,8 @@ import '../../playlists/domain/playlist.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
-import 'tv_add_m3u_screen.dart';
-import 'tv_add_source_screen.dart';
 import 'tv_shell.dart';
+import 'tv_smart_add_screen.dart';
 
 class TvSourcesScreen extends StatelessWidget {
   const TvSourcesScreen({super.key});
@@ -32,23 +31,16 @@ class TvSourcesScreen extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                     color: TvTokens.text)),
             const Spacer(),
+            // UNE SEULE porte d'entrée : l'aiguillage intelligent devine
+            // tout seul si le lien collé est M3U ou Xtream — le client n'a
+            // plus à choisir un jargon qu'il ne connaît pas.
             _Pill(
               icon: Icons.add_rounded,
-              label: 'Ajouter Xtream',
+              label: 'Ajouter une source',
               autofocus: true,
               onSelect: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const TvShell(child: TvAddSourceScreen()),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            _Pill(
-              icon: Icons.playlist_add_rounded,
-              label: 'Ajouter M3U',
-              onSelect: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const TvShell(child: TvAddM3uScreen()),
+                MaterialPageRoute<bool>(
+                  builder: (_) => const TvShell(child: TvSmartAddScreen()),
                 ),
               ),
             ),
@@ -64,7 +56,7 @@ class TvSourcesScreen extends StatelessWidget {
               if (items.isEmpty) {
                 return Center(
                   child: Text(
-                    'Aucune source pour le moment.\nAjoute ta liste Xtream ou M3U ci-dessus.',
+                    'Aucune source pour le moment.\nAppuie sur « Ajouter une source » et colle ton lien : on s\'occupe du reste.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         fontSize: TvDimens.body, color: TvTokens.mutedDim),

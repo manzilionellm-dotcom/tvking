@@ -40,6 +40,8 @@ import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../../vod/data/playback_position_repository.dart';
+import '../data/autoplay_policy.dart';
 import '../data/freeze_recovery_policy.dart';
 import '../core/tv_dimens.dart';
 import 'tv_channel_programs_screen.dart';
@@ -144,6 +146,19 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   Timer? _stillTimer;
   bool _askStillWatching = false;
 
+  // ----- « À suivre » (autoplay épisode suivant — pilier du binge) -----
+  // Toute la DÉCISION (épisode avec suivant ? garde-fou 3 enchaînements ?
+  // annulation mémorisée ?) vit dans AutoplayPolicy, une machine à états
+  // PURE et testée (cf. autoplay_policy.dart) — ici il ne reste que la
+  // plomberie : un Timer d'1 s pour le compte à rebours et la carte.
+  // AUCUN effet en live ni pour un film isolé (gardé par la policy).
+  final AutoplayPolicy _autoplay = AutoplayPolicy();
+  Timer? _upNextTimer;
+  bool _upNextVisible = false;
+  bool _upNextAuto = true; // false = garde-fou atteint → attend un OK
+  int _upNextSeconds = 0;
+  int _upNextBtn = 0; // bouton surligné : 0 = Lire maintenant, 1 = Annuler
+
   // ----- Enregistrement -----
   // Quand on enregistre, on fait passer la lecture par le MINI-RELAIS local
   // (LocalStreamRelay) : il ouvre UNE seule connexion vers le serveur IPTV et
@@ -162,6 +177,15 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   StreamSubscription<Set<String>>? _favSub;
   Set<String> _favIds = FavoritesRepository.instance.current;
   bool get _isFavorite => _favIds.contains(_current.id);
+
+  // ----- Reprise de lecture VOD (« Reprendre à 42:15 », façon Netflix) -----
+  // Position sauvegardée à appliquer dès que le flux est PRÊT (durée connue).
+  // On ne seek PAS avant : un seekTo lancé pendant la préparation d'ExoPlayer
+  // peut être ignoré — la durée n'est émise par le natif qu'une fois le média
+  // préparé et seekable, c'est donc LE signal fiable. `_resumeApplied` évite
+  // de re-seeker après (reconnexion anti-gel, seek manuel de l'utilisateur).
+  Duration? _pendingResume;
+  bool _resumeApplied = false;
 
   // Anti-gel : on suit la progression réelle (position qui avance).
   Duration _lastPos = Duration.zero;
@@ -256,8 +280,13 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _open(reuse: true); // historique / présence pour la 1re chaîne
     // Chien de garde : aucune progression depuis 15 s → reconnexion
     // (décision déléguée à _freeze, cf. FreezeRecoveryPolicy.onTick).
-    _watchdog = Timer.periodic(
-        _watchEvery, (_) => _onFreezeAction(_freeze.onTick(DateTime.now())));
+    // Le MÊME tick (toutes les 4 s) sert AUSSI de sauvegarde périodique de la
+    // position VOD (reprise « Reprendre à 42:15 ») : pas de timer de plus →
+    // zéro réveil supplémentaire, zéro coût quand on est en DIRECT (no-op).
+    _watchdog = Timer.periodic(_watchEvery, (_) {
+      _onFreezeAction(_freeze.onTick(DateTime.now()));
+      _savePlaybackPosition();
+    });
     // Garde l'app « en ligne » + chaîne à jour pendant le visionnage.
     _presenceTimer = Timer.periodic(const Duration(minutes: 3),
         (_) => SubscriptionState.instance.syncWithBackend());
@@ -281,6 +310,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
+        // L'OS peut TUER l'app une fois en arrière-plan (Home, multitâche) :
+        // on fige la position VOD MAINTENANT pour ne pas perdre la reprise.
+        _savePlaybackPosition();
         _controller.pause();
       case AppLifecycleState.resumed:
         _controller.play();
@@ -298,6 +330,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _stillTimer?.cancel();
     _watchdog?.cancel();
     _toastTimer?.cancel();
+    _upNextTimer?.cancel();
     _favSub?.cancel();
     _fallback.detach();
     // Si on quitte le lecteur en plein enregistrement : on finalise proprement
@@ -307,6 +340,11 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       LocalStreamRelay.instance.stopRecording(rec.streamUrl ?? _current.streamUrl);
       RecordingRepository.instance.finishRecording(rec);
     }
+    // Position VOD au moment de QUITTER le lecteur (Back) : c'est LA
+    // sauvegarde qui compte le plus — celle que « Continuer à regarder »
+    // affichera. À faire AVANT _controller.dispose() (après, la position
+    // n'est plus lisible). Fire-and-forget : l'écriture prefs survit au pop.
+    _savePlaybackPosition();
     _controller.removeListener(_onPlayer);
     NowPlaying.instance.clear();
     SubscriptionState.instance.syncWithBackend(); // on ne regarde plus rien
@@ -332,11 +370,26 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     }
     // Une vraie image a été dessinée → la source envoie bien de la vidéo.
     if (_controller.firstFrame) _everShownFrame = true;
+    // Reprise VOD : dès que la DURÉE est connue (média préparé + seekable),
+    // on peut appliquer le « Reprendre à 42:15 ». No-op en direct / déjà fait.
+    if (_isVod) _maybeApplyResume();
     // Logo tant qu'on bufferise OU que la 1re trame n'est pas encore dessinée
     // (au zap, firstFrame est remis à false → logo jusqu'à l'image suivante).
     final bool buffering = _controller.isBuffering || !_controller.firstFrame;
     if (mounted && buffering != _buffering) {
       setState(() => _buffering = buffering);
+    }
+    // FILM terminé (générique atteint) → on OUBLIE sa position : il ne doit
+    // plus apparaître dans « Continuer à regarder » (règle des 95 % du repo,
+    // appliquée ici aussi car un flux terminé n'émet plus de position).
+    if (_isVod && _controller.isEnded) {
+      unawaited(
+          PlaybackPositionRepository.instance.markFinished(_current.id));
+      // ÉPISODE de série avec un suivant → l'overlay « À suivre » prend la
+      // main sur cette fin : on N'ENTRE PAS dans la reconnexion anti-gel
+      // ci-dessous (elle rouvrirait l'épisode terminé pendant le compte à
+      // rebours). Films, fin de saison et live → chemin existant inchangé.
+      if (_handleVodEnded()) return;
     }
     // Erreur / fin de flux live → reconnexion.
     if (_controller.hasError || _controller.isEnded) {
@@ -381,6 +434,15 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _fatalNetworkHint = false;
     _errorLoggedThisOpen = false; // nouvelle ouverture → on re-journalise
     _adoptedAltUrl = null; // la variante adoptée était propre à l'ancienne chaîne
+    // Nouveau contenu → la carte « À suivre » de l'ancien n'a plus de sens.
+    _upNextTimer?.cancel();
+    _upNextVisible = false;
+    // Reprise VOD : état neuf pour CE contenu, puis lecture (asynchrone,
+    // quelques ms) de la position sauvegardée. Le seek lui-même n'aura lieu
+    // que quand le flux sera prêt (durée connue, cf. _maybeApplyResume).
+    _resumeApplied = false;
+    _pendingResume = null;
+    if (_isVod) unawaited(_loadResumePoint());
     if (mounted) setState(() {
       _buffering = true;
       _fatal = false;
@@ -475,6 +537,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   void _zap(int delta) {
     final int n = widget.channels.length;
     if (n <= 1) return;
+    // Si on quittait un VOD (liste de films/épisodes) : position figée AVANT
+    // de changer de contenu (no-op en direct → zapping strictement inchangé).
+    _savePlaybackPosition();
     // On ne peut enregistrer qu'1 chaîne à la fois (1 connexion) : changer de
     // chaîne clôt et SAUVEGARDE l'enregistrement en cours.
     if (_isRecording) _finalizeRecording(resumeDirect: false);
@@ -492,6 +557,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     if (p == null || p == _index || p < 0 || p >= widget.channels.length) {
       return;
     }
+    _savePlaybackPosition(); // no-op en direct (cf. _zap)
     if (_isRecording) _finalizeRecording(resumeDirect: false);
     _prevIndex = _index;
     setState(() => _index = p);
@@ -785,6 +851,167 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     setState(() {}); // la barre reflète tout de suite la nouvelle position
   }
 
+  // ---- REPRISE DE LECTURE (« Reprendre à 42:15 », façon Netflix) ----
+  // Tout est gardé par `_isVod` : le DIRECT (zapping) n'exécute RIEN d'ici.
+
+  /// Va chercher la position sauvegardée du contenu courant (lecture prefs,
+  /// quelques millisecondes — bien avant que le flux soit prêt). Appelé à
+  /// chaque _open() d'un VOD. `ensureLoaded()` rend la reprise indépendante
+  /// de l'ordre de démarrage (le vrai `load()` est branché dans main_tv).
+  Future<void> _loadResumePoint() async {
+    final Channel opened = _current;
+    await PlaybackPositionRepository.instance.ensureLoaded();
+    // L'utilisateur a quitté / changé de contenu pendant la lecture prefs →
+    // cette reprise ne concerne plus l'écran affiché.
+    if (!mounted || !identical(opened, _current) || _resumeApplied) return;
+    _pendingResume =
+        PlaybackPositionRepository.instance.positionFor(opened.id);
+    _maybeApplyResume();
+  }
+
+  /// Applique la reprise UNE seule fois, quand le flux est PRÊT : la durée
+  /// n'est émise par le natif qu'une fois le média préparé et SEEKABLE — un
+  /// seekTo lancé plus tôt serait ignoré par ExoPlayer. Comportement Netflix :
+  /// reprise DIRECTE, pas de dialogue ; un petit toast « Reprise à 42:15 »
+  /// sert de repère (et rassure : non, le film n'a pas sauté tout seul).
+  void _maybeApplyResume() {
+    if (!_isVod || _resumeApplied) return;
+    final Duration? target = _pendingResume;
+    final Duration total = _controller.duration;
+    if (target == null || total <= Duration.zero) return;
+    _resumeApplied = true; // une seule fois par ouverture (jamais re-seek)
+    _pendingResume = null;
+    // Re-validation contre la durée RÉELLE (le fichier a pu changer côté
+    // fournisseur) : position quasi à la fin → on repart du début, comme si
+    // le film était terminé.
+    if (target.inMilliseconds >
+        total.inMilliseconds * PlaybackPositionRepository.finishedRatio) {
+      return;
+    }
+    _controller.seekTo(target);
+    if (mounted) _flash(context.l10n.tvResumedAt(_fmtClock(target)));
+  }
+
+  /// Sauvegarde la position VOD courante (périodique via le tick du watchdog,
+  /// à la sortie via dispose, et avant un changement de contenu). NO-OP total
+  /// en DIRECT et tant que la durée n'est pas connue. Les règles métier
+  /// (< 60 s → rien ; > 95 % → terminé) vivent dans le repository — ici on
+  /// se contente de pousser l'état brut.
+  void _savePlaybackPosition() {
+    if (!_isVod) return;
+    final Duration total = _controller.duration;
+    if (total <= Duration.zero) return;
+    final Channel c = _current;
+    final bool isEpisode = c.id.startsWith('ep-');
+    // Pour un ÉPISODE, `name` vaut « S1 E3 · Titre » et `category` porte le
+    // nom de la série : on préfixe pour que la rangée « Continuer à
+    // regarder » reste lisible hors de la fiche série.
+    final String displayName =
+        (isEpisode && c.category.trim().isNotEmpty)
+            ? '${c.category.trim()} — ${c.name}'
+            : c.name;
+    unawaited(PlaybackPositionRepository.instance.record(
+      key: c.id,
+      position: _controller.position,
+      duration: total,
+      name: displayName,
+      streamUrl: c.streamUrl,
+      posterUrl: c.logoUrl,
+      isEpisode: isEpisode,
+    ));
+  }
+
+  /// « 42:15 » ou « 1:02:03 » — pour le toast de reprise.
+  static String _fmtClock(Duration d) {
+    final int s = d.inSeconds < 0 ? 0 : d.inSeconds;
+    final int h = s ~/ 3600;
+    final int m = (s % 3600) ~/ 60;
+    final int sec = s % 60;
+    String two(int n) => n.toString().padLeft(2, '0');
+    return h > 0 ? '$h:${two(m)}:${two(sec)}' : '$m:${two(sec)}';
+  }
+
+  // ---- « À SUIVRE » (autoplay épisode suivant, façon Netflix) ----
+  // La fiche série passe déjà TOUTE la saison au lecteur (channels +
+  // startIndex, cf. tv_series_screen._playEpisode) : « le suivant » est
+  // simplement l'élément d'après dans la liste — SANS boucler (fin de
+  // saison = pas de wrap vers l'épisode 1, écran de fin classique).
+
+  /// Épisode suivant dans la liste du lecteur (null = dernier élément).
+  Channel? get _nextUpChannel =>
+      _index + 1 < widget.channels.length ? widget.channels[_index + 1] : null;
+
+  /// Fin réelle d'un VOD : si c'est un ÉPISODE avec un suivant, l'overlay
+  /// « À suivre » possède cette fin (carte + compte à rebours, ou attente
+  /// d'un OK si le garde-fou anti-binge est atteint, ou silence si déjà
+  /// annulé). Renvoie false pour film / fin de saison → l'appelant garde
+  /// le comportement existant, strictement inchangé.
+  bool _handleVodEnded() {
+    // Une VRAIE fin arrive forcément après des images affichées. Un `ended`
+    // parasite juste après une ouverture (source vide, événement en retard)
+    // ne doit PAS déclencher l'autoplay → il retombe sur le chemin existant
+    // (reconnexion anti-gel), comme avant.
+    if (!_everShownFrame) return false;
+    final Channel? next = _nextUpChannel;
+    if (!_autoplay.canPropose(
+        isLive: _current.isLive, currentId: _current.id, nextId: next?.id)) {
+      return false;
+    }
+    // Le natif re-notifie `isEnded` tant qu'on reste sur l'écran de fin :
+    // carte déjà affichée → rien à redécider.
+    if (_upNextVisible) return true;
+    final UpNextDecision decision = _autoplay.onEnded(
+        isLive: _current.isLive, currentId: _current.id, nextId: next?.id);
+    // Annulé pour CE contenu → écran de fin stable (la carte ne re-pop pas).
+    if (decision == UpNextDecision.none) return true;
+    _upNextTimer?.cancel();
+    setState(() {
+      _upNextVisible = true;
+      _upNextBtn = 0; // « Lire maintenant » surligné d'office (autofocus)
+      _upNextAuto = decision == UpNextDecision.autoCountdown;
+      _upNextSeconds = _autoplay.countdownSeconds;
+    });
+    if (_upNextAuto) {
+      // Tick d'1 s : décrémente le compte à rebours visible ; à zéro on
+      // enchaîne tout seul. Pas de garde `_upNextVisible` ici : toute
+      // sortie de la carte (Annuler, zap, dispose) CANCEL ce timer.
+      _upNextTimer = Timer.periodic(const Duration(seconds: 1), (Timer t) {
+        if (!mounted) {
+          t.cancel();
+          return;
+        }
+        setState(() => _upNextSeconds--);
+        if (_upNextSeconds <= 0) {
+          t.cancel();
+          _playUpNext(auto: true);
+        }
+      });
+    }
+    return true;
+  }
+
+  /// Enchaîne sur l'épisode suivant — par le compte à rebours ([auto]) ou
+  /// par « Lire maintenant ». Réutilise le chemin de zap EXISTANT (_zap) :
+  /// l'épisode suivant hérite donc de TOUT (reprise au timecode, sauvegarde
+  /// de position, watchdog anti-gel, diagnostic multi-UA).
+  void _playUpNext({required bool auto}) {
+    _upNextTimer?.cancel();
+    if (!mounted) return;
+    // Seul l'enchaînement AUTOMATIQUE consomme le budget anti-binge ; un
+    // appui « Lire maintenant » est déjà passé par onUserInteraction().
+    if (auto) _autoplay.onAutoAdvance();
+    setState(() => _upNextVisible = false);
+    _zap(1);
+  }
+
+  /// « Annuler » (ou Retour) : le compte à rebours s'arrête, on reste sur
+  /// l'écran de fin — comportement d'avant l'autoplay.
+  void _cancelUpNext() {
+    _upNextTimer?.cancel();
+    _autoplay.onCancel(_current.id);
+    if (mounted) setState(() => _upNextVisible = false);
+  }
+
   // Ajoute / retire la chaîne courante des favoris (bouton ❤ / touche F).
   void _toggleFavorite() {
     final bool wasFav = _isFavorite;
@@ -811,6 +1038,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     final int? n = int.tryParse(_numBuffer);
     _numBuffer = '';
     if (n == null || n <= 0) { setState(() {}); return; }
+    _savePlaybackPosition(); // no-op en direct (cf. _zap)
     _prevIndex = _index; // mémoire « dernière chaîne » (recall)
     setState(() => _index = (n - 1).clamp(0, widget.channels.length - 1));
     _open();
@@ -840,13 +1068,48 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final LogicalKeyboardKey k = event.logicalKey;
 
-    // Toute touche = activité → réarme « Tu regardes encore ? ». Si la
-    // question est affichée, N'IMPORTE quelle touche reprend la lecture
-    // (la touche est consommée : elle ne zappe pas par accident).
+    // Toute touche = activité → réarme « Tu regardes encore ? » ET remet à
+    // zéro le garde-fou anti-binge de l'autoplay (quelqu'un tient la
+    // télécommande → les enchaînements automatiques restent fluides).
+    // Si la question est affichée, N'IMPORTE quelle touche reprend la
+    // lecture (la touche est consommée : elle ne zappe pas par accident).
     _lastUserAction = DateTime.now();
+    _autoplay.onUserInteraction();
     if (_askStillWatching) {
       setState(() => _askStillWatching = false);
       _controller.play();
+      return KeyEventResult.handled;
+    }
+
+    // CARTE « À SUIVRE » affichée : elle capte tout le D-pad. Gauche/Droite
+    // déplacent le surlignage entre « Lire maintenant » et « Annuler »,
+    // OK active, Retour = Annuler (on RESTE sur l'écran de fin, on ne
+    // quitte pas le lecteur par surprise). Les autres touches sont
+    // consommées : pas de seek/zap accidentel sous la carte.
+    if (_upNextVisible) {
+      if (_isOk(k)) {
+        if (_upNextBtn == 0) {
+          _playUpNext(auto: false);
+        } else {
+          _cancelUpNext();
+        }
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.goBack ||
+          k == LogicalKeyboardKey.escape ||
+          k == LogicalKeyboardKey.browserBack ||
+          k == LogicalKeyboardKey.exit) {
+        _cancelUpNext();
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowLeft) {
+        setState(() => _upNextBtn = 0);
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowRight) {
+        setState(() => _upNextBtn = 1);
+        return KeyEventResult.handled;
+      }
       return KeyEventResult.handled;
     }
 
@@ -948,6 +1211,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
           behavior: HitTestBehavior.opaque,
           onTap: () {
             _lastUserAction = DateTime.now();
+            _autoplay.onUserInteraction(); // tactile = présence aussi
             if (_askStillWatching) {
               setState(() => _askStillWatching = false);
               _controller.play();
@@ -1194,6 +1458,27 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                               fontWeight: FontWeight.w700,
                               color: TvTokens.text)),
                     ),
+                  ),
+                ),
+              // Carte « À SUIVRE » (bas-droite, façon Netflix) : titre du
+              // prochain épisode + compte à rebours 10 s + Lire maintenant /
+              // Annuler. Uniquement à la fin d'un ÉPISODE avec un suivant
+              // (cf. _handleVodEnded) — jamais en live ni pour un film.
+              if (_upNextVisible && _nextUpChannel != null)
+                Positioned(
+                  right: TvDimens.safeH,
+                  bottom: TvDimens.safeV + 24,
+                  child: _UpNextCard(
+                    title: _nextUpChannel!.cleanName,
+                    seconds: _upNextAuto ? _upNextSeconds : null,
+                    totalSeconds: _autoplay.countdownSeconds,
+                    focusedIndex: _upNextBtn,
+                    // Tactile : un tap direct sur un bouton de la carte.
+                    onPlay: () {
+                      _autoplay.onUserInteraction();
+                      _playUpNext(auto: false);
+                    },
+                    onCancel: _cancelUpNext,
                   ),
                 ),
               ],
@@ -1648,6 +1933,176 @@ class _CtrlButtonState extends State<_CtrlButton> {
                       letterSpacing: 0.5,
                       color: labelColor)),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Carte « À SUIVRE » (bas-droite) : prochain épisode + compte à rebours +
+/// « Lire maintenant » / « Annuler ». Le focus D-pad est ÉMULÉ comme partout
+/// dans ce lecteur (cf. _btnFocus de la barre) : l'écran intercepte toutes
+/// les touches, donc la carte reçoit juste `focusedIndex` et dessine le
+/// surlignage or — n'importe quelle télécommande atteint les 2 boutons.
+/// [seconds] null = garde-fou anti-binge atteint (3 enchaînements auto sans
+/// interaction) : pas de compte à rebours, on attend un OK explicite.
+/// Aucune animation continue ici (le rebours avance par pas d'1 s, l'anneau
+/// est un indicateur DÉTERMINÉ qui saute de valeur en valeur) → le réglage
+/// « réduire les animations » (MediaQuery.disableAnimations) est respecté
+/// par construction, comme les skeletons/marquee du reste de l'app.
+class _UpNextCard extends StatelessWidget {
+  const _UpNextCard({
+    required this.title,
+    required this.seconds,
+    required this.totalSeconds,
+    required this.focusedIndex,
+    required this.onPlay,
+    required this.onCancel,
+  });
+
+  final String title;
+  final int? seconds; // null = attend un OK (pas d'auto-lancement)
+  final int totalSeconds;
+  final int focusedIndex; // 0 = Lire maintenant, 1 = Annuler
+  final VoidCallback onPlay;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 400,
+      padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+        border: Border.all(color: Colors.white24),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.5),
+              blurRadius: 30,
+              spreadRadius: 2),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(context.l10n.tvUpNext.toUpperCase(),
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 2,
+                  color: TvTokens.gold)),
+          const SizedBox(height: 8),
+          Text(title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: TvDimens.title,
+                  fontWeight: FontWeight.w800,
+                  color: TvTokens.text)),
+          const SizedBox(height: 10),
+          if (seconds != null)
+            Row(
+              children: <Widget>[
+                // Anneau de compte à rebours : déterminé, se vide seconde
+                // par seconde (pas d'animation continue).
+                SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    value: totalSeconds > 0
+                        ? (seconds! / totalSeconds).clamp(0.0, 1.0)
+                        : 0,
+                    strokeWidth: 3,
+                    color: TvTokens.gold,
+                    backgroundColor: Colors.white24,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(context.l10n.tvUpNextAutoIn(seconds!),
+                    style: TextStyle(
+                        fontSize: TvDimens.body, color: TvTokens.muted)),
+              ],
+            )
+          else
+            // Garde-fou anti-binge : la carte attend un OK explicite.
+            Text(context.l10n.tvUpNextPressOk,
+                style:
+                    TextStyle(fontSize: TvDimens.body, color: TvTokens.muted)),
+          const SizedBox(height: 16),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _UpNextButton(
+                  icon: Icons.play_arrow_rounded,
+                  label: context.l10n.tvUpNextPlayNow,
+                  focused: focusedIndex == 0,
+                  onTap: onPlay,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _UpNextButton(
+                  icon: Icons.close_rounded,
+                  label: context.l10n.playerUpNextCancel,
+                  focused: focusedIndex == 1,
+                  onTap: onCancel,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bouton de la carte « À suivre ». Surlignage or = même langage visuel que
+/// le reste du lecteur (bouton « Réessayer » de l'écran d'erreur). Répond
+/// aussi au doigt (TV/tablette tactile) via GestureDetector.
+class _UpNextButton extends StatelessWidget {
+  const _UpNextButton({
+    required this.icon,
+    required this.label,
+    required this.focused,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool focused;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.text;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: focused ? TvTokens.gold : Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(TvTokens.rButton),
+          border: Border.all(
+              color: focused ? TvTokens.gold : Colors.white24,
+              width: focused ? TvDimens.focusOutline : 1),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, size: 20, color: fg),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w800, color: fg)),
+            ),
           ],
         ),
       ),

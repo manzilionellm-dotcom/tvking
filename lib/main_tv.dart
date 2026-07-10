@@ -35,6 +35,7 @@ import 'features/security/data/parental_controls.dart';
 import 'features/sports/data/sports_repository.dart';
 import 'features/stats/data/watch_stats_service.dart';
 import 'features/tv/data/place_repository.dart';
+import 'features/vod/data/playback_position_repository.dart';
 import 'features/vod/data/vod_download_service.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
@@ -141,6 +142,24 @@ Future<void> _bootstrap() async {
     if (!BootGuard.instance.safeMode) RemoteSourceRepository.sync();
   });
 
+  // 2c) GUIDE TV (EPG) : re-synchro PÉRIODIQUE (12 h) + une passe différée au
+  //     boot (10 min, le temps que l'import de chaînes soit passé). AVANT ce
+  //     correctif, l'EPG n'était téléchargé qu'à l'AJOUT de la source ; comme
+  //     le guide ne conserve que ~48 h de programmes (anti-OOM), une box
+  //     allumée en continu se retrouvait avec un guide VIDE au bout de ~2
+  //     jours. Léger : IDs de chaînes seulement + import XMLTV en flux ;
+  //     silencieux et optionnel (aucun impact si la source n'a pas d'EPG).
+  Timer(const Duration(minutes: 10), () {
+    if (!BootGuard.instance.safeMode) {
+      unawaited(PlaylistRepository.instance.resyncEpgAll());
+    }
+  });
+  Timer.periodic(const Duration(hours: 12), (_) {
+    if (!BootGuard.instance.safeMode) {
+      unawaited(PlaylistRepository.instance.resyncEpgAll());
+    }
+  });
+
   // 3) Thème distant piloté par le panel (couleur/nom).
   unawaited(RemoteThemeRepository.fetchAndApply());
 
@@ -190,6 +209,12 @@ Future<void> _bootstrap() async {
   // 8z) TÉLÉCHARGEMENTS HORS-LIGNE : recharge la liste des films téléchargés
   //     (et l'état des reprises). Lecture SharedPreferences, non bloquant.
   unawaited(VodDownloadService.instance.load());
+
+  // 8z-bis) REPRISE DE LECTURE (« Reprendre à 42:15 ») : recharge les
+  //     positions VOD sauvegardées pour que la rangée « Continuer à
+  //     regarder » et les barres de progression soient chaudes dès le 1er
+  //     rendu. Lecture SharedPreferences, non bloquant.
+  unawaited(PlaybackPositionRepository.instance.load());
 
   // 8a) STATISTIQUES PERSONNELLES : échantillonneur 1 min qui lit NowPlaying
   //     (déjà alimenté par le lecteur pour le panel). Local à la box, par

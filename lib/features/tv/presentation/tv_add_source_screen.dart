@@ -6,28 +6,54 @@
 //  GET /api/servers) et tape JUSTE son code (identifiant + mot de passe).
 //  L'URL du serveur reste cachée. Repli « URL manuelle » s'il en a une à lui.
 //
-//  SAISIE : de VRAIS champs texte → fonctionnent avec le clavier de l'appli
-//  TÉLÉCOMMANDE du TÉLÉPHONE (Android TV Remote…), un clavier physique, l'IME
-//  de la box, et le COPIER-COLLER. Plus besoin de taper lettre par lettre.
+//  SAISIE 100 % TÉLÉCOMMANDE : clavier D-pad INTÉGRÉ (TvUrlKeyboard) —
+//  flèches + OK suffisent, sur TOUTES les télécommandes. Les VRAIS
+//  TextField restent là en parallèle (bouton ⌨ : IME de la box, clavier
+//  physique/USB, appli télécommande du téléphone, copier-coller) mais ne
+//  sont JAMAIS obligatoires.
+//
+//  PRÉ-VOL : « Tester et ajouter » vérifie le compte AVANT d'écrire quoi
+//  que ce soit (verifyCredentials), montre les corrections apportées à
+//  l'adresse (confiance), puis un import VIVANT : étapes ✓, compteur de
+//  chaînes qui monte, catégorie en cours — jamais un spinner muet.
 // =========================================================
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../playlists/data/default_servers.dart';
-import '../../playlists/data/import_progress.dart';
+import '../../playlists/data/iptv_http.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/data/source_input_normalizer.dart';
 import '../../playlists/data/source_link_utils.dart';
+import '../../playlists/data/source_preflight.dart';
+import '../../playlists/data/xtream_client.dart';
 import '../../playlists/domain/playlist.dart';
-import '../../playlists/presentation/import_progress_screen.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_components.dart';
+import 'tv_import_progress.dart';
+import 'tv_url_keyboard.dart';
 
 const String _kManual = '__manual__';
-const String _kM3u = '__m3u__';
+
+/// Champ actuellement CIBLE du clavier intégré.
+enum _Field { server, user, pass }
 
 class TvAddSourceScreen extends StatefulWidget {
-  const TvAddSourceScreen({super.key});
+  const TvAddSourceScreen({
+    super.key,
+    this.initialServer,
+    this.initialUsername,
+    this.initialPassword,
+  });
+
+  /// Pré-remplissage (venant de l'aiguillage intelligent : un lien
+  /// get.php?username=… collé donne déjà les 3 champs). Null = vide.
+  final String? initialServer;
+  final String? initialUsername;
+  final String? initialPassword;
+
   @override
   State<TvAddSourceScreen> createState() => _TvAddSourceScreenState();
 }
@@ -36,15 +62,26 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
   final TextEditingController _serverC = TextEditingController();
   final TextEditingController _userC = TextEditingController();
   final TextEditingController _passC = TextEditingController();
-  final TextEditingController _m3uC = TextEditingController();
 
   List<DefaultServer> _servers = const <DefaultServer>[];
-  String _choice = _kManual; // id du serveur choisi, _kManual ou _kM3u
+  String _choice = _kManual; // id du serveur choisi, ou _kManual
+  _Field _target = _Field.server;
+  bool _showPass = false;
+
   bool _busy = false;
+  bool _cancelled = false;
+  http.Client? _client; // client du test en cours → close() = annuler
+  final TvImportProgress _progress = TvImportProgress();
+
   String? _error;
+  String? _fixNote; // « On a corrigé l'adresse : … » (confiance)
+
+  // Récap final (« ✓ 8 412 chaînes prêtes · 143 catégories »).
+  bool _success = false;
+  int _doneChannels = 0;
+  int _doneCategories = 0;
 
   bool get _manual => _choice == _kManual;
-  bool get _isM3u => _choice == _kM3u;
   String get _serverUrl => _manual
       ? _serverC.text.trim()
       : (_servers
@@ -55,13 +92,23 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
   @override
   void initState() {
     super.initState();
+    _serverC.text = widget.initialServer ?? '';
+    _userC.text = widget.initialUsername ?? '';
+    _passC.text = widget.initialPassword ?? '';
+    // Cible initiale logique : le premier champ encore vide.
+    _target = _serverC.text.isEmpty
+        ? _Field.server
+        : (_userC.text.isEmpty ? _Field.user : _Field.pass);
+    final bool prefilled = (widget.initialServer ?? '').isNotEmpty;
     DefaultServersApi.fetch().then((List<DefaultServer> list) {
       if (!mounted) return;
       final List<DefaultServer> ok =
           list.where((DefaultServer s) => s.url.isNotEmpty).toList();
       setState(() {
         _servers = ok;
-        _choice = ok.isNotEmpty ? ok.first.id : _kManual;
+        // Un serveur déjà pré-rempli (lien collé) GAGNE sur les serveurs
+        // du panel : on ne remplace pas ce que le client a apporté.
+        if (!prefilled) _choice = ok.isNotEmpty ? ok.first.id : _kManual;
       });
     });
   }
@@ -71,272 +118,417 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
     _serverC.dispose();
     _userC.dispose();
     _passC.dispose();
-    _m3uC.dispose();
+    _progress.dispose();
+    _client?.close();
     super.dispose();
   }
 
-  Future<void> _validate() async {
+  // ---- Cible du clavier intégré ----
+
+  TextEditingController get _targetC {
+    switch (_effectiveTarget) {
+      case _Field.server:
+        return _serverC;
+      case _Field.user:
+        return _userC;
+      case _Field.pass:
+        return _passC;
+    }
+  }
+
+  /// Le champ serveur n'existe qu'en mode manuel : si un serveur du panel
+  /// est choisi, la cible retombe sur l'identifiant.
+  _Field get _effectiveTarget =>
+      (!_manual && _target == _Field.server) ? _Field.user : _target;
+
+  String _targetLabel(BuildContext context) {
+    switch (_effectiveTarget) {
+      case _Field.server:
+        return context.l10n.tvFieldServer;
+      case _Field.user:
+        return context.l10n.tvFieldUser;
+      case _Field.pass:
+        return context.l10n.tvFieldPass;
+    }
+  }
+
+  // ---- Pré-vol + import vivant ----
+
+  Future<void> _testAndAdd() async {
     final String errFill = context.l10n.tvAddListError;
+    String server;
+    String user = SourceLinkUtils.cleanInput(_userC.text);
+    String pass = SourceLinkUtils.cleanInput(_passC.text);
+    final List<String> fixes = <String>[];
 
-    // ----- Mode M3U : un seul champ (lien direct), pipeline COMPLET
-    //       (addM3uPlaylistSmart : DoH pour les domaines bloqués par le
-    //       FAI, repli get.php→API Xtream si 503/refus ou fichier > 60 Mo).
-    if (_isM3u) {
-      final String url = SourceLinkUtils.ensureScheme(_m3uC.text);
-      if (url.isEmpty) {
-        setState(() => _error = errFill);
-        return;
+    if (_manual) {
+      // TOLÉRANCE AUX FAUTES : virgules → points, htp:// → http://,
+      // espaces purgés… et on retient ce qui a été réparé pour le dire.
+      final NormalizedInput n = SourceInputNormalizer.normalizeUrl(_serverUrl);
+      server = n.value;
+      fixes.addAll(n.fixes);
+      // Lien COMPLET (get.php?username=…) collé dans le champ serveur
+      // alors que identifiant/mot de passe sont vides → on extrait tout.
+      if (user.isEmpty || pass.isEmpty) {
+        final ({String server, String username, String password})? ex =
+            SourceLinkUtils.tryExtractXtreamCredentials(server);
+        if (ex != null) {
+          server = ex.server;
+          user = user.isEmpty ? ex.username : user;
+          pass = pass.isEmpty ? ex.password : pass;
+          fixes.add('identifiants lus dans le lien');
+        }
       }
-      setState(() { _busy = true; _error = null; });
-      final ImportOutcome<Playlist> outcome =
-          await runImportWithProgress<Playlist>(
-        context,
-        title: 'IMPORT DE TA LISTE',
-        scale: 1.6,
-        task: (ImportProgressCallback op) => PlaylistRepository.instance
-            .addM3uPlaylistSmart(name: 'Ma liste', url: url, onProgress: op),
-      );
-      if (!mounted) return;
-      if (outcome.ok) {
-        Navigator.of(context).pop();
-      } else {
-        // Vrai message (indice DNS opérateur, statut HTTP…), comme sur
-        // téléphone — plus de générique qui masque la cause.
-        setState(() {
-          _busy = false;
-          _error = _errorText(outcome.error);
-        });
-      }
-      return;
+    } else {
+      server = SourceLinkUtils.ensureScheme(_serverUrl);
     }
 
-    // On accepte le lien même sans « http:// » tapé (le revendeur/
-    // fournisseur donne souvent juste le domaine, ex. « serveur.com:8080 »).
-    String server = SourceLinkUtils.ensureScheme(_serverUrl);
-    String user = _userC.text.trim();
-    String pass = _passC.text.trim();
-    // Beaucoup de fournisseurs ne donnent qu'UN SEUL lien complet (celui
-    // pour VLC/Smarters) au lieu de 3 informations séparées. Si c'est ce
-    // qui a été tapé/collé dans le champ « serveur » et que utilisateur/
-    // mot de passe sont vides, on les en extrait tout seul.
-    if (_manual && (user.isEmpty || pass.isEmpty)) {
-      final ({String server, String username, String password})? extracted =
-          SourceLinkUtils.tryExtractXtreamCredentials(_serverUrl);
-      if (extracted != null) {
-        server = extracted.server;
-        user = user.isEmpty ? extracted.username : user;
-        pass = pass.isEmpty ? extracted.password : pass;
-      }
-    }
     if (server.isEmpty || user.isEmpty || pass.isEmpty) {
       setState(() => _error = errFill);
       return;
     }
-    final String label = _manual
-        ? 'Ma liste'
-        : (_servers
-            .firstWhere((DefaultServer s) => s.id == _choice,
-                orElse: () =>
-                    const DefaultServer(id: '', label: 'Ma liste', url: ''))
-            .label);
-    setState(() { _busy = true; _error = null; });
-    final ImportOutcome<Playlist> outcome =
-        await runImportWithProgress<Playlist>(
-      context,
-      title: 'IMPORT DE TA LISTE',
-      scale: 1.6,
-      task: (ImportProgressCallback op) =>
-          PlaylistRepository.instance.addXtreamPlaylist(
-        name: label,
+
+    setState(() {
+      _busy = true;
+      _cancelled = false;
+      _error = null;
+      _fixNote =
+          fixes.isEmpty ? null : 'On a corrigé l\'adresse : ${fixes.join(' · ')}';
+    });
+    _progress.reset();
+    final http.Client client = createIptvHttpClient();
+    _client = client;
+    try {
+      // 1) PRÉ-VOL : le compte est-il bon ? (rien n'est écrit en base ici)
+      _progress.startStage('Connexion au serveur…');
+      await XtreamClient(
         serverUrl: server,
         username: user,
         password: pass,
-        onProgress: op,
-      ),
-    );
-    if (!mounted) return;
-    if (outcome.ok) {
-      Navigator.of(context).pop(); // le gate ouvre l'app
-    } else {
-      // Vrai message (indice DNS opérateur, statut HTTP…) — même
-      // diagnostic que sur téléphone, plus de « Erreur de connexion »
-      // générique qui masquait la cause.
+        httpClient: client,
+      ).verifyCredentials();
+      if (_abortRequested()) return;
+      _progress.completeStage('Ta liste est bonne');
+
+      // 2) RÉSUMÉ avant validation : le client relit ce qui va être ajouté.
+      final bool confirmed = await _confirmSummary(server, user, pass);
+      if (_abortRequested()) return;
+      if (!confirmed) {
+        setState(() => _busy = false);
+        _progress.reset();
+        return;
+      }
+
+      // 3) IMPORT VIVANT : compteur de chaînes + catégorie en cours.
+      _progress.startStage('Téléchargement des chaînes…');
+      final Playlist saved =
+          await PlaylistRepository.instance.addXtreamPlaylist(
+        name: _manual
+            ? 'Ma liste'
+            : (_servers
+                .firstWhere((DefaultServer s) => s.id == _choice,
+                    orElse: () =>
+                        const DefaultServer(id: '', label: 'Ma liste', url: ''))
+                .label),
+        serverUrl: server,
+        username: user,
+        password: pass,
+        httpClient: client,
+        onProgress: _progress.onImportProgress,
+      );
+      if (_abortRequested()) return;
+      _progress.completeStage('Terminé');
       setState(() {
         _busy = false;
-        _error = _errorText(outcome.error);
+        _success = true;
+        _doneChannels = saved.channelCount;
+        _doneCategories = _progress.categoriesSeen.length;
       });
+    } catch (e) {
+      // Annulé au Retour : le repository a déjà retiré la playlist
+      // orpheline (son catch) → la base reste propre, on rend la main.
+      if (!mounted) return;
+      _progress.reset();
+      setState(() {
+        _busy = false;
+        _error = _cancelled ? 'Ajout annulé.' : SourcePreflight.humanize(e);
+      });
+    } finally {
+      _client = null;
+      client.close();
     }
   }
 
-  /// Message d'erreur lisible depuis l'échec d'un import.
-  String? _errorText(Object? e) {
-    if (e == null) return null;
-    if (e is Exception) return e.toString().replaceFirst('Exception: ', '');
-    return '$e';
+  /// Résumé « ce qui va être ajouté » — mot de passe masqué par défaut.
+  Future<bool> _confirmSummary(
+      String server, String user, String pass) async {
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext ctx) => AlertDialog(
+        backgroundColor: TvTokens.card,
+        title: Row(
+          children: <Widget>[
+            const Icon(Icons.check_circle_rounded,
+                color: TvTokens.success, size: 26),
+            const SizedBox(width: 10),
+            Text('Ta liste est bonne',
+                style: TvTokens.ui(20,
+                    weight: FontWeight.w700, color: TvTokens.text)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            _SummaryRow(label: context.l10n.tvFieldServer, value: server),
+            _SummaryRow(label: context.l10n.tvFieldUser, value: user),
+            _SummaryRow(
+                label: context.l10n.tvFieldPass, value: '•' * pass.length),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Modifier', style: TvTokens.ui(15, color: TvTokens.muted)),
+          ),
+          TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Charger ma liste',
+                style: TvTokens.ui(15,
+                    weight: FontWeight.w700, color: TvTokens.goldBright)),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
+  /// Retour pendant le test/import = ANNULATION propre (pas de sortie
+  /// d'écran surprise) : on coupe le client HTTP → l'attente s'interrompt,
+  /// le repository nettoie l'éventuelle playlist orpheline.
+  void _cancelBusy() {
+    _cancelled = true;
+    _client?.close();
+  }
+
+  /// Après CHAQUE await : si l'annulation est tombée pile entre deux
+  /// étapes (l'await a réussi AVANT la coupure du client), on ne doit
+  /// surtout pas rester bloqué en `_busy` (Retour serait alors muet).
+  bool _abortRequested() {
+    if (!mounted) return true;
+    if (!_cancelled) return false;
+    _progress.reset();
+    setState(() {
+      _busy = false;
+      _error = 'Ajout annulé.';
+    });
+    return true;
   }
 
   @override
   Widget build(BuildContext context) {
+    return PopScope(
+      canPop: !_busy,
+      onPopInvokedWithResult: (bool didPop, Object? _) {
+        if (!didPop && _busy) _cancelBusy();
+      },
+      child: _success ? _buildSuccess(context) : _buildForm(context),
+    );
+  }
+
+  // ---- Récap final chaleureux + « Regarder maintenant » ----
+  Widget _buildSuccess(BuildContext context) {
+    final String cats = _doneCategories > 0
+        ? ' · ${tvFormatCount(_doneCategories)} catégories'
+        : '';
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Text(context.l10n.tvAddListTitle,
-                  style: TvTokens.display(34, color: TvTokens.text)),
-              const SizedBox(height: 6),
-              Text(context.l10n.tvAddListSubtitle,
-                  style: TvTokens.ui(16, color: TvTokens.mutedDim)),
-              const SizedBox(height: 18),
-
-              // ----- Choix de la source : serveurs du panel + « URL
-              //       manuelle » (Xtream) + « M3U » (lien direct). Toujours
-              //       affiché → le mode M3U est atteignable même sans serveur.
-              Text(
-                  (_servers.isNotEmpty
-                          ? context.l10n.tvChooseServer
-                          : 'Choisis ta source')
-                      .toUpperCase(),
-                  style: TvTokens.ui(11,
-                      weight: FontWeight.w600,
-                      color: TvTokens.mutedDim,
-                      spacing: 2)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: <Widget>[
-                  for (final DefaultServer s in _servers)
-                    _ServerChip(
-                      label: s.label,
-                      selected: _choice == s.id,
-                      onSelect: () => setState(() => _choice = s.id),
-                    ),
-                  _ServerChip(
-                    label: context.l10n.tvManualServer,
-                    selected: _manual,
-                    onSelect: () => setState(() => _choice = _kManual),
-                  ),
-                  _ServerChip(
-                    label: 'M3U',
-                    selected: _isM3u,
-                    onSelect: () => setState(() => _choice = _kM3u),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // ----- Champs texte (clavier téléphone / physique + coller) -----
-              if (_isM3u) ...<Widget>[
-                // Mode M3U : UN seul champ, le lien direct.
-                _TextField(
-                  controller: _m3uC,
-                  label: 'URL M3U',
-                  hint: 'http://serveur.com/get.php?username=…',
-                  autofocus: true,
-                  keyboardType: TextInputType.url,
-                ),
-              ] else ...<Widget>[
-                if (_manual) ...<Widget>[
-                  _TextField(
-                    controller: _serverC,
-                    label: context.l10n.tvFieldServer,
-                    hint: 'http://serveur.com:8080',
-                    autofocus: true,
-                    keyboardType: TextInputType.url,
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                _TextField(
-                  controller: _userC,
-                  label: context.l10n.tvFieldUser,
-                  autofocus: !_manual,
-                ),
-                const SizedBox(height: 10),
-                _TextField(
-                  controller: _passC,
-                  label: context.l10n.tvFieldPass,
-                  obscure: true,
-                ),
-              ],
-
-              const SizedBox(height: 10),
-              Text(context.l10n.tvKeyboardHint,
-                  style: TvTokens.ui(12, color: TvTokens.mutedDim)),
-
-              if (_error != null) ...<Widget>[
-                const SizedBox(height: 8),
-                Text(_error!, style: TvTokens.ui(14, color: const Color(0xFFE0746A))),
-              ],
-              const SizedBox(height: 20),
-
-              TvCtaButton(
-                label: _busy ? context.l10n.tvConnecting : context.l10n.tvAddListValidate,
-                onSelect: _busy ? null : _validate,
-              ),
-            ],
-          ),
+        constraints: const BoxConstraints(maxWidth: 640),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            const Icon(Icons.check_circle_rounded,
+                size: 64, color: TvTokens.success),
+            const SizedBox(height: 18),
+            Text(
+              '${tvFormatCount(_doneChannels)} chaînes prêtes$cats',
+              textAlign: TextAlign.center,
+              style: TvTokens.display(34, color: TvTokens.text),
+            ),
+            const SizedBox(height: 8),
+            Text('Ta liste est chargée. Bon visionnage !',
+                textAlign: TextAlign.center,
+                style: TvTokens.ui(16, color: TvTokens.muted)),
+            const SizedBox(height: 26),
+            TvCtaButton(
+              label: 'Regarder maintenant',
+              autofocus: true,
+              onSelect: () => Navigator.of(context).pop(true),
+            ),
+          ],
         ),
       ),
     );
   }
+
+  Widget _buildForm(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        // ----- Colonne gauche : choix serveur + champs + états -----
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Text(context.l10n.tvAddListTitle,
+                    style: TvTokens.display(34, color: TvTokens.text)),
+                const SizedBox(height: 6),
+                Text(context.l10n.tvAddListSubtitle,
+                    style: TvTokens.ui(16, color: TvTokens.mutedDim)),
+                const SizedBox(height: 18),
+
+                // ----- Choix du serveur (ceux du panel) + « URL manuelle » -----
+                if (_servers.isNotEmpty) ...<Widget>[
+                  Text(context.l10n.tvChooseServer.toUpperCase(),
+                      style: TvTokens.ui(11,
+                          weight: FontWeight.w600,
+                          color: TvTokens.mutedDim,
+                          spacing: 2)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: <Widget>[
+                      for (final DefaultServer s in _servers)
+                        _ServerChip(
+                          label: s.label,
+                          selected: _choice == s.id,
+                          onSelect: () => setState(() => _choice = s.id),
+                        ),
+                      _ServerChip(
+                        label: context.l10n.tvManualServer,
+                        selected: _manual,
+                        onSelect: () => setState(() => _choice = _kManual),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                // ----- Champs : OK = cible du clavier intégré ; ⌨ = IME -----
+                if (_manual) ...<Widget>[
+                  TvKeyboardField(
+                    controller: _serverC,
+                    label: context.l10n.tvFieldServer,
+                    hint: 'http://serveur.com:8080',
+                    autofocus: true,
+                    active: _effectiveTarget == _Field.server,
+                    onActivate: () =>
+                        setState(() => _target = _Field.server),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                TvKeyboardField(
+                  controller: _userC,
+                  label: context.l10n.tvFieldUser,
+                  autofocus: !_manual,
+                  active: _effectiveTarget == _Field.user,
+                  onActivate: () => setState(() => _target = _Field.user),
+                ),
+                const SizedBox(height: 10),
+                TvKeyboardField(
+                  controller: _passC,
+                  label: context.l10n.tvFieldPass,
+                  obscured: !_showPass,
+                  onToggleObscure: () =>
+                      setState(() => _showPass = !_showPass),
+                  active: _effectiveTarget == _Field.pass,
+                  onActivate: () => setState(() => _target = _Field.pass),
+                ),
+
+                const SizedBox(height: 10),
+                Text(context.l10n.tvKeyboardHint,
+                    style: TvTokens.ui(12, color: TvTokens.mutedDim)),
+
+                if (_fixNote != null) ...<Widget>[
+                  const SizedBox(height: 8),
+                  Text(_fixNote!,
+                      style: TvTokens.ui(13, color: TvTokens.gold)),
+                ],
+                if (_error != null) ...<Widget>[
+                  const SizedBox(height: 8),
+                  Text(_error!,
+                      style: TvTokens.ui(14, color: const Color(0xFFE0746A))),
+                ],
+                const SizedBox(height: 12),
+                TvImportProgressView(progress: _progress),
+                if (_busy) ...<Widget>[
+                  const SizedBox(height: 6),
+                  Text('Appuie sur Retour pour annuler.',
+                      style: TvTokens.ui(12, color: TvTokens.mutedDim)),
+                ],
+                const SizedBox(height: 14),
+
+                TvCtaButton(
+                  label: _busy ? context.l10n.tvChecking : 'Tester et ajouter',
+                  onSelect: _busy ? null : _testAndAdd,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 22),
+        // ----- Colonne droite : clavier D-pad intégré, cible affichée -----
+        SizedBox(
+          width: 540,
+          child: SingleChildScrollView(
+            child: TvUrlKeyboard(
+              controller: _targetC,
+              fieldLabel: _targetLabel(context),
+              obscured: _effectiveTarget == _Field.pass && !_showPass,
+              showUrlChips: _effectiveTarget == _Field.server,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
-/// Champ texte Maison Noir. C'est un VRAI TextField : il accepte le clavier
-/// de l'appli télécommande du téléphone, un clavier USB/Bluetooth, l'IME de
-/// la box, et le copier-coller (appui long / Ctrl+V).
-class _TextField extends StatelessWidget {
-  const _TextField({
-    required this.controller,
-    required this.label,
-    this.hint,
-    this.obscure = false,
-    this.autofocus = false,
-    this.keyboardType,
-  });
-  final TextEditingController controller;
+class _SummaryRow extends StatelessWidget {
+  const _SummaryRow({required this.label, required this.value});
   final String label;
-  final String? hint;
-  final bool obscure;
-  final bool autofocus;
-  final TextInputType? keyboardType;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
-    OutlineInputBorder border(Color c, double w) => OutlineInputBorder(
-          borderRadius: BorderRadius.circular(TvTokens.rButton),
-          borderSide: BorderSide(color: c, width: w),
-        );
-    return TextField(
-      controller: controller,
-      autofocus: autofocus,
-      obscureText: obscure,
-      keyboardType: keyboardType,
-      autocorrect: false,
-      enableSuggestions: false,
-      cursorColor: TvTokens.gold,
-      style: TvTokens.ui(18, weight: FontWeight.w500, color: TvTokens.text),
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        labelStyle: TvTokens.ui(13, color: TvTokens.muted),
-        hintStyle: TvTokens.ui(14, color: TvTokens.mutedDim),
-        floatingLabelStyle: TvTokens.ui(13, color: TvTokens.goldBright),
-        filled: true,
-        fillColor: TvTokens.card,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        enabledBorder: border(TvTokens.line, 1),
-        focusedBorder: border(TvTokens.gold, 2),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            width: 150,
+            child: Text(label, style: TvTokens.ui(14, color: TvTokens.muted)),
+          ),
+          Expanded(
+            child: Text(value,
+                style: TvTokens.mono(14, color: TvTokens.text)),
+          ),
+        ],
       ),
     );
   }
 }
 
 class _ServerChip extends StatelessWidget {
-  const _ServerChip({required this.label, required this.selected, required this.onSelect});
+  const _ServerChip(
+      {required this.label, required this.selected, required this.onSelect});
   final String label;
   final bool selected;
   final VoidCallback onSelect;
@@ -351,7 +543,9 @@ class _ServerChip extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.gold : (selected ? TvTokens.sel : Colors.transparent),
+            color: focused
+                ? TvTokens.gold
+                : (selected ? TvTokens.sel : Colors.transparent),
             borderRadius: BorderRadius.circular(TvTokens.rButton),
             border: Border.all(color: hl ? TvTokens.gold : TvTokens.line),
           ),

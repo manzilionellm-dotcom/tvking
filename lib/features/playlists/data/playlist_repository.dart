@@ -539,6 +539,8 @@ class PlaylistRepository {
     required String url,
     String? epgUrl,
     http.Client? httpClient,
+    // PROGRESSION VIVANTE : rappel typé (ImportProgress — phases, octets,
+    // compteur de chaînes, catégorie en cours). OPTIONNEL et non-cassant.
     ImportProgressCallback? onProgress,
   }) async {
     // NORMALISATION : complète http:// si l'utilisateur/le panel admin a
@@ -608,11 +610,28 @@ class PlaylistRepository {
         );
       }
 
-      onProgress?.call(ImportProgress(
-        phase: ImportPhase.saving,
-        channelsFound: parsed.channels.length,
-      ));
-      await _insertChannels(parsed.channels);
+      if (onProgress == null) {
+        await _insertChannels(parsed.channels);
+      } else {
+        // PROGRESSION (fusion 2026-07-10) : mêmes écritures, découpées en
+        // tranches pour faire monter le compteur à l'écran (« 4 231
+        // chaînes ajoutées… ») — émises dans l'API typée ImportProgress.
+        onProgress(ImportProgress(
+          phase: ImportPhase.saving,
+          channelsFound: 0,
+        ));
+        const int step = 500;
+        for (int i = 0; i < parsed.channels.length; i += step) {
+          final int end = i + step > parsed.channels.length
+              ? parsed.channels.length
+              : i + step;
+          await _insertChannels(parsed.channels.sublist(i, end));
+          onProgress(ImportProgress(
+            phase: ImportPhase.saving,
+            channelsFound: end,
+          ));
+        }
+      }
       final Playlist saved = newPlaylist.copyWith(
         id: playlistId,
         channelCount: parsed.channels.length,
@@ -672,6 +691,39 @@ class PlaylistRepository {
       );
     } catch (_) {
       // Silencieux — l'EPG est optionnel.
+    }
+  }
+
+  /// Re-synchronise l'EPG de TOUTES les playlists qui en ont un.
+  ///
+  /// POURQUOI : le guide ne garde que ~48 h de futur (anti-OOM) et n'était
+  /// synchronisé qu'à l'AJOUT de la source → sur une box allumée en continu,
+  /// le guide devenait VIDE au bout de ~2 jours sans que le client comprenne.
+  /// Appelée périodiquement (main_tv : toutes les 12 h) et au boot si besoin.
+  ///
+  /// Léger côté mémoire : on ne charge que les IDs de chaînes (SELECT id),
+  /// jamais les objets Channel complets ; l'import XMLTV lui-même est déjà
+  /// en flux. Erreurs réseau silencieuses (l'EPG reste optionnel).
+  Future<void> resyncEpgAll() async {
+    try {
+      final List<Playlist> all = await getAllPlaylists();
+      final Database db = await PlaylistDatabase.instance.database;
+      for (final Playlist p in all) {
+        final String? epgUrl = p.epgUrl;
+        if (p.id == null || epgUrl == null || epgUrl.isEmpty) continue;
+        final List<Map<String, Object?>> rows = await db.query(
+          'channels',
+          columns: <String>['id'],
+          where: 'playlist_id = ?',
+          whereArgs: <Object>[p.id!],
+        );
+        final Set<String> ids =
+            rows.map((Map<String, Object?> r) => r['id'].toString()).toSet();
+        if (ids.isEmpty) continue;
+        await _syncEpgForIds(ids, epgUrl);
+      }
+    } catch (_) {
+      // Silencieux — jamais de crash pour un rafraîchissement de guide.
     }
   }
 
@@ -744,6 +796,8 @@ class PlaylistRepository {
     required String username,
     required String password,
     http.Client? httpClient,
+    // PROGRESSION VIVANTE : rappel typé (ImportProgress — phases, octets,
+    // compteur de chaînes, catégorie en cours). OPTIONNEL et non-cassant.
     ImportProgressCallback? onProgress,
   }) async {
     // NORMALISATION CENTRALE (tous les points d'entrée passent ici —
@@ -814,6 +868,16 @@ class PlaylistRepository {
             channelsFound: running,
           ));
         },
+        // Pont vers l'API brute du client (fusion 2026-07-10) : le
+        // client annonce (total, catégorie), l'app parle ImportProgress.
+        onProgress: onProgress == null
+            ? null
+            : (int totalChannels, String? categoryName) =>
+                onProgress(ImportProgress(
+                  phase: ImportPhase.analyzing,
+                  channelsFound: totalChannels,
+                  categoryName: categoryName,
+                )),
       );
 
       if (count == 0) {
@@ -1026,6 +1090,13 @@ class PlaylistRepository {
           ),
         );
         await _emitCurrentState();
+        // EPG : AVANT, la sync EPG n'avait lieu qu'à l'AJOUT de la playlist —
+        // le guide (fenêtre ~48 h) se périmait donc en ~2 jours si personne
+        // ne re-ajoutait la source. Un refresh des chaînes re-synchronise
+        // désormais aussi le guide (arrière-plan, silencieux, optionnel).
+        if (playlist.epgUrl != null && playlist.epgUrl!.isNotEmpty) {
+          unawaited(_syncEpgFor(parsed.channels, playlist.epgUrl!));
+        }
         return true;
       } finally {
         client.close();
@@ -1064,6 +1135,11 @@ class PlaylistRepository {
           ),
         );
         await _emitCurrentState();
+        // EPG : même correctif que le chemin M3U ci-dessus — le refresh
+        // des chaînes rafraîchit aussi le guide (sinon il se périme en ~2 j).
+        if (playlist.epgUrl != null && playlist.epgUrl!.isNotEmpty) {
+          unawaited(_syncEpgFor(channels, playlist.epgUrl!));
+        }
         return true;
       } finally {
         xtream.dispose();

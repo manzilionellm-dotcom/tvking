@@ -98,7 +98,14 @@ jobs:
           if ! grep -q 'usesCleartextTraffic' "$MANIFEST"; then
             sed -i 's|<application|<application\n        android:usesCleartextTraffic="true"|' "$MANIFEST"
           fi
-          grep -nE 'INTERNET|usesCleartextTraffic' "$MANIFEST" || true
+          # REQUEST_INSTALL_PACKAGES — permet à l'updater in-app (UpdateService)
+          # de lancer l'installateur système pour la MAJ par-dessus. Même patch
+          # que le build mobile : sans lui, la box ne peut pas se mettre à jour
+          # toute seule (sideload, pas de Play Store).
+          if ! grep -q 'REQUEST_INSTALL_PACKAGES' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>' "$MANIFEST"
+          fi
+          grep -nE 'INTERNET|usesCleartextTraffic|REQUEST_INSTALL_PACKAGES' "$MANIFEST" || true
 
       - name: Patch manifest — Android TV (leanback)
         run: |
@@ -524,10 +531,29 @@ jobs:
           # garanti, plus jamais « application non installée ».
           BUILD_NUMBER=$(date +%s)
           echo "versionCode = $BUILD_NUMBER"
+          # CANAL DE MAJ : le tag de release est décidé ICI (même logique que
+          # le publish plus bas) et INJECTÉ dans l'APK (--dart-define). Ainsi
+          # l'updater in-app de la box lit le version.json de SON canal —
+          # une box installée depuis cast-fix-tv-latest ne se « mettra pas à
+          # jour » vers un build d'une autre branche. Partagé avec le publish
+          # via GITHUB_ENV (une seule source de vérité par run).
+          if [ "${{ github.ref_name }}" = "claude/iptv-chromecast-cast-WeAyo" ]; then
+            TV_UPDATE_TAG="cast-fix-tv-latest"
+          elif [ "${{ github.ref_name }}" = "claude/m3u-stream-playback-fix-cfdr2f" ]; then
+            # Canal DÉDIÉ de la branche UNIFIÉE (lecture + cast + premium) :
+            # « tv-latest » est écrasée par les autres branches → l'APK avec
+            # les correctifs y disparaissait (clobber vécu 2×, 2026-07-10).
+            TV_UPDATE_TAG="tv-fix-latest"
+          else
+            TV_UPDATE_TAG="tv-latest"
+          fi
+          echo "TV_UPDATE_TAG=$TV_UPDATE_TAG" >> "$GITHUB_ENV"
+          echo "TV_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
           flutter build apk --release --no-tree-shake-icons \
             --build-number="$BUILD_NUMBER" \
             --obfuscate --split-debug-info=build/symbols \
             --dart-define=GIT_SHA=${{ github.sha }} \
+            --dart-define=TV_UPDATE_TAG="$TV_UPDATE_TAG" \
             --target=lib/main_tv.dart
           echo "=== APK produit ==="
           ls -lah build/app/outputs/flutter-apk/
@@ -581,19 +607,10 @@ jobs:
         run: |
           set -ex
           REPO="${{ github.repository }}"
-          # ANTI-CLOBBER : la branche du correctif cast publie sur une release
-          # DÉDIÉE (cast-fix-tv-latest) que rien d'autre n'écrase. Les autres
-          # branches continuent d'écrire "tv-latest".
-          if [ "${{ github.ref_name }}" = "claude/iptv-chromecast-cast-WeAyo" ]; then
-            TAG="cast-fix-tv-latest"
-          elif [ "${{ github.ref_name }}" = "claude/m3u-stream-playback-fix-cfdr2f" ]; then
-            # Release DÉDIÉE à la branche de correctifs lecture : la
-            # « tv-latest » est écrasée par d'autres branches → l'APK/.aab
-            # avec les correctifs y disparaissait. Ici rien ne l'écrase.
-            TAG="tv-fix-latest"
-          else
-            TAG="tv-latest"
-          fi
+          # ANTI-CLOBBER : le tag est calculé au BUILD (une seule source de
+          # vérité, injectée dans l'APK pour l'updater) et lu ici via env.
+          # Repli défensif si l'étape build n'a pas exporté la variable.
+          TAG="${TV_UPDATE_TAG:-tv-latest}"
           echo ">>> Release cible : $TAG (branche ${{ github.ref_name }})"
           SRC="build/app/outputs/flutter-apk/app-release.apk"
           OUT="build/app/outputs/flutter-apk/defew-tv.apk"
@@ -620,4 +637,20 @@ jobs:
               --notes "$NOTES" --prerelease "$OUT"
             [ -f "$AAB" ] && gh release upload "$TAG" --repo "$REPO" --clobber "$AAB" || true
           fi
+
+          # version.json — manifeste lu par l'updater in-app de la BOX
+          # (UpdateService, aiguillé TV → ce canal). versionCode = le même
+          # epoch que l'APK (exporté par l'étape build) : la box compare son
+          # buildNumber local à cette valeur et propose la MAJ par-dessus.
+          # Sans ce fichier, la box n'a AUCUN moyen de se mettre à jour seule.
+          cat > version.json <<JSON
+          {
+            "versionCode": ${TV_BUILD_NUMBER:-0},
+            "versionName": "0.3.1",
+            "url": "https://github.com/$REPO/releases/download/$TAG/defew-tv.apk",
+            "mandatory": false
+          }
+          JSON
+          gh release upload "$TAG" --repo "$REPO" --clobber version.json
+
           gh release view "$TAG" --repo "$REPO"
