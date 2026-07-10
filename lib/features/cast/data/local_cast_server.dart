@@ -211,11 +211,20 @@ class LocalCastServer {
     // 2 segments avant la premiere reponse (fluidite 2026-07-10 : avec
     // la rampe de demarrage du segmenteur, 2 segments courts ~1,8 s
     // arrivent vite → premiere image nettement plus tot au zapping).
-    // Le matelas anti-saccades se reconstitue tout seul : la fenetre
-    // continue de grossir pendant que le recepteur demarre, et les
-    // rafraichissements suivants repondent immediatement.
     final bool ready =
         await session.waitForSegments(2, const Duration(seconds: 15));
+    // ANTI-DECOUPAGE (2026-07-10, terrain : « ca continue mais ca
+    // decoupe ») : 2 segments courts = ~3,6 s de coussin seulement →
+    // chaque a-coup WiFi devenait une coupure. On vise ~8 s de matiere
+    // AVANT la premiere playlist : les serveurs Xtream BURSTENT
+    // plusieurs secondes de flux instantanement, donc ca coute < 1-2 s
+    // de reel — cap a 5 s pour ne pas penaliser un upstream strictement
+    // temps-reel (on sert alors ce qu'on a, le EXT-X-START s'adapte).
+    // Seulement la 1re reponse : les refresh doivent repondre illico.
+    if (ready && session.playlistServed <= 1) {
+      await session.waitForBufferedSeconds(
+          HlsRelaySession.kJoinHoldBackSec + 1.5, const Duration(seconds: 5));
+    }
     if (!ready) {
       // Upstream mort ou trop lent : 503 → le récepteur remonte une
       // vraie erreur réseau (pas un faux « codec »).

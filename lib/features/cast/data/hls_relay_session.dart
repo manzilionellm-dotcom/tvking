@@ -23,6 +23,7 @@
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
@@ -79,6 +80,13 @@ class HlsRelaySession {
   /// qu'une connexion a produit au moins un segment).
   static const int kMaxConsecutiveReconnects = 6;
 
+  /// Recul visé du point de lecture derrière le bord live (anti-
+  /// découpage 2026-07-10). La RFC 8216bis (HOLD-BACK) impose ≥ 3 ×
+  /// TARGETDURATION : un lecteur collé au bord re-bufferise à CHAQUE
+  /// à-coup (WiFi chargé, reconnexion upstream). Publié via
+  /// #EXT-X-START:TIME-OFFSET, honoré par ExoPlayer (SHIELD) et Shaka.
+  static const double kJoinHoldBackSec = 8.0;
+
   /// Sans AUCUNE requête du récepteur pendant ce délai, la session
   /// s'arrête seule (récepteur mort sans clearRelay → épargne
   /// batterie/data). Large : le récepteur met parfois >30 s à faire
@@ -116,6 +124,16 @@ class HlsRelaySession {
   bool get isStopped => _stopped;
   String? get fatalError => _fatalError;
   int get segmentCount => _segments.length;
+
+  /// Secondes de flux actuellement retenues (somme des EXTINF). C'est
+  /// le coussin maximal que le récepteur peut se constituer au join.
+  double get bufferedSeconds {
+    double total = 0;
+    for (final HlsLiveSegment s in _segments) {
+      total += s.durationSec;
+    }
+    return total;
+  }
 
   /// Marqueur « première playlist servie déjà journalisée » (posé par
   /// LocalCastServer pour ne logger le codec qu'une fois par session).
@@ -177,6 +195,29 @@ class HlsRelaySession {
     return _segments.length >= count;
   }
 
+  /// Attend que [seconds] de flux soient retenues (ou erreur fatale /
+  /// stop / timeout). Contrairement à [waitForSegments], la condition
+  /// est en SECONDES : c'est le coussin anti-découpage du récepteur.
+  /// Renvoie `true` si le coussin visé est atteint — `false` n'est PAS
+  /// bloquant pour l'appelant (on sert ce qu'on a).
+  Future<bool> waitForBufferedSeconds(
+      double seconds, Duration timeout) async {
+    final DateTime deadline = DateTime.now().add(timeout);
+    while (bufferedSeconds < seconds && !_stopped && _fatalError == null) {
+      final Duration left = deadline.difference(DateTime.now());
+      if (left.isNegative) break;
+      final Completer<void> c = Completer<void>();
+      _waiters.add(c);
+      try {
+        await c.future.timeout(left);
+      } on TimeoutException {
+        _waiters.remove(c);
+        break;
+      }
+    }
+    return bufferedSeconds >= seconds;
+  }
+
   HlsLiveSegment? segment(int sequence) {
     for (final HlsLiveSegment s in _segments) {
       if (s.sequence == sequence) return s;
@@ -202,8 +243,10 @@ class HlsRelaySession {
       if (_segments[i].discontinuity) discoSeq++;
     }
     double maxDur = 4.0;
+    double windowDur = 0;
     for (final HlsLiveSegment s in window) {
       if (s.durationSec > maxDur) maxDur = s.durationSec;
+      windowDur += s.durationSec;
     }
     final StringBuffer b = StringBuffer()
       ..writeln('#EXTM3U')
@@ -212,6 +255,18 @@ class HlsRelaySession {
       ..writeln(
           '#EXT-X-MEDIA-SEQUENCE:${window.isEmpty ? 0 : window.first.sequence}')
       ..writeln('#EXT-X-DISCONTINUITY-SEQUENCE:$discoSeq');
+    // ANTI-DÉCOUPAGE (2026-07-10) : sans EXT-X-START, le récepteur se
+    // place à ~3 durées de segment du bord — avec des segments de
+    // démarrage COURTS (rampe 1,8 s) ça ne faisait que ~4-5 s de
+    // coussin, et chaque à-coup WiFi / reconnexion upstream devenait
+    // une coupure visible. On épingle le join aussi loin du bord que
+    // la fenêtre le permet (cible kJoinHoldBackSec). Les refresh
+    // suivants n'y touchent plus (le tag ne compte qu'au join).
+    final double joinOffset = startTimeOffsetFor(windowDur);
+    if (joinOffset > 0) {
+      b.writeln(
+          '#EXT-X-START:TIME-OFFSET=-${joinOffset.toStringAsFixed(1)}');
+    }
     for (final HlsLiveSegment s in window) {
       if (s.discontinuity) b.writeln('#EXT-X-DISCONTINUITY');
       b
@@ -219,6 +274,16 @@ class HlsRelaySession {
         ..writeln('$segmentUriPrefix${s.sequence}.ts');
     }
     return b.toString();
+  }
+
+  /// Recul de join (module de [playlist]) : viser [kJoinHoldBackSec]
+  /// derrière le bord, sans jamais demander plus que ce que la fenêtre
+  /// contient (on garde ~2 s de marge pour que le point de départ
+  /// tombe sur un segment réellement listé). ≤ 0 = pas de tag.
+  @visibleForTesting
+  static double startTimeOffsetFor(double windowDurationSec) {
+    if (windowDurationSec <= 3.0) return 0;
+    return math.min(kJoinHoldBackSec, windowDurationSec - 2.0);
   }
 
   // ------------------------------------------------------------

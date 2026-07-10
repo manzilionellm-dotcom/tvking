@@ -70,6 +70,14 @@ void main() {
         expect(playlist, contains('#EXTM3U'));
         expect(playlist, isNot(contains('#EXT-X-ENDLIST')),
             reason: 'playlist LIVE : jamais de ENDLIST');
+        // Anti-découpage : join épinglé ~8 s derrière le bord live
+        // (RFC 8216bis HOLD-BACK) — la fenêtre pleine (~17 s) permet la
+        // cible entière.
+        expect(playlist, contains('#EXT-X-START:TIME-OFFSET=-8.0'),
+            reason: 'sans recul de join, chaque à-coup WiFi = coupure');
+        expect(await session.waitForBufferedSeconds(8.0, Duration.zero),
+            isTrue,
+            reason: 'le coussin est déjà là → réponse immédiate');
         expect(playlist, contains('#EXT-X-DISCONTINUITY\n'),
             reason: 'saut de PCR à la reconnexion → doit être annoncé '
                 '(le tag inline, pas seulement DISCONTINUITY-SEQUENCE)');
@@ -153,6 +161,19 @@ void main() {
         session.stop();
       }
     }, timeout: const Timeout(Duration(seconds: 40)));
+  });
+
+  group('HlsRelaySession — coussin anti-découpage (startTimeOffsetFor)', () {
+    test('cible 8 s, bornée par la matière disponible', () {
+      // Fenêtre pleine (18 s) → recul cible entier.
+      expect(HlsRelaySession.startTimeOffsetFor(18.0), 8.0);
+      // Join précoce (9,5 s de matière) → tout ce que la fenêtre permet.
+      expect(HlsRelaySession.startTimeOffsetFor(9.5), 7.5);
+      expect(HlsRelaySession.startTimeOffsetFor(5.0), 3.0);
+      // Trop peu de matière → pas de tag (le récepteur décide seul).
+      expect(HlsRelaySession.startTimeOffsetFor(3.0), 0);
+      expect(HlsRelaySession.startTimeOffsetFor(0.0), 0);
+    });
   });
 
   group('CastManager.relayUpstreamUrlFor — tokens Xtream par-connexion', () {
