@@ -3212,5 +3212,63 @@
   "settingsLockTitle": "Verrouiller à l'ouverture",
   "settingsLockSubtitle": "Demande l'empreinte ou PIN au démarrage de l'app. Pas de re-verrouillage si tu reviens du multitâche.",
   "settingsLockConfirmReason": "Confirme avec ton empreinte ou PIN pour activer le verrouillage",
-  "settingsLockActivationFailed": "Verrouillage non activé — auth échouée ou pas d'empreinte / PIN configurés sur ce téléphone."
+  "settingsLockActivationFailed": "Verrouillage non activé — auth échouée ou pas d'empreinte / PIN configurés sur ce téléphone.",
+  "tvSettingsLanguage": "Langue de l'application",
+  "tvLanguageTitle": "Langue",
+  "tvLanguageSubtitle": "Par défaut, l'app suit la langue de la TV. Tu peux forcer une langue ici.",
+  "tvLanguageSystem": "Système — suit la langue de la TV",
+  "adminErrSecretRefusedSetup": "Secret admin refusé par le serveur. Vérifie que tu as bien collé le bon mot de passe que tu as défini avec `wrangler secret put ADMIN_SECRET`.",
+  "adminErrUrlNotFound": "URL du serveur introuvable. Vérifie que tu as bien collé l'URL complète de ton Worker (https://....workers.dev).",
+  "adminErrHttp": "Erreur serveur HTTP {code}. Réponse : {body}",
+  "@adminErrHttp": {
+    "placeholders": {
+      "code": {
+        "type": "int"
+      },
+      "body": {
+        "type": "String"
+      }
+    }
+  },
+  "adminErrUnreadableResponse": "Réponse serveur illisible : {error}",
+  "@adminErrUnreadableResponse": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "adminErrSecretRefused": "Secret admin refusé.",
+  "adminErrDetail": "Détail : {detail}",
+  "@adminErrDetail": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "adminErrSaveFailed": "Échec de l'enregistrement (HTTP {code}).",
+  "@adminErrSaveFailed": {
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "adminErrDeleteFailed": "Échec de la suppression (HTTP {code}).",
+  "@adminErrDeleteFailed": {
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "adminErrServerUnreachable": "Impossible de joindre le serveur : {error}",
+  "@adminErrServerUnreachable": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  }
 }

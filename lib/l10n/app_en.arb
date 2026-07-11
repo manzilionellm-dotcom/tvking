@@ -1275,5 +1275,18 @@
   "settingsLockTitle": "Lock on launch",
   "settingsLockSubtitle": "Asks for fingerprint or PIN when the app starts. No re-lock when you come back from multitasking.",
   "settingsLockConfirmReason": "Confirm with your fingerprint or PIN to enable the lock",
-  "settingsLockActivationFailed": "Lock not enabled — auth failed or no fingerprint / PIN set up on this phone."
+  "settingsLockActivationFailed": "Lock not enabled — auth failed or no fingerprint / PIN set up on this phone.",
+  "tvSettingsLanguage": "App language",
+  "tvLanguageTitle": "Language",
+  "tvLanguageSubtitle": "By default, the app follows the TV's language. You can force a language here.",
+  "tvLanguageSystem": "System — follows the TV's language",
+  "adminErrSecretRefusedSetup": "Admin secret refused by the server. Check that you pasted the exact password you set with `wrangler secret put ADMIN_SECRET`.",
+  "adminErrUrlNotFound": "Server URL not found. Check that you pasted your Worker's full URL (https://....workers.dev).",
+  "adminErrHttp": "Server error HTTP {code}. Response: {body}",
+  "adminErrUnreadableResponse": "Unreadable server response: {error}",
+  "adminErrSecretRefused": "Admin secret refused.",
+  "adminErrDetail": "Detail: {detail}",
+  "adminErrSaveFailed": "Save failed (HTTP {code}).",
+  "adminErrDeleteFailed": "Delete failed (HTTP {code}).",
+  "adminErrServerUnreachable": "Can't reach the server: {error}"
 }

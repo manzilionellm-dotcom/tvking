@@ -179,15 +179,21 @@ void showCastRoutedToast(
 
 /// Helper : toast d'erreur si le cast échoue. La lecture retombe
 /// automatiquement sur le player local.
+///
+/// On n'affiche JAMAIS l'exception brute (signal technique interne,
+/// non traduit) : `friendlyMessageFor` la convertit en message humain
+/// dans la langue active.
 void showCastFailedToast(BuildContext context, Object error) {
+  final String friendly = error is Exception
+      ? CastManager.instance.friendlyMessageFor(error)
+      : error.toString().replaceFirst('Exception: ', '');
   ScaffoldMessenger.of(context).clearSnackBars();
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       behavior: SnackBarBehavior.floating,
       backgroundColor: AppColors.live,
       content: Text(
-        context.l10n.castFailedLocal(
-            error.toString().replaceFirst('Exception: ', '')),
+        context.l10n.castFailedLocal(friendly),
         style: AppTextStyles.bodyMedium,
       ),
     ),

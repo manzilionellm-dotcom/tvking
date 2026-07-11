@@ -19,6 +19,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/i18n/app_l10n.dart';
 import 'admin_client.dart';
 
 class BackendReadResult {
@@ -44,23 +45,16 @@ abstract final class BackendRepository {
         .timeout(const Duration(seconds: 20));
 
     if (resp.statusCode == 401) {
-      throw const BackendException(
-        'Secret admin refusé par le serveur. Vérifie que tu as bien '
-        'collé le bon mot de passe que tu as défini avec `wrangler '
-        'secret put ADMIN_SECRET`.',
-      );
+      throw BackendException(AppL10n.current.adminErrSecretRefusedSetup);
     }
     if (resp.statusCode == 404) {
-      throw const BackendException(
-        'URL du serveur introuvable. Vérifie que tu as bien collé '
-        'l\'URL complète de ton Worker (https://....workers.dev).',
-      );
+      throw BackendException(AppL10n.current.adminErrUrlNotFound);
     }
     if (resp.statusCode != 200) {
-      throw BackendException(
-        'Erreur serveur HTTP ${resp.statusCode}. '
-        'Réponse : ${resp.body.length > 200 ? "${resp.body.substring(0, 200)}…" : resp.body}',
-      );
+      throw BackendException(AppL10n.current.adminErrHttp(
+        resp.statusCode,
+        resp.body.length > 200 ? '${resp.body.substring(0, 200)}…' : resp.body,
+      ));
     }
 
     try {
@@ -74,7 +68,8 @@ abstract final class BackendRepository {
       }
       return BackendReadResult(clients: clients);
     } catch (e) {
-      throw BackendException('Réponse serveur illisible : $e');
+      throw BackendException(
+          AppL10n.current.adminErrUnreadableResponse('$e'));
     }
   }
 
@@ -92,7 +87,7 @@ abstract final class BackendRepository {
         .timeout(const Duration(seconds: 20));
 
     if (resp.statusCode == 401) {
-      throw const BackendException('Secret admin refusé.');
+      throw BackendException(AppL10n.current.adminErrSecretRefused);
     }
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       if (kDebugMode) {
@@ -102,10 +97,12 @@ abstract final class BackendRepository {
       try {
         final Map<String, dynamic> err =
             jsonDecode(resp.body) as Map<String, dynamic>;
-        if (err['error'] is String) hint = '\nDétail : ${err['error']}';
+        if (err['error'] is String) {
+          hint = '\n${AppL10n.current.adminErrDetail('${err['error']}')}';
+        }
       } catch (_) {}
       throw BackendException(
-        'Échec de l\'enregistrement (HTTP ${resp.statusCode}).$hint',
+        '${AppL10n.current.adminErrSaveFailed(resp.statusCode)}$hint',
       );
     }
 
@@ -124,11 +121,11 @@ abstract final class BackendRepository {
         .timeout(const Duration(seconds: 20));
 
     if (resp.statusCode == 401) {
-      throw const BackendException('Secret admin refusé.');
+      throw BackendException(AppL10n.current.adminErrSecretRefused);
     }
     if (resp.statusCode != 204 && resp.statusCode != 200) {
       throw BackendException(
-        'Échec de la suppression (HTTP ${resp.statusCode}).',
+        AppL10n.current.adminErrDeleteFailed(resp.statusCode),
       );
     }
   }
@@ -145,7 +142,8 @@ abstract final class BackendRepository {
     } on BackendException {
       rethrow;
     } catch (e) {
-      throw BackendException('Impossible de joindre le serveur : $e');
+      throw BackendException(
+          AppL10n.current.adminErrServerUnreachable('$e'));
     }
   }
 }

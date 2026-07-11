@@ -1275,5 +1275,18 @@
   "settingsLockTitle": "Bloquear al abrir",
   "settingsLockSubtitle": "Pide la huella o el PIN al iniciar la app. No se vuelve a bloquear al volver de la multitarea.",
   "settingsLockConfirmReason": "Confirma con tu huella o PIN para activar el bloqueo",
-  "settingsLockActivationFailed": "Bloqueo no activado: autenticación fallida o sin huella / PIN configurados en este teléfono."
+  "settingsLockActivationFailed": "Bloqueo no activado: autenticación fallida o sin huella / PIN configurados en este teléfono.",
+  "tvSettingsLanguage": "Idioma de la aplicación",
+  "tvLanguageTitle": "Idioma",
+  "tvLanguageSubtitle": "Por defecto, la app sigue el idioma del televisor. Aquí puedes forzar un idioma.",
+  "tvLanguageSystem": "Sistema — sigue el idioma del televisor",
+  "adminErrSecretRefusedSetup": "Secreto de administrador rechazado por el servidor. Comprueba que pegaste la contraseña exacta definida con `wrangler secret put ADMIN_SECRET`.",
+  "adminErrUrlNotFound": "URL del servidor no encontrada. Comprueba que pegaste la URL completa de tu Worker (https://....workers.dev).",
+  "adminErrHttp": "Error del servidor HTTP {code}. Respuesta: {body}",
+  "adminErrUnreadableResponse": "Respuesta del servidor ilegible: {error}",
+  "adminErrSecretRefused": "Secreto de administrador rechazado.",
+  "adminErrDetail": "Detalle: {detail}",
+  "adminErrSaveFailed": "Error al guardar (HTTP {code}).",
+  "adminErrDeleteFailed": "Error al eliminar (HTTP {code}).",
+  "adminErrServerUnreachable": "No se puede contactar con el servidor: {error}"
 }

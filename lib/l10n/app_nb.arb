@@ -1275,5 +1275,18 @@
   "settingsLockTitle": "Lås ved oppstart",
   "settingsLockSubtitle": "Ber om fingeravtrykk eller PIN når appen starter. Ingen ny låsing når du kommer tilbake fra multitasking.",
   "settingsLockConfirmReason": "Bekreft med fingeravtrykk eller PIN for å aktivere låsen",
-  "settingsLockActivationFailed": "Låsen ble ikke aktivert — autentisering mislyktes eller ingen fingeravtrykk/PIN er satt opp på telefonen."
+  "settingsLockActivationFailed": "Låsen ble ikke aktivert — autentisering mislyktes eller ingen fingeravtrykk/PIN er satt opp på telefonen.",
+  "tvSettingsLanguage": "Appspråk",
+  "tvLanguageTitle": "Språk",
+  "tvLanguageSubtitle": "Som standard følger appen TV-ens språk. Her kan du tvinge et språk.",
+  "tvLanguageSystem": "System — følger TV-ens språk",
+  "adminErrSecretRefusedSetup": "Adminhemmeligheten ble avvist av serveren. Sjekk at du limte inn nøyaktig passordet du satte med `wrangler secret put ADMIN_SECRET`.",
+  "adminErrUrlNotFound": "Fant ikke serverens URL. Sjekk at du limte inn Workerens fullstendige URL (https://....workers.dev).",
+  "adminErrHttp": "Serverfeil HTTP {code}. Svar: {body}",
+  "adminErrUnreadableResponse": "Uleselig serversvar: {error}",
+  "adminErrSecretRefused": "Adminhemmeligheten ble avvist.",
+  "adminErrDetail": "Detalj: {detail}",
+  "adminErrSaveFailed": "Kunne ikke lagre (HTTP {code}).",
+  "adminErrDeleteFailed": "Kunne ikke slette (HTTP {code}).",
+  "adminErrServerUnreachable": "Får ikke kontakt med serveren: {error}"
 }

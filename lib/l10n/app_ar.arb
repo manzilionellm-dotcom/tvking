@@ -1275,5 +1275,18 @@
   "settingsLockTitle": "قفل عند الفتح",
   "settingsLockSubtitle": "يطلب البصمة أو رمز PIN عند تشغيل التطبيق. لا يُعاد القفل عند العودة من تعدد المهام.",
   "settingsLockConfirmReason": "أكّد ببصمتك أو رمز PIN لتفعيل القفل",
-  "settingsLockActivationFailed": "لم يُفعَّل القفل — فشلت المصادقة أو لا توجد بصمة/رمز PIN مضبوطة على هذا الهاتف."
+  "settingsLockActivationFailed": "لم يُفعَّل القفل — فشلت المصادقة أو لا توجد بصمة/رمز PIN مضبوطة على هذا الهاتف.",
+  "tvSettingsLanguage": "لغة التطبيق",
+  "tvLanguageTitle": "اللغة",
+  "tvLanguageSubtitle": "افتراضيًا يتبع التطبيق لغة التلفاز. يمكنك فرض لغة هنا.",
+  "tvLanguageSystem": "النظام — يتبع لغة التلفاز",
+  "adminErrSecretRefusedSetup": "رفض الخادم سرّ المشرف. تأكد أنك لصقت كلمة المرور نفسها التي عيّنتها عبر `wrangler secret put ADMIN_SECRET`.",
+  "adminErrUrlNotFound": "لم يُعثر على عنوان الخادم. تأكد أنك لصقت العنوان الكامل لـ Worker الخاص بك ‏(https://....workers.dev).",
+  "adminErrHttp": "خطأ في الخادم HTTP {code}. الرد: {body}",
+  "adminErrUnreadableResponse": "استجابة الخادم غير قابلة للقراءة: {error}",
+  "adminErrSecretRefused": "رُفض سرّ المشرف.",
+  "adminErrDetail": "التفاصيل: {detail}",
+  "adminErrSaveFailed": "فشل الحفظ (HTTP {code}).",
+  "adminErrDeleteFailed": "فشل الحذف (HTTP {code}).",
+  "adminErrServerUnreachable": "تعذّر الوصول إلى الخادم: {error}"
 }

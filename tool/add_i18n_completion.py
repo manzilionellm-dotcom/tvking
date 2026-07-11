@@ -472,6 +472,136 @@ T = {
   "ar": "لم يُفعَّل القفل — فشلت المصادقة أو لا توجد بصمة/رمز PIN مضبوطة على هذا الهاتف.",
   "sw": "Kufuli hakikuwashwa — uthibitisho umeshindikana au hakuna alama ya kidole/PIN kwenye simu hii."
  },
+ "tvSettingsLanguage": {
+  "fr": "Langue de l'application",
+  "en": "App language",
+  "es": "Idioma de la aplicación",
+  "sv": "Appens språk",
+  "da": "Appens sprog",
+  "nb": "Appspråk",
+  "ar": "لغة التطبيق",
+  "sw": "Lugha ya programu"
+ },
+ "tvLanguageTitle": {
+  "fr": "Langue",
+  "en": "Language",
+  "es": "Idioma",
+  "sv": "Språk",
+  "da": "Sprog",
+  "nb": "Språk",
+  "ar": "اللغة",
+  "sw": "Lugha"
+ },
+ "tvLanguageSubtitle": {
+  "fr": "Par défaut, l'app suit la langue de la TV. Tu peux forcer une langue ici.",
+  "en": "By default, the app follows the TV's language. You can force a language here.",
+  "es": "Por defecto, la app sigue el idioma del televisor. Aquí puedes forzar un idioma.",
+  "sv": "Som standard följer appen TV:ns språk. Här kan du tvinga ett språk.",
+  "da": "Som standard følger appen TV'ets sprog. Her kan du gennemtvinge et sprog.",
+  "nb": "Som standard følger appen TV-ens språk. Her kan du tvinge et språk.",
+  "ar": "افتراضيًا يتبع التطبيق لغة التلفاز. يمكنك فرض لغة هنا.",
+  "sw": "Kwa chaguo-msingi, programu hufuata lugha ya TV. Unaweza kulazimisha lugha hapa."
+ },
+ "tvLanguageSystem": {
+  "fr": "Système — suit la langue de la TV",
+  "en": "System — follows the TV's language",
+  "es": "Sistema — sigue el idioma del televisor",
+  "sv": "System — följer TV:ns språk",
+  "da": "System — følger TV'ets sprog",
+  "nb": "System — følger TV-ens språk",
+  "ar": "النظام — يتبع لغة التلفاز",
+  "sw": "Mfumo — hufuata lugha ya TV"
+ },
+ "adminErrSecretRefusedSetup": {
+  "fr": "Secret admin refusé par le serveur. Vérifie que tu as bien collé le bon mot de passe que tu as défini avec `wrangler secret put ADMIN_SECRET`.",
+  "en": "Admin secret refused by the server. Check that you pasted the exact password you set with `wrangler secret put ADMIN_SECRET`.",
+  "es": "Secreto de administrador rechazado por el servidor. Comprueba que pegaste la contraseña exacta definida con `wrangler secret put ADMIN_SECRET`.",
+  "sv": "Adminhemligheten avvisades av servern. Kontrollera att du klistrade in exakt det lösenord du satte med `wrangler secret put ADMIN_SECRET`.",
+  "da": "Adminhemmeligheden blev afvist af serveren. Tjek, at du indsatte præcis den adgangskode, du satte med `wrangler secret put ADMIN_SECRET`.",
+  "nb": "Adminhemmeligheten ble avvist av serveren. Sjekk at du limte inn nøyaktig passordet du satte med `wrangler secret put ADMIN_SECRET`.",
+  "ar": "رفض الخادم سرّ المشرف. تأكد أنك لصقت كلمة المرور نفسها التي عيّنتها عبر `wrangler secret put ADMIN_SECRET`.",
+  "sw": "Seva imekataa siri ya msimamizi. Hakikisha ulibandika nenosiri lile lile uliloweka kwa `wrangler secret put ADMIN_SECRET`."
+ },
+ "adminErrUrlNotFound": {
+  "fr": "URL du serveur introuvable. Vérifie que tu as bien collé l'URL complète de ton Worker (https://....workers.dev).",
+  "en": "Server URL not found. Check that you pasted your Worker's full URL (https://....workers.dev).",
+  "es": "URL del servidor no encontrada. Comprueba que pegaste la URL completa de tu Worker (https://....workers.dev).",
+  "sv": "Serverns URL hittades inte. Kontrollera att du klistrade in Workerns fullständiga URL (https://....workers.dev).",
+  "da": "Serverens URL blev ikke fundet. Tjek, at du indsatte din Workers fulde URL (https://....workers.dev).",
+  "nb": "Fant ikke serverens URL. Sjekk at du limte inn Workerens fullstendige URL (https://....workers.dev).",
+  "ar": "لم يُعثر على عنوان الخادم. تأكد أنك لصقت العنوان الكامل لـ Worker الخاص بك ‏(https://....workers.dev).",
+  "sw": "URL ya seva haipatikani. Hakikisha ulibandika URL kamili ya Worker yako (https://....workers.dev)."
+ },
+ "adminErrHttp": {
+  "fr": "Erreur serveur HTTP {code}. Réponse : {body}",
+  "en": "Server error HTTP {code}. Response: {body}",
+  "es": "Error del servidor HTTP {code}. Respuesta: {body}",
+  "sv": "Serverfel HTTP {code}. Svar: {body}",
+  "da": "Serverfejl HTTP {code}. Svar: {body}",
+  "nb": "Serverfeil HTTP {code}. Svar: {body}",
+  "ar": "خطأ في الخادم HTTP {code}. الرد: {body}",
+  "sw": "Hitilafu ya seva HTTP {code}. Jibu: {body}"
+ },
+ "adminErrUnreadableResponse": {
+  "fr": "Réponse serveur illisible : {error}",
+  "en": "Unreadable server response: {error}",
+  "es": "Respuesta del servidor ilegible: {error}",
+  "sv": "Oläsbart serversvar: {error}",
+  "da": "Ulæseligt serversvar: {error}",
+  "nb": "Uleselig serversvar: {error}",
+  "ar": "استجابة الخادم غير قابلة للقراءة: {error}",
+  "sw": "Jibu la seva halisomeki: {error}"
+ },
+ "adminErrSecretRefused": {
+  "fr": "Secret admin refusé.",
+  "en": "Admin secret refused.",
+  "es": "Secreto de administrador rechazado.",
+  "sv": "Adminhemligheten avvisades.",
+  "da": "Adminhemmeligheden blev afvist.",
+  "nb": "Adminhemmeligheten ble avvist.",
+  "ar": "رُفض سرّ المشرف.",
+  "sw": "Siri ya msimamizi imekataliwa."
+ },
+ "adminErrDetail": {
+  "fr": "Détail : {detail}",
+  "en": "Detail: {detail}",
+  "es": "Detalle: {detail}",
+  "sv": "Detalj: {detail}",
+  "da": "Detalje: {detail}",
+  "nb": "Detalj: {detail}",
+  "ar": "التفاصيل: {detail}",
+  "sw": "Maelezo: {detail}"
+ },
+ "adminErrSaveFailed": {
+  "fr": "Échec de l'enregistrement (HTTP {code}).",
+  "en": "Save failed (HTTP {code}).",
+  "es": "Error al guardar (HTTP {code}).",
+  "sv": "Det gick inte att spara (HTTP {code}).",
+  "da": "Kunne ikke gemme (HTTP {code}).",
+  "nb": "Kunne ikke lagre (HTTP {code}).",
+  "ar": "فشل الحفظ (HTTP {code}).",
+  "sw": "Imeshindwa kuhifadhi (HTTP {code})."
+ },
+ "adminErrDeleteFailed": {
+  "fr": "Échec de la suppression (HTTP {code}).",
+  "en": "Delete failed (HTTP {code}).",
+  "es": "Error al eliminar (HTTP {code}).",
+  "sv": "Det gick inte att ta bort (HTTP {code}).",
+  "da": "Kunne ikke slette (HTTP {code}).",
+  "nb": "Kunne ikke slette (HTTP {code}).",
+  "ar": "فشل الحذف (HTTP {code}).",
+  "sw": "Imeshindwa kufuta (HTTP {code})."
+ },
+ "adminErrServerUnreachable": {
+  "fr": "Impossible de joindre le serveur : {error}",
+  "en": "Can't reach the server: {error}",
+  "es": "No se puede contactar con el servidor: {error}",
+  "sv": "Kan inte nå servern: {error}",
+  "da": "Kan ikke nå serveren: {error}",
+  "nb": "Får ikke kontakt med serveren: {error}",
+  "ar": "تعذّر الوصول إلى الخادم: {error}",
+  "sw": "Haiwezi kufikia seva: {error}"
+ },
  "tvProfilesTitle": {
   "fr": "Profils",
   "en": "Profiles",
@@ -5039,6 +5169,39 @@ PLACEHOLDERS = {
    "type": "String"
   },
   "start": {
+   "type": "String"
+  }
+ },
+ "adminErrHttp": {
+  "code": {
+   "type": "int"
+  },
+  "body": {
+   "type": "String"
+  }
+ },
+ "adminErrUnreadableResponse": {
+  "error": {
+   "type": "String"
+  }
+ },
+ "adminErrDetail": {
+  "detail": {
+   "type": "String"
+  }
+ },
+ "adminErrSaveFailed": {
+  "code": {
+   "type": "int"
+  }
+ },
+ "adminErrDeleteFailed": {
+  "code": {
+   "type": "int"
+  }
+ },
+ "adminErrServerUnreachable": {
+  "error": {
    "type": "String"
   }
  },

@@ -1275,5 +1275,18 @@
   "settingsLockTitle": "Funga wakati wa kufungua",
   "settingsLockSubtitle": "Huomba alama ya kidole au PIN wakati programu inaanza. Haifungi tena ukirudi kutoka kwa kazi nyingi.",
   "settingsLockConfirmReason": "Thibitisha kwa alama ya kidole au PIN ili kuwasha kufuli",
-  "settingsLockActivationFailed": "Kufuli hakikuwashwa — uthibitisho umeshindikana au hakuna alama ya kidole/PIN kwenye simu hii."
+  "settingsLockActivationFailed": "Kufuli hakikuwashwa — uthibitisho umeshindikana au hakuna alama ya kidole/PIN kwenye simu hii.",
+  "tvSettingsLanguage": "Lugha ya programu",
+  "tvLanguageTitle": "Lugha",
+  "tvLanguageSubtitle": "Kwa chaguo-msingi, programu hufuata lugha ya TV. Unaweza kulazimisha lugha hapa.",
+  "tvLanguageSystem": "Mfumo — hufuata lugha ya TV",
+  "adminErrSecretRefusedSetup": "Seva imekataa siri ya msimamizi. Hakikisha ulibandika nenosiri lile lile uliloweka kwa `wrangler secret put ADMIN_SECRET`.",
+  "adminErrUrlNotFound": "URL ya seva haipatikani. Hakikisha ulibandika URL kamili ya Worker yako (https://....workers.dev).",
+  "adminErrHttp": "Hitilafu ya seva HTTP {code}. Jibu: {body}",
+  "adminErrUnreadableResponse": "Jibu la seva halisomeki: {error}",
+  "adminErrSecretRefused": "Siri ya msimamizi imekataliwa.",
+  "adminErrDetail": "Maelezo: {detail}",
+  "adminErrSaveFailed": "Imeshindwa kuhifadhi (HTTP {code}).",
+  "adminErrDeleteFailed": "Imeshindwa kufuta (HTTP {code}).",
+  "adminErrServerUnreachable": "Haiwezi kufikia seva: {error}"
 }
