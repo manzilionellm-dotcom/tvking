@@ -52,20 +52,20 @@ class UpdateService {
   static final UpdateService instance = UpdateService._();
 
   /// Tag de la release TV où le CI publie `version.json` + `defew-tv.apk`.
-  /// Passé au build par --dart-define (le workflow TV publie sur `tv-latest`,
-  /// ou sur une release dédiée pour certaines branches — anti-clobber).
-  /// Défaut `tv-latest` : un APK TV construit sans le define reste correct.
+  /// Passé au build par --dart-define. La MAISON MÈRE publie sur `tv-prod`
+  /// (canal protégé anti-clobber). Défaut `tv-prod` : un APK TV construit
+  /// sans le define reste sur le bon canal.
   static const String _tvUpdateTag =
-      String.fromEnvironment('TV_UPDATE_TAG', defaultValue: 'tv-latest');
+      String.fromEnvironment('TV_UPDATE_TAG', defaultValue: 'tv-prod');
 
-  /// `version.json` publie par le CI sur la release `latest`.
-  /// La TV (DeFew TV) a SON propre canal : l'APK mobile et l'APK TV sont
-  /// des builds différents (targets, versionCode epoch vs run_number) —
-  /// pointer la box sur le manifeste mobile lui ferait télécharger le
-  /// mauvais APK. D'où l'aiguillage par plateforme, posé au boot.
+  /// `version.json` publié par le CI de la MAISON MÈRE : `prod` (téléphone)
+  /// et `tv-prod` (DeFew TV). L'APK mobile et l'APK TV sont des builds
+  /// différents (targets, versionCode) → aiguillage par plateforme, posé au
+  /// boot. Ces canaux sont PROTÉGÉS (publiés uniquement par la maison mère),
+  /// donc jamais écrasés : l'updater trouve toujours la vraie dernière app.
   static String get manifestUrl => AppPlatform.isTv
       ? 'https://github.com/manzilionellm-dotcom/tvking/releases/download/$_tvUpdateTag/version.json'
-      : 'https://github.com/manzilionellm-dotcom/tvking/releases/download/latest/version.json';
+      : 'https://github.com/manzilionellm-dotcom/tvking/releases/download/prod/version.json';
 
   /// Retourne les infos de MAJ si une version PLUS RECENTE est dispo,
   /// sinon `null`. Fail-open : toute erreur → `null`.

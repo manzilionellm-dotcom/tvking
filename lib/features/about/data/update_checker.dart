@@ -79,8 +79,9 @@ class UpdateChecker {
       final PackageInfo pkg = await PackageInfo.fromPlatform();
       final String current = pkg.version;
 
-      // Produit unique (mobile 7 MOTION) : release « latest », APK 7motion.apk.
-      const String tag = 'latest';
+      // Produit unique (mobile 7 MOTION) : MAISON MÈRE → release « prod »
+      // (canal protégé), APK 7motion.apk.
+      const String tag = 'prod';
       const String apk = '7motion.apk';
 
       final Uri uri = Uri.parse(
