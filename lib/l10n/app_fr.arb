@@ -3814,6 +3814,5 @@
   "tvCollectionsPresetCustom2": "Perso 2",
   "gateReferenceLabel": "TON NUMÉRO DE RÉFÉRENCE",
   "gateReferenceHint": "Montre ce numéro à ton conseiller : il réactive ton accès en un instant.",
-  "gateReactivateContact": "Contacter pour réactiver",
-  "gateReferenceKeep": "Garde-le précieusement — c’est ta clé."
+  "gateReactivateContact": "Contacter pour réactiver"
 }

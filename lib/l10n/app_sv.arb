@@ -1526,5 +1526,8 @@
   "playlistDefaultIptv": "IPTV-abonnemang",
   "fallbackNoName": "Namnlös",
   "fallbackNoNameParens": "(Namnlös)",
-  "fallbackEpisode": "Avsnitt {number}"
+  "fallbackEpisode": "Avsnitt {number}",
+  "gateReferenceLabel": "DITT REFERENSNUMMER",
+  "gateReferenceHint": "Visa det här numret för din rådgivare – de återaktiverar din åtkomst på ett ögonblick.",
+  "gateReactivateContact": "Kontakta för att återaktivera"
 }

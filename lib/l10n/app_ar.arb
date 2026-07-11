@@ -1526,5 +1526,8 @@
   "playlistDefaultIptv": "اشتراك IPTV",
   "fallbackNoName": "بدون اسم",
   "fallbackNoNameParens": "(بدون اسم)",
-  "fallbackEpisode": "الحلقة {number}"
+  "fallbackEpisode": "الحلقة {number}",
+  "gateReferenceLabel": "رقمك المرجعي",
+  "gateReferenceHint": "أظهر هذا الرقم لمستشارك: سيعيد تفعيل وصولك في لحظات.",
+  "gateReactivateContact": "تواصل لإعادة التفعيل"
 }

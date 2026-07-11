@@ -1526,5 +1526,8 @@
   "playlistDefaultIptv": "Suscripción IPTV",
   "fallbackNoName": "Sin nombre",
   "fallbackNoNameParens": "(Sin nombre)",
-  "fallbackEpisode": "Episodio {number}"
+  "fallbackEpisode": "Episodio {number}",
+  "gateReferenceLabel": "TU NÚMERO DE REFERENCIA",
+  "gateReferenceHint": "Muestra este número a tu asesor: reactivará tu acceso en un instante.",
+  "gateReactivateContact": "Contactar para reactivar"
 }

@@ -1526,5 +1526,8 @@
   "playlistDefaultIptv": "Usajili wa IPTV",
   "fallbackNoName": "Bila jina",
   "fallbackNoNameParens": "(Bila jina)",
-  "fallbackEpisode": "Kipindi {number}"
+  "fallbackEpisode": "Kipindi {number}",
+  "gateReferenceLabel": "NAMBA YAKO YA KUMBUKUMBU",
+  "gateReferenceHint": "Mwonyeshe mshauri wako namba hii: atawasha upya ufikiaji wako papo hapo.",
+  "gateReactivateContact": "Wasiliana ili kuwasha upya"
 }
