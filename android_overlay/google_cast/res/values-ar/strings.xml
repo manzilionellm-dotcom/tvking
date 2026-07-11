@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Généré par l'overlay Cast : textes des notifications natives.
+     Android choisit tout seul la langue selon la langue de la TV.
+     values/ = repli anglais (même logique que l'app Flutter). -->
+<resources>
+    <string name="cast_notif_recording_title">جارٍ التسجيل</string>
+    <string name="cast_notif_recording_channel">التسجيلات</string>
+    <string name="cast_notif_recording_channel_desc">إشعار دائم أثناء التسجيل</string>
+    <string name="cast_notif_playback_channel">تشغيل الصوت</string>
+    <string name="cast_notif_playback_channel_desc">تشغيل الصوت في الخلفية (وضع السماعات)</string>
+</resources>

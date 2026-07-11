@@ -43,7 +43,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
     // Activer : libre. Désactiver : code parental obligatoire (sinon un
     // enfant le couperait lui-même).
     if (!wantOn) {
-      final bool ok = await _askPin(context, 'Entre le code parental');
+      final bool ok = await _askPin(context, context.l10n.tvParentalEnterCode);
       if (!ok) return;
     }
     await ParentalControls.instance.setKidsMode(wantOn);
@@ -52,7 +52,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
 
   // ----- Changer le code PIN -----
   Future<void> _changePin() async {
-    final bool ok = await _askPin(context, 'Code actuel');
+    final bool ok = await _askPin(context, context.l10n.tvParentalCurrentCode);
     if (!ok) return;
     final String? next = await _pickNewPin(context);
     if (next == null) return;
@@ -84,8 +84,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                   color: TvTokens.text)),
           const SizedBox(height: 6),
           Text(
-            'Le Mode Enfants masque automatiquement toutes les chaînes Adulte. '
-            'Sa désactivation et le changement de code demandent le code parental.',
+            context.l10n.tvParentalIntro,
             style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
           ),
           const SizedBox(height: 22),
@@ -102,7 +101,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      Text('Mode Enfants',
+                      Text(context.l10n.tvParentalKidsMode,
                           style: TextStyle(
                               fontSize: TvDimens.title,
                               fontWeight: FontWeight.w700,
@@ -110,8 +109,8 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                       const SizedBox(height: 2),
                       Text(
                           kids
-                              ? 'Activé — le contenu Adulte est masqué.'
-                              : 'Désactivé — toutes les chaînes sont visibles.',
+                              ? context.l10n.tvParentalKidsOn
+                              : context.l10n.tvParentalKidsOff,
                           style: TextStyle(
                               fontSize: TvDimens.label,
                               color: kids ? TvTokens.gold : TvTokens.muted)),
@@ -138,7 +137,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                   children: <Widget>[
                     Icon(Icons.lock_rounded, color: TvTokens.muted, size: 26),
                     const SizedBox(width: 12),
-                    Text('Code parental',
+                    Text(context.l10n.tvParentalPinCard,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
@@ -148,15 +147,14 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                 const SizedBox(height: 10),
                 if (_usingDefaultPin)
                   Text(
-                    'Tu utilises encore le code par défaut 0000. '
-                    'Change-le pour protéger le Mode Enfants.',
+                    context.l10n.tvParentalDefaultPinWarning,
                     style: TextStyle(
                         fontSize: TvDimens.label,
                         fontWeight: FontWeight.w600,
                         color: TvTokens.live),
                   )
                 else
-                  Text('Un code personnalisé est en place.',
+                  Text(context.l10n.tvParentalCustomPinSet,
                       style: TextStyle(
                           fontSize: TvDimens.label, color: TvTokens.muted)),
                 const SizedBox(height: 16),
@@ -180,7 +178,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                         children: <Widget>[
                           Icon(Icons.pin_rounded, color: fg, size: 22),
                           const SizedBox(width: 10),
-                          Text('Changer le code PIN',
+                          Text(context.l10n.tvParentalChangePin,
                               style: TextStyle(
                                   fontSize: TvDimens.title,
                                   fontWeight: FontWeight.w700,
@@ -210,7 +208,7 @@ Future<bool> _askPin(BuildContext context, String title) async {
       builder: (_) => TvShell(
         child: _PinPadScreen(
           title: title,
-          subtitle: 'Code parental à 4 chiffres',
+          subtitle: context.l10n.tvParentalPinSubtitle,
           onComplete: (String pin) async {
             final bool good = await AppPinSettings.instance.verify(pin);
             return good ? null : context.l10n.tvParentalWrongCode;
@@ -229,8 +227,8 @@ Future<String?> _pickNewPin(BuildContext context) async {
     MaterialPageRoute<bool>(
       builder: (_) => TvShell(
         child: _PinPadScreen(
-          title: 'Nouveau code',
-          subtitle: 'Choisis 4 chiffres, puis confirme',
+          title: context.l10n.tvParentalNewPin,
+          subtitle: context.l10n.tvParentalNewPinSubtitle,
           confirm: true,
           onComplete: (String pin) async {
             chosen = pin;
@@ -300,7 +298,7 @@ class _PinPadScreenState extends State<_PinPadScreen> {
     }
     if (widget.confirm && _firstEntry != null && _entry != _firstEntry) {
       setState(() {
-        _error = 'Les deux codes ne correspondent pas.';
+        _error = context.l10n.tvParentalPinMismatch;
         _firstEntry = null;
         _entry = '';
       });
@@ -324,7 +322,8 @@ class _PinPadScreenState extends State<_PinPadScreen> {
   @override
   Widget build(BuildContext context) {
     final bool confirmStep = widget.confirm && _firstEntry != null;
-    final String title = confirmStep ? 'Confirme le code' : widget.title;
+    final String title =
+        confirmStep ? context.l10n.tvParentalConfirmPin : widget.title;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
@@ -513,7 +512,7 @@ class _TogglePill extends StatelessWidget {
               Icon(on ? Icons.toggle_on_rounded : Icons.toggle_off_rounded,
                   size: 22, color: focused ? fg : (on ? TvTokens.gold : TvTokens.muted)),
               const SizedBox(width: 8),
-              Text(on ? 'Activé' : 'Désactivé',
+              Text(on ? context.l10n.tvEnabled : context.l10n.tvDisabled,
                   style: TextStyle(
                       fontSize: TvDimens.titleS,
                       fontWeight: FontWeight.w700,

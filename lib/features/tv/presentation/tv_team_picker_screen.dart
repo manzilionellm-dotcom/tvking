@@ -83,7 +83,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
     if (!mounted) return;
     setState(() => _resolving = false);
     if (r.isEmpty) {
-      _flash('« $name » introuvable — essaie la recherche.');
+      _flash(context.l10n.tvTeamPickerNotFound(name));
       return;
     }
     final SportTeam best = r.firstWhere(
@@ -274,6 +274,15 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
     );
   }
 
+  // Libellé localisé d'une section sport du catalogue VIP.
+  // « NFL » reste tel quel (marque de ligue, identique partout).
+  String _sportLabel(String sport) => switch (sport) {
+        'Football' => context.l10n.tvTeamPickerSportFootball,
+        'Basket (NBA)' => context.l10n.tvTeamPickerSportBasketball,
+        'Rugby' => context.l10n.tvTeamPickerSportRugby,
+        _ => sport,
+      };
+
   // Catalogue VIP : sections par sport, chips d'équipes animées (focus or).
   Widget _catalogView() {
     final List<Widget> children = <Widget>[];
@@ -282,7 +291,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
     _kVipTeams.forEach((String sport, List<String> teams) {
       children.add(Padding(
         padding: EdgeInsets.fromLTRB(2, sectionFirst ? 0 : 20, 2, 10),
-        child: Text(sport.toUpperCase(),
+        child: Text(_sportLabel(sport).toUpperCase(),
             style: TvTokens.ui(14,
                 weight: FontWeight.w700,
                 color: TvTokens.mutedDim,

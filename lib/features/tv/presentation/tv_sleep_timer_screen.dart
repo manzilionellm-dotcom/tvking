@@ -28,19 +28,18 @@ class TvSleepTimerScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Text(
-                  'Minuterie de veille',
-                  style: TextStyle(
+                Text(
+                  context.l10n.tvSleepTitle,
+                  style: const TextStyle(
                     fontSize: 30,
                     fontWeight: FontWeight.w800,
                     color: TvTokens.text,
                   ),
                 ),
                 const SizedBox(height: 6),
-                const Text(
-                  'L\'application se ferme toute seule à la fin du minuteur '
-                  '(le flux s\'arrête). Pratique le soir.',
-                  style: TextStyle(fontSize: 15, color: TvTokens.muted),
+                Text(
+                  context.l10n.tvSleepSubtitle,
+                  style: const TextStyle(fontSize: 15, color: TvTokens.muted),
                 ),
                 const SizedBox(height: 24),
 
@@ -61,7 +60,7 @@ class TvSleepTimerScreen extends StatelessWidget {
                             color: TvTokens.gold, size: 24),
                         const SizedBox(width: 12),
                         Text(
-                          'Extinction dans ${t.remainingLabel}',
+                          context.l10n.tvSleepCountdown(t.remainingLabel),
                           style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
@@ -81,7 +80,7 @@ class TvSleepTimerScreen extends StatelessWidget {
                   children: <Widget>[
                     for (final int m in SleepTimer.presets)
                       _choice(
-                        label: '$m min',
+                        label: context.l10n.tvDurationMinutes(m),
                         selected: t.isActive && t.selectedMinutes == m,
                         onSelect: () => t.start(m),
                         autofocus: m == SleepTimer.presets.first,

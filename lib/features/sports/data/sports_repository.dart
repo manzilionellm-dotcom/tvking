@@ -15,6 +15,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/i18n/app_l10n.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../subscription/data/subscription_backend.dart' show kSubscriptionBaseUrl;
 import '../domain/sport_models.dart';
@@ -189,7 +190,9 @@ class SportsRepository {
         await NotificationService.instance.scheduleProgramReminder(
           channelId: 'sport_${team.id}_${ev.id}',
           channelName: team.name,
-          title: '⚽ ${team.name} joue bientôt',
+          // Titre de notification (visible utilisateur) → traduit via
+          // AppL10n (clé existante, partagée avec l'écran TV Sports).
+          title: AppL10n.current.tvSportSoon(team.name),
           startMs: start.millisecondsSinceEpoch,
           leadMinutes: 60,
         );
@@ -203,7 +206,7 @@ class SportsRepository {
         await NotificationService.instance.scheduleProgramReminder(
           channelId: 'sport_${team.id}_${ev.id}_ko',
           channelName: team.name,
-          title: '⚽ C\'est parti ! $affiche',
+          title: AppL10n.current.tvSportKickoff(affiche),
           startMs: start.millisecondsSinceEpoch,
           leadMinutes: 0,
         );

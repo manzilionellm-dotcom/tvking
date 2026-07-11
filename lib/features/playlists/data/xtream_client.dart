@@ -38,6 +38,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/app/device_memory.dart';
 import '../../../core/crash/crash_reporting.dart';
+import '../../../core/i18n/app_l10n.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/data/player_settings.dart';
 import '../../vod/domain/vod_movie.dart';
@@ -102,9 +103,9 @@ class XtreamClient {
     final Map<String, dynamic>? userInfo =
         data['user_info'] as Map<String, dynamic>?;
     if (userInfo == null) {
-      throw XtreamException(
-        'Réponse serveur invalide (pas de user_info).',
-      );
+      // Message affiché dans la bannière d'erreur du flow d'ajout →
+      // traduit via AppL10n (pas de BuildContext en couche data).
+      throw XtreamException(AppL10n.current.xtreamErrorInvalidResponse);
     }
     // Le protocole Xtream n'est pas normalisé : selon le panel, `auth`
     // vaut 1, "1", true ou "true" quand c'est bon — et certains panels
@@ -115,9 +116,7 @@ class XtreamClient {
     final String auth =
         userInfo['auth']?.toString().trim().toLowerCase() ?? '';
     if (auth == '0' || auth == 'false') {
-      throw XtreamException(
-        'Identifiants refusés par le serveur. Vérifie ton login/mot de passe.',
-      );
+      throw XtreamException(AppL10n.current.xtreamErrorLoginRefused);
     }
     // Statut : on ne refuse que les états clairement BLOQUANTS connus.
     // Un statut exotique inconnu (« Enabled », « Trial », vide…) passe —
@@ -129,7 +128,7 @@ class XtreamClient {
     };
     if (blocked.contains(status)) {
       throw XtreamException(
-        'Compte non-actif côté serveur (status=$status).',
+        AppL10n.current.xtreamErrorAccountInactive(status),
       );
     }
     // FORMAT DE SORTIE LIVE : les serveurs déclarent les conteneurs
@@ -568,7 +567,7 @@ class XtreamClient {
           return utf8.decode(bytes, allowMalformed: true);
         }
         lastError = XtreamException(
-          'Erreur HTTP ${resp.statusCode} sur ${uri.host}',
+          AppL10n.current.xtreamErrorHttp(resp.statusCode, uri.host),
         );
       } on PlaylistImportTooLarge {
         // Taille indépendante de la signature → on remonte l'erreur claire.
@@ -583,7 +582,7 @@ class XtreamClient {
       }
     }
     throw lastError ??
-        XtreamException('Serveur Xtream injoignable (${uri.host}).');
+        XtreamException(AppL10n.current.xtreamErrorUnreachable(uri.host));
   }
 
   /// Lit [stream] en bornant à [maxBytes] (anti-OOM) : dépassement →
@@ -596,8 +595,7 @@ class XtreamClient {
       total += chunk.length;
       if (total > maxBytes) {
         throw PlaylistImportTooLarge(
-          'Source Xtream trop volumineuse (> ${maxBytes ~/ (1024 * 1024)} Mo). '
-          'Filtre les catégories côté fournisseur.',
+          AppL10n.current.xtreamErrorTooLarge(maxBytes ~/ (1024 * 1024)),
         );
       }
       builder.add(chunk);
@@ -614,11 +612,11 @@ class XtreamClient {
       final dynamic decoded = jsonDecode(body);
       if (decoded is Map<String, dynamic>) return decoded;
       throw XtreamException(
-        'Réponse JSON non attendue (Map attendue) sur action=$action.',
+        AppL10n.current.xtreamErrorUnexpectedJson('$action'),
       );
     } on FormatException catch (e) {
       throw XtreamException(
-        'Réponse non-JSON sur action=$action : ${e.message}',
+        AppL10n.current.xtreamErrorNotJson('$action', e.message),
       );
     }
   }
@@ -646,11 +644,11 @@ class XtreamClient {
         return decoded['data'] as List<dynamic>;
       }
       throw XtreamException(
-        'Réponse JSON non attendue (List attendue) sur action=$action.',
+        AppL10n.current.xtreamErrorUnexpectedJson(action),
       );
     } on FormatException catch (e) {
       throw XtreamException(
-        'Réponse non-JSON sur action=$action : ${e.message}',
+        AppL10n.current.xtreamErrorNotJson(action, e.message),
       );
     }
   }

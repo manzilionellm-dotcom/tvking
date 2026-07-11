@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Généré par l'overlay Cast : textes des notifications natives.
+     Android choisit tout seul la langue selon la langue de la TV.
+     values/ = repli anglais (même logique que l'app Flutter). -->
+<resources>
+    <string name="cast_notif_recording_title">Inspelning pågår</string>
+    <string name="cast_notif_recording_channel">Inspelningar</string>
+    <string name="cast_notif_recording_channel_desc">Ihållande avisering under en inspelning</string>
+    <string name="cast_notif_playback_channel">Ljuduppspelning</string>
+    <string name="cast_notif_playback_channel_desc">Ljuduppspelning i bakgrunden (hörlursläge)</string>
+</resources>

@@ -11,6 +11,7 @@
 import 'package:flutter/material.dart';
 
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/profiles/profiles_repository.dart';
 import '../../channels/data/search_history_repository.dart';
 import '../../playlists/data/favorite_collections_repository.dart';
@@ -21,14 +22,14 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 
 /// Modèles proposés à la création (un clic, pas de clavier fastidieux).
-const List<({String name, String emoji})> _kPresets =
+List<({String name, String emoji})> _presets(BuildContext context) =>
     <({String name, String emoji})>[
-  (name: 'Papa', emoji: '👨'),
-  (name: 'Maman', emoji: '👩'),
-  (name: 'Enfants', emoji: '🧒'),
-  (name: 'Ado', emoji: '🧑'),
-  (name: 'Invité', emoji: '🛋️'),
-];
+      (name: context.l10n.tvProfilesPresetDad, emoji: '👨'),
+      (name: context.l10n.tvProfilesPresetMom, emoji: '👩'),
+      (name: context.l10n.catKids, emoji: '🧒'),
+      (name: context.l10n.tvProfilesPresetTeen, emoji: '🧑'),
+      (name: context.l10n.tvProfileGuest, emoji: '🛋️'),
+    ];
 
 class TvProfilesScreen extends StatefulWidget {
   const TvProfilesScreen({super.key});
@@ -64,27 +65,26 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
         listenable: repo,
         builder: (BuildContext context, _) {
           final List<TvProfile> all = repo.profiles;
-          final List<({String name, String emoji})> available = _kPresets
-              .where((({String name, String emoji}) p) =>
-                  repo.byName(p.name) == null)
-              .toList(growable: false);
+          final List<({String name, String emoji})> available =
+              _presets(context)
+                  .where((({String name, String emoji}) p) =>
+                      repo.byName(p.name) == null)
+                  .toList(growable: false);
           return Padding(
             padding: const EdgeInsets.fromLTRB(40, 28, 40, 28),
             child: ListView(
               children: <Widget>[
-                const Text(
-                  'Profils',
-                  style: TextStyle(
+                Text(
+                  context.l10n.tvProfilesTitle,
+                  style: const TextStyle(
                       fontSize: 30,
                       fontWeight: FontWeight.w800,
                       color: TvTokens.text),
                 ),
                 const SizedBox(height: 6),
-                const Text(
-                  'Chacun son univers : derniers films vus, recherches et '
-                  'collections sont propres à chaque profil. Les favoris '
-                  'restent partagés par la famille.',
-                  style: TextStyle(fontSize: 15, color: TvTokens.muted),
+                Text(
+                  context.l10n.tvProfilesSubtitle,
+                  style: const TextStyle(fontSize: 15, color: TvTokens.muted),
                 ),
                 const SizedBox(height: 22),
                 // ----- Profils existants -----
@@ -139,7 +139,7 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
                                                   ? fg
                                                   : TvTokens.gold),
                                           const SizedBox(width: 6),
-                                          Text('Actif',
+                                          Text(context.l10n.tvProfilesActive,
                                               style: TextStyle(
                                                   fontSize: 14,
                                                   fontWeight:
@@ -198,7 +198,9 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
                                         size: 20, color: fg),
                                     if (confirming) ...<Widget>[
                                       const SizedBox(width: 6),
-                                      Text('Confirmer ?',
+                                      Text(
+                                          context.l10n
+                                              .tvProfilesConfirmDelete,
                                           style: TextStyle(
                                               fontSize: 13,
                                               fontWeight: FontWeight.w700,
@@ -217,9 +219,9 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
                 // ----- Création (pastilles) -----
                 if (available.isNotEmpty &&
                     all.length < ProfilesRepository.maxProfiles) ...<Widget>[
-                  const Text(
-                    'AJOUTER UN PROFIL',
-                    style: TextStyle(
+                  Text(
+                    context.l10n.tvProfilesAddSection,
+                    style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: TvTokens.mutedDim,

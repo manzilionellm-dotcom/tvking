@@ -436,8 +436,10 @@ class _GuideBody extends StatelessWidget {
                                 behavior: SnackBarBehavior.floating,
                                 content: Text(
                                   ok
-                                      ? '🔔 Rappel programmé · ${p.title} ($start)'
-                                      : '${p.title} · démarre à $start',
+                                      ? context.l10n
+                                          .guideReminderSet(p.title, start)
+                                      : context.l10n
+                                          .guideStartsAt(p.title, start),
                                   style: AppTextStyles.bodyMedium,
                                 ),
                               ),

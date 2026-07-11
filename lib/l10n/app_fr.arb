@@ -2207,9 +2207,1010 @@
   "tvWeatherAutoDesc": "L'app devine ta ville d'après ta connexion",
   "tvWeatherAutoSet": "Météo réglée sur automatique",
   "tvWeatherSaved": "Météo réglée sur {city}",
-  "@tvWeatherSaved": {"placeholders": {"city": {"type": "String"}}},
+  "@tvWeatherSaved": {
+    "placeholders": {
+      "city": {
+        "type": "String"
+      }
+    }
+  },
   "tvWeatherCurrent": "Ville actuelle : {city}",
-  "@tvWeatherCurrent": {"placeholders": {"city": {"type": "String"}}},
+  "@tvWeatherCurrent": {
+    "placeholders": {
+      "city": {
+        "type": "String"
+      }
+    }
+  },
   "tvWeatherCurrentAuto": "Ville actuelle : automatique (selon Internet)",
-  "tvWeatherNoResult": "Aucune ville trouvée"
+  "tvWeatherNoResult": "Aucune ville trouvée",
+  "tvSourcesTitle": "Mes sources",
+  "tvSourcesAddXtream": "Ajouter Xtream",
+  "tvSourcesAddM3u": "Ajouter M3U",
+  "tvSourcesEmpty": "Aucune source pour le moment.\nAjoute ta liste Xtream ou M3U ci-dessus.",
+  "tvSourcesDeleteTitle": "Supprimer ?",
+  "tvSourcesDeleteConfirm": "Supprimer la source « {name} » ?",
+  "@tvSourcesDeleteConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSourcesActiveLabel": "active",
+  "tvSourcesActivate": "Activer",
+  "tvAddM3uTitle": "Ajouter une liste M3U",
+  "tvAddM3uSubtitle": "Colle l'URL de ton fichier .m3u (et l'EPG si tu en as une).",
+  "tvAddM3uNameLabel": "Nom (optionnel)",
+  "tvAddM3uNameHint": "Ma liste",
+  "tvAddM3uUrlLabel": "URL M3U",
+  "tvAddM3uEpgLabel": "URL EPG (optionnel)",
+  "tvAddM3uInvalidUrl": "Entre une URL M3U valide.",
+  "tvAddM3uDefaultName": "Ma liste M3U",
+  "tvAddM3uLoadFailed": "Échec : liste injoignable ou vide.",
+  "tvAddM3uAdding": "Ajout…",
+  "tvAddM3uSubmit": "Ajouter la liste",
+  "tvAboutTitle": "À propos",
+  "tvAboutVersion": "Version",
+  "tvAboutSystem": "Système",
+  "tvAboutRam": "Mémoire (RAM)",
+  "tvAboutChannelCap": "Capacité chaînes",
+  "tvAboutRamUnknown": "inconnue",
+  "tvAboutRamLow": "faible",
+  "tvAboutRamGb": "{gb} Go",
+  "@tvAboutRamGb": {
+    "placeholders": {
+      "gb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvAboutClearCache": "Vider le cache (libère de la mémoire)",
+  "tvAboutCacheCleared": "Cache image vidé ✓  ({mb} Mo libérés)",
+  "@tvAboutCacheCleared": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "castStageValidating": "Vérification du flux…",
+  "castStageDetecting": "Détection de la TV…",
+  "castStageRelayStarting": "Préparation du relais…",
+  "castStageConnecting": "Connexion à la TV…",
+  "castStageConnectingAttempt": "Connexion à la TV ({attempt}/{total})…",
+  "@castStageConnectingAttempt": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "castStageRetrying": "Nouvel essai en mode compatible ({attempt}/{total})…",
+  "@castStageRetrying": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "castStageWebFallback": "Passage en mode universel (QR code)…",
+  "castStageLive": "Diffusion en cours sur la TV",
+  "castStagePaused": "Pause",
+  "commonClose": "Fermer",
+  "moviesOfflineCategory": "Téléchargé",
+  "guideReminderSet": "🔔 Rappel programmé · {title} ({start})",
+  "@guideReminderSet": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "start": {
+        "type": "String"
+      }
+    }
+  },
+  "guideStartsAt": "{title} · démarre à {start}",
+  "@guideStartsAt": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "start": {
+        "type": "String"
+      }
+    }
+  },
+  "tvProfilesTitle": "Profils",
+  "tvProfilesSubtitle": "Chacun son univers : derniers films vus, recherches et collections sont propres à chaque profil. Les favoris restent partagés par la famille.",
+  "tvProfilesActive": "Actif",
+  "tvProfilesConfirmDelete": "Confirmer ?",
+  "tvProfilesAddSection": "AJOUTER UN PROFIL",
+  "tvProfilesPresetDad": "Papa",
+  "tvProfilesPresetMom": "Maman",
+  "tvProfilesPresetTeen": "Ado",
+  "tvCollectionsTitle": "Mes collections",
+  "tvCollectionsSubtitle": "Range tes chaînes favorites par thème. Une collection = une liste que tu ouvres en un clic.",
+  "tvCollectionsEmpty": "Aucune collection pour l'instant — crée la première ci-dessous. 👇",
+  "tvCollectionsCreateSection": "CRÉER UNE COLLECTION",
+  "tvCollectionsConfirmDelete": "Confirmer ?",
+  "tvCollectionsInCollection": "DANS LA COLLECTION ({count})",
+  "@tvCollectionsInCollection": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvCollectionsEmptyDetail": "Vide. Ajoute des chaînes depuis tes favoris ci-dessous. 👇",
+  "tvCollectionsFavsSection": "MES FAVORIS — OK pour ajouter/retirer",
+  "tvCollectionsNoFavorites": "Aucun favori pour l'instant. Mets des chaînes en favori (appui long sur OK dans le Direct), puis reviens ici.",
+  "tvCollectionsPresetNews": "Actus",
+  "tvCollectionsPresetCustom1": "Perso 1",
+  "tvCollectionsPresetCustom2": "Perso 2",
+  "tvRecPlayerNotFoundTitle": "Enregistrement introuvable",
+  "tvRecPlayerNotFoundBody": "Le fichier de cet enregistrement est introuvable ou vide.",
+  "tvRecPlayerErrorTitle": "Lecture impossible",
+  "tvRecPlayerErrorBody": "Ce fichier n'a pas pu être décodé.",
+  "tvRecPlayerEndedTitle": "Lecture terminée",
+  "tvRecPlayerEndedBody": "Appuie sur Retour pour revenir à tes enregistrements.",
+  "tvSleepTitle": "Minuterie de veille",
+  "tvSleepSubtitle": "L'application se ferme toute seule à la fin du minuteur (le flux s'arrête). Pratique le soir.",
+  "tvSleepCountdown": "Extinction dans {remaining}",
+  "@tvSleepCountdown": {
+    "placeholders": {
+      "remaining": {
+        "type": "String"
+      }
+    }
+  },
+  "tvComponentsWaGreeting": "Bonjour, je souhaite activer The Few TV.",
+  "tvComponentsWaMyCode": "Mon code : {code}",
+  "@tvComponentsWaMyCode": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "tvFamilyTitle": "Abonnement Famille",
+  "tvFamilySubtitle": "Partage ton abonnement avec 4 proches (5 appareils au total, comme Netflix). Tu génères un code, ton proche le tape sur son appareil — c'est tout.",
+  "tvFamilyConnectionError": "Connexion impossible. Réessaie plus tard.",
+  "tvFamilyErrorNotPaid": "Réservé aux abonnements ACTIFS (payés). Active d'abord cet appareil.",
+  "tvFamilyErrorIsMember": "Cet appareil est déjà rattaché à une famille — il ne peut pas inviter.",
+  "tvFamilyErrorFull": "Famille complète (limite du plan atteinte).",
+  "tvFamilyErrorPlanRequired": "Le PLAN FAMILLE est une option de ton abonnement. Demande à ton vendeur de l'activer. 👑",
+  "tvFamilyErrorGeneric": "Impossible pour le moment. Réessaie plus tard.",
+  "tvFamilyAttachedTo": "Cet appareil est rattaché à l'abonnement famille {owner}.",
+  "@tvFamilyAttachedTo": {
+    "placeholders": {
+      "owner": {
+        "type": "String"
+      }
+    }
+  },
+  "tvFamilyOneMoment": "Un instant…",
+  "tvFamilyLeaveButton": "Quitter la famille",
+  "tvFamilyPlanBadge": "👨‍👩‍👧  PLAN FAMILLE",
+  "tvFamilyPlanPitch": "Partage ton abonnement avec tes proches (jusqu'à 5 appareils, comme Netflix) : chacun son appareil, un seul abonnement.\n\nCette option n'est pas encore activée sur ton compte — contacte ton vendeur pour l'ajouter. 👑",
+  "tvFamilyPlanCheckButton": "J'ai activé l'option — Vérifier",
+  "tvFamilyInviteCodeLabel": "CODE D'INVITATION (valable 48 h)",
+  "tvFamilyInviteCodeHelp": "Sur l'appareil de ton proche : écran d'activation → « J'ai un code famille » → taper ce code.",
+  "tvFamilyGenerateCode": "Générer un code d'invitation",
+  "tvFamilyGenerateNewCode": "Générer un NOUVEAU code",
+  "tvFamilyMembersHeader": "MA FAMILLE ({count}/{max} proches + cet appareil)",
+  "@tvFamilyMembersHeader": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "tvFamilyNoMembers": "Aucun appareil rattaché pour l'instant.",
+  "tvFamilyConfirmRemove": "Confirmer ?",
+  "tvFamilySimultaneousNote": "ℹ️ Le nombre d'appareils qui regardent EN MÊME TEMPS dépend de ton abonnement (connexions simultanées de la ligne).",
+  "tvFamilyNameDad": "Papa",
+  "tvFamilyNameMom": "Maman",
+  "tvFamilyNameChild1": "Enfant 1",
+  "tvFamilyNameChild2": "Enfant 2",
+  "tvFamilyNameTeen": "Ado",
+  "tvFamilyNameLivingRoom": "Salon",
+  "tvFamilyNameBedroom": "Chambre",
+  "tvFamilyJoinTitle": "J'ai un code famille",
+  "tvFamilyJoinSubtitle": "Tape le code à 6 chiffres affiché sur l'appareil de ton proche (Réglages → Abonnement Famille).",
+  "tvFamilyJoinNetworkError": "Connexion impossible. Vérifie le réseau et réessaie.",
+  "tvFamilyJoinSuccess": "🎉 C'est fait ! Cet appareil est rattaché à l'abonnement famille {owner}. L'app se débloque dans quelques secondes…",
+  "@tvFamilyJoinSuccess": {
+    "placeholders": {
+      "owner": {
+        "type": "String"
+      }
+    }
+  },
+  "tvFamilyJoinCodeInvalid": "Code invalide ou expiré. Redemande un code.",
+  "tvFamilyJoinFull": "Cette famille est complète (limite du plan atteinte).",
+  "tvFamilyJoinOwnerNotPaid": "L'abonnement du propriétaire n'est plus actif.",
+  "tvFamilyJoinPlanRequired": "Le propriétaire n'a pas l'option PLAN FAMILLE — il doit la demander à son vendeur.",
+  "tvFamilyJoinOwnCode": "C'est ton propre code 🙂 — il est pour tes proches.",
+  "tvActivationFamilyCodeButton": "👨‍👩‍👧  J'ai un code famille",
+  "tvActivationLegalNotice": "Lecteur multimédia — ne vend ni ne fournit aucune chaîne ni lien M3U. Le contenu est apporté par l'utilisateur. Conditions : app.7themotion.com/terms",
+  "tvTeamPickerNotFound": "« {name} » introuvable — essaie la recherche.",
+  "@tvTeamPickerNotFound": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvTeamPickerSportFootball": "Football",
+  "tvTeamPickerSportBasketball": "Basket (NBA)",
+  "tvTeamPickerSportRugby": "Rugby",
+  "tvSportsEmptyHelp": "Tu verras leurs scores et leurs prochains matchs, un bandeau d'actu qui défile, et une alarme ~1 h avant chaque match.",
+  "tvSportsLastMatch": "Dernier match",
+  "tvSportsNextMatch": "Prochain match",
+  "tvSportsTickerLabel": "ACTU",
+  "tvSportsVersus": "vs",
+  "tvDiagTitle": "DIAGNOSTIC ON-DEVICE — DeFew TV",
+  "tvDiagSubtitle": "Teste si la box peut jouer le flux depuis sa propre IP.",
+  "tvDiagExitHint": "RETOUR pour quitter",
+  "tvDiagCheckCaptive": "1. Portail captif (204)",
+  "tvDiagCheckDns": "2. Résolution DNS hôte IPTV",
+  "tvDiagCheckStream": "3. Joignabilité flux (HTTP / 456)",
+  "tvDiagCheckSource": "4. Source poussée (device-source)",
+  "tvDiagCheckPlayer": "5. Sonde ExoPlayer / Media3",
+  "tvDiagCaptiveRunning": "requête generate_204…",
+  "tvDiagCaptiveOk": "HTTP 204 (sortie Internet libre)",
+  "tvDiagCaptiveFail": "HTTP {code} corps={bytes}o → portail captif probable",
+  "@tvDiagCaptiveFail": {
+    "placeholders": {
+      "code": {
+        "type": "int"
+      },
+      "bytes": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDiagNoReply": "pas de réponse en 8 s",
+  "tvDiagNoChannelHost": "aucune chaîne chargée → hôte INCONNU",
+  "tvDiagDnsLookup": "lookup {host}…",
+  "@tvDiagDnsLookup": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDiagDnsNoIp": "{host} → aucune IP",
+  "@tvDiagDnsNoIp": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDiagDnsTimeout": "{host} : pas de réponse DNS en 8 s",
+  "@tvDiagDnsTimeout": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDiagNoChannelUrl": "aucune chaîne chargée → URL INCONNUE",
+  "tvDiagStreamHead": "HEAD du flux…",
+  "tvDiagStream456": "HTTP 456 — fournisseur bloque cette IP",
+  "tvDiagStreamOk": "HTTP {code} (flux joignable)",
+  "@tvDiagStreamOk": {
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDiagSourceReadingMac": "lecture MAC…",
+  "tvDiagSourceMacUnknown": "MAC INCONNUE ({mac})",
+  "@tvDiagSourceMacUnknown": {
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDiagSourceAssigned": "HTTP 200 — source assignée",
+  "tvDiagSourceNone": "HTTP 200 — aucune source assignée",
+  "tvDiagPlayerOpening": "ouverture sonde ExoPlayer…",
+  "tvDiagPlayerFirstFrame": "1re image décodée et affichée",
+  "tvDiagPlayerError": "ExoPlayer a renvoyé une erreur",
+  "tvDiagPlayerNoFrame": "aucune image en 8 s",
+  "tvDiagVerdictRunning": "DIAGNOSTIC EN COURS…",
+  "tvDiagVerdictPivotOk": "PIVOT ON-DEVICE VALIDÉ",
+  "tvDiagVerdictNetworkBlock": "BLOCAGE CÔTÉ RÉSEAU",
+  "tvDiagVerdictPlayerBug": "BUG PLAYER",
+  "tvDiagVerdictPartial": "DIAGNOSTIC PARTIEL",
+  "tvLegalTitle": "Mentions légales & Conditions",
+  "tvLegalIntro": "Cette application est un lecteur. Elle ne vend ni ne fournit aucune chaîne ni lien. Haut/Bas pour faire défiler, Retour pour quitter.",
+  "tvLegalSection1Title": "1. Nature de l'application — un LECTEUR, rien d'autre",
+  "tvLegalSection1Body": "Cette application est un LECTEUR multimédia (player) permettant de lire des flux audio/vidéo fournis par l'utilisateur. Elle NE FOURNIT PAS, NE VEND PAS, N'HÉBERGE PAS, NE DIFFUSE PAS et N'INDEXE AUCUNE chaîne de télévision, flux, contenu audiovisuel, ni liste de lecture (M3U) ou identifiants de portail (Xtream). Aucun contenu n'est inclus, préchargé ou commercialisé avec l'application.",
+  "tvLegalSection2Title": "2. Contenu fourni par l'utilisateur",
+  "tvLegalSection2Body": "L'utilisateur fournit lui-même ses propres sources (lien M3U / identifiants Xtream), obtenues auprès de son propre fournisseur. L'utilisateur est SEUL responsable des contenus qu'il ajoute, lit ou diffuse, ainsi que de la détention des droits, licences et abonnements nécessaires.",
+  "tvLegalSection3Title": "3. Abonnement = le LOGICIEL, pas le contenu",
+  "tvLegalSection3Body": "Tout paiement ou abonnement éventuel rémunère UNIQUEMENT l'utilisation de l'application (le lecteur et ses fonctionnalités : interface, favoris, enregistrement local, EPG…). Il ne constitue EN AUCUN CAS l'achat, la vente, la location ou la fourniture de chaînes, de flux ou de contenus.",
+  "tvLegalSection4Title": "4. Usage licite",
+  "tvLegalSection4Body": "L'utilisateur s'engage à utiliser l'application conformément aux lois en vigueur dans son pays et à ne pas l'utiliser pour accéder à des contenus illégaux ou portant atteinte aux droits d'auteur. Toute utilisation illicite est strictement interdite et relève de la seule responsabilité de l'utilisateur.",
+  "tvLegalSection5Title": "5. Contenus tiers — absence de responsabilité",
+  "tvLegalSection5Body": "L'éditeur n'a aucun contrôle sur les contenus tiers accessibles via les sources fournies par l'utilisateur et ne saurait en être tenu responsable. Il ne garantit ni la disponibilité, ni la légalité, ni la qualité de ces contenus.",
+  "tvLegalSection6Title": "6. Propriété intellectuelle & réclamations",
+  "tvLegalSection6Body": "Toutes les marques, logos et contenus appartiennent à leurs propriétaires respectifs. L'application n'hébergeant aucun contenu, toute réclamation relative à des droits d'auteur doit être adressée au fournisseur de la source concernée.",
+  "tvLegalSection7Title": "7. Fourniture « en l'état »",
+  "tvLegalSection7Body": "L'application est fournie « telle quelle », sans garantie de disponibilité continue ni d'absence d'erreurs. L'éditeur peut faire évoluer ou suspendre tout ou partie des fonctionnalités.",
+  "tvLegalSection8Title": "8. Données personnelles",
+  "tvLegalSection8Body": "Un identifiant technique d'appareil est utilisé pour la gestion de la licence/essai et le support. Détails : app.7themotion.com/privacy.",
+  "tvLegalSection9Title": "9. Acceptation",
+  "tvLegalSection9Body": "En installant ou en utilisant cette application, l'utilisateur reconnaît avoir lu et accepté les présentes conditions. Version complète en ligne : app.7themotion.com/terms",
+  "legalDisclaimerTitle": "Mention légale",
+  "legalDisclaimerCompactBody": "Lecteur multimédia uniquement. Cette application ne vend, n'héberge et ne fournit aucun contenu, flux, chaîne, playlist (M3U) ni abonnement IPTV. Vous fournissez votre propre source et restez seul responsable de son contenu.",
+  "legalDisclaimerFullPara1": "Cette application est un LECTEUR multimédia générique, au même titre qu'un lecteur vidéo classique. Elle ne vend pas, n'héberge pas, ne distribue pas et ne fournit AUCUN contenu : ni flux, ni chaîne, ni film, ni playlist (M3U / M3U8), ni abonnement IPTV.",
+  "legalDisclaimerFullPara2": "Aucune source, aucun lien et aucune liste de chaînes ne sont fournis ou pré-installés. Pour l'utiliser, vous devez saisir vos propres identifiants (Xtream ou URL M3U) obtenus auprès du fournisseur de votre choix.",
+  "legalDisclaimerFullPara3": "Vous êtes seul responsable des sources que vous ajoutez et de leur légalité dans votre pays. Les marques, logos et contenus appartiennent à leurs propriétaires respectifs. Toute question sur les flux ou abonnements doit être adressée à votre fournisseur — jamais à l'éditeur de l'application.",
+  "tvParentalEnterCode": "Entre le code parental",
+  "tvParentalCurrentCode": "Code actuel",
+  "tvParentalIntro": "Le Mode Enfants masque automatiquement toutes les chaînes Adulte. Sa désactivation et le changement de code demandent le code parental.",
+  "tvParentalKidsMode": "Mode Enfants",
+  "tvParentalKidsOn": "Activé — le contenu Adulte est masqué.",
+  "tvParentalKidsOff": "Désactivé — toutes les chaînes sont visibles.",
+  "tvParentalPinCard": "Code parental",
+  "tvParentalDefaultPinWarning": "Tu utilises encore le code par défaut 0000. Change-le pour protéger le Mode Enfants.",
+  "tvParentalCustomPinSet": "Un code personnalisé est en place.",
+  "tvParentalChangePin": "Changer le code PIN",
+  "tvParentalPinSubtitle": "Code parental à 4 chiffres",
+  "tvParentalNewPin": "Nouveau code",
+  "tvParentalNewPinSubtitle": "Choisis 4 chiffres, puis confirme",
+  "tvParentalPinMismatch": "Les deux codes ne correspondent pas.",
+  "tvParentalConfirmPin": "Confirme le code",
+  "tvRecordingsDeleteTitle": "Supprimer ?",
+  "tvRecordingsDeleteBody": "Supprimer définitivement « {name} » ?",
+  "@tvRecordingsDeleteBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvGuideTimeGrid": "Grille horaire",
+  "tvGuideUpNext": "À suivre · {title}",
+  "@tvGuideUpNext": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "tvPlayerRecStarted": "Enregistrement en cours…",
+  "tvPlayerRecError": "Erreur enregistrement",
+  "tvPlayerRecSaved": "Enregistrement sauvegardé ({size})",
+  "@tvPlayerRecSaved": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvPlayerRecEmpty": "Enregistrement vide",
+  "tvPlayerStillWatching": "Tu regardes encore ?",
+  "tvPlayerStillWatchingHint": "Appuie sur n'importe quelle touche pour continuer.",
+  "tvPlayerStop": "Stop",
+  "tvPlayerFavorite": "Favori",
+  "tvPlayerMulti": "Multi",
+  "tvSettingsSources": "Mes sources (ajouter / activer / supprimer)",
+  "tvSettingsFamily": "Abonnement Famille (partager, 5 appareils)",
+  "tvSettingsProfiles": "Profils (chacun son univers)",
+  "tvSettingsDisclaimer": "Cette application est un LECTEUR multimédia. Elle ne vend, ne fournit et n'héberge aucune chaîne, aucun flux ni aucun lien M3U. Le contenu est fourni par l'utilisateur, seul responsable de sa licéité.",
+  "tvFilmsEmpty": "Aucun film pour le moment.\n(Source sans VOD, ou compte M3U sans films.)",
+  "tvSeriesSeason": "Saison {n}",
+  "@tvSeriesSeason": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "tvLiveForYou": "✨ Pour vous",
+  "tvLiveAllChannels": "📺 Toutes",
+  "tvLiveNowPlaying": "EN CE MOMENT · {title}",
+  "@tvLiveNowPlaying": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "tvLiveExpiryToday": "aujourd'hui",
+  "tvLiveExpiryTomorrow": "demain",
+  "tvLiveExpiryInDays": "dans {days} jours",
+  "@tvLiveExpiryInDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "tvLiveExpiryBanner": "Ton abonnement expire {when}. Pense à le renouveler auprès de ton revendeur pour ne pas être coupé.",
+  "@tvLiveExpiryBanner": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsHelpSupport": "Aide & Support",
+  "settingsMySubscription": "Mon abonnement",
+  "settingsBufferSubtitle": "{seconds}s · plus c'est haut, mieux la lecture résiste aux coupures réseau (mais plus de latence sur le live)",
+  "@settingsBufferSubtitle": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsShowStatsSubtitle": "Résolution, codec, FPS en surimpression pendant la lecture.",
+  "settingsWifiOnly": "Lecture en Wi-Fi uniquement",
+  "settingsWifiOnlySubtitle": "Bloque le démarrage d'un flux en données cellulaires (évite la facture surprise).",
+  "settingsWarnCellular": "Avertir en données cellulaires",
+  "settingsWarnCellularSubtitle": "Affiche un avertissement avant de lire hors Wi-Fi.",
+  "settingsUserAgentTitle": "Signature de lecture (User-Agent)",
+  "settingsUserAgentSubtitle": "Si une source affiche une PUB du serveur au lieu des chaînes, change la signature. Actuel : {current}",
+  "@settingsUserAgentSubtitle": {
+    "placeholders": {
+      "current": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsMySources": "Mes sources IPTV",
+  "settingsMyPlaylistsSubtitle": "Liste des sources IPTV ajoutées (Xtream Codes).",
+  "settingsActivateTitle": "Activer / vérifier mon abonnement",
+  "settingsActivateSubtitle": "Donne ta MAC à ton revendeur, puis recharge tes chaînes.",
+  "settingsRecordingsSubtitle": "Liste des flux capturés via le bouton REC du lecteur.",
+  "settingsClearHistorySubtitle": "Supprime la liste \"Reprendre\" sur l'accueil.",
+  "settingsClearHistoryConfirmTitle": "Vider l'historique ?",
+  "settingsClearHistoryConfirmBody": "La section \"Reprendre\" sera vide.",
+  "settingsHistoryCleared": "Historique vidé",
+  "settingsNotifications": "Notifications",
+  "settingsNotificationsSubtitle": "Rappels d'émission, nouveautés et mises à jour de l'app.",
+  "settingsCastSection": "Cast",
+  "settingsCastDiagTitle": "Diagnostic cast",
+  "settingsCastDiagSubtitle": "Teste plusieurs chaînes sur une TV et rapporte la stratégie qui marche.",
+  "settingsAboutSubtitle": "Version, mises à jour, crédits, légal.",
+  "settingsLanguageAppTitle": "Langue de l'application",
+  "settingsLanguageFollowSystem": "Suit la langue de l'OS",
+  "settingsUserAgentChanged": "Signature changée. Rouvre une chaîne pour tester.",
+  "settingsUserAgentSheetTitle": "Signature de lecture",
+  "settingsUserAgentSheetDesc": "Certains serveurs IPTV ne diffusent les vraies chaînes qu'aux lecteurs reconnus et affichent une pub aux autres. Choisis la signature qui marche pour ta source (souvent IBO / ExoPlayer), ou saisis la tienne.",
+  "settingsUserAgentCustomLabel": "Personnalisé",
+  "settingsUserAgentHint": "Colle ici le User-Agent exact…",
+  "settingsUserAgentReset": "Réinitialiser",
+  "settingsUserAgentApply": "Appliquer",
+  "settingsNotifIntro": "Choisis ce que tu veux recevoir. Tu peux tout couper si tu préfères le silence.",
+  "settingsNotifReminders": "Rappels d'émission",
+  "settingsNotifRemindersSubtitle": "Être prévenu juste avant qu'un programme choisi commence.",
+  "settingsNotifAnnouncements": "Nouveautés & annonces",
+  "settingsNotifAnnouncementsSubtitle": "Messages de l'équipe : nouveau contenu, infos importantes.",
+  "settingsNotifUpdates": "Mise à jour de l'app",
+  "settingsNotifUpdatesSubtitle": "Être prévenu quand une nouvelle version est disponible.",
+  "safeModeTitle": "Mode de récupération",
+  "safeModeBodyImport": "L'application s'est fermée plusieurs fois en chargeant tes chaînes (liste probablement trop lourde pour cet appareil). Choisis une option pour repartir :",
+  "safeModeBody": "L'application s'est fermée plusieurs fois au démarrage. Choisis une option pour repartir :",
+  "safeModeStartNoReload": "Démarrer sans recharger",
+  "safeModeStartNoReloadHint": "Ouvre l'app sur les chaînes déjà téléchargées (recommandé).",
+  "safeModeStartNoReloadDone": "C'est prêt. Rouvre l'application : elle s'ouvrira sur tes chaînes déjà téléchargées, sans tout recharger.",
+  "safeModeDeleteSource": "Supprimer ma source",
+  "safeModeDeleteSourceHint": "Repart de zéro si la liste est trop lourde / corrompue.",
+  "safeModeSourceDeletedDone": "Source supprimée. Rouvre l'application, puis ré-ajoute ta liste (ou laisse le revendeur la repousser).",
+  "safeModeRetryNormal": "Réessayer normalement",
+  "safeModeRetryHintImport": "Relance un démarrage complet (avec rechargement).",
+  "safeModeRetryHint": "Relance un démarrage complet.",
+  "safeModeRetryDone": "On va réessayer un démarrage normal. Rouvre l'application.",
+  "safeModeCompat": "Démarrer en mode compatibilité",
+  "safeModeCompatHint": "Affichage simplifié si l'écran plantait (recommandé).",
+  "safeModeCompatDone": "Mode compatibilité activé. Rouvre l'application.",
+  "safeModeReset": "Réinitialiser (supprimer la source)",
+  "safeModeResetHint": "Dernier recours : repart sur une app vierge.",
+  "safeModeCloseApp": "Fermer l'application",
+  "safeModeWait": "Un instant…",
+  "onboardingWelcomeAppTitle": "Bienvenue sur {appName}",
+  "@onboardingWelcomeAppTitle": {
+    "placeholders": {
+      "appName": {
+        "type": "String"
+      }
+    }
+  },
+  "onboardingLoadChannelsTitle": "Charge tes chaînes",
+  "onboardingLoadChannelsDesc": "Choisis ton serveur et saisis ton code Xtream (utilisateur + mot de passe). Tes chaînes apparaissent en quelques secondes.",
+  "onboardingActivateTitle": "Active tes chaînes",
+  "onboardingActivateDesc": "Cet identifiant unique permet d'activer ton compte à distance. Envoie-le en 1 tap, notre équipe configure ton accès en quelques minutes.",
+  "onboardingEverythingTitle": "Tout ce qu'il te faut",
+  "onboardingEverythingDesc": "Sans publicité. Cast vers TV, ordi, tablette. Enregistrement en parallèle. Lecteur 4K/8K. QR-cast. Recherche instantanée.",
+  "onboardingTrialDesc": "Profite de toutes les fonctions pendant 7 jours. Ensuite 5 €/an ou 9,90 € à vie sur tous tes appareils — paiement sécurisé (jamais in-app).",
+  "onboardingActivateMessage": "Bonjour {appName}, voici mon identifiant pour activer mes chaînes :\n\n{mac}",
+  "@onboardingActivateMessage": {
+    "placeholders": {
+      "appName": {
+        "type": "String"
+      },
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "updatePromptTitle": "Mise à jour disponible",
+  "updatePromptBodyVersion": "La version {version} est disponible. Elle s'installe par-dessus l'app actuelle — tes favoris et réglages sont conservés.",
+  "@updatePromptBodyVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "updatePromptBody": "Une nouvelle version est disponible. Elle s'installe par-dessus l'app actuelle — tes favoris et réglages sont conservés.",
+  "updatePromptUpdate": "Mettre à jour",
+  "updatePromptStarting": "Démarrage…",
+  "updatePromptFailed": "Échec du téléchargement. Réessaie, ou télécharge depuis le lien direct.",
+  "cellularWifiOnlyTitle": "Wi-Fi uniquement",
+  "cellularWifiOnlyBody": "Tu es en données cellulaires et la lecture est réglée sur « Wi-Fi uniquement ». Connecte-toi en Wi-Fi, ou lis quand même (consommera tes données).",
+  "cellularPlayAnyway": "Lire quand même",
+  "cellularWarnTitle": "Données cellulaires",
+  "cellularWarnBody": "Tu es en données cellulaires. Le streaming peut consommer beaucoup de data.",
+  "cellularDontWarnAgain": "Ne plus avertir",
+  "accentChampagne": "Champagne",
+  "accentEmber": "Braise",
+  "accentOcean": "Océan",
+  "accentEmerald": "Émeraude",
+  "accentViolet": "Améthyste",
+  "accentGold": "Or",
+  "accentTurquoise": "Turquoise",
+  "accentRose": "Rose",
+  "accentCoral": "Corail",
+  "accentIndigo": "Indigo",
+  "accentLime": "Citron vert",
+  "accentCustom": "Personnalisé",
+  "favoritesNowProgram": "En ce moment · {program}",
+  "@favoritesNowProgram": {
+    "placeholders": {
+      "program": {
+        "type": "String"
+      }
+    }
+  },
+  "feedbackThanks": "Merci pour ton avis 🙏",
+  "feedbackHint": "Écris ton avis ou comment améliorer l'app…",
+  "searchAiUnavailable": "Recherche IA indisponible pour le moment.",
+  "searchAiEmptyPrompt": "Écris ce que tu veux regarder, ex. « un film d'action récent ».",
+  "searchAiTip": "Cherche une chaîne ou un film par son nom — ou appuie sur « IA » et décris ce que tu veux regarder.",
+  "searchAiButton": "Recherche IA",
+  "navFootball": "Football",
+  "navInformation": "Information",
+  "navKids": "Enfant",
+  "playerDesktopRetryQuitHint": "Entrée : Réessayer   ·   Échap : Quitter",
+  "playerFavoriteShortcutTooltip": "Favori (F)",
+  "playerFavoriteTooltip": "Favori",
+  "screenCastTitle": "Caster sur un écran",
+  "screenCastStartError": "Impossible de démarrer le partage. Vérifie que le Wi-Fi est activé et réessaie.",
+  "screenCastInstructions": "Sur ton ordi ou ta TV (sur le MÊME Wi-Fi que le téléphone), ouvre le navigateur et tape cette adresse :",
+  "screenCastScanHint": "ou scanne avec un autre téléphone",
+  "screenCastKeepOpenHint": "La chaîne démarre toute seule. Garde l’app ouverte : c’est le téléphone qui envoie la vidéo à l’écran. Fonctionne avec ton abonnement (pas de blocage cloud).",
+  "castDiagNoChannels": "Aucune chaîne chargée — ajoute d'abord une playlist.",
+  "castDiagReportCopied": "Rapport copié dans le presse-papier",
+  "castDiagNetReportCopied": "Rapport réseau copié dans le presse-papier",
+  "castDiagBlackBoxCopied": "Boîte noire copiée dans le presse-papier",
+  "castDiagTitle": "Diagnostic cast",
+  "castDiagCopyBlackBox": "Copier la boîte noire (A→Z)",
+  "castDiagRedo": "Refaire",
+  "castDiagCopyReport": "Copier le rapport",
+  "castDiagIntro": "Teste la compatibilité cast de ta TV en lançant plusieurs chaînes à la suite. Le rapport copiable sert à remplir la matrice de compat.",
+  "castDiagReceiverLabel": "Récepteur",
+  "castDiagSearchingHint": "Recherche en cours… Vérifie que ta TV est sur le même WiFi.",
+  "castDiagTestSize": "Taille du test",
+  "castDiagStart": "Lancer le diagnostic",
+  "castDiagSelectReceiver": "Sélectionne un récepteur",
+  "castDiagRunProgress": "Test {done}/{total} — {channel}",
+  "@castDiagRunProgress": {
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "castDiagCancelledAfter": "Annulé après {done}/{total} tests",
+  "@castDiagCancelledAfter": {
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "castDiagFinished": "Terminé — {done}/{total} tests",
+  "@castDiagFinished": {
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "castDiagWaitingFirstResult": "En attente du premier résultat…",
+  "castDiagChannelFallback": "Chaîne",
+  "castDiagFailed": "Échec",
+  "castDiagSuccessRate": "Taux de succès : {rate}% ({ok} / {total})",
+  "@castDiagSuccessRate": {
+    "placeholders": {
+      "rate": {
+        "type": "int"
+      },
+      "ok": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "castDiagAvgLatency": "Latence moyenne au succès : {latency}",
+  "@castDiagAvgLatency": {
+    "placeholders": {
+      "latency": {
+        "type": "String"
+      }
+    }
+  },
+  "castDiagWinningStrategies": "Stratégies gagnantes : {list}",
+  "@castDiagWinningStrategies": {
+    "placeholders": {
+      "list": {
+        "type": "String"
+      }
+    }
+  },
+  "castDiagNetRunning": "Diagnostic réseau en cours…",
+  "castDiagNetButton": "Diagnostic réseau cast",
+  "castDiagNetReportTitle": "Rapport réseau cast",
+  "playerChannelBlocked": "Chaîne indisponible : aucune vidéo reçue. Elle est vide ou bloquée par ta source — vérifie qu'elle n'est pas déjà ouverte sur un autre appareil, sinon essaie une autre chaîne.",
+  "playerNetworkBlockHint": "Ça ressemble à un blocage réseau (FAI ou DNS) plutôt qu'à un problème de l'app — un VPN peut aider si cette chaîne fonctionne ailleurs.",
+  "playerStreamInterrupted": "Flux interrompu. Vérifie ta connexion puis réessaie.",
+  "playerScreenButton": "Écran",
+  "playerGoLiveLabel": "En direct",
+  "playerTvFallback": "la TV",
+  "playerConnectingTo": "Connexion à {device}…",
+  "@playerConnectingTo": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "playerCastingOn": "Diffusion sur {device}",
+  "@playerCastingOn": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "playerCastHandoffHint": "La lecture continue sur la TV. Le téléphone est libéré pour ne pas bloquer la connexion IPTV.",
+  "adminMissingCreds": "URL serveur ou secret admin manquant.",
+  "adminUrlSecretRequired": "URL et secret obligatoires.",
+  "adminServerConfigured": "Serveur configuré. Tu peux maintenant ajouter des clients.",
+  "adminConfigureFirst": "Configure d'abord URL serveur + secret admin.",
+  "adminClientSaved": "Client enregistré. Visible côté client à sa prochaine sync.",
+  "adminMacExists": "Un client avec cette MAC existe déjà. Modifie-le au lieu d'en créer un nouveau.",
+  "adminDeleteClientTitle": "Supprimer ce client ?",
+  "adminDeleteClientBody": "La MAC {mac} ne recevra plus de playlist. L'app cliente videra ses chaînes à la prochaine sync.",
+  "@adminDeleteClientBody": {
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "adminMacCopied": "MAC copiée : {mac}",
+  "@adminMacCopied": {
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "adminTitle": "Admin",
+  "adminReloadTooltip": "Recharger",
+  "adminNewClient": "Nouveau client",
+  "adminServerConnected": "Serveur connecté",
+  "adminEditButton": "Modifier",
+  "adminServerConnection": "Connexion serveur",
+  "adminCollapse": "Replier",
+  "adminSetupIntro": "Setup une seule fois. Déploie ton mini-backend Cloudflare (15 min, voir cloudflare/README.md), puis colle l'URL + ton secret admin ci-dessous.",
+  "adminServerUrlLabel": "URL du serveur",
+  "adminSecretLabel": "Secret admin",
+  "adminSecretHint": "Celui défini avec `wrangler secret put ADMIN_SECRET`",
+  "adminDeployHint": "Pas encore déployé ? Suis cloudflare/README.md dans le repo. Cloudflare Worker est gratuit jusqu'à 100k req/jour.",
+  "adminSaveAndTest": "Enregistrer et tester",
+  "adminClientsHeader": "CLIENTS",
+  "adminUnnamed": "Sans nom",
+  "adminPlaylistCount": "{count, plural, =1{1 playlist} other{{count} playlists}}",
+  "@adminPlaylistCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "adminNoClientsTitle": "Aucun client pour l'instant",
+  "adminNoClientsHint": "Tape sur le bouton ci-dessous, colle la MAC que ton client t'a envoyée + son URL M3U. C'est tout.",
+  "adminAddFirstClient": "Ajouter mon premier client",
+  "adminPinConfirmTitle": "Confirme ton code",
+  "adminPinCreateTitle": "Crée ton code admin",
+  "adminPinTitle": "Code admin",
+  "adminPinCreateHint": "{count} chiffres. Personne d'autre n'aura cet accès.",
+  "@adminPinCreateHint": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "adminPinConfirmHint": "Retape le même code pour confirmer.",
+  "adminPinEnterHint": "Entre ton code pour accéder au mode admin.",
+  "adminPinMismatch": "Les deux codes ne correspondent pas.",
+  "adminPinTooManyAttempts": "Trop de tentatives. Reviens dans une minute.",
+  "adminPinAccessTitle": "Accès admin",
+  "adminMacInvalid": "MAC invalide. Format attendu : MK:AA:BB:CC:DD:EE",
+  "adminM3uRequired": "L'URL M3U est obligatoire.",
+  "adminXtreamFieldsRequired": "Serveur, utilisateur ET mot de passe sont requis.",
+  "adminDefaultPlaylistName": "Abonnement IPTV",
+  "adminEditClientTitle": "Modifier le client",
+  "adminClientMacLabel": "MAC du client",
+  "adminClientNameLabel": "Nom du client (optionnel)",
+  "adminClientNameHint": "Ex : Lionel, Salon, Maman…",
+  "adminPlaylistSection": "PLAYLIST",
+  "adminPlaylistNameLabel": "Nom de la playlist (optionnel)",
+  "adminPlaylistNameHint": "Défaut : \"Abonnement IPTV\"",
+  "adminEpgUrlLabel": "URL EPG (optionnel)",
+  "castErrorTvRefusedStream": "La TV a refusé ce flux — format probablement non pris en charge par ce récepteur. Essaie une autre chaîne.",
+  "castErrorTooLong": "Cast trop long — la TV ou le réseau ne répondent pas",
+  "castErrorTvTooSlow": "La TV met trop de temps à répondre. Réessaie ou choisis une autre TV.",
+  "castErrorRelayBlocked": "Ta TV ne joint pas le téléphone (WiFi invité ou isolation AP ?). Mets le téléphone et la TV sur le MÊME réseau WiFi (pas le réseau invité) et désactive l'isolation AP.",
+  "castErrorNoPlayServices": "Le Chromecast officiel a besoin des services Google Play, absents sur ce téléphone. Tu peux quand même caster vers une Smart TV (DLNA) ou un Roku depuis la liste.",
+  "castErrorDnsUnstable": "Internet ou DNS instable. Réessaie dans quelques secondes.",
+  "castErrorTvStuckTransitioning": "Ta TV est bloquée sur un précédent cast. Éteins-la quelques secondes puis rallume-la et réessaie.",
+  "castErrorFormatNotAccepted": "Ta TV n'accepte pas ce format. Essaie une autre chaîne.",
+  "castErrorProviderLimit": "Ton fournisseur IPTV refuse une connexion supplémentaire (limite atteinte). Coupe une autre app qui regarde et réessaie.",
+  "castErrorTvNotResponding": "La TV ne répond pas. Vérifie le WiFi.",
+  "castErrorStreamAccessDenied": "Accès au flux refusé — ton abonnement a peut-être expiré.",
+  "castErrorTvRejectedStream": "Cette TV n'a pas accepté ce flux. Essaie une autre chaîne.",
+  "castErrorTvUnreachableChecklist": "Ta TV ne répond pas sur le réseau. Vérifie : (1) qu'elle est allumée, (2) qu'elle est sur le MÊME WiFi que ton téléphone (pas le réseau \"invité\"), (3) que l'option « Isolation client / AP isolation » est DÉSACTIVÉE dans les réglages de ta box internet.",
+  "castErrorTvConnectionFailed": "Connexion impossible avec la TV.",
+  "castErrorGeneric": "Le cast a échoué. Essaie de relancer.",
+  "castNotifRelayKeepAlive": "Diffusion sur la TV — garde le téléphone sur ce WiFi",
+  "castDefaultDlnaReceiverName": "Récepteur DLNA",
+  "castDiagPresetQuickLabel": "Rapide",
+  "castDiagPresetStandardLabel": "Standard",
+  "castDiagPresetThoroughLabel": "Complet",
+  "castDiagPresetDescription": "{count} chaînes (~{minutes} min)",
+  "@castDiagPresetDescription": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "genreSports": "Sports",
+  "genreMovies": "Films",
+  "genreSeries": "Séries",
+  "genreKids": "Jeunesse",
+  "genreNews": "Info",
+  "genreMusic": "Musique",
+  "genreDocumentary": "Docu",
+  "genreEntertainment": "Divertissement",
+  "genreInternational": "International",
+  "genreAdult": "Adulte",
+  "genreOther": "Autres",
+  "playlistErrorNoChannelsInM3u": "Aucune chaîne trouvée dans le fichier M3U. URL invalide ou format incompatible ?",
+  "playlistErrorParserDetails": "Détails parser :",
+  "playlistErrorRefreshEmpty": "Aucune chaîne dans la nouvelle version.",
+  "xtreamErrorNoLiveChannels": "Aucune chaîne live disponible pour ce compte Xtream.",
+  "xtreamErrorRefreshNoLive": "Aucune chaîne live disponible.",
+  "xtreamErrorInvalidResponse": "Réponse serveur invalide (pas de user_info).",
+  "xtreamErrorLoginRefused": "Identifiants refusés par le serveur. Vérifie ton login/mot de passe.",
+  "xtreamErrorAccountInactive": "Compte non-actif côté serveur (status={status}).",
+  "@xtreamErrorAccountInactive": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "xtreamErrorHttp": "Erreur HTTP {code} sur {host}",
+  "@xtreamErrorHttp": {
+    "placeholders": {
+      "code": {
+        "type": "int"
+      },
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "xtreamErrorUnreachable": "Serveur Xtream injoignable ({host}).",
+  "@xtreamErrorUnreachable": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "xtreamErrorTooLarge": "Source Xtream trop volumineuse (> {maxMb} Mo). Filtre les catégories côté fournisseur.",
+  "@xtreamErrorTooLarge": {
+    "placeholders": {
+      "maxMb": {
+        "type": "int"
+      }
+    }
+  },
+  "xtreamErrorUnexpectedJson": "Réponse JSON non attendue sur action={action}.",
+  "@xtreamErrorUnexpectedJson": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
+  "xtreamErrorNotJson": "Réponse non-JSON sur action={action} : {message}",
+  "@xtreamErrorNotJson": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      },
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "m3uErrorHttp": "HTTP {code} sur {url}",
+  "@m3uErrorHttp": {
+    "placeholders": {
+      "code": {
+        "type": "int"
+      },
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "m3uErrorEmptyResponse": "Le serveur a renvoyé une réponse vide pour {url}",
+  "@m3uErrorEmptyResponse": {
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "m3uErrorHtmlResponse": "Le serveur a renvoyé une page web (HTML), pas une playlist.",
+  "m3uErrorNoChannels": "Réponse sans aucune chaîne (ni #EXTM3U ni URL) pour {url}",
+  "@m3uErrorNoChannels": {
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "m3uErrorAllAgentsFailed": "Impossible de récupérer la playlist : le serveur a refusé les {count} signatures de lecteur testées (VLC, IBO/ExoPlayer, Smarters, TiviMate, Kodi…). Vérifie que l'URL est correcte et que l'abonnement est actif ; un lien « localhost » ne marche pas depuis cet appareil.",
+  "@m3uErrorAllAgentsFailed": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "m3uErrorLastResponse": "Dernière réponse : {detail}",
+  "@m3uErrorLastResponse": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "m3uErrorTooLarge": "Playlist trop volumineuse (> {maxMb} Mo). Réduis la source ou filtre les catégories côté fournisseur.",
+  "@m3uErrorTooLarge": {
+    "placeholders": {
+      "maxMb": {
+        "type": "int"
+      }
+    }
+  },
+  "notifChannelRemindersName": "Rappels de programmes",
+  "notifChannelRemindersDesc": "Notifications avant le début d'un programme que vous avez choisi.",
+  "notifChannelGeneralName": "Annonces & mises à jour",
+  "notifChannelGeneralDesc": "Nouveautés, annonces de l'équipe et disponibilité des mises à jour.",
+  "notifReminderBody": "Commence à {time} sur {channel}",
+  "@notifReminderBody": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "notifUpdateAvailableTitle": "Mise à jour disponible",
+  "notifUpdateAvailableBody": "Une nouvelle version de l'application est prête à installer.",
+  "notifUpdateAvailableBodyVersion": "Nouvelle version ({version}) prête à installer.",
+  "@notifUpdateAvailableBodyVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "notifAnnouncementFallbackTitle": "Nouveauté",
+  "blackBoxFindingCrashTitle": "Crash de l'application",
+  "blackBoxFindingCrashDetail": "Une erreur FATALE a été enregistrée — la queue de la session précédente est conservée dans la boîte noire.",
+  "blackBoxFindingUncaughtTitle": "Erreurs non rattrapées",
+  "blackBoxFindingUncaughtDetail": "Des exceptions ont atteint le filet global (FlutterError / zone). Voir les entrées domain=crash.",
+  "blackBoxFindingProxyBlockedTitle": "Proxy cloud refusé par le fournisseur IPTV",
+  "blackBoxFindingProxyBlockedDetail": "Le serveur IPTV rejette l'IP datacenter du proxy (/cast-proxy). L'app bascule sur le relais du téléphone — comportement attendu, mais le téléphone doit rester allumé.",
+  "blackBoxFindingProxyFallbackTitle": "Bascule proxy → relais téléphone",
+  "blackBoxFindingProxyFallbackDetail": "Le chemin prioritaire /cast-proxy était indisponible ; le relais HLS local a pris le relais.",
+  "blackBoxFindingLoadRejectedTitle": "Commande de lecture rejetée par la TV",
+  "blackBoxFindingLoadRejectedDetail": "LOAD refusé par le récepteur Cast — flux injoignable depuis la TV ou récepteur indisponible.",
+  "blackBoxFindingUpstreamDeadTitle": "Flux IPTV coupé pendant le relais",
+  "blackBoxFindingUpstreamDeadDetail": "Le serveur IPTV a cessé de répondre au relais du téléphone malgré les reconnexions (token expiré ? chaîne morte ?).",
+  "blackBoxFindingMemoryTitle": "Pression mémoire détectée",
+  "blackBoxFindingMemoryDetail": "Des fils d'Ariane mémoire ont été posés — utile si l'app a été tuée par Android (appareil à faible RAM).",
+  "blackBoxFindingNoisyDomainTitle": "Domaine bruyant : {domain}",
+  "@blackBoxFindingNoisyDomainTitle": {
+    "placeholders": {
+      "domain": {
+        "type": "String"
+      }
+    }
+  },
+  "blackBoxFindingNoisyDomainDetail": "{count} avertissements/erreurs enregistrés dans « {domain} » sur la fenêtre de la boîte noire.",
+  "@blackBoxFindingNoisyDomainDetail": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "domain": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsLockTitle": "Verrouiller à l'ouverture",
+  "settingsLockSubtitle": "Demande l'empreinte ou PIN au démarrage de l'app. Pas de re-verrouillage si tu reviens du multitâche.",
+  "settingsLockConfirmReason": "Confirme avec ton empreinte ou PIN pour activer le verrouillage",
+  "settingsLockActivationFailed": "Verrouillage non activé — auth échouée ou pas d'empreinte / PIN configurés sur ce téléphone."
 }

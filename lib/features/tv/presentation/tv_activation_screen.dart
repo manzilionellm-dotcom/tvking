@@ -179,7 +179,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
                   border: Border.all(color: focused ? TvTokens.gold : TvTokens.line),
                   color: focused ? TvTokens.sel : Colors.transparent,
                 ),
-                child: Text('👨‍👩‍👧  J\'ai un code famille',
+                child: Text(context.l10n.tvActivationFamilyCodeButton,
                     style: TvTokens.ui(19, weight: FontWeight.w600,
                         color: focused ? TvTokens.goldBright : TvTokens.muted)),
               ),
@@ -192,9 +192,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
             SizedBox(
               width: 540,
               child: Text(
-                'Lecteur multimédia — ne vend ni ne fournit aucune chaîne ni '
-                'lien M3U. Le contenu est apporté par l\'utilisateur. '
-                'Conditions : app.7themotion.com/terms',
+                context.l10n.tvActivationLegalNotice,
                 textAlign: TextAlign.center,
                 style: TvTokens.ui(12, color: TvTokens.mutedDim),
               ),

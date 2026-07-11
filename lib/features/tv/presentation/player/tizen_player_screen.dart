@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player_avplay/video_player.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../channels/data/recently_watched_repository.dart';
 import '../../../channels/domain/channel.dart';
 import '../../../playlists/data/favorites_repository.dart';
@@ -314,8 +315,8 @@ class _TizenPlayerScreenState extends State<TizenPlayerScreen> {
                                 fontWeight: FontWeight.w800,
                                 color: TvTokens.text)),
                         const SizedBox(height: 8),
-                        const Text('Chaîne indisponible pour le moment.',
-                            style: TextStyle(
+                        Text(context.l10n.tvChannelUnavailable,
+                            style: const TextStyle(
                                 fontSize: 16, color: TvTokens.mutedDim)),
                         const SizedBox(height: 20),
                         Container(
@@ -326,9 +327,8 @@ class _TizenPlayerScreenState extends State<TizenPlayerScreen> {
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: TvTokens.gold, width: 2),
                           ),
-                          child: const Text(
-                              'OK : Réessayer   ·   Retour : Quitter',
-                              style: TextStyle(
+                          child: Text(context.l10n.tvRetryQuitHint,
+                              style: const TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w700,
                                   color: TvTokens.goldBright)),
@@ -445,7 +445,7 @@ class _TizenControls extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   channel.category.trim().isEmpty
-                      ? 'Autres'
+                      ? context.l10n.tvOthers
                       : channel.category.trim(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -464,7 +464,7 @@ class _TizenControls extends StatelessWidget {
               color: isFavorite ? TvTokens.gold : TvTokens.text,
               size: 30,
             ),
-            tooltip: 'Favori',
+            tooltip: context.l10n.playerFavoriteTooltip,
           ),
           const SizedBox(width: 8),
           Container(

@@ -16,6 +16,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
 
@@ -31,71 +33,17 @@ class _TvLegalScreenState extends State<TvLegalScreen> {
   final FocusNode _focus = FocusNode();
 
   // (titre, corps) — texte identique à la page /terms du worker.
-  static const List<(String, String)> _sections = <(String, String)>[
-    (
-      '1. Nature de l\'application — un LECTEUR, rien d\'autre',
-      'Cette application est un LECTEUR multimédia (player) permettant de lire '
-          'des flux audio/vidéo fournis par l\'utilisateur. Elle NE FOURNIT PAS, '
-          'NE VEND PAS, N\'HÉBERGE PAS, NE DIFFUSE PAS et N\'INDEXE AUCUNE chaîne '
-          'de télévision, flux, contenu audiovisuel, ni liste de lecture (M3U) ou '
-          'identifiants de portail (Xtream). Aucun contenu n\'est inclus, '
-          'préchargé ou commercialisé avec l\'application.',
-    ),
-    (
-      '2. Contenu fourni par l\'utilisateur',
-      'L\'utilisateur fournit lui-même ses propres sources (lien M3U / '
-          'identifiants Xtream), obtenues auprès de son propre fournisseur. '
-          'L\'utilisateur est SEUL responsable des contenus qu\'il ajoute, lit ou '
-          'diffuse, ainsi que de la détention des droits, licences et abonnements '
-          'nécessaires.',
-    ),
-    (
-      '3. Abonnement = le LOGICIEL, pas le contenu',
-      'Tout paiement ou abonnement éventuel rémunère UNIQUEMENT l\'utilisation de '
-          'l\'application (le lecteur et ses fonctionnalités : interface, favoris, '
-          'enregistrement local, EPG…). Il ne constitue EN AUCUN CAS l\'achat, la '
-          'vente, la location ou la fourniture de chaînes, de flux ou de contenus.',
-    ),
-    (
-      '4. Usage licite',
-      'L\'utilisateur s\'engage à utiliser l\'application conformément aux lois en '
-          'vigueur dans son pays et à ne pas l\'utiliser pour accéder à des '
-          'contenus illégaux ou portant atteinte aux droits d\'auteur. Toute '
-          'utilisation illicite est strictement interdite et relève de la seule '
-          'responsabilité de l\'utilisateur.',
-    ),
-    (
-      '5. Contenus tiers — absence de responsabilité',
-      'L\'éditeur n\'a aucun contrôle sur les contenus tiers accessibles via les '
-          'sources fournies par l\'utilisateur et ne saurait en être tenu '
-          'responsable. Il ne garantit ni la disponibilité, ni la légalité, ni la '
-          'qualité de ces contenus.',
-    ),
-    (
-      '6. Propriété intellectuelle & réclamations',
-      'Toutes les marques, logos et contenus appartiennent à leurs propriétaires '
-          'respectifs. L\'application n\'hébergeant aucun contenu, toute '
-          'réclamation relative à des droits d\'auteur doit être adressée au '
-          'fournisseur de la source concernée.',
-    ),
-    (
-      '7. Fourniture « en l\'état »',
-      'L\'application est fournie « telle quelle », sans garantie de '
-          'disponibilité continue ni d\'absence d\'erreurs. L\'éditeur peut faire '
-          'évoluer ou suspendre tout ou partie des fonctionnalités.',
-    ),
-    (
-      '8. Données personnelles',
-      'Un identifiant technique d\'appareil est utilisé pour la gestion de la '
-          'licence/essai et le support. Détails : app.7themotion.com/privacy.',
-    ),
-    (
-      '9. Acceptation',
-      'En installant ou en utilisant cette application, l\'utilisateur reconnaît '
-          'avoir lu et accepté les présentes conditions. Version complète en '
-          'ligne : app.7themotion.com/terms',
-    ),
-  ];
+  List<(String, String)> _sections(AppLocalizations l10n) => <(String, String)>[
+        (l10n.tvLegalSection1Title, l10n.tvLegalSection1Body),
+        (l10n.tvLegalSection2Title, l10n.tvLegalSection2Body),
+        (l10n.tvLegalSection3Title, l10n.tvLegalSection3Body),
+        (l10n.tvLegalSection4Title, l10n.tvLegalSection4Body),
+        (l10n.tvLegalSection5Title, l10n.tvLegalSection5Body),
+        (l10n.tvLegalSection6Title, l10n.tvLegalSection6Body),
+        (l10n.tvLegalSection7Title, l10n.tvLegalSection7Body),
+        (l10n.tvLegalSection8Title, l10n.tvLegalSection8Body),
+        (l10n.tvLegalSection9Title, l10n.tvLegalSection9Body),
+      ];
 
   @override
   void dispose() {
@@ -137,20 +85,19 @@ class _TvLegalScreenState extends State<TvLegalScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text('Mentions légales & Conditions',
+            Text(context.l10n.tvLegalTitle,
                 style: TextStyle(
                     fontSize: TvDimens.displayM,
                     fontWeight: FontWeight.w800,
                     color: TvTokens.text)),
             const SizedBox(height: 8),
             Text(
-              'Cette application est un lecteur. Elle ne vend ni ne fournit '
-              'aucune chaîne ni lien. Haut/Bas pour faire défiler, Retour pour '
-              'quitter.',
+              context.l10n.tvLegalIntro,
               style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim),
             ),
             const SizedBox(height: 24),
-            for (final (String title, String body) in _sections) ...<Widget>[
+            for (final (String title, String body)
+                in _sections(context.l10n)) ...<Widget>[
               Text(title,
                   style: TextStyle(
                       fontSize: TvDimens.title,

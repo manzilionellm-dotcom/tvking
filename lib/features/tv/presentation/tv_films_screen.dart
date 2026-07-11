@@ -68,10 +68,12 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     if (!mounted) return;
     // Groupement UNE fois par catégorie (ordre d'apparition). Les listes
     // référencent les mêmes objets VodMovie → pas de duplication mémoire.
+    final String othersLabel = context.l10n.tvOthers;
     final List<String> cats = <String>[];
     final Map<String, List<VodMovie>> byCat = <String, List<VodMovie>>{};
     for (final VodMovie m in movies) {
-      final String c = m.category.trim().isEmpty ? 'Autres' : m.category.trim();
+      final String c =
+          m.category.trim().isEmpty ? othersLabel : m.category.trim();
       final List<VodMovie>? existing = byCat[c];
       if (existing == null) {
         cats.add(c);
@@ -155,7 +157,7 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
                 style: TvTokens.display(26, color: TvTokens.text)),
             const SizedBox(height: 8),
             Text(
-                'Aucun film pour le moment.\n(Source sans VOD, ou compte M3U sans films.)',
+                context.l10n.tvFilmsEmpty,
                 textAlign: TextAlign.center,
                 style: TvTokens.ui(15, color: TvTokens.mutedDim)),
           ],

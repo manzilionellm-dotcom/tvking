@@ -16,6 +16,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/i18n/app_l10n.dart';
 import '../../../core/observability/black_box.dart';
 import '../../channels/domain/channel.dart';
 import '../domain/cast_device.dart';
@@ -28,23 +29,36 @@ const String kBuildCommit =
     String.fromEnvironment('GIT_SHA', defaultValue: 'local');
 
 enum DiagnosticPreset {
-  quick(label: 'Rapide', sampleSize: 3, description: '3 chaînes (~1 min)'),
-  standard(label: 'Standard', sampleSize: 8, description: '8 chaînes (~3 min)'),
-  thorough(
-    label: 'Complet',
-    sampleSize: 15,
-    description: '15 chaînes (~6 min)',
-  );
+  quick(sampleSize: 3, estimatedMinutes: 1),
+  standard(sampleSize: 8, estimatedMinutes: 3),
+  thorough(sampleSize: 15, estimatedMinutes: 6);
 
   const DiagnosticPreset({
-    required this.label,
     required this.sampleSize,
-    required this.description,
+    required this.estimatedMinutes,
   });
 
-  final String label;
   final int sampleSize;
-  final String description;
+
+  /// Durée indicative du preset, affichée dans [description].
+  final int estimatedMinutes;
+
+  /// Libellé court du preset — résolu dans la langue active au moment
+  /// de l'affichage (couche data, pas de BuildContext → AppL10n).
+  String get label {
+    switch (this) {
+      case DiagnosticPreset.quick:
+        return AppL10n.current.castDiagPresetQuickLabel;
+      case DiagnosticPreset.standard:
+        return AppL10n.current.castDiagPresetStandardLabel;
+      case DiagnosticPreset.thorough:
+        return AppL10n.current.castDiagPresetThoroughLabel;
+    }
+  }
+
+  /// « 3 chaînes (~1 min) » — traduit dans la langue active.
+  String get description =>
+      AppL10n.current.castDiagPresetDescription(sampleSize, estimatedMinutes);
 }
 
 /// Sélection équilibrée de chaînes pour le diagnostic. On répartit

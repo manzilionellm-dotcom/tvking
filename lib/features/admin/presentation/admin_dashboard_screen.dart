@@ -19,6 +19,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/admin_client.dart';
@@ -70,7 +71,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Future<void> _load() async {
     final AdminCredentials cred = AdminCredentials.instance;
     if (!cred.canWrite) {
-      setState(() => _error = 'URL serveur ou secret admin manquant.');
+      setState(() => _error = context.l10n.adminMissingCreds);
       return;
     }
     setState(() {
@@ -96,7 +97,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = 'Erreur : $e';
+        _error = context.l10n.errorWithMessage('$e');
         _loading = false;
       });
     }
@@ -109,7 +110,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           behavior: SnackBarBehavior.floating,
           backgroundColor: AppColors.live,
           content: Text(
-            'URL et secret obligatoires.',
+            context.l10n.adminUrlSecretRequired,
             style: AppTextStyles.bodyMedium,
           ),
         ),
@@ -124,7 +125,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       SnackBar(
         behavior: SnackBarBehavior.floating,
         content: Text(
-          'Serveur configuré. Tu peux maintenant ajouter des clients.',
+          context.l10n.adminServerConfigured,
           style: AppTextStyles.bodyMedium,
         ),
       ),
@@ -140,7 +141,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           behavior: SnackBarBehavior.floating,
           backgroundColor: AppColors.live,
           content: Text(
-            'Configure d\'abord URL serveur + secret admin.',
+            context.l10n.adminConfigureFirst,
             style: AppTextStyles.bodyMedium,
           ),
         ),
@@ -159,7 +160,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         SnackBar(
           behavior: SnackBarBehavior.floating,
           content: Text(
-            'Client enregistré. Visible côté client à sa prochaine sync.',
+            context.l10n.adminClientSaved,
             style: AppTextStyles.bodyMedium,
           ),
         ),
@@ -219,8 +220,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           behavior: SnackBarBehavior.floating,
           backgroundColor: AppColors.warning,
           content: Text(
-            'Un client avec cette MAC existe déjà. '
-            'Modifie-le au lieu d\'en créer un nouveau.',
+            context.l10n.adminMacExists,
             style: AppTextStyles.bodyMedium,
           ),
         ),
@@ -245,20 +245,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
-        title: const Text('Supprimer ce client ?'),
-        content: Text(
-          'La MAC ${target.mac} ne recevra plus de playlist. '
-          'L\'app cliente videra ses chaînes à la prochaine sync.',
-        ),
+        title: Text(ctx.l10n.adminDeleteClientTitle),
+        content: Text(ctx.l10n.adminDeleteClientBody(target.mac)),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Annuler'),
+            child: Text(ctx.l10n.buttonCancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: TextButton.styleFrom(foregroundColor: AppColors.live),
-            child: const Text('Supprimer'),
+            child: Text(ctx.l10n.buttonDelete),
           ),
         ],
       ),
@@ -273,7 +270,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
-        content: Text('MAC copiée : $mac',
+        content: Text(context.l10n.adminMacCopied(mac),
             style: AppTextStyles.bodyMedium),
       ),
     );
@@ -285,11 +282,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Admin'),
+        title: Text(context.l10n.adminTitle),
         actions: <Widget>[
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Recharger',
+            tooltip: context.l10n.adminReloadTooltip,
             onPressed: _loading ? null : _load,
           ),
         ],
@@ -328,9 +325,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               backgroundColor: AppColors.accent,
               foregroundColor: AppColors.voidSurface,
               icon: const Icon(Icons.add_rounded),
-              label: const Text(
-                'Nouveau client',
-                style: TextStyle(fontWeight: FontWeight.w700),
+              label: Text(
+                context.l10n.adminNewClient,
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             )
           : null,
@@ -373,7 +370,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  'Serveur connecté',
+                  context.l10n.adminServerConnected,
                   style: AppTextStyles.bodyLarge.copyWith(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
@@ -392,7 +389,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
           TextButton(
             onPressed: () => setState(() => _setupExpanded = true),
-            child: const Text('Modifier'),
+            child: Text(context.l10n.adminEditButton),
           ),
         ],
       ),
@@ -417,7 +414,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               Icon(Icons.dns_rounded,
                   color: AppColors.accent, size: 18),
               const SizedBox(width: 8),
-              Text('Connexion serveur',
+              Text(context.l10n.adminServerConnection,
                   style: AppTextStyles.headlineMedium
                       .copyWith(fontSize: 15)),
               const Spacer(),
@@ -425,15 +422,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 TextButton(
                   onPressed: () =>
                       setState(() => _setupExpanded = false),
-                  child: const Text('Replier'),
+                  child: Text(context.l10n.adminCollapse),
                 ),
             ],
           ),
           const SizedBox(height: 6),
           Text(
-            'Setup une seule fois. Déploie ton mini-backend Cloudflare '
-            '(15 min, voir cloudflare/README.md), puis colle l\'URL + '
-            'ton secret admin ci-dessous.',
+            context.l10n.adminSetupIntro,
             style: AppTextStyles.bodyMedium.copyWith(
               fontSize: 12,
               color: AppColors.textMuted,
@@ -441,7 +436,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          _label('URL du serveur'),
+          _label(context.l10n.adminServerUrlLabel),
           TextField(
             controller: _urlCtrl,
             keyboardType: TextInputType.url,
@@ -451,19 +446,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          _label('Secret admin'),
+          _label(context.l10n.adminSecretLabel),
           TextField(
             controller: _secretCtrl,
             obscureText: true,
             autocorrect: false,
-            decoration: const InputDecoration(
-              hintText: 'Celui défini avec `wrangler secret put ADMIN_SECRET`',
+            decoration: InputDecoration(
+              hintText: context.l10n.adminSecretHint,
             ),
           ),
           const SizedBox(height: 10),
           Text(
-            'Pas encore déployé ? Suis cloudflare/README.md dans le '
-            'repo. Cloudflare Worker est gratuit jusqu\'à 100k req/jour.',
+            context.l10n.adminDeployHint,
             style: AppTextStyles.bodyMedium.copyWith(
               fontSize: 11,
               color: AppColors.textMuted,
@@ -475,7 +469,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             width: double.infinity,
             child: FilledButton(
               onPressed: _saveCredentials,
-              child: const Text('Enregistrer et tester'),
+              child: Text(context.l10n.adminSaveAndTest),
             ),
           ),
         ],
@@ -487,7 +481,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return Row(
       children: <Widget>[
         Text(
-          'CLIENTS',
+          context.l10n.adminClientsHeader,
           style: AppTextStyles.labelSmall.copyWith(
             color: AppColors.textSecondary,
             fontSize: 11,
@@ -517,7 +511,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Widget _clientTile(AdminClient client) {
     final String displayName = client.name.isNotEmpty
         ? client.name
-        : 'Sans nom';
+        : context.l10n.adminUnnamed;
     final int count = client.playlists.length;
     final AdminPlaylist? first =
         client.playlists.isNotEmpty ? client.playlists.first : null;
@@ -586,8 +580,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       const SizedBox(height: 4),
                       Text(
                         first == null
-                            ? '$count playlist'
-                            : '$count playlist · ${first.type.toUpperCase()} · ${first.name}',
+                            ? context.l10n.adminPlaylistCount(count)
+                            : '${context.l10n.adminPlaylistCount(count)} · ${first.type.toUpperCase()} · ${first.name}',
                         style: AppTextStyles.bodyMedium.copyWith(
                           fontSize: 11,
                           color: AppColors.textMuted,
@@ -632,13 +626,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
           const SizedBox(height: 14),
           Text(
-            'Aucun client pour l\'instant',
+            context.l10n.adminNoClientsTitle,
             style: AppTextStyles.headlineMedium.copyWith(fontSize: 16),
           ),
           const SizedBox(height: 6),
           Text(
-            'Tape sur le bouton ci-dessous, colle la MAC que ton client '
-            't\'a envoyée + son URL M3U. C\'est tout.',
+            context.l10n.adminNoClientsHint,
             textAlign: TextAlign.center,
             style: AppTextStyles.bodyMedium.copyWith(
               fontSize: 12,
@@ -653,9 +646,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             child: FilledButton.icon(
               onPressed: _loading ? null : _addClient,
               icon: const Icon(Icons.add_rounded),
-              label: const Text(
-                'Ajouter mon premier client',
-                style: TextStyle(fontWeight: FontWeight.w700),
+              label: Text(
+                context.l10n.adminAddFirstClient,
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
           ),

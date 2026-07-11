@@ -110,10 +110,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// panels IPTV limitent à 1-2 connexions simultanées, et jouer déjà la
   /// même chaîne ailleurs (téléphone + TV, ou cast en cours de test) en est
   /// une cause fréquente — mais la chaîne peut aussi être simplement morte.
-  static const String _kChannelBlockedMessage =
-      'Chaîne indisponible : aucune vidéo reçue. Elle est vide ou bloquée '
-      'par ta source — vérifie qu\'elle n\'est pas déjà ouverte sur un '
-      'autre appareil, sinon essaie une autre chaîne.';
+  String get _channelBlockedMessage => context.l10n.playerChannelBlocked;
 
   bool _overlayVisible = true;
   Timer? _hideOverlayTimer;
@@ -1173,7 +1170,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (mounted) {
         setState(() {
           _hasError = true;
-          _errorMessage = _kChannelBlockedMessage;
+          _errorMessage = _channelBlockedMessage;
         });
       }
       return;
@@ -1249,10 +1246,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     setState(() {
       _hasError = true;
       _errorMessage = probe.isLikelyNetworkBlocked
-          ? '$_kChannelBlockedMessage\n\nÇa ressemble à un blocage réseau '
-              '(FAI ou DNS) plutôt qu\'à un problème de l\'app — un VPN '
-              'peut aider si cette chaîne fonctionne ailleurs.'
-          : _kChannelBlockedMessage;
+          ? '$_channelBlockedMessage\n\n'
+              '${context.l10n.playerNetworkBlockHint}'
+          : _channelBlockedMessage;
     });
   }
 
@@ -1287,7 +1283,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (_playedChannelId == _currentChannel.id) {
         setState(() {
           _hasError = true;
-          _errorMessage = 'Flux interrompu. Vérifie ta connexion puis réessaie.';
+          _errorMessage = context.l10n.playerStreamInterrupted;
         });
       } else {
         _declareChannelBlocked();
@@ -1353,7 +1349,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         if (mounted) {
           setState(() {
             _hasError = true;
-            _errorMessage = 'Flux interrompu. Vérifie ta connexion puis réessaie.';
+            _errorMessage = context.l10n.playerStreamInterrupted;
           });
         }
       } else {
@@ -2283,7 +2279,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                   // — rien à voir avec l'ancienne barre trompeuse.
                                   _SeekIconButton(
                                     icon: Icons.replay_rounded,
-                                    semanticsLabel: 'Revoir',
+                                    semanticsLabel: context.l10n.tvReplay,
                                     onTap: _replayMoment,
                                   ),
                                   const SizedBox(width: 24),
@@ -2298,7 +2294,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                   if (_behindLive)
                                     _SeekIconButton(
                                       icon: Icons.sensors_rounded,
-                                      semanticsLabel: 'En direct',
+                                      semanticsLabel:
+                                          context.l10n.playerGoLiveLabel,
                                       color: AppColors.live,
                                       onTap: _goToLive,
                                     )
@@ -2369,7 +2366,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   // (QR/code, via le Worker — marche même hors Wi-Fi local).
                   _ControlButton(
                     icon: Icons.screen_share_rounded,
-                    label: 'Écran',
+                    label: context.l10n.playerScreenButton,
                     onTap: _openScreenCast,
                   ),
                 ],
@@ -2901,7 +2898,8 @@ class _CastingOverlay extends StatelessWidget {
         if (!show) return const SizedBox.shrink();
 
         final bool paused = mgr.state == CastState.paused;
-        final String deviceName = mgr.device?.name ?? 'la TV';
+        final String deviceName =
+            mgr.device?.name ?? context.l10n.playerTvFallback;
 
         return Positioned.fill(
           child: Container(
@@ -2950,8 +2948,8 @@ class _CastingOverlay extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     connecting
-                        ? 'Connexion à $deviceName…'
-                        : 'Diffusion sur $deviceName',
+                        ? context.l10n.playerConnectingTo(deviceName)
+                        : context.l10n.playerCastingOn(deviceName),
                     textAlign: TextAlign.center,
                     style: AppTextStyles.labelSmall.copyWith(
                       color: AppColors.accent,
@@ -2990,8 +2988,7 @@ class _CastingOverlay extends StatelessWidget {
                   ),
                   const SizedBox(height: 18),
                   Text(
-                    'La lecture continue sur la TV. Le téléphone est libéré '
-                    'pour ne pas bloquer la connexion IPTV.',
+                    context.l10n.playerCastHandoffHint,
                     textAlign: TextAlign.center,
                     style: AppTextStyles.bodyMedium.copyWith(
                       fontSize: 11,

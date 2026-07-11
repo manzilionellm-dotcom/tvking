@@ -47,7 +47,7 @@ class SettingsScreen extends StatelessWidget {
             //  Le client doit pouvoir nous joindre en 1 tap, depuis
             //  l'écran qu'il consulte le plus quand quelque chose
             //  cloche (Réglages).
-            _SectionTitle('Aide & Support'),
+            _SectionTitle(context.l10n.settingsHelpSupport),
             const VipHelpCard.full(),
             const SizedBox(height: 4),
 
@@ -56,7 +56,7 @@ class SettingsScreen extends StatelessWidget {
             //  où il en est dans les 10j d'essai (ou si payé) + un
             //  CTA pour acheter sur 7themotion.com (paiement externe,
             //  pas d'in-app purchase Google Play).
-            _SectionTitle('Mon abonnement'),
+            _SectionTitle(context.l10n.settingsMySubscription),
             const SubscriptionCard(),
             const SizedBox(height: 4),
 
@@ -74,9 +74,9 @@ class SettingsScreen extends StatelessWidget {
                   children: <Widget>[
                     _SliderTile(
                       icon: Icons.timer_outlined,
-                      title: 'Taille du buffer',
+                      title: context.l10n.playerBufferSize,
                       subtitle:
-                          '${s.bufferSeconds}s · plus c\'est haut, mieux la lecture résiste aux coupures réseau (mais plus de latence sur le live)',
+                          context.l10n.settingsBufferSubtitle(s.bufferSeconds),
                       value: s.bufferSeconds.toDouble(),
                       min: 5,
                       max: 60,
@@ -86,43 +86,37 @@ class SettingsScreen extends StatelessWidget {
                     ),
                     _SwitchTile(
                       icon: Icons.memory_rounded,
-                      title: 'Décodage matériel',
-                      subtitle:
-                          'Utilise le GPU pour décoder. Indispensable pour 4K / 8K.',
+                      title: context.l10n.playerHwDecode,
+                      subtitle: context.l10n.playerHwDecodeHelp,
                       value: s.hardwareDecode,
                       onChanged: s.setHardwareDecode,
                     ),
                     _SwitchTile(
                       icon: Icons.analytics_outlined,
-                      title: 'Afficher les statistiques',
-                      subtitle:
-                          'Résolution, codec, FPS en surimpression pendant la lecture.',
+                      title: context.l10n.playerShowStats,
+                      subtitle: context.l10n.settingsShowStatsSubtitle,
                       value: s.showStats,
                       onChanged: s.setShowStats,
                     ),
                     _SwitchTile(
                       icon: Icons.wifi_rounded,
-                      title: 'Lecture en Wi-Fi uniquement',
-                      subtitle:
-                          'Bloque le démarrage d\'un flux en données cellulaires (évite la facture surprise).',
+                      title: context.l10n.settingsWifiOnly,
+                      subtitle: context.l10n.settingsWifiOnlySubtitle,
                       value: s.wifiOnly,
                       onChanged: s.setWifiOnly,
                     ),
                     _SwitchTile(
                       icon: Icons.signal_cellular_alt_rounded,
-                      title: 'Avertir en données cellulaires',
-                      subtitle:
-                          'Affiche un avertissement avant de lire hors Wi-Fi.',
+                      title: context.l10n.settingsWarnCellular,
+                      subtitle: context.l10n.settingsWarnCellularSubtitle,
                       value: s.warnOnCellular,
                       onChanged: s.setWarnOnCellular,
                     ),
                     _ActionTile(
                       icon: Icons.badge_outlined,
-                      title: 'Signature de lecture (User-Agent)',
-                      subtitle:
-                          'Si une source affiche une PUB du serveur au lieu '
-                          'des chaînes, change la signature. '
-                          'Actuel : ${_shortUserAgent(s.userAgent)}',
+                      title: context.l10n.settingsUserAgentTitle,
+                      subtitle: context.l10n
+                          .settingsUserAgentSubtitle(_shortUserAgent(s.userAgent)),
                       onTap: () => _openUserAgentSheet(context),
                     ),
                   ],
@@ -147,12 +141,11 @@ class SettingsScreen extends StatelessWidget {
             // L'écosystème revendeur (Mode admin → push à distance via
             // backend Cloudflare) reste intact, c'est juste une porte
             // supplémentaire pour l'usage direct.
-            _SectionTitle('Mes sources IPTV'),
+            _SectionTitle(context.l10n.settingsMySources),
             _ActionTile(
               icon: Icons.playlist_play_rounded,
-              title: 'Mes playlists',
-              subtitle:
-                  'Liste des sources IPTV ajoutées (Xtream Codes).',
+              title: context.l10n.playlistsTitle,
+              subtitle: context.l10n.settingsMyPlaylistsSubtitle,
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute<void>(
                   builder: (_) => const PlaylistsScreen(),
@@ -161,9 +154,8 @@ class SettingsScreen extends StatelessWidget {
             ),
             _ActionTile(
               icon: Icons.support_agent_rounded,
-              title: 'Activer / vérifier mon abonnement',
-              subtitle:
-                  'Donne ta MAC à ton revendeur, puis recharge tes chaînes.',
+              title: context.l10n.settingsActivateTitle,
+              subtitle: context.l10n.settingsActivateSubtitle,
               onTap: () => showSourceChoiceSheet(context),
             ),
 
@@ -171,9 +163,8 @@ class SettingsScreen extends StatelessWidget {
             _SectionTitle(context.l10n.settingsRecordings),
             _ActionTile(
               icon: Icons.movie_filter_outlined,
-              title: 'Mes enregistrements',
-              subtitle:
-                  'Liste des flux capturés via le bouton REC du lecteur.',
+              title: context.l10n.recordingsTitle,
+              subtitle: context.l10n.settingsRecordingsSubtitle,
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute<void>(
                   builder: (_) => const RecordingsScreen(),
@@ -185,22 +176,21 @@ class SettingsScreen extends StatelessWidget {
             _SectionTitle(context.l10n.settingsStorage),
             _ActionTile(
               icon: Icons.history_rounded,
-              title: 'Vider l\'historique de visionnage',
-              subtitle:
-                  'Supprime la liste "Reprendre" sur l\'accueil.',
+              title: context.l10n.settingsClearHistory,
+              subtitle: context.l10n.settingsClearHistorySubtitle,
               destructive: true,
               onTap: () async {
                 final bool? confirm = await _confirm(
                   context,
-                  title: 'Vider l\'historique ?',
-                  message: 'La section "Reprendre" sera vide.',
+                  title: context.l10n.settingsClearHistoryConfirmTitle,
+                  message: context.l10n.settingsClearHistoryConfirmBody,
                 );
                 if (confirm == true) {
                   await RecentlyWatchedRepository.instance.clear();
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Historique vidé'),
+                      SnackBar(
+                        content: Text(context.l10n.settingsHistoryCleared),
                       ),
                     );
                   }
@@ -211,12 +201,11 @@ class SettingsScreen extends StatelessWidget {
             // ====== NOTIFICATIONS ======
             //  Trois interrupteurs : rappels d'émission, annonces de
             //  l'équipe, dispo des mises à jour. Tout activé par défaut.
-            _SectionTitle('Notifications'),
+            _SectionTitle(context.l10n.settingsNotifications),
             _ActionTile(
               icon: Icons.notifications_active_outlined,
-              title: 'Notifications',
-              subtitle:
-                  'Rappels d\'émission, nouveautés et mises à jour de l\'app.',
+              title: context.l10n.settingsNotifications,
+              subtitle: context.l10n.settingsNotificationsSubtitle,
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute<void>(
                   builder: (_) => const NotificationsSettingsScreen(),
@@ -231,12 +220,11 @@ class SettingsScreen extends StatelessWidget {
             //  JSON copiable se colle dans une issue ou dans
             //  lib/features/cast/COMPATIBILITY.md pour empiler
             //  les données empiriques.
-            _SectionTitle('Cast'),
+            _SectionTitle(context.l10n.settingsCastSection),
             _ActionTile(
               icon: Icons.troubleshoot_rounded,
-              title: 'Diagnostic cast',
-              subtitle:
-                  'Teste plusieurs chaînes sur une TV et rapporte la stratégie qui marche.',
+              title: context.l10n.settingsCastDiagTitle,
+              subtitle: context.l10n.settingsCastDiagSubtitle,
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute<void>(
                   builder: (_) => const CastDiagnosticsScreen(),
@@ -249,7 +237,7 @@ class SettingsScreen extends StatelessWidget {
             _ActionTile(
               icon: Icons.info_outline_rounded,
               title: context.l10n.settingsAbout,
-              subtitle: 'Version, mises à jour, crédits, légal.',
+              subtitle: context.l10n.settingsAboutSubtitle,
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute<void>(
                   builder: (_) => const AboutScreen(),
@@ -337,18 +325,14 @@ class _LockToggleTileState extends State<_LockToggleTile> {
     if (value) {
       // Activation : on demande l'auth UNE FOIS pour vérifier que
       // l'utilisateur peut bien déverrouiller son téléphone.
+      final String failedMsg = context.l10n.settingsLockActivationFailed;
       final bool ok = await BiometricAuth.instance.authenticate(
-        reason: 'Confirme avec ton empreinte ou PIN pour activer le verrouillage',
+        reason: context.l10n.settingsLockConfirmReason,
       );
       if (!ok) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Verrouillage non activé — auth échouée ou pas '
-                'd\'empreinte / PIN configurés sur ce téléphone.',
-              ),
-            ),
+            SnackBar(content: Text(failedMsg)),
           );
         }
         return;
@@ -366,10 +350,8 @@ class _LockToggleTileState extends State<_LockToggleTile> {
     }
     return _SwitchTile(
       icon: Icons.fingerprint,
-      title: 'Verrouiller à l\'ouverture',
-      subtitle:
-          'Demande l\'empreinte ou PIN au démarrage de l\'app. '
-          'Pas de re-verrouillage si tu reviens du multitâche.',
+      title: context.l10n.settingsLockTitle,
+      subtitle: context.l10n.settingsLockSubtitle,
       value: _enabled!,
       onChanged: _toggle,
     );
@@ -801,7 +783,7 @@ class _LanguagePicker extends StatelessWidget {
                 current.languageCode;
         return _ActionTile(
           icon: Icons.translate_rounded,
-          title: 'Langue de l\'application',
+          title: context.l10n.settingsLanguageAppTitle,
           subtitle: label,
           onTap: () => _openSheet(context),
         );
@@ -843,7 +825,7 @@ class _LanguagePicker extends StatelessWidget {
                   // ----- Option Système -----
                   _LanguageTile(
                     label: context.l10n.settingsLanguageSystem,
-                    sublabel: 'Suit la langue de l\'OS',
+                    sublabel: context.l10n.settingsLanguageFollowSystem,
                     selected: current == null,
                     onTap: () async {
                       await LocaleRepository.instance.setLocale(null);
@@ -972,12 +954,11 @@ class _UserAgentSheetState extends State<_UserAgentSheet> {
   Future<void> _apply(String value) async {
     await PlayerSettings.instance.setUserAgent(value);
     if (!mounted) return;
+    final String message = context.l10n.settingsUserAgentChanged;
     Navigator.of(context).pop();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Signature changée. Rouvre une chaîne pour tester.',
-        ),
+      SnackBar(
+        content: Text(message),
       ),
     );
   }
@@ -1008,7 +989,7 @@ class _UserAgentSheetState extends State<_UserAgentSheet> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            'Signature de lecture',
+                            context.l10n.settingsUserAgentSheetTitle,
                             style: AppTextStyles.headlineMedium,
                           ),
                         ),
@@ -1018,10 +999,7 @@ class _UserAgentSheetState extends State<_UserAgentSheet> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                     child: Text(
-                      'Certains serveurs IPTV ne diffusent les vraies chaînes '
-                      'qu\'aux lecteurs reconnus et affichent une pub aux '
-                      'autres. Choisis la signature qui marche pour ta source '
-                      '(souvent IBO / ExoPlayer), ou saisis la tienne.',
+                      context.l10n.settingsUserAgentSheetDesc,
                       style: AppTextStyles.bodyMedium.copyWith(
                         fontSize: 12,
                         color: AppColors.textMuted,
@@ -1084,7 +1062,7 @@ class _UserAgentSheetState extends State<_UserAgentSheet> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
                     child: Text(
-                      'PERSONNALISÉ',
+                      context.l10n.settingsUserAgentCustomLabel.toUpperCase(),
                       style: AppTextStyles.labelSmall.copyWith(
                         color: AppColors.textSecondary,
                         fontSize: 11,
@@ -1101,7 +1079,7 @@ class _UserAgentSheetState extends State<_UserAgentSheet> {
                       style:
                           AppTextStyles.bodyMedium.copyWith(fontSize: 12),
                       decoration: InputDecoration(
-                        hintText: 'Colle ici le User-Agent exact…',
+                        hintText: context.l10n.settingsUserAgentHint,
                         filled: true,
                         fillColor: AppColors.surfaceHigh,
                         border: OutlineInputBorder(
@@ -1123,14 +1101,14 @@ class _UserAgentSheetState extends State<_UserAgentSheet> {
                           child: OutlinedButton(
                             onPressed: () =>
                                 _apply(PlayerSettings.kDefaultUserAgent),
-                            child: const Text('Réinitialiser'),
+                            child: Text(context.l10n.settingsUserAgentReset),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: FilledButton(
                             onPressed: () => _apply(_controller.text),
-                            child: const Text('Appliquer'),
+                            child: Text(context.l10n.settingsUserAgentApply),
                           ),
                         ),
                       ],

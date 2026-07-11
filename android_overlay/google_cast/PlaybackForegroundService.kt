@@ -176,10 +176,10 @@ class PlaybackForegroundService : Service() {
             if (mgr.getNotificationChannel(CHANNEL_ID) == null) {
                 val ch = NotificationChannel(
                     CHANNEL_ID,
-                    "Lecture audio",
+                    getString(R.string.cast_notif_playback_channel),
                     NotificationManager.IMPORTANCE_LOW,
                 ).apply {
-                    description = "Lecture audio en arrière-plan (mode Écouteurs)"
+                    description = getString(R.string.cast_notif_playback_channel_desc)
                     setShowBadge(false)
                     setSound(null, null)
                 }

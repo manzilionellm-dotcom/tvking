@@ -41,55 +41,51 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   /// Slides d'onboarding.
   ///
-  /// Note : on PASSE de `static const` a un getter parce que la
+  /// Note : on PASSE de `static const` a une methode parce que la
   /// premiere slide doit afficher le nom du flavor courant (The Few
   /// ou Red Room) lu via `FlavorConfig.current.appName` qui n'est
-  /// pas connu a la compilation. La perf reste OK : 5 elements
-  /// crees a chaque acces du getter, negligeable.
+  /// pas connu a la compilation, et que les textes viennent de
+  /// `context.l10n`. La perf reste OK : 5 elements crees a chaque
+  /// appel, negligeable.
   ///
   /// La slide 'Apporte ton fournisseur — nous ne vendons aucun flux'
   /// a ete retiree (post virage utilisateur vers la posture
   /// revendeur : le serveur est hardcode dans FlavorConfig et
   /// l'utilisateur ne voit que le formulaire identifiant/code).
-  static List<_OnboardingPage> get _pages {
+  List<_OnboardingPage> _pages(BuildContext context) {
     final String appName = FlavorConfig.current.appName;
     return <_OnboardingPage>[
       _OnboardingPage(
         icon: Icons.local_movies_rounded,
-        title: 'Bienvenue sur $appName',
-        description:
-            'Cinéma sans limites. Conçu pour la TV, optimisé pour ton téléphone, beau partout.',
+        title: context.l10n.onboardingWelcomeAppTitle(appName),
+        description: context.l10n.onboardingWelcomeDesc,
       ),
-      const _OnboardingPage(
+      _OnboardingPage(
         icon: Icons.cloud_upload_outlined,
-        title: 'Charge tes chaînes',
-        description:
-            'Choisis ton serveur et saisis ton code Xtream (utilisateur + mot de passe). Tes chaînes apparaissent en quelques secondes.',
+        title: context.l10n.onboardingLoadChannelsTitle,
+        description: context.l10n.onboardingLoadChannelsDesc,
       ),
-      const _OnboardingPage(
+      _OnboardingPage(
         icon: Icons.fingerprint_rounded,
-        title: 'Active tes chaînes',
-        description:
-            'Cet identifiant unique permet d\'activer ton compte à distance. Envoie-le en 1 tap, notre équipe configure ton accès en quelques minutes.',
+        title: context.l10n.onboardingActivateTitle,
+        description: context.l10n.onboardingActivateDesc,
         isMacSlide: true,
       ),
-      const _OnboardingPage(
+      _OnboardingPage(
         icon: Icons.workspace_premium_rounded,
-        title: 'Tout ce qu\'il te faut',
-        description:
-            'Sans publicité. Cast vers TV, ordi, tablette. Enregistrement en parallèle. Lecteur 4K/8K. QR-cast. Recherche instantanée.',
+        title: context.l10n.onboardingEverythingTitle,
+        description: context.l10n.onboardingEverythingDesc,
       ),
-      const _OnboardingPage(
+      _OnboardingPage(
         icon: Icons.celebration_outlined,
-        title: 'Essai gratuit 7 jours',
-        description:
-            'Profite de toutes les fonctions pendant 7 jours. Ensuite 5 €/an ou 9,90 € à vie sur tous tes appareils — paiement sécurisé (jamais in-app).',
+        title: context.l10n.pricingTrialDays(7),
+        description: context.l10n.onboardingTrialDesc,
       ),
     ];
   }
 
   void _next() {
-    if (_page < _pages.length - 1) {
+    if (_page < _pages(context).length - 1) {
       _controller.nextPage(
         duration: const Duration(milliseconds: 320),
         curve: Curves.easeOutCubic,
@@ -156,9 +152,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   child: PageView.builder(
                     controller: _controller,
                     onPageChanged: (int i) => setState(() => _page = i),
-                    itemCount: _pages.length,
+                    itemCount: _pages(context).length,
                     itemBuilder: (BuildContext context, int index) {
-                      final _OnboardingPage page = _pages[index];
+                      final _OnboardingPage page = _pages(context)[index];
                       if (page.isMacSlide) {
                         return _MacHandoffSlide(page: page);
                       }
@@ -172,7 +168,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   padding: const EdgeInsets.only(bottom: 24),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: List<Widget>.generate(_pages.length, (int i) {
+                    children:
+                        List<Widget>.generate(_pages(context).length, (int i) {
                       final bool active = i == _page;
                       return AnimatedContainer(
                         duration: const Duration(milliseconds: 220),
@@ -200,7 +197,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     child: FilledButton(
                       onPressed: _next,
                       child: Text(
-                        _page == _pages.length - 1
+                        _page == _pages(context).length - 1
                             ? context.l10n.onboardingStart
                             : context.l10n.onboardingNext,
                         style: AppTextStyles.bodyLarge.copyWith(
@@ -343,8 +340,7 @@ class _MacHandoffSlideState extends State<_MacHandoffSlide> {
     // flavor est injecte dynamiquement pour que Red Room ne signe
     // pas 'Bonjour The Few' a tes clients.
     final String appName = FlavorConfig.current.appName;
-    final String msg =
-        'Bonjour $appName, voici mon identifiant pour activer mes chaînes :\n\n$_mac';
+    final String msg = context.l10n.onboardingActivateMessage(appName, _mac!);
     await showSupportChoiceSheet(context, customMessage: msg);
   }
 

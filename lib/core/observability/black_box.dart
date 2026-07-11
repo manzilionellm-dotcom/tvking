@@ -40,6 +40,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../crash/crash_reporting.dart';
+import '../i18n/app_l10n.dart';
 import 'structured_logger.dart';
 
 /// Un constat produit par l'analyse automatique.
@@ -276,21 +277,24 @@ class BlackBox {
       return c == null ? '' : c.toString();
     }
 
+    // Titres/libellés des constats : visibles par l'utilisateur (écran
+    // diagnostic) → traduits via AppL10n (pas de BuildContext ici).
+    // La sévérité ('critique'/'majeur'/'info') reste une CLÉ technique
+    // de tri — ne pas la traduire.
+
     // --- crashs / erreurs ---
     addIf(
       countWhere((Map<String, Object?> e) => e['lvl'] == 'fatal'),
       severity: 'critique',
-      title: 'Crash de l\'application',
-      detail: 'Une erreur FATALE a été enregistrée — la queue de la '
-          'session précédente est conservée dans la boîte noire.',
+      title: AppL10n.current.blackBoxFindingCrashTitle,
+      detail: AppL10n.current.blackBoxFindingCrashDetail,
     );
     addIf(
       countWhere((Map<String, Object?> e) =>
           e['domain'] == 'crash' && e['lvl'] == 'err'),
       severity: 'majeur',
-      title: 'Erreurs non rattrapées',
-      detail: 'Des exceptions ont atteint le filet global (FlutterError / '
-          'zone). Voir les entrées domain=crash.',
+      title: AppL10n.current.blackBoxFindingUncaughtTitle,
+      detail: AppL10n.current.blackBoxFindingUncaughtDetail,
     );
 
     // --- cast : proxy cloud bloqué par le fournisseur ---
@@ -299,18 +303,15 @@ class BlackBox {
           e['event'] == 'proxy.verify' &&
           RegExp(r'upstream: (4\d\d|5\d\d)').hasMatch(ctxStr(e))),
       severity: 'majeur',
-      title: 'Proxy cloud refusé par le fournisseur IPTV',
-      detail: 'Le serveur IPTV rejette l\'IP datacenter du proxy '
-          '(/cast-proxy). L\'app bascule sur le relais du téléphone — '
-          'comportement attendu, mais le téléphone doit rester allumé.',
+      title: AppL10n.current.blackBoxFindingProxyBlockedTitle,
+      detail: AppL10n.current.blackBoxFindingProxyBlockedDetail,
     );
     addIf(
       countWhere((Map<String, Object?> e) =>
           e['event'] == 'proxy.blocked_fallback_relay'),
       severity: 'info',
-      title: 'Bascule proxy → relais téléphone',
-      detail: 'Le chemin prioritaire /cast-proxy était indisponible ; le '
-          'relais HLS local a pris le relais.',
+      title: AppL10n.current.blackBoxFindingProxyFallbackTitle,
+      detail: AppL10n.current.blackBoxFindingProxyFallbackDetail,
     );
 
     // --- cast : la TV a rejeté la lecture ---
@@ -320,9 +321,8 @@ class BlackBox {
           (e['event'] == 'load_failed' ||
               ctxStr(e).contains('load_failed'))),
       severity: 'majeur',
-      title: 'Commande de lecture rejetée par la TV',
-      detail: 'LOAD refusé par le récepteur Cast — flux injoignable '
-          'depuis la TV ou récepteur indisponible.',
+      title: AppL10n.current.blackBoxFindingLoadRejectedTitle,
+      detail: AppL10n.current.blackBoxFindingLoadRejectedDetail,
     );
 
     // --- relais HLS : upstream mort ---
@@ -331,9 +331,8 @@ class BlackBox {
           ctxStr(e).contains('upstream KO') ||
           (e['domain'] == 'cast' && ctxStr(e).contains('reconnexions épuisées'))),
       severity: 'majeur',
-      title: 'Flux IPTV coupé pendant le relais',
-      detail: 'Le serveur IPTV a cessé de répondre au relais du téléphone '
-          'malgré les reconnexions (token expiré ? chaîne morte ?).',
+      title: AppL10n.current.blackBoxFindingUpstreamDeadTitle,
+      detail: AppL10n.current.blackBoxFindingUpstreamDeadDetail,
     );
 
     // --- mémoire ---
@@ -343,9 +342,8 @@ class BlackBox {
           ctxStr(e).contains('lowmemory') ||
           ctxStr(e).contains('OutOfMemory')),
       severity: 'info',
-      title: 'Pression mémoire détectée',
-      detail: 'Des fils d\'Ariane mémoire ont été posés — utile si l\'app '
-          'a été tuée par Android (appareil à faible RAM).',
+      title: AppL10n.current.blackBoxFindingMemoryTitle,
+      detail: AppL10n.current.blackBoxFindingMemoryDetail,
     );
 
     // --- agrégat générique : domaines les plus bruyants en warn/err ---
@@ -360,9 +358,8 @@ class BlackBox {
       if (n >= 5) {
         findings.add(BlackBoxFinding(
           severity: 'info',
-          title: 'Domaine bruyant : $domain',
-          detail: '$n avertissements/erreurs enregistrés dans « $domain » '
-              'sur la fenêtre de la boîte noire.',
+          title: AppL10n.current.blackBoxFindingNoisyDomainTitle(domain),
+          detail: AppL10n.current.blackBoxFindingNoisyDomainDetail(n, domain),
           occurrences: n,
         ));
       }

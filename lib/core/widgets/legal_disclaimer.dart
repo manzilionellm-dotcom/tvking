@@ -23,6 +23,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../i18n/l10n_extension.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 
@@ -40,11 +41,11 @@ class LegalDisclaimer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!_full) return _buildCompact();
-    return _buildFull();
+    if (!_full) return _buildCompact(context);
+    return _buildFull(context);
   }
 
-  Widget _buildCompact() {
+  Widget _buildCompact(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
@@ -64,10 +65,7 @@ class LegalDisclaimer extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Lecteur multimédia uniquement. Cette application ne vend, '
-              'n\'héberge et ne fournit aucun contenu, flux, chaîne, '
-              'playlist (M3U) ni abonnement IPTV. Vous fournissez votre '
-              'propre source et restez seul responsable de son contenu.',
+              context.l10n.legalDisclaimerCompactBody,
               style: AppTextStyles.bodyMedium.copyWith(
                 fontSize: 11.5,
                 color: AppColors.textSecondary,
@@ -80,7 +78,7 @@ class LegalDisclaimer extends StatelessWidget {
     );
   }
 
-  Widget _buildFull() {
+  Widget _buildFull(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -104,7 +102,7 @@ class LegalDisclaimer extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Mention légale',
+                  context.l10n.legalDisclaimerTitle,
                   style: AppTextStyles.headlineMedium.copyWith(
                     fontSize: 15,
                   ),
@@ -114,11 +112,7 @@ class LegalDisclaimer extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'Cette application est un LECTEUR multimédia générique, au même '
-            'titre qu\'un lecteur vidéo classique. Elle ne vend pas, '
-            'n\'héberge pas, ne distribue pas et ne fournit AUCUN contenu : '
-            'ni flux, ni chaîne, ni film, ni playlist (M3U / M3U8), ni '
-            'abonnement IPTV.',
+            context.l10n.legalDisclaimerFullPara1,
             style: AppTextStyles.bodyMedium.copyWith(
               fontSize: 12.5,
               height: 1.45,
@@ -126,10 +120,7 @@ class LegalDisclaimer extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Aucune source, aucun lien et aucune liste de chaînes ne sont '
-            'fournis ou pré-installés. Pour l\'utiliser, vous devez saisir '
-            'vos propres identifiants (Xtream ou URL M3U) obtenus auprès du '
-            'fournisseur de votre choix.',
+            context.l10n.legalDisclaimerFullPara2,
             style: AppTextStyles.bodyMedium.copyWith(
               fontSize: 12.5,
               height: 1.45,
@@ -137,11 +128,7 @@ class LegalDisclaimer extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Vous êtes seul responsable des sources que vous ajoutez et de '
-            'leur légalité dans votre pays. Les marques, logos et contenus '
-            'appartiennent à leurs propriétaires respectifs. Toute question '
-            'sur les flux ou abonnements doit être adressée à votre '
-            'fournisseur — jamais à l\'éditeur de l\'application.',
+            context.l10n.legalDisclaimerFullPara3,
             style: AppTextStyles.bodyMedium.copyWith(
               fontSize: 12.5,
               height: 1.45,

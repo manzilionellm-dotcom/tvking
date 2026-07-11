@@ -65,7 +65,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
       Channel(
         id: d.id,
         name: d.name,
-        category: 'Téléchargé',
+        category: context.l10n.moviesOfflineCategory,
         streamUrl: d.filePath, // chemin local — media_kit l'ouvre direct
         isLive: false,
         logoUrl: d.posterUrl,

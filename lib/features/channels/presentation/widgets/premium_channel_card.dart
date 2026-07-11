@@ -209,8 +209,8 @@ class _PremiumChannelCardState extends State<PremiumChannelCard> {
                     Flexible(
                       child: Text(
                         ch.country != null
-                            ? '${ch.country!.flag} ${ch.genre.label}'
-                            : ch.genre.label,
+                            ? '${ch.country!.flag} ${ch.genre.localizedLabel}'
+                            : ch.genre.localizedLabel,
                         style: AppTextStyles.bodyMedium.copyWith(
                           fontSize: 12,
                           color: AppColors.textTertiary,

@@ -10,6 +10,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../i18n/l10n_extension.dart';
 import 'update_service.dart';
 
 /// Verifie une MAJ et, le cas echeant, propose de l'installer.
@@ -23,25 +24,21 @@ Future<void> maybePromptUpdate(BuildContext context) async {
         context: context,
         barrierDismissible: !update.mandatory,
         builder: (BuildContext ctx) => AlertDialog(
-          title: const Text('Mise à jour disponible'),
+          title: Text(ctx.l10n.updatePromptTitle),
           content: Text(
             update.versionName.isNotEmpty
-                ? 'La version ${update.versionName} est disponible. '
-                    'Elle s\'installe par-dessus l\'app actuelle — '
-                    'tes favoris et réglages sont conservés.'
-                : 'Une nouvelle version est disponible. Elle s\'installe '
-                    'par-dessus l\'app actuelle — tes favoris et réglages '
-                    'sont conservés.',
+                ? ctx.l10n.updatePromptBodyVersion(update.versionName)
+                : ctx.l10n.updatePromptBody,
           ),
           actions: <Widget>[
             if (!update.mandatory)
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('Plus tard'),
+                child: Text(ctx.l10n.resumeBannerDismiss),
               ),
             FilledButton(
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Mettre à jour'),
+              child: Text(ctx.l10n.updatePromptUpdate),
             ),
           ],
         ),
@@ -66,7 +63,7 @@ Future<void> _downloadWithProgress(
     builder: (BuildContext ctx) => PopScope(
       canPop: false,
       child: AlertDialog(
-        title: const Text('Téléchargement…'),
+        title: Text(ctx.l10n.moviesDownloading),
         content: ValueListenableBuilder<double>(
           valueListenable: progress,
           builder: (BuildContext _, double p, __) => Column(
@@ -74,7 +71,9 @@ Future<void> _downloadWithProgress(
             children: <Widget>[
               LinearProgressIndicator(value: p > 0 ? p : null),
               const SizedBox(height: 12),
-              Text(p > 0 ? '${(p * 100).toStringAsFixed(0)} %' : 'Démarrage…'),
+              Text(p > 0
+                  ? '${(p * 100).toStringAsFixed(0)} %'
+                  : ctx.l10n.updatePromptStarting),
             ],
           ),
         ),
@@ -96,10 +95,8 @@ Future<void> _downloadWithProgress(
 
   if (!ok && context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Échec du téléchargement. Réessaie, ou télécharge depuis le lien direct.',
-        ),
+      SnackBar(
+        content: Text(context.l10n.updatePromptFailed),
       ),
     );
   }

@@ -30,6 +30,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
 
+import '../../../core/i18n/app_l10n.dart';
 import '../../../core/observability/structured_logger.dart';
 import '../domain/cast_device.dart';
 import 'multicast_lock.dart';
@@ -310,8 +311,8 @@ class SsdpDiscovery {
       if (deviceElements.isEmpty) return null;
       final XmlElement device = deviceElements.first;
 
-      final String name =
-          _childText(device, 'friendlyName') ?? 'Récepteur DLNA';
+      final String name = _childText(device, 'friendlyName') ??
+          AppL10n.current.castDefaultDlnaReceiverName;
       final String? manufacturer = _childText(device, 'manufacturer');
       final String? model = _childText(device, 'modelName');
 

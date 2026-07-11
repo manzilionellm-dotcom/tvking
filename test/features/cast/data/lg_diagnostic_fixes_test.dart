@@ -14,7 +14,11 @@
 //  Ces tests verrouillent les 3 fixes.
 // =========================================================
 
+import 'dart:ui' show Locale;
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tv_king/core/i18n/locale_repository.dart';
 import 'package:tv_king/features/cast/data/cast_manager.dart';
 import 'package:tv_king/features/cast/data/cast_session_diagnostic.dart';
 import 'package:tv_king/features/cast/data/stream_probe.dart';
@@ -53,6 +57,16 @@ AttemptResult _failed(int idx, String msg) => AttemptResult(
     );
 
 void main() {
+
+  // Les messages de friendlyMessageFor sont désormais traduits via
+  // AppL10n (langue active). On force le français pour que les
+  // assertions FR ci-dessous restent déterministes quel que soit
+  // l'hôte de test (même pattern que black_box_test.dart).
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await LocaleRepository.instance.setLocale(const Locale('fr'));
+  });
   final CastManager mgr = CastManager.instance;
 
   // ============================================================

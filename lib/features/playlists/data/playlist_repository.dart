@@ -31,6 +31,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../core/app/device_memory.dart';
 import '../../../core/crash/crash_reporting.dart';
+import '../../../core/i18n/app_l10n.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/security/secret_cipher.dart';
 import '../../channels/domain/channel.dart';
@@ -507,12 +508,14 @@ class PlaylistRepository {
 
       if (parsed.channels.isEmpty) {
         // Source invalide → on lève ; le `catch` retire l'orpheline.
+        // Message affiché tel quel dans le flow d'ajout (bannière
+        // d'erreur) → traduit via AppL10n (pas de context ici).
         final String hint = parsed.warnings.isEmpty
             ? ''
-            : '\n\nDétails parser :\n${parsed.warnings.take(3).join('\n')}';
+            : '\n\n${AppL10n.current.playlistErrorParserDetails}\n'
+                '${parsed.warnings.take(3).join('\n')}';
         throw Exception(
-          'Aucune chaîne trouvée dans le fichier M3U. '
-          'URL invalide ou format incompatible ?$hint',
+          '${AppL10n.current.playlistErrorNoChannelsInM3u}$hint',
         );
       }
 
@@ -707,9 +710,8 @@ class PlaylistRepository {
 
       if (count == 0) {
         // Compte sans chaîne live → on lève ; le `catch` retire l'orpheline.
-        throw Exception(
-          'Aucune chaîne live disponible pour ce compte Xtream.',
-        );
+        // Affiché dans le flow d'ajout Xtream → traduit.
+        throw Exception(AppL10n.current.xtreamErrorNoLiveChannels);
       }
 
       final Playlist saved = newPlaylist.copyWith(
@@ -895,7 +897,8 @@ class PlaylistRepository {
           maxChannels: DeviceMemory.channelCap,
         );
         if (parsed.channels.isEmpty) {
-          throw Exception('Aucune chaîne dans la nouvelle version.');
+          // Affiché dans le SnackBar d'échec de re-synchro → traduit.
+          throw Exception(AppL10n.current.playlistErrorRefreshEmpty);
         }
         // Remplace les chaînes existantes
         await db.delete(
@@ -934,7 +937,8 @@ class PlaylistRepository {
           categories: cats,
         );
         if (channels.isEmpty) {
-          throw Exception('Aucune chaîne live disponible.');
+          // Affiché dans le SnackBar d'échec de re-synchro → traduit.
+          throw Exception(AppL10n.current.xtreamErrorRefreshNoLive);
         }
         await db.delete(
           'channels',

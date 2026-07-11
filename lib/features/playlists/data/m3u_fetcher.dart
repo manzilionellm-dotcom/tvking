@@ -29,6 +29,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/i18n/app_l10n.dart';
 import '../../player/data/player_settings.dart';
 import 'iptv_http.dart';
 import 'playlist_import_limits.dart';
@@ -124,7 +125,11 @@ abstract final class M3uFetcher {
           if (resp.statusCode != 200) {
             // Serveur qui refuse cette signature (souvent 403 / 401 /
             // un code maison comme 884). On essaie la signature suivante.
-            lastError = Exception('HTTP ${resp.statusCode} sur $url');
+            // Ces messages intermédiaires remontent à l'écran dans le
+            // détail de _friendlyFailure (« Dernière réponse : … ») →
+            // traduits via AppL10n (pas de context en couche data).
+            lastError =
+                Exception(AppL10n.current.m3uErrorHttp(resp.statusCode, url));
             continue;
           }
 
@@ -136,8 +141,7 @@ abstract final class M3uFetcher {
           final String body = _decodeBytes(bytes);
           final String head = body.trimLeft();
           if (head.isEmpty) {
-            lastError =
-                Exception('Le serveur a renvoyé une réponse vide pour $url');
+            lastError = Exception(AppL10n.current.m3uErrorEmptyResponse(url));
             continue;
           }
 
@@ -157,17 +161,13 @@ abstract final class M3uFetcher {
               // le parseur l'accepte, le fetcher ne doit pas la refuser.
               _hasMediaExtension(head);
           if (looksHtml && !looksM3u) {
-            lastError = Exception(
-              'Le serveur a renvoyé une page web (HTML), pas une playlist.',
-            );
+            lastError = Exception(AppL10n.current.m3uErrorHtmlResponse);
             continue;
           }
           if (!looksM3u) {
             // Ni balise M3U ni URL de flux : probablement une erreur
             // applicative en texte/JSON. On tente une autre signature.
-            lastError = Exception(
-              'Réponse sans aucune chaîne (ni #EXTM3U ni URL) pour $url',
-            );
+            lastError = Exception(AppL10n.current.m3uErrorNoChannels(url));
             continue;
           }
 
@@ -199,7 +199,7 @@ abstract final class M3uFetcher {
       }
 
       // Aucune signature n'a fonctionné → message clair.
-      throw Exception(_friendlyFailure(lastError, url, userAgents.length));
+      throw Exception(_friendlyFailure(lastError, userAgents.length));
     } finally {
       if (owns) client.close();
     }
@@ -209,16 +209,13 @@ abstract final class M3uFetcher {
   /// signatures. On y mentionne qu'on a essayé plusieurs lecteurs pour
   /// que l'utilisateur comprenne que le souci vient du serveur (et non
   /// d'un simple « mauvais UA » réglable à la main).
-  static String _friendlyFailure(Object? lastError, String url, int tried) {
+  static String _friendlyFailure(Object? lastError, int tried) {
+    final String last =
+        lastError?.toString().replaceFirst('Exception: ', '') ?? '';
     final String detail = lastError == null
         ? ''
-        : '\n\nDernière réponse : '
-            '${lastError.toString().replaceFirst('Exception: ', '')}';
-    return 'Impossible de récupérer la playlist : le serveur a refusé les '
-        '$tried signatures de lecteur testées (VLC, IBO/ExoPlayer, '
-        'Smarters, TiviMate, Kodi…). Vérifie que l\'URL est correcte et '
-        'que l\'abonnement est actif ; un lien « localhost » ne marche pas '
-        'depuis cet appareil.$detail';
+        : '\n\n${AppL10n.current.m3uErrorLastResponse(last)}';
+    return '${AppL10n.current.m3uErrorAllAgentsFailed(tried)}$detail';
   }
 
   /// Repli du test « ça ressemble à un M3U » : une extension média connue
@@ -248,8 +245,7 @@ abstract final class M3uFetcher {
       total += chunk.length;
       if (total > maxBytes) {
         throw PlaylistImportTooLarge(
-          'Playlist trop volumineuse (> ${maxBytes ~/ (1024 * 1024)} Mo). '
-          'Réduis la source ou filtre les catégories côté fournisseur.',
+          AppL10n.current.m3uErrorTooLarge(maxBytes ~/ (1024 * 1024)),
         );
       }
       builder.add(chunk);

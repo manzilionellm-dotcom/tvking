@@ -9,14 +9,26 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show Locale;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tv_king/core/crash/crash_reporting.dart';
+import 'package:tv_king/core/i18n/locale_repository.dart';
 import 'package:tv_king/core/observability/black_box.dart';
 import 'package:tv_king/core/observability/structured_logger.dart';
 
 void main() {
   late Directory tmp;
+
+  setUpAll(() async {
+    // Les titres des constats sont désormais traduits via AppL10n
+    // (langue active). On force le français pour que les assertions
+    // ci-dessous restent déterministes quel que soit l'hôte de test.
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await LocaleRepository.instance.setLocale(const Locale('fr'));
+  });
 
   setUp(() async {
     tmp = await Directory.systemTemp.createTemp('blackbox_test_');

@@ -203,7 +203,7 @@ class _SearchScreenState extends State<SearchScreen> {
           backgroundColor: AppColors.surfaceHigh,
           behavior: SnackBarBehavior.floating,
           content: Text(
-            'Recherche IA indisponible pour le moment.',
+            context.l10n.searchAiUnavailable,
             style: AppTextStyles.bodyMedium,
           ),
         ),
@@ -238,7 +238,7 @@ class _SearchScreenState extends State<SearchScreen> {
           backgroundColor: AppColors.surfaceHigh,
           behavior: SnackBarBehavior.floating,
           content: Text(
-            'Écris ce que tu veux regarder, ex. « un film d\'action récent ».',
+            context.l10n.searchAiEmptyPrompt,
             style: AppTextStyles.bodyMedium,
           ),
         ),
@@ -511,7 +511,7 @@ class _SearchHeader extends StatelessWidget {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      'IA',
+                      context.l10n.navAi,
                       style: AppTextStyles.bodyMedium.copyWith(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
@@ -570,8 +570,7 @@ class _IdleDiscovery extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Cherche une chaîne ou un film par son nom — ou appuie '
-                  'sur « IA » et décris ce que tu veux regarder.',
+                  context.l10n.searchAiTip,
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 12,
                     color: AppColors.textSecondary,
@@ -814,7 +813,7 @@ class _GenreChip extends StatelessWidget {
               Icon(genre.icon, size: 15, color: AppColors.accent),
               const SizedBox(width: 6),
               Text(
-                genre.label,
+                genre.localizedLabel,
                 style: AppTextStyles.bodyMedium.copyWith(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -921,7 +920,7 @@ class _DiscoveryPill extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      channel.genre.label,
+                      channel.genre.localizedLabel,
                       style: AppTextStyles.bodyMedium.copyWith(
                         fontSize: 10,
                         color: AppColors.textMuted,
@@ -1039,7 +1038,7 @@ class _NoResults extends StatelessWidget {
           child: FilledButton.icon(
             onPressed: onAiSearch,
             icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-            label: const Text('Recherche IA'),
+            label: Text(context.l10n.searchAiButton),
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.accent,
               foregroundColor: AppColors.voidSurface,

@@ -282,7 +282,7 @@ class _MetaLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final List<String> parts = <String>[
-      channel.genre.label,
+      channel.genre.localizedLabel,
       if (channel.country != null) channel.country!.name,
       if (channel.quality != ChannelQuality.sd) channel.quality.badge,
     ];

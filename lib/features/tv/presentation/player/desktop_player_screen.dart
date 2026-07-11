@@ -23,6 +23,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../channels/data/recently_watched_repository.dart';
 import '../../../channels/domain/channel.dart';
 import '../../../playlists/data/favorites_repository.dart';
@@ -359,8 +360,8 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
                                 fontWeight: FontWeight.w800,
                                 color: TvTokens.text)),
                         const SizedBox(height: 8),
-                        const Text('Chaîne indisponible pour le moment.',
-                            style: TextStyle(
+                        Text(context.l10n.tvChannelUnavailable,
+                            style: const TextStyle(
                                 fontSize: 16, color: TvTokens.mutedDim)),
                         const SizedBox(height: 20),
                         Container(
@@ -371,9 +372,8 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: TvTokens.gold, width: 2),
                           ),
-                          child: const Text(
-                              'Entrée : Réessayer   ·   Échap : Quitter',
-                              style: TextStyle(
+                          child: Text(context.l10n.playerDesktopRetryQuitHint,
+                              style: const TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w700,
                                   color: TvTokens.goldBright)),
@@ -492,7 +492,7 @@ class _DesktopControls extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   channel.category.trim().isEmpty
-                      ? 'Autres'
+                      ? context.l10n.tvOthers
                       : channel.category.trim(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -512,7 +512,7 @@ class _DesktopControls extends StatelessWidget {
               color: isFavorite ? TvTokens.gold : TvTokens.text,
               size: 30,
             ),
-            tooltip: 'Favori (F)',
+            tooltip: context.l10n.playerFavoriteShortcutTooltip,
           ),
           const SizedBox(width: 8),
           Container(

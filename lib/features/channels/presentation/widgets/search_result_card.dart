@@ -122,7 +122,7 @@ class SearchResultCard extends StatelessWidget {
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            genre.label,
+                            genre.localizedLabel,
                             style: AppTextStyles.bodyMedium.copyWith(
                               fontSize: 11,
                               color: AppColors.textMuted,

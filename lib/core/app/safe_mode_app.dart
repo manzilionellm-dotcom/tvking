@@ -19,13 +19,16 @@
 //  NB COULEURS : on utilise des couleurs LITTÉRALES ici (et non AppColors /
 //  TvTokens) — même principe que le widget de secours de guarded_main : cet
 //  écran ne doit dépendre de RIEN qui pourrait être la cause du plantage.
-//  NB TEXTES : en français en dur (pas de l10n) — c'est un écran de secours
-//  rare ; on évite toute dépendance à la génération i18n.
+//  NB TEXTES : traduits via AppLocalizations — cette MaterialApp étant
+//  SÉPARÉE de l'app principale, elle déclare ses PROPRES
+//  localizationsDelegates / supportedLocales (sinon `context.l10n` casse).
 // =========================================================
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../features/playlists/data/playlist_repository.dart';
+import '../../l10n/generated/app_localizations.dart';
+import '../i18n/l10n_extension.dart';
 import 'boot_guard.dart';
 
 // --- Palette Maison Noir (littérale, autonome) ---
@@ -46,6 +49,8 @@ class SafeModeApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: _bg,
@@ -92,24 +97,22 @@ class _SafeModeScreenState extends State<_SafeModeScreen> {
   Future<void> _startWithoutImport() => _run(() async {
         await BootGuard.instance.setSkipAutoImportOnce(true);
         await BootGuard.instance.clearFailures();
-      }, 'C\'est prêt. Rouvre l\'application : elle s\'ouvrira sur tes chaînes '
-          'déjà téléchargées, sans tout recharger.');
+      }, context.l10n.safeModeStartNoReloadDone);
 
   Future<void> _deleteSource() => _run(() async {
         await PlaylistRepository.instance.deleteAllPlaylists();
         await BootGuard.instance.setSkipAutoImportOnce(true);
         await BootGuard.instance.clearFailures();
-      }, 'Source supprimée. Rouvre l\'application, puis ré-ajoute ta liste '
-          '(ou laisse le revendeur la repousser).');
+      }, context.l10n.safeModeSourceDeletedDone);
 
   Future<void> _compatMode() => _run(() async {
         await BootGuard.instance.setCompatMode(true);
         await BootGuard.instance.clearFailures();
-      }, 'Mode compatibilité activé. Rouvre l\'application.');
+      }, context.l10n.safeModeCompatDone);
 
   Future<void> _retryNormal() => _run(() async {
         await BootGuard.instance.clearFailures();
-      }, 'On va réessayer un démarrage normal. Rouvre l\'application.');
+      }, context.l10n.safeModeRetryDone);
 
   Future<void> _closeApp() => SystemNavigator.pop();
 
@@ -142,7 +145,7 @@ class _SafeModeScreenState extends State<_SafeModeScreen> {
         const SizedBox(height: 28),
         _SafeButton(
           icon: Icons.power_settings_new_rounded,
-          label: 'Fermer l\'application',
+          label: context.l10n.safeModeCloseApp,
           autofocus: true,
           recommended: true,
           onSelect: _closeApp,
@@ -156,8 +159,8 @@ class _SafeModeScreenState extends State<_SafeModeScreen> {
         ? <Widget>[
             _SafeButton(
               icon: Icons.play_arrow_rounded,
-              label: 'Démarrer sans recharger',
-              hint: 'Ouvre l\'app sur les chaînes déjà téléchargées (recommandé).',
+              label: context.l10n.safeModeStartNoReload,
+              hint: context.l10n.safeModeStartNoReloadHint,
               autofocus: true,
               recommended: true,
               onSelect: _busy ? null : _startWithoutImport,
@@ -165,23 +168,23 @@ class _SafeModeScreenState extends State<_SafeModeScreen> {
             const SizedBox(height: 12),
             _SafeButton(
               icon: Icons.delete_sweep_rounded,
-              label: 'Supprimer ma source',
-              hint: 'Repart de zéro si la liste est trop lourde / corrompue.',
+              label: context.l10n.safeModeDeleteSource,
+              hint: context.l10n.safeModeDeleteSourceHint,
               onSelect: _busy ? null : _deleteSource,
             ),
             const SizedBox(height: 12),
             _SafeButton(
               icon: Icons.refresh_rounded,
-              label: 'Réessayer normalement',
-              hint: 'Relance un démarrage complet (avec rechargement).',
+              label: context.l10n.safeModeRetryNormal,
+              hint: context.l10n.safeModeRetryHintImport,
               onSelect: _busy ? null : _retryNormal,
             ),
           ]
         : <Widget>[
             _SafeButton(
               icon: Icons.tune_rounded,
-              label: 'Démarrer en mode compatibilité',
-              hint: 'Affichage simplifié si l\'écran plantait (recommandé).',
+              label: context.l10n.safeModeCompat,
+              hint: context.l10n.safeModeCompatHint,
               autofocus: true,
               recommended: true,
               onSelect: _busy ? null : _compatMode,
@@ -189,15 +192,15 @@ class _SafeModeScreenState extends State<_SafeModeScreen> {
             const SizedBox(height: 12),
             _SafeButton(
               icon: Icons.refresh_rounded,
-              label: 'Réessayer normalement',
-              hint: 'Relance un démarrage complet.',
+              label: context.l10n.safeModeRetryNormal,
+              hint: context.l10n.safeModeRetryHint,
               onSelect: _busy ? null : _retryNormal,
             ),
             const SizedBox(height: 12),
             _SafeButton(
               icon: Icons.delete_sweep_rounded,
-              label: 'Réinitialiser (supprimer la source)',
-              hint: 'Dernier recours : repart sur une app vierge.',
+              label: context.l10n.safeModeReset,
+              hint: context.l10n.safeModeResetHint,
               onSelect: _busy ? null : _deleteSource,
             ),
           ];
@@ -208,31 +211,29 @@ class _SafeModeScreenState extends State<_SafeModeScreen> {
       children: <Widget>[
         const Icon(Icons.health_and_safety_rounded, color: _gold, size: 48),
         const SizedBox(height: 16),
-        const Text('Mode de récupération',
-            style: TextStyle(
+        Text(context.l10n.safeModeTitle,
+            style: const TextStyle(
                 color: _text, fontSize: 30, fontWeight: FontWeight.w800)),
         const SizedBox(height: 10),
         Text(
           _isImportCrash
-              ? 'L\'application s\'est fermée plusieurs fois en chargeant tes '
-                  'chaînes (liste probablement trop lourde pour cet appareil). '
-                  'Choisis une option pour repartir :'
-              : 'L\'application s\'est fermée plusieurs fois au démarrage. '
-                  'Choisis une option pour repartir :',
+              ? context.l10n.safeModeBodyImport
+              : context.l10n.safeModeBody,
           style: const TextStyle(color: _muted, fontSize: 16, height: 1.4),
         ),
         const SizedBox(height: 26),
         FocusTraversalGroup(child: Column(children: actions)),
         if (_busy) ...<Widget>[
           const SizedBox(height: 20),
-          const Row(
+          Row(
             children: <Widget>[
-              SizedBox(
+              const SizedBox(
                   width: 18,
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2, color: _gold)),
-              SizedBox(width: 12),
-              Text('Un instant…', style: TextStyle(color: _muted, fontSize: 15)),
+              const SizedBox(width: 12),
+              Text(context.l10n.safeModeWait,
+                  style: const TextStyle(color: _muted, fontSize: 15)),
             ],
           ),
         ],

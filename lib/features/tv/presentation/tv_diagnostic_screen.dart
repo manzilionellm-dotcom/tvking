@@ -32,6 +32,8 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:native_video_player/native_video_player.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../channels/domain/channel.dart';
 import '../../device/data/device_identity.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -127,6 +129,8 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
   //  Déroulé séquentiel
   // ------------------------------------------------------------------
   Future<void> _run() async {
+    // Capturé AVANT les await : utilisable même si l'écran est démonté.
+    final AppLocalizations l10n = context.l10n;
     // Chaîne courante : sert d'hôte IPTV (DNS) + d'URL de flux (3 et 5).
     final List<Channel> chans = PlaylistRepository.instance.currentChannels;
     final Channel? chan = chans.isEmpty
@@ -136,57 +140,57 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
     final String? iptvHost =
         (streamUrl != null) ? Uri.tryParse(streamUrl)?.host : null;
 
-    await _runCaptive();
-    await _runDns(iptvHost);
-    await _runStream(streamUrl);
-    await _runSource();
-    await _runPlayer(streamUrl);
+    await _runCaptive(l10n);
+    await _runDns(l10n, iptvHost);
+    await _runStream(l10n, streamUrl);
+    await _runSource(l10n);
+    await _runPlayer(l10n, streamUrl);
 
     _computeVerdict();
     _done = true;
     if (mounted) setState(() {});
-    _log('===== FIN DIAGNOSTIC — VERDICT: ${_verdictLabel()} =====');
+    _log('===== FIN DIAGNOSTIC — VERDICT: ${_verdict.name} =====');
   }
 
   // 1. Portail captif : un 204 « nu » = sortie Internet libre. Un 200 avec
   // corps, un 302 ou un autre code = portail captif / interception.
-  Future<void> _runCaptive() async {
-    _set(_captive, _Stat.running, 'requête generate_204…');
+  Future<void> _runCaptive(AppLocalizations l10n) async {
+    _set(_captive, _Stat.running, l10n.tvDiagCaptiveRunning);
     try {
       final http.Response r = await http
           .get(Uri.parse('http://connectivitycheck.gstatic.com/generate_204'))
           .timeout(_kCheckTimeout);
       if (r.statusCode == 204 && r.body.isEmpty) {
-        _set(_captive, _Stat.ok, 'HTTP 204 (sortie Internet libre)');
+        _set(_captive, _Stat.ok, l10n.tvDiagCaptiveOk);
       } else {
         _set(_captive, _Stat.fail,
-            'HTTP ${r.statusCode} corps=${r.body.length}o → portail captif probable');
+            l10n.tvDiagCaptiveFail(r.statusCode, r.body.length));
       }
     } on TimeoutException {
-      _set(_captive, _Stat.timeout, 'pas de réponse en 8 s');
+      _set(_captive, _Stat.timeout, l10n.tvDiagNoReply);
     } catch (e) {
       _set(_captive, _Stat.fail, _err(e));
     }
   }
 
   // 2. DNS : on résout l'hôte de la chaîne courante. Pas de chaîne = INCONNU.
-  Future<void> _runDns(String? host) async {
+  Future<void> _runDns(AppLocalizations l10n, String? host) async {
     if (host == null || host.isEmpty) {
-      _set(_dns, _Stat.unknown, 'aucune chaîne chargée → hôte INCONNU');
+      _set(_dns, _Stat.unknown, l10n.tvDiagNoChannelHost);
       return;
     }
-    _set(_dns, _Stat.running, 'lookup $host…');
+    _set(_dns, _Stat.running, l10n.tvDiagDnsLookup(host));
     try {
       final List<InternetAddress> ips = await InternetAddress.lookup(host)
           .timeout(_kCheckTimeout);
       if (ips.isEmpty) {
-        _set(_dns, _Stat.fail, '$host → aucune IP');
+        _set(_dns, _Stat.fail, l10n.tvDiagDnsNoIp(host));
       } else {
         _set(_dns, _Stat.ok,
             '$host → ${ips.map((InternetAddress a) => a.address).join(', ')}');
       }
     } on TimeoutException {
-      _set(_dns, _Stat.timeout, '$host : pas de réponse DNS en 8 s');
+      _set(_dns, _Stat.timeout, l10n.tvDiagDnsTimeout(host));
     } catch (e) {
       _set(_dns, _Stat.fail, '$host : ${_err(e)}');
     }
@@ -195,12 +199,12 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
   // 3. Joignabilité du flux : HEAD (léger) puis repli GET. On AFFICHE le code.
   // 456 = blocage fournisseur (IP datacenter/cloud) — ici on est sur l'IP de
   // la box, donc un 456 prouverait que le fournisseur bloque même le LAN.
-  Future<void> _runStream(String? streamUrl) async {
+  Future<void> _runStream(AppLocalizations l10n, String? streamUrl) async {
     if (streamUrl == null || streamUrl.isEmpty) {
-      _set(_stream, _Stat.unknown, 'aucune chaîne chargée → URL INCONNUE');
+      _set(_stream, _Stat.unknown, l10n.tvDiagNoChannelUrl);
       return;
     }
-    _set(_stream, _Stat.running, 'HEAD du flux…');
+    _set(_stream, _Stat.running, l10n.tvDiagStreamHead);
     final Uri uri = Uri.parse(streamUrl);
     try {
       int code;
@@ -219,14 +223,16 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
         await g.stream.listen((_) {}).cancel();
       }
       if (code == 456) {
-        _set(_stream, _Stat.fail, 'HTTP 456 — fournisseur bloque cette IP');
+        // Les traductions gardent toutes « HTTP 456 » littéral (le verdict
+        // s'appuie sur detail.contains('456')).
+        _set(_stream, _Stat.fail, l10n.tvDiagStream456);
       } else if (code >= 200 && code < 400) {
-        _set(_stream, _Stat.ok, 'HTTP $code (flux joignable)');
+        _set(_stream, _Stat.ok, l10n.tvDiagStreamOk(code));
       } else {
         _set(_stream, _Stat.fail, 'HTTP $code');
       }
     } on TimeoutException {
-      _set(_stream, _Stat.timeout, 'pas de réponse en 8 s');
+      _set(_stream, _Stat.timeout, l10n.tvDiagNoReply);
     } catch (e) {
       _set(_stream, _Stat.fail, _err(e));
     }
@@ -234,8 +240,8 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
 
   // 4. Source poussée : GET /api/device-source/<MAC>. Lecture seule. On montre
   // le code + si une source est assignée à cette box.
-  Future<void> _runSource() async {
-    _set(_source, _Stat.running, 'lecture MAC…');
+  Future<void> _runSource(AppLocalizations l10n) async {
+    _set(_source, _Stat.running, l10n.tvDiagSourceReadingMac);
     String mac;
     try {
       mac = await DeviceIdentity.instance.mac;
@@ -243,7 +249,7 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
       mac = DeviceIdentity.instance.macSync;
     }
     if (!mac.startsWith('MK:')) {
-      _set(_source, _Stat.unknown, 'MAC INCONNUE ($mac)');
+      _set(_source, _Stat.unknown, l10n.tvDiagSourceMacUnknown(mac));
       return;
     }
     _set(_source, _Stat.running, 'GET device-source ($mac)…');
@@ -265,9 +271,9 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
           (b.contains('"source"') && !b.contains('"source":null')) ||
               (b.contains('"sources"') && b.contains('{'));
       _set(_source, hasSource ? _Stat.ok : _Stat.fail,
-          hasSource ? 'HTTP 200 — source assignée' : 'HTTP 200 — aucune source assignée');
+          hasSource ? l10n.tvDiagSourceAssigned : l10n.tvDiagSourceNone);
     } on TimeoutException {
-      _set(_source, _Stat.timeout, 'pas de réponse en 8 s');
+      _set(_source, _Stat.timeout, l10n.tvDiagNoReply);
     } catch (e) {
       _set(_source, _Stat.fail, _err(e));
     }
@@ -276,12 +282,12 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
   // 5. Sonde lecteur : on monte une MINI NativeVideoView (Media3/ExoPlayer,
   // même moteur que le lecteur de prod) sur l'URL de la chaîne courante et on
   // attend la 1re image (OK) ou une erreur (FAIL). On détruit tout après.
-  Future<void> _runPlayer(String? streamUrl) async {
+  Future<void> _runPlayer(AppLocalizations l10n, String? streamUrl) async {
     if (streamUrl == null || streamUrl.isEmpty) {
-      _set(_player, _Stat.unknown, 'aucune chaîne chargée → URL INCONNUE');
+      _set(_player, _Stat.unknown, l10n.tvDiagNoChannelUrl);
       return;
     }
-    _set(_player, _Stat.running, 'ouverture sonde ExoPlayer…');
+    _set(_player, _Stat.running, l10n.tvDiagPlayerOpening);
     final Completer<_Stat> c = Completer<_Stat>();
     final NativeVideoController ctrl =
         NativeVideoController(initialUrl: streamUrl);
@@ -299,9 +305,9 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
     try {
       final _Stat s = await c.future.timeout(_kCheckTimeout);
       _set(_player, s,
-          s == _Stat.ok ? '1re image décodée et affichée' : 'ExoPlayer a renvoyé une erreur');
+          s == _Stat.ok ? l10n.tvDiagPlayerFirstFrame : l10n.tvDiagPlayerError);
     } on TimeoutException {
-      _set(_player, _Stat.timeout, 'aucune image en 8 s');
+      _set(_player, _Stat.timeout, l10n.tvDiagPlayerNoFrame);
     } catch (e) {
       _set(_player, _Stat.fail, _err(e));
     } finally {
@@ -347,16 +353,26 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
   String _verdictLabel() {
     switch (_verdict) {
       case _Verdict.running:
-        return 'DIAGNOSTIC EN COURS…';
+        return context.l10n.tvDiagVerdictRunning;
       case _Verdict.pivotOk:
-        return 'PIVOT ON-DEVICE VALIDÉ';
+        return context.l10n.tvDiagVerdictPivotOk;
       case _Verdict.networkBlock:
-        return 'BLOCAGE CÔTÉ RÉSEAU';
+        return context.l10n.tvDiagVerdictNetworkBlock;
       case _Verdict.playerBug:
-        return 'BUG PLAYER';
+        return context.l10n.tvDiagVerdictPlayerBug;
       case _Verdict.partial:
-        return 'DIAGNOSTIC PARTIEL';
+        return context.l10n.tvDiagVerdictPartial;
     }
+  }
+
+  /// Libellé UI localisé d'une vérif (le `name` du [_Check] reste la
+  /// version technique française, écrite telle quelle dans logcat).
+  String _checkLabel(_Check c) {
+    if (identical(c, _captive)) return context.l10n.tvDiagCheckCaptive;
+    if (identical(c, _dns)) return context.l10n.tvDiagCheckDns;
+    if (identical(c, _stream)) return context.l10n.tvDiagCheckStream;
+    if (identical(c, _source)) return context.l10n.tvDiagCheckSource;
+    return context.l10n.tvDiagCheckPlayer;
   }
 
   Color _verdictColor() {
@@ -420,9 +436,9 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  const Text(
-                    'DIAGNOSTIC ON-DEVICE — DeFew TV',
-                    style: TextStyle(
+                  Text(
+                    context.l10n.tvDiagTitle,
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 30,
                       fontWeight: FontWeight.w800,
@@ -430,9 +446,9 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
-                    'Teste si la box peut jouer le flux depuis sa propre IP.',
-                    style: TextStyle(color: Colors.white54, fontSize: 18),
+                  Text(
+                    context.l10n.tvDiagSubtitle,
+                    style: const TextStyle(color: Colors.white54, fontSize: 18),
                   ),
                   const SizedBox(height: 20),
                   // ----- Verdict -----
@@ -500,7 +516,7 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: <Widget>[
                                   Text(
-                                    c.name,
+                                    _checkLabel(c),
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 22,
@@ -527,9 +543,10 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
                   const SizedBox(height: 12),
                   Row(
                     children: <Widget>[
-                      const Text(
-                        'RETOUR pour quitter',
-                        style: TextStyle(color: Colors.white38, fontSize: 16),
+                      Text(
+                        context.l10n.tvDiagExitHint,
+                        style: const TextStyle(
+                            color: Colors.white38, fontSize: 16),
                       ),
                       const Spacer(),
                       // Sonde lecteur (5) : mini-vue native montée seulement

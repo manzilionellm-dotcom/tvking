@@ -572,7 +572,7 @@ class RecordingForegroundService : Service() {
     private fun buildNotification(title: String): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle("Enregistrement en cours")
+            .setContentTitle(getString(R.string.cast_notif_recording_title))
             .setContentText(title)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -594,13 +594,13 @@ class RecordingForegroundService : Service() {
 
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Enregistrements",
+            getString(R.string.cast_notif_recording_channel),
             // LOW = pas de son ni de heads-up, juste l'icône dans la
             // barre de statut. Le user n'a pas envie d'être harcelé
             // pendant son match de foot.
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Notification persistante pendant un enregistrement"
+            description = getString(R.string.cast_notif_recording_channel_desc)
             setShowBadge(false)
         }
         mgr.createNotificationChannel(channel)

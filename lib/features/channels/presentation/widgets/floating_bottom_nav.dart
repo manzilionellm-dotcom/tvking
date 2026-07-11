@@ -27,6 +27,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/tv_focusable.dart';
@@ -41,13 +42,29 @@ class FloatingBottomNav extends StatelessWidget {
   final int currentIndex;
   final void Function(int index) onTap;
 
-  static const List<_NavItem> _items = <_NavItem>[
-    _NavItem(icon: Icons.home_rounded, label: 'Home'),
-    _NavItem(icon: Icons.sports_soccer_rounded, label: 'Football'),
-    _NavItem(icon: Icons.newspaper_rounded, label: 'Information'),
-    _NavItem(icon: Icons.child_care_rounded, label: 'Enfant'),
-    _NavItem(icon: Icons.movie_creation_rounded, label: 'Cinéma'),
+  //  Icônes constantes ; les libellés viennent de `context.l10n` et sont
+  //  résolus dans `build` (une liste `static const` n'a pas de context).
+  static const List<IconData> _icons = <IconData>[
+    Icons.home_rounded,
+    Icons.sports_soccer_rounded,
+    Icons.newspaper_rounded,
+    Icons.child_care_rounded,
+    Icons.movie_creation_rounded,
   ];
+
+  List<_NavItem> _items(BuildContext context) {
+    final List<String> labels = <String>[
+      context.l10n.navHome,
+      context.l10n.navFootball,
+      context.l10n.navInformation,
+      context.l10n.navKids,
+      context.l10n.catFilterMovies,
+    ];
+    return <_NavItem>[
+      for (int i = 0; i < _icons.length; i++)
+        _NavItem(icon: _icons[i], label: labels[i]),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,8 +87,8 @@ class FloatingBottomNav extends StatelessWidget {
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: List<Widget>.generate(_items.length, (int i) {
-                  final _NavItem item = _items[i];
+                children: List<Widget>.generate(_icons.length, (int i) {
+                  final _NavItem item = _items(context)[i];
                   final bool selected = i == currentIndex;
                   return _NavButton(
                     icon: item.icon,

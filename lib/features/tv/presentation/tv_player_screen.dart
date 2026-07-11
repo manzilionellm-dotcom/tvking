@@ -524,10 +524,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       );
       if (mounted) {
         setState(() => _activeRecording = rec);
-        _flash('Enregistrement en cours…');
+        _flash(context.l10n.tvPlayerRecStarted);
       }
     } catch (e) {
-      _flash('Erreur enregistrement');
+      _flash(context.l10n.tvPlayerRecError);
     }
   }
 
@@ -555,8 +555,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     }
     if (mounted) {
       _flash(bytes > 0
-          ? 'Enregistrement sauvegardé (${_humanSize(bytes)})'
-          : 'Enregistrement vide');
+          ? context.l10n.tvPlayerRecSaved(_humanSize(bytes))
+          : context.l10n.tvPlayerRecEmpty);
     }
   }
 
@@ -937,14 +937,14 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                         const Icon(Icons.nightlight_round,
                             color: TvTokens.gold, size: 52),
                         const SizedBox(height: 18),
-                        Text('Tu regardes encore ?',
+                        Text(context.l10n.tvPlayerStillWatching,
                             style: TextStyle(
                                 fontSize: TvDimens.title + 6,
                                 fontWeight: FontWeight.w800,
                                 color: TvTokens.text)),
                         const SizedBox(height: 10),
                         Text(
-                            'Appuie sur n\'importe quelle touche pour continuer.',
+                            context.l10n.tvPlayerStillWatchingHint,
                             style: TextStyle(
                                 fontSize: TvDimens.body,
                                 color: TvTokens.muted)),
@@ -1092,7 +1092,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                         Icon(Icons.fiber_manual_record_rounded,
                             color: TvTokens.live, size: 16),
                         const SizedBox(width: 8),
-                        Text('REC',
+                        Text(context.l10n.playerRec,
                             style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,
@@ -1230,7 +1230,7 @@ class _ControlsBar extends StatelessWidget {
               children: <Widget>[
                 _CtrlButton(
                   icon: Icons.calendar_month_rounded,
-                  label: 'Guide',
+                  label: context.l10n.tvNavGuide,
                   onTap: onGuide,
                   focused: focusedIndex == 0,
                 ),
@@ -1239,7 +1239,9 @@ class _ControlsBar extends StatelessWidget {
                   icon: isRecording
                       ? Icons.stop_rounded
                       : Icons.fiber_manual_record_rounded,
-                  label: isRecording ? 'Stop' : 'REC',
+                  label: isRecording
+                      ? context.l10n.tvPlayerStop
+                      : context.l10n.playerRec,
                   onTap: onRecord,
                   accent: TvTokens.live,
                   active: isRecording,
@@ -1250,7 +1252,7 @@ class _ControlsBar extends StatelessWidget {
                   icon: isFavorite
                       ? Icons.favorite_rounded
                       : Icons.favorite_border_rounded,
-                  label: 'Favori',
+                  label: context.l10n.tvPlayerFavorite,
                   onTap: onFavorite,
                   accent: TvTokens.gold,
                   active: isFavorite,
@@ -1259,7 +1261,7 @@ class _ControlsBar extends StatelessWidget {
                 const SizedBox(width: 34),
                 _CtrlButton(
                   icon: Icons.grid_view_rounded,
-                  label: 'Multi',
+                  label: context.l10n.tvPlayerMulti,
                   onTap: onMulti,
                   focused: focusedIndex == 3,
                 ),

@@ -21,6 +21,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/app_l10n.dart';
+
 /// Genre canonique d'une chaîne.
 enum ChannelGenre {
   sports('Sports', Icons.sports_soccer_rounded),
@@ -37,8 +39,28 @@ enum ChannelGenre {
 
   const ChannelGenre(this.label, this.icon);
 
+  /// Libellé CANONIQUE (français) — sert de clé technique (rapports de
+  /// diagnostic cast, requêtes de recherche pré-remplies). Pour tout
+  /// AFFICHAGE à l'écran, utiliser [localizedLabel].
   final String label;
   final IconData icon;
+
+  /// Libellé traduit dans la langue active — à utiliser pour l'UI.
+  /// Résolu via [AppL10n] (couche domain, pas de BuildContext ici) :
+  /// c'est un instantané, recalculé à chaque lecture.
+  String get localizedLabel => switch (this) {
+        ChannelGenre.sports => AppL10n.current.genreSports,
+        ChannelGenre.movies => AppL10n.current.genreMovies,
+        ChannelGenre.series => AppL10n.current.genreSeries,
+        ChannelGenre.kids => AppL10n.current.genreKids,
+        ChannelGenre.news => AppL10n.current.genreNews,
+        ChannelGenre.music => AppL10n.current.genreMusic,
+        ChannelGenre.documentary => AppL10n.current.genreDocumentary,
+        ChannelGenre.entertainment => AppL10n.current.genreEntertainment,
+        ChannelGenre.international => AppL10n.current.genreInternational,
+        ChannelGenre.adult => AppL10n.current.genreAdult,
+        ChannelGenre.other => AppL10n.current.genreOther,
+      };
 }
 
 /// Pays détecté (sous-ensemble des plus représentés en IPTV).

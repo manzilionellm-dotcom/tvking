@@ -16,6 +16,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/favorite_collections_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
@@ -27,10 +28,17 @@ import 'tv_player_screen.dart';
 import 'tv_shell.dart';
 
 /// Noms proposés à la création (clic direct, pas de clavier).
-const List<String> _kPresetNames = <String>[
-  'Sport', 'Films', 'Séries', 'Enfants', 'Actus',
-  'Musique', 'Documentaires', 'Perso 1', 'Perso 2',
-];
+List<String> _presetNames(BuildContext context) => <String>[
+      context.l10n.catSport,
+      context.l10n.catMovies,
+      context.l10n.tvNavSeries,
+      context.l10n.catKids,
+      context.l10n.tvCollectionsPresetNews,
+      context.l10n.catMusic,
+      context.l10n.sectionDocs,
+      context.l10n.tvCollectionsPresetCustom1,
+      context.l10n.tvCollectionsPresetCustom2,
+    ];
 
 // =========================================================
 //  ÉCRAN 1 — liste des collections + création
@@ -59,35 +67,33 @@ class _TvCollectionsScreenState extends State<TvCollectionsScreen> {
         listenable: repo,
         builder: (BuildContext context, _) {
           final List<FavoriteCollection> cols = repo.collections;
-          final List<String> available = _kPresetNames
+          final List<String> available = _presetNames(context)
               .where((String n) => repo.byName(n) == null)
               .toList(growable: false);
           return Padding(
             padding: const EdgeInsets.fromLTRB(40, 28, 40, 28),
             child: ListView(
               children: <Widget>[
-                const Text(
-                  'Mes collections',
-                  style: TextStyle(
+                Text(
+                  context.l10n.tvCollectionsTitle,
+                  style: const TextStyle(
                       fontSize: 30,
                       fontWeight: FontWeight.w800,
                       color: TvTokens.text),
                 ),
                 const SizedBox(height: 6),
-                const Text(
-                  'Range tes chaînes favorites par thème. Une collection = '
-                  'une liste que tu ouvres en un clic.',
-                  style: TextStyle(fontSize: 15, color: TvTokens.muted),
+                Text(
+                  context.l10n.tvCollectionsSubtitle,
+                  style: const TextStyle(fontSize: 15, color: TvTokens.muted),
                 ),
                 const SizedBox(height: 22),
                 // ----- Collections existantes -----
                 if (cols.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 8),
-                    child: Text('Aucune collection pour l\'instant — crée la '
-                        'première ci-dessous. 👇',
-                        style:
-                            TextStyle(fontSize: 15, color: TvTokens.mutedDim)),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(context.l10n.tvCollectionsEmpty,
+                        style: const TextStyle(
+                            fontSize: 15, color: TvTokens.mutedDim)),
                   ),
                 for (final FavoriteCollection c in cols)
                   Padding(
@@ -126,7 +132,7 @@ class _TvCollectionsScreenState extends State<TvCollectionsScreen> {
                                       fontWeight: FontWeight.w700,
                                       color: fg)),
                               const Spacer(),
-                              Text('${c.ids.length} chaîne(s)',
+                              Text(context.l10n.channelCount(c.ids.length),
                                   style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
@@ -143,9 +149,9 @@ class _TvCollectionsScreenState extends State<TvCollectionsScreen> {
                 const SizedBox(height: 18),
                 // ----- Création (pastilles de noms) -----
                 if (available.isNotEmpty) ...<Widget>[
-                  const Text(
-                    'CRÉER UNE COLLECTION',
-                    style: TextStyle(
+                  Text(
+                    context.l10n.tvCollectionsCreateSection,
+                    style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: TvTokens.mutedDim,
@@ -303,8 +309,8 @@ class _TvCollectionDetailScreenState
                               const SizedBox(width: 6),
                               Text(
                                   _confirmDelete
-                                      ? 'Confirmer ?'
-                                      : 'Supprimer',
+                                      ? context.l10n.tvCollectionsConfirmDelete
+                                      : context.l10n.buttonDelete,
                                   style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w700,
@@ -318,16 +324,15 @@ class _TvCollectionDetailScreenState
                 ),
                 const SizedBox(height: 20),
                 // ----- Chaînes de la collection (OK = lecture) -----
-                _section('DANS LA COLLECTION (${col.ids.length})'),
+                _section(
+                    context.l10n.tvCollectionsInCollection(col.ids.length)),
                 const SizedBox(height: 10),
                 if (col.ids.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 6),
-                    child: Text(
-                        'Vide. Ajoute des chaînes depuis tes favoris '
-                        'ci-dessous. 👇',
-                        style:
-                            TextStyle(fontSize: 15, color: TvTokens.mutedDim)),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(context.l10n.tvCollectionsEmptyDetail,
+                        style: const TextStyle(
+                            fontSize: 15, color: TvTokens.mutedDim)),
                   )
                 else
                   SizedBox(
@@ -363,14 +368,12 @@ class _TvCollectionDetailScreenState
                   ),
                 const SizedBox(height: 22),
                 // ----- Mes favoris (OK = ajouter/retirer) -----
-                _section('MES FAVORIS — OK pour ajouter/retirer'),
+                _section(context.l10n.tvCollectionsFavsSection),
                 const SizedBox(height: 10),
                 if (favIds.isEmpty)
-                  const Text(
-                      'Aucun favori pour l\'instant. Mets des chaînes en '
-                      'favori (appui long sur OK dans le Direct), puis '
-                      'reviens ici.',
-                      style: TextStyle(fontSize: 15, color: TvTokens.mutedDim))
+                  Text(context.l10n.tvCollectionsNoFavorites,
+                      style: const TextStyle(
+                          fontSize: 15, color: TvTokens.mutedDim))
                 else
                   FutureBuilder<List<Channel>>(
                     future: _resolve(favIds),

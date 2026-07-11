@@ -354,8 +354,7 @@ class TvKingApp extends StatelessWidget {
 
           // Internationalisation — la liste des langues supportées
           // sort de `LocaleRepository`. Quand l'utilisateur choisit
-          // "Système" (locale=null), Flutter retombe sur la langue
-          // de l'OS s'il y a un .arb correspondant, sinon sur fr.
+          // "Système" (locale=null), l'app suit la langue de l'OS.
           locale: LocaleRepository.instance.locale,
           supportedLocales: LocaleRepository.supportedLocales,
           localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
@@ -364,6 +363,21 @@ class TvKingApp extends StatelessWidget {
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
           ],
+          // MÊME logique de résolution que TvApp (cohérence phone/TV) :
+          //   1) choix explicite de l'utilisateur (Réglages) ;
+          //   2) langue de l'OS si supportée (match par code langue) ;
+          //   3) repli SÛR = anglais (jamais la 1re langue de la liste).
+          localeResolutionCallback:
+              (Locale? device, Iterable<Locale> supported) {
+            final Locale? forced = LocaleRepository.instance.locale;
+            if (forced != null) return forced;
+            if (device != null) {
+              for (final Locale s in supported) {
+                if (s.languageCode == device.languageCode) return s;
+              }
+            }
+            return const Locale('en');
+          },
 
           // Clamp du textScaler système. Sur Android TV, l'option
           // "Accessibilité → Taille du texte" peut monter à 200%,

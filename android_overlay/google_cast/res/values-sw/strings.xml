@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Généré par l'overlay Cast : textes des notifications natives.
+     Android choisit tout seul la langue selon la langue de la TV.
+     values/ = repli anglais (même logique que l'app Flutter). -->
+<resources>
+    <string name="cast_notif_recording_title">Kurekodi kunaendelea</string>
+    <string name="cast_notif_recording_channel">Rekodi</string>
+    <string name="cast_notif_recording_channel_desc">Arifa ya kudumu wakati wa kurekodi</string>
+    <string name="cast_notif_playback_channel">Kucheza sauti</string>
+    <string name="cast_notif_playback_channel_desc">Kucheza sauti chinichini (hali ya vipokea sauti)</string>
+</resources>

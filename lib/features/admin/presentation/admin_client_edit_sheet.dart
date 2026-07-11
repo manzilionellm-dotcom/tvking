@@ -17,6 +17,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../playlists/data/source_link_utils.dart';
@@ -83,19 +84,19 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
   String? _validate() {
     final String mac = _macCtrl.text.trim().toUpperCase();
     if (!RegExp(r'^MK(?::[0-9A-F]{2}){5}$').hasMatch(mac)) {
-      return 'MAC invalide. Format attendu : MK:AA:BB:CC:DD:EE';
+      return context.l10n.adminMacInvalid;
     }
     // Le nom de playlist est optionnel — on met "Abonnement IPTV"
     // par défaut si vide. Permet à l'admin de juste taper MAC + URL.
     if (_type == 'm3u') {
       if (_m3uUrlCtrl.text.trim().isEmpty) {
-        return 'L\'URL M3U est obligatoire.';
+        return context.l10n.adminM3uRequired;
       }
     } else {
       if (_serverCtrl.text.trim().isEmpty ||
           _usernameCtrl.text.trim().isEmpty ||
           _passwordCtrl.text.trim().isEmpty) {
-        return 'Serveur, utilisateur ET mot de passe sont requis.';
+        return context.l10n.adminXtreamFieldsRequired;
       }
     }
     return null;
@@ -152,7 +153,7 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
     setState(() => _saving = true);
 
     final String pName = _playlistNameCtrl.text.trim().isEmpty
-        ? 'Abonnement IPTV'
+        ? context.l10n.adminDefaultPlaylistName
         : _playlistNameCtrl.text.trim();
 
     final AdminPlaylist playlist = AdminPlaylist(
@@ -224,11 +225,13 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  _isEdit ? 'Modifier le client' : 'Nouveau client',
+                  _isEdit
+                      ? context.l10n.adminEditClientTitle
+                      : context.l10n.adminNewClient,
                   style: AppTextStyles.headlineLarge.copyWith(fontSize: 22),
                 ),
                 const SizedBox(height: 16),
-                _label('MAC du client'),
+                _label(context.l10n.adminClientMacLabel),
                 TextField(
                   controller: _macCtrl,
                   enabled: !_isEdit, // MAC immuable en modif
@@ -245,28 +248,28 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                _label('Nom du client (optionnel)'),
+                _label(context.l10n.adminClientNameLabel),
                 TextField(
                   controller: _nameCtrl,
-                  decoration: const InputDecoration(
-                    hintText: 'Ex : Lionel, Salon, Maman…',
+                  decoration: InputDecoration(
+                    hintText: context.l10n.adminClientNameHint,
                   ),
                 ),
                 const SizedBox(height: 20),
-                _SectionDivider(label: 'PLAYLIST'),
+                _SectionDivider(label: context.l10n.adminPlaylistSection),
                 const SizedBox(height: 12),
                 _typeSwitcher(),
                 const SizedBox(height: 14),
-                _label('Nom de la playlist (optionnel)'),
+                _label(context.l10n.adminPlaylistNameLabel),
                 TextField(
                   controller: _playlistNameCtrl,
-                  decoration: const InputDecoration(
-                    hintText: 'Défaut : "Abonnement IPTV"',
+                  decoration: InputDecoration(
+                    hintText: context.l10n.adminPlaylistNameHint,
                   ),
                 ),
                 const SizedBox(height: 14),
                 if (_type == 'm3u') ...<Widget>[
-                  _label('URL M3U'),
+                  _label(context.l10n.loginUrlM3u),
                   TextField(
                     controller: _m3uUrlCtrl,
                     keyboardType: TextInputType.url,
@@ -277,7 +280,7 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  _label('URL EPG (optionnel)'),
+                  _label(context.l10n.adminEpgUrlLabel),
                   TextField(
                     controller: _epgUrlCtrl,
                     keyboardType: TextInputType.url,
@@ -287,7 +290,7 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
                     ),
                   ),
                 ] else ...<Widget>[
-                  _label('Serveur Xtream'),
+                  _label(context.l10n.loginServerXtream),
                   TextField(
                     controller: _serverCtrl,
                     keyboardType: TextInputType.url,
@@ -297,13 +300,13 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  _label('Utilisateur'),
+                  _label(context.l10n.loginUsername),
                   TextField(
                     controller: _usernameCtrl,
                     autocorrect: false,
                   ),
                   const SizedBox(height: 12),
-                  _label('Mot de passe'),
+                  _label(context.l10n.loginPassword),
                   TextField(
                     controller: _passwordCtrl,
                     obscureText: true,
@@ -320,7 +323,9 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
                         ? Icons.save_rounded
                         : Icons.check_rounded),
                     label: Text(
-                      _isEdit ? 'Enregistrer' : 'Ajouter',
+                      _isEdit
+                          ? context.l10n.buttonSave
+                          : context.l10n.buttonAdd,
                     ),
                   ),
                 ),
@@ -329,7 +334,7 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
                   width: double.infinity,
                   child: TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Annuler'),
+                    child: Text(context.l10n.buttonCancel),
                   ),
                 ),
               ],
@@ -366,7 +371,7 @@ class _AdminClientEditSheetState extends State<AdminClientEditSheet> {
             child: _typeButton('M3U', 'm3u'),
           ),
           Expanded(
-            child: _typeButton('Xtream Codes', 'xtream'),
+            child: _typeButton(context.l10n.playlistTypeXtream, 'xtream'),
           ),
         ],
       ),

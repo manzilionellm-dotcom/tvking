@@ -18,13 +18,15 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../i18n/l10n_extension.dart';
+
 /// Une variante d'accent : la couleur principale + ses deux dérivées
 /// (claire pour les brillances/focus, profonde pour les bordures).
 @immutable
 class AccentTheme {
   const AccentTheme({
     required this.id,
-    required this.label,
+    required this.fallbackLabel,
     required this.accent,
     required this.bright,
     required this.muted,
@@ -33,8 +35,12 @@ class AccentTheme {
   /// Identifiant stable stocké en préférences (ne pas traduire).
   final String id;
 
-  /// Libellé affiché dans le sélecteur.
-  final String label;
+  /// Libellé de REPLI (français). Ce catalogue est `const` et n'a pas de
+  /// `BuildContext` : au point d'affichage, passe par [accentThemeLabel]
+  /// qui résout la traduction via `context.l10n` (fallback = ce champ).
+  // Libellé de REPLI (jamais affiché tel quel pour les thèmes connus :
+  // l'UI passe par accentThemeLabel, qui traduit par id).
+  final String fallbackLabel;
 
   /// Couleur d'accent principale (boutons, onglet actif, liserés…).
   final Color accent;
@@ -55,82 +61,116 @@ const List<AccentTheme> kAccentThemes = <AccentTheme>[
   // (1er du catalogue = appliqué tant que le client/panel n'a rien choisi.)
   AccentTheme(
     id: 'champagne',
-    label: 'Champagne',
+    fallbackLabel: 'Champagne',
     accent: Color(0xFFC6A664),
     bright: Color(0xFFE2C982),
     muted: Color(0xFF8A7038),
   ),
   AccentTheme(
     id: 'ember',
-    label: 'Braise',
+    fallbackLabel: 'Braise',
     accent: Color(0xFFD63A30),
     bright: Color(0xFFFF5A4A),
     muted: Color(0xFF8E1F1D),
   ),
   AccentTheme(
     id: 'ocean',
-    label: 'Océan',
+    fallbackLabel: 'Océan',
     accent: Color(0xFF2E7DD6),
     bright: Color(0xFF5AA8FF),
     muted: Color(0xFF1D4E8E),
   ),
   AccentTheme(
     id: 'emerald',
-    label: 'Émeraude',
+    fallbackLabel: 'Émeraude',
     accent: Color(0xFF2FA96A),
     bright: Color(0xFF4ADB8E),
     muted: Color(0xFF1D6E47),
   ),
   AccentTheme(
     id: 'violet',
-    label: 'Améthyste',
+    fallbackLabel: 'Améthyste',
     accent: Color(0xFF8E5AD6),
     bright: Color(0xFFB58AFF),
     muted: Color(0xFF5E1D8E),
   ),
   AccentTheme(
     id: 'gold',
-    label: 'Or',
+    fallbackLabel: 'Or',
     accent: Color(0xFFD6A030),
     bright: Color(0xFFFFC94A),
     muted: Color(0xFF8E6A1D),
   ),
   AccentTheme(
     id: 'turquoise',
-    label: 'Turquoise',
+    fallbackLabel: 'Turquoise',
     accent: Color(0xFF2EC4C6),
     bright: Color(0xFF5AF0F2),
     muted: Color(0xFF1D8E8E),
   ),
   AccentTheme(
     id: 'rose',
-    label: 'Rose',
+    fallbackLabel: 'Rose',
     accent: Color(0xFFD63A8E),
     bright: Color(0xFFFF5AB0),
     muted: Color(0xFF8E1D5E),
   ),
   AccentTheme(
     id: 'coral',
-    label: 'Corail',
+    fallbackLabel: 'Corail',
     accent: Color(0xFFE8703A),
     bright: Color(0xFFFF9A5A),
     muted: Color(0xFFA8431D),
   ),
   AccentTheme(
     id: 'indigo',
-    label: 'Indigo',
+    fallbackLabel: 'Indigo',
     accent: Color(0xFF4A5AD6),
     bright: Color(0xFF7A8AFF),
     muted: Color(0xFF2A2F8E),
   ),
   AccentTheme(
     id: 'lime',
-    label: 'Citron vert',
+    fallbackLabel: 'Citron vert',
     accent: Color(0xFF8AC62E),
     bright: Color(0xFFB5F05A),
     muted: Color(0xFF5E8E1D),
   ),
 ];
+
+/// Résout le libellé LOCALISÉ d'un thème d'accent au point d'affichage
+/// (le catalogue [kAccentThemes] est `const`, donc sans accès aux
+/// traductions). Fallback : le libellé français embarqué dans le thème.
+String accentThemeLabel(BuildContext context, AccentTheme theme) {
+  switch (theme.id) {
+    case 'champagne':
+      return context.l10n.accentChampagne;
+    case 'ember':
+      return context.l10n.accentEmber;
+    case 'ocean':
+      return context.l10n.accentOcean;
+    case 'emerald':
+      return context.l10n.accentEmerald;
+    case 'violet':
+      return context.l10n.accentViolet;
+    case 'gold':
+      return context.l10n.accentGold;
+    case 'turquoise':
+      return context.l10n.accentTurquoise;
+    case 'rose':
+      return context.l10n.accentRose;
+    case 'coral':
+      return context.l10n.accentCoral;
+    case 'indigo':
+      return context.l10n.accentIndigo;
+    case 'lime':
+      return context.l10n.accentLime;
+    case 'remote':
+      return context.l10n.accentCustom;
+    default:
+      return theme.fallbackLabel;
+  }
+}
 
 /// Contrôleur global du thème d'accent. Singleton + ChangeNotifier.
 class AccentController extends ChangeNotifier {
@@ -177,7 +217,7 @@ class AccentController extends ChangeNotifier {
     if (_current.id == 'remote' && _current.accent == accent) return;
     _current = AccentTheme(
       id: 'remote',
-      label: 'Personnalisé',
+      fallbackLabel: 'Personnalisé',
       accent: accent,
       bright: bright,
       muted: muted,

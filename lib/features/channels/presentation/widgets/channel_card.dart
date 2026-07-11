@@ -173,7 +173,7 @@ class _ChannelCardState extends State<ChannelCard> {
                               const SizedBox(width: 3),
                               Flexible(
                                 child: Text(
-                                  ch.genre.label,
+                                  ch.genre.localizedLabel,
                                   style: AppTextStyles.bodyMedium.copyWith(
                                     fontSize: 10,
                                     color: AppColors.textMuted,

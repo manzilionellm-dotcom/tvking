@@ -110,6 +110,16 @@ done
 
 ls -la "$ANDROID_PKG_PATH/"
 
+# --- 1bis. Ressources localisées des notifications -----
+# strings.xml des notifications natives (repli anglais + 7 langues,
+# mêmes langues que l'app Flutter). Android choisit tout seul selon
+# la langue de la TV. `cp -r .` fusionne dans les res/ générées par
+# flutter create (nos dossiers values-* n'existent pas encore).
+if [ -d "$OVERLAY/res" ]; then
+  cp -rv "$OVERLAY/res/." android/app/src/main/res/
+  echo "  ✓ strings.xml notifications (8 langues) copiées"
+fi
+
 # --- 2. Patch build.gradle (dependencies) -----------
 if grep -q "play-services-cast-framework" "$BUILD_GRADLE"; then
   echo "Cast deps déjà présentes dans $BUILD_GRADLE — skip"

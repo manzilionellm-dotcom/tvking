@@ -19,6 +19,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/local_cast_server.dart';
@@ -135,7 +136,7 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
                       Icon(Icons.screen_share_rounded,
                           color: AppColors.accent, size: 22),
                       const SizedBox(width: 10),
-                      Text('Caster sur un écran',
+                      Text(context.l10n.screenCastTitle,
                           style: AppTextStyles.headlineMedium),
                     ],
                   ),
@@ -164,8 +165,7 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
                 color: AppColors.textSecondary, size: 40),
             const SizedBox(height: 12),
             Text(
-              'Impossible de démarrer le partage. '
-              'Vérifie que le Wi-Fi est activé et réessaie.',
+              context.l10n.screenCastStartError,
               textAlign: TextAlign.center,
               style: AppTextStyles.bodyMedium
                   .copyWith(color: AppColors.textSecondary),
@@ -176,7 +176,7 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
                 setState(() => _status = _Status.loading);
                 _start();
               },
-              child: const Text('Réessayer'),
+              child: Text(context.l10n.buttonRetry),
             ),
           ],
         );
@@ -185,8 +185,7 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
         return Column(
           children: <Widget>[
             Text(
-              'Sur ton ordi ou ta TV (sur le MÊME Wi-Fi que le téléphone), '
-              'ouvre le navigateur et tape cette adresse :',
+              context.l10n.screenCastInstructions,
               textAlign: TextAlign.center,
               style: AppTextStyles.bodyMedium
                   .copyWith(color: AppColors.textSecondary),
@@ -224,14 +223,12 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
               ),
             ),
             const SizedBox(height: 8),
-            Text('ou scanne avec un autre téléphone',
+            Text(context.l10n.screenCastScanHint,
                 style: AppTextStyles.labelSmall
                     .copyWith(color: AppColors.textSecondary)),
             const SizedBox(height: 18),
             Text(
-              'La chaîne démarre toute seule. Garde l’app ouverte : c’est '
-              'le téléphone qui envoie la vidéo à l’écran. Fonctionne avec '
-              'ton abonnement (pas de blocage cloud).',
+              context.l10n.screenCastKeepOpenHint,
               textAlign: TextAlign.center,
               style: AppTextStyles.labelSmall
                   .copyWith(color: AppColors.textSecondary),
@@ -242,7 +239,7 @@ class _ScreenCastSheetState extends State<ScreenCastSheet> {
               child: TextButton.icon(
                 onPressed: _stop,
                 icon: Icon(Icons.stop_rounded, color: AppColors.live),
-                label: Text('Arrêter',
+                label: Text(context.l10n.castStop,
                     style: AppTextStyles.bodyLarge
                         .copyWith(color: AppColors.live)),
               ),

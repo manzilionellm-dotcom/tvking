@@ -153,7 +153,7 @@ class _Swatch extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              theme.label,
+              accentThemeLabel(context, theme),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,

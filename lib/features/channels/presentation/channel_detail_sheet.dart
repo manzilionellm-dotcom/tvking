@@ -357,7 +357,7 @@ class _MetaBadges extends StatelessWidget {
           ),
         _badge(
           icon: channel.genre.icon,
-          text: channel.genre.label,
+          text: channel.genre.localizedLabel,
           color: AppColors.surface,
           textColor: AppColors.textSecondary,
         ),

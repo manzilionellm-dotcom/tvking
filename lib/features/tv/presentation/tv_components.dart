@@ -23,13 +23,10 @@ const String _kLogoAsset = 'assets/branding/thefew_logo.png';
 /// Numéro WhatsApp business (format international, sans + ni espaces).
 const String kWhatsAppPhone = '447307410512';
 
-/// Construit le lien wa.me avec un message pré-rempli (code MAC inclus).
-String tvWhatsAppUrl(String mac) {
-  final String code = (mac == '…' || mac.isEmpty) ? '' : mac;
-  final String msg = Uri.encodeComponent(
-      'Bonjour, je souhaite activer The Few TV.'
-      '${code.isEmpty ? '' : ' Mon code : $code'}');
-  return 'https://wa.me/$kWhatsAppPhone?text=$msg';
+/// Construit le lien wa.me avec un message pré-rempli (déjà localisé —
+/// composé par l'appelant avec `context.l10n`, code MAC inclus).
+String tvWhatsAppUrl(String message) {
+  return 'https://wa.me/$kWhatsAppPhone?text=${Uri.encodeComponent(message)}';
 }
 
 /// Panneau QR « Scanne-moi » → WhatsApp du revendeur, MAC pré-remplie.
@@ -41,6 +38,12 @@ class TvWhatsAppQr extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Message WhatsApp pré-rempli, localisé (code MAC joint si connu).
+    final String code = (mac == '…' || mac.isEmpty) ? '' : mac;
+    final String message = code.isEmpty
+        ? context.l10n.tvComponentsWaGreeting
+        : '${context.l10n.tvComponentsWaGreeting} '
+            '${context.l10n.tvComponentsWaMyCode(code)}';
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
@@ -53,7 +56,7 @@ class TvWhatsAppQr extends StatelessWidget {
             border: Border.all(color: TvTokens.gold, width: 2),
           ),
           child: QrImageView(
-            data: tvWhatsAppUrl(mac),
+            data: tvWhatsAppUrl(message),
             version: QrVersions.auto,
             size: size,
             backgroundColor: Colors.white,

@@ -48,10 +48,12 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     // Groupement UNE fois par catégorie (ordre d'apparition) → une rangée
     // horizontale par catégorie, façon Netflix. Mêmes objets référencés :
     // pas de duplication mémoire.
+    final String othersLabel = context.l10n.tvOthers;
     final List<String> cats = <String>[];
     final Map<String, List<VodSeries>> byCat = <String, List<VodSeries>>{};
     for (final VodSeries s in series) {
-      final String c = s.category.trim().isEmpty ? 'Autres' : s.category.trim();
+      final String c =
+          s.category.trim().isEmpty ? othersLabel : s.category.trim();
       final List<VodSeries>? existing = byCat[c];
       if (existing == null) {
         cats.add(c);
@@ -421,7 +423,7 @@ class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
                         itemBuilder: (BuildContext context, int i) {
                           final int s = seasons[i];
                           return _SeasonChip(
-                            label: 'Saison $s',
+                            label: context.l10n.tvSeriesSeason(s),
                             selected: s == currentSeason,
                             autofocus: i == 0,
                             onSelect: () => setState(() => _season = s),
