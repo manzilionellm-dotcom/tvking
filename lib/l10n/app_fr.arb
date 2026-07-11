@@ -456,6 +456,22 @@
   "@activateAtHomeDesc": {
     "description": "Texte UI : activateAtHomeDesc"
   },
+  "activateAppSectionTitle": "Activer l'application",
+  "@activateAppSectionTitle": {
+    "description": "Titre du bloc du haut : activation de l'abonnement app"
+  },
+  "activateAppSectionDesc": "Choisis ton offre, envoie ton numéro : on active tout à distance.",
+  "@activateAppSectionDesc": {
+    "description": "Sous-titre du bloc activation de l'application"
+  },
+  "activateChannelsSectionTitle": "Activer les chaînes",
+  "@activateChannelsSectionTitle": {
+    "description": "Titre du bloc du bas : activation des chaînes"
+  },
+  "activateChannelsSectionDesc": "Tu as déjà un code d'accès ? Saisis-le pour charger tes chaînes.",
+  "@activateChannelsSectionDesc": {
+    "description": "Sous-titre du bloc activation des chaînes"
+  },
   "buttonCopy": "Copier",
   "@buttonCopy": {
     "description": "Texte UI : buttonCopy"

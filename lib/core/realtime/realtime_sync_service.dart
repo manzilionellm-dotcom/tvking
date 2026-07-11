@@ -207,6 +207,20 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
   /// « stable » → le prochain incident repart au 1er palier (5 s).
   static const Duration kStableAfter = Duration(seconds: 60);
 
+  /// « Activation express » — filet UNIVERSEL (téléphone + TV) qui rend
+  /// l'activation quasi instantanée MÊME si le WebSocket n'est pas
+  /// disponible (binding pas déployé, réseau capricieux, hub occupé).
+  ///
+  /// Tant que l'appareil n'est pas encore ACTIVÉ (pas payant), et qu'il
+  /// est au premier plan, on interroge le backend toutes les
+  /// [kActivationInterval] pendant [kActivationFastTicks] cycles
+  /// (≈ 3 min par session). Dès que le revendeur valide le code sur le
+  /// panel, l'app le voit en quelques secondes au lieu d'attendre le
+  /// heartbeat (6 h) ou la synchro sources (5 min). Coût : un petit GET
+  /// JSON par cycle, borné dans le temps, arrêté net dès l'activation.
+  static const Duration kActivationInterval = Duration(seconds: 8);
+  static const int kActivationFastTicks = 22; // ~3 min à 8 s
+
   /// Calcule le délai avant la tentative n° [attempt] (0 = première
   /// re-tentative). [jitter] ∈ [-0.2, +0.2] (±20 %) — passé en paramètre
   /// pour rester une fonction PURE (le tirage aléatoire est fait par
@@ -236,6 +250,8 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
   Timer? _pingTimer; // 'ping' texte toutes les 45 s (keepalive NAT)
   Timer? _watchTimer; // surveille NowPlaying (voir _onWatchTick)
   Timer? _stableTimer; // après 60 s stables → _attempt = 0
+  Timer? _activationTimer; // fenêtre « activation express » (voir plus bas)
+  int _activationTicksLeft = 0;
   String _lastSentChannel = '';
   DateTime _lastWatchingAt = DateTime.fromMillisecondsSinceEpoch(0);
   final Random _random = Random();
@@ -276,7 +292,54 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       if (kDebugMode) debugPrint('[Realtime] addObserver: $e');
     }
+    // Filet d'activation express AVANT le connect : un 1er contrôle part
+    // tout de suite, sans attendre l'établissement du socket.
+    _armActivationFastSync();
     await _connect();
+  }
+
+  // ============================================================
+  //  Activation express — filet universel (voir kActivationInterval)
+  // ============================================================
+
+  /// `true` quand l'appareil est ACTIVÉ (payant confirmé par le serveur)
+  /// → plus besoin d'interroger vite : le filet express peut s'arrêter.
+  bool get _activationSettled {
+    final r = SubscriptionState.instance.remote;
+    return r.exists && r.paid;
+  }
+
+  /// (Re)démarre la fenêtre d'activation express. Idempotent : annule la
+  /// fenêtre en cours et repart pour [kActivationFastTicks] cycles. No-op
+  /// si l'appareil est déjà activé. Appelé au boot et à chaque `resumed`.
+  void _armActivationFastSync() {
+    _activationTimer?.cancel();
+    _activationTimer = null;
+    if (_activationSettled) return;
+    _activationTicksLeft = kActivationFastTicks;
+    unawaited(_pollActivationOnce()); // contrôle immédiat
+    _activationTimer = Timer.periodic(kActivationInterval, (_) {
+      if (_activationSettled || _activationTicksLeft <= 0) {
+        _activationTimer?.cancel();
+        _activationTimer = null;
+        return;
+      }
+      _activationTicksLeft--;
+      unawaited(_pollActivationOnce());
+    });
+  }
+
+  /// Un contrôle d'activation : statut d'abonnement + source poussée
+  /// (mêmes fetchs HTTP existants que le heartbeat). Ne throw jamais.
+  Future<void> _pollActivationOnce() async {
+    try {
+      await SubscriptionState.instance.syncWithBackend();
+      if (!BootGuard.instance.safeMode) {
+        await RemoteSourceRepository.sync();
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Realtime] activation poll: $e');
+    }
   }
 
   /// Ferme la connexion courante (si besoin) et reconnecte SANS attendre
@@ -650,6 +713,10 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
       // pu activer/geler pendant l'absence (comble le trou du polling).
       unawaited(forceReconnect());
       unawaited(SubscriptionState.instance.syncWithBackend());
+      // Relance la fenêtre d'activation express : si le revendeur a agi
+      // pendant que l'app était en arrière-plan, on le voit en quelques
+      // secondes au retour à l'écran (filet universel, phone + TV).
+      _armActivationFastSync();
       // (les timers repartent dans _connect(), via forceReconnect)
     } else if (state == AppLifecycleState.paused) {
       // Arrière-plan : on GARDE le socket (l'OS le tuera peut-être — la
@@ -657,6 +724,10 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
       // de sondage : rien à « regarder » quand l'app n'est pas visible,
       // et ~17 000 réveils/jour économisés sur un boîtier TV allumé H24.
       _stopTimers();
+      // La fenêtre d'activation express n'a pas de sens hors écran : on
+      // la coupe (elle repartira au prochain `resumed`).
+      _activationTimer?.cancel();
+      _activationTimer = null;
     }
   }
 
