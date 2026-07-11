@@ -22,6 +22,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../../core/observability/structured_logger.dart';
 import '../../playlists/data/playlist_database.dart';
 import '../domain/recording.dart';
+import 'gallery_exporter.dart';
 import 'http_recording_downloader.dart';
 
 class RecordingRepository {
@@ -174,6 +175,7 @@ class RecordingRepository {
       whereArgs: <Object>[rec.id!],
     );
     await _refresh();
+    unawaited(_finalizeToMp4(rec.filePath));
   }
 
   /// Finalise un enregistrement par son CHEMIN de fichier, sans avoir
@@ -211,6 +213,99 @@ class RecordingRepository {
       whereArgs: <Object>[filePath],
     );
     await _refresh();
+    unawaited(_finalizeToMp4(filePath));
+  }
+
+  /// Convertit le .ts finalisé en VRAI MP4 (remux sans perte côté natif,
+  /// transcodage universel sinon — cf. GalleryExporter.kt) puis bascule
+  /// la fiche SQLite sur le nouveau chemin et supprime le .ts. Tourne en
+  /// arrière-plan après CHAQUE fin d'enregistrement (stop utilisateur,
+  /// auto-stop, orphelin récupéré au boot) pour que le fichier qui SORT
+  /// soit lisible par tous les téléphones (galerie, WhatsApp, partage…).
+  ///
+  /// Best effort : en cas d'échec (bridge natif absent, codec exotique,
+  /// disque plein), on garde le .ts tel quel — rien n'est perdu, la
+  /// lecture in-app via libmpv et le bouton "Ouvrir avec" marchent
+  /// toujours.
+  Future<void> _finalizeToMp4(String filePath) async {
+    // Uniquement les .ts — un enregistrement déjà en .mp4 (ou déjà
+    // converti) n'a rien à faire ici.
+    if (!filePath.toLowerCase().endsWith('.ts')) return;
+    // Jamais pendant qu'une capture écrit ENCORE dans ce fichier
+    // (cas exotique d'un finish concurrent d'un job actif).
+    if (HttpRecordingDownloader.instance.isRecordingFile(filePath)) return;
+    try {
+      final File src = File(filePath);
+      if (!await src.exists() || await src.length() == 0) return;
+
+      // Un fichier ENCORE en cours d'écriture ne doit JAMAIS être
+      // converti (MP4 tronqué + perte du .ts). Ça arrive quand :
+      //   - le flush/close du sink est asynchrone (auto-stop),
+      //   - le RecordingForegroundService natif survit à un swipe-kill
+      //     et écrit toujours pendant que recoverOrphans finalise.
+      // On échantillonne la taille à 2 s d'écart : si elle bouge, on
+      // garde le .ts tel quel (lisible in-app et via "Ouvrir avec").
+      final int sizeBefore = await src.length();
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (HttpRecordingDownloader.instance.isRecordingFile(filePath)) return;
+      final int sizeAfter = await src.length();
+      if (sizeAfter != sizeBefore) {
+        StructuredLogger.instance.warn(
+          domain: 'rec',
+          event: 'job.mp4_skip_still_writing',
+          ctx: <String, Object?>{'filePath': filePath},
+        );
+        return;
+      }
+
+      final String? mp4Path = await GalleryExporter.convertToMp4(filePath);
+      if (mp4Path == null || mp4Path == filePath) return;
+
+      int mp4Size = 0;
+      try {
+        mp4Size = await File(mp4Path).length();
+      } catch (_) {}
+
+      final Database db = await PlaylistDatabase.instance.database;
+      final int updated = await db.update(
+        'recordings',
+        <String, Object?>{
+          'file_path': mp4Path,
+          'file_size_bytes': mp4Size,
+        },
+        where: 'file_path = ?',
+        whereArgs: <Object>[filePath],
+      );
+      if (updated == 0) {
+        // La fiche a été supprimée pendant la conversion → on jette
+        // le MP4 orphelin pour ne pas laisser de fichier fantôme.
+        try {
+          await File(mp4Path).delete();
+        } catch (_) {}
+        return;
+      }
+      try {
+        await src.delete();
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[Recordings] suppression .ts échouée ($filePath): $e');
+        }
+      }
+      StructuredLogger.instance.info(
+        domain: 'rec',
+        event: 'job.mp4_finalized',
+        ctx: <String, Object?>{
+          'src': filePath,
+          'mp4': mp4Path,
+          'mp4Bytes': mp4Size,
+        },
+      );
+      await _refresh();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[Recordings] finalisation MP4 échouée ($filePath): $e');
+      }
+    }
   }
 
   /// Phase 1 / F-01 : detecte et finalise les recordings "fantomes"

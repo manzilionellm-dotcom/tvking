@@ -220,16 +220,19 @@ class _RecordingTileState extends State<_RecordingTile> {
   }
 
   /// Ouvre l'enregistrement avec une app externe (VLC, MX Player…).
-  /// C'est LA solution fiable pour lire un .ts : le lecteur système
-  /// sait décoder le MPEG-TS nativement. On force le type MIME
-  /// `video/mp2t` pour que VLC & co. se proposent dans la liste.
+  /// Les enregistrements finalisés sont des .mp4 universels (type
+  /// `video/mp4` → tous les lecteurs se proposent). Pour un .ts pas
+  /// encore converti (conversion en cours, ou échouée sur un codec
+  /// exotique), on force `video/mp2t` pour que VLC & co. se proposent.
   Future<void> _openExternally(BuildContext context) async {
     if (_opening) return;
     setState(() => _opening = true);
     try {
       final OpenResult res = await OpenFilex.open(
         recording.filePath,
-        type: 'video/mp2t',
+        type: recording.filePath.toLowerCase().endsWith('.mp4')
+            ? 'video/mp4'
+            : 'video/mp2t',
       );
       if (!mounted) return;
       // ResultType.done = une app a pris le relais. Sinon (aucune app
