@@ -537,12 +537,14 @@ jobs:
           # une box installée depuis cast-fix-tv-latest ne se « mettra pas à
           # jour » vers un build d'une autre branche. Partagé avec le publish
           # via GITHUB_ENV (une seule source de vérité par run).
-          if [ "${{ github.ref_name }}" = "claude/iptv-chromecast-cast-WeAyo" ]; then
+          if [ "${{ github.ref_name }}" = "claude/maison-mere-phone" ]; then
+            # MAISON MÈRE (phone + TV, une seule ligne) → canal protégé
+            # « tv-prod », publié UNIQUEMENT par cette branche. Le lien client
+            # TV (/tv, /777…) pointe dessus : plus jamais écrasé.
+            TV_UPDATE_TAG="tv-prod"
+          elif [ "${{ github.ref_name }}" = "claude/iptv-chromecast-cast-WeAyo" ]; then
             TV_UPDATE_TAG="cast-fix-tv-latest"
           elif [ "${{ github.ref_name }}" = "claude/m3u-stream-playback-fix-cfdr2f" ]; then
-            # Canal DÉDIÉ de la branche UNIFIÉE (lecture + cast + premium) :
-            # « tv-latest » est écrasée par les autres branches → l'APK avec
-            # les correctifs y disparaissait (clobber vécu 2×, 2026-07-10).
             TV_UPDATE_TAG="tv-fix-latest"
           else
             TV_UPDATE_TAG="tv-latest"
@@ -601,7 +603,11 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+      # MAISON MÈRE UNIQUEMENT : seule claude/maison-mere-phone publie une
+      # release TV cliente (« tv-prod »). Les autres branches gardent juste
+      # l'artifact du run → plus de release TV recréée / écrasée ailleurs.
       - name: Publish "tv-latest" release
+        if: github.ref_name == 'claude/maison-mere-phone'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

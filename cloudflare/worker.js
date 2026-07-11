@@ -102,8 +102,11 @@ const APK_URL =
 
 // APK de DeFew TV (version télévision) — release `tv-latest`. Servi via la
 // route propre `/tv` (Downloader sur box Android TV / Fire TV).
+// MAISON MÈRE TV : release protégée « tv-prod » (publiée uniquement par la
+// branche claude/maison-mere-phone) → le lien client TV (/tv, /777…) ne peut
+// plus être écrasé par une autre branche.
 const TV_APK_URL =
-  'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-latest/defew-tv.apk';
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-prod/defew-tv.apk';
 
 // NB : les wrappers WebView / NOVA+ et Red Room ont été RETIRÉS du
 // projet. Deux apps sont distribuées : 7 MOTION mobile (`APK_URL`) et
