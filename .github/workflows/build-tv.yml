@@ -660,3 +660,34 @@ jobs:
           gh release upload "$TAG" --repo "$REPO" --clobber version.json
 
           gh release view "$TAG" --repo "$REPO"
+
+      # PONT DE MIGRATION (maison mère uniquement) : les box installées AVANT
+      # la maison mère ont un ancien canal gravé (tv-latest / tv-fix-latest /
+      # cast-fix-tv-latest). On y pose un version.json pointant vers l'APK
+      # maison mère (tv-prod) → elles migrent toutes seules au prochain check,
+      # sans réinstallation. seventv-latest EXCLU (autre applicationId).
+      - name: Bridge old TV channels (→ tv-prod)
+        if: github.ref_name == 'claude/maison-mere-phone'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          cat > version.json <<JSON
+          {
+            "versionCode": 2100000000,
+            "versionName": "0.3.1",
+            "url": "https://github.com/$REPO/releases/download/tv-prod/defew-tv.apk",
+            "mandatory": false
+          }
+          JSON
+          NOTES="Pont de migration → maison mère TV (tv-prod). Mets à jour : la box bascule sur le canal officiel et se mettra à jour toute seule ensuite."
+          for TAG in tv-latest tv-fix-latest cast-fix-tv-latest; do
+            if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+              gh release edit "$TAG" --repo "$REPO" --notes "$NOTES" --prerelease
+            else
+              gh release create "$TAG" --repo "$REPO" --title "$TAG (migration)" --notes "$NOTES" --prerelease
+            fi
+            gh release upload "$TAG" --repo "$REPO" --clobber version.json
+            echo "✓ pont $TAG → tv-prod posé"
+          done

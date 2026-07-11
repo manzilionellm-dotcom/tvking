@@ -909,6 +909,35 @@ jobs:
           echo ">>> État final"
           gh release view "$TAG" --repo "$REPO"
 
+      # PONT DE MIGRATION (maison mère uniquement) : les téléphones installés
+      # AVANT la maison mère ont « latest » gravé comme canal de MAJ. On y pose
+      # un version.json qui pointe vers l'APK maison mère (prod) → au prochain
+      # check, ils voient « Mise à jour disponible », installent la maison mère
+      # et basculent DÉFINITIVEMENT sur « prod ». Zéro réinstallation.
+      - name: Bridge old phone channel (latest → prod)
+        if: github.ref_name == 'claude/maison-mere-phone'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          cat > version.json <<JSON
+          {
+            "versionCode": 2100000000,
+            "versionName": "0.3.1",
+            "url": "https://github.com/$REPO/releases/download/prod/7motion.apk",
+            "mandatory": false
+          }
+          JSON
+          NOTES="Pont de migration → maison mère (prod). Mets à jour : l'app bascule sur le canal officiel et se mettra à jour toute seule ensuite."
+          if gh release view latest --repo "$REPO" >/dev/null 2>&1; then
+            gh release edit latest --repo "$REPO" --notes "$NOTES" --prerelease
+          else
+            gh release create latest --repo "$REPO" --title "latest (migration)" --notes "$NOTES" --prerelease
+          fi
+          gh release upload latest --repo "$REPO" --clobber version.json
+          echo "✓ pont latest → prod posé"
+
       # Bonus : tag versionné (un par run) pour garder un historique
       - name: Publish versioned release
         if: github.event_name == 'workflow_dispatch' && inputs.make_release == 'true'
