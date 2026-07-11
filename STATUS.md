@@ -185,6 +185,42 @@ Deux apps dans le MÊME repo (flavors Flutter) :
 
 ---
 
+## Engagement / rétention mobile (2026-07-11)
+
+Objectif : rendre l'app **addictive au sens DURABLE** (Hook Model), sans
+toucher au casting ni à la qualité vidéo. Revue complète dans le dépôt
+`7themotion` (`REVUE-ENGAGEMENT-7MOTION-2026-07-11.md` + annexe code).
+
+Constat : le moteur d'engagement existait déjà à ~80 % mais était
+débranché du mobile (câblé TV-only ou remplacé par l'accueil minimal).
+
+Tranche 1 livrée sur `claude/mobile-app-engagement-addictive` (CI vert,
+APK **release signé clé `sevenmotion`**, publié en `latest`) :
+- ✅ **Reprise VOD** (Continue Watching) branchée sur le player mobile :
+  `PlaybackPositionRepository.record()` au dispose + `.seek()` à la 1ʳᵉ
+  frame (contenu fini). Avant, chaque film redémarrait à 0:00 sur mobile.
+- ✅ **WatchStatsService** démarré aussi sur mobile (`main.dart`).
+- ✅ **ResumeBanner** : fenêtre 60 min → 72 h.
+- ✅ **EngagementService** : streak quotidien + paliers (3/7/30/100/365 j),
+  100 % local, éthique. Compté à la 1ʳᵉ frame. Chip « 🔥 N » dans
+  l'en-tête d'accueil + **célébration** (burst CustomPaint) au palier.
+- ✅ **Ré-engagement** dans `NotificationService.scheduleReEngagement()` :
+  dormance J+3, nudge du soir (répété), « ton accès se termine bientôt »
+  la veille de l'expiration. Reprogrammé à chaque ouverture, respecte
+  l'interrupteur Réglages. Appelé depuis `SimpleHomeScreen`.
+- ✅ **Favori depuis la navigation** (cœur tap + appui long sur la ligne
+  de chaîne) — avant, impossible hors du player.
+- ✅ **Haptique centralisée** (`core/haptics/haptics.dart`) câblée dans
+  `TvFocusable` + **tokens de mouvement** (`core/theme/motion.dart`).
+
+Reste (tranche 2, non démarrée) : restaurer l'accueil riche dormant
+(`HomeScreen`/`CountryHomeView` : Hero « en direct », rangées « Pour
+vous »/« Continue Watching », mur d'affiches VOD), vrai Top 10 (remplacer
+la rotation factice de `category_browser_view.dart:300-319`), EPG « ce
+soir » sur l'accueil, parrainage réel, store rating loop (`in_app_review`).
+
+---
+
 ## App Licensing Platform (Phase 1.A — démarrée)
 
 Nouvelle plateforme centrale pour gérer toutes les apps du portfolio

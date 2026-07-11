@@ -303,6 +303,42 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
               icon: const Icon(Icons.layers_rounded),
               onPressed: () => _showSourceSwitcher(context),
             ),
+          // Streak d'engagement : compteur discret « 🔥 N » (jours d'affilée).
+          // Visible dès 1 jour — voir le chiffre monter donne envie de ne pas
+          // casser la série (déclencheur INTERNE de retour quotidien). Se met
+          // à jour en direct quand un nouveau jour est compté.
+          ListenableBuilder(
+            listenable: EngagementService.instance,
+            builder: (BuildContext context, _) {
+              final int s = EngagementService.instance.streak;
+              if (s < 1) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.accentSurface,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const Text('🔥', style: TextStyle(fontSize: 13)),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$s',
+                        style: AppTextStyles.labelSmall.copyWith(
+                          color: AppColors.accent,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
           IconButton(
             tooltip: context.l10n.simpleMyAccount,
             icon: const Icon(Icons.person_rounded),
