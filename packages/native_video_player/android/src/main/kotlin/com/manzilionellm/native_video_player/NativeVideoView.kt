@@ -8,10 +8,17 @@ import android.os.Handler
 import android.os.Looper
 import android.view.SurfaceView
 import android.view.View
+import android.widget.FrameLayout
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.SubtitleView
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -53,7 +60,34 @@ class NativeVideoView(
     id: Int,
 ) : PlatformView, MethodChannel.MethodCallHandler, Player.Listener {
 
+    companion object {
+        // Toutes les vues VIVANTES (accès main-thread uniquement : création /
+        // dispose des PlatformViews et callbacks de cycle de vie arrivent tous
+        // sur le main thread). Sert au « couvre-feu » ci-dessous.
+        private val instances = mutableSetOf<NativeVideoView>()
+
+        /**
+         * Coupe TOUS les lecteurs — appelé par le plugin quand l'ACTIVITÉ passe
+         * en arrière-plan (Home / veille / autre app). GARANTIE NATIVE « zéro
+         * son en arrière-plan » : elle ne dépend PAS de l'écran Flutter affiché
+         * (le lecteur plein écran gère déjà son cycle de vie côté Dart, mais la
+         * multi-vue ou tout futur écran pouvait laisser le son tourner). La
+         * pause remonte à Dart via onIsPlayingChanged → l'UI reste cohérente.
+         */
+        fun pauseAll() {
+            for (v in instances) v.player.pause()
+        }
+    }
+
     private val surfaceView = SurfaceView(appContext)
+
+    // Rendu des SOUS-TITRES : la vidéo est dessinée par MediaCodec directement
+    // sur la Surface (elle ne passe pas par Flutter), donc les sous-titres
+    // doivent être dessinés par une vue Android PAR-DESSUS. On empile
+    // SurfaceView + SubtitleView dans un FrameLayout.
+    private val subtitleView = SubtitleView(appContext)
+    private val container = FrameLayout(appContext)
+
     private val channel = MethodChannel(messenger, "native_video_player/$id")
     private val player: ExoPlayer
     private val handler = Handler(Looper.getMainLooper())
@@ -68,10 +102,15 @@ class NativeVideoView(
     // SILENCIEUSES (scheduleRetry) gardent la signature qui a marché.
     private var currentUserAgent: String? = null
 
-    // Reconnexion auto silencieuse.
+    // Dernier état des pistes connu (pour appliquer une sélection par index).
+    private var currentTracks: Tracks = Tracks.EMPTY
+
+    // Reconnexion auto silencieuse. Peu d'essais et RAPIDES : au-delà, on rend
+    // la main à Dart qui, lui, sait basculer sur une VARIANTE d'URL du même
+    // flux (.ts ⇄ .m3u8) — rester à marteler une URL morte retarde la bascule.
     private var retryCount = 0
     private var pendingRetry: Runnable? = null
-    private val maxSilentRetries = 8 // au-delà → on prévient Dart (reset complet)
+    private val maxSilentRetries = 3
 
     // REPRISE RÉSEAU INSTANTANÉE (façon Netflix) : pendant qu'un retry
     // attend son back-off (jusqu'à 8 s), si Android annonce que le réseau
@@ -147,6 +186,7 @@ class NativeVideoView(
     }
 
     init {
+        instances.add(this)
         channel.setMethodCallHandler(this)
 
         // La SurfaceView ne doit PAS être focusable (sinon elle capte le D-pad
@@ -211,10 +251,13 @@ class NativeVideoView(
         // inchangé (http passe toujours par le même httpFactory).
         val dataSourceFactory = DefaultDataSource.Factory(appContext, httpFactory)
 
-        // Politique de ré-essai réseau AGRESSIVE : on retente beaucoup avant
-        // d'abandonner un chargement (le direct IPTV coupe souvent brièvement).
+        // Politique de ré-essai réseau : 3 tentatives par chargement (délais
+        // croissants ≈ 0/1/2 s). Assez pour absorber un hoquet bref, assez
+        // COURT pour qu'une URL vraiment morte remonte vite en erreur → la
+        // couche Dart bascule alors sur la variante .m3u8/.ts du même flux
+        // (failover silencieux) au lieu d'attendre ~15 s de retries inutiles.
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
-            .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(6))
+            .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(3))
 
         // ADAPTATION AUTOMATIQUE DE LA QUALITÉ (« façon Netflix »), réglée pour
         // les réseaux FAIBLES / INSTABLES (ex. Afrique). Ne s'applique QUE si le
@@ -257,10 +300,27 @@ class NativeVideoView(
         // chose que si un retry attend son back-off).
         registerNetworkCallback()
 
+        // SOUS-TITRES DÉSACTIVÉS par défaut (comportement historique : rien
+        // n'était rendu). L'utilisateur les active via le bouton Sous-titres.
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            .build()
+
+        // Empilement vidéo + sous-titres (style par défaut de l'appareil).
+        val match = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT,
+        )
+        container.addView(surfaceView, match)
+        subtitleView.setUserDefaultStyle()
+        subtitleView.setUserDefaultTextSize()
+        container.addView(subtitleView, match)
+
         handler.postDelayed(positionPump, 500)
     }
 
-    override fun getView(): View = surfaceView
+    override fun getView(): View = container
 
     // ---- Dart → natif -------------------------------------------------------
 
@@ -311,8 +371,53 @@ class NativeVideoView(
                 player.seekTo(safe)
                 result.success(null)
             }
+            "setAudioTrack" -> {
+                // Sélectionne la N-ième piste AUDIO (index dans la liste envoyée
+                // à Dart par onTracksChanged).
+                selectTrack(androidx.media3.common.C.TRACK_TYPE_AUDIO,
+                    call.argument<Int>("index") ?: 0)
+                result.success(null)
+            }
+            "setSubtitleTrack" -> {
+                // index >= 0 → active la N-ième piste TEXTE ; -1 → sous-titres OFF.
+                val idx = call.argument<Int>("index") ?: -1
+                if (idx < 0) {
+                    player.trackSelectionParameters =
+                        player.trackSelectionParameters.buildUpon()
+                            .setTrackTypeDisabled(
+                                androidx.media3.common.C.TRACK_TYPE_TEXT, true)
+                            .clearOverridesOfType(
+                                androidx.media3.common.C.TRACK_TYPE_TEXT)
+                            .build()
+                    subtitleView.setCues(null)
+                } else {
+                    selectTrack(androidx.media3.common.C.TRACK_TYPE_TEXT, idx)
+                }
+                result.success(null)
+            }
             "dispose" -> result.success(null)
             else -> result.notImplemented()
+        }
+    }
+
+    /// Applique une sélection de piste par (type, index d'affichage). L'index
+    /// correspond à l'ordre des groupes de CE type dans onTracksChanged — le
+    /// même ordre que la liste montrée côté Dart.
+    private fun selectTrack(type: Int, index: Int) {
+        var i = 0
+        for (group in currentTracks.groups) {
+            if (group.type != type) continue
+            if (i == index) {
+                player.trackSelectionParameters =
+                    player.trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(type, false)
+                        .setOverrideForType(
+                            TrackSelectionOverride(group.mediaTrackGroup, 0),
+                        )
+                        .build()
+                return
+            }
+            i++
         }
     }
 
@@ -339,13 +444,71 @@ class NativeVideoView(
         channel.invokeMethod("firstFrame", null)
     }
 
+    // Taille réelle de la vidéo → Dart peut proposer les formats d'image
+    // (Auto = ratio réel, 16:9, 4:3, Étiré) au lieu du 16:9 figé.
+    override fun onVideoSizeChanged(videoSize: VideoSize) {
+        if (videoSize.width > 0 && videoSize.height > 0) {
+            channel.invokeMethod(
+                "videoSize",
+                mapOf("width" to videoSize.width, "height" to videoSize.height),
+            )
+        }
+    }
+
+    // Pistes disponibles (audio + sous-titres) → Dart affiche les boutons
+    // Audio / Sous-titres avec les langues. Envoyé à chaque changement de
+    // média et à chaque (dé)sélection.
+    override fun onTracksChanged(tracks: Tracks) {
+        currentTracks = tracks
+        val audio = ArrayList<Map<String, Any>>()
+        val text = ArrayList<Map<String, Any>>()
+        for (group in tracks.groups) {
+            if (group.length == 0) continue
+            val f = group.getTrackFormat(0)
+            val label = f.label
+                ?: f.language?.uppercase()
+                ?: ""
+            when (group.type) {
+                C.TRACK_TYPE_AUDIO -> audio.add(
+                    mapOf(
+                        "label" to (label.ifEmpty { "Piste ${audio.size + 1}" }),
+                        "selected" to group.isSelected,
+                    ),
+                )
+                C.TRACK_TYPE_TEXT -> text.add(
+                    mapOf(
+                        "label" to (label.ifEmpty { "Sous-titres ${text.size + 1}" }),
+                        "selected" to group.isSelected,
+                    ),
+                )
+            }
+        }
+        channel.invokeMethod("tracks", mapOf("audio" to audio, "text" to text))
+    }
+
+    // Sous-titres décodés par ExoPlayer → dessinés par la SubtitleView.
+    override fun onCues(cueGroup: CueGroup) {
+        subtitleView.setCues(cueGroup.cues)
+    }
+
     override fun onPlayerError(error: PlaybackException) {
+        // SORTIE DE LA FENÊTRE LIVE (réseau trop lent, le serveur a « avancé »
+        // sans nous) : ce n'est PAS une panne — on ressaute au direct
+        // IMMÉDIATEMENT, sans compter d'essai ni montrer quoi que ce soit.
+        // C'est la recommandation officielle Media3 pour les flux live.
+        if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+            channel.invokeMethod("buffering", true)
+            scheduleRetry(0L)
+            return
+        }
         // RECONNEXION SILENCIEUSE : on ne montre PAS d'erreur au client tant
-        // qu'on n'a pas épuisé les essais. On re-prépare avec un back-off.
+        // qu'on n'a pas épuisé les essais. Back-off court (0,5 → 1 → 2 s) :
+        // un flux flaky repart vite, un flux mort passe vite la main à Dart
+        // (qui bascule sur la variante d'URL du même flux).
         if (retryCount < maxSilentRetries) {
             retryCount++
             channel.invokeMethod("buffering", true)
-            val delay = (1_000L * (1 shl (retryCount - 1))).coerceAtMost(8_000L)
+            val delay = (500L * (1 shl (retryCount - 1))).coerceAtMost(3_000L)
             scheduleRetry(delay)
         } else {
             // Trop d'échecs d'affilée → on laisse Dart faire un reset complet.
@@ -451,6 +614,7 @@ class NativeVideoView(
 
     override fun dispose() {
         unregisterNetworkCallback()
+        instances.remove(this)
         cancelRetry()
         handler.removeCallbacks(positionPump)
         player.removeListener(this)

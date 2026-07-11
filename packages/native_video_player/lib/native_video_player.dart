@@ -16,6 +16,13 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+/// Piste (audio ou sous-titres) exposée par le lecteur natif.
+class TrackInfo {
+  const TrackInfo({required this.label, required this.selected});
+  final String label;
+  final bool selected;
+}
+
 /// Pilote un lecteur natif et publie son état. Un controller = une vue.
 class NativeVideoController extends ChangeNotifier {
   NativeVideoController({this.initialUrl});
@@ -76,6 +83,21 @@ class NativeVideoController extends ChangeNotifier {
   /// Flux terminé (rare en direct, mais on reconnecte si ça arrive).
   bool isEnded = false;
 
+  /// Pistes audio / sous-titres disponibles (remplies par le natif).
+  List<TrackInfo> audioTracks = <TrackInfo>[];
+  List<TrackInfo> textTracks = <TrackInfo>[];
+
+  /// Taille réelle de la vidéo (pour les formats d'image). Null tant
+  /// qu'aucune trame n'a été décodée.
+  int? videoWidth;
+  int? videoHeight;
+
+  /// Ratio réel de la vidéo (ex : 1.78 pour du 16:9), null si inconnu.
+  double? get videoAspectRatio =>
+      (videoWidth != null && videoHeight != null && videoHeight! > 0)
+          ? videoWidth! / videoHeight!
+          : null;
+
   /// Appelé par [NativeVideoView] quand la PlatformView native est créée.
   void _attach(int viewId) {
     if (_attached || _disposed) return;
@@ -125,9 +147,28 @@ class NativeVideoController extends ChangeNotifier {
           lastErrorCode = args['errorCode'] as int?;
           lastErrorCauseMessage = args['causeMessage'] as String?;
         }
+      case 'videoSize':
+        final Map<dynamic, dynamic> m = call.arguments as Map<dynamic, dynamic>;
+        videoWidth = m['width'] as int?;
+        videoHeight = m['height'] as int?;
+      case 'tracks':
+        final Map<dynamic, dynamic> m = call.arguments as Map<dynamic, dynamic>;
+        audioTracks = _parseTracks(m['audio']);
+        textTracks = _parseTracks(m['text']);
     }
     if (!_disposed) notifyListeners();
     return null;
+  }
+
+  static List<TrackInfo> _parseTracks(dynamic raw) {
+    if (raw is! List) return <TrackInfo>[];
+    return raw
+        .whereType<Map<dynamic, dynamic>>()
+        .map((Map<dynamic, dynamic> t) => TrackInfo(
+              label: (t['label'] as String?) ?? '',
+              selected: (t['selected'] as bool?) ?? false,
+            ))
+        .toList();
   }
 
   /// Charge (ou recharge) une URL : zap vers une autre chaîne, ou reconnexion
@@ -138,13 +179,28 @@ class NativeVideoController extends ChangeNotifier {
   /// défaut du plugin natif. Ignoré si la vue n'est pas encore attachée (le
   /// 1er channel n'a jamais besoin d'un diagnostic, il n'a pas encore pu
   /// échouer).
-  void setUrl(String url, {String? userAgent}) {
+  ///
+  /// [silent] = RÉCUPÉRATION INVISIBLE (façon Netflix) : on recharge le flux
+  /// SANS remettre [firstFrame] à false → l'écran garde la dernière image
+  /// affichée (la SurfaceView native la conserve) au lieu de repasser par
+  /// l'écran de marque plein écran. À utiliser pour les reconnexions et les
+  /// bascules de variante d'URL sur la MÊME chaîne — jamais pour un zap.
+  void setUrl(String url, {String? userAgent, bool silent = false}) {
     hasError = false;
     isEnded = false;
     isBuffering = true;
-    firstFrame = false;
+    if (!silent) {
+      firstFrame = false;
+      // Nouvelle chaîne : les pistes / la taille vidéo seront renvoyées par
+      // le natif pour le nouveau média.
+      audioTracks = <TrackInfo>[];
+      textTracks = <TrackInfo>[];
+      videoWidth = null;
+      videoHeight = null;
+    }
     position = Duration.zero;
     buffered = Duration.zero;
+    duration = Duration.zero;
     if (!_disposed) notifyListeners();
     if (_channel != null) {
       _channel!.invokeMethod<void>('setUrl', <String, dynamic>{
@@ -176,6 +232,14 @@ class NativeVideoController extends ChangeNotifier {
 
   /// Avance/recule de [delta] (Netflix : ±10 s) depuis la position courante.
   void seekBy(Duration delta) => seekTo(position + delta);
+
+  /// Sélectionne la [index]-ième piste audio (ordre de [audioTracks]).
+  void setAudioTrack(int index) => _channel?.invokeMethod<void>(
+      'setAudioTrack', <String, dynamic>{'index': index});
+
+  /// Sélectionne la [index]-ième piste de sous-titres, ou -1 = désactivés.
+  void setSubtitleTrack(int index) => _channel?.invokeMethod<void>(
+      'setSubtitleTrack', <String, dynamic>{'index': index});
 
   /// Règle le volume (0.0 = muet, 1.0 = plein). Sert à la MULTI-VUE : seule la
   /// tuile active garde le son. Conservé pour ré-application au rattachement.
