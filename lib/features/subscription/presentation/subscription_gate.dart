@@ -18,6 +18,7 @@
 // =========================================================
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/branding/brand_logo.dart';
@@ -26,11 +27,30 @@ import '../../../core/support/support_choice_sheet.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/legal_disclaimer.dart';
+import '../../device/data/device_identity.dart';
 import '../../pricing/presentation/pricing_banner.dart';
 import '../data/subscription_state.dart';
 
-class SubscriptionGateScreen extends StatelessWidget {
+class SubscriptionGateScreen extends StatefulWidget {
   const SubscriptionGateScreen({super.key});
+
+  @override
+  State<SubscriptionGateScreen> createState() => _SubscriptionGateScreenState();
+}
+
+class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
+  /// Code de référence NU (sans « MK: ») — chargé une fois. À l'expiration,
+  /// c'est LE numéro que le client montre à son conseiller pour être
+  /// réactivé : il ne doit JAMAIS disparaître de cet écran.
+  String? _ref;
+
+  @override
+  void initState() {
+    super.initState();
+    DeviceIdentity.instance.mac.then((String m) {
+      if (mounted) setState(() => _ref = DeviceIdentity.stripPrefix(m));
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -124,6 +144,32 @@ class SubscriptionGateScreen extends StatelessWidget {
                       height: 1.5,
                     ),
                   ),
+
+                  // ----- NUMÉRO DE RÉFÉRENCE (le cœur de cet écran) -----
+                  //  À l'expiration, le client doit TOUJOURS voir son
+                  //  numéro pour se faire réactiver — clair, gros, copiable,
+                  //  compréhensible même à 80 ans. Suivi d'un bouton direct
+                  //  « Contacter pour réactiver » qui l'envoie pré-rempli.
+                  const SizedBox(height: 26),
+                  _referenceCard(context),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    height: 54,
+                    child: FilledButton.icon(
+                      onPressed: () => _contactToReactivate(context),
+                      icon: const Icon(Icons.support_agent_rounded, size: 22),
+                      label: Text(context.l10n.gateReactivateContact),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                        foregroundColor: AppColors.voidSurface,
+                        textStyle: AppTextStyles.button.copyWith(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+
                   // ----- Arguments de vente (uniquement essai terminé) -----
                   if (expired) ...<Widget>[
                     const SizedBox(height: 22),
@@ -151,23 +197,6 @@ class SubscriptionGateScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                  if (expired) const SizedBox(height: 10),
-
-                  // ----- Support / Contact -----
-                  SizedBox(
-                    height: 50,
-                    child: OutlinedButton.icon(
-                      onPressed: () => showSupportChoiceSheet(context),
-                      icon: const Icon(Icons.support_agent_rounded, size: 20),
-                      label: Text(context.l10n.subContactSupport),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.accent,
-                        side: BorderSide(
-                          color: AppColors.accent.withValues(alpha: 0.55),
-                        ),
-                      ),
-                    ),
-                  ),
                   const SizedBox(height: 20),
 
                   // ----- Mention légale (lecteur seul, aucun contenu) -----
@@ -196,6 +225,101 @@ class SubscriptionGateScreen extends StatelessWidget {
   Future<void> _openPurchase() async {
     final Uri url = Uri.parse(kPurchaseUrl);
     await launchUrl(url, mode: LaunchMode.externalApplication);
+  }
+
+  /// Carte « numéro de référence » — sobre et lisible : label discret en
+  /// or, le NUMÉRO en gros (copiable), un bouton Copier pleine largeur, et
+  /// une phrase simple qui dit quoi en faire. C'est ce que le client montre
+  /// à son conseiller pour être réactivé.
+  Widget _referenceCard(BuildContext context) {
+    final String code = _ref ?? '••••  ••••  ••••';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: AppColors.accent.withValues(alpha: 0.45),
+          width: 1.3,
+        ),
+      ),
+      child: Column(
+        children: <Widget>[
+          Text(
+            context.l10n.gateReferenceLabel,
+            textAlign: TextAlign.center,
+            style: AppTextStyles.labelSmall.copyWith(
+              color: AppColors.accent,
+              fontSize: 11,
+              letterSpacing: 2,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SelectableText(
+            code,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 23,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 2,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _ref == null ? null : () => _copyRef(context),
+              icon: const Icon(Icons.copy_rounded, size: 16),
+              label: Text(context.l10n.buttonCopy),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.accent,
+                side: BorderSide(
+                  color: AppColors.accent.withValues(alpha: 0.4),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            context.l10n.gateReferenceHint,
+            textAlign: TextAlign.center,
+            style: AppTextStyles.bodyMedium.copyWith(
+              fontSize: 12.5,
+              color: AppColors.textSecondary,
+              height: 1.45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _copyRef(BuildContext context) async {
+    final String? code = _ref;
+    if (code == null) return;
+    await Clipboard.setData(ClipboardData(text: code));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content:
+            Text(context.l10n.idCopied(code), style: AppTextStyles.bodyMedium),
+      ),
+    );
+  }
+
+  /// Contact direct : le message part avec le numéro de référence DÉJÀ
+  /// rempli (le conseiller n'a plus qu'à réactiver).
+  void _contactToReactivate(BuildContext context) {
+    final String? code = _ref;
+    showSupportChoiceSheet(
+      context,
+      customMessage:
+          code == null ? null : context.l10n.activationPrefillMessage(code),
+    );
   }
 
   /// Liste d'avantages affichee sur l'ecran "essai termine" — des

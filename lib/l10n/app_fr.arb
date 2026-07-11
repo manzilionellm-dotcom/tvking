@@ -3811,5 +3811,9 @@
   "tvCollectionsNoFavorites": "Aucun favori pour l'instant. Mets des chaînes en favori (appui long sur OK dans le Direct), puis reviens ici.",
   "tvCollectionsPresetNews": "Actus",
   "tvCollectionsPresetCustom1": "Perso 1",
-  "tvCollectionsPresetCustom2": "Perso 2"
+  "tvCollectionsPresetCustom2": "Perso 2",
+  "gateReferenceLabel": "TON NUMÉRO DE RÉFÉRENCE",
+  "gateReferenceHint": "Montre ce numéro à ton conseiller : il réactive ton accès en un instant.",
+  "gateReactivateContact": "Contacter pour réactiver",
+  "gateReferenceKeep": "Garde-le précieusement — c’est ta clé."
 }
