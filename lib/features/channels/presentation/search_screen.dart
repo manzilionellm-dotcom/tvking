@@ -19,6 +19,14 @@
 //    - Tap = lecture (route existante via playChannel), long-press
 //      = sheet de détail
 //
+//  Le matching et le classement sont délégués au moteur
+//  [SmartSearch] (data/smart_search.dart) : multi-mots dans
+//  n'importe quel ordre, tolérance aux fautes de frappe, accents
+//  ignorés, classement par pertinence, boost des favoris / des
+//  chaînes réellement regardées, et rétrogradation des doublons
+//  IPTV (variantes HD/FHD/4K du même nom). Voir l'en-tête de
+//  smart_search.dart pour le détail du barème.
+//
 //  Performance : la liste de chaînes est filtrée en mémoire (cache
 //  PlaylistRepository). Sur 27k chaînes, ~50 ms par filtre.
 //  Combiné au debounce 300 ms, l'expérience est fluide même
@@ -39,11 +47,15 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../cast/presentation/cast_button.dart';
 import '../../player/presentation/play_channel.dart';
+import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../vod/data/vod_repository.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../data/ai_search_service.dart';
 import '../data/recent_searches_repository.dart';
+import '../data/recently_watched_repository.dart';
+import '../data/smart_search.dart';
+import '../data/watch_history_repository.dart';
 import '../domain/channel.dart';
 import '../domain/channel_genre.dart';
 import 'channel_detail_sheet.dart';
@@ -77,6 +89,13 @@ class _SearchScreenState extends State<SearchScreen> {
   /// porte sur les chaînes live uniquement (dégradation douce).
   List<Channel> _movies = const <Channel>[];
 
+  /// Signaux de personnalisation du moteur [SmartSearch] : favoris,
+  /// chaînes récemment regardées, temps de visionnage 30 jours.
+  /// Chargés une seule fois à l'ouverture de l'écran ; tant qu'ils
+  /// ne sont pas là, la recherche classe par pertinence textuelle
+  /// seule (dégradation douce, jamais bloquant).
+  SearchSignals _signals = SearchSignals.none;
+
   @override
   void initState() {
     super.initState();
@@ -85,6 +104,30 @@ class _SearchScreenState extends State<SearchScreen> {
     // chips se peuplent dès que le repo notifie.
     RecentSearchesRepository.instance.initialize();
     _loadMovies();
+    _loadSignals();
+  }
+
+  /// Récupère les signaux de personnalisation en arrière-plan.
+  /// Best-effort : une erreur (DB pas prête, etc.) laisse
+  /// simplement les boosts désactivés.
+  Future<void> _loadSignals() async {
+    try {
+      await FavoritesRepository.instance.initialize();
+      await RecentlyWatchedRepository.instance.initialize();
+      final Map<String, int> watchMs =
+          await WatchHistoryRepository.instance.watchTimeByChannel(days: 30);
+      if (!mounted) return;
+      setState(() {
+        _signals = SearchSignals(
+          favoriteIds: FavoritesRepository.instance.current,
+          recentIds: RecentlyWatchedRepository.instance.current,
+          watchMsById: watchMs,
+        );
+      });
+    } catch (_) {
+      // Pas de personnalisation cette fois-ci — la recherche
+      // textuelle reste pleinement fonctionnelle.
+    }
   }
 
   /// Récupère le catalogue de films (VOD Xtream) et le convertit en
@@ -157,14 +200,14 @@ class _SearchScreenState extends State<SearchScreen> {
       });
       return;
     }
-    final String needle = _normalize(query);
-    final List<Channel> hits = <Channel>[];
-    for (final Channel c in all) {
-      if (_normalize(c.name).contains(needle) ||
-          _normalize(c.category).contains(needle)) {
-        hits.add(c);
-      }
-    }
+    // Moteur intelligent : tolérance aux fautes, mots dans
+    // n'importe quel ordre, classement par pertinence + signaux
+    // perso, doublons IPTV rétrogradés (voir smart_search.dart).
+    final List<Channel> hits = SmartSearch.rank(
+      query: query,
+      pool: all,
+      signals: _signals,
+    );
     if (!mounted) return;
     setState(() {
       _activeQuery = query;
@@ -276,24 +319,6 @@ class _SearchScreenState extends State<SearchScreen> {
       _state = _SearchState.idle;
     });
     _focus.requestFocus();
-  }
-
-  String _normalize(String s) {
-    final String lower = s.toLowerCase();
-    const Map<String, String> map = <String, String>{
-      'à': 'a', 'á': 'a', 'â': 'a', 'ä': 'a', 'ã': 'a',
-      'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e',
-      'ì': 'i', 'í': 'i', 'î': 'i', 'ï': 'i',
-      'ò': 'o', 'ó': 'o', 'ô': 'o', 'ö': 'o', 'õ': 'o',
-      'ù': 'u', 'ú': 'u', 'û': 'u', 'ü': 'u',
-      'ç': 'c', 'ñ': 'n',
-    };
-    final StringBuffer out = StringBuffer();
-    for (final int rune in lower.runes) {
-      final String ch = String.fromCharCode(rune);
-      out.write(map[ch] ?? ch);
-    }
-    return out.toString();
   }
 
   // ============================================================
