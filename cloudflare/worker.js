@@ -826,6 +826,53 @@ const ADMIN_PANEL_HTML = `<!doctype html>
       table { font-size: 11px; }
       th, td { padding: 8px 6px; }
     }
+    /* Ligne cliquable → fiche détail (le MAC devient un lien évident). */
+    td.mac { cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+    td.mac:hover { color: #FF5A4A; }
+    /* ===== Fiche détail (modale plein écran) ===== */
+    .overlay {
+      position: fixed; inset: 0; z-index: 50;
+      background: rgba(4,4,7,0.78);
+      display: none; align-items: flex-start; justify-content: center;
+      padding: 24px; overflow-y: auto;
+    }
+    .overlay.open { display: flex; }
+    .sheet {
+      width: 100%; max-width: 640px;
+      background: linear-gradient(180deg, #16161C 0%, #0E0E12 100%);
+      border: 1px solid rgba(214,58,48,0.35);
+      border-radius: 16px; padding: 22px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+    }
+    .sheet-head {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .sheet-head .x {
+      background: transparent; border: 1px solid rgba(255,255,255,0.14);
+      color: #B6B0A8; border-radius: 8px; padding: 6px 12px;
+    }
+    .sheet h2 { font-size: 15px; letter-spacing: 1px; }
+    .sheet .sub {
+      font-family: monospace; color: #D63A30; font-weight: 700;
+      font-size: 14px; margin-bottom: 16px;
+    }
+    .grp {
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 12px; padding: 12px 14px; margin-bottom: 12px;
+    }
+    .grp h3 {
+      font-size: 10px; letter-spacing: 1.6px; color: #7E7872;
+      text-transform: uppercase; margin-bottom: 10px; font-weight: 700;
+    }
+    .kv { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 13px; }
+    .kv .k { color: #8E8880; }
+    .kv .v { color: #F0EDE9; text-align: right; word-break: break-word; font-weight: 600; }
+    .kv .v.mono { font-family: monospace; }
+    .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+    .dot.on { background:#5FA975; box-shadow:0 0 8px #5FA975; }
+    .dot.off { background:#7E7872; }
+    .sheet .row-actions { margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -895,6 +942,18 @@ const ADMIN_PANEL_HTML = `<!doctype html>
         <tbody id="tbody"></tbody>
       </table>
       <div id="empty" style="display:none">Aucun client dans cette catégorie.</div>
+    </div>
+  </div>
+
+  <!-- ===== FICHE DÉTAIL (modale) — clic sur un MAC ===== -->
+  <div id="detail-overlay" class="overlay" onclick="if(event.target===this)closeDetail()">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h2>FICHE APPAREIL</h2>
+        <button class="x" onclick="closeDetail()">✕ Fermer</button>
+      </div>
+      <div class="sub" id="detail-mac">—</div>
+      <div id="detail-body"></div>
     </div>
   </div>
 
@@ -1090,7 +1149,7 @@ function render() {
         ? '<span class="badge unpaid">Essai ' + days + 'j</span>'
         : '<span class="badge unpaid">Expiré</span>';
     return '<tr>' +
-      '<td class="mac">' + escapeHtml(c.mac) + '</td>' +
+      '<td class="mac" onclick="openDetail(\\''+c.mac+'\\')" title="Voir la fiche complète">' + escapeHtml(c.mac) + '</td>' +
       '<td>' + escapeHtml(c.name || '—') + '</td>' +
       '<td>' + statusBadge + ' ' + paidBadge + '</td>' +
       '<td>' + (days > 0 ? days + 'j' : '—') + '</td>' +
@@ -1119,6 +1178,184 @@ async function action(mac, act) {
   } catch (e) {
     if (e.message !== 'unauthorized') alert(e.message);
   }
+}
+
+// ============================================================
+//  FICHE DÉTAIL — clic sur un MAC → tout savoir sur le porteur
+// ============================================================
+//  Une modale qui affiche TOUT ce que le serveur sait de l'appareil :
+//  abonnement (payé / essai / gelé / banni), connexion live (en ligne,
+//  dernière connexion, IP, pays, chaîne en cours), matériel + version
+//  app, plan famille, sources assignées — et les mêmes boutons d'action
+//  que le tableau. « Le seul maître de tout. »
+let detailMac = null;
+
+function fmtFull(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  const p = n => String(n).padStart(2, '0');
+  return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() +
+    ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+function ago(ts) {
+  if (!ts) return '';
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return 'il y a ' + s + ' s';
+  const m = Math.floor(s / 60);
+  if (m < 60) return 'il y a ' + m + ' min';
+  const h = Math.floor(m / 60);
+  if (h < 24) return 'il y a ' + h + ' h';
+  return 'il y a ' + Math.floor(h / 24) + ' j';
+}
+
+function kv(k, v, mono) {
+  const val = (v == null || v === '') ? '—' : escapeHtml(String(v));
+  return '<div class="kv"><span class="k">' + escapeHtml(k) + '</span>' +
+    '<span class="v' + (mono ? ' mono' : '') + '">' + val + '</span></div>';
+}
+
+function kvRaw(k, vHtml) {
+  return '<div class="kv"><span class="k">' + escapeHtml(k) + '</span>' +
+    '<span class="v">' + vHtml + '</span></div>';
+}
+
+async function openDetail(mac) {
+  detailMac = mac;
+  document.getElementById('detail-mac').textContent = mac;
+  document.getElementById('detail-body').innerHTML =
+    '<div style="padding:20px;text-align:center;color:#7E7872">Chargement…</div>';
+  document.getElementById('detail-overlay').classList.add('open');
+  try {
+    const resp = await api('/admin/clients/' + encodeURIComponent(mac));
+    if (!resp.ok) {
+      document.getElementById('detail-body').innerHTML =
+        '<div style="padding:20px;color:#E84A3E">Erreur ' + resp.status + '</div>';
+      return;
+    }
+    renderDetail(await resp.json());
+  } catch (e) {
+    if (e.message !== 'unauthorized') {
+      document.getElementById('detail-body').innerHTML =
+        '<div style="padding:20px;color:#E84A3E">' + escapeHtml(e.message) + '</div>';
+    }
+  }
+}
+
+function closeDetail() {
+  document.getElementById('detail-overlay').classList.remove('open');
+  detailMac = null;
+}
+
+function renderDetail(c) {
+  const now = Date.now();
+  const meta = c.meta || {};
+  const status = c.status || 'active';
+  const paid = c.paid === true;
+  const days = daysLeft(c);
+  const p = meta.presence || null;
+  const online = !!(p && p.last_seen && (now - p.last_seen) < 5 * 60 * 1000);
+
+  // --- Abonnement ---
+  const paidBadge = paid
+    ? '<span class="badge paid">Payé</span>'
+    : (days > 0 ? '<span class="badge unpaid">Essai ' + days + 'j</span>'
+                : '<span class="badge unpaid">Expiré</span>');
+  let g = '<div class="grp"><h3>Abonnement</h3>';
+  g += kvRaw('État', '<span class="badge ' + status + '">' + status + '</span> ' + paidBadge);
+  g += kv('Payé', paid ? 'Oui' : 'Non');
+  g += kv('Essai restant', days > 0 ? days + ' jour(s)' : 'Aucun');
+  g += kv('Essai jusqu\\'au', fmtFull(c.trial_until));
+  if (c.name) g += kv('Nom', c.name);
+  if (c.note) g += kv('Note', c.note);
+  g += '</div>';
+
+  // --- Connexion (live) ---
+  const lastSeen = (p && p.last_seen) || c.last_seen_at ||
+    (meta.device && meta.device.last_seen_at) || 0;
+  g += '<div class="grp"><h3>Connexion</h3>';
+  g += kvRaw('En ligne', '<span class="dot ' + (online ? 'on' : 'off') + '"></span>' +
+    (online ? 'Oui' : 'Non'));
+  g += kvRaw('Dernière connexion', lastSeen
+    ? escapeHtml(fmtFull(lastSeen)) + ' <span style="color:#7E7872">(' + ago(lastSeen) + ')</span>'
+    : '—');
+  g += kv('Adresse IP', p ? p.ip : '', true);
+  g += kv('Pays', p ? p.country : '');
+  g += kv('Chaîne en cours', p ? p.channel : '');
+  g += '</div>';
+
+  // --- Appareil ---
+  const d = meta.device || {};
+  g += '<div class="grp"><h3>Appareil</h3>';
+  g += kv('Modèle', d.device_model);
+  g += kv('Plateforme', d.platform);
+  g += kv('Android', d.android_release
+    ? (d.android_release + (d.android_build ? (' (' + d.android_build + ')') : '')) : '');
+  g += kv('Version app', d.app_version
+    ? (d.app_version + (d.app_build ? (' (' + d.app_build + ')') : '')) : '');
+  g += kv('ID Android', d.android_id, true);
+  g += kv('Revendeur', d.reseller_id);
+  g += kv('Première vue', d.first_seen_at ? fmtFull(d.first_seen_at)
+    : (c.added_at ? fmtFull(c.added_at) : ''));
+  g += '</div>';
+
+  // --- Famille ---
+  const f = meta.family;
+  if (f) {
+    g += '<div class="grp"><h3>Famille</h3>';
+    if (f.role === 'member') {
+      g += kv('Rôle', 'Membre');
+      g += kv('Propriétaire', f.owner, true);
+    } else {
+      g += kv('Rôle', 'Propriétaire');
+      g += kv('Plan', (f.enabled ? 'Activé' : 'Non activé') +
+        ' (' + (f.members ? f.members.length : 0) + '/' + (f.max || 4) + ')');
+      (f.members || []).forEach((m, i) => {
+        g += kv('  ' + (i + 1) + '. ' + (m.label || 'Sans nom'), m.mac, true);
+      });
+    }
+    g += '</div>';
+  }
+
+  // --- Sources assignées ---
+  const srcs = meta.sources || [];
+  g += '<div class="grp"><h3>Sources (' + srcs.length + ')</h3>';
+  if (srcs.length) {
+    srcs.forEach((s, i) => {
+      const line = (s.type || '?') + (s.label ? (' · ' + s.label) : '') +
+        (s.origin ? (' · ' + s.origin) : '');
+      g += kv('#' + (i + 1) + ' ' + line, s.server_url || (s.has_m3u ? 'M3U' : ''));
+      if (s.username) {
+        g += kv('   utilisateur', s.username + (s.has_password ? ' · ****' : ''), true);
+      }
+    });
+  } else {
+    g += kv('Assignées', 'Aucune');
+  }
+  g += '</div>';
+
+  // --- Actions (mêmes que le tableau) ---
+  const mac = c.mac;
+  g += '<div class="row-actions">';
+  g += paid
+    ? '<button class="ghost" onclick="detailAction(\\'' + mac + '\\',\\'mark_unpaid\\')">Annuler payé</button>'
+    : '<button onclick="detailAction(\\'' + mac + '\\',\\'mark_paid\\')">✓ Marquer payé</button>';
+  g += '<button class="ghost" onclick="renew(\\'' + mac + '\\').then(()=>openDetail(\\'' + mac + '\\'))">↻ Renouveler</button>';
+  g += status === 'frozen'
+    ? '<button onclick="detailAction(\\'' + mac + '\\',\\'unfreeze\\')">▶ Réactiver</button>'
+    : '<button class="ghost" onclick="detailAction(\\'' + mac + '\\',\\'freeze\\')">❄ Geler</button>';
+  g += status === 'banned'
+    ? '<button onclick="detailAction(\\'' + mac + '\\',\\'unfreeze\\')">▶ Débannir</button>'
+    : '<button class="danger" onclick="detailAction(\\'' + mac + '\\',\\'ban\\')">⛔ Bannir</button>';
+  g += '<button class="ghost" onclick="editNote(\\'' + mac + '\\').then(()=>openDetail(\\'' + mac + '\\'))">📝 Note</button>';
+  g += '</div>';
+
+  document.getElementById('detail-body').innerHTML = g;
+}
+
+async function detailAction(mac, act) {
+  await action(mac, act);
+  if (detailMac === mac) openDetail(mac); // rafraîchit la fiche
 }
 
 // ===== GESTION FAMILLE (revendeur) =====
@@ -2346,7 +2583,110 @@ async function handleGetClientsList(env) {
 async function handleGetClient(env, mac) {
   const data = await readClient(env, mac);
   if (!data) return notFound(`Client ${mac} introuvable`);
-  return json({ mac, ...data });
+  // Enrichissement DÉTAIL : quand l'admin clique une ligne, il veut TOUT
+  // savoir sur le porteur. On agrège les données live/matérielles sans
+  // jamais faire échouer la lecture (best-effort par brique).
+  const meta = await readClientDetailMeta(env, mac);
+  return json({ mac, ...data, meta });
+}
+
+// =========================================================
+//  Détail complet d'un appareil (clic sur une ligne du panel)
+// =========================================================
+//  Agrège TOUT ce que le serveur sait de l'appareil :
+//    • présence LIVE  : IP, pays, chaîne en cours, dernière vue ;
+//    • matériel + app : modèle, Android, plateforme, version + build ;
+//    • famille         : rôle (propriétaire/membre), proches liés ;
+//    • sources         : listes assignées (mots de passe MASQUÉS).
+//  Best-effort ABSOLU : chaque brique est isolée dans son try/catch —
+//  une base absente ou une table manquante renvoie un champ vide, jamais
+//  une erreur. Le panel dégrade proprement (affiche « — »).
+// =========================================================
+async function readClientDetailMeta(env, mac) {
+  const meta = { presence: null, device: null, family: null, sources: [] };
+  if (!env.DB) return meta;
+  const MAC = String(mac || '').toUpperCase();
+
+  // Présence live (table `presence`, écrite à chaque heartbeat).
+  try {
+    const p = await env.DB
+      .prepare('SELECT ip, country, last_seen, channel FROM presence WHERE mac = ?')
+      .bind(mac).first();
+    if (p) {
+      meta.presence = {
+        ip: p.ip || '',
+        country: p.country || '',
+        last_seen: p.last_seen || 0,
+        channel: p.channel || '',
+      };
+    }
+  } catch (_) {}
+
+  // Matériel + version app + horodatages + blocage (table `devices`).
+  try {
+    const d = await env.DB
+      .prepare('SELECT * FROM devices WHERE mac = ?')
+      .bind(mac).first();
+    if (d) {
+      meta.device = {
+        first_seen_at: d.first_seen_at || 0,
+        last_seen_at: d.last_seen_at || 0,
+        device_model: d.device_model || '',
+        android_release: d.android_release || '',
+        android_build: d.android_build || '',
+        platform: d.platform || '',
+        app_version: d.app_version || '',
+        app_build: d.app_build || 0,
+        android_id: d.android_id || '',
+        reseller_id: d.reseller_id || '',
+        block_status: d.block_status || '',
+      };
+    }
+  } catch (_) {}
+
+  // Famille (propriétaire / membre) — mêmes tables que /api/family/info.
+  try {
+    if (await ensureFamilySchema(env)) {
+      const ownerMac = await familyOwnerOf(env, MAC);
+      if (ownerMac) {
+        meta.family = { role: 'member', owner: ownerMac };
+      } else {
+        const plan = await familyPlanFor(env, MAC);
+        const rows = await env.DB
+          .prepare('SELECT member_mac, label FROM app_family_links WHERE owner_mac = ? ORDER BY created_at ASC')
+          .bind(MAC).all();
+        const members = ((rows && rows.results) || []).map((r) => ({
+          mac: r.member_mac,
+          label: r.label || '',
+        }));
+        if (plan.enabled || members.length) {
+          meta.family = {
+            role: 'owner',
+            enabled: plan.enabled,
+            max: plan.max,
+            members,
+          };
+        }
+      }
+    }
+  } catch (_) {}
+
+  // Sources assignées (device_sources, clé en MAJUSCULES). Les mots de
+  // passe ne sortent JAMAIS : on renvoie seulement leur présence.
+  try {
+    const { items } = await readDeviceSourceItems(env, MAC);
+    meta.sources = (items || []).map((s) => ({
+      type: s.type || '',
+      label: s.label || '',
+      origin: s.origin || '',
+      server_url: s.server_url || '',
+      username: s.username || '',
+      has_password: !!s.password,
+      has_m3u: !!s.m3u_url,
+    }));
+  } catch (_) {}
+
+  return meta;
 }
 
 async function handleUpsertClient(request, env, mac) {
