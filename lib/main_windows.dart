@@ -33,6 +33,7 @@ import 'core/app/app_platform.dart';
 import 'core/app/guarded_main.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
+import 'core/realtime/realtime_sync_service.dart';
 import 'features/channels/domain/channel.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/playlists/data/favorites_repository.dart';
@@ -111,4 +112,14 @@ Future<void> _bootstrap() async {
   Timer.periodic(const Duration(minutes: 5), (_) {
     RemoteSourceRepository.sync();
   });
+
+  // TEMPS RÉEL (WebSocket) : les actions du panel arrivent en < 1 s quand
+  // le poste est en ligne — les polls ci-dessus restent le filet de
+  // sécurité. `dart:io` est disponible sur Windows ; le try/catch est une
+  // ceinture supplémentaire (le service, lui, ne throw jamais).
+  try {
+    unawaited(RealtimeSyncService.instance.start(platform: 'windows'));
+  } catch (e) {
+    debugPrint('[main_windows] realtime start: $e');
+  }
 }

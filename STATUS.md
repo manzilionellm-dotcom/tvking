@@ -185,6 +185,44 @@ Deux apps dans le MÊME repo (flavors Flutter) :
 
 ---
 
+## Temps réel app ↔ panel + panel intelligent (2026-07-11)
+
+Branche : `claude/app-panel-intelligence-77azr1`. Contrat complet dans
+`docs/REALTIME-PROTOCOL.md`. Tout est FAIL-OPEN : sans WebSocket, l'app
+et le panel se comportent exactement comme avant (polling conservé).
+
+- **Hub temps réel** : Durable Object `RealtimeHub` (`cloudflare/realtime.js`),
+  binding `RT_HUB` + migration dans wrangler.toml (plan gratuit OK,
+  `wrangler deploy` suffit). WS appareils `/api/rt/device`, WS panel
+  `/api/v1/rt/ws?token=JWT`.
+- **Instantané** : chaque mutation du panel (activation, gel, ban, push
+  playlist, transfert, annonces, thème, tarifs, force-update…) publie un
+  `sync` vers le(s) appareil(s) visé(s) → l'app re-fetch en <1 s au lieu
+  de ~30 min. Réponses HTTP enrichies de `rt:{delivered,id}` ; l'appareil
+  renvoie un `ack` → le panel affiche « ✓ Appliqué en X ms ».
+- **App Flutter** : `lib/core/realtime/realtime_sync_service.dart`
+  (dart:io WebSocket, AUCUNE dépendance nouvelle), reconnexion backoff
+  5→120 s, re-check au retour au premier plan, bannière messages admin
+  (`admin_message_banner.dart`), annonces et force-update appliqués EN
+  DIRECT (signaux `revision` sur AnnouncementRepository /
+  ForceUpdateChecker). Branché dans main / main_tv / main_windows /
+  main_tizen (main_prive hérite du mobile).
+- **Panel** : présence en direct (page En ligne fusionne WS + présence
+  HTTP — les vieux APK comptent toujours), pastille verte temps réel sur
+  Devices, envoi de message / forcer la synchro depuis la fiche appareil,
+  Dashboard avec section « À traiter » (`GET /api/v1/insights` : licences
+  qui expirent sous 7 j, essais qui finissent sous 48 h, payants muets
+  depuis 7 j, nouveaux du jour), indicateur ● Direct / ○ Différé dans la
+  sidebar, tokens Tailwind `success`/`warning` enfin définis (les confirmations
+  vertes étaient invisibles avant).
+- **Revue** : 8 angles + corrections appliquées (anti-spoof X-RT-IP,
+  socket fantôme au timeout de connexion, latence « null ms », publishes
+  parallélisés, requêtes insights en batch + dédup par MAC, etc.).
+- Vérifié : `flutter analyze` 0 erreur, 194/194 tests, build panel vert,
+  smoke tests worker 6/6 + realtime 11/11.
+
+---
+
 ## App Licensing Platform (Phase 1.A — démarrée)
 
 Nouvelle plateforme centrale pour gérer toutes les apps du portfolio

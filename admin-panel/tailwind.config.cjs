@@ -36,6 +36,17 @@ module.exports = {
           DEFAULT: '#E8D9C0',
           deep: '#B39B7C',
         },
+        // Etats semantiques — utilises partout (bg-success/15,
+        // text-warning…) mais historiquement JAMAIS definis ici :
+        // les classes se compilaient en transparent. Corrige.
+        success: {
+          DEFAULT: '#3FA860', // vert chaud (assorti a la palette braise)
+          bright: '#5BC97E',
+        },
+        warning: {
+          DEFAULT: '#D69A30', // ambre (echo du champagne, plus saturee)
+          bright: '#F0B95A',
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],

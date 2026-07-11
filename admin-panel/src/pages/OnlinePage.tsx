@@ -1,10 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { onlineApi, type OnlineSnapshot, flagEmoji, ApiError } from '@/lib/api';
+import { useLiveDevices } from '@/lib/realtime';
 
 /// Page « En ligne » (owner) — qui utilise l'app en ce moment, depuis où.
-/// Données issues de la présence (heartbeat) : IP + pays fournis par
-/// Cloudflare. « En ligne » = vu il y a moins de 15 min.
+///
+/// UNE seule table : union par MAC des appareils du hub temps réel (WS)
+/// et de la présence heartbeat /api/v1/online. Le WS gagne pour la chaîne
+/// et le « vu » quand il connaît l'appareil ; l'IP vient de /online.
+/// Le polling 30 s tourne TOUJOURS, même WS connecté : il est la seule
+/// source de « Actifs aujourd'hui », des IP, et couvre les vieux APK qui
+/// heartbeatent sans ouvrir de WebSocket.
 
 function ago(ts: number): string {
   if (!ts) return '—';
@@ -14,14 +20,35 @@ function ago(ts: number): string {
   return `il y a ${Math.floor(s / 3600)} h`;
 }
 
+/// Ligne fusionnée du tableau (WS ∪ /online, par MAC).
+type OnlineRow = {
+  mac: string;
+  country: string;
+  channel: string;
+  lastSeen: number;
+  ip?: string;
+  platform?: string;
+  model?: string;
+  live: boolean;      // connecté au hub temps réel en ce moment
+};
+
+/// Libellé plateforme (connue seulement via le WS).
+function platformLabel(p?: string): string {
+  if (p === 'tv') return '📺 TV';
+  if (p === 'mobile') return '📱 Mobile';
+  if (p === 'windows') return '💻 Windows';
+  return '—';
+}
+
 export function OnlinePage({ onLogout }: { onLogout: () => void }) {
   const [data, setData] = useState<OnlineSnapshot | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const { devices: live, connected } = useLiveDevices();
 
   function load() {
     onlineApi.get()
-      .then(setData)
+      .then((d) => { setData(d); setErr(null); })
       .catch((e: any) => {
         if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
         setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
@@ -29,7 +56,8 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
       .finally(() => setLoading(false));
   }
 
-  // Rafraîchissement auto toutes les 30 s.
+  // Le polling 30 s tourne TOUJOURS (même WS connecté) : seule source de
+  // « Actifs aujourd'hui », des IP, et des vieux APK sans WebSocket.
   useEffect(() => {
     load();
     const t = setInterval(load, 30000);
@@ -37,15 +65,60 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
     /* eslint-disable-next-line */
   }, []);
 
-  const byCountry = data
-    ? Object.entries(data.byCountry).sort((a, b) => b[1] - a[1])
-    : [];
+  // Union par MAC : /online d'abord, puis le WS écrase chaîne / vu /
+  // plateforme quand il connaît l'appareil (l'IP reste celle de /online).
+  const rows = useMemo<OnlineRow[]>(() => {
+    const map = new Map<string, OnlineRow>();
+    for (const d of data?.items ?? []) {
+      map.set(d.mac, {
+        mac: d.mac,
+        country: d.country || '',
+        channel: d.channel ?? '',
+        lastSeen: d.lastSeen,
+        ip: d.ip || undefined,
+        live: false,
+      });
+    }
+    for (const d of live) {
+      const prev = map.get(d.mac);
+      map.set(d.mac, {
+        mac: d.mac,
+        country: d.country || prev?.country || '',
+        channel: d.channel ?? '',
+        lastSeen: d.lastSeen ?? d.connectedAt ?? prev?.lastSeen ?? 0,
+        ip: prev?.ip,
+        platform: d.platform,
+        model: d.model,
+        live: true,
+      });
+    }
+    return Array.from(map.values()).sort((a, b) => b.lastSeen - a.lastSeen);
+  }, [data, live]);
+
+  // Compteur = taille de l'UNION (pas live.length : les vieux APK qui
+  // heartbeatent sans WS doivent compter aussi).
+  const onlineCount = rows.length;
+  const byCountry = useMemo(() => {
+    const acc: Record<string, number> = {};
+    for (const r of rows) {
+      const c = r.country || '??';
+      acc[c] = (acc[c] || 0) + 1;
+    }
+    return Object.entries(acc).sort((a, b) => b[1] - a[1]);
+  }, [rows]);
 
   return (
     <AppLayout
       title="En ligne"
-      subtitle="Qui utilise l'app en ce moment, et depuis quel pays (mise à jour auto)"
+      subtitle={connected
+        ? "Qui utilise l'app en ce moment — flux temps réel (WebSocket)"
+        : "Qui utilise l'app en ce moment, et depuis quel pays (mise à jour auto)"}
       onLogout={onLogout}
+      actions={connected ? (
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-3 py-1 text-xs font-semibold text-success">
+          Direct <span className="animate-pulse">●</span>
+        </span>
+      ) : undefined}
     >
       {err && (
         <div className="mb-4 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">
@@ -53,7 +126,7 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
         </div>
       )}
 
-      {loading && !data ? (
+      {loading && !data && !connected ? (
         <div className="text-sm text-ink-tertiary">Chargement…</div>
       ) : (
         <>
@@ -64,7 +137,7 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
                 En ligne maintenant
               </div>
               <div className="mt-1 text-3xl font-bold text-success">
-                {data?.onlineCount ?? 0}
+                {onlineCount}
               </div>
             </div>
             <div className="rounded-xl border border-white/5 bg-midnight p-4">
@@ -106,12 +179,13 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
             </div>
           )}
 
-          {/* Liste des appareils en ligne */}
+          {/* Liste des appareils en ligne — UNE table (union WS ∪ /online) */}
           <div className="overflow-hidden rounded-xl border border-white/5">
             <table className="w-full text-left text-sm">
               <thead className="bg-midnight text-[10px] uppercase tracking-widest text-ink-tertiary">
                 <tr>
                   <th className="px-4 py-2.5">Pays</th>
+                  <th className="px-4 py-2.5">Plateforme</th>
                   <th className="px-4 py-2.5">IP</th>
                   <th className="px-4 py-2.5">MAC</th>
                   <th className="px-4 py-2.5">Regarde</th>
@@ -119,25 +193,33 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
                 </tr>
               </thead>
               <tbody>
-                {(data?.items ?? []).map((d) => (
-                  <tr key={d.mac} className="border-t border-white/5">
+                {rows.map((r) => (
+                  <tr key={r.mac} className="border-t border-white/5">
                     <td className="px-4 py-2.5">
-                      <span className="mr-1.5">{flagEmoji(d.country)}</span>
-                      {d.country || '—'}
+                      {/* Pastille verte pulsante = connecté au hub temps réel. */}
+                      {r.live && (
+                        <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-success align-middle" />
+                      )}
+                      <span className="mr-1.5">{flagEmoji(r.country)}</span>
+                      {r.country || '—'}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-ink-secondary">{d.ip || '—'}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-ink-tertiary">{d.mac}</td>
+                    <td className="px-4 py-2.5 text-xs text-ink-secondary">
+                      {platformLabel(r.platform)}
+                      {r.model ? <span className="ml-1.5 text-ink-tertiary">{r.model}</span> : null}
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-ink-secondary">{r.ip || '—'}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-ink-tertiary">{r.mac}</td>
                     <td className="px-4 py-2.5 text-xs">
-                      {d.channel
-                        ? <span className="inline-flex items-center gap-1 text-accent-bright">▶ {d.channel}</span>
+                      {r.channel
+                        ? <span className="inline-flex items-center gap-1 text-accent-bright">▶ {r.channel}</span>
                         : <span className="text-ink-tertiary">—</span>}
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-ink-tertiary">{ago(d.lastSeen)}</td>
+                    <td className="px-4 py-2.5 text-xs text-ink-tertiary">{ago(r.lastSeen)}</td>
                   </tr>
                 ))}
-                {(data?.items.length ?? 0) === 0 && (
+                {rows.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-xs text-ink-tertiary">
+                    <td colSpan={6} className="px-4 py-6 text-center text-xs text-ink-tertiary">
                       Personne en ligne dans les 15 dernières minutes.
                     </td>
                   </tr>

@@ -73,6 +73,31 @@ database_name = "tvking_licensing"
 database_id = "67303737-a50b-4258-86de-662fb9aba6e7"
 
 # =========================================================
+#  Temps réel — Durable Object « RealtimeHub »
+# =========================================================
+#  Le hub temps réel (cloudflare/realtime.js, exporté par worker.js) tient
+#  les WebSockets des appareils (/api/rt/device) et des panels admin
+#  (/api/v1/rt/ws), et diffuse les évènements publiés par les mutations
+#  (publishRt). UNE instance unique (`idFromName('hub-v1')`).
+#
+#  `new_sqlite_classes` = Durable Object adossé à SQLite : REQUIS pour le
+#  free plan Workers (les DO « classiques » sont réservés au plan payant),
+#  et parfait ici — l'API WebSocket Hibernation rend le coût quasi nul au
+#  repos. La migration est appliquée AUTOMATIQUEMENT par `wrangler deploy`
+#  (aucune commande supplémentaire : le tag v1-rt-hub n'est joué qu'une
+#  fois, les déploiements suivants l'ignorent).
+#
+#  Si ce bloc est retiré/absent : env.RT_HUB est undefined → les routes rt
+#  répondent 503 {error:'rt_unavailable'} et TOUT le reste continue de
+#  fonctionner (fail-open, cf. docs/REALTIME-PROTOCOL.md).
+[durable_objects]
+bindings = [{ name = "RT_HUB", class_name = "RealtimeHub" }]
+
+[[migrations]]
+tag = "v1-rt-hub"
+new_sqlite_classes = ["RealtimeHub"]
+
+# =========================================================
 #  Serveurs IPTV par défaut proposés dans l'app
 # =========================================================
 #  L'app NE contient AUCUNE URL de flux IPTV en dur (AGENTS.md

@@ -227,6 +227,58 @@ les codes vanity ci-dessus pour de la stabilité long terme.
 
 ---
 
+## Temps réel (Durable Object)
+
+Couche WebSocket **en plus** du polling (jamais à la place — tout est
+fail-open). Spec complète : `docs/REALTIME-PROTOCOL.md`. Implémentation :
+`cloudflare/realtime.js` (Durable Object `RealtimeHub`, instance unique
+`hub-v1`, API WebSocket Hibernation → coût quasi nul au repos, free plan OK).
+
+### Endpoints WebSocket
+
+| Route | Qui | Auth |
+|---|---|---|
+| `GET /api/rt/device?mac=MK:…&platform=…&v=…&b=…&model=…` | l'app cliente | MAC validée + rate-limit `rt` (30 conn / 5 min / IP) |
+| `GET /api/v1/rt/ws?token=<JWT>` | le panel admin | JWT vérifié AVANT l'upgrade (revendeurs refusés, 403) |
+
+L'appareil reçoit des ordres `sync` (« va re-fetcher ton statut / tes
+sources / ta config ») et des `message` (bannière in-app), et répond `ack`.
+Le panel reçoit `snapshot` / `device_online` / `device_offline` /
+`watching` / `ack` / `changed` — de quoi afficher le parc EN DIRECT.
+
+### Publication côté Worker
+
+Après chaque mutation (activation, gel, source poussée, annonce…), les
+handlers appellent le helper exporté par `realtime.js` :
+
+```js
+import { publishRt } from './realtime.js';
+const rt = await publishRt(env, {
+  targets: ['MK:AA:BB:CC:DD:EE'],        // ou 'all-devices' | 'admins'
+  event: { type: 'sync', what: 'status' },
+});
+// → { delivered: 1, id: 'evt_ab12cd34' } — delivered: 0 = hors ligne,
+//   l'appareil appliquera au prochain polling. TOUJOURS fail-open.
+```
+
+Les mutations api_v1 qui visent UN mac renvoient ce `rt` dans leur JSON —
+le panel affiche « Appliqué ✓ » dès l'`ack` correspondant.
+
+### Déploiement
+
+Rien de spécial : le binding `RT_HUB` et la migration `v1-rt-hub` sont
+déjà dans `wrangler.toml`, donc
+
+```bash
+wrangler deploy
+```
+
+suffit (la migration Durable Object est appliquée automatiquement au
+premier deploy, puis ignorée). Sans ce binding, les routes rt répondent
+`503 {error:'rt_unavailable'}` et rien d'autre ne casse.
+
+---
+
 ## Sécurité
 
 - Le `ADMIN_SECRET` est stocké chiffré chez Cloudflare. Si tu le perds,

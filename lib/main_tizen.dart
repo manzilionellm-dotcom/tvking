@@ -26,6 +26,7 @@ import 'core/app/app_platform.dart';
 import 'core/app/guarded_main.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
+import 'core/realtime/realtime_sync_service.dart';
 import 'features/channels/domain/channel.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/playlists/data/favorites_repository.dart';
@@ -77,4 +78,14 @@ Future<void> _bootstrap() async {
   Timer.periodic(const Duration(minutes: 5), (_) {
     RemoteSourceRepository.sync();
   });
+
+  // TEMPS RÉEL (WebSocket) : mêmes bénéfices que sur Android TV (< 1 s
+  // pour les actions du panel). `dart:io` existe sur Tizen (flutter-tizen) ;
+  // le try/catch est une ceinture supplémentaire — le service ne throw
+  // jamais et se contente du polling ci-dessus si le socket est indispo.
+  try {
+    unawaited(RealtimeSyncService.instance.start(platform: 'tv'));
+  } catch (e) {
+    debugPrint('[main_tizen] realtime start: $e');
+  }
 }

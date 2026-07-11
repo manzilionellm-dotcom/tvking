@@ -58,6 +58,13 @@
 //  customers viendront en Phase 3 et 5 respectivement.
 // =========================================================
 
+// Temps réel (cf. cloudflare/realtime.js + docs/REALTIME-PROTOCOL.md) :
+// après chaque mutation réussie on PUBLIE un évènement via le hub —
+// l'appareil visé re-fetch immédiatement, et les panels ouverts voient
+// le changement (`changed{scope}`). TOUJOURS fail-open : si le Durable
+// Object n'est pas déployé, publishRt renvoie {delivered:0} sans erreur.
+import { publishRt } from './realtime.js';
+
 // ---------------------------------------------------------
 //  Helpers reponse
 // ---------------------------------------------------------
@@ -185,7 +192,9 @@ async function signJwt(payload, secret, expMinutes = 60 * 24 * 7) {
   return `${h}.${p}.${sig}`;
 }
 
-async function verifyJwt(token, secret) {
+// Exporté : worker.js le réutilise pour authentifier le WebSocket admin
+// (/api/v1/rt/ws) avec le MÊME secret HS256 — aucun nouveau secret.
+export async function verifyJwt(token, secret) {
   try {
     const [h, p, s] = token.split('.');
     if (!h || !p || !s) return null;
@@ -430,6 +439,91 @@ async function logAudit(env, request, actor, action, target, before, after) {
   }
 }
 
+// ---------------------------------------------------------
+//  Temps réel — publication après mutation (fail-open)
+// ---------------------------------------------------------
+//  Contrat (docs/REALTIME-PROTOCOL.md §4) : après une mutation réussie,
+//  on pousse (1) un `sync` aux appareils concernés — ils re-fetchent
+//  IMMÉDIATEMENT au lieu d'attendre le polling — et (2) un `changed{scope}`
+//  aux panels admin ouverts (l'autre onglet/collègue voit la modif).
+//  Les mutations qui visent UN mac renvoient en plus au panel un champ
+//  `rt: {delivered, id}` : delivered ≥ 1 → « Appliqué sur l'appareil ✓ »,
+//  0 → « Appareil hors ligne — appliqué à sa prochaine connexion ».
+//  JAMAIS bloquant : le moindre pépin rt est avalé, la mutation répond
+//  exactement comme avant.
+
+/// Publie le couple (sync appareils, changed admins) et renvoie l'objet
+/// `rt` du publish appareil. macs: 'all-devices' | ['MK:…'] | [] (rien).
+async function publishMutationRt(env, { macs, what, scope, changedMac }) {
+  // Les deux publications (sync appareils + changed panels) partent EN
+  // PARALLÈLE : une seule latence de hub sur le chemin de la réponse
+  // HTTP, pas deux allers-retours séquentiels. publishRt est déjà
+  // fail-open (jamais d'exception) et withRt couvre le reste — pas de
+  // try/catch supplémentaire ici, il masquerait de vraies erreurs de
+  // programmation.
+  const deviceSync =
+    macs === 'all-devices'
+      ? publishRt(env, { targets: 'all-devices', event: { type: 'sync', what } })
+      : (Array.isArray(macs) && macs.length > 0
+          ? publishRt(env, { targets: macs, event: { type: 'sync', what } })
+          : Promise.resolve({ delivered: 0, id: null }));
+  // Les panels rafraîchissent la page concernée (scope = nom d'onglet).
+  const adminsChanged = publishRt(env, {
+    targets: 'admins',
+    event: { type: 'changed', scope, ...(changedMac ? { mac: changedMac } : {}) },
+  });
+  const [rt] = await Promise.all([deviceSync, adminsChanged]);
+  return rt;
+}
+
+/// Enveloppe la Response d'un handler de mutation : si succès (2xx),
+/// publie les évènements décrits par `resolve(body)` et ré-émet le JSON
+/// enrichi de `rt`. `resolve` reçoit le corps déjà parsé et renvoie
+/// { macs, what, scope, changedMac? } — ou null pour ne rien publier.
+/// En cas d'erreur HTTP ou de pépin quelconque, la réponse d'origine
+/// repart INTACTE (jamais de mutation cassée par le temps réel).
+async function withRt(env, res, resolve) {
+  try {
+    if (!res || res.status < 200 || res.status >= 300) return res;
+    const body = await res.clone().json();
+    const spec = await resolve(body);
+    if (!spec) return res;
+    const rt = await publishMutationRt(env, spec);
+    return jsonResp({ ...body, rt }, res.status);
+  } catch (_) {
+    return res; // clone() garantit que `res` est toujours consommable
+  }
+}
+
+/// Raccourci pour les mutations de CONFIG GLOBALE (annonces, thème,
+/// home-layout, featured, ad, pricing, force-update, feedback-prompt,
+/// servers) : TOUTES les apps connectées re-fetchent leur config, et les
+/// panels reçoivent changed{scope:'config'}.
+function withRtConfigBroadcast(env, res) {
+  return withRt(env, res, () => ({ macs: 'all-devices', what: 'config', scope: 'config' }));
+}
+
+/// MAC d'un device par son id (les mutations /devices/:id sont keyées par
+/// id, pas par MAC). Fail-open : null si introuvable/erreur → pas de publish.
+async function macForDeviceId(env, id) {
+  try {
+    const r = await env.DB.prepare('SELECT mac FROM devices WHERE id = ?')
+      .bind(id).first();
+    return r && r.mac ? String(r.mac).toUpperCase() : null;
+  } catch (_) { return null; }
+}
+
+/// MAC du device porteur d'une licence (mutations /licenses/:id).
+async function macForLicenseId(env, id) {
+  try {
+    const r = await env.DB.prepare(
+      `SELECT d.mac AS mac FROM licenses l
+       JOIN devices d ON d.id = l.device_id WHERE l.id = ?`,
+    ).bind(id).first();
+    return r && r.mac ? String(r.mac).toUpperCase() : null;
+  } catch (_) { return null; }
+}
+
 // =========================================================
 //  ROUTER PRINCIPAL — point d'entree depuis worker.js
 // =========================================================
@@ -499,6 +593,13 @@ async function apiV1Inner(request, env) {
   // /stats/overview
   if (parts[0] === 'stats' && parts[1] === 'overview') {
     return handleStatsOverview(env, a.user);
+  }
+
+  // /insights — listes ACTIONNABLES pour le dashboard (qui relancer,
+  // qui expire, qui a disparu des radars). Rôles admin uniquement.
+  if (parts[0] === 'insights' && parts.length === 1 && request.method === 'GET') {
+    if (isReseller) return errResp('forbidden', 'Admin only', 403);
+    return handleInsights(env);
   }
 
   // /backup — export JSON de toute la base (filet de sécurité). Owner only.
@@ -573,7 +674,10 @@ async function apiV1Inner(request, env) {
     if (!resellerCan(a.user, 'activate')) {
       return errResp('forbidden', 'Ton compte n\'a pas le droit d\'activer des appareils.', 403);
     }
-    return handleActivate(request, env, a.user, actor);
+    // rt : l'appareil re-fetch TOUT (statut + sources + config) — une
+    // activation peut embarquer une source (body.source). Panel → changed.
+    return withRt(env, await handleActivate(request, env, a.user, actor),
+      (b) => ({ macs: [b.mac], what: 'all', scope: 'licenses', changedMac: b.mac }));
   }
 
   // /transfer — déplacer un abonnement d'une ancienne MAC vers une
@@ -583,7 +687,10 @@ async function apiV1Inner(request, env) {
     if (!resellerCan(a.user, 'activate')) {
       return errResp('forbidden', 'Ton compte n\'a pas le droit de transférer.', 403);
     }
-    return handleDeviceTransfer(request, env, a.user, actor);
+    // rt : les DEUX macs re-fetchent tout (l'ancienne perd sa licence,
+    // la nouvelle la gagne) — spec §4 « les 2 macs → sync all ».
+    return withRt(env, await handleDeviceTransfer(request, env, a.user, actor),
+      (b) => ({ macs: [b.old_mac, b.new_mac], what: 'all', scope: 'devices', changedMac: b.new_mac }));
   }
 
   // /families — OFFRE FAMILLE : UNE ligne Xtream (multi-connexions) +
@@ -648,14 +755,24 @@ async function apiV1Inner(request, env) {
   // revendeurs n'y touchent pas).
   if (parts[0] === 'servers') {
     if (isReseller) return errResp('forbidden', 'Admin only', 403);
+    // rt : la liste des serveurs proposés change → les apps la relisent.
     if (parts.length === 1) {
       if (request.method === 'GET') return handleServersList(env);
-      if (request.method === 'POST') return handleServersCreate(request, env, actor);
+      if (request.method === 'POST') {
+        return withRtConfigBroadcast(env,
+          await handleServersCreate(request, env, actor));
+      }
     }
     if (parts.length === 2) {
       const sid = parts[1];
-      if (request.method === 'PATCH') return handleServersUpdate(request, env, sid, actor);
-      if (request.method === 'DELETE') return handleServersDelete(request, env, sid, actor);
+      if (request.method === 'PATCH') {
+        return withRtConfigBroadcast(env,
+          await handleServersUpdate(request, env, sid, actor));
+      }
+      if (request.method === 'DELETE') {
+        return withRtConfigBroadcast(env,
+          await handleServersDelete(request, env, sid, actor));
+      }
     }
   }
 
@@ -667,13 +784,17 @@ async function apiV1Inner(request, env) {
     if (a.user.role !== 'super_admin') {
       return errResp('forbidden', 'Owner only', 403);
     }
+    // rt : toute mutation d'annonce → les apps re-fetchent leur config
+    // (l'annonce apparaît/disparaît sans attendre le prochain démarrage).
     if (parts.length === 1) {
       if (request.method === 'GET') return handleAnnouncementsList(env);
       if (request.method === 'POST') {
-        return handleAnnouncementsCreate(request, env, actor);
+        return withRtConfigBroadcast(env,
+          await handleAnnouncementsCreate(request, env, actor));
       }
       if (request.method === 'DELETE') {
-        return handleAnnouncementsClear(env, actor, request);
+        return withRtConfigBroadcast(env,
+          await handleAnnouncementsClear(env, actor, request));
       }
     }
     if (parts.length === 2) {
@@ -681,15 +802,18 @@ async function apiV1Inner(request, env) {
       if (parts[1] === 'settings') {
         if (request.method === 'GET') return handleAnnouncementsSettingsGet(env);
         if (request.method === 'PUT') {
-          return handleAnnouncementsSettingsPut(request, env, actor);
+          return withRtConfigBroadcast(env,
+            await handleAnnouncementsSettingsPut(request, env, actor));
         }
       } else {
         // /announcements/:id → supprimer ou activer/désactiver.
         if (request.method === 'DELETE') {
-          return handleAnnouncementsDelete(env, parts[1], actor, request);
+          return withRtConfigBroadcast(env,
+            await handleAnnouncementsDelete(env, parts[1], actor, request));
         }
         if (request.method === 'PATCH') {
-          return handleAnnouncementsUpdate(request, env, parts[1], actor);
+          return withRtConfigBroadcast(env,
+            await handleAnnouncementsUpdate(request, env, parts[1], actor));
         }
       }
     }
@@ -702,13 +826,18 @@ async function apiV1Inner(request, env) {
     }
     if (parts.length === 1) {
       if (request.method === 'GET') return handleHomeLayoutGet(env);
-      if (request.method === 'PUT') return handleHomeLayoutSave(request, env, actor);
+      if (request.method === 'PUT') {
+        // rt : le nouvel accueil part vers toutes les apps connectées.
+        return withRtConfigBroadcast(env,
+          await handleHomeLayoutSave(request, env, actor));
+      }
     }
     if (parts.length === 2 && parts[1] === 'history' && request.method === 'GET') {
       return handleHomeLayoutHistory(env);
     }
     if (parts.length === 2 && parts[1] === 'restore' && request.method === 'POST') {
-      return handleHomeLayoutRestore(request, env, actor);
+      return withRtConfigBroadcast(env,
+        await handleHomeLayoutRestore(request, env, actor));
     }
   }
 
@@ -728,7 +857,11 @@ async function apiV1Inner(request, env) {
     const fuPlatform = url.searchParams.get('platform');
     if (parts.length === 1) {
       if (request.method === 'GET') return handleForceUpdateGet(env, fuPlatform);
-      if (request.method === 'POST') return handleForceUpdatePost(request, env, actor, fuPlatform);
+      if (request.method === 'POST') {
+        // rt : les apps voient l'ordre de mise à jour immédiatement.
+        return withRtConfigBroadcast(env,
+          await handleForceUpdatePost(request, env, actor, fuPlatform));
+      }
     }
   }
 
@@ -739,7 +872,10 @@ async function apiV1Inner(request, env) {
     }
     if (parts.length === 1) {
       if (request.method === 'GET') return handleFeaturedGet(env);
-      if (request.method === 'POST') return handleFeaturedPost(request, env, actor);
+      if (request.method === 'POST') {
+        return withRtConfigBroadcast(env,
+          await handleFeaturedPost(request, env, actor));
+      }
     }
   }
 
@@ -753,12 +889,19 @@ async function apiV1Inner(request, env) {
     const themePlatform = url.searchParams.get('platform');
     if (parts.length === 1) {
       if (request.method === 'GET') return handleThemeGet(env, themePlatform);
-      if (request.method === 'PUT') return handleThemePut(request, env, actor, themePlatform);
+      if (request.method === 'PUT') {
+        // rt : le nouveau thème s'applique en direct sur le parc.
+        return withRtConfigBroadcast(env,
+          await handleThemePut(request, env, actor, themePlatform));
+      }
     }
     // /theme/automations — règles date → thème (ex. décembre → Noël).
     if (parts.length === 2 && parts[1] === 'automations') {
       if (request.method === 'GET') return handleThemeAutomationsGet(env, themePlatform);
-      if (request.method === 'PUT') return handleThemeAutomationsPut(request, env, actor, themePlatform);
+      if (request.method === 'PUT') {
+        return withRtConfigBroadcast(env,
+          await handleThemeAutomationsPut(request, env, actor, themePlatform));
+      }
     }
   }
 
@@ -769,7 +912,9 @@ async function apiV1Inner(request, env) {
     }
     if (parts.length === 1) {
       if (request.method === 'GET') return handleAdGet(env);
-      if (request.method === 'PUT') return handleAdPut(request, env, actor);
+      if (request.method === 'PUT') {
+        return withRtConfigBroadcast(env, await handleAdPut(request, env, actor));
+      }
     }
   }
 
@@ -781,7 +926,9 @@ async function apiV1Inner(request, env) {
     }
     if (parts.length === 1) {
       if (request.method === 'GET') return handlePricingGet(env);
-      if (request.method === 'PUT') return handlePricingPut(request, env, actor);
+      if (request.method === 'PUT') {
+        return withRtConfigBroadcast(env, await handlePricingPut(request, env, actor));
+      }
     }
   }
 
@@ -792,7 +939,10 @@ async function apiV1Inner(request, env) {
     }
     if (parts.length === 1) {
       if (request.method === 'GET') return handleFeedbackPromptGet(env);
-      if (request.method === 'PUT') return handleFeedbackPromptPut(request, env, actor);
+      if (request.method === 'PUT') {
+        return withRtConfigBroadcast(env,
+          await handleFeedbackPromptPut(request, env, actor));
+      }
     }
   }
 
@@ -804,7 +954,10 @@ async function apiV1Inner(request, env) {
       return errResp('forbidden', 'Owner only', 403);
     }
     if (parts.length === 1 && request.method === 'POST') {
-      return handleGrantTrialAll(request, env, actor);
+      // rt : TOUT le parc re-vérifie son statut (jours offerts visibles
+      // immédiatement) — spec §4 : all-devices → sync status.
+      return withRt(env, await handleGrantTrialAll(request, env, actor),
+        () => ({ macs: 'all-devices', what: 'status', scope: 'licenses' }));
     }
   }
 
@@ -831,8 +984,16 @@ async function apiV1Inner(request, env) {
         && !resellerCan(a.user, 'sources')) {
       return errResp('forbidden', 'Ton niveau ne permet pas de pousser une source.', 403);
     }
-    if (request.method === 'PUT') return handleSourcePut(request, env, mac, actor);
-    if (request.method === 'DELETE') return handleSourceDelete(request, env, mac, actor);
+    // rt : l'appareil recharge sa playlist DANS LA SECONDE (au lieu du
+    // sync 5 min) — le corps de réponse contient la MAC normalisée.
+    if (request.method === 'PUT') {
+      return withRt(env, await handleSourcePut(request, env, mac, actor),
+        (b) => ({ macs: [b.mac], what: 'sources', scope: 'sources', changedMac: b.mac }));
+    }
+    if (request.method === 'DELETE') {
+      return withRt(env, await handleSourceDelete(request, env, mac, actor),
+        (b) => ({ macs: [b.mac], what: 'sources', scope: 'sources', changedMac: b.mac }));
+    }
   }
 
   // /customers
@@ -859,10 +1020,22 @@ async function apiV1Inner(request, env) {
     }
     if (parts.length === 2) {
       const did = parts[1];
-      // Geler / bannir / reactiver (block_status).
-      if (request.method === 'PATCH') return handleDeviceUpdate(request, env, did, actor, a.user);
-      // Supprimer la MAC.
-      if (request.method === 'DELETE') return handleDeviceDelete(env, did, actor, a.user);
+      if (request.method === 'PATCH' || request.method === 'DELETE') {
+        // La route est keyée par id de device : on résout la MAC AVANT la
+        // mutation (indispensable pour DELETE, la ligne disparaît après).
+        // MAC introuvable → on ne publie que le changed aux panels.
+        const rtMac = await macForDeviceId(env, did);
+        // Geler / bannir / reactiver (block_status) — ou supprimer la MAC.
+        const res = request.method === 'PATCH'
+          ? await handleDeviceUpdate(request, env, did, actor, a.user)
+          : await handleDeviceDelete(env, did, actor, a.user);
+        return withRt(env, res, () => ({
+          macs: rtMac ? [rtMac] : [],
+          what: 'status',
+          scope: 'devices',
+          changedMac: rtMac || undefined,
+        }));
+      }
     }
     // /devices/:id/overview — fiche 360° (abonnement + présence + M-Trio).
     if (parts.length === 3 && parts[2] === 'overview') {
@@ -872,16 +1045,36 @@ async function apiV1Inner(request, env) {
 
   // /licenses
   if (parts[0] === 'licenses') {
+    // rt : les routes licences sont keyées par id de licence — on remonte
+    // à la MAC via le device porteur (petite requête, fail-open : MAC
+    // introuvable → seul le changed part aux panels).
+    const rtLicense = async (licId) => {
+      const m = await macForLicenseId(env, licId);
+      return {
+        macs: m ? [m] : [],
+        what: 'status',
+        scope: 'licenses',
+        changedMac: m || undefined,
+      };
+    };
     if (parts.length === 1) {
       if (request.method === 'GET') return handleLicensesList(request, env, a.user);
-      if (request.method === 'POST') return handleLicensesCreate(request, env, actor);
+      if (request.method === 'POST') {
+        // L'id de la licence créée est dans la réponse (201 {id, …}).
+        return withRt(env, await handleLicensesCreate(request, env, actor),
+          (b) => rtLicense(b.id));
+      }
     }
     if (parts.length === 2) {
       const id = parts[1];
-      if (request.method === 'PATCH') return handleLicensesUpdate(request, env, id, actor);
+      if (request.method === 'PATCH') {
+        return withRt(env, await handleLicensesUpdate(request, env, id, actor),
+          () => rtLicense(id));
+      }
     }
     if (parts.length === 3 && parts[2] === 'renew') {
-      return handleLicensesRenew(request, env, parts[1], actor);
+      return withRt(env, await handleLicensesRenew(request, env, parts[1], actor),
+        () => rtLicense(parts[1]));
     }
   }
 
@@ -1066,6 +1259,171 @@ async function handleStatsOverview(env, user) {
     out.revenue_30d_cents = paidLastMonth.cents;
   }
   return jsonResp(out);
+}
+
+// =========================================================
+//  INSIGHTS — listes actionnables pour le dashboard (admin)
+// =========================================================
+//  Contrairement à /stats/overview (compteurs bruts), /insights renvoie
+//  des LISTES prêtes à afficher : qui expire bientôt (à relancer), quels
+//  essais se terminent (à convertir), quels clients PAYANTS n'ont plus
+//  ouvert l'app depuis 7 jours (churn silencieux), et les nouveaux du
+//  jour. Chaque bloc est FAIL-OPEN : une table manquante ou une colonne
+//  absente ne casse pas la réponse — le bloc revient vide, c'est tout.
+async function handleInsights(env) {
+  const now = Date.now();
+  const DAY = 24 * 60 * 60 * 1000;
+
+  // Forme commune des lignes « licence + appareil » (expiring / trials).
+  const licRow = (r) => ({
+    mac: r.mac,
+    label: r.label || null,
+    customer_name: r.customer_name || null,
+    plan: r.plan,
+    expires_at: r.expires_at,
+    // Arrondi SUPÉRIEUR : « expire dans 0 jour » = aujourd'hui même.
+    days_left: Math.max(0, Math.ceil((r.expires_at - now) / DAY)),
+  });
+
+  // Toutes les requêtes sont INDÉPENDANTES → elles partent EN PARALLÈLE
+  // (une seule latence D1 au lieu de six en série sur le chemin du
+  // dashboard). `safe()` garde le fail-open PAR BLOC : une table absente
+  // ou une requête qui casse ne prive pas le panel des autres sections.
+  const safe = (promise, fallback) => promise.catch(() => fallback);
+
+  // NB « GROUP BY d.mac » : un appareil peut porter PLUSIEURS licences
+  // (deux apps, ou ancienne + nouvelle). Sans regroupement, le même MAC
+  // sortirait deux fois dans la liste (doublons visuels + clés React en
+  // double côté panel). SQLite (D1) garantit qu'avec MIN(expires_at) les
+  // colonnes nues viennent de la ligne du minimum → on garde l'échéance
+  // la plus proche.
+  const [onlineNowR, expiring7dR, trialsEndingR, goneQuietR, newTodayR, totalsR] =
+    await Promise.all([
+      // En ligne MAINTENANT : présence vue dans les 5 dernières minutes
+      // (alimentée par le heartbeat ET par le hub temps réel).
+      safe(
+        env.DB.prepare('SELECT COUNT(*) AS n FROM presence WHERE last_seen > ?')
+          .bind(now - 5 * 60 * 1000).first(),
+        null,
+      ),
+      // Licences ACTIVES qui expirent dans les 7 jours → à relancer.
+      safe(
+        env.DB.prepare(
+          `SELECT d.mac AS mac, d.label AS label, c.name AS customer_name,
+                  l.plan AS plan, MIN(l.expires_at) AS expires_at
+           FROM licenses l
+           JOIN devices d ON d.id = l.device_id
+           LEFT JOIN customers c ON c.id = l.customer_id
+           WHERE l.status = 'active' AND l.expires_at IS NOT NULL
+             AND l.expires_at > ? AND l.expires_at <= ?
+           GROUP BY d.mac
+           ORDER BY expires_at ASC LIMIT 30`,
+        ).bind(now, now + 7 * DAY).all(),
+        { results: [] },
+      ),
+      // Essais qui se terminent dans les 48 h → fenêtre de conversion.
+      safe(
+        env.DB.prepare(
+          `SELECT d.mac AS mac, d.label AS label, c.name AS customer_name,
+                  l.plan AS plan, MIN(l.expires_at) AS expires_at
+           FROM licenses l
+           JOIN devices d ON d.id = l.device_id
+           LEFT JOIN customers c ON c.id = l.customer_id
+           WHERE l.status = 'active' AND l.plan LIKE 'trial%'
+             AND l.expires_at IS NOT NULL
+             AND l.expires_at > ? AND l.expires_at <= ?
+           GROUP BY d.mac
+           ORDER BY expires_at ASC LIMIT 30`,
+        ).bind(now, now + 2 * DAY).all(),
+        { results: [] },
+      ),
+      // « Disparus des radars » : appareils avec une licence PAYANTE
+      // active (pas un essai) mais plus vus depuis 7 jours → churn
+      // silencieux, à contacter AVANT qu'ils demandent un remboursement.
+      safe(
+        env.DB.prepare(
+          `SELECT d.mac AS mac, d.label AS label, l.plan AS plan,
+                  MIN(l.expires_at) AS expires_at, d.last_seen_at AS last_seen_at
+           FROM devices d
+           JOIN licenses l ON l.device_id = d.id
+           WHERE l.status = 'active'
+             AND l.plan NOT LIKE 'trial%'
+             AND (l.expires_at IS NULL OR l.expires_at > ?)
+             AND d.last_seen_at < ?
+           GROUP BY d.mac
+           ORDER BY d.last_seen_at ASC LIMIT 20`,
+        ).bind(now, now - 7 * DAY).all(),
+        { results: [] },
+      ),
+      // Nouveaux appareils DU JOUR (UTC) : le pouls de l'acquisition.
+      safe(
+        (async () => {
+          const startOfDay = new Date(now).setUTCHours(0, 0, 0, 0);
+          const [cnt, rs] = await Promise.all([
+            env.DB.prepare('SELECT COUNT(*) AS n FROM devices WHERE first_seen_at >= ?')
+              .bind(startOfDay).first(),
+            env.DB.prepare(
+              `SELECT mac, label, first_seen_at FROM devices
+               WHERE first_seen_at >= ? ORDER BY first_seen_at DESC LIMIT 10`,
+            ).bind(startOfDay).all(),
+          ]);
+          return { cnt, rs };
+        })(),
+        null,
+      ),
+      // Totaux (mêmes définitions que /stats/overview, pour cohérence).
+      safe(
+        Promise.all([
+          env.DB.prepare('SELECT COUNT(*) AS n FROM devices').first(),
+          env.DB.prepare(
+            `SELECT COUNT(*) AS n FROM licenses
+             WHERE status='active' AND (expires_at IS NULL OR expires_at > ?)`,
+          ).bind(now).first(),
+          env.DB.prepare(
+            `SELECT COUNT(*) AS n FROM licenses
+             WHERE expires_at IS NOT NULL AND expires_at <= ?`,
+          ).bind(now).first(),
+        ]),
+        null,
+      ),
+    ]);
+
+  const onlineNow = (onlineNowR && Number(onlineNowR.n)) || 0;
+  const expiring7d = (expiring7dR.results || []).map(licRow);
+  const trialsEnding = (trialsEndingR.results || []).map(licRow);
+  const goneQuiet = (goneQuietR.results || []).map((r) => ({
+    mac: r.mac,
+    label: r.label || null,
+    plan: r.plan,
+    expires_at: r.expires_at,
+    last_seen_at: r.last_seen_at,
+  }));
+  const newToday = newTodayR
+    ? {
+        count: (newTodayR.cnt && Number(newTodayR.cnt.n)) || 0,
+        items: (newTodayR.rs.results || []).map((r) => ({
+          mac: r.mac,
+          label: r.label || null,
+          first_seen_at: r.first_seen_at,
+        })),
+      }
+    : { count: 0, items: [] };
+  const totals = totalsR
+    ? {
+        devices: (totalsR[0] && Number(totalsR[0].n)) || 0,
+        active_licenses: (totalsR[1] && Number(totalsR[1].n)) || 0,
+        expired_licenses: (totalsR[2] && Number(totalsR[2].n)) || 0,
+      }
+    : { devices: 0, active_licenses: 0, expired_licenses: 0 };
+
+  return jsonResp({
+    online_now: onlineNow,
+    expiring_7d: expiring7d,
+    trials_ending_48h: trialsEnding,
+    gone_quiet: goneQuiet,
+    new_today: newToday,
+    totals,
+  });
 }
 
 // =========================================================

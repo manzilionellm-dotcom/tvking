@@ -19,7 +19,7 @@ const TOKEN_KEY = 'auth_token';
 /// Cloudflare Pages sur un sous-domaine (ex: admin.7themotion.com)
 /// et l'API tourne sur seven-motion-backend.workers.dev. On garde
 /// la config configurable via VITE_API_BASE.
-const API_BASE: string =
+export const API_BASE: string =
   (import.meta.env.VITE_API_BASE as string | undefined) ||
   // Defaut prod : meme origin (si le Worker sert aussi le panel)
   // ou un domaine connu. En dev le proxy Vite redirige /api → :8787.
@@ -49,6 +49,14 @@ export function getToken(): string | null {
 export function setToken(t: string | null) {
   if (t) localStorage.setItem(TOKEN_KEY, t);
   else localStorage.removeItem(TOKEN_KEY);
+}
+
+/// Champ `rt` ajouté par le backend aux réponses de mutation qui visent
+/// UN mac (spec temps réel §4). delivered ≥ 1 → l'appareil a reçu le push
+/// en direct ; l'ack correspondant arrive sur le WebSocket avec cet `id`.
+export interface RtInfo {
+  delivered: number;
+  id: string;
 }
 
 export class ApiError extends Error {
@@ -183,9 +191,53 @@ export interface StatsOverview {
   revenue_30d_cents?: number;
   resellers?: number;       // present pour l'owner
   credit_balance?: number;  // present pour un revendeur
+  online_now?: number;      // appareils en ligne (si le backend le fournit)
 }
 export const statsApi = {
   overview: () => request<StatsOverview>('/api/v1/stats/overview'),
+};
+
+// =========================================================
+//  INSIGHTS « À traiter » (intelligence — admin uniquement)
+// =========================================================
+//  Listes actionnables calculées côté serveur : abonnés qui expirent,
+//  essais qui se terminent, payants devenus silencieux, nouveaux du jour.
+//  Le backend peut ne pas être déployé → le panel masque la section
+//  silencieusement en cas d'erreur (404/503…).
+export interface InsightExpiring {
+  mac: string;
+  label: string | null;
+  customer_name: string | null;
+  plan: string | null;
+  expires_at: number | null;
+  days_left: number;
+}
+export interface InsightGoneQuiet {
+  mac: string;
+  label: string | null;
+  plan: string | null;
+  expires_at: number | null;
+  last_seen_at: number | null;
+}
+export interface InsightNewDevice {
+  mac: string;
+  label: string | null;
+  first_seen_at: number;
+}
+export interface Insights {
+  online_now: number;
+  expiring_7d: InsightExpiring[];
+  trials_ending_48h: InsightExpiring[];
+  gone_quiet: InsightGoneQuiet[];
+  new_today: { count: number; items: InsightNewDevice[] };
+  totals: {
+    devices: number;
+    active_licenses: number;
+    expired_licenses: number;
+  };
+}
+export const insightsApi = {
+  get: () => request<Insights>('/api/v1/insights'),
 };
 
 // =========================================================
@@ -348,12 +400,12 @@ export const devicesApi = {
     request<DeviceOverview>(`/api/v1/devices/${encodeURIComponent(id)}/overview`),
   // Geler ('frozen'), bannir ('banned') ou reactiver ('active') une MAC.
   setBlock: (id: string, block_status: 'active' | 'frozen' | 'banned') =>
-    request<{ updated: number; block_status: string | null }>(
+    request<{ updated: number; block_status: string | null; rt?: RtInfo }>(
       `/api/v1/devices/${id}`,
       { method: 'PATCH', body: { block_status } },
     ),
   remove: (id: string) =>
-    request<{ deleted: number }>(`/api/v1/devices/${id}`, { method: 'DELETE' }),
+    request<{ deleted: number; rt?: RtInfo }>(`/api/v1/devices/${id}`, { method: 'DELETE' }),
 };
 
 export interface License {
@@ -387,7 +439,7 @@ export const licensesApi = {
       { method: 'POST', body: payload },
     ),
   renew: (id: string, plan = '1y', customDays?: number) =>
-    request<{ updated: number; expires_at: number | null }>(
+    request<{ updated: number; expires_at: number | null; rt?: RtInfo }>(
       `/api/v1/licenses/${id}/renew`,
       { method: 'POST', body: { plan, custom_days: customDays } },
     ),
@@ -479,6 +531,8 @@ export interface ActivateResult {
   credits_charged: number;
   credit_balance: number | null;
   renewed: boolean;
+  // Poussé en direct sur l'appareil ? (spec temps réel §4)
+  rt?: RtInfo;
 }
 // Source IPTV assignée à un appareil par sa MAC (poussée à l'app).
 export interface DeviceSourceInput {
@@ -523,19 +577,19 @@ export const sourcesApi = {
       `/api/v1/sources/${encodeURIComponent(mac)}`,
     ),
   set: (mac: string, source: DeviceSourceInput) =>
-    request<{ ok: boolean; mac: string }>(
+    request<{ ok: boolean; mac: string; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'PUT', body: { source } },
     ),
   // TRIO : pousse 1 à 3 sources d'un coup sur une même MAC. Le client
   // les charge toutes et bascule entre elles dans l'app.
   setMany: (mac: string, sources: DeviceSourceInput[]) =>
-    request<{ ok: boolean; mac: string; count: number }>(
+    request<{ ok: boolean; mac: string; count: number; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'PUT', body: { sources } },
     ),
   clear: (mac: string) =>
-    request<{ ok: boolean; mac: string }>(
+    request<{ ok: boolean; mac: string; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'DELETE' },
     ),
@@ -958,6 +1012,14 @@ export function flagEmoji(code: string): string {
     A + (up.charCodeAt(1) - 65),
   );
 }
+
+/// Libellés FR lisibles des plans (clé technique → texte) — copie UNIQUE
+/// partagée par le Dashboard et la page Appareils.
+export const PLAN_LABELS: Record<string, string> = {
+  monthly: '1 mois', quarterly: '3 mois', biannual: '6 mois',
+  yearly: '1 an', lifetime: 'À vie',
+  trial_24h: 'Test 24 h', trial_48h: 'Test 48 h', trial_7d: 'Test 7 j',
+};
 
 export interface PlanCost { plan: string; credits: number; }
 export const planCostsApi = {
