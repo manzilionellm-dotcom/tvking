@@ -18,6 +18,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/flavor/flavor.dart';
 import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/support/vip_support.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -145,11 +146,15 @@ class _SourceChoiceSheet extends StatelessWidget {
                 // MAC pré-remplie : le client n'a qu'à envoyer. Si WhatsApp
                 // n'est pas dispo, on retombe sur l'écran MAC classique
                 // (copier + autres canaux).
-                final String mac = await DeviceIdentity.instance.mac;
+                // Message pré-rempli visible dans WhatsApp → localisé,
+                // avec le nom du flavor (The Few / Red Room) injecté
+                // dynamiquement plutôt qu'en dur.
+                final String msg = context.l10n.activationWhatsAppMessage(
+                  FlavorConfig.current.appName,
+                  await DeviceIdentity.instance.mac,
+                );
                 final bool ok = await VipSupport.openWhatsApp(
-                  customMessage:
-                      'Bonjour, je veux activer The Few. '
-                      'Mon identifiant (MAC) : $mac',
+                  customMessage: msg,
                 );
                 if (!context.mounted) return;
                 if (ok) {

@@ -167,7 +167,9 @@ class SubscriptionCard extends StatelessWidget {
         if (state.isLifetime) return context.l10n.subActiveLifetime;
         final DateTime? until = state.paidUntil;
         if (until == null) return context.l10n.subActiveTitle;
-        final String d = '${until.day}/${until.month}/${until.year}';
+        // Date courte localisée (ordre jour/mois/année selon la langue).
+        final String d =
+            MaterialLocalizations.of(context).formatCompactDate(until);
         return context.l10n.subActiveUntil(d);
       case SubscriptionStatus.trialExpired:
         return context.l10n.subTrialEnded;

@@ -117,7 +117,7 @@ class _Banner extends StatelessWidget {
       child: TvFocusable(
         onTap: onResume,
         borderRadius: BorderRadius.circular(16),
-        semanticsLabel: 'Reprendre ${channel.cleanName}',
+        semanticsLabel: context.l10n.resumeBannerTitle(channel.cleanName),
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(

@@ -8,6 +8,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/feedback_repository.dart';
@@ -52,13 +53,16 @@ class _FeedbackSheetState extends State<_FeedbackSheet> {
     }
     setState(() => _busy = true);
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    // Résolu AVANT le pop : après fermeture de la feuille, le context
+    // est désactivé et ne peut plus remonter aux Localizations.
+    final String thanks = context.l10n.feedbackThanks;
     await FeedbackRepository.instance.submit(text: text, rating: _rating);
     if (!mounted) return;
     Navigator.of(context).pop();
     messenger.showSnackBar(
-      const SnackBar(
+      SnackBar(
         behavior: SnackBarBehavior.floating,
-        content: Text('Merci pour ton avis 🙏'),
+        content: Text(thanks),
       ),
     );
   }
@@ -120,8 +124,8 @@ class _FeedbackSheetState extends State<_FeedbackSheet> {
                   controller: _ctrl,
                   maxLines: 4,
                   maxLength: 800,
-                  decoration: const InputDecoration(
-                    hintText: 'Écris ton avis ou comment améliorer l\'app…',
+                  decoration: InputDecoration(
+                    hintText: context.l10n.feedbackHint,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -137,7 +141,7 @@ class _FeedbackSheetState extends State<_FeedbackSheet> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.send_rounded, size: 18),
-                    label: const Text('Envoyer'),
+                    label: Text(context.l10n.buttonSend),
                   ),
                 ),
                 SizedBox(
@@ -149,7 +153,9 @@ class _FeedbackSheetState extends State<_FeedbackSheet> {
                             FeedbackRepository.instance.markDone();
                             Navigator.of(context).pop();
                           },
-                    child: const Text('Plus tard'),
+                    // « Plus tard » : même libellé que le renvoi du bandeau
+                    // Reprendre → on réutilise la clé existante.
+                    child: Text(context.l10n.resumeBannerDismiss),
                   ),
                 ),
               ],

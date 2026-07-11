@@ -31,6 +31,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../core/app/device_memory.dart';
 import '../../../core/crash/crash_reporting.dart';
+import '../../../core/i18n/l10n_now.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/security/secret_cipher.dart';
 import '../../channels/domain/channel.dart';
@@ -507,13 +508,13 @@ class PlaylistRepository {
 
       if (parsed.channels.isEmpty) {
         // Source invalide → on lève ; le `catch` retire l'orpheline.
+        // Message LOCALISÉ via l10nNow (affiché tel quel par l'UI d'ajout) ;
+        // les warnings du parser restent des diagnostics techniques bruts.
         final String hint = parsed.warnings.isEmpty
             ? ''
-            : '\n\nDétails parser :\n${parsed.warnings.take(3).join('\n')}';
-        throw Exception(
-          'Aucune chaîne trouvée dans le fichier M3U. '
-          'URL invalide ou format incompatible ?$hint',
-        );
+            : '\n\n${l10nNow.m3uParserDetails}\n'
+                '${parsed.warnings.take(3).join('\n')}';
+        throw Exception('${l10nNow.m3uImportNoChannels}$hint');
       }
 
       await _insertChannels(parsed.channels);
@@ -707,9 +708,7 @@ class PlaylistRepository {
 
       if (count == 0) {
         // Compte sans chaîne live → on lève ; le `catch` retire l'orpheline.
-        throw Exception(
-          'Aucune chaîne live disponible pour ce compte Xtream.',
-        );
+        throw Exception(l10nNow.xtreamImportNoChannels);
       }
 
       final Playlist saved = newPlaylist.copyWith(
@@ -895,7 +894,7 @@ class PlaylistRepository {
           maxChannels: DeviceMemory.channelCap,
         );
         if (parsed.channels.isEmpty) {
-          throw Exception('Aucune chaîne dans la nouvelle version.');
+          throw Exception(l10nNow.m3uRefreshNoChannels);
         }
         // Remplace les chaînes existantes
         await db.delete(
@@ -934,7 +933,7 @@ class PlaylistRepository {
           categories: cats,
         );
         if (channels.isEmpty) {
-          throw Exception('Aucune chaîne live disponible.');
+          throw Exception(l10nNow.xtreamRefreshNoChannels);
         }
         await db.delete(
           'channels',

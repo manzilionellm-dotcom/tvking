@@ -95,7 +95,9 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
     });
     try {
       await PlaylistRepository.instance.addXtreamPlaylist(
-        name: 'Mon abonnement',
+        // Nom par défaut localisé — figé à la création comme tout nom
+        // de playlist (le champ est libre côté données).
+        name: context.l10n.playlistDefaultSubscription,
         serverUrl: server,
         username: user,
         password: pass,

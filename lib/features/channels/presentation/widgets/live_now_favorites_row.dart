@@ -20,6 +20,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/tv_focusable.dart';
@@ -125,7 +126,7 @@ class _LiveNowFavoritesRowState extends State<LiveNowFavoritesRow> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'EN DIRECT SUR TES FAVORIS',
+                  context.l10n.homeLiveOnFavorites,
                   style: AppTextStyles.eyebrow.copyWith(
                     color: AppColors.live,
                   ),
@@ -200,7 +201,7 @@ class _LiveCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       showGlow: false,
       semanticsLabel:
-          '${slot.channel.cleanName} — ${slot.program?.title ?? 'En direct'}',
+          '${slot.channel.cleanName} — ${slot.program?.title ?? context.l10n.homeLiveNow}',
       child: Container(
         width: 220,
         padding: const EdgeInsets.all(10),
@@ -239,7 +240,7 @@ class _LiveCard extends StatelessWidget {
               const SizedBox(height: 10),
               Expanded(
                 child: Text(
-                  slot.program?.title ?? 'En direct',
+                  slot.program?.title ?? context.l10n.homeLiveNow,
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 12,
                     height: 1.35,

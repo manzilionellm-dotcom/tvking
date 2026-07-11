@@ -20,10 +20,22 @@
 // =========================================================
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tv_king/core/i18n/locale_repository.dart';
 import 'package:tv_king/features/cast/data/cast_manager.dart';
 
 void main() {
   final CastManager m = CastManager.instance;
+
+  // i18n : friendlyMessageFor sort desormais d'AppLocalizations via
+  // l10nNow. On force la langue FR pour garder les assertions
+  // textuelles deterministes.
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues(
+        <String, Object>{'app.locale.v1': 'fr'});
+    await LocaleRepository.instance.initialize();
+  });
 
   group('friendlyMessageFor — TV injoignable (errno 113 / AP isolation)', () {
     test('message du pré-vol TCP est routé vers le hint réseau', () {

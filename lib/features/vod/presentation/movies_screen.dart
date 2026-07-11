@@ -65,7 +65,9 @@ class _MoviesScreenState extends State<MoviesScreen> {
       Channel(
         id: d.id,
         name: d.name,
-        category: 'Téléchargé',
+        // Catégorie purement décorative (affichée dans le player) —
+        // on réutilise la clé existante moviesDownloaded.
+        category: context.l10n.moviesDownloaded,
         streamUrl: d.filePath, // chemin local — media_kit l'ouvre direct
         isLive: false,
         logoUrl: d.posterUrl,

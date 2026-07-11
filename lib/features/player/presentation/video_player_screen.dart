@@ -50,6 +50,7 @@ import '../../recordings/domain/recording.dart';
 import '../data/local_stream_relay.dart';
 import '../data/pip_service.dart';
 import '../data/player_settings.dart';
+import 'aspect_mode_label.dart';
 import 'widgets/player_settings_sheet.dart';
 import 'widgets/player_stats_overlay.dart';
 import 'widgets/player_tracks_sheet.dart';
@@ -110,10 +111,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// panels IPTV limitent à 1-2 connexions simultanées, et jouer déjà la
   /// même chaîne ailleurs (téléphone + TV, ou cast en cours de test) en est
   /// une cause fréquente — mais la chaîne peut aussi être simplement morte.
-  static const String _kChannelBlockedMessage =
-      'Chaîne indisponible : aucune vidéo reçue. Elle est vide ou bloquée '
-      'par ta source — vérifie qu\'elle n\'est pas déjà ouverte sur un '
-      'autre appareil, sinon essaie une autre chaîne.';
+  /// Localisé (getter et non constante : la clé dépend du BuildContext).
+  String get _channelBlockedMessage => context.l10n.playerChannelBlocked;
 
   bool _overlayVisible = true;
   Timer? _hideOverlayTimer;
@@ -1173,7 +1172,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (mounted) {
         setState(() {
           _hasError = true;
-          _errorMessage = _kChannelBlockedMessage;
+          _errorMessage = _channelBlockedMessage;
         });
       }
       return;
@@ -1249,10 +1248,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     setState(() {
       _hasError = true;
       _errorMessage = probe.isLikelyNetworkBlocked
-          ? '$_kChannelBlockedMessage\n\nÇa ressemble à un blocage réseau '
-              '(FAI ou DNS) plutôt qu\'à un problème de l\'app — un VPN '
-              'peut aider si cette chaîne fonctionne ailleurs.'
-          : _kChannelBlockedMessage;
+          ? '$_channelBlockedMessage\n\n'
+              '${context.l10n.playerNetworkBlockHint}'
+          : _channelBlockedMessage;
     });
   }
 
@@ -1287,7 +1285,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (_playedChannelId == _currentChannel.id) {
         setState(() {
           _hasError = true;
-          _errorMessage = 'Flux interrompu. Vérifie ta connexion puis réessaie.';
+          _errorMessage = context.l10n.playerStreamInterrupted;
         });
       } else {
         _declareChannelBlocked();
@@ -1353,7 +1351,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         if (mounted) {
           setState(() {
             _hasError = true;
-            _errorMessage = 'Flux interrompu. Vérifie ta connexion puis réessaie.';
+            _errorMessage = context.l10n.playerStreamInterrupted;
           });
         }
       } else {
@@ -1588,7 +1586,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _player.state.position - const Duration(seconds: 20);
     _player.seek(target < Duration.zero ? Duration.zero : target);
     if (mounted) setState(() => _behindLive = true);
-    _toast('↺ Revoir');
+    _toast(context.l10n.playerReplayToast);
     _scheduleHideOverlay();
   }
 
@@ -1598,7 +1596,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final Duration end = _player.state.duration;
     if (end > Duration.zero) _player.seek(end);
     if (mounted) setState(() => _behindLive = false);
-    _toast('● En direct');
+    _toast(context.l10n.playerLiveToast);
     _scheduleHideOverlay();
   }
 
@@ -2283,7 +2281,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                   // — rien à voir avec l'ancienne barre trompeuse.
                                   _SeekIconButton(
                                     icon: Icons.replay_rounded,
-                                    semanticsLabel: 'Revoir',
+                                    semanticsLabel:
+                                        context.l10n.playerReplay,
                                     onTap: _replayMoment,
                                   ),
                                   const SizedBox(width: 24),
@@ -2298,7 +2297,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                   if (_behindLive)
                                     _SeekIconButton(
                                       icon: Icons.sensors_rounded,
-                                      semanticsLabel: 'En direct',
+                                      semanticsLabel:
+                                          context.l10n.playerLiveLabel,
                                       color: AppColors.live,
                                       onTap: _goToLive,
                                     )
@@ -2339,7 +2339,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   ),
                   _ControlButton(
                     icon: _aspectIcon(PlayerSettings.instance.aspectMode),
-                    label: PlayerSettings.instance.aspectMode.label,
+                    label: PlayerSettings.instance.aspectMode
+                        .localizedLabel(context),
                     onTap: _openSettings,
                   ),
                   _ControlButton(
@@ -2369,7 +2370,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   // (QR/code, via le Worker — marche même hors Wi-Fi local).
                   _ControlButton(
                     icon: Icons.screen_share_rounded,
-                    label: 'Écran',
+                    label: context.l10n.playerScreenCast,
                     onTap: _openScreenCast,
                   ),
                 ],
@@ -2901,7 +2902,9 @@ class _CastingOverlay extends StatelessWidget {
         if (!show) return const SizedBox.shrink();
 
         final bool paused = mgr.state == CastState.paused;
-        final String deviceName = mgr.device?.name ?? 'la TV';
+        // Repli localisé quand l'appareil cast n'a pas de nom.
+        final String deviceName =
+            mgr.device?.name ?? context.l10n.playerCastDefaultDevice;
 
         return Positioned.fill(
           child: Container(
@@ -2950,8 +2953,8 @@ class _CastingOverlay extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     connecting
-                        ? 'Connexion à $deviceName…'
-                        : 'Diffusion sur $deviceName',
+                        ? context.l10n.playerCastConnectingTo(deviceName)
+                        : context.l10n.playerCastStreamingTo(deviceName),
                     textAlign: TextAlign.center,
                     style: AppTextStyles.labelSmall.copyWith(
                       color: AppColors.accent,
@@ -2990,8 +2993,7 @@ class _CastingOverlay extends StatelessWidget {
                   ),
                   const SizedBox(height: 18),
                   Text(
-                    'La lecture continue sur la TV. Le téléphone est libéré '
-                    'pour ne pas bloquer la connexion IPTV.',
+                    context.l10n.playerCastKeepsTv,
                     textAlign: TextAlign.center,
                     style: AppTextStyles.bodyMedium.copyWith(
                       fontSize: 11,

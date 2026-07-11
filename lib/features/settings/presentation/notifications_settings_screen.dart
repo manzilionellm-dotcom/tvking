@@ -16,6 +16,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -69,15 +70,14 @@ class _NotificationsSettingsScreenState
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Notifications'),
+        title: Text(context.l10n.notifTitle),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         physics: const BouncingScrollPhysics(),
         children: <Widget>[
           Text(
-            'Choisis ce que tu veux recevoir. Tu peux tout couper si tu '
-            'préfères le silence.',
+            context.l10n.notifIntro,
             style: AppTextStyles.bodyMedium.copyWith(
               fontSize: 12,
               color: AppColors.textMuted,
@@ -87,26 +87,23 @@ class _NotificationsSettingsScreenState
           const SizedBox(height: 16),
           _NotifSwitch(
             icon: Icons.alarm_rounded,
-            title: 'Rappels d\'émission',
-            subtitle:
-                'Être prévenu juste avant qu\'un programme choisi commence.',
+            title: context.l10n.notifRemindersTitle,
+            subtitle: context.l10n.notifRemindersSubtitle,
             value: _reminders,
             onChanged: (bool v) => _set(NotificationService.prefReminders, v),
           ),
           _NotifSwitch(
             icon: Icons.campaign_rounded,
-            title: 'Nouveautés & annonces',
-            subtitle:
-                'Messages de l\'équipe : nouveau contenu, infos importantes.',
+            title: context.l10n.notifAnnouncementsTitle,
+            subtitle: context.l10n.notifAnnouncementsSubtitle,
             value: _announcements,
             onChanged: (bool v) =>
                 _set(NotificationService.prefAnnouncements, v),
           ),
           _NotifSwitch(
             icon: Icons.system_update_rounded,
-            title: 'Mise à jour de l\'app',
-            subtitle:
-                'Être prévenu quand une nouvelle version est disponible.',
+            title: context.l10n.notifUpdatesTitle,
+            subtitle: context.l10n.notifUpdatesSubtitle,
             value: _appUpdates,
             onChanged: (bool v) => _set(NotificationService.prefAppUpdates, v),
           ),

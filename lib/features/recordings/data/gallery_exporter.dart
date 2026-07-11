@@ -25,6 +25,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_now.dart';
+
 class GalleryExporter {
   GalleryExporter._();
 
@@ -57,12 +59,14 @@ class GalleryExporter {
         errorMessage: e.message,
       );
     } on MissingPluginException {
-      // Channel pas câblé (ex. iOS, ou build sans overlay)
+      // Channel pas câblé (ex. iOS, ou build sans overlay).
+      // Message localisé via l10nNow (on est hors widget) : il finit
+      // dans le snackbar d'échec via `userFacingError`.
       if (kDebugMode) debugPrint('[Gallery] channel manquant');
-      return const GalleryExportResult(
+      return GalleryExportResult(
         success: false,
         errorCode: 'NO_CHANNEL',
-        errorMessage: 'Bridge natif manquant',
+        errorMessage: l10nNow.recordingExportBridgeMissing,
       );
     }
   }

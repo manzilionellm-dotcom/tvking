@@ -23,6 +23,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../playlists/data/favorites_repository.dart';
 import '../../domain/channel.dart';
+import '../genre_l10n.dart';
 import 'channel_logo.dart';
 
 class ChannelCard extends StatefulWidget {
@@ -173,7 +174,7 @@ class _ChannelCardState extends State<ChannelCard> {
                               const SizedBox(width: 3),
                               Flexible(
                                 child: Text(
-                                  ch.genre.label,
+                                  ch.genre.localizedLabel(context.l10n),
                                   style: AppTextStyles.bodyMedium.copyWith(
                                     fontSize: 10,
                                     color: AppColors.textMuted,

@@ -24,6 +24,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../features/player/data/player_settings.dart';
+import '../i18n/l10n_extension.dart';
 
 /// Retourne `true` si la lecture peut démarrer sur le réseau courant.
 /// Affiche un dialogue si nécessaire (cellulaire). Fail-open.
@@ -47,20 +48,16 @@ Future<bool> guardCellularPlayback(BuildContext context) async {
       final bool playAnyway = await showDialog<bool>(
             context: context,
             builder: (BuildContext ctx) => AlertDialog(
-              title: const Text('Wi-Fi uniquement'),
-              content: const Text(
-                'Tu es en données cellulaires et la lecture est réglée sur '
-                '« Wi-Fi uniquement ». Connecte-toi en Wi-Fi, ou lis quand '
-                'même (consommera tes données).',
-              ),
+              title: Text(ctx.l10n.cellularWifiOnlyTitle),
+              content: Text(ctx.l10n.cellularWifiOnlyBody),
               actions: <Widget>[
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(false),
-                  child: const Text('Annuler'),
+                  child: Text(ctx.l10n.buttonCancel),
                 ),
                 FilledButton(
                   onPressed: () => Navigator.of(ctx).pop(true),
-                  child: const Text('Lire quand même'),
+                  child: Text(ctx.l10n.cellularPlayAnyway),
                 ),
               ],
             ),
@@ -78,31 +75,28 @@ Future<bool> guardCellularPlayback(BuildContext context) async {
             builder: (BuildContext ctx) => StatefulBuilder(
               builder: (BuildContext ctx, void Function(void Function()) setLocal) =>
                   AlertDialog(
-                title: const Text('Données cellulaires'),
+                title: Text(ctx.l10n.cellularWarnTitle),
                 content: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    const Text(
-                      'Tu es en données cellulaires. Le streaming peut '
-                      'consommer beaucoup de data.',
-                    ),
+                    Text(ctx.l10n.cellularWarnBody),
                     CheckboxListTile(
                       contentPadding: EdgeInsets.zero,
                       value: dontWarnAgain,
                       onChanged: (bool? v) =>
                           setLocal(() => dontWarnAgain = v ?? false),
-                      title: const Text('Ne plus avertir'),
+                      title: Text(ctx.l10n.cellularDontWarnAgain),
                     ),
                   ],
                 ),
                 actions: <Widget>[
                   TextButton(
                     onPressed: () => Navigator.of(ctx).pop(false),
-                    child: const Text('Annuler'),
+                    child: Text(ctx.l10n.buttonCancel),
                   ),
                   FilledButton(
                     onPressed: () => Navigator.of(ctx).pop(true),
-                    child: const Text('Continuer'),
+                    child: Text(ctx.l10n.buttonContinue),
                   ),
                 ],
               ),

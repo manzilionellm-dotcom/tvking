@@ -18,8 +18,10 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/presentation/play_channel.dart';
@@ -34,22 +36,35 @@ import 'widgets/hero_card.dart';
 import 'widgets/popular_card.dart';
 import 'widgets/resume_card.dart';
 
-/// Correspondance clé de section → (libellé, genres regroupés).
-final Map<String, (String, Set<ChannelGenre>)> _kGenreSections =
-    <String, (String, Set<ChannelGenre>)>{
-  HomeSectionKey.sport: ('Sport', <ChannelGenre>{ChannelGenre.sports}),
+/// Correspondance clé de section → (libellé traduit, genres regroupés).
+/// Le libellé est une FONCTION de [AppLocalizations] (pas une chaîne en
+/// dur) pour que les titres de sections suivent la langue du téléphone.
+/// On réutilise les clés simple* déjà traduites (mêmes valeurs).
+final Map<String, (String Function(AppLocalizations), Set<ChannelGenre>)>
+    _kGenreSections =
+    <String, (String Function(AppLocalizations), Set<ChannelGenre>)>{
+  HomeSectionKey.sport: (
+    (AppLocalizations l10n) => l10n.simpleSport,
+    <ChannelGenre>{ChannelGenre.sports}
+  ),
   HomeSectionKey.entertainment: (
-    'Divertissement',
+    (AppLocalizations l10n) => l10n.simpleEntertainment,
     <ChannelGenre>{
       ChannelGenre.entertainment,
       ChannelGenre.music,
       ChannelGenre.documentary,
     }
   ),
-  HomeSectionKey.info: ('Info', <ChannelGenre>{ChannelGenre.news}),
-  HomeSectionKey.kids: ('Enfants', <ChannelGenre>{ChannelGenre.kids}),
+  HomeSectionKey.info: (
+    (AppLocalizations l10n) => l10n.simpleInfo,
+    <ChannelGenre>{ChannelGenre.news}
+  ),
+  HomeSectionKey.kids: (
+    (AppLocalizations l10n) => l10n.simpleKids,
+    <ChannelGenre>{ChannelGenre.kids}
+  ),
   HomeSectionKey.general: (
-    'Général',
+    (AppLocalizations l10n) => l10n.simpleGeneral,
     <ChannelGenre>{ChannelGenre.other, ChannelGenre.international}
   ),
 };
@@ -124,12 +139,12 @@ class CountryHomeView extends StatelessWidget {
     final List<Widget> items = <Widget>[];
 
     // 1) Réglage accessibilité.
-    items.add(_textScaleToggle(scale));
+    items.add(_textScaleToggle(context, scale));
 
     // 2) HERO : "Favori du jour" (piloté panel) s'il correspond à une
     //    chaîne d'ici, sinon le #1 populaire ("Pour vous").
     Channel? hero;
-    String heroLabel = 'POUR VOUS';
+    String heroLabel = context.l10n.heroForYou;
     String? heroNote;
     final FeaturedRepository feat = FeaturedRepository.instance;
     if (feat.hasFeatured) {
@@ -137,7 +152,7 @@ class CountryHomeView extends StatelessWidget {
       for (final Channel c in channels) {
         if (c.name.toLowerCase().contains(q)) {
           hero = c;
-          heroLabel = 'FAVORI DU JOUR';
+          heroLabel = context.l10n.heroFeaturedOfDay;
           heroNote = feat.note.trim().isEmpty ? null : feat.note.trim();
           break;
         }
@@ -166,7 +181,7 @@ class CountryHomeView extends StatelessWidget {
 
     // 3) Populaires en ce moment.
     if (popular.isNotEmpty) {
-      items.add(_sectionTitle('Populaires en ce moment', scale));
+      items.add(_sectionTitle(context.l10n.homePopularNow, scale));
       items.add(_horizontal(
         height: 150 * scale,
         children: <Widget>[
@@ -184,7 +199,7 @@ class CountryHomeView extends StatelessWidget {
 
     // 4) Reprendre.
     if (recent.isNotEmpty) {
-      items.add(_sectionTitle('Reprendre', scale));
+      items.add(_sectionTitle(context.l10n.sectionResume, scale));
       items.add(_horizontal(
         height: 132 * scale,
         children: <Widget>[
@@ -202,7 +217,8 @@ class CountryHomeView extends StatelessWidget {
     final List<String> order =
         HomeLayoutRepository.instance.orderedVisibleKeys(kDefaultHomeOrder);
     for (final String key in order) {
-      final (String, Set<ChannelGenre>)? def = _kGenreSections[key];
+      final (String Function(AppLocalizations), Set<ChannelGenre>)? def =
+          _kGenreSections[key];
       if (def == null) continue; // recent/favorites/cinema gérés ailleurs
       final List<Channel> inGenre = channels
           .where((Channel c) => def.$2.contains(c.genre))
@@ -212,7 +228,7 @@ class CountryHomeView extends StatelessWidget {
           PopularityRepository.instance.getPopularChannels(inGenre, top: 12));
       final String ribbon =
           HomeLayoutRepository.instance.config(key)?.ribbon ?? '';
-      items.add(_sectionTitle(def.$1, scale, ribbon: ribbon));
+      items.add(_sectionTitle(def.$1(context.l10n), scale, ribbon: ribbon));
       for (final Channel c in top) {
         items.add(ChannelListRow(
           channel: c,
@@ -246,7 +262,7 @@ class CountryHomeView extends StatelessWidget {
 
   // ---- Sous-widgets ----
 
-  Widget _textScaleToggle(double scale) {
+  Widget _textScaleToggle(BuildContext context, double scale) {
     final bool big = TextScaleRepository.instance.isBig;
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
@@ -268,7 +284,7 @@ class CountryHomeView extends StatelessWidget {
                       color: big ? AppColors.maisonBg : AppColors.maisonInk),
                   SizedBox(width: 6 * scale),
                   Text(
-                    'Texte plus grand',
+                    context.l10n.homeBiggerText,
                     style: AppTextStyles.maisonLabel.copyWith(
                       fontSize: 12 * scale,
                       color: big ? AppColors.maisonBg : AppColors.maisonInk,

@@ -22,6 +22,11 @@ enum AspectRatioMode {
 
   const AspectRatioMode(this.label, this.code);
 
+  /// Libellé technique de REPLI (français en dur). L'affichage
+  /// utilisateur passe par l'extension presentation
+  /// `AspectRatioModeLabel.localizedLabel(context)`
+  /// (presentation/aspect_mode_label.dart) — l'enum reste pur,
+  /// sans dépendance à la localisation.
   final String label;
   final String code;
 

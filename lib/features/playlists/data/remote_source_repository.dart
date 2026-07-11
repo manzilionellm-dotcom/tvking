@@ -25,6 +25,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/i18n/l10n_now.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart'
@@ -133,10 +134,14 @@ abstract final class RemoteSourceRepository {
   /// Charge la source en base locale si elle n'y est pas déjà.
   static Future<RemoteSyncResult> _applySource(Map<String, dynamic> src) async {
     final String type = (src['type'] as String?)?.trim().toLowerCase() ?? '';
+    // Nom par défaut LOCALISÉ (langue active au moment de la synchro) :
+    // ce libellé est ensuite STOCKÉ comme nom de la playlist — comme tout
+    // nom de playlist, il est figé à la création (champ libre, pas
+    // re-localisable à l'affichage).
     final String label =
         (src['label'] as String?)?.trim().isNotEmpty == true
             ? (src['label'] as String).trim()
-            : 'Mon abonnement';
+            : l10nNow.playlistDefaultSubscription;
     final String? epg = (src['epg_url'] as String?)?.trim();
 
     // On s'assure que la liste locale est chargée avant la dédup.

@@ -19,6 +19,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_now.dart';
+
 class RecordingService {
   RecordingService._();
   static final RecordingService instance = RecordingService._();
@@ -49,6 +51,11 @@ class RecordingService {
           'title': title,
           if (url != null) 'url': url,
           if (filePath != null) 'file': filePath,
+          // i18n : la notification Android et son canal suivent la
+          // langue de l'app (résolue au démarrage de l'enregistrement).
+          'notifTitle': l10nNow.playerRecording,
+          'channelName': l10nNow.recordingNotifChannelName,
+          'channelDesc': l10nNow.recordingNotifChannelDesc,
         },
       );
       return ok ?? false;

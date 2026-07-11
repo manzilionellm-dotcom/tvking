@@ -32,9 +32,11 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../player/presentation/play_channel.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../domain/channel.dart';
 import 'channels_grid_screen.dart';
+import 'genre_l10n.dart';
 import 'widgets/premium_row.dart';
 
 class FocusedCategoryScreen extends StatelessWidget {
@@ -73,7 +75,7 @@ class FocusedCategoryScreen extends StatelessWidget {
           }
 
           final LinkedHashMap<String, List<Channel>> byCountry =
-              _groupByCountry(matched);
+              _groupByCountry(matched, context.l10n);
 
           return CustomScrollView(
             physics: const BouncingScrollPhysics(),
@@ -134,13 +136,16 @@ class FocusedCategoryScreen extends StatelessWidget {
 
   /// Regroupe par pays. Tri : pays avec le plus de chaînes d'abord,
   /// "International" (= pays inconnu) toujours en dernier.
+  /// Les clés du regroupement sont les noms TRADUITS (elles servent
+  /// directement de titres de sections à l'écran).
   LinkedHashMap<String, List<Channel>> _groupByCountry(
     List<Channel> chs,
+    AppLocalizations l10n,
   ) {
-    const String kInternational = 'International';
+    final String kInternational = l10n.sectionInternational;
     final Map<String, List<Channel>> raw = <String, List<Channel>>{};
     for (final Channel ch in chs) {
-      final String key = ch.country?.name ?? kInternational;
+      final String key = ch.country?.localizedLabel(l10n) ?? kInternational;
       raw.putIfAbsent(key, () => <Channel>[]).add(ch);
     }
     // Tri stable : par count desc, puis nom asc, "International" en fin

@@ -24,6 +24,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../data/epg_repository.dart';
 import '../../domain/epg_program.dart';
+import '../epg_format.dart';
 
 class MiniEpgNowNext extends StatefulWidget {
   const MiniEpgNowNext({required this.channelId, super.key});
@@ -110,7 +111,8 @@ class _MiniEpgNowNextState extends State<MiniEpgNowNext> {
               ),
               const SizedBox(width: 8),
               Text(
-                now.timeRangeShort,
+                // Plage horaire localisée (12h/24h selon la locale).
+                epgTimeRange(context, now),
                 style: AppTextStyles.bodyMedium.copyWith(
                   fontSize: 11,
                   color: AppColors.textTertiary,

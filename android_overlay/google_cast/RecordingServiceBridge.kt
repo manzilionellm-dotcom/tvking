@@ -45,7 +45,15 @@ class RecordingServiceBridge(
                     // enregistre NATIVEMENT (survit a la fermeture app).
                     val url = call.argument<String>("url")
                     val file = call.argument<String>("file")
-                    startService(title, url, file)
+                    startService(
+                        title,
+                        url,
+                        file,
+                        // i18n : libellés localisés fournis par Dart.
+                        call.argument<String>("notifTitle"),
+                        call.argument<String>("channelName"),
+                        call.argument<String>("channelDesc"),
+                    )
                     result.success(true)
                 }
                 "bytes" -> {
@@ -64,12 +72,28 @@ class RecordingServiceBridge(
         }
     }
 
-    private fun startService(title: String, url: String?, file: String?) {
+    private fun startService(
+        title: String,
+        url: String?,
+        file: String?,
+        notifTitle: String?,
+        channelName: String?,
+        channelDesc: String?,
+    ) {
         val intent = Intent(context, RecordingForegroundService::class.java).apply {
             action = RecordingForegroundService.ACTION_START
             putExtra(RecordingForegroundService.EXTRA_TITLE, title)
             if (url != null) putExtra(RecordingForegroundService.EXTRA_URL, url)
             if (file != null) putExtra(RecordingForegroundService.EXTRA_FILE, file)
+            if (notifTitle != null) {
+                putExtra(RecordingForegroundService.EXTRA_NOTIF_TITLE, notifTitle)
+            }
+            if (channelName != null) {
+                putExtra(RecordingForegroundService.EXTRA_CHANNEL_NAME, channelName)
+            }
+            if (channelDesc != null) {
+                putExtra(RecordingForegroundService.EXTRA_CHANNEL_DESC, channelDesc)
+            }
         }
         // Sur Android 8+ il faut startForegroundService(), pas startService().
         // ContextCompat fait le bon choix selon l'API level.

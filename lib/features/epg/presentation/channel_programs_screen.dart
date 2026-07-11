@@ -20,6 +20,7 @@ import '../../player/presentation/play_channel.dart';
 import '../data/catchup_url_builder.dart';
 import '../data/epg_repository.dart';
 import '../domain/epg_program.dart';
+import 'epg_format.dart';
 
 class ChannelProgramsScreen extends StatefulWidget {
   const ChannelProgramsScreen({required this.channel, super.key});
@@ -205,7 +206,9 @@ class _ProgramTile extends StatelessWidget {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          program.timeRangeShort,
+                          // Plage horaire localisée (12h/24h selon la
+                          // locale) via le helper presentation.
+                          epgTimeRange(context, program),
                           style: AppTextStyles.bodyMedium.copyWith(
                             fontSize: 11,
                             color: AppColors.textMuted,
@@ -213,7 +216,7 @@ class _ProgramTile extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          '· ${program.durationLabel}',
+                          '· ${durationText(context.l10n, program.duration)}',
                           style: AppTextStyles.bodyMedium.copyWith(
                             fontSize: 11,
                             color: AppColors.textMuted,
@@ -277,7 +280,7 @@ class _ProgramTile extends StatelessWidget {
             behavior: SnackBarBehavior.floating,
             content: Text(
               context.l10n.programStartsAt(
-                  program.title, program.timeRangeShort.split(' – ').first),
+                  program.title, epgStartTime(context, program)),
               style: AppTextStyles.bodyMedium,
             ),
           ),

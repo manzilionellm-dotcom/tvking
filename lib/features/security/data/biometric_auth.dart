@@ -22,6 +22,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 
+import '../../../core/branding/brand_config.dart';
+import '../../../core/i18n/l10n_now.dart';
+
 class BiometricAuth {
   BiometricAuth._();
   static final BiometricAuth instance = BiometricAuth._();
@@ -43,12 +46,15 @@ class BiometricAuth {
   /// Déclenche le dialog d'auth. Retourne `true` si l'utilisateur
   /// s'est authentifié avec succès, `false` si annulation ou échec.
   /// Ne throw jamais — fallback silent sur `false` en cas d'erreur.
-  Future<bool> authenticate({
-    String reason = 'Déverrouille The Few',
-  }) async {
+  ///
+  /// `reason` : texte affiché dans le dialog système. Si `null`,
+  /// on prend « Déverrouille {appName} » dans la langue active
+  /// (via l10nNow, hors widget) avec le nom de marque dynamique.
+  Future<bool> authenticate({String? reason}) async {
     try {
       return await _auth.authenticate(
-        localizedReason: reason,
+        localizedReason: reason ??
+            l10nNow.lockUnlockReason(BrandConfig.instance.appName),
         options: const AuthenticationOptions(
           // false → permet le fallback PIN/pattern/mot-de-passe
           // système Android quand l'empreinte échoue ou n'est pas

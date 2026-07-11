@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../data/startup_ad_repository.dart';
 
 class StartupAdScreen extends StatefulWidget {
@@ -110,19 +111,19 @@ class _StartupAdScreenState extends State<StartupAdScreen> {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(20),
                   onTap: _finish,
-                  child: const Padding(
+                  child: Padding(
                     padding:
-                        EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        Text('Passer',
-                            style: TextStyle(
+                        Text(context.l10n.buttonSkip,
+                            style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w700,
                                 fontSize: 14)),
-                        SizedBox(width: 4),
-                        Icon(Icons.skip_next_rounded,
+                        const SizedBox(width: 4),
+                        const Icon(Icons.skip_next_rounded,
                             color: Colors.white, size: 18),
                       ],
                     ),

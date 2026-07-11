@@ -160,6 +160,14 @@ abstract final class M3uParser {
       // Si on a une URL SANS #EXTINF avant, on l'accepte quand
       // même : c'est un M3U "simple" (juste des URLs). On génère
       // un nom et une catégorie par défaut.
+      //
+      // NB i18n : le repli « Chaîne N » reste volontairement en dur.
+      // Ce code tourne dans un ISOLATE (`compute`) où l'état statique
+      // de LocaleRepository n'existe pas (l10nNow y est inutilisable),
+      // et le nom est PERSISTÉ en SQLite : le localiser au parsing
+      // figerait la langue en base sans bénéfice fiable. Idem pour la
+      // catégorie « Autres », qui est en plus pattern-matchée en SQL
+      // (cf. PlaylistRepository.getChannelsPage) — NE PAS traduire.
       if (pendingAttrs == null && pendingName == null) {
         channels.add(
           Channel(

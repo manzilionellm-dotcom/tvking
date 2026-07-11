@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/branding/brand_logo.dart';
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/admin_credentials.dart';
@@ -36,21 +37,25 @@ class _AdminPinScreenState extends State<AdminPinScreen> {
 
   bool get _isCreating => !AdminCredentials.instance.hasPin;
 
+  // Ces getters lisent `context.l10n` : ils ne sont appelés que depuis
+  // `build`, donc les Localizations sont toujours disponibles.
   String get _title {
     if (_isCreating) {
-      return _confirming ? 'Confirme ton code' : 'Crée ton code admin';
+      return _confirming
+          ? context.l10n.adminPinConfirmTitle
+          : context.l10n.adminPinCreateTitle;
     }
-    return 'Code admin';
+    return context.l10n.adminPinTitle;
   }
 
   String get _hint {
     if (_isCreating && !_confirming) {
-      return '$_pinLength chiffres. Personne d\'autre n\'aura cet accès.';
+      return context.l10n.adminPinCreateHint(_pinLength);
     }
     if (_isCreating && _confirming) {
-      return 'Retape le même code pour confirmer.';
+      return context.l10n.adminPinConfirmHint;
     }
-    return 'Entre ton code pour accéder au mode admin.';
+    return context.l10n.adminPinEnterHint;
   }
 
   Future<void> _onDigit(int digit) async {
@@ -90,8 +95,9 @@ class _AdminPinScreenState extends State<AdminPinScreen> {
           _enterDashboard();
         } else {
           await HapticFeedback.heavyImpact();
+          if (!mounted) return;
           setState(() {
-            _error = 'Les deux codes ne correspondent pas.';
+            _error = context.l10n.adminPinMismatch;
             _entered = '';
             _firstPass = null;
             _confirming = false;
@@ -108,11 +114,12 @@ class _AdminPinScreenState extends State<AdminPinScreen> {
         _enterDashboard();
       } else {
         await HapticFeedback.heavyImpact();
+        if (!mounted) return;
         _failCount++;
         setState(() {
           _error = _failCount >= 3
-              ? 'Trop de tentatives. Reviens dans une minute.'
-              : 'Code incorrect.';
+              ? context.l10n.adminPinTooManyAttempts
+              : context.l10n.lockPinWrong;
           _entered = '';
         });
       }
@@ -132,7 +139,7 @@ class _AdminPinScreenState extends State<AdminPinScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Accès admin'),
+        title: Text(context.l10n.adminAccessTitle),
       ),
       body: SafeArea(
         child: Center(

@@ -34,6 +34,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/i18n/l10n_now.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart';
 import '../domain/playlist.dart';
@@ -146,7 +147,11 @@ class CloudBackupRepository {
         if (raw is! Map) continue;
         final Map<String, Object?> m = Map<String, Object?>.from(raw);
         final String type = (m['type'] as String?) ?? 'm3u';
-        final String name = (m['name'] as String?) ?? 'Mon abonnement';
+        // Nom par défaut LOCALISÉ (langue active à la restauration) — ne
+        // sert que si le backup ne portait pas de nom ; il est ensuite
+        // stocké comme n'importe quel nom de playlist.
+        final String name =
+            (m['name'] as String?) ?? l10nNow.playlistDefaultSubscription;
         try {
           if (type == 'xtream') {
             final String server = (m['xtream_server'] as String?) ?? '';

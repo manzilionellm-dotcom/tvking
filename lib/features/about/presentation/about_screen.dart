@@ -127,7 +127,8 @@ class _AboutScreenState extends State<AboutScreen> {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        'v${_pkg!.version} • build ${_pkg!.buildNumber}',
+                        context.l10n
+                            .aboutVersionBuild(_pkg!.version, _pkg!.buildNumber),
                         style: AppTextStyles.bodyMedium.copyWith(
                           fontSize: 12,
                           color: AppColors.textSecondary,
@@ -200,8 +201,10 @@ class _AboutScreenState extends State<AboutScreen> {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'v${_update!.latestVersion} '
-                            '(toi : v${_update!.currentVersion})',
+                            context.l10n.aboutVersionCompare(
+                              _update!.latestVersion,
+                              _update!.currentVersion,
+                            ),
                             style: AppTextStyles.bodyMedium,
                           ),
                           const SizedBox(height: 10),

@@ -200,7 +200,7 @@ class _LockScreenState extends State<LockScreen> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: Text(
-                        'OU',
+                        context.l10n.lockOr,
                         style: AppTextStyles.labelSmall.copyWith(
                           color: AppColors.textTertiary,
                         ),

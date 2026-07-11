@@ -8,6 +8,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../channels/domain/channel.dart';
@@ -75,7 +76,7 @@ class ChannelListRow extends StatelessWidget {
                           ),
                           Expanded(
                             child: Text(
-                              'En ce moment · ${prog.trim()}',
+                              context.l10n.nowPlayingProgram(prog.trim()),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: AppTextStyles.maisonProgram
@@ -96,7 +97,9 @@ class ChannelListRow extends StatelessWidget {
                 child: IconButton(
                   onPressed: onFav,
                   iconSize: 24 * scale,
-                  tooltip: isFav ? 'Retirer des favoris' : 'Ajouter aux favoris',
+                  tooltip: isFav
+                      ? context.l10n.tooltipRemoveFavorite
+                      : context.l10n.tooltipAddFavorite,
                   icon: Icon(
                     isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                     color: isFav ? AppColors.liveRed : AppColors.textTertiary,

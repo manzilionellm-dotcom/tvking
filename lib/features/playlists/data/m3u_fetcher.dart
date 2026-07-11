@@ -29,6 +29,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/i18n/l10n_now.dart';
 import '../../player/data/player_settings.dart';
 import 'iptv_http.dart';
 import 'playlist_import_limits.dart';
@@ -124,7 +125,7 @@ abstract final class M3uFetcher {
           if (resp.statusCode != 200) {
             // Serveur qui refuse cette signature (souvent 403 / 401 /
             // un code maison comme 884). On essaie la signature suivante.
-            lastError = Exception('HTTP ${resp.statusCode} sur $url');
+            lastError = Exception(l10nNow.m3uHttpError(resp.statusCode, url));
             continue;
           }
 
@@ -136,8 +137,7 @@ abstract final class M3uFetcher {
           final String body = _decodeBytes(bytes);
           final String head = body.trimLeft();
           if (head.isEmpty) {
-            lastError =
-                Exception('Le serveur a renvoyé une réponse vide pour $url');
+            lastError = Exception(l10nNow.m3uEmptyResponse(url));
             continue;
           }
 
@@ -157,17 +157,13 @@ abstract final class M3uFetcher {
               // le parseur l'accepte, le fetcher ne doit pas la refuser.
               _hasMediaExtension(head);
           if (looksHtml && !looksM3u) {
-            lastError = Exception(
-              'Le serveur a renvoyé une page web (HTML), pas une playlist.',
-            );
+            lastError = Exception(l10nNow.m3uHtmlResponse);
             continue;
           }
           if (!looksM3u) {
             // Ni balise M3U ni URL de flux : probablement une erreur
             // applicative en texte/JSON. On tente une autre signature.
-            lastError = Exception(
-              'Réponse sans aucune chaîne (ni #EXTM3U ni URL) pour $url',
-            );
+            lastError = Exception(l10nNow.m3uNoChannelResponse(url));
             continue;
           }
 
@@ -210,15 +206,15 @@ abstract final class M3uFetcher {
   /// que l'utilisateur comprenne que le souci vient du serveur (et non
   /// d'un simple « mauvais UA » réglable à la main).
   static String _friendlyFailure(Object? lastError, String url, int tried) {
+    // Message LOCALISÉ (l10nNow — recalculé à chaque échec). Le strip du
+    // préfixe technique `Exception: ` reste valable : c'est le préfixe que
+    // Dart ajoute dans `toString()`, indépendant de la langue de l'app.
     final String detail = lastError == null
         ? ''
-        : '\n\nDernière réponse : '
-            '${lastError.toString().replaceFirst('Exception: ', '')}';
-    return 'Impossible de récupérer la playlist : le serveur a refusé les '
-        '$tried signatures de lecteur testées (VLC, IBO/ExoPlayer, '
-        'Smarters, TiviMate, Kodi…). Vérifie que l\'URL est correcte et '
-        'que l\'abonnement est actif ; un lien « localhost » ne marche pas '
-        'depuis cet appareil.$detail';
+        : '\n\n${l10nNow.m3uLastResponse(
+            lastError.toString().replaceFirst('Exception: ', ''),
+          )}';
+    return '${l10nNow.m3uFetchRefused(tried)}$detail';
   }
 
   /// Repli du test « ça ressemble à un M3U » : une extension média connue
@@ -248,8 +244,7 @@ abstract final class M3uFetcher {
       total += chunk.length;
       if (total > maxBytes) {
         throw PlaylistImportTooLarge(
-          'Playlist trop volumineuse (> ${maxBytes ~/ (1024 * 1024)} Mo). '
-          'Réduis la source ou filtre les catégories côté fournisseur.',
+          l10nNow.m3uTooLarge(maxBytes ~/ (1024 * 1024)),
         );
       }
       builder.add(chunk);

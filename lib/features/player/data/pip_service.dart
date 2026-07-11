@@ -28,6 +28,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_now.dart';
+
 /// État du PiP côté natif. Stream pour permettre aux widgets de
 /// rebuild quand on entre / sort du PiP.
 class PipService extends ChangeNotifier {
@@ -148,7 +150,12 @@ class PipService extends ChangeNotifier {
         'startBackgroundAudio',
         <String, Object>{
           'title': title,
-          if (body != null) 'body': body,
+          // i18n : corps par défaut, bouton « Arrêter » et canal de
+          // notification localisés (langue de l'app au moment du start).
+          'body': body ?? l10nNow.playbackNotifDefaultBody,
+          'stopLabel': l10nNow.castStop,
+          'channelName': l10nNow.playbackNotifChannelName,
+          'channelDesc': l10nNow.playbackNotifChannelDesc,
         },
       );
     } catch (e) {

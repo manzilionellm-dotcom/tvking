@@ -19,6 +19,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/i18n/l10n_now.dart';
 import 'admin_client.dart';
 
 class BackendReadResult {
@@ -43,23 +44,24 @@ abstract final class BackendRepository {
         .get(uri, headers: _headers(adminSecret))
         .timeout(const Duration(seconds: 20));
 
+    // Messages LOCALISÉS via l10nNow (pas de BuildContext ici) : ils sont
+    // recalculés à chaque requête et affichés tels quels par le dashboard
+    // admin (snackbar / bloc d'erreur). Personne ne pattern-matche leur
+    // texte — seul le TYPE BackendException est attrapé.
     if (resp.statusCode == 401) {
-      throw const BackendException(
-        'Secret admin refusé par le serveur. Vérifie que tu as bien '
-        'collé le bon mot de passe que tu as défini avec `wrangler '
-        'secret put ADMIN_SECRET`.',
-      );
+      throw BackendException(l10nNow.backendSecretRefusedDetail);
     }
     if (resp.statusCode == 404) {
-      throw const BackendException(
-        'URL du serveur introuvable. Vérifie que tu as bien collé '
-        'l\'URL complète de ton Worker (https://....workers.dev).',
-      );
+      throw BackendException(l10nNow.backendUrlNotFound);
     }
     if (resp.statusCode != 200) {
       throw BackendException(
-        'Erreur serveur HTTP ${resp.statusCode}. '
-        'Réponse : ${resp.body.length > 200 ? "${resp.body.substring(0, 200)}…" : resp.body}',
+        l10nNow.backendHttpError(
+          resp.statusCode,
+          resp.body.length > 200
+              ? '${resp.body.substring(0, 200)}…'
+              : resp.body,
+        ),
       );
     }
 
@@ -74,7 +76,7 @@ abstract final class BackendRepository {
       }
       return BackendReadResult(clients: clients);
     } catch (e) {
-      throw BackendException('Réponse serveur illisible : $e');
+      throw BackendException(l10nNow.backendUnreadableResponse('$e'));
     }
   }
 
@@ -92,7 +94,7 @@ abstract final class BackendRepository {
         .timeout(const Duration(seconds: 20));
 
     if (resp.statusCode == 401) {
-      throw const BackendException('Secret admin refusé.');
+      throw BackendException(l10nNow.backendSecretRefused);
     }
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       if (kDebugMode) {
@@ -102,10 +104,14 @@ abstract final class BackendRepository {
       try {
         final Map<String, dynamic> err =
             jsonDecode(resp.body) as Map<String, dynamic>;
-        if (err['error'] is String) hint = '\nDétail : ${err['error']}';
+        if (err['error'] is String) {
+          // Le détail technique renvoyé par le Worker reste tel quel ;
+          // seul le libellé « Détail : » est localisé.
+          hint = '\n${l10nNow.backendErrorDetail('${err['error']}')}';
+        }
       } catch (_) {}
       throw BackendException(
-        'Échec de l\'enregistrement (HTTP ${resp.statusCode}).$hint',
+        l10nNow.backendSaveFailed(resp.statusCode, hint),
       );
     }
 
@@ -124,11 +130,11 @@ abstract final class BackendRepository {
         .timeout(const Duration(seconds: 20));
 
     if (resp.statusCode == 401) {
-      throw const BackendException('Secret admin refusé.');
+      throw BackendException(l10nNow.backendSecretRefused);
     }
     if (resp.statusCode != 204 && resp.statusCode != 200) {
       throw BackendException(
-        'Échec de la suppression (HTTP ${resp.statusCode}).',
+        l10nNow.backendDeleteFailed(resp.statusCode),
       );
     }
   }
@@ -145,7 +151,7 @@ abstract final class BackendRepository {
     } on BackendException {
       rethrow;
     } catch (e) {
-      throw BackendException('Impossible de joindre le serveur : $e');
+      throw BackendException(l10nNow.backendUnreachable('$e'));
     }
   }
 }

@@ -12,6 +12,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../branding/brand_config.dart';
+import '../i18n/l10n_now.dart';
+
 abstract final class VipSupport {
   /// Numéro affiché à l'utilisateur (avec espaces pour lisibilité).
   static const String displayNumber = '+44 7307 410512';
@@ -21,10 +24,12 @@ abstract final class VipSupport {
   static const String _waNumber = '447307410512';
 
   /// Message pré-rempli quand l'utilisateur ouvre WhatsApp. Indique
-  /// l'origine (The Few) pour que le support sache d'où vient le
-  /// contact. Encodé URL-safe par `Uri`.
-  static const String _defaultPrefill =
-      'Bonjour The Few, j\'ai besoin d\'aide avec l\'application.';
+  /// l'origine (nom de l'app, surchargeable via le panel « Thème »)
+  /// pour que le support sache d'où vient le contact. Encodé URL-safe
+  /// par `Uri`. Recalculé à chaque ouverture via `l10nNow` : suit la
+  /// langue active (texte éphémère, hors arbre de widgets).
+  static String get _defaultPrefill =>
+      l10nNow.vipWhatsappPrefill(BrandConfig.instance.appName);
 
   /// Ouvre WhatsApp (app native si installée, sinon web). Renvoie
   /// `true` si l'OS a pu lancer l'URL, `false` sinon.

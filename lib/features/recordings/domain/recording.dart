@@ -60,6 +60,11 @@ class Recording {
     return Duration(milliseconds: end - startedAt);
   }
 
+  /// "1h05" / "45 min" — REPLI technique formaté en dur à la française.
+  /// La couche presentation localisée passe par
+  /// `durationText(l10n, recording.duration)`
+  /// (features/epg/presentation/epg_format.dart — mêmes clés duration*).
+  /// Encore utilisé par features/tv (hors migration l10n).
   String get durationLabel {
     final int minutes = duration.inMinutes;
     if (minutes >= 60) {

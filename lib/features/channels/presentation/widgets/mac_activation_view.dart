@@ -130,18 +130,18 @@ class MacActivationView extends StatelessWidget {
                         : () async {
                             // Envoi direct via WhatsApp (MAC pré-remplie) ;
                             // sinon on ouvre le choix de canaux de support.
+                            // Le message pré-rempli est visible par
+                            // l'utilisateur dans WhatsApp → localisé.
+                            final String msg =
+                                context.l10n.activationPrefillMessage(mac);
                             final bool ok = await VipSupport.openWhatsApp(
-                              customMessage:
-                                  'Bonjour, voici mon identifiant pour '
-                                  'activer mes chaînes :\n\n$mac',
+                              customMessage: msg,
                             );
                             if (!context.mounted) return;
                             if (!ok) {
                               showSupportChoiceSheet(
                                 context,
-                                customMessage:
-                                    'Bonjour, voici mon identifiant pour '
-                                    'activer mes chaînes :\n\n$mac',
+                                customMessage: msg,
                               );
                             }
                           },

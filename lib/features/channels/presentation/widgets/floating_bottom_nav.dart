@@ -27,6 +27,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/tv_focusable.dart';
@@ -41,16 +42,26 @@ class FloatingBottomNav extends StatelessWidget {
   final int currentIndex;
   final void Function(int index) onTap;
 
-  static const List<_NavItem> _items = <_NavItem>[
-    _NavItem(icon: Icons.home_rounded, label: 'Home'),
-    _NavItem(icon: Icons.sports_soccer_rounded, label: 'Football'),
-    _NavItem(icon: Icons.newspaper_rounded, label: 'Information'),
-    _NavItem(icon: Icons.child_care_rounded, label: 'Enfant'),
-    _NavItem(icon: Icons.movie_creation_rounded, label: 'Cinéma'),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    // Libellés résolus DANS build (et plus en const statique) pour
+    // suivre la langue active. « Cinéma » réutilise la clé existante
+    // catFilterMovies (même valeur française).
+    final List<_NavItem> items = <_NavItem>[
+      _NavItem(icon: Icons.home_rounded, label: context.l10n.navTabHome),
+      _NavItem(
+          icon: Icons.sports_soccer_rounded,
+          label: context.l10n.navTabFootball),
+      _NavItem(
+          icon: Icons.newspaper_rounded,
+          label: context.l10n.navTabInformation),
+      _NavItem(
+          icon: Icons.child_care_rounded, label: context.l10n.navTabKids),
+      _NavItem(
+          icon: Icons.movie_creation_rounded,
+          label: context.l10n.catFilterMovies),
+    ];
+
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -70,8 +81,8 @@ class FloatingBottomNav extends StatelessWidget {
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: List<Widget>.generate(_items.length, (int i) {
-                  final _NavItem item = _items[i];
+                children: List<Widget>.generate(items.length, (int i) {
+                  final _NavItem item = items[i];
                   final bool selected = i == currentIndex;
                   return _NavButton(
                     icon: item.icon,

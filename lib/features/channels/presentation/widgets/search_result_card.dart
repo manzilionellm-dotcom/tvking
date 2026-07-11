@@ -13,11 +13,13 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/tv_focusable.dart';
 import '../../domain/channel.dart';
 import '../../domain/channel_genre.dart';
+import '../genre_l10n.dart';
 import 'channel_logo.dart';
 
 class SearchResultCard extends StatelessWidget {
@@ -122,7 +124,7 @@ class SearchResultCard extends StatelessWidget {
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            genre.label,
+                            genre.localizedLabel(context.l10n),
                             style: AppTextStyles.bodyMedium.copyWith(
                               fontSize: 11,
                               color: AppColors.textMuted,
@@ -173,7 +175,7 @@ class _LiveBadge extends StatelessWidget {
           ),
           const SizedBox(width: 4),
           Text(
-            'LIVE',
+            context.l10n.badgeLive,
             style: AppTextStyles.labelSmall.copyWith(
               color: Colors.white,
               fontSize: 9,

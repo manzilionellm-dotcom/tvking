@@ -11,6 +11,7 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/i18n/l10n_now.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/xtream_client.dart';
 import '../../playlists/domain/playlist.dart';
@@ -73,12 +74,17 @@ class SeriesRepository {
   }
 
   /// Catégories présentes dans le cache courant (ordre d'apparition).
+  /// Le repli « Autres » (catégorie vide côté serveur) est TRADUIT via
+  /// `l10nNow` : la liste est recalculée à chaque appel, donc le libellé
+  /// suit la langue active (clé existante sectionOthers).
   List<String> categories() {
     final List<VodSeries> s = _cache ?? const <VodSeries>[];
     final List<String> cats = <String>[];
     final Set<String> seen = <String>{};
     for (final VodSeries v in s) {
-      final String c = v.category.trim().isEmpty ? 'Autres' : v.category.trim();
+      final String c = v.category.trim().isEmpty
+          ? l10nNow.sectionOthers
+          : v.category.trim();
       if (seen.add(c)) cats.add(c);
     }
     return cats;

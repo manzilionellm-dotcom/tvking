@@ -34,6 +34,8 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/i18n/l10n_now.dart';
+
 @immutable
 class AdminClient {
   const AdminClient({
@@ -148,7 +150,12 @@ class AdminPlaylist {
 
   factory AdminPlaylist.fromJson(Map<String, dynamic> json) {
     return AdminPlaylist(
-      name: (json['name'] as String?) ?? 'Sans nom',
+      // Repli LOCALISÉ (langue active au moment du parse). N'arrive que si
+      // le JSON serveur n'a pas de `name` — cas marginal, l'admin met
+      // toujours un nom par défaut à la saisie. NB : si l'admin re-sauve ce
+      // client, ce libellé est réécrit tel quel côté serveur (même
+      // comportement qu'avant, où « Sans nom » en dur était réécrit).
+      name: (json['name'] as String?) ?? l10nNow.fallbackNoName,
       type: (json['type'] as String?) ?? 'm3u',
       url: json['url'] as String?,
       epgUrl: json['epg_url'] as String?,

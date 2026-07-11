@@ -18,6 +18,7 @@ import 'dart:io' show Socket;
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/i18n/l10n_now.dart';
 import '../../../core/observability/structured_logger.dart';
 import '../../player/data/pip_service.dart';
 import '../domain/cast_device.dart';
@@ -229,9 +230,7 @@ class CastManager extends ChangeNotifier {
             _state == CastState.casting ||
             _state == CastState.paused) {
           _state = CastState.error;
-          _errorMessage =
-              'La TV a refusé ce flux — format probablement non pris en '
-              'charge par ce récepteur. Essaie une autre chaîne.';
+          _errorMessage = l10nNow.castErrorReceiverRejected;
           _setProgress(CastProgress.failure(_errorMessage!));
         }
         break;
@@ -620,11 +619,10 @@ class CastManager extends ChangeNotifier {
       // sera aussi vers error (son propre catch) → pas
       // d'inconsistance visible utilisateur.
       _state = CastState.error;
-      _errorMessage = 'Cast trop long — la TV ou le réseau ne répondent pas';
+      _errorMessage = l10nNow.castErrorTimeout;
       _setProgress(
         CastProgress.failure(
-          'La TV met trop de temps à répondre. Réessaie ou choisis une '
-              'autre TV.',
+          l10nNow.castErrorTimeoutRetry,
           details: 'castTo timeout after '
               '${(device.kind == CastDeviceKind.dlna ? kCastTotalTimeoutDlna : kCastTotalTimeout).inSeconds}s',
         ),
@@ -865,9 +863,7 @@ class CastManager extends ChangeNotifier {
       // montre le faux positif.
       final bool relayPathBlocked = bothRelayStrategiesTimedOut(diag);
       final String userMessage = relayPathBlocked
-          ? 'Ta TV ne joint pas le téléphone (WiFi invité ou isolation '
-              'AP ?). Mets le téléphone et la TV sur le MÊME réseau WiFi '
-              '(pas le réseau invité) et désactive l\'isolation AP.'
+          ? l10nNow.castErrorApIsolation
           : friendlyMessageFor(e);
       _setProgress(
         CastProgress.failure(
@@ -1640,9 +1636,7 @@ class CastManager extends ChangeNotifier {
     if (s.contains('google play services') ||
         s.contains('cast indisponible') ||
         s.contains('google cast indisponible')) {
-      return 'Le Chromecast officiel a besoin des services Google Play, '
-          'absents sur ce téléphone. Tu peux quand même caster vers une '
-          'Smart TV (DLNA) ou un Roku depuis la liste.';
+      return l10nNow.castFriendlyNoGms;
     }
 
     // --- DNS / hostname (Phase 1+) ---
@@ -1652,7 +1646,7 @@ class CastManager extends ChangeNotifier {
         s.contains('name resolution') ||
         s.contains('nodename') ||
         s.contains('servname')) {
-      return 'Internet ou DNS instable. Réessaie dans quelques secondes.';
+      return l10nNow.castFriendlyDnsUnstable;
     }
 
     // --- TV bloquee en TRANSITIONING (Phase 1+/B2) ---
@@ -1662,37 +1656,35 @@ class CastManager extends ChangeNotifier {
     // SetURI / Play. Solution utilisateur fiable : redemarrer la TV.
     if (s.contains('transition not available') ||
         s.contains('transitioning')) {
-      return 'Ta TV est bloquée sur un précédent cast. '
-          'Éteins-la quelques secondes puis rallume-la et réessaie.';
+      return l10nNow.castFriendlyTvStuck;
     }
 
     // --- Action refusee par le recepteur (codec / format inconnu) ---
     if (s.contains('action failed') ||
         s.contains('resource not found')) {
-      return 'Ta TV n\'accepte pas ce format. Essaie une autre chaîne.';
+      return l10nNow.castFriendlyBadFormat;
     }
 
     // --- HTTP 458 ou autres 4xx custom des providers IPTV ---
     // Beaucoup de revendeurs Xtream renvoient 458 pour "trop de
     // connexions simultanees" (la limite de l'abonnement).
     if (s.contains('458')) {
-      return 'Ton fournisseur IPTV refuse une connexion supplémentaire '
-          '(limite atteinte). Coupe une autre app qui regarde et réessaie.';
+      return l10nNow.castFriendlyProviderLimit;
     }
 
     // --- Timeout serveur generique ---
     if (s.contains('timeout') || s.contains('ne répond pas')) {
-      return 'La TV ne répond pas. Vérifie le WiFi.';
+      return l10nNow.castFriendlyTvTimeout;
     }
 
     // --- Auth / abonnement expire ---
     if (s.contains('auth') || s.contains('401') || s.contains('403')) {
-      return 'Accès au flux refusé — ton abonnement a peut-être expiré.';
+      return l10nNow.castFriendlyAuthExpired;
     }
 
     // --- Refus generique du recepteur (500, STOPPED apres Play) ---
     if (s.contains('refusé') || s.contains('500') || s.contains('stopped')) {
-      return 'Cette TV n\'a pas accepté ce flux. Essaie une autre chaîne.';
+      return l10nNow.castFriendlyTvRefused;
     }
 
     // --- TV physiquement injoignable au niveau IP (Phase 1+/B4) ---
@@ -1725,20 +1717,15 @@ class CastManager extends ChangeNotifier {
       //      le routeur bloque la communication entre appareils. C'est
       //      LA cause quand la TV est bien listée mais qu'aucun cast ne
       //      passe (cf. errno 113 répété).
-      return 'Ta TV ne répond pas sur le réseau. Vérifie : '
-          '(1) qu\'elle est allumée, '
-          '(2) qu\'elle est sur le MÊME WiFi que ton téléphone '
-          '(pas le réseau "invité"), '
-          '(3) que l\'option « Isolation client / AP isolation » est '
-          'DÉSACTIVÉE dans les réglages de ta box internet.';
+      return l10nNow.castFriendlyTvUnreachable;
     }
 
     // --- Reseau bas-niveau ---
     if (s.contains('réseau') || s.contains('socket')) {
-      return 'Connexion impossible avec la TV.';
+      return l10nNow.castFriendlyNetworkFail;
     }
 
-    return 'Le cast a échoué. Essaie de relancer.';
+    return l10nNow.castFriendlyGenericFail;
   }
 
   void _setProgress(CastProgress p) {
@@ -1779,7 +1766,7 @@ class CastManager extends ChangeNotifier {
       _relayKeepAliveActive = true;
       unawaited(PipService.instance.startBackgroundAudio(
         title,
-        body: 'Diffusion sur la TV — garde le téléphone sur ce WiFi',
+        body: l10nNow.castNotifRelayBody,
       ));
     } else {
       _stopRelayKeepAlive();

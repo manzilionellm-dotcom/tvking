@@ -29,6 +29,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../epg/presentation/epg_format.dart';
 import '../data/gallery_exporter.dart';
 import '../data/http_recording_downloader.dart';
 import '../data/recording_repository.dart';
@@ -342,7 +343,9 @@ class _RecordingTileState extends State<_RecordingTile> {
                           const SizedBox(width: 6),
                           _miniTag(_liveBytesLabel()),
                         ] else ...<Widget>[
-                          _miniTag(recording.durationLabel),
+                          // Durée localisée via le helper presentation
+                          // (mêmes clés duration* que l'EPG).
+                          _miniTag(durationText(context.l10n, recording.duration)),
                           const SizedBox(width: 6),
                           _miniTag(recording.sizeLabel),
                         ],

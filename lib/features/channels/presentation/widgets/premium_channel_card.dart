@@ -23,6 +23,7 @@ import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../domain/channel.dart';
+import '../genre_l10n.dart';
 import 'channel_logo.dart';
 
 class PremiumChannelCard extends StatefulWidget {
@@ -209,8 +210,8 @@ class _PremiumChannelCardState extends State<PremiumChannelCard> {
                     Flexible(
                       child: Text(
                         ch.country != null
-                            ? '${ch.country!.flag} ${ch.genre.label}'
-                            : ch.genre.label,
+                            ? '${ch.country!.flag} ${ch.genre.localizedLabel(context.l10n)}'
+                            : ch.genre.localizedLabel(context.l10n),
                         style: AppTextStyles.bodyMedium.copyWith(
                           fontSize: 12,
                           color: AppColors.textTertiary,
