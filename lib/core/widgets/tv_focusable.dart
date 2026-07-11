@@ -40,6 +40,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../haptics/haptics.dart';
 import '../theme/app_colors.dart';
 import 'tv_accent_scope.dart';
 
@@ -152,6 +153,7 @@ class _TvFocusableState extends State<TvFocusable> {
       actions: <Type, Action<Intent>>{
         ActivateIntent: CallbackAction<ActivateIntent>(
           onInvoke: (_) {
+            Haptics.selection();
             widget.onTap();
             return null;
           },
@@ -165,7 +167,10 @@ class _TvFocusableState extends State<TvFocusable> {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: widget.onTap,
+            onTap: () {
+              Haptics.selection();
+              widget.onTap();
+            },
             borderRadius: radius,
             child: AnimatedScale(
               scale: _focused ? widget.focusedScale : 1.0,

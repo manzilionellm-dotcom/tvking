@@ -49,6 +49,8 @@ import '../../playlists/domain/playlist.dart' as pl;
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
+import '../../stats/data/engagement_service.dart';
+import '../../vod/data/playback_position_repository.dart';
 import '../data/hls_preflight.dart';
 import '../data/local_stream_relay.dart';
 import '../data/pip_service.dart';
@@ -1457,6 +1459,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (_watchSessionId > 0) {
       WatchHistoryRepository.instance.endSession(_watchSessionId);
     }
+    // REPRISE VOD : on mémorise la position AVANT de libérer le player, pour
+    // le contenu FINI uniquement (jamais le live — position sans sens). Le
+    // repo applique les règles Netflix (< 60 s ignoré, > 95 % = terminé).
+    // Fire-and-forget : `_player` est encore vivant ici (dispose plus bas).
+    if (!_currentChannel.isLive) {
+      final Duration pos = _player.state.position;
+      final Duration dur = _player.state.duration;
+      unawaited(PlaybackPositionRepository.instance.record(
+        key: _currentChannel.id,
+        position: pos,
+        duration: dur,
+        name: _currentChannel.name,
+        streamUrl: _currentChannel.streamUrl,
+        posterUrl: _currentChannel.logoUrl,
+      ));
+    }
     PlayerSettings.instance.removeListener(_onSettingsChanged);
     CastManager.instance.removeListener(_onCastStateChanged);
     // Si un enregistrement relais tourne encore, on le clôt (sinon la
@@ -1535,6 +1553,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _startupTimer?.cancel(); // le démarrage a VRAIMENT eu lieu → borne levée
     if (_playedChannelId != _currentChannel.id) {
       _playedChannelId = _currentChannel.id;
+
+      // STREAK D'ENGAGEMENT : on marque « journée regardée » dès la 1ʳᵉ
+      // frame réelle. Idempotent dans la journée (cf. EngagementService).
+      unawaited(EngagementService.instance.registerWatch());
+
+      // REPRISE VOD (Continue Watching) : pour le contenu FINI (films,
+      // séries, replays — jamais le live), si une position est mémorisée,
+      // on saute dessus une fois la lecture lancée, exactement comme
+      // Netflix. Le repo applique lui-même les règles (< 60 s ignoré,
+      // > 95 % = terminé). Sans ça, chaque film redémarrait à 0:00 sur
+      // le téléphone (le système existait mais n'était câblé qu'en TV).
+      if (!_currentChannel.isLive) {
+        final Duration? resume =
+            PlaybackPositionRepository.instance.positionFor(_currentChannel.id);
+        if (resume != null && resume > const Duration(seconds: 5)) {
+          unawaited(_player.seek(resume));
+        }
+      }
+
       // MESURE FLUIDITÉ : temps « zap → première frame » (cible < 2000 ms).
       final int? zapMs =
           _zapClock.isRunning ? _zapClock.elapsedMilliseconds : null;

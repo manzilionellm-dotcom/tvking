@@ -31,6 +31,7 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../../features/subscription/data/subscription_backend.dart';
+import '../../features/subscription/data/subscription_state.dart';
 
 class NotificationService {
   NotificationService._();
@@ -308,6 +309,112 @@ class NotificationService {
       await p.setInt('notif.announce.lastSeen', id);
     } catch (e) {
       if (kDebugMode) debugPrint('[Notif] announcement: $e');
+    }
+  }
+
+  // ===================================================================
+  //  RÉ-ENGAGEMENT — le SEUL canal qui ramène un utilisateur HORS de l'app
+  // ===================================================================
+  //  100 % local (aucun push serveur). Reprogrammé à CHAQUE ouverture :
+  //  le fait d'ouvrir l'app « repousse » le rappel de dormance → un
+  //  utilisateur assidu ne le voit jamais. Fréquence plafonnée, respect
+  //  du même interrupteur que les rappels EPG, ton bienveillant (jamais
+  //  culpabilisant). C'est la moitié « faire revenir » de la rétention,
+  //  jusqu'ici absente.
+
+  static const int _idDormant = 900001; // « on ne t'a pas vu »
+  static const int _idTonight = 900002; // nudge quotidien du soir
+  static const int _idTrialEnd = 900003; // « ton accès se termine bientôt »
+
+  NotificationDetails get _generalDetails => const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _generalChannelId,
+          _generalChannelName,
+          channelDescription: _generalChannelDesc,
+          importance: Importance.defaultImportance,
+          priority: Priority.defaultPriority,
+          enableVibration: false,
+        ),
+      );
+
+  Future<void> _scheduleAt(
+    int id,
+    tz.TZDateTime when,
+    String title,
+    String body, {
+    DateTimeComponents? repeat,
+  }) async {
+    if (when.isBefore(tz.TZDateTime.now(tz.local))) return;
+    try {
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        when,
+        _generalDetails,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: repeat,
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Notif] reengage: $e');
+    }
+  }
+
+  /// À appeler à chaque arrivée sur l'accueil. Reprogramme les nudges de
+  /// retour (dormance, soirée, fin d'accès). Respecte l'interrupteur
+  /// « rappels » des Réglages. Best-effort / silencieux si permission KO.
+  Future<void> scheduleReEngagement() async {
+    await init();
+    if (!_ready) return;
+    if (!await isEnabled(prefReminders)) return;
+    await requestPermission();
+
+    final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
+
+    // 1) « On ne t'a pas vu depuis 3 jours » — annulé/repoussé à chaque
+    //    ouverture, donc invisible pour qui revient avant l'échéance.
+    await _plugin.cancel(_idDormant);
+    await _scheduleAt(
+      _idDormant,
+      now.add(const Duration(days: 3)),
+      'Tes chaînes t\'attendent',
+      'On ne t\'a pas vu depuis quelques jours — on reprend là où tu t\'étais arrêté ?',
+    );
+
+    // 2) Nudge quotidien léger à 20 h (« ce soir sur 7 MOTION »), répété.
+    await _plugin.cancel(_idTonight);
+    tz.TZDateTime tonight =
+        tz.TZDateTime(tz.local, now.year, now.month, now.day, 20);
+    if (tonight.isBefore(now)) tonight = tonight.add(const Duration(days: 1));
+    await _scheduleAt(
+      _idTonight,
+      tonight,
+      'Ce soir sur 7 MOTION',
+      'Tes chaînes en direct t\'attendent.',
+      repeat: DateTimeComponents.time,
+    );
+
+    // 3) « Ton accès se termine bientôt » — LE rappel de conversion qui
+    //    manquait (avant, l'alerte n'était qu'une bannière in-app d'un
+    //    écran que le mobile ne montre même pas → churn silencieux).
+    //    Planifié la veille de l'expiration, à 19 h.
+    await _plugin.cancel(_idTrialEnd);
+    final int? days = SubscriptionState.instance.daysUntilExpiry;
+    final SubscriptionStatus st = SubscriptionState.instance.status;
+    final bool relevant = st == SubscriptionStatus.trialActive ||
+        st == SubscriptionStatus.paid;
+    if (relevant && days != null && days >= 1 && days <= 30) {
+      final tz.TZDateTime day = now.add(Duration(days: days - 1));
+      final tz.TZDateTime at =
+          tz.TZDateTime(tz.local, day.year, day.month, day.day, 19);
+      await _scheduleAt(
+        _idTrialEnd,
+        at,
+        'Ton accès se termine bientôt',
+        'Garde tes chaînes sans coupure — prolonge en un geste.',
+      );
     }
   }
 }

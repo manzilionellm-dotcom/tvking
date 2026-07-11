@@ -30,7 +30,10 @@ import '../../../core/branding/brand_logo.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/notifications/notification_service.dart';
+import '../../../core/widgets/celebration_overlay.dart';
 import '../../../core/widgets/legal_disclaimer.dart';
+import '../../stats/data/engagement_service.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/presentation/favorites_screen.dart';
 import '../../channels/presentation/search_screen.dart';
@@ -75,10 +78,19 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     super.initState();
     FavoritesRepository.instance.initialize();
     RecentlyWatchedRepository.instance.initialize();
+    // Palier de streak atteint → on célèbre à l'accueil (Hook : récompense).
+    EngagementService.instance.addListener(_maybeCelebrate);
     // Invitation à laisser un avis (pilotée par le panel) : affichée en
     // douceur quelques secondes après l'arrivée sur l'accueil, une seule
     // fois par message. Sans effet si désactivée ou déjà répondue.
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // RÉ-ENGAGEMENT : (re)programme les rappels de retour à chaque
+      // ouverture — le fait d'être là repousse le rappel de dormance, donc
+      // un habitué ne le voit jamais. Best-effort / silencieux.
+      unawaited(NotificationService.instance.scheduleReEngagement());
+      // Un palier peut déjà être en attente (atteint pendant la session
+      // précédente, juste avant de fermer l'app).
+      _maybeCelebrate();
       Future<void>.delayed(const Duration(seconds: 8), () {
         if (mounted) maybeShowFeedbackSheet(context);
       });
@@ -98,7 +110,18 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
   @override
   void dispose() {
     _activationPoll?.cancel();
+    EngagementService.instance.removeListener(_maybeCelebrate);
     super.dispose();
+  }
+
+  /// Affiche la célébration si un palier de streak est en attente. Appelé
+  /// à l'arrivée sur l'accueil ET à chaque notification de l'EngagementService.
+  void _maybeCelebrate() {
+    final int m = EngagementService.instance.pendingMilestone;
+    if (m > 0 && mounted) {
+      EngagementService.instance.consumeMilestone();
+      showStreakCelebration(context, m);
+    }
   }
 
   /// Un tick du sondage : resynchronise l'abonnement + la source poussée.

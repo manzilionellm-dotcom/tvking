@@ -31,11 +31,13 @@ import '../../../../core/flavor/flavor.dart';
 import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/haptics/haptics.dart';
 import '../../../channels/domain/channel.dart';
 import '../../../channels/data/recently_watched_repository.dart';
 import '../../../channels/data/watch_history_repository.dart';
 import '../../../country_home/presentation/widgets/channel_logo.dart';
 import '../../../player/presentation/play_channel.dart';
+import '../../../playlists/data/favorites_repository.dart';
 
 /// Grands « rayons » de contenu, pour la barre de filtres du haut.
 /// Tout ce qui n'est ni film, ni série, ni adulte tombe dans [tv]
@@ -639,6 +641,12 @@ class _ChannelRow extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+        // Appui long = favori (geste « façon TikTok »). Investissement Hook :
+        // plus l'utilisateur dépose de favoris, plus il a de raisons de revenir.
+        onLongPress: () {
+          Haptics.light();
+          FavoritesRepository.instance.toggle(channel.id);
+        },
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
@@ -662,6 +670,29 @@ class _ChannelRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.bodyLarge.copyWith(fontSize: 14),
                 ),
+              ),
+              // Cœur favori : ajout/retrait DEPUIS la navigation (avant, le
+              // cœur n'existait que dans le player → l'onglet Favoris restait
+              // vide. Friction d'investissement n°1 levée.)
+              StreamBuilder<Set<String>>(
+                stream: FavoritesRepository.instance.favoritesStream,
+                initialData: FavoritesRepository.instance.current,
+                builder:
+                    (BuildContext context, AsyncSnapshot<Set<String>> snap) {
+                  final bool fav = snap.data?.contains(channel.id) ?? false;
+                  return IconButton(
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(
+                      fav ? Icons.favorite : Icons.favorite_border,
+                      color: fav ? AppColors.accent : AppColors.textTertiary,
+                      size: 20,
+                    ),
+                    onPressed: () {
+                      Haptics.light();
+                      FavoritesRepository.instance.toggle(channel.id);
+                    },
+                  );
+                },
               ),
               const Icon(Icons.play_arrow_rounded,
                   color: AppColors.textTertiary, size: 22),

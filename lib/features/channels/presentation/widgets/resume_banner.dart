@@ -32,11 +32,11 @@ import 'channel_logo.dart';
 class ResumeBanner extends StatefulWidget {
   const ResumeBanner({super.key});
 
-  /// Seuil au-delà duquel on n'affiche plus la bannière. Au-delà
-  /// d'une heure, l'utilisateur a vraisemblablement "fini" sa
-  /// session précédente — proposer Resume agacerait plus qu'il
-  /// n'aiderait.
-  static const Duration maxStaleness = Duration(minutes: 60);
+  /// Seuil au-delà duquel on n'affiche plus la bannière. Élargi à 72 h :
+  /// « reprends là où tu t'es arrêté » doit survivre à une nuit (voire un
+  /// week-end) — c'est le hook de retour n°1 (Continue Watching ≈ 70 % des
+  /// plays Netflix). Une fenêtre de 60 min tuait le rappel dès le lendemain.
+  static const Duration maxStaleness = Duration(hours: 72);
 
   @override
   State<ResumeBanner> createState() => _ResumeBannerState();

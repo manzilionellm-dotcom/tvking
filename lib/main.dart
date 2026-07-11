@@ -43,6 +43,9 @@ import 'features/cast/data/cast_manager.dart';
 import 'features/channels/data/recent_searches_repository.dart';
 import 'features/channels/data/recently_watched_repository.dart';
 import 'features/channels/data/watch_history_repository.dart';
+import 'features/stats/data/engagement_service.dart';
+import 'features/stats/data/watch_stats_service.dart';
+import 'features/vod/data/playback_position_repository.dart';
 import 'features/simple_home/presentation/simple_home_screen.dart';
 import 'features/admin/data/admin_credentials.dart';
 import 'features/device/data/device_identity.dart';
@@ -158,6 +161,15 @@ Future<void> bootApp() async {
   unawaited(RecentlyWatchedRepository.instance.initialize());
   unawaited(RecentSearchesRepository.instance.initialize());
   unawaited(WatchHistoryRepository.instance.initialize());
+  // Rétention (systèmes qui existaient mais n'étaient démarrés qu'en TV —
+  // on les active AUSSI sur mobile) :
+  //   • WatchStatsService : minutes/jour + top chaînes (dashboard « stats »)
+  //   • EngagementService : streak quotidien + paliers célébrés à l'accueil
+  //   • PlaybackPositionRepository : positions de reprise VOD (Continue
+  //     Watching) — sans ce load, la reprise ne saurait pas où l'on en était.
+  unawaited(WatchStatsService.instance.start());
+  unawaited(EngagementService.instance.load());
+  unawaited(PlaybackPositionRepository.instance.load());
   unawaited(EpgRepository.instance.initialize());
   unawaited(
     // Phase 1 / F-01 : juste apres l'init, on balaie les fiches
