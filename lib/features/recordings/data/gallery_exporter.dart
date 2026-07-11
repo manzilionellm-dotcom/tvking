@@ -66,6 +66,29 @@ class GalleryExporter {
       );
     }
   }
+
+  /// Convertit un enregistrement .ts en VRAI MP4 posé à côté de la
+  /// source (même dossier, même nom, extension .mp4) : remux sans perte
+  /// si les codecs sont compatibles, transcodage H.264+AAC sinon.
+  /// Retourne le chemin du MP4 produit, ou `null` si la conversion est
+  /// impossible (bridge natif absent, codec indécodable…). La source
+  /// n'est jamais supprimée ici — c'est l'appelant qui décide.
+  static Future<String?> convertToMp4(String srcPath) async {
+    try {
+      return await _channel.invokeMethod<String>(
+        'convertToMp4',
+        <String, dynamic>{'srcPath': srcPath},
+      );
+    } on PlatformException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[Gallery] convert ${e.code}: ${e.message}');
+      }
+      return null;
+    } on MissingPluginException {
+      // Channel pas câblé (ex. iOS, TV sans overlay) → on garde le .ts.
+      return null;
+    }
+  }
 }
 
 class GalleryExportResult {

@@ -86,6 +86,16 @@ abstract final class AnnouncementRepository {
   /// Clé SharedPreferences : id de la dernière annonce fermée par l'user.
   static const String _kDismissedIdKey = 'announcement_dismissed_id';
 
+  /// Signal « une annonce vient (peut-être) de changer » — incrémenté par
+  /// le temps réel (RealtimeSyncService, évènement `sync config`) quand
+  /// l'admin publie/retire une annonce depuis le panel. La bannière
+  /// d'accueil l'écoute et re-fetch aussitôt : l'annonce apparaît en
+  /// direct, sans attendre un remontage du widget ni un redémarrage.
+  static final ValueNotifier<int> revision = ValueNotifier<int>(0);
+
+  /// À appeler quand le serveur signale un changement de config.
+  static void notifyChanged() => revision.value++;
+
   /// Récupère la dernière annonce publiée, ou `null` si aucune / erreur
   /// réseau. On reste SILENCIEUX en cas d'échec : une annonce est un
   /// bonus, jamais bloquant.

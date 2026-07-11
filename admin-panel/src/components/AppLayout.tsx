@@ -1,5 +1,6 @@
 import { ReactNode, useState } from 'react';
 import { Sidebar } from './Sidebar';
+import { ToastHost } from './Toast';
 import { useT } from '@/lib/i18n';
 
 interface AppLayoutProps {
@@ -98,6 +99,9 @@ export function AppLayout({
           {children}
         </div>
       </main>
+
+      {/* Toasts partagés (feedback des actions temps réel, etc.) */}
+      <ToastHost />
     </div>
   );
 }

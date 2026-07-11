@@ -36,6 +36,16 @@ class ForceUpdateChecker {
   ForceUpdateChecker._();
   static final ForceUpdateChecker instance = ForceUpdateChecker._();
 
+  /// Signal « le panel vient (peut-être) de changer le seuil » —
+  /// incrémenté par le temps réel (RealtimeSyncService, `sync config`).
+  /// L'écran d'entrée (_AppEntry) l'écoute et relance mustUpdate() :
+  /// un « Forcer la mise à jour » du panel bloque les apps EN DIRECT,
+  /// sans attendre leur prochain démarrage.
+  final ValueNotifier<int> revision = ValueNotifier<int>(0);
+
+  /// À appeler quand le serveur signale un changement de config.
+  void requestRecheck() => revision.value++;
+
   /// `true` si l'app installée doit être mise à jour de force.
   Future<bool> mustUpdate(
       {Duration timeout = const Duration(seconds: 6)}) async {

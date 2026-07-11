@@ -68,11 +68,25 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
   void initState() {
     super.initState();
     _load();
+    // Temps réel : quand l'admin publie/retire une annonce, le
+    // RealtimeSyncService incrémente `revision` → on re-fetch aussitôt.
+    AnnouncementRepository.revision.addListener(_load);
+  }
+
+  @override
+  void dispose() {
+    AnnouncementRepository.revision.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {
     final Announcement? a = await AnnouncementRepository.fetchLatest();
-    if (a == null) return;
+    if (!mounted) return;
+    if (a == null) {
+      // Annonce retirée par l'admin → on efface le bandeau en direct.
+      if (_announcement != null) setState(() => _announcement = null);
+      return;
+    }
     // Ne pas réafficher une annonce déjà fermée par l'utilisateur.
     if (await AnnouncementRepository.isDismissed(a.id)) return;
     if (!mounted) return;

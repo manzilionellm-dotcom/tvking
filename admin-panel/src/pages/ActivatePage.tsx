@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { CopyLink } from '@/components/CopyLink';
@@ -8,6 +8,7 @@ import {
   type App, type PlanCost, type ActivateResult, type DefaultServer,
   type DeviceSourceInput, ApiError,
 } from '@/lib/api';
+import { awaitRtOutcome, type RtOutcome } from '@/lib/realtime';
 import { formatDateTime, formatMacInput } from '@/lib/utils';
 
 /// Page ACTIVATION — TOUT-EN-UN (demande client : « un seul qui regroupe
@@ -50,6 +51,13 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [result, setResult] = useState<ActivateResult | null>(null);
+  // Feedback temps réel : l'appareil a-t-il reçu le push instantané ?
+  //   'pending' → poussé, on attend l'ack ; sinon issue awaitRtOutcome
+  //   (acked / ack_error / timeout / offline / none).
+  const [rtOutcome, setRtOutcome] = useState<RtOutcome | 'pending' | null>(null);
+  // Numéro de soumission : ignore l'issue d'un push d'une activation
+  // précédente qui arriverait après une nouvelle soumission.
+  const rtSeq = useRef(0);
 
   // UN SEUL produit : on filtre les autres applis (NOVA+, Red Room, TV…)
   // — le client n'a qu'une app. On prend la 1re « vraie » appli.
@@ -115,6 +123,8 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
     setBusy(true);
     setErr(null);
     setResult(null);
+    setRtOutcome(null);
+    rtSeq.current += 1;
     const m = mac.trim().toUpperCase();
     if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
       setErr('MAC invalide. Format attendu : MK:XX:XX:XX:XX:XX');
@@ -143,6 +153,17 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
       }
       setResult(res);
       if (res.credit_balance !== null) setBalance(res.credit_balance);
+      // Feedback instantané (spec temps réel §4) : delivered ≥ 1 → push
+      // reçu en direct, l'ack de l'appareil arrive sur le WebSocket.
+      // awaitRtOutcome couvre TOUS les cas (acked / ack_error / timeout /
+      // offline) — le bandeau ne peut plus rester bloqué sur « en attente ».
+      if (res.rt) {
+        const seq = rtSeq.current;
+        if (res.rt.delivered >= 1) setRtOutcome('pending');
+        void awaitRtOutcome(res.rt).then((out) => {
+          if (rtSeq.current === seq) setRtOutcome(out);
+        });
+      }
     } catch (e: any) {
       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
       setErr(e instanceof ApiError ? e.message : 'Activation impossible.');
@@ -390,6 +411,37 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
               <div className="inline-flex rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success">
                 {result.renewed ? 'Licence renouvelée' : 'Appareil activé'}
               </div>
+
+              {/* Feedback temps réel : le client a-t-il déjà reçu le push ? */}
+              {rtOutcome === 'pending' && (
+                <div className="rounded-md border border-white/10 bg-slate px-3 py-2 text-xs text-ink-secondary">
+                  ⚡ Poussé sur l'appareil — en attente de confirmation…
+                </div>
+              )}
+              {rtOutcome && rtOutcome !== 'pending' && rtOutcome.status === 'acked' && (
+                <div className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs font-medium text-success">
+                  {/* Latence affichée seulement si le hub la connaît. */}
+                  ✓ Appliqué sur l'appareil
+                  {typeof rtOutcome.latencyMs === 'number' ? ` en ${rtOutcome.latencyMs} ms` : ''}
+                </div>
+              )}
+              {rtOutcome && rtOutcome !== 'pending' && rtOutcome.status === 'timeout' && (
+                <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+                  ⏱ Pas de confirmation — l'appareil appliquera au prochain contact.
+                </div>
+              )}
+              {rtOutcome && rtOutcome !== 'pending' && rtOutcome.status === 'ack_error' && (
+                <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">
+                  {rtOutcome.error
+                    ? `L'appareil a signalé une erreur : ${rtOutcome.error}`
+                    : "L'appareil a signalé une erreur."}
+                </div>
+              )}
+              {rtOutcome && rtOutcome !== 'pending' && rtOutcome.status === 'offline' && (
+                <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+                  Appareil hors ligne — appliqué à sa prochaine connexion.
+                </div>
+              )}
               <Row k="MAC" v={result.mac} mono />
               <Row k="Plan" v={result.plan} />
               <Row k="Expire le" v={result.expires_at ? formatDateTime(result.expires_at) : 'À vie'} />

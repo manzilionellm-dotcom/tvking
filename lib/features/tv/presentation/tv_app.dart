@@ -17,6 +17,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
 import '../../../core/update/update_prompt.dart';
 import '../../../core/profiles/profiles_repository.dart';
+import '../../../core/realtime/admin_message_banner.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -168,6 +169,14 @@ class TvApp extends StatelessWidget {
               // « PENSE À TOI » : le mot doux après 3 h d'affilée (12 s, puis
               // s'efface). IgnorePointer aussi. Voir tv_care_nudge.dart.
               const TvCareNudge(),
+              // MESSAGE ADMIN temps réel (WebSocket) : bannière en haut,
+              // au-dessus de toute l'app (lecteur inclus). Invisible tant
+              // qu'il n'y a rien (SizedBox.shrink → aucun nœud de focus,
+              // donc AUCUN impact D-pad hors affichage). Auto-dismiss.
+              const Align(
+                alignment: Alignment.topCenter,
+                child: SafeArea(child: AdminMessageBanner()),
+              ),
             ],
           );
         },

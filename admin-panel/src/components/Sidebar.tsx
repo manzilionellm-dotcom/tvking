@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { getCurrentUser, isOwnerRole, userCan } from '@/lib/api';
+import { useRtStatus } from '@/lib/realtime';
 import { useT } from '@/lib/i18n';
 
 // =========================================================
@@ -168,6 +169,9 @@ export function Sidebar({
         ))}
       </nav>
 
+      {/* ===== État temps réel (rôles admin uniquement) ===== */}
+      {owner && <RtIndicator />}
+
       {/* ===== Logout ===== */}
       <div className="border-t border-white/5 p-3">
         <button
@@ -178,5 +182,31 @@ export function Sidebar({
         </button>
       </div>
     </aside>
+  );
+}
+
+/// Petit indicateur d'état du WebSocket temps réel :
+/// ● vert « Direct » quand connecté, ○ gris « Différé » sinon
+/// (le panel retombe alors sur le polling HTTP classique).
+function RtIndicator() {
+  const status = useRtStatus();
+  const live = status === 'connected';
+  return (
+    <div
+      className="flex items-center gap-2 border-t border-white/5 px-5 py-2.5"
+      title={live
+        ? 'Temps réel actif : mises à jour instantanées'
+        : 'Temps réel indisponible : rafraîchissement différé (polling)'}
+    >
+      <span
+        className={cn(
+          'h-1.5 w-1.5 rounded-full',
+          live ? 'bg-success animate-pulse' : 'bg-white/20',
+        )}
+      />
+      <span className="text-[10px] uppercase tracking-widest text-ink-tertiary">
+        {live ? 'Direct' : 'Différé'}
+      </span>
+    </div>
   );
 }

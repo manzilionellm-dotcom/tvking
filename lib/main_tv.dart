@@ -23,6 +23,7 @@ import 'core/crash/crash_reporting.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
 import 'core/notifications/notification_service.dart';
+import 'core/realtime/realtime_sync_service.dart';
 import 'core/profiles/profiles_repository.dart';
 import 'features/channels/data/recently_watched_repository.dart';
 import 'features/device/data/device_identity.dart';
@@ -159,6 +160,13 @@ Future<void> _bootstrap() async {
       unawaited(PlaylistRepository.instance.resyncEpgAll());
     }
   });
+
+  // 2d) TEMPS RÉEL (WebSocket) : les actions du panel (activation, gel,
+  //     source poussée, message…) arrivent en < 1 s quand la box est en
+  //     ligne — les polls ci-dessus RESTENT le filet de sécurité.
+  //     Fire-and-forget : le service ne throw jamais, se reconnecte tout
+  //     seul (backoff) et ne retarde JAMAIS le démarrage.
+  unawaited(RealtimeSyncService.instance.start(platform: 'tv'));
 
   // 3) Thème distant piloté par le panel (couleur/nom).
   unawaited(RemoteThemeRepository.fetchAndApply());

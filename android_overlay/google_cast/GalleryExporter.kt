@@ -128,6 +128,37 @@ class GalleryExporter(
                     }
                 }
             }
+            // Convertit un .ts en VRAI MP4 posé à côté de la source (même
+            // dossier, même nom, extension .mp4) et retourne le chemin du
+            // MP4 produit. Ne supprime PAS la source — c'est le côté Dart
+            // qui bascule la fiche puis efface le .ts. Sert à finaliser
+            // chaque enregistrement dans un format que tous les téléphones
+            // lisent, sans passer par la Galerie.
+            "convertToMp4" -> {
+                @Suppress("UNCHECKED_CAST")
+                val args = call.arguments as? Map<String, Any?> ?: emptyMap()
+                ioExecutor.execute {
+                    var newPath: String? = null
+                    var error: Exception? = null
+                    try {
+                        newPath = convertToMp4Blocking(args)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "convertToMp4 threw: $e")
+                        error = e
+                    }
+                    mainHandler.post {
+                        if (newPath != null) {
+                            result.success(newPath)
+                        } else {
+                            result.error(
+                                "CONVERT_FAILED",
+                                error?.message ?: "conversion impossible",
+                                null,
+                            )
+                        }
+                    }
+                }
+            }
             else -> result.notImplemented()
         }
     }
@@ -158,44 +189,18 @@ class GalleryExporter(
         }
 
         // --- Choix de la stratégie de conversion --------------------------
-        // 1) REMUX rapide. On regarde s'il a pu embarquer l'audio.
-        // 2) Si le remux échoue (vidéo non muxable) OU perd l'audio que la
-        //    source contenait → TRANSCODE (ré-encodage universel).
-        // 3) Sinon copie brute.
+        // produceMp4 : remux sans perte si possible, sinon transcodage,
+        // sinon vidéo remuxée sans audio. Null = rien n'a marché →
+        // copie brute du .ts (dernier repli, comme avant).
         var dataFile: File = srcFile
         var tempToCleanup: File? = null
 
-        val remux = remuxToMp4(srcFile)
-        if (remux != null && (remux.audioMuxed || !remux.sourceHadAudio)) {
-            // Remux complet (vidéo + audio si présent) → parfait, sans perte.
-            dataFile = remux.file
-            tempToCleanup = remux.file
-            Log.i(TAG, "Remux complet: ${remux.file.length()} octets")
+        val produced = produceMp4(srcFile, context.cacheDir)
+        if (produced != null) {
+            dataFile = produced
+            tempToCleanup = produced
         } else {
-            // Soit pas de vidéo muxable, soit audio perdu → on transcode.
-            Log.i(TAG, "Remux insuffisant (remux=${remux != null}) → transcodage")
-            val transcoded = transcodeToMp4(srcFile)
-            when {
-                transcoded != null -> {
-                    dataFile = transcoded
-                    tempToCleanup = transcoded
-                    // Le remux partiel (vidéo seule) ne sert plus.
-                    remux?.file?.delete()
-                    Log.i(TAG, "Transcodage OK: ${transcoded.length()} octets")
-                }
-                remux != null -> {
-                    // Transcodage impossible mais on a au moins la vidéo
-                    // remuxée (sans son) → mieux que le .ts brut.
-                    dataFile = remux.file
-                    tempToCleanup = remux.file
-                    Log.w(TAG, "Transcodage indisponible → vidéo remuxée (sans audio)")
-                }
-                else -> {
-                    // Rien n'a marché → copie brute du .ts (dernier repli).
-                    dataFile = srcFile
-                    Log.w(TAG, "Aucune conversion possible → copie brute du .ts")
-                }
-            }
+            Log.w(TAG, "Aucune conversion possible → copie brute du .ts")
         }
 
         return try {
@@ -272,6 +277,95 @@ class GalleryExporter(
     }
 
     // ============================================================
+    //  CONVERSION EN PLACE (.ts → .mp4 à côté de la source)
+    // ============================================================
+
+    /**
+     * Convertit le fichier pointé par `srcPath` en MP4 posé dans le MÊME
+     * dossier (rename atomique possible : même filesystem). Retourne le
+     * chemin absolu du MP4 produit. Lève une exception avec un message
+     * exploitable si la conversion n'est pas possible — dans ce cas la
+     * source n'est pas touchée et le .ts reste utilisable tel quel.
+     */
+    private fun convertToMp4Blocking(args: Map<String, Any?>): String {
+        val srcPath = args["srcPath"] as? String
+        if (srcPath.isNullOrBlank()) {
+            throw IllegalArgumentException("srcPath requis")
+        }
+        val srcFile = File(srcPath)
+        if (!srcFile.exists()) {
+            throw java.io.FileNotFoundException("Fichier introuvable: $srcPath")
+        }
+        if (srcFile.length() == 0L) {
+            throw java.io.IOException("Fichier source vide (0 octet)")
+        }
+        val dir = srcFile.parentFile
+            ?: throw java.io.IOException("Dossier parent introuvable: $srcPath")
+
+        // Le temporaire est produit dans le dossier de destination : le
+        // renameTo final reste sur le même filesystem (le cacheDir, lui,
+        // vit sur une autre partition que le storage externe de l'app).
+        val produced = produceMp4(srcFile, dir)
+            ?: throw java.io.IOException(
+                "Aucune piste convertible en MP4 sur cet appareil",
+            )
+
+        val base = srcFile.name.substringBeforeLast('.')
+        var outFile = File(dir, "$base.mp4")
+        // Noms horodatés à la minute → collision improbable, mais on
+        // n'écrase jamais un fichier existant.
+        var n = 2
+        while (outFile.exists()) {
+            outFile = File(dir, "$base ($n).mp4")
+            n++
+        }
+        if (!produced.renameTo(outFile)) {
+            // Même dossier → ne devrait jamais arriver ; repli par copie.
+            produced.copyTo(outFile, overwrite = true)
+            produced.delete()
+        }
+        Log.i(TAG, "convertToMp4: ${srcFile.name} → ${outFile.name} (${outFile.length()} octets)")
+        return outFile.absolutePath
+    }
+
+    // ============================================================
+    //  SÉLECTION DE STRATÉGIE (remux → transcode → remux partiel)
+    // ============================================================
+
+    /**
+     * Produit un MP4 temporaire dans [workDir] à partir de [srcFile] :
+     *   1) remux sans perte si vidéo ET audio sont muxables,
+     *   2) sinon transcodage universel H.264 + AAC,
+     *   3) sinon la vidéo remuxée seule (sans son).
+     * Retourne le fichier temporaire produit (à renommer ou supprimer par
+     * l'appelant), ou `null` si rien n'a marché.
+     */
+    private fun produceMp4(srcFile: File, workDir: File): File? {
+        val remux = remuxToMp4(srcFile, workDir)
+        if (remux != null && (remux.audioMuxed || !remux.sourceHadAudio)) {
+            // Remux complet (vidéo + audio si présent) → parfait, sans perte.
+            Log.i(TAG, "Remux complet: ${remux.file.length()} octets")
+            return remux.file
+        }
+        // Soit pas de vidéo muxable, soit audio perdu → on transcode.
+        Log.i(TAG, "Remux insuffisant (remux=${remux != null}) → transcodage")
+        val transcoded = transcodeToMp4(srcFile, workDir)
+        if (transcoded != null) {
+            // Le remux partiel (vidéo seule) ne sert plus.
+            remux?.file?.delete()
+            Log.i(TAG, "Transcodage OK: ${transcoded.length()} octets")
+            return transcoded
+        }
+        if (remux != null) {
+            // Transcodage impossible mais on a au moins la vidéo
+            // remuxée (sans son) → mieux que le .ts brut.
+            Log.w(TAG, "Transcodage indisponible → vidéo remuxée (sans audio)")
+            return remux.file
+        }
+        return null
+    }
+
+    // ============================================================
     //  NIVEAU 1 : REMUX (copie de pistes, sans ré-encodage)
     // ============================================================
 
@@ -283,10 +377,12 @@ class GalleryExporter(
         val sourceHadAudio: Boolean,
     )
 
-    private fun remuxToMp4(srcFile: File): RemuxOutcome? {
+    private fun remuxToMp4(srcFile: File, workDir: File): RemuxOutcome? {
         val extractor = MediaExtractor()
         var muxer: MediaMuxer? = null
-        val outFile = File(context.cacheDir, "remux_${System.currentTimeMillis()}.mp4")
+        // Suffixe .tmp : jamais confondu avec un vrai .mp4 finalisé si un
+        // crash laisse traîner le temporaire (MediaMuxer ignore l'extension).
+        val outFile = File(workDir, "remux_${System.currentTimeMillis()}.mp4.tmp")
         try {
             extractor.setDataSource(srcFile.absolutePath)
             val trackCount = extractor.trackCount
@@ -399,8 +495,8 @@ class GalleryExporter(
      * son plutôt que d'échouer. Retourne le MP4 ou `null` si même la vidéo
      * n'est pas décodable par l'appareil.
      */
-    private fun transcodeToMp4(srcFile: File): File? {
-        val outFile = File(context.cacheDir, "xcode_${System.currentTimeMillis()}.mp4")
+    private fun transcodeToMp4(srcFile: File, workDir: File): File? {
+        val outFile = File(workDir, "xcode_${System.currentTimeMillis()}.mp4.tmp")
 
         // --- Repérage des pistes ----------------------------------------
         var videoTrack = -1

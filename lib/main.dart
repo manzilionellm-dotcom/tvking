@@ -18,6 +18,8 @@ import 'package:media_kit/media_kit.dart';
 import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
 import 'core/backend/backend_hosts.dart';
+import 'core/realtime/admin_message_banner.dart';
+import 'core/realtime/realtime_sync_service.dart';
 import 'core/crash/crash_reporting.dart';
 import 'core/branding/brand_config.dart';
 import 'core/branding/brand_logo.dart';
@@ -226,6 +228,14 @@ Future<void> bootApp() async {
   Timer.periodic(const Duration(hours: 6), (_) {
     SubscriptionState.instance.syncWithBackend();
   });
+
+  // TEMPS RÉEL (WebSocket) : les actions du panel (activation, gel,
+  // source poussée, message…) arrivent en < 1 s quand l'app est en
+  // ligne, au lieu d'attendre les polls ci-dessus (qui RESTENT le filet
+  // de sécurité). Fire-and-forget : le service ne throw jamais et se
+  // reconnecte tout seul (backoff) — il ne retarde JAMAIS le démarrage.
+  // Voir docs/REALTIME-PROTOCOL.md + core/realtime/.
+  unawaited(RealtimeSyncService.instance.start(platform: 'mobile'));
 
   // NB : la "fixation à distance" (RemoteConfigRepository qui
   // fetchait des playlists depuis un Gist toutes les 30 min) a
@@ -483,6 +493,10 @@ class _AppEntryState extends State<_AppEntry> {
   void initState() {
     super.initState();
     _checkForcedUpdate();
+    // Temps réel : quand l'admin appuie « Forcer la mise à jour » sur le
+    // panel, le RealtimeSyncService incrémente `revision` → re-check
+    // immédiat, l'écran de blocage apparaît sans redémarrage.
+    ForceUpdateChecker.instance.revision.addListener(_checkForcedUpdate);
     // Mise à jour in-app (sideload) : détection NON bloquante après le
     // 1er frame, avec un léger délai pour ne pas gêner le boot/lock.
     // Fail-open : si rien de neuf ou erreur réseau, ne fait rien.
@@ -525,6 +539,12 @@ class _AppEntryState extends State<_AppEntry> {
     } else {
       _ageGateConfirmed = true;
     }
+  }
+
+  @override
+  void dispose() {
+    ForceUpdateChecker.instance.revision.removeListener(_checkForcedUpdate);
+    super.dispose();
   }
 
   @override
@@ -602,31 +622,44 @@ class _AppEntryState extends State<_AppEntry> {
     //    est listenable au SubscriptionState : dès que l'admin
     //    réactive le client (ou marque payé), l'app débloque
     //    automatiquement au prochain refresh.
-    return ListenableBuilder(
-      listenable: SubscriptionState.instance,
-      builder: (BuildContext context, _) {
-        if (SubscriptionState.instance.shouldBlockUser) {
-          return const SubscriptionGateScreen();
-        }
-        // 3b) PUB VIDÉO de démarrage (pilotée par le panel), juste avant
-        //     l'accueil. Tant qu'on ne sait pas encore (réseau), bref
-        //     splash pour éviter un flash d'accueil avant la pub.
-        if (!_adResolved) return const _Splash();
-        if (_adShow && !_adDone) {
-          return StartupAdScreen(
-            config: StartupAdRepository.instance.config,
-            onDone: () {
-              StartupAdRepository.instance.markShown();
-              if (mounted) setState(() => _adDone = true);
-            },
-          );
-        }
+    // La bannière « message admin » temps réel (WebSocket) est posée dans
+    // un Stack AU-DESSUS de tout le flux normal (gate, pub, home) : un
+    // message poussé par le panel s'affiche donc quel que soit l'écran
+    // courant. Zéro coût quand il n'y a rien (SizedBox.shrink).
+    return Stack(
+      children: <Widget>[
+        ListenableBuilder(
+          listenable: SubscriptionState.instance,
+          builder: (BuildContext context, _) {
+            if (SubscriptionState.instance.shouldBlockUser) {
+              return const SubscriptionGateScreen();
+            }
+            // 3b) PUB VIDÉO de démarrage (pilotée par le panel), juste avant
+            //     l'accueil. Tant qu'on ne sait pas encore (réseau), bref
+            //     splash pour éviter un flash d'accueil avant la pub.
+            if (!_adResolved) return const _Splash();
+            if (_adShow && !_adDone) {
+              return StartupAdScreen(
+                config: StartupAdRepository.instance.config,
+                onDone: () {
+                  StartupAdRepository.instance.markShown();
+                  if (mounted) setState(() => _adDone = true);
+                },
+              );
+            }
 
-        // 4) Home — application MOBILE (7 MOTION). Les variantes TV et
-        //    Red Room ont été retirées du projet : il ne reste que le
-        //    mobile, piloté par le panel.
-        return const SimpleHomeScreen();
-      },
+            // 4) Home — application MOBILE (7 MOTION). Les variantes TV et
+            //    Red Room ont été retirées du projet : il ne reste que le
+            //    mobile, piloté par le panel.
+            return const SimpleHomeScreen();
+          },
+        ),
+        // Bannière message admin — en haut, sous la barre de statut.
+        const Align(
+          alignment: Alignment.topCenter,
+          child: SafeArea(child: AdminMessageBanner()),
+        ),
+      ],
     );
   }
 }

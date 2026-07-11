@@ -54,7 +54,18 @@
 
 // API v1 — App Licensing Platform (cf. cloudflare/api_v1.js)
 // Routee depuis le bas du fetch() en haut de la chaine de match.
-import { apiV1 } from './api_v1.js';
+// verifyJwt est reutilise ici pour authentifier le WebSocket admin
+// (/api/v1/rt/ws) AVANT de forwarder au Durable Object temps reel.
+import { apiV1, verifyJwt } from './api_v1.js';
+// Temps réel (cf. cloudflare/realtime.js + docs/REALTIME-PROTOCOL.md) :
+// Durable Object « RealtimeHub » (WebSockets appareils + panel) et helper
+// publishRt() (publication fail-open après une mutation). La classe DO
+// DOIT être ré-exportée par le module d'entrée (voir export plus bas).
+import { RealtimeHub, publishRt } from './realtime.js';
+// Ré-export OBLIGATOIRE : wrangler.toml déclare
+// [durable_objects] class_name = "RealtimeHub" — le runtime cherche la
+// classe dans le module principal (main = worker.js).
+export { RealtimeHub };
 // Migration KV → D1 (cf. cloudflare/migrate_kv_to_d1.js) — exposee
 // via POST /admin/migrate-to-d1 et protegee par X-Admin-Secret.
 import { runMigration } from './migrate_kv_to_d1.js';
@@ -2781,6 +2792,27 @@ async function handlePublicStatus(env, mac) {
 //    renew      → trial_until = now + (body.days || 365) * DAY_MS
 //    note       → note = body.note
 // =========================================================
+
+// Publication temps réel après une action admin legacy : l'appareil
+// re-fetch son statut, et les panels ouverts (autres onglets/admins)
+// reçoivent `changed` pour rafraîchir leurs listes — même comportement
+// que le wrapper withRt d'api_v1.js. Les deux publications partent EN
+// PARALLÈLE (une seule latence de hub, pas deux). Fail-open comme
+// publishRt : jamais d'erreur remontée au client HTTP.
+async function publishAdminStatusSync(env, mac) {
+  const [rt] = await Promise.all([
+    publishRt(env, {
+      targets: [mac.toUpperCase()],
+      event: { type: 'sync', what: 'status' },
+    }),
+    publishRt(env, {
+      targets: 'admins',
+      event: { type: 'changed', scope: 'devices', mac: mac.toUpperCase() },
+    }),
+  ]);
+  return rt;
+}
+
 async function handleAdminAction(request, env, mac) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   let body;
@@ -2996,7 +3028,11 @@ async function handleAdminAction(request, env, mac) {
     }
 
     const fresh = await d1StatusForMac(env, mac, now);
-    return json({ ok: true, mac, action, ...(fresh || {}) });
+    // Temps réel (fail-open) : si l'appareil est connecté au hub, il
+    // re-fetch son statut IMMÉDIATEMENT (au lieu d'attendre le polling).
+    // `rt.delivered ≥ 1` → le panel peut afficher « appliqué en direct ».
+    const rt = await publishAdminStatusSync(env, mac);
+    return json({ ok: true, mac, action, ...(fresh || {}), rt });
   }
 
   // ===============================================================
@@ -3054,7 +3090,9 @@ async function handleAdminAction(request, env, mac) {
   }
 
   await writeClient(env, mac, updated);
-  return json({ ok: true, mac, ...updated });
+  // Même hook temps réel que le chemin D1 : fail-open, jamais bloquant.
+  const rt = await publishAdminStatusSync(env, mac);
+  return json({ ok: true, mac, ...updated, rt });
 }
 
 async function handleDeleteClient(env, mac) {
@@ -3916,6 +3954,100 @@ async function handleScreen(request, env, segments) {
   return badRequest('unsupported screen route');
 }
 
+// =========================================================
+//  Temps réel — routes WebSocket (cf. docs/REALTIME-PROTOCOL.md)
+// =========================================================
+//  Deux portes d'entrée vers le Durable Object RealtimeHub :
+//    GET /api/rt/device  (public, même niveau de confiance que /api/heartbeat)
+//    GET /api/v1/rt/ws   (panel admin, JWT vérifié AVANT l'upgrade)
+//  Le Worker fait ici TOUTE la validation (MAC, rate-limit, JWT, rôle),
+//  puis forwarde la requête d'upgrade au hub via le binding env.RT_HUB.
+//  Si le binding n'est pas déployé → 503 {error:'rt_unavailable'} et RIEN
+//  d'autre ne casse (le polling existant reste le filet de sécurité).
+
+// Forwarde une requête d'upgrade WebSocket au hub (instance unique
+// 'hub-v1') sur un chemin interne, avec des headers additionnels.
+function rtForwardToHub(env, request, internalPath, params, extraHeaders) {
+  const stub = env.RT_HUB.get(env.RT_HUB.idFromName('hub-v1'));
+  // Hôte factice : seul le pathname/query compte pour le fetch du DO.
+  const fwd = new URL('https://rt-hub.internal' + internalPath);
+  for (const [k, v] of Object.entries(params || {})) {
+    if (v !== undefined && v !== null && v !== '') fwd.searchParams.set(k, v);
+  }
+  const headers = new Headers(request.headers);
+  for (const [k, v] of Object.entries(extraHeaders || {})) {
+    // SÉCURITÉ : on retire TOUJOURS l'en-tête entrant d'abord. Un client
+    // dart:io peut envoyer ses propres X-RT-IP / X-RT-Country ; si la
+    // valeur Cloudflare était vide (dev, proxy amont), un simple
+    // `if (v) set` laisserait passer la valeur falsifiée du client
+    // jusque dans la table presence.
+    headers.delete(k);
+    if (v) headers.set(k, v);
+  }
+  // `new Request(url, request)` + headers recopiés : l'en-tête Upgrade
+  // voyage avec, le DO répond 101 et le socket est câblé bout à bout.
+  return stub.fetch(new Request(fwd.toString(), { method: 'GET', headers }));
+}
+
+// GET /api/rt/device?mac=MK:…&platform=…&v=…&b=…&model=…
+//  Socket APPAREIL. Public (l'identifiant est la MAC, comme /api/heartbeat) ;
+//  validation MAC + rate-limit dédié pour couper l'énumération.
+async function handleRtDeviceWs(request, env, url) {
+  if ((request.headers.get('Upgrade') || '').toLowerCase() !== 'websocket') {
+    return json({ error: 'upgrade_required' }, 426);
+  }
+  if (!env.RT_HUB) {
+    return json({ error: 'rt_unavailable' }, 503);
+  }
+  // MAC : %3A décodé (client web), upper-case, format MK:XX:… strict.
+  const mac = decodeMacPath(url.searchParams.get('mac') || '').trim().toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  // Rate-limit bucket 'rt' : 30 connexions / 5 min / IP. FAIL-OPEN
+  // (cf. rateLimitOk) : sans D1 on ne bloque jamais un client légitime.
+  if (!(await rateLimitOk(env, request, 'rt', 30, 5 * 60 * 1000))) {
+    return tooManyRequests();
+  }
+  // IP + pays captés ICI (le DO ne voit pas les headers Cloudflare) et
+  // transmis en headers internes — même logique que le heartbeat.
+  return rtForwardToHub(env, request, '/connect-device', {
+    mac,
+    platform: url.searchParams.get('platform') || '',
+    v: url.searchParams.get('v') || '',
+    b: url.searchParams.get('b') || '',
+    model: url.searchParams.get('model') || '',
+  }, {
+    'X-RT-IP': request.headers.get('CF-Connecting-IP') || '',
+    'X-RT-Country': request.headers.get('CF-IPCountry') || '',
+  });
+}
+
+// GET /api/v1/rt/ws?token=<JWT>
+//  Socket PANEL. Intercepté dans worker.js AVANT le mount apiV1 (un
+//  upgrade WebSocket ne rentre pas dans le flux JSON de api_v1.js).
+//  Le token passe en query : un navigateur ne peut pas mettre de header
+//  sur un WebSocket. Vérifié via verifyJwt (même secret HS256) AVANT
+//  l'upgrade ; les revendeurs sont refusés (v1 : admins uniquement).
+async function handleRtAdminWs(request, env, url) {
+  if ((request.headers.get('Upgrade') || '').toLowerCase() !== 'websocket') {
+    return json({ error: 'upgrade_required', message: 'WebSocket upgrade attendu.' }, 426);
+  }
+  const token = url.searchParams.get('token') || '';
+  const claims = token
+    ? await verifyJwt(token, env.ADMIN_SECRET || 'dev-secret')
+    : null;
+  if (!claims) {
+    // Forme d'erreur api_v1 : { error: code, message: humain }.
+    return json({ error: 'unauthorized', message: 'Token invalide ou expiré.' }, 401);
+  }
+  if (claims.role === 'reseller') {
+    return json({ error: 'forbidden', message: 'Le temps réel est réservé aux rôles admin.' }, 403);
+  }
+  if (!env.RT_HUB) {
+    return json({ error: 'rt_unavailable' }, 503);
+  }
+  return rtForwardToHub(env, request, '/connect-admin', {}, {});
+}
+
 // ----- Routeur -----
 
 export default {
@@ -3980,6 +4112,17 @@ async function handleRequest(request, env, ctx) {
         }
         return Response.redirect(DOWNLOADS[slug], 302);
       }
+    }
+
+    // ===== Temps réel (WebSockets → Durable Object RealtimeHub) =====
+    // /api/v1/rt/ws DOIT être intercepté AVANT le mount apiV1 : c'est un
+    // upgrade WebSocket, pas une requête JSON (auth JWT par query, cf.
+    // handleRtAdminWs). /api/rt/device est le pendant côté appareil.
+    if (url.pathname === '/api/v1/rt/ws') {
+      return handleRtAdminWs(request, env, url);
+    }
+    if (url.pathname === '/api/rt/device') {
+      return handleRtDeviceWs(request, env, url);
     }
 
     // ===== API v1 (App Licensing Platform — D1 backed) =====

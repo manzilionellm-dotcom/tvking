@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import {
-  authApi, getToken, setToken, setCurrentUser,
+  authApi, getToken, setToken, setCurrentUser, isOwnerRole,
   ApiError,
 } from '@/lib/api';
+import { rtConnect, rtDisconnect } from '@/lib/realtime';
 import { LoginPage } from '@/pages/LoginPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { CustomersPage } from '@/pages/CustomersPage';
@@ -48,23 +49,35 @@ export default function App() {
       return;
     }
     authApi.me()
-      .then((r) => { setCurrentUser(r.user); setStatus('logged_in'); })
+      .then((r) => {
+        setCurrentUser(r.user);
+        setStatus('logged_in');
+        // Couche temps réel : rôles admin uniquement (no-op sinon).
+        if (isOwnerRole(r.user.role)) rtConnect();
+      })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 401) setToken(null);
         setStatus('logged_out');
       });
   }, []);
 
+  // Ferme proprement le WebSocket au démontage de l'app.
+  useEffect(() => () => { rtDisconnect(); }, []);
+
   const handleLoggedIn = useCallback(() => {
     // On recharge le profil (role + solde) avant d'afficher les pages,
     // pour que la Sidebar et le routage connaissent owner vs revendeur.
     authApi.me()
-      .then((r) => { setCurrentUser(r.user); })
+      .then((r) => {
+        setCurrentUser(r.user);
+        if (isOwnerRole(r.user.role)) rtConnect();
+      })
       .catch(() => {})
       .finally(() => { setStatus('logged_in'); nav('/'); });
   }, [nav]);
 
   const handleLogout = useCallback(() => {
+    rtDisconnect();
     setToken(null);
     setCurrentUser(null);
     setStatus('logged_out');

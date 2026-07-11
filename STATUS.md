@@ -185,39 +185,41 @@ Deux apps dans le MÊME repo (flavors Flutter) :
 
 ---
 
-## Engagement / rétention mobile (2026-07-11)
+## Temps réel app ↔ panel + panel intelligent (2026-07-11)
 
-Objectif : rendre l'app **addictive au sens DURABLE** (Hook Model), sans
-toucher au casting ni à la qualité vidéo. Revue complète dans le dépôt
-`7themotion` (`REVUE-ENGAGEMENT-7MOTION-2026-07-11.md` + annexe code).
+Branche : `claude/app-panel-intelligence-77azr1`. Contrat complet dans
+`docs/REALTIME-PROTOCOL.md`. Tout est FAIL-OPEN : sans WebSocket, l'app
+et le panel se comportent exactement comme avant (polling conservé).
 
-Constat : le moteur d'engagement existait déjà à ~80 % mais était
-débranché du mobile (câblé TV-only ou remplacé par l'accueil minimal).
-
-Tranche 1 livrée sur `claude/mobile-app-engagement-addictive` (CI vert,
-APK **release signé clé `sevenmotion`**, publié en `latest`) :
-- ✅ **Reprise VOD** (Continue Watching) branchée sur le player mobile :
-  `PlaybackPositionRepository.record()` au dispose + `.seek()` à la 1ʳᵉ
-  frame (contenu fini). Avant, chaque film redémarrait à 0:00 sur mobile.
-- ✅ **WatchStatsService** démarré aussi sur mobile (`main.dart`).
-- ✅ **ResumeBanner** : fenêtre 60 min → 72 h.
-- ✅ **EngagementService** : streak quotidien + paliers (3/7/30/100/365 j),
-  100 % local, éthique. Compté à la 1ʳᵉ frame. Chip « 🔥 N » dans
-  l'en-tête d'accueil + **célébration** (burst CustomPaint) au palier.
-- ✅ **Ré-engagement** dans `NotificationService.scheduleReEngagement()` :
-  dormance J+3, nudge du soir (répété), « ton accès se termine bientôt »
-  la veille de l'expiration. Reprogrammé à chaque ouverture, respecte
-  l'interrupteur Réglages. Appelé depuis `SimpleHomeScreen`.
-- ✅ **Favori depuis la navigation** (cœur tap + appui long sur la ligne
-  de chaîne) — avant, impossible hors du player.
-- ✅ **Haptique centralisée** (`core/haptics/haptics.dart`) câblée dans
-  `TvFocusable` + **tokens de mouvement** (`core/theme/motion.dart`).
-
-Reste (tranche 2, non démarrée) : restaurer l'accueil riche dormant
-(`HomeScreen`/`CountryHomeView` : Hero « en direct », rangées « Pour
-vous »/« Continue Watching », mur d'affiches VOD), vrai Top 10 (remplacer
-la rotation factice de `category_browser_view.dart:300-319`), EPG « ce
-soir » sur l'accueil, parrainage réel, store rating loop (`in_app_review`).
+- **Hub temps réel** : Durable Object `RealtimeHub` (`cloudflare/realtime.js`),
+  binding `RT_HUB` + migration dans wrangler.toml (plan gratuit OK,
+  `wrangler deploy` suffit). WS appareils `/api/rt/device`, WS panel
+  `/api/v1/rt/ws?token=JWT`.
+- **Instantané** : chaque mutation du panel (activation, gel, ban, push
+  playlist, transfert, annonces, thème, tarifs, force-update…) publie un
+  `sync` vers le(s) appareil(s) visé(s) → l'app re-fetch en <1 s au lieu
+  de ~30 min. Réponses HTTP enrichies de `rt:{delivered,id}` ; l'appareil
+  renvoie un `ack` → le panel affiche « ✓ Appliqué en X ms ».
+- **App Flutter** : `lib/core/realtime/realtime_sync_service.dart`
+  (dart:io WebSocket, AUCUNE dépendance nouvelle), reconnexion backoff
+  5→120 s, re-check au retour au premier plan, bannière messages admin
+  (`admin_message_banner.dart`), annonces et force-update appliqués EN
+  DIRECT (signaux `revision` sur AnnouncementRepository /
+  ForceUpdateChecker). Branché dans main / main_tv / main_windows /
+  main_tizen (main_prive hérite du mobile).
+- **Panel** : présence en direct (page En ligne fusionne WS + présence
+  HTTP — les vieux APK comptent toujours), pastille verte temps réel sur
+  Devices, envoi de message / forcer la synchro depuis la fiche appareil,
+  Dashboard avec section « À traiter » (`GET /api/v1/insights` : licences
+  qui expirent sous 7 j, essais qui finissent sous 48 h, payants muets
+  depuis 7 j, nouveaux du jour), indicateur ● Direct / ○ Différé dans la
+  sidebar, tokens Tailwind `success`/`warning` enfin définis (les confirmations
+  vertes étaient invisibles avant).
+- **Revue** : 8 angles + corrections appliquées (anti-spoof X-RT-IP,
+  socket fantôme au timeout de connexion, latence « null ms », publishes
+  parallélisés, requêtes insights en batch + dédup par MAC, etc.).
+- Vérifié : `flutter analyze` 0 erreur, 194/194 tests, build panel vert,
+  smoke tests worker 6/6 + realtime 11/11.
 
 ---
 

@@ -58,6 +58,9 @@ on:
       - 'cloudflare/pwa_assets.js'
       # portal.js (« Mon espace » : le client gère sa playlist) IMPORTÉ par worker.js.
       - 'cloudflare/portal.js'
+      # realtime.js (hub temps réel Durable Object) IMPORTÉ par worker.js →
+      # redéployer le worker quand le hub change.
+      - 'cloudflare/realtime.js'
       - 'cloudflare/wrangler.toml'
       - '.github/workflows/deploy-worker.yml'
 

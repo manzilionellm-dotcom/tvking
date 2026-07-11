@@ -1,18 +1,17 @@
-import { ReactNode, useCallback, useEffect, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import {
-  devicesApi, activateApi, flagEmoji,
+  devicesApi, activateApi, flagEmoji, PLAN_LABELS,
   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
   type DeviceLicense, type DevicePresence, ApiError,
 } from '@/lib/api';
+import { useLiveDevices, useRtEvent, sendCmd, waitForAck, type ChangedEvent } from '@/lib/realtime';
+import { toast, rtActionFeedback } from '@/components/Toast';
 import { formatDateTime } from '@/lib/utils';
 
-/// Libellés FR lisibles des plans (clé technique → texte).
-const PLAN_LABELS: Record<string, string> = {
-  monthly: '1 mois', quarterly: '3 mois', biannual: '6 mois',
-  yearly: '1 an', lifetime: 'À vie',
-};
+/// Scopes de mutation qui concernent cette page (évènement `changed`).
+const CHANGED_SCOPES = ['devices', 'licenses', 'sources', 'audit'];
 
 export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<Device[]>([]);
@@ -23,6 +22,12 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [activateFor, setActivateFor] = useState<Device | null>(null);
   // Appareil dont on affiche la « fiche complète » (infos + M-Trio).
   const [detailFor, setDetailFor] = useState<Device | null>(null);
+  // MACs connectées au hub temps réel → pastille verte instantanée.
+  const { devices: liveList, connected: rtConnected } = useLiveDevices();
+  const liveMacs = useMemo(
+    () => new Set(liveList.map((d) => d.mac)),
+    [liveList],
+  );
 
   const load = useCallback(() => {
     setLoading(true);
@@ -40,9 +45,30 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     return () => clearTimeout(id);
   }, [load]);
 
+  // Une mutation a eu lieu ailleurs (autre onglet / autre admin) →
+  // recharge la liste, débouncé à 2 s pour absorber les rafales
+  // (même patron que le Dashboard). Scope absent = prudence, on recharge.
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useRtEvent('changed', (e: ChangedEvent) => {
+    if (e.scope && !CHANGED_SCOPES.includes(e.scope)) return;
+    if (refreshTimer.current) return;
+    refreshTimer.current = setTimeout(() => {
+      refreshTimer.current = null;
+      load();
+    }, 2000);
+  });
+  useEffect(() => () => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+  }, []);
+
   async function setBlock(d: Device, status: 'active' | 'frozen' | 'banned') {
     setBusyId(d.id); setErr(null);
-    try { await devicesApi.setBlock(d.id, status); load(); }
+    try {
+      const res = await devicesApi.setBlock(d.id, status);
+      load();
+      // Feedback instantané : l'appareil a-t-il reçu le push en direct ?
+      void rtActionFeedback(res.rt);
+    }
     catch (e: any) { setErr(e instanceof ApiError ? e.message : 'Échec.'); }
     finally { setBusyId(null); }
   }
@@ -50,7 +76,11 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   async function remove(d: Device) {
     if (!window.confirm(`Supprimer définitivement la MAC ${d.mac} ?\n(Si l'app reste installée, elle réapparaîtra avec un nouvel essai. Pour stopper un abuseur, utilise plutôt « Bannir ».)`)) return;
     setBusyId(d.id); setErr(null);
-    try { await devicesApi.remove(d.id); load(); }
+    try {
+      const res = await devicesApi.remove(d.id);
+      load();
+      void rtActionFeedback(res.rt);
+    }
     catch (e: any) { setErr(e instanceof ApiError ? e.message : 'Échec.'); }
     finally { setBusyId(null); }
   }
@@ -102,17 +132,26 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
             {items.map((d) => {
               const st = d.block_status || 'active';
               const busy = busyId === d.id;
+              const liveOnline = rtConnected && liveMacs.has(d.mac);
               return (
                 <tr key={d.id} className="bg-obsidian hover:bg-midnight">
                   <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => setDetailFor(d)}
-                      title="Voir la fiche complète (M-Trio + infos appareil)"
-                      className="font-mono text-xs text-accent underline-offset-2 hover:underline"
-                    >
-                      {d.mac}
-                    </button>
+                    <span className="inline-flex items-center gap-1.5">
+                      {liveOnline && (
+                        <span
+                          title="En ligne maintenant (temps réel)"
+                          className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-success"
+                        />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setDetailFor(d)}
+                        title="Voir la fiche complète (M-Trio + infos appareil)"
+                        className="font-mono text-xs text-accent underline-offset-2 hover:underline"
+                      >
+                        {d.mac}
+                      </button>
+                    </span>
                   </td>
                   <td className="px-4 py-3">{d.customer_name || d.customer_email || '—'}</td>
                   <td className="px-4 py-3">
@@ -165,6 +204,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
       {detailFor && (
         <DeviceDetailModal
           device={detailFor}
+          liveOnline={rtConnected && liveMacs.has(detailFor.mac)}
           busy={busyId === detailFor.id}
           onClose={() => setDetailFor(null)}
           onActivate={() => { const d = detailFor; setDetailFor(null); setActivateFor(d); }}
@@ -188,9 +228,10 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
 //  client a ajouté lui-même une liste M3U/Xtream depuis l'app (« Mes sources »),
 //  celle-ci reste stockée localement sur sa TV et n'est pas remontée au serveur.
 function DeviceDetailModal({
-  device, busy, onClose, onActivate, onBlock, onRemove,
+  device, liveOnline, busy, onClose, onActivate, onBlock, onRemove,
 }: {
   device: Device;
+  liveOnline: boolean;   // connecté au hub temps réel EN CE MOMENT
   busy: boolean;
   onClose: () => void;
   onActivate: () => void;
@@ -296,6 +337,9 @@ function DeviceDetailModal({
           </div>
         )}
 
+        {/* ----- Temps réel : message direct + synchro forcée ----- */}
+        <LiveActions mac={device.mac} liveOnline={liveOnline} />
+
         {/* ----- Actions : tout piloter depuis ici (gauche/droite/nord/sud) ----- */}
         <div className="mt-5 border-t border-white/5 pt-4">
           <div className="mb-2 text-[10px] uppercase tracking-widest text-ink-tertiary">Actions</div>
@@ -320,6 +364,119 @@ function DeviceDetailModal({
           <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary">Fermer</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/// Actions TEMPS RÉEL de la fiche appareil : envoyer un message affiché
+/// immédiatement sur la TV du client + forcer une resynchro complète.
+/// Visible uniquement quand l'appareil est connecté au hub EN CE MOMENT
+/// (sinon la commande n'atteindrait personne → simple indication).
+function LiveActions({ mac, liveOnline }: { mac: string; liveOnline: boolean }) {
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [sending, setSending] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  // Envoie la commande via le WS puis attend l'ack de l'appareil.
+  async function runCmd(
+    action: 'sync' | 'message',
+    payload: unknown,
+    setBusyFlag: (b: boolean) => void,
+  ) {
+    setBusyFlag(true);
+    try {
+      const id = sendCmd(mac, action, payload);
+      toast("⚡ Envoyé à l'appareil…", 'info');
+      const ack = await waitForAck(id);
+      if (ack && ack.ok) {
+        // Latence affichée seulement si le hub la connaît (jamais « null ms »).
+        toast(
+          typeof ack.latencyMs === 'number'
+            ? `✓ Appliqué en ${ack.latencyMs} ms`
+            : "✓ Appliqué sur l'appareil",
+          'success',
+        );
+      }
+      else if (ack) toast("L'appareil a signalé une erreur.", 'error');
+      else toast("Pas de confirmation de l'appareil (délai dépassé).", 'warning');
+    } finally {
+      setBusyFlag(false);
+    }
+  }
+
+  async function sendMessage() {
+    if (!title.trim() && !body.trim()) return;
+    await runCmd('message', {
+      title: title.trim(),
+      body: body.trim(),
+      kind: 'info',
+    }, setSending);
+    setTitle(''); setBody('');
+  }
+
+  const inputCls =
+    'w-full rounded-md border border-white/5 bg-obsidian px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent';
+
+  return (
+    <div className="mt-5 border-t border-white/5 pt-4">
+      <div className="mb-2 flex items-center gap-2">
+        <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">Temps réel</div>
+        <span
+          className={
+            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ' +
+            (liveOnline ? 'bg-success/15 text-success' : 'bg-white/5 text-ink-tertiary')
+          }
+        >
+          <span className={'h-1.5 w-1.5 rounded-full ' + (liveOnline ? 'animate-pulse bg-success' : 'bg-white/20')} />
+          {liveOnline ? 'En ligne' : 'Hors ligne'}
+        </span>
+      </div>
+
+      {liveOnline ? (
+        <div className="space-y-2">
+          <div className="text-xs text-ink-tertiary">
+            Envoyer un message — affiché immédiatement sur l'écran du client.
+          </div>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Titre (ex. Rappel de paiement)"
+            className={inputCls}
+          />
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="Message…"
+            rows={2}
+            className={inputCls + ' resize-none'}
+          />
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              disabled={sending || (!title.trim() && !body.trim())}
+              onClick={sendMessage}
+              className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black hover:bg-accent-bright disabled:opacity-50"
+            >
+              {sending ? 'Envoi…' : 'Envoyer le message'}
+            </button>
+            <button
+              type="button"
+              disabled={syncing}
+              onClick={() => runCmd('sync', { what: 'all' }, setSyncing)}
+              title="L'appareil re-télécharge immédiatement statut + sources + config"
+              className="rounded-md border border-white/10 px-3 py-1.5 text-xs font-medium hover:border-white/30 disabled:opacity-50"
+            >
+              {syncing ? 'Synchro…' : 'Forcer la synchro'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-ink-tertiary">
+          Hors ligne — message direct et synchro forcée indisponibles.
+          Les actions (gel, activation…) seront appliquées à sa prochaine connexion.
+        </p>
+      )}
     </div>
   );
 }
@@ -493,8 +650,10 @@ function ActivatePlanModal({
   async function go() {
     setBusy(true); setErr(null);
     try {
-      await activateApi.activate({ mac: device.mac, plan });
+      const res = await activateApi.activate({ mac: device.mac, plan });
       setDone(true);
+      // L'appareil est-il en ligne ? → toast « appliqué en X ms ».
+      void rtActionFeedback(res.rt);
       setTimeout(onDone, 900);
     } catch (e: any) {
       setErr(e instanceof ApiError ? e.message : 'Échec.');
