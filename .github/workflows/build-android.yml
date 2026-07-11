@@ -800,7 +800,13 @@ jobs:
       #   - Si elle n'existe pas (1er run) : `gh release create`.
       # Tout en `set +e` pour ne pas planter le build si une étape
       # secondaire foire (le build APK lui-même est le délivrable).
+      # MAISON MÈRE UNIQUEMENT : seule la branche claude/maison-mere-phone
+      # publie une release cliente (sur « prod »). Toutes les AUTRES branches
+      # se contentent de l'artifact du run (plus de release « latest » /
+      # « cast-fix-latest » / « phone-i18n-latest » recréée à chaque build).
+      # → fin définitive du bruit : le client ne voit QUE la maison mère.
       - name: Publish "latest" release (FAIL-HARD diag)
+        if: github.ref_name == 'claude/maison-mere-phone'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

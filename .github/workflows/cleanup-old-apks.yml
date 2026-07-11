@@ -31,9 +31,13 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -u
-          # Garde-fou : on REFUSE de supprimer les 2 apps officielles,
-          # même si elles sont passées par erreur dans la liste.
-          PROTECTED="latest prive-latest"
+          # Garde-fou : on REFUSE de supprimer les apps officielles, même
+          # si elles sont passées par erreur dans la liste.
+          #   - prod          → MAISON MÈRE (le lien client /vip)
+          #   - prive-latest  → app Privé (produit séparé)
+          # « latest » n'est PLUS protégé : c'est désormais un vieux bruit
+          # (le client est sur « prod »), donc supprimable.
+          PROTECTED="prod prive-latest"
           for t in ${{ inputs.tags }}; do
             skip=0
             for p in $PROTECTED; do
