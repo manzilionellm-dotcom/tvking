@@ -93,8 +93,12 @@ import { PWA_MANIFEST, PWA_SW, PWA_ICON_192, PWA_ICON_512, PWA_APPLE_ICON, OG_IM
 // Depuis la release SIGNÉE, l'APK canonique s'appelle `7motion.apk`.
 // `app-debug.apk` (même binaire) reste publié en parallèle comme
 // filet de sécurité, mais on sert le nom propre par défaut.
+// MAISON MÈRE : on sert la release `prod` — la SEULE que rien d'autre
+// n'écrase (publiée uniquement par la branche claude/maison-mere-phone).
+// Fini le clobber : le lien client /vip pointe toujours sur la vraie
+// dernière app (MK retiré, import animé, traductions, engagement, etc.).
 const APK_URL =
-  'https://github.com/manzilionellm-dotcom/tvking/releases/download/latest/7motion.apk';
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/prod/7motion.apk';
 
 // APK de DeFew TV (version télévision) — release `tv-latest`. Servi via la
 // route propre `/tv` (Downloader sur box Android TV / Fire TV).

@@ -814,10 +814,17 @@ jobs:
           # DÉDIÉE que RIEN d'autre n'écrase (sinon n'importe quel push
           # d'une AUTRE branche remplacerait notre APK sur "latest", qui
           # est partagé par toutes les branches restantes).
-          #   - correctif cast          → cast-fix-latest
-          #   - traduction multi-langue → phone-i18n-latest
+          #   - MAISON MÈRE (branche de prod) → prod  ← lien client /vip
+          #   - correctif cast                 → cast-fix-latest
+          #   - traduction multi-langue        → phone-i18n-latest
           # Les autres branches (main/develop/feature/…) écrivent "latest".
-          if [ "${{ github.ref_name }}" = "claude/iptv-chromecast-cast-WeAyo" ]; then
+          #
+          # « prod » est la SEULE release que le lien client (app.7themotion.
+          # com/vip) sert : elle n'est publiée QUE par la maison mère, donc
+          # AUCUNE autre branche ne peut l'écraser (fin du clobber terrain).
+          if [ "${{ github.ref_name }}" = "claude/maison-mere-phone" ]; then
+            TAG="prod"
+          elif [ "${{ github.ref_name }}" = "claude/iptv-chromecast-cast-WeAyo" ]; then
             TAG="cast-fix-latest"
           elif [ "${{ github.ref_name }}" = "claude/phone-app-language-translation-ornt8n" ]; then
             TAG="phone-i18n-latest"
