@@ -38,6 +38,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/app/device_memory.dart';
 import '../../../core/crash/crash_reporting.dart';
+import '../../../core/i18n/l10n_now.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/data/player_settings.dart';
 import '../../player/data/stream_diagnostics.dart';
@@ -132,9 +133,10 @@ class XtreamClient {
     final Map<String, dynamic>? userInfo =
         data['user_info'] as Map<String, dynamic>?;
     if (userInfo == null) {
-      throw XtreamException(
-        'Réponse serveur invalide (pas de user_info).',
-      );
+      // Messages LOCALISÉS via l10nNow (pas de BuildContext dans ce client) :
+      // ils remontent tels quels jusqu'aux écrans d'ajout/connexion. Seul le
+      // TYPE XtreamException est pattern-matché par les appelants.
+      throw XtreamException(l10nNow.xtreamInvalidResponse);
     }
     // Boîte noire : photo du compte (statut / expiration / connexions)
     // prise AU CHARGEMENT du compte — consultable dans l'écran debug
@@ -149,9 +151,7 @@ class XtreamClient {
     final String auth =
         userInfo['auth']?.toString().trim().toLowerCase() ?? '';
     if (auth == '0' || auth == 'false') {
-      throw XtreamException(
-        'Identifiants refusés par le serveur. Vérifie ton login/mot de passe.',
-      );
+      throw XtreamException(l10nNow.xtreamCredentialsRefused);
     }
     // Statut : on ne refuse que les états clairement BLOQUANTS connus.
     // Un statut exotique inconnu (« Enabled », « Trial », vide…) passe —
@@ -162,9 +162,7 @@ class XtreamClient {
       'banned', 'disabled', 'expired', 'suspended', 'blocked', 'inactive',
     };
     if (blocked.contains(status)) {
-      throw XtreamException(
-        'Compte non-actif côté serveur (status=$status).',
-      );
+      throw XtreamException(l10nNow.xtreamAccountInactive(status));
     }
     // FORMAT DE SORTIE LIVE : les serveurs déclarent les conteneurs
     // autorisés dans `allowed_output_formats` (ex. ["m3u8"] seulement sur
@@ -246,7 +244,10 @@ class XtreamClient {
     for (final dynamic item in raw) {
       if (item is Map<String, dynamic>) {
         final String id = item['category_id']?.toString() ?? '';
-        final String name = item['category_name']?.toString() ?? 'Sans nom';
+        // Repli localisé (langue active à l'IMPORT — le nom de catégorie est
+        // ensuite STOCKÉ avec chaque chaîne ; un refresh le re-localise).
+        final String name =
+            item['category_name']?.toString() ?? l10nNow.fallbackNoName;
         if (id.isNotEmpty) {
           result[id] = name;
         }
@@ -298,7 +299,8 @@ class XtreamClient {
   ) {
     final String streamId = item['stream_id']?.toString() ?? '';
     if (streamId.isEmpty) return null;
-    final String name = item['name']?.toString() ?? '(Sans nom)';
+    final String name =
+        item['name']?.toString() ?? l10nNow.fallbackNoNameParens;
     final String categoryId = item['category_id']?.toString() ?? '';
     final String category = cats[categoryId] ?? 'Autres';
     final String? streamIcon = item['stream_icon']?.toString();
@@ -416,7 +418,8 @@ class XtreamClient {
     for (final dynamic item in raw) {
       if (item is Map<String, dynamic>) {
         final String id = item['category_id']?.toString() ?? '';
-        final String name = item['category_name']?.toString() ?? 'Sans nom';
+        final String name =
+            item['category_name']?.toString() ?? l10nNow.fallbackNoName;
         if (id.isNotEmpty) result[id] = name;
       }
     }
@@ -437,7 +440,8 @@ class XtreamClient {
       if (item is! Map<String, dynamic>) continue;
       final String streamId = item['stream_id']?.toString() ?? '';
       if (streamId.isEmpty) continue;
-      final String name = item['name']?.toString() ?? '(Sans nom)';
+      final String name =
+          item['name']?.toString() ?? l10nNow.fallbackNoNameParens;
       final String categoryId = item['category_id']?.toString() ?? '';
       final String category = cats[categoryId] ?? 'Autres';
       // Extension du conteneur : mp4 par défaut si non fournie.
@@ -501,7 +505,8 @@ class XtreamClient {
     for (final dynamic item in raw) {
       if (item is Map<String, dynamic>) {
         final String id = item['category_id']?.toString() ?? '';
-        final String name = item['category_name']?.toString() ?? 'Sans nom';
+        final String name =
+            item['category_name']?.toString() ?? l10nNow.fallbackNoName;
         if (id.isNotEmpty) result[id] = name;
       }
     }
@@ -521,7 +526,8 @@ class XtreamClient {
       if (item is! Map<String, dynamic>) continue;
       final String seriesId = item['series_id']?.toString() ?? '';
       if (seriesId.isEmpty) continue;
-      final String name = item['name']?.toString() ?? '(Sans nom)';
+      final String name =
+          item['name']?.toString() ?? l10nNow.fallbackNoNameParens;
       final String categoryId = item['category_id']?.toString() ?? '';
       final String category = cats[categoryId] ?? 'Autres';
       final String? cover = item['cover']?.toString();
@@ -587,10 +593,12 @@ class XtreamClient {
           String ext =
               (e['container_extension']?.toString() ?? 'mp4').trim();
           if (ext.isEmpty) ext = 'mp4';
+          // Repli localisé — les épisodes ne sont PAS persistés (re-fetch à
+          // chaque ouverture de fiche), donc le libellé suit la langue active.
           final String title =
               (e['title']?.toString().trim().isNotEmpty ?? false)
                   ? e['title'].toString()
-                  : 'Épisode $epNum';
+                  : l10nNow.fallbackEpisode(epNum);
           out.add(
             VodEpisode(
               id: 'ep-$id',
@@ -696,7 +704,7 @@ class XtreamClient {
           return utf8.decode(bytes, allowMalformed: true);
         }
         lastError = XtreamException(
-          'Erreur HTTP ${resp.statusCode} sur ${uri.host}',
+          l10nNow.xtreamHttpError(resp.statusCode, uri.host),
         );
       } on PlaylistImportTooLarge {
         // Taille indépendante de la signature → on remonte l'erreur claire.
@@ -710,8 +718,7 @@ class XtreamClient {
         lastError = e;
       }
     }
-    throw lastError ??
-        XtreamException('Serveur Xtream injoignable (${uri.host}).');
+    throw lastError ?? XtreamException(l10nNow.xtreamUnreachable(uri.host));
   }
 
   /// Lit [stream] en bornant à [maxBytes] (anti-OOM) : dépassement →
@@ -724,8 +731,7 @@ class XtreamClient {
       total += chunk.length;
       if (total > maxBytes) {
         throw PlaylistImportTooLarge(
-          'Source Xtream trop volumineuse (> ${maxBytes ~/ (1024 * 1024)} Mo). '
-          'Filtre les catégories côté fournisseur.',
+          l10nNow.xtreamTooLarge(maxBytes ~/ (1024 * 1024)),
         );
       }
       builder.add(chunk);

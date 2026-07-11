@@ -18,6 +18,7 @@ import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../data/player_settings.dart';
+import '../aspect_mode_label.dart';
 
 class PlayerSettingsSheet extends StatefulWidget {
   const PlayerSettingsSheet({
@@ -224,7 +225,7 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
   Widget _aspectChip(AspectRatioMode mode) {
     final bool selected = PlayerSettings.instance.aspectMode == mode;
     return ChoiceChip(
-      label: Text(mode.label),
+      label: Text(mode.localizedLabel(context)),
       selected: selected,
       showCheckmark: false,
       onSelected: (bool v) {

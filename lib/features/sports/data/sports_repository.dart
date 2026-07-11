@@ -15,6 +15,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/i18n/l10n_now.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../subscription/data/subscription_backend.dart' show kSubscriptionBaseUrl;
 import '../domain/sport_models.dart';
@@ -186,10 +187,12 @@ class SportsRepository {
       final DateTime? start = ev.startsAt;
       if (start == null || start.isBefore(DateTime.now())) continue;
       try {
+        // Titre traduit via l10nNow : la notification est (re)planifiée
+        // toutes les 10 min, donc le texte suit la langue active.
         await NotificationService.instance.scheduleProgramReminder(
           channelId: 'sport_${team.id}_${ev.id}',
           channelName: team.name,
-          title: '⚽ ${team.name} joue bientôt',
+          title: l10nNow.sportsTeamPlaysSoon(team.name),
           startMs: start.millisecondsSinceEpoch,
           leadMinutes: 60,
         );
@@ -203,7 +206,7 @@ class SportsRepository {
         await NotificationService.instance.scheduleProgramReminder(
           channelId: 'sport_${team.id}_${ev.id}_ko',
           channelName: team.name,
-          title: '⚽ C\'est parti ! $affiche',
+          title: l10nNow.sportsKickoff(affiche),
           startMs: start.millisecondsSinceEpoch,
           leadMinutes: 0,
         );

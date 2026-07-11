@@ -137,8 +137,8 @@ class PlayerTracksSheet extends StatelessWidget {
         final bool selected = t.id == player.state.track.audio.id;
         return _trackTile(
           selected: selected,
-          title: _audioLabel(t),
-          subtitle: _audioSubtitle(t),
+          title: _audioLabel(context, t),
+          subtitle: _audioSubtitle(context, t),
           onTap: () => player.setAudioTrack(t),
         );
       }).toList(),
@@ -154,8 +154,8 @@ class PlayerTracksSheet extends StatelessWidget {
         final bool selected = t.id == player.state.track.subtitle.id;
         return _trackTile(
           selected: selected,
-          title: _subtitleLabel(t),
-          subtitle: _subtitleSub(t),
+          title: _subtitleLabel(context, t),
+          subtitle: _subtitleSub(context, t),
           onTap: () => player.setSubtitleTrack(t),
         );
       }).toList(),
@@ -246,21 +246,27 @@ class PlayerTracksSheet extends StatelessWidget {
 
   // ----- Format des labels -----
 
-  String _audioLabel(AudioTrack t) {
+  String _audioLabel(BuildContext context, AudioTrack t) {
     if (t.title != null && t.title!.isNotEmpty) return t.title!;
     if (t.language != null && t.language!.isNotEmpty) {
-      return _languageName(t.language!);
+      return _languageName(context, t.language!);
     }
-    return 'Piste ${t.id}';
+    return context.l10n.trackFallback(t.id);
   }
 
-  String _audioSubtitle(AudioTrack t) {
+  String _audioSubtitle(BuildContext context, AudioTrack t) {
     final List<String> parts = <String>[];
     if (t.language != null && t.language!.isNotEmpty && t.title != null) {
-      parts.add(_languageName(t.language!));
+      parts.add(_languageName(context, t.language!));
     }
     if (t.channels != null) {
-      parts.add('${t.channels} canaux');
+      // media_kit expose `channels` en String ("2", "6", parfois un
+      // layout type "stereo"). Si c'est un nombre → clé plurielle
+      // localisée « N canaux » ; sinon on affiche le layout technique.
+      final int? count = int.tryParse(t.channels!);
+      parts.add(count != null
+          ? context.l10n.trackChannelCount(count)
+          : t.channels!);
     }
     if (t.codec != null) {
       parts.add(t.codec!.toUpperCase());
@@ -268,50 +274,67 @@ class PlayerTracksSheet extends StatelessWidget {
     return parts.join(' · ');
   }
 
-  String _subtitleLabel(SubtitleTrack t) {
+  String _subtitleLabel(BuildContext context, SubtitleTrack t) {
     if (t.title != null && t.title!.isNotEmpty) return t.title!;
     if (t.language != null && t.language!.isNotEmpty) {
-      return _languageName(t.language!);
+      return _languageName(context, t.language!);
     }
-    if (t.id == 'no') return 'Désactivés';
-    return 'Piste ${t.id}';
+    if (t.id == 'no') return context.l10n.trackDisabled;
+    return context.l10n.trackFallback(t.id);
   }
 
-  String _subtitleSub(SubtitleTrack t) {
+  String _subtitleSub(BuildContext context, SubtitleTrack t) {
     final List<String> parts = <String>[];
     if (t.language != null && t.language!.isNotEmpty && t.title != null) {
-      parts.add(_languageName(t.language!));
+      parts.add(_languageName(context, t.language!));
     }
     return parts.join(' · ');
   }
 
-  String _languageName(String code) {
-    const Map<String, String> map = <String, String>{
-      'fr': 'Français',
-      'fre': 'Français',
-      'fra': 'Français',
-      'en': 'Anglais',
-      'eng': 'Anglais',
-      'es': 'Espagnol',
-      'spa': 'Espagnol',
-      'de': 'Allemand',
-      'ger': 'Allemand',
-      'deu': 'Allemand',
-      'it': 'Italien',
-      'ita': 'Italien',
-      'ar': 'Arabe',
-      'ara': 'Arabe',
-      'pt': 'Portugais',
-      'por': 'Portugais',
-      'ru': 'Russe',
-      'rus': 'Russe',
-      'zh': 'Chinois',
-      'chi': 'Chinois',
-      'ja': 'Japonais',
-      'jpn': 'Japonais',
-      'ko': 'Coréen',
-      'kor': 'Coréen',
-    };
-    return map[code.toLowerCase()] ?? code.toUpperCase();
+  /// Nom LOCALISÉ de la langue d'une piste audio/sous-titres, à partir
+  /// de son code ISO 639 (2 ou 3 lettres). Ces libellés désignent la
+  /// langue de la PISTE (ex. « Anglais ») et suivent la langue de
+  /// l'app via les clés trackLang*. Code inconnu → affiché tel quel
+  /// en majuscules (repli technique).
+  String _languageName(BuildContext context, String code) {
+    switch (code.toLowerCase()) {
+      case 'fr':
+      case 'fre':
+      case 'fra':
+        return context.l10n.trackLangFrench;
+      case 'en':
+      case 'eng':
+        return context.l10n.trackLangEnglish;
+      case 'es':
+      case 'spa':
+        return context.l10n.trackLangSpanish;
+      case 'de':
+      case 'ger':
+      case 'deu':
+        return context.l10n.trackLangGerman;
+      case 'it':
+      case 'ita':
+        return context.l10n.trackLangItalian;
+      case 'ar':
+      case 'ara':
+        return context.l10n.trackLangArabic;
+      case 'pt':
+      case 'por':
+        return context.l10n.trackLangPortuguese;
+      case 'ru':
+      case 'rus':
+        return context.l10n.trackLangRussian;
+      case 'zh':
+      case 'chi':
+        return context.l10n.trackLangChinese;
+      case 'ja':
+      case 'jpn':
+        return context.l10n.trackLangJapanese;
+      case 'ko':
+      case 'kor':
+        return context.l10n.trackLangKorean;
+      default:
+        return code.toUpperCase();
+    }
   }
 }

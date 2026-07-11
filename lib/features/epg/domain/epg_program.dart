@@ -52,7 +52,10 @@ class EpgProgram {
     return startTime <= ms && ms < stopTime;
   }
 
-  /// "20h00 - 21h30"
+  /// "20h00 – 21h30" — REPLI technique formaté en dur à la française.
+  /// La couche presentation localisée passe par `epgTimeRange(...)`
+  /// (presentation/epg_format.dart) qui suit la langue du téléphone.
+  /// Encore utilisé par features/tv (hors migration l10n).
   String get timeRangeShort {
     String two(int n) => n.toString().padLeft(2, '0');
     final DateTime s = startDateTime;
@@ -60,7 +63,9 @@ class EpgProgram {
     return '${two(s.hour)}h${two(s.minute)} – ${two(e.hour)}h${two(e.minute)}';
   }
 
-  /// "90 min"
+  /// "1h30" / "45min" — REPLI technique formaté en dur à la française.
+  /// La couche presentation localisée passe par `durationText(...)`
+  /// (presentation/epg_format.dart). Encore utilisé par features/tv.
   String get durationLabel {
     final int minutes = duration.inMinutes;
     if (minutes >= 60) {

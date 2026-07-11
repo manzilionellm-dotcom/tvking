@@ -18,6 +18,7 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 
@@ -52,7 +53,7 @@ class PlayerStatsOverlay extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            _statRow('STATS', '', isHeader: true),
+            _statRow(context.l10n.statsTitle, '', isHeader: true),
             const SizedBox(height: 4),
 
             // Résolution
@@ -64,7 +65,7 @@ class PlayerStatsOverlay extends StatelessWidget {
                   stream: player.stream.height,
                   initialData: player.state.height,
                   builder: (_, AsyncSnapshot<int?> h) {
-                    return _statRow('Résolution',
+                    return _statRow(context.l10n.statsResolution,
                         '${w.data ?? '?'} × ${h.data ?? '?'}');
                   },
                 );
@@ -77,7 +78,7 @@ class PlayerStatsOverlay extends StatelessWidget {
               initialData: player.state.tracks,
               builder: (_, AsyncSnapshot<Tracks> t) {
                 final String codec = _videoCodec(player, t.data);
-                return _statRow('Codec vidéo', codec);
+                return _statRow(context.l10n.statsVideoCodec, codec);
               },
             ),
 
@@ -87,17 +88,21 @@ class PlayerStatsOverlay extends StatelessWidget {
               initialData: player.state.tracks,
               builder: (_, AsyncSnapshot<Tracks> t) {
                 final String codec = _audioCodec(player, t.data);
-                return _statRow('Codec audio', codec);
+                return _statRow(context.l10n.statsAudioCodec, codec);
               },
             ),
 
-            // Buffer
+            // Buffer — « EN COURS » réutilise castInProgress (même
+            // valeur française), « OK » réutilise buttonOk.
             StreamBuilder<bool>(
               stream: player.stream.buffering,
               initialData: player.state.buffering,
               builder: (_, AsyncSnapshot<bool> b) {
-                return _statRow('Buffer',
-                    (b.data ?? false) ? 'EN COURS' : 'OK');
+                return _statRow(
+                    context.l10n.statsBuffer,
+                    (b.data ?? false)
+                        ? context.l10n.castInProgress
+                        : context.l10n.buttonOk);
               },
             ),
 
@@ -107,7 +112,10 @@ class PlayerStatsOverlay extends StatelessWidget {
               initialData: player.state.playing,
               builder: (_, AsyncSnapshot<bool> p) {
                 return _statRow(
-                    'Lecture', (p.data ?? false) ? '▶ Active' : '⏸ Pause');
+                    context.l10n.playerPlay,
+                    (p.data ?? false)
+                        ? context.l10n.statsActive
+                        : context.l10n.statsPaused);
               },
             ),
           ],

@@ -19,9 +19,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/observability/black_box.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../data/cast_diagnostics.dart';
@@ -29,6 +31,34 @@ import '../data/cast_manager.dart';
 import '../data/cast_network_diagnostic.dart';
 import '../data/cast_session_diagnostic.dart';
 import '../domain/cast_device.dart';
+
+/// Libellés localisés des presets de diagnostic. L'enum
+/// `DiagnosticPreset` (couche data) garde ses labels français en
+/// repli pour les rapports techniques ; l'UI passe par ces
+/// extensions pour suivre la langue du téléphone.
+extension DiagnosticPresetL10n on DiagnosticPreset {
+  String localizedLabel(AppLocalizations l10n) {
+    switch (this) {
+      case DiagnosticPreset.quick:
+        return l10n.castDiagPresetQuick;
+      case DiagnosticPreset.standard:
+        return l10n.castDiagPresetStandard;
+      case DiagnosticPreset.thorough:
+        return l10n.castDiagPresetThorough;
+    }
+  }
+
+  String localizedDescription(AppLocalizations l10n) {
+    switch (this) {
+      case DiagnosticPreset.quick:
+        return l10n.castDiagPresetQuickDesc;
+      case DiagnosticPreset.standard:
+        return l10n.castDiagPresetStandardDesc;
+      case DiagnosticPreset.thorough:
+        return l10n.castDiagPresetThoroughDesc;
+    }
+  }
+}
 
 class CastDiagnosticsScreen extends StatefulWidget {
   const CastDiagnosticsScreen({super.key});
@@ -72,10 +102,8 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
         pickDiagnosticChannels(all, _preset.sampleSize);
     if (sample.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Aucune chaîne chargée — ajoute d\'abord une playlist.',
-          ),
+        SnackBar(
+          content: Text(context.l10n.castDiagNoChannels),
         ),
       );
       return;
@@ -94,7 +122,7 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
     await Clipboard.setData(ClipboardData(text: report));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Rapport copié dans le presse-papier')),
+      SnackBar(content: Text(context.l10n.castDiagReportCopied)),
     );
   }
 
@@ -126,7 +154,7 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
     await Clipboard.setData(ClipboardData(text: r));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Rapport réseau copié dans le presse-papier')),
+      SnackBar(content: Text(context.l10n.castDiagNetReportCopied)),
     );
   }
 
@@ -137,8 +165,7 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
     await Clipboard.setData(ClipboardData(text: report));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text('Boîte noire copiée dans le presse-papier')),
+      SnackBar(content: Text(context.l10n.castDiagBlackBoxCopied)),
     );
   }
 
@@ -150,7 +177,7 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
         backgroundColor: AppColors.background,
         elevation: 0,
         title: Text(
-          'Diagnostic cast',
+          context.l10n.castDiagTitle,
           style: AppTextStyles.headlineMedium,
         ),
       ),
@@ -207,7 +234,7 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
                     OutlinedButton.icon(
                       onPressed: _copyBlackBox,
                       icon: const Icon(Icons.flight_takeoff_rounded),
-                      label: const Text('Copier la boîte noire (A→Z)'),
+                      label: Text(context.l10n.castDiagCopyBlackBox),
                     ),
                   ] else ...<Widget>[
                     _RunHeader(runner: _runner!),
@@ -223,7 +250,7 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
                             child: OutlinedButton.icon(
                               onPressed: _reset,
                               icon: const Icon(Icons.refresh_rounded),
-                              label: const Text('Refaire'),
+                              label: Text(context.l10n.castDiagRedo),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -231,7 +258,7 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
                             child: FilledButton.icon(
                               onPressed: _copyReport,
                               icon: const Icon(Icons.copy_rounded),
-                              label: const Text('Copier le rapport'),
+                              label: Text(context.l10n.castDiagCopyReport),
                             ),
                           ),
                         ],
@@ -241,7 +268,7 @@ class _CastDiagnosticsScreenState extends State<CastDiagnosticsScreen> {
                       OutlinedButton.icon(
                         onPressed: _runner!.cancel,
                         icon: const Icon(Icons.stop_circle_outlined),
-                        label: const Text('Arrêter'),
+                        label: Text(context.l10n.castStop),
                       ),
                     ],
                   ],
@@ -278,9 +305,7 @@ class _IntroCard extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Teste la compatibilité cast de ta TV en lançant '
-              'plusieurs chaînes à la suite. Le rapport copiable '
-              'sert à remplir la matrice de compat.',
+              context.l10n.castDiagIntro,
               style: AppTextStyles.bodyMedium.copyWith(
                 fontSize: 12,
                 color: AppColors.textSecondary,
@@ -312,7 +337,7 @@ class _DevicePicker extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('Récepteur', style: AppTextStyles.labelSmall),
+        Text(context.l10n.castDiagReceiver, style: AppTextStyles.labelSmall),
         const SizedBox(height: 8),
         if (devices.isEmpty)
           Container(
@@ -332,7 +357,7 @@ class _DevicePicker extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Recherche en cours… Vérifie que ta TV est sur le même WiFi.',
+                    context.l10n.castDiagSearching,
                     style: AppTextStyles.bodyMedium.copyWith(fontSize: 12),
                   ),
                 ),
@@ -438,7 +463,7 @@ class _PresetPicker extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('Taille du test', style: AppTextStyles.labelSmall),
+        Text(context.l10n.castDiagTestSize, style: AppTextStyles.labelSmall),
         const SizedBox(height: 8),
         Row(
           children: DiagnosticPreset.values
@@ -495,7 +520,7 @@ class _PresetChip extends StatelessWidget {
           child: Column(
             children: <Widget>[
               Text(
-                preset.label,
+                preset.localizedLabel(context.l10n),
                 style: AppTextStyles.bodyMedium.copyWith(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -506,7 +531,7 @@ class _PresetChip extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                preset.description,
+                preset.localizedDescription(context.l10n),
                 style: AppTextStyles.bodyMedium.copyWith(
                   fontSize: 10,
                   color: AppColors.textMuted,
@@ -536,8 +561,8 @@ class _StartButton extends StatelessWidget {
         icon: const Icon(Icons.play_arrow_rounded),
         label: Text(
           enabled
-              ? 'Lancer le diagnostic'
-              : 'Sélectionne un récepteur',
+              ? context.l10n.castDiagStart
+              : context.l10n.castDiagSelectReceiver,
         ),
       ),
     );
@@ -562,10 +587,11 @@ class _RunHeader extends StatelessWidget {
             Expanded(
               child: Text(
                 runner.isRunning
-                    ? 'Test $done/$total — ${runner.currentChannelName ?? "…"}'
+                    ? context.l10n.castDiagRunning(
+                        done, total, runner.currentChannelName ?? '…')
                     : runner.isCancelled
-                        ? 'Annulé après $done/$total tests'
-                        : 'Terminé — $done/$total tests',
+                        ? context.l10n.castDiagCancelled(done, total)
+                        : context.l10n.castDiagFinished(done, total),
                 style: AppTextStyles.bodyMedium
                     .copyWith(fontWeight: FontWeight.w600),
               ),
@@ -613,7 +639,7 @@ class _ResultsTable extends StatelessWidget {
           border: Border.all(color: AppColors.border),
         ),
         child: Text(
-          'En attente du premier résultat…',
+          context.l10n.castDiagWaitingFirst,
           style: AppTextStyles.bodyMedium.copyWith(
             color: AppColors.textMuted,
             fontSize: 12,
@@ -668,7 +694,7 @@ class _ResultRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  diag.channelName ?? 'Chaîne',
+                  diag.channelName ?? context.l10n.castDiagChannelFallback,
                   style: AppTextStyles.bodyMedium
                       .copyWith(fontWeight: FontWeight.w600, fontSize: 13),
                   maxLines: 1,
@@ -682,7 +708,7 @@ class _ResultRow extends StatelessWidget {
                           '${diag.channelGenre != null ? " · ${diag.channelGenre}" : ""}'
                       : (diag.finalUserMessage?.isNotEmpty ?? false)
                           ? diag.finalUserMessage!
-                          : 'Échec',
+                          : context.l10n.castDiagFailed,
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 11,
                     color: AppColors.textMuted,
@@ -724,19 +750,21 @@ class _SummaryCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Taux de succès : $rate% ($ok / $total)',
+            context.l10n.castDiagSuccessRate(rate, ok, total),
             style: AppTextStyles.bodyMedium
                 .copyWith(fontWeight: FontWeight.w700, fontSize: 14),
           ),
           const SizedBox(height: 4),
           Text(
-            'Latence moyenne au succès : ${avg != null ? "${avg}ms" : "—"}',
+            context.l10n.castDiagAvgLatency(avg != null ? '${avg}ms' : '—'),
             style: AppTextStyles.bodyMedium.copyWith(fontSize: 12),
           ),
           if (strategies.isNotEmpty) ...<Widget>[
             const SizedBox(height: 6),
             Text(
-              'Stratégies gagnantes : ${strategies.entries.map((MapEntry<String, int> e) => "${e.key} ×${e.value}").join(", ")}',
+              context.l10n.castDiagWinningStrategies(strategies.entries
+                  .map((MapEntry<String, int> e) => '${e.key} ×${e.value}')
+                  .join(', ')),
               style: AppTextStyles.bodyMedium.copyWith(
                 fontSize: 11,
                 color: AppColors.textSecondary,
@@ -769,7 +797,9 @@ class _NetworkDiagButton extends StatelessWidget {
               )
             : const Icon(Icons.wifi_find_rounded),
         label: Text(
-          running ? 'Diagnostic réseau en cours…' : 'Diagnostic réseau cast',
+          running
+              ? context.l10n.castDiagNetRunning
+              : context.l10n.castDiagNetButton,
         ),
       ),
     );
@@ -800,7 +830,7 @@ class _NetworkReportCard extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Rapport réseau cast',
+                  context.l10n.castDiagNetReportTitle,
                   style: AppTextStyles.bodyMedium
                       .copyWith(fontWeight: FontWeight.w700),
                 ),
@@ -808,7 +838,7 @@ class _NetworkReportCard extends StatelessWidget {
               TextButton.icon(
                 onPressed: onCopy,
                 icon: const Icon(Icons.copy_rounded, size: 16),
-                label: const Text('Copier'),
+                label: Text(context.l10n.castDiagCopy),
               ),
             ],
           ),

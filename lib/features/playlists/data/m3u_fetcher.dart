@@ -29,6 +29,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/i18n/l10n_now.dart';
 import '../../player/data/player_settings.dart';
 import 'iptv_http.dart';
 import 'playlist_import_limits.dart';
@@ -129,7 +130,7 @@ abstract final class M3uFetcher {
           if (resp.statusCode != 200) {
             // Serveur qui refuse cette signature (souvent 403 / 401 /
             // un code maison comme 884). On essaie la signature suivante.
-            lastError = Exception('HTTP ${resp.statusCode} sur $url');
+            lastError = Exception(l10nNow.m3uHttpError(resp.statusCode, url));
             continue;
           }
 
@@ -147,8 +148,7 @@ abstract final class M3uFetcher {
           final String body = _decodeBytes(bytes);
           final String head = body.trimLeft();
           if (head.isEmpty) {
-            lastError =
-                Exception('Le serveur a renvoyé une réponse vide pour $url');
+            lastError = Exception(l10nNow.m3uEmptyResponse(url));
             continue;
           }
 
@@ -168,17 +168,13 @@ abstract final class M3uFetcher {
               // le parseur l'accepte, le fetcher ne doit pas la refuser.
               _hasMediaExtension(head);
           if (looksHtml && !looksM3u) {
-            lastError = Exception(
-              'Le serveur a renvoyé une page web (HTML), pas une playlist.',
-            );
+            lastError = Exception(l10nNow.m3uHtmlResponse);
             continue;
           }
           if (!looksM3u) {
             // Ni balise M3U ni URL de flux : probablement une erreur
             // applicative en texte/JSON. On tente une autre signature.
-            lastError = Exception(
-              'Réponse sans aucune chaîne (ni #EXTM3U ni URL) pour $url',
-            );
+            lastError = Exception(l10nNow.m3uNoChannelResponse(url));
             continue;
           }
 
@@ -285,8 +281,7 @@ abstract final class M3uFetcher {
       total += chunk.length;
       if (total > maxBytes) {
         throw PlaylistImportTooLarge(
-          'Playlist trop volumineuse (> ${maxBytes ~/ (1024 * 1024)} Mo). '
-          'Réduis la source ou filtre les catégories côté fournisseur.',
+          l10nNow.m3uTooLarge(maxBytes ~/ (1024 * 1024)),
         );
       }
       builder.add(chunk);

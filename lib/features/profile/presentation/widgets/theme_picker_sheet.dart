@@ -16,6 +16,44 @@ import '../../../../core/theme/accent_controller.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 
+/// Libellé localisé d'un thème d'accent.
+///
+/// Les thèmes du catalogue (accent_controller.dart) portent un `id`
+/// stable + un `label` français : on mappe ici l'`id` vers la clé de
+/// traduction `accentX`, et `label` sert de REPLI documenté si un
+/// nouvel id n'a pas encore sa clé (l'app affiche alors le français
+/// plutôt que de planter ou de montrer un id technique).
+String _accentLabel(BuildContext context, AccentTheme theme) {
+  switch (theme.id) {
+    case 'champagne':
+      return context.l10n.accentChampagne;
+    case 'ember':
+      return context.l10n.accentEmber;
+    case 'ocean':
+      return context.l10n.accentOcean;
+    case 'emerald':
+      return context.l10n.accentEmerald;
+    case 'violet':
+      return context.l10n.accentViolet;
+    case 'gold':
+      return context.l10n.accentGold;
+    case 'turquoise':
+      return context.l10n.accentTurquoise;
+    case 'rose':
+      return context.l10n.accentRose;
+    case 'coral':
+      return context.l10n.accentCoral;
+    case 'indigo':
+      return context.l10n.accentIndigo;
+    case 'lime':
+      return context.l10n.accentLime;
+    case 'remote':
+      return context.l10n.accentCustom;
+    default:
+      return theme.label; // repli : libellé français du catalogue
+  }
+}
+
 /// Ouvre le sélecteur de thème.
 Future<void> showThemePicker(BuildContext context) {
   return showModalBottomSheet<void>(
@@ -153,7 +191,7 @@ class _Swatch extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              theme.label,
+              _accentLabel(context, theme),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,

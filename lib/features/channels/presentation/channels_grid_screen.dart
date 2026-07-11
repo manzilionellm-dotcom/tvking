@@ -50,7 +50,7 @@ class ChannelsGridScreen extends StatelessWidget {
               style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
             ),
             Text(
-              subtitle ?? '${channels.length} chaînes',
+              subtitle ?? context.l10n.channelCount(channels.length),
               style: AppTextStyles.bodyMedium.copyWith(
                 fontSize: 12,
                 color: AppColors.textMuted,

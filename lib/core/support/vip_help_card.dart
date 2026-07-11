@@ -14,6 +14,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../i18n/l10n_extension.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import 'support_choice_sheet.dart';
@@ -155,7 +156,7 @@ class _VipHelpCardState extends State<VipHelpCard>
               Row(
                 children: <Widget>[
                   Text(
-                    'AIDE',
+                    context.l10n.vipHelpEyebrow,
                     style: AppTextStyles.eyebrow,
                   ),
                   const SizedBox(width: 6),
@@ -169,7 +170,7 @@ class _VipHelpCardState extends State<VipHelpCard>
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      'VIP',
+                      context.l10n.vipBadge,
                       style: AppTextStyles.labelSmall.copyWith(
                         color: AppColors.voidSurface,
                         fontSize: 9,
@@ -182,7 +183,7 @@ class _VipHelpCardState extends State<VipHelpCard>
               ),
               const SizedBox(height: 4),
               Text(
-                'Une question ? On te répond.',
+                context.l10n.vipQuestionTitle,
                 style: AppTextStyles.headlineMedium.copyWith(
                   fontSize: 16,
                 ),
@@ -193,7 +194,7 @@ class _VipHelpCardState extends State<VipHelpCard>
                 // user veut un bouton qui SE PRÉSENTE comme un
                 // concierge privé / support haut de gamme, et qui
                 // ouvre WhatsApp en silence quand tapé.
-                'Concierge privé · Réponse 7j/7.',
+                context.l10n.vipConciergePrivate,
                 style: AppTextStyles.bodyMedium.copyWith(
                   fontSize: 12,
                   color: AppColors.textMuted,
@@ -275,7 +276,7 @@ class _VipHelpCardState extends State<VipHelpCard>
                     // on veut un branding "Aide VIP" sobre, agnostique
                     // de la techno derrière.
                     Text(
-                      'Aide VIP',
+                      context.l10n.vipHelpTitle,
                       style: AppTextStyles.bodyLarge.copyWith(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
@@ -283,7 +284,7 @@ class _VipHelpCardState extends State<VipHelpCard>
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Concierge dédié · Réponse 7j/7.',
+                      context.l10n.vipConciergeDedicated,
                       style: AppTextStyles.bodyMedium.copyWith(
                         fontSize: 11,
                         color: AppColors.textMuted,
@@ -349,7 +350,7 @@ class _VipHelpCardState extends State<VipHelpCard>
               ),
               const SizedBox(width: 8),
               Text(
-                'Aide VIP',
+                context.l10n.vipHelpTitle,
                 style: AppTextStyles.button.copyWith(
                   color: AppColors.voidSurface,
                   fontSize: 14,

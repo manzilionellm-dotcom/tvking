@@ -22,8 +22,10 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../l10n/generated/app_localizations.dart';
 import '../../data/announcement_repository.dart';
 
 /// Style visuel résolu depuis la catégorie d'une annonce.
@@ -34,18 +36,22 @@ class _KindStyle {
   final String label; // '' = pas de badge (catégorie inconnue/vide)
 }
 
-_KindStyle _styleFor(String kind) {
+/// Résout le style depuis la catégorie. Prend [AppLocalizations] en
+/// paramètre (fourni par le build) pour que le libellé du badge suive
+/// la langue active — « Info » réutilise la clé existante catInfo.
+_KindStyle _styleFor(String kind, AppLocalizations l10n) {
   switch (kind) {
     case 'nouveaute':
-      return _KindStyle(
-          AppColors.accent, Icons.auto_awesome_rounded, 'Nouveauté');
+      return _KindStyle(AppColors.accent, Icons.auto_awesome_rounded,
+          l10n.announcementBadgeNew);
     case 'promo':
-      return _KindStyle(
-          AppColors.warning, Icons.local_fire_department_rounded, 'Promo');
+      return _KindStyle(AppColors.warning, Icons.local_fire_department_rounded,
+          l10n.announcementBadgePromo);
     case 'info':
-      return _KindStyle(AppColors.info, Icons.info_rounded, 'Info');
+      return _KindStyle(AppColors.info, Icons.info_rounded, l10n.catInfo);
     case 'maintenance':
-      return _KindStyle(AppColors.live, Icons.build_rounded, 'Maintenance');
+      return _KindStyle(AppColors.live, Icons.build_rounded,
+          l10n.announcementBadgeMaintenance);
     default:
       return _KindStyle(AppColors.accent, Icons.campaign_rounded, '');
   }
@@ -119,7 +125,7 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
     if (a == null) return const SizedBox.shrink();
 
     final bool hasLink = a.url.isNotEmpty;
-    final _KindStyle style = _styleFor(a.kind);
+    final _KindStyle style = _styleFor(a.kind, context.l10n);
     final Color color = style.color;
 
     return Padding(
@@ -204,7 +210,9 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              a.cta.isNotEmpty ? a.cta : 'Ouvrir',
+                              a.cta.isNotEmpty
+                                  ? a.cta
+                                  : context.l10n.announcementOpen,
                               style: AppTextStyles.button.copyWith(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w800,

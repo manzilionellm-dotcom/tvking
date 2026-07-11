@@ -91,7 +91,7 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
           messenger,
           (ImportProgressCallback op) => PlaylistRepository.instance
               .addM3uPlaylistSmart(
-                  name: 'Mon abonnement', url: url, onProgress: op));
+                  name: context.l10n.playlistDefaultSubscription, url: url, onProgress: op));
       return;
     }
 
@@ -126,7 +126,7 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
         messenger,
         (ImportProgressCallback op) =>
             PlaylistRepository.instance.addXtreamPlaylist(
-              name: 'Mon abonnement',
+              name: context.l10n.playlistDefaultSubscription,
               serverUrl: server,
               username: user,
               password: pass,

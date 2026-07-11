@@ -31,9 +31,15 @@ class AccentTheme {
   });
 
   /// Identifiant stable stocké en préférences (ne pas traduire).
+  /// C'est aussi la clé de mappage vers le libellé traduit du
+  /// sélecteur (voir `theme_picker_sheet.dart` → `_accentLabel`).
   final String id;
 
-  /// Libellé affiché dans le sélecteur.
+  /// Libellé français de REPLI. L'UI ne l'affiche que si l'`id` n'a
+  /// pas (encore) de clé de traduction correspondante : les libellés
+  /// visibles passent par AppLocalizations (clés `accentX`), mappés
+  /// depuis `id` dans le widget du picker. Ce fichier reste ainsi pur
+  /// (pas de BuildContext dans la couche thème).
   final String label;
 
   /// Couleur d'accent principale (boutons, onglet actif, liserés…).

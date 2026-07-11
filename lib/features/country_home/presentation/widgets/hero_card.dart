@@ -9,6 +9,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../channels/domain/channel.dart';
@@ -23,7 +24,7 @@ class HeroCard extends StatefulWidget {
     required this.onWatch,
     required this.onFav,
     this.scale = 1.0,
-    this.label = 'POUR VOUS',
+    this.label,
     this.note,
   });
 
@@ -33,8 +34,10 @@ class HeroCard extends StatefulWidget {
   final VoidCallback onFav;
   final double scale;
 
-  /// Libellé du badge (ex. 'POUR VOUS' ou 'FAVORI DU JOUR').
-  final String label;
+  /// Libellé du badge (ex. « POUR VOUS » ou « FAVORI DU JOUR »).
+  /// null → « POUR VOUS » traduit (résolu dans build, où le
+  /// BuildContext donne accès aux traductions).
+  final String? label;
 
   /// Sous-titre forcé (ex. la note du favori du jour). Sinon EPG.
   final String? note;
@@ -104,7 +107,7 @@ class _HeroCardState extends State<HeroCard>
                 Row(
                   children: <Widget>[
                     _Badge(
-                      label: widget.label,
+                      label: widget.label ?? context.l10n.heroForYou,
                       fg: AppColors.maisonBg,
                       bg: AppColors.black7Red,
                       scale: s,
@@ -150,7 +153,7 @@ class _HeroCardState extends State<HeroCard>
                           ),
                           icon: Icon(Icons.play_arrow_rounded, size: 26 * s),
                           label: Text(
-                            'Regarder',
+                            context.l10n.buttonWatch,
                             style: AppTextStyles.maisonCta
                                 .copyWith(fontSize: 17 * s),
                           ),
@@ -212,7 +215,7 @@ class _HeroCardState extends State<HeroCard>
             ),
           ),
           SizedBox(width: 6 * s),
-          Text('LIVE',
+          Text(context.l10n.badgeLive,
               style: AppTextStyles.maisonLabel
                   .copyWith(color: AppColors.liveRed, fontSize: 11.5 * s)),
         ],

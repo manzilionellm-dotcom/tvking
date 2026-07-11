@@ -810,12 +810,17 @@ jobs:
           # de diagnostiquer le problème sans accès aux logs détaillés.
           set -ex
           REPO="${{ github.repository }}"
-          # ANTI-CLOBBER : la branche du correctif cast publie sur une release
-          # DÉDIÉE (cast-fix-latest) que RIEN d'autre n'écrase. Les autres
-          # branches (main/develop/feature/…) continuent d'écrire "latest".
-          # Sinon n'importe quel push d'une AUTRE branche remplaçait notre APK.
+          # ANTI-CLOBBER : certaines branches publient sur une release
+          # DÉDIÉE que RIEN d'autre n'écrase (sinon n'importe quel push
+          # d'une AUTRE branche remplacerait notre APK sur "latest", qui
+          # est partagé par toutes les branches restantes).
+          #   - correctif cast          → cast-fix-latest
+          #   - traduction multi-langue → phone-i18n-latest
+          # Les autres branches (main/develop/feature/…) écrivent "latest".
           if [ "${{ github.ref_name }}" = "claude/iptv-chromecast-cast-WeAyo" ]; then
             TAG="cast-fix-latest"
+          elif [ "${{ github.ref_name }}" = "claude/phone-app-language-translation-ornt8n" ]; then
+            TAG="phone-i18n-latest"
           else
             TAG="latest"
           fi

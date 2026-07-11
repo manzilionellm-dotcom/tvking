@@ -16,6 +16,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import 'source_choice_sheet.dart';
@@ -54,7 +55,7 @@ class PaywallBanner extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Text(
-                        'Essai gratuit 7 jours',
+                        context.l10n.paywallFreeTrialTitle,
                         style: AppTextStyles.bodyLarge.copyWith(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
@@ -63,7 +64,7 @@ class PaywallBanner extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Application payante · puis 5 €/an ou 9,90 € à vie',
+                        context.l10n.paywallPaidSubtitle,
                         style: AppTextStyles.bodyMedium.copyWith(
                           fontSize: 12,
                           color: AppColors.textSecondary,
@@ -74,7 +75,7 @@ class PaywallBanner extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Activer',
+                  context.l10n.paywallActivate,
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,

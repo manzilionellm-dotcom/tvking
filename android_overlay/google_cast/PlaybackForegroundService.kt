@@ -63,6 +63,18 @@ class PlaybackForegroundService : Service() {
         /// libellé — même service, mêmes locks CPU/WiFi.
         const val EXTRA_BODY = "body"
         private const val DEFAULT_BODY = "Lecture audio en arrière-plan"
+
+        /// i18n : libellés localisés fournis par Dart (AppLocalizations,
+        /// langue du téléphone ou choix Réglages). Les défauts français
+        /// ci-dessous ne servent que de filet si un appelant n'envoie
+        /// pas les extras (ancienne version de l'app).
+        const val EXTRA_STOP_LABEL = "stopLabel"
+        const val EXTRA_CHANNEL_NAME = "channelName"
+        const val EXTRA_CHANNEL_DESC = "channelDesc"
+        private const val DEFAULT_STOP_LABEL = "Arrêter"
+        private const val DEFAULT_CHANNEL_NAME = "Lecture audio"
+        private const val DEFAULT_CHANNEL_DESC =
+            "Lecture audio en arrière-plan (mode Écouteurs)"
     }
 
     private var wakeLock: PowerManager.WakeLock? = null
@@ -75,9 +87,17 @@ class PlaybackForegroundService : Service() {
             ACTION_START -> {
                 val title = intent.getStringExtra(EXTRA_TITLE) ?: "7 MOTION"
                 val body = intent.getStringExtra(EXTRA_BODY) ?: DEFAULT_BODY
+                val stopLabel =
+                    intent.getStringExtra(EXTRA_STOP_LABEL) ?: DEFAULT_STOP_LABEL
                 Log.i(TAG, "START background keep-alive: $title ($body)")
-                createChannelIfNeeded()
-                startForeground(NOTIFICATION_ID, buildNotification(title, body))
+                createChannelIfNeeded(
+                    intent.getStringExtra(EXTRA_CHANNEL_NAME) ?: DEFAULT_CHANNEL_NAME,
+                    intent.getStringExtra(EXTRA_CHANNEL_DESC) ?: DEFAULT_CHANNEL_DESC,
+                )
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildNotification(title, body, stopLabel),
+                )
                 acquireLocks()
             }
             ACTION_STOP -> {
@@ -124,7 +144,11 @@ class PlaybackForegroundService : Service() {
         super.onDestroy()
     }
 
-    private fun buildNotification(title: String, body: String = DEFAULT_BODY): Notification {
+    private fun buildNotification(
+        title: String,
+        body: String = DEFAULT_BODY,
+        stopLabel: String = DEFAULT_STOP_LABEL,
+    ): Notification {
         // Tap sur la notification → ramène l'app au premier plan.
         val launch = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
@@ -163,28 +187,32 @@ class PlaybackForegroundService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
-                "Arrêter",
+                stopLabel,
                 stopPi,
             )
         if (contentPi != null) builder.setContentIntent(contentPi)
         return builder.build()
     }
 
-    private fun createChannelIfNeeded() {
+    private fun createChannelIfNeeded(
+        name: String = DEFAULT_CHANNEL_NAME,
+        desc: String = DEFAULT_CHANNEL_DESC,
+    ) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            if (mgr.getNotificationChannel(CHANNEL_ID) == null) {
-                val ch = NotificationChannel(
-                    CHANNEL_ID,
-                    "Lecture audio",
-                    NotificationManager.IMPORTANCE_LOW,
-                ).apply {
-                    description = "Lecture audio en arrière-plan (mode Écouteurs)"
-                    setShowBadge(false)
-                    setSound(null, null)
-                }
-                mgr.createNotificationChannel(ch)
+            // createNotificationChannel() sur un canal existant met à
+            // jour son nom/description (jamais l'importance) → le canal
+            // suit la langue de l'app à chaque démarrage du service.
+            val ch = NotificationChannel(
+                CHANNEL_ID,
+                name,
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply {
+                description = desc
+                setShowBadge(false)
+                setSound(null, null)
             }
+            mgr.createNotificationChannel(ch)
         }
     }
 

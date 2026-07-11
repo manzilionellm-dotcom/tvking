@@ -7,6 +7,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../channels/domain/channel.dart';
@@ -82,7 +83,7 @@ class PopularCard extends StatelessWidget {
                             color: AppColors.liveRed,
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: Text('LIVE',
+                          child: Text(context.l10n.badgeLive,
                               style: AppTextStyles.maisonLabel.copyWith(
                                   color: AppColors.maisonInk,
                                   fontSize: 9.5 * s)),
@@ -105,7 +106,7 @@ class PopularCard extends StatelessWidget {
                       size: 13 * s, color: AppColors.textTertiary),
                   SizedBox(width: 4 * s),
                   Text(
-                    '$watchers regardent',
+                    context.l10n.homeWatchersCount(watchers),
                     style: AppTextStyles.maisonProgram.copyWith(
                         fontSize: 12.5 * s, color: AppColors.textTertiary),
                   ),

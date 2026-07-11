@@ -41,49 +41,46 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   /// Slides d'onboarding.
   ///
-  /// Note : on PASSE de `static const` a un getter parce que la
-  /// premiere slide doit afficher le nom du flavor courant (The Few
-  /// ou Red Room) lu via `FlavorConfig.current.appName` qui n'est
-  /// pas connu a la compilation. La perf reste OK : 5 elements
+  /// Note : getter d'INSTANCE (et plus `static const`) parce que
+  /// les textes viennent d'AppLocalizations (langue du téléphone)
+  /// et que la premiere slide affiche le nom du flavor courant
+  /// (The Few ou Red Room) lu via `FlavorConfig.current.appName`,
+  /// inconnu a la compilation. `context` est celui du State, valide
+  /// des que le widget est monte. La perf reste OK : 5 elements
   /// crees a chaque acces du getter, negligeable.
   ///
   /// La slide 'Apporte ton fournisseur — nous ne vendons aucun flux'
   /// a ete retiree (post virage utilisateur vers la posture
   /// revendeur : le serveur est hardcode dans FlavorConfig et
   /// l'utilisateur ne voit que le formulaire identifiant/code).
-  static List<_OnboardingPage> get _pages {
+  List<_OnboardingPage> get _pages {
     final String appName = FlavorConfig.current.appName;
     return <_OnboardingPage>[
       _OnboardingPage(
         icon: Icons.local_movies_rounded,
-        title: 'Bienvenue sur $appName',
-        description:
-            'Cinéma sans limites. Conçu pour la TV, optimisé pour ton téléphone, beau partout.',
+        title: context.l10n.onboardingWelcomeAppTitle(appName),
+        description: context.l10n.onboardingWelcomeDesc,
       ),
-      const _OnboardingPage(
+      _OnboardingPage(
         icon: Icons.cloud_upload_outlined,
-        title: 'Charge tes chaînes',
-        description:
-            'Choisis ton serveur et saisis ton code Xtream (utilisateur + mot de passe). Tes chaînes apparaissent en quelques secondes.',
+        title: context.l10n.onboardingChannelsTitle,
+        description: context.l10n.onboardingChannelsDesc,
       ),
-      const _OnboardingPage(
+      _OnboardingPage(
         icon: Icons.fingerprint_rounded,
-        title: 'Active tes chaînes',
-        description:
-            'Cet identifiant unique permet d\'activer ton compte à distance. Envoie-le en 1 tap, notre équipe configure ton accès en quelques minutes.',
+        title: context.l10n.onboardingActivateTitle,
+        description: context.l10n.onboardingActivateDesc,
         isMacSlide: true,
       ),
-      const _OnboardingPage(
+      _OnboardingPage(
         icon: Icons.workspace_premium_rounded,
-        title: 'Tout ce qu\'il te faut',
-        description:
-            'Sans publicité. Cast vers TV, ordi, tablette. Enregistrement en parallèle. Lecteur 4K/8K. QR-cast. Recherche instantanée.',
+        title: context.l10n.onboardingPremiumTitle,
+        description: context.l10n.onboardingPremiumDesc,
       ),
-      const _OnboardingPage(
+      _OnboardingPage(
         icon: Icons.celebration_outlined,
-        title: 'Essai gratuit 7 jours',
-        description:
-            'Profite de toutes les fonctions pendant 7 jours. Ensuite 5 €/an ou 9,90 € à vie sur tous tes appareils — paiement sécurisé (jamais in-app).',
+        title: context.l10n.paywallFreeTrialTitle,
+        description: context.l10n.onboardingTrialDesc,
       ),
     ];
   }
@@ -343,10 +340,11 @@ class _MacHandoffSlideState extends State<_MacHandoffSlide> {
     if (_mac == null) return;
     // Message d'activation a destination du support — le nom du
     // flavor est injecte dynamiquement pour que Red Room ne signe
-    // pas 'Bonjour The Few' a tes clients.
+    // pas 'Bonjour The Few' a tes clients. Localise : le message
+    // pre-rempli est visible par l'utilisateur dans WhatsApp.
     final String appName = FlavorConfig.current.appName;
     final String msg =
-        'Bonjour $appName, voici mon identifiant pour activer mes chaînes :\n\n$_mac';
+        context.l10n.onboardingActivationMessage(appName, _mac!);
     await showSupportChoiceSheet(context, customMessage: msg);
   }
 

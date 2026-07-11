@@ -42,6 +42,7 @@ import '../../../../core/theme/cinematic_spacing.dart';
 import '../../../../core/widgets/live_badge.dart';
 import '../../../../core/widgets/tv_focusable.dart';
 import '../../domain/channel.dart';
+import '../genre_l10n.dart';
 
 class HeroSection extends StatelessWidget {
   const HeroSection({
@@ -282,8 +283,9 @@ class _MetaLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final List<String> parts = <String>[
-      channel.genre.label,
-      if (channel.country != null) channel.country!.name,
+      channel.genre.localizedLabel(context.l10n),
+      if (channel.country != null)
+        channel.country!.localizedLabel(context.l10n),
       if (channel.quality != ChannelQuality.sd) channel.quality.badge,
     ];
     return Text(

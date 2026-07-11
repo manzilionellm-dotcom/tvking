@@ -134,7 +134,14 @@ class _PlaylistTile extends StatelessWidget {
     final int? ts = playlist.lastSyncedAt;
     if (ts == null) return context.l10n.playlistNeverSynced;
     final DateTime dt = DateTime.fromMillisecondsSinceEpoch(ts);
-    return 'Synchro : ${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}h${dt.minute.toString().padLeft(2, '0')}';
+    // Date + heure formatées selon la locale courante (jamais de
+    // '${dt.day}/${dt.month}' en dur : l'ordre jour/mois et le format
+    // 12h/24h varient d'une langue à l'autre).
+    final MaterialLocalizations ml = MaterialLocalizations.of(context);
+    return context.l10n.syncedAtLabel(
+      ml.formatCompactDate(dt),
+      ml.formatTimeOfDay(TimeOfDay.fromDateTime(dt)),
+    );
   }
 
   @override

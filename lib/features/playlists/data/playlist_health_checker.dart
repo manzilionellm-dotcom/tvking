@@ -38,6 +38,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/i18n/l10n_now.dart';
 import '../../../core/observability/structured_logger.dart';
 import '../domain/playlist.dart';
 import 'source_link_utils.dart';
@@ -94,23 +95,25 @@ class PlaylistHealth {
     checkedAt: DateTime.fromMillisecondsSinceEpoch(0),
   );
 
-  /// Libelle court francais pour l'UI (badge texte).
+  /// Libelle court LOCALISÉ pour l'UI (badge texte). Résolu via `l10nNow`
+  /// (pas de BuildContext dans ce modèle) : la valeur est recalculée à
+  /// chaque lecture, donc chaque rebuild du badge suit la langue active.
   String get label {
     switch (status) {
       case PlaylistHealthStatus.ok:
-        return 'En ligne';
+        return l10nNow.healthStatusOnline;
       case PlaylistHealthStatus.saturated:
-        return 'Saturé';
+        return l10nNow.healthStatusSaturated;
       case PlaylistHealthStatus.auth:
-        return 'Auth refusée';
+        return l10nNow.healthStatusAuthRefused;
       case PlaylistHealthStatus.slow:
-        return 'Lent';
+        return l10nNow.healthStatusSlow;
       case PlaylistHealthStatus.down:
-        return 'Hors ligne';
+        return l10nNow.healthStatusOffline;
       case PlaylistHealthStatus.unknown:
-        return 'Statut inconnu';
+        return l10nNow.healthStatusUnknown;
       case PlaylistHealthStatus.notChecked:
-        return 'À tester';
+        return l10nNow.healthStatusNotChecked;
     }
   }
 
@@ -207,7 +210,7 @@ class PlaylistHealthChecker {
           return PlaylistHealth(
             status: PlaylistHealthStatus.down,
             checkedAt: DateTime.now(),
-            errorReason: 'URL M3U manquante',
+            errorReason: l10nNow.healthErrorM3uUrlMissing,
           );
         }
         return _checkM3u(playlist.m3uUrl!);
@@ -218,7 +221,7 @@ class PlaylistHealthChecker {
           return PlaylistHealth(
             status: PlaylistHealthStatus.down,
             checkedAt: DateTime.now(),
-            errorReason: 'Identifiants Xtream incomplets',
+            errorReason: l10nNow.healthErrorXtreamIncomplete,
           );
         }
         return _checkXtream(
@@ -254,14 +257,14 @@ class PlaylistHealthChecker {
         status: PlaylistHealthStatus.down,
         checkedAt: DateTime.now(),
         ttfbMs: sw.elapsedMilliseconds,
-        errorReason: 'Timeout',
+        errorReason: l10nNow.healthErrorTimeout,
       );
     } on SocketException catch (e) {
       return PlaylistHealth(
         status: PlaylistHealthStatus.down,
         checkedAt: DateTime.now(),
         ttfbMs: sw.elapsedMilliseconds,
-        errorReason: 'Réseau (${e.osError?.message ?? "socket"})',
+        errorReason: l10nNow.healthErrorNetwork(e.osError?.message ?? 'socket'),
       );
     } on Exception catch (e) {
       return PlaylistHealth(
@@ -331,14 +334,14 @@ class PlaylistHealthChecker {
         status: PlaylistHealthStatus.down,
         checkedAt: DateTime.now(),
         ttfbMs: sw.elapsedMilliseconds,
-        errorReason: 'Timeout',
+        errorReason: l10nNow.healthErrorTimeout,
       );
     } on SocketException catch (e) {
       return PlaylistHealth(
         status: PlaylistHealthStatus.down,
         checkedAt: DateTime.now(),
         ttfbMs: sw.elapsedMilliseconds,
-        errorReason: 'Réseau (${e.osError?.message ?? "socket"})',
+        errorReason: l10nNow.healthErrorNetwork(e.osError?.message ?? 'socket'),
       );
     } on Exception catch (e) {
       return PlaylistHealth(

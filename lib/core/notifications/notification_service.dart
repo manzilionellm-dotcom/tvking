@@ -32,6 +32,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../../features/subscription/data/subscription_backend.dart';
 import '../../features/subscription/data/subscription_state.dart';
+import '../i18n/l10n_now.dart';
 
 class NotificationService {
   NotificationService._();
@@ -43,16 +44,17 @@ class NotificationService {
   bool _ready = false;
 
   // Canal Android dédié aux rappels (obligatoire depuis Android 8).
+  // Les LIBELLÉS (nom + description, visibles dans les réglages Android)
+  // sont lus via `l10nNow` À CHAQUE création de canal / émission : ils
+  // suivent donc la langue active au moment de l'appel.
   static const String _channelId = 'epg_reminders';
-  static const String _channelName = 'Rappels de programmes';
-  static const String _channelDesc =
-      'Notifications avant le début d\'un programme que vous avez choisi.';
+  static String get _channelName => l10nNow.notifChannelRemindersName;
+  static String get _channelDesc => l10nNow.notifChannelRemindersDesc;
 
   // Canal "général" : annonces de l'admin + dispo des mises à jour.
   static const String _generalChannelId = 'general_news';
-  static const String _generalChannelName = 'Annonces & mises à jour';
-  static const String _generalChannelDesc =
-      'Nouveautés, annonces de l\'équipe et disponibilité des mises à jour.';
+  static String get _generalChannelName => l10nNow.notifChannelGeneralName;
+  static String get _generalChannelDesc => l10nNow.notifChannelGeneralDesc;
 
   // -------------------------------------------------------------------
   //  Préférences utilisateur (3 interrupteurs côté Réglages)
@@ -103,7 +105,7 @@ class NotificationService {
           _plugin.resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
       await android?.createNotificationChannel(
-        const AndroidNotificationChannel(
+        AndroidNotificationChannel(
           _channelId,
           _channelName,
           description: _channelDesc,
@@ -114,7 +116,7 @@ class NotificationService {
       // pop-up plein écran intrusif), pas de vibration. L'annonce arrive
       // comme une info gentille dans le volet, pas comme une alarme.
       await android?.createNotificationChannel(
-        const AndroidNotificationChannel(
+        AndroidNotificationChannel(
           _generalChannelId,
           _generalChannelName,
           description: _generalChannelDesc,
@@ -180,9 +182,9 @@ class NotificationService {
       await _plugin.zonedSchedule(
         _idFor(channelId, startMs),
         title,
-        'Commence à $hhmm sur $channelName',
+        l10nNow.notifBodyStartsAt(hhmm, channelName),
         when,
-        const NotificationDetails(
+        NotificationDetails(
           android: AndroidNotificationDetails(
             _channelId,
             _channelName,
@@ -267,10 +269,10 @@ class NotificationService {
       if (latestTs <= last) return;
       await showNow(
         id: 990001,
-        title: 'Mise à jour disponible',
+        title: l10nNow.updateAvailableTitle,
         body: versionLabel == null || versionLabel.isEmpty
-            ? 'Une nouvelle version de l\'application est prête à installer.'
-            : 'Nouvelle version ($versionLabel) prête à installer.',
+            ? l10nNow.notifBodyUpdateReady
+            : l10nNow.notifBodyUpdateVersion(versionLabel),
       );
       await p.setInt('notif.update.lastTs', latestTs);
     } catch (e) {
@@ -303,7 +305,7 @@ class NotificationService {
 
       await showNow(
         id: 980000 + (id & 0xffff),
-        title: title.isEmpty ? 'Nouveauté' : title,
+        title: title.isEmpty ? l10nNow.notifTitleNews : title,
         body: body,
       );
       await p.setInt('notif.announce.lastSeen', id);
@@ -326,7 +328,9 @@ class NotificationService {
   static const int _idTonight = 900002; // nudge quotidien du soir
   static const int _idTrialEnd = 900003; // « ton accès se termine bientôt »
 
-  NotificationDetails get _generalDetails => const NotificationDetails(
+  // Plus `const` : le nom/description du canal sont désormais LOCALISÉS
+  // (getters l10nNow, non constants).
+  NotificationDetails get _generalDetails => NotificationDetails(
         android: AndroidNotificationDetails(
           _generalChannelId,
           _generalChannelName,

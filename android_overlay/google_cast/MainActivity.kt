@@ -215,7 +215,15 @@ class MainActivity : FlutterFragmentActivity() {
                     "startBackgroundAudio" -> {
                         val title = call.argument<String>("title") ?: "7 MOTION"
                         val body = call.argument<String>("body")
-                        startBackgroundAudio(title, body)
+                        // i18n : libellés localisés (bouton Arrêter + canal
+                        // de notification) fournis par Dart, null-safe.
+                        startBackgroundAudio(
+                            title,
+                            body,
+                            call.argument<String>("stopLabel"),
+                            call.argument<String>("channelName"),
+                            call.argument<String>("channelDesc"),
+                        )
                         result.success(null)
                     }
                     "stopBackgroundAudio" -> {
@@ -266,13 +274,28 @@ class MainActivity : FlutterFragmentActivity() {
     /// Démarre le service audio de fond (mode « Écouteurs »). Appelé
     /// pendant que l'app est VISIBLE (tap utilisateur) → pas de
     /// restriction Android 12+ sur le démarrage d'un foreground service.
-    private fun startBackgroundAudio(title: String, body: String? = null) {
+    private fun startBackgroundAudio(
+        title: String,
+        body: String? = null,
+        stopLabel: String? = null,
+        channelName: String? = null,
+        channelDesc: String? = null,
+    ) {
         try {
             val intent = Intent(this, PlaybackForegroundService::class.java).apply {
                 action = PlaybackForegroundService.ACTION_START
                 putExtra(PlaybackForegroundService.EXTRA_TITLE, title)
                 if (body != null) {
                     putExtra(PlaybackForegroundService.EXTRA_BODY, body)
+                }
+                if (stopLabel != null) {
+                    putExtra(PlaybackForegroundService.EXTRA_STOP_LABEL, stopLabel)
+                }
+                if (channelName != null) {
+                    putExtra(PlaybackForegroundService.EXTRA_CHANNEL_NAME, channelName)
+                }
+                if (channelDesc != null) {
+                    putExtra(PlaybackForegroundService.EXTRA_CHANNEL_DESC, channelDesc)
                 }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

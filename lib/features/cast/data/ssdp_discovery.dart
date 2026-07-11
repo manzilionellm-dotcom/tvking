@@ -30,6 +30,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
 
+import '../../../core/i18n/l10n_now.dart';
 import '../../../core/observability/structured_logger.dart';
 import '../domain/cast_device.dart';
 import 'multicast_lock.dart';
@@ -310,8 +311,10 @@ class SsdpDiscovery {
       if (deviceElements.isEmpty) return null;
       final XmlElement device = deviceElements.first;
 
+      // i18n : repli localisé quand la TV n'annonce pas de friendlyName
+      // (recalculé à chaque découverte, donc suit la langue active).
       final String name =
-          _childText(device, 'friendlyName') ?? 'Récepteur DLNA';
+          _childText(device, 'friendlyName') ?? l10nNow.castDlnaReceiverFallback;
       final String? manufacturer = _childText(device, 'manufacturer');
       final String? model = _childText(device, 'modelName');
 

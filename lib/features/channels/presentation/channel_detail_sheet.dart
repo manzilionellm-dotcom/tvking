@@ -24,10 +24,12 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../epg/presentation/channel_programs_screen.dart';
+import '../../epg/presentation/epg_format.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../domain/channel.dart';
+import 'genre_l10n.dart';
 import 'widgets/channel_logo.dart';
 
 Future<void> showChannelDetail(BuildContext context, Channel channel) {
@@ -134,7 +136,7 @@ class ChannelDetailSheet extends StatelessWidget {
                               icon: Icons.play_circle_filled_rounded,
                               title: cur.title,
                               subtitle:
-                                  '${cur.timeRangeShort} · ${context.l10n.detailNowPlaying}',
+                                  '${epgTimeRange(context, cur)} · ${context.l10n.detailNowPlaying}',
                               accent: true,
                             ),
                           if (next != null) ...<Widget>[
@@ -143,7 +145,7 @@ class ChannelDetailSheet extends StatelessWidget {
                               icon: Icons.schedule_rounded,
                               title: next.title,
                               subtitle:
-                                  '${next.timeRangeShort} · ${context.l10n.detailUpNext}',
+                                  '${epgTimeRange(context, next)} · ${context.l10n.detailUpNext}',
                               accent: false,
                             ),
                           ],
@@ -160,7 +162,7 @@ class ChannelDetailSheet extends StatelessWidget {
                   if (channel.country != null)
                     _detailRow(
                       context.l10n.detailCountry,
-                      '${channel.country!.flag} ${channel.country!.name}',
+                      '${channel.country!.flag} ${channel.country!.localizedLabel(context.l10n)}',
                     ),
                   _detailRow(context.l10n.detailQuality, channel.quality.badge),
                   _detailRow(
@@ -357,13 +359,14 @@ class _MetaBadges extends StatelessWidget {
           ),
         _badge(
           icon: channel.genre.icon,
-          text: channel.genre.label,
+          text: channel.genre.localizedLabel(context.l10n),
           color: AppColors.surface,
           textColor: AppColors.textSecondary,
         ),
         if (channel.country != null)
           _badge(
-            text: '${channel.country!.flag} ${channel.country!.name}',
+            text:
+                '${channel.country!.flag} ${channel.country!.localizedLabel(context.l10n)}',
             color: AppColors.surface,
             textColor: AppColors.textSecondary,
           ),

@@ -59,6 +59,17 @@ class RecordingForegroundService : Service() {
         const val EXTRA_URL = "url"
         const val EXTRA_FILE = "file"
 
+        /// i18n : libellés localisés fournis par Dart (AppLocalizations,
+        /// langue du téléphone ou choix Réglages). Les défauts français
+        /// ne servent que de filet si les extras manquent.
+        const val EXTRA_NOTIF_TITLE = "notifTitle"
+        const val EXTRA_CHANNEL_NAME = "channelName"
+        const val EXTRA_CHANNEL_DESC = "channelDesc"
+        private const val DEFAULT_NOTIF_TITLE = "Enregistrement en cours"
+        private const val DEFAULT_CHANNEL_NAME = "Enregistrements"
+        private const val DEFAULT_CHANNEL_DESC =
+            "Notification persistante pendant un enregistrement"
+
         /// Octets écrits par l'enregistrement natif en cours. Lu en
         /// best-effort par Dart si besoin. 0 = inactif.
         @Volatile
@@ -99,8 +110,17 @@ class RecordingForegroundService : Service() {
                 val url = intent.getStringExtra(EXTRA_URL)
                 val file = intent.getStringExtra(EXTRA_FILE)
                 Log.i(TAG, "START foreground: $title (url=${url != null})")
-                createChannelIfNeeded()
-                startForeground(NOTIFICATION_ID, buildNotification(title))
+                createChannelIfNeeded(
+                    intent.getStringExtra(EXTRA_CHANNEL_NAME) ?: DEFAULT_CHANNEL_NAME,
+                    intent.getStringExtra(EXTRA_CHANNEL_DESC) ?: DEFAULT_CHANNEL_DESC,
+                )
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildNotification(
+                        title,
+                        intent.getStringExtra(EXTRA_NOTIF_TITLE) ?: DEFAULT_NOTIF_TITLE,
+                    ),
+                )
                 acquireLocks()
                 // Si une URL + un fichier sont fournis, on enregistre
                 // NATIVEMENT (le telechargement vit dans CE service, donc
@@ -569,10 +589,13 @@ class RecordingForegroundService : Service() {
         }
     }
 
-    private fun buildNotification(title: String): Notification {
+    private fun buildNotification(
+        title: String,
+        notifTitle: String = DEFAULT_NOTIF_TITLE,
+    ): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle("Enregistrement en cours")
+            .setContentTitle(notifTitle)
             .setContentText(title)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -586,21 +609,25 @@ class RecordingForegroundService : Service() {
             .build()
     }
 
-    private fun createChannelIfNeeded() {
+    private fun createChannelIfNeeded(
+        name: String = DEFAULT_CHANNEL_NAME,
+        desc: String = DEFAULT_CHANNEL_DESC,
+    ) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
         val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (mgr.getNotificationChannel(CHANNEL_ID) != null) return
-
+        // createNotificationChannel() sur un canal existant met à jour
+        // nom + description (jamais l'importance) → le canal suit la
+        // langue de l'app à chaque démarrage d'enregistrement.
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Enregistrements",
+            name,
             // LOW = pas de son ni de heads-up, juste l'icône dans la
             // barre de statut. Le user n'a pas envie d'être harcelé
             // pendant son match de foot.
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Notification persistante pendant un enregistrement"
+            description = desc
             setShowBadge(false)
         }
         mgr.createNotificationChannel(channel)

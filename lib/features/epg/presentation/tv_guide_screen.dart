@@ -15,6 +15,8 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show listEquals;
+
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
@@ -29,6 +31,7 @@ import '../../playlists/data/playlist_repository.dart';
 import '../data/catchup_url_builder.dart';
 import '../data/epg_repository.dart';
 import '../domain/epg_program.dart';
+import 'epg_format.dart';
 
 class TvGuideScreen extends StatefulWidget {
   const TvGuideScreen({super.key});
@@ -246,7 +249,19 @@ class _TimeRuler extends StatelessWidget {
                 height: 36,
                 child: CustomPaint(
                   painter: _RulerPainter(
-                    timelineStart: timelineStart,
+                    // Les libellés d'heures sont préparés ICI (le painter
+                    // n'a pas de BuildContext) : la marque « 20h » suit
+                    // ainsi la langue de l'app via guideHourMark.
+                    hourLabels: List<String>.generate(
+                      25,
+                      (int h) => context.l10n.guideHourMark(
+                        timelineStart
+                            .add(Duration(hours: h))
+                            .hour
+                            .toString()
+                            .padLeft(2, '0'),
+                      ),
+                    ),
                     hourWidth: hourWidth,
                     color: AppColors.textMuted,
                     accent: AppColors.accent,
@@ -263,13 +278,15 @@ class _TimeRuler extends StatelessWidget {
 
 class _RulerPainter extends CustomPainter {
   _RulerPainter({
-    required this.timelineStart,
+    required this.hourLabels,
     required this.hourWidth,
     required this.color,
     required this.accent,
   });
 
-  final DateTime timelineStart;
+  /// Libellés LOCALISÉS des 25 graduations horaires, fournis par le
+  /// widget parent (un CustomPainter n'a pas de BuildContext).
+  final List<String> hourLabels;
   final double hourWidth;
   final Color color;
   final Color accent;
@@ -281,9 +298,8 @@ class _RulerPainter extends CustomPainter {
       fontSize: 11,
       fontWeight: FontWeight.w500,
     );
-    for (int h = 0; h <= 24; h++) {
+    for (int h = 0; h < hourLabels.length; h++) {
       final double x = h * hourWidth;
-      final DateTime time = timelineStart.add(Duration(hours: h));
       // Trait de graduation
       final Paint tick = Paint()..color = color.withValues(alpha: 0.3);
       canvas.drawLine(
@@ -292,10 +308,8 @@ class _RulerPainter extends CustomPainter {
         tick,
       );
       // Label
-      final String label =
-          '${time.hour.toString().padLeft(2, '0')}h';
       final TextPainter tp = TextPainter(
-        text: TextSpan(text: label, style: style),
+        text: TextSpan(text: hourLabels[h], style: style),
         textDirection: TextDirection.ltr,
       )..layout();
       tp.paint(canvas, Offset(x + 4, 6));
@@ -304,7 +318,7 @@ class _RulerPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _RulerPainter oldDelegate) =>
-      oldDelegate.timelineStart != timelineStart;
+      !listEquals(oldDelegate.hourLabels, hourLabels);
 }
 
 // ============================================================
@@ -418,8 +432,9 @@ class _GuideBody extends StatelessWidget {
                         } else {
                           // Futur → on programme un RAPPEL (~5 min avant le
                           // début) et on confirme à l'utilisateur.
-                          final String start =
-                              p.timeRangeShort.split(' – ').first;
+                          // Heure de début LOCALISÉE (12h/24h selon la
+                          // locale) via le helper presentation.
+                          final String start = epgStartTime(context, p);
                           NotificationService.instance
                               .scheduleProgramReminder(
                             channelId: p.channelId,
@@ -436,8 +451,10 @@ class _GuideBody extends StatelessWidget {
                                 behavior: SnackBarBehavior.floating,
                                 content: Text(
                                   ok
-                                      ? '🔔 Rappel programmé · ${p.title} ($start)'
-                                      : '${p.title} · démarre à $start',
+                                      ? context.l10n
+                                          .guideReminderSet(p.title, start)
+                                      : context.l10n.guideReminderStartsAt(
+                                          p.title, start),
                                   style: AppTextStyles.bodyMedium,
                                 ),
                               ),
@@ -645,7 +662,9 @@ class _ProgramCell extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
               Text(
-                program.timeRangeShort,
+                // Plage horaire localisée (suit le format 12h/24h de
+                // la locale) au lieu du repli FR du domain.
+                epgTimeRange(context, program),
                 style: AppTextStyles.bodyMedium.copyWith(
                   fontSize: 9,
                   color: AppColors.textMuted,

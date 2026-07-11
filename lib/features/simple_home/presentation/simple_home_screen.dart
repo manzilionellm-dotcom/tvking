@@ -389,7 +389,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                   title: Text(
                     (p.name as String?)?.isNotEmpty == true
                         ? p.name as String
-                        : 'Source',
+                        : context.l10n.homeSourceFallback,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppTextStyles.bodyLarge.copyWith(fontSize: 14),

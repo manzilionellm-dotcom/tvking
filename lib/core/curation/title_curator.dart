@@ -37,6 +37,26 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../i18n/l10n_now.dart';
+
+/// Jeton éditorial canonique d'une catégorie « crue ».
+/// La map [_categoryEditorial] pointe vers ces jetons STABLES ; le
+/// libellé affiché est résolu au dernier moment via `l10nNow` (voir
+/// [TitleCurator.curateCategory]) pour suivre la langue active.
+enum _EditorialCategory {
+  afterDark,
+  cinema,
+  series,
+  sports,
+  football,
+  news,
+  kids,
+  music,
+  documentary,
+  general,
+  entertainment,
+}
+
 abstract final class TitleCurator {
   // -----------------------------------------------------------------
   //  Préfixes IPTV typiques à virer en début de nom.
@@ -140,58 +160,97 @@ abstract final class TitleCurator {
   //  la présentation. Le label catégorie d'origine reste accessible
   //  côté domain pour la recherche.
   // -----------------------------------------------------------------
-  static const Map<String, String> _categoryEditorial = <String, String>{
-    'adult': 'After Dark',
-    'adults': 'After Dark',
-    'adulte': 'After Dark',
-    'adultes': 'After Dark',
-    'xxx': 'After Dark',
-    '18+': 'After Dark',
-    'porn': 'After Dark',
-    'porno': 'After Dark',
+  //  I18N — POURQUOI `l10nNow` ici plutôt qu'une localisation à
+  //  l'affichage : `curateCategory` est consommée depuis le domain
+  //  (`Channel.prettyCategory`) ET depuis features/tv — localiser
+  //  chaque call-site aurait éparpillé la logique. Le chemin éditorial
+  //  n'est PAS mis en cache (contrairement à `curate()`), donc le
+  //  libellé est re-résolu à chaque rebuild et suit la langue active.
+  //  La map garde des JETONS stables ; « Cinéma », « Séries », « Info »…
+  //  réutilisent les clés existantes (catFilterMovies, sectionSeries,
+  //  catInfo…), seules editorialAfterDark / editorialGeneralist sont
+  //  nouvelles.
+  static const Map<String, _EditorialCategory> _categoryEditorial =
+      <String, _EditorialCategory>{
+    'adult': _EditorialCategory.afterDark,
+    'adults': _EditorialCategory.afterDark,
+    'adulte': _EditorialCategory.afterDark,
+    'adultes': _EditorialCategory.afterDark,
+    'xxx': _EditorialCategory.afterDark,
+    '18+': _EditorialCategory.afterDark,
+    'porn': _EditorialCategory.afterDark,
+    'porno': _EditorialCategory.afterDark,
 
-    'movies': 'Cinéma',
-    'movie': 'Cinéma',
-    'films': 'Cinéma',
-    'vod': 'Cinéma',
-    'cinema': 'Cinéma',
-    'cinéma': 'Cinéma',
+    'movies': _EditorialCategory.cinema,
+    'movie': _EditorialCategory.cinema,
+    'films': _EditorialCategory.cinema,
+    'vod': _EditorialCategory.cinema,
+    'cinema': _EditorialCategory.cinema,
+    'cinéma': _EditorialCategory.cinema,
 
-    'series': 'Séries',
-    'séries': 'Séries',
-    'tv shows': 'Séries',
-    'tv show': 'Séries',
-    'shows': 'Séries',
+    'series': _EditorialCategory.series,
+    'séries': _EditorialCategory.series,
+    'tv shows': _EditorialCategory.series,
+    'tv show': _EditorialCategory.series,
+    'shows': _EditorialCategory.series,
 
-    'sport': 'Sports',
-    'sports': 'Sports',
-    'football': 'Football',
-    'soccer': 'Football',
-    'fútbol': 'Football',
+    'sport': _EditorialCategory.sports,
+    'sports': _EditorialCategory.sports,
+    'football': _EditorialCategory.football,
+    'soccer': _EditorialCategory.football,
+    'fútbol': _EditorialCategory.football,
 
-    'news': 'Info',
-    'actu': 'Info',
-    'actualités': 'Info',
+    'news': _EditorialCategory.news,
+    'actu': _EditorialCategory.news,
+    'actualités': _EditorialCategory.news,
 
-    'kids': 'Jeunesse',
-    'children': 'Jeunesse',
-    'enfants': 'Jeunesse',
-    'cartoon': 'Jeunesse',
-    'cartoons': 'Jeunesse',
+    'kids': _EditorialCategory.kids,
+    'children': _EditorialCategory.kids,
+    'enfants': _EditorialCategory.kids,
+    'cartoon': _EditorialCategory.kids,
+    'cartoons': _EditorialCategory.kids,
 
-    'music': 'Musique',
-    'musique': 'Musique',
-    'concert': 'Musique',
+    'music': _EditorialCategory.music,
+    'musique': _EditorialCategory.music,
+    'concert': _EditorialCategory.music,
 
-    'documentary': 'Documentaires',
-    'docs': 'Documentaires',
-    'docu': 'Documentaires',
-    'doc': 'Documentaires',
+    'documentary': _EditorialCategory.documentary,
+    'docs': _EditorialCategory.documentary,
+    'docu': _EditorialCategory.documentary,
+    'doc': _EditorialCategory.documentary,
 
-    'general': 'Généraliste',
-    'généraliste': 'Généraliste',
-    'entertainment': 'Divertissement',
+    'general': _EditorialCategory.general,
+    'généraliste': _EditorialCategory.general,
+    'entertainment': _EditorialCategory.entertainment,
   };
+
+  /// Libellé TRADUIT d'un jeton éditorial (résolu à l'appel, jamais caché).
+  static String _editorialLabel(_EditorialCategory cat) {
+    switch (cat) {
+      case _EditorialCategory.afterDark:
+        return l10nNow.editorialAfterDark;
+      case _EditorialCategory.cinema:
+        return l10nNow.catFilterMovies;
+      case _EditorialCategory.series:
+        return l10nNow.sectionSeries;
+      case _EditorialCategory.sports:
+        return l10nNow.genreSports;
+      case _EditorialCategory.football:
+        return l10nNow.navTabFootball;
+      case _EditorialCategory.news:
+        return l10nNow.catInfo;
+      case _EditorialCategory.kids:
+        return l10nNow.sectionKids;
+      case _EditorialCategory.music:
+        return l10nNow.sectionMusic;
+      case _EditorialCategory.documentary:
+        return l10nNow.sectionDocs;
+      case _EditorialCategory.general:
+        return l10nNow.editorialGeneralist;
+      case _EditorialCategory.entertainment:
+        return l10nNow.sectionEntertainment;
+    }
+  }
 
   /// Cache LRU naïf — `curate()` est appelé sur 20 000+ chaînes à
   /// chaque rebuild d'écran. Sans cache, on saturait le main thread
@@ -317,8 +376,8 @@ abstract final class TitleCurator {
   static String curateCategory(String raw) {
     if (raw.isEmpty) return raw;
     final String key = raw.trim().toLowerCase();
-    final String? editorial = _categoryEditorial[key];
-    if (editorial != null) return editorial;
+    final _EditorialCategory? editorial = _categoryEditorial[key];
+    if (editorial != null) return _editorialLabel(editorial);
     return curate(raw);
   }
 
