@@ -35,9 +35,11 @@ import '../../../../core/haptics/haptics.dart';
 import '../../../channels/domain/channel.dart';
 import '../../../channels/data/recently_watched_repository.dart';
 import '../../../channels/data/watch_history_repository.dart';
+import '../../../channels/presentation/widgets/live_now_favorites_row.dart';
 import '../../../country_home/presentation/widgets/channel_logo.dart';
 import '../../../player/presentation/play_channel.dart';
 import '../../../playlists/data/favorites_repository.dart';
+import '../../../vod/data/playback_position_repository.dart';
 
 /// Grands « rayons » de contenu, pour la barre de filtres du haut.
 /// Tout ce qui n'est ni film, ni série, ni adulte tombe dans [tv]
@@ -142,6 +144,77 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
       _byIdFor = widget.channels;
     }
     return _byIdCache!;
+  }
+
+  /// Rangée « Reprendre » (Continue Watching VOD) : les films / séries
+  /// commencés mais pas terminés, avec une VRAIE barre de progression, façon
+  /// Netflix. Alimentée par les positions mémorisées par le lecteur
+  /// (PlaybackPositionRepository). Se met à jour en direct (ChangeNotifier)
+  /// et se cache toute seule si vide. C'est le hook de retour n°1
+  /// (≈ 70 % des plays Netflix).
+  Widget _buildResumeVodRail() {
+    return ListenableBuilder(
+      listenable: PlaybackPositionRepository.instance,
+      builder: (BuildContext context, _) {
+        final List<PlaybackPosition> items = <PlaybackPosition>[
+          for (final PlaybackPosition p
+              in PlaybackPositionRepository.instance.entries)
+            if (p.progress > 0.02 && p.progress < 0.95) p,
+        ];
+        if (items.isEmpty) return const SizedBox.shrink();
+        final List<PlaybackPosition> shown =
+            items.length > 12 ? items.sublist(0, 12) : items;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Row(
+                children: <Widget>[
+                  Icon(Icons.play_circle_fill_rounded,
+                      size: 16, color: AppColors.accent),
+                  const SizedBox(width: 6),
+                  Text(
+                    context.l10n.sectionResume,
+                    style: AppTextStyles.headlineMedium.copyWith(
+                      fontSize: 13,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 118,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: shown.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemBuilder: (BuildContext context, int i) {
+                  final PlaybackPosition p = shown[i];
+                  final Channel ch = Channel(
+                    id: p.key,
+                    name: p.name,
+                    category: '',
+                    streamUrl: p.streamUrl,
+                    isLive: false,
+                    logoUrl: p.posterUrl,
+                  );
+                  return _ResumeVodCard(
+                    channel: ch,
+                    progress: p.progress,
+                    onTap: () => playChannel(context, ch),
+                  );
+                },
+              ),
+            ),
+            const Divider(height: 1, thickness: 0.5, color: AppColors.surface),
+          ],
+        );
+      },
+    );
   }
 
   /// Rail horizontal des dernières chaînes regardées (max 10), façon
@@ -390,43 +463,51 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
     final List<String> cats =
         allCats.where((String c) => catBucket[c] == effective).toList();
 
-    return Column(
+    // TOUT défile ensemble (un seul ListView) : les rangées d'engagement
+    // en tête, puis la barre de filtres, puis les catégories. Ça évite tout
+    // risque de débordement quand plusieurs rails s'empilent (petit écran,
+    // power-user) ET donne un vrai accueil scrollable façon Netflix. Chaque
+    // rail se cache tout seul quand il est vide (nouvel utilisateur = liste
+    // de catégories seule, comme avant).
+    return ListView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.only(bottom: 16),
       children: <Widget>[
-        // Rayon « 🔥 Top 10 » : preuve sociale en tête d'accueil (secret
-        // des apps US premium). Classement réel par temps de visionnage,
-        // avec repli « tendances du jour » pour ne jamais être vide.
+        // Rangée « Reprendre » (Continue Watching VOD) : films/séries
+        // commencés, avec barre de progression. Le hook de retour n°1.
+        _buildResumeVodRail(),
+        // Rayon « 🔥 Top 10 » : preuve sociale en tête d'accueil. Classement
+        // réel par temps de visionnage, avec repli « tendances du jour ».
         _buildTopRail(),
-        // Rayon « Récemment regardées » : rail horizontal élégant des
-        // dernières chaînes ouvertes par le client (max 10). Disparaît
-        // tout seul s'il n'y a pas encore d'historique.
+        // Rayon « Récemment regardées » : dernières chaînes ouvertes (max 10).
         _buildRecentRail(),
-        // Barre de filtres : affichée seulement s'il y a plus d'un rayon
-        // (sinon inutile, on n'affiche que ce rayon unique).
+        // Rangée « Favoris en direct maintenant » : les favoris qui diffusent
+        // en ce moment (widget autonome, se cache s'il n'y a rien).
+        const LiveNowFavoritesRow(),
+        // Barre de filtres : seulement s'il y a plus d'un rayon.
         if (ordered.length > 1) _buildFilterBar(ordered, effective),
-        Expanded(
-          child: cats.isEmpty
-              ? Center(
-                  child: Text(
-                    context.l10n.catEmptyShelf,
-                    style: AppTextStyles.bodyMedium.copyWith(
-                        fontSize: 14, color: AppColors.textSecondary),
-                  ),
-                )
-              : ListView.separated(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
-                  itemCount: cats.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (BuildContext context, int i) {
-                    final String cat = cats[i];
-                    return _CategoryRow(
-                      title: cat,
-                      count: grouped[cat]!.length,
-                      onTap: () => setState(() => _selected = cat),
-                    );
-                  },
-                ),
-        ),
+        // Catégories de la playlist (ordre natif préservé).
+        if (cats.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: Text(
+                context.l10n.catEmptyShelf,
+                style: AppTextStyles.bodyMedium.copyWith(
+                    fontSize: 14, color: AppColors.textSecondary),
+              ),
+            ),
+          )
+        else
+          for (final String cat in cats)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+              child: _CategoryRow(
+                title: cat,
+                count: grouped[cat]!.length,
+                onTap: () => setState(() => _selected = cat),
+              ),
+            ),
       ],
     );
   }
@@ -698,6 +779,54 @@ class _ChannelRow extends StatelessWidget {
                   color: AppColors.textTertiary, size: 22),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Vignette « Reprendre » : logo + VRAIE barre de progression + nom. La
+/// barre montre où en est le film/série (positions du lecteur).
+class _ResumeVodCard extends StatelessWidget {
+  const _ResumeVodCard({
+    required this.channel,
+    required this.progress,
+    required this.onTap,
+  });
+
+  final Channel channel;
+  final double progress;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 92,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            ChannelLogo(channel: channel, size: 88, radius: 12),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: progress.clamp(0.0, 1.0),
+                minHeight: 3,
+                backgroundColor: AppColors.surface,
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              channel.cleanName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.bodyMedium.copyWith(fontSize: 11),
+            ),
+          ],
         ),
       ),
     );
