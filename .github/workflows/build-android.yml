@@ -922,7 +922,7 @@ jobs:
           cat > version.json <<JSON
           {
             "versionCode": ${{ github.run_number }},
-            "versionName": "0.3.1",
+            "versionName": "0.3.2",
             "url": "https://github.com/$REPO/releases/download/$TAG/7motion.apk",
             "mandatory": false
           }
@@ -947,7 +947,7 @@ jobs:
           cat > version.json <<JSON
           {
             "versionCode": 2100000000,
-            "versionName": "0.3.1",
+            "versionName": "0.3.2",
             "url": "https://github.com/$REPO/releases/download/prod/7motion.apk",
             "mandatory": false
           }

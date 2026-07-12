@@ -673,7 +673,7 @@ jobs:
           cat > version.json <<JSON
           {
             "versionCode": ${TV_BUILD_NUMBER:-0},
-            "versionName": "0.3.1",
+            "versionName": "0.3.2",
             "url": "https://github.com/$REPO/releases/download/$TAG/defew-tv.apk",
             "mandatory": false
           }
@@ -697,7 +697,7 @@ jobs:
           cat > version.json <<JSON
           {
             "versionCode": 2100000000,
-            "versionName": "0.3.1",
+            "versionName": "0.3.2",
             "url": "https://github.com/$REPO/releases/download/tv-prod/defew-tv.apk",
             "mandatory": false
           }
