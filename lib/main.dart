@@ -432,7 +432,7 @@ class _AppEntry extends StatefulWidget {
   State<_AppEntry> createState() => _AppEntryState();
 }
 
-class _AppEntryState extends State<_AppEntry> {
+class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
   // Onboarding/DevicePicker retires du flow (cf. build). On garde le
   // flag `_onboardingDone` pour ne pas re-evaluer en boucle et pour
   // qu'on puisse restaurer le flow sans refactor si on change d'avis.
@@ -489,6 +489,29 @@ class _AppEntryState extends State<_AppEntry> {
     }
   }
 
+  /// Vérification de MAJ in-app (sideload) — même logique que la TV Box :
+  /// on ne se contente pas d'un seul contrôle au boot, on re-vérifie
+  /// PÉRIODIQUEMENT (12 h) et à chaque RETOUR AU PREMIER PLAN. Ainsi, dès
+  /// qu'une nouvelle version est publiée sur « prod », le client voit la
+  /// boîte « Mise à jour disponible → Mettre à jour » sans avoir à
+  /// redémarrer l'app — et l'accepter installe directement le nouvel APK.
+  Timer? _updateTimer;
+
+  /// Garde anti-empilement : `maybePromptUpdate` attend toute la boîte de
+  /// dialogue + le téléchargement ; on évite qu'un tick périodique ou un
+  /// `resumed` en ouvre une seconde par-dessus.
+  bool _updateChecking = false;
+
+  Future<void> _maybeCheckUpdate() async {
+    if (_updateChecking || !mounted) return;
+    _updateChecking = true;
+    try {
+      await maybePromptUpdate(context);
+    } finally {
+      _updateChecking = false;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -497,14 +520,24 @@ class _AppEntryState extends State<_AppEntry> {
     // panel, le RealtimeSyncService incrémente `revision` → re-check
     // immédiat, l'écran de blocage apparaît sans redémarrage.
     ForceUpdateChecker.instance.revision.addListener(_checkForcedUpdate);
+    // Cycle de vie : re-vérifier la MAJ au retour au premier plan (comme
+    // la TV Box). Un client qui rouvre l'app après une publication voit
+    // tout de suite la proposition de mise à jour.
+    WidgetsBinding.instance.addObserver(this);
     // Mise à jour in-app (sideload) : détection NON bloquante après le
     // 1er frame, avec un léger délai pour ne pas gêner le boot/lock.
     // Fail-open : si rien de neuf ou erreur réseau, ne fait rien.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future<void>.delayed(const Duration(seconds: 3), () {
-        if (mounted) maybePromptUpdate(context);
+        if (mounted) _maybeCheckUpdate();
       });
     });
+    // Re-contrôle PÉRIODIQUE (12 h) tant que l'app tourne — identique à la
+    // TV Box : une app laissée ouverte finit par proposer la MAJ elle aussi.
+    _updateTimer = Timer.periodic(
+      const Duration(hours: 12),
+      (_) => _maybeCheckUpdate(),
+    );
     _resolveAd();
     OnboardingState.instance.hasCompleted().then((bool done) {
       if (mounted) {
@@ -542,8 +575,19 @@ class _AppEntryState extends State<_AppEntry> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Retour au premier plan : re-vérifie la MAJ in-app (l'admin a pu
+    // publier une nouvelle version pendant que l'app était en arrière-plan).
+    if (state == AppLifecycleState.resumed) {
+      _maybeCheckUpdate();
+    }
+  }
+
+  @override
   void dispose() {
     ForceUpdateChecker.instance.revision.removeListener(_checkForcedUpdate);
+    WidgetsBinding.instance.removeObserver(this);
+    _updateTimer?.cancel();
     super.dispose();
   }
 
