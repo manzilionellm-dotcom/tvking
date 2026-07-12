@@ -25,22 +25,21 @@ export const API_BASE: string =
   // ou un domaine connu. En dev le proxy Vite redirige /api → :8787.
   '';
 
-/// Lien de TÉLÉCHARGEMENT de l'app à donner au client. Domaine propre
-/// dédié (app.7themotion.com → route /vip du Worker, proxy du dernier
-/// APK). On NE lit JAMAIS le `download_url` stocké en base (qui pouvait
-/// pointer sur un vieux domaine mort). Surchargeable via VITE_DOWNLOAD_URL.
-export const DOWNLOAD_URL: string =
-  (import.meta.env.VITE_DOWNLOAD_URL as string | undefined) ||
-  'https://app.7themotion.com/vip';
-
-/// Code OFFICIEL Downloader (aftv.news) qui pointe sur DOWNLOAD_URL.
-/// Le client tape ce numéro dans l'app Downloader (TV / Fire TV) →
-/// l'app se télécharge. Permanent. Surchargeable via VITE_DOWNLOADER_CODE.
-export const DOWNLOADER_CODE: string =
-  (import.meta.env.VITE_DOWNLOADER_CODE as string | undefined) || '7988141';
-
-/// Lien + code Downloader de la version TV (DeFew TV).
+/// LIENS DE TÉLÉCHARGEMENT — VERROUILLÉS (demande owner : « deux liens
+/// clairs qui ne changent jamais, dix ans facilement »). On les fige EN
+/// DUR ici : PAS de surcharge par variable d'environnement, PAS de lecture
+/// du `download_url` en base. Ils pointent sur des routes stables du
+/// domaine propre app.7themotion.com (le Worker y sert TOUJOURS le dernier
+/// APK de la maison mère). Ne JAMAIS remplacer ces chaînes.
+///   • Mobile (téléphone / Android) : /vip
+///   • TV (Android TV / Fire TV)     : /tv
+export const DOWNLOAD_URL = 'https://app.7themotion.com/vip';
 export const DOWNLOAD_URL_TV = 'https://app.7themotion.com/tv';
+
+/// Codes Downloader (aftv.news) — SECONDAIRES. Le client peut soit taper le
+/// lien /tv dans Downloader, soit ce numéro. Conservés pour compat, mais
+/// l'écran d'activation met en avant les LIENS (plus clairs).
+export const DOWNLOADER_CODE = '7988141';
 export const DOWNLOADER_CODE_TV = '6248618';
 
 export function getToken(): string | null {
