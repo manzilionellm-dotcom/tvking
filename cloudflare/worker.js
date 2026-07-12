@@ -3528,6 +3528,130 @@ async function handlePublicConfig(env, mac) {
 //       base D1 est absente, vide, ou en erreur (ex. migration pas
 //       encore jouée) — ça garantit que l'app a toujours au moins le
 //       serveur par défaut.
+// =====================================================================
+//  DÉMO XTREAM — compte de test pour l'examen Google Play
+// ---------------------------------------------------------------------
+//  Google exige un compte fonctionnel pour examiner une app IPTV. Plutôt
+//  que d'exposer une vraie ligne du panel (contenu sous droits + secret
+//  commercial), on sert ici un MINI-serveur compatible Xtream Codes qui
+//  ne diffuse QUE des flux de test LIBRES et LÉGAUX (films Blender en
+//  CC-BY, échantillons HLS d'Apple). Le réviseur entre dans l'app :
+//    Serveur : https://app.7themotion.com/demo
+//    User    : demo        Mot de passe : demo
+//  et voit des chaînes qui jouent, sans toucher au vrai service.
+//
+//  Surface implémentée (strictement ce que xtream_client.dart appelle) :
+//    GET /demo/player_api.php?username=demo&password=demo
+//        → { user_info, server_info }  (compte « Active », à vie)
+//    …&action=get_live_categories   → catégories démo
+//    …&action=get_live_streams[&category_id=X] → chaînes démo
+//    …&action=get_vod_*/get_series_* → vide (pas de VOD en démo)
+//    GET /demo/live/demo/demo/<id>.m3u8 → 302 vers le flux HLS légal
+//
+//  allowed_output_formats = ["m3u8"] force l'app à construire les URLs
+//  live en HLS (/live/.../<id>.m3u8), que mpv lit nativement en suivant
+//  la redirection 302. exp_date = an 2100 → toujours actif (« à vie »).
+// =====================================================================
+const DEMO_XTREAM_CATS = [
+  { category_id: '1', category_name: 'Démo 7 MOTION', parent_id: 0 },
+  { category_id: '2', category_name: 'Chaînes de test', parent_id: 0 },
+];
+const DEMO_XTREAM_STREAMS = [
+  { id: '1', name: 'Démo · Big Buck Bunny', cat: '1',
+    url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8' },
+  { id: '2', name: 'Démo · Tears of Steel', cat: '1',
+    url: 'https://test-streams.mux.dev/tos_ismc/main.m3u8' },
+  { id: '3', name: 'Démo · Apple BipBop HD', cat: '1',
+    url: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8' },
+  { id: '4', name: 'Test · Mire HLS', cat: '2',
+    url: 'https://test-streams.mux.dev/pts_shift/master.m3u8' },
+  { id: '5', name: 'Test · Apple BipBop 16:9', cat: '2',
+    url: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_16x9/bipbop_16x9_variant.m3u8' },
+];
+
+function handleDemoXtream(url, segments) {
+  // Requête de FLUX : dernier segment « <id>.m3u8 » ou « <id>.ts »
+  // (forme /demo/live/demo/demo/<id>.m3u8 ou /demo/demo/demo/<id>.ts).
+  const last = segments[segments.length - 1] || '';
+  const streamMatch = last.match(/^(\d+)\.(m3u8|ts)$/i);
+  if (streamMatch) {
+    const s = DEMO_XTREAM_STREAMS.find((x) => x.id === streamMatch[1]);
+    if (!s) return new Response('stream not found', { status: 404 });
+    return Response.redirect(s.url, 302);
+  }
+
+  // Requête API : /demo/player_api.php (ou panel_api.php).
+  if (segments[1] === 'player_api.php' || segments[1] === 'panel_api.php') {
+    const action = (url.searchParams.get('action') || '').trim();
+
+    if (action === '' ) {
+      // Vérification du compte : compte « Active », à vie, HLS.
+      return json({
+        user_info: {
+          username: 'demo',
+          password: 'demo',
+          message: 'Compte de démonstration 7 MOTION',
+          auth: 1,
+          status: 'Active',
+          is_trial: '0',
+          active_cons: '0',
+          created_at: '1700000000',
+          max_connections: '1',
+          allowed_output_formats: ['m3u8'],
+          exp_date: '4102444800', // 2100-01-01 → « à vie »
+        },
+        server_info: {
+          url: 'app.7themotion.com',
+          port: '443',
+          https_port: '443',
+          server_protocol: 'https',
+          rtmp_port: '0',
+          timezone: 'Europe/Paris',
+          timestamp_now: 1700000000,
+          time_now: '2026-01-01 00:00:00',
+        },
+      });
+    }
+
+    if (action === 'get_live_categories') return json(DEMO_XTREAM_CATS);
+
+    if (action === 'get_live_streams') {
+      const catId = (url.searchParams.get('category_id') || '').trim();
+      const list = DEMO_XTREAM_STREAMS.filter(
+        (s) => !catId || s.cat === catId,
+      ).map((s, i) => ({
+        num: i + 1,
+        name: s.name,
+        stream_type: 'live',
+        stream_id: Number(s.id),
+        stream_icon: '',
+        epg_channel_id: '',
+        added: '1700000000',
+        category_id: s.cat,
+        custom_sid: '',
+        tv_archive: 0,
+        direct_source: '',
+        tv_archive_duration: 0,
+      }));
+      return json(list);
+    }
+
+    // Pas de VOD / séries en démo → catalogues vides (l'app tolère).
+    if (action === 'get_vod_categories' || action === 'get_series_categories'
+      || action === 'get_vod_streams' || action === 'get_series') {
+      return json([]);
+    }
+    // Fiches détaillées (Map attendue) → objet vide, fail-open côté app.
+    if (action === 'get_vod_info' || action === 'get_series_info') {
+      return json({});
+    }
+    // Action inconnue : liste vide (jamais d'erreur bloquante).
+    return json([]);
+  }
+
+  return new Response('demo xtream endpoint', { status: 404 });
+}
+
 async function handlePublicServers(env) {
   // --- 1. D1 (panel admin) ---
   if (env.DB) {
@@ -4588,6 +4712,16 @@ async function handleRequest(request, env, ctx) {
     }
 
     const segments = url.pathname.split('/').filter(Boolean);
+
+    // ===== Démo Xtream (compte de test examen Google Play) =====
+    //  /demo/player_api.php + /demo/live/demo/demo/<id>.m3u8. Flux de test
+    //  LIBRES uniquement (cf. handleDemoXtream). GET/HEAD seulement.
+    if (segments[0] === 'demo') {
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        return badRequest('only GET supported on /demo');
+      }
+      return handleDemoXtream(url, segments);
+    }
 
     // ===== Rate-limit applicatif des endpoints publics =====
     //  Limites VOLONTAIREMENT généreuses : un usage normal (l'app pingue au
