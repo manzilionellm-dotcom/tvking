@@ -46,7 +46,7 @@ abstract final class DeviceMessageRepository {
       final Object? items = decoded['items'];
       if (items is! List || items.isEmpty) return;
       // Enchaîne l'affichage : chaque message reste sa durée, puis le suivant.
-      unawaited(_showSequentially(items));
+      unawaited(_showSequentially(mac, base, items));
     } catch (e) {
       if (kDebugMode) debugPrint('[DeviceMsg] fetch error: $e');
     } finally {
@@ -54,7 +54,11 @@ abstract final class DeviceMessageRepository {
     }
   }
 
-  static Future<void> _showSequentially(List<Object?> items) async {
+  static Future<void> _showSequentially(
+    String mac,
+    String base,
+    List<Object?> items,
+  ) async {
     for (final Object? raw in items) {
       if (raw is! Map) continue;
       final int dur = ((raw['durationSec'] as num?)?.toInt() ?? 45).clamp(3, 120);
@@ -71,8 +75,26 @@ abstract final class DeviceMessageRepository {
         durationSec: dur,
       );
       RealtimeSyncService.instance.showAdminMessage(msg);
+      // ACCUSÉ DE LECTURE : on confirme au serveur que le message a été
+      // AFFICHÉ à l'écran → le panel voit « lu le… ». Best-effort.
+      unawaited(_markRead(mac, base, raw['id']));
       // Laisse le message vivre sa durée avant d'afficher le suivant.
       await Future<void>.delayed(Duration(seconds: dur + 1));
+    }
+  }
+
+  static Future<void> _markRead(String mac, String base, Object? id) async {
+    if (id == null) return;
+    try {
+      await http
+          .post(
+            Uri.parse('$base/api/device-messages/${Uri.encodeComponent(mac)}/read'),
+            headers: const <String, String>{'Content-Type': 'application/json'},
+            body: jsonEncode(<String, Object?>{'id': id}),
+          )
+          .timeout(const Duration(seconds: 6));
+    } catch (e) {
+      if (kDebugMode) debugPrint('[DeviceMsg] markRead error: $e');
     }
   }
 }

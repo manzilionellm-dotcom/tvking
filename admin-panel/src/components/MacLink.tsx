@@ -509,12 +509,16 @@ function MessageComposer({ mac }: { mac: string }) {
                 <span className="min-w-0 flex-1 truncate text-ink-secondary">
                   {m.title || m.body || '—'}
                 </span>
-                {m.delivered_at ? (
+                {m.read_at ? (
                   <span className="shrink-0 text-emerald-400">
-                    ✓✓ vu {formatDateTime(m.delivered_at)}
+                    ✓✓ Lu {formatDateTime(m.read_at)}
+                  </span>
+                ) : m.delivered_at ? (
+                  <span className="shrink-0 text-sky-400">
+                    ✓ Livré {formatDateTime(m.delivered_at)}
                   </span>
                 ) : (
-                  <span className="shrink-0 text-ink-tertiary">⏳ en attente</span>
+                  <span className="shrink-0 text-ink-tertiary">⏳ En attente</span>
                 )}
               </div>
             ))}

@@ -3599,6 +3599,26 @@ async function handlePublicDeviceMessages(env, mac) {
   }
 }
 
+// POST /api/device-messages/:mac/read {id} (public) — l'app confirme avoir
+// AFFICHÉ le message à l'écran → read_at. Accusé de LECTURE (le panel montre
+// « lu le… »). Best-effort, idempotent (ne réécrit pas un read_at existant).
+async function handlePublicDeviceMessageRead(env, mac, request) {
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const MAC = mac.toUpperCase();
+  if (!env.DB) return json({ ok: true });
+  let body;
+  try { body = await request.json(); } catch (_) { body = {}; }
+  const id = parseInt(body && body.id, 10);
+  if (!Number.isFinite(id)) return json({ ok: true });
+  try {
+    await env.DB
+      .prepare('UPDATE device_messages SET read_at = ? WHERE id = ? AND mac = ? AND read_at IS NULL')
+      .bind(Date.now(), id, MAC)
+      .run();
+  } catch (_) { /* best-effort */ }
+  return json({ ok: true });
+}
+
 async function handlePublicDeviceSource(env, mac) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
@@ -4609,6 +4629,15 @@ async function handleRequest(request, env, ctx) {
         return badRequest('only GET supported on /api/device-messages/:mac');
       }
       return await handlePublicDeviceMessages(env, decodeMacPath(segments[2]));
+    }
+    // /api/device-messages/:mac/read — l'app confirme avoir AFFICHÉ un
+    // message (accusé de LECTURE : read_at). Le panel montre alors « lu le… ».
+    if (segments[0] === 'api' && segments[1] === 'device-messages'
+        && segments.length === 4 && segments[3] === 'read') {
+      if (request.method !== 'POST') {
+        return badRequest('only POST supported on /api/device-messages/:mac/read');
+      }
+      return await handlePublicDeviceMessageRead(env, decodeMacPath(segments[2]), request);
     }
 
     // /api/self-source/:mac — self-service « Mon espace » : le client LIT (GET),
