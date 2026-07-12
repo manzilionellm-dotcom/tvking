@@ -602,6 +602,9 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
     // publier une nouvelle version pendant que l'app était en arrière-plan).
     if (state == AppLifecycleState.resumed) {
       _maybeCheckUpdate();
+      // Thème immersif : si le jour a changé pendant l'arrière-plan, bascule
+      // sur la couleur du jour (sans effet en mode fixe). O(1).
+      AccentController.instance.refreshDailyIfNeeded();
     }
   }
 

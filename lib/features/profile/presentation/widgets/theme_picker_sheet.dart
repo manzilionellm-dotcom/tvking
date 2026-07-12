@@ -114,7 +114,16 @@ class _ThemePickerSheetState extends State<_ThemePickerSheet> {
                   color: AppColors.textTertiary,
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+              // Mode IMMERSIF — une couleur premium différente chaque jour.
+              _ImmersiveTile(
+                active: AccentController.instance.isDaily,
+                onTap: () async {
+                  await AccentController.instance.enableDaily();
+                  if (mounted) setState(() {});
+                },
+              ),
+              const SizedBox(height: 16),
               // Grille de pastilles — DÉFILANTE (catalogue premium 100+).
               Flexible(
                 child: SingleChildScrollView(
@@ -213,6 +222,74 @@ class _Swatch extends StatelessWidget {
                     : AppColors.textTertiary,
                 fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Tuile « Thème immersif » : une couleur premium différente chaque jour
+/// (rotation automatique sur les 100+ teintes). Liseré d'accent quand actif.
+class _ImmersiveTile extends StatelessWidget {
+  const _ImmersiveTile({required this.active, required this.onTap});
+
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: active
+              ? AppColors.accent.withValues(alpha: 0.14)
+              : AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: active
+                ? AppColors.accent.withValues(alpha: 0.7)
+                : AppColors.border,
+            width: active ? 1.4 : 1,
+          ),
+        ),
+        child: Row(
+          children: <Widget>[
+            Icon(Icons.auto_awesome_rounded, color: AppColors.accent, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Thème immersif',
+                    style: AppTextStyles.bodyLarge.copyWith(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Une couleur premium différente chaque jour',
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      fontSize: 11,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Icon(
+              active
+                  ? Icons.check_circle_rounded
+                  : Icons.circle_outlined,
+              color: active ? AppColors.accent : AppColors.textTertiary,
+              size: 24,
             ),
           ],
         ),

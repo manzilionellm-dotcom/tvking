@@ -25,6 +25,7 @@ import 'core/i18n/locale_repository.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/realtime/realtime_sync_service.dart';
 import 'core/profiles/profiles_repository.dart';
+import 'core/theme/accent_controller.dart';
 import 'features/channels/data/recently_watched_repository.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/player/data/player_settings.dart';
@@ -103,6 +104,11 @@ Future<void> _bootstrap() async {
   // l'app suit la langue de la TV). BLOQUANT et rapide : garantit que le
   // 1er rendu est déjà dans la bonne langue (pas de flash en français).
   await LocaleRepository.instance.initialize();
+
+  // Thème d'accent (couleur choisie OU mode immersif « une couleur par
+  // jour ») : BLOQUANT et rapide, pour que le 1er rendu TV soit déjà à la
+  // bonne couleur (pas de flash). Partagé avec le mobile via AccentController.
+  await AccentController.instance.initialize();
 
   // --- Briques PARTAGÉES avec le mobile (non bloquant) ---
   // 0) FAILOVER backend : si le domaine maison était KO au dernier

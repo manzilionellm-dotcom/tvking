@@ -307,15 +307,48 @@ class AccentController extends ChangeNotifier {
 
   static const String _kPrefKey = 'accent_theme_id';
 
-  /// Thème courant. Défaut = ember (1er du catalogue) tant que rien
+  /// Mode : 'fixed' (couleur choisie) ou 'daily' (thème IMMERSIF qui change
+  /// tout seul chaque jour). Persisté.
+  static const String _kModeKey = 'accent_mode';
+
+  /// Thème courant. Défaut = 1er du catalogue (champagne) tant que rien
   /// n'est chargé/choisi → comportement identique à avant.
   AccentTheme _current = kAccentThemes.first;
   AccentTheme get current => _current;
 
-  /// Charge le choix sauvegardé au démarrage. Silencieux si rien.
+  /// `true` quand le mode « thème immersif » (une couleur par jour) est actif.
+  bool _daily = false;
+  bool get isDaily => _daily;
+
+  /// Index du thème « du jour » : rotation DÉTERMINISTE sur TOUT le catalogue
+  /// (même jour → même couleur ; jour suivant → couleur suivante, en boucle
+  /// sur les 100+ teintes). Coût O(1) : aucune incidence sur la fluidité.
+  static int _dailyIndex() {
+    final DateTime now = DateTime.now();
+    final int days = DateTime(now.year, now.month, now.day)
+        .difference(DateTime(2020, 1, 1))
+        .inDays;
+    final int n = kAccentThemes.length;
+    return ((days % n) + n) % n;
+  }
+
+  static AccentTheme get _todayTheme => kAccentThemes[_dailyIndex()];
+
+  /// Charge le choix (ou le mode immersif) au démarrage. Silencieux si rien.
   Future<void> initialize() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
+      // Mode IMMERSIF : on applique la couleur DU JOUR, peu importe l'id figé.
+      if (prefs.getString(_kModeKey) == 'daily') {
+        _daily = true;
+        final AccentTheme t = _todayTheme;
+        if (t.id != _current.id) {
+          _current = t;
+          notifyListeners();
+        }
+        return;
+      }
+      // Mode FIXE : on restaure la couleur choisie.
       final String? id = prefs.getString(_kPrefKey);
       if (id == null) return;
       final AccentTheme match = kAccentThemes.firstWhere(
@@ -327,7 +360,33 @@ class AccentController extends ChangeNotifier {
         notifyListeners();
       }
     } catch (_) {
-      // best-effort : en cas d'échec on reste sur ember.
+      // best-effort : en cas d'échec on reste sur le défaut.
+    }
+  }
+
+  /// Ré-applique la couleur du jour si le mode immersif est actif ET que le
+  /// jour a changé. À appeler au retour au premier plan (TV allumée H24 :
+  /// le thème bascule sans redémarrer). Sans effet en mode fixe. O(1).
+  void refreshDailyIfNeeded() {
+    if (!_daily) return;
+    final AccentTheme t = _todayTheme;
+    if (t.id != _current.id) {
+      _current = t;
+      notifyListeners();
+    }
+  }
+
+  /// Active le mode IMMERSIF : une couleur par jour, en rotation sur les
+  /// 100+ teintes. Applique tout de suite celle d'aujourd'hui. Persisté.
+  Future<void> enableDaily() async {
+    _daily = true;
+    _current = _todayTheme;
+    notifyListeners();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kModeKey, 'daily');
+    } catch (_) {
+      // best-effort
     }
   }
 
@@ -353,14 +412,19 @@ class AccentController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Applique un thème (instantané) et le persiste.
+  /// Applique un thème FIXE (instantané) et le persiste. Désactive le mode
+  /// immersif (le client a repris la main sur la couleur).
   Future<void> select(AccentTheme theme) async {
-    if (theme.id == _current.id) return;
-    _current = theme;
-    notifyListeners(); // recolore toute l'app immédiatement
+    final bool same = theme.id == _current.id && !_daily;
+    _daily = false;
+    if (!same) {
+      _current = theme;
+      notifyListeners(); // recolore toute l'app immédiatement
+    }
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kPrefKey, theme.id);
+      await prefs.setString(_kModeKey, 'fixed');
     } catch (_) {
       // best-effort
     }

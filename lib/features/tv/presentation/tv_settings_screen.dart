@@ -29,6 +29,7 @@ import 'tv_shell.dart';
 import 'tv_downloads_screen.dart';
 import 'tv_sources_screen.dart';
 import 'tv_stats_screen.dart';
+import 'tv_theme_screen.dart';
 
 class TvSettingsScreen extends StatefulWidget {
   const TvSettingsScreen({super.key});
@@ -585,6 +586,42 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     Icon(Icons.tv_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsDisplay,
+                        style: TextStyle(
+                            fontSize: TvDimens.title,
+                            fontWeight: FontWeight.w700,
+                            color: fg)),
+                    const Spacer(),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          // ----- Thème (119 couleurs premium + mode immersif) -----
+          TvFocusBuilder(
+            scale: TvFocusScale.large,
+            onSelect: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const TvShell(child: TvThemeScreen()),
+              ),
+            ),
+            builder: (BuildContext context, bool focused) {
+              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color fg =
+                  focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+              return Container(
+                width: 760,
+                decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                child: Row(
+                  children: <Widget>[
+                    Icon(Icons.palette_rounded, color: fg, size: 26),
+                    const SizedBox(width: 12),
+                    Text(context.l10n.themeChooseTitle,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,

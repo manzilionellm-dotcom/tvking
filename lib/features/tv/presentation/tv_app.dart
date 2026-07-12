@@ -15,6 +15,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
+import '../../../core/theme/accent_controller.dart';
 import '../../../core/update/update_prompt.dart';
 import '../../../core/profiles/profiles_repository.dart';
 import '../../../core/realtime/admin_message_banner.dart';
@@ -23,7 +24,6 @@ import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../subscription/data/subscription_state.dart';
-import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../data/greeting_repository.dart';
@@ -73,8 +73,13 @@ class TvApp extends StatelessWidget {
     // s'affiche en espagnol toute seule. Un changement manuel (Réglages)
     // reconstruit l'app via ce ListenableBuilder.
     return ListenableBuilder(
-      listenable: Listenable.merge(
-          <Listenable>[LocaleRepository.instance, DisplaySettings.instance]),
+      listenable: Listenable.merge(<Listenable>[
+        LocaleRepository.instance,
+        DisplaySettings.instance,
+        // Thème d'accent (119 couleurs premium + mode immersif) : tout
+        // changement recolore instantanément l'UI TV, comme sur mobile.
+        AccentController.instance,
+      ]),
       builder: (BuildContext context, _) => MaterialApp(
         title: kAppName,
         debugShowCheckedModeBanner: false,

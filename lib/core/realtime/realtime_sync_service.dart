@@ -52,6 +52,7 @@ import '../../features/theme/data/remote_theme_repository.dart';
 import '../app/boot_guard.dart';
 import '../app/build_info.dart';
 import '../backend/backend_hosts.dart';
+import '../theme/accent_controller.dart';
 import 'device_message_repository.dart';
 
 /// Message admin poussé par le panel (frame `message` du protocole).
@@ -732,6 +733,11 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
       // Relève aussi la boîte de messages (un mot déposé pendant l'absence
       // s'affiche au retour à l'écran).
       unawaited(DeviceMessageRepository.fetchAndShow());
+      // Thème immersif : sur un boîtier TV allumé H24 (pas d'observateur de
+      // cycle de vie propre), c'est ici qu'on fait rouler la couleur du jour
+      // au retour à l'écran — si la date a changé, l'accent passe à la teinte
+      // du nouveau jour (no-op si le mode immersif n'est pas actif).
+      AccentController.instance.refreshDailyIfNeeded();
       // (les timers repartent dans _connect(), via forceReconnect)
     } else if (state == AppLifecycleState.paused) {
       // Arrière-plan : on GARDE le socket (l'OS le tuera peut-être — la
