@@ -124,6 +124,14 @@ const STORE_ICON_URL =
   'https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/claude/maison-mere-phone/cloudflare/store/icon_512x512.png';
 const STORE_BANNER_URL =
   'https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/claude/maison-mere-phone/cloudflare/store/feature_1024x500.png';
+// Captures d'écran téléphone (vrais écrans de l'app, sans marque) pour la fiche
+// Play Store, en téléchargement direct sur app.7themotion.com.
+const STORE_SHOT_RECHERCHE_URL =
+  'https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/claude/maison-mere-phone/cloudflare/store/screen_recherche.jpg';
+const STORE_SHOT_LECTURE_URL =
+  'https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/claude/maison-mere-phone/cloudflare/store/screen_lecture.jpg';
+const STORE_SHOT_APROPOS_URL =
+  'https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/claude/maison-mere-phone/cloudflare/store/screen_apropos.jpg';
 
 // NB : les wrappers WebView / NOVA+ et Red Room ont été RETIRÉS du
 // projet. Deux apps sont distribuées : 7 MOTION mobile (`APK_URL`) et
@@ -5269,6 +5277,19 @@ async function handleRequest(request, env, ctx) {
     if (segments.length === 1 &&
         ['store-banner', 'app-banner', 'banniere'].includes(segments[0].toLowerCase())) {
       return proxyRelease(STORE_BANNER_URL, 'feature_1024x500.png');
+    }
+    // Captures d'écran téléphone (fiche Play Store) — téléchargement direct.
+    if (segments.length === 1 &&
+        ['screen1', 'shot1', 'capture1'].includes(segments[0].toLowerCase())) {
+      return proxyRelease(STORE_SHOT_RECHERCHE_URL, 'screen_recherche.jpg');
+    }
+    if (segments.length === 1 &&
+        ['screen2', 'shot2', 'capture2'].includes(segments[0].toLowerCase())) {
+      return proxyRelease(STORE_SHOT_LECTURE_URL, 'screen_lecture.jpg');
+    }
+    if (segments.length === 1 &&
+        ['screen3', 'shot3', 'capture3'].includes(segments[0].toLowerCase())) {
+      return proxyRelease(STORE_SHOT_APROPOS_URL, 'screen_apropos.jpg');
     }
 
     // /privacy — Politique de confidentialité (exigée par Google Play,
