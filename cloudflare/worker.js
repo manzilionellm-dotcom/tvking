@@ -108,6 +108,14 @@ const APK_URL =
 const TV_APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-prod/defew-tv.apk';
 
+// App Bundles (.aab) signés pour la Google Play Console. Servis via un lien
+// PUBLIC propre (app.7themotion.com/tv-aab et /phone-aab) → utile pour
+// uploader le dernier build dans la Play Console sans passer par GitHub.
+const TV_AAB_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-prod/defew-tv.aab';
+const PHONE_AAB_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/prod/7motion.aab';
+
 // NB : les wrappers WebView / NOVA+ et Red Room ont été RETIRÉS du
 // projet. Deux apps sont distribuées : 7 MOTION mobile (`APK_URL`) et
 // DeFew TV (`TV_APK_URL`), chacune via son lien court (/app et /tv).
@@ -188,6 +196,37 @@ async function proxyApk(upstreamUrl, suggestedFilename, bust) {
     status: 200,
     headers,
   });
+}
+
+// Sert un fichier de release GitHub (ex. .aab pour la Play Console) via un
+// lien PUBLIC propre, en octet-stream (téléchargement, pas d'installation).
+// Même mécanique que proxyApk mais sans forcer le MIME APK.
+async function proxyRelease(upstreamUrl, filename) {
+  let response;
+  try {
+    response = await fetch(upstreamUrl, {
+      cf: {
+        cacheEverything: true,
+        cacheTtlByStatus: { '200-299': 120, '300-399': 10, '400-599': 0 },
+      },
+    });
+  } catch (e) {
+    return new Response(`upstream unreachable: ${e?.message ?? e}`, {
+      status: 502,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+  }
+  if (!response.ok) {
+    return new Response(`upstream returned ${response.status}`, {
+      status: 502,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+  }
+  const headers = new Headers(response.headers);
+  headers.set('Content-Disposition', `attachment; filename="${filename}"`);
+  headers.set('Content-Type', 'application/octet-stream');
+  headers.set('Cache-Control', 'public, max-age=120');
+  return new Response(response.body, { status: 200, headers });
 }
 
 // ===========================================================
@@ -5064,6 +5103,18 @@ async function handleRequest(request, env, ctx) {
           .includes(segments[0].toLowerCase())
     ) {
       return proxyApk(TV_APK_URL, 'DeFewTV.apk', url.searchParams.get('v'));
+    }
+
+    // /tv-aab et /phone-aab — App Bundles (.aab) SIGNÉS pour la Google Play
+    // Console. Lien public propre (octet-stream) : à télécharger puis
+    // uploader dans la Play Console. Toujours le dernier build maison mère.
+    if (segments.length === 1 &&
+        ['tv-aab', 'tvaab', 'aab-tv'].includes(segments[0].toLowerCase())) {
+      return proxyRelease(TV_AAB_URL, 'defew-tv.aab');
+    }
+    if (segments.length === 1 &&
+        ['phone-aab', 'phoneaab', 'aab-phone', 'aab'].includes(segments[0].toLowerCase())) {
+      return proxyRelease(PHONE_AAB_URL, '7motion.aab');
     }
 
     // /privacy — Politique de confidentialité (exigée par Google Play,
