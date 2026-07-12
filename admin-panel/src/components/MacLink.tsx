@@ -358,7 +358,7 @@ function MessageComposer({ mac }: { mac: string }) {
     <div className="mt-4 rounded-xl border border-white/5 bg-obsidian/40 p-3">
       <div className="mb-2 flex items-center gap-2">
         <h3 className="text-[10px] font-bold uppercase tracking-widest text-ink-tertiary">
-          Écrire à cet appareil
+          ⚡ Message rapide
         </h3>
         <span
           className={cn(
@@ -408,15 +408,16 @@ function MessageComposer({ mac }: { mac: string }) {
       />
       <div className="mt-2 flex items-center justify-between">
         <span className="text-[10px] text-ink-tertiary">
-          Affiché en direct dans l'app du client.
+          S'affiche DIRECTEMENT sur l'écran (TV ou téléphone), par-dessus la
+          chaîne en cours.
         </span>
         <button
           type="button"
           disabled={sending || (!title.trim() && !body.trim())}
           onClick={send}
-          className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black hover:bg-accent-bright disabled:opacity-50"
+          className="shrink-0 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black hover:bg-accent-bright disabled:opacity-50"
         >
-          {sending ? 'Envoi…' : 'Envoyer'}
+          {sending ? 'Envoi…' : 'Envoyer sur l’écran'}
         </button>
       </div>
     </div>
