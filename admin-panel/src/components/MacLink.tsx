@@ -313,12 +313,21 @@ const _MSG_TEMPLATES: { label: string; title: string; body: string }[] = [
     title: 'Bonne Coupe du Monde ⚽',
     body: 'Profitez de tous les matchs en direct avec nous. Bon match !',
   },
+  { label: '💛 Merci', title: 'Merci d’être avec nous 💛', body: 'On est ravis de vous compter parmi nous. Bon visionnage !' },
   { label: '📣 Promo', title: 'Offre spéciale', body: '' },
+];
+
+/// Durées proposées (le client garde le message affiché ~30 s à 1 min).
+const _DURATIONS: { label: string; sec: number }[] = [
+  { label: '30 s', sec: 30 },
+  { label: '45 s', sec: 45 },
+  { label: '1 min', sec: 60 },
 ];
 
 function MessageComposer({ mac }: { mac: string }) {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [durationSec, setDurationSec] = useState(45);
   const [sending, setSending] = useState(false);
   const { connected, devices } = useLiveDevices();
   const online = connected && devices.some((d) => d.mac === mac);
@@ -331,6 +340,7 @@ function MessageComposer({ mac }: { mac: string }) {
         title: title.trim(),
         body: body.trim(),
         kind: 'info',
+        durationSec,
       });
       toast("⚡ Envoi à l'appareil…", 'info');
       const ack = await waitForAck(id);
@@ -406,6 +416,31 @@ function MessageComposer({ mac }: { mac: string }) {
         rows={2}
         className={cn(inputCls, 'mt-2 resize-none')}
       />
+
+      {/* Durée d'affichage à l'écran (30 s à 1 min). */}
+      <div className="mt-2 flex items-center gap-2">
+        <span className="text-[10px] uppercase tracking-widest text-ink-tertiary">
+          Durée à l'écran
+        </span>
+        <div className="flex gap-1">
+          {_DURATIONS.map((d) => (
+            <button
+              key={d.sec}
+              type="button"
+              onClick={() => setDurationSec(d.sec)}
+              className={cn(
+                'rounded-full px-2.5 py-1 text-[11px] font-medium',
+                durationSec === d.sec
+                  ? 'bg-accent text-black'
+                  : 'border border-white/10 bg-slate text-ink-secondary hover:border-accent',
+              )}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="mt-2 flex items-center justify-between">
         <span className="text-[10px] text-ink-tertiary">
           S'affiche DIRECTEMENT sur l'écran (TV ou téléphone), par-dessus la
