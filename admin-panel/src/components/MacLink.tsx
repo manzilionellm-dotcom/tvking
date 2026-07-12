@@ -17,6 +17,8 @@
 import { useEffect, useState } from 'react';
 import { ApiError, devicesApi } from '@/lib/api';
 import type { DeviceOverview } from '@/lib/api';
+import { sendCmd, waitForAck, useLiveDevices } from '@/lib/realtime';
+import { toast } from '@/components/Toast';
 import { cn, formatDateTime } from '@/lib/utils';
 
 function ago(ts: number | null | undefined): string {
@@ -262,6 +264,10 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
           </div>
         )}
 
+        {/* Écrire un mot À CETTE MAC — message affiché sur sa TV / son
+            téléphone (anniversaire, satisfaction, pub, Coupe du Monde…). */}
+        <MessageComposer mac={mac} />
+
         <div className="flex justify-end pt-5">
           <button
             type="button"
@@ -283,6 +289,136 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         {title}
       </h3>
       <div className="space-y-1">{children}</div>
+    </div>
+  );
+}
+
+/// Écrire un message À UNE SEULE MAC — affiché sur l'écran du client
+/// (bandeau in-app). Modèles rapides (anniversaire, satisfaction, promo,
+/// Coupe du Monde) qu'on peut éditer avant d'envoyer. Livré tout de suite
+/// si l'appareil est en ligne ; sinon signalé « en attente ».
+const _MSG_TEMPLATES: { label: string; title: string; body: string }[] = [
+  {
+    label: '🎂 Anniversaire',
+    title: 'Joyeux anniversaire 🎂',
+    body: "Toute l'équipe vous souhaite un très joyeux anniversaire !",
+  },
+  {
+    label: '🙂 Satisfaction',
+    title: 'Votre avis compte',
+    body: 'Êtes-vous satisfait de nos services ? Écrivez-nous, on est là pour vous.',
+  },
+  {
+    label: '⚽ Coupe du Monde',
+    title: 'Bonne Coupe du Monde ⚽',
+    body: 'Profitez de tous les matchs en direct avec nous. Bon match !',
+  },
+  { label: '📣 Promo', title: 'Offre spéciale', body: '' },
+];
+
+function MessageComposer({ mac }: { mac: string }) {
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [sending, setSending] = useState(false);
+  const { connected, devices } = useLiveDevices();
+  const online = connected && devices.some((d) => d.mac === mac);
+
+  async function send() {
+    if (!title.trim() && !body.trim()) return;
+    setSending(true);
+    try {
+      const id = sendCmd(mac, 'message', {
+        title: title.trim(),
+        body: body.trim(),
+        kind: 'info',
+      });
+      toast("⚡ Envoi à l'appareil…", 'info');
+      const ack = await waitForAck(id);
+      if (ack && ack.ok) {
+        toast("✓ Message affiché sur l'appareil", 'success');
+        setTitle('');
+        setBody('');
+      } else if (ack) {
+        toast("L'appareil a signalé une erreur.", 'error');
+      } else {
+        toast(
+          "Appareil hors ligne — le message s'affichera à sa prochaine connexion.",
+          'warning',
+        );
+      }
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const inputCls =
+    'w-full rounded-md border border-white/5 bg-obsidian px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent';
+
+  return (
+    <div className="mt-4 rounded-xl border border-white/5 bg-obsidian/40 p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <h3 className="text-[10px] font-bold uppercase tracking-widest text-ink-tertiary">
+          Écrire à cet appareil
+        </h3>
+        <span
+          className={cn(
+            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+            online ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/5 text-ink-tertiary',
+          )}
+        >
+          <span
+            className={cn(
+              'h-1.5 w-1.5 rounded-full',
+              online ? 'animate-pulse bg-emerald-400' : 'bg-white/20',
+            )}
+          />
+          {online ? 'En ligne' : 'Hors ligne'}
+        </span>
+      </div>
+
+      {/* Modèles rapides */}
+      <div className="mb-2 flex flex-wrap gap-1.5">
+        {_MSG_TEMPLATES.map((t) => (
+          <button
+            key={t.label}
+            type="button"
+            onClick={() => {
+              setTitle(t.title);
+              setBody(t.body);
+            }}
+            className="rounded-full border border-white/10 bg-slate px-2.5 py-1 text-[11px] text-ink-secondary hover:border-accent hover:text-accent-bright"
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <input
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder="Titre (ex. Un petit mot)"
+        className={inputCls}
+      />
+      <textarea
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        placeholder="Ton message… (affiché sur sa TV / son téléphone)"
+        rows={2}
+        className={cn(inputCls, 'mt-2 resize-none')}
+      />
+      <div className="mt-2 flex items-center justify-between">
+        <span className="text-[10px] text-ink-tertiary">
+          Affiché en direct dans l'app du client.
+        </span>
+        <button
+          type="button"
+          disabled={sending || (!title.trim() && !body.trim())}
+          onClick={send}
+          className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black hover:bg-accent-bright disabled:opacity-50"
+        >
+          {sending ? 'Envoi…' : 'Envoyer'}
+        </button>
+      </div>
     </div>
   );
 }
