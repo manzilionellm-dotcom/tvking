@@ -2955,9 +2955,32 @@ async function handleDevicesList(request, env, user) {
 //  Le panel affiche tout d'un coup pour aider/diagnostiquer un client par sa
 //  MAC. Respecte le cloisonnement revendeur via deviceForActor.
 async function handleDeviceOverview(env, id, user) {
-  const r = await deviceForActor(env, id, user);
-  if (r.error) return r.error;
-  const dev = r.dev;
+  const key = String(id || '');
+  const isReseller = user && user.role === 'reseller';
+  let dev = await env.DB
+    .prepare(
+      'SELECT id, mac, reseller_id, block_status FROM devices WHERE id = ? OR mac = ?',
+    )
+    .bind(key, key.toUpperCase())
+    .first();
+  if (dev) {
+    if (isReseller && dev.reseller_id !== user.sub) {
+      return errResp('forbidden', 'Cet appareil ne vous appartient pas', 403);
+    }
+  } else {
+    // Aucune fiche `devices` pour cette MAC : on construit quand même une
+    // fiche « MAC seule » à partir de la PRÉSENCE (pays, IP, en ligne, chaîne)
+    // et des SOURCES — cas typique d'un appareil VU EN LIGNE mais dont la
+    // fiche device n'a pas encore été créée. Ainsi, cliquer N'IMPORTE QUELLE
+    // MAC affiche toujours ce qu'on sait d'elle, jamais un « non enregistrée ».
+    // Réservé à l'owner : sans fiche device, impossible de vérifier
+    // l'appartenance à un revendeur.
+    if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(key)) {
+      return errResp('not_found', 'Device not found', 404);
+    }
+    if (isReseller) return errResp('not_found', 'Device not found', 404);
+    dev = { id: null, mac: key.toUpperCase(), reseller_id: null, block_status: null };
+  }
   const now = Date.now();
 
   // --- Abonnement : la licence la plus « forte » (à vie d'abord, sinon la
