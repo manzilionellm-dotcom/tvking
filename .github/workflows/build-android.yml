@@ -953,10 +953,16 @@ jobs:
 
           # version.json — manifeste lu par l'updater in-app pour
           # detecter une nouvelle version (versionCode = run_number).
+          # Le versionName est LU depuis pubspec.yaml (partie avant « + ») :
+          # il change à chaque bump réel → l'utilisateur voit un NUMÉRO qui
+          # avance, plus jamais figé « 0.3.2 ». Repli 0.3.2 si lecture KO.
+          VN=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*//; s/\+.*//')
+          [ -z "$VN" ] && VN="0.3.2"
+          echo ">>> versionName publié : $VN (build ${{ github.run_number }})"
           cat > version.json <<JSON
           {
             "versionCode": ${{ github.run_number }},
-            "versionName": "0.3.2",
+            "versionName": "$VN",
             "url": "https://github.com/$REPO/releases/download/$TAG/7motion.apk",
             "mandatory": false
           }
@@ -978,10 +984,12 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -e
+          VN=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*//; s/\+.*//')
+          [ -z "$VN" ] && VN="0.3.2"
           cat > version.json <<JSON
           {
             "versionCode": 2100000000,
-            "versionName": "0.3.2",
+            "versionName": "$VN",
             "url": "https://github.com/$REPO/releases/download/prod/7motion.apk",
             "mandatory": false
           }

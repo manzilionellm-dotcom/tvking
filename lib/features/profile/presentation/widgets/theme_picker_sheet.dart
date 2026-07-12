@@ -230,8 +230,9 @@ class _Swatch extends StatelessWidget {
   }
 }
 
-/// Tuile « Thème immersif » : une couleur premium différente chaque jour
-/// (rotation automatique sur les 100+ teintes). Liseré d'accent quand actif.
+/// Tuile « Thème immersif » : une couleur premium qui change chaque heure,
+/// avec une nuance différente à chaque ouverture (rotation automatique sur les
+/// 100+ teintes). Liseré d'accent quand actif.
 class _ImmersiveTile extends StatelessWidget {
   const _ImmersiveTile({required this.active, required this.onTap});
 
@@ -274,7 +275,7 @@ class _ImmersiveTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'Une couleur premium différente chaque jour',
+                    'Une couleur premium qui change chaque heure',
                     style: AppTextStyles.bodyMedium.copyWith(
                       fontSize: 11,
                       color: AppColors.textTertiary,

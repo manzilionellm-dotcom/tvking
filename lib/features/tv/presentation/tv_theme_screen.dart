@@ -126,7 +126,7 @@ class _ImmersiveTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Une couleur premium différente chaque jour',
+                      'Une couleur premium qui change chaque heure',
                       style: TextStyle(
                         fontSize: 15,
                         color: fg.withValues(alpha: 0.85),

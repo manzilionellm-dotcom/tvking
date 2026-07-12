@@ -15,6 +15,8 @@
 //  palette. Ailleurs dans l'app, on passe toujours par AppColors.
 // =========================================================
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -316,36 +318,74 @@ class AccentController extends ChangeNotifier {
   AccentTheme _current = kAccentThemes.first;
   AccentTheme get current => _current;
 
-  /// `true` quand le mode « thème immersif » (une couleur par jour) est actif.
+  /// `true` quand le mode « thème immersif » est actif : la couleur change
+  /// toute seule CHAQUE HEURE, avec une PETITE variation à CHAQUE ouverture.
   bool _daily = false;
   bool get isDaily => _daily;
 
-  /// Index du thème « du jour » : rotation DÉTERMINISTE sur TOUT le catalogue
-  /// (même jour → même couleur ; jour suivant → couleur suivante, en boucle
-  /// sur les 100+ teintes). Coût O(1) : aucune incidence sur la fluidité.
-  static int _dailyIndex() {
-    final DateTime now = DateTime.now();
-    final int days = DateTime(now.year, now.month, now.day)
-        .difference(DateTime(2020, 1, 1))
-        .inDays;
+  /// Timer horaire (mode immersif uniquement) : fait rouler la couleur de base
+  /// à chaque heure même si l'app reste ouverte (boîtier TV allumé H24).
+  /// 1 réveil/heure → coût négligeable, ZÉRO incidence sur la fluidité. Coupé
+  /// dès qu'on repasse en couleur fixe.
+  Timer? _immersiveTimer;
+
+  /// Index de la couleur de BASE du moment : rotation DÉTERMINISTE sur TOUT le
+  /// catalogue, une teinte par HEURE (heure suivante → couleur suivante, en
+  /// boucle sur les 100+ teintes). O(1).
+  static int _hourIndex() {
+    final int hours =
+        DateTime.now().difference(DateTime(2020, 1, 1)).inHours;
     final int n = kAccentThemes.length;
-    return ((days % n) + n) % n;
+    return ((hours % n) + n) % n;
   }
 
-  static AccentTheme get _todayTheme => kAccentThemes[_dailyIndex()];
+  /// Couleur immersive de l'instant : la BASE de l'heure + une PETITE variation
+  /// premium (teinte ±10°, luminosité ±0.04) dérivée de la minute/seconde
+  /// courante → une nuance différente à chaque ouverture, SANS jamais sortir du
+  /// haut de gamme (même famille de couleur, juste « vivante »). Pas de hasard :
+  /// reproductible et traçable. O(1), aucun impact sur la fluidité.
+  static AccentTheme _immersiveTheme() {
+    final AccentTheme base = kAccentThemes[_hourIndex()];
+    final HSLColor hsl = HSLColor.fromColor(base.accent);
+    final DateTime now = DateTime.now();
+    final int seed = now.minute * 60 + now.second; // 0..3599, varie par ouverture
+    final double hueShift = ((seed % 21) - 10).toDouble(); // -10°..+10°
+    final double lightShift = (((seed ~/ 21) % 9) - 4) / 100.0; // -0.04..+0.04
+    double hue = (hsl.hue + hueShift) % 360;
+    if (hue < 0) hue += 360;
+    final Color accent = hsl
+        .withHue(hue)
+        .withLightness((hsl.lightness + lightShift).clamp(0.0, 1.0))
+        .toColor();
+    return AccentTheme.derive(
+      id: 'immersive',
+      label: base.label,
+      accent: accent,
+    );
+  }
+
+  /// (Ré)applique la couleur immersive du moment et (ré)arme le timer horaire.
+  /// Appelé au boot, à l'activation du mode, et à chaque retour à l'écran.
+  void _applyImmersive({bool notify = true}) {
+    final AccentTheme t = _immersiveTheme();
+    if (t.accent != _current.accent || _current.id != 'immersive') {
+      _current = t;
+      if (notify) notifyListeners();
+    }
+    _immersiveTimer?.cancel();
+    _immersiveTimer = Timer.periodic(const Duration(hours: 1), (_) {
+      if (_daily) _applyImmersive();
+    });
+  }
 
   /// Charge le choix (ou le mode immersif) au démarrage. Silencieux si rien.
   Future<void> initialize() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      // Mode IMMERSIF : on applique la couleur DU JOUR, peu importe l'id figé.
+      // Mode IMMERSIF : couleur de l'heure + nuance de l'ouverture.
       if (prefs.getString(_kModeKey) == 'daily') {
         _daily = true;
-        final AccentTheme t = _todayTheme;
-        if (t.id != _current.id) {
-          _current = t;
-          notifyListeners();
-        }
+        _applyImmersive();
         return;
       }
       // Mode FIXE : on restaure la couleur choisie.
@@ -364,24 +404,21 @@ class AccentController extends ChangeNotifier {
     }
   }
 
-  /// Ré-applique la couleur du jour si le mode immersif est actif ET que le
-  /// jour a changé. À appeler au retour au premier plan (TV allumée H24 :
-  /// le thème bascule sans redémarrer). Sans effet en mode fixe. O(1).
+  /// Ré-applique la couleur immersive du moment si le mode est actif : couleur
+  /// de l'HEURE + petite nuance de l'OUVERTURE. À appeler au retour au premier
+  /// plan (chaque ouverture rafraîchit la nuance ; l'heure fait tourner la
+  /// base). Sans effet en mode fixe. O(1).
   void refreshDailyIfNeeded() {
     if (!_daily) return;
-    final AccentTheme t = _todayTheme;
-    if (t.id != _current.id) {
-      _current = t;
-      notifyListeners();
-    }
+    _applyImmersive();
   }
 
-  /// Active le mode IMMERSIF : une couleur par jour, en rotation sur les
-  /// 100+ teintes. Applique tout de suite celle d'aujourd'hui. Persisté.
+  /// Active le mode IMMERSIF : une couleur premium qui change chaque heure,
+  /// avec une nuance différente à chaque ouverture (rotation sur les 100+
+  /// teintes). Applique tout de suite celle du moment. Persisté.
   Future<void> enableDaily() async {
     _daily = true;
-    _current = _todayTheme;
-    notifyListeners();
+    _applyImmersive();
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kModeKey, 'daily');
@@ -401,6 +438,10 @@ class AccentController extends ChangeNotifier {
         hsl.withLightness((hsl.lightness + 0.15).clamp(0.0, 1.0)).toColor();
     final Color muted =
         hsl.withLightness((hsl.lightness - 0.22).clamp(0.0, 1.0)).toColor();
+    // Le panel reprend la main : on coupe le pilote immersif de cette session.
+    _daily = false;
+    _immersiveTimer?.cancel();
+    _immersiveTimer = null;
     if (_current.id == 'remote' && _current.accent == accent) return;
     _current = AccentTheme(
       id: 'remote',
@@ -417,6 +458,8 @@ class AccentController extends ChangeNotifier {
   Future<void> select(AccentTheme theme) async {
     final bool same = theme.id == _current.id && !_daily;
     _daily = false;
+    _immersiveTimer?.cancel();
+    _immersiveTimer = null;
     if (!same) {
       _current = theme;
       notifyListeners(); // recolore toute l'app immédiatement

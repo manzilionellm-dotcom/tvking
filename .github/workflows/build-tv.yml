@@ -670,10 +670,12 @@ jobs:
           # epoch que l'APK (exporté par l'étape build) : la box compare son
           # buildNumber local à cette valeur et propose la MAJ par-dessus.
           # Sans ce fichier, la box n'a AUCUN moyen de se mettre à jour seule.
+          VN=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*//; s/\+.*//')
+          [ -z "$VN" ] && VN="0.3.2"
           cat > version.json <<JSON
           {
             "versionCode": ${TV_BUILD_NUMBER:-0},
-            "versionName": "0.3.2",
+            "versionName": "$VN",
             "url": "https://github.com/$REPO/releases/download/$TAG/defew-tv.apk",
             "mandatory": false
           }
@@ -694,10 +696,12 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -e
+          VN=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*//; s/\+.*//')
+          [ -z "$VN" ] && VN="0.3.2"
           cat > version.json <<JSON
           {
             "versionCode": 2100000000,
-            "versionName": "0.3.2",
+            "versionName": "$VN",
             "url": "https://github.com/$REPO/releases/download/tv-prod/defew-tv.apk",
             "mandatory": false
           }
