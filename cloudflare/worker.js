@@ -116,6 +116,15 @@ const TV_AAB_URL =
 const PHONE_AAB_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/prod/7motion.aab';
 
+// Visuels de la fiche Play Store (icône 512×512 + image de présentation
+// 1024×500), versionnés dans le repo. Servis en TÉLÉCHARGEMENT direct via
+// app.7themotion.com/store-icon et /store-banner → à déposer dans la Play
+// Console (icône / image de présentation) sans passer par un transfert manuel.
+const STORE_ICON_URL =
+  'https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/claude/maison-mere-phone/cloudflare/store/icon_512x512.png';
+const STORE_BANNER_URL =
+  'https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/claude/maison-mere-phone/cloudflare/store/feature_1024x500.png';
+
 // NB : les wrappers WebView / NOVA+ et Red Room ont été RETIRÉS du
 // projet. Deux apps sont distribuées : 7 MOTION mobile (`APK_URL`) et
 // DeFew TV (`TV_APK_URL`), chacune via son lien court (/app et /tv).
@@ -5249,6 +5258,17 @@ async function handleRequest(request, env, ctx) {
     if (segments.length === 1 &&
         ['phone-aab', 'phoneaab', 'aab-phone', 'aab'].includes(segments[0].toLowerCase())) {
       return proxyRelease(PHONE_AAB_URL, '7motion.aab');
+    }
+
+    // /store-icon et /store-banner — visuels de la fiche Play Store en
+    // téléchargement direct (icône 512×512 / image de présentation 1024×500).
+    if (segments.length === 1 &&
+        ['store-icon', 'app-icon', 'icone'].includes(segments[0].toLowerCase())) {
+      return proxyRelease(STORE_ICON_URL, 'icon_512x512.png');
+    }
+    if (segments.length === 1 &&
+        ['store-banner', 'app-banner', 'banniere'].includes(segments[0].toLowerCase())) {
+      return proxyRelease(STORE_BANNER_URL, 'feature_1024x500.png');
     }
 
     // /privacy — Politique de confidentialité (exigée par Google Play,
