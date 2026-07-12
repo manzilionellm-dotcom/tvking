@@ -1828,6 +1828,27 @@
   "@subActiveLifetime": {
     "description": "Titre carte abonnement quand le plan est à vie"
   },
+  "subDaysRemaining": "{days} jours restants",
+  "@subDaysRemaining": {
+    "description": "Jours restants d'abonnement (nombre pré-formaté)",
+    "placeholders": {
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "subLifetimeApprox": "À vie · environ 100 ans",
+  "@subLifetimeApprox": {
+    "description": "Précision sous le nombre de jours pour un abonnement à vie"
+  },
+  "subActiveBadge": "Abonnement actif",
+  "@subActiveBadge": {
+    "description": "Confirmation affichée à la place du bouton d'achat une fois payé"
+  },
+  "subActivatedNotice": "🎉 Ton abonnement est activé — bienvenue !",
+  "@subActivatedNotice": {
+    "description": "Notification ponctuelle quand l'abonnement vient d'être activé"
+  },
   "activationCheckButton": "Vérifier mon abonnement",
   "@activationCheckButton": {
     "description": "Bouton pour revérifier l’abonnement et charger la source"

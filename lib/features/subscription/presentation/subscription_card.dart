@@ -29,6 +29,10 @@ class SubscriptionCard extends StatelessWidget {
       builder: (BuildContext context, _) {
         final SubscriptionState s = SubscriptionState.instance;
         final SubscriptionStatus status = s.status;
+        final bool isPaid = status == SubscriptionStatus.paid;
+        // Jours restants À AFFICHER (à vie → ~100 ans) — argument concret et
+        // rassurant. `null` pour les états sans compte à rebours.
+        final int? daysLeft = s.subscriptionDaysLeft;
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -62,6 +66,13 @@ class SubscriptionCard extends StatelessWidget {
                   ),
                 ],
               ),
+              // Jours restants BIEN VISIBLES (essai OU payant OU à vie). Pour
+              // « à vie » on montre ~100 ans (36 500 jours) : un grand nombre
+              // rassure le client tout de suite.
+              if (daysLeft != null) ...<Widget>[
+                const SizedBox(height: 12),
+                _daysBadge(context, daysLeft, s.isLifetime),
+              ],
               const SizedBox(height: 10),
               Text(
                 _subtitleFor(context, status),
@@ -72,37 +83,44 @@ class SubscriptionCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => _openPurchaseUrl(context),
-                  icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                  label: Text(
-                    status == SubscriptionStatus.trialExpired
-                        ? context.l10n.subCardBuyExpired
-                        : context.l10n.subCardSeeOffers,
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: status == SubscriptionStatus.trialExpired
-                        ? AppColors.live
-                        : AppColors.accent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+              // Déjà payé/à vie → AUCUN bouton d'achat ni « offres » (l'essai
+              // et l'incitation à activer DISPARAISSENT) : juste la confirmation
+              // « abonnement actif ». Sinon (essai / expiré) → le CTA d'achat.
+              if (isPaid)
+                _activeConfirm(context)
+              else ...<Widget>[
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _openPurchaseUrl(context),
+                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                    label: Text(
+                      status == SubscriptionStatus.trialExpired
+                          ? context.l10n.subCardBuyExpired
+                          : context.l10n.subCardSeeOffers,
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: status == SubscriptionStatus.trialExpired
+                          ? AppColors.live
+                          : AppColors.accent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                context.l10n.subCardSecurePayment,
-                style: AppTextStyles.bodyMedium.copyWith(
-                  fontSize: 10.5,
-                  color: AppColors.textMuted,
+                const SizedBox(height: 6),
+                Text(
+                  context.l10n.subCardSecurePayment,
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    fontSize: 10.5,
+                    color: AppColors.textMuted,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
-              ),
+              ],
             ],
           ),
         );
@@ -124,6 +142,92 @@ class SubscriptionCard extends StatelessWidget {
         ),
       );
     }
+  }
+
+  /// Formate un nombre de jours avec séparateur de milliers (« 36 500 »).
+  String _fmtDays(int d) {
+    final String str = d.toString();
+    final StringBuffer buf = StringBuffer();
+    for (int i = 0; i < str.length; i++) {
+      if (i > 0 && (str.length - i) % 3 == 0) buf.write(' '); // fine space
+      buf.write(str[i]);
+    }
+    return buf.toString();
+  }
+
+  /// Badge « X jours restants » — bien lisible. Pour « à vie », on ajoute la
+  /// mention ~100 ans pour que le grand nombre soit compris.
+  Widget _daysBadge(BuildContext context, int days, bool lifetime) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.accentSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.event_available_rounded,
+              size: 20, color: AppColors.accent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  context.l10n.subDaysRemaining(_fmtDays(days)),
+                  style: AppTextStyles.headlineMedium.copyWith(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.accent,
+                  ),
+                ),
+                if (lifetime)
+                  Text(
+                    context.l10n.subLifetimeApprox,
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Confirmation « abonnement actif » (remplace le bouton d'achat une fois
+  /// payé) : plus aucune incitation à activer/acheter.
+  Widget _activeConfirm(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: AppColors.success.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.success.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          const Icon(Icons.check_circle_rounded,
+              size: 18, color: AppColors.success),
+          const SizedBox(width: 8),
+          Text(
+            context.l10n.subActiveBadge,
+            style: AppTextStyles.bodyMedium.copyWith(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.success,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   IconData _iconFor(SubscriptionStatus s) {

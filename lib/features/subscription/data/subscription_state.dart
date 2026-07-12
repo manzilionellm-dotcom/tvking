@@ -205,6 +205,49 @@ class SubscriptionState extends ChangeNotifier {
     return remaining > 0 ? remaining : 0;
   }
 
+  /// Jours affichés pour un abonnement « À VIE » : ~100 ans. Le serveur
+  /// stocke « à vie » SANS date (expires_at = null) ; c'est donc un pur
+  /// choix d'AFFICHAGE. Montrer un très grand nombre de jours restants est
+  /// rassurant/valorisant pour le client (« il te reste 36 500 jours »).
+  static const int kLifetimeDisplayDays = 36500;
+
+  /// Jours restants À AFFICHER (essai OU payant OU à vie). Contrairement à
+  /// [daysUntilExpiry] (alerte, `null` si à vie), celui-ci renvoie TOUJOURS
+  /// un nombre tant que l'abonnement est actif — à vie → ~100 ans — pour
+  /// pouvoir écrire « il te reste X jours » en clair dans les réglages.
+  int? get subscriptionDaysLeft {
+    if (isLifetime) return kLifetimeDisplayDays;
+    final SubscriptionStatus s = status;
+    if (s == SubscriptionStatus.paid) {
+      final DateTime? until = paidUntil;
+      if (until == null) return kLifetimeDisplayDays; // payant sans date = à vie
+      final int ms = until.millisecondsSinceEpoch - _effectiveNowMs;
+      return ms <= 0 ? 0 : (ms / _kDayMs).ceil();
+    }
+    if (s == SubscriptionStatus.trialActive) return trialDaysRemaining;
+    return null;
+  }
+
+  // ----- Notification d'activation (félicitations, une seule fois) -----
+  static const String _kActivatedAckKey = 'subscription.activated_ack';
+  bool _activatedAck = false;
+  bool _justActivated = false;
+
+  /// `true` UNE FOIS quand le serveur confirme un abonnement payant pour la
+  /// première fois (transition essai/inconnu → payé). L'UI le consomme pour
+  /// féliciter le client, puis appelle [acknowledgeActivation].
+  bool get justActivated => _justActivated;
+
+  /// L'UI a montré la félicitation d'activation → on n'y revient plus (tant
+  /// que l'abonnement ne retombe pas puis n'est ré-activé).
+  void acknowledgeActivation() {
+    if (!_justActivated) return;
+    _justActivated = false;
+    SharedPreferences.getInstance()
+        .then((SharedPreferences p) => p.setBool(_kActivatedAckKey, true))
+        .catchError((Object _) => false);
+  }
+
   /// Seuil d'alerte d'expiration : on prévient le client quand il reste ≤ ce
   /// nombre de jours (abonnement payant OU essai).
   static const int kExpiryWarnDays = 5;
@@ -267,6 +310,7 @@ class SubscriptionState extends ChangeNotifier {
       _blockCache = prefs.getString(_kBlockKey) ?? '';
       _trialUntilCache = prefs.getInt(_kTrialUntilKey) ?? 0;
       _hwmMs = prefs.getInt(_kHwmKey) ?? 0;
+      _activatedAck = prefs.getBool(_kActivatedAckKey) ?? false;
       // Avance le high-water mark si l'horloge a légitimement progressé.
       final int nowMs = DateTime.now().millisecondsSinceEpoch;
       if (nowMs > _hwmMs) {
@@ -368,6 +412,24 @@ class SubscriptionState extends ChangeNotifier {
           await markPaidUntil(DateTime.fromMillisecondsSinceEpoch(targetMs));
         }
       }
+      // NOTIFICATION D'ACTIVATION (une seule fois) : dès que le serveur
+      // confirme un abonnement PAYANT pour la 1re fois, on lève un drapeau
+      // que l'UI consomme pour féliciter le client. Réarmé si l'abonnement
+      // retombe (ré-activation future → nouvelle félicitation).
+      try {
+        final SharedPreferences prefs =
+            await SharedPreferences.getInstance();
+        if (snap.paid) {
+          if (!_activatedAck) {
+            _activatedAck = true;
+            _justActivated = true;
+            await prefs.setBool(_kActivatedAckKey, true);
+          }
+        } else if (snap.exists && _activatedAck) {
+          _activatedAck = false;
+          await prefs.setBool(_kActivatedAckKey, false);
+        }
+      } catch (_) {}
       notifyListeners();
     } catch (e) {
       if (kDebugMode) debugPrint('[Subscription] syncWithBackend error: $e');

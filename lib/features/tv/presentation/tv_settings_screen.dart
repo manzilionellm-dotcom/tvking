@@ -57,10 +57,26 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
     if (mounted) setState(() => _busy = false);
   }
 
+  /// Formate un nombre de jours avec séparateur de milliers (« 36 500 »).
+  String _fmtDaysGrouped(int d) {
+    final String str = d.toString();
+    final StringBuffer buf = StringBuffer();
+    for (int i = 0; i < str.length; i++) {
+      if (i > 0 && (str.length - i) % 3 == 0) buf.write(' ');
+      buf.write(str[i]);
+    }
+    return buf.toString();
+  }
+
   ({String label, Color color}) _statusOf(BuildContext context) {
     switch (SubscriptionState.instance.status) {
       case SubscriptionStatus.paid:
-        return (label: context.l10n.tvStatusPaid, color: const Color(0xFF3FBE7C));
+        // Montre les JOURS restants (à vie → ~100 ans) — concret et rassurant.
+        final int? left = SubscriptionState.instance.subscriptionDaysLeft;
+        final String paidLabel = left != null
+            ? context.l10n.subDaysRemaining(_fmtDaysGrouped(left))
+            : context.l10n.tvStatusPaid;
+        return (label: paidLabel, color: const Color(0xFF3FBE7C));
       case SubscriptionStatus.trialActive:
         final int d = SubscriptionState.instance.trialDaysRemaining;
         return (label: context.l10n.tvStatusTrial(d), color: const Color(0xFF5AA0E8));

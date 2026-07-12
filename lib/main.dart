@@ -33,6 +33,7 @@ import 'core/update/update_prompt.dart';
 import 'core/branding/verified_badge.dart';
 import 'core/theme/app_text_styles.dart' show AppTextStyles;
 import 'core/i18n/locale_repository.dart';
+import 'core/i18n/l10n_extension.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/accent_controller.dart';
@@ -502,6 +503,24 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
   /// `resumed` en ouvre une seconde par-dessus.
   bool _updateChecking = false;
 
+  /// Félicitation d'activation (une seule fois) : dès que
+  /// [SubscriptionState] lève `justActivated`, on montre un message vert au
+  /// client et on acquitte pour ne pas le répéter.
+  void _onSubscriptionChanged() {
+    if (!mounted || !SubscriptionState.instance.justActivated) return;
+    SubscriptionState.instance.acknowledgeActivation();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.success,
+          duration: const Duration(seconds: 6),
+          content: Text(context.l10n.subActivatedNotice),
+        ),
+      );
+    });
+  }
+
   Future<void> _maybeCheckUpdate() async {
     if (_updateChecking || !mounted) return;
     _updateChecking = true;
@@ -520,6 +539,9 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
     // panel, le RealtimeSyncService incrémente `revision` → re-check
     // immédiat, l'écran de blocage apparaît sans redémarrage.
     ForceUpdateChecker.instance.revision.addListener(_checkForcedUpdate);
+    // Notification d'activation : quand le serveur confirme l'abonnement
+    // payant du client (transition essai → payé), on le félicite UNE fois.
+    SubscriptionState.instance.addListener(_onSubscriptionChanged);
     // Cycle de vie : re-vérifier la MAJ au retour au premier plan (comme
     // la TV Box). Un client qui rouvre l'app après une publication voit
     // tout de suite la proposition de mise à jour.
@@ -586,6 +608,7 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
   @override
   void dispose() {
     ForceUpdateChecker.instance.revision.removeListener(_checkForcedUpdate);
+    SubscriptionState.instance.removeListener(_onSubscriptionChanged);
     WidgetsBinding.instance.removeObserver(this);
     _updateTimer?.cancel();
     super.dispose();
