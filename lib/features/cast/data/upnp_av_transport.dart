@@ -136,6 +136,7 @@ class UpnpAvTransport implements CastTransport {
     required String streamUrl,
     String title = '7 MOTION',
     String? imageUrl,
+    bool assumeSuccessWhenUnknown = true,
   }) async {
     // Phase 1+/G1 : DLNA pourrait porter `imageUrl` dans le DIDL-Lite
     // via `upnp:albumArtURI`. Pas encore wire — la conformite varie
@@ -190,7 +191,10 @@ class UpnpAvTransport implements CastTransport {
 
     // (6) Vérifie qu'on est vraiment passé en PLAYING (ou PAUSED — certains
     //     récepteurs démarrent en PAUSED avant de jouer). Sinon on lève.
-    await _waitForPlaying(maxWait: const Duration(seconds: 4));
+    await _waitForPlaying(
+      maxWait: const Duration(seconds: 4),
+      assumeSuccessWhenUnknown: assumeSuccessWhenUnknown,
+    );
   }
 
   @override
@@ -315,9 +319,17 @@ class UpnpAvTransport implements CastTransport {
   /// Poll GetTransportInfo jusqu'à PLAYING (ou PAUSED_PLAYBACK).
   /// Si on n'y arrive pas dans le délai, on lève — le caller
   /// déclenchera un retry avec un autre profil/mode.
+  /// [assumeSuccessWhenUnknown] : quand le récepteur ne répond JAMAIS à
+  /// GetTransportInfo (état toujours `null`), faut-il supposer que Play a
+  /// marché ? `true` = comportement historique (on n'a aucun moyen de
+  /// vérifier). `false` = on lève, pour que le failover escalade vers le
+  /// relais HLS — utilisé UNIQUEMENT pour les renderers « muets » (Sink
+  /// vide) en tentative DIRECTE, qui « acceptaient » un TS live puis
+  /// n'affichaient rien (faux positif). Voir CastManager._castDlnaWithFailover.
   Future<void> _waitForPlaying({
     required Duration maxWait,
     Duration pollEvery = const Duration(milliseconds: 300),
+    bool assumeSuccessWhenUnknown = true,
   }) async {
     final DateTime deadline = DateTime.now().add(maxWait);
     String? lastState;
@@ -339,9 +351,18 @@ class UpnpAvTransport implements CastTransport {
       await Future<void>.delayed(pollEvery);
     }
     if (lastState == null) {
-      // GetTransportInfo non supporté — on suppose que le Play a
-      // marché (on n'a aucun moyen de vérifier).
-      return;
+      // GetTransportInfo non supporté (aucune réponse d'état).
+      if (assumeSuccessWhenUnknown) {
+        // Historique : on suppose que le Play a marché (aucun moyen de
+        // vérifier). Conservé pour tous les récepteurs sauf le cas
+        // « muet + direct » traité par le caller.
+        return;
+      }
+      // Récepteur muet en DIRECT : ne PAS déclarer un faux succès —
+      // on lève pour que le failover tente le relais HLS.
+      throw Exception(
+        'Lecture non confirmée (récepteur muet : GetTransportInfo absent)',
+      );
     }
     throw Exception(
       'La lecture n\'a pas démarré (dernier état: $lastState)',

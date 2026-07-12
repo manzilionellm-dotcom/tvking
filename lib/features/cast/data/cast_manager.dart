@@ -1080,6 +1080,15 @@ class CastManager extends ChangeNotifier {
       profileNames: profileNames.toSet().take(12).toList(growable: false),
     );
 
+    // Renderer « muet » : Sink vide = il ne répond ni à GetProtocolInfo ni
+    // (quasi toujours) à GetTransportInfo. Sur ces TVs génériques, une
+    // tentative DIRECTE d'un TS live « réussissait » sans rien afficher
+    // (faux positif : aucun état à vérifier). Pour elles, on n'assume PLUS
+    // le succès en direct → le failover escalade vers le relais HLS (que
+    // ces renderers savent lire). Les renderers qui exposent leur Sink
+    // (LG/Samsung…) gardent EXACTEMENT le comportement d'avant.
+    final bool barebonesRenderer = sink.entries.isEmpty;
+
     // Profil retenu pour ce flux (informé par MIME + LIVE/VOD heuristique).
     DlnaProfile profile = DlnaProfiles.select(
       url: probe.finalUrl,
@@ -1303,6 +1312,11 @@ class CastManager extends ChangeNotifier {
           streamUrl: urlToCast,
           title: title,
           imageUrl: imageUrl,
+          // Renderer muet + tentative DIRECTE → ne pas gober un faux
+          // succès : on force l'escalade vers le relais. En RELAIS (ou
+          // renderer non muet), on garde l'hypothèse de succès historique.
+          assumeSuccessWhenUnknown:
+              !(barebonesRenderer && urlKind == 'direct'),
         );
         diag.attempts.add(AttemptResult(
           strategyIndex: s,

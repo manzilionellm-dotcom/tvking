@@ -436,6 +436,29 @@ class StreamProbe {
 
         // --- 2xx OK ---
         final String? mime = resp.headers.contentType?.mimeType;
+        // Une réponse 200 en `text/html` n'est PAS un flux vidéo : c'est
+        // une page d'erreur du panel (token expiré, géo/abonnement, ou un
+        // « not found » déguisé en 200). La caster afficherait une page
+        // web. On la traite comme un échec → la cascade de variantes d'URL
+        // tente autre chose, et à défaut le cast affiche « flux
+        // indisponible » plutôt qu'une page HTML muette. (Terrain
+        // 2026-07-12 : « FR | ARTE FHD » sondée → mime text/html.)
+        final String? mimeLc = mime?.toLowerCase();
+        if (mimeLc != null &&
+            (mimeLc.contains('text/html') ||
+                mimeLc.contains('application/xhtml'))) {
+          await resp.listen(null, cancelOnError: true).cancel();
+          return StreamProbeResult(
+            originalUrl: url,
+            finalUrl: currentUrl,
+            success: false,
+            redirectCount: redirects,
+            errorCode: resp.statusCode,
+            errorReason: 'Réponse HTML (page d\'erreur) au lieu d\'un flux',
+            timeToFirstByte: sw.elapsedMilliseconds,
+            mime: mime,
+          );
+        }
         final int? len = resp.contentLength == -1 ? null : resp.contentLength;
         final bool ranges =
             (resp.headers.value(HttpHeaders.acceptRangesHeader) ?? '')
