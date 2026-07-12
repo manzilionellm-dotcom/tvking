@@ -381,14 +381,32 @@ export interface DeviceLocalSource {
   channels: number;
   active: boolean;
 }
+// Méta appareil renvoyée par l'overview (permet d'ouvrir la fiche 360°
+// depuis n'importe quelle page en ne connaissant QUE la MAC).
+export interface DeviceMeta {
+  label: string | null;
+  customer_name: string | null;
+  reseller_id: string | null;
+  block_status: string | null;
+  first_seen_at: number;
+  last_seen_at: number;
+  device_model: string | null;
+  android_release: string | null;
+  android_build: string | null;
+  app_version: string | null;
+  app_build: number | null;
+  platform: string | null;
+  android_id: string | null;
+}
 // Fiche 360° agrégée d'un appareil : abonnement + présence + M-Trio +
-// inventaire réel des sources sur l'appareil.
+// inventaire réel des sources sur l'appareil + méta appareil.
 export interface DeviceOverview {
   mac: string;
   license: DeviceLicense | null;
   presence: DevicePresence | null;
   sources: DeviceSource[];
   localSources?: DeviceLocalSource[];
+  device?: DeviceMeta | null;
 }
 export const devicesApi = {
   list: (q?: string) =>

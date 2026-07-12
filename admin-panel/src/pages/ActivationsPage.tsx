@@ -1,3 +1,4 @@
+import { MacLink } from '@/components/MacLink';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
@@ -70,7 +71,7 @@ export function ActivationsPage({ onLogout }: { onLogout: () => void }) {
               <tr key={l.id} className="bg-obsidian hover:bg-midnight">
                 <td className="px-4 py-3 font-medium">{l.customer_name || l.customer_email || '—'}</td>
                 <td className="px-4 py-3">{l.app_name || '—'}</td>
-                <td className="px-4 py-3 font-mono text-xs text-accent">{l.device_mac}</td>
+                <td className="px-4 py-3"><MacLink mac={l.device_mac} /></td>
                 <td className="px-4 py-3 text-ink-secondary uppercase tracking-wider text-[10px]">{l.plan}</td>
                 <td className="px-4 py-3">
                   <span className={`rounded-sm px-2 py-0.5 text-[9px] uppercase tracking-widest ${statusClass(l.status)}`}>

@@ -1,3 +1,4 @@
+import { MacLink } from '@/components/MacLink';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
@@ -217,7 +218,7 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
                     <div className="truncate text-xs text-ink-primary">
                       {it.label || <span className="font-mono">{it.mac}</span>}
                     </div>
-                    <div className="truncate font-mono text-[10px] text-ink-tertiary">{it.mac}</div>
+                    <div className="truncate text-[10px]"><MacLink mac={it.mac} className="text-[10px]" /></div>
                   </div>
                   <span className="shrink-0 text-[10px] text-ink-tertiary">
                     {it.plan ? (PLAN_LABELS[it.plan] || it.plan) : '—'}
@@ -241,7 +242,7 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
                     <div className="truncate text-xs text-ink-primary">
                       {it.label || <span className="font-mono">{it.mac}</span>}
                     </div>
-                    <div className="truncate font-mono text-[10px] text-ink-tertiary">{it.mac}</div>
+                    <div className="truncate text-[10px]"><MacLink mac={it.mac} className="text-[10px]" /></div>
                   </div>
                   <span className="shrink-0 text-[10px] text-ink-tertiary">
                     {formatDateTime(it.first_seen_at)}
@@ -353,7 +354,7 @@ function ExpiringRow({
         <div className="truncate text-xs text-ink-primary">
           {item.label || item.customer_name || <span className="font-mono">{item.mac}</span>}
         </div>
-        <div className="truncate font-mono text-[10px] text-ink-tertiary">{item.mac}</div>
+        <div className="truncate text-[10px]"><MacLink mac={item.mac} className="text-[10px]" /></div>
       </div>
       <span className="shrink-0 text-[10px] text-ink-tertiary">
         {item.plan ? (PLAN_LABELS[item.plan] || item.plan) : '—'}

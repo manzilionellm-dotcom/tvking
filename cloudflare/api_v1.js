@@ -2988,19 +2988,49 @@ async function handleDeviceOverview(env, id, user) {
 
   // --- Inventaire RÉEL sur l'appareil (remonté par le heartbeat) : toutes les
   //     sources présentes sur la TV, y compris celles que le client a ajoutées
-  //     lui-même. SANS mot de passe (le client ne le remonte jamais).
+  //     lui-même. SANS mot de passe (le client ne le remonte jamais). Dans la
+  //     MÊME requête, on récupère la MÉTA appareil (modèle, plateforme, version
+  //     app, première/dernière vue, revendeur) pour une fiche « tout, tout ».
   let localSources = [];
+  let device = null;
   try {
     const drow = await env.DB
-      .prepare('SELECT local_sources_json FROM devices WHERE id = ?')
+      .prepare(
+        `SELECT d.local_sources_json, d.label, d.customer_id, d.reseller_id,
+                d.block_status, d.first_seen_at, d.last_seen_at,
+                d.device_model, d.android_build, d.android_release,
+                d.app_build, d.app_version, d.platform, d.android_id,
+                c.name AS customer_name
+           FROM devices d
+           LEFT JOIN customers c ON c.id = d.customer_id
+          WHERE d.id = ?`,
+      )
       .bind(dev.id)
       .first();
-    if (drow && drow.local_sources_json) {
-      try { localSources = JSON.parse(drow.local_sources_json) || []; } catch (_) { localSources = []; }
+    if (drow) {
+      if (drow.local_sources_json) {
+        try { localSources = JSON.parse(drow.local_sources_json) || []; }
+        catch (_) { localSources = []; }
+      }
+      device = {
+        label: drow.label || null,
+        customer_name: drow.customer_name || null,
+        reseller_id: drow.reseller_id || null,
+        block_status: drow.block_status || null,
+        first_seen_at: drow.first_seen_at || 0,
+        last_seen_at: drow.last_seen_at || 0,
+        device_model: drow.device_model || null,
+        android_release: drow.android_release || null,
+        android_build: drow.android_build || null,
+        app_version: drow.app_version || null,
+        app_build: drow.app_build || null,
+        platform: drow.platform || null,
+        android_id: drow.android_id || null,
+      };
     }
-  } catch (_) { /* colonne absente sur base ancienne : on ignore */ }
+  } catch (_) { /* colonnes/table absentes sur base ancienne : on ignore */ }
 
-  return jsonResp({ mac: dev.mac, license, presence, sources, localSources });
+  return jsonResp({ mac: dev.mac, license, presence, sources, localSources, device });
 }
 
 async function handleDevicesCreate(request, env, actor) {
@@ -3035,9 +3065,18 @@ async function handleDevicesCreate(request, env, actor) {
 // Verifie qu'un revendeur a le droit d'agir sur ce device (le sien),
 // ou que c'est l'owner. Renvoie le device, ou une reponse d'erreur.
 async function deviceForActor(env, id, user) {
+  // Accepte l'ID de ligne OU la MAC : ainsi TOUTES les pages du panel qui
+  // n'ont qu'une MAC (Centre de contrôle, En ligne, Activations, Historique,
+  // Références, Familles…) peuvent ouvrir la fiche 360° en cliquant la MAC,
+  // sans devoir résoudre l'ID d'abord. Les ID (uuid préfixé) et les MAC
+  // (MK:XX:…) ne se collisionnent pas.
+  const key = String(id || '');
   const dev = await env.DB
-    .prepare('SELECT id, mac, reseller_id, block_status FROM devices WHERE id = ?')
-    .bind(id).first();
+    .prepare(
+      'SELECT id, mac, reseller_id, block_status FROM devices WHERE id = ? OR mac = ?',
+    )
+    .bind(key, key.toUpperCase())
+    .first();
   if (!dev) return { error: errResp('not_found', 'Device not found', 404) };
   if (user && user.role === 'reseller' && dev.reseller_id !== user.sub) {
     return { error: errResp('forbidden', 'Cet appareil ne vous appartient pas', 403) };

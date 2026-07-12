@@ -1,3 +1,4 @@
+import { MacLink } from '@/components/MacLink';
 import { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { referencesApi, type ActivationReference, ApiError } from '@/lib/api';
@@ -121,13 +122,7 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
             {filtered.map((it) => (
               <tr key={it.mac} className="bg-obsidian hover:bg-midnight">
                 <td className="px-4 py-3">
-                  <button
-                    onClick={() => copy(it.mac)}
-                    title="Copier la MAC"
-                    className="font-mono text-[12px] text-ink-secondary hover:text-accent-bright"
-                  >
-                    {copied === it.mac ? '✓ copié' : it.mac}
-                  </button>
+                  <MacLink mac={it.mac} className="text-[12px]" />
                 </td>
                 <td className="px-4 py-3 text-ink-secondary">{it.customer_name || '—'}</td>
                 <td className="px-4 py-3"><RefStatus status={it.status} /></td>

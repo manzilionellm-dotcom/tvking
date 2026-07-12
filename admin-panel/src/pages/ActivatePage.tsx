@@ -235,10 +235,10 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             </div>
           </div>
 
-          {/* Plan */}
-          <div>
-            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
-              Plan
+          {/* ===== ① ABONNEMENT DE L'APP (licence) — catégorie à part ===== */}
+          <div className="rounded-lg border border-accent/25 bg-accent/[0.05] p-3">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-accent-bright">
+              ① Abonnement de l'app — durée de la licence
             </label>
             <div className="grid grid-cols-2 gap-2">
               {PLANS.map((p) => {
@@ -303,11 +303,14 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             />
           </div>
 
-          {/* ===== TRIO de sources (0 à 3) — masqué si niveau insuffisant ===== */}
+          {/* ===== ② CHAÎNES DU CLIENT (sources) — catégorie à part =====
+              Volontairement distincte de l'abonnement ci-dessus : activer
+              l'app (licence) et charger les chaînes sont deux choses
+              différentes. Masqué si niveau insuffisant. */}
           {canPushSources && (
-          <div className="rounded-lg border border-white/5 bg-slate/40 p-3">
-            <label className="mb-2 block text-[10px] uppercase tracking-widest text-ink-tertiary">
-              Sources du client — chargées automatiquement (jusqu'à 3)
+          <div className="rounded-lg border border-sky-400/25 bg-sky-400/[0.05] p-3">
+            <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-sky-300">
+              ② Chaînes du client — sources chargées automatiquement (jusqu'à 3)
             </label>
 
             {items.map((it, i) => (

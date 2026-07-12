@@ -1,3 +1,4 @@
+import { MacLink } from '@/components/MacLink';
 import { FormEvent, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import {
@@ -249,7 +250,7 @@ export function FamiliesPage({ onLogout }: { onLogout: () => void }) {
                   <div key={m.mac}
                     className="flex items-center justify-between rounded-md border border-white/5 bg-slate px-3 py-2 text-sm">
                     <div>
-                      <span className="font-mono text-ink-primary">{m.mac}</span>
+                      <MacLink mac={m.mac} />
                       {m.label && <span className="ml-2 text-ink-tertiary">· {m.label}</span>}
                       <div className="text-[10px] text-ink-tertiary">
                         {m.created_at ? formatDateTime(m.created_at) : ''}

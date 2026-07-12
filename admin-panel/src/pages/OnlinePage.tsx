@@ -1,3 +1,4 @@
+import { MacLink } from '@/components/MacLink';
 import { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { onlineApi, type OnlineSnapshot, flagEmoji, ApiError } from '@/lib/api';
@@ -208,7 +209,7 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
                       {r.model ? <span className="ml-1.5 text-ink-tertiary">{r.model}</span> : null}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-ink-secondary">{r.ip || '—'}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-ink-tertiary">{r.mac}</td>
+                    <td className="px-4 py-2.5 text-xs"><MacLink mac={r.mac} /></td>
                     <td className="px-4 py-2.5 text-xs">
                       {r.channel
                         ? <span className="inline-flex items-center gap-1 text-accent-bright">▶ {r.channel}</span>
