@@ -864,6 +864,29 @@ jobs:
           gh --version
           gh auth status
 
+          # =========================================================
+          #  GARDE ANTI-RETOUR-ARRIÈRE (STRICT) — prod ne redescend JAMAIS
+          # =========================================================
+          #  Le versionCode = github.run_number (monotone croissant pour
+          #  chaque NOUVEAU build). On lit le versionCode actuellement
+          #  publié sur $TAG ; si CE build n'est pas STRICTEMENT supérieur,
+          #  on NE republie NI l'APK NI version.json → impossible de
+          #  repointer les clients vers une version plus ancienne (re-run
+          #  d'un vieux workflow, dispatch d'un ancien commit…). Le client
+          #  refuse déjà tout versionCode ≤ installé ; cette garde protège
+          #  en plus la SOURCE (la release prod elle-même) contre l'écrasement
+          #  par un binaire plus vieux. « Jamais en arrière. »
+          NEW_VC=${{ github.run_number }}
+          PREV_VC=$(curl -fsSL "https://github.com/$REPO/releases/download/$TAG/version.json" 2>/dev/null \
+            | tr -d ' \n' | grep -oE '"versionCode":[0-9]+' | grep -oE '[0-9]+' || true)
+          PREV_VC=${PREV_VC:-0}
+          echo ">>> Anti-retour-arrière : nouveau versionCode=$NEW_VC, publié sur $TAG=$PREV_VC"
+          if [ "${NEW_VC:-0}" -le "$PREV_VC" ]; then
+            echo "⛔ STRICT : run_number $NEW_VC <= prod $PREV_VC."
+            echo "    → AUCUNE republication (anti-downgrade). '$TAG' reste sur $PREV_VC."
+            exit 0
+          fi
+
           if gh release view "$TAG" --repo "$REPO"; then
             echo ">>> Release $TAG existe, on l'édite"
             gh release edit "$TAG" --repo "$REPO" \

@@ -618,6 +618,27 @@ jobs:
           # Repli défensif si l'étape build n'a pas exporté la variable.
           TAG="${TV_UPDATE_TAG:-tv-latest}"
           echo ">>> Release cible : $TAG (branche ${{ github.ref_name }})"
+
+          # =========================================================
+          #  GARDE ANTI-RETOUR-ARRIÈRE (STRICT) — tv-prod ne redescend JAMAIS
+          # =========================================================
+          #  versionCode TV = epoch secondes (strictement croissant). On
+          #  lit le versionCode déjà publié sur $TAG ; si ce build n'est pas
+          #  STRICTEMENT supérieur, on NE republie NI l'APK NI version.json.
+          #  La box refuse déjà tout versionCode ≤ installé ; cette garde
+          #  protège en plus la release elle-même contre un écrasement par un
+          #  binaire plus ancien. « Jamais en arrière », côté TV comme côté
+          #  téléphone.
+          NEW_VC=${TV_BUILD_NUMBER:-0}
+          PREV_VC=$(curl -fsSL "https://github.com/$REPO/releases/download/$TAG/version.json" 2>/dev/null \
+            | tr -d ' \n' | grep -oE '"versionCode":[0-9]+' | grep -oE '[0-9]+' || true)
+          PREV_VC=${PREV_VC:-0}
+          echo ">>> Anti-retour-arrière : nouveau versionCode=$NEW_VC, publié sur $TAG=$PREV_VC"
+          if [ "${NEW_VC:-0}" -le "$PREV_VC" ]; then
+            echo "⛔ STRICT : versionCode $NEW_VC <= $TAG $PREV_VC → AUCUNE republication (anti-downgrade)."
+            exit 0
+          fi
+
           SRC="build/app/outputs/flutter-apk/app-release.apk"
           OUT="build/app/outputs/flutter-apk/defew-tv.apk"
           cp "$SRC" "$OUT"
