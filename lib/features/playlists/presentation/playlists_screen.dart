@@ -123,11 +123,45 @@ class _PlaylistTile extends StatelessWidget {
       ? context.l10n.playlistTypeM3u
       : context.l10n.playlistTypeXtream;
 
-  String get _sourceLine {
+  /// Lien EXACT de la source (serveur Xtream ou URL M3U). Affiché en
+  /// entier + copiable → indispensable pour diagnostiquer à distance le
+  /// problème d'un client (« quel serveur / quel username tu vois ? »).
+  String get _diagLink {
     if (playlist.type == PlaylistType.m3u) {
-      return playlist.m3uUrl ?? '';
+      return (playlist.m3uUrl ?? '').trim();
     }
-    return '${playlist.xtreamServer ?? ''} · ${playlist.xtreamUsername ?? ''}';
+    return (playlist.xtreamServer ?? '').trim();
+  }
+
+  /// Identifiant Xtream (username) — vide pour une source M3U. Le mot de
+  /// passe n'est JAMAIS affiché.
+  String get _diagUser => (playlist.xtreamUsername ?? '').trim();
+
+  /// Ligne « icône + valeur » copiable (SelectableText) pour lire le lien
+  /// exact même très long, sans troncature.
+  Widget _diagRow(IconData icon, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(icon, size: 13, color: AppColors.textMuted),
+          const SizedBox(width: 6),
+          Expanded(
+            child: SelectableText(
+              value,
+              maxLines: 2,
+              style: AppTextStyles.bodyMedium.copyWith(
+                fontFamily: 'monospace',
+                fontSize: 11,
+                height: 1.3,
+                color: AppColors.textMuted,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   String _lastSyncLabel(BuildContext context) {
@@ -216,21 +250,16 @@ class _PlaylistTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _sourceLine,
-                  style: AppTextStyles.bodyMedium.copyWith(
-                    fontSize: 11,
-                    color: AppColors.textMuted,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
                   '${context.l10n.channelCount(playlist.channelCount)} · ${_lastSyncLabel(context)}',
                   style: AppTextStyles.bodyMedium.copyWith(
                     fontSize: 11,
                   ),
                 ),
+                // Lien + identifiant EXACTS (diagnostic à distance).
+                if (_diagLink.isNotEmpty)
+                  _diagRow(Icons.link_rounded, _diagLink),
+                if (_diagUser.isNotEmpty)
+                  _diagRow(Icons.person_outline_rounded, _diagUser),
               ],
             ),
           ),

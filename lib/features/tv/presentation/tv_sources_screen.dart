@@ -85,6 +85,40 @@ class _SourceRow extends StatelessWidget {
 
   bool get _xtream => playlist.type == PlaylistType.xtream;
 
+  /// Lien EXACT de la source (serveur Xtream ou URL M3U) — pour le
+  /// diagnostic à distance. Vide si absent.
+  String get _diagLink {
+    if (_xtream) return (playlist.xtreamServer ?? '').trim();
+    return (playlist.m3uUrl ?? '').trim();
+  }
+
+  /// Identifiant Xtream (username) — vide pour une source M3U.
+  String get _diagUser => (playlist.xtreamUsername ?? '').trim();
+
+  /// Ligne « icône + valeur » monospace, discrète, lisible à l'écran TV.
+  /// Sélectionnable pour pouvoir copier le lien depuis un clavier/souris.
+  Widget _diagRow(IconData icon, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Icon(icon, size: 13, color: TvTokens.muted),
+        const SizedBox(width: 6),
+        Expanded(
+          child: SelectableText(
+            value,
+            maxLines: 2,
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 12,
+              height: 1.3,
+              color: TvTokens.muted,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _delete(BuildContext context) async {
     final bool? ok = await showDialog<bool>(
       context: context,
@@ -161,6 +195,18 @@ class _SourceRow extends StatelessWidget {
                         color: playlist.isActive
                             ? TvTokens.gold
                             : TvTokens.muted)),
+                // Lien + identifiant EXACTS de la source — indispensables
+                // pour diagnostiquer à distance le problème d'un client
+                // (« quel serveur / quel username tu vois ? »). Le mot de
+                // passe n'est JAMAIS affiché.
+                if (_diagLink.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 5),
+                  _diagRow(Icons.link_rounded, _diagLink),
+                ],
+                if (_diagUser.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 2),
+                  _diagRow(Icons.person_outline_rounded, _diagUser),
+                ],
               ],
             ),
           ),
