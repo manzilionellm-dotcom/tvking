@@ -14,13 +14,43 @@ import '../i18n/l10n_extension.dart';
 import '../theme/app_colors.dart';
 import 'update_service.dart';
 
-/// Verifie une MAJ et, le cas echeant, propose de l'installer.
-/// Non bloquant : si rien de neuf ou erreur, ne fait rien (AUTO, silencieux).
+/// AUTO-MAJ « sans y penser » : appelée au démarrage, à chaque retour au
+/// premier plan et périodiquement (12 h). Dès qu'une nouvelle version est
+/// publiée, on la télécharge EN SILENCE (petit bandeau discret, non bloquant),
+/// puis on ouvre DIRECTEMENT l'installateur Android. Il ne reste AUCUNE
+/// question « Mettre à jour ? » : l'unique geste restant est le bouton
+/// « Installer » d'Android — OBLIGATOIRE et non contournable pour un APK hors
+/// Play Store (aucune app ne peut s'installer 100 % seule sans être
+/// app-système). Fail-open : rien de neuf, réseau KO ou build Play → ne fait
+/// rien. Le téléchargement n'a lieu qu'UNE fois par version (ensuite le
+/// buildNumber correspond, plus aucune détection).
 Future<void> maybePromptUpdate(BuildContext context) async {
   final UpdateInfo? update = await UpdateService.instance.check();
-  if (update == null) return;
+  if (update == null || !context.mounted) return;
+
+  final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(context);
+  // Bandeau discret : le client VOIT qu'une mise à jour arrive, sans avoir à
+  // décider quoi que ce soit — le téléchargement se fait tout seul en fond.
+  messenger?.showSnackBar(
+    SnackBar(
+      duration: const Duration(seconds: 45),
+      content: Text(context.l10n.moviesDownloading),
+    ),
+  );
+
+  final bool ok = await UpdateService.instance.downloadAndInstall(update);
   if (!context.mounted) return;
-  await _promptAndInstall(context, update);
+  messenger?.clearSnackBars();
+
+  if (!ok) {
+    // Repli silencieux : au prochain passage on réessaiera tout seul.
+    messenger?.showSnackBar(
+      SnackBar(content: Text(context.l10n.updateDownloadFailed)),
+    );
+  }
+  // Si ok : l'installateur Android est ouvert ; l'unique tap « Installer »
+  // met à jour PAR-DESSUS (même clé maîtresse + même package → favoris et
+  // réglages conservés, aucune désinstallation).
 }
 
 /// Vérification MANUELLE (bouton « Vérifier les mises à jour » des
