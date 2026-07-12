@@ -484,6 +484,7 @@
   "activationChecking": "Sjekker…",
   "activationSuccess": "Abonnement bekreftet – kanalene dine er lastet!",
   "activationNoSourceYet": "Ingen kanaler ennå. Hvis forhandleren nettopp aktiverte, vent litt og prøv igjen, eller start appen på nytt.",
+  "activationLoadingTitle": "Aktiverer kanalene dine…",
   "activationActiveNoSource": "Abonnement aktivt ✅ men ingen spilleliste tildelt din MAC. Forhandleren må legge til en kilde (Xtream/M3U).",
   "activationDeviceKnownNoSub": "Enheten gjenkjennes av serveren, venter på aktivering fra forhandleren.",
   "activationDeviceUnknown": "Serveren ser ikke enheten ennå – sjekk internettforbindelsen.",

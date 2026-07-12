@@ -484,6 +484,7 @@
   "activationChecking": "Kontrollerar…",
   "activationSuccess": "Abonnemang verifierat – dina kanaler är laddade!",
   "activationNoSourceYet": "Inga kanaler ännu. Om din återförsäljare nyss aktiverade, vänta lite och försök igen, eller starta om appen.",
+  "activationLoadingTitle": "Aktiverar dina kanaler…",
   "activationActiveNoSource": "Abonnemang aktivt ✅ men ingen spellista kopplad till din MAC. Din återförsäljare måste lägga till en källa (Xtream/M3U).",
   "activationDeviceKnownNoSub": "Enheten känns igen av servern, väntar på aktivering av din återförsäljare.",
   "activationDeviceUnknown": "Servern ser inte enheten ännu – kontrollera din internetanslutning.",

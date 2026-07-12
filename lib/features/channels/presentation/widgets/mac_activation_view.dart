@@ -39,6 +39,7 @@ import '../../../device/data/device_identity.dart';
 import '../../../pricing/presentation/pricing_banner.dart';
 import '../../../playlists/data/playlist_repository.dart';
 import '../../../playlists/data/remote_source_repository.dart';
+import '../../../playlists/presentation/import_progress_screen.dart';
 import '../../../playlists/presentation/xtream_login_sheet.dart';
 import '../../../subscription/data/subscription_state.dart';
 
@@ -265,27 +266,62 @@ class MacActivationView extends StatelessWidget {
     final String checking = context.l10n.activationChecking;
     final String success = context.l10n.activationSuccess;
     final String noSource = context.l10n.activationNoSourceYet;
+    final String loadingTitle = context.l10n.activationLoadingTitle;
+
+    // 1) Statut serveur (à vie / payé / essai).
     messenger.showSnackBar(
       SnackBar(
-        duration: const Duration(seconds: 25),
+        duration: const Duration(seconds: 20),
         content: Text(checking),
       ),
     );
     await SubscriptionState.instance.syncWithBackend();
-    await RemoteSourceRepository.sync();
+
+    // Déjà des chaînes chargées → activé, rien à réimporter.
+    if (PlaylistRepository.instance.currentChannels.isNotEmpty) {
+      messenger.clearSnackBars();
+      onActivated?.call();
+      messenger.showSnackBar(
+        SnackBar(backgroundColor: AppColors.success, content: Text(success)),
+      );
+      return;
+    }
+
+    // 2) Le revendeur a-t-il poussé une source ? (sans la charger encore)
+    final List<Map<String, dynamic>> sources =
+        await RemoteSourceRepository.fetchAssignedSources();
+    messenger.clearSnackBars();
+    if (!context.mounted) return;
+
+    // Rien d'assigné → le message « patiente un instant » (revendeur pas
+    // encore passé).
+    if (sources.isEmpty) {
+      messenger.showSnackBar(
+        SnackBar(backgroundColor: AppColors.warning, content: Text(noSource)),
+      );
+      return;
+    }
+
+    // 3) IMPORT VIVANT : plein écran qui montre la procédure, les catégories
+    //    et les chaînes qui s'ajoutent EN DIRECT + « patiente ». Beaucoup
+    //    plus rassurant qu'un petit message en bas.
+    await runImportWithProgress<RemoteSyncResult>(
+      context,
+      title: loadingTitle,
+      task: (onProgress) =>
+          RemoteSourceRepository.applySources(sources, onProgress: onProgress),
+    );
+    if (!context.mounted) return;
 
     final bool hasChannels =
         PlaylistRepository.instance.currentChannels.isNotEmpty;
-    messenger.clearSnackBars();
     if (hasChannels) {
       onActivated?.call();
       messenger.showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.success,
-          content: Text(success),
-        ),
+        SnackBar(backgroundColor: AppColors.success, content: Text(success)),
       );
     } else {
+      // Source reçue mais 0 chaîne / provider KO → message d'attente.
       messenger.showSnackBar(
         SnackBar(
           backgroundColor: AppColors.warning,

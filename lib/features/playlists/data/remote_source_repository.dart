@@ -31,6 +31,7 @@ import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 import '../domain/playlist.dart';
+import 'import_progress.dart';
 import 'playlist_repository.dart';
 
 /// Résultat d'une synchro de source distante — sert à afficher un
@@ -131,8 +132,62 @@ abstract final class RemoteSourceRepository {
     }
   }
 
+  /// Récupère la LISTE des sources assignées à cette MAC (sans les charger).
+  /// Sert à l'UI d'activation : si une source est en attente, on peut alors
+  /// afficher l'écran de progression VIVANT (chaînes qui s'ajoutent) au lieu
+  /// d'un simple message. `[]` = rien d'assigné / réseau KO (best-effort).
+  static Future<List<Map<String, dynamic>>> fetchAssignedSources() async {
+    try {
+      final String mac = await DeviceIdentity.instance.mac;
+      if (!mac.startsWith('MK:')) return <Map<String, dynamic>>[];
+      final http.Response resp = await http
+          .get(
+            Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
+            headers: const <String, String>{'Accept': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 8));
+      if (resp.statusCode != 200) return <Map<String, dynamic>>[];
+      final Map<String, dynamic> body =
+          jsonDecode(resp.body) as Map<String, dynamic>;
+      final Object? list = body['sources'];
+      if (list is List && list.isNotEmpty) {
+        return list.whereType<Map<String, dynamic>>().toList();
+      }
+      final Object? src = body['source'];
+      if (src is Map<String, dynamic>) return <Map<String, dynamic>>[src];
+      return <Map<String, dynamic>>[];
+    } catch (e) {
+      if (kDebugMode) debugPrint('[RemoteSource] fetch error: $e');
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  /// Charge une liste de sources déjà récupérée, en émettant la progression
+  /// (phase, catégorie en cours, compteur de chaînes) via [onProgress] pour
+  /// alimenter l'écran d'import vivant.
+  static Future<RemoteSyncResult> applySources(
+    List<Map<String, dynamic>> sources, {
+    ImportProgressCallback? onProgress,
+  }) async {
+    RemoteSyncResult agg = RemoteSyncResult.noSource;
+    for (final Map<String, dynamic> item in sources) {
+      final RemoteSyncResult r =
+          await _applySource(item, onProgress: onProgress);
+      if (r == RemoteSyncResult.loaded) {
+        agg = RemoteSyncResult.loaded;
+      } else if (agg != RemoteSyncResult.loaded &&
+          r == RemoteSyncResult.sourceFailed) {
+        agg = RemoteSyncResult.sourceFailed;
+      }
+    }
+    return agg;
+  }
+
   /// Charge la source en base locale si elle n'y est pas déjà.
-  static Future<RemoteSyncResult> _applySource(Map<String, dynamic> src) async {
+  static Future<RemoteSyncResult> _applySource(
+    Map<String, dynamic> src, {
+    ImportProgressCallback? onProgress,
+  }) async {
     final String type = (src['type'] as String?)?.trim().toLowerCase() ?? '';
     // Nom par défaut LOCALISÉ (langue active au moment de la synchro) :
     // ce libellé est ensuite STOCKÉ comme nom de la playlist — comme tout
@@ -168,6 +223,7 @@ abstract final class RemoteSourceRepository {
           serverUrl: server,
           username: user,
           password: pass,
+          onProgress: onProgress,
         );
         if (kDebugMode) debugPrint('[RemoteSource] Xtream chargé ($server)');
         return RemoteSyncResult.loaded;
@@ -189,6 +245,7 @@ abstract final class RemoteSourceRepository {
           name: label,
           url: m3u,
           epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,
+          onProgress: onProgress,
         );
         if (kDebugMode) debugPrint('[RemoteSource] M3U chargé');
         return RemoteSyncResult.loaded;

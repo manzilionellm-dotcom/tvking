@@ -1865,6 +1865,10 @@
   "@activationNoSourceYet": {
     "description": "Snackbar : aucune source encore assignée"
   },
+  "activationLoadingTitle": "Activation de tes chaînes…",
+  "@activationLoadingTitle": {
+    "description": "Titre de l'écran d'import vivant pendant l'activation à distance"
+  },
   "activationActiveNoSource": "Abonnement actif ✅ mais aucune playlist assignée à ta MAC. Ton revendeur doit ajouter une Source (Xtream/M3U).",
   "@activationActiveNoSource": {
     "description": "Message de diagnostic activation"

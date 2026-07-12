@@ -484,6 +484,7 @@
   "activationChecking": "Verificando…",
   "activationSuccess": "Suscripción verificada: ¡tus canales están cargados!",
   "activationNoSourceYet": "Aún no hay canales. Si tu distribuidor acaba de activar, espera un momento y reintenta, o reinicia la app.",
+  "activationLoadingTitle": "Activando tus canales…",
   "activationActiveNoSource": "Suscripción activa ✅ pero sin lista asignada a tu MAC. Tu distribuidor debe añadir una Fuente (Xtream/M3U).",
   "activationDeviceKnownNoSub": "Dispositivo reconocido por el servidor, esperando activación de tu distribuidor.",
   "activationDeviceUnknown": "El servidor aún no ve el dispositivo: comprueba tu conexión a internet.",
