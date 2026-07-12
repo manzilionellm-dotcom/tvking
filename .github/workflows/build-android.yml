@@ -102,11 +102,44 @@ jobs:
       - name: Generate native Android folder
         run: flutter create . --platforms=android --org com.manzilionellm.tvking --project-name tv_king
 
+      # =====================================================================
+      #  applicationId Play Store : com.manzilionellm.tvking (EXACT)
+      # ---------------------------------------------------------------------
+      #  `flutter create --org com.manzilionellm.tvking --project-name tv_king`
+      #  génère `applicationId = "com.manzilionellm.tvking.tv_king"` (org +
+      #  project-name concaténés). Or la fiche Play « 7 MOTION » (téléphone)
+      #  est enregistrée sous le package EXACT `com.manzilionellm.tvking`
+      #  (vérifié dans la Play Console → Validation des développeurs Android,
+      #  aucun bundle encore uploadé → package pas verrouillé). Play REFUSE
+      #  tout bundle dont l'applicationId diffère du package de la fiche. En
+      #  prime, `…tv_king` est déjà pris par la fiche « 7 MOTION TV ». On
+      #  réécrit donc l'applicationId vers `com.manzilionellm.tvking`. Le
+      #  `namespace` (chemin Kotlin/R, `…tv_king`) reste INCHANGÉ : aucun
+      #  fichier source déplacé, seul le package INSTALLÉ/PUBLIÉ change.
+      - name: Set Play applicationId (com.manzilionellm.tvking)
+        run: |
+          set -e
+          python3 << 'PYEOF'
+          import re
+          f = "android/app/build.gradle.kts"
+          s = open(f).read()
+          if re.search(r'applicationId\s*=\s*"com\.manzilionellm\.tvking\.tv_king"', s):
+              s = re.sub(r'applicationId\s*=\s*"com\.manzilionellm\.tvking\.tv_king"',
+                         'applicationId = "com.manzilionellm.tvking"', s, count=1)
+              print('applicationId -> com.manzilionellm.tvking (fiche Play 7 MOTION)')
+          elif re.search(r'applicationId\s*=\s*"com\.manzilionellm\.tvking"(?!\.)', s):
+              print('applicationId déjà com.manzilionellm.tvking (rien à faire)')
+          else:
+              raise SystemExit('ERREUR: applicationId attendu introuvable dans build.gradle.kts')
+          open(f, "w").write(s)
+          PYEOF
+          echo "--- applicationId (doit être com.manzilionellm.tvking) ---"
+          grep -n 'applicationId' android/app/build.gradle.kts || true
+
       # Branding 7 MOTION : remplace le label par défaut du manifest
       # (`tv_king`) par "7 MOTION" pour que le nom affiché sur le
-      # bureau Android soit le bon. Note : on garde l'org Java
-      # `com.manzilionellm.tvking` pour ne pas casser les installs
-      # existantes (changer l'applicationId = nouvelle app séparée).
+      # bureau Android soit le bon. L'applicationId publié est fixé à
+      # `com.manzilionellm.tvking` par l'étape ci-dessus (fiche Play).
       - name: Brand AndroidManifest with The Few label
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
