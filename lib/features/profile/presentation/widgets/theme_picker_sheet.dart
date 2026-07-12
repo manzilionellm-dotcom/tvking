@@ -75,61 +75,72 @@ class _ThemePickerSheetState extends State<_ThemePickerSheet> {
   @override
   Widget build(BuildContext context) {
     final String currentId = AccentController.instance.current.id;
+    // La palette premium compte 100+ teintes : on borne la feuille à ~82 %
+    // de l'écran et on rend la GRILLE défilante (titre + sous-titre fixes).
+    final double maxH = MediaQuery.of(context).size.height * 0.82;
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.background,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
       child: SafeArea(
         top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            // Poignée
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(2),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxH),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              // Poignée
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              context.l10n.themeChooseTitle,
-              style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              context.l10n.themeChooseSub,
-              textAlign: TextAlign.center,
-              style: AppTextStyles.bodyMedium.copyWith(
-                fontSize: 12,
-                color: AppColors.textTertiary,
+              const SizedBox(height: 18),
+              Text(
+                context.l10n.themeChooseTitle,
+                style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
               ),
-            ),
-            const SizedBox(height: 20),
-            // Grille de pastilles
-            Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              alignment: WrapAlignment.center,
-              children: <Widget>[
-                for (final AccentTheme t in kAccentThemes)
-                  _Swatch(
-                    theme: t,
-                    selected: t.id == currentId,
-                    onTap: () async {
-                      await AccentController.instance.select(t);
-                      // setState local pour rafraîchir l'anneau de
-                      // sélection dans la feuille elle-même.
-                      if (mounted) setState(() {});
-                    },
+              const SizedBox(height: 4),
+              Text(
+                context.l10n.themeChooseSub,
+                textAlign: TextAlign.center,
+                style: AppTextStyles.bodyMedium.copyWith(
+                  fontSize: 12,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Grille de pastilles — DÉFILANTE (catalogue premium 100+).
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Wrap(
+                    spacing: 16,
+                    runSpacing: 16,
+                    alignment: WrapAlignment.center,
+                    children: <Widget>[
+                      for (final AccentTheme t in kAccentThemes)
+                        _Swatch(
+                          theme: t,
+                          selected: t.id == currentId,
+                          onTap: () async {
+                            await AccentController.instance.select(t);
+                            // setState local pour rafraîchir l'anneau de
+                            // sélection dans la feuille elle-même.
+                            if (mounted) setState(() {});
+                          },
+                        ),
+                    ],
                   ),
-              ],
-            ),
-          ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -182,7 +193,7 @@ class _Swatch extends StatelessWidget {
                 ],
               ),
               child: selected
-                  ? Icon(
+                  ? const Icon(
                       Icons.check_rounded,
                       color: AppColors.textPrimary,
                       size: 26,
