@@ -11,9 +11,41 @@ import { referencesApi, type ActivationReference, ApiError } from '@/lib/api';
 //  recherche pour retrouver vite quand un client appelle.
 // =========================================================
 
-function fmtDate(ms: number | null): string {
+function fmtDate(ms: number | null | undefined): string {
   if (!ms) return '—';
   try { return new Date(ms).toLocaleDateString('fr-FR'); } catch { return '—'; }
+}
+
+const PLAN_LABELS: Record<string, string> = {
+  monthly: '1 mois', yearly: '1 an', lifetime: 'À vie',
+  trial_24h: 'Essai 24 h', trial_48h: 'Essai 48 h', trial_7d: 'Essai 7 j',
+};
+function planLabel(p?: string | null): string {
+  if (!p) return '—';
+  return PLAN_LABELS[p] || p;
+}
+
+/// « il y a X » pour la dernière connexion.
+function ago(ts?: number | null): string {
+  if (!ts) return 'jamais';
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return `il y a ${s}s`;
+  if (s < 3600) return `il y a ${Math.floor(s / 60)} min`;
+  if (s < 86400) return `il y a ${Math.floor(s / 3600)} h`;
+  return `il y a ${Math.floor(s / 86400)} j`;
+}
+
+/// Ce qu'il RESTE (le vrai « une année, ça reste combien ? ») : à vie,
+/// jours restants (rouge sous 5 j), ou expiré.
+function remainLabel(it: ActivationReference): { text: string; cls: string } {
+  if (it.lifetime) return { text: 'À vie', cls: 'text-accent-bright' };
+  if (it.status === 'expired') return { text: 'Expiré', cls: 'text-warning' };
+  if (it.days_left != null) {
+    const d = it.days_left;
+    const cls = d <= 5 ? 'text-warning' : 'text-ink-primary';
+    return { text: `${d} j restants`, cls };
+  }
+  return { text: '—', cls: 'text-ink-tertiary' };
 }
 
 /// Badge de statut (couleurs en dur → rendu garanti, pas de dépendance à
@@ -34,6 +66,27 @@ function RefStatus({ status }: { status: string }) {
     >
       {s.label}
     </span>
+  );
+}
+
+/// Tuile compacte de la vue d'ensemble.
+function StatTile({
+  label, value, tone,
+}: {
+  label: string;
+  value: number;
+  tone?: 'ok' | 'warn' | 'live';
+}) {
+  const color =
+    tone === 'ok' ? 'text-emerald-400'
+      : tone === 'warn' ? 'text-amber-400'
+        : tone === 'live' ? 'text-sky-400'
+          : 'text-ink-primary';
+  return (
+    <div className="rounded-xl border border-white/5 bg-midnight p-3">
+      <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">{label}</div>
+      <div className={'mt-1 text-2xl font-bold ' + color}>{value}</div>
+    </div>
   );
 }
 
@@ -74,6 +127,17 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
     });
   }
 
+  // Vue d'ensemble instantanée (au-dessus du tableau).
+  const stats = useMemo(() => {
+    const total = items.length;
+    const active = items.filter((i) => i.status === 'active').length;
+    const soon = items.filter(
+      (i) => i.status === 'active' && i.days_left != null && i.days_left <= 7,
+    ).length;
+    const online = items.filter((i) => i.online).length;
+    return { total, active, soon, online };
+  }, [items]);
+
   return (
     <AppLayout
       title="Références"
@@ -83,6 +147,14 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
       {err && (
         <div className="mb-4 rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm">{err}</div>
       )}
+
+      {/* Vue d'ensemble : total / actifs / expirent ≤ 7 j / en ligne. */}
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatTile label="Total" value={stats.total} />
+        <StatTile label="Actifs" value={stats.active} tone="ok" />
+        <StatTile label="Expirent ≤ 7 j" value={stats.soon} tone="warn" />
+        <StatTile label="En ligne" value={stats.online} tone="live" />
+      </div>
 
       <div className="mb-4 flex items-center justify-between gap-3">
         <input
@@ -103,6 +175,9 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
               <th className="px-4 py-3">MAC</th>
               <th className="px-4 py-3">Client</th>
               <th className="px-4 py-3">Statut</th>
+              <th className="px-4 py-3">Plan</th>
+              <th className="px-4 py-3">Reste</th>
+              <th className="px-4 py-3">Vu</th>
               <th className="px-4 py-3">Username(s)</th>
               <th className="px-4 py-3">Serveur(s)</th>
               <th className="px-4 py-3">Activé le</th>
@@ -110,10 +185,10 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
           </thead>
           <tbody className="divide-y divide-white/5">
             {loading && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-ink-tertiary">Chargement…</td></tr>
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-sm text-ink-tertiary">Chargement…</td></tr>
             )}
             {!loading && filtered.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-ink-tertiary">
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-sm text-ink-tertiary">
                 {items.length === 0
                   ? 'Aucune source poussée pour l\'instant. Active un appareil avec une source.'
                   : 'Aucun résultat pour cette recherche.'}
@@ -126,6 +201,28 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
                 </td>
                 <td className="px-4 py-3 text-ink-secondary">{it.customer_name || '—'}</td>
                 <td className="px-4 py-3"><RefStatus status={it.status} /></td>
+                <td className="px-4 py-3 text-ink-secondary">{planLabel(it.plan)}</td>
+                <td className="px-4 py-3">
+                  <span className={'font-medium ' + remainLabel(it).cls}>
+                    {remainLabel(it).text}
+                  </span>
+                  {it.expires_at && !it.lifetime && (
+                    <div className="text-[10px] text-ink-tertiary">
+                      → {fmtDate(it.expires_at)}
+                    </div>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      className={
+                        'inline-block h-2 w-2 rounded-full ' +
+                        (it.online ? 'bg-emerald-400' : 'bg-ink-tertiary')
+                      }
+                    />
+                    <span className="text-[11px] text-ink-tertiary">{ago(it.last_seen)}</span>
+                  </span>
+                </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
                     {it.usernames.length === 0 && <span className="text-ink-tertiary">—</span>}

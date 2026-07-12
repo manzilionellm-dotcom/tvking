@@ -822,6 +822,19 @@ export interface ActivationReference {
   status: string;          // 'active'|'expired'|'frozen'|'banned'|'none'
   label: string | null;
   updated_at: number | null;
+  // --- Détails enrichis (combien de temps reste, présence…) ---
+  plan?: string | null;        // 'monthly'|'yearly'|'lifetime'|'trial_*'
+  lifetime?: boolean;          // abonnement à vie
+  expires_at?: number | null;  // ms epoch (null si à vie / aucune licence)
+  started_at?: number | null;  // début de la licence
+  days_left?: number | null;   // jours restants (null si à vie)
+  last_seen?: number | null;   // dernière trace serveur (ms)
+  online?: boolean;            // vu il y a < 15 min
+  channel?: string;            // chaîne en cours
+  country?: string;            // pays (ISO2)
+  platform?: string | null;    // 'tv' | 'mobile'
+  device_model?: string | null;
+  first_seen_at?: number | null;
 }
 export const referencesApi = {
   list: () => request<{ items: ActivationReference[] }>('/api/v1/references'),

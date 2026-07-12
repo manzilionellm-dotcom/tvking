@@ -305,15 +305,27 @@ async function handleReferencesList(env, user) {
         `SELECT ds.mac AS mac, ds.username AS username, ds.server_url AS server_url,
                 ds.sources_json AS sources_json, ds.label AS label,
                 ds.updated_at AS updated_at, c.name AS customer_name,
+                d.first_seen_at AS first_seen_at, d.last_seen_at AS dev_last_seen,
+                d.platform AS platform, d.device_model AS device_model,
+                d.reseller_id AS reseller_id,
+                p.last_seen AS pres_last_seen, p.channel AS pres_channel,
+                p.country AS pres_country,
                 (SELECT l.status    FROM licenses l JOIN devices dl ON dl.id = l.device_id
                    WHERE dl.mac = ds.mac
                    ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_status,
                 (SELECT l.expires_at FROM licenses l JOIN devices dl ON dl.id = l.device_id
                    WHERE dl.mac = ds.mac
-                   ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_expires
+                   ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_expires,
+                (SELECT l.plan      FROM licenses l JOIN devices dl ON dl.id = l.device_id
+                   WHERE dl.mac = ds.mac
+                   ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_plan,
+                (SELECT l.started_at FROM licenses l JOIN devices dl ON dl.id = l.device_id
+                   WHERE dl.mac = ds.mac
+                   ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_started
          FROM device_sources ds
          LEFT JOIN devices d   ON d.mac = ds.mac
          LEFT JOIN customers c ON c.id = d.customer_id
+         LEFT JOIN presence p  ON p.mac = ds.mac
          ${where}
          ORDER BY ds.updated_at DESC LIMIT 1000`,
       )
@@ -335,12 +347,23 @@ async function handleReferencesList(env, user) {
       if (servers.length === 0 && r.server_url) servers = [r.server_url];
       // Statut dérivé de la meilleure licence du device.
       let status = 'none';
+      const hasLic = !!r.lic_status;
+      const lifetime = hasLic && (r.lic_expires === null || r.lic_expires === undefined);
       if (r.lic_status === 'banned') status = 'banned';
       else if (r.lic_status === 'frozen') status = 'frozen';
-      else if (r.lic_status) {
-        const lifetime = r.lic_expires === null || r.lic_expires === undefined;
+      else if (hasLic) {
         status = lifetime ? 'active' : (r.lic_expires <= now ? 'expired' : 'active');
       }
+      // Détails « combien de temps reste » : échéance + jours restants
+      // (à vie → null jours mais lifetime=true), et présence live.
+      const DAY = 24 * 60 * 60 * 1000;
+      const expires_at = (r.lic_expires === undefined) ? null : r.lic_expires;
+      const days_left = (hasLic && !lifetime && expires_at)
+        ? Math.max(0, Math.ceil((expires_at - now) / DAY))
+        : null;
+      const last_seen = r.pres_last_seen || r.dev_last_seen || null;
+      const ONLINE_MS = 15 * 60 * 1000;
+      const online = last_seen ? (last_seen > now - ONLINE_MS) : false;
       return {
         mac: r.mac,
         customer_name: r.customer_name || null,
@@ -349,6 +372,19 @@ async function handleReferencesList(env, user) {
         status,
         label: r.label || null,
         updated_at: r.updated_at || null,
+        // --- Enrichissement « beaucoup de détails » ---
+        plan: r.lic_plan || null,          // 'monthly' | 'yearly' | 'lifetime' | 'trial_*'
+        lifetime,                          // abonnement à vie
+        expires_at,                        // ms epoch, null si à vie / aucune licence
+        started_at: r.lic_started ?? null, // début de la licence
+        days_left,                         // jours restants (null si à vie)
+        last_seen,                         // dernière trace serveur (ms)
+        online,                            // vu il y a < 15 min
+        channel: r.pres_channel || '',     // chaîne en cours
+        country: (r.pres_country || '').toUpperCase(),
+        platform: r.platform || null,      // 'tv' | 'mobile'
+        device_model: r.device_model || null,
+        first_seen_at: r.first_seen_at || null,
       };
     });
     return jsonResp({ items });
