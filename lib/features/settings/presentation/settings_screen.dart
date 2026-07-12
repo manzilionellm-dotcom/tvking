@@ -11,6 +11,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/update/update_prompt.dart';
 import '../../../core/i18n/locale_repository.dart';
 import '../../../core/support/vip_help_card.dart';
 import '../../../core/theme/app_colors.dart';
@@ -235,6 +236,14 @@ class SettingsScreen extends StatelessWidget {
 
             // ====== À PROPOS ======
             _SectionTitle(context.l10n.settingsApp),
+            // Mise à jour MANUELLE : vérifie prod, propose l'installation
+            // directe, ou confirme « tu as déjà la dernière version ».
+            _ActionTile(
+              icon: Icons.system_update_rounded,
+              title: context.l10n.aboutCheckUpdates,
+              subtitle: context.l10n.settingsUpdateSubtitle,
+              onTap: () => checkForUpdatesInteractive(context),
+            ),
             _ActionTile(
               icon: Icons.info_outline_rounded,
               title: context.l10n.settingsAbout,

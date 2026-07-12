@@ -2783,6 +2783,31 @@
   "updateNow": "Mettre à jour",
   "updateStarting": "Démarrage…",
   "updateDownloadFailed": "Échec du téléchargement. Réessaie, ou télécharge depuis le lien direct.",
+  "updateSearching": "Recherche de mise à jour…",
+  "@updateSearching": {
+    "description": "Message pendant la vérification manuelle de mise à jour"
+  },
+  "updateUpToDate": "Tu as déjà la dernière version.",
+  "@updateUpToDate": {
+    "description": "Aucune mise à jour : l'app est déjà à jour"
+  },
+  "updateUpToDateVersion": "Tu as déjà la dernière version ({version}).",
+  "@updateUpToDateVersion": {
+    "description": "Aucune mise à jour, avec le numéro de version",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "updateCheckFailed": "Impossible de vérifier les mises à jour. Réessaie.",
+  "@updateCheckFailed": {
+    "description": "Échec réseau lors de la vérification manuelle"
+  },
+  "settingsUpdateSubtitle": "Vérifie et installe la dernière version",
+  "@settingsUpdateSubtitle": {
+    "description": "Sous-titre du bouton de mise à jour dans les Réglages"
+  },
   "safeModeTitle": "Mode de récupération",
   "safeModeIntroImport": "L'application s'est fermée plusieurs fois en chargeant tes chaînes (liste probablement trop lourde pour cet appareil). Choisis une option pour repartir :",
   "safeModeIntroGeneric": "L'application s'est fermée plusieurs fois au démarrage. Choisis une option pour repartir :",

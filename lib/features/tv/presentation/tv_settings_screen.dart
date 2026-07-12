@@ -13,6 +13,7 @@ import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import '../../../core/update/update_prompt.dart';
 import 'tv_about_screen.dart';
 import 'tv_black_box_screen.dart';
 import 'tv_city_screen.dart';
@@ -604,6 +605,39 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     Icon(Icons.place_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsWeather,
+                        style: TextStyle(
+                            fontSize: TvDimens.title,
+                            fontWeight: FontWeight.w700,
+                            color: fg)),
+                    const Spacer(),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          // ----- Vérifier les mises à jour (manuel) : propose l'install
+          //       directe, ou confirme « déjà la dernière version ». -----
+          TvFocusBuilder(
+            scale: TvFocusScale.large,
+            onSelect: () => checkForUpdatesInteractive(context),
+            builder: (BuildContext context, bool focused) {
+              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color fg =
+                  focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+              return Container(
+                width: 760,
+                decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                child: Row(
+                  children: <Widget>[
+                    Icon(Icons.system_update_rounded, color: fg, size: 26),
+                    const SizedBox(width: 12),
+                    Text(context.l10n.aboutCheckUpdates,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,

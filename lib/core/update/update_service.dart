@@ -47,6 +47,33 @@ class UpdateInfo {
   final bool mandatory;
 }
 
+/// Verdict d'une vérification MANUELLE (bouton « Vérifier les mises à
+/// jour » des Réglages) : on distingue « déjà à jour » d'une « erreur
+/// réseau » pour afficher le bon message (l'auto-MAJ, elle, se contente
+/// d'un `UpdateInfo?` : `null` = ne rien proposer, silencieux).
+enum UpdateAvailability {
+  /// Une version plus récente est dispo (voir [UpdateCheckResult.info]).
+  available,
+
+  /// Le serveur a répondu et cette app est déjà la dernière version.
+  upToDate,
+
+  /// Impossible de vérifier (réseau KO, serveur injoignable, build Play).
+  unavailable,
+}
+
+class UpdateCheckResult {
+  const UpdateCheckResult(this.status, {this.info, this.versionName});
+  final UpdateAvailability status;
+
+  /// Détails de la MAJ quand [status] == available.
+  final UpdateInfo? info;
+
+  /// Nom de version distant (ex. « 0.3.2 ») si le serveur a répondu —
+  /// sert au message « Tu as déjà la dernière version (0.3.2) ».
+  final String? versionName;
+}
+
 class UpdateService {
   UpdateService._();
   static final UpdateService instance = UpdateService._();
@@ -68,10 +95,21 @@ class UpdateService {
       : 'https://github.com/manzilionellm-dotcom/tvking/releases/download/prod/version.json';
 
   /// Retourne les infos de MAJ si une version PLUS RECENTE est dispo,
-  /// sinon `null`. Fail-open : toute erreur → `null`.
+  /// sinon `null`. Fail-open : toute erreur → `null`. Utilisé par
+  /// l'auto-MAJ (silencieuse).
   Future<UpdateInfo?> check() async {
+    final UpdateCheckResult r = await checkDetailed();
+    return r.status == UpdateAvailability.available ? r.info : null;
+  }
+
+  /// Version DÉTAILLÉE de [check] pour le bouton MANUEL des Réglages :
+  /// distingue « à jour » d'une « erreur réseau » (afin d'afficher le bon
+  /// message). L'auto-MAJ passe par [check] et ne voit que `UpdateInfo?`.
+  Future<UpdateCheckResult> checkDetailed() async {
     // Play Store : les MAJ viennent du Store, jamais du sideload GitHub.
-    if (kIsPlayBuild) return null;
+    if (kIsPlayBuild) {
+      return const UpdateCheckResult(UpdateAvailability.upToDate);
+    }
     try {
       final PackageInfo info = await PackageInfo.fromPlatform();
       final int current = int.tryParse(info.buildNumber) ?? 0;
@@ -79,25 +117,38 @@ class UpdateService {
       final http.Response r = await http
           .get(Uri.parse(manifestUrl))
           .timeout(const Duration(seconds: 8));
-      if (r.statusCode != 200) return null;
+      if (r.statusCode != 200) {
+        return const UpdateCheckResult(UpdateAvailability.unavailable);
+      }
 
       final Map<String, dynamic> j =
           jsonDecode(r.body) as Map<String, dynamic>;
       final int latest = (j['versionCode'] as num?)?.toInt() ?? 0;
-      if (latest <= current) return null; // deja a jour
-
+      final String versionName = (j['versionName'] ?? '').toString();
       final String url = (j['url'] ?? '').toString();
-      if (url.isEmpty) return null;
 
-      return UpdateInfo(
+      if (latest <= current || url.isEmpty) {
+        // Serveur joignable ET rien de plus récent → déjà à jour.
+        return UpdateCheckResult(
+          UpdateAvailability.upToDate,
+          versionName: versionName,
+        );
+      }
+
+      final UpdateInfo update = UpdateInfo(
         versionCode: latest,
-        versionName: (j['versionName'] ?? '').toString(),
+        versionName: versionName,
         url: url,
         mandatory: j['mandatory'] == true,
       );
+      return UpdateCheckResult(
+        UpdateAvailability.available,
+        info: update,
+        versionName: versionName,
+      );
     } catch (e) {
       if (kDebugMode) debugPrint('[Update] check error: $e');
-      return null;
+      return const UpdateCheckResult(UpdateAvailability.unavailable);
     }
   }
 

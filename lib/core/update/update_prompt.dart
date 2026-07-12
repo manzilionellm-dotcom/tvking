@@ -11,15 +11,69 @@
 import 'package:flutter/material.dart';
 
 import '../i18n/l10n_extension.dart';
+import '../theme/app_colors.dart';
 import 'update_service.dart';
 
 /// Verifie une MAJ et, le cas echeant, propose de l'installer.
-/// Non bloquant : si rien de neuf ou erreur, ne fait rien.
+/// Non bloquant : si rien de neuf ou erreur, ne fait rien (AUTO, silencieux).
 Future<void> maybePromptUpdate(BuildContext context) async {
   final UpdateInfo? update = await UpdateService.instance.check();
   if (update == null) return;
   if (!context.mounted) return;
+  await _promptAndInstall(context, update);
+}
 
+/// Vérification MANUELLE (bouton « Vérifier les mises à jour » des
+/// Réglages). Contrairement à l'auto-MAJ, elle DONNE UN RETOUR dans tous
+/// les cas :
+///   • MAJ dispo   → la même boîte « Mettre à jour » (téléchargement +
+///                   installation directe) ;
+///   • déjà à jour → « Tu as déjà la dernière version » ;
+///   • réseau KO   → « Impossible de vérifier, réessaie ».
+Future<void> checkForUpdatesInteractive(BuildContext context) async {
+  final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+  messenger.showSnackBar(
+    SnackBar(
+      duration: const Duration(seconds: 15),
+      content: Text(context.l10n.updateSearching),
+    ),
+  );
+  final UpdateCheckResult res = await UpdateService.instance.checkDetailed();
+  if (!context.mounted) return;
+  messenger.clearSnackBars();
+  switch (res.status) {
+    case UpdateAvailability.available:
+      final UpdateInfo? info = res.info;
+      if (info != null) await _promptAndInstall(context, info);
+      break;
+    case UpdateAvailability.upToDate:
+      final String? v = res.versionName;
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.success,
+          content: Text(
+            (v != null && v.isNotEmpty)
+                ? context.l10n.updateUpToDateVersion(v)
+                : context.l10n.updateUpToDate,
+          ),
+        ),
+      );
+      break;
+    case UpdateAvailability.unavailable:
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.warning,
+          content: Text(context.l10n.updateCheckFailed),
+        ),
+      );
+      break;
+  }
+}
+
+/// Boîte « Mise à jour disponible → Mettre à jour » puis, si accepté,
+/// téléchargement + installation. Partagée par l'auto-MAJ et le bouton
+/// manuel.
+Future<void> _promptAndInstall(BuildContext context, UpdateInfo update) async {
   final bool accept = await showDialog<bool>(
         context: context,
         barrierDismissible: !update.mandatory,
