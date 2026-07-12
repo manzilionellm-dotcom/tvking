@@ -52,6 +52,7 @@ import '../../features/theme/data/remote_theme_repository.dart';
 import '../app/boot_guard.dart';
 import '../app/build_info.dart';
 import '../backend/backend_hosts.dart';
+import 'device_message_repository.dart';
 
 /// Message admin poussé par le panel (frame `message` du protocole).
 /// Immuable : l'UI (AdminMessageBanner) le lit tel quel.
@@ -264,6 +265,14 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
   /// Dernier message admin reçu, `null` si aucun (ou déjà fermé).
   AdminMessage? get lastMessage => _lastMessage;
 
+  /// Affiche un message admin construit AILLEURS (ex. boîte de réception
+  /// persistante relevée au boot / au resume par DeviceMessageRepository).
+  /// Réutilise la MÊME bannière (AdminMessageBanner écoute `lastMessage`).
+  void showAdminMessage(AdminMessage msg) {
+    _lastMessage = msg;
+    notifyListeners();
+  }
+
   /// L'UI a fermé la bannière (croix ou auto-dismiss).
   void dismissMessage() {
     if (_lastMessage == null) return;
@@ -295,6 +304,9 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
     // Filet d'activation express AVANT le connect : un 1er contrôle part
     // tout de suite, sans attendre l'établissement du socket.
     _armActivationFastSync();
+    // Boîte de réception persistante : relève les messages déposés depuis
+    // le panel (livrés même si l'appareil était hors ligne à l'envoi).
+    unawaited(DeviceMessageRepository.fetchAndShow());
     await _connect();
   }
 
@@ -717,6 +729,9 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
       // pendant que l'app était en arrière-plan, on le voit en quelques
       // secondes au retour à l'écran (filet universel, phone + TV).
       _armActivationFastSync();
+      // Relève aussi la boîte de messages (un mot déposé pendant l'absence
+      // s'affiche au retour à l'écran).
+      unawaited(DeviceMessageRepository.fetchAndShow());
       // (les timers repartent dans _connect(), via forceReconnect)
     } else if (state == AppLifecycleState.paused) {
       // Arrière-plan : on GARDE le socket (l'OS le tuera peut-être — la

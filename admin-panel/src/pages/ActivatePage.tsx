@@ -5,6 +5,7 @@ import { CopyLink } from '@/components/CopyLink';
 import {
   activateApi, appsApi, planCostsApi, meApi, serversApi, sourcesApi,
   getCurrentUser, isOwnerRole, userCan, DOWNLOAD_URL, DOWNLOAD_URL_TV,
+  DOWNLOADER_CODE, DOWNLOADER_CODE_TV,
   type App, type PlanCost, type ActivateResult, type DefaultServer,
   type DeviceSourceInput, ApiError,
 } from '@/lib/api';
@@ -231,6 +232,12 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
                   </span>
                 </div>
                 <CopyLink url={DOWNLOAD_URL} />
+                <div className="mt-1 text-[10px] text-ink-tertiary">
+                  ou code Downloader :{' '}
+                  <span className="font-mono font-bold text-ink-secondary">
+                    {DOWNLOADER_CODE}
+                  </span>
+                </div>
               </div>
               <div>
                 <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-ink-secondary">
@@ -240,6 +247,12 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
                   </span>
                 </div>
                 <CopyLink url={DOWNLOAD_URL_TV} />
+                <div className="mt-1 text-[10px] text-ink-tertiary">
+                  ou code Downloader :{' '}
+                  <span className="font-mono font-bold text-ink-secondary">
+                    {DOWNLOADER_CODE_TV}
+                  </span>
+                </div>
               </div>
             </div>
           </div>

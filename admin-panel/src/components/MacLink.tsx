@@ -16,7 +16,7 @@
 
 import { useEffect, useState } from 'react';
 import { ApiError, devicesApi } from '@/lib/api';
-import type { DeviceOverview } from '@/lib/api';
+import type { DeviceOverview, DeviceMessage } from '@/lib/api';
 import { sendCmd, waitForAck, useLiveDevices } from '@/lib/realtime';
 import { toast } from '@/components/Toast';
 import { cn, formatDateTime } from '@/lib/utils';
@@ -329,8 +329,21 @@ function MessageComposer({ mac }: { mac: string }) {
   const [body, setBody] = useState('');
   const [durationSec, setDurationSec] = useState(45);
   const [sending, setSending] = useState(false);
+  const [depositing, setDepositing] = useState(false);
+  const [history, setHistory] = useState<DeviceMessage[]>([]);
   const { connected, devices } = useLiveDevices();
   const online = connected && devices.some((d) => d.mac === mac);
+
+  function loadHistory() {
+    devicesApi
+      .messages(mac)
+      .then((r) => setHistory(r.items || []))
+      .catch(() => {});
+  }
+  useEffect(() => {
+    loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mac]);
 
   async function send() {
     if (!title.trim() && !body.trim()) return;
@@ -352,12 +365,34 @@ function MessageComposer({ mac }: { mac: string }) {
         toast("L'appareil a signalé une erreur.", 'error');
       } else {
         toast(
-          "Appareil hors ligne — le message s'affichera à sa prochaine connexion.",
+          "Appareil hors ligne — utilise « Déposer » pour qu'il le voie à sa prochaine ouverture.",
           'warning',
         );
       }
     } finally {
       setSending(false);
+    }
+  }
+
+  // Dépôt PERSISTANT : livré même hors ligne, à la prochaine ouverture.
+  async function deposit() {
+    if (!title.trim() && !body.trim()) return;
+    setDepositing(true);
+    try {
+      await devicesApi.sendMessage(mac, {
+        title: title.trim(),
+        body: body.trim(),
+        kind: 'info',
+        durationSec,
+      });
+      toast("✓ Message déposé — il le verra à sa prochaine ouverture.", 'success');
+      setTitle('');
+      setBody('');
+      loadHistory();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Échec du dépôt.', 'error');
+    } finally {
+      setDepositing(false);
     }
   }
 
@@ -441,20 +476,51 @@ function MessageComposer({ mac }: { mac: string }) {
         </div>
       </div>
 
-      <div className="mt-2 flex items-center justify-between">
-        <span className="text-[10px] text-ink-tertiary">
-          S'affiche DIRECTEMENT sur l'écran (TV ou téléphone), par-dessus la
-          chaîne en cours.
-        </span>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <button
           type="button"
           disabled={sending || (!title.trim() && !body.trim())}
           onClick={send}
-          className="shrink-0 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black hover:bg-accent-bright disabled:opacity-50"
+          title="Affiché tout de suite sur son écran (doit être en ligne)"
+          className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black hover:bg-accent-bright disabled:opacity-50"
         >
-          {sending ? 'Envoi…' : 'Envoyer sur l’écran'}
+          {sending ? 'Envoi…' : '⚡ Envoyer maintenant'}
+        </button>
+        <button
+          type="button"
+          disabled={depositing || (!title.trim() && !body.trim())}
+          onClick={deposit}
+          title="Livré à sa prochaine ouverture, même s'il est hors ligne (façon WhatsApp)"
+          className="rounded-md border border-white/15 bg-slate px-3 py-1.5 text-xs font-semibold text-ink-primary hover:border-accent disabled:opacity-50"
+        >
+          {depositing ? 'Dépôt…' : '📨 Déposer (même hors ligne)'}
         </button>
       </div>
+
+      {/* Accusés de réception des messages déposés. */}
+      {history.length > 0 && (
+        <div className="mt-3 border-t border-white/5 pt-2">
+          <div className="mb-1 text-[10px] uppercase tracking-widest text-ink-tertiary">
+            Messages déposés
+          </div>
+          <div className="space-y-1">
+            {history.slice(0, 5).map((m) => (
+              <div key={m.id} className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="min-w-0 flex-1 truncate text-ink-secondary">
+                  {m.title || m.body || '—'}
+                </span>
+                {m.delivered_at ? (
+                  <span className="shrink-0 text-emerald-400">
+                    ✓✓ vu {formatDateTime(m.delivered_at)}
+                  </span>
+                ) : (
+                  <span className="shrink-0 text-ink-tertiary">⏳ en attente</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

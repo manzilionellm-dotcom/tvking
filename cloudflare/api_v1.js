@@ -1077,6 +1077,19 @@ async function apiV1Inner(request, env) {
     if (parts.length === 3 && parts[2] === 'overview') {
       if (request.method === 'GET') return handleDeviceOverview(env, parts[1], a.user);
     }
+    // /devices/:id/message — DÉPOSER un message persistant (livré même si
+    // l'appareil est hors ligne, à sa prochaine ouverture). :id = id OU MAC.
+    if (parts.length === 3 && parts[2] === 'message') {
+      if (request.method === 'POST') {
+        return handleDeviceMessageCreate(request, env, parts[1], a.user);
+      }
+    }
+    // /devices/:id/messages — historique des messages déposés (+ « livré le »).
+    if (parts.length === 3 && parts[2] === 'messages') {
+      if (request.method === 'GET') {
+        return handleDeviceMessagesList(env, parts[1], a.user);
+      }
+    }
   }
 
   // /licenses
@@ -3090,6 +3103,97 @@ async function handleDeviceOverview(env, id, user) {
   } catch (_) { /* colonnes/table absentes sur base ancienne : on ignore */ }
 
   return jsonResp({ mac: dev.mac, license, presence, sources, localSources, device });
+}
+
+// =========================================================
+//  MESSAGES PERSISTANTS PAR APPAREIL (« boîte de réception »)
+// =========================================================
+//  Déposer un mot à UNE seule MAC, livré à sa PROCHAINE OUVERTURE même si
+//  l'appareil était hors ligne (façon WhatsApp). L'app lit sa boîte via
+//  GET /api/device-messages/:mac (worker.js public) qui marque « livré »
+//  → accusé de réception visible ici (delivered_at).
+async function ensureDeviceMessagesTable(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS device_messages (' +
+      'id INTEGER PRIMARY KEY AUTOINCREMENT, mac TEXT, title TEXT, body TEXT, ' +
+      'kind TEXT, duration_sec INTEGER, created_at INTEGER, ' +
+      'delivered_at INTEGER, read_at INTEGER)',
+  ).run();
+  try {
+    await env.DB.prepare(
+      'CREATE INDEX IF NOT EXISTS idx_devmsg_mac ON device_messages(mac, delivered_at)',
+    ).run();
+  } catch (_) { /* index déjà présent */ }
+}
+
+/// Résout la MAC cible depuis :id (ID de ligne OU MAC), avec cloisonnement :
+/// l'owner peut viser N'IMPORTE QUELLE MAC (même sans fiche device) ; un
+/// revendeur uniquement une MAC qui lui appartient (fiche device requise).
+/// Renvoie { mac } ou { error }.
+async function resolveTargetMac(env, id, user) {
+  const key = String(id || '');
+  const isReseller = user && user.role === 'reseller';
+  const dev = await env.DB
+    .prepare('SELECT mac, reseller_id FROM devices WHERE id = ? OR mac = ?')
+    .bind(key, key.toUpperCase())
+    .first();
+  if (dev) {
+    if (isReseller && dev.reseller_id !== user.sub) {
+      return { error: errResp('forbidden', 'Cet appareil ne vous appartient pas', 403) };
+    }
+    return { mac: dev.mac };
+  }
+  if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(key)) {
+    return { error: errResp('not_found', 'Device not found', 404) };
+  }
+  if (isReseller) return { error: errResp('not_found', 'Device not found', 404) };
+  return { mac: key.toUpperCase() };
+}
+
+async function handleDeviceMessageCreate(request, env, id, user) {
+  await ensureDeviceMessagesTable(env);
+  const t = await resolveTargetMac(env, id, user);
+  if (t.error) return t.error;
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const title = (body.title || '').toString().trim().slice(0, 120);
+  const msg = (body.body || '').toString().trim().slice(0, 500);
+  if (!title && !msg) {
+    return errResp('missing_fields', 'title or body required', 400);
+  }
+  const kindRaw = (body.kind || 'info').toString().trim().toLowerCase();
+  const kind = ['info', 'success', 'warning'].includes(kindRaw) ? kindRaw : 'info';
+  let dur = parseInt(body.durationSec, 10);
+  if (!Number.isFinite(dur)) dur = 45;
+  dur = Math.max(3, Math.min(120, dur));
+  const now = Date.now();
+  const res = await env.DB
+    .prepare(
+      'INSERT INTO device_messages (mac, title, body, kind, duration_sec, created_at) ' +
+        'VALUES (?, ?, ?, ?, ?, ?)',
+    )
+    .bind(t.mac, title, msg, kind, dur, now)
+    .run();
+  await logAudit(env, request, user, 'device_message.create',
+    { type: 'device_message', id: (res.meta && res.meta.last_row_id) || null },
+    null, { mac: t.mac, title });
+  return jsonResp({ ok: true, mac: t.mac }, 201);
+}
+
+async function handleDeviceMessagesList(env, id, user) {
+  await ensureDeviceMessagesTable(env);
+  const t = await resolveTargetMac(env, id, user);
+  if (t.error) return t.error;
+  const rs = await env.DB
+    .prepare(
+      'SELECT id, title, body, kind, duration_sec, created_at, delivered_at, read_at ' +
+        'FROM device_messages WHERE mac = ? ORDER BY id DESC LIMIT 20',
+    )
+    .bind(t.mac)
+    .all();
+  return jsonResp({ items: rs.results || [] });
 }
 
 async function handleDevicesCreate(request, env, actor) {

@@ -3551,6 +3551,54 @@ async function handlePublicServers(env) {
 //
 //  Identifiant = la MAC (même modèle public que /config/:mac et
 //  /api/status/:mac). Lecture en D1 (table device_sources).
+// GET /api/device-messages/:mac (public) — la BOÎTE de messages persistants
+// de l'appareil. Renvoie les messages NON ENCORE LIVRÉS, les marque livrés
+// (accusé de réception côté panel via delivered_at), puis l'app les affiche.
+// Best-effort : si la table n'existe pas / D1 absent → liste vide (jamais
+// d'erreur qui casserait le boot de l'app).
+async function handlePublicDeviceMessages(env, mac) {
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const MAC = mac.toUpperCase();
+  if (!env.DB) return json({ items: [] });
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS device_messages (' +
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, mac TEXT, title TEXT, body TEXT, ' +
+        'kind TEXT, duration_sec INTEGER, created_at INTEGER, ' +
+        'delivered_at INTEGER, read_at INTEGER)',
+    ).run();
+    const rs = await env.DB
+      .prepare(
+        'SELECT id, title, body, kind, duration_sec, created_at ' +
+          'FROM device_messages WHERE mac = ? AND delivered_at IS NULL ' +
+          'ORDER BY id ASC LIMIT 10',
+      )
+      .bind(MAC)
+      .all();
+    const items = (rs.results || []).map((r) => ({
+      id: r.id,
+      title: r.title || '',
+      body: r.body || '',
+      kind: r.kind || 'info',
+      durationSec: r.duration_sec || 45,
+      createdAt: r.created_at || 0,
+    }));
+    if (items.length) {
+      // Marque « livré » — l'accusé de réception apparaît côté panel.
+      const now = Date.now();
+      const ids = items.map((i) => i.id);
+      const ph = ids.map(() => '?').join(',');
+      await env.DB
+        .prepare(`UPDATE device_messages SET delivered_at = ? WHERE id IN (${ph})`)
+        .bind(now, ...ids)
+        .run();
+    }
+    return json({ items });
+  } catch (_) {
+    return json({ items: [] });
+  }
+}
+
 async function handlePublicDeviceSource(env, mac) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
@@ -4550,6 +4598,17 @@ async function handleRequest(request, env, ctx) {
         return badRequest('only GET supported on /api/device-source/:mac');
       }
       return await handlePublicDeviceSource(env, segments[2]);
+    }
+
+    // /api/device-messages/:mac — public : l'app relève sa BOÎTE de messages
+    // persistants (déposés depuis le panel). Renvoie les non-livrés, les
+    // marque « livrés » (accusé de réception côté panel), puis l'app les
+    // affiche. Livré même si l'appareil était hors ligne au moment de l'envoi.
+    if (segments[0] === 'api' && segments[1] === 'device-messages' && segments.length === 3) {
+      if (request.method !== 'GET') {
+        return badRequest('only GET supported on /api/device-messages/:mac');
+      }
+      return await handlePublicDeviceMessages(env, decodeMacPath(segments[2]));
     }
 
     // /api/self-source/:mac — self-service « Mon espace » : le client LIT (GET),

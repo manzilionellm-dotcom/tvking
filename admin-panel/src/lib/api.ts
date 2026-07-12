@@ -36,10 +36,11 @@ export const API_BASE: string =
 export const DOWNLOAD_URL = 'https://app.7themotion.com/vip';
 export const DOWNLOAD_URL_TV = 'https://app.7themotion.com/tv';
 
-/// Codes Downloader (aftv.news) — SECONDAIRES. Le client peut soit taper le
-/// lien /tv dans Downloader, soit ce numéro. Conservés pour compat, mais
-/// l'écran d'activation met en avant les LIENS (plus clairs).
-export const DOWNLOADER_CODE = '7988141';
+/// Codes Downloader (aftv.news) — alternative aux liens : le client tape ce
+/// numéro dans l'app « Downloader » (Fire TV / Android TV). VERROUILLÉS.
+///   • Téléphone : 2762133
+///   • TV        : 6248618
+export const DOWNLOADER_CODE = '2762133';
 export const DOWNLOADER_CODE_TV = '6248618';
 
 export function getToken(): string | null {
@@ -423,7 +424,34 @@ export const devicesApi = {
     ),
   remove: (id: string) =>
     request<{ deleted: number; rt?: RtInfo }>(`/api/v1/devices/${id}`, { method: 'DELETE' }),
+  // Dépose un message PERSISTANT pour cette MAC (livré même hors ligne, à
+  // la prochaine ouverture de l'app). :id accepte l'ID de ligne OU la MAC.
+  sendMessage: (
+    id: string,
+    payload: { title: string; body: string; kind?: string; durationSec?: number },
+  ) =>
+    request<{ ok: boolean; mac: string }>(
+      `/api/v1/devices/${encodeURIComponent(id)}/message`,
+      { method: 'POST', body: payload },
+    ),
+  // Historique des messages déposés (+ accusé de réception delivered_at).
+  messages: (id: string) =>
+    request<{ items: DeviceMessage[] }>(
+      `/api/v1/devices/${encodeURIComponent(id)}/messages`,
+    ),
 };
+
+// Message persistant déposé pour un appareil (boîte de réception).
+export interface DeviceMessage {
+  id: number;
+  title: string;
+  body: string;
+  kind: string;
+  duration_sec: number;
+  created_at: number;
+  delivered_at: number | null; // rempli quand l'app l'a relevé (= livré)
+  read_at: number | null;
+}
 
 export interface License {
   id: string;
