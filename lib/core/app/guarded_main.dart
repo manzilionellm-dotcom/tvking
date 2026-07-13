@@ -34,6 +34,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../crash/crash_reporting.dart';
 import '../crash/crash_reporting_firebase.dart';
+import '../crash/remote_error_reporter.dart';
 import '../observability/black_box.dart';
 import 'device_memory.dart';
 
@@ -154,6 +155,11 @@ void runGuarded(Future<void> Function() body) {
       // Crashlytics si (et seulement si) le projet est configuré. Best-effort,
       // jamais bloquant ni fatal : sans google-services.json, no-op silencieux.
       await attachCrashlytics();
+
+      // Remontée des erreurs vers le PANEL (POST /api/error-log) : le revendeur
+      // voit dans « Journaux d'erreurs » ce qui cloche chez un client, sans le
+      // harceler. Anti-spam (1/60 s), RELEASE only, best-effort — cf. classe.
+      RemoteErrorReporter.instance.attach();
 
       await body();
     },
