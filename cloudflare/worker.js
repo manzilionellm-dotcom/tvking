@@ -2462,6 +2462,59 @@ async function handlePostFeedback(request, env) {
   }
 }
 
+// POST /api/error-log (public) — un appareil REMONTE une erreur (lecture
+// bloquée, source injoignable, crash rattrapé…). Le panel les affiche dans
+// « Journaux d'erreurs » pour le support (le revendeur voit ce qui cloche chez
+// un client SANS le harceler de questions). Fail-open : jamais bloquant pour
+// l'app. Body {mac?, level?, tag?, message, detail?, app_version?, app_build?,
+// platform?}. Anti-abus : rate-limit 'pub' (cf. dispatch) + colonnes bornées.
+async function ensureErrorLogsTable(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS error_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, ' +
+      'mac TEXT, level TEXT, tag TEXT, message TEXT, detail TEXT, ' +
+      'app_version TEXT, app_build TEXT, platform TEXT, country TEXT, ' +
+      'created_at INTEGER)'
+  ).run();
+  // Index de lecture panel : derniers d'abord, filtre par MAC.
+  await env.DB.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_error_logs_created ON error_logs (created_at DESC)'
+  ).run();
+  await env.DB.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_error_logs_mac ON error_logs (mac)'
+  ).run();
+}
+async function handlePostErrorLog(request, env) {
+  if (!env.DB) return json({ ok: false }, 503);
+  let body;
+  try { body = await request.json(); } catch (_) { return badRequest('bad json'); }
+  const message = (body && body.message ? String(body.message) : '')
+    .trim().slice(0, 2000);
+  if (!message) return badRequest('message vide');
+  // Niveau borné à un vocabulaire connu (défaut 'error').
+  let level = (body && body.level ? String(body.level) : '').toLowerCase().trim();
+  if (!['error', 'warn', 'fatal', 'info'].includes(level)) level = 'error';
+  const mac = (body && body.mac ? String(body.mac) : '').slice(0, 64);
+  const tag = (body && body.tag ? String(body.tag) : '').slice(0, 64);
+  const detail = (body && body.detail ? String(body.detail) : '').slice(0, 8000);
+  const appVersion = (body && body.app_version ? String(body.app_version) : '').slice(0, 32);
+  const appBuild = (body && body.app_build ? String(body.app_build) : '').slice(0, 32);
+  const platform = (body && body.platform ? String(body.platform) : '').slice(0, 16);
+  const country = (request.cf && request.cf.country) ? String(request.cf.country) : '';
+  try {
+    await ensureErrorLogsTable(env);
+    await env.DB
+      .prepare('INSERT INTO error_logs (mac, level, tag, message, detail, ' +
+        'app_version, app_build, platform, country, created_at) ' +
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(mac, level, tag, message, detail, appVersion, appBuild, platform,
+        country, Date.now())
+      .run();
+    return json({ ok: true });
+  } catch (_) {
+    return json({ ok: false }, 500);
+  }
+}
+
 // GET /api/app-version (public) — mise à jour forcée pilotée par le panel.
 // Renvoie {minBuildTs, latestBuildTs} (secondes epoch). Si `?build=<sec>`
 // est fourni et plus récent que le dernier connu, on le mémorise → le
@@ -4757,7 +4810,8 @@ async function handleRequest(request, env, ctx) {
           || seg1 === 'self-source') rl = ['dev', 120]; // anti-énumération MAC + anti-brute-force code famille
         else if (seg1 === 'heartbeat' || seg1 === 'trending'
           || seg1 === 'announcement' || seg1 === 'sports'
-          || seg1 === 'feedback' || seg1 === 'm3u') rl = ['pub', 240];
+          || seg1 === 'feedback' || seg1 === 'error-log'
+          || seg1 === 'm3u') rl = ['pub', 240];
         // L'écran récepteur poll ~40×/min ; on laisse large (TV + téléphone).
         else if (seg1 === 'screen') rl = ['scr', 600];
       } else if (seg0 === 'config') {
@@ -5000,6 +5054,12 @@ async function handleRequest(request, env, ctx) {
     if (segments[0] === 'api' && segments[1] === 'feedback' && segments.length === 2) {
       if (request.method === 'POST') return await handlePostFeedback(request, env);
       return badRequest('only POST supported on /api/feedback');
+    }
+
+    // /api/error-log — un appareil remonte une erreur (POST public).
+    if (segments[0] === 'api' && segments[1] === 'error-log' && segments.length === 2) {
+      if (request.method === 'POST') return await handlePostErrorLog(request, env);
+      return badRequest('only POST supported on /api/error-log');
     }
 
     // /api/featured — "Favori du jour" (chaîne mise en avant). GET public.

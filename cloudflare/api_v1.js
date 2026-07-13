@@ -410,6 +410,37 @@ async function handleAuditLogsList(env) {
   }
 }
 
+// ----- Journaux d'erreurs remontés par les appareils (lecture seule) -----
+// GET /api/v1/error-logs?mac=&level=&limit= — le support voit ce qui cloche
+// chez un client sans le harceler. Filtres facultatifs. Fail-open (table
+// absente ou vide → { items: [] }).
+async function handleErrorLogsList(request, env) {
+  try {
+    const url = new URL(request.url);
+    const mac = (url.searchParams.get('mac') || '').trim().toUpperCase();
+    const level = (url.searchParams.get('level') || '').trim().toLowerCase();
+    let limit = parseInt(url.searchParams.get('limit') || '200', 10);
+    if (!Number.isFinite(limit) || limit < 1) limit = 200;
+    if (limit > 500) limit = 500;
+    const where = [];
+    const binds = [];
+    if (mac) { where.push('mac = ?'); binds.push(mac); }
+    if (['error', 'warn', 'fatal', 'info'].includes(level)) {
+      where.push('level = ?'); binds.push(level);
+    }
+    const sql =
+      'SELECT id, mac, level, tag, message, detail, app_version, app_build, ' +
+      'platform, country, created_at FROM error_logs' +
+      (where.length ? ' WHERE ' + where.join(' AND ') : '') +
+      ' ORDER BY created_at DESC LIMIT ?';
+    binds.push(limit);
+    const rs = await env.DB.prepare(sql).bind(...binds).all();
+    return jsonResp({ items: rs.results || [] });
+  } catch (_) {
+    return jsonResp({ items: [] });
+  }
+}
+
 async function bootstrapSuperAdminIfNeeded(env) {
   // Filet de sécurité : si la migration schema.sql n'a jamais tourné sur
   // la base D1, la table `admin_users` n'existe pas → le SELECT plante →
@@ -652,6 +683,15 @@ async function apiV1Inner(request, env) {
       return errResp('forbidden', 'Owner only', 403);
     }
     return handleAuditLogsList(env);
+  }
+
+  // /error-logs — erreurs remontées par les appareils (support). Staff
+  // interne uniquement (pas les revendeurs, qui ne voient pas le parc global).
+  if (parts[0] === 'error-logs' && parts.length === 1 && request.method === 'GET') {
+    if (a.user.role === 'reseller') {
+      return errResp('forbidden', 'Staff only', 403);
+    }
+    return handleErrorLogsList(request, env);
   }
 
   // /references — carnet : MAC activées + username(s) Xtream (SANS mot de
