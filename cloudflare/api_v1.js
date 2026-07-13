@@ -2565,7 +2565,73 @@ async function ensureSourcesTable(env) {
 
 /// Normalise + valide un objet source venant du panel. Retourne
 /// { source } prêt à insérer, ou { error } si invalide.
-function normalizeSource(raw) {
+// =========================================================
+//  ACTIVATION UNIVERSELLE — auto-détection du format
+// =========================================================
+//  L'admin ne doit JAMAIS choisir « M3U ou Xtream » à la main : il colle
+//  ce qu'il a (un lien get.php Xtream, une URL de playlist .m3u, ou les
+//  identifiants à plat) et on détecte + normalise tout seul. `parseXtreamUrl`
+//  extrait l'origine propre + user/pass d'un lien Xtream ; `autoDetectSource`
+//  décide du type quand il n'est pas fourni.
+
+/// Extrait { server_url, username, password } d'une URL Xtream
+/// (get.php / player_api.php / panel_api.php / xmltv.php, ou toute URL
+/// http(s) portant ?username=&password=). `server_url` = origine PROPRE
+/// (schéma + hôte + port), sans path ni query. `null` si non exploitable.
+export function parseXtreamUrl(u) {
+  if (!u || typeof u !== 'string') return null;
+  const s = u.trim();
+  if (!/^https?:\/\//i.test(s)) return null; // URL() exige un schéma
+  let url;
+  try { url = new URL(s); } catch (_) { return null; }
+  const user = (url.searchParams.get('username') || '').trim();
+  const pass = (url.searchParams.get('password') || '').trim();
+  const path = url.pathname.toLowerCase();
+  const looksXtream =
+    /get\.php|player_api\.php|panel_api\.php|xmltv\.php/.test(path) ||
+    (user && pass);
+  if (!looksXtream || !user || !pass) return null;
+  const port = url.port ? `:${url.port}` : '';
+  const server = `${url.protocol}//${url.hostname}${port}`;
+  return { server_url: server, username: user, password: pass };
+}
+
+/// Détecte le type d'une source à partir d'un blob/URL collé quand l'admin
+/// n'a PAS précisé le type (type absent / 'auto'). « Colle n'importe quoi ».
+export function autoDetectSource(raw) {
+  const label = (raw.label || '').trim() || null;
+  const epg = (raw.epg_url || '').trim() || null;
+  // Candidats d'URL par ordre de priorité (on prend le 1er non vide).
+  const blob = [raw.url, raw.paste, raw.text, raw.m3u_url, raw.server_url]
+    .map((v) => (typeof v === 'string' ? v.trim() : ''))
+    .find((v) => v) || '';
+  // 1) Xtream si on peut extraire des identifiants d'une URL collée…
+  const xt = parseXtreamUrl(blob);
+  if (xt) {
+    return { source: { type: 'xtream', label, server_url: xt.server_url,
+      username: xt.username, password: xt.password, m3u_url: null, epg_url: epg } };
+  }
+  // 2) …ou si server_url + username + password sont fournis à plat.
+  const server = (raw.server_url || '').trim();
+  const user = (raw.username || '').trim();
+  const pass = (raw.password || '').trim();
+  if (server && user && pass) {
+    const clean = parseXtreamUrl(server);
+    return { source: { type: 'xtream', label,
+      server_url: clean ? clean.server_url : server.replace(/\/+$/, ''),
+      username: clean ? clean.username : user,
+      password: clean ? clean.password : pass,
+      m3u_url: null, epg_url: epg } };
+  }
+  // 3) Sinon, une URL http(s) simple → c'est une playlist M3U.
+  if (/^https?:\/\//i.test(blob)) {
+    return { source: { type: 'm3u', label, server_url: null, username: null,
+      password: null, m3u_url: blob, epg_url: epg } };
+  }
+  return { error: 'source introuvable : colle une URL M3U ou un lien Xtream' };
+}
+
+export function normalizeSource(raw) {
   if (!raw || typeof raw !== 'object') {
     return { error: 'source object required' };
   }
@@ -2573,20 +2639,41 @@ function normalizeSource(raw) {
   const label = (raw.label || '').trim() || null;
   const epg = (raw.epg_url || '').trim() || null;
   if (type === 'xtream') {
-    const server = (raw.server_url || '').trim();
-    const user = (raw.username || '').trim();
-    const pass = (raw.password || '').trim();
+    let server = (raw.server_url || '').trim();
+    let user = (raw.username || '').trim();
+    let pass = (raw.password || '').trim();
+    // Robustesse : un lien get.php complet collé dans server_url (ou m3u_url)
+    // → on en extrait l'origine propre + les identifiants automatiquement.
+    const clean = parseXtreamUrl(server) || parseXtreamUrl((raw.m3u_url || '').trim());
+    if (clean) {
+      server = clean.server_url;
+      user = user || clean.username;
+      pass = pass || clean.password;
+    } else {
+      server = server.replace(/\/+$/, ''); // enlève le(s) slash(es) final(aux)
+    }
     if (!server || !user || !pass) {
       return { error: 'xtream requires server_url, username, password' };
     }
     return { source: { type, label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg } };
   }
   if (type === 'm3u') {
-    const m3u = (raw.m3u_url || '').trim();
+    const m3u = (raw.m3u_url || raw.url || '').trim();
     if (!m3u) return { error: 'm3u requires m3u_url' };
+    // Si la « playlist M3U » est en réalité un lien Xtream get.php, on
+    // bascule sur Xtream (plus robuste : creds structurés, cascade d'URL).
+    const clean = parseXtreamUrl(m3u);
+    if (clean) {
+      return { source: { type: 'xtream', label, server_url: clean.server_url,
+        username: clean.username, password: clean.password, m3u_url: null, epg_url: epg } };
+    }
     return { source: { type, label, server_url: null, username: null, password: null, m3u_url: m3u, epg_url: epg } };
   }
-  return { error: "type must be 'xtream' or 'm3u'" };
+  // type absent / 'auto' / 'detect' → ACTIVATION UNIVERSELLE (auto-détection).
+  if (!type || type === 'auto' || type === 'detect') {
+    return autoDetectSource(raw);
+  }
+  return { error: "type must be 'xtream', 'm3u' or 'auto'" };
 }
 
 /// Upsert (insère ou remplace) le TRIO de sources d'une MAC.
