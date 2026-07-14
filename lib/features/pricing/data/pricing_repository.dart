@@ -52,9 +52,9 @@ class PricingConfig {
   /// Valeurs maison par défaut (réseau coupé / rien posé au panel).
   static const PricingConfig fallback = PricingConfig(
     currency: '€',
-    lifetime: '9,9',
-    yearly: '4,9',
-    trialDays: 7,
+    lifetime: '35',
+    yearly: '9,90',
+    trialDays: 5,
     promoEnabled: false,
     promoMessage: '',
   );

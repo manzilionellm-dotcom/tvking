@@ -41,7 +41,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   // MAC pré-remplie si on arrive depuis la fiche appareil (?mac=…).
   const [sp] = useSearchParams();
   const [mac, setMac] = useState(sp.get('mac') || 'MK:');
-  const [plan, setPlan] = useState(isReseller ? 'yearly' : 'monthly');
+  const [plan, setPlan] = useState('yearly');
   const [customerName, setCustomerName] = useState('');
   const [apps, setApps] = useState<App[]>([]);
   const [costs, setCosts] = useState<PlanCost[]>([]);
@@ -207,9 +207,13 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
     }
   }
 
-  const PLANS = isReseller
-    ? [{ id: 'yearly', label: '1 an' }, { id: 'lifetime', label: 'À vie' }]
-    : [{ id: 'monthly', label: '1 mois' }, { id: 'yearly', label: '1 an' }, { id: 'lifetime', label: 'À vie' }];
+  // Deux offres seulement (le « 1 mois » est retiré : inutile).
+  //   • 1 an       → 9,90 €
+  //   • À vie      → 35 € (jusqu'à 3 appareils)
+  const PLANS = [
+    { id: 'yearly', label: '1 an · 9,90 €' },
+    { id: 'lifetime', label: 'À vie · 35 € · 3 appareils' },
+  ];
   const TRIALS = [
     { id: 'trial_24h', label: 'Test 24 h' },
     { id: 'trial_48h', label: 'Test 48 h' },

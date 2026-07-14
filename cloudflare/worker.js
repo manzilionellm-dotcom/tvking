@@ -262,7 +262,10 @@ async function proxyRelease(upstreamUrl, filename) {
 //      automatiquement au 1er lancement.
 // ===========================================================
 
-const TRIAL_DAYS = 7;
+// Essai gratuit par défaut : 5 jours. Au-delà, l'app se ferme (non payée) tant
+// que l'admin n'a pas activé un abonnement. Surchargé par le panel (Tarifs)
+// via getTrialDays si une valeur y est posée.
+const TRIAL_DAYS = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /// Calcule l'état de monétisation d'un client à partir de sa fiche
