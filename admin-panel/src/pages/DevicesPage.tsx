@@ -22,6 +22,10 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [activateFor, setActivateFor] = useState<Device | null>(null);
   // Appareil dont on affiche la « fiche complète » (infos + M-Trio).
   const [detailFor, setDetailFor] = useState<Device | null>(null);
+  // ACTIONS EN MASSE (super-pouvoir) : sélection multiple + barre d'actions.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkActivate, setBulkActivate] = useState(false);
   // MACs connectées au hub temps réel → pastille verte instantanée.
   const { devices: liveList, connected: rtConnected } = useLiveDevices();
   const liveMacs = useMemo(
@@ -85,6 +89,69 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     finally { setBusyId(null); }
   }
 
+  // ---- Sélection multiple ---------------------------------------------
+  const allSelected = items.length > 0 && items.every((d) => selected.has(d.id));
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(items.map((d) => d.id)));
+  }
+  const selectedDevices = items.filter((d) => selected.has(d.id));
+
+  // Exécute une action sur TOUS les appareils sélectionnés, en série (pour
+  // ne pas marteler le serveur), avec bilan chiffré. `confirm` : {n} est
+  // remplacé par le nombre de cibles.
+  async function runBulk(
+    verb: string,
+    run: (d: Device) => Promise<unknown>,
+    opts?: { confirm?: string },
+  ) {
+    const targets = selectedDevices;
+    if (!targets.length) return;
+    if (opts?.confirm &&
+        !window.confirm(opts.confirm.replace('{n}', String(targets.length)))) {
+      return;
+    }
+    setBulkBusy(true); setErr(null);
+    let ok = 0, fail = 0;
+    for (const d of targets) {
+      try { await run(d); ok++; } catch { fail++; }
+    }
+    setBulkBusy(false);
+    setSelected(new Set());
+    load();
+    toast(
+      `${verb} : ${ok} appliqué(s)${fail ? ` · ${fail} échec(s)` : ''}.`,
+      fail ? 'warning' : 'success',
+    );
+  }
+
+  function bulkBlock(status: 'active' | 'frozen' | 'banned', verb: string, confirm?: string) {
+    return runBulk(verb, (d) => devicesApi.setBlock(d.id, status), confirm ? { confirm } : undefined);
+  }
+  function bulkClearSource() {
+    return runBulk('Retrait des sources', (d) => sourcesApi.clear(d.mac),
+      { confirm: 'Retirer la source de {n} appareil(s) ?\nL’app le voit tout de suite.' });
+  }
+  function bulkRemove() {
+    return runBulk('Suppression', (d) => devicesApi.remove(d.id),
+      { confirm: 'SUPPRIMER définitivement {n} MAC ?\nIrréversible. Pour stopper un abuseur, préfère « Bannir ».' });
+  }
+  function bulkWarn() {
+    const body = window.prompt(
+      `Message à afficher sur l’écran de ${selectedDevices.length} client(s) :`,
+      'Pensez à renouveler votre abonnement pour continuer sans coupure.',
+    );
+    if (body == null || !body.trim()) return;
+    return runBulk('Messages',
+      (d) => devicesApi.sendMessage(d.mac, { title: 'Message', body: body.trim(), durationSec: 60 }));
+  }
+
   return (
     <AppLayout
       title="Appareils"
@@ -103,10 +170,42 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
         <div className="mb-4 rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm">{err}</div>
       )}
 
+      {/* ===== Barre d'ACTIONS EN MASSE (apparaît dès qu'on coche) ===== */}
+      {selected.size > 0 && (
+        <div className="sticky top-0 z-10 mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-accent/30 bg-accent/[0.08] px-3 py-2.5 backdrop-blur">
+          <span className="mr-1 text-sm font-semibold text-accent-bright">
+            {selected.size} sélectionné(s)
+          </span>
+          <BulkBtn busy={bulkBusy} onClick={() => setBulkActivate(true)} primary title="Activer / prolonger tous d'un coup">↻ Activer / prolonger</BulkBtn>
+          <BulkBtn busy={bulkBusy} onClick={bulkWarn} title="Afficher un message sur l'écran de tous">✉️ Prévenir</BulkBtn>
+          <BulkBtn busy={bulkBusy} onClick={() => bulkBlock('frozen', 'Gel', 'Geler {n} appareil(s) ?')} title="Geler tous (rappel de paiement)">Geler</BulkBtn>
+          <BulkBtn busy={bulkBusy} onClick={() => bulkBlock('active', 'Réactivation')} title="Réactiver tous">Réactiver</BulkBtn>
+          <BulkBtn busy={bulkBusy} onClick={() => bulkBlock('banned', 'Bannissement', 'BANNIR {n} appareil(s) ? Action forte.')} title="Bannir tous (abus)">Bannir</BulkBtn>
+          <BulkBtn busy={bulkBusy} onClick={bulkClearSource} title="Retirer la source de tous">Retirer source</BulkBtn>
+          <BulkBtn busy={bulkBusy} danger onClick={bulkRemove} title="Supprimer toutes les MAC sélectionnées">Supprimer</BulkBtn>
+          <button
+            type="button"
+            onClick={() => setSelected(new Set())}
+            className="ml-auto rounded-md px-2.5 py-1 text-xs text-ink-secondary hover:text-ink-primary"
+          >
+            Tout décocher
+          </button>
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-xl border border-white/5">
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-midnight">
             <tr className="text-left text-[10px] uppercase tracking-widest text-ink-tertiary">
+              <th className="w-10 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleAll}
+                  title="Tout sélectionner / désélectionner"
+                  className="h-3.5 w-3.5 cursor-pointer accent-accent"
+                />
+              </th>
               <th className="px-4 py-3">MAC</th>
               <th className="px-4 py-3">Client</th>
               <th className="px-4 py-3">Appareil</th>
@@ -118,13 +217,13 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
           <tbody className="divide-y divide-white/5">
             {loading && Array.from({ length: 5 }).map((_, i) => (
               <tr key={i} className="bg-obsidian">
-                <td className="px-4 py-3" colSpan={6}>
+                <td className="px-4 py-3" colSpan={7}>
                   <div className="h-4 w-full animate-pulse rounded bg-white/5" />
                 </td>
               </tr>
             ))}
             {!loading && items.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-ink-tertiary">
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-ink-tertiary">
                 Aucun appareil pour l'instant. Dès qu'une app contacte le serveur,
                 sa MAC apparaît ici automatiquement.
               </td></tr>
@@ -133,8 +232,17 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
               const st = d.block_status || 'active';
               const busy = busyId === d.id;
               const liveOnline = rtConnected && liveMacs.has(d.mac);
+              const checked = selected.has(d.id);
               return (
-                <tr key={d.id} className="bg-obsidian hover:bg-midnight">
+                <tr key={d.id} className={(checked ? 'bg-accent/[0.06]' : 'bg-obsidian') + ' hover:bg-midnight'}>
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleOne(d.id)}
+                      className="h-3.5 w-3.5 cursor-pointer accent-accent"
+                    />
+                  </td>
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center gap-1.5">
                       {liveOnline && (
@@ -212,7 +320,92 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
           onRemove={() => { const d = detailFor; setDetailFor(null); remove(d); }}
         />
       )}
+
+      {bulkActivate && (
+        <BulkActivateModal
+          count={selectedDevices.length}
+          onClose={() => setBulkActivate(false)}
+          onConfirm={async (plan) => {
+            setBulkActivate(false);
+            await runBulk('Activation', (d) => activateApi.activate({ mac: d.mac, plan }));
+          }}
+        />
+      )}
     </AppLayout>
+  );
+}
+
+/// Petit bouton de la barre d'actions en masse.
+function BulkBtn({
+  children, onClick, busy, danger, primary, title,
+}: { children: ReactNode; onClick: () => void; busy?: boolean; danger?: boolean; primary?: boolean; title?: string }) {
+  const cls = primary
+    ? 'bg-accent text-black hover:bg-accent-bright border border-transparent'
+    : danger
+      ? 'border border-red-400/40 bg-red-500/10 text-red-200 hover:bg-red-500/20'
+      : 'border border-white/10 bg-white/5 text-ink-secondary hover:bg-white/10';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      title={title}
+      className={'rounded-md px-2.5 py-1.5 text-xs font-semibold disabled:opacity-50 ' + cls}
+    >
+      {busy ? '…' : children}
+    </button>
+  );
+}
+
+/// Choix de durée pour l'activation/prolongation EN MASSE (s'ajoute au
+/// temps restant de chaque appareil sélectionné).
+function BulkActivateModal({
+  count, onClose, onConfirm,
+}: { count: number; onClose: () => void; onConfirm: (plan: string) => void }) {
+  const [plan, setPlan] = useState('yearly');
+  const PLANS = [
+    { id: 'monthly', label: '1 mois' },
+    { id: 'quarterly', label: '3 mois' },
+    { id: 'biannual', label: '6 mois' },
+    { id: 'yearly', label: '1 an' },
+    { id: 'lifetime', label: 'À vie' },
+  ];
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-midnight p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="mb-1 text-lg font-semibold tracking-tight">Activer / prolonger en masse</h2>
+        <p className="mb-4 text-sm text-ink-tertiary">
+          La durée choisie s'ajoute au temps restant de <strong className="text-ink-primary">{count} appareil(s)</strong> et débloque l'app tout de suite.
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {PLANS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setPlan(p.id)}
+              className={
+                'rounded-md border px-3 py-2 text-sm transition ' +
+                (plan === p.id
+                  ? 'border-accent bg-accent/10 text-ink-primary'
+                  : 'border-white/5 bg-slate text-ink-secondary hover:border-white/20')
+              }
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 pt-4">
+          <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary">Annuler</button>
+          <button
+            type="button"
+            onClick={() => onConfirm(plan)}
+            className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black hover:bg-accent-bright"
+          >
+            Activer {count} appareil(s)
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
