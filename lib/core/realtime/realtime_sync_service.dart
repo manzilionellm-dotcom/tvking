@@ -618,9 +618,14 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
         await SubscriptionState.instance.syncWithBackend();
         break;
       case 'sources':
+        // ACTIVATION INSTANTANÉE : on réveille l'accueil pour qu'il charge la
+        // source EN DIRECT (écran d'import vivant) dès que le revendeur l'a
+        // poussée — pas d'attente du prochain sondage.
+        RemoteSourceRepository.signalPushed();
         // Même garde que le timer 5 min de main.dart : en MODE SANS
         // ÉCHEC (boucle de crash détectée), pas de ré-import distant
-        // (fetch+parse = suspect OOM n°1).
+        // (fetch+parse = suspect OOM n°1). Filet pour le cas où l'accueil
+        // n'est pas monté (lecture en cours) : la source se charge quand même.
         if (!BootGuard.instance.safeMode) {
           await RemoteSourceRepository.sync();
         }
@@ -630,6 +635,7 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
         break;
       case 'all':
         await SubscriptionState.instance.syncWithBackend();
+        RemoteSourceRepository.signalPushed(); // accueil : charge en direct
         if (!BootGuard.instance.safeMode) {
           await RemoteSourceRepository.sync();
         }

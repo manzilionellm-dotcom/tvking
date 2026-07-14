@@ -45,6 +45,7 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
+import '../../playlists/presentation/import_progress_screen.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../../subscription/data/subscription_state.dart';
 import 'widgets/announcement_banner.dart';
@@ -68,10 +69,9 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
   /// Évite deux sondages simultanés (réseau lent).
   bool _polling = false;
 
-  /// Affiche brièvement un écran « Activation réussie — redémarrage… »
-  /// quand la source vient d'arriver automatiquement, pour que le client
-  /// perçoive un redémarrage propre plutôt qu'un changement brusque.
-  bool _restarting = false;
+  /// Vrai pendant que l'écran d'import VIVANT est affiché : empêche d'en
+  /// ouvrir un second (tick du sondage OU signal temps réel pendant l'import).
+  bool _importing = false;
 
   @override
   void initState() {
@@ -95,10 +95,16 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
         if (mounted) maybeShowFeedbackSheet(context);
       });
     });
+    // TEMPS RÉEL : dès que le revendeur pousse une source depuis le panel,
+    // RealtimeSyncService bumpe `pushedTick` → on charge la source IMMÉDIA-
+    // TEMENT (import vivant), sans attendre le prochain tick du sondage. C'est
+    // ce qui rend l'activation INSTANTANÉE côté client.
+    RemoteSourceRepository.pushedTick.addListener(_onSourcePushed);
     // Démarre le sondage auto SEULEMENT si on est sur l'écran vide. Si des
     // chaînes sont déjà là (client qui revient), inutile de sonder.
     if (PlaylistRepository.instance.currentChannels.isEmpty) {
-      // 1er essai rapide (2 s) puis toutes les 6 s.
+      // 1er essai rapide (2 s) puis toutes les 6 s (filet si le temps réel
+      // n'a pas pu joindre l'appareil : socket coupé, app en arrière-plan…).
       Future<void>.delayed(const Duration(seconds: 2), _pollActivation);
       _activationPoll = Timer.periodic(
         const Duration(seconds: 6),
@@ -107,9 +113,19 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     }
   }
 
+  /// Réaction au signal temps réel « source poussée » : si on est encore sur
+  /// l'écran d'activation (pas de chaînes), on déclenche le chargement VIVANT
+  /// tout de suite.
+  void _onSourcePushed() {
+    if (!mounted) return;
+    if (PlaylistRepository.instance.currentChannels.isNotEmpty) return;
+    unawaited(_pollActivation());
+  }
+
   @override
   void dispose() {
     _activationPoll?.cancel();
+    RemoteSourceRepository.pushedTick.removeListener(_onSourcePushed);
     EngagementService.instance.removeListener(_maybeCelebrate);
     super.dispose();
   }
@@ -124,42 +140,68 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     }
   }
 
-  /// Un tick du sondage : resynchronise l'abonnement + la source poussée.
-  /// Si une source vient d'être chargée (chaînes passées de 0 à >0), on
-  /// déclenche la transition « redémarrage » et on coupe le timer.
+  /// Un tick du sondage (ou un signal temps réel) : cherche la source assignée
+  /// par le revendeur et, si elle existe, la charge EN MONTRANT l'écran d'import
+  /// VIVANT (les chaînes qui s'ajoutent en direct) — exactement comme le bouton
+  /// manuel « Vérifier mon abonnement ». Avant, ce chemin automatique chargeait
+  /// la source EN SILENCE : le client ne voyait rien télécharger et l'activation
+  /// paraissait ne « rien faire ».
   Future<void> _pollActivation() async {
-    if (_polling || !mounted) return;
+    if (_polling || _importing || !mounted) return;
     // Déjà des chaînes ? on arrête le sondage (cas course / retour écran).
     if (PlaylistRepository.instance.currentChannels.isNotEmpty) {
       _activationPoll?.cancel();
       return;
     }
     _polling = true;
+    List<Map<String, dynamic>> pending = const <Map<String, dynamic>>[];
     try {
       await SubscriptionState.instance.syncWithBackend();
-      await RemoteSourceRepository.sync();
+      // On récupère la/les source(s) SANS les charger : si quelque chose est en
+      // attente, on bascule sur l'import VIVANT (avec progression) plutôt qu'un
+      // chargement silencieux.
+      pending = await RemoteSourceRepository.fetchAssignedSources();
     } catch (_) {
       // Réseau capricieux : on réessaiera au prochain tick.
     } finally {
       _polling = false;
     }
-    if (!mounted) return;
-    // La source a-t-elle chargé des chaînes ?
+    if (!mounted || pending.isEmpty) return;
+    // Course : une autre voie (temps réel, sync silencieux de secours) a pu
+    // charger entre-temps → on ne double pas.
     if (PlaylistRepository.instance.currentChannels.isNotEmpty) {
       _activationPoll?.cancel();
-      _enterRestart();
+      return;
+    }
+
+    // IMPORT VIVANT plein écran : « Activation de tes chaînes… » avec les
+    // catégories/chaînes qui s'ajoutent en direct. Le client VOIT le
+    // téléchargement, sans avoir rien tapé.
+    _activationPoll?.cancel();
+    _importing = true;
+    try {
+      await runImportWithProgress<RemoteSyncResult>(
+        context,
+        title: context.l10n.activationLoadingTitle,
+        task: (onProgress) =>
+            RemoteSourceRepository.applySources(pending, onProgress: onProgress),
+      );
+    } catch (_) {
+      // Best-effort : un échec ne doit jamais bloquer l'accueil.
+    } finally {
+      _importing = false;
+    }
+    if (!mounted) return;
+    // L'import a-t-il vraiment chargé des chaînes ? Sinon (provider KO), on
+    // relance le sondage de secours pour retenter au prochain tick.
+    if (PlaylistRepository.instance.currentChannels.isEmpty) {
+      _activationPoll ??= Timer.periodic(
+        const Duration(seconds: 6),
+        (_) => _pollActivation(),
+      );
     }
   }
 
-  /// Joue la transition « redémarrage » ~1,8 s puis révèle les catégories.
-  /// Le StreamBuilder a déjà les chaînes en main : on ne fait que retarder
-  /// l'affichage pour un effet de redémarrage propre et rassurant.
-  void _enterRestart() {
-    setState(() => _restarting = true);
-    Future<void>.delayed(const Duration(milliseconds: 1800), () {
-      if (mounted) setState(() => _restarting = false);
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -175,13 +217,10 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                 (BuildContext context, AsyncSnapshot<List<Channel>> snap) {
               final List<Channel> channels = snap.data ?? const <Channel>[];
 
-              // Transition « redémarrage » : la source vient d'arriver
-              // automatiquement, on l'annonce en douceur avant de révéler
-              // les catégories (le client a juste l'impression que l'app
-              // redémarre, sans rien avoir tapé).
-              if (_restarting) return _buildRestartSplash(context);
-
-              // Pas de playlist → écran d'activation par code MAC.
+              // Pas de playlist → écran d'activation par code MAC. (Quand le
+              // revendeur pousse la source, l'import VIVANT s'affiche par-dessus
+              // via _pollActivation ; à la fin, `channels` n'est plus vide et
+              // on révèle les catégories.)
               if (channels.isEmpty) return _buildActivationEntry(context);
 
               // Playlist chargée → catégories → chaînes.
@@ -239,41 +278,6 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     );
   }
 
-  // ----- Transition « redémarrage » (source poussée reçue) -----
-  //  Plein écran, centré : logo + spinner + texte rassurant. Affiché
-  //  ~1,8 s par _enterRestart() quand le sondage auto a chargé la source.
-  Widget _buildRestartSplash(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          const BrandLogo.medium(),
-          const SizedBox(height: 28),
-          SizedBox(
-            width: 26,
-            height: 26,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.4,
-              color: AppColors.accent,
-            ),
-          ),
-          const SizedBox(height: 22),
-          Text(
-            context.l10n.activationRestartTitle,
-            style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            context.l10n.activationRestartSubtitle,
-            style: AppTextStyles.bodyMedium.copyWith(
-              fontSize: 13,
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   // ----- En-tête (accueil rempli) -----
   Widget _buildHeader() {

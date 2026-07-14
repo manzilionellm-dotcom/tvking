@@ -52,6 +52,18 @@ enum RemoteSyncResult {
 }
 
 abstract final class RemoteSourceRepository {
+  /// Signal « le revendeur vient d'ASSIGNER / METTRE À JOUR une source pour
+  /// CET appareil » (poussé en TEMPS RÉEL par le panel via le WebSocket).
+  /// L'accueil l'écoute pour charger la source IMMÉDIATEMENT — avec l'écran
+  /// d'import VIVANT (chaînes qui s'ajoutent en direct) — sans attendre le
+  /// prochain tick du sondage. Bumpé par RealtimeSyncService à la réception
+  /// d'un événement `sync sources`/`all`.
+  static final ValueNotifier<int> pushedTick = ValueNotifier<int>(0);
+
+  /// Réveille les écouteurs (l'accueil) : « une source vient d'être poussée,
+  /// charge-la tout de suite ». Best-effort, jamais bloquant.
+  static void signalPushed() => pushedTick.value++;
+
   /// Récupère la source assignée à cet appareil et la charge si besoin.
   /// Best effort, idempotent (la dédup évite de réimporter à chaque boot).
   /// Renvoie un [RemoteSyncResult] pour permettre un diagnostic précis.
