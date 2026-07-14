@@ -128,6 +128,57 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
     }
   }
 
+  // SUPER-POUVOIR « CLONER » : copie la/les source(s) de CE client vers une
+  // autre MAC en 1 clic. Idéal pour configurer un nouveau client identique à
+  // un qui marche, ou dépanner en dupliquant une config saine.
+  const [cloning, setCloning] = useState(false);
+  async function handleCloneSource() {
+    const target = window.prompt(
+      'CLONER la source de ce client VERS quelle MAC ?\n\n' +
+        'Colle la MAC cible (format MK:XX:XX:XX:XX:XX). Elle recevra exactement\n' +
+        'la même liste, tout de suite.',
+    );
+    if (!target) return;
+    const t = target.trim().toUpperCase();
+    if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(t)) {
+      toast('MAC cible invalide.', 'error');
+      return;
+    }
+    if (t === mac.trim().toUpperCase()) {
+      toast('C’est la même MAC.', 'warning');
+      return;
+    }
+    setCloning(true);
+    try {
+      const cur = await sourcesApi.get(mac);
+      const srcs = (cur.sources && cur.sources.length
+        ? cur.sources
+        : cur.source
+          ? [cur.source]
+          : []);
+      if (!srcs.length) {
+        toast('Aucune source à cloner.', 'warning');
+        return;
+      }
+      const inputs = srcs.map((s) =>
+        s.type === 'xtream'
+          ? {
+              type: 'xtream' as const, label: s.label ?? null,
+              server_url: s.server_url ?? '', username: s.username ?? '',
+              password: s.password ?? '',
+            }
+          : { type: 'm3u' as const, label: s.label ?? null, m3u_url: s.m3u_url ?? '' },
+      );
+      const r = await sourcesApi.setMany(t, inputs);
+      void rtActionFeedback(r.rt);
+      toast(`✅ Config clonée vers ${t}.`, 'success');
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Clonage impossible.', 'error');
+    } finally {
+      setCloning(false);
+    }
+  }
+
   const d = ov?.device ?? null;
   const p = ov?.presence ?? null;
   const lic = ov?.license ?? null;
@@ -280,6 +331,17 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
                 >
                   {sources.length > 0 ? '＋ Changer / ajouter une source' : '＋ Ajouter une source'}
                 </button>
+                {sources.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleCloneSource}
+                    disabled={cloning}
+                    className="flex-1 rounded-lg border border-emerald-400/40 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-400/20 disabled:opacity-50"
+                    title="Copier cette config vers une autre MAC en 1 clic"
+                  >
+                    {cloning ? 'Clonage…' : '⧉ Cloner vers…'}
+                  </button>
+                )}
                 {sources.length > 0 && (
                   <button
                     type="button"
