@@ -49,6 +49,10 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const [servers, setServers] = useState<DefaultServer[]>([]);
   // TRIO : 0 à 3 sources poussées avec l'activation (optionnel).
   const [items, setItems] = useState<SrcDraft[]>([]);
+  // ABONNEMENT FAMILIAL : appareils EN PLUS du principal (jusqu'à 2 → 3 au
+  // total : papa/maman/enfants). Un seul « paiement », tous activés ensemble
+  // avec le même plan. Vide = activation simple (1 appareil).
+  const [familyMacs, setFamilyMacs] = useState<string[]>([]);
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -142,26 +146,53 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
 
   // ===== ACTION ① : ACTIVER L'ABONNEMENT (licence) — SEUL =====
   // Ne touche JAMAIS aux chaînes. Demande confirmation (anti-confusion).
+  // FAMILIAL : le principal + les MAC « famille » sont activés ENSEMBLE, avec
+  // le même plan (une seule vente, 2-3 appareils).
   async function activateSubscription() {
     setErr(null);
     const m = validMac();
     if (!m) return;
+    // Liste complète des MAC à activer : principal + famille (dédupliquée,
+    // validée). Une famille invalide bloque avant tout appel.
+    const macs = [m];
+    for (const raw of familyMacs) {
+      const fm = raw.trim().toUpperCase();
+      if (!fm || fm === 'MK:') continue; // champ vide ignoré
+      if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(fm)) {
+        setErr(`MAC famille invalide : ${fm} (format MK:XX:XX:XX:XX:XX).`);
+        return;
+      }
+      if (!macs.includes(fm)) macs.push(fm);
+    }
     const planLabel =
       [...PLANS, ...TRIALS].find((p) => p.id === plan)?.label ?? plan;
+    const familyNote = macs.length > 1
+      ? `\n\n👨‍👩‍👧 ABONNEMENT FAMILIAL : ${macs.length} appareils activés ensemble.`
+      : '';
     if (!window.confirm(
-      `Activer l'ABONNEMENT « ${planLabel} » pour ${m} ?\n\n` +
-      `➡️ Ceci active/prolonge SEULEMENT la licence de l'app.\n` +
-      `Ça ne touche PAS aux chaînes.`,
+      `Activer l'ABONNEMENT « ${planLabel} » ?${familyNote}\n\n` +
+      `Appareil(s) :\n${macs.join('\n')}\n\n` +
+      `➡️ Active/prolonge SEULEMENT la licence. Ça ne touche PAS aux chaînes.`,
     )) return;
     setBusy(true); setResult(null); setRtOutcome(null); rtSeq.current += 1;
     try {
-      const res = await activateApi.activate({
-        mac: m, plan, app_id: appId,
-        customer_name: customerName.trim() || undefined,
-      });
-      setResult(res);
-      if (res.credit_balance !== null) setBalance(res.credit_balance);
-      trackRt(res.rt);
+      // On active chaque appareil de la famille avec le MÊME plan. Le dernier
+      // résultat (le principal) alimente l'affichage + le feedback temps réel.
+      let last: ActivateResult | null = null;
+      for (const one of macs) {
+        last = await activateApi.activate({
+          mac: one, plan, app_id: appId,
+          customer_name: customerName.trim() || undefined,
+        });
+      }
+      if (last) {
+        setResult(last);
+        if (last.credit_balance !== null) setBalance(last.credit_balance);
+        trackRt(last.rt);
+      }
+      if (macs.length > 1) {
+        toast(`👨‍👩‍👧 Famille activée : ${macs.length} appareils.`, 'success');
+      }
     } catch (e: any) {
       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
       setErr(e instanceof ApiError ? e.message : 'Activation impossible.');
@@ -362,6 +393,52 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
               placeholder="Ex. Salon de Karim"
               className={inputCls}
             />
+          </div>
+
+          {/* ABONNEMENT FAMILIAL : appareils EN PLUS du principal
+              (papa/maman/enfants). Mêmes plan, activés ENSEMBLE en 1 clic. */}
+          <div className="rounded-lg border border-accent/15 bg-accent/[0.03] p-3">
+            <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-accent-bright">
+              👨‍👩‍👧 Famille (optionnel) — abonnement familial
+            </div>
+            <p className="mb-2 text-[11px] text-ink-tertiary">
+              Ajoute les autres appareils du foyer (jusqu'à 2 de plus). Ils
+              reçoivent le MÊME abonnement, activés en un clic avec le principal.
+              Total&nbsp;:{' '}
+              {1 + familyMacs.filter((x) => x.trim() && x.trim() !== 'MK:').length}{' '}
+              appareil(s).
+            </p>
+            {familyMacs.map((fm, i) => (
+              <div key={i} className="mb-2 flex items-center gap-2">
+                <input
+                  value={fm}
+                  onChange={(e) =>
+                    setFamilyMacs((prev) =>
+                      prev.map((v, idx) => (idx === i ? formatMacInput(e.target.value) : v)),
+                    )
+                  }
+                  maxLength={17}
+                  placeholder="MK:1A:2B:3C:4D:5E"
+                  className={inputCls + ' font-mono'}
+                />
+                <button
+                  type="button"
+                  onClick={() => setFamilyMacs((prev) => prev.filter((_, idx) => idx !== i))}
+                  className="shrink-0 text-xs text-ink-tertiary hover:text-accent-bright"
+                >
+                  Retirer
+                </button>
+              </div>
+            ))}
+            {familyMacs.length < 2 && (
+              <button
+                type="button"
+                onClick={() => setFamilyMacs((prev) => [...prev, 'MK:'])}
+                className="w-full rounded-md border border-dashed border-white/15 px-3 py-2 text-xs text-ink-secondary transition hover:border-accent/50 hover:text-accent-bright"
+              >
+                + Ajouter un appareil de la famille ({familyMacs.length}/2)
+              </button>
+            )}
           </div>
 
           {/* BOUTON ① — ACTIVE SEULEMENT L'ABONNEMENT (en HAUT). Séparé du
