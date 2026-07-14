@@ -207,12 +207,13 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
     }
   }
 
-  // Deux offres seulement (le « 1 mois » est retiré : inutile).
-  //   • 1 an       → 9,90 €
-  //   • À vie      → 35 € (jusqu'à 3 appareils)
+  // Deux offres FAMILIALES seulement (le « 1 mois » est retiré : inutile).
+  // Un paiement ouvre tous les appareils du foyer (jusqu'à 3).
+  //   • 1 an  familial → 9,90 €
+  //   • À vie familial → 35 €
   const PLANS = [
-    { id: 'yearly', label: '1 an · 9,90 €' },
-    { id: 'lifetime', label: 'À vie · 35 € · 3 appareils' },
+    { id: 'yearly', label: '1 an · familial · 9,90 €' },
+    { id: 'lifetime', label: 'À vie · familial · 35 €' },
   ];
   const TRIALS = [
     { id: 'trial_24h', label: 'Test 24 h' },
