@@ -2,7 +2,7 @@ import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import {
-  devicesApi, activateApi, flagEmoji, PLAN_LABELS,
+  devicesApi, activateApi, sourcesApi, flagEmoji, PLAN_LABELS,
   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
   type DeviceLicense, type DevicePresence, ApiError,
 } from '@/lib/api';
@@ -257,6 +257,46 @@ function DeviceDetailModal({
   const sources = ov?.sources ?? [];
   const macUrl = encodeURIComponent(device.mac);
 
+  // Recharge la fiche (M-Trio + infos) après une action sur la source.
+  async function refreshOverview() {
+    try {
+      const r = await devicesApi.overview(device.id);
+      setOv(r);
+      setErr(null);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Échec.');
+    }
+  }
+
+  // RETIRER la source du client (dépannage « ma source ne marche pas ») :
+  // on efface la/les source(s) poussée(s) côté serveur. Grâce à la synchro
+  // temps réel, l'app du client le voit IMMÉDIATEMENT. On repousse ensuite
+  // une source propre via « Pousser une source ». = « je l'enlève, je la
+  // remets » demandé par l'exploitant.
+  const [clearing, setClearing] = useState(false);
+  async function handleClearSource() {
+    if (
+      !window.confirm(
+        'Retirer la source de ce client ?\n\n' +
+          'Ses chaînes seront retirées côté serveur (l’app le voit tout de suite). ' +
+          'Tu pourras ensuite en repousser une propre via « Pousser une source ».',
+      )
+    ) {
+      return;
+    }
+    setClearing(true);
+    try {
+      const r = await sourcesApi.clear(device.mac);
+      void rtActionFeedback(r.rt);
+      toast('Source retirée. Repousse-en une propre si besoin.', 'success');
+      await refreshOverview();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Échec du retrait.', 'error');
+    } finally {
+      setClearing(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
       <div
@@ -346,6 +386,9 @@ function DeviceDetailModal({
           <div className="flex flex-wrap gap-1.5">
             <ActionBtn busy={busy} primary onClick={onActivate} title="Activer / prolonger l'abonnement">Activer / prolonger</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/activate?mac=${macUrl}`)} title="Pousser ou modifier le M-Trio de sources">Pousser une source</ActionBtn>
+            {sources.length > 0 && (
+              <ActionBtn busy={busy || clearing} onClick={handleClearSource} title="Retirer la source poussée (dépannage : « ma source ne marche pas » → retirer puis repousser)">Retirer la source</ActionBtn>
+            )}
             <ActionBtn busy={busy} onClick={() => navigate(`/transfer?mac=${macUrl}`)} title="Transférer l'abonnement vers une nouvelle MAC">Transférer</ActionBtn>
             {st !== 'frozen' && (
               <ActionBtn busy={busy} onClick={() => onBlock('frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>
