@@ -356,6 +356,47 @@ class XtreamClient {
   }) async {
     final Map<String, String> cats =
         categories ?? await fetchLiveCategories();
+
+    // ===== CHEMIN RAPIDE « façon TiviMate » =====
+    // UN SEUL appel `get_live_streams` global au lieu d'UN PAR CATÉGORIE
+    // (~140 allers-retours réseau séquentiels → 1). C'est CE fan-out qui
+    // faisait durer l'import 6 min ; en un seul appel il tombe à ~10-20 s.
+    // On insère par paquets de 1000 (écriture batchée + compteur vivant qui
+    // monte). Filets préservés :
+    //  • PAS tenté sur box à FAIBLE RAM (le gros JSON global = risque OOM) ;
+    //  • si la réponse dépasse le plafond octets (kMaxXtreamJsonBytes, gros
+    //    bouquet) → PlaylistImportTooLarge → on RETOMBE sur le chemin par
+    //    catégorie (memory-safe), comportement d'origine intact ;
+    //  • réponse globale vide (serveur qui n'accepte que le filtre par
+    //    catégorie) → on tente aussi le chemin par catégorie.
+    if (!DeviceMemory.lowRam) {
+      try {
+        final List<Channel> all = await fetchLiveChannels(
+          playlistId: playlistId,
+          categories: cats,
+        );
+        if (all.isNotEmpty) {
+          int fast = 0;
+          const int chunk = 1000;
+          for (int i = 0; i < all.length; i += chunk) {
+            final int end = (i + chunk < all.length) ? i + chunk : all.length;
+            final List<Channel> batch = all.sublist(i, end);
+            await onBatch(batch);
+            fast += batch.length;
+            onProgress?.call(fast, null);
+            CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
+                'xtream.stream.fast', channels: fast);
+          }
+          return fast;
+        }
+      } on PlaylistImportTooLarge {
+        // Bouquet trop gros pour un seul appel → repli par catégorie.
+      } catch (_) {
+        // Échec réseau/parse du global → repli par catégorie.
+      }
+    }
+
+    // ===== CHEMIN PAR CATÉGORIE (memory-safe / repli) =====
     final Set<String> seen = <String>{};
     int total = 0;
 
