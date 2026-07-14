@@ -15,6 +15,7 @@
 // =========================================================
 
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ApiError, devicesApi, sourcesApi } from '@/lib/api';
 import type { DeviceOverview, DeviceMessage } from '@/lib/api';
 import { sendCmd, waitForAck, useLiveDevices } from '@/lib/realtime';
@@ -63,6 +64,7 @@ export function MacLink({
 
 /// Tiroir de détail (lecture seule) — tout ce qu'on sait de la MAC.
 function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void }) {
+  const navigate = useNavigate();
   const [ov, setOv] = useState<DeviceOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -263,17 +265,33 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
                   </div>
                 ))
               )}
-              {sources.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {/* AJOUTER / POUSSER une source (ou en changer) → écran
+                    d'activation, MAC pré-remplie. Toujours dispo, même si la
+                    MAC n'est pas encore enregistrée (pré-provisionnement). */}
                 <button
                   type="button"
-                  onClick={handleClearSource}
-                  disabled={clearing}
-                  className="mt-1 w-full rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-xs font-semibold text-accent-bright transition hover:bg-accent/20 disabled:opacity-50"
-                  title="Retirer la source poussée (dépannage : la retirer puis en repousser une propre)"
+                  onClick={() => {
+                    navigate(`/activate?mac=${encodeURIComponent(mac)}`);
+                    onClose();
+                  }}
+                  className="flex-1 rounded-lg border border-sky-400/40 bg-sky-400/10 px-3 py-2 text-xs font-semibold text-sky-200 transition hover:bg-sky-400/20"
+                  title="Ajouter ou remplacer la source (liste) de ce client"
                 >
-                  {clearing ? 'Retrait…' : 'Retirer la source'}
+                  {sources.length > 0 ? '＋ Changer / ajouter une source' : '＋ Ajouter une source'}
                 </button>
-              )}
+                {sources.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearSource}
+                    disabled={clearing}
+                    className="flex-1 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-xs font-semibold text-accent-bright transition hover:bg-accent/20 disabled:opacity-50"
+                    title="Retirer TOUTES les sources poussées (tout supprimer)"
+                  >
+                    {clearing ? 'Retrait…' : 'Tout supprimer'}
+                  </button>
+                )}
+              </div>
             </Section>
 
             {/* Inventaire réel sur l'appareil */}
