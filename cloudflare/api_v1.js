@@ -4279,13 +4279,24 @@ async function handleActivate(request, env, user, actor) {
   await env.DB.prepare('UPDATE devices SET block_status = NULL WHERE id = ?')
     .bind(deviceId).run();
 
-  // 2c) Source IPTV (Xtream/M3U) optionnelle : si le panel a joint un
-  // objet `source`, on l'assigne à la MAC. L'app la récupèrera via
-  // GET /api/device-source/:mac et la chargera automatiquement.
-  if (body.source) {
-    const norm = normalizeSource(body.source);
-    if (norm.error) return errResp('bad_source', norm.error, 400);
-    await upsertDeviceSource(env, mac, norm.source);
+  // 2c) Source(s) IPTV (Xtream/M3U) optionnelle(s) : si l'appel joint un
+  // objet `source` (unique) OU un tableau `sources` (TRIO 1-3), on l'assigne
+  // à la MAC. L'app la récupèrera via GET /api/device-source/:mac et la
+  // chargera automatiquement. NB : `upsertDeviceSource` attend un TABLEAU —
+  // on enveloppe donc toujours (bug historique : un objet seul → `.map`
+  // indéfini → 500, l'activation échouait ET le push temps réel ne partait
+  // pas puisque withRt ne publie que sur 2xx).
+  const rawSources = Array.isArray(body.sources)
+    ? body.sources
+    : (body.source ? [body.source] : []);
+  if (rawSources.length > 0) {
+    const normalized = [];
+    for (const raw of rawSources.slice(0, 3)) {
+      const norm = normalizeSource(raw);
+      if (norm.error) return errResp('bad_source', norm.error, 400);
+      normalized.push(norm.source);
+    }
+    await upsertDeviceSource(env, mac, normalized);
   }
 
   // 3) Debit credits (revendeur) + ecriture au ledger, atomiquement.
