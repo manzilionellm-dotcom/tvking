@@ -218,6 +218,27 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // du message existant. Remis à false à chaque ouverture (_open).
   bool _fatalNetworkHint = false;
 
+  // ----- STABILITÉ « pro » (façon Netflix) : 2 garde-fous anti-spinner -----
+  // 1) COUPURE RAPIDE SUR FLUX MORT : si AUCUNE image n'est dessinée en
+  //    [_kStartupTimeout] après l'ouverture, on ne laisse PAS le spinner
+  //    tourner ~75 s (5×15 s du watchdog anti-gel) → on déclenche tout de
+  //    suite le diagnostic/cascade (_declareChannelBlocked), qui aboutit à un
+  //    flux de secours OU à l'écran « Réessayer ». Armé à chaque _open,
+  //    désarmé dès la 1re image.
+  Timer? _startupWatchdog;
+  static const Duration _kStartupTimeout = Duration(seconds: 20);
+
+  // 2) GARDE-FOU ANTI-BOUCLE INFINIE : un flux qui « hoquette » sans arrêt
+  //    (rebuffer en rafale) ne doit pas tourner indéfiniment. On garde les
+  //    horodatages des rebuffers RÉELS sur une fenêtre glissante ; au-delà de
+  //    [_kMaxRebuffers] dans [_kRebufferWindow], on bascule proprement en
+  //    erreur « Réessayer » au lieu de spinner sans fin. La fenêtre glissante
+  //    fait que quelques rebuffers espacés ne déclenchent JAMAIS (seul un flux
+  //    vraiment instable atteint le seuil). Remis à zéro à chaque _open/zap.
+  final List<DateTime> _rebufferTimes = <DateTime>[];
+  static const int _kMaxRebuffers = 10;
+  static const Duration _kRebufferWindow = Duration(minutes: 4);
+
   // ----- ABR MAISON (« la qualité s'adapte, la connexion reste ») -----
   // L'ABR classique (Netflix) n'existe pas sur un flux TS mono-débit. Notre
   // équivalent : le moniteur de stabilité (machine à états PURE et testée,
@@ -378,6 +399,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _controller.removeListener(_onPlayer);
     NowPlaying.instance.clear();
     SubscriptionState.instance.syncWithBackend(); // on ne regarde plus rien
+    _startupWatchdog?.cancel();
     _controller.dispose();
     _focus.dispose();
     super.dispose();
@@ -399,7 +421,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       }
     }
     // Une vraie image a été dessinée → la source envoie bien de la vidéo.
-    if (_controller.firstFrame) _everShownFrame = true;
+    if (_controller.firstFrame) {
+      _everShownFrame = true;
+      _startupWatchdog?.cancel(); // 1re image → garde-fou démarrage inutile
+    }
     // Reprise VOD : dès que la DURÉE est connue (média préparé + seekable),
     // on peut appliquer le « Reprendre à 42:15 ». No-op en direct / déjà fait.
     if (_isVod) _maybeApplyResume();
@@ -410,7 +435,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // = incident pour le moniteur de stabilité. Le buffering INITIAL d'une
     // ouverture/zap n'en est pas un (gardé par _everShownFrame).
     if (buffering && !_wasBuffering && _everShownFrame && !_isVod) {
-      _stability.onIncident(DateTime.now());
+      final DateTime now = DateTime.now();
+      _stability.onIncident(now);
+      _noteRebufferBudget(now); // garde-fou anti-boucle infinie
     }
     _wasBuffering = buffering;
     if (mounted && buffering != _buffering) {
@@ -464,10 +491,58 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     }
   }
 
+  /// Arme (ou réarme) le garde-fou de DÉMARRAGE : si aucune image n'est
+  /// dessinée dans [_kStartupTimeout], on déclenche le diagnostic/cascade au
+  /// lieu de laisser le spinner tourner ~75 s. Désarmé dès la 1re image.
+  void _armStartupWatchdog() {
+    _startupWatchdog?.cancel();
+    _startupWatchdog = Timer(_kStartupTimeout, () {
+      if (!mounted || _everShownFrame || _fatal) return;
+      StructuredLogger.instance.warn(
+        domain: 'native',
+        event: 'tv_player.startup_timeout',
+        ctx: <String, Object?>{'channelId': _current.id},
+      );
+      // Toujours rien après ~20 s → source morte/bloquée : cascade de secours
+      // (UA/variantes) → flux OK, ou écran « Réessayer ». Jamais un spinner
+      // éternel. `_declareChannelBlocked` est borné (1 diagnostic par chaîne).
+      _declareChannelBlocked();
+    });
+  }
+
+  /// Garde-fou ANTI-BOUCLE INFINIE : enregistre un rebuffer réel, purge la
+  /// fenêtre glissante, et si le flux hoquette trop ([_kMaxRebuffers] en
+  /// [_kRebufferWindow]) → écran « Réessayer » au lieu d'un spinner sans fin.
+  void _noteRebufferBudget(DateTime now) {
+    _rebufferTimes.add(now);
+    _rebufferTimes
+        .removeWhere((DateTime t) => now.difference(t) > _kRebufferWindow);
+    if (_rebufferTimes.length >= _kMaxRebuffers && !_fatal) {
+      StructuredLogger.instance.warn(
+        domain: 'native',
+        event: 'tv_player.rebuffer_budget_exceeded',
+        ctx: <String, Object?>{
+          'channelId': _current.id,
+          'count': _rebufferTimes.length,
+        },
+      );
+      _rebufferTimes.clear();
+      _recordPlaybackFailure();
+      if (mounted) {
+        setState(() {
+          _fatal = true;
+          _buffering = false;
+        });
+      }
+    }
+  }
+
   void _open({bool reuse = false}) {
     _freeze.openChannel(DateTime.now());
     _lastPos = Duration.zero;
     _everShownFrame = false; // nouvelle ouverture → pas encore d'image
+    _rebufferTimes.clear(); // nouvelle chaîne → budget rebuffer neuf
+    _armStartupWatchdog(); // coupure rapide si aucune image en ~20 s
     _fatalNetworkHint = false;
     _errorLoggedThisOpen = false; // nouvelle ouverture → on re-journalise
     _adoptedAltUrl = null; // la variante adoptée était propre à l'ancienne chaîne
@@ -834,6 +909,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   /// « Réessayer » manuel depuis l'écran d'erreur : on repart d'un budget neuf.
   void _manualRetry() {
     _freeze.openChannel(DateTime.now()); // horloge fraîche : pas de watchdog immédiat
+    _rebufferTimes.clear(); // budget rebuffer neuf pour la nouvelle tentative
+    _armStartupWatchdog(); // si la reprise ne démarre pas non plus → coupure rapide
     setState(() {
       _fatal = false;
       _buffering = true;
