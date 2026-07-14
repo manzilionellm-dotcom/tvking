@@ -7,9 +7,10 @@ import {
   getCurrentUser, isOwnerRole, userCan, DOWNLOAD_URL, DOWNLOAD_URL_TV,
   DOWNLOADER_CODE, DOWNLOADER_CODE_TV,
   type App, type PlanCost, type ActivateResult, type DefaultServer,
-  type DeviceSourceInput, ApiError,
+  type DeviceSourceInput, type RtInfo, ApiError,
 } from '@/lib/api';
 import { awaitRtOutcome, type RtOutcome } from '@/lib/realtime';
+import { toast } from '@/components/Toast';
 import { formatDateTime, formatMacInput } from '@/lib/utils';
 
 /// Page ACTIVATION — TOUT-EN-UN (demande client : « un seul qui regroupe
@@ -119,55 +120,88 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
     return row ? row.credits : null;
   };
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setErr(null);
-    setResult(null);
-    setRtOutcome(null);
-    rtSeq.current += 1;
+  // MAC valide (sinon message + null). Partagé par les DEUX actions.
+  function validMac(): string | null {
     const m = mac.trim().toUpperCase();
     if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
       setErr('MAC invalide. Format attendu : MK:XX:XX:XX:XX:XX');
-      setBusy(false);
-      return;
+      return null;
     }
-    // Construit le trio (chaque bloc ajouté doit être complet).
+    return m;
+  }
+
+  // Suit le push temps réel (l'appareil a-t-il reçu ?). Partagé.
+  function trackRt(rt: RtInfo | null | undefined) {
+    if (!rt) return;
+    const seq = rtSeq.current;
+    if (rt.delivered >= 1) setRtOutcome('pending');
+    void awaitRtOutcome(rt).then((out) => {
+      if (rtSeq.current === seq) setRtOutcome(out);
+    });
+  }
+
+  // ===== ACTION ① : ACTIVER L'ABONNEMENT (licence) — SEUL =====
+  // Ne touche JAMAIS aux chaînes. Demande confirmation (anti-confusion).
+  async function activateSubscription() {
+    setErr(null);
+    const m = validMac();
+    if (!m) return;
+    const planLabel =
+      [...PLANS, ...TRIALS].find((p) => p.id === plan)?.label ?? plan;
+    if (!window.confirm(
+      `Activer l'ABONNEMENT « ${planLabel} » pour ${m} ?\n\n` +
+      `➡️ Ceci active/prolonge SEULEMENT la licence de l'app.\n` +
+      `Ça ne touche PAS aux chaînes.`,
+    )) return;
+    setBusy(true); setResult(null); setRtOutcome(null); rtSeq.current += 1;
+    try {
+      const res = await activateApi.activate({
+        mac: m, plan, app_id: appId,
+        customer_name: customerName.trim() || undefined,
+      });
+      setResult(res);
+      if (res.credit_balance !== null) setBalance(res.credit_balance);
+      trackRt(res.rt);
+    } catch (e: any) {
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      setErr(e instanceof ApiError ? e.message : 'Activation impossible.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // ===== ACTION ② : ENVOYER LES CHAÎNES (sources) — SEUL =====
+  // Ne touche JAMAIS à l'abonnement. Demande confirmation (anti-confusion).
+  async function pushChannels() {
+    setErr(null);
+    const m = validMac();
+    if (!m) return;
     const sources: DeviceSourceInput[] = [];
     for (let i = 0; i < items.length; i++) {
       const s = buildSource(items[i]);
       if (!s) {
         setErr(`Source ${i + 1} incomplète (serveur/identifiant/mot de passe ou URL M3U).`);
-        setBusy(false);
         return;
       }
       sources.push(s);
     }
+    if (sources.length === 0) {
+      setErr('Ajoute au moins une source (Xtream ou M3U) avant d\'envoyer les chaînes.');
+      return;
+    }
+    if (!window.confirm(
+      `Envoyer ${sources.length} source(s) de CHAÎNES à ${m} ?\n\n` +
+      `➡️ Ceci remplace les chaînes du client.\n` +
+      `Ça ne touche PAS à l'abonnement.`,
+    )) return;
+    setBusy(true); setRtOutcome(null); rtSeq.current += 1;
     try {
-      // 1) Licence (débloque l'app). 2) Trio de sources (auto-chargé).
-      const res = await activateApi.activate({
-        mac: m, plan, app_id: appId,
-        customer_name: customerName.trim() || undefined,
-      });
-      if (sources.length > 0) {
-        await sourcesApi.setMany(m, sources);
-      }
-      setResult(res);
-      if (res.credit_balance !== null) setBalance(res.credit_balance);
-      // Feedback instantané (spec temps réel §4) : delivered ≥ 1 → push
-      // reçu en direct, l'ack de l'appareil arrive sur le WebSocket.
-      // awaitRtOutcome couvre TOUS les cas (acked / ack_error / timeout /
-      // offline) — le bandeau ne peut plus rester bloqué sur « en attente ».
-      if (res.rt) {
-        const seq = rtSeq.current;
-        if (res.rt.delivered >= 1) setRtOutcome('pending');
-        void awaitRtOutcome(res.rt).then((out) => {
-          if (rtSeq.current === seq) setRtOutcome(out);
-        });
-      }
+      const res = await sourcesApi.setMany(m, sources);
+      toast(`✅ ${sources.length} source(s) de chaînes envoyée(s).`, 'success');
+      trackRt(res.rt);
     } catch (e: any) {
       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-      setErr(e instanceof ApiError ? e.message : 'Activation impossible.');
+      setErr(e instanceof ApiError ? e.message : 'Envoi des chaînes impossible.');
     } finally {
       setBusy(false);
     }
@@ -201,7 +235,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
     >
       <div className="grid max-w-4xl gap-6 md:grid-cols-2">
         {/* ===== Formulaire ===== */}
-        <form onSubmit={submit} className="space-y-4 rounded-xl border border-white/5 bg-midnight p-6">
+        <form onSubmit={(e) => e.preventDefault()} className="space-y-4 rounded-xl border border-white/5 bg-midnight p-6">
           <div>
             <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
               Adresse MAC de l'appareil
@@ -325,6 +359,24 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             />
           </div>
 
+          {/* BOUTON ① — ACTIVE SEULEMENT L'ABONNEMENT (en HAUT). Séparé du
+              bouton des chaînes (en bas) pour ne plus JAMAIS confondre les
+              deux : ici on pose/prolonge la licence, point. */}
+          <button
+            type="button"
+            onClick={activateSubscription}
+            disabled={busy || mac.trim().length < 8}
+            className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy
+              ? '…'
+              : !isReseller
+                ? '① Activer l\'abonnement de l\'app'
+                : costFor(plan) === 0
+                  ? '① Activer l\'abonnement (gratuit)'
+                  : `① Activer l'abonnement (${costFor(plan) ?? '?'} crédits)`}
+          </button>
+
           {/* ===== ② CHAÎNES DU CLIENT (sources) — catégorie à part =====
               Volontairement distincte de l'abonnement ci-dessus : activer
               l'app (licence) et charger les chaînes sont deux choses
@@ -400,27 +452,24 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
                   : `+ Ajouter une source (trio — ${items.length}/${MAX_SOURCES})`}
               </button>
             )}
+
+            {/* BOUTON ② — ENVOIE SEULEMENT LES CHAÎNES (en BAS). Distinct du
+                bouton d'abonnement (en haut). Actif seulement s'il y a une
+                source à envoyer. */}
+            <button
+              type="button"
+              onClick={pushChannels}
+              disabled={busy || mac.trim().length < 8 || items.length === 0}
+              className="mt-3 w-full rounded-md bg-sky-500 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy ? '…' : `② Envoyer les chaînes${items.length > 0 ? ` (${items.length})` : ''}`}
+            </button>
           </div>
           )}
 
           {err && (
             <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>
           )}
-
-          <button
-            type="submit"
-            disabled={busy || mac.trim().length < 8}
-            className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {busy
-              ? 'Activation…'
-              : !isReseller
-                /* Owner : activation gratuite et illimitée, jamais de crédit. */
-                ? 'Activer'
-                : costFor(plan) === 0
-                  ? 'Activer (gratuit)'
-                  : `Activer (${costFor(plan) ?? '?'} crédits)`}
-          </button>
         </form>
 
         {/* ===== Résultat ===== */}
