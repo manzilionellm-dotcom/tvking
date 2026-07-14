@@ -639,7 +639,13 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       case FreezeAction.reopen:
         // Ré-ouvre la MÊME source : l'URL locale du relais si on enregistre,
         // sinon l'URL directe. = reconnexion au direct sans casser l'enreg.
-        _controller.setUrl(_relayPlayUrl ?? _current.streamUrl);
+        // RÉCUPÉRATION INVISIBLE (façon Netflix) : `silent:true` NE remet PAS
+        // le lecteur en état « chargement » → la DERNIÈRE IMAGE reste affichée
+        // pendant la reconnexion au lieu de faire réapparaître le spinner à
+        // chaque hoquet. C'est ce qui supprime le « ça tourne » en boucle sur
+        // un lien instable (si aucune image n'a encore été rendue, silent est
+        // sans effet : le spinner reste, comportement inchangé au 1er chargement).
+        _controller.setUrl(_relayPlayUrl ?? _current.streamUrl, silent: true);
       case FreezeAction.fatal:
         // Jamais joué → source vide/bloquée (diagnostic multi-UA avant
         // d'abandonner, cf. _declareChannelBlocked) ; sinon → vraie coupure

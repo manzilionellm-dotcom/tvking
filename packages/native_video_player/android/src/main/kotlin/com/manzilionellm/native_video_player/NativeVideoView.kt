@@ -213,18 +213,32 @@ class NativeVideoView(
             appContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
         val memInfo = ActivityManager.MemoryInfo()
         activityManager?.getMemoryInfo(memInfo)
+        // STABILITÉ « façon Netflix » : le rebuffering en boucle (« ça tourne »)
+        // vient surtout d'un tampon TROP PETIT. Ancien réglage : ≤1,2 Go était
+        // classé « faible RAM » → tampon ~10 s (12 Mo) sur des box 1-2 Go
+        // COURANTES → sur lien faible, la réserve se vide → rebuffer sans fin.
+        // Correctif : le seuil « faible RAM » descend à ~800 Mo (seules les
+        // VRAIES petites box gardent le profil serré), et TOUS les tampons
+        // grossissent. Le plafond OCTETS (setTargetBufferBytes + prioritize=
+        // false) reste LA garde anti-OOM, donc aucune régression mémoire.
         val lowRam = (activityManager?.isLowRamDevice == true) ||
-            (memInfo.totalMem in 1..(1_200L * 1024 * 1024))
+            (memInfo.totalMem in 1..(800L * 1024 * 1024))
         val loadControl = if (lowRam) {
+            // Vraies petites box (≤800 Mo) : profil serré mais un peu plus de
+            // réserve qu'avant (15 s / 18 Mo) pour absorber les micro-coupures.
             DefaultLoadControl.Builder()
-                .setBufferDurationsMs(10_000, 25_000, 1_500, 3_000)
-                .setTargetBufferBytes(12 * 1024 * 1024)
+                .setBufferDurationsMs(15_000, 30_000, 1_500, 4_000)
+                .setTargetBufferBytes(18 * 1024 * 1024)
                 .setPrioritizeTimeOverSizeThresholds(false)
                 .build()
         } else {
+            // Box normales (>800 Mo, dont les 1-2 Go) : tampon GÉNÉREUX (~20 s
+            // cible, jusqu'à 50 s) pour tenir un lien instable sans rebuffer —
+            // et après une coupure on attend 5 s de réserve avant de repartir
+            // (on ne se re-bloque pas aussitôt, comme Netflix).
             DefaultLoadControl.Builder()
-                .setBufferDurationsMs(15_000, 40_000, 1_500, 4_000)
-                .setTargetBufferBytes(24 * 1024 * 1024)
+                .setBufferDurationsMs(20_000, 50_000, 2_000, 5_000)
+                .setTargetBufferBytes(32 * 1024 * 1024)
                 .setPrioritizeTimeOverSizeThresholds(false)
                 .build()
         }
