@@ -15,10 +15,10 @@
 // =========================================================
 
 import { useEffect, useState } from 'react';
-import { ApiError, devicesApi } from '@/lib/api';
+import { ApiError, devicesApi, sourcesApi } from '@/lib/api';
 import type { DeviceOverview, DeviceMessage } from '@/lib/api';
 import { sendCmd, waitForAck, useLiveDevices } from '@/lib/realtime';
-import { toast } from '@/components/Toast';
+import { toast, rtActionFeedback } from '@/components/Toast';
 import { cn, formatDateTime } from '@/lib/utils';
 
 function ago(ts: number | null | undefined): string {
@@ -96,6 +96,35 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
       alive = false;
     };
   }, [mac]);
+
+  // RETIRER la source du client depuis n'importe où (dépannage « ma source
+  // ne marche pas »). L'endpoint DELETE existe ; la synchro temps réel fait
+  // que l'app du client le voit tout de suite. On repousse ensuite une source
+  // propre via « Activer un appareil ».
+  const [clearing, setClearing] = useState(false);
+  async function handleClearSource() {
+    if (
+      !window.confirm(
+        'Retirer la source de ce client ?\n\n' +
+          'Ses chaînes sont retirées côté serveur (l’app le voit tout de suite). ' +
+          'Tu pourras en repousser une propre ensuite.',
+      )
+    ) {
+      return;
+    }
+    setClearing(true);
+    try {
+      const r = await sourcesApi.clear(mac);
+      void rtActionFeedback(r.rt);
+      toast('Source retirée.', 'success');
+      const fresh = await devicesApi.overview(mac);
+      setOv(fresh);
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Échec du retrait.', 'error');
+    } finally {
+      setClearing(false);
+    }
+  }
 
   const d = ov?.device ?? null;
   const p = ov?.presence ?? null;
@@ -233,6 +262,17 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
                     )}
                   </div>
                 ))
+              )}
+              {sources.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearSource}
+                  disabled={clearing}
+                  className="mt-1 w-full rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-xs font-semibold text-accent-bright transition hover:bg-accent/20 disabled:opacity-50"
+                  title="Retirer la source poussée (dépannage : la retirer puis en repousser une propre)"
+                >
+                  {clearing ? 'Retrait…' : 'Retirer la source'}
+                </button>
               )}
             </Section>
 
