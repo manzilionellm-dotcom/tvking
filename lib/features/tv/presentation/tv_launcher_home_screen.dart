@@ -26,13 +26,17 @@ import 'tv_series_screen.dart';
 import 'tv_settings_screen.dart';
 import 'tv_sources_screen.dart';
 
-// ---- Palette IBO (grille) — couleurs identiques à l'original ----
-const Color _iboBg = Color(0xFF0A0A0A); // fond quasi-noir
-const Color _iboTile = Color(0xFF7A1F1F); // tuile bordeaux au repos
-const Color _iboTileFocus = Color(0xFF8E2626); // tuile bordeaux au focus
-const Color _iboText = Color(0xFFFFFFFF); // labels + icônes (blancs)
-const Color _iboGreenA = Color(0xFF29C46B); // pilule « Regarder » (vert)
-const Color _iboGreenB = Color(0xFF1EA65A);
+// ---- Palette IBO (grille) — HEX échantillonnés sur le mockup officiel ----
+// Fond : bleu-nuit très sombre en haut-gauche → halo chaud brun/rouge en
+// bas-droite (pas un noir plat). Tuiles bordeaux #6B0B15 (héro + cluster).
+// Boutons de la colonne droite : fond maroon sombre DIFFÉRENT + bordure.
+const Color _iboBgA = Color(0xFF010010); // fond haut-gauche (quasi noir bleuté)
+const Color _iboBgB = Color(0xFF0D0B20); // fond centre (bleu-nuit)
+const Color _iboBgGlow = Color(0xFF2E150C); // halo chaud bas-droite
+const Color _iboTile = Color(0xFF6B0B15); // surface tuile (héro + cluster)
+const Color _iboColBtn = Color(0xFF362119); // fond bouton colonne
+const Color _iboColBtnBorder = Color(0xFF432819); // bordure bouton colonne
+const Color _iboText = Color(0xFFFFFFFF); // icônes + labels (blancs)
 
 class TvLauncherHomeScreen extends StatelessWidget {
   const TvLauncherHomeScreen({super.key});
@@ -72,8 +76,15 @@ class TvLauncherHomeScreen extends StatelessWidget {
         if (didPop) return;
         _confirmExit(context);
       },
-      child: ColoredBox(
-        color: _iboBg,
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[_iboBgA, _iboBgB, _iboBgGlow],
+            stops: <double>[0.0, 0.55, 1.0],
+          ),
+        ),
         child: Material(
           type: MaterialType.transparency,
           child: SafeArea(
@@ -204,13 +215,6 @@ class TvLauncherHomeScreen extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  // ---- Pilule verte « Regarder » (Play Video) ----
-                  Center(
-                    child: _PlayPill(
-                      onSelect: () => _open(context, const TvLiveScreen()),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -221,17 +225,36 @@ class TvLauncherHomeScreen extends StatelessWidget {
   }
 }
 
-/// Décoration commune d'une tuile IBO (bordeaux + liseré blanc au focus).
+/// Tuile bordeaux (héro + cluster) : surface #6B0B15 constante, liseré BLANC
+/// au focus (pas de changement de couleur — conforme au mockup IBO).
 Widget _tileBox({required bool focused, required Widget child}) {
   return AnimatedContainer(
     duration: const Duration(milliseconds: 140),
     alignment: Alignment.center,
     decoration: BoxDecoration(
-      color: focused ? _iboTileFocus : _iboTile,
-      borderRadius: BorderRadius.circular(TvTokens.rCard),
+      color: _iboTile,
+      borderRadius: BorderRadius.circular(8),
       border: Border.all(
         color: focused ? _iboText : Colors.transparent,
         width: focused ? 3 : 0,
+      ),
+    ),
+    child: child,
+  );
+}
+
+/// Bouton de la colonne droite : fond maroon sombre #362119 + bordure
+/// #432819 ; liseré blanc au focus.
+Widget _colBtnBox({required bool focused, required Widget child}) {
+  return AnimatedContainer(
+    duration: const Duration(milliseconds: 140),
+    alignment: Alignment.centerLeft,
+    decoration: BoxDecoration(
+      color: _iboColBtn,
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(
+        color: focused ? _iboText : _iboColBtnBorder,
+        width: focused ? 3 : 1.5,
       ),
     ),
     child: child,
@@ -332,7 +355,7 @@ class _RowButton extends StatelessWidget {
       scale: TvFocusScale.small,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        return _tileBox(
+        return _colBtnBox(
           focused: focused,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -356,40 +379,3 @@ class _RowButton extends StatelessWidget {
   }
 }
 
-/// Pilule verte « Regarder » (Play Video) — accent d'IBO.
-class _PlayPill extends StatelessWidget {
-  const _PlayPill({required this.onSelect});
-  final VoidCallback onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    return TvFocusBuilder(
-      scale: TvFocusScale.large,
-      onSelect: onSelect,
-      builder: (BuildContext context, bool focused) {
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 14),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: <Color>[_iboGreenA, _iboGreenB],
-            ),
-            borderRadius: BorderRadius.circular(999),
-            border:
-                focused ? Border.all(color: _iboText, width: 2) : null,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              const Icon(Icons.play_arrow_rounded, size: 26, color: _iboText),
-              const SizedBox(width: 8),
-              Text('Regarder',
-                  style: TvTokens.ui(TvDimens.body,
-                      weight: FontWeight.w700, color: _iboText)),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
