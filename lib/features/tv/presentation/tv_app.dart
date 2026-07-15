@@ -44,6 +44,7 @@ import '../../sports/data/sports_repository.dart';
 import '../../sports/domain/sport_models.dart';
 import '../core/tv_ambience.dart';
 import '../core/tv_home_template.dart';
+import 'tv_home_template_screen.dart';
 import 'tv_launcher_home_screen.dart';
 import 'tv_rails_home_screen.dart';
 import 'tv_tivimate_home_screen.dart';
@@ -720,6 +721,18 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   const SizedBox(width: 12),
                   const _ProfileChip(),
                   const SizedBox(width: 12),
+                  // GROS bouton « Changer le template » — ENTRE « Famille » et
+                  // « Direct ». Ouvre le sélecteur (Classique/IBO/TiviMate).
+                  // « The Few » reste « The Few » ; changer de template bascule
+                  // vers l'univers SEVEN (le picker s'occupe du reste).
+                  _TemplateButton(
+                    onOpen: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const TvHomeTemplateScreen(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
                   _CompactNavBar(
                     selected: _selected,
                     selectedFocusNode: _railFocus,
@@ -1017,6 +1030,48 @@ class _ProfileChip extends StatelessWidget {
               ),
             );
           },
+        );
+      },
+    );
+  }
+}
+
+/// GROS bouton « Changer le template » — placé entre « Famille » et « Direct ».
+/// Accent or (bien visible), ouvre le sélecteur de disposition d'accueil.
+class _TemplateButton extends StatelessWidget {
+  const _TemplateButton({required this.onOpen});
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.medium,
+      onSelect: onOpen,
+      builder: (BuildContext context, bool focused) {
+        final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+        final Color fg =
+            focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+        return Container(
+          height: 50,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
+            border: Border.all(color: TvTokens.gold, width: 1),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(Icons.dashboard_customize_rounded, color: fg, size: 22),
+              const SizedBox(width: 8),
+              Text(
+                'Changer le template',
+                maxLines: 1,
+                softWrap: false,
+                style: TvTokens.ui(15, weight: FontWeight.w700, color: fg),
+              ),
+            ],
+          ),
         );
       },
     );
