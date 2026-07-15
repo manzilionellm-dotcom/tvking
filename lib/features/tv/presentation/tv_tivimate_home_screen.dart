@@ -35,6 +35,7 @@ import 'tv_recordings_screen.dart';
 import 'tv_search_screen.dart';
 import 'tv_series_screen.dart';
 import 'tv_settings_screen.dart';
+import 'tv_tivimate_guide_screen.dart';
 
 // ---- Palette TiviMate (tokens §1 de la fiche) ----
 const Color _tmBg = Color(0xFF000000); // fond app / vidéo
@@ -179,6 +180,10 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
           _RailIcon(
               icon: Icons.replay_rounded,
               onSelect: () => _open(const TvRecordingsScreen())),
+          const SizedBox(height: 14),
+          _RailIcon(
+              icon: Icons.grid_view_rounded,
+              onSelect: () => _open(const TvTivimateGuideScreen())),
           const Spacer(),
           _RailIcon(
               icon: Icons.dashboard_customize_rounded,
