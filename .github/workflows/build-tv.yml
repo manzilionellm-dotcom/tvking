@@ -560,6 +560,19 @@ jobs:
           echo "=== APK produit ==="
           ls -lah build/app/outputs/flutter-apk/
 
+      # APK de TEST de branche : hors maison mère, AUCUNE release n'est
+      # publiée (garde anti-écrasement tv-prod) — sans cet artifact, l'APK
+      # sideload d'une branche de fonctionnalité était introuvable. On le
+      # dépose donc dans les Artifacts du run (téléchargement depuis la page
+      # Actions, puis installation Downloader / adb install).
+      - name: Upload APK TV artifact (test de branche)
+        uses: actions/upload-artifact@v4
+        with:
+          name: defew-tv-apk-${{ github.sha }}
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
+          if-no-files-found: error
+
       # ===== Google Play : App Bundle (.aab) SIGNÉ (Android TV) =====
       # Le Play Store n'accepte PAS l'APK : il faut un Android App Bundle,
       # signé avec la même clé release. On le construit EN PLUS de l'APK
