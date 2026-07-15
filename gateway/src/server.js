@@ -5,7 +5,10 @@ import http from 'node:http';
 import { config } from './config.js';
 import { log } from './logger.js';
 import { metrics } from './metrics.js';
-import { authenticate, listUsers, loadUsers } from './users.js';
+import {
+  authenticate, listUsers, loadUsers,
+  listFamilies, createFamily, deleteFamily, addUser, deleteUser,
+} from './users.js';
 import { acquireSession, snapshotSessions } from './limits.js';
 import { hub } from './hub.js';
 import { parseStreamPath, streamKey, rewriteM3U, rewritePlayerApi } from './xtream.js';
@@ -30,6 +33,33 @@ function adminOk(url, req) {
   const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   const token = bearer || url.searchParams.get('token') || '';
   return token && token === config.adminToken;
+}
+
+// CORS pour que le panel (autre origine) puisse piloter la passerelle.
+function cors(res) {
+  res.setHeader('access-control-allow-origin', '*');
+  res.setHeader('access-control-allow-methods', 'GET,POST,DELETE,OPTIONS');
+  res.setHeader('access-control-allow-headers', 'authorization,content-type');
+  res.setHeader('access-control-max-age', '600');
+}
+
+// Lit un corps JSON borné (protège la mémoire).
+function readJson(req, limit = 64 * 1024) {
+  return new Promise((resolve) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > limit) { try { req.destroy(); } catch { /* */ } resolve(null); return; }
+      chunks.push(c);
+    });
+    req.on('end', () => {
+      if (!chunks.length) { resolve({}); return; }
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
+      catch { resolve(null); }
+    });
+    req.on('error', () => resolve(null));
+  });
 }
 
 function mapErr(code) {
@@ -146,9 +176,77 @@ async function handleGetPhp(url, res) {
 
 // ---- Routeur -----------------------------------------------------------
 
+// Routes admin (déjà authentifiées + CORS posé par l'appelant).
+async function adminRoute(req, res, url, path) {
+  if (path === '/metrics') {
+    return sendText(res, 200, metrics.render(), 'text/plain; version=0.0.4');
+  }
+  if (path === '/admin/status') {
+    return sendJson(res, 200, {
+      hub: hub.status(),
+      sessions: snapshotSessions(),
+      users: listUsers(),
+      metrics: metrics.snapshot(),
+      uptimeSec: Math.floor((Date.now() - START) / 1000),
+    });
+  }
+  if (path === '/admin/reload-users') {
+    const r = await loadUsers();
+    return sendJson(res, 200, { ok: true, ...r });
+  }
+
+  // Gestion des familles / clones
+  if (path === '/admin/families') {
+    if (req.method === 'GET') {
+      return sendJson(res, 200, { families: listFamilies() });
+    }
+    if (req.method === 'POST') {
+      const body = await readJson(req);
+      if (!body) return sendJson(res, 400, { ok: false, code: 'bad_json' });
+      const r = await createFamily({ id: body.id, maxStreams: body.maxStreams });
+      return sendJson(res, r.ok ? 201 : 409, r);
+    }
+    return sendText(res, 405, 'Method Not Allowed');
+  }
+  // /admin/families/:id  et  /admin/families/:id/users[/:username]
+  const fam = /^\/admin\/families\/([^/]+)(?:\/users(?:\/([^/]+))?)?$/.exec(path);
+  if (fam) {
+    const familyId = decodeURIComponent(fam[1]);
+    const username = fam[2] ? decodeURIComponent(fam[2]) : null;
+    const isUsers = /\/users/.test(path);
+    if (!isUsers && req.method === 'DELETE') {
+      const r = await deleteFamily(familyId);
+      return sendJson(res, r.ok ? 200 : 404, r);
+    }
+    if (isUsers && !username && req.method === 'POST') {
+      const body = await readJson(req);
+      if (!body) return sendJson(res, 400, { ok: false, code: 'bad_json' });
+      const r = await addUser(familyId, {
+        username: body.username, password: body.password, maxStreams: body.maxStreams,
+      });
+      return sendJson(res, r.ok ? 201 : 409, r);
+    }
+    if (isUsers && username && req.method === 'DELETE') {
+      const r = await deleteUser(familyId, username);
+      return sendJson(res, r.ok ? 200 : 404, r);
+    }
+    return sendText(res, 405, 'Method Not Allowed');
+  }
+
+  return sendText(res, 404, 'Not Found');
+}
+
 async function route(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const path = url.pathname;
+
+  // ---- Zone ADMIN (CORS + jeton) : supervision + gestion des familles ----
+  if (path === '/metrics' || path.startsWith('/admin/')) {
+    cors(res);
+    if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
+    if (!adminOk(url, req)) return sendText(res, 404, 'Not Found');
+    return adminRoute(req, res, url, path);
+  }
 
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     return sendText(res, 405, 'Method Not Allowed');
@@ -163,26 +261,6 @@ async function route(req, res) {
       uptimeSec: Math.floor((Date.now() - START) / 1000),
     });
   }
-  if (path === '/metrics') {
-    if (!adminOk(url, req)) return sendText(res, 404, 'Not Found');
-    return sendText(res, 200, metrics.render(), 'text/plain; version=0.0.4');
-  }
-  if (path === '/admin/status') {
-    if (!adminOk(url, req)) return sendText(res, 404, 'Not Found');
-    return sendJson(res, 200, {
-      hub: hub.status(),
-      sessions: snapshotSessions(),
-      users: listUsers(),
-      metrics: metrics.snapshot(),
-      uptimeSec: Math.floor((Date.now() - START) / 1000),
-    });
-  }
-  if (path === '/admin/reload-users') {
-    if (!adminOk(url, req)) return sendText(res, 404, 'Not Found');
-    const r = await loadUsers();
-    return sendJson(res, 200, { ok: true, ...r });
-  }
-
   // Façade Xtream : API
   if (path === '/player_api.php') return handlePlayerApi(url, res);
   if (path === '/get.php' || path === '/playlist.m3u' || path === '/get.php/') {

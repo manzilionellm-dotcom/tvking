@@ -19,8 +19,9 @@ services:
     ports:
       - "${PORT:-8088}:8088"
     volumes:
-      # users.json en lecture seule (rechargeable via /admin/reload-users)
-      - ./users.json:/data/users.json:ro
+      # users.json en lecture-écriture : la gestion des familles/clones
+      # depuis le panel écrit dans ce fichier (persistance).
+      - ./users.json:/data/users.json
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8088/health"]
       interval: 30s
