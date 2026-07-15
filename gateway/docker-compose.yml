@@ -1,0 +1,33 @@
+# =========================================================
+#  docker-compose.yml — Passerelle « maison mère »
+# =========================================================
+#  Démarrage :
+#    1) cp .env.example .env  (remplir la ligne fournisseur + PROVIDER_MAX)
+#    2) cp users.example.json users.json  (papa + clones)
+#    3) docker compose up -d --build
+#
+#  TLS : mets un reverse-proxy (Caddy/Traefik/nginx) devant, OU expose
+#  directement en HTTP derrière ton propre proxy. PUBLIC_BASE doit refléter
+#  l'URL vue par les apps (ex. https://tv.mondomaine.com).
+# =========================================================
+services:
+  gateway:
+    build: .
+    image: sevenmotion-gateway:latest
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${PORT:-8088}:8088"
+    volumes:
+      # users.json en lecture seule (rechargeable via /admin/reload-users)
+      - ./users.json:/data/users.json:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8088/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    # Limites raisonnables (à ajuster selon le nombre de familles/flux).
+    deploy:
+      resources:
+        limits:
+          memory: 512M

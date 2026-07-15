@@ -1,0 +1,16 @@
+{
+  "_comment": "Une famille = une ligne fournisseur partagée. Chaque membre a SES identifiants passerelle (papa + clones). maxStreams famille = min(ce que ta ligne autorise). Recharge à chaud via POST /admin/reload-users.",
+  "families": [
+    {
+      "id": "famille-karim",
+      "maxStreams": 5,
+      "users": [
+        { "username": "papa",   "password": "papa-9f3a2b", "maxStreams": 2 },
+        { "username": "maman",  "password": "maman-1c7d4e", "maxStreams": 2 },
+        { "username": "enfant1", "password": "enf1-55ab90" },
+        { "username": "enfant2", "password": "enf2-77cd12" },
+        { "username": "enfant3", "password": "enf3-88ef34" }
+      ]
+    }
+  ]
+}

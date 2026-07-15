@@ -1,0 +1,17 @@
+{
+  "name": "sevenmotion-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Passerelle IPTV « maison mère » : mutualise les flux identiques, applique la limite de la ligne fournisseur, gère utilisateurs / reconnexion / bande passante / monitoring.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "undici": "^6.21.0"
+  }
+}
