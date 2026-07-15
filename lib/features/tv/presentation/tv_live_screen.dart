@@ -877,10 +877,10 @@ class _CategoryRail extends StatelessWidget {
   final void Function(String) onSelect;
   final void Function(String) onFocusDebounced;
 
-  // Lignes HAUTES (lisibilité seniors). La liste REMPLIT toute la colonne de
-  // gauche et défile (lazy via itemExtent → fluide même sur des milliers de
-  // catégories, pas de shrinkWrap).
-  static const double _kRowExtent = 64;
+  // Lignes COMPACTES façon IBO (moins de « zoom »). La liste REMPLIT toute la
+  // colonne de gauche et défile (lazy via itemExtent → fluide même sur des
+  // milliers de catégories, pas de shrinkWrap).
+  static const double _kRowExtent = 50;
 
   @override
   Widget build(BuildContext context) {
@@ -980,21 +980,20 @@ class _CRow extends StatelessWidget {
           // FOCUS UNIQUE : seule la ligne RÉELLEMENT focus porte l'or. La
           // catégorie active-mais-pas-focus = gris discret (jamais d'or).
           final bool active = selected && !focused;
-          final Color bg =
-              (focused || active) ? TvTokens.sel : Colors.transparent;
-          final Color fg = focused
-              ? TvTokens.goldBright
-              : (active ? TvTokens.text : TvTokens.muted);
+          // Focus/actif = fond PLEIN façon IBO (le « pill »), SANS cadre doré
+          // (ce sont les « lignes jaunes » que le client n'aime pas). Texte
+          // clair au focus, gris au repos. Aucun or ici.
+          final Color bg = focused
+              ? TvTokens.sel
+              : (active ? TvTokens.sel.withValues(alpha: 0.6) : Colors.transparent);
+          final Color fg =
+              (focused || active) ? TvTokens.text : TvTokens.muted;
           return Container(
             decoration: BoxDecoration(
               color: bg,
               borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
-              border: focused
-                  ? Border.all(
-                      color: TvTokens.gold, width: TvDimens.focusOutline)
-                  : null,
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               children: <Widget>[
                 Expanded(
@@ -1002,9 +1001,9 @@ class _CRow extends StatelessWidget {
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    // GROS texte (lisibilité seniors).
+                    // Texte COMPACT façon IBO (moins de zoom).
                     style: TextStyle(
-                        fontSize: TvDimens.title,
+                        fontSize: TvDimens.body,
                         fontWeight: (focused || active)
                             ? FontWeight.w700
                             : FontWeight.w600,
@@ -1012,13 +1011,13 @@ class _CRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                // Compteur ALIGNÉ À DROITE.
+                // Compteur ALIGNÉ À DROITE — gris discret (jamais or).
                 Text(
                   '$count',
-                  style: TextStyle(
-                      fontSize: TvDimens.titleS,
+                  style: const TextStyle(
+                      fontSize: TvDimens.caption,
                       fontWeight: FontWeight.w700,
-                      color: focused ? TvTokens.goldBright : TvTokens.mutedDim),
+                      color: TvTokens.mutedDim),
                 ),
               ],
             ),
