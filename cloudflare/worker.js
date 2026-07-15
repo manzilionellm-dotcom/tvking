@@ -3135,6 +3135,170 @@ async function handleFamilyJoin(request, env) {
   return json({ ok: true, owner: maskMac(owner) });
 }
 
+// =========================================================
+//  PASS PARTAGE (« regarder ensemble ») — un abonné PAYANT invite un NOUVEL
+//  appareil qui obtient 2 JOURS d'accès, UNE seule fois à vie, puis doit
+//  payer. On réutilise le patron des codes Famille + l'octroi de licence D1
+//  (plan `trial_2d` → 2 jours, coût 0 crédit). AUCUNE logique d'argent
+//  existante n'est modifiée.
+// =========================================================
+const INVITE_CODE_TTL_MS = 48 * 60 * 60 * 1000; // le code doit être utilisé sous 48 h
+const INVITE_GUEST_DAYS = 2; // durée du pass invité (jours)
+let _inviteSchemaError = '';
+
+async function ensureInviteSchema(env) {
+  if (!env.DB) { _inviteSchemaError = 'no_db_binding'; return false; }
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS app_invites (' +
+      'code TEXT PRIMARY KEY, issuer_mac TEXT NOT NULL, redeemer_mac TEXT, ' +
+      'plan TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, ' +
+      'redeemed_at INTEGER, guest_until INTEGER)',
+    ).run();
+    await env.DB.prepare(
+      'CREATE INDEX IF NOT EXISTS idx_app_invites_issuer ON app_invites(issuer_mac)',
+    ).run();
+    await env.DB.prepare(
+      'CREATE INDEX IF NOT EXISTS idx_app_invites_redeemer ON app_invites(redeemer_mac)',
+    ).run();
+    _inviteSchemaError = '';
+    return true;
+  } catch (e) {
+    _inviteSchemaError = String((e && e.message) || e).slice(0, 200);
+    return false;
+  }
+}
+
+function inviteUnavailable() {
+  return json({ ok: false, error: 'invite_unavailable', detail: _inviteSchemaError });
+}
+
+/// Un statut est-il « payé et jouable » ? (partagé create/redeem émetteur)
+function invitePaidPlayable(st) {
+  return !!(st && st.paid && !st.expired && !st.frozen && !st.banned);
+}
+
+/// DÉCISION PURE du redeem (testable sans base) : renvoie {ok:true} ou
+/// {ok:false, error}. Concentre TOUTES les règles anti-abus « argent » :
+///   • code valide / non utilisé / non expiré ;
+///   • pas son propre code ;
+///   • émetteur toujours payé ;
+///   • appareil pas déjà payé (already_active) ;
+///   • UN pass par appareil À VIE (already_used_once).
+export function inviteRedeemDecision(
+    { mac, code, codeRow, now, issuerStatus, ownStatus, alreadyRedeemed }) {
+  if (!/^[0-9]{6}$/.test(String(code || ''))) return { ok: false, error: 'code_invalid' };
+  if (!codeRow) return { ok: false, error: 'code_invalid' };
+  if (codeRow.redeemed_at) return { ok: false, error: 'code_used' };
+  if (Number(codeRow.expires_at) < now) return { ok: false, error: 'code_expired' };
+  const issuer = String(codeRow.issuer_mac || '').toUpperCase();
+  if (issuer === String(mac || '').toUpperCase()) return { ok: false, error: 'own_code' };
+  if (!invitePaidPlayable(issuerStatus)) return { ok: false, error: 'issuer_not_paid' };
+  if (ownStatus && ownStatus.paid && !ownStatus.expired) {
+    return { ok: false, error: 'already_active' };
+  }
+  if (alreadyRedeemed) return { ok: false, error: 'already_used_once' };
+  return { ok: true };
+}
+
+/// POST /api/invite/create { mac } → un abonné PAYANT génère un code de partage.
+async function handleInviteCreate(request, env) {
+  let body;
+  try { body = await request.json(); } catch (_) { return badRequest('invalid JSON body'); }
+  const mac = String(body?.mac || '').toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  if (!env.DB || !(await ensureInviteSchema(env))) return inviteUnavailable();
+  // Réservé aux abonnements PAYÉS et jouables (comme la famille).
+  const st = await d1StatusForMac(env, mac);
+  if (!invitePaidPlayable(st)) {
+    return json({ ok: false, error: 'not_paid' });
+  }
+  // Code à 6 chiffres (facile à taper). L'abonné peut générer plusieurs
+  // codes (invitations multiples) — chaque code n'active qu'un appareil.
+  const buf = new Uint32Array(1);
+  crypto.getRandomValues(buf);
+  const code = String(100000 + (buf[0] % 900000));
+  const now = Date.now();
+  const expiresAt = now + INVITE_CODE_TTL_MS;
+  await env.DB
+    .prepare(
+      'INSERT OR REPLACE INTO app_invites ' +
+      '(code, issuer_mac, redeemer_mac, plan, created_at, expires_at, redeemed_at, guest_until) ' +
+      'VALUES (?, ?, NULL, ?, ?, ?, NULL, NULL)',
+    )
+    .bind(code, mac, 'trial_2d', now, expiresAt).run();
+  return json({ ok: true, code, expires_at: expiresAt, guest_days: INVITE_GUEST_DAYS });
+}
+
+/// POST /api/invite/redeem { mac, code } → un NOUVEL appareil active 2 jours.
+async function handleInviteRedeem(request, env) {
+  let body;
+  try { body = await request.json(); } catch (_) { return badRequest('invalid JSON body'); }
+  const mac = String(body?.mac || '').toUpperCase();
+  const code = String(body?.code || '').trim();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  if (!/^[0-9]{6}$/.test(code)) return json({ ok: false, error: 'code_invalid' });
+  if (!env.DB || !(await ensureInviteSchema(env))) return inviteUnavailable();
+
+  const now = Date.now();
+  const row = await env.DB
+    .prepare('SELECT issuer_mac, plan, expires_at, redeemed_at FROM app_invites WHERE code = ?')
+    .bind(code).first();
+  const issuer = row ? String(row.issuer_mac).toUpperCase() : '';
+  // L'ÉMETTEUR doit TOUJOURS être payé ; l'appareil ne doit pas déjà l'être ;
+  // et il ne peut avoir utilisé qu'UN pass à vie.
+  const ist = issuer ? await d1StatusForMac(env, issuer) : null;
+  const own = await d1StatusForMac(env, mac);
+  const prev = await env.DB
+    .prepare('SELECT 1 AS x FROM app_invites WHERE redeemer_mac = ? LIMIT 1')
+    .bind(mac).first();
+  const decision = inviteRedeemDecision({
+    mac,
+    code,
+    codeRow: row,
+    now,
+    issuerStatus: ist,
+    ownStatus: own,
+    alreadyRedeemed: !!prev,
+  });
+  if (!decision.ok) return json({ ok: false, error: decision.error });
+
+  // OCTROI DU PASS : licence 2 jours sur l'appareil invité (plan trial_2d,
+  // 0 crédit). Même octroi D1 que l'admin (licence + dégel du device).
+  const guestUntil = now + INVITE_GUEST_DAYS * DAY_MS;
+  await ensureD1Device(env, mac, now);
+  const dev = await env.DB
+    .prepare('SELECT id, customer_id FROM devices WHERE mac = ?')
+    .bind(mac).first();
+  if (!dev) return json({ ok: false, error: 'device_error' });
+  const APP_ID = 'app_7motion';
+  const lic = await env.DB
+    .prepare(
+      'SELECT id FROM licenses WHERE device_id = ? ' +
+      'ORDER BY (expires_at IS NULL) DESC, expires_at DESC LIMIT 1',
+    ).bind(dev.id).first();
+  if (lic) {
+    await env.DB.prepare(
+      "UPDATE licenses SET status='active', plan=?, expires_at=?, updated_at=? WHERE id=?",
+    ).bind('trial_2d', guestUntil, now, lic.id).run();
+  } else {
+    const lid = 'lic_' + crypto.randomUUID().replace(/-/g, '').slice(0, 18);
+    await env.DB.prepare(
+      "INSERT INTO licenses " +
+      "(id, customer_id, device_id, app_id, status, plan, started_at, expires_at, auto_renew, reseller_id, created_at, updated_at) " +
+      "VALUES (?, ?, ?, ?, 'active', ?, ?, ?, 0, ?, ?, ?)",
+    ).bind(lid, dev.customer_id, dev.id, APP_ID, 'trial_2d', now, guestUntil, null, now, now).run();
+  }
+  await env.DB.prepare('UPDATE devices SET block_status = NULL WHERE id = ?').bind(dev.id).run();
+
+  // Lie l'invité au code (le code devient utilisé → non rejouable).
+  await env.DB
+    .prepare('UPDATE app_invites SET redeemer_mac = ?, redeemed_at = ?, guest_until = ? WHERE code = ?')
+    .bind(mac, now, guestUntil, code).run();
+
+  return json({ ok: true, guest_until: guestUntil, guest_days: INVITE_GUEST_DAYS });
+}
+
 /// GET /api/family/info/:mac → vue famille (propriétaire OU membre).
 async function handleFamilyInfo(env, rawMac) {
   const mac = String(rawMac || '').toUpperCase();
@@ -4809,8 +4973,8 @@ async function handleRequest(request, env, ctx) {
         if (seg1 === 'ai') rl = ['ai', 30];                        // 30 / min (LLM payant)
         else if (seg1 === 'device-source' || seg1 === 'backup'
           || seg1 === 'status' || seg1 === 'history'
-          || seg1 === 'family'
-          || seg1 === 'self-source') rl = ['dev', 120]; // anti-énumération MAC + anti-brute-force code famille
+          || seg1 === 'family' || seg1 === 'invite'
+          || seg1 === 'self-source') rl = ['dev', 120]; // anti-énumération MAC + anti-brute-force code famille/partage
         else if (seg1 === 'heartbeat' || seg1 === 'trending'
           || seg1 === 'announcement' || seg1 === 'sports'
           || seg1 === 'feedback' || seg1 === 'error-log'
@@ -4906,6 +5070,20 @@ async function handleRequest(request, env, ctx) {
         return badRequest('only GET supported on /api/history/:mac');
       }
       return await handlePublicHistory(env, segments[2]);
+    }
+
+    // /api/invite/* — PASS PARTAGE (« regarder ensemble ») : un abonné payant
+    // génère un code (create), un NOUVEL appareil l'active (redeem) → 2 jours.
+    if (segments[0] === 'api' && segments[1] === 'invite') {
+      if (segments[2] === 'create' && segments.length === 3) {
+        if (request.method !== 'POST') return badRequest('only POST supported');
+        return handleInviteCreate(request, env);
+      }
+      if (segments[2] === 'redeem' && segments.length === 3) {
+        if (request.method !== 'POST') return badRequest('only POST supported');
+        return handleInviteRedeem(request, env);
+      }
+      return notFound('unknown invite route');
     }
 
     // /api/family/* — ABONNEMENT FAMILLE (partage type Netflix, 5 appareils).

@@ -100,6 +100,20 @@ jobs:
           fi
           echo "✓ Secrets présents."
 
+      # Validation AVANT déploiement : syntaxe des modules Worker + smoke tests
+      # (dont les règles anti-abus « argent » du Pass Partage). On échoue tôt
+      # plutôt que de déployer un worker cassé en prod.
+      - name: Validate worker (node --check + smoke tests)
+        run: |
+          set -e
+          node --check cloudflare/worker.js
+          node --check cloudflare/api_v1.js
+          for f in cloudflare/*.smoke.mjs; do
+            echo "→ $f"
+            node "$f"
+          done
+          echo "✓ Worker validé (syntaxe + smoke tests)."
+
       - name: Deploy worker
         uses: cloudflare/wrangler-action@v3
         with:

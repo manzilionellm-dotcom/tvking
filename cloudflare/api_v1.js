@@ -1113,6 +1113,12 @@ async function apiV1Inner(request, env) {
     }
   }
 
+  // /invites — PASS PARTAGE : suivi des codes générés + appareils invités.
+  if (parts[0] === 'invites' && parts.length === 1) {
+    if (request.method === 'GET') return handleInvitesList(request, env, a.user);
+    return errResp('method_not_allowed', 'Only GET', 405);
+  }
+
   // /devices
   if (parts[0] === 'devices') {
     if (parts.length === 1) {
@@ -3108,6 +3114,53 @@ async function handleDevicesList(request, env, user) {
   }
   if (where.length) sql += ' WHERE ' + where.join(' AND ');
   sql += ` ORDER BY d.last_seen_at DESC LIMIT 200`;
+  const rs = await env.DB.prepare(sql).bind(...binds).all();
+  return jsonResp({ items: rs.results || [] });
+}
+
+// =========================================================
+//  PASS PARTAGE — suivi des invitations (panel)
+// =========================================================
+//  GET /invites → liste des codes de partage : qui a invité (émetteur), quel
+//  NOUVEL appareil a testé (invité), quand, expiration du pass 2 jours, statut.
+//  Cloisonnement revendeur via le reseller_id de l'appareil ÉMETTEUR.
+async function handleInvitesList(request, env, user) {
+  // La table est créée à la volée côté worker public — on s'assure de son
+  // existence ici pour ne pas planter si aucun code n'a encore été généré.
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS app_invites (' +
+      'code TEXT PRIMARY KEY, issuer_mac TEXT NOT NULL, redeemer_mac TEXT, ' +
+      'plan TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, ' +
+      'redeemed_at INTEGER, guest_until INTEGER)',
+    ).run();
+  } catch (_) { /* déjà présente */ }
+
+  const url = new URL(request.url);
+  const q = (url.searchParams.get('q') || '').trim();
+  // Rattache l'appareil ÉMETTEUR (cloisonnement + nom) et l'appareil INVITÉ.
+  let sql = `SELECT iv.code, iv.issuer_mac, iv.redeemer_mac, iv.plan,
+                    iv.created_at, iv.expires_at, iv.redeemed_at, iv.guest_until,
+                    di.reseller_id AS issuer_reseller_id,
+                    ci.name AS issuer_name,
+                    dr.block_status AS redeemer_block
+             FROM app_invites iv
+             LEFT JOIN devices di ON di.mac = iv.issuer_mac
+             LEFT JOIN customers ci ON ci.id = di.customer_id
+             LEFT JOIN devices dr ON dr.mac = iv.redeemer_mac`;
+  const where = []; const binds = [];
+  if (q) {
+    where.push('(iv.code LIKE ? OR iv.issuer_mac LIKE ? OR iv.redeemer_mac LIKE ?)');
+    binds.push(`%${q}%`, `%${q}%`, `%${q}%`);
+  }
+  // Cloisonnement : un revendeur ne voit QUE les invitations issues de SES
+  // appareils.
+  if (user && user.role === 'reseller') {
+    where.push('di.reseller_id = ?');
+    binds.push(user.sub);
+  }
+  if (where.length) sql += ' WHERE ' + where.join(' AND ');
+  sql += ' ORDER BY iv.created_at DESC LIMIT 300';
   const rs = await env.DB.prepare(sql).bind(...binds).all();
   return jsonResp({ items: rs.results || [] });
 }
