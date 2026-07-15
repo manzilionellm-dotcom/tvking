@@ -272,10 +272,10 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
     { id: 'yearly', label: '1 an · familial · 9,90 €' },
     { id: 'lifetime', label: 'À vie · familial · 35 €' },
   ];
+  // Essai unique : 5 jours (l'app en donne déjà 5 automatiquement au
+  // téléchargement ; ceci sert à (re)poser un test de 5 jours à la main).
   const TRIALS = [
-    { id: 'trial_24h', label: 'Test 24 h' },
-    { id: 'trial_48h', label: 'Test 48 h' },
-    { id: 'trial_7d', label: 'Test 7 jours' },
+    { id: 'trial_5d', label: 'Test 5 jours' },
   ];
 
   const inputCls =

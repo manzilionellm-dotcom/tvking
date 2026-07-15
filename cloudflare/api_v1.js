@@ -759,6 +759,15 @@ async function apiV1Inner(request, env) {
     }
   }
 
+  // /treasury — RÉSERVE de crédits de l'owner + compteur d'argent (owner).
+  if (parts[0] === 'treasury') {
+    if (!isOwner(a.user)) return errResp('forbidden', 'Owner only', 403);
+    if (parts.length === 1 && request.method === 'GET') return handleTreasury(env);
+    if (parts.length === 2 && parts[1] === 'regenerate' && request.method === 'POST') {
+      return handleTreasuryRegenerate(request, env, actor, a.user);
+    }
+  }
+
   // /activate — activer un appareil par sa MAC (owner OU revendeur).
   // Cree client+device+licence et debite les credits du revendeur.
   if (parts[0] === 'activate' && parts.length === 1 && request.method === 'POST') {
@@ -3618,6 +3627,33 @@ export const RESELLER_CAPS_ALL = [
 // JAMAIS : seul l'owner peut accorder le droit de créer des sous-revendeurs.
 export const RESELLER_DEFAULT_CAPS = ['activate', 'block', 'transfer', 'buy_credits'];
 
+// =========================================================
+//  TRÉSORERIE — réserve de crédits de l'owner (à distribuer)
+// =========================================================
+//  L'owner part d'une RÉSERVE de 1 000 000 crédits. Chaque crédit donné à
+//  un revendeur (mint / approbation de demande) DÉCRÉMENTE cette réserve ;
+//  reprendre des crédits la RECRÉDITE. Bouton « Régénérer » = remettre la
+//  réserve à 1 000 000 (ou en ajouter). 1 crédit = 9,90 € (= 1 an) → sert
+//  au compteur d'argent (crédits distribués / utilisés × valeur).
+export const OWNER_POOL_START = 1000000;
+export const CREDIT_VALUE_EUR_DEFAULT = 9.90;
+
+async function getOwnerPool(env) {
+  await ensureAppConfigTable(env);
+  const s = await _cfgGetStr(env, 'owner_credit_pool');
+  if (s === '') { await _cfgSet(env, 'owner_credit_pool', OWNER_POOL_START); return OWNER_POOL_START; }
+  const n = parseInt(s, 10);
+  return Number.isFinite(n) ? n : OWNER_POOL_START;
+}
+async function setOwnerPool(env, value) {
+  await _cfgSet(env, 'owner_credit_pool', Math.max(0, Math.floor(value)));
+}
+async function getCreditValueEur(env) {
+  const s = await _cfgGetStr(env, 'credit_value_eur');
+  const n = parseFloat(s);
+  return Number.isFinite(n) && n > 0 ? n : CREDIT_VALUE_EUR_DEFAULT;
+}
+
 //  Ancien modèle « niveaux » — gardé UNIQUEMENT pour dériver les droits
 //  des comptes créés avant les cases à cocher (rétro-compat).
 const RESELLER_LEGACY_LEVEL = {
@@ -4034,12 +4070,20 @@ async function handleResellerCreditsIssue(request, env, id, actor, user) {
     return errResp('forbidden', "Seul l'administrateur émet des crédits.", 403);
   }
 
-  // --- OWNER : frappe / retire des credits (creation depuis rien) ---
+  // --- OWNER : donne / reprend des credits DEPUIS SA RÉSERVE (pool) ---
   if (isOwner(user)) {
     const newBalance = target.credit_balance + amount;
     if (newBalance < 0) {
       return errResp('insufficient_credits', 'Le solde resultant serait negatif', 400);
     }
+    // La réserve owner encadre la distribution : donner décrémente le pool,
+    // reprendre le recrédite. On ne distribue jamais plus qu'on n'a.
+    const pool = await getOwnerPool(env);
+    if (amount > 0 && pool < amount) {
+      return errResp('pool_empty',
+        `Réserve de crédits insuffisante (reste ${pool}). Régénère la réserve.`, 402);
+    }
+    await setOwnerPool(env, pool - amount); // amount<0 → pool augmente
     await env.DB.batch([
       env.DB.prepare('UPDATE resellers SET credit_balance = ? WHERE id = ?').bind(newBalance, id),
       env.DB.prepare(
@@ -4212,10 +4256,16 @@ async function handleCreditRequestDecide(request, env, id, action, actor, user) 
     await logAudit(env, request, actor, 'credit_request.reject', { type: 'credit_request', id }, null, null);
     return jsonResp({ ok: true, status: 'rejected' });
   }
-  // approve → émettre les crédits (comme un mint owner) + marquer approuvé.
+  // approve → émettre les crédits DEPUIS LA RÉSERVE owner + marquer approuvé.
   const target = await env.DB
     .prepare('SELECT credit_balance FROM resellers WHERE id = ?').bind(req.reseller_id).first();
   if (!target) return errResp('not_found', 'Revendeur introuvable', 404);
+  const pool = await getOwnerPool(env);
+  if (pool < req.amount) {
+    return errResp('pool_empty',
+      `Réserve de crédits insuffisante (reste ${pool}). Régénère la réserve.`, 402);
+  }
+  await setOwnerPool(env, pool - req.amount);
   const newBalance = (target.credit_balance || 0) + req.amount;
   await env.DB.batch([
     env.DB.prepare('UPDATE resellers SET credit_balance = ? WHERE id = ?').bind(newBalance, req.reseller_id),
@@ -4231,6 +4281,51 @@ async function handleCreditRequestDecide(request, env, id, action, actor, user) 
   await logAudit(env, request, actor, 'credit_request.approve',
     { type: 'credit_request', id }, null, { amount: req.amount, balance: newBalance });
   return jsonResp({ ok: true, status: 'approved', credit_balance: newBalance });
+}
+
+// ----- TRÉSORERIE : réserve owner + compteur d'argent -----
+async function handleTreasury(env) {
+  const pool = await getOwnerPool(env);
+  const cv = await getCreditValueEur(env);
+  // Distribué = crédits émis vers les revendeurs (mint 'issue' positif).
+  const dist = await env.DB
+    .prepare("SELECT COALESCE(SUM(delta),0) AS s FROM credit_ledger WHERE reason = 'issue' AND delta > 0")
+    .first();
+  // Utilisés = crédits consommés par les activations/renouvellements.
+  const cons = await env.DB
+    .prepare("SELECT COALESCE(SUM(-delta),0) AS s FROM credit_ledger WHERE reason IN ('activation','renew') AND delta < 0")
+    .first();
+  const distributed = (dist && dist.s) || 0;
+  const consumed = (cons && cons.s) || 0;
+  const eur = (n) => Math.round(n * cv * 100) / 100;
+  return jsonResp({
+    pool,
+    poolStart: OWNER_POOL_START,
+    creditValueEur: cv,
+    distributed,
+    consumed,
+    poolEur: eur(pool),
+    distributedEur: eur(distributed),
+    consumedEur: eur(consumed),
+  });
+}
+
+async function handleTreasuryRegenerate(request, env, actor, user) {
+  let body = {};
+  try { body = await request.json(); } catch (_) { /* corps optionnel */ }
+  const cur = await getOwnerPool(env);
+  const add = parseInt(body.amount, 10);
+  // amount fourni & positif → on AJOUTE ; sinon → on REMET à 1 000 000.
+  const next = Number.isFinite(add) && add > 0 ? cur + add : OWNER_POOL_START;
+  await setOwnerPool(env, next);
+  // Valeur du crédit ajustable (optionnel).
+  if (body.creditValueEur !== undefined) {
+    const cv = parseFloat(body.creditValueEur);
+    if (Number.isFinite(cv) && cv > 0) await _cfgSet(env, 'credit_value_eur', cv);
+  }
+  await logAudit(env, request, actor, 'treasury.regenerate',
+    { type: 'treasury', id: 'pool' }, { pool: cur }, { pool: next });
+  return jsonResp({ ok: true, pool: next });
 }
 
 // ----- TRANSFERT d'abonnement (ancienne MAC → nouvelle MAC) -----

@@ -601,6 +601,27 @@ export const creditRequestsApi = {
     ),
 };
 
+// Trésorerie (owner) : réserve de crédits + compteur d'argent.
+// 1 crédit = creditValueEur € (défaut 9,90 = prix d'un an).
+export interface Treasury {
+  pool: number;              // crédits restants dans la réserve
+  poolStart: number;         // réserve de départ (1 000 000)
+  creditValueEur: number;    // valeur d'un crédit en €
+  distributed: number;       // crédits émis vers les revendeurs
+  consumed: number;          // crédits consommés par les activations
+  poolEur: number;
+  distributedEur: number;
+  consumedEur: number;
+}
+export const treasuryApi = {
+  get: () => request<Treasury>('/api/v1/treasury'),
+  // amount fourni → ajoute ; sinon → remet la réserve à 1 000 000.
+  regenerate: (amount?: number, creditValueEur?: number) =>
+    request<{ ok: boolean; pool: number }>('/api/v1/treasury/regenerate', {
+      method: 'POST', body: { amount, creditValueEur },
+    }),
+};
+
 export interface ActivateResult {
   ok: boolean;
   license_id: string;
