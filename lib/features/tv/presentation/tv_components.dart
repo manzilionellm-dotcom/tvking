@@ -21,7 +21,7 @@ const String kAppName = 'The Few TV';
 const String _kLogoAsset = 'assets/branding/thefew_logo.png';
 
 /// Numéro WhatsApp business (format international, sans + ni espaces).
-const String kWhatsAppPhone = '447307410512';
+const String kWhatsAppPhone = '18077888909';
 
 /// Construit le lien wa.me avec un message pré-rempli (code MAC inclus).
 String tvWhatsAppUrl(String mac) {

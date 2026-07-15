@@ -17,11 +17,11 @@ import '../i18n/l10n_now.dart';
 
 abstract final class VipSupport {
   /// Numéro affiché à l'utilisateur (avec espaces pour lisibilité).
-  static const String displayNumber = '+44 7307 410512';
+  static const String displayNumber = '+1 807 788 8909';
 
   /// Numéro normalisé pour les URLs `wa.me` (chiffres uniquement,
   /// avec indicatif pays, sans "+").
-  static const String _waNumber = '447307410512';
+  static const String _waNumber = '18077888909';
 
   /// Message pré-rempli quand l'utilisateur ouvre WhatsApp. Indique
   /// l'origine (nom de l'app, surchargeable via le panel « Thème »)
