@@ -10,9 +10,15 @@
 //  N'invente aucune donnée : chaque tuile ouvre un écran EXISTANT. Aucun
 //  fichier cast/lecture/boot touché. 100 % télécommande (TvFocusBuilder).
 // =========================================================
+import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../channels/domain/channel.dart';
+import '../../playlists/data/favorites_repository.dart';
+import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -21,6 +27,7 @@ import 'tv_films_screen.dart';
 import 'tv_guide_grid_screen.dart';
 import 'tv_home_template_screen.dart';
 import 'tv_live_screen.dart';
+import 'tv_player_screen.dart';
 import 'tv_profiles_screen.dart';
 import 'tv_series_screen.dart';
 import 'tv_settings_screen.dart';
@@ -98,7 +105,10 @@ class TvLauncherHomeScreen extends StatelessWidget {
                 children: <Widget>[
                   // Logo SEVEN centré (seul élément de marque changé).
                   const Center(child: TvLogo(width: 132)),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 12),
+                  // Accès rapide « Chaînes Favorites » (se replie si vide).
+                  const _IboFavoritesStrip(),
+                  const SizedBox(height: 12),
                   Expanded(
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -259,6 +269,125 @@ Widget _colBtnBox({required bool focused, required Widget child}) {
     ),
     child: child,
   );
+}
+
+/// Coin « Chaînes Favorites » — accès rapide aux chaînes favorites du client.
+/// 100 % natif : au tap → TvPlayerScreen (ExoPlayer/Media3). Se replie si le
+/// client n'a aucun favori (accueil propre).
+class _IboFavoritesStrip extends StatefulWidget {
+  const _IboFavoritesStrip();
+
+  @override
+  State<_IboFavoritesStrip> createState() => _IboFavoritesStripState();
+}
+
+class _IboFavoritesStripState extends State<_IboFavoritesStrip> {
+  List<Channel> _favs = <Channel>[];
+  StreamSubscription<Set<String>>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    _sub = FavoritesRepository.instance.favoritesStream
+        .listen((Set<String> _) => _recompute());
+    _recompute();
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  void _recompute() {
+    final Set<String> ids = FavoritesRepository.instance.current;
+    if (ids.isEmpty) {
+      if (mounted) setState(() => _favs = <Channel>[]);
+      return;
+    }
+    final Map<String, Channel> byId = <String, Channel>{
+      for (final Channel c in PlaylistRepository.instance.currentChannels)
+        c.id: c,
+    };
+    final List<Channel> out = <Channel>[];
+    for (final String id in ids) {
+      final Channel? c = byId[id];
+      if (c != null) out.add(c);
+    }
+    if (mounted) setState(() => _favs = out.take(14).toList());
+  }
+
+  void _play(int i) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TvPlayerScreen(channels: _favs, startIndex: i),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_favs.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            const Icon(Icons.star_rounded, color: _iboText, size: 18),
+            const SizedBox(width: 8),
+            Text('Chaînes Favorites',
+                style: TvTokens.ui(TvDimens.label,
+                    weight: FontWeight.w700, color: _iboText)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 72,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _favs.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (BuildContext c, int i) {
+              final Channel ch = _favs[i];
+              return TvFocusBuilder(
+                scale: TvFocusScale.small,
+                onSelect: () => _play(i),
+                builder: (BuildContext c, bool f) => Container(
+                  width: 96,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _iboTile,
+                    borderRadius: BorderRadius.circular(10),
+                    border: f
+                        ? Border.all(color: _iboText, width: 2)
+                        : Border.all(color: Colors.white24),
+                  ),
+                  alignment: Alignment.center,
+                  child: ch.hasLogo
+                      ? CachedNetworkImage(
+                          imageUrl: ch.logoUrl!,
+                          fit: BoxFit.contain,
+                          errorWidget: (_, __, ___) => const Icon(
+                              Icons.live_tv_rounded,
+                              color: _iboText,
+                              size: 26),
+                        )
+                      : Text(
+                          ch.name,
+                          maxLines: 2,
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                          style: TvTokens.ui(11,
+                              weight: FontWeight.w700, color: _iboText),
+                        ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _HeroTile extends StatelessWidget {
