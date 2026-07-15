@@ -48,6 +48,7 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.customers': { fr: 'Clients', en: 'Customers', ar: 'العملاء' },
   'nav.devices': { fr: 'Appareils', en: 'Devices', ar: 'الأجهزة' },
   'nav.radar': { fr: 'Radar d’expiration', en: 'Expiry radar', ar: 'رادار الانتهاء' },
+  'nav.gateway': { fr: 'Passerelle', en: 'Gateway', ar: 'البوابة' },
   'nav.myDevices': { fr: 'Mes appareils', en: 'My devices', ar: 'أجهزتي' },
   'nav.apps': { fr: 'Applications', en: 'Apps', ar: 'التطبيقات' },
   'nav.servers': { fr: 'Serveurs', en: 'Servers', ar: 'الخوادم' },

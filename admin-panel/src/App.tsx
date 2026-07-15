@@ -30,6 +30,7 @@ import { ReferencesPage } from '@/pages/ReferencesPage';
 import { TransferPage } from '@/pages/TransferPage';
 import { FamiliesPage } from '@/pages/FamiliesPage';
 import { RadarPage } from '@/pages/RadarPage';
+import { GatewayPage } from '@/pages/GatewayPage';
 
 /// Etats possibles de l'app :
 ///   - bootstrapping : on verifie si le token est encore valide
@@ -136,6 +137,7 @@ export default function App() {
       <Route path="/transfer" element={<TransferPage onLogout={handleLogout} />} />
       <Route path="/families" element={<FamiliesPage onLogout={handleLogout} />} />
       <Route path="/radar" element={<RadarPage onLogout={handleLogout} />} />
+      <Route path="/gateway" element={<GatewayPage onLogout={handleLogout} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

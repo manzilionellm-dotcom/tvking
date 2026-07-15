@@ -41,6 +41,7 @@ const OWNER_NAV: NavSection[] = [
     titleKey: 'navsec.channels',
     items: [
       { key: 'nav.servers',     to: '/servers' },
+      { key: 'nav.gateway',     to: '/gateway' },
     ],
   },
   {
