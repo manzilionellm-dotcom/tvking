@@ -4,19 +4,27 @@
 //  Réplique de l'accueil « rails » d'IBO Player Pro : barre haute
 //  (reload · profil · réglages · horloge) + héro à gauche + accès rapides
 //  à droite + rangée d'icônes (Direct, Films, Séries, Catch-up, Recherche)
-//  + rail de FAVORIS EN DIRECT (vraie donnée, LiveNowFavoritesRow).
+//  + rail de FAVORIS EN DIRECT (vraie donnée, rail TV natif).
 //  COULEURS IDENTIQUES à IBO (violet #250030, tuiles #411C4C, focus #391A43
 //  + liseré clair). SEUL le logo = SEVEN.
 //
 //  Réutilise des écrans + widgets EXISTANTS (aucune donnée inventée).
+//  Le rail de favoris est 100 % TV natif : au tap → TvPlayerScreen
+//  (ExoPlayer/Media3), JAMAIS le lecteur mobile (media_kit) — la
+//  compilation TV ne doit importer aucun fichier media_kit.
 //  Aucun fichier cast/lecture/boot touché. 100 % télécommande.
 // =========================================================
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../channels/presentation/widgets/live_now_favorites_row.dart';
+import '../../channels/domain/channel.dart';
+import '../../epg/data/epg_repository.dart';
+import '../../epg/domain/epg_program.dart';
+import '../../playlists/data/favorites_repository.dart';
+import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -25,6 +33,7 @@ import 'tv_films_screen.dart';
 import 'tv_guide_grid_screen.dart';
 import 'tv_home_template_screen.dart';
 import 'tv_live_screen.dart';
+import 'tv_player_screen.dart';
 import 'tv_profiles_screen.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_search_screen.dart';
@@ -234,7 +243,7 @@ class TvRailsHomeScreen extends StatelessWidget {
                       style: TvTokens.ui(TvDimens.title,
                           weight: FontWeight.w600, color: _rTitle)),
                   const SizedBox(height: 8),
-                  const SizedBox(height: 168, child: LiveNowFavoritesRow()),
+                  const SizedBox(height: 168, child: _LiveFavoritesRail()),
                 ],
               ),
             ),
@@ -413,6 +422,236 @@ class _NavTile extends StatelessWidget {
                         weight: FontWeight.w600,
                         color: focused ? _rText : _rMuted)),
               ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Un favori + son programme en cours (calculé au moment de l'affichage).
+class _FavSlot {
+  const _FavSlot({required this.channel, this.program});
+  final Channel channel;
+  final EpgProgram? program;
+}
+
+/// Rail « Favoris en direct » — 100 % TV natif.
+///
+/// Lit les favoris (FavoritesRepository) et, pour chacun, le programme en
+/// cours (EpgRepository). Au tap, ouvre TvPlayerScreen (ExoPlayer/Media3)
+/// avec la liste des favoris → zapping haut/bas dans le lecteur, sans
+/// jamais toucher au lecteur mobile (media_kit). Si aucun favori, le rail
+/// se replie (SizedBox.shrink) — l'accueil reste propre.
+class _LiveFavoritesRail extends StatefulWidget {
+  const _LiveFavoritesRail();
+
+  @override
+  State<_LiveFavoritesRail> createState() => _LiveFavoritesRailState();
+}
+
+class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
+  List<_FavSlot> _slots = <_FavSlot>[];
+  bool _loading = true;
+  StreamSubscription<Set<String>>? _favSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _favSub =
+        FavoritesRepository.instance.favoritesStream.listen((Set<String> _) {
+      _recompute();
+    });
+    _recompute();
+  }
+
+  @override
+  void dispose() {
+    _favSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _recompute() async {
+    final Set<String> favIds = FavoritesRepository.instance.current;
+    if (favIds.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _slots = <_FavSlot>[];
+          _loading = false;
+        });
+      }
+      return;
+    }
+
+    final List<Channel> all = PlaylistRepository.instance.currentChannels;
+    final Map<String, Channel> byId = <String, Channel>{
+      for (final Channel c in all) c.id: c,
+    };
+    final List<Channel> favorites = <Channel>[];
+    for (final String id in favIds) {
+      final Channel? c = byId[id];
+      if (c != null) favorites.add(c);
+    }
+    // On limite à 12 favoris — au-delà c'est trop de requêtes EPG et le
+    // rail scrolle de toute façon.
+    final List<Channel> picked = favorites.take(12).toList();
+
+    final List<_FavSlot> slots = <_FavSlot>[];
+    for (final Channel c in picked) {
+      EpgProgram? p;
+      try {
+        p = await EpgRepository.instance.currentProgram(c.id);
+      } catch (_) {
+        p = null;
+      }
+      slots.add(_FavSlot(channel: c, program: p));
+    }
+    if (mounted) {
+      setState(() {
+        _slots = slots;
+        _loading = false;
+      });
+    }
+  }
+
+  void _play(int index) {
+    final List<Channel> list =
+        _slots.map((_FavSlot s) => s.channel).toList(growable: false);
+    if (list.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const SizedBox.shrink();
+    if (_slots.isEmpty) return const SizedBox.shrink();
+    return ListView.separated(
+      scrollDirection: Axis.horizontal,
+      itemCount: _slots.length,
+      separatorBuilder: (_, __) => const SizedBox(width: 14),
+      itemBuilder: (BuildContext context, int i) {
+        final _FavSlot slot = _slots[i];
+        return _FavCard(
+          slot: slot,
+          autofocus: i == 0,
+          onSelect: () => _play(i),
+        );
+      },
+    );
+  }
+}
+
+/// Carte d'un favori : logo + nom chaîne + programme en cours + barre de
+/// progression. Style IBO rails (tuile #411C4C, focus #391A43 + liseré clair).
+class _FavCard extends StatelessWidget {
+  const _FavCard({
+    required this.slot,
+    required this.autofocus,
+    required this.onSelect,
+  });
+  final _FavSlot slot;
+  final bool autofocus;
+  final VoidCallback onSelect;
+
+  double? _progress() {
+    final EpgProgram? p = slot.program;
+    if (p == null) return null;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final int total = p.stopTime - p.startTime;
+    if (total <= 0) return null;
+    final double frac = (now - p.startTime) / total;
+    if (frac.isNaN) return null;
+    return frac.clamp(0.0, 1.0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Channel ch = slot.channel;
+    final EpgProgram? prog = slot.program;
+    final double? progress = _progress();
+    return TvFocusBuilder(
+      autofocus: autofocus,
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          width: 260,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: focused ? _rCardFocus : _rCard,
+            borderRadius: BorderRadius.circular(12),
+            border: focused
+                ? Border.all(color: _rBorderFocus, width: 2)
+                : null,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    alignment: Alignment.center,
+                    child: ch.hasLogo
+                        ? CachedNetworkImage(
+                            imageUrl: ch.logoUrl!,
+                            fit: BoxFit.contain,
+                            errorWidget: (_, __, ___) => const Icon(
+                                Icons.live_tv_rounded,
+                                size: 24,
+                                color: _rMuted),
+                          )
+                        : const Icon(Icons.live_tv_rounded,
+                            size: 24, color: _rMuted),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      ch.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TvTokens.ui(TvDimens.label,
+                          weight: FontWeight.w700,
+                          color: focused ? _rText : _rTitle),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: Text(
+                  prog?.title ?? 'En direct',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvTokens.ui(TvDimens.body,
+                      color: focused ? _rText : _rMuted),
+                ),
+              ),
+              if (progress != null) ...<Widget>[
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 4,
+                    backgroundColor: Colors.white.withValues(alpha: 0.14),
+                    valueColor:
+                        const AlwaysStoppedAnimation<Color>(_rPlay),
+                  ),
+                ),
+              ],
             ],
           ),
         );
