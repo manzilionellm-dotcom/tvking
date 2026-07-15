@@ -22,11 +22,11 @@ import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import 'tv_channels_screen.dart';
 import 'tv_components.dart';
 import 'tv_films_screen.dart';
 import 'tv_guide_grid_screen.dart';
 import 'tv_home_template_screen.dart';
-import 'tv_live_screen.dart';
 import 'tv_player_screen.dart';
 import 'tv_profiles_screen.dart';
 import 'tv_series_screen.dart';
@@ -120,7 +120,8 @@ class TvLauncherHomeScreen extends StatelessWidget {
                             icon: Icons.live_tv_rounded,
                             label: 'Live TV',
                             autofocus: true,
-                            onSelect: () => _open(context, const TvLiveScreen()),
+                            onSelect: () =>
+                                _open(context, const TvChannelsScreen()),
                           ),
                         ),
                         const SizedBox(width: 16),
