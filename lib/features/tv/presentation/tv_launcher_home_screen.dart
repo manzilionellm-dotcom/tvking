@@ -1,13 +1,14 @@
 // =========================================================
-//  tv_launcher_home_screen.dart — Template « Grandes tuiles » (façon IBO)
+//  tv_launcher_home_screen.dart — Template « Grandes tuiles » (IBO grille)
 // =========================================================
-//  Accueil alternatif, choisi via le sélecteur de templates : une GRANDE
-//  tuile héro « Direct » + un cluster 2×2 (Films, Séries, Guide, Recherche)
-//  + une colonne de raccourcis (Sources, Réglages, Templates, Quitter).
-//  Simple, direct, 100 % télécommande — « comme à la maison ».
+//  Réplique FIDÈLE de l'accueil « grille » d'IBO Player Pro : grande tuile
+//  héro « Direct » + cluster 2×2 (Films, Séries, Compte, Changer la source)
+//  + colonne (Guide, Réglages, Templates, Quitter) + pilule verte « Regarder ».
+//  COULEURS IDENTIQUES à IBO (fond quasi-noir, tuiles bordeaux, liseré blanc
+//  au focus, texte/icônes blancs, bouton vert). SEUL le logo = SEVEN.
 //
 //  N'invente aucune donnée : chaque tuile ouvre un écran EXISTANT. Aucun
-//  fichier cast/lecture/boot touché. Style Maison Noir (or/obsidienne).
+//  fichier cast/lecture/boot touché. 100 % télécommande (TvFocusBuilder).
 // =========================================================
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -23,8 +24,15 @@ import 'tv_live_screen.dart';
 import 'tv_profiles_screen.dart';
 import 'tv_series_screen.dart';
 import 'tv_settings_screen.dart';
-import 'tv_shell.dart';
 import 'tv_sources_screen.dart';
+
+// ---- Palette IBO (grille) — couleurs identiques à l'original ----
+const Color _iboBg = Color(0xFF0A0A0A); // fond quasi-noir
+const Color _iboTile = Color(0xFF7A1F1F); // tuile bordeaux au repos
+const Color _iboTileFocus = Color(0xFF8E2626); // tuile bordeaux au focus
+const Color _iboText = Color(0xFFFFFFFF); // labels + icônes (blancs)
+const Color _iboGreenA = Color(0xFF29C46B); // pilule « Regarder » (vert)
+const Color _iboGreenB = Color(0xFF1EA65A);
 
 class TvLauncherHomeScreen extends StatelessWidget {
   const TvLauncherHomeScreen({super.key});
@@ -64,163 +72,167 @@ class TvLauncherHomeScreen extends StatelessWidget {
         if (didPop) return;
         _confirmExit(context);
       },
-      child: TvShell(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            // Barre haute : logo + marque
-            Row(
-              children: <Widget>[
-                const TvLogo(width: 118),
-                const Spacer(),
-                Text('SEVEN',
-                    style: TvTokens.ui(TvDimens.title,
-                        weight: FontWeight.w700, color: TvTokens.gold, spacing: 4)),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Expanded(
-              child: Row(
+      child: ColoredBox(
+        color: _iboBg,
+        child: Material(
+          type: MaterialType.transparency,
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: TvDimens.safeH,
+                vertical: TvDimens.safeV,
+              ),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  // ---- HÉRO : Direct ----
+                  // Logo SEVEN centré (seul élément de marque changé).
+                  const Center(child: TvLogo(width: 132)),
+                  const SizedBox(height: 18),
                   Expanded(
-                    flex: 5,
-                    child: _HeroTile(
-                      icon: Icons.live_tv_rounded,
-                      label: 'Direct',
-                      autofocus: true,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        // ---- HÉRO : Direct (grande tuile) ----
+                        Expanded(
+                          flex: 5,
+                          child: _HeroTile(
+                            icon: Icons.live_tv_rounded,
+                            label: 'Live TV',
+                            autofocus: true,
+                            onSelect: () => _open(context, const TvLiveScreen()),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        // ---- Cluster 2×2 ----
+                        Expanded(
+                          flex: 4,
+                          child: Column(
+                            children: <Widget>[
+                              Expanded(
+                                child: Row(
+                                  children: <Widget>[
+                                    Expanded(
+                                      child: _SquareTile(
+                                        icon: Icons.movie_rounded,
+                                        label: 'Films',
+                                        onSelect: () =>
+                                            _open(context, const TvFilmsScreen()),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: _SquareTile(
+                                        icon: Icons.video_library_rounded,
+                                        label: 'Séries',
+                                        onSelect: () => _open(
+                                            context, const TvSeriesScreen()),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Expanded(
+                                child: Row(
+                                  children: <Widget>[
+                                    Expanded(
+                                      child: _SquareTile(
+                                        icon: Icons.people_alt_rounded,
+                                        label: 'Compte',
+                                        onSelect: () => _open(
+                                            context, const TvProfilesScreen()),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: _SquareTile(
+                                        icon: Icons.swap_horiz_rounded,
+                                        label: 'Changer la source',
+                                        onSelect: () => _open(
+                                            context, const TvSourcesScreen()),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        // ---- Colonne de raccourcis ----
+                        Expanded(
+                          flex: 3,
+                          child: Column(
+                            children: <Widget>[
+                              Expanded(
+                                child: _RowButton(
+                                  icon: Icons.settings_rounded,
+                                  label: 'Réglages',
+                                  onSelect: () =>
+                                      _open(context, const TvSettingsScreen()),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Expanded(
+                                child: _RowButton(
+                                  icon: Icons.grid_view_rounded,
+                                  label: 'Guide TV',
+                                  onSelect: () => _open(
+                                      context, const TvGuideGridScreen()),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Expanded(
+                                child: _RowButton(
+                                  icon: Icons.dashboard_customize_rounded,
+                                  label: 'Changer les templates',
+                                  onSelect: () => _open(
+                                      context, const TvHomeTemplateScreen()),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Expanded(
+                                child: _RowButton(
+                                  icon: Icons.power_settings_new_rounded,
+                                  label: 'Quitter',
+                                  onSelect: () => _confirmExit(context),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // ---- Pilule verte « Regarder » (Play Video) ----
+                  Center(
+                    child: _PlayPill(
                       onSelect: () => _open(context, const TvLiveScreen()),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  // ---- Cluster 2×2 ----
-                  Expanded(
-                    flex: 4,
-                    child: Column(
-                      children: <Widget>[
-                        Expanded(
-                          child: Row(
-                            children: <Widget>[
-                              Expanded(
-                                child: _SquareTile(
-                                  icon: Icons.movie_rounded,
-                                  label: 'Films',
-                                  onSelect: () => _open(context, const TvFilmsScreen()),
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: _SquareTile(
-                                  icon: Icons.video_library_rounded,
-                                  label: 'Séries',
-                                  onSelect: () => _open(context, const TvSeriesScreen()),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Expanded(
-                          child: Row(
-                            children: <Widget>[
-                              Expanded(
-                                child: _SquareTile(
-                                  icon: Icons.people_alt_rounded,
-                                  label: 'Compte',
-                                  onSelect: () =>
-                                      _open(context, const TvProfilesScreen()),
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: _SquareTile(
-                                  icon: Icons.swap_horiz_rounded,
-                                  label: 'Changer la source',
-                                  onSelect: () =>
-                                      _open(context, const TvSourcesScreen()),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  // ---- Colonne de raccourcis ----
-                  Expanded(
-                    flex: 3,
-                    child: Column(
-                      children: <Widget>[
-                        Expanded(
-                          child: _RowButton(
-                            icon: Icons.grid_view_rounded,
-                            label: 'Guide TV',
-                            onSelect: () =>
-                                _open(context, const TvGuideGridScreen()),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Expanded(
-                          child: _RowButton(
-                            icon: Icons.settings_rounded,
-                            label: 'Réglages',
-                            onSelect: () => _open(context, const TvSettingsScreen()),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Expanded(
-                          child: _RowButton(
-                            icon: Icons.dashboard_customize_rounded,
-                            label: 'Changer les templates',
-                            onSelect: () =>
-                                _open(context, const TvHomeTemplateScreen()),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Expanded(
-                          child: _RowButton(
-                            icon: Icons.power_settings_new_rounded,
-                            label: 'Quitter',
-                            onSelect: () => _confirmExit(context),
-                          ),
-                        ),
-                      ],
                     ),
                   ),
                 ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// Décoration commune d'une tuile (repos vs focus or).
+/// Décoration commune d'une tuile IBO (bordeaux + liseré blanc au focus).
 Widget _tileBox({required bool focused, required Widget child}) {
   return AnimatedContainer(
     duration: const Duration(milliseconds: 140),
     alignment: Alignment.center,
     decoration: BoxDecoration(
-      color: focused ? TvTokens.sel : TvTokens.card,
+      color: focused ? _iboTileFocus : _iboTile,
       borderRadius: BorderRadius.circular(TvTokens.rCard),
       border: Border.all(
-        color: focused ? TvTokens.goldBright : TvTokens.hairline,
-        width: focused ? 2 : 1,
+        color: focused ? _iboText : Colors.transparent,
+        width: focused ? 3 : 0,
       ),
-      boxShadow: focused
-          ? <BoxShadow>[
-              BoxShadow(
-                color: TvTokens.gold.withValues(alpha: 0.28),
-                blurRadius: 32,
-                spreadRadius: -8,
-                offset: const Offset(0, 10),
-              ),
-            ]
-          : null,
     ),
     child: child,
   );
@@ -250,13 +262,12 @@ class _HeroTile extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Icon(icon,
-                  size: 92, color: focused ? TvTokens.goldBright : TvTokens.gold),
+              Icon(icon, size: 92, color: _iboText),
               const SizedBox(height: 18),
               Text(label,
                   textAlign: TextAlign.center,
                   style: TvTokens.ui(TvDimens.displayS,
-                      weight: FontWeight.w700, color: TvTokens.text)),
+                      weight: FontWeight.w700, color: _iboText)),
             ],
           ),
         );
@@ -286,13 +297,17 @@ class _SquareTile extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Icon(icon,
-                  size: 52, color: focused ? TvTokens.goldBright : TvTokens.gold),
+              Icon(icon, size: 48, color: _iboText),
               const SizedBox(height: 12),
-              Text(label,
-                  textAlign: TextAlign.center,
-                  style: TvTokens.ui(TvDimens.title,
-                      weight: FontWeight.w600, color: TvTokens.text)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Text(label,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.ui(TvDimens.titleS,
+                        weight: FontWeight.w600, color: _iboText)),
+              ),
             ],
           ),
         );
@@ -320,22 +335,58 @@ class _RowButton extends StatelessWidget {
         return _tileBox(
           focused: focused,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 22),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
               children: <Widget>[
-                Icon(icon,
-                    size: 30,
-                    color: focused ? TvTokens.goldBright : TvTokens.gold),
-                const SizedBox(width: 16),
+                Icon(icon, size: 28, color: _iboText),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Text(label,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TvTokens.ui(TvDimens.body,
-                          weight: FontWeight.w600, color: TvTokens.text)),
+                          weight: FontWeight.w600, color: _iboText)),
                 ),
               ],
             ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Pilule verte « Regarder » (Play Video) — accent d'IBO.
+class _PlayPill extends StatelessWidget {
+  const _PlayPill({required this.onSelect});
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.large,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 14),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: <Color>[_iboGreenA, _iboGreenB],
+            ),
+            borderRadius: BorderRadius.circular(999),
+            border:
+                focused ? Border.all(color: _iboText, width: 2) : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Icon(Icons.play_arrow_rounded, size: 26, color: _iboText),
+              const SizedBox(width: 8),
+              Text('Regarder',
+                  style: TvTokens.ui(TvDimens.body,
+                      weight: FontWeight.w700, color: _iboText)),
+            ],
           ),
         );
       },

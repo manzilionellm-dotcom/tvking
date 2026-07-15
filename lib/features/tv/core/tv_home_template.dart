@@ -15,7 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 enum TvHomeTemplate {
   classic, // home historique : menu compact en haut + contenu plein écran
-  launcher, // grandes tuiles façon lanceur (inspiration IBO), simple et direct
+  launcher, // grandes tuiles façon lanceur (IBO « grille »), simple et direct
 }
 
 extension TvHomeTemplateInfo on TvHomeTemplate {
@@ -34,7 +34,7 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
       case TvHomeTemplate.classic:
         return 'Classique';
       case TvHomeTemplate.launcher:
-        return 'Grandes tuiles';
+        return 'IBO — Grandes tuiles';
     }
   }
 
@@ -44,7 +44,7 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
       case TvHomeTemplate.classic:
         return 'Menu compact en haut, liste des chaînes en grand.';
       case TvHomeTemplate.launcher:
-        return 'Grandes tuiles simples et directes, comme à la maison.';
+        return 'Grandes tuiles bordeaux façon IBO — simple et direct.';
     }
   }
 }
