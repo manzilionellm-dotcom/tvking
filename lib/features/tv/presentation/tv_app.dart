@@ -46,6 +46,7 @@ import '../core/tv_ambience.dart';
 import '../core/tv_home_template.dart';
 import 'tv_launcher_home_screen.dart';
 import 'tv_rails_home_screen.dart';
+import 'tv_tivimate_home_screen.dart';
 import 'tv_care_nudge.dart';
 import 'tv_night_comfort.dart';
 import 'tv_profiles_screen.dart' show tvProfileDisplayName;
@@ -483,6 +484,8 @@ class _TvGateState extends State<TvGate> {
                       return const TvLauncherHomeScreen();
                     case TvHomeTemplate.rails:
                       return const TvRailsHomeScreen();
+                    case TvHomeTemplate.tivimate:
+                      return const TvTivimateHomeScreen();
                     case TvHomeTemplate.classic:
                       return const TvHomeScreen();
                   }

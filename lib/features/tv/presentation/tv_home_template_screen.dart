@@ -159,9 +159,78 @@ class _TemplatePreview extends StatelessWidget {
         return _launcherMock();
       case TvHomeTemplate.rails:
         return _railsMock();
+      case TvHomeTemplate.tivimate:
+        return _tivimateMock();
       case TvHomeTemplate.classic:
         return _classicMock();
     }
+  }
+
+  // TiviMate : rail d'icônes fin + colonne de groupes + liste de chaînes.
+  Widget _tivimateMock() {
+    Widget line() => Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Expanded(flex: 2, child: _box()),
+            const SizedBox(width: 4),
+            Expanded(flex: 7, child: _box()),
+          ],
+        );
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        // rail d'icônes (fin)
+        Expanded(
+          flex: 6,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Expanded(child: _box()),
+              const SizedBox(height: 4),
+              Expanded(child: _box(color: _accent)),
+              const SizedBox(height: 4),
+              Expanded(child: _box()),
+              const SizedBox(height: 4),
+              Expanded(child: _box()),
+            ],
+          ),
+        ),
+        const SizedBox(width: 5),
+        // colonne des groupes
+        Expanded(
+          flex: 22,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Expanded(child: _box(color: _accent)),
+              const SizedBox(height: 4),
+              Expanded(child: _box()),
+              const SizedBox(height: 4),
+              Expanded(child: _box()),
+              const SizedBox(height: 4),
+              Expanded(child: _box()),
+            ],
+          ),
+        ),
+        const SizedBox(width: 5),
+        // liste des chaînes (lignes n°+logo+nom)
+        Expanded(
+          flex: 40,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Expanded(child: line()),
+              const SizedBox(height: 4),
+              Expanded(child: line()),
+              const SizedBox(height: 4),
+              Expanded(child: line()),
+              const SizedBox(height: 4),
+              Expanded(child: line()),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   // Rails : barre haute + héro/colonne + rangée d'icônes + rail bas.

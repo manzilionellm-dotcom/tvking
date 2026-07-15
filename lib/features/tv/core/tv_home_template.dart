@@ -17,6 +17,7 @@ enum TvHomeTemplate {
   classic, // home historique : menu compact en haut + contenu plein écran
   launcher, // grandes tuiles façon lanceur (IBO « grille »), simple et direct
   rails, // aperçu + rangée d'icônes + rail de favoris (IBO « rails »)
+  tivimate, // panneau chaînes (rail + groupes + liste + aperçu EPG) façon TiviMate
 }
 
 extension TvHomeTemplateInfo on TvHomeTemplate {
@@ -28,6 +29,8 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
         return 'launcher';
       case TvHomeTemplate.rails:
         return 'rails';
+      case TvHomeTemplate.tivimate:
+        return 'tivimate';
     }
   }
 
@@ -40,6 +43,8 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
         return 'IBO — Grandes tuiles';
       case TvHomeTemplate.rails:
         return 'IBO — Rails';
+      case TvHomeTemplate.tivimate:
+        return 'TiviMate';
     }
   }
 
@@ -52,6 +57,8 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
         return 'Grandes tuiles bordeaux façon IBO — simple et direct.';
       case TvHomeTemplate.rails:
         return 'Aperçu + rangée d\'icônes + rail de favoris (façon IBO rails).';
+      case TvHomeTemplate.tivimate:
+        return 'Liste des chaînes en panneau + aperçu EPG (façon TiviMate).';
     }
   }
 }
