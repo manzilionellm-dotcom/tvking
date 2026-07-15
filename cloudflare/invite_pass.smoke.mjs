@@ -77,17 +77,17 @@ assert.equal(
 );
 ok('appareil déjà payé → already_active');
 
-// 8b) PLAFOND : un abonné peut inviter jusqu'à 5 personnes actives.
-assert.deepEqual(inviteRedeemDecision({ ...base, issuerActiveGuests: 4 }), { ok: true });
+// 8b) QUOTA HEBDO : jusqu'à 5 invitations utilisées par semaine glissante.
+assert.deepEqual(inviteRedeemDecision({ ...base, issuerWeeklyUsed: 4 }), { ok: true });
 assert.equal(
-  inviteRedeemDecision({ ...base, issuerActiveGuests: 5 }).error,
-  'issuer_full',
+  inviteRedeemDecision({ ...base, issuerWeeklyUsed: 5 }).error,
+  'issuer_quota',
 );
 assert.equal(
-  inviteRedeemDecision({ ...base, issuerActiveGuests: 3, maxGuests: 3 }).error,
-  'issuer_full',
+  inviteRedeemDecision({ ...base, issuerWeeklyUsed: 3, weeklyQuota: 3 }).error,
+  'issuer_quota',
 );
-ok('plafond : 5 invités actifs max → issuer_full au 6e');
+ok('quota hebdo : 5 invitations/semaine → issuer_quota au 6e (se renouvelle)');
 
 // 9) GARDE-FOU CLÉ : un appareil ne peut utiliser qu'UN pass à vie.
 assert.equal(

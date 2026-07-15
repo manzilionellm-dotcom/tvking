@@ -32,6 +32,9 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
   String _mac = '…';
   bool _busy = false;
   bool _copied = false;
+  // 1er lancement : 'choose' = choix Mode réel / Mode invité ; 'real' =
+  // contenu d'activation habituel. Le Mode invité ouvre le Pass Partage.
+  String _mode = 'choose';
   Timer? _poll;
 
   @override
@@ -106,6 +109,46 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
                 textAlign: TextAlign.center,
                 style: TvTokens.ui(19, color: TvTokens.muted)),
             const SizedBox(height: 22),
+
+            // ===== DEUX MODES au 1er lancement =====
+            if (_mode == 'choose') ...<Widget>[
+              Text('Comment veux-tu commencer ?',
+                  textAlign: TextAlign.center,
+                  style: TvTokens.ui(22, weight: FontWeight.w800,
+                      color: TvTokens.text)),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: 560,
+                child: Text(
+                  'Un ami t’a invité ? Passe en Mode invité et profite de '
+                  '2 jours gratuits pour regarder le match ou un film ensemble.',
+                  textAlign: TextAlign.center,
+                  style: TvTokens.ui(15, color: TvTokens.muted),
+                ),
+              ),
+              const SizedBox(height: 24),
+              _ModeButton(
+                emoji: '🔓',
+                title: 'Mode réel',
+                subtitle: 'Activer mon abonnement',
+                autofocus: true,
+                onSelect: () => setState(() => _mode = 'real'),
+              ),
+              const SizedBox(height: 14),
+              _ModeButton(
+                emoji: '🎁',
+                title: 'Mode invité',
+                subtitle: 'J’ai un code d’ami — 2 jours gratuits',
+                onSelect: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const TvShell(child: TvInviteScreen()),
+                  ),
+                ),
+              ),
+            ],
+
+            // ===== MODE RÉEL : activation habituelle =====
+            if (_mode == 'real') ...<Widget>[
             TvPricePill(label: context.l10n.tvLifetime, amount: '9,99 \$'),
             const SizedBox(height: 38),
 
@@ -223,7 +266,65 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
                 style: TvTokens.ui(12, color: TvTokens.mutedDim),
               ),
             ),
+            ], // fin du Mode réel
           ],
+    );
+  }
+}
+
+/// Gros bouton de choix de mode (Mode réel / Mode invité), au 1er lancement.
+class _ModeButton extends StatelessWidget {
+  const _ModeButton({
+    required this.emoji,
+    required this.title,
+    required this.subtitle,
+    required this.onSelect,
+    this.autofocus = false,
+  });
+  final String emoji;
+  final String title;
+  final String subtitle;
+  final VoidCallback onSelect;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.large,
+      autofocus: autofocus,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        final Color fg = focused ? TvTokens.goldBright : TvTokens.text;
+        return Container(
+          width: 560,
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(TvTokens.rButton),
+            border: Border.all(color: focused ? TvTokens.gold : TvTokens.line),
+            color: focused ? TvTokens.sel : Colors.transparent,
+          ),
+          child: Row(
+            children: <Widget>[
+              Text(emoji, style: const TextStyle(fontSize: 30)),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(title,
+                        style: TvTokens.ui(21, weight: FontWeight.w800, color: fg)),
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style: TvTokens.ui(14, color: TvTokens.muted)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded,
+                  color: focused ? TvTokens.goldBright : TvTokens.muted, size: 26),
+            ],
+          ),
+        );
+      },
     );
   }
 }

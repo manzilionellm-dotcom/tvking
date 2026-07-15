@@ -33,8 +33,8 @@ class _TvInviteScreenState extends State<TvInviteScreen> {
   // --- Génération (abonné) ---
   bool _genBusy = false;
   String? _code;
-  int _activeGuests = 0;
-  int _maxGuests = 5;
+  int _weeklyUsed = 0;
+  int _weeklyQuota = 5;
   String? _genMessage;
 
   // --- Saisie (invité) ---
@@ -72,8 +72,8 @@ class _TvInviteScreenState extends State<TvInviteScreen> {
       setState(() {
         _genBusy = false;
         _code = (r['code'] ?? '').toString();
-        _activeGuests = (r['active_guests'] as num?)?.toInt() ?? _activeGuests;
-        _maxGuests = (r['max_guests'] as num?)?.toInt() ?? _maxGuests;
+        _weeklyUsed = (r['weekly_used'] as num?)?.toInt() ?? _weeklyUsed;
+        _weeklyQuota = (r['weekly_quota'] as num?)?.toInt() ?? _weeklyQuota;
         _genMessage = null;
       });
       return;
@@ -139,8 +139,8 @@ class _TvInviteScreenState extends State<TvInviteScreen> {
         'code_expired' => 'Ce code a expiré. Demande-en un nouveau.',
         'own_code' => 'C’est ton propre code 🙂',
         'issuer_not_paid' => 'L’abonnement de ton ami n’est plus actif.',
-        'issuer_full' =>
-          'Ton ami a déjà 5 invités actifs. Réessaie plus tard.',
+        'issuer_quota' =>
+          'Ton ami a utilisé ses 5 invitations de la semaine. Ça se renouvelle dans quelques jours.',
         'already_active' => 'Ton appareil a déjà un accès actif.',
         'already_used_once' =>
           'Tu as déjà profité d’un pass gratuit. Pour continuer, passe à l’abonnement.',
@@ -195,8 +195,8 @@ class _TvInviteScreenState extends State<TvInviteScreen> {
         children: <Widget>[
           Text(
             canInvite
-                ? 'Génère un code et donne-le à ton ami. Jusqu’à $_maxGuests invités en même temps.'
-                : 'Réservé aux abonnés. Une fois abonné, tu pourras inviter jusqu’à $_maxGuests amis.',
+                ? 'Génère un code et donne-le à ton ami. Tu as $_weeklyQuota invitations par semaine — ça se renouvelle chaque semaine. 🎉'
+                : 'Réservé aux abonnés. Une fois abonné, tu recevras $_weeklyQuota invitations CHAQUE SEMAINE à partager avec tes amis.',
             style: const TextStyle(fontSize: 15, color: TvTokens.muted),
           ),
           const SizedBox(height: 18),
@@ -219,7 +219,7 @@ class _TvInviteScreenState extends State<TvInviteScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            Text('Invités actifs : $_activeGuests / $_maxGuests · code valable 48 h',
+            Text('Cette semaine : $_weeklyUsed / $_weeklyQuota invitations · code valable 48 h',
                 style: const TextStyle(fontSize: 13, color: TvTokens.mutedDim)),
             const SizedBox(height: 14),
           ],
