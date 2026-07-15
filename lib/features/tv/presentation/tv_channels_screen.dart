@@ -6,8 +6,8 @@
 //      jaune ») ;
 //    • centre  : liste des CHAÎNES du groupe (n° + logo + nom + ★ favori +
 //      programme en cours) ;
-//    • droite  : APERÇU de la chaîne survolée (grand logo + nom + EPG now/next
-//      + bouton « Regarder »).
+//    • droite  : APERÇU de la chaîne survolée (aperçu VIDÉO en direct — muet,
+//      anti-rebond, repli logo — + nom + EPG now/next + bouton « Regarder »).
 //
 //  Réutilise UNIQUEMENT des briques existantes (PlaylistRepository,
 //  EpgRepository, FavoritesRepository, MiniEpgNowNext, TvChannelLogo,
@@ -29,6 +29,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
 import '../core/tv_tokens.dart';
+import 'tv_live_preview.dart';
 import 'tv_player_screen.dart';
 
 const String _kAll = 'Toutes les chaînes';
@@ -51,6 +52,11 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
   Channel? _preview;
   Set<String> _favs = <String>{};
   bool _loading = true;
+
+  /// Aperçu vidéo actif ? Passé à `false` AVANT d'ouvrir le plein écran
+  /// (le lecteur d'aperçu est libéré → jamais 2 flux ouverts en même temps),
+  /// puis rétabli au retour.
+  bool _previewLive = true;
 
   @override
   void initState() {
@@ -104,11 +110,18 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
     });
   }
 
-  void _play(int i) {
+  Future<void> _play(int i) async {
     if (_visible.isEmpty) return;
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => TvPlayerScreen(channels: _visible, startIndex: i),
+    final List<Channel> channels = _visible;
+    // Libère le lecteur d'APERÇU avant d'ouvrir le plein écran (l'écran reste
+    // monté sous la route poussée : sans ça, les 2 flux resteraient ouverts).
+    setState(() => _previewLive = false);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => TvPlayerScreen(channels: channels, startIndex: i),
     ));
+    if (mounted) setState(() => _previewLive = true);
   }
 
   int _countFor(String cat) =>
@@ -218,21 +231,11 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Container(
-                  height: 150,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: <Color>[TvTokens.card, TvTokens.bg],
-                    ),
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-                    border: Border.all(color: TvTokens.hairline),
-                  ),
-                  alignment: Alignment.center,
-                  child: TvChannelLogo(
-                      logoUrl: ch.logoUrl, label: ch.name, size: 88, radius: 12),
+                // Aperçu vidéo EN DIRECT de la chaîne focalisée (muet,
+                // anti-rebond ~600 ms, repli logo — cf. TvLivePreview).
+                AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: TvLivePreview(channel: ch, enabled: _previewLive),
                 ),
                 const SizedBox(height: 14),
                 Text(ch.cleanName,

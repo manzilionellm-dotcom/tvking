@@ -32,6 +32,7 @@ class NativeVideoController extends ChangeNotifier {
 
   MethodChannel? _channel;
   String? _pendingUrl;
+  String? _pendingUserAgent;
   double _volume = 1.0; // multi-vue : 0 = muet (tuile inactive), 1 = son actif
   bool _attached = false;
   bool _disposed = false;
@@ -107,7 +108,13 @@ class NativeVideoController extends ChangeNotifier {
     ch.setMethodCallHandler(_onNativeCall);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
-      ch.invokeMethod<void>('setUrl', <String, dynamic>{'url': url});
+      // La signature (User-Agent) demandée AVANT le rattachement est rejouée
+      // ici — sinon un setUrl(url, userAgent:…) émis pendant la création de la
+      // PlatformView (cas de l'aperçu « En direct ») perdrait sa signature.
+      ch.invokeMethod<void>('setUrl', <String, dynamic>{
+        'url': url,
+        if (_pendingUserAgent != null) 'userAgent': _pendingUserAgent,
+      });
     }
     // Réapplique le volume voulu dès le rattachement (utile en multi-vue où une
     // tuile démarre muette).
@@ -208,7 +215,9 @@ class NativeVideoController extends ChangeNotifier {
         if (userAgent != null) 'userAgent': userAgent,
       });
     } else {
-      _pendingUrl = url; // pas encore rattaché : on jouera ça à l'attach.
+      // Pas encore rattaché : on jouera ça (URL + signature) à l'attach.
+      _pendingUrl = url;
+      _pendingUserAgent = userAgent;
     }
   }
 
