@@ -425,19 +425,27 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
               (papa/maman/enfants). Mêmes plan, activés ENSEMBLE en 1 clic. */}
           <div className="rounded-lg border border-accent/15 bg-accent/[0.03] p-3">
             <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-accent-bright">
-              👨‍👩‍👧 Famille (optionnel) — clonage familial
+              👨‍👩‍👧 Clonage familial — jusqu'à 5 appareils
             </div>
             <p className="mb-2 text-[11px] text-ink-tertiary">
-              Ajoute les autres appareils du foyer (jusqu'à 2 de plus). Ils
-              reçoivent le MÊME abonnement <strong>et le MÊME code de chaînes</strong>
-              {' '}(clonage familial) — une seule ligne fournisseur, « un seul
-              flux » partagé. Les deux boutons ci-dessous s'appliquent à toute la
-              famille. Total&nbsp;:{' '}
-              {1 + familyMacs.filter((x) => x.trim() && x.trim() !== 'MK:').length}{' '}
-              appareil(s).
+              La MAC principale du haut = <strong>papa</strong>. Ajoute jusqu'à
+              <strong> 4 clones</strong> (maman, enfants…) : ils reçoivent le MÊME
+              abonnement <strong>et le MÊME code de chaînes</strong> — une seule
+              ligne fournisseur, clonée. Les deux boutons ci-dessous s'appliquent
+              à toute la famille.
             </p>
+            <div className="mb-2 inline-flex items-center gap-1.5 rounded-md bg-accent/10 px-2 py-1 text-[11px] font-semibold text-accent-bright">
+              👨 Papa +{' '}
+              {familyMacs.filter((x) => x.trim() && x.trim() !== 'MK:').length}{' '}
+              clone(s) ·{' '}
+              {Math.max(0, 4 - familyMacs.filter((x) => x.trim() && x.trim() !== 'MK:').length)}{' '}
+              clonage(s) restant(s)
+            </div>
             {familyMacs.map((fm, i) => (
               <div key={i} className="mb-2 flex items-center gap-2">
+                <span className="shrink-0 rounded bg-white/5 px-1.5 py-0.5 text-[10px] font-bold text-ink-tertiary">
+                  Clone {i + 1}
+                </span>
                 <input
                   value={fm}
                   onChange={(e) =>
@@ -458,13 +466,13 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
                 </button>
               </div>
             ))}
-            {familyMacs.length < 2 && (
+            {familyMacs.length < 4 && (
               <button
                 type="button"
                 onClick={() => setFamilyMacs((prev) => [...prev, 'MK:'])}
                 className="w-full rounded-md border border-dashed border-white/15 px-3 py-2 text-xs text-ink-secondary transition hover:border-accent/50 hover:text-accent-bright"
               >
-                + Ajouter un appareil de la famille ({familyMacs.length}/2)
+                + Cloner un appareil de la famille ({familyMacs.length}/4)
               </button>
             )}
           </div>
