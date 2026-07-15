@@ -29,6 +29,21 @@ prendre un abonnement.
   principe qu'au-dessus — l'invité n'a pas de source à lui). ⟵ *à confirmer :
   une chaîne précise, ou toute la source de l'inviteur pendant l'essai ?*
 
+### Mode C — « Partage entre MES appareils » (transfert / handoff)
+- **Réservé aux appareils PAYÉS** (abonnement à l'année / à vie — jamais essai
+  ni pass invité).
+- L'utilisateur déplace SON abonnement entre SES propres appareils (TV ↔
+  laptop ↔ téléphone).
+- **Jamais en simultané** : un seul appareil actif à la fois. Activer l'accès
+  sur l'appareil B **libère/coupe** l'appareil A ; on peut le ramener quand on
+  veut (nouveau transfert).
+- **Gratuit** — à distinguer de l'option **Famille** (simultanée, vendue par le
+  revendeur). Ici c'est solo, non simultané.
+- Mécanique : `POST /api/invite/transfer { mac (payé), target_mac }` → l'appareil
+  cible reçoit la MÊME licence (plan + échéance) ; l'appareil source est mis en
+  pause (block_status) jusqu'au prochain transfert. Anti-abus : source doit être
+  payée et jouable ; on ne « transfère » pas un essai/pass.
+
 ## 1. Comment on connecte l'invité (les deux modes)
 
 - **Par CODE** : l'inviteur génère un code à 6 chiffres ; l'invité le tape sur
