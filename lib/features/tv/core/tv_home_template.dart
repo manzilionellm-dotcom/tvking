@@ -13,6 +13,16 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../playlists/data/favorites_repository.dart';
+
+/// Univers de favoris associé à un template : « The Few » (Classique) garde ses
+/// favoris historiques (portée `default`) ; « Seven » (IBO/TiviMate) a les
+/// siens (portée `seven`). Chaque univers est autonome sur les favoris.
+String favoritesScopeForTemplate(TvHomeTemplate t) =>
+    t == TvHomeTemplate.classic
+        ? FavoritesRepository.defaultScope
+        : 'seven';
+
 enum TvHomeTemplate {
   classic, // home historique : menu compact en haut + contenu plein écran
   launcher, // grandes tuiles façon lanceur (IBO « grille »), simple et direct
@@ -87,6 +97,9 @@ class TvHomeTemplateRepository extends ChangeNotifier {
     } catch (_) {
       _template = TvHomeTemplate.classic;
     }
+    // Chaque univers a ses favoris → on aligne la portée sur le template actif.
+    await FavoritesRepository.instance
+        .setScope(favoritesScopeForTemplate(_template));
     notifyListeners();
   }
 
@@ -94,6 +107,8 @@ class TvHomeTemplateRepository extends ChangeNotifier {
   Future<void> setTemplate(TvHomeTemplate t) async {
     if (t == _template) return;
     _template = t;
+    // Bascule d'univers → bascule des favoris (chaque univers a les siens).
+    await FavoritesRepository.instance.setScope(favoritesScopeForTemplate(t));
     notifyListeners();
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
