@@ -3244,16 +3244,15 @@ function safeJsonParse(s) {
   try { return JSON.parse(s); } catch (_) { return null; }
 }
 
-/// Octroie un PASS INVITÉ (licence de `hours` heures, 0 crédit) à [mac].
-/// Réutilise l'octroi D1 (licence + dégel du device). {ok, guestUntil}.
-async function grantGuestPassLicense(env, mac, hours, now) {
-  const guestUntil = now + hours * 60 * 60 * 1000;
+/// Pose/renouvelle la licence active de [mac] : plan + échéance (expiresAt =
+/// null → à vie). Crée le device au besoin, dégèle le device. {ok} ou
+/// {ok:false, error}. Base commune de l'octroi invité et du transfert.
+async function setDeviceLicense(env, mac, plan, expiresAt, now) {
   await ensureD1Device(env, mac, now);
   const dev = await env.DB
     .prepare('SELECT id, customer_id FROM devices WHERE mac = ?').bind(mac).first();
   if (!dev) return { ok: false, error: 'device_error' };
   const APP_ID = 'app_7motion';
-  const plan = 'trial_' + hours + 'h';
   const lic = await env.DB
     .prepare('SELECT id FROM licenses WHERE device_id = ? ' +
              'ORDER BY (expires_at IS NULL) DESC, expires_at DESC LIMIT 1')
@@ -3261,17 +3260,63 @@ async function grantGuestPassLicense(env, mac, hours, now) {
   if (lic) {
     await env.DB.prepare(
       "UPDATE licenses SET status='active', plan=?, expires_at=?, updated_at=? WHERE id=?",
-    ).bind(plan, guestUntil, now, lic.id).run();
+    ).bind(plan, expiresAt, now, lic.id).run();
   } else {
     const lid = 'lic_' + crypto.randomUUID().replace(/-/g, '').slice(0, 18);
     await env.DB.prepare(
       "INSERT INTO licenses " +
       "(id, customer_id, device_id, app_id, status, plan, started_at, expires_at, auto_renew, reseller_id, created_at, updated_at) " +
       "VALUES (?, ?, ?, ?, 'active', ?, ?, ?, 0, ?, ?, ?)",
-    ).bind(lid, dev.customer_id, dev.id, APP_ID, plan, now, guestUntil, null, now, now).run();
+    ).bind(lid, dev.customer_id, dev.id, APP_ID, plan, now, expiresAt, null, now, now).run();
   }
   await env.DB.prepare('UPDATE devices SET block_status = NULL WHERE id = ?').bind(dev.id).run();
-  return { ok: true, guestUntil };
+  return { ok: true };
+}
+
+/// Octroie un PASS INVITÉ (licence de `hours` heures, 0 crédit) à [mac].
+async function grantGuestPassLicense(env, mac, hours, now) {
+  const guestUntil = now + hours * 60 * 60 * 1000;
+  const r = await setDeviceLicense(env, mac, 'trial_' + hours + 'h', guestUntil, now);
+  return r.ok ? { ok: true, guestUntil } : r;
+}
+
+/// POST /api/invite/transfer { mac (payé), target_mac } → « Partage entre MES
+/// appareils » : déplace l'abonnement (plan + échéance) vers l'appareil cible
+/// et met la SOURCE en pause (expirée) → JAMAIS en simultané. Réservé aux
+/// abonnements PAYÉS (jamais essai/pass invité). Réversible (re-transfert).
+async function handleInviteTransfer(request, env) {
+  let body;
+  try { body = await request.json(); } catch (_) { return badRequest('invalid JSON body'); }
+  const mac = String(body?.mac || '').toUpperCase();
+  const target = String(body?.target_mac || '').toUpperCase();
+  if (!MAC_RX.test(mac) || !MAC_RX.test(target)) return badRequest('invalid mac');
+  if (mac === target) return json({ ok: false, error: 'same_device' });
+  if (!env.DB) return json({ ok: false, error: 'invite_unavailable' });
+  const now = Date.now();
+  // La SOURCE doit être PAYÉE et jouable — on ne transfère pas un essai/pass.
+  const st = await d1StatusForMac(env, mac);
+  if (!invitePaidPlayable(st)) return json({ ok: false, error: 'not_paid' });
+  // Lit le plan + échéance actuels de la source (ce qui « voyage »).
+  const dev = await env.DB
+    .prepare('SELECT id FROM devices WHERE mac = ?').bind(mac).first();
+  if (!dev) return json({ ok: false, error: 'device_error' });
+  const lic = await env.DB
+    .prepare('SELECT plan, expires_at FROM licenses WHERE device_id = ? ' +
+             'ORDER BY (expires_at IS NULL) DESC, expires_at DESC LIMIT 1')
+    .bind(dev.id).first();
+  if (!lic) return json({ ok: false, error: 'not_paid' });
+  const plan = lic.plan || 'yearly';
+  const expiresAt = lic.expires_at === null || lic.expires_at === undefined
+      ? null : Number(lic.expires_at);
+  // 1) La cible reçoit LA MÊME licence (plan + échéance).
+  const put = await setDeviceLicense(env, target, plan, expiresAt, now);
+  if (!put.ok) return json({ ok: false, error: put.error });
+  // 2) La source passe EN PAUSE (échéance = maintenant → non jouable). Le
+  //    plan reste, on pourra re-transférer dans l'autre sens.
+  await env.DB.prepare(
+    "UPDATE licenses SET status='expired', expires_at=?, updated_at=? WHERE device_id=?",
+  ).bind(now, now, dev.id).run();
+  return json({ ok: true, target: maskMac(target), plan, expires_at: expiresAt });
 }
 
 /// POST /api/invite/grant { mac, guest_mac, hours?, channel?, mode? }
@@ -5257,6 +5302,10 @@ async function handleRequest(request, env, ctx) {
       if (segments[2] === 'grant' && segments.length === 3) {
         if (request.method !== 'POST') return badRequest('only POST supported');
         return handleInviteGrant(request, env);
+      }
+      if (segments[2] === 'transfer' && segments.length === 3) {
+        if (request.method !== 'POST') return badRequest('only POST supported');
+        return handleInviteTransfer(request, env);
       }
       if (segments[2] === 'mine' && segments.length === 4) {
         if (request.method !== 'GET') return badRequest('only GET supported');
