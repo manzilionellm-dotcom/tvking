@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+  <defs>
+    <radialGradient id="b" cx="50%" cy="42%" r="75%">
+      <stop offset="0" stop-color="#1b2130"/><stop offset="0.5" stop-color="#10131b"/><stop offset="1" stop-color="#07080d"/>
+    </radialGradient>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f0d488"/><stop offset="1" stop-color="#a97e2e"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#b)"/>
+  <rect x="80" y="70" width="70" height="70" rx="16" fill="#0b0d14"/>
+  <text x="115" y="122" text-anchor="middle" font-family="Inter,Arial" font-weight="800" font-size="48" fill="url(#g)">7</text>
+  <text x="170" y="120" font-family="Inter,Arial" font-weight="700" font-size="40" letter-spacing="6" fill="#f4e6c2">SEVEN</text>
+  <text x="80" y="520" font-family="Inter,Arial" font-weight="800" font-size="130" fill="#ffffff">Templates d'accueil</text>
+  <text x="80" y="610" font-family="Inter,Arial" font-weight="400" font-size="52" fill="#7fd1ff">IBO grille · IBO rails · TiviMate</text>
+  <rect x="80" y="720" width="1760" height="4" fill="#d2a854" opacity="0.35"/>
+  <text x="80" y="1000" font-family="Inter,Arial" font-size="34" fill="#6b7178">Aperçu — à remplacer par une capture réelle de l'app SEVEN</text>
+</svg>

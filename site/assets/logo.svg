@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" width="320" height="80">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f0d488"/>
+      <stop offset="0.55" stop-color="#d2a854"/>
+      <stop offset="1" stop-color="#a97e2e"/>
+    </linearGradient>
+  </defs>
+  <!-- pastille « 7 » or -->
+  <rect x="2" y="10" width="60" height="60" rx="14" fill="#0b0d14"/>
+  <text x="32" y="60" text-anchor="middle" font-family="Inter,Arial" font-weight="800"
+        font-size="48" fill="url(#g)">7</text>
+  <!-- wordmark SEVEN -->
+  <text x="80" y="53" font-family="Inter,Arial" font-weight="700" font-size="40"
+        letter-spacing="2" fill="#111">SEVEN</text>
+</svg>

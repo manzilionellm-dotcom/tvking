@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="70%">
+      <stop offset="0" stop-color="#232838"/>
+      <stop offset="0.5" stop-color="#12141c"/>
+      <stop offset="1" stop-color="#07080d"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6e6b8"/>
+      <stop offset="0.55" stop-color="#d2a854"/>
+      <stop offset="1" stop-color="#a97e2e"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <text x="600" y="300" text-anchor="middle" font-family="Inter,Arial" font-weight="800"
+        font-size="260" fill="url(#gold)">7</text>
+  <text x="600" y="410" text-anchor="middle" font-family="Inter,Arial" font-weight="700"
+        font-size="72" letter-spacing="18" fill="#f4e6c2">SEVEN</text>
+  <text x="600" y="470" text-anchor="middle" font-family="Inter,Arial" font-weight="400"
+        font-size="30" fill="#9aa0a8">Bring your own playlists. Built for Android TV.</text>
+</svg>

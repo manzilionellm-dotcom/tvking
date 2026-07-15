@@ -1,0 +1,8 @@
+<!-- PLACEHOLDER — replace with the OFFICIAL "Get it on Google Play" badge
+     from https://play.google.com/intl/en_us/badges/ (Google trademark). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="200" height="60">
+  <rect width="200" height="60" rx="8" fill="#0b0d14" stroke="#3a3e45"/>
+  <polygon points="20,16 44,30 20,44" fill="#d2a854"/>
+  <text x="60" y="27" font-family="Inter,Arial" font-size="12" fill="#9aa0a8">GET IT ON</text>
+  <text x="60" y="46" font-family="Inter,Arial" font-weight="700" font-size="20" fill="#fff">Google Play</text>
+</svg>
