@@ -148,10 +148,73 @@ class _TemplatePreview extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: TvTokens.line),
         ),
-        child: template == TvHomeTemplate.launcher
-            ? _launcherMock()
-            : _classicMock(),
+        child: _mockFor(template),
       ),
+    );
+  }
+
+  Widget _mockFor(TvHomeTemplate t) {
+    switch (t) {
+      case TvHomeTemplate.launcher:
+        return _launcherMock();
+      case TvHomeTemplate.rails:
+        return _railsMock();
+      case TvHomeTemplate.classic:
+        return _classicMock();
+    }
+  }
+
+  // Rails : barre haute + héro/colonne + rangée d'icônes + rail bas.
+  Widget _railsMock() {
+    Widget iconRow(int n) => Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            for (int i = 0; i < n; i++) ...<Widget>[
+              Expanded(child: _box()),
+              if (i != n - 1) const SizedBox(width: 4),
+            ],
+          ],
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        SizedBox(
+          height: 8,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              const Spacer(flex: 6),
+              Expanded(flex: 3, child: _box(color: _accent)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        Expanded(
+          flex: 4,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Expanded(flex: 66, child: _box(color: _accent)),
+              const SizedBox(width: 6),
+              Expanded(
+                flex: 32,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Expanded(child: _box()),
+                    const SizedBox(height: 4),
+                    Expanded(child: _box()),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        SizedBox(height: 12, child: iconRow(5)),
+        const SizedBox(height: 6),
+        Expanded(flex: 2, child: iconRow(4)),
+      ],
     );
   }
 

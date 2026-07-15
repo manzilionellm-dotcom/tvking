@@ -16,6 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 enum TvHomeTemplate {
   classic, // home historique : menu compact en haut + contenu plein écran
   launcher, // grandes tuiles façon lanceur (IBO « grille »), simple et direct
+  rails, // aperçu + rangée d'icônes + rail de favoris (IBO « rails »)
 }
 
 extension TvHomeTemplateInfo on TvHomeTemplate {
@@ -25,6 +26,8 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
         return 'classic';
       case TvHomeTemplate.launcher:
         return 'launcher';
+      case TvHomeTemplate.rails:
+        return 'rails';
     }
   }
 
@@ -35,6 +38,8 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
         return 'Classique';
       case TvHomeTemplate.launcher:
         return 'IBO — Grandes tuiles';
+      case TvHomeTemplate.rails:
+        return 'IBO — Rails';
     }
   }
 
@@ -45,6 +50,8 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
         return 'Menu compact en haut, liste des chaînes en grand.';
       case TvHomeTemplate.launcher:
         return 'Grandes tuiles bordeaux façon IBO — simple et direct.';
+      case TvHomeTemplate.rails:
+        return 'Aperçu + rangée d\'icônes + rail de favoris (façon IBO rails).';
     }
   }
 }

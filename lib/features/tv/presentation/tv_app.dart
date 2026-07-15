@@ -45,6 +45,7 @@ import '../../sports/domain/sport_models.dart';
 import '../core/tv_ambience.dart';
 import '../core/tv_home_template.dart';
 import 'tv_launcher_home_screen.dart';
+import 'tv_rails_home_screen.dart';
 import 'tv_care_nudge.dart';
 import 'tv_night_comfort.dart';
 import 'tv_profiles_screen.dart' show tvProfileDisplayName;
@@ -476,11 +477,16 @@ class _TvGateState extends State<TvGate> {
             // reconstruit à chaud quand l'utilisateur change de template.
             : ListenableBuilder(
                 listenable: TvHomeTemplateRepository.instance,
-                builder: (BuildContext context, Widget? _) =>
-                    TvHomeTemplateRepository.instance.template ==
-                            TvHomeTemplate.launcher
-                        ? const TvLauncherHomeScreen()
-                        : const TvHomeScreen(),
+                builder: (BuildContext context, Widget? _) {
+                  switch (TvHomeTemplateRepository.instance.template) {
+                    case TvHomeTemplate.launcher:
+                      return const TvLauncherHomeScreen();
+                    case TvHomeTemplate.rails:
+                      return const TvRailsHomeScreen();
+                    case TvHomeTemplate.classic:
+                      return const TvHomeScreen();
+                  }
+                },
               );
     // Retour : sur l'ACCUEIL, c'est TvHomeScreen qui gère (contenu → menu →
     // boîte Quitter au dernier niveau). Ce PopScope racine (même route) ne
