@@ -3144,6 +3144,7 @@ async function handleFamilyJoin(request, env) {
 // =========================================================
 const INVITE_CODE_TTL_MS = 48 * 60 * 60 * 1000; // le code doit être utilisé sous 48 h
 const INVITE_GUEST_DAYS = 2; // durée du pass invité (jours)
+const INVITE_MAX_GUESTS = 5; // un abonné peut inviter jusqu'à 5 personnes
 let _inviteSchemaError = '';
 
 async function ensureInviteSchema(env) {
@@ -3186,7 +3187,8 @@ function invitePaidPlayable(st) {
 ///   • appareil pas déjà payé (already_active) ;
 ///   • UN pass par appareil À VIE (already_used_once).
 export function inviteRedeemDecision(
-    { mac, code, codeRow, now, issuerStatus, ownStatus, alreadyRedeemed }) {
+    { mac, code, codeRow, now, issuerStatus, ownStatus, alreadyRedeemed,
+      issuerActiveGuests = 0, maxGuests = INVITE_MAX_GUESTS }) {
   if (!/^[0-9]{6}$/.test(String(code || ''))) return { ok: false, error: 'code_invalid' };
   if (!codeRow) return { ok: false, error: 'code_invalid' };
   if (codeRow.redeemed_at) return { ok: false, error: 'code_used' };
@@ -3194,6 +3196,11 @@ export function inviteRedeemDecision(
   const issuer = String(codeRow.issuer_mac || '').toUpperCase();
   if (issuer === String(mac || '').toUpperCase()) return { ok: false, error: 'own_code' };
   if (!invitePaidPlayable(issuerStatus)) return { ok: false, error: 'issuer_not_paid' };
+  // PLAFOND : un abonné peut inviter jusqu'à `maxGuests` personnes ACTIVES
+  // en même temps (pass encore valide). Au-delà → refus.
+  if (Number(issuerActiveGuests) >= Number(maxGuests)) {
+    return { ok: false, error: 'issuer_full' };
+  }
   if (ownStatus && ownStatus.paid && !ownStatus.expired) {
     return { ok: false, error: 'already_active' };
   }
@@ -3227,7 +3234,20 @@ async function handleInviteCreate(request, env) {
       'VALUES (?, ?, NULL, ?, ?, ?, NULL, NULL)',
     )
     .bind(code, mac, 'trial_2d', now, expiresAt).run();
-  return json({ ok: true, code, expires_at: expiresAt, guest_days: INVITE_GUEST_DAYS });
+  // Combien d'invités ACTIFS a déjà cet abonné (pour afficher « X/5 »).
+  const activeCnt = await env.DB
+    .prepare(
+      'SELECT COUNT(*) AS n FROM app_invites ' +
+      'WHERE issuer_mac = ? AND redeemed_at IS NOT NULL AND guest_until > ?',
+    ).bind(mac, now).first();
+  return json({
+    ok: true,
+    code,
+    expires_at: expiresAt,
+    guest_days: INVITE_GUEST_DAYS,
+    active_guests: (activeCnt && Number(activeCnt.n)) || 0,
+    max_guests: INVITE_MAX_GUESTS,
+  });
 }
 
 /// POST /api/invite/redeem { mac, code } → un NOUVEL appareil active 2 jours.
@@ -3252,6 +3272,12 @@ async function handleInviteRedeem(request, env) {
   const prev = await env.DB
     .prepare('SELECT 1 AS x FROM app_invites WHERE redeemer_mac = ? LIMIT 1')
     .bind(mac).first();
+  // Nombre d'invités ACTIFS de l'émetteur (pass encore valide) → plafond 5.
+  const activeCnt = issuer ? await env.DB
+    .prepare(
+      'SELECT COUNT(*) AS n FROM app_invites ' +
+      'WHERE issuer_mac = ? AND redeemed_at IS NOT NULL AND guest_until > ?',
+    ).bind(issuer, now).first() : null;
   const decision = inviteRedeemDecision({
     mac,
     code,
@@ -3260,6 +3286,8 @@ async function handleInviteRedeem(request, env) {
     issuerStatus: ist,
     ownStatus: own,
     alreadyRedeemed: !!prev,
+    issuerActiveGuests: (activeCnt && Number(activeCnt.n)) || 0,
+    maxGuests: INVITE_MAX_GUESTS,
   });
   if (!decision.ok) return json({ ok: false, error: decision.error });
 
