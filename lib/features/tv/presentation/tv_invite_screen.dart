@@ -22,6 +22,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
 import '../core/tv_tokens.dart';
+import 'tv_components.dart' show TvLogo;
 
 class TvInviteScreen extends StatefulWidget {
   const TvInviteScreen({super.key});
