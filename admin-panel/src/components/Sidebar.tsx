@@ -31,6 +31,7 @@ const OWNER_NAV: NavSection[] = [
       { key: 'nav.devices',     to: '/devices' },
       { key: 'nav.radar',       to: '/radar' },
       { key: 'nav.resellers',   to: '/resellers' },
+      { key: 'nav.credits',     to: '/credits' },
       { key: 'nav.families',    to: '/families' },
       { key: 'nav.transfer',    to: '/transfer' },
       { key: 'nav.pricing',     to: '/tarifs' },
@@ -76,7 +77,8 @@ const RESELLER_NAV: NavSection[] = [
     items: [
       { key: 'nav.activate',      to: '/activate',    cap: 'activate' },
       { key: 'nav.families',      to: '/families',    cap: 'activate' },
-      { key: 'nav.transfer',      to: '/transfer',    cap: 'activate' },
+      { key: 'nav.transfer',      to: '/transfer',    cap: 'transfer' },
+      { key: 'nav.credits',       to: '/credits',     cap: 'buy_credits' },
       { key: 'nav.myResellers',   to: '/resellers',   cap: 'resellers' },
       { key: 'nav.myDevices',     to: '/devices',     cap: 'devices' },
       { key: 'nav.myActivations', to: '/activations', cap: 'activations' },

@@ -31,6 +31,7 @@ import { TransferPage } from '@/pages/TransferPage';
 import { FamiliesPage } from '@/pages/FamiliesPage';
 import { RadarPage } from '@/pages/RadarPage';
 import { GatewayPage } from '@/pages/GatewayPage';
+import { CreditsPage } from '@/pages/CreditsPage';
 
 /// Etats possibles de l'app :
 ///   - bootstrapping : on verifie si le token est encore valide
@@ -97,10 +98,13 @@ export default function App() {
   }
 
   if (status === 'logged_out') {
+    // On rend LoginPage pour N'IMPORTE QUELLE URL (sans rediriger), afin de
+    // PRÉSERVER le lien revendeur dédié : /revendeur, /?revendeur ou le
+    // sous-domaine revendeur.* — LoginPage lit l'URL pour se mettre en mode
+    // revendeur seul. Un redirect vers /login effacerait ce marqueur.
     return (
       <Routes>
-        <Route path="/login" element={<LoginPage onLoggedIn={handleLoggedIn} />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<LoginPage onLoggedIn={handleLoggedIn} />} />
       </Routes>
     );
   }
@@ -138,6 +142,7 @@ export default function App() {
       <Route path="/families" element={<FamiliesPage onLogout={handleLogout} />} />
       <Route path="/radar" element={<RadarPage onLogout={handleLogout} />} />
       <Route path="/gateway" element={<GatewayPage onLogout={handleLogout} />} />
+      <Route path="/credits" element={<CreditsPage onLogout={handleLogout} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -127,13 +127,19 @@ export interface MeUser {
 
 /// Liste canonique des droits attribuables à un revendeur (cases à
 /// cocher, miroir du backend) + libellés FR pour l'UI admin.
-export const RESELLER_CAPS: { key: string; label: string }[] = [
-  { key: 'activate', label: 'Activer appareils' },
-  { key: 'sources', label: 'Pousser source' },
-  { key: 'resellers', label: 'Sous-revendeurs' },
+export const RESELLER_CAPS: { key: string; label: string; ownerOnly?: boolean }[] = [
+  { key: 'activate', label: 'Activer un client' },
+  { key: 'block', label: 'Bloquer un client' },
+  { key: 'transfer', label: 'Transférer un client' },
+  { key: 'buy_credits', label: 'Achat de crédit' },
+  { key: 'sources', label: 'Pousser une source' },
   { key: 'devices', label: 'Voir appareils' },
   { key: 'activations', label: 'Voir activations' },
+  // Accordé par l'OWNER SEUL : droit de créer des sous-revendeurs.
+  { key: 'resellers', label: 'Créer des sous-revendeurs', ownerOnly: true },
 ];
+/// Droits cochés par défaut à la création d'un revendeur (miroir backend).
+export const RESELLER_DEFAULT_CAPS = ['activate', 'block', 'transfer', 'buy_credits'];
 /// true si l'utilisateur courant a la capacité `cap` (admin = tout ;
 /// revendeur = uniquement ce que l'admin lui a coché).
 export function userCan(user: MeUser | null, cap: string): boolean {
@@ -529,6 +535,7 @@ export const resellersApi = {
     name?: string;
     credit_balance?: number;
     commission_rate?: number;
+    permissions?: string[];
   }) =>
     request<{ id: string; credit_balance: number }>('/api/v1/resellers', {
       method: 'POST',
@@ -563,6 +570,35 @@ export const creditsApi = {
     ),
   history: (resellerId: string) =>
     request<{ items: CreditEntry[] }>(`/api/v1/resellers/${resellerId}/credits`),
+};
+
+// Demandes de rechargement (achat de crédit) : le revendeur DEMANDE, l'owner
+// APPROUVE (émet les crédits) ou REJETTE. Le revendeur ne s'auto-crédite pas.
+export interface CreditRequest {
+  id: string;
+  reseller_id: string;
+  amount: number;
+  status: 'pending' | 'approved' | 'rejected';
+  note: string | null;
+  decided_at: number | null;
+  created_at: number;
+  reseller_email?: string;
+  reseller_name?: string | null;
+}
+export const creditRequestsApi = {
+  list: () => request<{ items: CreditRequest[] }>('/api/v1/credit-requests'),
+  create: (amount: number, note?: string) =>
+    request<{ ok: boolean; id: string; status: string }>('/api/v1/credit-requests', {
+      method: 'POST', body: { amount, note },
+    }),
+  approve: (id: string) =>
+    request<{ ok: boolean; status: string; credit_balance: number }>(
+      `/api/v1/credit-requests/${id}/approve`, { method: 'POST' },
+    ),
+  reject: (id: string) =>
+    request<{ ok: boolean; status: string }>(
+      `/api/v1/credit-requests/${id}/reject`, { method: 'POST' },
+    ),
 };
 
 export interface ActivateResult {

@@ -8,11 +8,18 @@ import { useT, LangSelect } from '@/lib/i18n';
 /// password=ADMIN_SECRET du Worker (transition seamless).
 export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
   const t = useT();
-  // Lien revendeur dedie : si l'URL contient ?revendeur (ou ?reseller),
-  // on n'affiche QUE la connexion revendeur (aucun onglet Admin visible).
-  // Ex: https://tvking-admin.pages.dev/?revendeur
+  // Lien revendeur DÉDIÉ (différent du lien admin). On n'affiche QUE la
+  // connexion revendeur (aucun onglet Admin visible). Reconnu par TROIS
+  // formes, au choix de l'exploitant :
+  //   • sous-domaine :  https://revendeur.tondomaine.com
+  //   • chemin dédié :  https://tondomaine.com/revendeur
+  //   • paramètre :     https://tondomaine.com/?revendeur
   const resellerOnly = (() => {
     try {
+      const host = window.location.hostname.toLowerCase();
+      if (/^(revendeur|reseller|resellers)\./.test(host)) return true;
+      const path = window.location.pathname.toLowerCase();
+      if (/(^|\/)(revendeur|reseller)(\/|$)/.test(path)) return true;
       const p = new URLSearchParams(window.location.search);
       return p.has('revendeur') || p.has('reseller') || p.get('mode') === 'reseller';
     } catch {

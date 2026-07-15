@@ -2,6 +2,7 @@ import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import {
   resellersApi, creditsApi, type Reseller, ApiError, RESELLER_CAPS,
+  RESELLER_DEFAULT_CAPS, getCurrentUser, isOwnerRole,
 } from '@/lib/api';
 
 /// Lien UNIQUE d'inscription revendeur (à partager). `?revendeur` force
@@ -189,9 +190,10 @@ function PermsCell({
       .catch((e) => onErr(e.message))
       .finally(() => setBusy(false));
   }
+  const owner = isOwnerRole(getCurrentUser()?.role);
   return (
     <div className={'flex flex-wrap gap-1 ' + (busy ? 'pointer-events-none opacity-50' : '')}>
-      {RESELLER_CAPS.map((c) => {
+      {RESELLER_CAPS.filter((c) => owner || !c.ownerOnly).map((c) => {
         const on = perms.includes(c.key);
         return (
           <button
@@ -234,8 +236,14 @@ function CreateResellerModal({
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [credits, setCredits] = useState('0');
+  const [caps, setCaps] = useState<string[]>(RESELLER_DEFAULT_CAPS);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const owner = isOwnerRole(getCurrentUser()?.role);
+
+  function toggleCap(key: string) {
+    setCaps((prev) => (prev.includes(key) ? prev.filter((c) => c !== key) : [...prev, key]));
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -245,7 +253,8 @@ function CreateResellerModal({
         email: email.trim().toLowerCase(),
         password,
         name: name.trim() || undefined,
-        credit_balance: parseInt(credits, 10) || 0,
+        credit_balance: owner ? (parseInt(credits, 10) || 0) : 0,
+        permissions: caps,
       });
       onCreated();
     } catch (e: any) {
@@ -259,7 +268,40 @@ function CreateResellerModal({
         <Field label="Email"><input value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} placeholder="revendeur@exemple.com" autoFocus /></Field>
         <Field label="Nom (optionnel)"><input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Karim Reseller" /></Field>
         <Field label="Mot de passe"><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} placeholder="••••••••" /></Field>
-        <Field label="Crédits initiaux"><input type="number" min={0} value={credits} onChange={(e) => setCredits(e.target.value)} className={inputCls} /></Field>
+        {owner && <Field label="Crédits initiaux (toi seul en donnes)"><input type="number" min={0} value={credits} onChange={(e) => setCredits(e.target.value)} className={inputCls} /></Field>}
+
+        {/* OPTIONS / DROITS — cochés par défaut : activer, bloquer,
+            transférer, achat de crédit. « Créer des sous-revendeurs » n'est
+            proposé qu'à l'owner (droit sensible). */}
+        <div>
+          <div className="mb-1.5 text-[10px] uppercase tracking-widest text-ink-tertiary">
+            Options du revendeur
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {RESELLER_CAPS.filter((c) => owner || !c.ownerOnly).map((c) => {
+              const on = caps.includes(c.key);
+              return (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={() => toggleCap(c.key)}
+                  className={
+                    'flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-left text-xs transition ' +
+                    (on
+                      ? 'border-accent bg-accent/15 text-ink-primary'
+                      : 'border-white/10 bg-slate text-ink-tertiary hover:border-white/30')
+                  }
+                >
+                  <span className={'grid h-3.5 w-3.5 place-items-center rounded-sm border ' + (on ? 'border-accent bg-accent text-black' : 'border-white/30')}>
+                    {on ? '✓' : ''}
+                  </span>
+                  {c.label}
+                  {c.ownerOnly && <span className="ml-auto text-[9px] text-warning">clé</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         {err && <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>}
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary">Annuler</button>
