@@ -22,6 +22,7 @@ import 'core/app/safe_mode_app.dart';
 import 'core/crash/crash_reporting.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
+import 'features/tv/core/tv_home_template.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/realtime/realtime_sync_service.dart';
 import 'core/profiles/profiles_repository.dart';
@@ -109,6 +110,10 @@ Future<void> _bootstrap() async {
   // jour ») : BLOQUANT et rapide, pour que le 1er rendu TV soit déjà à la
   // bonne couleur (pas de flash). Partagé avec le mobile via AccentController.
   await AccentController.instance.initialize();
+
+  // Template d'accueil choisi (Classique / Grandes tuiles) : BLOQUANT et
+  // rapide, pour que le 1er rendu affiche la bonne disposition sans flash.
+  await TvHomeTemplateRepository.instance.initialize();
 
   // --- Briques PARTAGÉES avec le mobile (non bloquant) ---
   // 0) FAILOVER backend : si le domaine maison était KO au dernier

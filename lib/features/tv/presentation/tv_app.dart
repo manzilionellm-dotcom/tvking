@@ -43,6 +43,8 @@ import 'tv_sports_screen.dart';
 import '../../sports/data/sports_repository.dart';
 import '../../sports/domain/sport_models.dart';
 import '../core/tv_ambience.dart';
+import '../core/tv_home_template.dart';
+import 'tv_launcher_home_screen.dart';
 import 'tv_care_nudge.dart';
 import 'tv_night_comfort.dart';
 import 'tv_profiles_screen.dart' show tvProfileDisplayName;
@@ -469,7 +471,17 @@ class _TvGateState extends State<TvGate> {
                   onPicked: () => setState(() => _profileChosen = true),
                 ),
               )
-            : const TvHomeScreen();
+            // TEMPLATE D'ACCUEIL au choix : « Classique » = home historique
+            // (repli sûr), « Grandes tuiles » = lanceur façon IBO. Se
+            // reconstruit à chaud quand l'utilisateur change de template.
+            : ListenableBuilder(
+                listenable: TvHomeTemplateRepository.instance,
+                builder: (BuildContext context, Widget? _) =>
+                    TvHomeTemplateRepository.instance.template ==
+                            TvHomeTemplate.launcher
+                        ? const TvLauncherHomeScreen()
+                        : const TvHomeScreen(),
+              );
     // Retour : sur l'ACCUEIL, c'est TvHomeScreen qui gère (contenu → menu →
     // boîte Quitter au dernier niveau). Ce PopScope racine (même route) ne
     // garde donc la boîte QUE pour l'écran d'activation ; sinon il laisse
