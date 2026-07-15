@@ -141,6 +141,21 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
                     >
                       Mot de passe
                     </button>
+                    <button
+                      onClick={() => {
+                        if (!window.confirm(
+                          `Supprimer définitivement le revendeur « ${r.name || r.email} » ?\n\n` +
+                          `Son compte est fermé. Ses clients (appareils/abonnements) sont ` +
+                          `détachés et repassent sous la maison mère. Irréversible.`,
+                        )) return;
+                        resellersApi.remove(r.id)
+                          .then(reload)
+                          .catch((e) => setErr(e instanceof ApiError ? e.message : 'Suppression impossible.'));
+                      }}
+                      className="rounded-md border border-red-400/40 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-200 hover:bg-red-500/20"
+                    >
+                      Supprimer
+                    </button>
                   </div>
                 </td>
               </tr>

@@ -549,6 +549,8 @@ export const resellersApi = {
       method: 'PATCH',
       body: payload,
     }),
+  remove: (id: string) =>
+    request<{ deleted: number }>(`/api/v1/resellers/${id}`, { method: 'DELETE' }),
 };
 
 export interface CreditEntry {

@@ -736,6 +736,7 @@ async function apiV1Inner(request, env) {
       const rid = parts[1];
       if (request.method === 'GET') return handleResellersGet(env, rid, a.user);
       if (request.method === 'PATCH') return handleResellersUpdate(request, env, rid, actor, a.user);
+      if (request.method === 'DELETE') return handleResellersDelete(env, rid, actor, a.user);
     }
     if (parts.length === 3 && parts[2] === 'credits') {
       const rid = parts[1];
@@ -4011,6 +4012,42 @@ async function handleResellersCreate(request, env, actor, user) {
   await logAudit(env, request, actor, 'reseller.create',
     { type: 'reseller', id }, null, { email, name: body.name, initial, parent: parentId });
   return jsonResp({ id, credit_balance: initial }, 201);
+}
+
+// DELETE /resellers/:id — supprimer un revendeur.
+//  • Owner : peut supprimer n'importe quel revendeur.
+//  • Revendeur : uniquement SES sous-revendeurs directs (s'il a le droit
+//    'resellers', déjà vérifié en amont).
+//  Sécurité : on refuse s'il reste des sous-revendeurs rattachés (il faut
+//  d'abord les traiter) pour ne pas créer d'orphelins. Le solde de crédits
+//  du revendeur supprimé est simplement perdu (compte fermé) ; ses clients
+//  (devices/licences) restent — ils sont détachés du revendeur (reseller_id
+//  remis à NULL) et repassent sous la maison mère.
+async function handleResellersDelete(env, id, actor, user) {
+  const before = await env.DB.prepare('SELECT * FROM resellers WHERE id = ?').bind(id).first();
+  if (!before) return errResp('not_found', 'Reseller not found', 404);
+  // Un revendeur ne supprime que ses enfants directs.
+  if (user && user.role === 'reseller' && before.parent_reseller_id !== user.sub) {
+    return errResp('forbidden', 'Forbidden', 403);
+  }
+  // Anti-orphelins : refuser s'il a encore des sous-revendeurs.
+  const kids = await env.DB
+    .prepare('SELECT COUNT(*) AS n FROM resellers WHERE parent_reseller_id = ?')
+    .bind(id).first();
+  if (kids && kids.n > 0) {
+    return errResp('has_children',
+      'Ce revendeur a encore des sous-revendeurs. Traite-les d\'abord.', 409);
+  }
+  // Détache ses clients (ils repassent à la maison mère) puis supprime.
+  await env.DB.batch([
+    env.DB.prepare('UPDATE devices SET reseller_id = NULL WHERE reseller_id = ?').bind(id),
+    env.DB.prepare('UPDATE customers SET reseller_id = NULL WHERE reseller_id = ?').bind(id),
+    env.DB.prepare('UPDATE licenses SET reseller_id = NULL WHERE reseller_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM resellers WHERE id = ?').bind(id),
+  ]);
+  await logAudit(env, null, actor, 'reseller.delete',
+    { type: 'reseller', id }, { email: before.email }, null);
+  return jsonResp({ deleted: 1 });
 }
 
 async function handleResellersUpdate(request, env, id, actor, user) {
