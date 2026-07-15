@@ -744,6 +744,21 @@ async function apiV1Inner(request, env) {
     }
   }
 
+  // /credit-requests — DEMANDES de rechargement (revendeur demande, owner
+  // approuve → émet les crédits). Le revendeur ne s'auto-crédite jamais.
+  if (parts[0] === 'credit-requests') {
+    if (parts.length === 1) {
+      if (request.method === 'GET') return handleCreditRequestsList(env, a.user);
+      if (request.method === 'POST') return handleCreditRequestCreate(request, env, actor, a.user);
+    }
+    if (parts.length === 3 && (parts[2] === 'approve' || parts[2] === 'reject')) {
+      if (!isOwner(a.user)) return errResp('forbidden', 'Owner only', 403);
+      if (request.method === 'POST') {
+        return handleCreditRequestDecide(request, env, parts[1], parts[2], actor, a.user);
+      }
+    }
+  }
+
   // /activate — activer un appareil par sa MAC (owner OU revendeur).
   // Cree client+device+licence et debite les credits du revendeur.
   if (parts[0] === 'activate' && parts.length === 1 && request.method === 'POST') {
@@ -760,7 +775,7 @@ async function apiV1Inner(request, env) {
   // nouvelle (changement d'appareil) SANS perdre le temps payé. Requiert
   // le droit 'activate' (revendeur) ; l'admin a toujours accès.
   if (parts[0] === 'transfer' && parts.length === 1 && request.method === 'POST') {
-    if (!resellerCan(a.user, 'activate')) {
+    if (!resellerCan(a.user, 'transfer')) {
       return errResp('forbidden', 'Ton compte n\'a pas le droit de transférer.', 403);
     }
     // rt : les DEUX macs re-fetchent tout (l'ancienne perd sa licence,
@@ -3383,6 +3398,10 @@ async function handleDeviceUpdate(request, env, id, actor, user) {
   }
   const r = await deviceForActor(env, id, user);
   if (r.error) return r.error;
+  // Bloquer/geler/bannir = droit 'block' (revendeur). L'owner a tout.
+  if (body.block_status !== undefined && !resellerCan(user, 'block')) {
+    return errResp('forbidden', "Ton compte n'a pas le droit de bloquer un client.", 403);
+  }
   const allowed = ['active', 'frozen', 'banned'];
   const next = body.block_status === 'active' ? null : body.block_status;
   if (body.block_status !== undefined && !allowed.includes(body.block_status)) {
@@ -3583,13 +3602,21 @@ function isOwner(user) {
 // =========================================================
 //  L'admin coche EXACTEMENT les droits qu'il accorde à chaque revendeur
 //  (pas de niveaux figés). Liste canonique des droits attribuables :
-const RESELLER_CAPS_ALL = [
-  'activate',    // activer un appareil
-  'sources',     // pousser une source (playlist) aux clients
-  'resellers',   // gérer ses propres sous-revendeurs
-  'devices',     // voir ses appareils
-  'activations', // voir ses activations
+export const RESELLER_CAPS_ALL = [
+  'activate',     // activer un client
+  'block',        // bloquer / geler / bannir un client
+  'transfer',     // transférer un client (changement d'appareil)
+  'buy_credits',  // demander un rechargement de crédits (owner approuve)
+  'sources',      // pousser une source (playlist) aux clients
+  'devices',      // voir ses appareils
+  'activations',  // voir ses activations
+  'resellers',    // créer/gérer des sous-revendeurs (OWNER l'accorde seul)
 ];
+
+// Droits cochés PAR DÉFAUT à la création d'un revendeur (règle produit :
+// activer / bloquer / transférer / achat de crédit). « resellers » n'y est
+// JAMAIS : seul l'owner peut accorder le droit de créer des sous-revendeurs.
+export const RESELLER_DEFAULT_CAPS = ['activate', 'block', 'transfer', 'buy_credits'];
 
 //  Ancien modèle « niveaux » — gardé UNIQUEMENT pour dériver les droits
 //  des comptes créés avant les cases à cocher (rétro-compat).
@@ -3602,7 +3629,7 @@ const RESELLER_LEGACY_LEVEL = {
 /// Normalise les droits d'un revendeur en tableau. Priorité au champ
 /// `permissions` (JSON). Sinon on dérive de l'ancien `level`. Sinon, le
 /// minimum vital : activer des appareils.
-function resellerPerms(permissionsVal, level) {
+export function resellerPerms(permissionsVal, level) {
   if (Array.isArray(permissionsVal)) return permissionsVal;
   if (typeof permissionsVal === 'string' && permissionsVal) {
     try { const a = JSON.parse(permissionsVal); if (Array.isArray(a)) return a; } catch (_) {}
@@ -3611,14 +3638,14 @@ function resellerPerms(permissionsVal, level) {
 }
 
 /// Ne garde que les droits connus (anti-injection) avant stockage.
-function sanitizePerms(arr) {
+export function sanitizePerms(arr) {
   if (!Array.isArray(arr)) return [];
   return RESELLER_CAPS_ALL.filter((c) => arr.includes(c));
 }
 
 /// true si l'acteur a le droit `cap`. L'admin (super_admin) a TOUT ;
 /// un revendeur n'a que ce que l'admin lui a coché.
-function resellerCan(user, cap) {
+export function resellerCan(user, cap) {
   if (!user || user.role !== 'reseller') return true;
   return resellerPerms(user.permissions, user.level).includes(cap);
 }
@@ -3871,9 +3898,22 @@ async function handleResellersCreate(request, env, actor, user) {
   }
   const isReseller = user && user.role === 'reseller';
   const parentId = isReseller ? user.sub : null;
-  const initial = Math.max(0, parseInt(body.credit_balance || 0, 10) || 0);
+  // Crédits = OWNER uniquement. Un revendeur qui crée un sous-revendeur ne
+  // peut PAS lui transférer de crédits (le sous-revendeur démarre à 0 ;
+  // c'est l'owner qui le rechargera). Seul l'owner sème un solde initial.
+  const initial = isOwner(user)
+    ? Math.max(0, parseInt(body.credit_balance || 0, 10) || 0)
+    : 0;
   const commission = Number.isFinite(Number(body.commission_rate))
     ? Number(body.commission_rate) : 0.20;
+
+  // Droits du nouveau revendeur. Owner : ce qu'il coche (ou les défauts).
+  // Revendeur créant un sous-revendeur : défauts SANS jamais 'resellers'
+  // (seul l'owner accorde le droit de créer des sous-revendeurs).
+  const requestedPerms = Array.isArray(body.permissions) ? body.permissions : RESELLER_DEFAULT_CAPS;
+  const newPerms = isOwner(user)
+    ? sanitizePerms(requestedPerms)
+    : sanitizePerms(RESELLER_DEFAULT_CAPS).filter((c) => c !== 'resellers');
 
   // Si c'est un revendeur qui cree un sous-revendeur, les credits
   // initiaux sont TRANSFERES depuis son propre solde (pas crees).
@@ -3893,15 +3933,18 @@ async function handleResellersCreate(request, env, actor, user) {
   const id = genId('rsl');
   const now = Date.now();
   const hash = await hashPassword(password);
+  await ensureResellerLevel(env); // garantit la colonne `permissions`
   try {
     await env.DB
       .prepare(
         `INSERT INTO resellers
           (id, email, password_hash, name, credit_balance_cents,
-           credit_balance, commission_rate, status, parent_reseller_id, created_at)
-         VALUES (?, ?, ?, ?, 0, ?, ?, 'active', ?, ?)`,
+           credit_balance, commission_rate, status, parent_reseller_id,
+           permissions, created_at)
+         VALUES (?, ?, ?, ?, 0, ?, ?, 'active', ?, ?, ?)`,
       )
-      .bind(id, email, hash, body.name || null, initial, commission, parentId, now)
+      .bind(id, email, hash, body.name || null, initial, commission, parentId,
+            JSON.stringify(newPerms), now)
       .run();
   } catch (e) {
     return errResp('duplicate_email', 'A reseller with this email already exists', 409);
@@ -3982,6 +4025,14 @@ async function handleResellerCreditsIssue(request, env, id, actor, user) {
     .bind(id).first();
   if (!target) return errResp('not_found', 'Reseller not found', 404);
   const now = Date.now();
+
+  // RÈGLE ARGENT : SEUL l'owner émet/retire des crédits. Un revendeur ne
+  // peut jamais donner de crédits (ni à ses sous-revendeurs) — « c'est moi
+  // seul qui donne les crédits ». Les revendeurs passent par une DEMANDE
+  // de rechargement (/credit-requests) que l'owner approuve.
+  if (!isOwner(user)) {
+    return errResp('forbidden', "Seul l'administrateur émet des crédits.", 403);
+  }
 
   // --- OWNER : frappe / retire des credits (creation depuis rien) ---
   if (isOwner(user)) {
@@ -4066,6 +4117,120 @@ async function handleResellerCreditsList(env, id, user) {
     .bind(id)
     .all();
   return jsonResp({ items: rs.results || [] });
+}
+
+// ----- DEMANDES DE RECHARGEMENT (achat de crédit) -----
+//  Le revendeur DEMANDE des crédits ; l'owner APPROUVE → les crédits sont
+//  émis. Le revendeur ne s'auto-crédite jamais (« c'est moi seul »).
+async function ensureCreditRequestsTable(env) {
+  await env.DB
+    .prepare(
+      'CREATE TABLE IF NOT EXISTS credit_requests (' +
+        'id TEXT PRIMARY KEY, reseller_id TEXT NOT NULL, amount INTEGER NOT NULL, ' +
+        "status TEXT NOT NULL DEFAULT 'pending', note TEXT, " +
+        'decided_by TEXT, decided_at INTEGER, created_at INTEGER NOT NULL)',
+    )
+    .run();
+  try {
+    await env.DB
+      .prepare('CREATE INDEX IF NOT EXISTS idx_credit_req_status ON credit_requests(status, created_at)')
+      .run();
+  } catch (_) { /* index déjà présent */ }
+}
+
+async function handleCreditRequestCreate(request, env, actor, user) {
+  // Réservé aux revendeurs ayant le droit « achat de crédit ».
+  if (!user || user.role !== 'reseller') {
+    return errResp('forbidden', 'Réservé aux revendeurs.', 403);
+  }
+  if (!resellerCan(user, 'buy_credits')) {
+    return errResp('forbidden', "Ton compte n'a pas le droit de demander des crédits.", 403);
+  }
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const amount = parseInt(body.amount, 10);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return errResp('bad_amount', 'amount doit être un entier positif', 400);
+  }
+  await ensureCreditRequestsTable(env);
+  const id = genId('creq');
+  const now = Date.now();
+  await env.DB
+    .prepare(
+      "INSERT INTO credit_requests (id, reseller_id, amount, status, note, created_at) " +
+        "VALUES (?, ?, ?, 'pending', ?, ?)",
+    )
+    .bind(id, user.sub, amount, (body.note || '').toString().slice(0, 300) || null, now)
+    .run();
+  await logAudit(env, request, actor, 'credit_request.create',
+    { type: 'credit_request', id }, null, { amount });
+  return jsonResp({ ok: true, id, amount, status: 'pending' }, 201);
+}
+
+async function handleCreditRequestsList(env, user) {
+  await ensureCreditRequestsTable(env);
+  if (isOwner(user)) {
+    const rs = await env.DB
+      .prepare(
+        `SELECT cr.id, cr.reseller_id, cr.amount, cr.status, cr.note,
+                cr.decided_at, cr.created_at, r.email AS reseller_email, r.name AS reseller_name
+         FROM credit_requests cr LEFT JOIN resellers r ON r.id = cr.reseller_id
+         ORDER BY (cr.status = 'pending') DESC, cr.created_at DESC LIMIT 200`,
+      )
+      .all();
+    return jsonResp({ items: rs.results || [] });
+  }
+  if (user && user.role === 'reseller') {
+    const rs = await env.DB
+      .prepare(
+        `SELECT id, reseller_id, amount, status, note, decided_at, created_at
+         FROM credit_requests WHERE reseller_id = ? ORDER BY created_at DESC LIMIT 100`,
+      )
+      .bind(user.sub)
+      .all();
+    return jsonResp({ items: rs.results || [] });
+  }
+  return errResp('forbidden', 'Forbidden', 403);
+}
+
+async function handleCreditRequestDecide(request, env, id, action, actor, user) {
+  await ensureCreditRequestsTable(env);
+  const req = await env.DB
+    .prepare('SELECT id, reseller_id, amount, status FROM credit_requests WHERE id = ?')
+    .bind(id).first();
+  if (!req) return errResp('not_found', 'Demande introuvable', 404);
+  if (req.status !== 'pending') {
+    return errResp('already_decided', 'Cette demande a déjà été traitée.', 409);
+  }
+  const now = Date.now();
+  if (action === 'reject') {
+    await env.DB
+      .prepare("UPDATE credit_requests SET status = 'rejected', decided_by = ?, decided_at = ? WHERE id = ?")
+      .bind(user.sub, now, id).run();
+    await logAudit(env, request, actor, 'credit_request.reject', { type: 'credit_request', id }, null, null);
+    return jsonResp({ ok: true, status: 'rejected' });
+  }
+  // approve → émettre les crédits (comme un mint owner) + marquer approuvé.
+  const target = await env.DB
+    .prepare('SELECT credit_balance FROM resellers WHERE id = ?').bind(req.reseller_id).first();
+  if (!target) return errResp('not_found', 'Revendeur introuvable', 404);
+  const newBalance = (target.credit_balance || 0) + req.amount;
+  await env.DB.batch([
+    env.DB.prepare('UPDATE resellers SET credit_balance = ? WHERE id = ?').bind(newBalance, req.reseller_id),
+    env.DB.prepare(
+      `INSERT INTO credit_ledger
+        (id, reseller_id, delta, reason, balance_after, actor_type, actor_id, note, created_at)
+       VALUES (?, ?, ?, 'issue', ?, ?, ?, ?, ?)`,
+    ).bind(genId('cl'), req.reseller_id, req.amount, newBalance, actor.type, actor.id,
+           'Demande approuvée', now),
+    env.DB.prepare("UPDATE credit_requests SET status = 'approved', decided_by = ?, decided_at = ? WHERE id = ?")
+      .bind(user.sub, now, id),
+  ]);
+  await logAudit(env, request, actor, 'credit_request.approve',
+    { type: 'credit_request', id }, null, { amount: req.amount, balance: newBalance });
+  return jsonResp({ ok: true, status: 'approved', credit_balance: newBalance });
 }
 
 // ----- TRANSFERT d'abonnement (ancienne MAC → nouvelle MAC) -----
