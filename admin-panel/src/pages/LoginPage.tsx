@@ -84,12 +84,25 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
         className="w-full max-w-sm space-y-6 rounded-2xl border border-white/5 bg-midnight p-8 shadow-2xl"
       >
         <div className="text-center">
-          <div className="mx-auto mb-4 h-12 w-12 rounded-xl bg-accent/15 ring-1 ring-accent/40 grid place-items-center">
-            <span className="text-accent font-bold text-base tracking-tight">TF</span>
+          <div
+            className={
+              'mx-auto mb-4 grid h-12 w-12 place-items-center rounded-xl ring-1 ' +
+              (resellerOnly
+                ? 'bg-sky-400/15 ring-sky-400/40'
+                : 'bg-accent/15 ring-accent/40')
+            }
+          >
+            <span className="text-base font-bold tracking-tight">
+              {resellerOnly ? '🛒' : <span className="text-accent">TF</span>}
+            </span>
           </div>
-          <h1 className="text-xl font-semibold tracking-tight">{t('brand')}</h1>
+          <h1 className="text-xl font-semibold tracking-tight">
+            {resellerOnly ? 'Espace Revendeur' : t('brand')}
+          </h1>
           <p className="mt-1 text-xs uppercase tracking-widest text-ink-tertiary">
-            {mode === 'admin' ? t('login.subtitleAdmin') : t('login.subtitleReseller')}
+            {resellerOnly
+              ? 'Portail revendeur — indépendant de l’administration'
+              : mode === 'admin' ? t('login.subtitleAdmin') : t('login.subtitleReseller')}
           </p>
         </div>
 
