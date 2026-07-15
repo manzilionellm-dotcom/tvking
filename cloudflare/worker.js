@@ -3143,9 +3143,9 @@ async function handleFamilyJoin(request, env) {
 //  existante n'est modifiée.
 // =========================================================
 const INVITE_CODE_TTL_MS = 48 * 60 * 60 * 1000; // le code doit être utilisé sous 48 h
-const INVITE_GUEST_DAYS = 2; // durée du pass invité (jours)
 const INVITE_WEEKLY_QUOTA = 5; // 5 invitations PAR SEMAINE (glissante), renouvelées
 const INVITE_WEEK_MS = 7 * 24 * 60 * 60 * 1000; // fenêtre du quota hebdo
+const INVITE_ALLOWED_HOURS = [24, 48]; // durées offertes à l'invité (max 48 h)
 let _inviteSchemaError = '';
 
 async function ensureInviteSchema(env) {
@@ -3163,12 +3163,43 @@ async function ensureInviteSchema(env) {
     await env.DB.prepare(
       'CREATE INDEX IF NOT EXISTS idx_app_invites_redeemer ON app_invites(redeemer_mac)',
     ).run();
+    // Colonnes ajoutées après coup (ALTER best-effort — échoue en silence si
+    // déjà présentes) : durée offerte (heures) + chaîne partagée (JSON :
+    // name/streamUrl/logoUrl/category) que l'invité regarde.
+    for (const alter of [
+      'ALTER TABLE app_invites ADD COLUMN hours INTEGER',
+      'ALTER TABLE app_invites ADD COLUMN channel_json TEXT',
+      'ALTER TABLE app_invites ADD COLUMN mode TEXT',
+    ]) {
+      try { await env.DB.prepare(alter).run(); } catch (_) { /* colonne déjà là */ }
+    }
     _inviteSchemaError = '';
     return true;
   } catch (e) {
     _inviteSchemaError = String((e && e.message) || e).slice(0, 200);
     return false;
   }
+}
+
+/// Normalise la durée demandée en heures : 24 ou 48 (défaut 48). Toute autre
+/// valeur retombe sur 48 (max). Empêche un invité de se faire offrir 1 an.
+function inviteHours(raw) {
+  const h = Number(raw);
+  return INVITE_ALLOWED_HOURS.includes(h) ? h : 48;
+}
+
+/// Nettoie la chaîne partagée reçue du client → objet minimal jouable, ou null.
+function sanitizeInviteChannel(ch) {
+  if (!ch || typeof ch !== 'object') return null;
+  const url = String(ch.streamUrl || ch.url || '').trim();
+  const name = String(ch.name || '').trim();
+  if (!url || !name) return null;
+  return {
+    name: name.slice(0, 120),
+    streamUrl: url.slice(0, 2048),
+    logoUrl: ch.logoUrl ? String(ch.logoUrl).slice(0, 2048) : null,
+    category: ch.category ? String(ch.category).slice(0, 120) : null,
+  };
 }
 
 function inviteUnavailable() {
@@ -3209,7 +3240,115 @@ export function inviteRedeemDecision(
   return { ok: true };
 }
 
-/// POST /api/invite/create { mac } → un abonné PAYANT génère un code de partage.
+function safeJsonParse(s) {
+  try { return JSON.parse(s); } catch (_) { return null; }
+}
+
+/// Octroie un PASS INVITÉ (licence de `hours` heures, 0 crédit) à [mac].
+/// Réutilise l'octroi D1 (licence + dégel du device). {ok, guestUntil}.
+async function grantGuestPassLicense(env, mac, hours, now) {
+  const guestUntil = now + hours * 60 * 60 * 1000;
+  await ensureD1Device(env, mac, now);
+  const dev = await env.DB
+    .prepare('SELECT id, customer_id FROM devices WHERE mac = ?').bind(mac).first();
+  if (!dev) return { ok: false, error: 'device_error' };
+  const APP_ID = 'app_7motion';
+  const plan = 'trial_' + hours + 'h';
+  const lic = await env.DB
+    .prepare('SELECT id FROM licenses WHERE device_id = ? ' +
+             'ORDER BY (expires_at IS NULL) DESC, expires_at DESC LIMIT 1')
+    .bind(dev.id).first();
+  if (lic) {
+    await env.DB.prepare(
+      "UPDATE licenses SET status='active', plan=?, expires_at=?, updated_at=? WHERE id=?",
+    ).bind(plan, guestUntil, now, lic.id).run();
+  } else {
+    const lid = 'lic_' + crypto.randomUUID().replace(/-/g, '').slice(0, 18);
+    await env.DB.prepare(
+      "INSERT INTO licenses " +
+      "(id, customer_id, device_id, app_id, status, plan, started_at, expires_at, auto_renew, reseller_id, created_at, updated_at) " +
+      "VALUES (?, ?, ?, ?, 'active', ?, ?, ?, 0, ?, ?, ?)",
+    ).bind(lid, dev.customer_id, dev.id, APP_ID, plan, now, guestUntil, null, now, now).run();
+  }
+  await env.DB.prepare('UPDATE devices SET block_status = NULL WHERE id = ?').bind(dev.id).run();
+  return { ok: true, guestUntil };
+}
+
+/// POST /api/invite/grant { mac, guest_mac, hours?, channel?, mode? }
+/// L'abonné PAYANT active DIRECTEMENT l'appareil d'un invité par sa MAC
+/// (activation poussée — l'invité n'a rien à taper). Mêmes garde-fous.
+async function handleInviteGrant(request, env) {
+  let body;
+  try { body = await request.json(); } catch (_) { return badRequest('invalid JSON body'); }
+  const mac = String(body?.mac || '').toUpperCase();          // émetteur (payé)
+  const guest = String(body?.guest_mac || '').toUpperCase();  // invité
+  if (!MAC_RX.test(mac) || !MAC_RX.test(guest)) return badRequest('invalid mac');
+  if (!env.DB || !(await ensureInviteSchema(env))) return inviteUnavailable();
+  if (mac === guest) return json({ ok: false, error: 'own_code' });
+  const now = Date.now();
+  const ist = await d1StatusForMac(env, mac);
+  if (!invitePaidPlayable(ist)) return json({ ok: false, error: 'not_paid' });
+  // Quota hebdo (5/semaine glissante).
+  const weekAgo = now - INVITE_WEEK_MS;
+  const usedRow = await env.DB.prepare(
+    'SELECT COUNT(*) AS n FROM app_invites WHERE issuer_mac = ? AND redeemed_at IS NOT NULL AND redeemed_at > ?',
+  ).bind(mac, weekAgo).first();
+  if (((usedRow && Number(usedRow.n)) || 0) >= INVITE_WEEKLY_QUOTA) {
+    return json({ ok: false, error: 'issuer_quota' });
+  }
+  // Invité déjà payé ? déjà servi une fois à vie ?
+  const own = await d1StatusForMac(env, guest);
+  if (own && own.paid && !own.expired) return json({ ok: false, error: 'already_active' });
+  const prev = await env.DB
+    .prepare('SELECT 1 AS x FROM app_invites WHERE redeemer_mac = ? LIMIT 1').bind(guest).first();
+  if (prev) return json({ ok: false, error: 'already_used_once' });
+
+  const hours = inviteHours(body?.hours);
+  const channel = sanitizeInviteChannel(body?.channel);
+  const mode = body?.mode === 'test' ? 'test' : 'together';
+  const g = await grantGuestPassLicense(env, guest, hours, now);
+  if (!g.ok) return json({ ok: false, error: g.error });
+  // Trace l'invitation (code interne préfixé 'M' = par MAC, non tapé).
+  const buf = new Uint32Array(1); crypto.getRandomValues(buf);
+  const code = 'M' + String(100000 + (buf[0] % 900000));
+  await env.DB.prepare(
+    'INSERT OR REPLACE INTO app_invites (code, issuer_mac, redeemer_mac, plan, created_at, ' +
+    'expires_at, redeemed_at, guest_until, hours, channel_json, mode) ' +
+    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).bind(code, mac, guest, 'trial_' + hours + 'h', now, now + INVITE_CODE_TTL_MS, now,
+         g.guestUntil, hours, channel ? JSON.stringify(channel) : null, mode).run();
+  return json({ ok: true, guest: maskMac(guest), guest_until: g.guestUntil, hours, mode, channel });
+}
+
+/// GET /api/invite/mine/:mac → l'appareil INVITÉ récupère SA chaîne partagée,
+/// le temps restant et l'état (pour jouer + compte à rebours + message de fin).
+async function handleInviteMine(env, rawMac) {
+  const mac = String(rawMac || '').toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  if (!env.DB || !(await ensureInviteSchema(env))) return inviteUnavailable();
+  const now = Date.now();
+  const row = await env.DB.prepare(
+    'SELECT issuer_mac, guest_until, channel_json, mode, hours FROM app_invites ' +
+    'WHERE redeemer_mac = ? ORDER BY redeemed_at DESC LIMIT 1',
+  ).bind(mac).first();
+  if (!row) return jsonPrivate({ active: false, invited: false });
+  const until = Number(row.guest_until) || 0;
+  const active = until > now;
+  return jsonPrivate({
+    active,
+    invited: true,
+    guest_until: until,
+    ms_left: Math.max(0, until - now),
+    mode: row.mode || 'together',
+    hours: row.hours || null,
+    inviter: maskMac(row.issuer_mac),
+    channel: active && row.channel_json ? safeJsonParse(row.channel_json) : null,
+  });
+}
+
+/// POST /api/invite/create { mac, hours?, channel?, mode? } → un abonné PAYANT
+/// génère un code de partage. `hours` = 24 ou 48 (défaut 48) ; `channel` = la
+/// chaîne partagée (le match) ; `mode` = 'together' | 'test' (informatif).
 async function handleInviteCreate(request, env) {
   let body;
   try { body = await request.json(); } catch (_) { return badRequest('invalid JSON body'); }
@@ -3221,34 +3360,46 @@ async function handleInviteCreate(request, env) {
   if (!invitePaidPlayable(st)) {
     return json({ ok: false, error: 'not_paid' });
   }
+  const now = Date.now();
+  // GARDE-FOU QUOTA à la génération aussi : inutile de créer un code si les
+  // 5 invitations de la semaine sont déjà consommées.
+  const weekAgo = now - INVITE_WEEK_MS;
+  const usedRow = await env.DB
+    .prepare(
+      'SELECT COUNT(*) AS n FROM app_invites ' +
+      'WHERE issuer_mac = ? AND redeemed_at IS NOT NULL AND redeemed_at > ?',
+    ).bind(mac, weekAgo).first();
+  const weeklyUsed = (usedRow && Number(usedRow.n)) || 0;
+  if (weeklyUsed >= INVITE_WEEKLY_QUOTA) {
+    return json({ ok: false, error: 'issuer_quota',
+      weekly_used: weeklyUsed, weekly_quota: INVITE_WEEKLY_QUOTA });
+  }
+  const hours = inviteHours(body?.hours);
+  const channel = sanitizeInviteChannel(body?.channel);
+  const mode = body?.mode === 'test' ? 'test' : 'together';
   // Code à 6 chiffres (facile à taper). L'abonné peut générer plusieurs
   // codes (invitations multiples) — chaque code n'active qu'un appareil.
   const buf = new Uint32Array(1);
   crypto.getRandomValues(buf);
   const code = String(100000 + (buf[0] % 900000));
-  const now = Date.now();
   const expiresAt = now + INVITE_CODE_TTL_MS;
   await env.DB
     .prepare(
       'INSERT OR REPLACE INTO app_invites ' +
-      '(code, issuer_mac, redeemer_mac, plan, created_at, expires_at, redeemed_at, guest_until) ' +
-      'VALUES (?, ?, NULL, ?, ?, ?, NULL, NULL)',
+      '(code, issuer_mac, redeemer_mac, plan, created_at, expires_at, redeemed_at, ' +
+      'guest_until, hours, channel_json, mode) ' +
+      'VALUES (?, ?, NULL, ?, ?, ?, NULL, NULL, ?, ?, ?)',
     )
-    .bind(code, mac, 'trial_2d', now, expiresAt).run();
-  // Invitations UTILISÉES cette semaine (quota hebdo de 5, renouvelé) — pour
-  // afficher « X/5 cette semaine ».
-  const weekAgo = now - INVITE_WEEK_MS;
-  const usedCnt = await env.DB
-    .prepare(
-      'SELECT COUNT(*) AS n FROM app_invites ' +
-      'WHERE issuer_mac = ? AND redeemed_at IS NOT NULL AND redeemed_at > ?',
-    ).bind(mac, weekAgo).first();
+    .bind(code, mac, 'trial_' + hours + 'h', now, expiresAt, hours,
+          channel ? JSON.stringify(channel) : null, mode).run();
   return json({
     ok: true,
     code,
     expires_at: expiresAt,
-    guest_days: INVITE_GUEST_DAYS,
-    weekly_used: (usedCnt && Number(usedCnt.n)) || 0,
+    hours,
+    mode,
+    channel,
+    weekly_used: weeklyUsed,
     weekly_quota: INVITE_WEEKLY_QUOTA,
   });
 }
@@ -3265,7 +3416,8 @@ async function handleInviteRedeem(request, env) {
 
   const now = Date.now();
   const row = await env.DB
-    .prepare('SELECT issuer_mac, plan, expires_at, redeemed_at FROM app_invites WHERE code = ?')
+    .prepare('SELECT issuer_mac, plan, expires_at, redeemed_at, hours, channel_json, mode ' +
+             'FROM app_invites WHERE code = ?')
     .bind(code).first();
   const issuer = row ? String(row.issuer_mac).toUpperCase() : '';
   // L'ÉMETTEUR doit TOUJOURS être payé ; l'appareil ne doit pas déjà l'être ;
@@ -3296,40 +3448,26 @@ async function handleInviteRedeem(request, env) {
   });
   if (!decision.ok) return json({ ok: false, error: decision.error });
 
-  // OCTROI DU PASS : licence 2 jours sur l'appareil invité (plan trial_2d,
-  // 0 crédit). Même octroi D1 que l'admin (licence + dégel du device).
-  const guestUntil = now + INVITE_GUEST_DAYS * DAY_MS;
-  await ensureD1Device(env, mac, now);
-  const dev = await env.DB
-    .prepare('SELECT id, customer_id FROM devices WHERE mac = ?')
-    .bind(mac).first();
-  if (!dev) return json({ ok: false, error: 'device_error' });
-  const APP_ID = 'app_7motion';
-  const lic = await env.DB
-    .prepare(
-      'SELECT id FROM licenses WHERE device_id = ? ' +
-      'ORDER BY (expires_at IS NULL) DESC, expires_at DESC LIMIT 1',
-    ).bind(dev.id).first();
-  if (lic) {
-    await env.DB.prepare(
-      "UPDATE licenses SET status='active', plan=?, expires_at=?, updated_at=? WHERE id=?",
-    ).bind('trial_2d', guestUntil, now, lic.id).run();
-  } else {
-    const lid = 'lic_' + crypto.randomUUID().replace(/-/g, '').slice(0, 18);
-    await env.DB.prepare(
-      "INSERT INTO licenses " +
-      "(id, customer_id, device_id, app_id, status, plan, started_at, expires_at, auto_renew, reseller_id, created_at, updated_at) " +
-      "VALUES (?, ?, ?, ?, 'active', ?, ?, ?, 0, ?, ?, ?)",
-    ).bind(lid, dev.customer_id, dev.id, APP_ID, 'trial_2d', now, guestUntil, null, now, now).run();
-  }
-  await env.DB.prepare('UPDATE devices SET block_status = NULL WHERE id = ?').bind(dev.id).run();
+  // OCTROI DU PASS : licence de `hours` heures sur l'appareil invité (plan
+  // trial_Nh, 0 crédit). Même octroi D1 que l'admin (licence + dégel).
+  const hours = inviteHours(row.hours);
+  const guest = await grantGuestPassLicense(env, mac, hours, now);
+  if (!guest.ok) return json({ ok: false, error: guest.error });
 
   // Lie l'invité au code (le code devient utilisé → non rejouable).
   await env.DB
     .prepare('UPDATE app_invites SET redeemer_mac = ?, redeemed_at = ?, guest_until = ? WHERE code = ?')
-    .bind(mac, now, guestUntil, code).run();
+    .bind(mac, now, guest.guestUntil, code).run();
 
-  return json({ ok: true, guest_until: guestUntil, guest_days: INVITE_GUEST_DAYS });
+  const channel = row.channel_json ? safeJsonParse(row.channel_json) : null;
+  return json({
+    ok: true,
+    guest_until: guest.guestUntil,
+    hours,
+    mode: row.mode || 'together',
+    channel,
+    inviter: maskMac(issuer),
+  });
 }
 
 /// GET /api/family/info/:mac → vue famille (propriétaire OU membre).
@@ -5115,6 +5253,14 @@ async function handleRequest(request, env, ctx) {
       if (segments[2] === 'redeem' && segments.length === 3) {
         if (request.method !== 'POST') return badRequest('only POST supported');
         return handleInviteRedeem(request, env);
+      }
+      if (segments[2] === 'grant' && segments.length === 3) {
+        if (request.method !== 'POST') return badRequest('only POST supported');
+        return handleInviteGrant(request, env);
+      }
+      if (segments[2] === 'mine' && segments.length === 4) {
+        if (request.method !== 'GET') return badRequest('only GET supported');
+        return handleInviteMine(env, segments[3]);
       }
       return notFound('unknown invite route');
     }

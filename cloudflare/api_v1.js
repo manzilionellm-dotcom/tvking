@@ -3141,6 +3141,7 @@ async function handleInvitesList(request, env, user) {
   // Rattache l'appareil ÉMETTEUR (cloisonnement + nom) et l'appareil INVITÉ.
   let sql = `SELECT iv.code, iv.issuer_mac, iv.redeemer_mac, iv.plan,
                     iv.created_at, iv.expires_at, iv.redeemed_at, iv.guest_until,
+                    iv.hours, iv.mode, iv.channel_json,
                     di.reseller_id AS issuer_reseller_id,
                     ci.name AS issuer_name,
                     dr.block_status AS redeemer_block
