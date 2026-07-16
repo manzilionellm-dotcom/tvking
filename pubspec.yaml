@@ -124,6 +124,13 @@ dependencies:
   # fois), résultat MIS EN CACHE par chaîne → conforme à la cible 60 fps.
   palette_generator: ^0.3.3+5
 
+  # Horloge INJECTABLE (package officiel Dart, déjà présent en transitif via
+  # flutter_test). Le moteur ambiant lit l'heure via clock.now() au lieu de
+  # DateTime.now() → son débounce (1 palette / 2 s) devient testable de
+  # façon déterministe avec fake_async. Zéro coût : en prod, clock.now()
+  # EST DateTime.now().
+  clock: ^1.1.1
+
   # --- Phase 1.5 : Finitions / About / Updater ---
   package_info_plus: ^8.1.4
   url_launcher: ^6.3.1
@@ -254,6 +261,11 @@ dev_dependencies:
 
   # Règles de lint officielles Flutter
   flutter_lints: ^4.0.0
+
+  # Temps SIMULÉ dans les tests (package officiel Dart, transitif de
+  # flutter_test). Permet de tester le débounce du moteur ambiant (fenêtre
+  # de 2 s) sans attendre 2 vraies secondes ni dépendre de l'horloge réelle.
+  fake_async: ^1.3.1
 
   # ----- Génération des icônes de lancement -----
   # Sans ce package, `flutter create` met l'icône Flutter par défaut

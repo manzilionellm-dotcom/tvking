@@ -33,6 +33,7 @@ import '../../player/data/stream_diagnostics.dart';
 import '../../player/data/xtream_url_variants.dart';
 import '../../playlists/data/xtream_url_format_store.dart';
 import '../../playlists/domain/playlist.dart' as pl;
+import '../../../theme/ambient_engine.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_logo.dart';
 import '../core/tv_tokens.dart';
@@ -128,6 +129,9 @@ class _TvLivePreviewState extends State<TvLivePreview> {
   @override
   void initState() {
     super.initState();
+    // Moteur ambiant (Source A) : la chaîne mise en avant teinte l'ambiance.
+    // Coalescé côté moteur (300 ms + cache LRU) → gratuit au défilement.
+    AmbientEngine.instance.focusLogo(widget.channel.logoUrl);
     if (widget.enabled) _schedule();
   }
 
@@ -150,6 +154,8 @@ class _TvLivePreviewState extends State<TvLivePreview> {
       // gaspillerait le CPU de la box au moment où l'UI en a besoin.
       _ctrl?.pause();
       _reset(disposePlayer: false);
+      // Nouvelle chaîne mise en avant → le moteur ambiant suit (Source A).
+      AmbientEngine.instance.focusLogo(widget.channel.logoUrl);
       if (widget.enabled) _schedule();
     } else if (widget.enabled &&
         widget.startImmediately &&

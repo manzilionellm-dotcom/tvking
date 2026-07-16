@@ -22,6 +22,7 @@ import '../../../core/realtime/admin_message_banner.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../../theme/ambient_debug_overlay.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_focusable.dart';
@@ -187,6 +188,9 @@ class TvApp extends StatelessWidget {
                 alignment: Alignment.topCenter,
                 child: SafeArea(child: AdminMessageBanner()),
               ),
+              // HUD DEBUG du moteur ambiant (--dart-define=AMBIENT_DEBUG=true).
+              // Constante de compilation → tree-shaké en build normal.
+              if (AmbientDebug.enabled) const AmbientDebugOverlay(),
             ],
           );
         },
