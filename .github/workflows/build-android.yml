@@ -839,8 +839,13 @@ jobs:
       # se contentent de l'artifact du run (plus de release « latest » /
       # « cast-fix-latest » / « phone-i18n-latest » recréée à chaque build).
       # → fin définitive du bruit : le client ne voit QUE la maison mère.
+      # ⛔ TÉLÉPHONE COUPÉ (décision client 2026-07-16) : cette app est
+      # DISTRIBUÉE UNIQUEMENT en version TV (tv-prod) et Windows laptop
+      # (windows-prod). PLUS AUCUNE publication automatique d'APK téléphone —
+      # la publication ne reste possible que MANUELLEMENT (workflow_dispatch
+      # avec make_release=true), au cas où le client rouvrirait ce canal.
       - name: Publish "latest" release (FAIL-HARD diag)
-        if: github.ref_name == 'claude/maison-mere-phone'
+        if: github.event_name == 'workflow_dispatch' && inputs.make_release == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -977,8 +982,10 @@ jobs:
       # un version.json qui pointe vers l'APK maison mère (prod) → au prochain
       # check, ils voient « Mise à jour disponible », installent la maison mère
       # et basculent DÉFINITIVEMENT sur « prod ». Zéro réinstallation.
+      # ⛔ TÉLÉPHONE COUPÉ (voir ci-dessus) — pont de migration désactivé lui
+      # aussi : il ne s'exécute plus qu'en publication MANUELLE explicite.
       - name: Bridge old phone channel (latest → prod)
-        if: github.ref_name == 'claude/maison-mere-phone'
+        if: github.event_name == 'workflow_dispatch' && inputs.make_release == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
