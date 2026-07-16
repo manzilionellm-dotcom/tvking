@@ -78,6 +78,21 @@
     @com.google.gson.annotations.SerializedName <fields>;
 }
 
+# ----- flutter_local_notifications (rappels d'émission) -----
+# BOÎTE NOIRE (terrain 2026-07-16) : crash « Missing type parameter »
+# rattrapé par le filet global, à chaque appel de cancel() →
+# loadScheduledNotifications au démarrage. CAUSE : le plugin sérialise ses
+# notifications planifiées via Gson avec un TypeToken GÉNÉRIQUE
+# (ArrayList<...>). Sous R8, faute de règle keep sur ses modèles, le type
+# générique du TypeToken est effacé → Gson ne sait plus reconstruire la
+# liste → RuntimeException. On garde les classes du plugin ET les TypeToken
+# Gson (avec leur signature, déjà préservée plus haut) pour rétablir l'info
+# de type. Additif, aucun risque : on empêche seulement un stripping.
+-keep class com.dexterous.** { *; }
+-dontwarn com.dexterous.**
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken
+
 # ----- Bruit fréquent (classes optionnelles absentes du classpath) -----
 -dontwarn javax.annotation.**
 -dontwarn javax.naming.**
