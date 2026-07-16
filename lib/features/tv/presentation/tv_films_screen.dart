@@ -41,7 +41,9 @@ import '../../vod/domain/vod_info.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import '../core/tv_poster_prefetch.dart';
 import '../core/tv_tokens.dart';
+import '../data/cine_perf.dart';
 import '../../vod/data/vod_download_service.dart';
 import 'tv_components.dart';
 import 'tv_movie_detail_screen.dart';
@@ -55,6 +57,18 @@ class TvFilmsScreen extends StatefulWidget {
 }
 
 class _TvFilmsScreenState extends State<TvFilmsScreen> {
+  // ----- MÉMOIRE D'ÉTAT ENTRE ONGLETS (zéro jank au retour) -----
+  //  L'accueil classique RECONSTRUIT l'onglet à chaque sélection du menu
+  //  (pas d'IndexedStack — voulu : une box 1 Go ne garde pas 4 onglets
+  //  vivants). Ces statiques survivent à la reconstruction :
+  //   - _bucket  : offsets de scroll (vertical + chaque rangée) via
+  //     PageStorage — on retrouve la page EXACTEMENT où on l'a laissée ;
+  //   - _focusRail/_focusIndex : dernière affiche focusée → ré-autofocus
+  //     au retour (mémoire du focus par rangée, pattern Netflix).
+  static final PageStorageBucket _bucket = PageStorageBucket();
+  static String? _focusRail;
+  static int _focusIndex = 0;
+
   bool _loading = true;
   List<VodMovie> _all = const <VodMovie>[];
   List<String> _cats = const <String>[];
@@ -76,6 +90,9 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   @override
   void initState() {
     super.initState();
+    // Budget « premier rendu utile < 400 ms » : chrono démarré ICI, arrêté
+    // à la première frame AFFICHÉE avec des données (cf. build).
+    CinePerf.start(CinePerf.homeFirstRender);
     // La rangée « Continuer à regarder » et les barres de progression sous
     // les affiches se rafraîchissent TOUTES SEULES quand une position change
     // (sauvegarde périodique du lecteur, sortie de lecture) — sans ça, la
@@ -91,6 +108,9 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
 
   @override
   void dispose() {
+    // Écran quitté avant le premier rendu utile → mesure abandonnée
+    // (une durée d'interruption ne veut rien dire).
+    CinePerf.cancel(CinePerf.homeFirstRender);
     PlaybackPositionRepository.instance.removeListener(_onPositionsChanged);
     VodRepository.instance.removeListener(_onCatalogRefreshed);
     super.dispose();
@@ -341,40 +361,83 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
         (title: cat, movies: _byCat[cat] ?? const <VodMovie>[], resume: false),
     ];
 
-    return ListView.builder(
-      // La VEDETTE occupe l'index 0, les rangées suivent → tout est lazy.
-      addAutomaticKeepAlives: false,
-      itemCount: 1 + rails.length,
-      itemBuilder: (BuildContext context, int i) {
-        if (i == 0) {
-          return _HeroBanner(
-            movie: hero,
-            autofocus: true,
-            backdropUrl: heroBackdrop,
-            plot: heroPlot,
-            inList: _inList.contains(hero.id),
-            onPlay: () => _play(<VodMovie>[hero], 0),
-            onToggleList: () => _toggleList(hero),
+    // Budget « premier rendu utile < 400 ms » : première frame AFFICHÉE avec
+    // des données → on arrête le chrono (post-frame = frame réellement rendue).
+    if (CinePerf.isRunning(CinePerf.homeFirstRender)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        CinePerf.end(CinePerf.homeFirstRender,
+            detail: '${_all.length} films, ${rails.length} rangées');
+      });
+    }
+
+    // Mémoire du focus par rangée : si une affiche était focusée avant la
+    // reconstruction de l'onglet, c'est ELLE qui reprend l'autofocus (pas le
+    // héros). Index clampé — le catalogue a pu changer entre-temps.
+    final int memRail =
+        rails.indexWhere((({String title, List<VodMovie> movies, bool resume}) r) =>
+            r.title == _focusRail);
+
+    return PageStorage(
+      // Bucket STATIQUE : les offsets de scroll survivent à la reconstruction
+      // de l'onglet (retour sur Cinéma = page exactement où on l'a laissée).
+      bucket: _bucket,
+      child: ListView.builder(
+        key: const PageStorageKey<String>('films-vertical'),
+        // La VEDETTE occupe l'index 0, les rangées suivent → tout est lazy.
+        addAutomaticKeepAlives: false,
+        itemCount: 1 + rails.length,
+        itemBuilder: (BuildContext context, int i) {
+          if (i == 0) {
+            return _HeroBanner(
+              movie: hero,
+              autofocus: memRail < 0,
+              backdropUrl: heroBackdrop,
+              plot: heroPlot,
+              inList: _inList.contains(hero.id),
+              onPlay: () => _play(<VodMovie>[hero], 0),
+              onToggleList: () => _toggleList(hero),
+            );
+          }
+          final ({String title, List<VodMovie> movies, bool resume}) rail =
+              rails[i - 1];
+          return _Rail(
+            railKey: PageStorageKey<String>('films-rail-${rail.title}'),
+            title: rail.title,
+            movies: rail.movies,
+            inList: _inList,
+            progress: progress,
+            // Ré-autofocus de l'affiche mémorisée (mémoire du focus par rangée).
+            autofocusIndex: (i - 1) == memRail
+                ? _focusIndex.clamp(0, rail.movies.length - 1)
+                : null,
+            // Mémorise l'affiche focusée ET pré-charge les jaquettes de la
+            // RANGÉE SUIVANTE pendant qu'on navigue celle-ci (zéro carte grise
+            // quand le focus descend — le pattern Netflix).
+            onCardFocus: (int j) {
+              _focusRail = rail.title;
+              _focusIndex = j;
+              final int next = i; // rails[i - 1] focusée → suivante = rails[i]
+              if (next < rails.length) {
+                TvPosterPrefetch.prefetchRow(
+                  context,
+                  <String?>[
+                    for (final VodMovie m in rails[next].movies) m.posterUrl,
+                  ],
+                );
+              }
+            },
+            // OK sur une affiche → FICHE détail. EXCEPTION Netflix : la rangée
+            // « Continuer à regarder » relance DIRECTEMENT la lecture (le but
+            // de cette rangée est de reprendre en un seul OK).
+            onPlay: (int j) => rail.resume
+                ? _playResume(resume[j])
+                : _openDetail(rail.movies[j]),
+            onToggleList: (int j) {
+              if (!rail.resume) _toggleList(rail.movies[j]);
+            },
           );
-        }
-        final ({String title, List<VodMovie> movies, bool resume}) rail =
-            rails[i - 1];
-        return _Rail(
-          title: rail.title,
-          movies: rail.movies,
-          inList: _inList,
-          progress: progress,
-          // OK sur une affiche → FICHE détail. EXCEPTION Netflix : la rangée
-          // « Continuer à regarder » relance DIRECTEMENT la lecture (le but
-          // de cette rangée est de reprendre en un seul OK).
-          onPlay: (int j) => rail.resume
-              ? _playResume(resume[j])
-              : _openDetail(rail.movies[j]),
-          onToggleList: (int j) {
-            if (!rail.resume) _toggleList(rail.movies[j]);
-          },
-        );
-      },
+        },
+      ),
     );
   }
 }
@@ -740,6 +803,9 @@ class _Rail extends StatelessWidget {
     required this.progress,
     required this.onPlay,
     required this.onToggleList,
+    this.railKey,
+    this.autofocusIndex,
+    this.onCardFocus,
   });
 
   final String title;
@@ -751,6 +817,17 @@ class _Rail extends StatelessWidget {
   final Map<String, double> progress;
   final void Function(int index) onPlay;
   final void Function(int index) onToggleList;
+
+  /// Clé PageStorage : l'offset de scroll horizontal de la rangée survit à
+  /// la reconstruction de l'onglet (avec le bucket statique de l'écran).
+  final PageStorageKey<String>? railKey;
+
+  /// Affiche qui reprend l'autofocus au retour sur l'onglet (mémoire du
+  /// focus par rangée) — null = aucune.
+  final int? autofocusIndex;
+
+  /// Notifie le focus d'une affiche (mémoire + pré-chargement rangée suivante).
+  final void Function(int index)? onCardFocus;
 
   @override
   Widget build(BuildContext context) {
@@ -775,6 +852,7 @@ class _Rail extends StatelessWidget {
           SizedBox(
             height: 218,
             child: ListView.builder(
+              key: railKey,
               scrollDirection: Axis.horizontal,
               addAutomaticKeepAlives: false,
               itemExtent: 142,
@@ -785,6 +863,8 @@ class _Rail extends StatelessWidget {
                   movie: movies[i],
                   inList: inList.contains(movies[i].id),
                   progress: progress[movies[i].id],
+                  autofocus: i == autofocusIndex,
+                  onFocus: onCardFocus == null ? null : () => onCardFocus!(i),
                   onPlay: () => onPlay(i),
                   onToggleList: () => onToggleList(i),
                 ),
@@ -806,6 +886,8 @@ class _PosterCard extends StatelessWidget {
     required this.onPlay,
     required this.onToggleList,
     this.progress,
+    this.autofocus = false,
+    this.onFocus,
   });
   final VodMovie movie;
   final bool inList;
@@ -815,11 +897,23 @@ class _PosterCard extends StatelessWidget {
   /// Fraction déjà vue (0..1) — null = pas de reprise en cours pour ce film.
   final double? progress;
 
+  /// Reprend le focus au retour sur l'onglet (mémoire du focus par rangée).
+  final bool autofocus;
+
+  /// Notifie la prise de focus (mémoire + pré-chargement rangée suivante).
+  final VoidCallback? onFocus;
+
   @override
   Widget build(BuildContext context) {
     return TvFocusable(
       scale: TvFocusScale.small,
       baseColor: TvTokens.card,
+      autofocus: autofocus,
+      onFocusChange: onFocus == null
+          ? null
+          : (bool focused) {
+              if (focused) onFocus!();
+            },
       onSelect: onPlay,
       // Appui LONG sur OK = ajouter/retirer de « Ma Liste » (façon Netflix).
       onLongPress: onToggleList,

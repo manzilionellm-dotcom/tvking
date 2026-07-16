@@ -19,6 +19,7 @@ import '../../vod/domain/vod_info.dart';
 import '../../vod/domain/vod_series.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import '../core/tv_poster_prefetch.dart';
 import '../core/tv_tokens.dart';
 import 'tv_components.dart';
 import 'tv_player_screen.dart';
@@ -31,6 +32,13 @@ class TvSeriesScreen extends StatefulWidget {
 }
 
 class _TvSeriesScreenState extends State<TvSeriesScreen> {
+  // MÉMOIRE D'ÉTAT ENTRE ONGLETS — même pattern que TvFilmsScreen : scroll
+  // (PageStorage sur bucket statique) + dernière affiche focusée, pour
+  // retrouver l'onglet Séries EXACTEMENT où on l'a laissé.
+  static final PageStorageBucket _bucket = PageStorageBucket();
+  static String? _focusCat;
+  static int _focusIndex = 0;
+
   bool _loading = true;
   List<VodSeries> _all = const <VodSeries>[];
   List<String> _cats = const <String>[];
@@ -122,57 +130,83 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     // horizontale par catégorie. Tout est paresseux (builder vertical +
     // builder horizontal) → sûr sur box à RAM limitée.
     final VodSeries hero = _all.first;
-    return ListView.builder(
-      addAutomaticKeepAlives: false,
-      itemCount: 1 + _cats.length,
-      itemBuilder: (BuildContext context, int i) {
-        if (i == 0) {
-          return _SeriesHero(
-            series: hero,
-            autofocus: true,
-            onOpen: () => _openSeries(hero),
-          );
-        }
-        final String cat = _cats[i - 1];
-        final List<VodSeries> list = _byCat[cat] ?? const <VodSeries>[];
-        if (list.isEmpty) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.only(left: 4, bottom: 10),
-                child: Text(
-                  cat.toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TvTokens.ui(13,
-                      weight: FontWeight.w700,
-                      color: TvTokens.mutedDim,
-                      spacing: 1.6),
+    // Mémoire du focus par rangée (retour d'onglet) : index de la catégorie
+    // qui portait le focus, -1 si aucune → autofocus sur la vedette.
+    final int memCat = _cats.indexOf(_focusCat ?? '');
+    return PageStorage(
+      bucket: _bucket,
+      child: ListView.builder(
+        key: const PageStorageKey<String>('series-vertical'),
+        addAutomaticKeepAlives: false,
+        itemCount: 1 + _cats.length,
+        itemBuilder: (BuildContext context, int i) {
+          if (i == 0) {
+            return _SeriesHero(
+              series: hero,
+              autofocus: memCat < 0,
+              onOpen: () => _openSeries(hero),
+            );
+          }
+          final String cat = _cats[i - 1];
+          final List<VodSeries> list = _byCat[cat] ?? const <VodSeries>[];
+          if (list.isEmpty) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 10),
+                  child: Text(
+                    cat.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.ui(13,
+                        weight: FontWeight.w700,
+                        color: TvTokens.mutedDim,
+                        spacing: 1.6),
+                  ),
                 ),
-              ),
-              SizedBox(
-                height: 218,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  addAutomaticKeepAlives: false,
-                  itemExtent: 142,
-                  itemCount: list.length,
-                  itemBuilder: (BuildContext context, int j) => Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: _SeriesPoster(
-                      series: list[j],
-                      onSelect: () => _openSeries(list[j]),
+                SizedBox(
+                  height: 218,
+                  child: ListView.builder(
+                    key: PageStorageKey<String>('series-rail-$cat'),
+                    scrollDirection: Axis.horizontal,
+                    addAutomaticKeepAlives: false,
+                    itemExtent: 142,
+                    itemCount: list.length,
+                    itemBuilder: (BuildContext context, int j) => Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: _SeriesPoster(
+                        series: list[j],
+                        autofocus: (i - 1) == memCat &&
+                            j == _focusIndex.clamp(0, list.length - 1),
+                        // Mémoire du focus + pré-chargement des jaquettes de
+                        // la rangée SUIVANTE pendant la navigation de celle-ci.
+                        onFocus: () {
+                          _focusCat = cat;
+                          _focusIndex = j;
+                          if (i < _cats.length) {
+                            TvPosterPrefetch.prefetchRow(
+                              context,
+                              <String?>[
+                                for (final VodSeries s
+                                    in _byCat[_cats[i]] ?? const <VodSeries>[])
+                                  s.posterUrl,
+                              ],
+                            );
+                          }
+                        },
+                        onSelect: () => _openSeries(list[j]),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
-          ),
-        );
-      },
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -300,15 +334,32 @@ class _SeriesHero extends StatelessWidget {
 }
 
 class _SeriesPoster extends StatelessWidget {
-  const _SeriesPoster({required this.series, required this.onSelect});
+  const _SeriesPoster({
+    required this.series,
+    required this.onSelect,
+    this.autofocus = false,
+    this.onFocus,
+  });
   final VodSeries series;
   final VoidCallback onSelect;
+
+  /// Reprend le focus au retour sur l'onglet (mémoire du focus par rangée).
+  final bool autofocus;
+
+  /// Notifie la prise de focus (mémoire + pré-chargement rangée suivante).
+  final VoidCallback? onFocus;
 
   @override
   Widget build(BuildContext context) {
     return TvFocusable(
       scale: TvFocusScale.small,
       baseColor: TvTokens.card,
+      autofocus: autofocus,
+      onFocusChange: onFocus == null
+          ? null
+          : (bool focused) {
+              if (focused) onFocus!();
+            },
       onSelect: onSelect,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
