@@ -1,0 +1,61 @@
+# ============================================================================
+#  publish-cinema-test.yml — Publie l'APK TV d'un run build-tv comme release
+#  « cinema-test » à LIEN DIRECT (téléchargeable sans compte GitHub, ex. via
+#  l'app Downloader sur la box).
+#
+#  POURQUOI : les artefacts Actions exigent d'être connecté à GitHub — pas
+#  pratique pour installer un APK de test sur une box. Une release publique
+#  donne une URL stable :
+#    https://github.com/<repo>/releases/download/cinema-test/defew-tv-cinema-test.apk
+#
+#  GARDE-FOUS :
+#    - PRÉRELEASE → ne devient JAMAIS la release « latest » (le Worker /dl
+#      et les codes vanity continuent de pointer sur l'APK mobile officiel) ;
+#    - AUCUN version.json uploadé → l'updater in-app des box (qui lit son
+#      propre tag tv-prod/tv-latest) ne voit pas cette release ;
+#    - déclenchement MANUEL uniquement (workflow_dispatch), tag écrasé à
+#      chaque publication → une seule release de test à la fois.
+# ============================================================================
+name: Publish Cinéma test APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'ID du run build-tv dont on publie l''APK (Actions → run → URL)'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # créer/écraser la release cinema-test
+  actions: read     # télécharger l'artefact du run build-tv
+
+jobs:
+  publish:
+    name: Release cinema-test (lien direct)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Télécharger l'APK du run build-tv
+        uses: actions/download-artifact@v4
+        with:
+          pattern: defew-tv-apk-*
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          merge-multiple: true
+
+      - name: Publier la release cinema-test (écrase la précédente)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          ls -la
+          mv app-release.apk defew-tv-cinema-test.apk
+          # Tag recréé à chaque publication : UNE seule release de test.
+          gh release delete cinema-test -R "$GITHUB_REPOSITORY" -y --cleanup-tag || true
+          gh release create cinema-test -R "$GITHUB_REPOSITORY" \
+            --prerelease \
+            --title "Seven Cinéma — APK de test (ne pas diffuser)" \
+            --notes "APK TV de test de la branche Seven Cinéma (run ${{ inputs.run_id }}). Signé avec la clé maîtresse : s'installe PAR-DESSUS l'app en place. Lien direct : https://github.com/$GITHUB_REPOSITORY/releases/download/cinema-test/defew-tv-cinema-test.apk" \
+            defew-tv-cinema-test.apk
+          echo "✓ https://github.com/$GITHUB_REPOSITORY/releases/download/cinema-test/defew-tv-cinema-test.apk"
