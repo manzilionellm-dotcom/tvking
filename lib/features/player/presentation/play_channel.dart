@@ -30,6 +30,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/crash/crash_reporting.dart';
 import '../../../core/network/cellular_guard.dart';
 import '../../cast/data/cast_manager.dart';
 import '../../cast/data/cast_url_resolver.dart';
@@ -84,10 +85,15 @@ Future<void> playChannel(
             deviceName: target.displayName, channelName: title);
       }
       return; // Flux parti vers la TV : pas de lecteur local à ouvrir.
-    } on Object catch (e) {
+    } on Object catch (e, st) {
       // `on Object` : même un Error (TypeError…) du chemin cast ne doit
       // JAMAIS priver l'utilisateur du repli local — frontière de
       // session oblige (sinon : ni TV ni téléphone, écran mort).
+      // Mais un Error est un BUG : on le remonte à la télémétrie crash
+      // au lieu de le déguiser en simple « échec de cast » silencieux.
+      if (e is! Exception) {
+        CrashReporting.instance.recordError(e, st, context: 'playChannel.cast');
+      }
       if (context.mounted) showCastFailedToast(context, e);
       // Repli : la lecture locale ci-dessous ne doit JAMAIS être bloquée
       // par un échec de cast (TV éteinte, hors portée, réseau…).

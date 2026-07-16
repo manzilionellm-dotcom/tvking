@@ -25,6 +25,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../../core/crash/crash_reporting.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -830,7 +831,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         // proprement sur la lecture locale plutôt qu'un écran mort.
         _openMedia(next.streamUrl);
       }
-    } on Object catch (e) {
+    } on Object catch (e, st) {
+      // Un Error ici est un BUG du chemin Vague B : télémétrie crash,
+      // pas un simple événement diagnostic silencieux.
+      if (e is! Exception) {
+        CrashReporting.instance.recordError(e, st, context: 'player.zapOnCast');
+      }
       StreamDiagnostics.instance.recordEvent(
         'cast',
         'Zap sur cast échoué pour « ${next.cleanName} » : $e',
@@ -1484,14 +1490,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         CastManager.instance
             .setCastPlaylist(widget.zapPlaylist!, _currentChannel);
       }
+    } else if (st == CastState.error) {
+      // ÉCHEC de cast (revue 2026-07-16) : laisser un lecteur MORT
+      // après un cast raté donnait l'impression que « plus rien ne
+      // marche ». L'utilisateur regardait cette chaîne sur son
+      // téléphone juste avant : on la lui REND (une seule connexion —
+      // la session de cast ratée est nettoyée par le CastManager).
+      _castEndedIdle = false;
+      _openMedia(_effectiveUrl);
     } else {
-      // VAGUE B — Cast termine / echoue / annule → le telephone RESTE
-      // en mode telecommande/idle. AVANT : on rouvrait le flux en local
-      // (_openMedia), ce qui relançait une connexion fournisseur dans
-      // le dos de l'utilisateur (souvent pendant qu'il re-castait) et
-      // cassait la stabilite des comptes « 1 connexion ». Desormais le
-      // lecteur reste a l'arret ; l'appui sur Lecture (ou un zap)
-      // relance explicitement la lecture locale.
+      // VAGUE B — Cast termine proprement (fin/deconnexion volontaire)
+      // → le telephone RESTE en mode telecommande/idle. AVANT : on
+      // rouvrait le flux en local, ce qui relançait une connexion
+      // fournisseur dans le dos de l'utilisateur (souvent pendant
+      // qu'il re-castait) et cassait la stabilite des comptes
+      // « 1 connexion ». L'appui sur Lecture (ou un zap) relance
+      // explicitement la lecture locale.
       _castEndedIdle = true;
     }
     setState(() {});

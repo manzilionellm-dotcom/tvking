@@ -503,8 +503,16 @@ class GoogleCastTransport implements CastTransport {
           (castPath == 'local_hls_relay' && relayUrl != null)
               ? LocalCastServer.instance.hlsAudioCodecFor(relayUrl)
               : null;
-      final bool audioAtRisk = relayAudio != null &&
-          LocalCastServer.kUntransmuxableAudio.contains(relayAudio);
+      // Revue 2026-07-16 : on ne sauve QUE sur les codecs dont le refus
+      // par le récepteur web est CERTAIN et que les box ExoPlayer
+      // décodent nativement (ac3/eac3/dts — confirmé terrain SHIELD).
+      // mp2/private/aac-latm restent en WARN boîte noire seulement :
+      // trop ambigus (mp2 ultra-courant, private = souvent
+      // sous-titres) — déclencher 12 s d'essai direct sur chaque échec
+      // réseau serait pire que le mal.
+      const Set<String> kRescueAudio = <String>{'ac3', 'eac3', 'dts'};
+      final bool audioAtRisk =
+          relayAudio != null && kRescueAudio.contains(relayAudio);
       String? direct;
       if (audioAtRisk && isExoPlayerReceiver(device)) {
         try {
@@ -514,6 +522,13 @@ class GoogleCastTransport implements CastTransport {
         }
       }
       if (direct == null) rethrow;
+      // LIBÉRER LE RELAIS AVANT l'essai direct (revue 2026-07-16) : la
+      // session HLS tient encore la connexion fournisseur — sur un
+      // compte 1-connexion, le fetch de la TV serait refusé et l'essai
+      // condamné d'avance (et le mémo « bloqué » posé à tort pour
+      // 10 min sur la foi d'un test biaisé).
+      LocalCastServer.instance.clearRelay(relayUrl!);
+      lastRelayUrl = null;
       StructuredLogger.instance.warn(
         domain: 'cast',
         event: 'relay_audio.fallback_direct_tv',
@@ -539,11 +554,9 @@ class GoogleCastTransport implements CastTransport {
         rethrow;
       }
       // La TV tire maintenant le flux chez le fournisseur : on mémorise
-      // le succès (les prochains zaps partiront direct), on libère le
-      // relais et on laisse le téléphone au repos (pas de keep-alive).
+      // le succès (les prochains zaps partiront direct) et le téléphone
+      // reste au repos (relais déjà libéré, pas de keep-alive).
       CastProxyVerdictMemo.directTv.remember(upstreamHost, blocked: false);
-      LocalCastServer.instance.clearRelay(relayUrl!);
-      lastRelayUrl = null;
     }
   }
 

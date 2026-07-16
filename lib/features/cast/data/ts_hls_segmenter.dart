@@ -298,12 +298,15 @@ class TsHlsSegmenter {
       final bool cutOnKey = keyframe && elapsed >= _currentTargetSec;
       final bool cutNoKey =
           elapsed >= (_raiUnusable ? _currentTargetSec : maxDurationSec);
-      // Saut d'horloge en attente : on coupe DÈS QUE POSSIBLE (sans
+      // Saut d'horloge en attente : on coupe AU PROCHAIN KEYFRAME (sans
       // attendre la durée cible) pour isoler la nouvelle ligne de
-      // temps dans son propre segment, marqué discontinuity. Les
-      // quelques paquets post-saut restés en queue de l'ancien segment
-      // sont couverts par le reset décodeur du tag DISCONTINUITY.
-      final bool cutOnDisc = _discontinuityPending;
+      // temps dans son propre segment, marqué discontinuity. Keyframe
+      // obligatoire (revue 2026-07-16) : un segment post-DISCONTINUITY
+      // qui démarre en plein GOP est indécodable jusqu'à la prochaine
+      // IDR (mux.js peut caler dessus). Flux sans RAI : n'importe quel
+      // PUSI (comme le reste de la découpe).
+      final bool cutOnDisc =
+          _discontinuityPending && (keyframe || _raiUnusable);
       if ((cutOnKey || cutNoKey || cutOnDisc) &&
           _segment.length >= kMinSegmentBytes) {
         completed = _emit();

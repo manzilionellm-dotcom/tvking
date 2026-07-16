@@ -82,7 +82,7 @@ Branche de travail : `claude/maison-mere-phone` (miroir
 - Fournisseur et revendeur IPTV qui veut son propre lecteur premium
 - Domaine : **7themotion.com** (acheté chez Hostinger, géré par Cloudflare)
 - Repo GitHub : `manzilionellm-dotcom/tvking` (branche `claude/premium-iptv-redesign-xYNVd`)
-- Mon support officiel = numéro WhatsApp `+44 7307 410512` MAIS jamais nommé
+- Mon support officiel = numéro WhatsApp `+1 807 788 8909` MAIS jamais nommé
   "WhatsApp" dans l'UI — branding "Concierge / Support" uniquement
 
 ---

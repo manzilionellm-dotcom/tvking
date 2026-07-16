@@ -18,6 +18,7 @@ import 'dart:io' show Socket;
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/crash/crash_reporting.dart';
 import '../../../core/i18n/l10n_now.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../../core/observability/structured_logger.dart';
@@ -697,6 +698,7 @@ class CastManager extends ChangeNotifier {
     // d'empiler des sessions — `_sessionSeq` annulerait la précédente,
     // mais ne pas empiler du tout est plus doux pour le récepteur.
     if (_state == CastState.connecting) return;
+    final int prev = _castIndex;
     final int next =
         ((_castIndex + delta) % list.length + list.length) % list.length;
     final Channel ch = list[next];
@@ -714,10 +716,18 @@ class CastManager extends ChangeNotifier {
         imageUrl: ch.logoUrl,
         channel: ch,
       );
-    } on Object catch (e) {
+    } on Object catch (e, st) {
       // Échec du swap : l'état d'erreur est déjà posé par castTo et
       // affiché par les surfaces abonnées. On journalise, on ne crashe
-      // jamais l'UI depuis un bouton de télécommande.
+      // jamais l'UI depuis un bouton de télécommande — mais un Error
+      // est un BUG : télémétrie crash au lieu d'un silence trompeur.
+      if (e is! Exception) {
+        CrashReporting.instance.recordError(e, st, context: 'cast.zapCastBy');
+      }
+      // L'index revient sur la chaîne réellement jouée : sinon le
+      // prochain Ch+ sauterait une chaîne jamais lancée.
+      _castIndex = prev;
+      notifyListeners();
       StructuredLogger.instance.warn(
         domain: 'cast',
         event: 'zap.swap_failed',
@@ -1998,47 +2008,61 @@ class CastManager extends ChangeNotifier {
     }
   }
 
+  /// La demande POST_NOTIFICATIONS du chemin cast n'est posée qu'UNE
+  /// fois par session : re-surgir à chaque cast réussi était intrusif
+  /// et, pire, l'ancienne version ATTENDAIT la réponse avant de
+  /// démarrer le foreground service (revue adversariale 2026-07-16).
+  static bool _notifPermissionAsked = false;
+
   /// Démarre réellement le maintien éveillé du relais.
   ///
-  /// TERRAIN (« la notification "Diffusion sur la TV" ne reste pas
-  /// écran éteint ») : sur Android 13+, un foreground service dont la
-  /// notification est BLOQUÉE (POST_NOTIFICATIONS refusée) est invisible
-  /// pour l'utilisateur ET candidat au kill par les OEM (Samsung/Xiaomi…)
-  /// dès l'écran éteint → le relais meurt → le cast coupe. Le chemin
-  /// « Écouteurs » demandait déjà la permission AVANT de démarrer le
-  /// service ; le chemin CAST ne le faisait pas — un utilisateur qui ne
-  /// fait QUE caster n'avait jamais accordé la permission. On aligne :
-  /// permission d'abord (no-op si déjà accordée), service ensuite.
+  /// ORDRE CRITIQUE (revue 2026-07-16) : le SERVICE d'abord, la
+  /// permission ensuite. La version précédente attendait la réponse au
+  /// dialogue POST_NOTIFICATIONS avant `startForegroundService` — le
+  /// maintien éveillé était suspendu à un dialogue système : écran
+  /// éteint sans réponse → démarrage refusé (app en fond, Android 12+)
+  /// → relais sans protection → « le cast coupe ». Désormais le service
+  /// part immédiatement (l'app est au premier plan à cet instant) ; la
+  /// permission est demandée en parallèle, une seule fois, et si elle
+  /// est accordée on re-poste la notification (idempotent) pour la
+  /// rendre visible.
   Future<void> _startRelayKeepAlive(String title) async {
-    bool notifGranted = true;
-    try {
-      notifGranted = await NotificationService.instance.requestPermission();
-    } catch (_) {
-      // Best-effort : un échec de la DEMANDE ne doit pas empêcher de
-      // tenter le service (sur Android < 13 il n'y a rien à demander).
-    }
     final bool ok = await PipService.instance
         .startBackgroundAudio(title, body: l10nNow.castNotifRelayBody);
     if (ok) {
       StructuredLogger.instance.info(
         domain: 'cast',
         event: 'relay.keepalive_started',
-        ctx: <String, Object?>{
-          'title': title,
-          // Si false : le service tourne mais la notification est
-          // invisible → risque de kill OEM écran éteint. Visible dans
-          // la boîte noire pour guider le support client.
-          'notifPermission': notifGranted,
-        },
+        ctx: <String, Object?>{'title': title},
       );
     } else {
       StructuredLogger.instance.warn(
         domain: 'cast',
         event: 'relay.keepalive_failed',
-        ctx: <String, Object?>{
-          'title': title,
-          'notifPermission': notifGranted,
-        },
+        ctx: <String, Object?>{'title': title},
+      );
+    }
+    // Android 13+ : sans POST_NOTIFICATIONS, la notification du service
+    // est INVISIBLE → kill OEM probable écran éteint. On la demande en
+    // arrière-plan (jamais bloquant pour le cast), une seule fois.
+    if (!_notifPermissionAsked) {
+      _notifPermissionAsked = true;
+      unawaited(
+        NotificationService.instance.requestPermission().then((bool granted) {
+          StructuredLogger.instance.info(
+            domain: 'cast',
+            event: 'relay.keepalive_notif_permission',
+            ctx: <String, Object?>{'granted': granted},
+          );
+          // Accordée APRÈS le démarrage : on re-poste la notification
+          // (ACTION_START met à jour, ne redémarre pas le service).
+          if (granted && _relayKeepAliveActive) {
+            unawaited(PipService.instance
+                .startBackgroundAudio(title, body: l10nNow.castNotifRelayBody));
+          }
+        }).catchError((Object _) {
+          // Best-effort : sur Android < 13 il n'y a rien à demander.
+        }),
       );
     }
   }
