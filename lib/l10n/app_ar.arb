@@ -1546,5 +1546,6 @@
   "fallbackEpisode": "الحلقة {number}",
   "gateReferenceLabel": "رقمك المرجعي",
   "gateReferenceHint": "أظهر هذا الرقم لمستشارك: سيعيد تفعيل وصولك في لحظات.",
-  "gateReactivateContact": "تواصل لإعادة التفعيل"
+  "gateReactivateContact": "تواصل لإعادة التفعيل",
+  "tvSimilar": "عناوين مشابهة"
 }

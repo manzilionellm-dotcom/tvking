@@ -42,6 +42,7 @@ import '../../vod/domain/vod_movie.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import '../data/cine_perf.dart';
 import 'tv_player_screen.dart';
 
 class TvMovieDetailScreen extends StatefulWidget {
@@ -61,9 +62,16 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
   /// place du synopsis (la structure de la fiche, elle, est déjà là).
   bool _loadingInfo = true;
 
+  /// Films de la MÊME catégorie (rail « Similaires ») — servis depuis le
+  /// cache mémoire du VodRepository : zéro réseau, fiche toujours < 300 ms.
+  List<VodMovie> _similar = const <VodMovie>[];
+
   @override
   void initState() {
     super.initState();
+    // Budget « ouverture fiche < 300 ms (données en cache) » : chrono arrêté
+    // à la première frame réellement affichée (cf. build).
+    CinePerf.start(CinePerf.detailOpen);
     // Reprise : le bouton « Reprendre à 42:15 » se met à jour tout seul si
     // la position change (retour du lecteur). Filet ensureLoaded — le vrai
     // load() est branché au démarrage (main_tv).
@@ -80,10 +88,27 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
         _loadingInfo = false;
       });
     });
+    // Rail « Similaires » : films de la même catégorie, depuis le CACHE du
+    // catalogue (fetchMovies répond de mémoire — l'accueil vient d'y passer).
+    _loadSimilar();
+  }
+
+  Future<void> _loadSimilar() async {
+    final String cat = widget.movie.category.trim();
+    if (cat.isEmpty) return;
+    final List<VodMovie> all = await VodRepository.instance.fetchMovies();
+    if (!mounted) return;
+    setState(() {
+      _similar = <VodMovie>[
+        for (final VodMovie m in all)
+          if (m.id != widget.movie.id && m.category.trim() == cat) m,
+      ].take(15).toList(growable: false);
+    });
   }
 
   @override
   void dispose() {
+    CinePerf.cancel(CinePerf.detailOpen);
     PlaybackPositionRepository.instance.removeListener(_onExternalChange);
     VodWatchlistRepository.instance.removeListener(_onExternalChange);
     super.dispose();
@@ -134,6 +159,15 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
   Widget build(BuildContext context) {
     final VodMovie m = widget.movie;
     final VodInfo? info = _info;
+
+    // Budget « ouverture fiche < 300 ms » : la fiche s'affiche dès la
+    // première frame (structure + infos vignette) — c'est CETTE frame
+    // qu'on mesure, pas l'enrichissement réseau qui suit en silence.
+    if (CinePerf.isRunning(CinePerf.detailOpen)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        CinePerf.end(CinePerf.detailOpen, detail: m.name);
+      });
+    }
 
     // Position de reprise éventuelle → bouton « Reprendre à 42:15 ».
     final PlaybackPosition? resume =
@@ -277,10 +311,83 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
                     _DownloadButton(movie: m),
                   ],
                 ),
+                // ----- SIMILAIRES (même catégorie, depuis le cache) -----
+                //  Bande compacte façon Netflix sous les actions : flèche
+                //  BAS depuis ▶ Lecture → premières affiches similaires.
+                //  OK sur une affiche → nouvelle fiche (retour = celle-ci).
+                if (_similar.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 20),
+                  Text(
+                    context.l10n.tvSimilar.toUpperCase(),
+                    style: TvTokens.ui(12,
+                        weight: FontWeight.w700,
+                        color: TvTokens.mutedDim,
+                        spacing: 1.6),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 128,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      addAutomaticKeepAlives: false,
+                      itemExtent: 86,
+                      itemCount: _similar.length,
+                      itemBuilder: (BuildContext context, int i) => Padding(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: _SimilarCard(
+                          movie: _similar[i],
+                          onOpen: () {
+                            // Remplace la fiche (pas d'empilement infini de
+                            // routes en butinant de similaire en similaire).
+                            Navigator.of(context).pushReplacement(
+                              MaterialPageRoute<void>(
+                                builder: (_) => TvMovieDetailScreen(
+                                    movie: _similar[i]),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Petite affiche du rail « Similaires » (2:3 compacte, focusable).
+class _SimilarCard extends StatelessWidget {
+  const _SimilarCard({required this.movie, required this.onOpen});
+  final VodMovie movie;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    const Widget fallback = ColoredBox(
+      color: TvTokens.tile,
+      child: Icon(Icons.movie_rounded, size: 22, color: TvTokens.mutedDim),
+    );
+    return TvFocusable(
+      scale: TvFocusScale.small,
+      baseColor: TvTokens.card,
+      onSelect: onOpen,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(TvTokens.rSmall),
+        child: (movie.posterUrl == null || movie.posterUrl!.isEmpty)
+            ? fallback
+            : CachedNetworkImage(
+                imageUrl: movie.posterUrl!,
+                fit: BoxFit.cover,
+                memCacheWidth: 160,
+                fadeInDuration: const Duration(milliseconds: 150),
+                placeholder: (_, __) => fallback,
+                errorWidget: (_, __, ___) => fallback,
+              ),
       ),
     );
   }

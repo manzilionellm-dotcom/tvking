@@ -1546,5 +1546,6 @@
   "fallbackEpisode": "Episode {number}",
   "gateReferenceLabel": "DIT REFERENCENUMMER",
   "gateReferenceHint": "Vis dette nummer til din rådgiver – de genaktiverer din adgang på et øjeblik.",
-  "gateReactivateContact": "Kontakt for at genaktivere"
+  "gateReactivateContact": "Kontakt for at genaktivere",
+  "tvSimilar": "Lignende titler"
 }

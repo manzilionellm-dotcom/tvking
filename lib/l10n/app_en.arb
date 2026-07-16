@@ -1572,5 +1572,6 @@
   "fallbackEpisode": "Episode {number}",
   "gateReferenceLabel": "YOUR REFERENCE NUMBER",
   "gateReferenceHint": "Show this number to your advisor: they reactivate your access in seconds.",
-  "gateReactivateContact": "Contact to reactivate"
+  "gateReactivateContact": "Contact to reactivate",
+  "tvSimilar": "More like this"
 }

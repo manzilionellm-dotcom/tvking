@@ -633,6 +633,15 @@ class XtreamClient {
               (e['title']?.toString().trim().isNotEmpty ?? false)
                   ? e['title'].toString()
                   : l10nNow.fallbackEpisode(epNum);
+          // Vignette de l'épisode (image 16:9 propre à l'épisode) : les
+          // panels la rangent dans `info.movie_image`. Défensif : absente
+          // ou malformée → null, la fiche affiche le poster de la série.
+          String? epPoster;
+          final dynamic epInfo = e['info'];
+          if (epInfo is Map<String, dynamic>) {
+            final String img = epInfo['movie_image']?.toString() ?? '';
+            if (img.startsWith('http')) epPoster = img;
+          }
           out.add(
             VodEpisode(
               id: 'ep-$id',
@@ -641,6 +650,7 @@ class XtreamClient {
               episodeNum: epNum,
               streamUrl: '$_baseUrl/series/$_userEnc/$_passEnc/$id.$ext',
               containerExt: ext,
+              posterUrl: epPoster,
             ),
           );
         }

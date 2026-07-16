@@ -3892,5 +3892,9 @@
   "tvCollectionsPresetCustom2": "Perso 2",
   "gateReferenceLabel": "TON NUMÉRO DE RÉFÉRENCE",
   "gateReferenceHint": "Montre ce numéro à ton conseiller : il réactive ton accès en un instant.",
-  "gateReactivateContact": "Contacter pour réactiver"
+  "gateReactivateContact": "Contacter pour réactiver",
+  "tvSimilar": "Titres similaires",
+  "@tvSimilar": {
+    "description": "Libellé du rail « Titres similaires » sur la fiche film TV"
+  }
 }

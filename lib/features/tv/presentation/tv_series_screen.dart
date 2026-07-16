@@ -556,9 +556,12 @@ class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
                       ],
                       const SizedBox(height: 14),
                       // ----- Zone saisons + épisodes -----
+                      // Pendant get_series_info : SQUELETTE de rangées
+                      // d'épisodes (jamais de roue centrale — la structure
+                      // de la page « respire », perception premium).
                       Expanded(
                         child: waiting
-                            ? const Center(child: CircularProgressIndicator())
+                            ? const _EpisodesSkeleton()
                             : _episodesArea(
                                 snap.data?.episodes ?? const <VodEpisode>[]),
                       ),
@@ -634,6 +637,54 @@ class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
   }
 }
 
+/// Squelette de la zone épisodes : rangées fantômes « respirantes »
+/// (même pattern que TvSkeletonRails — opacité douce, respecte
+/// disableAnimations) pendant le get_series_info. Aucun spinner.
+class _EpisodesSkeleton extends StatefulWidget {
+  const _EpisodesSkeleton();
+
+  @override
+  State<_EpisodesSkeleton> createState() => _EpisodesSkeletonState();
+}
+
+class _EpisodesSkeletonState extends State<_EpisodesSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _breath = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _breath.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Accessibilité/perf : si les animations sont désactivées (réglage
+    // système), les barres restent statiques — même règle que TvSkeletonRails.
+    final bool animate = !MediaQuery.of(context).disableAnimations;
+    Widget row() => Container(
+          height: 64,
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: TvTokens.card,
+            borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
+          ),
+        );
+    final Widget rows = Column(
+      children: <Widget>[for (int i = 0; i < 6; i++) row()],
+    );
+    if (!animate) return rows;
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.45, end: 0.9).animate(
+          CurvedAnimation(parent: _breath, curve: Curves.easeInOut)),
+      child: rows,
+    );
+  }
+}
+
 class _SeasonChip extends StatelessWidget {
   const _SeasonChip({
     required this.label,
@@ -700,9 +751,40 @@ class _EpisodeRow extends StatelessWidget {
       baseColor: TvTokens.card,
       onSelect: onPlay,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: <Widget>[
+            // Vignette 16:9 de l'épisode (info.movie_image du panel) —
+            // décodage borné, repli discret (pas d'image = pas de trou :
+            // un cadre sombre avec l'icône lecture suffit).
+            ClipRRect(
+              borderRadius: BorderRadius.circular(TvTokens.rSmall),
+              child: SizedBox(
+                width: 96,
+                height: 54,
+                child: (episode.posterUrl == null ||
+                        episode.posterUrl!.isEmpty)
+                    ? const ColoredBox(
+                        color: TvTokens.tile,
+                        child: Icon(Icons.movie_outlined,
+                            size: 20, color: TvTokens.mutedDim),
+                      )
+                    : CachedNetworkImage(
+                        imageUrl: episode.posterUrl!,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 192,
+                        fadeInDuration: const Duration(milliseconds: 150),
+                        placeholder: (_, __) =>
+                            const ColoredBox(color: TvTokens.tile),
+                        errorWidget: (_, __, ___) => const ColoredBox(
+                          color: TvTokens.tile,
+                          child: Icon(Icons.movie_outlined,
+                              size: 20, color: TvTokens.mutedDim),
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(width: 12),
             Container(
               width: 64,
               alignment: Alignment.center,

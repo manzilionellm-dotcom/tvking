@@ -16,6 +16,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/playlists/data/xtream_client.dart';
+import 'package:tv_king/features/vod/domain/vod_info.dart';
+import 'package:tv_king/features/vod/domain/vod_series.dart';
 
 /// Client HTTP simulé : répond au player_api selon l'action demandée.
 MockClient _mockServer({
@@ -191,6 +193,62 @@ void main() {
       final List<Channel> channels =
           await c.fetchLiveChannels(playlistId: 1);
       expect(channels.first.streamUrl, 'http://s.com:8080/u/p/42.ts');
+    });
+  });
+
+  group('fetchSeriesDetail — épisodes', () {
+    test('vignette info.movie_image parsée, absente/invalide → null', () async {
+      final MockClient mock = MockClient((http.Request req) async {
+        return http.Response(
+          jsonEncode(<String, Object>{
+            'info': <String, Object>{'name': 'Vikings'},
+            'episodes': <String, Object>{
+              '1': <Object>[
+                <String, Object>{
+                  'id': 101,
+                  'title': 'Rites',
+                  'episode_num': 1,
+                  'container_extension': 'mp4',
+                  'info': <String, Object>{
+                    'movie_image': 'http://img/ep1.jpg',
+                  },
+                },
+                <String, Object>{
+                  'id': 102,
+                  'title': 'Wrath',
+                  'episode_num': 2,
+                  // pas de bloc info → pas de vignette, pas de crash
+                },
+                <String, Object>{
+                  'id': 103,
+                  'title': 'Raid',
+                  'episode_num': 3,
+                  'info': <String, Object>{
+                    'movie_image': 'pas-une-url', // malformée → ignorée
+                  },
+                },
+              ],
+            },
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final XtreamClient c = XtreamClient(
+        serverUrl: 'http://s.com:8080',
+        username: 'u',
+        password: 'p',
+        httpClient: mock,
+      );
+      final ({List<VodEpisode> episodes, VodInfo? info}) d =
+          await c.fetchSeriesDetail('9');
+      expect(d.episodes, hasLength(3));
+      expect(d.episodes[0].posterUrl, 'http://img/ep1.jpg');
+      expect(d.episodes[1].posterUrl, isNull);
+      expect(d.episodes[2].posterUrl, isNull);
+      // Contrat épisode suivant : ids préfixés « ep- », tri stable.
+      expect(d.episodes.map((VodEpisode e) => e.id),
+          <String>['ep-101', 'ep-102', 'ep-103']);
     });
   });
 }
