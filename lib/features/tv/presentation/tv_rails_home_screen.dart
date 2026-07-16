@@ -667,6 +667,9 @@ class _FavCard extends StatelessWidget {
                         ? CachedNetworkImage(
                             imageUrl: ch.logoUrl!,
                             fit: BoxFit.contain,
+                            // Décodage borné (48 px affichés) — anti-OOM.
+                            memCacheWidth: 128,
+                            memCacheHeight: 128,
                             errorWidget: (_, __, ___) => const Icon(
                                 Icons.live_tv_rounded,
                                 size: 24,

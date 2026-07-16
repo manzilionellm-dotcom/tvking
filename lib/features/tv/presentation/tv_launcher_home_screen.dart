@@ -514,6 +514,11 @@ class _FavoritesGridState extends State<_FavoritesGrid> {
                       ? CachedNetworkImage(
                           imageUrl: ch.logoUrl!,
                           fit: BoxFit.contain,
+                          // Décodage BORNÉ : un logo de grille fait ~60 px —
+                          // décoder le PNG 1000×1000 du panel gaspillait des
+                          // Mo de RAM par tuile (anti-fermeture).
+                          memCacheWidth: 160,
+                          memCacheHeight: 160,
                           errorWidget: (_, __, ___) => const Icon(
                               Icons.live_tv_rounded,
                               color: TvTokens.muted,
@@ -683,6 +688,10 @@ class _RecentMoviesRailState extends State<_RecentMoviesRail> {
                         ? CachedNetworkImage(
                             imageUrl: m.posterUrl!,
                             fit: BoxFit.cover,
+                            // Affiche ~110×165 px à l'écran : décodage borné
+                            // (les jaquettes TMDB font souvent 2000 px).
+                            memCacheWidth: 240,
+                            memCacheHeight: 360,
                             errorWidget: (_, __, ___) =>
                                 _posterFallback(m.name),
                           )

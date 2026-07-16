@@ -105,7 +105,18 @@ jobs:
           if ! grep -q 'REQUEST_INSTALL_PACKAGES' "$MANIFEST"; then
             sed -i '/<manifest /a\    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>' "$MANIFEST"
           fi
-          grep -nE 'INTERNET|usesCleartextTraffic|REQUEST_INSTALL_PACKAGES' "$MANIFEST" || true
+          # GRAND TAS MÉMOIRE (anti-fermeture, retour terrain 2026-07-16) :
+          # largeHeap élargit le tas Java/bitmaps de l'app — sur les box à
+          # faible RAM, ça éloigne le seuil où Android tue le process pendant
+          # que l'UI + le lecteur travaillent. Idempotent.
+          if ! grep -q 'android:largeHeap' "$MANIFEST"; then
+            sed -i 's|<application|<application\n        android:largeHeap="true"|' "$MANIFEST"
+            echo "✓ android:largeHeap=\"true\" ajouté (anti-OOM box faible RAM)"
+          else
+            echo "⊙ largeHeap déjà présent"
+          fi
+
+          grep -nE 'INTERNET|usesCleartextTraffic|REQUEST_INSTALL_PACKAGES|largeHeap' "$MANIFEST" || true
 
       - name: Patch manifest — Android TV (leanback)
         run: |

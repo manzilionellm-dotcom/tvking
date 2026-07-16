@@ -23,6 +23,7 @@ import 'core/crash/crash_reporting.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
 import 'features/tv/core/tv_home_template.dart';
+import 'features/tv/core/tv_memory_guard.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/realtime/realtime_sync_service.dart';
 import 'core/profiles/profiles_repository.dart';
@@ -87,6 +88,11 @@ Future<void> _bootstrap() async {
   }
   // Boot normal : on note le jalon « moteur prêt » (avant tout import).
   await BootGuard.instance.markPhase(BootPhase.flutterUp);
+
+  // GARDE-MÉMOIRE TV (anti-fermeture) : plafonne le cache d'images Flutter
+  // (48 Mo au lieu de 100) et PURGE les caches dès qu'Android signale une
+  // pression mémoire — voir tv_memory_guard.dart.
+  TvMemoryGuard.instance.install();
 
   // ANTI-OOM TV (confirmé par logcat: lowmemorykiller / signal 9) : on N'INITIE
   // PLUS le moteur mpv (media_kit) sur la TV. La TV joue EXCLUSIVEMENT via
