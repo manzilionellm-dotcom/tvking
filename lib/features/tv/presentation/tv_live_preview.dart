@@ -135,13 +135,26 @@ class _TvLivePreviewState extends State<TvLivePreview> {
   void didUpdateWidget(TvLivePreview old) {
     super.didUpdateWidget(old);
     // (Pas de setState ici : didUpdateWidget précède déjà un rebuild.)
-    if (old.channel.id != widget.channel.id || old.enabled != widget.enabled) {
-      _reset();
+    if (old.enabled != widget.enabled) {
+      // Suspension / reprise (plein écran) : libération COMPLÈTE du lecteur
+      // natif — c'est la garantie « jamais 2 flux ouverts ».
+      _reset(disposePlayer: true);
+      if (widget.enabled) _schedule();
+    } else if (old.channel.id != widget.channel.id) {
+      // FLUIDITÉ : changer de chaîne NE détruit PAS la vue native (créer /
+      // détruire une PlatformView + un ExoPlayer à chaque cran de défilement
+      // saccadait toute l'UI). On garde le lecteur, on annule juste
+      // l'anti-rebond en cours ; au prochain déclenchement, un simple setUrl
+      // zappe — exactement comme le plein écran. On met la lecture en PAUSE
+      // pendant la navigation : décoder une vidéo cachée sous le logo
+      // gaspillerait le CPU de la box au moment où l'UI en a besoin.
+      _ctrl?.pause();
+      _reset(disposePlayer: false);
       if (widget.enabled) _schedule();
     } else if (widget.enabled &&
         widget.startImmediately &&
         !old.startImmediately &&
-        _ctrl == null &&
+        _playingChannelId != widget.channel.id &&
         !_resolving) {
       // La chaîne déjà focalisée vient d'être SÉLECTIONNÉE (OK) alors que
       // l'anti-rebond courait encore : on démarre sans attendre.
@@ -152,21 +165,28 @@ class _TvLivePreviewState extends State<TvLivePreview> {
 
   @override
   void dispose() {
-    _reset();
+    _reset(disposePlayer: true);
     super.dispose();
   }
 
-  /// Coupe TOUT : anti-rebond annulé, lecteur natif libéré (ferme le flux).
-  void _reset() {
+  /// Annule la tentative en cours. [disposePlayer] libère aussi le lecteur
+  /// natif (sortie d'écran / plein écran) — sinon il est CONSERVÉ pour le
+  /// prochain zap (fluidité).
+  void _reset({required bool disposePlayer}) {
     _session++;
     _debounce?.cancel();
     _debounce = null;
     _resolving = false;
     _loggedFirstFrame = false;
     _loggedError = false;
-    _ctrl?.removeListener(_onPlayer);
-    _ctrl?.dispose();
-    _ctrl = null;
+    if (disposePlayer) {
+      _ctrl?.removeListener(_onPlayer);
+      _ctrl?.dispose();
+      _ctrl = null;
+      _playingChannelId = null;
+      _uiFirstFrame = false;
+      _uiHasError = false;
+    }
   }
 
   void _schedule() {
@@ -184,6 +204,16 @@ class _TvLivePreviewState extends State<TvLivePreview> {
   }
 
   Future<void> _start() async {
+    // Retour de focus sur la chaîne DÉJÀ chargée (sans erreur) : rien à
+    // recharger — on relance juste la lecture (mise en pause pendant la
+    // navigation) et la vidéo réapparaît instantanément.
+    final NativeVideoController? already = _ctrl;
+    if (already != null &&
+        _playingChannelId == widget.channel.id &&
+        !already.hasError) {
+      already.play();
+      return;
+    }
     final int session = _session;
     final String name = widget.channel.cleanName;
     _diag('[$name] anti-rebond écoulé → résolution de l\'URL d\'aperçu');
@@ -207,51 +237,79 @@ class _TvLivePreviewState extends State<TvLivePreview> {
     _diag('[$name] lecture aperçu : '
         '${StreamDiagnostics.maskCredentials(src.url)}'
         '${src.userAgent == null ? '' : ' (UA: ${src.userAgent})'}');
-    final NativeVideoController c = NativeVideoController();
-    c.setVolume(0); // muet d'office — le son n'arrive qu'en plein écran
+    // Lecteur PERSISTANT : créé au 1er aperçu, puis simple setUrl aux zaps
+    // suivants (créer/détruire la vue native à chaque chaîne saccadait l'UI).
+    NativeVideoController? c = _ctrl;
+    if (c == null) {
+      c = NativeVideoController();
+      c.setVolume(0); // muet d'office — le son n'arrive qu'en plein écran
+      c.addListener(_onPlayer);
+    }
     c.setUrl(src.url, userAgent: src.userAgent);
-    c.addListener(_onPlayer);
     setState(() {
       _ctrl = c;
+      _playingChannelId = widget.channel.id;
+      _uiFirstFrame = false; // setUrl remet firstFrame à false côté contrôleur
+      _uiHasError = false;
       _resolving = false;
     });
   }
+
+  /// Chaîne actuellement CHARGÉE dans le lecteur persistant (null tant que
+  /// rien n'a joué). Le logo recouvre la vidéo dès que la chaîne focalisée
+  /// n'est plus celle-ci.
+  String? _playingChannelId;
 
   // Journalise 1re image / erreur UNE seule fois par tentative (le
   // contrôleur notifie ~2×/s : sans ces verrous, la boîte noire déborde).
   bool _loggedFirstFrame = false;
   bool _loggedError = false;
 
+  // Derniers états VISUELS pris en compte : on ne reconstruit le widget que
+  // quand l'un d'eux change — pas à chaque tick de position (2×/s) du
+  // lecteur, qui faisait travailler l'UI pour rien (fluidité).
+  bool _uiFirstFrame = false;
+  bool _uiHasError = false;
+
   void _onPlayer() {
     if (!mounted) return;
     final NativeVideoController? c = _ctrl;
-    if (c != null) {
-      if (c.firstFrame && !_loggedFirstFrame) {
-        _loggedFirstFrame = true;
-        _diag('[${widget.channel.cleanName}] 1re image aperçu OK');
-      }
-      if (c.hasError && !_loggedError) {
-        _loggedError = true;
-        _diag(
-            '[${widget.channel.cleanName}] échec aperçu : '
-            '${c.lastErrorCodeName ?? 'erreur'}'
-            '${c.lastErrorCode == null ? '' : ' (${c.lastErrorCode})'}'
-            ' — ${c.lastErrorCauseMessage ?? c.lastErrorMessage ?? 'lecture impossible'}'
-            ' → repli logo',
-            level: 'warn');
-      }
+    if (c == null) return;
+    if (c.firstFrame && !_loggedFirstFrame) {
+      _loggedFirstFrame = true;
+      _diag('[${widget.channel.cleanName}] 1re image aperçu OK');
     }
-    setState(() {});
+    if (c.hasError && !_loggedError) {
+      _loggedError = true;
+      _diag(
+          '[${widget.channel.cleanName}] échec aperçu : '
+          '${c.lastErrorCodeName ?? 'erreur'}'
+          '${c.lastErrorCode == null ? '' : ' (${c.lastErrorCode})'}'
+          ' — ${c.lastErrorCauseMessage ?? c.lastErrorMessage ?? 'lecture impossible'}'
+          ' → repli logo',
+          level: 'warn');
+    }
+    // Reconstruction UNIQUEMENT sur changement visuel (1re image / erreur).
+    if (c.firstFrame != _uiFirstFrame || c.hasError != _uiHasError) {
+      setState(() {
+        _uiFirstFrame = c.firstFrame;
+        _uiHasError = c.hasError;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final NativeVideoController? c = _ctrl;
-    // La vidéo ne remplace le logo QU'À la 1re trame dessinée et tant
-    // qu'aucune erreur n'est survenue → jamais de cadre noir vide.
-    final bool videoReady = c != null && c.firstFrame && !c.hasError;
-    final bool loading =
-        _resolving || (c != null && !c.firstFrame && !c.hasError);
+    // La vidéo ne remplace le logo QU'À la 1re trame dessinée, SANS erreur,
+    // et seulement si le lecteur joue bien LA chaîne focalisée (pendant un
+    // zap, le logo de la nouvelle chaîne recouvre l'ancienne vidéo) →
+    // jamais de cadre noir vide, jamais d'image d'une autre chaîne.
+    final bool sameChannel = _playingChannelId == widget.channel.id;
+    final bool videoReady =
+        c != null && sameChannel && c.firstFrame && !c.hasError;
+    final bool loading = _resolving ||
+        (c != null && sameChannel && !c.firstFrame && !c.hasError);
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
