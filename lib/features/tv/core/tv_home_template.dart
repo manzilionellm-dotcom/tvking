@@ -44,31 +44,33 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
     }
   }
 
-  /// Nom court affiché dans le sélecteur.
+  /// Nom court affiché dans le sélecteur. Noms NEUTRES (lettres) — aucune
+  /// marque concurrente (ni « IBO » ni « TiviMate ») : ce sont NOS modèles.
   String get label {
     switch (this) {
       case TvHomeTemplate.classic:
-        return 'Classique';
+        return 'Modèle A';
       case TvHomeTemplate.launcher:
-        return 'IBO — Grandes tuiles';
+        return 'Modèle B';
       case TvHomeTemplate.rails:
-        return 'IBO — Rails';
+        return 'Modèle C';
       case TvHomeTemplate.tivimate:
-        return 'TiviMate';
+        return 'Modèle D';
     }
   }
 
-  /// Sous-titre explicatif dans le sélecteur.
+  /// Sous-titre explicatif dans le sélecteur — décrit la DISPOSITION, sans
+  /// jamais citer une app tierce.
   String get description {
     switch (this) {
       case TvHomeTemplate.classic:
         return 'Menu compact en haut, liste des chaînes en grand.';
       case TvHomeTemplate.launcher:
-        return 'Grandes tuiles bordeaux façon IBO — simple et direct.';
+        return 'Grandes tuiles d\'accès rapide — simple et direct.';
       case TvHomeTemplate.rails:
-        return 'Aperçu + rangée d\'icônes + rail de favoris (façon IBO rails).';
+        return 'Aperçu + rangée d\'icônes + rail de favoris en direct.';
       case TvHomeTemplate.tivimate:
-        return 'Liste des chaînes en panneau + aperçu EPG (façon TiviMate).';
+        return 'Chaînes en panneau à gauche + aperçu et programme à droite.';
     }
   }
 }
