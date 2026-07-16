@@ -2433,6 +2433,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                             _currentChannel.logoUrl!,
                             height: 36,
                             width: 60,
+                            // Incrustation 60 px : borne le décodage
+                            // (~3× densité). Les logos IPTV font parfois
+                            // 1000×1000 — inutile de les décoder pleins
+                            // pour une vignette.
+                            cacheWidth: 180,
                             fit: BoxFit.contain,
                             errorBuilder: (_, __, ___) =>
                                 const SizedBox.shrink(),
@@ -3371,6 +3376,8 @@ class _ZapPreviewPage extends StatelessWidget {
                             logoUrl,
                             width: 120,
                             height: 120,
+                            // 120 px affichés : décodage borné ~3×.
+                            cacheWidth: 360,
                             fit: BoxFit.cover,
                             errorBuilder: (_, __, ___) => Text(
                               _initials(channel.cleanName),
@@ -3484,6 +3491,8 @@ class _CastingOverlay extends StatelessWidget {
                         ? Image.network(
                             channel.logoUrl!,
                             fit: BoxFit.contain,
+                            // Carte 104 px : décodage borné ~3×.
+                            cacheWidth: 312,
                             errorBuilder: (_, __, ___) =>
                                 _monogram(),
                           )

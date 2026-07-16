@@ -64,6 +64,10 @@ class _TvGuideScreenState extends State<TvGuideScreen> {
   Timer? _nowTicker;
   DateTime _now = DateTime.now();
 
+  /// Incrémentée à chaque événement EPG (sync terminée…). Les lignes
+  /// s'en servent pour savoir quand relancer leur requête mémorisée.
+  int _epgVersion = 0;
+
   @override
   void initState() {
     super.initState();
@@ -82,7 +86,10 @@ class _TvGuideScreenState extends State<TvGuideScreen> {
       if (mounted) setState(() => _channels = ch);
     });
     _epgSub = EpgRepository.instance.changes.listen((_) {
-      if (mounted) setState(() {});
+      // FLUIDITÉ : la version EPG sert de CLÉ aux futures mémorisés des
+      // lignes (_ProgramsRow). Seul un vrai changement de données EPG
+      // invalide les requêtes — pas le tic d'horloge de 30 s.
+      if (mounted) setState(() => _epgVersion++);
     });
 
     _nowTicker = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -158,6 +165,7 @@ class _TvGuideScreenState extends State<TvGuideScreen> {
                     verticalController: _verticalController,
                     horizontalController: _horizontalController,
                     now: _now,
+                    epgVersion: _epgVersion,
                   ),
                 ),
               ],
@@ -336,6 +344,7 @@ class _GuideBody extends StatelessWidget {
     required this.verticalController,
     required this.horizontalController,
     required this.now,
+    required this.epgVersion,
   });
 
   final List<Channel> channels;
@@ -347,6 +356,10 @@ class _GuideBody extends StatelessWidget {
   final ScrollController verticalController;
   final ScrollController horizontalController;
   final DateTime now;
+
+  /// Version des données EPG (incrémentée par l'écran à chaque sync) :
+  /// clé d'invalidation des requêtes mémorisées des lignes.
+  final int epgVersion;
 
   double _xForTime(DateTime t) {
     final int ms =
@@ -396,6 +409,7 @@ class _GuideBody extends StatelessWidget {
                       hourWidth: hourWidth,
                       rowHeight: rowHeight,
                       now: now,
+                      epgVersion: epgVersion,
                       onProgramTap: (EpgProgram p) {
                         final int nowMs = now.millisecondsSinceEpoch;
                         if (p.isLiveAt(now)) {
@@ -528,7 +542,13 @@ class _ChannelCell extends StatelessWidget {
   }
 }
 
-class _ProgramsRow extends StatelessWidget {
+/// FLUIDITÉ — StatefulWidget avec FUTURE MÉMORISÉ : avant, chaque
+/// rebuild (tic « now » 30 s, événement EPG, scroll parent) recréait la
+/// requête `programsBetween` de CHAQUE ligne visible → rafales SQLite
+/// périodiques alors que les bornes de la timeline sont FIXES (posées
+/// une fois en initState de l'écran). Le future ne se recrée que si la
+/// chaîne ou la version des données EPG change (didUpdateWidget).
+class _ProgramsRow extends StatefulWidget {
   const _ProgramsRow({
     required this.channelId,
     required this.timelineStart,
@@ -536,6 +556,7 @@ class _ProgramsRow extends StatelessWidget {
     required this.hourWidth,
     required this.rowHeight,
     required this.now,
+    required this.epgVersion,
     required this.onProgramTap,
   });
 
@@ -545,36 +566,67 @@ class _ProgramsRow extends StatelessWidget {
   final double hourWidth;
   final double rowHeight;
   final DateTime now;
+
+  /// Version des données EPG : quand elle change (sync terminée), la
+  /// requête mémorisée est relancée. Le tic d'horloge, lui, ne touche
+  /// à rien.
+  final int epgVersion;
   final void Function(EpgProgram) onProgramTap;
+
+  @override
+  State<_ProgramsRow> createState() => _ProgramsRowState();
+}
+
+class _ProgramsRowState extends State<_ProgramsRow> {
+  late Future<List<EpgProgram>> _progs;
+
+  @override
+  void initState() {
+    super.initState();
+    _progs = _load();
+  }
+
+  @override
+  void didUpdateWidget(_ProgramsRow old) {
+    super.didUpdateWidget(old);
+    if (old.channelId != widget.channelId ||
+        old.epgVersion != widget.epgVersion ||
+        old.timelineStart != widget.timelineStart ||
+        old.timelineEnd != widget.timelineEnd) {
+      _progs = _load();
+    }
+  }
+
+  Future<List<EpgProgram>> _load() => EpgRepository.instance.programsBetween(
+        widget.channelId,
+        widget.timelineStart.millisecondsSinceEpoch,
+        widget.timelineEnd.millisecondsSinceEpoch,
+      );
 
   double _xForTime(DateTime t) {
     final int ms =
-        t.millisecondsSinceEpoch - timelineStart.millisecondsSinceEpoch;
-    return (ms / (1000 * 60 * 60)) * hourWidth;
+        t.millisecondsSinceEpoch - widget.timelineStart.millisecondsSinceEpoch;
+    return (ms / (1000 * 60 * 60)) * widget.hourWidth;
   }
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<EpgProgram>>(
-      future: EpgRepository.instance.programsBetween(
-        channelId,
-        timelineStart.millisecondsSinceEpoch,
-        timelineEnd.millisecondsSinceEpoch,
-      ),
+      future: _progs,
       builder: (BuildContext context,
           AsyncSnapshot<List<EpgProgram>> snap) {
         final List<EpgProgram> progs = snap.data ?? <EpgProgram>[];
-        final double totalWidth = hourWidth * 24;
+        final double totalWidth = widget.hourWidth * 24;
         return SizedBox(
           width: totalWidth,
-          height: rowHeight,
+          height: widget.rowHeight,
           child: Stack(
             children: <Widget>[
               // Grille verticale subtile toutes les heures
               CustomPaint(
-                size: Size(totalWidth, rowHeight),
+                size: Size(totalWidth, widget.rowHeight),
                 painter: _HourGridPainter(
-                  hourWidth: hourWidth,
+                  hourWidth: widget.hourWidth,
                   color: AppColors.border,
                 ),
               ),
@@ -584,7 +636,7 @@ class _ProgramsRow extends StatelessWidget {
                 final double right =
                     _xForTime(p.stopDateTime).clamp(0, totalWidth);
                 final double width = (right - left).clamp(40, totalWidth);
-                final bool isLive = p.isLiveAt(now);
+                final bool isLive = p.isLiveAt(widget.now);
                 return Positioned(
                   left: left,
                   top: 4,
@@ -593,13 +645,13 @@ class _ProgramsRow extends StatelessWidget {
                   child: _ProgramCell(
                     program: p,
                     isLive: isLive,
-                    onTap: () => onProgramTap(p),
+                    onTap: () => widget.onProgramTap(p),
                   ),
                 );
               }),
               // Ligne "now" rouge verticale
               Positioned(
-                left: _xForTime(now),
+                left: _xForTime(widget.now),
                 top: 0,
                 bottom: 0,
                 width: 2,

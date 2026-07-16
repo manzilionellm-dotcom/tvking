@@ -63,7 +63,13 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
   List<String> _groups = <String>[_kAllGroup];
   String _group = _kAllGroup;
   List<Channel> _visible = <Channel>[];
-  Channel? _preview;
+
+  /// Chaîne prévisualisée (focus D-pad). ValueNotifier et non champ +
+  /// setState : chaque déplacement de focus ne reconstruit QUE l'aperçu
+  /// et le surlignage des lignes concernées, plus jamais l'écran entier
+  /// (même patron que tv_channels_screen — zéro saccade au défilement
+  /// sur les gros bouquets).
+  final ValueNotifier<Channel?> _preview = ValueNotifier<Channel?>(null);
   bool _loading = true;
 
   @override
@@ -76,6 +82,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
   @override
   void dispose() {
     _sub?.cancel();
+    _preview.dispose();
     super.dispose();
   }
 
@@ -102,7 +109,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
       _counts = counts;
       if (!_groups.contains(_group)) _group = _kAllGroup;
       _visible = _channelsFor(_group);
-      _preview ??= _visible.isNotEmpty ? _visible.first : null;
+      _preview.value ??= _visible.isNotEmpty ? _visible.first : null;
       _loading = false;
     });
   }
@@ -119,7 +126,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     setState(() {
       _group = group;
       _visible = _channelsFor(group);
-      _preview = _visible.isNotEmpty ? _visible.first : null;
+      _preview.value = _visible.isNotEmpty ? _visible.first : null;
     });
   }
 
@@ -258,7 +265,13 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        _preview == null ? const SizedBox.shrink() : _previewHeader(_preview!),
+        // Rebuild ciblé : seul l'aperçu écoute le ValueNotifier — le
+        // défilement D-pad ne reconstruit jamais la liste entière.
+        ValueListenableBuilder<Channel?>(
+          valueListenable: _preview,
+          builder: (BuildContext context, Channel? p, _) =>
+              p == null ? const SizedBox.shrink() : _previewHeader(p),
+        ),
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
@@ -270,16 +283,22 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                 canRequestFocus: false,
                 skipTraversal: true,
                 onFocusChange: (bool has) {
-                  if (has && mounted && _preview?.id != c.id) {
-                    setState(() => _preview = c);
+                  // Pas de setState : le ValueNotifier notifie l'aperçu
+                  // et les surlignages de ligne, rien d'autre.
+                  if (has && mounted && _preview.value?.id != c.id) {
+                    _preview.value = c;
                   }
                 },
-                child: _ChannelRow(
-                  number: i + 1,
-                  channel: c,
-                  active: _preview?.id == c.id,
-                  autofocus: i == 0,
-                  onSelect: () => _play(i),
+                child: ValueListenableBuilder<Channel?>(
+                  valueListenable: _preview,
+                  builder: (BuildContext context, Channel? p, _) =>
+                      _ChannelRow(
+                    number: i + 1,
+                    channel: c,
+                    active: p?.id == c.id,
+                    autofocus: i == 0,
+                    onSelect: () => _play(i),
+                  ),
                 ),
               );
             },

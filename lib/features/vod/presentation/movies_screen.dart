@@ -242,6 +242,12 @@ class _MovieRow extends StatelessWidget {
             child: movie.posterUrl != null
                 ? Image.network(movie.posterUrl!,
                     fit: BoxFit.cover,
+                    // Vignette 44 px de large : on borne le DÉCODAGE
+                    // (~3× pour les écrans denses). Sans cacheWidth, un
+                    // poster TMDB 500-2000 px était décodé plein format
+                    // pour 44 px affichés → pics RAM + jank au scroll
+                    // sur les longues listes de films.
+                    cacheWidth: 132,
                     errorBuilder: (_, __, ___) => _posterFallback())
                 : _posterFallback(),
           ),

@@ -156,32 +156,24 @@ class EpgRepository {
         // On purge d'abord les vieux programmes pour faire de la place
         await purgeStale();
 
-        // Batch d'insertion : on accumule 500 programmes puis on commit
+        // FLUIDITÉ — le parse XML (décodage UTF-8 + événements + dates)
+        // tourne dans un ISOLATE DÉDIÉ : une sync EPG de plusieurs
+        // centaines de Mo ne gèle plus une seule frame de l'UI. Seuls
+        // les INSERTS SQLite restent ici (sqflite = platform channels,
+        // isolate principal obligatoire), servis par lots de 500 déjà
+        // convertis en Map par l'isolate.
         final Database db = await PlaylistDatabase.instance.database;
-        Batch batch = db.batch();
-        int pending = 0;
-        int total = 0;
-
-        await XmltvParser.parse(
+        final int total = await XmltvParser.parseInIsolate(
           bytes,
-          skipPredicate: knownChannelIds == null
-              ? null
-              : (String id) => !knownChannelIds.contains(id),
-          onProgram: (EpgProgram p) async {
-            batch.insert('epg_programs', p.toMap());
-            pending++;
-            total++;
-            if (pending >= 500) {
-              await batch.commit(noResult: true);
-              batch = db.batch();
-              pending = 0;
+          knownChannelIds: knownChannelIds,
+          onBatch: (List<Map<String, Object?>> rows) async {
+            final Batch batch = db.batch();
+            for (final Map<String, Object?> row in rows) {
+              batch.insert('epg_programs', row);
             }
+            await batch.commit(noResult: true);
           },
         );
-
-        if (pending > 0) {
-          await batch.commit(noResult: true);
-        }
 
         if (kDebugMode) {
           debugPrint('[EpgRepository] $total programmes importés');

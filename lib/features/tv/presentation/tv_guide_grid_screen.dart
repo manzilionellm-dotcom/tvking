@@ -200,23 +200,42 @@ class _GuideRow extends StatefulWidget {
 }
 
 class _GuideRowState extends State<_GuideRow> {
-  late Future<List<EpgProgram?>> _epg;
+  // FLUIDITÉ (même patron que _ChannelTile de « En direct ») :
+  //   1) cache mémoire SYNCHRONE d'abord (zéro I/O au premier build) ;
+  //   2) ANTI-REBOND 250 ms avant les requêtes SQLite — une ligne
+  //      recyclée pendant un défilement D-pad en rafale n'émet AUCUNE
+  //      requête. Avant : 2 requêtes lancées immédiatement par ligne
+  //      apparue → rafales SQLite → saccades au scroll sur 120 lignes.
+  EpgProgram? _nowProg;
+  EpgProgram? _nextProg;
+  Timer? _epgTimer;
 
   @override
   void initState() {
     super.initState();
-    _epg = _load();
+    _nowProg = EpgRepository.instance.cachedCurrent(widget.channel.id);
+    _epgTimer = Timer(const Duration(milliseconds: 250), _load);
+  }
+
+  @override
+  void dispose() {
+    _epgTimer?.cancel();
+    super.dispose();
   }
 
   // On charge EN PARALLÈLE l'émission en cours et la suivante (2 requêtes
-  // indexées légères). Retour : [maintenant, ensuite] (chacune peut être null).
-  Future<List<EpgProgram?>> _load() async {
+  // indexées légères) — seulement si la ligne est restée visible 250 ms.
+  Future<void> _load() async {
     final EpgRepository epg = EpgRepository.instance;
     final List<EpgProgram?> res = await Future.wait(<Future<EpgProgram?>>[
       epg.currentProgram(widget.channel.id),
       epg.nextProgram(widget.channel.id),
     ]);
-    return res;
+    if (!mounted) return;
+    setState(() {
+      _nowProg = res[0] ?? _nowProg;
+      _nextProg = res[1];
+    });
   }
 
   void _toggleFavorite() {
@@ -269,18 +288,10 @@ class _GuideRowState extends State<_GuideRow> {
             const SizedBox(width: 18),
             // ----- EPG maintenant / à suivre -----
             Expanded(
-              child: FutureBuilder<List<EpgProgram?>>(
-                future: _epg,
-                builder: (BuildContext context,
-                    AsyncSnapshot<List<EpgProgram?>> snap) {
-                  final EpgProgram? now =
-                      (snap.data != null && snap.data!.isNotEmpty)
-                          ? snap.data![0]
-                          : null;
-                  final EpgProgram? next =
-                      (snap.data != null && snap.data!.length > 1)
-                          ? snap.data![1]
-                          : null;
+              child: Builder(
+                builder: (BuildContext context) {
+                  final EpgProgram? now = _nowProg;
+                  final EpgProgram? next = _nextProg;
                   if (now == null && next == null) {
                     // Pas d'EPG pour cette chaîne → on reste discret.
                     return Text(

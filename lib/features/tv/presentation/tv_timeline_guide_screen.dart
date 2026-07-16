@@ -294,7 +294,15 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
 
 /// Une LIGNE de la grille : cellule chaîne (focusable, OK = direct) +
 /// blocs de programmes DÉSORMAIS FOCUSABLES (OK = direct / ⟲ revoir).
-class _GuideRow extends StatelessWidget {
+///
+/// FLUIDITÉ — StatefulWidget avec FUTURE MÉMORISÉ : avant, le
+/// FutureBuilder recréait sa requête `programsBetween` à CHAQUE build.
+/// Or l'écran entier se reconstruit toutes les 30 s (tic de la ligne
+/// « maintenant ») et à chaque décalage de fenêtre → chaque tic
+/// relançait une requête SQLite PAR LIGNE VISIBLE alors que la fenêtre
+/// n'avait pas bougé. Le future ne se recrée désormais que si la
+/// chaîne OU la fenêtre temporelle change (didUpdateWidget).
+class _GuideRow extends StatefulWidget {
   const _GuideRow({
     required this.channel,
     required this.autofocus,
@@ -326,17 +334,45 @@ class _GuideRow extends StatelessWidget {
   final void Function(EpgProgram) onBlock;
 
   @override
+  State<_GuideRow> createState() => _GuideRowState();
+}
+
+class _GuideRowState extends State<_GuideRow> {
+  /// Requête EPG mémorisée : recréée UNIQUEMENT quand la chaîne ou la
+  /// fenêtre change — jamais sur un simple tic d'horloge de l'écran.
+  late Future<List<EpgProgram>> _progs;
+
+  @override
+  void initState() {
+    super.initState();
+    _progs = _load();
+  }
+
+  @override
+  void didUpdateWidget(_GuideRow old) {
+    super.didUpdateWidget(old);
+    if (old.channel.id != widget.channel.id ||
+        old.startMs != widget.startMs ||
+        old.endMs != widget.endMs) {
+      _progs = _load();
+    }
+  }
+
+  Future<List<EpgProgram>> _load() => EpgRepository.instance
+      .programsBetween(widget.channel.id, widget.startMs, widget.endMs);
+
+  @override
   Widget build(BuildContext context) {
     return Row(
       children: <Widget>[
         // ----- Cellule chaîne (focusable) -----
         SizedBox(
-          width: chanColW - 8,
-          height: rowH,
+          width: widget.chanColW - 8,
+          height: widget.rowH,
           child: TvFocusBuilder(
-            autofocus: autofocus,
+            autofocus: widget.autofocus,
             scale: TvFocusScale.small,
-            onSelect: onPlay,
+            onSelect: widget.onPlay,
             builder: (BuildContext context, bool focused) {
               final Color bg = focused ? TvTokens.gold : TvTokens.card;
               final Color fg =
@@ -350,7 +386,7 @@ class _GuideRow extends StatelessWidget {
                   border: Border.all(color: TvTokens.lineSoft),
                 ),
                 child: Text(
-                  channel.cleanName,
+                  widget.channel.cleanName,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -364,11 +400,12 @@ class _GuideRow extends StatelessWidget {
         // ----- Timeline de la ligne -----
         Expanded(
           child: SizedBox(
-            height: rowH,
+            height: widget.rowH,
             child: FutureBuilder<List<EpgProgram>>(
-              // Borné à la fenêtre : requête SQL indexée, par ligne visible.
-              future: EpgRepository.instance
-                  .programsBetween(channel.id, startMs, endMs),
+              // Borné à la fenêtre : requête SQL indexée, par ligne
+              // visible — et MÉMORISÉE (cf. _GuideRowState : le tic
+              // 30 s de l'écran ne re-tape plus SQLite).
+              future: _progs,
               builder: (BuildContext context,
                   AsyncSnapshot<List<EpgProgram>> snap) {
                 final List<EpgProgram> progs =
@@ -387,9 +424,9 @@ class _GuideRow extends StatelessWidget {
                       ),
                     ),
                     for (final EpgProgram p in progs) _block(p),
-                    if (nowDx != null)
+                    if (widget.nowDx != null)
                       Positioned(
-                        left: nowDx! - 1,
+                        left: widget.nowDx! - 1,
                         top: 0,
                         bottom: 0,
                         child: Container(
@@ -409,16 +446,16 @@ class _GuideRow extends StatelessWidget {
   Widget _block(EpgProgram p) {
     // Position/longueur du bloc, ROGNÉES à la fenêtre visible.
     final double left =
-        ((p.startTime - startMs) / 60000).clamp(0, 1e9) * pxPerMin;
+        ((p.startTime - widget.startMs) / 60000).clamp(0, 1e9) * widget.pxPerMin;
     final double right =
-        ((endMs - p.stopTime) / 60000).clamp(0, 1e9) * pxPerMin;
-    final double windowW = (endMs - startMs) / 60000 * pxPerMin;
+        ((widget.endMs - p.stopTime) / 60000).clamp(0, 1e9) * widget.pxPerMin;
+    final double windowW = (widget.endMs - widget.startMs) / 60000 * widget.pxPerMin;
     final double width =
         (windowW - left - right).clamp(0, windowW).toDouble();
     if (width < 8) return const SizedBox.shrink();
     final int nowMs = DateTime.now().millisecondsSinceEpoch;
     final bool onAir = p.startTime <= nowMs && nowMs < p.stopTime;
-    final bool replayable = canReplay(p);
+    final bool replayable = widget.canReplay(p);
     return Positioned(
       left: left,
       top: 3,
@@ -427,7 +464,7 @@ class _GuideRow extends StatelessWidget {
       // Case FOCUSABLE : OK = regarder (en direct) / ⟲ revoir (passé + archive).
       child: TvFocusBuilder(
         scale: TvFocusScale.small,
-        onSelect: () => onBlock(p),
+        onSelect: () => widget.onBlock(p),
         builder: (BuildContext context, bool focused) {
           final Color bg = focused
               ? TvTokens.gold

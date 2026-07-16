@@ -25,14 +25,162 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:xml/xml_events.dart';
 
 import '../domain/epg_program.dart';
 
+/// Configuration envoyée à l'isolate de parsing (tout est « sendable » :
+/// SendPort, Set de String, entiers).
+class _XmltvIsolateConfig {
+  const _XmltvIsolateConfig({
+    required this.sendPort,
+    required this.knownChannelIds,
+    required this.nowMs,
+    required this.keepHoursBeforeNow,
+    required this.keepHoursAfterNow,
+    required this.batchSize,
+  });
+
+  final SendPort sendPort;
+  final Set<String>? knownChannelIds;
+  final int nowMs;
+  final int keepHoursBeforeNow;
+  final int keepHoursAfterNow;
+  final int batchSize;
+}
+
 class XmltvParser {
   XmltvParser._();
+
+  /// FLUIDITÉ — Parse XMLTV dans un ISOLATE DÉDIÉ, par lots.
+  ///
+  /// Pourquoi : `parse()` (décodage UTF-8 + événements XML + parsing de
+  /// dates) est du travail 100 % CPU. Exécuté sur l'isolate principal,
+  /// une sync EPG de plusieurs centaines de Mo gèle des frames pendant
+  /// des secondes (stutter visible pendant qu'on navigue). Ici :
+  ///   - le TÉLÉCHARGEMENT (I/O non bloquant) reste sur l'appelant, qui
+  ///     pousse les chunks bruts vers l'isolate (protocole SendPort) ;
+  ///   - l'isolate parse EN STREAMING (jamais tout le fichier en RAM,
+  ///     même bénéfice mémoire que `parse`) et renvoie des LOTS de
+  ///     [batchSize] programmes déjà convertis en `Map` prêts pour
+  ///     `batch.insert` ;
+  ///   - les inserts SQLite restent sur l'isolate appelant via
+  ///     [onBatch] — sqflite passe par les platform channels,
+  ///     indisponibles dans un isolate secondaire.
+  ///
+  /// [onBatch] est attendu séquentiellement (jamais deux commits SQLite
+  /// entrelacés). Retourne le nombre total de programmes émis.
+  static Future<int> parseInIsolate(
+    Stream<List<int>> bytes, {
+    required Future<void> Function(List<Map<String, Object?>> batch) onBatch,
+    Set<String>? knownChannelIds,
+    DateTime? now,
+    int keepHoursBeforeNow = 1,
+    int keepHoursAfterNow = 48,
+    int batchSize = 500,
+  }) async {
+    final ReceivePort fromIsolate = ReceivePort();
+    final Completer<int> done = Completer<int>();
+    final Completer<SendPort> ready = Completer<SendPort>();
+    // Les lots s'insèrent DANS L'ORDRE : on chaîne les écritures pour ne
+    // jamais entrelacer deux commits, et la fin attend la dernière.
+    Future<void> writes = Future<void>.value();
+
+    final Isolate iso = await Isolate.spawn<_XmltvIsolateConfig>(
+      _parseIsolateMain,
+      _XmltvIsolateConfig(
+        sendPort: fromIsolate.sendPort,
+        knownChannelIds: knownChannelIds,
+        nowMs: (now ?? DateTime.now()).millisecondsSinceEpoch,
+        keepHoursBeforeNow: keepHoursBeforeNow,
+        keepHoursAfterNow: keepHoursAfterNow,
+        batchSize: batchSize,
+      ),
+      errorsAreFatal: true,
+    );
+
+    final StreamSubscription<Object?> sub =
+        fromIsolate.listen((Object? msg) {
+      if (msg is SendPort) {
+        // Premier message : le port de commande de l'isolate.
+        ready.complete(msg);
+      } else if (msg is List) {
+        // Un lot de programmes (List<Map<String, Object?>>).
+        final List<Map<String, Object?>> rows =
+            msg.cast<Map<String, Object?>>();
+        writes = writes.then((_) => onBatch(rows));
+      } else if (msg is int) {
+        // Fin normale : total émis — après la dernière écriture.
+        writes.then((_) {
+          if (!done.isCompleted) done.complete(msg);
+        }).catchError((Object e, StackTrace st) {
+          if (!done.isCompleted) done.completeError(e, st);
+        });
+      } else if (msg is Map && msg.containsKey('error')) {
+        if (!done.isCompleted) {
+          done.completeError(Exception('XMLTV isolate: ${msg['error']}'));
+        }
+      }
+    });
+
+    try {
+      final SendPort toIsolate = await ready.future;
+      // On pousse les chunks bruts ; `null` = fin du flux.
+      await for (final List<int> chunk in bytes) {
+        toIsolate.send(chunk);
+      }
+      toIsolate.send(null);
+      return await done.future;
+    } finally {
+      await sub.cancel();
+      fromIsolate.close();
+      iso.kill(priority: Isolate.immediate);
+    }
+  }
+
+  /// Point d'entrée de l'isolate : reconstitue le flux d'octets depuis
+  /// le port, délègue à [parse], renvoie des lots puis le total.
+  static Future<void> _parseIsolateMain(_XmltvIsolateConfig cfg) async {
+    final ReceivePort chunks = ReceivePort();
+    cfg.sendPort.send(chunks.sendPort);
+    final StreamController<List<int>> bytes = StreamController<List<int>>();
+    chunks.listen((Object? msg) {
+      if (msg == null) {
+        bytes.close();
+        chunks.close();
+      } else if (msg is List) {
+        bytes.add(msg.cast<int>());
+      }
+    });
+    try {
+      final Set<String>? known = cfg.knownChannelIds;
+      List<Map<String, Object?>> batch = <Map<String, Object?>>[];
+      final int total = await parse(
+        bytes.stream,
+        now: DateTime.fromMillisecondsSinceEpoch(cfg.nowMs),
+        keepHoursBeforeNow: cfg.keepHoursBeforeNow,
+        keepHoursAfterNow: cfg.keepHoursAfterNow,
+        skipPredicate:
+            known == null ? null : (String id) => !known.contains(id),
+        onProgram: (EpgProgram p) async {
+          batch.add(p.toMap());
+          if (batch.length >= cfg.batchSize) {
+            cfg.sendPort.send(batch);
+            batch = <Map<String, Object?>>[];
+          }
+        },
+      );
+      if (batch.isNotEmpty) cfg.sendPort.send(batch);
+      cfg.sendPort.send(total);
+    } on Object catch (e) {
+      // Un XML malformé ne doit jamais tuer l'app : l'erreur remonte
+      // proprement à l'appelant qui décidera (log + sync ratée).
+      cfg.sendPort.send(<String, Object?>{'error': e.toString()});
+    }
+  }
 
   /// Parse un Stream<List<int>> (typiquement la réponse HTTP du
   /// téléchargement de l'EPG) et émet les programmes au fil de l'eau.
