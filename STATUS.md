@@ -7,7 +7,74 @@
 
 ---
 
-## Dernière session (2026-07-16) — Cast increvable + fluidité + pistes TV
+## Dernière session (2026-07-16, soir) — « SEVEN CINÉMA » : le côté Films & Séries niveau plateforme premium
+
+Branche : `claude/seven-cinema-vod-venljh` (partie du HEAD
+`claude/tv-channels-live-preview-24f338`). 5 phases livrées, chacune
+commit + push + CI Quality verte. 542 tests (499 → 542), analyze 0 erreur.
+
+### Phase 1 — Données : VOD unifié Xtream + M3U
+- `M3uVodClassifier` (vod/domain) : entrées M3U enfin classées
+  live/film/épisode d'après l'URL (chemins /movie/ /series/, extensions
+  fichier fini ; SxxExx et 1x03 parsés). Conservateur : doute = live.
+- Parser M3U pose `isLive:false` sur les fichiers VOD → ils SORTENT des
+  listes live (requêtes is_live=1) et ENTRENT au Cinéma.
+- `PlaylistRepository.getVodChannels()` : lecture bornée + rattrapage SQL
+  des bases importées avant la classification + filtre Red Room.
+- `VodRepository`/`SeriesRepository` fusionnent part Xtream (mémoire→
+  disque→réseau, inchangé) et part M3U (SQLite) ; séries M3U regroupées
+  par nom, épisodes servis en LOCAL (`m3useries-…` dans fetchDetail),
+  ids `ep-…` = contrat AutoplayPolicy conservé.
+- `CinePerf` (tv/data) : chronos budgets (accueil<400 ms, fiche<300 ms,
+  Regarder→1re frame<2500 ms) → Boîte noire tag « perf », WARN si dépassé.
+- `TvPosterPrefetch` (tv/core) : pré-chargement borné des jaquettes.
+
+### Phase 2 — Accueil Cinéma
+- Mémoire d'état ENTRE onglets (Films et Séries) : scroll vertical +
+  offset de CHAQUE rangée (PageStorage sur bucket statique) + l'affiche
+  focusée reprend l'autofocus au retour. Zéro jank au retour.
+- Pré-chargement des jaquettes de la rangée SUIVANTE au focus.
+- Chrono homeFirstRender branché (arrêt à la frame réellement affichée).
+
+### Phase 3 — Fiches
+- Fiche film : rail « Titres similaires » (même catégorie, depuis le
+  cache, zéro réseau ; pushReplacement pour butiner) + chrono detailOpen.
+  Clé i18n `tvSimilar` ×8.
+- Fiche série : vignettes d'épisodes 16:9 (XtreamClient parse désormais
+  `info.movie_image`, défensif) ; le DERNIER spinner du Cinéma remplacé
+  par un squelette de rangées.
+
+### Phase 4 — Lecture
+- Double-appui Gauche/Droite (<500 ms, même sens) : pas de seek 10→30 s.
+- Bulle de PREVIEW du temps cible au-dessus de la barre pendant le seek.
+- Pastille « Épisode suivant » sur les 30 dernières secondes d'un épisode
+  (OK = enchaîner, rien = générique ; cachée quand la barre s'ouvre).
+  Clé i18n `tvNextEpisode` ×8.
+- TTFF mesuré : chrono à l'appui Regarder (fiche/accueil/reprise/épisode),
+  arrêté à la 1re image (_onPlayer), annulé si sortie avant.
+- CORRECTIF : la VOD (mp4/mkv) ne passe PLUS par le relais local (tuyau
+  TS live SANS Range — son propre contrat le dit) → seek/reprise fiables,
+  ExoPlayer direct gère Range + reconnexion. HLS inchangé, live inchangé.
+
+### Phase 5 — Polish
+- RepaintBoundary autour des affiches (zoom focus ne repeint que la carte).
+- `TvCineRoute` : fondu + glissement 220 ms (GPU pur) pour catalogue →
+  fiche → lecteur (le reste de l'app garde ses transitions).
+- Tests widgets : TvFocusable (focus/OK/zoom/flèches), TvSkeletonRails et
+  TvEmptyState (« zéro spinner »).
+
+### À savoir / reste à faire côté Cinéma
+- Les MESURES réelles des budgets s'observent sur box via la Boîte noire
+  (tag « perf ») — pas de box dans l'environnement de dev, chiffres à
+  relever sur le terrain.
+- Bases existantes : la reclassification M3U joue au prochain
+  refresh de playlist ; en attendant, getVodChannels rattrape par URL.
+- Idées suivantes : sous-titres externes .srt (VOD), reprise
+  cross-appareil, préchargement du prochain épisode pendant le générique.
+
+---
+
+## Session précédente (2026-07-16) — Cast increvable + fluidité + pistes TV
 
 Branche de travail : `claude/maison-mere-phone` (miroir
 `claude/tv-channels-live-preview-24f338`). Tout est vert (analyze +

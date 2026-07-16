@@ -42,6 +42,7 @@ import '../../vod/domain/vod_movie.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_poster_prefetch.dart';
+import '../core/tv_cine_route.dart';
 import '../core/tv_tokens.dart';
 import '../data/cine_perf.dart';
 import '../../vod/data/vod_download_service.dart';
@@ -224,7 +225,7 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     // Budget « Regarder → première frame < 2,5 s » : chrono depuis L'APPUI.
     CinePerf.start(CinePerf.playToFirstFrame);
     Navigator.of(context)
-        .push(MaterialPageRoute<void>(
+        .push(TvCineRoute<void>(
           builder: (_) => TvPlayerScreen(channels: channels, startIndex: index),
         ))
         .then((_) {
@@ -240,7 +241,7 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   /// changé depuis la fiche : lecture lancée, toggle Ma Liste).
   void _openDetail(VodMovie m) {
     Navigator.of(context)
-        .push(MaterialPageRoute<void>(
+        .push(TvCineRoute<void>(
           builder: (_) => TvMovieDetailScreen(movie: m),
         ))
         .then((_) {
@@ -278,7 +279,7 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     );
     CinePerf.start(CinePerf.playToFirstFrame);
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      TvCineRoute<void>(
         builder: (_) =>
             TvPlayerScreen(channels: <Channel>[c], startIndex: 0),
       ),
@@ -862,14 +863,20 @@ class _Rail extends StatelessWidget {
               itemCount: movies.length,
               itemBuilder: (BuildContext context, int i) => Padding(
                 padding: const EdgeInsets.only(right: 12),
-                child: _PosterCard(
-                  movie: movies[i],
-                  inList: inList.contains(movies[i].id),
-                  progress: progress[movies[i].id],
-                  autofocus: i == autofocusIndex,
-                  onFocus: onCardFocus == null ? null : () => onCardFocus!(i),
-                  onPlay: () => onPlay(i),
-                  onToggleList: () => onToggleList(i),
+                // RepaintBoundary : l'animation de focus (zoom/halo) d'une
+                // affiche ne fait repeindre QU'ELLE, jamais toute la rangée
+                // (économie GPU sensible sur box modeste, rangées longues).
+                child: RepaintBoundary(
+                  child: _PosterCard(
+                    movie: movies[i],
+                    inList: inList.contains(movies[i].id),
+                    progress: progress[movies[i].id],
+                    autofocus: i == autofocusIndex,
+                    onFocus:
+                        onCardFocus == null ? null : () => onCardFocus!(i),
+                    onPlay: () => onPlay(i),
+                    onToggleList: () => onToggleList(i),
+                  ),
                 ),
               ),
             ),

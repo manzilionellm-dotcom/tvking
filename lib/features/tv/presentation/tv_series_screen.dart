@@ -20,6 +20,7 @@ import '../../vod/domain/vod_series.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_poster_prefetch.dart';
+import '../core/tv_cine_route.dart';
 import '../core/tv_tokens.dart';
 import '../data/cine_perf.dart';
 import 'tv_components.dart';
@@ -100,7 +101,7 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
 
   void _openSeries(VodSeries s) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => TvSeriesDetailScreen(series: s)),
+      TvCineRoute<void>(builder: (_) => TvSeriesDetailScreen(series: s)),
     );
   }
 
@@ -119,8 +120,7 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
             Text(context.l10n.tvNavSeries,
                 style: TvTokens.display(26, color: TvTokens.text)),
             const SizedBox(height: 8),
-            Text(
-                context.l10n.tvNoSeries,
+            Text(context.l10n.tvNoSeries,
                 textAlign: TextAlign.center,
                 style: TvTokens.ui(15, color: TvTokens.mutedDim)),
           ],
@@ -178,27 +178,31 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
                     itemCount: list.length,
                     itemBuilder: (BuildContext context, int j) => Padding(
                       padding: const EdgeInsets.only(right: 12),
-                      child: _SeriesPoster(
-                        series: list[j],
-                        autofocus: (i - 1) == memCat &&
-                            j == _focusIndex.clamp(0, list.length - 1),
-                        // Mémoire du focus + pré-chargement des jaquettes de
-                        // la rangée SUIVANTE pendant la navigation de celle-ci.
-                        onFocus: () {
-                          _focusCat = cat;
-                          _focusIndex = j;
-                          if (i < _cats.length) {
-                            TvPosterPrefetch.prefetchRow(
-                              context,
-                              <String?>[
-                                for (final VodSeries s
-                                    in _byCat[_cats[i]] ?? const <VodSeries>[])
-                                  s.posterUrl,
-                              ],
-                            );
-                          }
-                        },
-                        onSelect: () => _openSeries(list[j]),
+                      // RepaintBoundary : le zoom de focus d'une affiche ne
+                      // repeint qu'elle, pas la rangée (GPU des box modestes).
+                      child: RepaintBoundary(
+                        child: _SeriesPoster(
+                          series: list[j],
+                          autofocus: (i - 1) == memCat &&
+                              j == _focusIndex.clamp(0, list.length - 1),
+                          // Mémoire du focus + pré-chargement des jaquettes de
+                          // la rangée SUIVANTE pendant la navigation de celle-ci.
+                          onFocus: () {
+                            _focusCat = cat;
+                            _focusIndex = j;
+                            if (i < _cats.length) {
+                              TvPosterPrefetch.prefetchRow(
+                                context,
+                                <String?>[
+                                  for (final VodSeries s in _byCat[_cats[i]] ??
+                                      const <VodSeries>[])
+                                    s.posterUrl,
+                                ],
+                              );
+                            }
+                          },
+                          onSelect: () => _openSeries(list[j]),
+                        ),
                       ),
                     ),
                   ),
@@ -465,7 +469,7 @@ class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
     // Budget « Regarder → première frame < 2,5 s » : chrono depuis L'APPUI.
     CinePerf.start(CinePerf.playToFirstFrame);
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      TvCineRoute<void>(
         builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
       ),
     );
@@ -478,11 +482,9 @@ class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
       body: FutureBuilder<({VodInfo? info, List<VodEpisode> episodes})>(
         future: _future,
         builder: (BuildContext context,
-            AsyncSnapshot<({VodInfo? info, List<VodEpisode> episodes})>
-                snap) {
+            AsyncSnapshot<({VodInfo? info, List<VodEpisode> episodes})> snap) {
           final VodInfo? info = snap.data?.info;
-          final bool waiting =
-              snap.connectionState == ConnectionState.waiting;
+          final bool waiting = snap.connectionState == ConnectionState.waiting;
           // En-tête TOUJOURS affiché tout de suite : le catalogue connaît
           // déjà nom/synopsis/note (VodSeries) — get_series_info ne fait
           // qu'enrichir (casting, genre, backdrop). Jamais d'écran vide.
@@ -681,8 +683,8 @@ class _EpisodesSkeletonState extends State<_EpisodesSkeleton>
     );
     if (!animate) return rows;
     return FadeTransition(
-      opacity: Tween<double>(begin: 0.45, end: 0.9).animate(
-          CurvedAnimation(parent: _breath, curve: Curves.easeInOut)),
+      opacity: Tween<double>(begin: 0.45, end: 0.9)
+          .animate(CurvedAnimation(parent: _breath, curve: Curves.easeInOut)),
       child: rows,
     );
   }
@@ -765,8 +767,7 @@ class _EpisodeRow extends StatelessWidget {
               child: SizedBox(
                 width: 96,
                 height: 54,
-                child: (episode.posterUrl == null ||
-                        episode.posterUrl!.isEmpty)
+                child: (episode.posterUrl == null || episode.posterUrl!.isEmpty)
                     ? const ColoredBox(
                         color: TvTokens.tile,
                         child: Icon(Icons.movie_outlined,

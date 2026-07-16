@@ -41,6 +41,7 @@ import '../../vod/domain/vod_info.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import '../core/tv_cine_route.dart';
 import '../core/tv_tokens.dart';
 import '../data/cine_perf.dart';
 import 'tv_player_screen.dart';
@@ -149,7 +150,7 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
     // L'APPUI (ici), le lecteur l'arrête à la première image affichée.
     CinePerf.start(CinePerf.playToFirstFrame);
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      TvCineRoute<void>(
         builder: (_) => TvPlayerScreen(
           channels: <Channel>[_asChannel(widget.movie)],
           startIndex: 0,
@@ -343,7 +344,7 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
                             // Remplace la fiche (pas d'empilement infini de
                             // routes en butinant de similaire en similaire).
                             Navigator.of(context).pushReplacement(
-                              MaterialPageRoute<void>(
+                              TvCineRoute<void>(
                                 builder: (_) => TvMovieDetailScreen(
                                     movie: _similar[i]),
                               ),
