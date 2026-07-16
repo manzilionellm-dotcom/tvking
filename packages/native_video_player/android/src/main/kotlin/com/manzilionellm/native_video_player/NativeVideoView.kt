@@ -27,6 +27,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
@@ -232,7 +233,9 @@ class NativeVideoView(
             // coupure ; par contre 2 aperçus + l'UI sur une box 1 Go faisaient
             // sortir l'app en OOM (retour terrain « l'app s'est fermée »).
             DefaultLoadControl.Builder()
-                .setBufferDurationsMs(8_000, 15_000, 1_000, 2_000)
+                // bufferForPlayback (3e param) = 500 ms : l'aperçu démarre dès
+                // qu'un demi-tampon est prêt (vignette quasi instantanée).
+                .setBufferDurationsMs(8_000, 15_000, 500, 2_000)
                 .setTargetBufferBytes(8 * 1024 * 1024)
                 .setPrioritizeTimeOverSizeThresholds(false)
                 .build()
@@ -240,7 +243,11 @@ class NativeVideoView(
             // Vraies petites box (≤800 Mo) : profil serré mais un peu plus de
             // réserve qu'avant (15 s / 18 Mo) pour absorber les micro-coupures.
             DefaultLoadControl.Builder()
-                .setBufferDurationsMs(15_000, 30_000, 1_500, 4_000)
+                // bufferForPlayback 500 ms (au lieu de 1500) : 1re image ~1 s
+                // plus tôt au zap. La réserve totale (15-30 s) et le délai
+                // après-coupure (4 s) restent inchangés → aucune régression de
+                // stabilité, seul le démarrage à froid accélère.
+                .setBufferDurationsMs(15_000, 30_000, 500, 4_000)
                 .setTargetBufferBytes(18 * 1024 * 1024)
                 .setPrioritizeTimeOverSizeThresholds(false)
                 .build()
@@ -250,7 +257,12 @@ class NativeVideoView(
             // et après une coupure on attend 5 s de réserve avant de repartir
             // (on ne se re-bloque pas aussitôt, comme Netflix).
             DefaultLoadControl.Builder()
-                .setBufferDurationsMs(20_000, 50_000, 2_000, 5_000)
+                // bufferForPlayback 500 ms (au lieu de 2000) : c'était le plus
+                // gros délai FIXE avant la 1re image au zap. On démarre dès
+                // 0,5 s de réserve ; la cible (20 s) et surtout le délai
+                // APRÈS-COUPURE (5 s, 4e param) restent identiques → on garde
+                // la stabilité « à la Netflix » sur lien instable.
+                .setBufferDurationsMs(20_000, 50_000, 500, 5_000)
                 .setTargetBufferBytes(32 * 1024 * 1024)
                 .setPrioritizeTimeOverSizeThresholds(false)
                 .build()
@@ -294,24 +306,37 @@ class NativeVideoView(
         //     lieu de 0.60) → on exploite 80 % du débit mesuré pour choisir la
         //     MEILLEURE qualité que la connexion supporte. On garde une marge
         //     de 20 % contre les coupures — sharpness maximale SANS yo-yo.
-        //   • on MONTE plus vite en HD (minDurationForQualityIncrease 10 s au
-        //     lieu de 15) et on descend toujours vite si ça faiblit.
+        //   • on MONTE plus vite en HD (minDurationForQualityIncrease 4 s au
+        //     lieu de 10) : sur un flux multi-débit, l'image était « molle »
+        //     ~10 s avant de passer en HD — désormais ~4 s. On descend
+        //     toujours vite si ça faiblit (maxDurationForQualityDecrease 18 s).
         // Aucun plafond de résolution : la HD/4K de la source est utilisée
         // jusqu'à la définition réelle de l'écran (viewport display par défaut).
         val trackSelector = DefaultTrackSelector(
             appContext,
             AdaptiveTrackSelection.Factory(
-                10_000, // minDurationForQualityIncreaseMs (monte plus vite en HD)
+                4_000,  // minDurationForQualityIncreaseMs (monte vite en HD)
                 18_000, // maxDurationForQualityDecreaseMs (descend vite)
                 20_000, // minDurationToRetainAfterDiscardMs
                 0.80f,  // bandwidthFraction (netteté priorisée, marge 20 %)
             ),
         )
 
+        // ESTIMATION DE DÉBIT INITIALE HAUTE (8 Mb/s). Sans elle, ExoPlayer
+        // démarre un flux multi-débit sur son estimation par défaut (~1 Mb/s)
+        // → il choisit d'abord la PLUS BASSE qualité (image molle) puis monte.
+        // En partant haut, on ouvre directement en HD ; la mesure réelle
+        // corrige en quelques secondes. Sans effet sur un flux à débit unique
+        // (le .ts live habituel), donc aucun risque de saturation.
+        val bandwidthMeter = DefaultBandwidthMeter.Builder(appContext)
+            .setInitialBitrateEstimate(8_000_000L)
+            .build()
+
         player = ExoPlayer.Builder(appContext, renderersFactory)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
             .setTrackSelector(trackSelector)
+            .setBandwidthMeter(bandwidthMeter)
             .setHandleAudioBecomingNoisy(true)
             .build()
 
@@ -562,19 +587,22 @@ class NativeVideoView(
 
     /**
      * Construit l'élément à lire. Pour un DIRECT (HLS live), on demande à jouer
-     * ~15 s DERRIÈRE le bord du direct (targetOffset). Ce petit retard crée une
-     * réserve qui absorbe les coupures réseau sans geler l'image. On autorise
-     * une accélération imperceptible (1.03×) pour rattraper doucement le direct
-     * sans à-coup. Sur un flux NON-live (VOD / .ts local), cette configuration
-     * est tout simplement ignorée par Media3.
+     * ~8 s DERRIÈRE le bord du direct (targetOffset). Ce retard crée une réserve
+     * qui absorbe les coupures réseau sans geler l'image. On visait 15 s avant :
+     * plus proche du direct (8 s) = moins de latence « télécommande → image »
+     * et démarrage plus rapide, tout en gardant une réserve confortable (le
+     * LoadControl garde déjà 20-50 s en tampon). On autorise une accélération
+     * imperceptible (1.03×) pour rattraper doucement le direct sans à-coup. Sur
+     * un flux NON-live (VOD / .ts local), cette configuration est ignorée par
+     * Media3.
      */
     private fun buildMediaItem(url: String): MediaItem =
         MediaItem.Builder()
             .setUri(url)
             .setLiveConfiguration(
                 MediaItem.LiveConfiguration.Builder()
-                    .setTargetOffsetMs(15_000)
-                    .setMinOffsetMs(8_000)
+                    .setTargetOffsetMs(8_000)
+                    .setMinOffsetMs(4_000)
                     .setMaxPlaybackSpeed(1.03f)
                     .build(),
             )

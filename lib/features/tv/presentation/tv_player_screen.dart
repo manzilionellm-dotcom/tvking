@@ -671,7 +671,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   /// s'arrête se charge. Résultat : zéro création/destruction de session
   /// par chaîne traversée (c'est ça qui saturait les petites box), et les
   /// comptes « 1 connexion » ne voient plus de tempête d'ouvertures.
-  static const Duration _kZapSettle = Duration(milliseconds: 280);
+  // 150 ms : assez pour absorber une RAFALE d'appuis (Ch+ Ch+ Ch+ n'ouvre
+  // aucune connexion sur les chaînes traversées) mais assez court pour qu'un
+  // zap DÉLIBÉRÉ, isolé, parte quasi immédiatement — moins de latence perçue.
+  static const Duration _kZapSettle = Duration(milliseconds: 150);
 
   void _scheduleOpen() {
     _zapSettle?.cancel();
