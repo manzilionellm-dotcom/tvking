@@ -1835,10 +1835,28 @@ class CastManager extends ChangeNotifier {
   void _updateRelayKeepAlive(String title) {
     if (_currentRelayUrl != null) {
       _relayKeepAliveActive = true;
-      unawaited(PipService.instance.startBackgroundAudio(
-        title,
-        body: l10nNow.castNotifRelayBody,
-      ));
+      // Le maintien éveillé (foreground service + wakelock + wifilock) est
+      // VITAL pour que le relais survive à l'écran éteint. On JOURNALISE
+      // son démarrage ET un éventuel échec : « le cast coupe écran éteint »
+      // devient enfin visible dans la boîte noire (avant, un échec du
+      // service était avalé silencieusement).
+      unawaited(PipService.instance
+          .startBackgroundAudio(title, body: l10nNow.castNotifRelayBody)
+          .then((bool ok) {
+        if (ok) {
+          StructuredLogger.instance.info(
+            domain: 'cast',
+            event: 'relay.keepalive_started',
+            ctx: <String, Object?>{'title': title},
+          );
+        } else {
+          StructuredLogger.instance.warn(
+            domain: 'cast',
+            event: 'relay.keepalive_failed',
+            ctx: <String, Object?>{'title': title},
+          );
+        }
+      }));
     } else {
       _stopRelayKeepAlive();
     }

@@ -71,13 +71,19 @@ class HlsRelaySession {
   /// buffer côté récepteur = moins de saccades sur WiFi chargé.
   static const int kPlaylistWindow = 6;
 
-  /// Rétention mémoire : on garde quelques segments de plus que la
+  /// Rétention mémoire : on garde plusieurs segments de plus que la
   /// playlist — le récepteur peut encore demander un segment qui vient
-  /// de sortir de la fenêtre.
-  static const int kRetention = 10;
+  /// de sortir de la fenêtre. Élargi (10 → 14 ≈ 42 s) : sur un WiFi
+  /// chargé (le téléphone télécharge l'upstream ET téléverse vers la TV
+  /// sur la même radio), le récepteur prend parfois du retard et
+  /// redemande un segment déjà sorti de la fenêtre → 404 → rebuffering.
+  /// Plus de marge = moins de 404, au prix de quelques Mo de RAM.
+  static const int kRetention = 14;
 
-  /// Reconnexions upstream avant abandon (compteur remis à zéro dès
-  /// qu'une connexion a produit au moins un segment).
+  /// Reconnexions upstream d'affilée tolérées AVANT de considérer un
+  /// abandon — et ENCORE, on n'abandonne pas si la TV regarde toujours
+  /// (cf. _fetchLoop). Compteur remis à zéro dès qu'une connexion a
+  /// produit au moins un segment.
   static const int kMaxConsecutiveReconnects = 6;
 
   /// Recul visé du point de lecture derrière le bord live (anti-
@@ -148,6 +154,12 @@ class HlsRelaySession {
 
   /// Nombre total de segments produits depuis le début de la session.
   int get totalSegmentsProduced => _nextSequence;
+
+  /// Nombre de fois où l'upstream a épuisé son budget de reconnexion
+  /// ALORS QUE la TV regardait encore — donc où l'on a REFUSÉ de tuer la
+  /// session (avant, elle serait morte ici). Diagnostic « pourquoi le
+  /// cast a tenu longtemps ».
+  int reconnectsWhileWatched = 0;
 
   /// Démarre la boucle de fetch upstream (non bloquant).
   void start() {
@@ -336,12 +348,41 @@ class HlsRelaySession {
 
       consecutiveFailures = producedSegment ? 0 : consecutiveFailures + 1;
       if (consecutiveFailures > kMaxConsecutiveReconnects) {
-        _fatalError = everConnected
-            ? 'Flux upstream interrompu (reconnexions épuisées).'
-            : 'Flux upstream injoignable depuis le téléphone.';
-        _completeWaiters();
-        stop();
-        break;
+        // CŒUR DU « CAST QUI DOIT DURER ». Un live Xtream ferme sa socket
+        // toutes les 1-2 min (rotation de jeton, normal) ; sur un compte
+        // « 1 connexion » le slot n'est pas libéré tout de suite, ou le
+        // .ts redirige un instant vers un flux mort → plusieurs échecs
+        // d'affilée. AVANT : au 7e échec la session se tuait DÉFINITIVEMENT
+        // (aucun watchdog Chromecast) → coupure à ~2 min. MAINTENANT : on
+        // ne se tue QUE dans deux cas francs — jamais tant que la TV
+        // regarde encore.
+        //
+        // touch() est rafraîchi à CHAQUE requête du récepteur (playlist ou
+        // segment), MÊME quand on répond 503 (flux pas prêt) : c'est donc
+        // le signal fiable « la TV redemande toujours le flux ».
+        final bool receiverActive =
+            DateTime.now().difference(_lastTouch) < kIdleTimeout;
+        if (!everConnected) {
+          // Jamais réussi à se connecter : URL morte / réseau absent →
+          // inutile de tourner à vide, on remonte une vraie erreur.
+          _fatalError = 'Flux upstream injoignable depuis le téléphone.';
+          _completeWaiters();
+          stop();
+          break;
+        }
+        if (!receiverActive) {
+          // On a déjà diffusé, mais la TV ne demande plus rien depuis
+          // longtemps ET l'upstream ne revient pas → le récepteur est
+          // parti, on libère proprement (batterie / data).
+          _fatalError = 'Flux upstream interrompu (récepteur inactif).';
+          _completeWaiters();
+          stop();
+          break;
+        }
+        // La TV VEUT toujours le flux → on NE se suicide PAS : on continue
+        // à réessayer (backoff plafonné) et on reprend la diffusion dès que
+        // l'upstream répond. C'est ce qui rend le cast « increvable ».
+        reconnectsWhileWatched++;
       }
       // Nouvelle connexion = segmenteur neuf. La discontinuité n'est
       // décidée qu'à la publication du 1er segment suivant : si la PCR
@@ -353,8 +394,13 @@ class HlsRelaySession {
           _segmenter.lastPcrSeen ?? _prevConnectionLastPcr;
       _segmenter = _segmenterFactory();
       _reconnected = true;
+      // Backoff PLAFONNÉ à 2,5 s : il croît avec les échecs (on ne martèle
+      // pas un serveur en peine) mais reste court pour reprendre vite dès
+      // que le flux revient. Sans plafond, une longue série d'échecs
+      // rallongerait l'attente à l'infini.
+      final int steps = math.min(consecutiveFailures + 1, 6);
       await Future<void>.delayed(
-          Duration(milliseconds: 400 * (consecutiveFailures + 1)));
+          Duration(milliseconds: math.min(400 * steps, 2500)));
     }
   }
 

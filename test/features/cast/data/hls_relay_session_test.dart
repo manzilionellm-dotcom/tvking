@@ -55,12 +55,14 @@ void main() {
       );
       session.start();
       try {
-        // Burst 1 (20 s → ~7 segments) + burst 2 (7 s → ~2-3) : on
-        // attend d'avoir vu les deux connexions. NB : la rétention
-        // plafonne _segments à kRetention (8) — on attend donc 8, pas
-        // le total publié.
+        // Burst 1 (20 s → ~7-8 segments) + burst 2 (7 s → ~3) : on attend
+        // ~10 segments pour être SÛR d'avoir vu les DEUX connexions (donc
+        // la discontinuité de la 2e). Nombre FIXE, indépendant de
+        // kRetention : la rétention est un plafond MÉMOIRE, pas une cible
+        // de production (les découpler évite qu'un réglage de rétention
+        // casse ce test).
         final bool ready = await session.waitForSegments(
-            HlsRelaySession.kRetention, const Duration(seconds: 20));
+            10, const Duration(seconds: 20));
         expect(ready, isTrue,
             reason: 'les 2 connexions upstream doivent produire assez de '
                 'segments (erreur: ${session.fatalError})');

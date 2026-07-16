@@ -144,7 +144,10 @@ class PipService extends ChangeNotifier {
   /// `body` remplace la 2e ligne (« Lecture audio en arrière-plan »
   /// par défaut) — utilisé par le CAST RELAIS : le téléphone alimente
   /// la TV et doit rester réveillé même écran éteint / app en fond.
-  Future<void> startBackgroundAudio(String title, {String? body}) async {
+  /// Renvoie `true` si le service a démarré, `false` sur échec (le
+  /// CAST RELAIS s'en sert pour JOURNALISER un keep-alive raté — sinon
+  /// « le cast coupe écran éteint » restait invisible au diagnostic).
+  Future<bool> startBackgroundAudio(String title, {String? body}) async {
     try {
       await _channel.invokeMethod<void>(
         'startBackgroundAudio',
@@ -158,8 +161,10 @@ class PipService extends ChangeNotifier {
           'channelDesc': l10nNow.playbackNotifChannelDesc,
         },
       );
+      return true;
     } catch (e) {
       if (kDebugMode) debugPrint('[PiP] startBackgroundAudio failed: $e');
+      return false;
     }
   }
 
