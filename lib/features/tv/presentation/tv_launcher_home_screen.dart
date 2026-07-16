@@ -25,6 +25,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../channels/data/recently_watched_repository.dart';
+import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -95,7 +96,10 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
 
   static String _fmtClock() => DateFormat.Hm().format(DateTime.now());
 
-  void _recomputeHero() {
+  /// `true` quand le héro vient de l'habitude horaire (badge « Ma soirée »).
+  bool _heroFromHabit = false;
+
+  Future<void> _recomputeHero() async {
     final List<Channel> all = PlaylistRepository.instance.currentChannels;
     if (all.isEmpty) {
       if (mounted) setState(() => _hero = null);
@@ -105,9 +109,26 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
       for (final Channel c in all) c.id: c,
     };
     Channel? hero;
-    for (final String id in RecentlyWatchedRepository.instance.current) {
-      hero = byId[id];
-      if (hero != null) break;
+    bool habit = false;
+    // « MA SOIRÉE » : la chaîne la plus regardée DANS CE CRÉNEAU (heure ± 1,
+    // même type de jour). Sur une TV partagée, le contexte temporel prédit
+    // mieux que n'importe quel profil (recherche 2024) — et tout reste sur
+    // l'appareil (zéro cloud). Signal insuffisant → repli dernière regardée.
+    try {
+      final String? slotId =
+          await WatchHistoryRepository.instance.topChannelForSlot();
+      if (slotId != null) {
+        hero = byId[slotId];
+        habit = hero != null;
+      }
+    } catch (_) {
+      // historique indisponible → replis classiques ci-dessous
+    }
+    if (hero == null) {
+      for (final String id in RecentlyWatchedRepository.instance.current) {
+        hero = byId[id];
+        if (hero != null) break;
+      }
     }
     if (hero == null) {
       for (final String id in FavoritesRepository.instance.current) {
@@ -116,7 +137,12 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
       }
     }
     hero ??= all.first;
-    if (mounted && _hero?.id != hero.id) setState(() => _hero = hero);
+    if (mounted && (_hero?.id != hero.id || _heroFromHabit != habit)) {
+      setState(() {
+        _hero = hero;
+        _heroFromHabit = habit;
+      });
+    }
   }
 
   void _open(Widget screen) {
@@ -310,6 +336,24 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
                     ),
                     child: Row(
                       children: <Widget>[
+                        // Badge « MA SOIRÉE » : l'app a DEVINÉ cette chaîne
+                        // d'après vos habitudes à cette heure (100 % local).
+                        if (_heroFromHabit) ...<Widget>[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: TvTokens.gold,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text('MA SOIRÉE',
+                                style: TvTokens.ui(11,
+                                    weight: FontWeight.w800,
+                                    color: const Color(0xFF1A1206),
+                                    spacing: 1.2)),
+                          ),
+                          const SizedBox(width: 10),
+                        ],
                         Expanded(
                           child: Text(ch.cleanName,
                               maxLines: 1,

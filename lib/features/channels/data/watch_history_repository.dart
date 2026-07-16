@@ -237,6 +237,64 @@ class WatchHistoryRepository extends ChangeNotifier {
     return out;
   }
 
+  /// « MA SOIRÉE » — la chaîne la plus regardée dans CE créneau (même type
+  /// de jour semaine/week-end, heure ± 1 h) sur les [days] derniers jours.
+  ///
+  /// Fondement (recherche 2024) : sur une TV — appareil PARTAGÉ — le contexte
+  /// temporel (heure + jour) prédit mieux que les profils individuels. Le
+  /// match du mardi soir, le film du vendredi : l'app devine sans compte,
+  /// sans cloud, avec le seul historique LOCAL.
+  ///
+  /// Renvoie `null` si le signal est trop faible (< [minSessions] sessions
+  /// ou < 30 min cumulées dans le créneau) — on ne devine pas au hasard.
+  Future<String?> topChannelForSlot({
+    DateTime? now,
+    int days = 60,
+    int minSessions = 3,
+  }) async {
+    await initialize();
+    final DateTime ref = now ?? DateTime.now();
+    final bool weekend = ref.weekday == DateTime.saturday ||
+        ref.weekday == DateTime.sunday;
+    final Database db = await PlaylistDatabase.instance.database;
+    final int since =
+        ref.subtract(Duration(days: days)).millisecondsSinceEpoch;
+    final List<Map<String, Object?>> rows = await db.rawQuery(
+      'SELECT channel_id, started_at, duration_ms FROM watch_sessions '
+      'WHERE started_at >= ? AND duration_ms > 0',
+      <Object?>[since],
+    );
+    // Agrégation en Dart (SQLite ne sait pas dériver heure/jour d'un epoch
+    // sans acrobaties) : même type de jour + heure dans [h-1, h+1].
+    final Map<String, int> totals = <String, int>{};
+    final Map<String, int> counts = <String, int>{};
+    for (final Map<String, Object?> r in rows) {
+      final DateTime t =
+          DateTime.fromMillisecondsSinceEpoch(r['started_at'] as int);
+      final bool w =
+          t.weekday == DateTime.saturday || t.weekday == DateTime.sunday;
+      if (w != weekend) continue;
+      final int dh = (t.hour - ref.hour).abs();
+      final int wrapped = dh > 12 ? 24 - dh : dh; // 23 h vs 0 h = 1 h d'écart
+      if (wrapped > 1) continue;
+      final String id = r['channel_id'] as String;
+      totals[id] = (totals[id] ?? 0) + ((r['duration_ms'] as int?) ?? 0);
+      counts[id] = (counts[id] ?? 0) + 1;
+    }
+    String? best;
+    int bestMs = 0;
+    totals.forEach((String id, int ms) {
+      if (ms > bestMs) {
+        best = id;
+        bestMs = ms;
+      }
+    });
+    if (best == null) return null;
+    final bool enough =
+        (counts[best] ?? 0) >= minSessions && bestMs >= 30 * 60 * 1000;
+    return enough ? best : null;
+  }
+
   Future<void> clear() async {
     final Database db = await PlaylistDatabase.instance.database;
     await db.delete('watch_sessions');

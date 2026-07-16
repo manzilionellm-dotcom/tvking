@@ -25,6 +25,7 @@ import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_focusable.dart';
+import '../core/tv_program_reminders.dart';
 import '../core/tv_tokens.dart';
 import '../data/greeting_repository.dart';
 import '../data/display_settings.dart';
@@ -187,6 +188,13 @@ class TvApp extends StatelessWidget {
               const Align(
                 alignment: Alignment.topCenter,
                 child: SafeArea(child: AdminMessageBanner()),
+              ),
+              // « ÇA COMMENCE BIENTÔT » : rappel discret quand une émission
+              // démarre sur une chaîne FAVORITE (manque n°1 des concurrents).
+              // IgnorePointer + auto-repli 12 s → zéro impact D-pad.
+              const Align(
+                alignment: Alignment.topCenter,
+                child: SafeArea(child: TvReminderBanner()),
               ),
             ],
           );
