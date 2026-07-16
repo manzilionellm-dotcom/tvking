@@ -40,16 +40,74 @@ import 'tv_search_screen.dart';
 import 'tv_series_screen.dart';
 import 'tv_settings_screen.dart';
 
-// ---- Palette IBO « rails » (HEX de la fiche mesurée) ----
-const Color _rBgTop = Color(0xFF23002E); // fond haut (plus sombre)
+// ---- Palette « rails » PREMIUM (violet conservé, éclairages néon) ----
+// Base violette de l'identité du template + LUMIÈRES futuristes : liseré
+// dégradé, halo néon au focus, bascule de teinte à l'APPUI. Les surfaces ne
+// sont plus des aplats mais des dégradés subtils (profondeur).
+const Color _rBgTop = Color(0xFF1B0024); // fond haut (plus sombre)
 const Color _rBg = Color(0xFF250030); // fond principal violet très sombre
-const Color _rCard = Color(0xFF411C4C); // tuile au repos
-const Color _rCardFocus = Color(0xFF391A43); // tuile au focus
-const Color _rBorderFocus = Color(0xFFE9E4EC); // liseré clair (focus)
+const Color _rCardA = Color(0xFF462152); // tuile repos — haut du dégradé
+const Color _rCardB = Color(0xFF31123D); // tuile repos — bas du dégradé
+const Color _rFocusA = Color(0xFF5E2C74); // tuile focus — haut (plus lumineux)
+const Color _rFocusB = Color(0xFF3C1650); // tuile focus — bas
+const Color _rPressA = Color(0xFF7C3EA0); // APPUI : la teinte BASCULE
+const Color _rPressB = Color(0xFF4A1C66); // (violet électrique, retour visuel)
+const Color _rNeon = Color(0xFFB26CFF); // lumière néon (halo/glow focus)
+const Color _rNeonPress = Color(0xFF7DE2FF); // lumière d'APPUI (cyan électrique)
+const Color _rBorderFocus = Color(0xFFEADCFF); // liseré clair (focus)
+const Color _rSheen = Color(0x33FFFFFF); // filet lumineux haut de tuile
 const Color _rText = Color(0xFFFFFFFF); // label/icône focus
-const Color _rMuted = Color(0xFF999A9A); // label/icône repos
-const Color _rTitle = Color(0xFFC9C0CC); // titres de rails
+const Color _rMuted = Color(0xFFA79FB0); // label/icône repos
+const Color _rTitle = Color(0xFFCFC4D6); // titres de rails
 const Color _rPlay = Color(0xFF5C0404); // badge Play (rouge sombre)
+
+/// Coque de tuile PREMIUM partagée par toutes les surfaces du template :
+///   • dégradé de profondeur (jamais un aplat) + filet lumineux en haut ;
+///   • focus : liseré clair + HALO NÉON (lumière futuriste, douce) ;
+///   • APPUI (OK enfoncé / doigt posé) : la teinte BASCULE en violet
+///     électrique + halo cyan — la demande « ça change de couleur quand on
+///     appuie ». AnimatedContainer 160 ms easeOutCubic : zoom et couleurs
+///     glissent, rien ne « saute ».
+Widget _railsShell({
+  required bool focused,
+  required bool pressed,
+  required Widget child,
+  double radius = 14,
+  AlignmentGeometry? alignment,
+}) {
+  final Color top = pressed ? _rPressA : (focused ? _rFocusA : _rCardA);
+  final Color bottom = pressed ? _rPressB : (focused ? _rFocusB : _rCardB);
+  final Color halo = pressed ? _rNeonPress : _rNeon;
+  return AnimatedContainer(
+    duration: const Duration(milliseconds: 160),
+    curve: Curves.easeOutCubic,
+    alignment: alignment,
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: <Color>[top, bottom],
+      ),
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(
+        color: pressed
+            ? _rNeonPress
+            : (focused ? _rBorderFocus : _rSheen),
+        width: focused || pressed ? 2 : 1,
+      ),
+      boxShadow: (focused || pressed)
+          ? <BoxShadow>[
+              BoxShadow(
+                color: halo.withValues(alpha: pressed ? 0.55 : 0.38),
+                blurRadius: 26,
+                spreadRadius: 1,
+              ),
+            ]
+          : null,
+    ),
+    child: child,
+  );
+}
 
 class TvRailsHomeScreen extends StatelessWidget {
   const TvRailsHomeScreen({super.key});
@@ -265,15 +323,28 @@ class _TopIcon extends StatelessWidget {
     return TvFocusBuilder(
       scale: TvFocusScale.small,
       onSelect: onSelect,
-      builder: (BuildContext context, bool focused) {
+      pressedBuilder: (BuildContext context, bool focused, bool pressed) {
         return AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
           padding: const EdgeInsets.all(9),
           decoration: BoxDecoration(
-            color: focused ? _rCardFocus : Colors.transparent,
+            color: pressed
+                ? _rPressA
+                : (focused ? _rFocusA : Colors.transparent),
             shape: BoxShape.circle,
-            border: focused
-                ? Border.all(color: _rBorderFocus, width: 2)
+            border: (focused || pressed)
+                ? Border.all(
+                    color: pressed ? _rNeonPress : _rBorderFocus, width: 2)
+                : null,
+            boxShadow: (focused || pressed)
+                ? <BoxShadow>[
+                    BoxShadow(
+                      color: (pressed ? _rNeonPress : _rNeon)
+                          .withValues(alpha: 0.4),
+                      blurRadius: 20,
+                    ),
+                  ]
                 : null,
           ),
           child: Icon(icon, size: 28, color: focused ? _rText : _rMuted),
@@ -328,21 +399,11 @@ class _Hero extends StatelessWidget {
       autofocus: autofocus,
       scale: TvFocusScale.medium,
       onSelect: onSelect,
-      builder: (BuildContext context, bool focused) {
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: <Color>[Color(0xFF3A2145), Color(0xFF2A1233)],
-            ),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: focused ? _rBorderFocus : _rCard,
-              width: focused ? 2 : 1,
-            ),
-          ),
+      pressedBuilder: (BuildContext context, bool focused, bool pressed) {
+        return _railsShell(
+          focused: focused,
+          pressed: pressed,
+          radius: 16,
           child: Stack(
             children: <Widget>[
               Center(
@@ -394,33 +455,28 @@ class _NavTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TvFocusBuilder(
-      scale: TvFocusScale.medium,
+      scale: TvFocusScale.small,
       onSelect: onSelect,
-      builder: (BuildContext context, bool focused) {
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
+      pressedBuilder: (BuildContext context, bool focused, bool pressed) {
+        return _railsShell(
+          focused: focused,
+          pressed: pressed,
           alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: focused ? _rCardFocus : _rCard,
-            borderRadius: BorderRadius.circular(10),
-            border: focused
-                ? Border.all(color: _rBorderFocus, width: 2)
-                : null,
-          ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Icon(icon, size: 40, color: focused ? _rText : _rMuted),
-              const SizedBox(height: 8),
+              Icon(icon, size: 38, color: focused ? _rText : _rMuted),
+              const SizedBox(height: 9),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: Text(label,
+                child: Text(label.toUpperCase(),
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TvTokens.ui(TvDimens.label,
-                        weight: FontWeight.w600,
-                        color: focused ? _rText : _rMuted)),
+                    style: TvTokens.ui(13,
+                        weight: FontWeight.w700,
+                        color: focused ? _rText : _rMuted,
+                        spacing: 1.6)),
               ),
             ],
           ),
@@ -571,26 +627,29 @@ class _FavCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Channel ch = slot.channel;
-    final EpgProgram? prog = slot.program;
-    final double? progress = _progress();
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.small,
       onSelect: onSelect,
-      builder: (BuildContext context, bool focused) {
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          width: 260,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: focused ? _rCardFocus : _rCard,
-            borderRadius: BorderRadius.circular(12),
-            border: focused
-                ? Border.all(color: _rBorderFocus, width: 2)
-                : null,
+      pressedBuilder: (BuildContext context, bool focused, bool pressed) {
+        return _railsShell(
+          focused: focused,
+          pressed: pressed,
+          child: Container(
+            width: 260,
+            padding: const EdgeInsets.all(12),
+            child: _favCardBody(focused),
           ),
-          child: Column(
+        );
+      },
+    );
+  }
+
+  Widget _favCardBody(bool focused) {
+    final Channel ch = slot.channel;
+    final EpgProgram? prog = slot.program;
+    final double? progress = _progress();
+    return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Row(
@@ -653,9 +712,6 @@ class _FavCard extends StatelessWidget {
                 ),
               ],
             ],
-          ),
-        );
-      },
-    );
+          );
   }
 }

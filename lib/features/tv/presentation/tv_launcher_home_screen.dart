@@ -596,13 +596,25 @@ class _RecentMoviesRailState extends State<_RecentMoviesRail> {
   List<VodMovie> _movies = const <VodMovie>[];
   bool _loaded = false;
 
+  /// Chargement DIFFÉRÉ (4 s) : au boot, la box digère déjà l'ingestion de
+  /// la playlist + l'aperçu héro. Charger le catalogue VOD au même moment
+  /// ajoutait un pic mémoire au pire instant (stabilité box faible RAM).
+  Timer? _deferred;
+
   @override
   void initState() {
     super.initState();
-    unawaited(_load());
+    _deferred = Timer(const Duration(seconds: 4), () => unawaited(_load()));
+  }
+
+  @override
+  void dispose() {
+    _deferred?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     try {
       final List<VodMovie> all = await VodRepository.instance.fetchMovies();
       // « Derniers ajoutés » : les panels Xtream numérotent les films par

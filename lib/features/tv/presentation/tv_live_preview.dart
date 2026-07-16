@@ -58,6 +58,17 @@ class TvLivePreview extends StatefulWidget {
     this.resolver,
   });
 
+  /// Observer de navigation GLOBAL (enregistré par TvApp sur son Navigator).
+  /// GARDE-FOU STABILITÉ : quand un écran est poussé PAR-DESSUS un écran qui
+  /// contient un aperçu (l'accueil reste monté sous la route !), l'aperçu se
+  /// LIBÈRE tout seul (didPushNext) et se réarme au retour (didPopNext).
+  /// Sans ça, l'aperçu de l'accueil continuait de décoder sous « En
+  /// direct » → 2 lecteurs ExoPlayer simultanés → RAM saturée sur les box
+  /// modestes (retour terrain : « l'application s'est fermée ») + compte
+  /// 1-connexion consommé pour rien.
+  static final RouteObserver<ModalRoute<void>> routeObserver =
+      RouteObserver<ModalRoute<void>>();
+
   /// Chaîne focalisée dans la colonne du milieu.
   final Channel channel;
 
@@ -116,10 +127,14 @@ class TvLivePreview extends StatefulWidget {
   State<TvLivePreview> createState() => _TvLivePreviewState();
 }
 
-class _TvLivePreviewState extends State<TvLivePreview> {
+class _TvLivePreviewState extends State<TvLivePreview> with RouteAware {
   NativeVideoController? _ctrl;
   Timer? _debounce;
   bool _resolving = false;
+
+  /// `true` quand un AUTRE écran est posé par-dessus celui-ci (didPushNext) :
+  /// l'aperçu reste coupé tant qu'on n'est pas revenu (didPopNext).
+  bool _covered = false;
 
   /// Jeton anti-course : incrémenté à chaque reset — une résolution d'URL
   /// revenue APRÈS un changement de chaîne est simplement jetée.
@@ -128,6 +143,30 @@ class _TvLivePreviewState extends State<TvLivePreview> {
   @override
   void initState() {
     super.initState();
+    if (widget.enabled) _schedule();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final ModalRoute<void>? route = ModalRoute.of(context);
+    if (route != null) TvLivePreview.routeObserver.subscribe(this, route);
+  }
+
+  /// Un écran vient d'être poussé PAR-DESSUS : libération complète du
+  /// lecteur — jamais 2 flux/décodeurs ouverts en même temps (stabilité
+  /// box faible RAM + comptes 1-connexion).
+  @override
+  void didPushNext() {
+    _covered = true;
+    _reset(disposePlayer: true);
+    if (mounted) setState(() {});
+  }
+
+  /// Retour sur cet écran : on réarme l'aperçu (anti-rebond normal).
+  @override
+  void didPopNext() {
+    _covered = false;
     if (widget.enabled) _schedule();
   }
 
@@ -165,6 +204,7 @@ class _TvLivePreviewState extends State<TvLivePreview> {
 
   @override
   void dispose() {
+    TvLivePreview.routeObserver.unsubscribe(this);
     _reset(disposePlayer: true);
     super.dispose();
   }
@@ -190,6 +230,7 @@ class _TvLivePreviewState extends State<TvLivePreview> {
   }
 
   void _schedule() {
+    if (_covered) return; // un écran est posé par-dessus → aperçu coupé
     _debounce?.cancel();
     // Sélection explicite (OK) = démarrage immédiat ; focus = anti-rebond.
     _debounce = Timer(
@@ -239,9 +280,10 @@ class _TvLivePreviewState extends State<TvLivePreview> {
         '${src.userAgent == null ? '' : ' (UA: ${src.userAgent})'}');
     // Lecteur PERSISTANT : créé au 1er aperçu, puis simple setUrl aux zaps
     // suivants (créer/détruire la vue native à chaque chaîne saccadait l'UI).
+    if (_covered) return; // recouvert pendant la résolution → on n'ouvre pas
     NativeVideoController? c = _ctrl;
     if (c == null) {
-      c = NativeVideoController();
+      c = NativeVideoController(preview: true);
       c.setVolume(0); // muet d'office — le son n'arrive qu'en plein écran
       c.addListener(_onPlayer);
     }

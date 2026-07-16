@@ -58,6 +58,9 @@ class NativeVideoView(
     private val appContext: Context,
     messenger: BinaryMessenger,
     id: Int,
+    // Mode APERÇU (vignette de l'accueil / d'En direct) : tampons réduits —
+    // voir le bloc LoadControl dans init{}.
+    private val preview: Boolean = false,
 ) : PlatformView, MethodChannel.MethodCallHandler, Player.Listener {
 
     companion object {
@@ -223,7 +226,17 @@ class NativeVideoView(
         // false) reste LA garde anti-OOM, donc aucune régression mémoire.
         val lowRam = (activityManager?.isLowRamDevice == true) ||
             (memInfo.totalMem in 1..(800L * 1024 * 1024))
-        val loadControl = if (lowRam) {
+        val loadControl = if (preview) {
+            // APERÇU (vignette) : tampon MINIMAL — 1re image rapide, ~8 Mo de
+            // plafond. Un aperçu muet n'a pas besoin d'absorber 50 s de
+            // coupure ; par contre 2 aperçus + l'UI sur une box 1 Go faisaient
+            // sortir l'app en OOM (retour terrain « l'app s'est fermée »).
+            DefaultLoadControl.Builder()
+                .setBufferDurationsMs(8_000, 15_000, 1_000, 2_000)
+                .setTargetBufferBytes(8 * 1024 * 1024)
+                .setPrioritizeTimeOverSizeThresholds(false)
+                .build()
+        } else if (lowRam) {
             // Vraies petites box (≤800 Mo) : profil serré mais un peu plus de
             // réserve qu'avant (15 s / 18 Mo) pour absorber les micro-coupures.
             DefaultLoadControl.Builder()

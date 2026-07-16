@@ -79,19 +79,27 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     super.dispose();
   }
 
+  /// Nombre de chaînes par groupe — PRÉ-CALCULÉ à l'ingestion (une passe).
+  /// Filtrer 10 000+ chaînes par tuile à chaque rebuild saccaderait.
+  Map<String, int> _counts = <String, int>{};
+
   void _ingest(List<Channel> channels) {
     // Groupes = catégories nettoyées, dans l'ordre de première apparition.
     final List<String> groups = <String>[_kAllGroup];
     final Set<String> seen = <String>{};
+    final Map<String, int> counts = <String, int>{};
     for (final Channel c in channels) {
       final String g = ChannelClassifier.prettifyCategory(c.category);
       if (g.isEmpty) continue;
       if (seen.add(g)) groups.add(g);
+      counts[g] = (counts[g] ?? 0) + 1;
     }
+    counts[_kAllGroup] = channels.length;
     if (!mounted) return;
     setState(() {
       _all = channels;
       _groups = groups;
+      _counts = counts;
       if (!_groups.contains(_group)) _group = _kAllGroup;
       _visible = _channelsFor(_group);
       _preview ??= _visible.isNotEmpty ? _visible.first : null;
@@ -222,6 +230,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                 final String g = _groups[i];
                 return _GroupTile(
                   label: g,
+                  count: _counts[g] ?? 0,
                   active: g == _group,
                   autofocus: false,
                   onSelect: () => _selectGroup(g),
@@ -365,11 +374,15 @@ class _RailIcon extends StatelessWidget {
 class _GroupTile extends StatelessWidget {
   const _GroupTile({
     required this.label,
+    required this.count,
     required this.active,
     required this.autofocus,
     required this.onSelect,
   });
   final String label;
+
+  /// Nombre de chaînes du groupe — affiché à droite (demande client).
+  final int count;
   final bool active;
   final bool autofocus;
   final VoidCallback onSelect;
@@ -413,9 +426,18 @@ class _GroupTile extends StatelessWidget {
                           active ? FontWeight.w700 : FontWeight.w500),
                 ),
               ),
-              if (active && !focused)
+              const SizedBox(width: 8),
+              // Compteur de chaînes du groupe (ex. « Sports FR · 240 »).
+              Text('$count',
+                  style: TextStyle(
+                      color: focused ? _tmBg : _tmText3,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700)),
+              if (active && !focused) ...<Widget>[
+                const SizedBox(width: 6),
                 const Icon(Icons.play_arrow_rounded,
                     size: 18, color: _tmAccent),
+              ],
             ],
           ),
         );

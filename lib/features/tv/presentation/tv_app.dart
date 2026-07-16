@@ -46,6 +46,7 @@ import '../core/tv_ambience.dart';
 import '../core/tv_home_template.dart';
 import 'tv_home_template_screen.dart';
 import 'tv_launcher_home_screen.dart';
+import 'tv_live_preview.dart';
 import 'tv_rails_home_screen.dart';
 import 'tv_tivimate_home_screen.dart';
 import 'tv_care_nudge.dart';
@@ -190,6 +191,10 @@ class TvApp extends StatelessWidget {
             ],
           );
         },
+        // Observer de navigation : permet aux aperçus vidéo (TvLivePreview)
+        // de se COUPER automatiquement quand un écran passe par-dessus
+        // (stabilité : jamais 2 lecteurs natifs simultanés).
+        navigatorObservers: <NavigatorObserver>[TvLivePreview.routeObserver],
         home: const RestartWidget(child: TvGate()),
       ),
     );

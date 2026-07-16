@@ -25,10 +25,15 @@ class TrackInfo {
 
 /// Pilote un lecteur natif et publie son état. Un controller = une vue.
 class NativeVideoController extends ChangeNotifier {
-  NativeVideoController({this.initialUrl});
+  NativeVideoController({this.initialUrl, this.preview = false});
 
   /// URL jouée dès que la vue native est prête (1re chaîne).
   final String? initialUrl;
+
+  /// Mode APERÇU (vignette muette) : le lecteur natif utilise des tampons
+  /// RÉDUITS (~8 Mo au lieu de 18-32 Mo) — indispensable sur les box à
+  /// faible RAM quand un aperçu tourne en plus de l'UI.
+  final bool preview;
 
   MethodChannel? _channel;
   String? _pendingUrl;
@@ -296,6 +301,8 @@ class NativeVideoView extends StatelessWidget {
           id: params.id,
           viewType: _viewType,
           layoutDirection: TextDirection.ltr,
+          // Transporte le mode APERÇU jusqu'au natif (tampons réduits).
+          creationParams: <String, dynamic>{'preview': controller.preview},
           creationParamsCodec: const StandardMessageCodec(),
           onFocus: () => params.onFocusChanged(true),
         );

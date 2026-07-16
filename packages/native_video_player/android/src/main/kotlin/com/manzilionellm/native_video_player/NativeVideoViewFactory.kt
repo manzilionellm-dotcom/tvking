@@ -15,6 +15,11 @@ class NativeVideoViewFactory(
     private val messenger: BinaryMessenger,
 ) : PlatformViewFactory(StandardMessageCodec.INSTANCE) {
     override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
-        return NativeVideoView(context, messenger, viewId)
+        // `preview=true` (posé côté Dart via creationParams) = APERÇU en
+        // vignette : tampons ExoPlayer réduits (~8 Mo au lieu de 18-32 Mo).
+        // Un aperçu n'a pas besoin de la résilience du plein écran, et sur
+        // une box à faible RAM le gros tampon poussait l'app vers l'OOM.
+        val preview = (args as? Map<*, *>)?.get("preview") == true
+        return NativeVideoView(context, messenger, viewId, preview)
     }
 }

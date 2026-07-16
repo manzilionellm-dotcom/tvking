@@ -43,6 +43,7 @@ class TvFocusable extends StatefulWidget {
     this.selected = false,
     this.showOutline = true,
     this.showGlow = true,
+    this.onPressChange,
   });
 
   /// Contenu (carte, rangée, bouton…). Reçoit l'état de focus via [child]
@@ -56,6 +57,11 @@ class TvFocusable extends StatefulWidget {
   /// relâchement est ANNULÉ (sinon on ouvrirait aussi le lecteur).
   final VoidCallback? onLongPress;
   final ValueChanged<bool>? onFocusChange;
+
+  /// Notifié quand l'élément passe (true) / sort (false) de l'état APPUYÉ
+  /// (OK enfoncé ou doigt posé). Permet aux surfaces de CHANGER DE COULEUR
+  /// à l'appui (retour visuel immédiat, avant même l'action).
+  final ValueChanged<bool>? onPressChange;
   final FocusNode? focusNode;
   final bool autofocus;
   final TvFocusScale scale;
@@ -131,7 +137,10 @@ class _TvFocusableState extends State<TvFocusable> {
     if (!widget.enabled) return KeyEventResult.ignored;
     if (!_isSelectKey(event.logicalKey)) return KeyEventResult.ignored;
     if (event is KeyDownEvent) {
-      if (!_pressed) setState(() => _pressed = true);
+      if (!_pressed) {
+        setState(() => _pressed = true);
+        widget.onPressChange?.call(true);
+      }
       // Arme l'appui long seulement si un handler est fourni.
       _longFired = false;
       _cancelLongTimer();
@@ -149,7 +158,10 @@ class _TvFocusableState extends State<TvFocusable> {
     }
     if (event is KeyUpEvent) {
       _cancelLongTimer();
-      if (_pressed) setState(() => _pressed = false);
+      if (_pressed) {
+        setState(() => _pressed = false);
+        widget.onPressChange?.call(false);
+      }
       // Si l'appui long s'est déclenché, on N'OUVRE PAS (onSelect annulé).
       if (_longFired) {
         _longFired = false;
@@ -181,24 +193,36 @@ class _TvFocusableState extends State<TvFocusable> {
       onTapDown: widget.enabled
           ? (_) {
               _node.requestFocus();
-              if (!_pressed) setState(() => _pressed = true);
+              if (!_pressed) {
+        setState(() => _pressed = true);
+        widget.onPressChange?.call(true);
+      }
             }
           : null,
       onTapUp: widget.enabled
           ? (_) {
-              if (_pressed) setState(() => _pressed = false);
+              if (_pressed) {
+        setState(() => _pressed = false);
+        widget.onPressChange?.call(false);
+      }
             }
           : null,
       onTapCancel: widget.enabled
           ? () {
-              if (_pressed) setState(() => _pressed = false);
+              if (_pressed) {
+        setState(() => _pressed = false);
+        widget.onPressChange?.call(false);
+      }
             }
           : null,
       onTap: widget.enabled ? widget.onSelect : null,
       // Appui long au DOIGT (écrans tactiles) : même effet que OK maintenu.
       onLongPress: (widget.enabled && widget.onLongPress != null)
           ? () {
-              if (_pressed) setState(() => _pressed = false);
+              if (_pressed) {
+        setState(() => _pressed = false);
+        widget.onPressChange?.call(false);
+      }
               widget.onLongPress!.call();
             }
           : null,
@@ -212,6 +236,7 @@ class _TvFocusableState extends State<TvFocusable> {
             _focused = f;
             if (!f) _pressed = false;
           });
+          if (!f) widget.onPressChange?.call(false);
           widget.onFocusChange?.call(f);
         },
         child: AnimatedScale(
@@ -270,16 +295,24 @@ class _TvFocusableState extends State<TvFocusable> {
 class TvFocusBuilder extends StatefulWidget {
   const TvFocusBuilder({
     super.key,
-    required this.builder,
+    this.builder,
     this.onSelect,
     this.onLongPress,
     this.focusNode,
     this.autofocus = false,
     this.scale = TvFocusScale.medium,
     this.enabled = true,
-  });
+    this.pressedBuilder,
+  }) : assert(builder != null || pressedBuilder != null,
+            'builder ou pressedBuilder requis');
 
-  final Widget Function(BuildContext context, bool focused) builder;
+  final Widget Function(BuildContext context, bool focused)? builder;
+
+  /// Variante RICHE : reçoit aussi l'état APPUYÉ (OK enfoncé / doigt posé).
+  /// Si fournie, elle remplace [builder] — sert aux tuiles qui changent de
+  /// couleur à l'appui (template Rails premium).
+  final Widget Function(BuildContext context, bool focused, bool pressed)?
+      pressedBuilder;
   final VoidCallback? onSelect;
   final VoidCallback? onLongPress;
   final FocusNode? focusNode;
@@ -293,9 +326,11 @@ class TvFocusBuilder extends StatefulWidget {
 
 class _TvFocusBuilderState extends State<TvFocusBuilder> {
   bool _focused = false;
+  bool _pressed = false;
 
   @override
   Widget build(BuildContext context) {
+    final bool f = _focused && widget.enabled;
     return TvFocusable(
       onSelect: widget.onSelect,
       onLongPress: widget.onLongPress,
@@ -304,8 +339,13 @@ class _TvFocusBuilderState extends State<TvFocusBuilder> {
       scale: widget.scale,
       enabled: widget.enabled,
       showOutline: false,
-      onFocusChange: (bool f) => setState(() => _focused = f),
-      child: widget.builder(context, _focused && widget.enabled),
+      onFocusChange: (bool v) => setState(() => _focused = v),
+      onPressChange: widget.pressedBuilder == null
+          ? null
+          : (bool v) => setState(() => _pressed = v),
+      child: widget.pressedBuilder != null
+          ? widget.pressedBuilder!(context, f, _pressed && f)
+          : widget.builder!(context, f),
     );
   }
 }
