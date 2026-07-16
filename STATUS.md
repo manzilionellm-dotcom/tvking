@@ -7,6 +7,76 @@
 
 ---
 
+## Dernière session (2026-07-16) — Cast increvable + fluidité + pistes TV
+
+Branche de travail : `claude/maison-mere-phone` (miroir
+`claude/tv-channels-live-preview-24f338`). Tout est vert (analyze +
+497 tests locaux) et poussé. Ce qui a été fait :
+
+### Cast (priorité client)
+- **Vague B — télécommande pure** : pendant un cast, zapper change la
+  chaîne SUR LA TV (jamais de reprise locale — c'est ce qui ouvrait
+  2 connexions et cassait la stabilité). Nouveau
+  `CastManager.castChannelOnCurrentSession` + contexte de zap partagé
+  (`setCastPlaylist`, `zapCastNext/Prev`, `canZapOnCast`) ; garde
+  centralisée dans `_applyZap` ; Ch+/Ch- dans l'overlay du lecteur ET
+  la mini-barre globale ; fin de la reprise locale automatique en
+  fin/échec de cast (Lecture = reprise explicite).
+- **Keepalive écran éteint** : POST_NOTIFICATIONS désormais demandée
+  sur le chemin cast (Android 13+ supprimait la notification → kill
+  OEM) ; le natif remonte le VRAI résultat de startForegroundService
+  (avant : `keepalive_started` menteur dans la boîte noire).
+- **Audio du relais HLS** : discontinuités PCR INTRA-connexion enfin
+  signalées (#EXT-X-DISCONTINUITY — c'était la désynchro/son haché) ;
+  AC-3/E-AC-3/DTS en stream_type 0x06 correctement étiquetés
+  (descripteurs DVB parsés) ; WARN boîte noire
+  `hls_relay.ready_audio_at_risk` quand le codec audio n'est pas
+  transmuxable par le Default Media Receiver (mp2/ac3/eac3/dts/
+  aac-latm/private → l'explication du « la voix n'est pas bonne » ;
+  mux.js ne re-emballe que AAC/MP3). Piste restante si le terrain le
+  confirme : router ces flux vers direct_tv, ou transcodage.
+
+### Fluidité TV (suite de l'audit)
+- Guides EPG : futures mémorisés (tv_timeline_guide, tv_guide) — le
+  tic 30 s ne re-tape plus SQLite ; anti-rebond 250 ms + cache
+  synchrone dans tv_guide_grid ; aperçu tivimate_home en
+  ValueNotifier (plus de setState d'écran au focus).
+- Images : décodage borné (cacheWidth) posters Cinéma, backdrop héros,
+  logos incrustés du lecteur.
+- Sync EPG : parse XMLTV dans un ISOLATE dédié
+  (`XmltvParser.parseInIsolate`, streaming conservé, inserts SQLite
+  sur l'isolate principal par lots de 500).
+
+### Stabilité « ne jamais fermer »
+- Purge `didHaveMemoryPressure` généralisée à TOUS les flavors
+  (`_MemoryPressureGuard` dans guarded_main).
+- `local_stream_relay._handleRequest` : fermeture de réponse GARANTIE
+  (try/finally — fini les sockets zombies → OOM lent).
+- Frontières de session cast : `on Exception` → `on Object` (les
+  Error ne laissent plus de sessions zombie ni ne privent du repli
+  local).
+
+### Lecteur TV — feuille « Pistes & format d'image »
+- Nouveau bouton « Pistes » (5e) → panneau latéral focus-émulé :
+  pistes AUDIO (langues localisées), SOUS-TITRES (+ Désactivés),
+  FORMAT D'IMAGE (Contenir/16:9/4:3/2.39/Étirer/Remplir — fini le
+  16:9 figé). Sélection via TrackSelectionOverride ExoPlayer (zéro
+  rebuild), ratio 100 % Flutter, persistance PlayerSettings. Le natif
+  remonte désormais le code langue (`language`) dans l'événement
+  `tracks`.
+
+### Reste à faire (classement mondial — cf. audit)
+- Enregistrement planifié depuis l'EPG (RecordingService existe, il
+  manque le bouton « programmer » dans le guide).
+- Décalage audio + offset sous-titres ; sous-titres externes .srt
+  (VOD) ; reprise cross-appareil ; catégories personnalisables +
+  verrou PIN ; multi-vue 4 flux.
+- Audio cast : valider sur le terrain la corrélation
+  `ready_audio_at_risk` ↔ plaintes son, puis décider (routage
+  direct_tv prioritaire pour ces codecs, ou transcodage).
+
+---
+
 ## Qui je suis (toi, Lionel)
 
 - Fournisseur et revendeur IPTV qui veut son propre lecteur premium
