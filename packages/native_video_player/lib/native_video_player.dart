@@ -46,9 +46,17 @@ class NativeDeviceInfo {
 
 /// Piste (audio ou sous-titres) exposée par le lecteur natif.
 class TrackInfo {
-  const TrackInfo({required this.label, required this.selected});
+  const TrackInfo({
+    required this.label,
+    required this.selected,
+    this.language = '',
+  });
   final String label;
   final bool selected;
+
+  /// Code langue BRUT remonté par ExoPlayer (fr, eng, spa…) — vide si
+  /// le flux ne le déclare pas. L'UI le traduit en libellé localisé.
+  final String language;
 }
 
 /// Pilote un lecteur natif et publie son état. Un controller = une vue.
@@ -200,12 +208,20 @@ class NativeVideoController extends ChangeNotifier {
     return null;
   }
 
+  /// Décode la liste de pistes remontée par le natif. Public pour les
+  /// tests (visibleForTesting) : le format du contrat MethodChannel
+  /// (label/language/selected, valeurs manquantes tolérées) est
+  /// verrouillé par test — le Kotlin et le Dart doivent rester alignés.
+  @visibleForTesting
+  static List<TrackInfo> parseTracks(dynamic raw) => _parseTracks(raw);
+
   static List<TrackInfo> _parseTracks(dynamic raw) {
     if (raw is! List) return <TrackInfo>[];
     return raw
         .whereType<Map<dynamic, dynamic>>()
         .map((Map<dynamic, dynamic> t) => TrackInfo(
               label: (t['label'] as String?) ?? '',
+              language: (t['language'] as String?) ?? '',
               selected: (t['selected'] as bool?) ?? false,
             ))
         .toList();

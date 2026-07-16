@@ -242,6 +242,7 @@
   "tracksTitle": "Nyimbo",
   "tracksAudio": "Sauti",
   "tracksSubtitles": "Manukuu",
+  "tracksAspectSection": "Umbo wa picha",
   "tracksNoAudio": "Hakuna wimbo wa sauti uliopatikana.",
   "tracksNoSubtitles": "Hakuna manukuu. Kidokezo: katika baadhi ya mitiririko yamejengwa ndani lakini hugunduliwa kwa kuchelewa.",
   "castToDevice": "Tangaza kwa {device}",

@@ -242,6 +242,7 @@
   "tracksTitle": "المسارات",
   "tracksAudio": "الصوت",
   "tracksSubtitles": "الترجمات",
+  "tracksAspectSection": "تنسيق الصورة",
   "tracksNoAudio": "لم يُكتشف أي مسار صوتي.",
   "tracksNoSubtitles": "لا توجد ترجمات. نصيحة: في بعض عمليات البث تكون مضمّنة لكن تُكتشف متأخرًا.",
   "castToDevice": "بثّ إلى {device}",

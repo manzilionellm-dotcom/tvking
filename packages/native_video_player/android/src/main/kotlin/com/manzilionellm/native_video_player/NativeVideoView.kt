@@ -526,12 +526,17 @@ class NativeVideoView(
                 C.TRACK_TYPE_AUDIO -> audio.add(
                     mapOf(
                         "label" to (label.ifEmpty { "Piste ${audio.size + 1}" }),
+                        // Code langue BRUT (fr/eng/…) : Dart le traduit en
+                        // libellé localisé (« Français ») dans la feuille
+                        // « Pistes » du lecteur TV.
+                        "language" to (f.language ?: ""),
                         "selected" to group.isSelected,
                     ),
                 )
                 C.TRACK_TYPE_TEXT -> text.add(
                     mapOf(
                         "label" to (label.ifEmpty { "Sous-titres ${text.size + 1}" }),
+                        "language" to (f.language ?: ""),
                         "selected" to group.isSelected,
                     ),
                 )

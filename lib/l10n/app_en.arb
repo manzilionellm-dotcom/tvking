@@ -243,6 +243,7 @@
   "tracksTitle": "Tracks",
   "tracksAudio": "Audio",
   "tracksSubtitles": "Subtitles",
+  "tracksAspectSection": "Picture format",
   "tracksNoAudio": "No audio track detected.",
   "tracksNoSubtitles": "No subtitles. Tip: on some streams they're embedded but detected late.",
   "castToDevice": "Cast to {device}",

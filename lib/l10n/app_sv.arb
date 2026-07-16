@@ -242,6 +242,7 @@
   "tracksTitle": "Spår",
   "tracksAudio": "Ljud",
   "tracksSubtitles": "Undertexter",
+  "tracksAspectSection": "Bildformat",
   "tracksNoAudio": "Inget ljudspår upptäcktes.",
   "tracksNoSubtitles": "Inga undertexter. Tips: i vissa strömmar är de inbäddade men upptäcks sent.",
   "castToDevice": "Casta till {device}",

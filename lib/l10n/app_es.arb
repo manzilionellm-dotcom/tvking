@@ -242,6 +242,7 @@
   "tracksTitle": "Pistas",
   "tracksAudio": "Audio",
   "tracksSubtitles": "Subtítulos",
+  "tracksAspectSection": "Formato de imagen",
   "tracksNoAudio": "No se detectó ninguna pista de audio.",
   "tracksNoSubtitles": "Sin subtítulos. Consejo: en algunos flujos están incrustados pero se detectan tarde.",
   "castToDevice": "Transmitir a {device}",

@@ -689,6 +689,10 @@
     "description": "Texte UI : tracksAudio"
   },
   "tracksSubtitles": "Sous-titres",
+  "tracksAspectSection": "Format d'image",
+  "@tracksAspectSection": {
+    "description": "Texte UI : tracksAspectSection"
+  },
   "@tracksSubtitles": {
     "description": "Texte UI : tracksSubtitles"
   },

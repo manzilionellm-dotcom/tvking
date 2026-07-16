@@ -30,6 +30,8 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/data/local_stream_relay.dart';
 import '../../player/data/player_settings.dart';
+import '../../player/presentation/aspect_mode_label.dart';
+import '../../player/presentation/track_language_label.dart';
 import '../../player/data/stream_blocked_fallback.dart';
 import '../../player/data/stream_diagnostics.dart';
 import '../../player/data/xtream_url_variants.dart';
@@ -123,10 +125,20 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // Index du bouton de la barre actuellement « surligné » au D-pad
   // (-1 = aucun). Permet à N'IMPORTE QUELLE télécommande (simple D-pad, sans
   // pointeur) d'atteindre TOUS les boutons : OK ouvre la barre, Gauche/Droite
-  // déplacent le surlignage, OK active. Ordre : 0=Retour 1=Préc 2=Lecture/Pause
-  // 3=Suiv 4=REC 5=Favori.
+  // déplacent le surlignage, OK active.
+  // Ordre : 0=Guide 1=REC 2=Favori 3=Multi 4=Pistes.
   int _btnFocus = -1;
-  static const int _btnCount = 4;
+  static const int _btnCount = 5;
+
+  // ----- Feuille « Pistes & format d'image » (audio/sous-titres/ratio) ---
+  // Panneau latéral focus-émulé (même modèle que la carte « À suivre ») :
+  // quand il est visible, _onKey lui détourne tout le D-pad.
+  bool _tracksVisible = false;
+  int _tracksFocus = 0;
+
+  /// Mode d'affichage courant (persisté via PlayerSettings — partagé
+  /// avec le lecteur mobile, SANS dépendre de media_kit).
+  AspectRatioMode _aspect = PlayerSettings.instance.aspectMode;
   bool _buffering = true;
   Timer? _hideTimer;
   Timer? _presenceTimer;
@@ -1099,7 +1111,122 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       case 3:
         _openMultiView();
         break;
+      case 4:
+        _openTracksSheet();
+        break;
     }
+  }
+
+  // ----- Feuille « Pistes & format d'image » ------------------------------
+
+  /// Lignes actionnables de la feuille, reconstruites à CHAQUE build :
+  /// les listes de pistes sont vidées puis re-remplies par le natif à
+  /// chaque zap (onTracksChanged) — la feuille suit toute seule via le
+  /// listener du controller déjà en place.
+  List<_TrackSheetEntry> _sheetEntries() {
+    final List<_TrackSheetEntry> rows = <_TrackSheetEntry>[];
+    final List<TrackInfo> audio = _controller.audioTracks;
+    final List<TrackInfo> text = _controller.textTracks;
+    for (int i = 0; i < audio.length; i++) {
+      rows.add(_TrackSheetEntry(kind: _SheetKind.audio, index: i));
+    }
+    // Sous-titres : « Désactivés » d'abord (l'état sans piste texte
+    // sélectionnée est le plus courant en IPTV), puis chaque piste.
+    rows.add(const _TrackSheetEntry(kind: _SheetKind.textOff, index: -1));
+    for (int i = 0; i < text.length; i++) {
+      rows.add(_TrackSheetEntry(kind: _SheetKind.text, index: i));
+    }
+    for (final AspectRatioMode m in AspectRatioMode.values) {
+      rows.add(_TrackSheetEntry(
+          kind: _SheetKind.aspect, index: AspectRatioMode.values.indexOf(m)));
+    }
+    return rows;
+  }
+
+  /// Construit la surface vidéo selon [_aspect] :
+  ///   - Contenir (Auto) → ratio RÉEL du flux (letterbox si besoin),
+  ///     repli 16:9 tant que le natif n'a pas remonté videoSize ;
+  ///   - 16:9 / 4:3 / 2.39:1 → ratio forcé ;
+  ///   - Étirer → plein cadre sans respect du ratio ;
+  ///   - Remplir → zoom qui GARDE le ratio et rogne les bords (utile
+  ///     pour les flux 4:3 letterboxés sur TV 16:9).
+  Widget _buildVideoSurface() {
+    final Widget view = NativeVideoView(controller: _controller);
+    final double streamAr = _controller.videoAspectRatio ?? (16 / 9);
+    switch (_aspect) {
+      case AspectRatioMode.fit:
+        return Center(
+            child: AspectRatio(aspectRatio: streamAr, child: view));
+      case AspectRatioMode.ratio169:
+        return Center(child: AspectRatio(aspectRatio: 16 / 9, child: view));
+      case AspectRatioMode.ratio43:
+        return Center(child: AspectRatio(aspectRatio: 4 / 3, child: view));
+      case AspectRatioMode.ratio219:
+        return Center(child: AspectRatio(aspectRatio: 2.39, child: view));
+      case AspectRatioMode.stretch:
+        return SizedBox.expand(child: view);
+      case AspectRatioMode.fill:
+        // Couvrir : la vidéo garde son ratio, déborde et se fait rogner.
+        // OverflowBox (et non FittedBox) : la PlatformView reçoit une
+        // VRAIE taille de layout — pas de mise à l'échelle par
+        // transformation, plus sûr avec une SurfaceView.
+        return LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints c) {
+            final double w = c.maxWidth;
+            final double h = c.maxHeight;
+            final double vw = (w / h > streamAr) ? w : h * streamAr;
+            final double vh = (w / h > streamAr) ? w / streamAr : h;
+            return ClipRect(
+              child: OverflowBox(
+                minWidth: 0,
+                minHeight: 0,
+                maxWidth: vw,
+                maxHeight: vh,
+                child: SizedBox(width: vw, height: vh, child: view),
+              ),
+            );
+          },
+        );
+    }
+  }
+
+  void _openTracksSheet() {
+    setState(() {
+      _tracksVisible = true;
+      _tracksFocus = 0;
+      _overlay = false; // la feuille remplace la barre à l'écran
+    });
+  }
+
+  void _closeTracksSheet() {
+    setState(() => _tracksVisible = false);
+    _showOverlayTemporarily();
+  }
+
+  /// Applique la ligne surlignée. La sélection de piste passe par le
+  /// MethodChannel du plugin (TrackSelectionOverride ExoPlayer : AUCUN
+  /// rebuild du player, pas d'écran noir). Le ratio est 100 % Flutter
+  /// (dimensionnement de la PlatformView) et persiste via PlayerSettings.
+  void _activateSheetEntry(_TrackSheetEntry e) {
+    switch (e.kind) {
+      case _SheetKind.audio:
+        _controller.setAudioTrack(e.index);
+        break;
+      case _SheetKind.textOff:
+        _controller.setSubtitleTrack(-1);
+        break;
+      case _SheetKind.text:
+        _controller.setSubtitleTrack(e.index);
+        break;
+      case _SheetKind.aspect:
+        final AspectRatioMode m = AspectRatioMode.values[e.index];
+        setState(() => _aspect = m);
+        unawaited(PlayerSettings.instance.setAspectMode(m));
+        break;
+    }
+    // On laisse la feuille OUVERTE : l'utilisateur peut comparer les
+    // pistes / formats sans rouvrir le panneau (convention TiviMate).
+    setState(() {});
   }
 
   // MULTI-VUE (2 chaînes) : réservée aux box assez puissantes (2 décodeurs).
@@ -1395,6 +1522,39 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       return KeyEventResult.handled;
     }
 
+    // FEUILLE « PISTES & FORMAT » affichée : elle capte tout le D-pad
+    // (même modèle que la carte « À suivre »). Haut/Bas déplacent le
+    // surlignage, OK applique (piste audio / sous-titres / ratio),
+    // Retour ferme. Tout le reste est consommé : pas de zap accidentel
+    // sous le panneau.
+    if (_tracksVisible) {
+      final List<_TrackSheetEntry> rows = _sheetEntries();
+      if (_isOk(k)) {
+        if (_tracksFocus >= 0 && _tracksFocus < rows.length) {
+          _activateSheetEntry(rows[_tracksFocus]);
+        }
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.goBack ||
+          k == LogicalKeyboardKey.escape ||
+          k == LogicalKeyboardKey.browserBack ||
+          k == LogicalKeyboardKey.exit) {
+        _closeTracksSheet();
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowUp) {
+        setState(() =>
+            _tracksFocus = (_tracksFocus - 1).clamp(0, rows.length - 1));
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowDown) {
+        setState(() =>
+            _tracksFocus = (_tracksFocus + 1).clamp(0, rows.length - 1));
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.handled;
+    }
+
     // CARTE « À SUIVRE » affichée : elle capte tout le D-pad. Gauche/Droite
     // déplacent le surlignage entre « Lire maintenant » et « Annuler »,
     // OK active, Retour = Annuler (on RESTE sur l'écran de fin, on ne
@@ -1547,13 +1707,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
             child: Stack(
               fit: StackFit.expand,
               children: <Widget>[
-              // Vidéo SurfaceView native plein écran (16:9 centré sur TV 16:9).
-              Center(
-                child: AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: NativeVideoView(controller: _controller),
-                ),
-              ),
+              // Vidéo SurfaceView native, dimensionnée selon le FORMAT
+              // D'IMAGE choisi (feuille « Pistes & format »). La Surface
+              // ExoPlayer remplit la PlatformView : piloter sa taille
+              // côté Flutter suffit — zéro rebuild du player, pas
+              // d'écran noir au changement de mode.
+              _buildVideoSurface(),
               // Écran de marque pendant l'ouverture / le zap / une reconnexion.
               if (_buffering && !_fatal)
                 const ColoredBox(
@@ -1685,6 +1844,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                         onRecord: _toggleRecording,
                         onFavorite: _toggleFavorite,
                         onMulti: _openMultiView,
+                        onTracks: _openTracksSheet,
                         // ---- Mode FILM (Netflix) ----
                         isVod: _isVod,
                         position: _controller.position,
@@ -1778,6 +1938,23 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
               // prochain épisode + compte à rebours 10 s + Lire maintenant /
               // Annuler. Uniquement à la fin d'un ÉPISODE avec un suivant
               // (cf. _handleVodEnded) — jamais en live ni pour un film.
+              // Feuille « Pistes & format d'image » (panneau latéral droit,
+              // focus émulé — cf. _onKey qui lui détourne tout le D-pad).
+              if (_tracksVisible)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: _TracksSheet(
+                    audio: _controller.audioTracks,
+                    text: _controller.textTracks,
+                    entries: _sheetEntries(),
+                    focusedIndex: _tracksFocus,
+                    aspect: _aspect,
+                    onActivate: _activateSheetEntry,
+                    onClose: _closeTracksSheet,
+                  ),
+                ),
               if (_upNextVisible && _nextUpChannel != null)
                 Positioned(
                   right: TvDimens.safeH,
@@ -1821,6 +1998,7 @@ class _ControlsBar extends StatelessWidget {
     required this.onRecord,
     required this.onFavorite,
     required this.onMulti,
+    required this.onTracks,
     required this.isVod,
     required this.position,
     required this.duration,
@@ -1843,6 +2021,7 @@ class _ControlsBar extends StatelessWidget {
   final VoidCallback onRecord;
   final VoidCallback onFavorite;
   final VoidCallback onMulti;
+  final VoidCallback onTracks;
 
   // ---- Mode FILM (Netflix) ----
   final bool isVod;
@@ -1934,6 +2113,15 @@ class _ControlsBar extends StatelessWidget {
                   label: context.l10n.tvPlayerMulti,
                   onTap: onMulti,
                   focused: focusedIndex == 3,
+                ),
+                const SizedBox(width: 34),
+                // « Pistes » : audio, sous-titres et format d'image —
+                // LE réglage qui manquait face aux lecteurs concurrents.
+                _CtrlButton(
+                  icon: Icons.tune_rounded,
+                  label: context.l10n.tracksTitle,
+                  onTap: onTracks,
+                  focused: focusedIndex == 4,
                 ),
               ],
             ),
@@ -2424,4 +2612,269 @@ class _UpNextButton extends StatelessWidget {
       ),
     );
   }
+}
+
+// ============================================================
+//  Feuille « Pistes & format d'image » du lecteur TV
+// ============================================================
+//  LE réglage qui manquait face à TiviMate/IBO : choisir la piste
+//  audio (multi-langues), les sous-titres (ou les couper) et le
+//  format d'image, à la télécommande. Panneau latéral droit en
+//  FOCUS ÉMULÉ (même modèle que la carte « À suivre ») : le parent
+//  (_onKey) détourne le D-pad quand il est visible — Haut/Bas
+//  déplacent le surlignage, OK applique, Retour ferme. La sélection
+//  de piste passe par un TrackSelectionOverride ExoPlayer (aucun
+//  rebuild du player) ; le ratio est appliqué côté Flutter.
+
+/// Nature d'une ligne actionnable de la feuille.
+enum _SheetKind { audio, textOff, text, aspect }
+
+/// Ligne actionnable : sa nature + l'index dans la liste concernée
+/// (piste audio N, piste texte N, mode d'affichage N). textOff : -1.
+class _TrackSheetEntry {
+  const _TrackSheetEntry({required this.kind, required this.index});
+  final _SheetKind kind;
+  final int index;
+}
+
+class _TracksSheet extends StatefulWidget {
+  const _TracksSheet({
+    required this.audio,
+    required this.text,
+    required this.entries,
+    required this.focusedIndex,
+    required this.aspect,
+    required this.onActivate,
+    required this.onClose,
+  });
+
+  final List<TrackInfo> audio;
+  final List<TrackInfo> text;
+  final List<_TrackSheetEntry> entries;
+  final int focusedIndex;
+  final AspectRatioMode aspect;
+  final void Function(_TrackSheetEntry) onActivate;
+  final VoidCallback onClose;
+
+  @override
+  State<_TracksSheet> createState() => _TracksSheetState();
+}
+
+class _TracksSheetState extends State<_TracksSheet> {
+  static const double _rowH = 48;
+  static const double _headerH = 40;
+  final ScrollController _scroll = ScrollController();
+
+  @override
+  void didUpdateWidget(_TracksSheet old) {
+    super.didUpdateWidget(old);
+    if (old.focusedIndex != widget.focusedIndex) _ensureFocusVisible();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// Fait défiler la liste pour garder la ligne surlignée à l'écran.
+  /// Offsets calculés à la main (lignes à hauteur fixe) : pas besoin
+  /// de GlobalKeys ni d'ensureVisible.
+  void _ensureFocusVisible() {
+    if (!_scroll.hasClients) return;
+    double offset = 0;
+    int focusable = -1;
+    for (final _DisplayRow r in _displayRows()) {
+      if (r.entry != null) {
+        focusable++;
+        if (focusable == widget.focusedIndex) break;
+      }
+      offset += r.entry == null ? _headerH : _rowH;
+    }
+    final double target =
+        (offset - 3 * _rowH).clamp(0, _scroll.position.maxScrollExtent);
+    _scroll.animateTo(target,
+        duration: const Duration(milliseconds: 120), curve: Curves.easeOut);
+  }
+
+  /// Liste d'affichage : en-têtes de section intercalés entre les
+  /// lignes actionnables (dans le MÊME ordre que widget.entries).
+  List<_DisplayRow> _displayRows() {
+    final List<_DisplayRow> rows = <_DisplayRow>[];
+    _SheetKind? lastSection;
+    for (final _TrackSheetEntry e in widget.entries) {
+      final _SheetKind section =
+          e.kind == _SheetKind.textOff ? _SheetKind.text : e.kind;
+      if (section != lastSection) {
+        rows.add(_DisplayRow.header(section));
+        lastSection = section;
+      }
+      rows.add(_DisplayRow.entry(e));
+    }
+    return rows;
+  }
+
+  String _headerLabel(BuildContext context, _SheetKind kind) {
+    switch (kind) {
+      case _SheetKind.audio:
+        return context.l10n.tracksAudio;
+      case _SheetKind.text:
+      case _SheetKind.textOff:
+        return context.l10n.tracksSubtitles;
+      case _SheetKind.aspect:
+        return context.l10n.tracksAspectSection;
+    }
+  }
+
+  /// Libellé humain d'une piste : label du flux, complété par la
+  /// langue localisée quand elle est connue (« Français · fra »).
+  String _trackLabel(BuildContext context, TrackInfo t) {
+    if (t.language.isEmpty) return t.label;
+    final String lang = trackLanguageLabel(context, t.language);
+    if (t.label.isEmpty || t.label.toUpperCase() == t.language.toUpperCase()) {
+      return lang;
+    }
+    return '${t.label} · $lang';
+  }
+
+  (String, bool) _entryPresentation(BuildContext context, _TrackSheetEntry e) {
+    switch (e.kind) {
+      case _SheetKind.audio:
+        final TrackInfo t = widget.audio[e.index];
+        return (_trackLabel(context, t), t.selected);
+      case _SheetKind.textOff:
+        final bool noneSelected =
+            widget.text.every((TrackInfo t) => !t.selected);
+        return (context.l10n.trackDisabled, noneSelected);
+      case _SheetKind.text:
+        final TrackInfo t = widget.text[e.index];
+        return (_trackLabel(context, t), t.selected);
+      case _SheetKind.aspect:
+        final AspectRatioMode m = AspectRatioMode.values[e.index];
+        return (m.localizedLabel(context), m == widget.aspect);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List<_DisplayRow> rows = _displayRows();
+    int focusable = -1;
+    return Container(
+      width: 400,
+      padding: const EdgeInsets.fromLTRB(
+          24, TvDimens.safeV, TvDimens.safeH, TvDimens.safeV),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerRight,
+          end: Alignment.centerLeft,
+          colors: <Color>[Color(0xF20A0A0C), Color(0x000A0A0C)],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(context.l10n.tracksTitle,
+              style: const TextStyle(
+                  fontSize: TvDimens.headline,
+                  fontWeight: FontWeight.w800,
+                  color: TvTokens.text)),
+          const SizedBox(height: 4),
+          // Aucune piste audio déclarée : on reste discret mais honnête.
+          if (widget.audio.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(context.l10n.tracksNoAudio,
+                  style: const TextStyle(
+                      fontSize: 13, color: TvTokens.mutedDim)),
+            ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: ListView(
+              controller: _scroll,
+              children: rows.map((_DisplayRow r) {
+                if (r.entry == null) {
+                  return SizedBox(
+                    height: _headerH,
+                    child: Align(
+                      alignment: Alignment.bottomLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          _headerLabel(context, r.section!).toUpperCase(),
+                          style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.4,
+                              color: TvTokens.gold),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+                focusable++;
+                final bool focused = focusable == widget.focusedIndex;
+                final (String label, bool selected) =
+                    _entryPresentation(context, r.entry!);
+                return SizedBox(
+                  height: _rowH,
+                  child: GestureDetector(
+                    // Tactile (tablette / TV tactile) : tap direct.
+                    onTap: () => widget.onActivate(r.entry!),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      margin: const EdgeInsets.only(bottom: 4),
+                      decoration: BoxDecoration(
+                        color: focused ? TvTokens.gold : Colors.transparent,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: <Widget>[
+                          Icon(
+                            selected
+                                ? Icons.radio_button_checked_rounded
+                                : Icons.radio_button_off_rounded,
+                            size: 18,
+                            color: focused
+                                ? const Color(0xFF1A1206)
+                                : (selected
+                                    ? TvTokens.gold
+                                    : TvTokens.mutedDim),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: selected
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: focused
+                                    ? const Color(0xFF1A1206)
+                                    : TvTokens.text,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Ligne d'affichage de la feuille : en-tête de section OU entrée.
+class _DisplayRow {
+  const _DisplayRow.header(this.section) : entry = null;
+  const _DisplayRow.entry(this.entry) : section = null;
+  final _SheetKind? section;
+  final _TrackSheetEntry? entry;
 }

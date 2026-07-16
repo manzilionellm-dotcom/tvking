@@ -242,6 +242,7 @@
   "tracksTitle": "Spor",
   "tracksAudio": "Lyd",
   "tracksSubtitles": "Undertekster",
+  "tracksAspectSection": "Billedformat",
   "tracksNoAudio": "Intet lydspor fundet.",
   "tracksNoSubtitles": "Ingen undertekster. Tip: i nogle streams er de indlejret, men opdages sent.",
   "castToDevice": "Cast til {device}",
