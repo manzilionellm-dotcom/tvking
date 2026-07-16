@@ -187,18 +187,31 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
   Widget _categories() {
     return _panel(
       title: 'Catégories',
-      child: ListView.builder(
-        itemCount: _cats.length,
-        itemBuilder: (BuildContext c, int i) {
-          final String cat = _cats[i];
-          return _RowTile(
-            label: cat,
-            count: _countFor(cat),
-            active: cat == _cat,
-            autofocus: i == 0,
-            onSelect: () => _selectCat(cat),
-          );
-        },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          // BOUTON « ACCUEIL » : retour au menu principal. Indispensable au
+          // TACTILE (téléphone/tablette : pas de touche Retour télécommande)
+          // et plus clair pour tout le monde sur TV. TvFocusBuilder = D-pad
+          // ET tap gérés.
+          _HomeTile(onSelect: () => Navigator.of(context).maybePop()),
+          const SizedBox(height: 6),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _cats.length,
+              itemBuilder: (BuildContext c, int i) {
+                final String cat = _cats[i];
+                return _RowTile(
+                  label: cat,
+                  count: _countFor(cat),
+                  active: cat == _cat,
+                  autofocus: i == 0,
+                  onSelect: () => _selectCat(cat),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -315,6 +328,52 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
           Expanded(child: child),
         ],
       ),
+    );
+  }
+}
+
+/// Bouton « Accueil » en tête des catégories : quitte l'écran En direct et
+/// revient au menu principal (pop de la route). Toujours visible — le
+/// tactile n'a pas de touche Retour.
+class _HomeTile extends StatelessWidget {
+  const _HomeTile({required this.onSelect});
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        final Color fg = focused ? TvTokens.text : TvTokens.muted;
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: focused ? TvTokens.sel : TvTokens.card,
+            borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
+            border: Border.all(
+                color: focused ? TvTokens.gold : TvTokens.hairline),
+          ),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.arrow_back_rounded,
+                  size: 18, color: focused ? TvTokens.gold : TvTokens.mutedDim),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Accueil',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: TvDimens.body,
+                        fontWeight: FontWeight.w700,
+                        color: fg)),
+              ),
+              Icon(Icons.home_rounded,
+                  size: 18, color: focused ? TvTokens.gold : TvTokens.mutedDim),
+            ],
+          ),
+        );
+      },
     );
   }
 }
