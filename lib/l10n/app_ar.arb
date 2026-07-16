@@ -1547,5 +1547,6 @@
   "gateReferenceLabel": "رقمك المرجعي",
   "gateReferenceHint": "أظهر هذا الرقم لمستشارك: سيعيد تفعيل وصولك في لحظات.",
   "gateReactivateContact": "تواصل لإعادة التفعيل",
-  "tvSimilar": "عناوين مشابهة"
+  "tvSimilar": "عناوين مشابهة",
+  "tvNextEpisode": "الحلقة التالية"
 }

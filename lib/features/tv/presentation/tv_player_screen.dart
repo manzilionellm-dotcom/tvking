@@ -44,6 +44,7 @@ import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../vod/data/playback_position_repository.dart';
 import '../data/autoplay_policy.dart';
+import '../data/cine_perf.dart';
 import '../data/failure_explainer.dart';
 import '../data/freeze_recovery_policy.dart';
 import '../data/playback_failure_log.dart';
@@ -203,6 +204,21 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // de re-seeker après (reconnexion anti-gel, seek manuel de l'utilisateur).
   Duration? _pendingResume;
   bool _resumeApplied = false;
+
+  // ----- Seek Netflix : double-appui = 30 s + bulle de temps -----
+  // Deux appuis Gauche/Droite RAPPROCHÉS (même sens, < 500 ms) passent le
+  // pas de 10 s à 30 s — pour traverser un générique sans marteler. La
+  // bulle au-dessus de la barre montre le TEMPS CIBLE pendant qu'on seek.
+  DateTime? _lastSeekTapAt;
+  int _lastSeekDir = 0; // -1 recul, +1 avance, 0 = aucun seek récent
+  Duration? _seekPreview; // temps cible affiché dans la bulle (null = cachée)
+  Timer? _seekPreviewTimer;
+
+  // ----- « Épisode suivant » pendant le générique (30 dernières secondes) --
+  // La pastille apparaît en bas à droite sur la FIN d'un épisode : OK =
+  // enchaîner tout de suite (regarder le générique = ne rien faire). Retour
+  // possible en arrière → elle disparaît. Remis à zéro à chaque _open.
+  bool _endPillVisible = false;
 
   // Anti-gel : on suit la progression réelle (position qui avance).
   Duration _lastPos = Duration.zero;
@@ -394,6 +410,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _toastTimer?.cancel();
     _zapSettle?.cancel();
     _upNextTimer?.cancel();
+    _seekPreviewTimer?.cancel();
+    // Lecteur quitté avant la 1re image → la mesure TTFF ne veut rien dire.
+    CinePerf.cancel(CinePerf.playToFirstFrame);
     _favSub?.cancel();
     _fallback.detach();
     // Si on quitte le lecteur en plein enregistrement : on finalise proprement
@@ -434,12 +453,39 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     }
     // Une vraie image a été dessinée → la source envoie bien de la vidéo.
     if (_controller.firstFrame) {
+      // BUDGET « Regarder → première frame » (VOD, cible < 2,5 s) : le chrono
+      // part de l'appui (fiche/accueil) ou de l'_open (reprise directe), et
+      // s'arrête ICI, à la toute première image de CETTE ouverture.
+      if (!_everShownFrame && _isVod &&
+          CinePerf.isRunning(CinePerf.playToFirstFrame)) {
+        CinePerf.end(CinePerf.playToFirstFrame, detail: _current.name);
+      }
       _everShownFrame = true;
       _startupWatchdog?.cancel(); // 1re image → garde-fou démarrage inutile
     }
     // Reprise VOD : dès que la DURÉE est connue (média préparé + seekable),
     // on peut appliquer le « Reprendre à 42:15 ». No-op en direct / déjà fait.
     if (_isVod) _maybeApplyResume();
+    // ----- Pastille « Épisode suivant » sur les 30 DERNIÈRES SECONDES -----
+    // « Regarder le générique ou passer » : sur la fin d'un ÉPISODE avec un
+    // suivant, une pastille discrète apparaît (OK = enchaîner). Revenir en
+    // arrière (> 30 s de la fin) la fait disparaître. Films/live : jamais.
+    if (_isVod) {
+      final Duration total = _controller.duration;
+      final bool nearEnd = total > Duration.zero &&
+          total - _controller.position <= const Duration(seconds: 30);
+      final bool pill = nearEnd &&
+          _everShownFrame &&
+          !_upNextVisible &&
+          !_controller.isEnded &&
+          _autoplay.canPropose(
+              isLive: _current.isLive,
+              currentId: _current.id,
+              nextId: _nextUpChannel?.id);
+      if (pill != _endPillVisible && mounted) {
+        setState(() => _endPillVisible = pill);
+      }
+    }
     // Logo tant qu'on bufferise OU que la 1re trame n'est pas encore dessinée
     // (au zap, firstFrame est remis à false → logo jusqu'à l'image suivante).
     final bool buffering = _controller.isBuffering || !_controller.firstFrame;
@@ -561,12 +607,22 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Nouveau contenu → la carte « À suivre » de l'ancien n'a plus de sens.
     _upNextTimer?.cancel();
     _upNextVisible = false;
+    _endPillVisible = false; // pastille fin d'épisode : propre à l'ancien
     // Reprise VOD : état neuf pour CE contenu, puis lecture (asynchrone,
     // quelques ms) de la position sauvegardée. Le seek lui-même n'aura lieu
     // que quand le flux sera prêt (durée connue, cf. _maybeApplyResume).
     _resumeApplied = false;
     _pendingResume = null;
-    if (_isVod) unawaited(_loadResumePoint());
+    if (_isVod) {
+      // BUDGET « Regarder → première frame » : si l'écran amont (fiche,
+      // rangée Reprendre) a déjà lancé le chrono à l'appui, on le garde
+      // (mesure complète) ; sinon (zap épisode suivant, reprise directe)
+      // il part d'ici. Arrêté à la 1re image (cf. _onPlayer).
+      if (!CinePerf.isRunning(CinePerf.playToFirstFrame)) {
+        CinePerf.start(CinePerf.playToFirstFrame);
+      }
+      unawaited(_loadResumePoint());
+    }
     if (mounted) setState(() {
       _buffering = true;
       _fatal = false;
@@ -640,7 +696,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     }
     final String lower = realUrl.toLowerCase();
     final bool isHls = lower.contains('.m3u8') || lower.contains('.m3u');
-    if (isHls) {
+    // VOD (film/épisode = FICHIER fini, seekable) : JAMAIS par le relais.
+    // Le relais est un tuyau TS live SANS requêtes Range (contrat documenté
+    // dans local_stream_relay.dart) : un mp4/mkv qui y passait perdait
+    // l'avance/recul propre et la reprise exacte (ExoPlayer seek = Range).
+    // En direct, ExoPlayer gère nativement Range + reconnexion progressive.
+    if (isHls || _isVod) {
       _relayPlayUrl = null;
       _controller.setUrl(realUrl, userAgent: userAgent);
       return;
@@ -1064,8 +1125,17 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // OK / centre du D-pad : ouvre la barre (et surligne Lecture/Pause), ou
   // active le bouton surligné si la barre est déjà ouverte.
   void _okPressed() {
-    // FILM (Netflix) : OK = lecture/pause, tout simplement.
+    // FILM (Netflix) : OK = lecture/pause… SAUF quand la pastille « Épisode
+    // suivant » est à l'écran (30 dernières secondes, barre masquée) : OK
+    // l'active — exactement le comportement Netflix pendant un générique.
+    // Pour mettre en pause à ce moment-là : Haut/Bas ouvre la barre (la
+    // pastille se cache), puis OK = pause.
     if (_isVod) {
+      if (_endPillVisible && !_overlay) {
+        _autoplay.onUserInteraction();
+        _playUpNext(auto: false);
+        return;
+      }
       _togglePlayPause();
       return;
     }
@@ -1283,10 +1353,30 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // tout ça (tout est gardé par `_isVod`) → comportement live 100 % inchangé.
   bool get _isVod => !_current.isLive;
 
-  /// Avance/recule le film de [delta] (Netflix : ±10 s). Sans effet en direct.
+  /// Avance/recule le film (Netflix : ±10 s ; appuis RAPPROCHÉS dans le même
+  /// sens = ±30 s pour traverser un générique sans marteler). Affiche la
+  /// bulle de TEMPS CIBLE au-dessus de la barre. Sans effet en direct.
   void _seekRelative(Duration delta) {
     if (!_isVod) return;
-    _controller.seekBy(delta);
+    final DateTime now = DateTime.now();
+    final int dir = delta.isNegative ? -1 : 1;
+    // Double-appui : même direction, moins de 500 ms après le précédent →
+    // le pas passe de 10 s à 30 s (chaque appui suivant reste à 30 s tant
+    // que la rafale continue).
+    final bool rapid = _lastSeekDir == dir &&
+        _lastSeekTapAt != null &&
+        now.difference(_lastSeekTapAt!) < const Duration(milliseconds: 500);
+    _lastSeekTapAt = now;
+    _lastSeekDir = dir;
+    final Duration step = rapid ? Duration(seconds: 30 * dir) : delta;
+    _controller.seekBy(step);
+    // Bulle de preview : le TEMPS CIBLE (position déjà mise à jour par le
+    // controller), visible 1,2 s après le dernier appui.
+    _seekPreview = _controller.position;
+    _seekPreviewTimer?.cancel();
+    _seekPreviewTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _seekPreview = null);
+    });
     _showOverlayTemporarily();
     setState(() {}); // la barre reflète tout de suite la nouvelle position
   }
@@ -1867,6 +1957,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                         onSeekFwd: () =>
                             _seekRelative(const Duration(seconds: 10)),
                         onPlayPause: _togglePlayPause,
+                        seekPreview: _seekPreview,
                       ),
                     ),
                   ),
@@ -1966,6 +2057,21 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                     onClose: _closeTracksSheet,
                   ),
                 ),
+              // Pastille « Épisode suivant » (30 dernières secondes d'un
+              // épisode, barre masquée) : OK = enchaîner tout de suite,
+              // ne rien faire = regarder le générique. Se cache quand la
+              // barre s'ouvre (OK redevient lecture/pause, sans ambiguïté).
+              if (_endPillVisible && !_overlay && _nextUpChannel != null)
+                Positioned(
+                  right: TvDimens.safeH,
+                  bottom: TvDimens.safeV + 24,
+                  child: _NextEpisodePill(
+                    onTap: () {
+                      _autoplay.onUserInteraction();
+                      _playUpNext(auto: false);
+                    },
+                  ),
+                ),
               if (_upNextVisible && _nextUpChannel != null)
                 Positioned(
                   right: TvDimens.safeH,
@@ -2018,6 +2124,7 @@ class _ControlsBar extends StatelessWidget {
     required this.onSeekBack,
     required this.onSeekFwd,
     required this.onPlayPause,
+    this.seekPreview,
   });
 
   final Channel channel;
@@ -2025,6 +2132,9 @@ class _ControlsBar extends StatelessWidget {
   final int total;
   final bool isRecording;
   final bool isFavorite;
+
+  /// Temps CIBLE pendant un seek (bulle au-dessus de la barre) — null = rien.
+  final Duration? seekPreview;
 
   /// Index du bouton surligné au D-pad (-1 = aucun). 0=Guide 1=REC 2=Favori.
   final int focusedIndex;
@@ -2082,6 +2192,7 @@ class _ControlsBar extends StatelessWidget {
               onSeekBack: onSeekBack,
               onSeekFwd: onSeekFwd,
               onPlayPause: onPlayPause,
+              seekPreview: seekPreview,
             )
           else
             Row(
@@ -2231,6 +2342,51 @@ class _ControlsBar extends StatelessWidget {
       );
 }
 
+/// Pastille « Épisode suivant » des 30 dernières secondes d'un épisode
+/// (« regarder le générique ou passer », façon Netflix). OK = enchaîner
+/// (géré par l'écran) ; le tap direct sert au tactile. Toujours dessinée
+/// SURLIGNÉE : c'est LE bouton actif tant que la barre est masquée.
+class _NextEpisodePill extends StatelessWidget {
+  const _NextEpisodePill({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          color: TvTokens.gold,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.55),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const Icon(Icons.skip_next_rounded,
+                size: 24, color: TvTokens.onGold),
+            const SizedBox(width: 8),
+            Text(
+              context.l10n.tvNextEpisode,
+              style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: TvTokens.onGold),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Commandes de LECTURE d'un FILM (façon Netflix) : grande barre de
 /// progression dorée + temps écoulé/total, et une rangée ⏪10 · ▶/⏸ · 10⏩.
 /// À la télécommande : Gauche/Droite = ±10 s, OK = lecture/pause (géré par
@@ -2244,7 +2400,12 @@ class _VodControls extends StatelessWidget {
     required this.onSeekBack,
     required this.onSeekFwd,
     required this.onPlayPause,
+    this.seekPreview,
   });
+
+  /// Temps CIBLE du seek en cours : bulle dorée au-dessus de la barre,
+  /// positionnée à la fraction correspondante (façon Netflix). Null = rien.
+  final Duration? seekPreview;
 
   final Duration position;
   final Duration duration;
@@ -2278,6 +2439,51 @@ class _VodControls extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
+        // ---- Bulle de PREVIEW du temps (pendant un seek) ----
+        // Posée au-dessus de la barre, alignée sur la fraction cible :
+        // l'œil suit où on atterrit AVANT que l'image ne rattrape (le
+        // décodage vidéo a toujours un temps de retard sur le seek).
+        SizedBox(
+          height: 34,
+          child: (seekPreview == null || totalMs <= 0)
+              ? const SizedBox.shrink()
+              : LayoutBuilder(
+                  builder: (BuildContext context, BoxConstraints c) {
+                    final double f = (seekPreview!.inMilliseconds / totalMs)
+                        .clamp(0.0, 1.0);
+                    // 74 = largeur de la colonne temps à gauche de la barre.
+                    const double sideW = 74;
+                    final double barW = c.maxWidth - sideW * 2;
+                    const double bubbleW = 86;
+                    final double left =
+                        (sideW + f * barW - bubbleW / 2)
+                            .clamp(0.0, c.maxWidth - bubbleW);
+                    return Stack(
+                      children: <Widget>[
+                        Positioned(
+                          left: left,
+                          top: 0,
+                          child: Container(
+                            width: bubbleW,
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 5),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: TvTokens.gold,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(_fmt(seekPreview!),
+                                style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                    color: TvTokens.onGold)),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+        ),
         // ---- Barre de progression (dorée, façon Netflix) ----
         Row(
           children: <Widget>[

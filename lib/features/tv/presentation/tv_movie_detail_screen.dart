@@ -145,6 +145,9 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
     }
     if (!mounted) return;
     RecentVodRepository.instance.add(widget.movie);
+    // Budget « Regarder → première frame < 2,5 s » : le chrono part de
+    // L'APPUI (ici), le lecteur l'arrête à la première image affichée.
+    CinePerf.start(CinePerf.playToFirstFrame);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => TvPlayerScreen(

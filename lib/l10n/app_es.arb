@@ -1547,5 +1547,6 @@
   "gateReferenceLabel": "TU NÚMERO DE REFERENCIA",
   "gateReferenceHint": "Muestra este número a tu asesor: reactivará tu acceso en un instante.",
   "gateReactivateContact": "Contactar para reactivar",
-  "tvSimilar": "Títulos similares"
+  "tvSimilar": "Títulos similares",
+  "tvNextEpisode": "Siguiente episodio"
 }

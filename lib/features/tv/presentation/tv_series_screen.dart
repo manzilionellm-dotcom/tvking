@@ -21,6 +21,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_poster_prefetch.dart';
 import '../core/tv_tokens.dart';
+import '../data/cine_perf.dart';
 import 'tv_components.dart';
 import 'tv_player_screen.dart';
 
@@ -461,6 +462,8 @@ class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
               logoUrl: widget.series.posterUrl,
             ))
         .toList(growable: false);
+    // Budget « Regarder → première frame < 2,5 s » : chrono depuis L'APPUI.
+    CinePerf.start(CinePerf.playToFirstFrame);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => TvPlayerScreen(channels: list, startIndex: index),

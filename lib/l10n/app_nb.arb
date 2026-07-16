@@ -1547,5 +1547,6 @@
   "gateReferenceLabel": "DITT REFERANSENUMMER",
   "gateReferenceHint": "Vis dette nummeret til rådgiveren din – de reaktiverer tilgangen din på et øyeblikk.",
   "gateReactivateContact": "Kontakt for å reaktivere",
-  "tvSimilar": "Lignende titler"
+  "tvSimilar": "Lignende titler",
+  "tvNextEpisode": "Neste episode"
 }

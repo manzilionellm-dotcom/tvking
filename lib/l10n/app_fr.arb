@@ -3896,5 +3896,9 @@
   "tvSimilar": "Titres similaires",
   "@tvSimilar": {
     "description": "Libellé du rail « Titres similaires » sur la fiche film TV"
+  },
+  "tvNextEpisode": "Épisode suivant",
+  "@tvNextEpisode": {
+    "description": "Pastille « Épisode suivant » sur les 30 dernières secondes d'un épisode (lecteur TV)"
   }
 }

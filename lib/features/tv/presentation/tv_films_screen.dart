@@ -221,6 +221,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     RecentVodRepository.instance.add(list[index]);
     final List<Channel> channels =
         list.map(_asChannel).toList(growable: false);
+    // Budget « Regarder → première frame < 2,5 s » : chrono depuis L'APPUI.
+    CinePerf.start(CinePerf.playToFirstFrame);
     Navigator.of(context)
         .push(MaterialPageRoute<void>(
           builder: (_) => TvPlayerScreen(channels: channels, startIndex: index),
@@ -274,6 +276,7 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
       isLive: false,
       logoUrl: e.posterUrl,
     );
+    CinePerf.start(CinePerf.playToFirstFrame);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) =>
