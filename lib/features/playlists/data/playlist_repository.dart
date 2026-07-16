@@ -38,6 +38,7 @@ import '../../../core/security/secret_cipher.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
+import '../../vod/domain/m3u_vod_classifier.dart';
 import '../domain/playlist.dart';
 import 'import_progress.dart';
 import 'm3u_fetcher.dart';
@@ -403,6 +404,48 @@ class PlaylistRepository {
       out.addAll(rows.map(_channelFromMap));
     }
     return out;
+  }
+
+  /// Entrées VOD (films/épisodes M3U) de la playlist ACTIVE — le pont entre
+  /// une source M3U et le Cinéma. Un film M3U est une chaîne `is_live = 0`
+  /// (classée par M3uVodClassifier au parsing).
+  ///
+  /// COMPATIBILITÉ BASES EXISTANTES : les playlists importées AVANT la
+  /// classification VOD ont tout en `is_live = 1`. Le préfiltre SQL rattrape
+  /// ces lignes par des motifs d'URL grossiers (`/movie/`, `/series/`,
+  /// extensions de fichier fini), puis le classificateur Dart CONFIRME —
+  /// aucune chaîne live ne passe (le LIKE est large, le classifieur strict).
+  /// Tout reste borné : LIKE + LIMIT côté SQL, jamais de scan matérialisé.
+  Future<List<Channel>> getVodChannels({int? limit}) async {
+    final Database db = await PlaylistDatabase.instance.database;
+    final int? activeId = await _activePlaylistId(db);
+    final int cap = limit ?? DeviceMemory.channelCap;
+    final StringBuffer where = StringBuffer(
+        "(is_live = 0 OR stream_url LIKE '%/movie/%' OR stream_url LIKE "
+        "'%/movies/%' OR stream_url LIKE '%/series/%' OR stream_url LIKE "
+        "'%.mp4' OR stream_url LIKE '%.mkv' OR stream_url LIKE '%.avi' OR "
+        "stream_url LIKE '%.m4v' OR stream_url LIKE '%.webm' OR "
+        "stream_url LIKE '%.mov')");
+    final List<Object> args = <Object>[];
+    if (activeId != null) {
+      where.write(' AND playlist_id = ?');
+      args.add(activeId);
+    }
+    final List<Map<String, Object?>> rows = await db.query(
+      'channels',
+      where: where.toString(),
+      whereArgs: args,
+      orderBy: 'local_id ASC', // ordre natif de la playlist (déterministe)
+      limit: cap,
+    );
+    Iterable<Channel> out = rows.map(_channelFromMap).where((Channel c) =>
+        M3uVodClassifier.classify(url: c.streamUrl, name: c.name) !=
+        M3uVodKind.live);
+    // Red Room : même restriction que getAllChannels (point unique côté VOD).
+    if (FlavorConfig.current.adultOnly) {
+      out = out.where((Channel c) => c.genre == ChannelGenre.adult);
+    }
+    return out.toList(growable: false);
   }
 
   Future<List<Playlist>> getAllPlaylists() async {

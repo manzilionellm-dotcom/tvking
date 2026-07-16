@@ -19,12 +19,14 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/i18n/l10n_now.dart';
+import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/xtream_client.dart';
 import '../../playlists/domain/playlist.dart';
 import '../domain/vod_info.dart';
 import '../domain/vod_series.dart';
 import 'catalog_disk_cache.dart';
+import 'm3u_vod_source.dart';
 import '../../player/data/stream_diagnostics.dart';
 
 /// Décodage du cache disque en ISOLATE (10 000 séries possibles).
@@ -45,10 +47,27 @@ String encodeSeriesCatalog((List<VodSeries>, String) input) =>
     });
 
 class SeriesRepository extends ChangeNotifier {
-  SeriesRepository._();
+  SeriesRepository._() {
+    // Les épisodes M3U vivent dans SQLite : invalidation quand la source
+    // change (import/refresh/suppression), comme VodRepository.
+    PlaylistRepository.instance.channelsStream.listen((_) {
+      if (_m3uSeries == null) return;
+      _m3uSeries = null;
+      _m3uEpisodeChannels = null;
+      notifyListeners();
+    });
+  }
   static final SeriesRepository instance = SeriesRepository._();
 
+  /// Part XTREAM (mémoire ← disque ← réseau).
   List<VodSeries>? _cache;
+
+  /// Part M3U : séries regroupées depuis les épisodes `is_live=0` de la
+  /// playlist, et chaînes-épisodes brutes (pour servir fetchDetail sans
+  /// retaper SQLite).
+  List<VodSeries>? _m3uSeries;
+  List<Channel>? _m3uEpisodeChannels;
+
   bool _refreshing = false;
 
   final CatalogDiskCache<VodSeries> _disk = CatalogDiskCache<VodSeries>(
@@ -86,9 +105,42 @@ class SeriesRepository extends ChangeNotifier {
     return null;
   }
 
-  /// Catalogue des séries (vignettes). [forceRefresh] re-tape le serveur.
+  /// Catalogue des séries UNIFIÉ : part Xtream (get_series) + part M3U
+  /// (épisodes de la playlist regroupés par nom de série).
   /// Mémoire → disque (instantané + refresh silencieux) → réseau.
   Future<List<VodSeries>> fetchSeries({bool forceRefresh = false}) async {
+    final List<VodSeries> xtream =
+        await _fetchXtreamSeries(forceRefresh: forceRefresh);
+    final List<VodSeries> m3u = await _fetchM3uSeries(forceRefresh: forceRefresh);
+    if (m3u.isEmpty) return xtream;
+    if (xtream.isEmpty) return m3u;
+    return <VodSeries>[...xtream, ...m3u];
+  }
+
+  /// Séries M3U (SQLite → regroupement en mémoire). SQLite est déjà le
+  /// cache disque de la playlist : une requête bornée suffit à (re)chauffer.
+  Future<List<VodSeries>> _fetchM3uSeries({bool forceRefresh = false}) async {
+    if (!forceRefresh && _m3uSeries != null) return _m3uSeries!;
+    try {
+      final List<Channel> vod =
+          await PlaylistRepository.instance.getVodChannels();
+      _m3uEpisodeChannels = splitM3uVod(vod).episodes;
+      _m3uSeries = groupM3uEpisodesIntoSeries(_m3uEpisodeChannels!);
+      if (_m3uSeries!.isNotEmpty) {
+        _diag('M3U : ${_m3uSeries!.length} séries regroupées '
+            '(${_m3uEpisodeChannels!.length} épisodes)');
+      }
+    } catch (e) {
+      // Fail-open : une erreur SQLite ne prive pas l'écran de la part Xtream.
+      if (kDebugMode) debugPrint('[Series] m3u error: $e');
+      _m3uSeries = const <VodSeries>[];
+      _m3uEpisodeChannels = const <Channel>[];
+    }
+    return _m3uSeries!;
+  }
+
+  /// Part Xtream seule (mémoire → disque → réseau) — logique historique.
+  Future<List<VodSeries>> _fetchXtreamSeries({bool forceRefresh = false}) async {
     if (!forceRefresh && _cache != null) {
       _diag('mémoire : ${_cache!.length} séries');
       return _cache!;
@@ -173,6 +225,16 @@ class SeriesRepository extends ChangeNotifier {
   /// n'en fournit pas (fail-open : la fiche s'affiche avec ce qu'elle a).
   Future<({VodInfo? info, List<VodEpisode> episodes})> fetchDetail(
       String seriesId) async {
+    // Série M3U : les épisodes sont déjà en local (SQLite) → fiche
+    // instantanée, zéro réseau. `info` reste null (un M3U ne porte pas de
+    // synopsis/casting) — la fiche s'affiche avec les données du catalogue.
+    if (seriesId.startsWith(kM3uSeriesIdPrefix)) {
+      await _fetchM3uSeries();
+      final List<VodEpisode> eps =
+          m3uEpisodesForSeries(_m3uEpisodeChannels ?? const <Channel>[], seriesId);
+      _diag('ouverture série M3U $seriesId : ${eps.length} épisodes (local)');
+      return (info: null, episodes: eps);
+    }
     final XtreamClient? client = await _client();
     if (client == null) {
       _diag('ouverture série $seriesId : aucun compte Xtream (M3U seul) → '
@@ -201,7 +263,10 @@ class SeriesRepository extends ChangeNotifier {
   /// `l10nNow` : la liste est recalculée à chaque appel, donc le libellé
   /// suit la langue active (clé existante sectionOthers).
   List<String> categories() {
-    final List<VodSeries> s = _cache ?? const <VodSeries>[];
+    final List<VodSeries> s = <VodSeries>[
+      ...?_cache,
+      ...?_m3uSeries,
+    ];
     final List<String> cats = <String>[];
     final Set<String> seen = <String>{};
     for (final VodSeries v in s) {

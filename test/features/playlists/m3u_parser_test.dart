@@ -37,6 +37,26 @@ void main() {
       expect(c.isLive, isTrue);
     });
 
+    test('VOD M3U : fichier /movie/ classé isLive=false, flux .ts reste live',
+        () {
+      final M3uParseResult r = M3uParser.parse(
+        _m3u(<String>[
+          '#EXTM3U',
+          '#EXTINF:-1 group-title="FILMS",Inception',
+          'http://host/movie/u/p/42.mkv',
+          '#EXTINF:-1 group-title="SÉRIES",Vikings S01 E01',
+          'http://host/series/u/p/7.mp4',
+          '#EXTINF:-1 group-title="Sport",beIN 1',
+          'http://host/live/u/p/1.ts',
+        ]),
+        playlistId: 3,
+      );
+      expect(r.channels, hasLength(3));
+      expect(r.channels[0].isLive, isFalse, reason: 'film /movie/ = VOD');
+      expect(r.channels[1].isLive, isFalse, reason: 'épisode /series/ = VOD');
+      expect(r.channels[2].isLive, isTrue, reason: 'flux .ts = live');
+    });
+
     test('M3U simple (URLs seules) : nom auto « Chaîne N », catégorie Autres',
         () {
       final M3uParseResult r = M3uParser.parse(

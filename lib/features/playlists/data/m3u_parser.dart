@@ -26,6 +26,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../channels/domain/channel.dart';
+import '../../vod/domain/m3u_vod_classifier.dart';
 import 'playlist_import_limits.dart';
 
 /// Résultat du parsing : la liste des chaînes + warnings non
@@ -176,7 +177,10 @@ abstract final class M3uParser {
             name: 'Chaîne ${channels.length + 1}',
             category: pendingGroup ?? 'Autres',
             streamUrl: line,
-            isLive: true,
+            // Sans nom, seule l'URL peut trahir un fichier VOD (cf.
+            // M3uVodClassifier — décision conservatrice, URL fait foi).
+            isLive: M3uVodClassifier.classify(url: line, name: '') ==
+                M3uVodKind.live,
             logoUrl: null,
             catchupSupported: false,
           ),
@@ -215,7 +219,12 @@ abstract final class M3uParser {
           name: name,
           category: groupTitle.isEmpty ? 'Autres' : groupTitle,
           streamUrl: line,
-          isLive: true,
+          // FILM/ÉPISODE M3U (fichier fini) → isLive:false : l'entrée sort
+          // des listes live (requêtes is_live=1) et rejoint le Cinéma via
+          // PlaylistRepository.getVodChannels. Décision par l'URL seule
+          // (conservatrice) — cf. M3uVodClassifier.
+          isLive: M3uVodClassifier.classify(url: line, name: name) ==
+              M3uVodKind.live,
           logoUrl: logoUrl.isEmpty ? null : logoUrl,
           catchupSupported:
               catchupRaw.isNotEmpty || catchupSource.isNotEmpty,

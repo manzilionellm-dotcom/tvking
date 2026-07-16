@@ -27,12 +27,14 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
 import '../../playlists/data/xtream_client.dart';
 import '../domain/vod_info.dart';
 import '../domain/vod_movie.dart';
 import 'catalog_disk_cache.dart';
+import 'm3u_vod_source.dart';
 import '../../player/data/stream_diagnostics.dart';
 
 /// Décode le fichier de cache (JSON → films) — TOP-LEVEL pour tourner dans
@@ -58,10 +60,24 @@ String encodeVodCatalog((List<VodMovie>, String) input) =>
     });
 
 class VodRepository extends ChangeNotifier {
-  VodRepository._();
+  VodRepository._() {
+    // Les films M3U vivent dans SQLite (table channels, is_live=0) : quand
+    // la source change (import, refresh, suppression), on invalide la part
+    // M3U et on prévient les écrans — même contrat que le refresh silencieux.
+    PlaylistRepository.instance.channelsStream.listen((_) {
+      if (_m3uMovies == null) return;
+      _m3uMovies = null;
+      notifyListeners();
+    });
+  }
   static final VodRepository instance = VodRepository._();
 
+  /// Part XTREAM du catalogue (mémoire ← disque ← réseau).
   List<VodMovie>? _cache;
+
+  /// Part M3U du catalogue (films `is_live=0` relus de SQLite — SQLite EST
+  /// leur cache disque, pas besoin d'un second fichier JSON).
+  List<VodMovie>? _m3uMovies;
 
   /// Un seul rafraîchissement réseau à la fois (anti-tempête de requêtes).
   bool _refreshing = false;
@@ -107,7 +123,9 @@ class VodRepository extends ChangeNotifier {
     return null;
   }
 
-  /// Renvoie le catalogue de films. [forceRefresh] re-tape le serveur.
+  /// Renvoie le catalogue de films UNIFIÉ : part Xtream (get_vod_streams)
+  /// + part M3U (fichiers VOD de la playlist, classés au parsing).
+  /// [forceRefresh] re-tape le serveur (Xtream) et relit SQLite (M3U).
   ///
   /// Chemin RAPIDE (façon Netflix) : mémoire, sinon DISQUE (immédiat, avec
   /// rafraîchissement réseau silencieux derrière), sinon réseau. Les écrans
@@ -115,6 +133,37 @@ class VodRepository extends ChangeNotifier {
   /// [ChangeNotifier] (addListener) et relisent fetchMovies() — qui répond
   /// alors depuis la mémoire, sans re-travail.
   Future<List<VodMovie>> fetchMovies({bool forceRefresh = false}) async {
+    final List<VodMovie> xtream =
+        await _fetchXtreamMovies(forceRefresh: forceRefresh);
+    final List<VodMovie> m3u = await _fetchM3uMovies(forceRefresh: forceRefresh);
+    if (m3u.isEmpty) return xtream;
+    if (xtream.isEmpty) return m3u;
+    return <VodMovie>[...xtream, ...m3u];
+  }
+
+  /// Films M3U (SQLite → mémoire). SQLite est déjà local : pas d'étage
+  /// disque supplémentaire, une requête bornée suffit à (re)chauffer.
+  Future<List<VodMovie>> _fetchM3uMovies({bool forceRefresh = false}) async {
+    if (!forceRefresh && _m3uMovies != null) return _m3uMovies!;
+    try {
+      final List<Channel> vod =
+          await PlaylistRepository.instance.getVodChannels();
+      final List<Channel> movies = splitM3uVod(vod).movies;
+      _m3uMovies =
+          movies.map(m3uChannelToMovie).toList(growable: false);
+      if (_m3uMovies!.isNotEmpty) {
+        _diag('M3U : ${_m3uMovies!.length} films détectés dans la playlist');
+      }
+    } catch (e) {
+      // Fail-open : une erreur SQLite ne prive pas l'écran de la part Xtream.
+      if (kDebugMode) debugPrint('[VOD] m3u error: $e');
+      _m3uMovies = const <VodMovie>[];
+    }
+    return _m3uMovies!;
+  }
+
+  /// Part Xtream seule (mémoire → disque → réseau) — logique historique.
+  Future<List<VodMovie>> _fetchXtreamMovies({bool forceRefresh = false}) async {
     if (!forceRefresh && _cache != null) {
       _diag('mémoire : ${_cache!.length} films');
       return _cache!;
@@ -251,9 +300,12 @@ class VodRepository extends ChangeNotifier {
     }
   }
 
-  /// Liste des catégories présentes dans le cache courant.
+  /// Liste des catégories présentes dans le cache courant (Xtream + M3U).
   List<String> categories() {
-    final List<VodMovie> m = _cache ?? const <VodMovie>[];
+    final List<VodMovie> m = <VodMovie>[
+      ...?_cache,
+      ...?_m3uMovies,
+    ];
     final Set<String> set = <String>{for (final VodMovie v in m) v.category};
     final List<String> list = set.toList()..sort();
     return list;
