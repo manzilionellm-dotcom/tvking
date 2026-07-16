@@ -217,14 +217,20 @@ class MainActivity : FlutterFragmentActivity() {
                         val body = call.argument<String>("body")
                         // i18n : libellés localisés (bouton Arrêter + canal
                         // de notification) fournis par Dart, null-safe.
-                        startBackgroundAudio(
+                        // On remonte le VRAI résultat à Dart : avant, un
+                        // échec de startForegroundService (ex. démarrage
+                        // interdit depuis l'arrière-plan sur Android 12+)
+                        // était avalé ici et Dart journalisait un
+                        // « keepalive_started » menteur — le diagnostic
+                        // « le cast coupe écran éteint » était invisible.
+                        val started = startBackgroundAudio(
                             title,
                             body,
                             call.argument<String>("stopLabel"),
                             call.argument<String>("channelName"),
                             call.argument<String>("channelDesc"),
                         )
-                        result.success(null)
+                        result.success(started)
                     }
                     "stopBackgroundAudio" -> {
                         stopBackgroundAudio()
@@ -271,17 +277,22 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
-    /// Démarre le service audio de fond (mode « Écouteurs »). Appelé
-    /// pendant que l'app est VISIBLE (tap utilisateur) → pas de
-    /// restriction Android 12+ sur le démarrage d'un foreground service.
+    /// Démarre le service audio de fond (mode « Écouteurs » et maintien
+    /// éveillé du CAST RELAIS). Appelé le plus souvent pendant que l'app
+    /// est VISIBLE (tap utilisateur) → pas de restriction Android 12+ ;
+    /// MAIS le watchdog de reconnexion cast peut aussi le rappeler
+    /// écran éteint, où Android 12+ peut refuser
+    /// (ForegroundServiceStartNotAllowedException). On renvoie donc le
+    /// résultat RÉEL au lieu d'avaler l'échec : Dart journalise
+    /// keepalive_started / keepalive_failed dans la boîte noire.
     private fun startBackgroundAudio(
         title: String,
         body: String? = null,
         stopLabel: String? = null,
         channelName: String? = null,
         channelDesc: String? = null,
-    ) {
-        try {
+    ): Boolean {
+        return try {
             val intent = Intent(this, PlaybackForegroundService::class.java).apply {
                 action = PlaybackForegroundService.ACTION_START
                 putExtra(PlaybackForegroundService.EXTRA_TITLE, title)
@@ -303,8 +314,13 @@ class MainActivity : FlutterFragmentActivity() {
             } else {
                 startService(intent)
             }
+            true
         } catch (e: Throwable) {
+            // Cas réel : ForegroundServiceStartNotAllowedException quand la
+            // relance vient de l'arrière-plan (Android 12+). Le `false`
+            // remonte jusqu'à la boîte noire côté Dart.
             Log.w(TAG, "startBackgroundAudio failed: $e")
+            false
         }
     }
 

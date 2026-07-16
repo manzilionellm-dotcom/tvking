@@ -19,6 +19,7 @@ import 'dart:io' show Socket;
 import 'package:flutter/foundation.dart';
 
 import '../../../core/i18n/l10n_now.dart';
+import '../../../core/notifications/notification_service.dart';
 import '../../../core/observability/structured_logger.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/data/pip_service.dart';
@@ -1971,25 +1972,54 @@ class CastManager extends ChangeNotifier {
       // son démarrage ET un éventuel échec : « le cast coupe écran éteint »
       // devient enfin visible dans la boîte noire (avant, un échec du
       // service était avalé silencieusement).
-      unawaited(PipService.instance
-          .startBackgroundAudio(title, body: l10nNow.castNotifRelayBody)
-          .then((bool ok) {
-        if (ok) {
-          StructuredLogger.instance.info(
-            domain: 'cast',
-            event: 'relay.keepalive_started',
-            ctx: <String, Object?>{'title': title},
-          );
-        } else {
-          StructuredLogger.instance.warn(
-            domain: 'cast',
-            event: 'relay.keepalive_failed',
-            ctx: <String, Object?>{'title': title},
-          );
-        }
-      }));
+      unawaited(_startRelayKeepAlive(title));
     } else {
       _stopRelayKeepAlive();
+    }
+  }
+
+  /// Démarre réellement le maintien éveillé du relais.
+  ///
+  /// TERRAIN (« la notification "Diffusion sur la TV" ne reste pas
+  /// écran éteint ») : sur Android 13+, un foreground service dont la
+  /// notification est BLOQUÉE (POST_NOTIFICATIONS refusée) est invisible
+  /// pour l'utilisateur ET candidat au kill par les OEM (Samsung/Xiaomi…)
+  /// dès l'écran éteint → le relais meurt → le cast coupe. Le chemin
+  /// « Écouteurs » demandait déjà la permission AVANT de démarrer le
+  /// service ; le chemin CAST ne le faisait pas — un utilisateur qui ne
+  /// fait QUE caster n'avait jamais accordé la permission. On aligne :
+  /// permission d'abord (no-op si déjà accordée), service ensuite.
+  Future<void> _startRelayKeepAlive(String title) async {
+    bool notifGranted = true;
+    try {
+      notifGranted = await NotificationService.instance.requestPermission();
+    } catch (_) {
+      // Best-effort : un échec de la DEMANDE ne doit pas empêcher de
+      // tenter le service (sur Android < 13 il n'y a rien à demander).
+    }
+    final bool ok = await PipService.instance
+        .startBackgroundAudio(title, body: l10nNow.castNotifRelayBody);
+    if (ok) {
+      StructuredLogger.instance.info(
+        domain: 'cast',
+        event: 'relay.keepalive_started',
+        ctx: <String, Object?>{
+          'title': title,
+          // Si false : le service tourne mais la notification est
+          // invisible → risque de kill OEM écran éteint. Visible dans
+          // la boîte noire pour guider le support client.
+          'notifPermission': notifGranted,
+        },
+      );
+    } else {
+      StructuredLogger.instance.warn(
+        domain: 'cast',
+        event: 'relay.keepalive_failed',
+        ctx: <String, Object?>{
+          'title': title,
+          'notifPermission': notifGranted,
+        },
+      );
     }
   }
 

@@ -149,7 +149,15 @@ class PipService extends ChangeNotifier {
   /// « le cast coupe écran éteint » restait invisible au diagnostic).
   Future<bool> startBackgroundAudio(String title, {String? body}) async {
     try {
-      await _channel.invokeMethod<void>(
+      // Le natif renvoie désormais le résultat RÉEL de
+      // startForegroundService (false si Android a refusé le démarrage,
+      // ex. relance depuis l'arrière-plan sur Android 12+). Avant, on
+      // renvoyait `true` dès que l'appel MethodChannel aboutissait —
+      // le keep-alive du cast relais paraissait toujours réussi et la
+      // boîte noire était aveugle. `?? false` : un natif qui ne renvoie
+      // rien (ancienne version, autre plateforme) est traité comme un
+      // échec, jamais comme un faux succès.
+      final bool? started = await _channel.invokeMethod<bool>(
         'startBackgroundAudio',
         <String, Object>{
           'title': title,
@@ -161,7 +169,7 @@ class PipService extends ChangeNotifier {
           'channelDesc': l10nNow.playbackNotifChannelDesc,
         },
       );
-      return true;
+      return started ?? false;
     } catch (e) {
       if (kDebugMode) debugPrint('[PiP] startBackgroundAudio failed: $e');
       return false;
