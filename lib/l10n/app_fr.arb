@@ -1670,7 +1670,7 @@
   "@favoritesEmptyTitle": {
     "description": "Texte UI : favoritesEmptyTitle"
   },
-  "favoritesEmptyHint": "Appuie sur ♥ dans le menu d'une chaîne pour la garder ici.",
+  "favoritesEmptyHint": "Ajoute une chaîne à tes favoris depuis son menu pour la retrouver ici.",
   "@favoritesEmptyHint": {
     "description": "Texte UI : favoritesEmptyHint"
   },
@@ -1845,7 +1845,7 @@
   "@subActiveBadge": {
     "description": "Confirmation affichée à la place du bouton d'achat une fois payé"
   },
-  "subActivatedNotice": "🎉 Ton abonnement est activé — bienvenue !",
+  "subActivatedNotice": "Ton abonnement est activé — bienvenue !",
   "@subActivatedNotice": {
     "description": "Notification ponctuelle quand l'abonnement vient d'être activé"
   },
@@ -1869,7 +1869,7 @@
   "@activationLoadingTitle": {
     "description": "Titre de l'écran d'import vivant pendant l'activation à distance"
   },
-  "activationActiveNoSource": "Abonnement actif ✅ mais aucune playlist assignée à ta MAC. Ton revendeur doit ajouter une Source (Xtream/M3U).",
+  "activationActiveNoSource": "Abonnement actif mais aucune playlist assignée à ta MAC. Ton revendeur doit ajouter une Source (Xtream/M3U).",
   "@activationActiveNoSource": {
     "description": "Message de diagnostic activation"
   },
@@ -2112,10 +2112,10 @@
       }
     }
   },
-  "tvMomentMorning": "le matin ☕",
-  "tvMomentAfternoon": "l'après-midi 🌤️",
-  "tvMomentEvening": "le soir 🌆",
-  "tvMomentNight": "la nuit 🌙",
+  "tvMomentMorning": "le matin",
+  "tvMomentAfternoon": "l'après-midi",
+  "tvMomentEvening": "le soir",
+  "tvMomentNight": "la nuit",
   "tvWeekdayMonday": "lundi",
   "tvWeekdayTuesday": "mardi",
   "tvWeekdayWednesday": "mercredi",
@@ -2178,16 +2178,16 @@
   "tvPlay": "Lecture",
   "tvPause": "Pause",
   "tvSkip10": "10 s",
-  "tvHeartLate": "il est tard, mon grand 🌙",
-  "tvHeartCoverUp": "couvre-toi bien 🧣",
-  "tvHeartDrink": "bois de l'eau ☀️",
-  "tvHeartCoffee": "bon café ☕",
-  "tvHeartWeekend": "bon week-end 🎉",
-  "tvHeartSunday": "doux dimanche 🛋️",
-  "tvHeartMonday": "bon courage 💪",
-  "tvCareStretch": "3 heures déjà — pense à t'étirer, boire un peu d'eau 💛",
-  "tvCareLate": "Il est tard… la télé sera encore là demain 🌙",
-  "tvSportSoon": "⚽ {team} joue bientôt",
+  "tvHeartLate": "il est tard, mon grand",
+  "tvHeartCoverUp": "couvre-toi bien",
+  "tvHeartDrink": "bois de l'eau",
+  "tvHeartCoffee": "bon café",
+  "tvHeartWeekend": "bon week-end",
+  "tvHeartSunday": "doux dimanche",
+  "tvHeartMonday": "bon courage",
+  "tvCareStretch": "3 heures déjà — pense à t'étirer, boire un peu d'eau",
+  "tvCareLate": "Il est tard… la télé sera encore là demain",
+  "tvSportSoon": "{team} joue bientôt",
   "@tvSportSoon": {
     "placeholders": {
       "team": {
@@ -2195,7 +2195,7 @@
       }
     }
   },
-  "tvSportKickoff": "⚽ C'est parti ! {match}",
+  "tvSportKickoff": "C'est parti ! {match}",
   "@tvSportKickoff": {
     "placeholders": {
       "match": {
@@ -2228,14 +2228,14 @@
   "tvNoTeamFound": "Aucune équipe trouvée",
   "tvMyTeam": "Mon équipe",
   "tvRecordingsEmpty": "Tes enregistrements apparaîtront ici. Pendant la lecture d'une chaîne, appuie sur REC.",
-  "tvRecently": "🕒 Récemment",
+  "tvRecently": "Récemment",
   "tvRecentlyEmpty": "Tes chaînes récemment regardées apparaîtront ici.",
   "tvProfileGuest": "Invité",
   "tvRecFailed": "Échec démarrage enregistrement",
   "tvFavRemoved": "Retiré des favoris",
   "tvFavAdded": "Ajouté aux favoris ❤",
   "tvParentalTitle": "Contrôle parental",
-  "tvParentalUpdated": "Code parental mis à jour ✔",
+  "tvParentalUpdated": "Code parental mis à jour",
   "tvParentalWrongCode": "Code incorrect, réessaie.",
   "tvEnabled": "Activé",
   "tvDisabled": "Désactivé",
@@ -2373,7 +2373,7 @@
       }
     }
   },
-  "feedbackThanks": "Merci pour ton avis 🙏",
+  "feedbackThanks": "Merci pour ton avis",
   "feedbackHint": "Écris ton avis ou comment améliorer l'app…",
   "aboutVersionBuild": "v{version} • build {build}",
   "@aboutVersionBuild": {
@@ -2489,7 +2489,7 @@
       }
     }
   },
-  "sportsTeamPlaysSoon": "⚽ {team} joue bientôt",
+  "sportsTeamPlaysSoon": "{team} joue bientôt",
   "@sportsTeamPlaysSoon": {
     "placeholders": {
       "team": {
@@ -2497,7 +2497,7 @@
       }
     }
   },
-  "sportsKickoff": "⚽ C'est parti ! {match}",
+  "sportsKickoff": "C'est parti ! {match}",
   "@sportsKickoff": {
     "placeholders": {
       "match": {
@@ -2580,7 +2580,7 @@
       }
     }
   },
-  "guideReminderSet": "🔔 Rappel programmé · {title} ({start})",
+  "guideReminderSet": "Rappel programmé · {title} ({start})",
   "@guideReminderSet": {
     "placeholders": {
       "title": {
@@ -3324,7 +3324,7 @@
   "tvPlayerFavorite": "Favori",
   "tvPlayerMulti": "Multi",
   "tvPlayerRetryQuitHintDesktop": "Entrée : Réessayer   ·   Échap : Quitter",
-  "tvLiveForYou": "✨ Pour vous",
+  "tvLiveForYou": "Pour vous",
   "tvLiveNowPlaying": "EN CE MOMENT · {title}",
   "@tvLiveNowPlaying": {
     "placeholders": {
@@ -3535,7 +3535,7 @@
   "tvBlackBoxTabFailures": "Chaînes qui ne s'ouvrent pas",
   "tvBlackBoxTabJournal": "Journal de vol",
   "tvBlackBoxAllGood": "✓ Tout va bien — aucune anomalie détectée.",
-  "tvBlackBoxProblemsDetected": "⚠ {count, plural, =1{1 problème détecté} other{{count} problèmes détectés}} : {problems}",
+  "tvBlackBoxProblemsDetected": "{count, plural, =1{1 problème détecté} other{{count} problèmes détectés}} : {problems}",
   "@tvBlackBoxProblemsDetected": {
     "placeholders": {
       "count": {
@@ -3793,7 +3793,7 @@
   "tvFamilyErrNotPaid": "Réservé aux abonnements ACTIFS (payés). Active d'abord cet appareil.",
   "tvFamilyErrIsMember": "Cet appareil est déjà rattaché à une famille — il ne peut pas inviter.",
   "tvFamilyErrFull": "Famille complète (limite du plan atteinte).",
-  "tvFamilyErrPlanRequired": "Le PLAN FAMILLE est une option de ton abonnement. Demande à ton vendeur de l'activer. 👑",
+  "tvFamilyErrPlanRequired": "Le PLAN FAMILLE est une option de ton abonnement. Demande à ton vendeur de l'activer.",
   "tvFamilyErrGeneric": "Impossible pour le moment. Réessaie plus tard.",
   "tvFamilyAttachedTo": "Cet appareil est rattaché à l'abonnement famille {owner}.",
   "@tvFamilyAttachedTo": {
@@ -3806,7 +3806,7 @@
   "tvFamilyBusy": "Un instant…",
   "tvFamilyLeave": "Quitter la famille",
   "tvFamilyPlanTitle": "PLAN FAMILLE",
-  "tvFamilyPlanPitch": "Partage ton abonnement avec tes proches (jusqu'à 5 appareils, comme Netflix) : chacun son appareil, un seul abonnement.\n\nCette option n'est pas encore activée sur ton compte — contacte ton vendeur pour l'ajouter. 👑",
+  "tvFamilyPlanPitch": "Partage ton abonnement avec tes proches (jusqu'à 5 appareils, comme Netflix) : chacun son appareil, un seul abonnement.\n\nCette option n'est pas encore activée sur ton compte — contacte ton vendeur pour l'ajouter.",
   "tvFamilyPlanCheck": "J'ai activé l'option — Vérifier",
   "tvFamilyInviteCodeLabel": "CODE D'INVITATION (valable 48 h)",
   "tvFamilyInviteHelp": "Sur l'appareil de ton proche : écran d'activation → « J'ai un code famille » → taper ce code.",
@@ -3832,7 +3832,7 @@
   "tvFamilyJoinTitle": "J'ai un code famille",
   "tvFamilyJoinSubtitle": "Tape le code à 6 chiffres affiché sur l'appareil de ton proche (Réglages → Abonnement Famille).",
   "tvFamilyJoinNetworkError": "Connexion impossible. Vérifie le réseau et réessaie.",
-  "tvFamilyJoinSuccess": "🎉 C'est fait ! Cet appareil est rattaché à l'abonnement famille {owner}. L'app se débloque dans quelques secondes…",
+  "tvFamilyJoinSuccess": "C'est fait ! Cet appareil est rattaché à l'abonnement famille {owner}. L'app se débloque dans quelques secondes…",
   "@tvFamilyJoinSuccess": {
     "placeholders": {
       "owner": {
@@ -3844,7 +3844,7 @@
   "tvFamilyJoinErrFull": "Cette famille est complète (limite du plan atteinte).",
   "tvFamilyJoinErrOwnerNotPaid": "L'abonnement du propriétaire n'est plus actif.",
   "tvFamilyJoinErrPlanRequired": "Le propriétaire n'a pas l'option PLAN FAMILLE — il doit la demander à son vendeur.",
-  "tvFamilyJoinErrOwnCode": "C'est ton propre code 🙂 — il est pour tes proches.",
+  "tvFamilyJoinErrOwnCode": "C'est ton propre code — il est pour tes proches.",
   "tvParentalIntro": "Le Mode Enfants masque automatiquement toutes les chaînes Adulte. Sa désactivation et le changement de code demandent le code parental.",
   "tvParentalKidsMode": "Mode Enfants",
   "tvParentalKidsOn": "Activé — le contenu Adulte est masqué.",
@@ -3862,7 +3862,7 @@
   "tvParentalConfirmCode": "Confirme le code",
   "tvCollectionsTitle": "Mes collections",
   "tvCollectionsSubtitle": "Range tes chaînes favorites par thème. Une collection = une liste que tu ouvres en un clic.",
-  "tvCollectionsEmpty": "Aucune collection pour l'instant — crée la première ci-dessous. 👇",
+  "tvCollectionsEmpty": "Aucune collection pour l'instant — crée la première ci-dessous.",
   "tvCollectionsCreateSection": "CRÉER UNE COLLECTION",
   "tvCollectionsInCollection": "DANS LA COLLECTION ({count})",
   "@tvCollectionsInCollection": {
@@ -3872,7 +3872,7 @@
       }
     }
   },
-  "tvCollectionsEmptyDetail": "Vide. Ajoute des chaînes depuis tes favoris ci-dessous. 👇",
+  "tvCollectionsEmptyDetail": "Vide. Ajoute des chaînes depuis tes favoris ci-dessous.",
   "tvCollectionsFavsSection": "MES FAVORIS — OK pour ajouter/retirer",
   "tvCollectionsNoFavorites": "Aucun favori pour l'instant. Mets des chaînes en favori (appui long sur OK dans le Direct), puis reviens ici.",
   "tvCollectionsPresetNews": "Actus",
