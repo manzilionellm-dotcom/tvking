@@ -233,14 +233,16 @@ class _TvLivePreviewState extends State<TvLivePreview> with RouteAware {
   void _schedule() {
     if (_covered) return; // un écran est posé par-dessus → aperçu coupé
     _debounce?.cancel();
-    // Sélection explicite (OK) = démarrage immédiat ; focus = anti-rebond.
+    // TOUJOURS anti-rebondi ici : le démarrage immédiat d'une SÉLECTION (OK)
+    // passe par la branche dédiée de didUpdateWidget (transition
+    // startImmediately false→true), PAS par ce timer — sinon un simple
+    // retour de focus sur la chaîne sélectionnée rouvrirait un flux sans
+    // répit (churn de connexions, revue de code 2026-07-16).
     // PETITE BOX : anti-rebond rallongé (×2) — on n'ouvre un flux qu'après
     // une vraie pause du défilement (moins de churn décodeur/réseau).
-    final Duration wait = widget.startImmediately
-        ? Duration.zero
-        : (TvMemoryGuard.instance.lowSpec
-            ? widget.debounce * 2
-            : widget.debounce);
+    final Duration wait = TvMemoryGuard.instance.lowSpec
+        ? widget.debounce * 2
+        : widget.debounce;
     _debounce = Timer(wait, _start);
   }
 

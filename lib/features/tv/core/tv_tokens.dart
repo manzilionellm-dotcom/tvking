@@ -28,6 +28,10 @@ class TvTokens {
   static const Color muted = Color(0xFF8A8A90); // texte secondaire
   static const Color mutedDim = Color(0xFF54545B); // texte tertiaire / hints
   static const Color gold = Color(0xFFCCB089); // ACCENT (brand)
+  // Texte/icônes posés SUR une surface or (boutons pleins). Token créé à la
+  // revue de code du 2026-07-16 : ce brun-noir était dupliqué en dur dans
+  // les écrans (0xFF1A1206) — désormais une seule source de vérité.
+  static const Color onGold = Color(0xFF1A1206);
   static const Color goldBright = Color(0xFFE4CBA0); // OR FOCUS (texte + lueur)
   static const Color goldDeep = Color(0xFF9C855F); // or sombre : dégradés
   static const Color live = Color(0xFFD8453F); // pastille EN DIRECT (rouge vif sobre)

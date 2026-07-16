@@ -6,6 +6,7 @@
 //  et les champs optionnels absents survivent au cycle.
 // =========================================================
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tv_king/features/vod/data/catalog_disk_cache.dart';
 import 'package:tv_king/features/vod/data/series_repository.dart';
 import 'package:tv_king/features/vod/data/vod_repository.dart';
 import 'package:tv_king/features/vod/domain/vod_movie.dart';
@@ -28,7 +29,7 @@ void main() {
           year: i % 5 == 0 ? '20${10 + i % 15}' : null,
         ),
       );
-      final String raw = encodeVodCatalog(movies);
+      final String raw = encodeVodCatalog((movies, 'srcA'));
       final List<VodMovie> back = decodeVodCatalog(raw);
       expect(back.length, movies.length);
       expect(back.first.id, movies.first.id);
@@ -40,6 +41,24 @@ void main() {
 
     test('version inconnue → liste vide (pas de crash)', () {
       expect(decodeVodCatalog('{"v":99,"m":[]}'), isEmpty);
+    });
+
+    test('clé de source lisible en tête de fichier (sans tout décoder)', () {
+      final String raw =
+          encodeVodCatalog((const <VodMovie>[], 'serveur.example_8080_user1'));
+      expect(CatalogDiskCache.sourceKeyOf(raw), 'serveur.example_8080_user1');
+      // Fichier d'une AUTRE source → la clé ne correspond pas (le cache
+      // sera jeté par load(), jamais servi au mauvais compte).
+      expect(CatalogDiskCache.sourceKeyOf(raw), isNot('autre_serveur_user2'));
+    });
+
+    test('catalogChanged : détecte un remplacement AU MILIEU (même taille, '
+        'mêmes extrémités) — l\'ancienne heuristique le ratait', () {
+      final List<String> a = <String>['1', '2', '3', '4', '5'];
+      final List<String> b = <String>['1', '2', 'X', '4', '5'];
+      expect(catalogChanged(a, b), isTrue);
+      expect(catalogChanged(a, List<String>.of(a)), isFalse);
+      expect(catalogChanged(a, <String>['1', '2', '3']), isTrue);
     });
   });
 
@@ -57,7 +76,7 @@ void main() {
           year: '2024',
         ),
       );
-      final String raw = encodeSeriesCatalog(series);
+      final String raw = encodeSeriesCatalog((series, 'srcB'));
       final List<VodSeries> back = decodeSeriesCatalog(raw);
       expect(back.length, series.length);
       expect(back.first.name, 'Série 0');

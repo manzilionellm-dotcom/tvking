@@ -69,6 +69,11 @@ Future<void> _bootstrap() async {
   // platform='tv' et le panel l'affichera comme 📺 (vs 📱 mobile).
   AppPlatform.isTv = true;
 
+  // GARDE-MÉMOIRE TV (anti-fermeture) : AVANT la branche mode sans échec —
+  // c'est justement après des crashs mémoire qu'il sert le plus. Non
+  // bloquant : la détection « petite box » se termine en arrière-plan.
+  unawaited(TvMemoryGuard.instance.install());
+
   // ====================================================================
   //  MODE SANS ÉCHEC (disjoncteur) — boucle de crash détectée par BootGuard.
   //  On n'initialise RIEN de risqué (pas de mpv, pas de repos lourds, AUCUN
@@ -88,11 +93,6 @@ Future<void> _bootstrap() async {
   }
   // Boot normal : on note le jalon « moteur prêt » (avant tout import).
   await BootGuard.instance.markPhase(BootPhase.flutterUp);
-
-  // GARDE-MÉMOIRE TV (anti-fermeture) : plafonne le cache d'images Flutter
-  // (48 Mo au lieu de 100) et PURGE les caches dès qu'Android signale une
-  // pression mémoire — voir tv_memory_guard.dart.
-  await TvMemoryGuard.instance.install();
 
   // ANTI-OOM TV (confirmé par logcat: lowmemorykiller / signal 9) : on N'INITIE
   // PLUS le moteur mpv (media_kit) sur la TV. La TV joue EXCLUSIVEMENT via

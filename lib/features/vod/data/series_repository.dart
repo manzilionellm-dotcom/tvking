@@ -15,10 +15,8 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../../core/i18n/l10n_now.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -26,6 +24,7 @@ import '../../playlists/data/xtream_client.dart';
 import '../../playlists/domain/playlist.dart';
 import '../domain/vod_info.dart';
 import '../domain/vod_series.dart';
+import 'catalog_disk_cache.dart';
 
 /// Décodage du cache disque en ISOLATE (10 000 séries possibles).
 List<VodSeries> decodeSeriesCatalog(String raw) {
@@ -36,11 +35,12 @@ List<VodSeries> decodeSeriesCatalog(String raw) {
       .toList(growable: false);
 }
 
-/// Encodage du cache disque en ISOLATE.
-String encodeSeriesCatalog(List<VodSeries> series) =>
+/// Encodage du cache disque en ISOLATE (clé de source 'k' en tête).
+String encodeSeriesCatalog((List<VodSeries>, String) input) =>
     jsonEncode(<String, dynamic>{
       'v': 1,
-      's': series.map((VodSeries s) => s.toJson()).toList(growable: false),
+      'k': input.$2,
+      's': input.$1.map((VodSeries s) => s.toJson()).toList(growable: false),
     });
 
 class SeriesRepository extends ChangeNotifier {
@@ -49,6 +49,25 @@ class SeriesRepository extends ChangeNotifier {
 
   List<VodSeries>? _cache;
   bool _refreshing = false;
+
+  final CatalogDiskCache<VodSeries> _disk = CatalogDiskCache<VodSeries>(
+    fileName: 'series_catalog_cache.json',
+    decode: decodeSeriesCatalog,
+    encode: encodeSeriesCatalog,
+  );
+
+  /// Empreinte de la source active (même contrat que VodRepository).
+  Future<String> _sourceKey() async {
+    final List<Playlist> playlists =
+        await PlaylistRepository.instance.getAllPlaylists();
+    for (final Playlist p in playlists) {
+      if (p.type == PlaylistType.xtream && (p.xtreamServer ?? '').isNotEmpty) {
+        return '${p.xtreamServer}|${p.xtreamUsername ?? ''}'
+            .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+      }
+    }
+    return 'none';
+  }
 
   /// Construit un client Xtream depuis la playlist active (ou null si aucune).
   Future<XtreamClient?> _client() async {
@@ -70,8 +89,9 @@ class SeriesRepository extends ChangeNotifier {
   /// Mémoire → disque (instantané + refresh silencieux) → réseau.
   Future<List<VodSeries>> fetchSeries({bool forceRefresh = false}) async {
     if (!forceRefresh && _cache != null) return _cache!;
+    final String key = await _sourceKey();
     if (!forceRefresh) {
-      final List<VodSeries>? disk = await _loadDiskCache();
+      final List<VodSeries>? disk = await _disk.load(key);
       if (disk != null && disk.isNotEmpty) {
         _cache = disk;
         unawaited(_refreshInBackground());
@@ -79,19 +99,21 @@ class SeriesRepository extends ChangeNotifier {
       }
     }
     final List<VodSeries> fresh = await _fetchFromNetwork();
-    if (fresh.isNotEmpty || forceRefresh) {
+    if (fresh.isNotEmpty) {
       _cache = fresh;
-      unawaited(_saveDiskCache(fresh));
+      unawaited(_disk.save(fresh, key));
+    } else {
+      // Échec réseau / source sans séries : jamais de destruction d'un
+      // catalogue existant (même contrat que VodRepository).
+      _cache ??= const <VodSeries>[];
     }
-    return _cache ?? fresh;
+    return _cache!;
   }
 
+  /// Appel réseau brut — AUCUN effet de bord sur _cache.
   Future<List<VodSeries>> _fetchFromNetwork() async {
     final XtreamClient? client = await _client();
-    if (client == null) {
-      _cache = const <VodSeries>[];
-      return const <VodSeries>[];
-    }
+    if (client == null) return const <VodSeries>[];
     try {
       return await client.fetchSeries();
     } catch (e) {
@@ -103,51 +125,26 @@ class SeriesRepository extends ChangeNotifier {
   }
 
   /// Stale-while-revalidate : re-télécharge derrière l'écran affiché et
-  /// prévient les abonnés si le catalogue a changé.
+  /// prévient les abonnés si le catalogue a changé (empreinte de TOUS les
+  /// ids) ; sauvegarde disque uniquement en cas de changement.
   Future<void> _refreshInBackground() async {
     if (_refreshing) return;
     _refreshing = true;
     try {
       final List<VodSeries> fresh = await _fetchFromNetwork();
-      if (fresh.isEmpty) return; // panne → on garde le cache affiché
-      final List<VodSeries>? old = _cache;
-      final bool changed = old == null ||
-          old.length != fresh.length ||
-          (old.isNotEmpty &&
-              (old.first.id != fresh.first.id || old.last.id != fresh.last.id));
+      if (fresh.isEmpty) return; // panne / M3U seul → cache affiché conservé
+      final List<VodSeries> old = _cache ?? const <VodSeries>[];
+      final bool changed = catalogChanged(
+        <String>[for (final VodSeries s in old) s.id],
+        <String>[for (final VodSeries s in fresh) s.id],
+      );
       _cache = fresh;
-      unawaited(_saveDiskCache(fresh));
-      if (changed) notifyListeners();
+      if (changed) {
+        unawaited(_disk.save(fresh, await _sourceKey()));
+        notifyListeners();
+      }
     } finally {
       _refreshing = false;
-    }
-  }
-
-  Future<File> _cacheFile() async {
-    final Directory dir = await getApplicationSupportDirectory();
-    return File('${dir.path}/series_catalog_cache.json');
-  }
-
-  Future<List<VodSeries>?> _loadDiskCache() async {
-    try {
-      final File f = await _cacheFile();
-      if (!await f.exists()) return null;
-      final String raw = await f.readAsString();
-      if (raw.isEmpty) return null;
-      return await compute(decodeSeriesCatalog, raw);
-    } catch (e) {
-      if (kDebugMode) debugPrint('[Series] cache disque illisible: $e');
-      return null;
-    }
-  }
-
-  Future<void> _saveDiskCache(List<VodSeries> series) async {
-    try {
-      final String raw = await compute(encodeSeriesCatalog, series);
-      final File f = await _cacheFile();
-      await f.writeAsString(raw, flush: true);
-    } catch (e) {
-      if (kDebugMode) debugPrint('[Series] cache disque non écrit: $e');
     }
   }
 

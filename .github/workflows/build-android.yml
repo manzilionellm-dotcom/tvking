@@ -845,7 +845,7 @@ jobs:
       # la publication ne reste possible que MANUELLEMENT (workflow_dispatch
       # avec make_release=true), au cas où le client rouvrirait ce canal.
       - name: Publish "latest" release (FAIL-HARD diag)
-        if: github.event_name == 'workflow_dispatch' && inputs.make_release == 'true'
+        if: github.event_name == 'workflow_dispatch' && inputs.make_release == 'true' && github.ref_name == 'claude/maison-mere-phone'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -985,7 +985,7 @@ jobs:
       # ⛔ TÉLÉPHONE COUPÉ (voir ci-dessus) — pont de migration désactivé lui
       # aussi : il ne s'exécute plus qu'en publication MANUELLE explicite.
       - name: Bridge old phone channel (latest → prod)
-        if: github.event_name == 'workflow_dispatch' && inputs.make_release == 'true'
+        if: github.event_name == 'workflow_dispatch' && inputs.make_release == 'true' && github.ref_name == 'claude/maison-mere-phone'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -1012,7 +1012,7 @@ jobs:
 
       # Bonus : tag versionné (un par run) pour garder un historique
       - name: Publish versioned release
-        if: github.event_name == 'workflow_dispatch' && inputs.make_release == 'true'
+        if: github.event_name == 'workflow_dispatch' && inputs.make_release == 'true' && github.ref_name == 'claude/maison-mere-phone'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}

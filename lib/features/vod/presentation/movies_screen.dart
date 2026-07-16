@@ -32,8 +32,27 @@ class _MoviesScreenState extends State<MoviesScreen> {
   @override
   void initState() {
     super.initState();
+    // Rafraîchissement SILENCIEUX (stale-while-revalidate) : quand le
+    // catalogue frais arrive du réseau derrière le cache disque, l'écran se
+    // met à jour tout seul (indispensable sur WINDOWS, qui partage cet
+    // écran — sans ça les nouveautés n'apparaissaient qu'au redémarrage).
+    VodRepository.instance.addListener(_onCatalogRefreshed);
     DownloadsRepository.instance.initialize();
     _moviesFuture = VodRepository.instance.fetchMovies();
+  }
+
+  @override
+  void dispose() {
+    VodRepository.instance.removeListener(_onCatalogRefreshed);
+    super.dispose();
+  }
+
+  void _onCatalogRefreshed() {
+    if (!mounted) return;
+    setState(() {
+      // fetchMovies() répond depuis la mémoire (déjà fraîche) — instantané.
+      _moviesFuture = VodRepository.instance.fetchMovies();
+    });
   }
 
   void _reloadCatalogue() {

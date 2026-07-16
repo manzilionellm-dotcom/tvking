@@ -24,16 +24,15 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
 import '../../playlists/data/xtream_client.dart';
 import '../domain/vod_info.dart';
 import '../domain/vod_movie.dart';
+import 'catalog_disk_cache.dart';
 
 /// Décode le fichier de cache (JSON → films) — TOP-LEVEL pour tourner dans
 /// un isolate via [compute] : 10 000 films = ~2-5 Mo de JSON, un décodage
@@ -47,11 +46,14 @@ List<VodMovie> decodeVodCatalog(String raw) {
       .toList(growable: false);
 }
 
-/// Encode le catalogue pour le disque — TOP-LEVEL pour [compute] (même
-/// raison : l'encodage de 10 000 films ne doit pas geler l'UI).
-String encodeVodCatalog(List<VodMovie> movies) => jsonEncode(<String, dynamic>{
+/// Encode le catalogue pour le disque — TOP-LEVEL pour [compute]. La clé de
+/// source 'k' est écrite EN TÊTE (lue sans décoder tout le fichier — cf.
+/// CatalogDiskCache.sourceKeyOf).
+String encodeVodCatalog((List<VodMovie>, String) input) =>
+    jsonEncode(<String, dynamic>{
       'v': 1,
-      'm': movies.map((VodMovie m) => m.toJson()).toList(growable: false),
+      'k': input.$2,
+      'm': input.$1.map((VodMovie m) => m.toJson()).toList(growable: false),
     });
 
 class VodRepository extends ChangeNotifier {
@@ -62,6 +64,29 @@ class VodRepository extends ChangeNotifier {
 
   /// Un seul rafraîchissement réseau à la fois (anti-tempête de requêtes).
   bool _refreshing = false;
+
+  /// Cache disque partagé (socle commun films/séries — voir
+  /// catalog_disk_cache.dart, clé de source incluse).
+  final CatalogDiskCache<VodMovie> _disk = CatalogDiskCache<VodMovie>(
+    fileName: 'vod_catalog_cache.json',
+    decode: decodeVodCatalog,
+    encode: encodeVodCatalog,
+  );
+
+  /// Empreinte de la source ACTIVE (serveur + utilisateur Xtream). Le cache
+  /// disque n'est relu QUE si elle correspond — jamais le catalogue d'un
+  /// ancien compte après un « Changer la source ».
+  Future<String> _sourceKey() async {
+    final List<Playlist> playlists =
+        await PlaylistRepository.instance.getAllPlaylists();
+    for (final Playlist p in playlists) {
+      if (p.type == PlaylistType.xtream && (p.xtreamServer ?? '').isNotEmpty) {
+        return '${p.xtreamServer}|${p.xtreamUsername ?? ''}'
+            .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+      }
+    }
+    return 'none';
+  }
 
   /// Construit un client Xtream depuis la première playlist Xtream active
   /// (`null` si le compte est M3U seul → pas de VOD, pas de get_vod_info).
@@ -91,9 +116,11 @@ class VodRepository extends ChangeNotifier {
   Future<List<VodMovie>> fetchMovies({bool forceRefresh = false}) async {
     if (!forceRefresh && _cache != null) return _cache!;
 
+    final String key = await _sourceKey();
     if (!forceRefresh) {
-      // 2e étage : cache DISQUE → affichage immédiat + refresh silencieux.
-      final List<VodMovie>? disk = await _loadDiskCache();
+      // 2e étage : cache DISQUE (si la source correspond) → affichage
+      // immédiat + refresh silencieux.
+      final List<VodMovie>? disk = await _disk.load(key);
       if (disk != null && disk.isNotEmpty) {
         _cache = disk;
         unawaited(_refreshInBackground());
@@ -102,26 +129,27 @@ class VodRepository extends ChangeNotifier {
     }
     // 3e étage : réseau (1er lancement ou forceRefresh).
     final List<VodMovie> fresh = await _fetchFromNetwork();
-    if (fresh.isNotEmpty || forceRefresh) {
+    if (fresh.isNotEmpty) {
       _cache = fresh;
-      unawaited(_saveDiskCache(fresh));
+      unawaited(_disk.save(fresh, key));
+    } else {
+      // ÉCHEC réseau ou source sans VOD : on NE DÉTRUIT JAMAIS un catalogue
+      // existant (mémoire ou disque) — une panne transitoire pendant un
+      // « Recharger » ne doit pas vider l'écran Films pour de bon.
+      _cache ??= const <VodMovie>[];
     }
-    return _cache ?? fresh;
+    return _cache!;
   }
 
-  /// Appel réseau brut (liste vide en cas d'erreur — fail-open).
+  /// Appel réseau brut (liste vide en cas d'erreur — fail-open, et AUCUN
+  /// effet de bord sur _cache : c'est l'appelant qui décide quoi garder).
   Future<List<VodMovie>> _fetchFromNetwork() async {
     final XtreamClient? client = await _client();
-    if (client == null) {
-      _cache = const <VodMovie>[];
-      return const <VodMovie>[];
-    }
+    if (client == null) return const <VodMovie>[];
     try {
       return await client.fetchVodMovies();
     } catch (e) {
       if (kDebugMode) debugPrint('[VOD] fetch error: $e');
-      // Serveur sans VOD ou erreur → liste vide (cache court pour
-      // permettre un retry rapide via forceRefresh).
       return const <VodMovie>[];
     } finally {
       client.dispose();
@@ -130,55 +158,28 @@ class VodRepository extends ChangeNotifier {
 
   /// Rafraîchissement SILENCIEUX (stale-while-revalidate) : re-télécharge le
   /// catalogue derrière l'écran déjà affiché ; s'il a changé, prévient les
-  /// abonnés (l'écran Films se met à jour sans spinner ni à-coup).
+  /// abonnés. Panne / M3U seul → on garde le cache affiché, sans y toucher.
+  /// Détection de changement ROBUSTE (empreinte de TOUS les ids) et
+  /// sauvegarde disque UNIQUEMENT si changement (pas de réécriture de
+  /// plusieurs Mo à chaque ouverture).
   Future<void> _refreshInBackground() async {
     if (_refreshing) return;
     _refreshing = true;
     try {
       final List<VodMovie> fresh = await _fetchFromNetwork();
-      if (fresh.isEmpty) return; // panne réseau → on garde le cache affiché
-      final List<VodMovie>? old = _cache;
-      final bool changed = old == null ||
-          old.length != fresh.length ||
-          (old.isNotEmpty &&
-              fresh.isNotEmpty &&
-              (old.first.id != fresh.first.id || old.last.id != fresh.last.id));
+      if (fresh.isEmpty) return;
+      final List<VodMovie> old = _cache ?? const <VodMovie>[];
+      final bool changed = catalogChanged(
+        <String>[for (final VodMovie m in old) m.id],
+        <String>[for (final VodMovie m in fresh) m.id],
+      );
       _cache = fresh;
-      unawaited(_saveDiskCache(fresh));
-      if (changed) notifyListeners();
+      if (changed) {
+        unawaited(_disk.save(fresh, await _sourceKey()));
+        notifyListeners();
+      }
     } finally {
       _refreshing = false;
-    }
-  }
-
-  // ----- Cache disque (JSON dans le dossier de l'app) -----
-
-  Future<File> _cacheFile() async {
-    final Directory dir = await getApplicationSupportDirectory();
-    return File('${dir.path}/vod_catalog_cache.json');
-  }
-
-  Future<List<VodMovie>?> _loadDiskCache() async {
-    try {
-      final File f = await _cacheFile();
-      if (!await f.exists()) return null;
-      final String raw = await f.readAsString();
-      if (raw.isEmpty) return null;
-      // Décodage en ISOLATE : plusieurs Mo de JSON, jamais sur le thread UI.
-      return await compute(decodeVodCatalog, raw);
-    } catch (e) {
-      if (kDebugMode) debugPrint('[VOD] cache disque illisible: $e');
-      return null; // cache corrompu → on repart du réseau, sans crash
-    }
-  }
-
-  Future<void> _saveDiskCache(List<VodMovie> movies) async {
-    try {
-      final String raw = await compute(encodeVodCatalog, movies);
-      final File f = await _cacheFile();
-      await f.writeAsString(raw, flush: true);
-    } catch (e) {
-      if (kDebugMode) debugPrint('[VOD] cache disque non écrit: $e');
     }
   }
 

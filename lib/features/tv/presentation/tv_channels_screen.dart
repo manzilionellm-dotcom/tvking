@@ -620,7 +620,7 @@ class _ActionButton extends StatelessWidget {
             ? (primary ? TvTokens.gold : TvTokens.sel)
             : TvTokens.card;
         final Color fg = focused
-            ? (primary ? const Color(0xFF1A1206) : TvTokens.goldBright)
+            ? (primary ? TvTokens.onGold : TvTokens.goldBright)
             : TvTokens.muted;
         return Container(
           alignment: Alignment.center,
@@ -668,10 +668,17 @@ class _PreviewProgramsState extends State<_PreviewPrograms> {
   List<EpgProgram> _programs = const <EpgProgram>[];
   bool _loaded = false;
 
+  /// Anti-rebond (revue de code) : défiler 200 chaînes ne doit pas tirer
+  /// 200 requêtes EPG — la requête part 400 ms après la stabilisation du
+  /// focus (même esprit que l'aperçu vidéo voisin).
+  Timer? _debounce;
+
   @override
   void initState() {
     super.initState();
-    unawaited(_load());
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      unawaited(_load());
+    });
   }
 
   @override
@@ -680,8 +687,17 @@ class _PreviewProgramsState extends State<_PreviewPrograms> {
     if (old.channelId != widget.channelId) {
       _loaded = false;
       _programs = const <EpgProgram>[];
-      unawaited(_load());
+      _debounce?.cancel();
+      _debounce = Timer(const Duration(milliseconds: 400), () {
+        unawaited(_load());
+      });
     }
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {

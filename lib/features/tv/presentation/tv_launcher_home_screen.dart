@@ -99,6 +99,13 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
   /// `true` quand le héro vient de l'habitude horaire (badge « Ma soirée »).
   bool _heroFromHabit = false;
 
+  /// Mémoïsation du créneau (revue de code) : la requête « Ma soirée »
+  /// (scan SQL de l'historique) ne repart qu'au bout de 10 min — inutile de
+  /// la refaire à chaque événement de playlist/zapping pour un résultat
+  /// identique.
+  String? _slotId;
+  DateTime? _slotAt;
+
   Future<void> _recomputeHero() async {
     final List<Channel> all = PlaylistRepository.instance.currentChannels;
     if (all.isEmpty) {
@@ -115,10 +122,14 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
     // mieux que n'importe quel profil (recherche 2024) — et tout reste sur
     // l'appareil (zéro cloud). Signal insuffisant → repli dernière regardée.
     try {
-      final String? slotId =
-          await WatchHistoryRepository.instance.topChannelForSlot();
-      if (slotId != null) {
-        hero = byId[slotId];
+      final DateTime now = DateTime.now();
+      if (_slotAt == null ||
+          now.difference(_slotAt!) > const Duration(minutes: 10)) {
+        _slotId = await WatchHistoryRepository.instance.topChannelForSlot();
+        _slotAt = now;
+      }
+      if (_slotId != null) {
+        hero = byId[_slotId];
         habit = hero != null;
       }
     } catch (_) {
@@ -349,7 +360,7 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
                             child: Text('MA SOIRÉE',
                                 style: TvTokens.ui(11,
                                     weight: FontWeight.w800,
-                                    color: const Color(0xFF1A1206),
+                                    color: TvTokens.onGold,
                                     spacing: 1.2)),
                           ),
                           const SizedBox(width: 10),
@@ -371,7 +382,7 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
                             final Color bg =
                                 focused ? TvTokens.gold : TvTokens.sel;
                             final Color fg = focused
-                                ? const Color(0xFF1A1206)
+                                ? TvTokens.onGold
                                 : TvTokens.goldBright;
                             return Container(
                               padding: const EdgeInsets.symmetric(
@@ -421,6 +432,11 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
             child: _NavTile(
                 icon: Icons.live_tv_rounded,
                 label: 'En direct',
+                // FOCUS GARANTI : si le héro n'existe pas encore (aucune
+                // source / playlist en cours d'ingestion), l'autofocus du
+                // bouton « Regarder maintenant » n'existe pas non plus — la
+                // télécommande serait morte à l'arrivée. Repli ici.
+                autofocus: _hero == null,
                 onSelect: () => _open(const TvChannelsScreen()))),
         const SizedBox(width: 14),
         Expanded(
@@ -602,14 +618,19 @@ class _FavoritesGridState extends State<_FavoritesGrid> {
 /// Grande tuile de navigation (En direct, Films, …) — carte SEVEN, focus or.
 class _NavTile extends StatelessWidget {
   const _NavTile(
-      {required this.icon, required this.label, required this.onSelect});
+      {required this.icon,
+      required this.label,
+      required this.onSelect,
+      this.autofocus = false});
   final IconData icon;
   final String label;
   final VoidCallback onSelect;
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
     return TvFocusBuilder(
+      autofocus: autofocus,
       scale: TvFocusScale.medium,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
