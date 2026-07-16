@@ -8,12 +8,13 @@ import MediaCard from "./MediaCard";
  */
 export default function Row({ row }: { row: RowData }) {
   return (
-    <section className="relative z-[2] mb-[2.4rem]">
-      <h2 className="font-display mb-[0.9rem] flex items-center gap-[0.8rem] text-[1.7rem] font-bold text-[var(--text-high)]">
+    <section className="relative z-[2] mb-[2.4rem] max-md:mb-[1.7rem]">
+      <h2 className="font-display mb-[0.9rem] flex items-center gap-[0.8rem] text-[1.7rem] font-bold text-[var(--text-high)] max-md:mb-[0.6rem] max-md:text-[1.25rem]">
         <span className="inline-block h-[1.3rem] w-[0.28rem] rounded-full" style={{ background: "var(--gold-grad)" }} />
         {row.title}
       </h2>
-      <div className="no-scrollbar flex gap-[1.2rem] overflow-x-auto overflow-y-visible py-[0.5rem] pr-[var(--safe-x)]">
+      {/* `rail` snaps cards to the edge on touch screens (globals.css). */}
+      <div className="no-scrollbar rail flex gap-[1.2rem] overflow-x-auto overflow-y-visible py-[0.5rem] pr-[var(--safe-x)] max-md:gap-[0.85rem]">
         {row.items.map((item) => (
           <MediaCard key={item.id} item={item} />
         ))}

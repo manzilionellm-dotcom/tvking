@@ -54,6 +54,10 @@
 
   /* ---- Focus motion ---- */
   --focus-scale: 1.08;
+
+  /* ---- Layout offsets shared by pages (overridden by the pocket UI) ---- */
+  --page-top: var(--safe-y); /* top padding of non-hero pages */
+  --tabbar-h: 0px;           /* height reserved for the mobile tab bar */
 }
 
 @theme inline {
@@ -84,15 +88,9 @@ html {
   color-scheme: dark;
 }
 
+/* No background on <body>: html paints the base #121212, and the fixed
+   ambience layer below (body::before, negative z) must show through. */
 body {
-  /* Deep "throne-room" ambience: a warm gold glow top-right and a cool royal
-     violet glow bottom-left, both very low luminance over the #121212 base so
-     it stays rich without straining the eyes. */
-  background:
-    radial-gradient(125% 85% at 100% -10%, rgba(227, 185, 107, 0.1), transparent 55%),
-    radial-gradient(110% 75% at -10% 110%, rgba(91, 75, 214, 0.12), transparent 55%),
-    var(--bg);
-  background-attachment: fixed;
   color: var(--text-high);
   font-family: var(--font-sans), system-ui, sans-serif;
   /* Text floor for 10-foot legibility is ~24px → 1.5rem on the 1920 canvas. */
@@ -101,6 +99,21 @@ body {
   letter-spacing: 0.01em;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+}
+
+/* Deep "throne-room" ambience: a warm gold glow top-right and a cool royal
+   violet glow bottom-left, both very low luminance over the #121212 base so
+   it stays rich without straining the eyes. Painted on a fixed layer (not
+   background-attachment: fixed, which mobile Safari mishandles). */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(125% 85% at 100% -10%, rgba(227, 185, 107, 0.1), transparent 55%),
+    radial-gradient(110% 75% at -10% 110%, rgba(91, 75, 214, 0.12), transparent 55%);
 }
 
 /* Soft cinematic vignette to frame the screen. */
@@ -182,5 +195,99 @@ button:focus-visible {
   }
   .focusable:focus-visible {
     transform: none;
+  }
+}
+
+/*
+  =============================== POCKET UI ===============================
+  Below 48rem (Tailwind `md`, ~768px) the 10-foot canvas becomes a premium
+  hand-held app: native-feel type scale, thumb-sized targets, notch-aware
+  safe areas (viewport-fit=cover), bottom tab bar and snap carousels.
+  Everything here is additive — at md and above the TV UI is untouched.
+*/
+
+/* Interactive elements never show the grey tap flash or get text-selected. */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+a,
+button,
+.focusable {
+  touch-action: manipulation; /* no double-tap-zoom delay */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Tactile response on touch screens: a quick, springy press-down. */
+@media (hover: none) {
+  .focusable:active {
+    transform: scale(0.96);
+    transition-duration: 80ms;
+  }
+}
+
+@media (width < 48rem) {
+  :root {
+    /* Hand-held safe areas: hug the edges, respect the notch / home bar. */
+    --safe-x: max(1.1rem, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+    --safe-y: max(1.1rem, env(safe-area-inset-top, 0px));
+    --page-top: calc(4rem + env(safe-area-inset-top, 0px)); /* clears the fixed header */
+    --tabbar-h: calc(4rem + max(0.55rem, env(safe-area-inset-bottom, 0px)));
+    --focus-scale: 1; /* no 10-foot zoom on focus */
+  }
+
+  /* Fixed, app-like type base (the Réglages text-size choice still applies). */
+  html {
+    font-size: calc(15px * var(--ui-scale));
+    overscroll-behavior-y: none; /* no rubber-band double-bounce behind the shell */
+  }
+  body {
+    font-size: 1.07rem; /* ~16px body floor */
+  }
+
+  /* The cinematic corner vignette reads as dirt on a small screen. */
+  body::after {
+    display: none;
+  }
+
+  /* Content rails become snap carousels (cards align to the rail edge). */
+  .rail {
+    scroll-snap-type: x mandatory;
+  }
+  .rail > * {
+    scroll-snap-align: start;
+  }
+}
+
+/* Gentle fade-in for hero slide changes (skipped under reduced motion). */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes hero-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  .hero-slide {
+    animation: hero-in 600ms ease;
+  }
+
+  @keyframes seek-flash {
+    0% {
+      opacity: 0;
+      transform: scale(0.85);
+    }
+    25% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.05);
+    }
+  }
+  .seek-flash {
+    animation: seek-flash 550ms ease forwards;
   }
 }

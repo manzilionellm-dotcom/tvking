@@ -3,14 +3,16 @@ import type { MediaItem } from "../lib/data";
 import { LevelBadge, LiveBadge } from "./Badge";
 
 /* Card widths per shape. 16:9 is the default video card; 1:1 for logos/topics;
-   2:3 for course "posters" — the three Android TV card aspect ratios. */
+   2:3 for course "posters" — the three Android TV card aspect ratios.
+   Below md the widths are viewport-relative so the rail always shows a partial
+   next card (the mobile "peek" affordance that invites swiping). */
 const SHAPE = {
-  "16:9": { w: "20rem", aspect: "16 / 9" },
-  "1:1": { w: "11rem", aspect: "1 / 1" },
-  "2:3": { w: "13rem", aspect: "2 / 3" },
+  "16:9": { w: "w-[min(60vw,16rem)] md:w-[20rem]", aspect: "16 / 9" },
+  "1:1": { w: "w-[min(27vw,8rem)] md:w-[11rem]", aspect: "1 / 1" },
+  "2:3": { w: "w-[min(31vw,9.5rem)] md:w-[13rem]", aspect: "2 / 3" },
 } as const;
 
-export default function MediaCard({ item }: { item: MediaItem }) {
+export default function MediaCard({ item, fluid = false }: { item: MediaItem; fluid?: boolean }) {
   const shape = item.shape ?? "16:9";
   const dims = SHAPE[shape];
 
@@ -18,8 +20,9 @@ export default function MediaCard({ item }: { item: MediaItem }) {
     <Link
       href={`/title/${item.id}`}
       data-focusable
-      className="card focusable group relative block shrink-0 cursor-pointer text-left"
-      style={{ width: dims.w }}
+      className={`card focusable group relative block cursor-pointer text-left ${
+        fluid ? "w-full" : `shrink-0 ${dims.w}`
+      }`}
       aria-label={item.title}
     >
       {/* Artwork — gradient stands in for poster art (no binary assets needed). */}

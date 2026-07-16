@@ -56,15 +56,15 @@ function Group({
   onPick,
 }: {
   title: string;
-  desc: string;
+  desc: React.ReactNode;
   opts: Opt[];
   current: string;
   onPick: (v: string) => void;
 }) {
   return (
     <section className="mb-[2.4rem]">
-      <h2 className="text-[1.6rem] font-bold text-[var(--text-high)]">{title}</h2>
-      <p className="mb-[1rem] text-[1.2rem] text-[var(--text-medium)]">{desc}</p>
+      <h2 className="text-[1.6rem] font-bold text-[var(--text-high)] max-md:text-[1.25rem]">{title}</h2>
+      <p className="mb-[1rem] text-[1.2rem] text-[var(--text-medium)] max-md:text-[0.95rem]">{desc}</p>
       <div className="flex flex-wrap gap-[0.9rem]">
         {opts.map((o) => {
           const active = current === o.value;
@@ -102,42 +102,56 @@ export default function ReglagesPage() {
   const pickSafe = (v: string) => writePref(PREFS.safeScale, "--safe-scale", v);
 
   return (
-    <div className="pb-[var(--safe-y)] pl-[var(--safe-x)] pr-[var(--safe-x)] pt-[var(--safe-y)]">
-      <h1 className="font-display mb-[0.4rem] text-[3rem] font-extrabold tracking-tight text-[var(--text-high)]">
+    <div className="pb-[var(--safe-y)] pl-[var(--safe-x)] pr-[var(--safe-x)] pt-[var(--page-top)]">
+      <h1 className="font-display mb-[0.4rem] text-[3rem] font-extrabold tracking-tight text-[var(--text-high)] max-md:text-[1.8rem]">
         Réglages d&apos;affichage
       </h1>
-      <p className="mb-[2.2rem] text-[1.3rem] text-[var(--text-medium)]">
-        Adaptez l&apos;application à votre téléviseur et à votre distance de visionnage.
+      <p className="mb-[2.2rem] text-[1.3rem] text-[var(--text-medium)] max-md:mb-[1.6rem] max-md:text-[0.98rem]">
+        <span className="max-md:hidden">
+          Adaptez l&apos;application à votre téléviseur et à votre distance de visionnage.
+        </span>
+        <span className="md:hidden">Adaptez l&apos;application à votre confort de lecture.</span>
       </p>
 
       <Group
         title="Taille du texte"
-        desc="Le texte est conçu pour être lisible à ~3 m. Agrandissez-le si besoin."
+        desc={
+          <>
+            <span className="max-md:hidden">
+              Le texte est conçu pour être lisible à ~3 m. Agrandissez-le si besoin.
+            </span>
+            <span className="md:hidden">S&apos;applique à toute l&apos;application, immédiatement.</span>
+          </>
+        }
         opts={TEXT_OPTS}
         current={ui}
         onPick={pickUi}
       />
-      <Group
-        title="Marge de sécurité (overscan)"
-        desc="Si les bords de l'image sont rognés par votre TV, augmentez la marge."
-        opts={SAFE_OPTS}
-        current={safe}
-        onPick={pickSafe}
-      />
 
-      {/* Live preview frame: a dashed outline showing the current safe area. */}
-      <section>
-        <h2 className="mb-[1rem] text-[1.6rem] font-bold text-[var(--text-high)]">Aperçu</h2>
-        <div className="relative h-[14rem] w-full overflow-hidden rounded-[var(--radius-lg)] bg-[var(--surface-1)]">
-          <div className="absolute inset-0 border-2 border-dashed border-[var(--teal)]/50" style={{ margin: "var(--safe-y) var(--safe-x)" }}>
-            <div className="flex h-full items-center justify-center">
-              <span className="text-[1.4rem] font-semibold text-[var(--text-medium)]">
-                Zone de sécurité — tout le contenu reste à l&apos;intérieur
-              </span>
+      {/* Overscan only exists on televisions — the pocket UI hides it. */}
+      <div className="max-md:hidden">
+        <Group
+          title="Marge de sécurité (overscan)"
+          desc="Si les bords de l'image sont rognés par votre TV, augmentez la marge."
+          opts={SAFE_OPTS}
+          current={safe}
+          onPick={pickSafe}
+        />
+
+        {/* Live preview frame: a dashed outline showing the current safe area. */}
+        <section>
+          <h2 className="mb-[1rem] text-[1.6rem] font-bold text-[var(--text-high)]">Aperçu</h2>
+          <div className="relative h-[14rem] w-full overflow-hidden rounded-[var(--radius-lg)] bg-[var(--surface-1)]">
+            <div className="absolute inset-0 border-2 border-dashed border-[var(--teal)]/50" style={{ margin: "var(--safe-y) var(--safe-x)" }}>
+              <div className="flex h-full items-center justify-center">
+                <span className="text-[1.4rem] font-semibold text-[var(--text-medium)]">
+                  Zone de sécurité — tout le contenu reste à l&apos;intérieur
+                </span>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }

@@ -70,9 +70,13 @@ function bestCandidate(current: HTMLElement, dir: Dir): HTMLElement | null {
 
 export default function SpatialNav() {
   useEffect(() => {
-    // Focus the first focusable on mount so a remote has a starting point.
-    const first = focusables()[0];
-    if (first && document.activeElement === document.body) first.focus();
+    // Focus the first focusable on mount so a remote has a starting point —
+    // but not on touch/pocket screens, where a focus ring at load is noise.
+    const touchUI = window.matchMedia("(hover: none), (width < 48rem)").matches;
+    if (!touchUI) {
+      const first = focusables()[0];
+      if (first && document.activeElement === document.body) first.focus();
+    }
 
     function onKeyDown(e: KeyboardEvent) {
       const dir = KEY_TO_DIR[e.key];
