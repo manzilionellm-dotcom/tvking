@@ -777,6 +777,14 @@
     "description": "Texte UI : castInProgressTitle"
   },
   "castStopTooltip": "Arrêter le cast",
+  "castZapPrevTooltip": "Chaîne précédente",
+  "@castZapPrevTooltip": {
+    "description": "Texte UI : castZapPrevTooltip"
+  },
+  "castZapNextTooltip": "Chaîne suivante",
+  "@castZapNextTooltip": {
+    "description": "Texte UI : castZapNextTooltip"
+  },
   "@castStopTooltip": {
     "description": "Texte UI : castStopTooltip"
   },

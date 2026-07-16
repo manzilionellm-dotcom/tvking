@@ -260,6 +260,8 @@
   "castConnecting": "Connecting...",
   "castInProgressTitle": "Casting",
   "castStopTooltip": "Stop casting",
+  "castZapPrevTooltip": "Previous channel",
+  "castZapNextTooltip": "Next channel",
   "castPlayDefault": "Playing",
   "webCastTitle": "Cast via browser",
   "webCastDesc": "Works on any TV with a web browser — Google TV, Samsung, LG, Hisense, old smart TVs. Your TV must be on the same WiFi as the phone.",

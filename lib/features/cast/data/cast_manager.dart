@@ -20,10 +20,12 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/i18n/l10n_now.dart';
 import '../../../core/observability/structured_logger.dart';
+import '../../channels/domain/channel.dart';
 import '../../player/data/pip_service.dart';
 import '../../player/data/xtream_url_variants.dart';
 import '../domain/cast_device.dart';
 import 'cast_progress.dart';
+import 'cast_url_resolver.dart';
 import 'cast_session_diagnostic.dart';
 import 'cast_transport.dart';
 import 'google_cast_transport.dart';
@@ -637,6 +639,135 @@ class CastManager extends ChangeNotifier {
       );
       throw Exception(_errorMessage);
     }
+  }
+
+  // ============================================================
+  //  VAGUE B — Zapping en mode « télécommande pure »
+  // ============================================================
+  //  Pendant un cast, le téléphone est une TÉLÉCOMMANDE : changer de
+  //  chaîne doit changer la chaîne SUR LA TV, jamais rouvrir le flux
+  //  sur le téléphone (sur les comptes « 1 connexion », deux flux
+  //  simultanés = refus fournisseur → écran noir + instabilité).
+  //
+  //  Le CastManager porte donc un CONTEXTE DE ZAP partagé (playlist +
+  //  index de la chaîne en cours) posé par le lecteur ou par
+  //  `playChannel()`. Grâce à lui, TOUTES les surfaces (D-pad du
+  //  lecteur, overlay de cast, mini-barre globale) zappent par le
+  //  MÊME chemin : `castChannelOnCurrentSession`.
+
+  /// Playlist de zap de la session de cast courante (posée par le
+  /// lecteur ou `playChannel`). `null` tant qu'aucun contexte n'a été
+  /// fourni — les boutons Ch+/Ch- des surfaces globales se masquent.
+  List<Channel>? _castPlaylist;
+
+  /// Index de la chaîne EN COURS sur la TV dans [_castPlaylist].
+  int _castIndex = -1;
+
+  /// `true` si les surfaces globales (mini-barre, overlay) peuvent
+  /// proposer Ch+/Ch- : un cast est actif ET on connaît la playlist.
+  bool get canZapOnCast => isCasting && (_castPlaylist?.length ?? 0) > 1;
+
+  /// Chaîne actuellement diffusée sur la TV, si le contexte est connu.
+  Channel? get currentCastChannel =>
+      (_castPlaylist != null && _castIndex >= 0 &&
+              _castIndex < _castPlaylist!.length)
+          ? _castPlaylist![_castIndex]
+          : null;
+
+  /// Pose (ou met à jour) le contexte de zap de la session de cast :
+  /// [playlist] complète + [current] la chaîne qui vient de partir vers
+  /// la TV. Idempotent et sans effet réseau — ne fait que mémoriser.
+  void setCastPlaylist(List<Channel> playlist, Channel current) {
+    _castPlaylist = playlist;
+    _castIndex = playlist.indexWhere((Channel c) => c.id == current.id);
+    notifyListeners();
+  }
+
+  /// Chaîne suivante sur la TV (bouton Ch+ / ⏭ des surfaces globales).
+  Future<void> zapCastNext() => _zapCastBy(1);
+
+  /// Chaîne précédente sur la TV (bouton Ch- / ⏮).
+  Future<void> zapCastPrev() => _zapCastBy(-1);
+
+  Future<void> _zapCastBy(int delta) async {
+    final List<Channel>? list = _castPlaylist;
+    if (list == null || list.length < 2 || !isCasting) return;
+    // Un swap est déjà en cours (connecting) : on l'ignore plutôt que
+    // d'empiler des sessions — `_sessionSeq` annulerait la précédente,
+    // mais ne pas empiler du tout est plus doux pour le récepteur.
+    if (_state == CastState.connecting) return;
+    final int next =
+        ((_castIndex + delta) % list.length + list.length) % list.length;
+    final Channel ch = list[next];
+    _castIndex = next;
+    notifyListeners();
+    try {
+      // Même URL que le lecteur : format Xtream mémorisé appliqué
+      // (sinon 404 sur les panels qui exigent /live/).
+      final String castUrl = await CastUrlResolver.resolve(ch);
+      await castChannelOnCurrentSession(
+        streamUrl: castUrl,
+        title: ch.cleanName,
+        channelName: ch.cleanName,
+        channelGenre: ch.category,
+        imageUrl: ch.logoUrl,
+        channel: ch,
+      );
+    } on Object catch (e) {
+      // Échec du swap : l'état d'erreur est déjà posé par castTo et
+      // affiché par les surfaces abonnées. On journalise, on ne crashe
+      // jamais l'UI depuis un bouton de télécommande.
+      StructuredLogger.instance.warn(
+        domain: 'cast',
+        event: 'zap.swap_failed',
+        ctx: <String, Object?>{'channel': ch.cleanName, 'error': '$e'},
+      );
+    }
+  }
+
+  /// VAGUE B — Change la chaîne SUR la session de cast EN COURS, sans
+  /// re-choisir le récepteur ni rouvrir le picker.
+  ///
+  /// Réutilise la cible active ([_device]) ou, à défaut, la cible
+  /// mémorisée ([_selectedDevice]). Tout le travail délicat est déjà
+  /// fait par `castTo` → `_castToInner` :
+  ///   - arrêt du média précédent côté TV (media stop SEULEMENT, la
+  ///     session Cast reste ouverte — pas de re-négociation 5-20 s),
+  ///   - libération de l'ancien relais HLS,
+  ///   - annulation coopérative de la session précédente (_sessionSeq).
+  /// Côté Google Cast, `_ensureSessionOn` réutilise la session active :
+  /// aucun picker ne s'ouvre tant que la TV est connectée.
+  ///
+  /// Retourne `false` si aucune session/cible n'est disponible.
+  /// L'appelant peut alors décider — mais ne doit JAMAIS relancer la
+  /// lecture locale pendant qu'un cast est engagé.
+  Future<bool> castChannelOnCurrentSession({
+    required String streamUrl,
+    required String title,
+    String? channelName,
+    String? channelGenre,
+    String? imageUrl,
+    Channel? channel,
+  }) async {
+    final CastDevice? target = _device ?? _selectedDevice;
+    if (target == null) return false;
+    // Garde le contexte de zap aligné quand le swap vient du lecteur
+    // (qui connaît la playlist) : si la chaîne est dans la playlist
+    // mémorisée, on synchronise l'index pour la mini-barre.
+    final List<Channel>? list = _castPlaylist;
+    if (channel != null && list != null) {
+      final int i = list.indexWhere((Channel c) => c.id == channel.id);
+      if (i >= 0) _castIndex = i;
+    }
+    await castTo(
+      target,
+      streamUrl: streamUrl,
+      title: title,
+      channelName: channelName,
+      channelGenre: channelGenre,
+      imageUrl: imageUrl,
+    );
+    return true;
   }
 
   Future<void> _castToInner(
@@ -1884,6 +2015,10 @@ class CastManager extends ChangeNotifier {
     _device = null;
     _selectedDevice = null;
     _currentTitle = null;
+    // VAGUE B — le contexte de zap appartient à la session : on le
+    // vide pour que la mini-barre ne propose pas Ch+/Ch- fantômes.
+    _castPlaylist = null;
+    _castIndex = -1;
     _state = CastState.idle;
     _setProgress(CastProgress.idle);
   }

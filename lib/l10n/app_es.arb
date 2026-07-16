@@ -259,6 +259,8 @@
   "castConnecting": "Conectando...",
   "castInProgressTitle": "Transmitiendo",
   "castStopTooltip": "Detener transmisión",
+  "castZapPrevTooltip": "Canal anterior",
+  "castZapNextTooltip": "Canal siguiente",
   "castPlayDefault": "Reproducción",
   "webCastTitle": "Transmitir por navegador",
   "webCastDesc": "Funciona en cualquier TV con navegador web — Google TV, Samsung, LG, Hisense, smart TVs antiguas. Tu TV debe estar en el mismo WiFi que el teléfono.",

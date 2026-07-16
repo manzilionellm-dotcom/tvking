@@ -92,6 +92,30 @@ class CastMiniBar extends StatelessWidget {
                   ],
                 ),
               ),
+              // VAGUE B — zap « télécommande pure » : Ch- / Ch+ changent
+              // la chaîne SUR LA TV via la session en cours (le contexte
+              // de zap est posé par le lecteur ou playChannel). Masqués
+              // tant qu'aucune playlist n'est connue.
+              if (mgr.canZapOnCast) ...<Widget>[
+                IconButton(
+                  icon: const Icon(
+                    Icons.skip_previous_rounded,
+                    color: Colors.white,
+                  ),
+                  tooltip: context.l10n.castZapPrevTooltip,
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => mgr.zapCastPrev(),
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.skip_next_rounded,
+                    color: Colors.white,
+                  ),
+                  tooltip: context.l10n.castZapNextTooltip,
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => mgr.zapCastNext(),
+                ),
+              ],
               IconButton(
                 icon: Icon(
                   mgr.state == CastState.paused

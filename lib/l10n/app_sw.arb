@@ -259,6 +259,8 @@
   "castConnecting": "Inaunganisha...",
   "castInProgressTitle": "Inatangaza",
   "castStopTooltip": "Simamisha utangazaji",
+  "castZapPrevTooltip": "Kituo kilichotangulia",
+  "castZapNextTooltip": "Kituo kinachofuata",
   "castPlayDefault": "Uchezaji",
   "webCastTitle": "Tangaza kwa kivinjari",
   "webCastDesc": "Hufanya kazi kwenye TV yoyote yenye kivinjari — Google TV, Samsung, LG, Hisense, smart TV za zamani. TV yako lazima iwe kwenye WiFi sawa na simu.",

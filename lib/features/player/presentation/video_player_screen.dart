@@ -31,6 +31,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/live_badge.dart';
 import '../../cast/data/cast_manager.dart';
+import '../../cast/data/cast_url_resolver.dart';
 import '../../cast/data/local_cast_server.dart';
 import '../../cast/presentation/cast_picker_sheet.dart';
 import '../../cast/presentation/screen_cast_sheet.dart';
@@ -159,6 +160,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// reagit qu'aux TRANSITIONS (idle->cast et cast->idle), pas a chaque
   /// notification du CastManager.
   bool _wasCasting = false;
+
+  /// VAGUE B — `true` quand un cast vient de se terminer et que le
+  /// lecteur local est resté volontairement à l'arrêt (mode
+  /// « télécommande » : on ne rouvre JAMAIS le flux automatiquement,
+  /// c'est ce qui rouvrait une 2e connexion et cassait la stabilité).
+  /// Le prochain appui sur Lecture relance la chaîne sur le téléphone.
+  bool _castEndedIdle = false;
 
   // Pour le zapping : la chaîne courante (peut changer dans la session
   // sans recréer l'écran) et l'index dans la zapPlaylist.
@@ -781,9 +789,53 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // Seule la chaîne FINALE est rapportée au panel « En ligne »
       // (le heartbeat des intermédiaires était aussi une requête).
       _reportNowPlaying();
+      // VAGUE B — Télécommande pure : pendant un cast, le zap change la
+      // chaîne SUR LA TV et ne rouvre JAMAIS le flux en local. Tous les
+      // chemins de zap (D-pad, touches Ch+/Ch-, ⏮/⏭, swipe TikTok)
+      // convergent ici : une seule garde suffit. Avant cette garde, un
+      // zap pendant un cast ouvrait un 2e flux sur le téléphone
+      // (refusé sur les comptes 1-connexion) pendant que la TV restait
+      // sur l'ancienne chaîne.
+      if (CastManager.instance.isCasting) {
+        _zapOnCast(next);
+        return;
+      }
+      _castEndedIdle = false; // zap volontaire → la lecture locale reprend
       _openMedia(next.streamUrl);
     });
     _scheduleHideOverlay();
+  }
+
+  /// VAGUE B — Swap de chaîne sur la session de cast EN COURS. Le
+  /// téléphone reste télécommande : la TV change de chaîne, la lecture
+  /// locale reste à l'arrêt. En cas d'échec du swap, l'état d'erreur du
+  /// CastManager est déjà affiché par l'overlay — on ne relance PAS la
+  /// lecture locale dans le dos de l'utilisateur.
+  Future<void> _zapOnCast(Channel next) async {
+    final CastManager mgr = CastManager.instance;
+    try {
+      // Même URL que les autres chemins de cast : format Xtream
+      // mémorisé appliqué (sinon 404 sur les panels exigeant /live/).
+      final String castUrl = await CastUrlResolver.resolve(next);
+      final bool ok = await mgr.castChannelOnCurrentSession(
+        streamUrl: castUrl,
+        title: next.cleanName,
+        channelName: next.cleanName,
+        channelGenre: next.category,
+        imageUrl: next.logoUrl,
+        channel: next,
+      );
+      if (!ok && mounted && !mgr.isCasting) {
+        // Etat incohérent (plus aucune session ni cible) : on retombe
+        // proprement sur la lecture locale plutôt qu'un écran mort.
+        _openMedia(next.streamUrl);
+      }
+    } on Object catch (e) {
+      StreamDiagnostics.instance.recordEvent(
+        'cast',
+        'Zap sur cast échoué pour « ${next.cleanName} » : $e',
+      );
+    }
   }
 
   /// Ouvre une URL dans le lecteur.
@@ -1423,12 +1475,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (engaged) {
       // La TV prend le relais → on LIBERE la connexion du telephone
       // (stop, pas pause) pour ne pas bloquer le slot IPTV unique.
+      _castEndedIdle = false;
       _player.stop();
+      // VAGUE B — on partage la playlist de zap avec le CastManager :
+      // la mini-barre globale et l'overlay peuvent alors zapper la TV
+      // par le meme chemin que le lecteur (source de verite unique).
+      if (_canZap) {
+        CastManager.instance
+            .setCastPlaylist(widget.zapPlaylist!, _currentChannel);
+      }
     } else {
-      // Cast termine / echoue / annule → on reprend sur le telephone
-      // en re-ouvrant le flux (stop() a ferme le media).
-      final String url = _effectiveUrl;
-      _openMedia(url);
+      // VAGUE B — Cast termine / echoue / annule → le telephone RESTE
+      // en mode telecommande/idle. AVANT : on rouvrait le flux en local
+      // (_openMedia), ce qui relançait une connexion fournisseur dans
+      // le dos de l'utilisateur (souvent pendant qu'il re-castait) et
+      // cassait la stabilite des comptes « 1 connexion ». Desormais le
+      // lecteur reste a l'arret ; l'appui sur Lecture (ou un zap)
+      // relance explicitement la lecture locale.
+      _castEndedIdle = true;
     }
     setState(() {});
   }
@@ -1536,6 +1600,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   void _togglePlayPause() {
+    // VAGUE B — apres un cast, le lecteur est reste volontairement a
+    // l'arret (media ferme). `play()` ne suffirait pas : il faut
+    // rouvrir le flux. C'est le SEUL chemin de reprise locale.
+    if (_castEndedIdle) {
+      _castEndedIdle = false;
+      _openMedia(_effectiveUrl);
+      _scheduleHideOverlay();
+      return;
+    }
     if (_player.state.playing) {
       _player.pause();
     } else {
@@ -2391,7 +2464,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 //  on montre une carte premium : logo de la chaine, TV
                 //  cible, et controles cast (pause/reprise/stop). Le widget
                 //  se masque tout seul quand aucun cast n'est actif.
-                _CastingOverlay(channel: _currentChannel),
+                _CastingOverlay(
+                  channel: _currentChannel,
+                  // VAGUE B — zap depuis l'overlay : meme chemin que le
+                  // D-pad (_applyZap route vers la session de cast).
+                  onZapPrev: _canZap ? _zapPrev : null,
+                  onZapNext: _canZap ? _zapNext : null,
+                ),
 
                 // ----- 7. Overlay « À suivre » (autoplay façon YouTube) -----
                 if (_upNextChannel != null) _buildUpNextOverlay(),
@@ -3345,9 +3424,19 @@ class _ZapPreviewPage extends StatelessWidget {
 //  aucun cast n'est en cours -> on peut le laisser en permanence dans
 //  le Stack du lecteur.
 class _CastingOverlay extends StatelessWidget {
-  const _CastingOverlay({required this.channel});
+  const _CastingOverlay({
+    required this.channel,
+    this.onZapPrev,
+    this.onZapNext,
+  });
 
   final Channel channel;
+
+  /// VAGUE B — zap « télécommande » : fournis par le lecteur quand une
+  /// zapPlaylist existe. Ils passent par `_zapNext/_zapPrev` →
+  /// `_applyZap`, qui route vers la session de cast (jamais en local).
+  final VoidCallback? onZapPrev;
+  final VoidCallback? onZapNext;
 
   @override
   Widget build(BuildContext context) {
@@ -3429,10 +3518,18 @@ class _CastingOverlay extends StatelessWidget {
                     style: AppTextStyles.headlineMedium.copyWith(fontSize: 20),
                   ),
                   const SizedBox(height: 28),
-                  // Controles cast.
+                  // Controles cast — VAGUE B : Ch- / pause / stop / Ch+.
+                  // Le zap change la chaine SUR LA TV (telecommande pure).
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
+                      if (onZapPrev != null) ...<Widget>[
+                        _circleBtn(
+                          icon: Icons.skip_previous_rounded,
+                          onTap: connecting ? null : onZapPrev,
+                        ),
+                        const SizedBox(width: 20),
+                      ],
                       _circleBtn(
                         icon: paused
                             ? Icons.play_arrow_rounded
@@ -3447,6 +3544,13 @@ class _CastingOverlay extends StatelessWidget {
                         color: AppColors.live,
                         onTap: () => mgr.disconnect(),
                       ),
+                      if (onZapNext != null) ...<Widget>[
+                        const SizedBox(width: 20),
+                        _circleBtn(
+                          icon: Icons.skip_next_rounded,
+                          onTap: connecting ? null : onZapNext,
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 18),

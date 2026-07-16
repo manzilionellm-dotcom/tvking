@@ -259,6 +259,8 @@
   "castConnecting": "Kobler til...",
   "castInProgressTitle": "Caster",
   "castStopTooltip": "Stopp casting",
+  "castZapPrevTooltip": "Forrige kanal",
+  "castZapNextTooltip": "Neste kanal",
   "castPlayDefault": "Avspilling",
   "webCastTitle": "Cast via nettleser",
   "webCastDesc": "Fungerer på alle TV-er med nettleser — Google TV, Samsung, LG, Hisense, gamle smart-TV-er. TV-en må være på samme WiFi som telefonen.",

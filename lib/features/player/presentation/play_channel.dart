@@ -65,6 +65,13 @@ Future<void> playChannel(
       // garde en plus une cascade de secours si le pré-vol échoue.
       final String castUrl =
           overrideUrl ?? await CastUrlResolver.resolve(channel);
+      // VAGUE B — on partage la playlist de zap avec le CastManager :
+      // la mini-barre globale (et l'overlay du lecteur) peuvent alors
+      // proposer Ch+/Ch- qui changent la chaîne SUR LA TV, par le même
+      // chemin quel que soit l'écran d'origine.
+      if (zapPlaylist != null && zapPlaylist.length > 1) {
+        mgr.setCastPlaylist(zapPlaylist, channel);
+      }
       await mgr.castTo(
         target,
         streamUrl: castUrl,

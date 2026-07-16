@@ -259,6 +259,8 @@
   "castConnecting": "جارٍ الاتصال...",
   "castInProgressTitle": "جاري البث",
   "castStopTooltip": "إيقاف البث",
+  "castZapPrevTooltip": "القناة السابقة",
+  "castZapNextTooltip": "القناة التالية",
   "castPlayDefault": "تشغيل",
   "webCastTitle": "البث عبر المتصفّح",
   "webCastDesc": "يعمل على أي تلفاز به متصفّح ويب — Google TV وSamsung وLG وHisense والتلفازات الذكية القديمة. يجب أن يكون التلفاز على نفس شبكة WiFi مع الهاتف.",
