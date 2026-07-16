@@ -61,7 +61,14 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
   Map<String, List<Channel>> _groups = <String, List<Channel>>{};
   String _cat = _kAll;
   List<Channel> _visible = <Channel>[];
-  Channel? _preview;
+
+  /// Chaîne mise en APERÇU (colonne 3). En ValueNotifier — PAS un simple
+  /// champ + setState — pour que le DÉFILEMENT dans la liste ne reconstruise
+  /// QUE la colonne d'aperçu (via ValueListenableBuilder), et jamais les
+  /// colonnes Catégories/Chaînes. Avant, chaque déplacement du D-pad faisait
+  /// un setState global → tout l'écran se reconstruisait juste pour changer
+  /// l'aperçu → micro-accroc. C'est le dernier point de fluidité de l'écran.
+  final ValueNotifier<Channel?> _preview = ValueNotifier<Channel?>(null);
   Set<String> _favs = <String>{};
   bool _loading = true;
 
@@ -92,6 +99,7 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
   void dispose() {
     _chanSub?.cancel();
     _favSub?.cancel();
+    _preview.dispose();
     super.dispose();
   }
 
@@ -116,7 +124,7 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
       _groups = groups;
       if (!_cats.contains(_cat)) _cat = _kAll;
       _visible = _channelsFor(_cat);
-      _preview ??= _visible.isNotEmpty ? _visible.first : null;
+      _preview.value ??= _visible.isNotEmpty ? _visible.first : null;
       _loading = false;
     });
   }
@@ -131,9 +139,9 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
     setState(() {
       _cat = cat;
       _visible = _channelsFor(cat);
-      _preview = _visible.isNotEmpty ? _visible.first : null;
       _selectedId = null; // nouveau groupe → plus de chaîne « confirmée »
     });
+    _preview.value = _visible.isNotEmpty ? _visible.first : null;
   }
 
   /// Appui OK sur une chaîne de la liste (deux temps, cf. [_selectedId]).
@@ -143,9 +151,9 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
       return;
     }
     setState(() {
-      _selectedId = ch.id; // 1er OK → sélection : l'aperçu la joue
-      _preview = ch;
+      _selectedId = ch.id; // 1er OK → sélection (met à jour la pastille tuile)
     });
+    _preview.value = ch; // l'aperçu la joue (démarrage immédiat)
   }
 
   Future<void> _play(int i) async {
@@ -254,8 +262,11 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
             canRequestFocus: false,
             skipTraversal: true,
             onFocusChange: (bool has) {
-              if (has && mounted && _preview?.id != ch.id) {
-                setState(() => _preview = ch);
+              // DÉFILEMENT (hot path) : on met à jour l'aperçu SANS setState →
+              // seul le ValueListenableBuilder de la colonne 3 se reconstruit,
+              // les listes Catégories/Chaînes ne bougent pas → défilement lisse.
+              if (has && mounted && _preview.value?.id != ch.id) {
+                _preview.value = ch;
               }
             },
             child: _ChannelTile(
@@ -275,12 +286,15 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
 
   // ---- Colonne 3 : aperçu ----
   Widget _previewPane() {
-    final Channel? ch = _preview;
     return _panel(
       title: 'Aperçu',
-      child: ch == null
-          ? const SizedBox.shrink()
-          : Column(
+      // Seul ce builder se reconstruit quand la chaîne focalisée change
+      // (défilement) — les deux autres colonnes restent intactes.
+      child: ValueListenableBuilder<Channel?>(
+        valueListenable: _preview,
+        builder: (BuildContext context, Channel? ch, _) {
+          if (ch == null) return const SizedBox.shrink();
+          return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 // Aperçu vidéo EN DIRECT de la chaîne focalisée (muet,
@@ -357,7 +371,9 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                   ),
                 ],
               ],
-            ),
+            );
+          },
+        ),
     );
   }
 
