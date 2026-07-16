@@ -31,6 +31,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../core/app/device_memory.dart';
 import '../../../core/crash/crash_reporting.dart';
+import '../../../core/observability/structured_logger.dart';
 import '../../../core/i18n/l10n_now.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/security/secret_cipher.dart';
@@ -690,8 +691,20 @@ class PlaylistRepository {
         url: epgUrl,
         knownChannelIds: ids,
       );
-    } catch (_) {
-      // Silencieux — l'EPG est optionnel.
+    } catch (e) {
+      // Pas de crash (l'EPG est optionnel) MAIS plus de silence : un
+      // échec de sync était invisible en release et « Programme non
+      // disponible » restait un mystère. La boîte noire tranche
+      // désormais : import_ok avec count / import_fail avec l'erreur.
+      StructuredLogger.instance.warn(
+        domain: 'epg',
+        event: 'epg.import_fail',
+        ctx: <String, Object?>{
+          'host': Uri.tryParse(epgUrl)?.host,
+          'known': ids.length,
+          'error': e.toString(),
+        },
+      );
     }
   }
 

@@ -1441,7 +1441,18 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // appui « Lire maintenant » est déjà passé par onUserInteraction().
     if (auto) _autoplay.onAutoAdvance();
     setState(() => _upNextVisible = false);
-    _zap(1);
+    // 1-CONNEXION (terrain 2026-07-16 : « S01e04 — Chaîne vide ou
+    // bloquée ») : l'épisode qui vient de finir tient ENCORE le slot
+    // côté panel pendant ~1 s après la fermeture de sa connexion.
+    // Enchaîner immédiatement (l'ancien chemin ouvrait N+1 en ~150 ms)
+    // = 2e connexion → flux vide/403 → écran « bloqué ». On coupe
+    // l'amont MAINTENANT, on laisse le panel libérer, puis on ouvre
+    // l'épisode suivant. 1,2 s en fin d'épisode : imperceptible.
+    _controller.pause();
+    LocalStreamRelay.instance.closeOtherPlaybacks('');
+    _upNextTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) _zap(1);
+    });
   }
 
   /// « Annuler » (ou Retour) : le compte à rebours s'arrête, on reste sur

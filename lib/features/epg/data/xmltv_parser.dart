@@ -83,11 +83,36 @@ class XmltvParser {
     int batchSize = 500,
   }) async {
     final ReceivePort fromIsolate = ReceivePort();
+    // Ports DÉDIÉS pour la mort de l'isolate. Surtout pas le port de
+    // données : un message onError est une List de 2 String et serait
+    // pris pour un lot de programmes par le handler `msg is List`.
+    // Sans eux, un isolate tué (OOM sur petite box en plein parse de
+    // centaines de Mo, erreur fatale hors du try/catch interne) laissait
+    // `done` en attente POUR TOUJOURS → le verrou _syncing du
+    // EpgRepository restait collé → plus AUCUNE sync EPG jusqu'au
+    // redémarrage de l'app (terrain 2026-07-16 : « Programme non
+    // disponible » permanent).
+    final ReceivePort onIsolateError = ReceivePort();
+    final ReceivePort onIsolateExit = ReceivePort();
     final Completer<int> done = Completer<int>();
     final Completer<SendPort> ready = Completer<SendPort>();
     // Les lots s'insèrent DANS L'ORDRE : on chaîne les écritures pour ne
     // jamais entrelacer deux commits, et la fin attend la dernière.
     Future<void> writes = Future<void>.value();
+
+    onIsolateError.listen((Object? e) {
+      if (!done.isCompleted) {
+        done.completeError(Exception('XMLTV isolate crash: $e'));
+      }
+    });
+    onIsolateExit.listen((Object? _) {
+      // Sortie AVANT le total = anormal (le chemin nominal envoie le
+      // total, puis le parent tue l'isolate lui-même dans le finally).
+      if (!done.isCompleted) {
+        done.completeError(
+            Exception('XMLTV isolate terminé avant la fin du parse'));
+      }
+    });
 
     final Isolate iso = await Isolate.spawn<_XmltvIsolateConfig>(
       _parseIsolateMain,
@@ -99,6 +124,8 @@ class XmltvParser {
         keepHoursAfterNow: keepHoursAfterNow,
         batchSize: batchSize,
       ),
+      onError: onIsolateError.sendPort,
+      onExit: onIsolateExit.sendPort,
       errorsAreFatal: true,
     );
 
@@ -127,16 +154,22 @@ class XmltvParser {
     });
 
     try {
-      final SendPort toIsolate = await ready.future;
+      // Bornes dures : une sync EPG ne doit JAMAIS pendre — un blocage
+      // silencieux collerait le verrou _syncing du repository. 30 s
+      // pour le handshake, 15 min pour un EPG mondial sur box lente.
+      final SendPort toIsolate =
+          await ready.future.timeout(const Duration(seconds: 30));
       // On pousse les chunks bruts ; `null` = fin du flux.
       await for (final List<int> chunk in bytes) {
         toIsolate.send(chunk);
       }
       toIsolate.send(null);
-      return await done.future;
+      return await done.future.timeout(const Duration(minutes: 15));
     } finally {
       await sub.cancel();
       fromIsolate.close();
+      onIsolateError.close();
+      onIsolateExit.close();
       iso.kill(priority: Isolate.immediate);
     }
   }

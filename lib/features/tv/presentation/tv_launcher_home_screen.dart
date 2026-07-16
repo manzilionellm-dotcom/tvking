@@ -156,9 +156,21 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
     }
   }
 
-  void _open(Widget screen) {
-    Navigator.of(context)
+  /// Navigation vers un écran (Cinéma, Guide, Séries…). L'aperçu héro
+  /// est une SurfaceView en HYBRID COMPOSITION : pousser une route sans
+  /// la retirer d'abord laisse sa DERNIÈRE TRAME « percer » par-dessus
+  /// le nouvel écran (terrain 2026-07-16 : la petite vidéo d'accueil
+  /// restait incrustée sur Cinéma — l'accueil reste monté sous la
+  /// route, et le RouteAware de TvLivePreview arrive une frame trop
+  /// tard). Même garde que _play : on libère la surface sur une frame
+  /// PROPRE avant le push, puis on ré-arme l'aperçu au retour.
+  Future<void> _open(Widget screen) async {
+    setState(() => _previewLive = false);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    await Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => screen));
+    if (mounted) setState(() => _previewLive = true);
   }
 
   /// Lecture plein écran : l'aperçu héro est LIBÉRÉ d'abord (l'accueil reste

@@ -22,6 +22,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 
+import '../../../core/observability/structured_logger.dart';
 import '../../playlists/data/playlist_database.dart';
 import '../domain/epg_program.dart';
 import 'xmltv_parser.dart';
@@ -178,6 +179,22 @@ class EpgRepository {
         if (kDebugMode) {
           debugPrint('[EpgRepository] $total programmes importés');
         }
+        // BOÎTE NOIRE (terrain 2026-07-16, « Programme non disponible ») :
+        // la sync EPG était totalement muette en release — impossible de
+        // distinguer « pas d'URL EPG », « 0 programme (tvg-id qui ne
+        // matchent pas) » ou « sync plantée ». `count: 0` avec un `known`
+        // élevé pointe un mismatch d'identifiants ; l'absence totale de
+        // cet événement pointe une sync jamais lancée ou plantée (voir
+        // epg.import_fail côté PlaylistRepository).
+        StructuredLogger.instance.info(
+          domain: 'epg',
+          event: 'epg.import_ok',
+          ctx: <String, Object?>{
+            'host': Uri.tryParse(url)?.host,
+            'count': total,
+            'known': knownChannelIds?.length,
+          },
+        );
 
         _nowCache.clear(); // nouvelles données EPG → cache mémoire périmé
         if (!_changesController.isClosed) {

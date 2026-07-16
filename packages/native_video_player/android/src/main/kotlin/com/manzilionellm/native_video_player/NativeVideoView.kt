@@ -680,8 +680,17 @@ class NativeVideoView(
         cancelRetry()
         handler.removeCallbacks(positionPump)
         player.removeListener(this)
+        // DÉFENSE ANTI-« TRAME FANTÔME » (terrain 2026-07-16) : une
+        // SurfaceView en hybrid composition GARDE sa dernière trame
+        // décodée tant qu'elle n'est pas détachée — l'aperçu d'accueil
+        // restait incrusté par-dessus l'écran suivant. On détache la
+        // surface du player ET on retire les vues du conteneur pour que
+        // la couche Android disparaisse avec la dispose, pas « plus
+        // tard » au bon vouloir du compositeur.
+        player.clearVideoSurfaceView(surfaceView)
         player.setForegroundMode(false) // relâche les codecs avant release
         player.release()
+        container.removeAllViews()
         channel.setMethodCallHandler(null)
     }
 }

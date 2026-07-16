@@ -184,6 +184,23 @@ class StreamBlockedFallback {
             'probablement encore occupé)')) {
       return;
     }
+    // ÉLARGISSEMENT (terrain 2026-07-16, enchaînement d'épisodes) :
+    // beaucoup de panels ne renvoient PAS un 403 propre quand le slot
+    // est occupé — ils servent un 200 VIDE ou coupent la socket (EOF
+    // immédiat, status null). Ce cas partait directement en cascade de
+    // sondes (chaque sonde = une connexion de plus pendant que le slot
+    // est encore pris) → échec garanti → « Chaîne vide ou bloquée ».
+    // Même parade que le 403 : UN retry silencieux après backoff. Seuls
+    // les échecs DÉTERMINISTES (404/410/401 : mauvaise URL ou compte
+    // refusé — réessayer ne changera rien) partent en cascade directe.
+    final int? st = failure.status;
+    final bool deterministic = st == 404 || st == 410 || st == 401;
+    if (!deterministic &&
+        _tryScheduleBackoffRetry(
+            'échec sans frame (HTTP ${st ?? '— (réseau/EOF)'}) — slot '
+            '1-connexion probablement encore occupé')) {
+      return;
+    }
     // Fire-and-forget VOLONTAIRE : run() a son propre catch-all — aucune
     // exception ne peut se perdre dans la zone async du listener.
     run();
