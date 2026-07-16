@@ -667,6 +667,15 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ENVELOPPE MATERIAL — CORRIGE LES « LIGNES JAUNES » (photo client) :
+    // cet écran est poussé sans Scaffold ; sans ancêtre Material, chaque
+    // Text hérite du style d'erreur Flutter (soulignement jaune). L'enveloppe
+    // est transparente : zéro changement visuel autre que la disparition
+    // des soulignements.
+    return Material(type: MaterialType.transparency, child: _buildBody(context));
+  }
+
+  Widget _buildBody(BuildContext context) {
     if (_totalCount == 0) {
       // États PRÉCIS au lieu d'un « écran mort » :
       //  • pas encore prêt / en cours / réseau → « Recherche de tes chaînes… »

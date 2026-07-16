@@ -9,10 +9,11 @@
 //      SÉLECTION (l'aperçu joue la chaîne, on reste dans la liste), 2e OK
 //      sur la même chaîne = plein écran ;
 //    • droite  : APERÇU de la chaîne survolée (aperçu VIDÉO en direct — muet,
-//      anti-rebond, repli logo — + nom + EPG now/next + bouton « Regarder »).
+//      anti-rebond, repli logo) + programme du jour (en cours + suivants,
+//      façon IBO) + boutons Regarder / ★ Favori / Rechercher.
 //
 //  Réutilise UNIQUEMENT des briques existantes (PlaylistRepository,
-//  EpgRepository, FavoritesRepository, MiniEpgNowNext, TvChannelLogo,
+//  EpgRepository, FavoritesRepository, TvChannelLogo,
 //  TvPlayerScreen). Lecture = TvPlayerScreen (natif) → aucun media_kit.
 //  100 % télécommande. Code SEVEN original (aucun asset/écran tiers copié).
 // =========================================================
@@ -24,7 +25,6 @@ import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
-import '../../epg/presentation/widgets/mini_epg_now_next.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
@@ -33,6 +33,7 @@ import '../core/tv_logo.dart';
 import '../core/tv_tokens.dart';
 import 'tv_live_preview.dart';
 import 'tv_player_screen.dart';
+import 'tv_search_screen.dart';
 
 const String _kAll = 'Toutes les chaînes';
 
@@ -284,13 +285,52 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                     overflow: TextOverflow.ellipsis,
                     style: TvTokens.ui(TvDimens.title,
                         weight: FontWeight.w800, color: TvTokens.text)),
-                const SizedBox(height: 12),
-                MiniEpgNowNext(channelId: ch.id),
-                const Spacer(),
-                _WatchButton(onSelect: () {
-                  final int idx = _visible.indexWhere((Channel x) => x.id == ch.id);
-                  _play(idx < 0 ? 0 : idx);
-                }),
+                const SizedBox(height: 10),
+                // Programme du jour (façon IBO) : le programme EN COURS en
+                // or, puis les 3 suivants avec leurs horaires.
+                Expanded(child: _PreviewPrograms(channelId: ch.id)),
+                const SizedBox(height: 10),
+                // Boutons d'action (façon IBO) : Regarder / ★ Favori /
+                // Rechercher — « Regarder » garde la place d'honneur.
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      flex: 2,
+                      child: _ActionButton(
+                        icon: Icons.play_arrow_rounded,
+                        label: 'Regarder',
+                        primary: true,
+                        onSelect: () {
+                          final int idx = _visible
+                              .indexWhere((Channel x) => x.id == ch.id);
+                          _play(idx < 0 ? 0 : idx);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _ActionButton(
+                        icon: _favs.contains(ch.id)
+                            ? Icons.star_rounded
+                            : Icons.star_outline_rounded,
+                        label: 'Favori',
+                        onSelect: () =>
+                            FavoritesRepository.instance.toggle(ch.id),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _ActionButton(
+                        icon: Icons.search_rounded,
+                        label: 'Rechercher',
+                        onSelect: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                              builder: (_) => const TvSearchScreen()),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
                 if (ch.id == _selectedId) ...<Widget>[
                   const SizedBox(height: 8),
                   const SizedBox(
@@ -556,33 +596,151 @@ class _ChannelTileState extends State<_ChannelTile> {
   }
 }
 
-class _WatchButton extends StatelessWidget {
-  const _WatchButton({required this.onSelect});
+/// Bouton d'action du panneau Aperçu (Regarder / Favori / Rechercher).
+/// [primary] = pastille or au focus (l'action principale se voit).
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.onSelect,
+    this.primary = false,
+  });
+  final IconData icon;
+  final String label;
   final VoidCallback onSelect;
+  final bool primary;
+
   @override
   Widget build(BuildContext context) {
     return TvFocusBuilder(
-      scale: TvFocusScale.large,
+      scale: TvFocusScale.small,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color bg = focused ? TvTokens.gold : TvTokens.sel;
-        final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+        final Color bg = focused
+            ? (primary ? TvTokens.gold : TvTokens.sel)
+            : TvTokens.card;
+        final Color fg = focused
+            ? (primary ? const Color(0xFF1A1206) : TvTokens.goldBright)
+            : TvTokens.muted;
         return Container(
-          width: double.infinity,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-              color: bg, borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
-          padding: const EdgeInsets.symmetric(vertical: 14),
+            color: bg,
+            borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+            border: Border.all(
+                color: focused ? TvTokens.gold : TvTokens.hairline),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(Icons.play_arrow_rounded, color: fg, size: 24),
-              const SizedBox(width: 8),
-              Text('Regarder',
-                  style: TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w800, color: fg)),
+              Icon(icon, color: fg, size: 20),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: TvDimens.caption,
+                        fontWeight: FontWeight.w800,
+                        color: fg)),
+              ),
             ],
           ),
+        );
+      },
+    );
+  }
+}
+
+/// Programme du jour de la chaîne (façon IBO) : l'émission EN COURS en or,
+/// puis les suivantes avec leurs horaires. Sans EPG → petit mot discret
+/// (jamais un trou vide).
+class _PreviewPrograms extends StatefulWidget {
+  const _PreviewPrograms({required this.channelId});
+  final String channelId;
+
+  @override
+  State<_PreviewPrograms> createState() => _PreviewProgramsState();
+}
+
+class _PreviewProgramsState extends State<_PreviewPrograms> {
+  List<EpgProgram> _programs = const <EpgProgram>[];
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  @override
+  void didUpdateWidget(_PreviewPrograms old) {
+    super.didUpdateWidget(old);
+    if (old.channelId != widget.channelId) {
+      _loaded = false;
+      _programs = const <EpgProgram>[];
+      unawaited(_load());
+    }
+  }
+
+  Future<void> _load() async {
+    final String id = widget.channelId;
+    List<EpgProgram> today = const <EpgProgram>[];
+    try {
+      today = await EpgRepository.instance.todayPrograms(id);
+    } catch (_) {
+      // EPG indisponible → on affichera le repli.
+    }
+    if (!mounted || id != widget.channelId) return;
+    final DateTime now = DateTime.now();
+    // En cours + suivantes uniquement (le passé n'intéresse personne ici).
+    final List<EpgProgram> upcoming = today
+        .where((EpgProgram p) => p.stopDateTime.isAfter(now))
+        .take(4)
+        .toList();
+    setState(() {
+      _programs = upcoming;
+      _loaded = true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_loaded) return const SizedBox.shrink();
+    if (_programs.isEmpty) {
+      return Align(
+        alignment: Alignment.topLeft,
+        child: Text('Programme non disponible',
+            style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim)),
+      );
+    }
+    final DateTime now = DateTime.now();
+    return ListView.separated(
+      padding: EdgeInsets.zero,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _programs.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 6),
+      itemBuilder: (BuildContext c, int i) {
+        final EpgProgram p = _programs[i];
+        final bool live = p.isLiveAt(now);
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(p.timeRangeShort,
+                style: TvTokens.ui(TvDimens.caption,
+                    weight: FontWeight.w700,
+                    color: live ? TvTokens.gold : TvTokens.mutedDim)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(p.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvTokens.ui(TvDimens.caption,
+                      weight: live ? FontWeight.w700 : FontWeight.w500,
+                      color: live ? TvTokens.text : TvTokens.muted)),
+            ),
+          ],
         );
       },
     );
