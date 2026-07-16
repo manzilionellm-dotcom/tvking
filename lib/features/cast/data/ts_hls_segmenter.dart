@@ -31,7 +31,11 @@ import 'dart:typed_data';
 
 /// Un segment HLS fini, prêt à être servi tel quel (video/mp2t).
 class TsSegment {
-  TsSegment({required this.bytes, required this.durationSec});
+  TsSegment({
+    required this.bytes,
+    required this.durationSec,
+    this.discontinuity = false,
+  });
 
   final Uint8List bytes;
 
@@ -39,6 +43,16 @@ class TsSegment {
   /// l'EXTINF de la playlist — Shaka se sert de ces durées pour caler
   /// sa fenêtre live, elles doivent être honnêtes.
   final double durationSec;
+
+  /// `true` si ce segment DÉMARRE une nouvelle ligne de temps : un saut
+  /// d'horloge PCR a été détecté EN COURS de connexion (coupure pub
+  /// IPTV, changement de profil encodeur, splice). La session doit
+  /// alors poser un #EXT-X-DISCONTINUITY devant ce segment — sans quoi
+  /// le récepteur (Shaka/mux.js) voit ses timestamps dérailler :
+  /// audio/vidéo se désynchronisent, trames audio jetées, son haché.
+  /// C'était la cause « intra-connexion » du « son pas bon / pas
+  /// stable » : seule la discontinuité de RECONNEXION était signalée.
+  final bool discontinuity;
 }
 
 class TsHlsSegmenter {
@@ -111,6 +125,17 @@ class TsHlsSegmenter {
   double? _segStartPcr;
   double? _lastPcr;
   double? _firstPcr;
+
+  /// Saut d'horloge PCR détecté (coupure pub, splice, ré-ancrage
+  /// encodeur) : on coupe au prochain début de PES vidéo et le NOUVEAU
+  /// segment portera [TsSegment.discontinuity] pour que la playlist
+  /// pose un #EXT-X-DISCONTINUITY (sinon : désynchro A/V côté
+  /// récepteur, son haché — diagnostiqué « voix pas bonne »).
+  bool _discontinuityPending = false;
+
+  /// Le segment EN COURS démarre-t-il une nouvelle ligne de temps ?
+  /// (posé par [_beginSegment], consommé par [_emit]).
+  bool _segDiscontinuity = false;
 
   /// Première / dernière PCR observées sur CE flux. Utilisées par la
   /// session pour détecter qu'une re-connexion upstream CONTINUE la
@@ -228,9 +253,15 @@ class TsHlsSegmenter {
         if (pcr != null) {
           _firstPcr ??= pcr;
           // Saut d'horloge (wrap 33 bits / discontinuité serveur) :
-          // on repart de là plutôt que de produire une durée délirante.
+          // on repart de là plutôt que de produire une durée délirante,
+          // ET on retient qu'une discontinuité doit être ANNONCÉE dans
+          // la playlist (coupe au prochain début de PES vidéo). Avant,
+          // le saut était absorbé en silence : le récepteur voyait ses
+          // PTS dérailler en plein segment → désynchro audio/vidéo,
+          // trames audio jetées — le « son pas bon » intermittent.
           if (_lastPcr != null && (pcr < _lastPcr! || pcr - _lastPcr! > 10)) {
             _segStartPcr = pcr - _elapsedSec();
+            _discontinuityPending = true;
           }
           _lastPcr = pcr;
         }
@@ -267,7 +298,14 @@ class TsHlsSegmenter {
       final bool cutOnKey = keyframe && elapsed >= _currentTargetSec;
       final bool cutNoKey =
           elapsed >= (_raiUnusable ? _currentTargetSec : maxDurationSec);
-      if ((cutOnKey || cutNoKey) && _segment.length >= kMinSegmentBytes) {
+      // Saut d'horloge en attente : on coupe DÈS QUE POSSIBLE (sans
+      // attendre la durée cible) pour isoler la nouvelle ligne de
+      // temps dans son propre segment, marqué discontinuity. Les
+      // quelques paquets post-saut restés en queue de l'ancien segment
+      // sont couverts par le reset décodeur du tag DISCONTINUITY.
+      final bool cutOnDisc = _discontinuityPending;
+      if ((cutOnKey || cutNoKey || cutOnDisc) &&
+          _segment.length >= kMinSegmentBytes) {
         completed = _emit();
         _beginSegment();
       }
@@ -287,6 +325,11 @@ class TsHlsSegmenter {
     if (_pmtPacket != null) _segment.add(_pmtPacket!);
     _segStartPcr = _lastPcr;
     _segStartWall = _clock();
+    // Le segment qui démarre porte la discontinuité en attente (s'il y
+    // en a une) : le tag #EXT-X-DISCONTINUITY se place DEVANT le
+    // segment qui ouvre la nouvelle ligne de temps (RFC 8216).
+    _segDiscontinuity = _discontinuityPending;
+    _discontinuityPending = false;
   }
 
   double _elapsedSec() {
@@ -301,8 +344,11 @@ class TsHlsSegmenter {
 
   TsSegment _emit() {
     final double dur = _elapsedSec().clamp(0.5, 30.0).toDouble();
-    final TsSegment seg =
-        TsSegment(bytes: _segment.takeBytes(), durationSec: dur);
+    final TsSegment seg = TsSegment(
+      bytes: _segment.takeBytes(),
+      durationSec: dur,
+      discontinuity: _segDiscontinuity,
+    );
     _segment.clear();
     _emitted++;
     return seg;
@@ -367,12 +413,43 @@ class TsHlsSegmenter {
         _videoPid = pid;
         videoCodec = codec;
       }
-      final String? audio = _audioCodecOf(streamType);
-      if (audio != null && audioCodec == 'unknown') {
+      String? audio = _audioCodecOf(streamType);
+      // DVB : AC-3 / E-AC-3 / DTS sont très souvent signalés en
+      // stream_type 0x06 (« PES privé ») + un descripteur dédié dans
+      // la boucle ES. Sans ce raffinement, la boîte noire journalisait
+      // `audio=private` et masquait la vraie cause d'un son cassé
+      // (codec non transmuxable par le récepteur Cast).
+      if (streamType == 0x06) {
+        final String? refined = _privateEsAudioCodec(s, i + 5, esInfoLen);
+        if (refined != null) audio = refined;
+      }
+      if (audio != null &&
+          (audioCodec == 'unknown' || audioCodec == 'private')) {
         audioCodec = audio;
       }
       i += 5 + esInfoLen;
     }
+  }
+
+  /// Raffine un flux « PES privé » (stream_type 0x06) en scannant ses
+  /// descripteurs ES (ETSI EN 300 468) : AC-3_descriptor (0x6A),
+  /// enhanced_AC-3_descriptor (0x7A), DTS_descriptor (0x7B). Renvoie
+  /// null si aucun descripteur audio connu (probable sous-titrage DVB).
+  static String? _privateEsAudioCodec(Uint8List s, int off, int len) {
+    int i = off;
+    final int end = off + len;
+    while (i + 2 <= end && i + 2 <= s.length) {
+      switch (s[i]) {
+        case 0x6A:
+          return 'ac3';
+        case 0x7A:
+          return 'eac3';
+        case 0x7B:
+          return 'dts';
+      }
+      i += 2 + s[i + 1];
+    }
+    return null;
   }
 
   static String? _videoCodecOf(int streamType) {

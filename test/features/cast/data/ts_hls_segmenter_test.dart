@@ -268,5 +268,70 @@ void main() {
         expect(s.durationSec, lessThanOrEqualTo(30.0));
       }
     });
+
+    test(
+        'saut de PCR INTRA-connexion → le segment de la nouvelle ligne '
+        'de temps est marqué discontinuity (anti désynchro A/V)', () {
+      final TsHlsSegmenter seg = TsHlsSegmenter();
+      final List<TsSegment> out = <TsSegment>[
+        // 6 s de flux stable : au moins un segment fini, SANS tag.
+        ...seg.ingest(syntheticStream(seconds: 6.0, startPcr: 10.0)),
+        // Coupure pub / splice : l'horloge repart à 5 000 s. Sans le
+        // tag DISCONTINUITY, le récepteur (Shaka/mux.js) voyait ses
+        // PTS sauter en silence → son haché, audio/vidéo désynchro.
+        ...seg.ingest(syntheticStream(seconds: 6.0, startPcr: 5000.0)),
+      ];
+      expect(out.length, greaterThanOrEqualTo(2));
+      expect(out.first.discontinuity, isFalse,
+          reason: 'le flux stable ne doit PAS être marqué');
+      expect(out.any((TsSegment s) => s.discontinuity), isTrue,
+          reason: 'le saut d\'horloge doit être ANNONCÉ sur le segment '
+              'qui ouvre la nouvelle ligne de temps');
+    });
+  });
+
+  group('TsHlsSegmenter — étiquetage audio DVB (stream_type 0x06)', () {
+    // En DVB, AC-3/E-AC-3/DTS sont souvent signalés en stream_type
+    // 0x06 (« PES privé ») + un descripteur dédié. Avant, la boîte
+    // noire journalisait `audio=private` et masquait la cause réelle
+    // d'un son cassé sur le récepteur Cast.
+    Uint8List pmtWithPrivateAudio({required int descriptorTag}) {
+      final List<int> section = <int>[
+        0x00, // pointer_field
+        0x02, // table_id PMT
+        0xB0, 13 + 5 + 5 + 2, // 9 + vidéo 5 + audio 5+desc 2 + CRC 4
+        0x00, 0x01,
+        0xC1,
+        0x00, 0x00,
+        0xE0 | ((kVideoPid >> 8) & 0x1F), kVideoPid & 0xFF,
+        0xF0, 0x00,
+        0x1B, // vidéo H.264
+        0xE0 | ((kVideoPid >> 8) & 0x1F), kVideoPid & 0xFF,
+        0xF0, 0x00,
+        0x06, // audio « PES privé »
+        0xE0 | (((kVideoPid + 1) >> 8) & 0x1F), (kVideoPid + 1) & 0xFF,
+        0xF0, 0x02, // ES_info_length = 2 (descripteur vide)
+        descriptorTag, 0x00,
+        0xDE, 0xAD, 0xBE, 0xEF,
+      ];
+      return tsPacket(pid: kPmtPid, pusi: true, payload: section);
+    }
+
+    void expectCodec(int tag, String expected) {
+      final TsHlsSegmenter seg = TsHlsSegmenter();
+      final BytesBuilder b = BytesBuilder()
+        ..add(patPacket())
+        ..add(pmtWithPrivateAudio(descriptorTag: tag));
+      seg.ingest(b.takeBytes());
+      expect(seg.audioCodec, expected,
+          reason: 'descripteur 0x${tag.toRadixString(16)} → $expected');
+    }
+
+    test('AC-3_descriptor (0x6A) → ac3', () => expectCodec(0x6A, 'ac3'));
+    test('enhanced_AC-3_descriptor (0x7A) → eac3',
+        () => expectCodec(0x7A, 'eac3'));
+    test('DTS_descriptor (0x7B) → dts', () => expectCodec(0x7B, 'dts'));
+    test('0x06 sans descripteur audio connu → private (sous-titres DVB)',
+        () => expectCodec(0x13, 'private'));
   });
 }

@@ -424,6 +424,11 @@ class HlsRelaySession {
           first - prev <= 15.0;
       discontinuity = !seamless;
     }
+    // Discontinuité INTRA-connexion détectée par le segmenteur (saut
+    // PCR : coupure pub, splice, ré-ancrage encodeur). Sans ce tag, le
+    // récepteur voyait ses timestamps sauter en silence → désynchro
+    // audio/vidéo et son haché (le « pas stable » du terrain).
+    discontinuity = discontinuity || seg.discontinuity;
     _segments.add(HlsLiveSegment(
       sequence: _nextSequence++,
       bytes: seg.bytes,

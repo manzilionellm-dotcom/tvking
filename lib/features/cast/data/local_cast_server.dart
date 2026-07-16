@@ -238,15 +238,39 @@ class LocalCastServer {
       // Le codec compte : HEVC-dans-TS n'est pas décodé par le Default
       // Media Receiver des vrais Chromecast (limite CAF, pas un bug du
       // relais) — la SHIELD, elle, le décode.
-      StructuredLogger.instance.info(
-        domain: 'cast',
-        event: 'hls_relay.ready',
-        ctx: <String, Object?>{
-          'codec': session.videoCodec,
-          'audio': session.audioCodec,
-          'segments': session.segmentCount,
-        },
-      );
+      //
+      // L'AUDIO compte tout autant : le transmux TS→fMP4 du Default
+      // Media Receiver (mux.js) ne sait re-emballer que l'AAC (ADTS)
+      // et le MP3. Un TS qui porte du MP2 (Layer II, ultra-courant en
+      // DVB/IPTV européen), de l'AC-3/E-AC-3, du DTS ou de l'AAC-LATM
+      // sort typiquement SANS son ou avec un son corrompu alors que la
+      // vidéo passe — la signature exacte du « la voix n'est pas
+      // bonne » du terrain. On l'élève en WARN pour que la boîte noire
+      // pointe la cause réelle au lieu d'un faux succès silencieux.
+      const Set<String> kUntransmuxableAudio = <String>{
+        'mp2', 'ac3', 'eac3', 'dts', 'aac-latm', 'private',
+      };
+      final bool audioAtRisk =
+          kUntransmuxableAudio.contains(session.audioCodec);
+      final Map<String, Object?> ctx = <String, Object?>{
+        'codec': session.videoCodec,
+        'audio': session.audioCodec,
+        'segments': session.segmentCount,
+        if (audioAtRisk) 'audioAtRisk': true,
+      };
+      if (audioAtRisk) {
+        StructuredLogger.instance.warn(
+          domain: 'cast',
+          event: 'hls_relay.ready_audio_at_risk',
+          ctx: ctx,
+        );
+      } else {
+        StructuredLogger.instance.info(
+          domain: 'cast',
+          event: 'hls_relay.ready',
+          ctx: ctx,
+        );
+      }
     }
     // URIs RELATIVES à la playlist (/hls/<token>.m3u8) :
     // `<token>/<seq>.ts` → /hls/<token>/<seq>.ts.
