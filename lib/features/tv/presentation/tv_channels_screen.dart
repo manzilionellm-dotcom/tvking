@@ -5,7 +5,9 @@
 //    • gauche  : CATÉGORIES (compact, focus = pill plein, jamais de « ligne
 //      jaune ») ;
 //    • centre  : liste des CHAÎNES du groupe (n° + logo + nom + ★ favori +
-//      programme en cours) ;
+//      programme en cours). OK À DEUX TEMPS (façon TiviMate) : 1er OK =
+//      SÉLECTION (l'aperçu joue la chaîne, on reste dans la liste), 2e OK
+//      sur la même chaîne = plein écran ;
 //    • droite  : APERÇU de la chaîne survolée (aperçu VIDÉO en direct — muet,
 //      anti-rebond, repli logo — + nom + EPG now/next + bouton « Regarder »).
 //
@@ -58,6 +60,13 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
   /// puis rétabli au retour.
   bool _previewLive = true;
 
+  /// SÉLECTION à deux temps (façon TiviMate) : le 1er OK sur une chaîne la
+  /// SÉLECTIONNE (l'aperçu la joue, on reste dans la liste) ; un 2e OK sur
+  /// la MÊME chaîne ouvre le plein écran. OK sur une AUTRE chaîne = nouvelle
+  /// sélection. Le simple focus (défilement) continue d'alimenter l'aperçu
+  /// après l'anti-rebond — l'OK ne fait que CONFIRMER.
+  String? _selectedId;
+
   @override
   void initState() {
     super.initState();
@@ -107,6 +116,19 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
       _cat = cat;
       _visible = _channelsFor(cat);
       _preview = _visible.isNotEmpty ? _visible.first : null;
+      _selectedId = null; // nouveau groupe → plus de chaîne « confirmée »
+    });
+  }
+
+  /// Appui OK sur une chaîne de la liste (deux temps, cf. [_selectedId]).
+  void _onChannelOk(int i, Channel ch) {
+    if (_selectedId == ch.id) {
+      _play(i); // 2e OK sur la chaîne déjà sélectionnée → plein écran
+      return;
+    }
+    setState(() {
+      _selectedId = ch.id; // 1er OK → sélection : l'aperçu la joue
+      _preview = ch;
     });
   }
 
@@ -211,8 +233,9 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
               number: i + 1,
               channel: ch,
               favorite: _favs.contains(ch.id),
+              selected: ch.id == _selectedId,
               autofocus: i == 0,
-              onSelect: () => _play(i),
+              onSelect: () => _onChannelOk(i, ch),
               onFavorite: () => FavoritesRepository.instance.toggle(ch.id),
             ),
           );
@@ -233,9 +256,14 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
               children: <Widget>[
                 // Aperçu vidéo EN DIRECT de la chaîne focalisée (muet,
                 // anti-rebond ~600 ms, repli logo — cf. TvLivePreview).
+                // Une chaîne SÉLECTIONNÉE (OK) démarre sans anti-rebond.
                 AspectRatio(
                   aspectRatio: 16 / 9,
-                  child: TvLivePreview(channel: ch, enabled: _previewLive),
+                  child: TvLivePreview(
+                    channel: ch,
+                    enabled: _previewLive,
+                    startImmediately: ch.id == _selectedId,
+                  ),
                 ),
                 const SizedBox(height: 14),
                 Text(ch.cleanName,
@@ -250,6 +278,16 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                   final int idx = _visible.indexWhere((Channel x) => x.id == ch.id);
                   _play(idx < 0 ? 0 : idx);
                 }),
+                if (ch.id == _selectedId) ...<Widget>[
+                  const SizedBox(height: 8),
+                  const SizedBox(
+                    width: double.infinity,
+                    child: Text('Appuyez encore sur OK pour le plein écran',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: TvDimens.caption, color: TvTokens.muted)),
+                  ),
+                ],
               ],
             ),
     );
@@ -348,6 +386,7 @@ class _ChannelTile extends StatefulWidget {
     required this.number,
     required this.channel,
     required this.favorite,
+    required this.selected,
     required this.autofocus,
     required this.onSelect,
     required this.onFavorite,
@@ -355,6 +394,10 @@ class _ChannelTile extends StatefulWidget {
   final int number;
   final Channel channel;
   final bool favorite;
+
+  /// Chaîne CONFIRMÉE par un 1er OK (l'aperçu la joue) : fond marqué même
+  /// sans focus — le prochain OK dessus ouvrira le plein écran.
+  final bool selected;
   final bool autofocus;
   final VoidCallback onSelect;
   final VoidCallback onFavorite;
@@ -384,14 +427,22 @@ class _ChannelTileState extends State<_ChannelTile> {
         onSelect: widget.onSelect,
         onLongPress: widget.onFavorite,
         builder: (BuildContext context, bool focused) {
-          final Color bg = focused ? TvTokens.sel : Colors.transparent;
-          final Color name = focused ? TvTokens.text : TvTokens.text;
+          // Même langage visuel que les catégories : focus = fond plein,
+          // sélection (sans focus) = fond atténué.
+          final Color bg = focused
+              ? TvTokens.sel
+              : (widget.selected
+                  ? TvTokens.sel.withValues(alpha: 0.6)
+                  : Colors.transparent);
+          const Color name = TvTokens.text;
           return Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: bg,
               borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
-              border: focused ? Border.all(color: TvTokens.gold) : null,
+              border: (focused || widget.selected)
+                  ? Border.all(color: TvTokens.gold)
+                  : null,
             ),
             child: Row(
               children: <Widget>[
@@ -418,7 +469,7 @@ class _ChannelTileState extends State<_ChannelTile> {
                       Text(widget.channel.cleanName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
+                          style: const TextStyle(
                               fontSize: TvDimens.body,
                               fontWeight: FontWeight.w700,
                               color: name)),

@@ -29,6 +29,7 @@ import 'package:native_video_player/native_video_player.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/data/local_stream_relay.dart';
 import '../../player/data/stream_blocked_fallback.dart';
+import '../../player/data/stream_diagnostics.dart';
 import '../../player/data/xtream_url_variants.dart';
 import '../../playlists/data/xtream_url_format_store.dart';
 import '../../playlists/domain/playlist.dart' as pl;
@@ -52,6 +53,7 @@ class TvLivePreview extends StatefulWidget {
     super.key,
     required this.channel,
     this.enabled = true,
+    this.startImmediately = false,
     this.debounce = const Duration(milliseconds: 600),
     this.resolver,
   });
@@ -62,6 +64,11 @@ class TvLivePreview extends StatefulWidget {
   /// `false` = aperçu suspendu (logo seul, aucun flux ouvert). L'écran le
   /// passe à `false` AVANT d'ouvrir le plein écran → jamais 2 flux ouverts.
   final bool enabled;
+
+  /// `true` = la chaîne vient d'être SÉLECTIONNÉE (appui OK) : on saute
+  /// l'anti-rebond et on démarre tout de suite — un choix explicite mérite
+  /// une réponse immédiate. Le simple focus (défilement) reste anti-rebondi.
+  final bool startImmediately;
 
   /// Répit sans changement de focus avant d'ouvrir le flux.
   final Duration debounce;
@@ -131,6 +138,15 @@ class _TvLivePreviewState extends State<TvLivePreview> {
     if (old.channel.id != widget.channel.id || old.enabled != widget.enabled) {
       _reset();
       if (widget.enabled) _schedule();
+    } else if (widget.enabled &&
+        widget.startImmediately &&
+        !old.startImmediately &&
+        _ctrl == null &&
+        !_resolving) {
+      // La chaîne déjà focalisée vient d'être SÉLECTIONNÉE (OK) alors que
+      // l'anti-rebond courait encore : on démarre sans attendre.
+      _debounce?.cancel();
+      _start();
     }
   }
 
@@ -146,6 +162,8 @@ class _TvLivePreviewState extends State<TvLivePreview> {
     _debounce?.cancel();
     _debounce = null;
     _resolving = false;
+    _loggedFirstFrame = false;
+    _loggedError = false;
     _ctrl?.removeListener(_onPlayer);
     _ctrl?.dispose();
     _ctrl = null;
@@ -153,24 +171,42 @@ class _TvLivePreviewState extends State<TvLivePreview> {
 
   void _schedule() {
     _debounce?.cancel();
-    _debounce = Timer(widget.debounce, _start);
+    // Sélection explicite (OK) = démarrage immédiat ; focus = anti-rebond.
+    _debounce = Timer(
+        widget.startImmediately ? Duration.zero : widget.debounce, _start);
+  }
+
+  /// Trace « boîte noire » (StreamDiagnostics, onglet Diagnostic des
+  /// Réglages) : chaque étape de l'aperçu est journalisée pour qu'un échec
+  /// silencieux (repli logo) reste DIAGNOSTICABLE à distance.
+  void _diag(String message, {String level = 'info'}) {
+    StreamDiagnostics.instance.recordEvent('aperçu', message, level: level);
   }
 
   Future<void> _start() async {
     final int session = _session;
+    final String name = widget.channel.cleanName;
+    _diag('[$name] anti-rebond écoulé → résolution de l\'URL d\'aperçu');
     setState(() => _resolving = true);
     TvPreviewSource? src;
     try {
       src = await (widget.resolver ?? TvLivePreview.resolveSource)(
           widget.channel);
-    } catch (_) {
+    } catch (e) {
       src = null; // échec de résolution → on reste sur le logo
+      _diag('[$name] résolution impossible : $e', level: 'warn');
     }
-    if (!mounted || session != _session) return;
+    if (!mounted || session != _session) {
+      _diag('[$name] résolution abandonnée (focus déjà reparti)');
+      return;
+    }
     if (src == null) {
       setState(() => _resolving = false);
       return;
     }
+    _diag('[$name] lecture aperçu : '
+        '${StreamDiagnostics.maskCredentials(src.url)}'
+        '${src.userAgent == null ? '' : ' (UA: ${src.userAgent})'}');
     final NativeVideoController c = NativeVideoController();
     c.setVolume(0); // muet d'office — le son n'arrive qu'en plein écran
     c.setUrl(src.url, userAgent: src.userAgent);
@@ -181,8 +217,31 @@ class _TvLivePreviewState extends State<TvLivePreview> {
     });
   }
 
+  // Journalise 1re image / erreur UNE seule fois par tentative (le
+  // contrôleur notifie ~2×/s : sans ces verrous, la boîte noire déborde).
+  bool _loggedFirstFrame = false;
+  bool _loggedError = false;
+
   void _onPlayer() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    final NativeVideoController? c = _ctrl;
+    if (c != null) {
+      if (c.firstFrame && !_loggedFirstFrame) {
+        _loggedFirstFrame = true;
+        _diag('[${widget.channel.cleanName}] 1re image aperçu OK');
+      }
+      if (c.hasError && !_loggedError) {
+        _loggedError = true;
+        _diag(
+            '[${widget.channel.cleanName}] échec aperçu : '
+            '${c.lastErrorCodeName ?? 'erreur'}'
+            '${c.lastErrorCode == null ? '' : ' (${c.lastErrorCode})'}'
+            ' — ${c.lastErrorCauseMessage ?? c.lastErrorMessage ?? 'lecture impossible'}'
+            ' → repli logo',
+            level: 'warn');
+      }
+    }
+    setState(() {});
   }
 
   @override

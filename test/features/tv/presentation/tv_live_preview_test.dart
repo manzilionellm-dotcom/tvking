@@ -102,6 +102,36 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets(
+      'startImmediately (chaîne sélectionnée par OK) court-circuite '
+      'l’anti-rebond', (WidgetTester tester) async {
+    final List<String> resolved = <String>[];
+    final Completer<TvPreviewSource> never = Completer<TvPreviewSource>();
+    Future<TvPreviewSource> resolver(Channel c) {
+      resolved.add(c.id);
+      return never.future;
+    }
+
+    // Focus simple : l'anti-rebond court, rien ne démarre encore.
+    await tester.pumpWidget(_host(TvLivePreview(
+      channel: _channel('c1', 'Chaîne Une'),
+      resolver: resolver,
+    )));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(resolved, isEmpty);
+
+    // Appui OK (sélection) : démarrage immédiat, sans attendre les 600 ms.
+    await tester.pumpWidget(_host(TvLivePreview(
+      channel: _channel('c1', 'Chaîne Une'),
+      startImmediately: true,
+      resolver: resolver,
+    )));
+    await tester.pump();
+    expect(resolved, <String>['c1']);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('enabled:false (plein écran imminent) = aucun démarrage',
       (WidgetTester tester) async {
     int calls = 0;
