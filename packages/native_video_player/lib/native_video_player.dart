@@ -10,11 +10,39 @@
 //      rendue dans une vraie fenêtre, pas dans une texture Flutter) puis
 //      rattache le controller à l'instance native.
 // =========================================================
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+
+/// Infos APPAREIL fournies par le natif (canal 'native_video_player/info').
+/// Sert au mode « petite box » : l'app s'allège toute seule sur un Fire TV
+/// Stick / box 1 Go (caches réduits, aperçus plus prudents).
+class NativeDeviceInfo {
+  const NativeDeviceInfo._();
+  static const MethodChannel _channel =
+      MethodChannel('native_video_player/info');
+
+  /// RAM totale (octets) + drapeau « appareil à faible RAM » d'Android.
+  /// Ne lève JAMAIS : en cas d'échec (plateforme sans plugin, test), renvoie
+  /// des valeurs neutres (pas de mode léger à tort).
+  static Future<({int totalMem, bool isLowRamDevice})> query() async {
+    try {
+      final Map<dynamic, dynamic>? m = await _channel
+          .invokeMethod<Map<dynamic, dynamic>>('deviceInfo')
+          .timeout(const Duration(milliseconds: 600));
+      return (
+        totalMem: (m?['totalMem'] as int?) ?? 0,
+        isLowRamDevice: (m?['isLowRamDevice'] as bool?) ?? false,
+      );
+    } catch (_) {
+      return (totalMem: 0, isLowRamDevice: false);
+    }
+  }
+}
 
 /// Piste (audio ou sous-titres) exposée par le lecteur natif.
 class TrackInfo {

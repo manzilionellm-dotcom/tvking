@@ -562,7 +562,13 @@ jobs:
           fi
           echo "TV_UPDATE_TAG=$TV_UPDATE_TAG" >> "$GITHUB_ENV"
           echo "TV_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          # TÉLÉCHARGEMENT PLUS LÉGER (petites box) : on n'embarque que les
+          # binaires ARM (arm32 + arm64) — TOUTES les box/sticks Android TV
+          # et Fire TV du marché sont ARM. Retirer x86_64 allège l'APK
+          # d'environ un quart : téléchargement Downloader plus rapide,
+          # installation plus rapide, moins d'espace pris sur la box.
           flutter build apk --release --no-tree-shake-icons \
+            --target-platform android-arm,android-arm64 \
             --build-number="$BUILD_NUMBER" \
             --obfuscate --split-debug-info=build/symbols \
             --dart-define=GIT_SHA=${{ github.sha }} \

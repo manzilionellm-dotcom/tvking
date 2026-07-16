@@ -1,11 +1,14 @@
 package com.manzilionellm.native_video_player
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.app.Application
+import android.content.Context
 import android.os.Bundle
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
+import io.flutter.plugin.common.MethodChannel
 
 /**
  * Point d'entrée du plugin. Flutter l'instancie et l'attache automatiquement
@@ -40,6 +43,8 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
         override fun onActivityDestroyed(a: Activity) {}
     }
 
+    private var infoChannel: MethodChannel? = null
+
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         binding
             .platformViewRegistry
@@ -47,10 +52,34 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
                 "native_video_player/view",
                 NativeVideoViewFactory(binding.binaryMessenger),
             )
+        // Canal d'INFOS APPAREIL : permet à Dart d'adapter l'app aux PETITES
+        // box (Fire TV Stick & co) — 'deviceInfo' renvoie la RAM totale et le
+        // drapeau isLowRamDevice d'Android. Utilisé par le garde-mémoire TV.
+        infoChannel = MethodChannel(binding.binaryMessenger, "native_video_player/info")
+        val appContext = binding.applicationContext
+        infoChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "deviceInfo" -> {
+                    val am = appContext.getSystemService(Context.ACTIVITY_SERVICE)
+                        as? ActivityManager
+                    val mem = ActivityManager.MemoryInfo()
+                    am?.getMemoryInfo(mem)
+                    result.success(
+                        mapOf(
+                            "totalMem" to mem.totalMem,
+                            "isLowRamDevice" to (am?.isLowRamDevice == true),
+                        ),
+                    )
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        // Rien à libérer : chaque NativeVideoView gère son propre cycle de vie
+        infoChannel?.setMethodCallHandler(null)
+        infoChannel = null
+        // Chaque NativeVideoView gère son propre cycle de vie par ailleurs
         // (dispose() appelé par Flutter quand la PlatformView est retirée).
     }
 

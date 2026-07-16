@@ -35,6 +35,7 @@ import '../../playlists/data/xtream_url_format_store.dart';
 import '../../playlists/domain/playlist.dart' as pl;
 import '../core/tv_dimens.dart';
 import '../core/tv_logo.dart';
+import '../core/tv_memory_guard.dart';
 import '../core/tv_tokens.dart';
 
 /// URL (et signature) effectives à jouer pour un aperçu.
@@ -233,8 +234,14 @@ class _TvLivePreviewState extends State<TvLivePreview> with RouteAware {
     if (_covered) return; // un écran est posé par-dessus → aperçu coupé
     _debounce?.cancel();
     // Sélection explicite (OK) = démarrage immédiat ; focus = anti-rebond.
-    _debounce = Timer(
-        widget.startImmediately ? Duration.zero : widget.debounce, _start);
+    // PETITE BOX : anti-rebond rallongé (×2) — on n'ouvre un flux qu'après
+    // une vraie pause du défilement (moins de churn décodeur/réseau).
+    final Duration wait = widget.startImmediately
+        ? Duration.zero
+        : (TvMemoryGuard.instance.lowSpec
+            ? widget.debounce * 2
+            : widget.debounce);
+    _debounce = Timer(wait, _start);
   }
 
   /// Trace « boîte noire » (StreamDiagnostics, onglet Diagnostic des

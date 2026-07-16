@@ -32,6 +32,8 @@ import '../../vod/data/vod_repository.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import '../core/tv_logo.dart';
+import '../core/tv_memory_guard.dart';
 import '../core/tv_tokens.dart';
 import 'tv_channels_screen.dart';
 import 'tv_components.dart';
@@ -281,7 +283,18 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
               children: <Widget>[
                 // L'aperçu vidéo réutilise TOUTE la mécanique de l'écran En
                 // direct (muet, anti-rebond, repli logo, relais 1-connexion).
-                TvLivePreview(channel: ch, enabled: _previewLive),
+                // PETITE BOX (Fire TV Stick & co) : pas de vidéo permanente
+                // sur l'accueil — le logo de la chaîne suffit, la RAM et le
+                // décodeur restent disponibles pour la lecture réelle.
+                if (TvMemoryGuard.instance.lowSpec)
+                  Center(
+                      child: TvChannelLogo(
+                          logoUrl: ch.logoUrl,
+                          label: ch.name,
+                          size: 110,
+                          radius: 14))
+                else
+                  TvLivePreview(channel: ch, enabled: _previewLive),
                 // Bandeau bas : nom de la chaîne + bouton, sur un voile
                 // sombre pour rester lisible par-dessus la vidéo.
                 Align(

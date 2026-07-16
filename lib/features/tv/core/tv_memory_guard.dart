@@ -23,6 +23,7 @@
 // =========================================================
 import 'package:flutter/painting.dart';
 import 'package:flutter/widgets.dart';
+import 'package:native_video_player/native_video_player.dart';
 
 import '../../player/data/stream_diagnostics.dart';
 
@@ -35,8 +36,15 @@ class TvMemoryGuard with WidgetsBindingObserver {
   /// Nombre de purges « pression mémoire » depuis le boot (diagnostic).
   int pressureEvents = 0;
 
+  /// MODE « PETITE BOX » (Fire TV Stick, box ≤ ~1,3 Go) : détecté au boot
+  /// via le natif. Quand il est vrai, toute l'app s'ALLÈGE d'elle-même :
+  /// caches d'images encore plus petits ici, aperçu vidéo plus prudent
+  /// (TvLivePreview), accueil sans vidéo héro (logo net à la place) —
+  /// premium ET simple, sur n'importe quel Android.
+  bool lowSpec = false;
+
   /// À appeler UNE fois au boot TV, après WidgetsFlutterBinding.
-  void install() {
+  Future<void> install() async {
     if (_installed) return;
     _installed = true;
     // 1. Plafond du cache d'images (défaut Flutter : 1000 / 100 Mo — trop
@@ -45,8 +53,26 @@ class TvMemoryGuard with WidgetsBindingObserver {
     PaintingBinding.instance.imageCache.maximumSizeBytes = 48 << 20; // 48 Mo
     // 2. Écoute de la pression mémoire système.
     WidgetsBinding.instance.addObserver(this);
+    // 3. Détection « petite box » (jamais bloquant : timeout 600 ms côté
+    //    plugin, valeurs neutres en cas d'échec).
+    final ({int totalMem, bool isLowRamDevice}) info =
+        await NativeDeviceInfo.query();
+    // Seuil ≈ 1,3 Go : couvre les Fire TV Stick Lite / box 1 Go (qui
+    // annoncent souvent ~0,9-1,2 Go utilisables).
+    const int lowSpecThresholdBytes = 1300 * 1000 * 1000;
+    lowSpec = info.isLowRamDevice ||
+        (info.totalMem > 0 && info.totalMem <= lowSpecThresholdBytes);
+    if (lowSpec) {
+      PaintingBinding.instance.imageCache.maximumSize = 160;
+      PaintingBinding.instance.imageCache.maximumSizeBytes = 24 << 20;
+    }
     StreamDiagnostics.instance.recordEvent(
-        'mémoire', 'Garde-mémoire TV installé (cache images ≤ 48 Mo)');
+        'mémoire',
+        lowSpec
+            ? 'Garde-mémoire TV : PETITE BOX détectée '
+                '(${(info.totalMem / (1 << 30)).toStringAsFixed(1)} Go) → '
+                'profil léger (cache ≤ 24 Mo, aperçus prudents)'
+            : 'Garde-mémoire TV installé (cache images ≤ 48 Mo)');
   }
 
   @override

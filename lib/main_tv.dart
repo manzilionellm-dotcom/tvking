@@ -92,7 +92,7 @@ Future<void> _bootstrap() async {
   // GARDE-MÉMOIRE TV (anti-fermeture) : plafonne le cache d'images Flutter
   // (48 Mo au lieu de 100) et PURGE les caches dès qu'Android signale une
   // pression mémoire — voir tv_memory_guard.dart.
-  TvMemoryGuard.instance.install();
+  await TvMemoryGuard.instance.install();
 
   // ANTI-OOM TV (confirmé par logcat: lowmemorykiller / signal 9) : on N'INITIE
   // PLUS le moteur mpv (media_kit) sur la TV. La TV joue EXCLUSIVEMENT via
