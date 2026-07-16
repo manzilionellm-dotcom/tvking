@@ -247,9 +247,6 @@ class LocalCastServer {
       // vidéo passe — la signature exacte du « la voix n'est pas
       // bonne » du terrain. On l'élève en WARN pour que la boîte noire
       // pointe la cause réelle au lieu d'un faux succès silencieux.
-      const Set<String> kUntransmuxableAudio = <String>{
-        'mp2', 'ac3', 'eac3', 'dts', 'aac-latm', 'private',
-      };
       final bool audioAtRisk =
           kUntransmuxableAudio.contains(session.audioCodec);
       final Map<String, Object?> ctx = <String, Object?>{
@@ -437,6 +434,26 @@ class LocalCastServer {
       _hlsSessions.remove(oldest)?.stop();
       _relays.remove(oldest);
     }
+  }
+
+  /// Codecs audio que le transmux TS→fMP4 du Default Media Receiver
+  /// (mux.js/Shaka) ne sait PAS ré-emballer (il ne gère que AAC/MP3).
+  /// Vérifié sur le terrain (2026-07-16, SHIELD × AC-3 : load_ok puis
+  /// idle → « Cette TV n'a pas accepté ce flux »). Partagé avec le
+  /// transport Google pour le sauvetage TV-directe.
+  static const Set<String> kUntransmuxableAudio = <String>{
+    'mp2', 'ac3', 'eac3', 'dts', 'aac-latm', 'private',
+  };
+
+  /// Codec audio détecté (PMT) par la session HLS derrière [relayUrl],
+  /// ou `null` si la session est inconnue ou le codec pas encore vu.
+  /// Sert au sauvetage « audio non transmuxable → TV-directe » du
+  /// transport Google.
+  String? hlsAudioCodecFor(String relayUrl) {
+    final String? token = _tokenFromUrl(relayUrl);
+    final HlsRelaySession? s = token != null ? _hlsSessions[token] : null;
+    final String? codec = s?.audioCodec;
+    return (codec == null || codec == 'unknown') ? null : codec;
   }
 
   void clearRelay(String relayUrl) {

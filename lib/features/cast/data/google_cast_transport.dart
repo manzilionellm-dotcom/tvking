@@ -477,15 +477,74 @@ class GoogleCastTransport implements CastTransport {
       }
     }
 
-    await _loadAndAwaitPlaying(
-      api,
-      urlToCast: urlToCast,
-      mime: mime,
-      castPath: castPath,
-      title: title,
-      imageUrl: imageUrl,
-      budget: const Duration(seconds: 25),
-    );
+    try {
+      await _loadAndAwaitPlaying(
+        api,
+        urlToCast: urlToCast,
+        mime: mime,
+        castPath: castPath,
+        title: title,
+        imageUrl: imageUrl,
+        budget: const Duration(seconds: 25),
+      );
+    } on Exception {
+      // SAUVETAGE AUDIO (terrain 2026-07-16, SHIELD × AC-3) : le relais
+      // a servi le flux (load_ok) mais le récepteur web n'a pas pu le
+      // JOUER — mux.js ne sait ré-emballer que l'AAC/MP3, un TS en
+      // AC-3/E-AC-3/MP2/DTS meurt en « idle » → « Cette TV n'a pas
+      // accepté ce flux ». Or une box ExoPlayer (SHIELD, Google TV)
+      // DÉCODE ces audios nativement si elle tire le flux ELLE-MÊME.
+      // On retente donc UNE fois en TV-directe, en OUTREPASSANT le
+      // mémo « direct_tv bloqué » : son verdict a pu être posé sur une
+      // AUTRE chaîne (autre forme d'URL, autre codec) et privait ici la
+      // TV du seul chemin qui marche.
+      final String? relayUrl = lastRelayUrl;
+      final String? relayAudio =
+          (castPath == 'local_hls_relay' && relayUrl != null)
+              ? LocalCastServer.instance.hlsAudioCodecFor(relayUrl)
+              : null;
+      final bool audioAtRisk = relayAudio != null &&
+          LocalCastServer.kUntransmuxableAudio.contains(relayAudio);
+      String? direct;
+      if (audioAtRisk && isExoPlayerReceiver(device)) {
+        try {
+          direct = await directTvCandidate(upstreamForRelay);
+        } on Exception {
+          direct = null; // pas de candidat direct → on laisse remonter
+        }
+      }
+      if (direct == null) rethrow;
+      StructuredLogger.instance.warn(
+        domain: 'cast',
+        event: 'relay_audio.fallback_direct_tv',
+        ctx: <String, Object?>{
+          'audio': relayAudio,
+          'deviceName': device.name,
+        },
+      );
+      try {
+        await _loadAndAwaitPlaying(
+          api,
+          urlToCast: direct,
+          mime: _guessMime(direct),
+          castPath: 'direct_tv',
+          title: title,
+          imageUrl: imageUrl,
+          budget: const Duration(seconds: 12),
+        );
+      } on Exception {
+        // La TV-directe non plus : on mémorise et on laisse remonter —
+        // le message utilisateur reste celui du refus TV.
+        CastProxyVerdictMemo.directTv.remember(upstreamHost, blocked: true);
+        rethrow;
+      }
+      // La TV tire maintenant le flux chez le fournisseur : on mémorise
+      // le succès (les prochains zaps partiront direct), on libère le
+      // relais et on laisse le téléphone au repos (pas de keep-alive).
+      CastProxyVerdictMemo.directTv.remember(upstreamHost, blocked: false);
+      LocalCastServer.instance.clearRelay(relayUrl!);
+      lastRelayUrl = null;
+    }
   }
 
   /// Enregistre la session relais HLS du téléphone et renvoie son URL
