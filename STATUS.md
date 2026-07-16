@@ -74,6 +74,67 @@ commit + push + CI Quality verte. 542 tests (499 → 542), analyze 0 erreur.
 
 ---
 
+## Session PARALLÈLE (2026-07-16 soir) — Mission casting : fondation fMP4 (AC-3 vrais Chromecast)
+
+Branche de session : `claude/7motion-casting-arch-w56et4` (reprise de
+`claude/maison-mere-phone`, mêmes commits repoussés vers les branches
+maison-mère + miroir une fois la CI verte).
+
+### Enquêtes (sous-agents, vérifiées sur le code)
+- **Crash « The Few s'est fermée »** : cause racine identifiée = R8
+  effaçait les génériques Gson de flutter_local_notifications ; quand
+  une alarme de notification sonnait (nudge quotidien 20 h, rappel
+  EPG, reboot), `ScheduledNotificationReceiver` mourait HORS des
+  filets Dart → fermeture sèche. **Le correctif existe déjà**
+  (`4e8eeb0`, règles keep com.dexterous/TypeToken dans
+  ci/proguard-rules.pro) mais la release téléphone étant manuelle,
+  **les clients tournent probablement encore sur l'APK d'avant** →
+  publier via build-android `make_release=true` (accord client).
+  Bonus détectés : nudge « 20 h » sonne à 20 h UTC (tz.local jamais
+  posé — bug UX, pas cast, à traiter plus tard).
+- **Carte audio du cast** : sauvetage TV-directe limité à
+  `kRescueAudio = {ac3, eac3, dts}` ET aux seuls SHIELD/NVIDIA
+  (`isExoPlayerReceiver` ne matche pas les dongles Google TV malgré le
+  commentaire). Trous réels : VRAI Chromecast × AC-3/E-AC-3 (aucune
+  issue : CORS interdit la TV-directe, mux.js refuse le Dolby) et MP2
+  partout (échec silencieux : vidéo sans son, pas d'exception → pas de
+  sauvetage possible). Aucun code fMP4/transcodage n'existait.
+
+### Fait cette session
+- **Fondation fMP4** (`lib/features/cast/data/fmp4/`, ~2 700 lignes
+  avec tests, NON branchée au chemin de production) : ré-emballage
+  segment TS → segment fMP4 pur Dart — Shaka lit le fMP4 SANS mux.js,
+  l'AC-3/E-AC-3 passe en passthrough sur les vrais Chromecast.
+  Modules : audio_frames (trames AC-3/E-AC-3/ADTS + dac3/dec3/esds),
+  ts_es_extractor (démux PES persistant, PES bornés émis à longueur
+  déclarée, PES à cheval reportés), h264_annexb (AVCC, avcC, SPS),
+  fmp4_writer (moov/moof/mdat, tfdt 64 bits), fmp4_remuxer (façade,
+  horloges 33 bits déroulées, base audio continue, reliquats reportés,
+  init régénérée sur changement de config). Tests bout-en-bout sur TS
+  synthétiques (SPS réel bit à bit, trames AC-3 valides, wrap 33 bits,
+  discontinuités, MP2 signalé/retiré, HEVC refusé).
+- **Observabilité récepteurs** : `google.load_media` et
+  `relay_audio.fallback_direct_tv` journalisent désormais
+  `receiverModel`/`receiverMaker` bruts — la boîte noire dira ce que
+  les box du terrain annoncent AVANT d'élargir isExoPlayerReceiver.
+- **Contrat verrouillé** : `kRescueAudio` promue constante de classe
+  testée (≠ kUntransmuxableAudio) ; commentaire R8 corrigé (les
+  workflows passent en réalité proguard-android-OPTIMIZE.txt).
+
+### Prochaines étapes (mission casting)
+1. Récupérer la **boîte noire client** : corréler
+   `ready_audio_at_risk` ↔ plaintes, lire receiverModel/Maker, vérifier
+   zéro `keepalive_failed` depuis c908e4d.
+2. **Brancher le fMP4** derrière une garde stricte : récepteur web
+   (non-ExoPlayer) ET audio ∈ {ac3, eac3} — population qui échoue à
+   coup sûr aujourd'hui — avec repli TS inchangé et kill switch.
+   Playlist : #EXT-X-MAP + master avec CODECS= (local_cast_server).
+3. Publier la release téléphone (fix crash) avec accord client.
+4. MP2 : décision transcodage (MediaCodec AAC ? taille APK) après
+   lecture boîte noire ; élargissement isExoPlayerReceiver sur preuves.
+
+---
+
 ## Session précédente (2026-07-16) — Cast increvable + fluidité + pistes TV
 
 Branche de travail : `claude/maison-mere-phone` (miroir

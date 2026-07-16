@@ -503,14 +503,6 @@ class GoogleCastTransport implements CastTransport {
           (castPath == 'local_hls_relay' && relayUrl != null)
               ? LocalCastServer.instance.hlsAudioCodecFor(relayUrl)
               : null;
-      // Revue 2026-07-16 : on ne sauve QUE sur les codecs dont le refus
-      // par le récepteur web est CERTAIN et que les box ExoPlayer
-      // décodent nativement (ac3/eac3/dts — confirmé terrain SHIELD).
-      // mp2/private/aac-latm restent en WARN boîte noire seulement :
-      // trop ambigus (mp2 ultra-courant, private = souvent
-      // sous-titres) — déclencher 12 s d'essai direct sur chaque échec
-      // réseau serait pire que le mal.
-      const Set<String> kRescueAudio = <String>{'ac3', 'eac3', 'dts'};
       final bool audioAtRisk =
           relayAudio != null && kRescueAudio.contains(relayAudio);
       String? direct;
@@ -535,6 +527,10 @@ class GoogleCastTransport implements CastTransport {
         ctx: <String, Object?>{
           'audio': relayAudio,
           'deviceName': device.name,
+          // Même besoin terrain que google.load_media : de quoi juger
+          // quels modèles méritent le sauvetage (ou son élargissement).
+          'receiverModel': device.model,
+          'receiverMaker': device.manufacturer,
         },
       );
       try {
@@ -612,6 +608,13 @@ class GoogleCastTransport implements CastTransport {
         'url': redactStreamUrl(urlToCast),
         'receiverHost': device.host,
         'receiverName': device.name,
+        // Modèle/fabricant BRUTS (mDNS) : la boîte noire doit nous
+        // dire ce que les box Google TV/onn/MiBox du terrain annoncent
+        // VRAIMENT avant d'élargir isExoPlayerReceiver au-delà de
+        // SHIELD — élargir à l'aveugle ferait payer 12 s d'essai
+        // TV-direct à des récepteurs web mal classés.
+        'receiverModel': device.model,
+        'receiverMaker': device.manufacturer,
         'isExoPlayerDevice': isExoPlayerReceiver(device),
       },
     );
@@ -955,6 +958,19 @@ class GoogleCastTransport implements CastTransport {
         lower.contains('.mpd') ||
         lower.contains('dash+xml');
   }
+
+  /// Codecs audio qui déclenchent le sauvetage TV-directe après un
+  /// échec du relais (revue 2026-07-16) : on ne sauve QUE sur les
+  /// codecs dont le refus par le récepteur web est CERTAIN et que les
+  /// box ExoPlayer décodent nativement (ac3/eac3/dts — confirmé
+  /// terrain SHIELD). mp2/private/aac-latm restent en WARN boîte
+  /// noire seulement : trop ambigus (mp2 ultra-courant, private =
+  /// souvent sous-titres) — déclencher 12 s d'essai direct sur chaque
+  /// échec réseau serait pire que le mal. Constante de CLASSE pour
+  /// que les tests verrouillent ce contrat (≠ kUntransmuxableAudio,
+  /// qui pilote seulement le WARN).
+  @visibleForTesting
+  static const Set<String> kRescueAudio = <String>{'ac3', 'eac3', 'dts'};
 
   /// (BUG A) Le recepteur est-il base sur ExoPlayer (NVIDIA SHIELD,
   /// beaucoup de dongles Google TV) ? Ces appareils decodent le

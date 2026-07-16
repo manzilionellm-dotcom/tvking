@@ -4,9 +4,10 @@
 #  But : activer le rétrécissement de code ET de ressources SANS casser
 #  les plugins natifs qui utilisent la réflexion ou JNI. R8 est le
 #  shrinker/optimiseur par défaut d'Android ; ces règles disent quoi NE
-#  PAS renommer/supprimer. On reste volontairement CONSERVATEUR (variante
-#  proguard-android.txt, pas -optimize) pour minimiser tout risque de
-#  casse runtime sur une box bas de gamme.
+#  PAS renommer/supprimer. NOTE (vérité 2026-07-16) : les workflows
+#  build-android/tv/prive passent en réalité proguard-android-OPTIMIZE
+#  .txt — ce fichier doit donc rester assez conservateur pour survivre
+#  aux optimisations agressives (d'où les keep larges ci-dessous).
 # =========================================================
 
 # ----- Flutter (moteur + embedding + plugins générés) -----

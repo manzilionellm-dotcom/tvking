@@ -17,6 +17,7 @@
 // =========================================================
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tv_king/features/cast/data/google_cast_transport.dart';
 import 'package:tv_king/features/cast/data/local_cast_server.dart';
 
 void main() {
@@ -27,6 +28,22 @@ void main() {
     );
     expect(LocalCastServer.kUntransmuxableAudio, isNot(contains('aac')),
         reason: 'l\'AAC est transmuxable — jamais de faux sauvetage');
+  });
+
+  test('kRescueAudio : le sauvetage TV-directe ne vise que les codecs '
+      'au refus CERTAIN (revue 2026-07-16)', () {
+    expect(GoogleCastTransport.kRescueAudio,
+        <String>{'ac3', 'eac3', 'dts'});
+    expect(GoogleCastTransport.kRescueAudio, isNot(contains('mp2')),
+        reason: 'mp2 est ultra-courant et son échec relais est ambigu — '
+            'payer 12 s d\'essai TV-direct sur chaque pépin réseau '
+            'serait pire que le mal (le WARN boîte noire suffit)');
+    expect(
+      LocalCastServer.kUntransmuxableAudio
+          .containsAll(GoogleCastTransport.kRescueAudio),
+      isTrue,
+      reason: 'on ne sauve que ce qui est déjà déclaré à risque',
+    );
   });
 
   test('hlsAudioCodecFor : null pour une URL de relais inconnue', () {
