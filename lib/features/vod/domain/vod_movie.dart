@@ -47,4 +47,30 @@ class VodMovie {
 
   /// Année de sortie si fournie.
   final String? year;
+
+  // ----- Sérialisation (cache disque du catalogue, façon Netflix) -----
+  //  Clés courtes : le catalogue peut compter 10 000+ films — chaque
+  //  caractère économisé compte sur le fichier de cache.
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'i': id,
+        'n': name,
+        'c': category,
+        'u': streamUrl,
+        'e': containerExt,
+        if (posterUrl != null) 'p': posterUrl,
+        if (rating != null) 'r': rating,
+        if (year != null) 'y': year,
+      };
+
+  factory VodMovie.fromJson(Map<String, dynamic> j) => VodMovie(
+        id: j['i'] as String,
+        name: j['n'] as String,
+        category: (j['c'] as String?) ?? '',
+        streamUrl: j['u'] as String,
+        containerExt: (j['e'] as String?) ?? 'mp4',
+        posterUrl: j['p'] as String?,
+        rating: j['r'] as String?,
+        year: j['y'] as String?,
+      );
 }

@@ -32,6 +32,28 @@ class VodSeries {
   final String? plot;
   final String? rating;
   final String? year;
+
+  // ----- Sérialisation (cache disque du catalogue, façon Netflix) -----
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'i': id,
+        'n': name,
+        'c': category,
+        if (posterUrl != null) 'p': posterUrl,
+        if (plot != null) 'd': plot,
+        if (rating != null) 'r': rating,
+        if (year != null) 'y': year,
+      };
+
+  factory VodSeries.fromJson(Map<String, dynamic> j) => VodSeries(
+        id: j['i'] as String,
+        name: j['n'] as String,
+        category: (j['c'] as String?) ?? '',
+        posterUrl: j['p'] as String?,
+        plot: j['d'] as String?,
+        rating: j['r'] as String?,
+        year: j['y'] as String?,
+      );
 }
 
 /// Un épisode jouable (déjà résolu en URL de fichier).

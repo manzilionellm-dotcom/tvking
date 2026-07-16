@@ -39,13 +39,29 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
   @override
   void initState() {
     super.initState();
+    // Rafraîchissement SILENCIEUX (façon Netflix) : ouverture instantanée
+    // depuis le cache disque, mise à jour sans spinner quand le réseau
+    // rapporte du neuf (stale-while-revalidate du SeriesRepository).
+    SeriesRepository.instance.addListener(_onCatalogRefreshed);
     _load();
   }
 
-  Future<void> _load() async {
+  @override
+  void dispose() {
+    SeriesRepository.instance.removeListener(_onCatalogRefreshed);
+    super.dispose();
+  }
+
+  void _onCatalogRefreshed() {
+    if (mounted) _load(silent: true);
+  }
+
+  Future<void> _load({bool silent = false}) async {
     // Libellé du rayon « Autres » capturé AVANT les await (contexte sûr).
     final String othersLabel = context.l10n.tvOthers;
-    if (mounted) setState(() => _loading = true);
+    // [silent] = mise à jour arrière-plan : pas de squelette, l'écran actuel
+    // reste affiché jusqu'au setState final.
+    if (mounted && !silent) setState(() => _loading = true);
     final List<VodSeries> series =
         await SeriesRepository.instance.fetchSeries();
     if (!mounted) return;

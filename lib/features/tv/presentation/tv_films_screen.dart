@@ -70,13 +70,25 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     // (sauvegarde périodique du lecteur, sortie de lecture) — sans ça, la
     // barre resterait figée jusqu'au prochain rechargement du catalogue.
     PlaybackPositionRepository.instance.addListener(_onPositionsChanged);
+    // RAFRAÎCHISSEMENT SILENCIEUX (façon Netflix) : l'écran s'ouvre
+    // instantanément sur le cache disque ; quand le catalogue frais arrive
+    // du réseau (stale-while-revalidate du VodRepository), on regroupe et on
+    // met à jour SANS spinner ni à-coup.
+    VodRepository.instance.addListener(_onCatalogRefreshed);
     _load();
   }
 
   @override
   void dispose() {
     PlaybackPositionRepository.instance.removeListener(_onPositionsChanged);
+    VodRepository.instance.removeListener(_onCatalogRefreshed);
     super.dispose();
+  }
+
+  void _onCatalogRefreshed() {
+    // Le repo a déjà le catalogue frais en mémoire : _load() y répond
+    // instantanément (aucun réseau) et ne fait que regrouper + setState.
+    if (mounted) _load(silent: true);
   }
 
   void _onPositionsChanged() {
@@ -84,10 +96,12 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _load({bool force = false}) async {
+  Future<void> _load({bool force = false, bool silent = false}) async {
     // Libellé du rayon « Autres » capturé AVANT les await (contexte sûr).
     final String othersLabel = context.l10n.tvOthers;
-    if (mounted) setState(() => _loading = true);
+    // [silent] = mise à jour en arrière-plan : on NE remontre PAS le
+    // squelette — l'écran actuel reste affiché jusqu'au setState final.
+    if (mounted && !silent) setState(() => _loading = true);
     final List<VodMovie> movies =
         await VodRepository.instance.fetchMovies(forceRefresh: force);
     await RecentVodRepository.instance.load();
