@@ -50,6 +50,15 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
 
   List<Channel> _all = <Channel>[];
   List<String> _cats = <String>[_kAll];
+
+  /// Chaînes REGROUPÉES par catégorie « prettifiée », calculées UNE SEULE
+  /// fois à l'ingestion. Avant, chaque tuile de catégorie (compteur) et
+  /// chaque changement de groupe re-filtrait les 10 000+ chaînes en
+  /// appelant `prettifyCategory` (2 RegExp/chaîne) — et comme un simple
+  /// déplacement du D-pad déclenche un `setState` (aperçu), l'écran « En
+  /// direct » re-scannait tout le bouquet à CHAQUE frame → saccade. Ici,
+  /// compteur et liste d'un groupe sont de simples lectures O(1).
+  Map<String, List<Channel>> _groups = <String, List<Channel>>{};
   String _cat = _kAll;
   List<Channel> _visible = <Channel>[];
   Channel? _preview;
@@ -87,17 +96,24 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
   }
 
   void _ingest(List<Channel> channels) {
+    // UN SEUL passage : on prettifie chaque catégorie une fois, on construit
+    // l'ordre des groupes ET on range chaque chaîne dans son groupe. Aucune
+    // RegExp ne sera rejouée ensuite au rendu (compteurs et listes lisent ces
+    // structures pré-calculées).
     final List<String> cats = <String>[_kAll];
     final Set<String> seen = <String>{};
+    final Map<String, List<Channel>> groups = <String, List<Channel>>{};
     for (final Channel c in channels) {
       final String g = ChannelClassifier.prettifyCategory(c.category);
       if (g.isEmpty) continue;
       if (seen.add(g)) cats.add(g);
+      (groups[g] ??= <Channel>[]).add(c);
     }
     if (!mounted) return;
     setState(() {
       _all = channels;
       _cats = cats;
+      _groups = groups;
       if (!_cats.contains(_cat)) _cat = _kAll;
       _visible = _channelsFor(_cat);
       _preview ??= _visible.isNotEmpty ? _visible.first : null;
@@ -105,11 +121,10 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
     });
   }
 
+  /// Lecture O(1) du groupe pré-calculé (plus aucun filtrage/RegExp au rendu).
   List<Channel> _channelsFor(String cat) {
     if (cat == _kAll) return _all;
-    return _all
-        .where((Channel c) => ChannelClassifier.prettifyCategory(c.category) == cat)
-        .toList(growable: false);
+    return _groups[cat] ?? const <Channel>[];
   }
 
   void _selectCat(String cat) {
@@ -148,7 +163,7 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
   }
 
   int _countFor(String cat) =>
-      cat == _kAll ? _all.length : _channelsFor(cat).length;
+      cat == _kAll ? _all.length : (_groups[cat]?.length ?? 0);
 
   @override
   Widget build(BuildContext context) {
