@@ -973,7 +973,13 @@ class CastManager extends ChangeNotifier {
             success: true,
             lastCastUrlRedacted: gct?.lastCastUrlRedacted,
           ));
-        } on Exception catch (e) {
+        } on Object catch (e) {
+          // `on Object` et non `on Exception` : un Error (TypeError,
+          // StateError, cast raté…) passait à travers, sautait la
+          // comptabilité du diagnostic ET le nettoyage du catch
+          // principal → session « zombie » (état connecting figé,
+          // relais + keep-alive vivants). Frontière de session = on
+          // rattrape TOUT, on archive, on nettoie.
           final GoogleCastTransport? gctF =
               _transport is GoogleCastTransport
                   ? _transport as GoogleCastTransport
@@ -1019,7 +1025,14 @@ class CastManager extends ChangeNotifier {
         if (relayUrl != null) _currentRelayUrl = relayUrl;
       }
       _updateRelayKeepAlive(title);
-    } on Exception catch (e) {
+    } on Object catch (e) {
+      // FRONTIÈRE DE SESSION — `on Object` et non `on Exception` : un
+      // Error (TypeError, StateError, cast `as` rate…) traversait le
+      // bloc et sautait TOUT le nettoyage ci-dessous → session zombie
+      // (etat connecting fige, relais + keep-alive + transport
+      // vivants). Le kernel Dart distingue Error/Exception, mais a une
+      // frontiere de session on doit nettoyer dans TOUS les cas.
+      //
       // Revue 2026-07-09 (MAJEUR 1) : une session ORPHELINE (zap ou
       // timeout global — mySeq depasse) qui echoue tardivement ne doit
       // toucher NI l'etat NI le keep-alive : une session plus recente
@@ -1335,7 +1348,11 @@ class CastManager extends ChangeNotifier {
     );
     final int budget = totalStrategies;
 
-    Exception? lastError;
+    // `Object` et non `Exception` : la boucle de failover est une
+    // frontière de session — un Error d'une tentative doit être
+    // comptabilisé et re-levé comme un échec normal, pas traverser en
+    // sautant la comptabilité (session zombie).
+    Object? lastError;
     for (int s = startStrategy; s < totalStrategies; s++) {
       // Phase 1+/B5 — Check cancellation entre chaque strategie. Si
       // l'outer a timeout (25s) et bump _sessionSeq, on s'arrete au
@@ -1491,7 +1508,7 @@ class CastManager extends ChangeNotifier {
           relayFallbackProfile: transport.profile,
         );
         return; // succès
-      } on Exception catch (e) {
+      } on Object catch (e) {
         lastError = e;
         diag.attempts.add(AttemptResult(
           strategyIndex: s,
@@ -1827,7 +1844,10 @@ class CastManager extends ChangeNotifier {
   /// AVANT le hint generique "reseau" pour eviter de faussement
   /// pointer du doigt le WiFi.
   @visibleForTesting
-  String friendlyMessageFor(Exception e) {
+  // `Object` et non `Exception` : appelé depuis des frontières de
+  // session qui rattrapent aussi les Error (cf. _castToInner). Seul
+  // toString() est utilisé, le type large est sans risque.
+  String friendlyMessageFor(Object e) {
     final String s = e.toString().toLowerCase();
 
     // --- Google Cast indisponible (pas de Google Play Services) ---
@@ -2136,7 +2156,7 @@ class CastManager extends ChangeNotifier {
         streamUrl: url,
         title: _dlnaLiveTitle ?? '7 MOTION',
       );
-    } on Exception catch (e) {
+    } on Object catch (e) {
       StructuredLogger.instance.warn(
         domain: 'cast',
         event: 'dlna.auto_reconnect_fail',
@@ -2161,7 +2181,7 @@ class CastManager extends ChangeNotifier {
     UpnpAvTransport transport,
     String failedUrl,
     int mySeq, {
-    required Exception directError,
+    required Object directError,
   }) async {
     final String? upstream = _dlnaRelayFallbackUpstream;
     final DlnaProfile? prof = _dlnaRelayFallbackProfile;
@@ -2195,7 +2215,7 @@ class CastManager extends ChangeNotifier {
         event: 'dlna.auto_reconnect_relay',
         ctx: <String, Object?>{'deviceName': transport.device.name},
       );
-    } on Exception catch (e2) {
+    } on Object catch (e2) {
       StructuredLogger.instance.warn(
         domain: 'cast',
         event: 'dlna.auto_reconnect_relay_fail',

@@ -354,6 +354,27 @@ class LocalStreamRelay {
   }
 
   Future<void> _handleRequest(HttpRequest req) async {
+    // BLINDAGE (anti-OOM lent) : toute exception qui s'échapperait du
+    // corps remontait à `server.listen(onError:...)` qui se contente de
+    // logger — la réponse HTTP n'était alors JAMAIS fermée → fuite de
+    // socket/descripteur à chaque incident. Sur une petite box qui vit
+    // des heures, ces zombies s'accumulent jusqu'au kill mémoire natif.
+    // Ici : le corps est enveloppé, et la fermeture de la réponse est
+    // GARANTIE quoi qu'il arrive (même patron que local_cast_server).
+    try {
+      await _handleRequestInner(req);
+    } on Object catch (e) {
+      if (kDebugMode) debugPrint('[Relay] _handleRequest KO: $e');
+    } finally {
+      try {
+        await req.response.close();
+      } catch (_) {
+        // Déjà fermée (chemin nominal) ou socket morte : rien à faire.
+      }
+    }
+  }
+
+  Future<void> _handleRequestInner(HttpRequest req) async {
     // Deux routes : /s?u=<token> (relais d'octets TS) et /hls?u=<token>
     // (playlist HLS NORMALISÉE — document servi puis connexion fermée,
     // segments en direct CDN). Tout le reste → 404.

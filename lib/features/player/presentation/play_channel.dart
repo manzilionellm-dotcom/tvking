@@ -84,7 +84,10 @@ Future<void> playChannel(
             deviceName: target.displayName, channelName: title);
       }
       return; // Flux parti vers la TV : pas de lecteur local à ouvrir.
-    } on Exception catch (e) {
+    } on Object catch (e) {
+      // `on Object` : même un Error (TypeError…) du chemin cast ne doit
+      // JAMAIS priver l'utilisateur du repli local — frontière de
+      // session oblige (sinon : ni TV ni téléphone, écran mort).
       if (context.mounted) showCastFailedToast(context, e);
       // Repli : la lecture locale ci-dessous ne doit JAMAIS être bloquée
       // par un échec de cast (TV éteinte, hors portée, réseau…).

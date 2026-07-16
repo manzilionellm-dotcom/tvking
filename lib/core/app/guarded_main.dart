@@ -36,7 +36,37 @@ import '../crash/crash_reporting.dart';
 import '../crash/crash_reporting_firebase.dart';
 import '../crash/remote_error_reporter.dart';
 import '../observability/black_box.dart';
+import '../observability/structured_logger.dart';
 import 'device_memory.dart';
+
+/// ANTI-OOM (P0) — Observer de PRESSION MÉMOIRE commun à TOUS les
+/// flavors (mobile, Privé, TV, Windows, Tizen). La seule « fermeture »
+/// vraiment irrattrapable par nos 4 filets est le KILL MÉMOIRE NATIF :
+/// quand l'OS manque de RAM, il tue le process sans passer par Dart.
+/// La parade est de PURGER dès que le système signale la pression
+/// (didHaveMemoryPressure) — les bitmaps décodés sont la mémoire la
+/// plus vite récupérable. Avant, seule la TV avait ce réflexe
+/// (TvMemoryGuard) ; mobile/Privé/desktop encaissaient le kill.
+/// Sur TV, TvMemoryGuard reste en place (profil « petite box ») : la
+/// double purge est idempotente et sans coût.
+class _MemoryPressureGuard with WidgetsBindingObserver {
+  int pressureEvents = 0;
+
+  @override
+  void didHaveMemoryPressure() {
+    pressureEvents++;
+    PaintingBinding.instance.imageCache
+      ..clear()
+      ..clearLiveImages();
+    StructuredLogger.instance.warn(
+      domain: 'memoire',
+      event: 'pressure.purge',
+      ctx: <String, Object?>{'count': pressureEvents},
+    );
+  }
+}
+
+final _MemoryPressureGuard _memoryPressureGuard = _MemoryPressureGuard();
 
 /// Ajuste le cache d'images selon la RAM réelle. Le défaut posé au boot est
 /// déjà PRUDENT (sûr même à 1 Go) ; ici on l'ÉLARGIT sur les box bien dotées et
@@ -109,6 +139,11 @@ void runGuarded(Future<void> Function() body) {
       // Ajustement adaptatif (non bloquant) : petite RAM ⇒ resserre, grande
       // RAM ⇒ élargit. Best-effort, ne retarde jamais le démarrage.
       unawaited(_tuneImageCacheForRam());
+
+      // ANTI-OOM (P0) — purge sous pression mémoire, TOUS les flavors
+      // (cf. _MemoryPressureGuard). Installé avant body() pour couvrir
+      // aussi le boot.
+      WidgetsBinding.instance.addObserver(_memoryPressureGuard);
 
       // 2) Erreurs Flutter (build/layout/paint).
       final FlutterExceptionHandler? presentError = FlutterError.onError;
