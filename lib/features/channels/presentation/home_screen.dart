@@ -719,7 +719,7 @@ class _HomeScreenState extends State<HomeScreen> {
   //    4 = Cinéma       (genre movies)
   //
   //  Favoris et Profil ont migré dans la barre du haut (icônes ♥ et
-  //  👤). Chaque onglet catégorie pousse CategorySectionScreen filtré,
+  // ). Chaque onglet catégorie pousse CategorySectionScreen filtré,
   //  puis on remet le highlight sur Home au retour.
 
   void _onNavTap(int index) {

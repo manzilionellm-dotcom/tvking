@@ -6,7 +6,7 @@
 //  100 % Android) → on lit ici via libmpv, qui décode HLS / MPEG-TS / MP4 en
 //  matériel et gère les flux IPTV instables (reconnexion auto, gros cache).
 //
-//  ⚠️ IMPORTANT pour le build Android TV : ce fichier importe media_kit. Il est
+// IMPORTANT pour le build Android TV : ce fichier importe media_kit. Il est
 //  donc importé UNIQUEMENT par lib/main_windows.dart (qui appelle
 //  registerTvPlayer pour l'injecter). Le build TV ne l'atteint JAMAIS → sa
 //  fermeture de compilation reste sans media_kit (cf. tv_player_screen.dart).
@@ -66,7 +66,7 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
 
   final List<StreamSubscription<dynamic>> _subs = <StreamSubscription<dynamic>>[];
 
-  // Favoris en direct (le ❤ se met à jour tout seul, comme sur TV).
+  // Favoris en direct (le se met à jour tout seul, comme sur TV).
   StreamSubscription<Set<String>>? _favSub;
   Set<String> _favIds = FavoritesRepository.instance.current;
   bool get _isFavorite => _favIds.contains(_current.id);
@@ -435,7 +435,7 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
   }
 }
 
-/// Barre de lecture sobre (Maison Noir) : logo + nom + DIRECT + n° + ❤ favori.
+/// Barre de lecture sobre (Maison Noir) : logo + nom + DIRECT + n° + favori.
 class _DesktopControls extends StatelessWidget {
   const _DesktopControls({
     required this.channel,
@@ -503,7 +503,7 @@ class _DesktopControls extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 16),
-          // ❤ Favori (souris : clic ; clavier : touche F).
+          // Favori (souris : clic ; clavier : touche F).
           IconButton(
             onPressed: onFavorite,
             icon: Icon(

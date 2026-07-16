@@ -104,7 +104,7 @@ class Channel {
   /// Nom propre, présentable à l'écran. Passe par le
   /// [TitleCurator] qui retire les préfixes IPTV (`FR |`,
   /// `ADULT:`), les suffixes techniques (`RAW`, `FHD`, `BACKUP`),
-  /// les décorations (`★ ⚡ 🔥`) et applique un Title Case
+  /// les décorations (`★ `) et applique un Title Case
   /// respectueux des acronymes (TF1, BBC, BFM…). Résultat : un
   /// nom digne d'une vraie plateforme premium, jamais d'IPTV
   /// brut affiché tel quel à l'utilisateur.

@@ -2,12 +2,12 @@
 //  tv_invite_screen.dart — PARTAGE (« regarder ensemble ») sur TV
 // =========================================================
 //  Hub à 3 options :
-//    • 🎁 Inviter un ami — l'abonné payé choisit une CHAÎNE + une DURÉE
+// • Inviter un ami — l'abonné payé choisit une CHAÎNE + une DURÉE
 //      (24 h / 48 h) et connecte l'ami par CODE ou par sa MAC → l'ami regarde
 //      la chaîne partagée, puis doit s'abonner.
-//    • 🔁 Entre MES appareils — déplace l'abonnement payé vers un autre de ses
+// • Entre MES appareils — déplace l'abonnement payé vers un autre de ses
 //      appareils (jamais en même temps).
-//    • 📥 J'ai un code — l'invité tape le code reçu → accès + chaîne.
+// • J'ai un code — l'invité tape le code reçu → accès + chaîne.
 //
 //  Tout passe par InviteBackend (worker). Aucun contact lecteur. Télécommande.
 // =========================================================
@@ -100,7 +100,7 @@ class _TvInviteScreenState extends State<TvInviteScreen> {
 }
 
 // =========================================================
-//  🎁 INVITER UN AMI
+// INVITER UN AMI
 // =========================================================
 class _InviteFlow extends StatefulWidget {
   const _InviteFlow({required this.mac, required this.onBack});
@@ -293,7 +293,7 @@ class _InviteFlowState extends State<_InviteFlow> {
 }
 
 // =========================================================
-//  🔁 ENTRE MES APPAREILS
+// ENTRE MES APPAREILS
 // =========================================================
 class _TransferFlow extends StatefulWidget {
   const _TransferFlow({required this.mac, required this.onBack});
@@ -372,7 +372,7 @@ class _TransferFlowState extends State<_TransferFlow> {
 }
 
 // =========================================================
-//  📥 J'AI UN CODE
+// J'AI UN CODE
 // =========================================================
 class _RedeemFlow extends StatefulWidget {
   const _RedeemFlow({required this.mac, required this.onBack});

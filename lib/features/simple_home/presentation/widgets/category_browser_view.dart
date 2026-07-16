@@ -291,7 +291,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
   late final Future<Map<String, int>> _topFuture =
       WatchHistoryRepository.instance.watchTimeByChannel(days: 30);
 
-  /// Rail « 🔥 Top 10 » : les chaînes les plus regardées (classement réel
+  /// Rail « Top 10 » : les chaînes les plus regardées (classement réel
   /// par temps de visionnage). Quand l'historique est vide — nouvel
   /// utilisateur OU mode Privé où l'on ne piste rien — on complète par une
   /// sélection « tendances du jour » déterministe (qui tourne chaque jour)
@@ -476,7 +476,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
         // Rangée « Reprendre » (Continue Watching VOD) : films/séries
         // commencés, avec barre de progression. Le hook de retour n°1.
         _buildResumeVodRail(),
-        // Rayon « 🔥 Top 10 » : preuve sociale en tête d'accueil. Classement
+        // Rayon « Top 10 » : preuve sociale en tête d'accueil. Classement
         // réel par temps de visionnage, avec repli « tendances du jour ».
         _buildTopRail(),
         // Rayon « Récemment regardées » : dernières chaînes ouvertes (max 10).

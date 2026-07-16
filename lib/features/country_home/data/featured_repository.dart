@@ -2,7 +2,7 @@
 //  featured_repository.dart — "Favori du jour" (piloté panel)
 // =========================================================
 //  L'admin met une chaîne en avant chaque jour (ex. TF1 + « Mondial
-//  aujourd'hui ⚽ »). L'app la lit ici et l'affiche dans son grand HERO
+// aujourd'hui »). L'app la lit ici et l'affiche dans son grand HERO
 //  d'accueil à la place du #1 automatique — pour que l'app vive au
 //  quotidien. Vide = HERO normal.
 //
@@ -29,7 +29,7 @@ class FeaturedRepository extends ChangeNotifier {
   /// Nom de la chaîne mise en avant ('' = aucune).
   String get name => _name;
 
-  /// Note associée (ex. « Mondial aujourd'hui ⚽ »).
+  /// Note associée (ex. « Mondial aujourd'hui »).
   String get note => _note;
 
   bool get hasFeatured => _name.trim().isNotEmpty;

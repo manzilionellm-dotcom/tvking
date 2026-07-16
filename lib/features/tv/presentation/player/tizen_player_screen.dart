@@ -7,7 +7,7 @@
 //  ce qu'il faut pour l'IPTV. Ni media_kit (pas de backend Tizen), ni le lecteur
 //  Media3/ExoPlayer (100 % Android).
 //
-//  ⚠️ IMPORTANT pour les autres builds : ce fichier importe video_player_avplay,
+// IMPORTANT pour les autres builds : ce fichier importe video_player_avplay,
 //  un paquet présent UNIQUEMENT dans le build Tizen (injecté par le workflow CI).
 //  Il n'est importé QUE par lib/main_tizen.dart → les builds Android et Windows
 //  ne l'atteignent jamais (il n'est pas dans leur fermeture de compilation).
@@ -388,7 +388,7 @@ class _TizenPlayerScreenState extends State<TizenPlayerScreen> {
   }
 }
 
-/// Barre de lecture sobre (Maison Noir) : logo + nom + catégorie + n° + ❤.
+/// Barre de lecture sobre (Maison Noir) : logo + nom + catégorie + n° + .
 class _TizenControls extends StatelessWidget {
   const _TizenControls({
     required this.channel,

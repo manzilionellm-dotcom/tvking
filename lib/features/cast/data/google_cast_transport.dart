@@ -19,7 +19,7 @@
 //  SDK qui peut découvrir des récepteurs que mDNS rate (cas du
 //  multi-VLAN avec Bonjour gateway).
 //
-//  ⚠️ ÉTAT ACTUEL (2026-07) — CHROMECAST via RÉCEPTEUR CUSTOM + PROXY.
+// ÉTAT ACTUEL (2026-07) — CHROMECAST via RÉCEPTEUR CUSTOM + PROXY.
 //  Le Default Media Receiver (CC1AD845) ne décode PAS le MPEG-TS brut des
 //  flux IPTV. On charge donc le récepteur custom (5BDFD969, mpegts.js) qui
 //  décode le TS sur la TV, et on lui envoie l'URL HTTPS de MÊME origine
@@ -56,17 +56,17 @@ import 'local_cast_server.dart';
 ///   Worker à `https://app.7themotion.com/cast-receiver`) decode le MPEG-TS
 ///   LUI-MEME sur la TV → on envoie l'URL Xtream .ts DIRECTE (sans VPS).
 ///
-/// ⚠️ kCastUseCustomReceiver (ici) et USE_CUSTOM_RECEIVER
+/// kCastUseCustomReceiver (ici) et USE_CUSTOM_RECEIVER
 ///    (android_overlay/google_cast/CastOptionsProviderImpl.kt) DOIVENT
 ///    TOUJOURS valoir LA MÊME CHOSE. Les desynchroniser = ECRAN NOIR.
 ///
-/// ✅ ACTIVÉ (2026-06-25) : `5BDFD969` est desormais PUBLISHED (Custom
+/// ACTIVÉ (2026-06-25) : `5BDFD969` est desormais PUBLISHED (Custom
 ///    Receiver → https://app.7themotion.com/cast-receiver). Le receiver
 ///    mpegts.js decode le MPEG-TS sur la TV → on envoie le .ts DIRECT, sans
 ///    VPS, et la box reapparait dans le picker (le filtre par app id publie
 ///    ne cache plus les appareils).
 ///
-/// ✅ REACTIVÉ (2026-07-01) — le blocage CORS / contenu mixte du 2026-06-29 est
+/// REACTIVÉ (2026-07-01) — le blocage CORS / contenu mixte du 2026-06-29 est
 ///    RESOLU. On n'envoie plus le .ts HTTP brut au custom receiver : on envoie
 ///    l'URL HTTPS `https://app.7themotion.com/cast-proxy?u=…` (MÊME origine que
 ///    la page receiver, en-tetes CORS ouverts, re-type video/mp2t). Le LOAD
@@ -76,7 +76,7 @@ import 'local_cast_server.dart';
 ///    le proxy n'est pas joignable. cf. playStream (stratégie cast_proxy) +
 ///    worker.js /cast-proxy. DOIT rester SYNCHRONE avec USE_CUSTOM_RECEIVER
 ///    (CastOptionsProviderImpl.kt) — les deux valent `true`.
-/// ⚠️ MISE À JOUR (2026-07-06, CAST_HANDOFF §6.2) : ce flag reste la valeur
+/// MISE À JOUR (2026-07-06, CAST_HANDOFF §6.2) : ce flag reste la valeur
 ///    INITIALE (compile-time) chargée par l'OptionsProvider Kotlin, mais le
 ///    receiver est désormais BASCULÉ DYNAMIQUEMENT par session via
 ///    GoogleCastApi.setReceiverApplicationId :

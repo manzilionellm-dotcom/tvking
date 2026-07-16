@@ -177,7 +177,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   String? _toastMsg; // petit message éphémère (sauvegardé / vide / échec)
 
   // ----- Favoris -----
-  // On suit l'ensemble des IDs favoris en direct (le ❤ du lecteur reflète
+  // On suit l'ensemble des IDs favoris en direct (le du lecteur reflète
   // instantanément l'ajout/retrait, et reste à jour au zap).
   StreamSubscription<Set<String>>? _favSub;
   Set<String> _favIds = FavoritesRepository.instance.current;
@@ -320,7 +320,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         });
       },
     )..attach();
-    // Favoris en direct (le ❤ se met à jour tout seul).
+    // Favoris en direct (le se met à jour tout seul).
     FavoritesRepository.instance.initialize();
     _favSub = FavoritesRepository.instance.favoritesStream.listen((Set<String> ids) {
       if (mounted) setState(() => _favIds = ids);
@@ -1322,7 +1322,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     if (mounted) setState(() => _upNextVisible = false);
   }
 
-  // Ajoute / retire la chaîne courante des favoris (bouton ❤ / touche F).
+  // Ajoute / retire la chaîne courante des favoris (bouton / touche F).
   void _toggleFavorite() {
     final bool wasFav = _isFavorite;
     FavoritesRepository.instance.toggle(_current.id);
@@ -1659,7 +1659,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                 ),
               // Panneau de lecture (façon YouTube / Netflix) : glisse depuis le
               // bas + fondu, masqué automatiquement après 5 s. Contient l'info
-              // chaîne + tous les contrôles (dont REC et ❤ en bas).
+              // chaîne + tous les contrôles (dont REC et en bas).
               Align(
                 alignment: Alignment.bottomCenter,
                 child: AnimatedSlide(
@@ -1803,7 +1803,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
 
 /// Panneau de lecture moderne (façon YouTube / Netflix) : dégradé sombre en
 /// bas, infos chaîne (logo + nom + DIRECT + n° de chaîne) puis une rangée de
-/// commandes « verre » animées. À droite (« en bas ») : REC et ❤ favori.
+/// commandes « verre » animées. À droite (« en bas ») : REC et favori.
 /// Boutons NON focusables → le D-pad zappe directement (Haut/Bas) ; ils
 /// servent au doigt (tablette / TV tactile) et de repères visuels.
 class _ControlsBar extends StatelessWidget {

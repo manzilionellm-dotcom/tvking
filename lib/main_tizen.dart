@@ -43,7 +43,7 @@ void main() => runGuarded(_bootstrap);
 Future<void> _bootstrap() async {
   FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
 
-  // C'est une TÉLÉVISION → le panel l'affiche comme 📺 (comme l'Android TV).
+  // C'est une TÉLÉVISION → le panel l'affiche comme (comme l'Android TV).
   AppPlatform.isTv = true;
 
   // SQLite : sur Tizen on utilise le plugin NATIF `sqflite_tizen` (ajouté par le

@@ -66,7 +66,7 @@ Future<void> _bootstrap() async {
   await BootGuard.instance.beginBoot();
 
   // Cette app est la version TÉLÉVISION → le heartbeat enverra
-  // platform='tv' et le panel l'affichera comme 📺 (vs 📱 mobile).
+  // platform='tv' et le panel l'affichera comme (vs mobile).
   AppPlatform.isTv = true;
 
   // GARDE-MÉMOIRE TV (anti-fermeture) : AVANT la branche mode sans échec —
@@ -89,7 +89,7 @@ Future<void> _bootstrap() async {
     // Langue chargée pour que l'écran de récup s'affiche dans la bonne langue.
     await LocaleRepository.instance.initialize();
     runApp(SafeModeApp(failedPhase: BootGuard.instance.lastFailedPhase));
-    return; // ⛔ on ne va PAS plus loin (rien de risqué).
+    return; // on ne va PAS plus loin (rien de risqué).
   }
   // Boot normal : on note le jalon « moteur prêt » (avant tout import).
   await BootGuard.instance.markPhase(BootPhase.flutterUp);
@@ -220,7 +220,7 @@ Future<void> _bootstrap() async {
   );
 
   // 6) Favoris : on précharge l'ensemble des chaînes favorites pour que le
-  //    cœur ❤ du lecteur affiche le bon état dès la 1re ouverture.
+  // cœur du lecteur affiche le bon état dès la 1re ouverture.
   unawaited(FavoritesRepository.instance.initialize());
 
   // 7) Notifications (alarmes « ton équipe joue bientôt ») : init du plugin +

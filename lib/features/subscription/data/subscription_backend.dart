@@ -171,7 +171,7 @@ abstract final class SubscriptionBackend {
         'appBuild': kBuildTs,
         // Chaîne en cours de visionnage (vide si rien) → panel « En ligne ».
         'channel': NowPlaying.instance.current,
-        // 📱 mobile / 📺 tv → le panel distingue les deux apps.
+        // mobile / tv → le panel distingue les deux apps.
         'platform': AppPlatform.id,
         // INVENTAIRE des sources réellement présentes sur l'appareil (celles
         // poussées par le panel ET celles que le client a ajoutées lui-même).

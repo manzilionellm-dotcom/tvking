@@ -360,7 +360,7 @@ class _ImportProgressScreenState<T> extends State<ImportProgressScreen<T>>
       case ImportPhase.saving:
         return 'Presque prêt…';
       case ImportPhase.done:
-        return 'C\'est prêt ✨';
+        return 'C\'est prêt';
       case ImportPhase.failed:
         return 'Échec de l\'import';
     }

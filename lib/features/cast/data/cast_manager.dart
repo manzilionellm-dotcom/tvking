@@ -1433,7 +1433,7 @@ class CastManager extends ChangeNotifier {
     }
   }
 
-  // ⚠️ NE JAMAIS remettre _workerTsUrl en stratégie 0/1 DLNA. Le Worker
+  // NE JAMAIS remettre _workerTsUrl en stratégie 0/1 DLNA. Le Worker
   // Cloudflare coupe le flux LIVE à ~105s (limite de durée). La LG doit
   // recevoir l'URL upstream DIRECTE (probe.finalUrl) pour tirer le flux
   // elle-même → téléphone-éteint-TV-continue. Régression historique:

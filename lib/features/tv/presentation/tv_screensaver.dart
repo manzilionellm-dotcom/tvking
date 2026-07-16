@@ -141,7 +141,7 @@ class _TvScreensaverScreenState extends State<_TvScreensaverScreen> {
     if (mounted) setState(() => _time = '$h:$m');
   }
 
-  /// Ligne météo « ☀️ 21° · Paris » (si la météo est déjà en cache — on ne
+  /// Ligne météo « 21° · Paris » (si la météo est déjà en cache — on ne
   /// déclenche AUCUN appel réseau depuis le veilleur, on lit seulement).
   String get _weatherLabel {
     final Greeting? g = GreetingRepository.instance.current;

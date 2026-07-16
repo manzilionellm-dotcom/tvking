@@ -6,7 +6,7 @@
 //    - addFavorite/remove   : gérer PLUSIEURS équipes préférées (persisté).
 //    - eventsFor(id)        : derniers + prochains matchs (score), maj 10 min.
 //    - ALARMES : pour chaque match à venir, un rappel est programmé ~1 h avant
-//      (NotificationService) → « ⚽ <équipe> joue bientôt ».
+// (NotificationService) → « <équipe> joue bientôt ».
 // =========================================================
 import 'dart:async';
 import 'dart:convert';

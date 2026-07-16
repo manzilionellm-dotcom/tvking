@@ -13,7 +13,7 @@
 //      d'insertion rapide (http://, .com, /get.php?username=…) qui
 //      insèrent un BLOC entier en un OK (le cœur du « naturel » pour
 //      quelqu'un fâché avec l'orthographe), grille de touches, touches
-//      de contrôle (MAJ, 123, espace, ◀ ▶ curseur, ⌫ à répétition, ✕).
+// de contrôle (MAJ, 123, espace, ◀ ▶ curseur, ⌫ à répétition, ).
 //    • TvKeyboardField — champ de formulaire : un OK le désigne comme
 //      CIBLE du clavier ; il contient un VRAI TextField (hors parcours
 //      D-pad, cf. skipTraversal) qu'un bouton ⌨ dédié permet de
@@ -535,7 +535,7 @@ class _RepeatKeyState extends State<_RepeatKey> {
 //    fonctionnent toujours — mais il est HORS du parcours D-pad
 //    (skipTraversal) pour que naviguer ne déclenche jamais l'IME de la
 //    box. Le bouton ⌨ à côté du champ le focalise volontairement.
-//  • Mot de passe : bouton 👁 afficher/masquer, focusable lui aussi.
+// • Mot de passe : bouton afficher/masquer, focusable lui aussi.
 // =========================================================
 class TvKeyboardField extends StatefulWidget {
   const TvKeyboardField({
@@ -560,7 +560,7 @@ class TvKeyboardField extends StatefulWidget {
   /// OK sur le champ → l'écran fait de ce champ la cible du clavier.
   final VoidCallback onActivate;
 
-  /// Mot de passe masqué. [onToggleObscure] non-null = bouton 👁 affiché.
+  /// Mot de passe masqué. [onToggleObscure] non-null = bouton affiché.
   final bool obscured;
   final VoidCallback? onToggleObscure;
   final bool autofocus;

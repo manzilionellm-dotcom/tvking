@@ -20,7 +20,7 @@
 //  CONTRAT UX : annulable à tout moment, ~20 s MAX au total (timeouts
 //  courts), progression rapportée étape par étape. Tous les détails
 //  techniques partent dans StreamDiagnostics (identifiants masqués) ;
-//  l'écran de synthèse ne montre que des ✓ / ✗ compréhensibles.
+// l'écran de synthèse ne montre que des ✓ / compréhensibles.
 //
 //  TESTABILITÉ : toutes les E/S (compte, échantillon, sonde,
 //  persistance) sont injectables — l'orchestrateur se teste sans

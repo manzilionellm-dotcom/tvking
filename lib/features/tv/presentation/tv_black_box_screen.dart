@@ -64,7 +64,7 @@ class TvBlackBoxScreen extends StatefulWidget {
   State<TvBlackBoxScreen> createState() => _TvBlackBoxScreenState();
 }
 
-/// Une étape du « Diagnostiquer maintenant » (affichée ✓/✗ UNE PAR UNE).
+/// Une étape du « Diagnostiquer maintenant » (affichée ✓/ UNE PAR UNE).
 class _DiagStep {
   _DiagStep(this.label);
   final String label;
@@ -194,7 +194,7 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
   // ==================================================================
 
   /// Relance les 6 vérifications, UNE PAR UNE (le client voit chaque étape
-  /// passer ✓/✗). [entry] = échec ciblé (on retrouve la chaîne par son nom) ;
+  /// passer ✓/). [entry] = échec ciblé (on retrouve la chaîne par son nom) ;
   /// null = diagnostic global sur la chaîne courante/première chaîne.
   Future<void> _runDiagnosis({PlaybackFailureEntry? entry}) async {
     if (_diagRunning) return; // une seule campagne à la fois
@@ -270,7 +270,7 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
       }
     }
 
-    // Exécution SÉQUENTIELLE : chaque ✓/✗ apparaît avant l'étape suivante.
+    // Exécution SÉQUENTIELLE : chaque ✓/ apparaît avant l'étape suivante.
     for (int i = 0; i < steps.length; i++) {
       if (!mounted) return; // l'utilisateur a quitté l'écran → on arrête tout
       setState(() {

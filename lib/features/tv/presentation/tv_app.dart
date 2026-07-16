@@ -724,7 +724,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   const SizedBox(width: 18),
                   const Expanded(child: _HomeHeader()),
                   const SizedBox(width: 16),
-                  // ⚽ GRAND MATCH : le match (en direct ou à venir) d'une
+                  // GRAND MATCH : le match (en direct ou à venir) d'une
                   // équipe favorite, affiché comme la météo. OK → univers
                   // Sport. Invisible si aucune équipe suivie / aucun match.
                   _MatchChip(onOpen: () {
@@ -838,7 +838,7 @@ class _HomeHeaderState extends State<_HomeHeader> {
     } else if (wd == DateTime.monday && hh < 12) {
       heart = context.l10n.tvHeartMonday;
     }
-    // ÉPURÉ (réf. design) : plus de « Bonjour 👋 ». Un simple cluster
+    // ÉPURÉ (réf. design) : plus de « Bonjour ». Un simple cluster
     // ville · météo · jour · heure, DISCRET, aligné EN HAUT À DROITE.
     return Align(
       alignment: Alignment.centerRight,
@@ -855,7 +855,7 @@ class _HomeHeaderState extends State<_HomeHeader> {
             ],
             if (temp.isNotEmpty) TextSpan(text: '$temp   ·   '),
             TextSpan(text: dayTime),
-            // Le mot du cœur (« couvre-toi bien 🧣 », « il est tard 🌙 »…),
+            // Le mot du cœur (« couvre-toi bien », « il est tard »…),
             // légèrement doré pour qu'on le sente sans qu'il crie.
             if (heart.isNotEmpty)
               TextSpan(
@@ -868,7 +868,7 @@ class _HomeHeaderState extends State<_HomeHeader> {
     );
   }
 }
-/// ⚽ Pastille « GRAND MATCH » (en haut de l'accueil, comme la météo) :
+/// Pastille « GRAND MATCH » (en haut de l'accueil, comme la météo) :
 /// le match le plus pertinent des ÉQUIPES FAVORITES du client —
 ///   • EN DIRECT (point rouge + score s'il est connu), sinon
 ///   • le PROCHAIN match à venir (« France vs Belgique · 14/06 21:00 »).

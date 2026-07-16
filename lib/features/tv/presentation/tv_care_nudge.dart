@@ -4,8 +4,8 @@
 //  Après 3 HEURES de visionnage d'affilée, un petit mot passe en bas de
 //  l'écran pendant 12 secondes, puis s'efface — comme une main posée sur
 //  l'épaule, jamais comme une interruption :
-//    • en journée : « 3 heures déjà — pense à t'étirer, boire un peu d'eau 💛 »
-//    • tard le soir : « Il est tard… la télé sera encore là demain 🌙 »
+// • en journée : « 3 heures déjà — pense à t'étirer, boire un peu d'eau »
+// • tard le soir : « Il est tard… la télé sera encore là demain »
 //
 //  RÈGLES : IgnorePointer (aucun impact focus/lecture), au plus UNE fois
 //  toutes les 6 h, s'appuie sur le compteur de minutes consécutives du

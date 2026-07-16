@@ -15,7 +15,7 @@
 //  rattrapable) une petite box dès qu'on charge une grosse playlist. On
 //  borne donc le plafond selon la RAM réelle.
 //
-//  ⚠️ ISOLATS : ces champs statiques ne sont PAS partagés entre isolats
+// ISOLATS : ces champs statiques ne sont PAS partagés entre isolats
 //  (le parsing M3U tourne dans un isolate `compute`). Là-bas, `isLoaded`
 //  vaut `false` → on retombe sur le défaut prudent. Pour un plafond exact
 //  côté isolate, PASSER la valeur en argument de `compute` (cf. parser).

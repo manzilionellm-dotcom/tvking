@@ -3,7 +3,7 @@
 // =========================================================
 //  Posé UNE fois au démarrage : `main.dart` (mobile) laisse la valeur
 //  par défaut, `main_tv.dart` met `isTv = true`. Le heartbeat envoie
-//  `platform` ('mobile' | 'tv') → le panel distingue 📱 et 📺 (appareils,
+// `platform` ('mobile' | 'tv') → le panel distingue et (appareils,
 //  thème par plateforme, mise à jour forcée par plateforme…).
 //  Additif : ne change RIEN au comportement du mobile.
 // =========================================================
@@ -14,7 +14,7 @@ class AppPlatform {
   static bool isTv = false;
 
   /// `true` uniquement dans l'app de BUREAU Windows (lib/main_windows.dart).
-  /// Le panel pourra ainsi distinguer 💻 PC des box 📺 et des 📱.
+  /// Le panel pourra ainsi distinguer PC des box et des .
   static bool isWindows = false;
 
   /// Identifiant envoyé au backend.

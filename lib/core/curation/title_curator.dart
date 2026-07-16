@@ -18,7 +18,7 @@
 //  Stratégie :
 //    1. On strippe les préfixes ("ADULT:", "FR |", "[VIP]"…)
 //       et suffixes ("RAW", "HD", "FHD", "4K", "BACKUP", "24/7",
-//       "⚡", "★"…)
+// "", "★"…)
 //    2. On remplace les variantes connues par des libellés
 //       cinéma curés (un PETIT dictionnaire, élargi au fil
 //       des découvertes — c'est volontairement minimaliste,
@@ -110,7 +110,7 @@ abstract final class TitleCurator {
 
   // -----------------------------------------------------------------
   //  Caractères / symboles décoratifs à virer entièrement.
-  //  Pas de "★" ni "⚡" ni "✨" dans une UI premium.
+  // Pas de "★" ni "" ni "" dans une UI premium.
   // -----------------------------------------------------------------
   static final RegExp _decorations = RegExp(
     r'[★☆●○◆◇■□▪▫•‣⚡✨✦✧❤♥♦♣♠➤➜▶▷◀◁→←↑↓↔↕↗↖↘↙‼‼️🔥💎💯🎬🎥📺🇦-🇿]+',
@@ -280,7 +280,7 @@ abstract final class TitleCurator {
       safety--;
     } while (before != s && safety > 0);
 
-    // 1b) Retire les décorations Unicode (★ ⚡ 🔥 ✨ etc.)
+    // 1b) Retire les décorations Unicode (★ etc.)
     s = s.replaceAll(_decorations, ' ');
 
     // 2) Retire les crochets [VIP], [HD], (BACKUP), {RAW}, etc.

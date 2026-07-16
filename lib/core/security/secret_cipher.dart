@@ -13,7 +13,7 @@
 //  (les données locales, elles, sont effacées à la désinstallation de toute
 //  façon).
 //
-//  ⚠️ PÉRIMÈTRE : chiffrement AU REPOS (sur l'appareil). La sauvegarde cloud
+// PÉRIMÈTRE : chiffrement AU REPOS (sur l'appareil). La sauvegarde cloud
 //  reste en clair pour l'instant (la restaurer sur une AUTRE box nécessiterait
 //  une clé récupérable côté serveur — chantier backend séparé, cf. roadmap).
 //

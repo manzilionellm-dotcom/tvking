@@ -53,8 +53,8 @@ Future<void> _bootstrap() async {
   // Un seul produit pour l'instant : The Few.
   FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
 
-  // Le heartbeat enverra platform='windows' (le panel pourra distinguer 💻 PC
-  // des box 📺 TV et des téléphones 📱). AppPlatform.isTv reste à false : l'UI
+  // Le heartbeat enverra platform='windows' (le panel pourra distinguer PC
+  // des box TV et des téléphones ). AppPlatform.isTv reste à false : l'UI
   // TV s'affiche quand même (on l'instancie explicitement via TvApp ci-dessous).
   AppPlatform.isWindows = true;
 
@@ -96,7 +96,7 @@ Future<void> _bootstrap() async {
       .initialize()
       .timeout(const Duration(seconds: 6), onTimeout: () {});
 
-  // 5) Favoris : préchargés pour que le cœur ❤ reflète le bon état dès l'ouverture.
+  // 5) Favoris : préchargés pour que le cœur reflète le bon état dès l'ouverture.
   unawaited(FavoritesRepository.instance.initialize());
 
   runApp(const TvApp());

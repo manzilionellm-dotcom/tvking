@@ -5,8 +5,8 @@
 //    - leur nom + type (M3U / Xtream)
 //    - nombre de chaînes
 //    - date de dernière synchro
-//    - bouton ➕ Ajouter une autre playlist
-//    - swipe-to-delete ou bouton 🗑 par playlist
+// - bouton Ajouter une autre playlist
+// - swipe-to-delete ou bouton par playlist
 //
 //  Plusieurs playlists peuvent coexister : une seule est ACTIVE à la
 //  fois (ses chaînes alimentent l'accueil). On peut basculer d'une

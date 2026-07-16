@@ -182,7 +182,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       _favIds = ids;
       _scheduleRailsRefresh();
     });
-    // Historique « 🕒 Récemment » en direct.
+    // Historique « Récemment » en direct.
     _recentSub =
         RecentlyWatchedRepository.instance.stream.listen((List<String> ids) {
       _recentIds = ids;
