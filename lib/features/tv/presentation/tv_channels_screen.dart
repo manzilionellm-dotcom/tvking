@@ -507,13 +507,32 @@ class _ChannelTile extends StatefulWidget {
 
 class _ChannelTileState extends State<_ChannelTile> {
   String? _now;
+  Timer? _epgTimer;
 
   @override
   void initState() {
     super.initState();
-    EpgRepository.instance.currentProgram(widget.channel.id).then((EpgProgram? p) {
-      if (mounted && p != null) setState(() => _now = p.title);
-    });
+    // 1) INSTANTANÉ : si le programme est déjà en cache mémoire, on l'affiche
+    //    SANS aucune requête (fluidité du défilement).
+    _now = EpgRepository.instance.cachedCurrent(widget.channel.id)?.title;
+    // 2) Sinon, on interroge la base MAIS APRÈS un court répit (250 ms) : si
+    //    la tuile est déjà recyclée (défilement rapide), on n'aura tiré
+    //    aucune requête pour elle — plus de rafale SQLite pendant le scroll.
+    if (_now == null) {
+      _epgTimer = Timer(const Duration(milliseconds: 250), () {
+        EpgRepository.instance
+            .currentProgram(widget.channel.id)
+            .then((EpgProgram? p) {
+          if (mounted && p != null) setState(() => _now = p.title);
+        });
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _epgTimer?.cancel();
+    super.dispose();
   }
 
   @override

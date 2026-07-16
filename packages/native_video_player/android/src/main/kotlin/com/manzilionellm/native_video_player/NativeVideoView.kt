@@ -286,23 +286,25 @@ class NativeVideoView(
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
             .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(3))
 
-        // ADAPTATION AUTOMATIQUE DE LA QUALITÉ (« façon Netflix »), réglée pour
-        // les réseaux FAIBLES / INSTABLES (ex. Afrique). Ne s'applique QUE si le
-        // flux propose PLUSIEURS qualités (HLS/DASH multi-débit) — un flux à
-        // débit unique ne peut pas être allégé (c'est le fournisseur qui décide).
-        //   • bandwidthFraction 0.6 : on n'utilise que 60 % du débit MESURÉ pour
-        //     choisir la qualité → marge de sécurité, beaucoup moins de coupures.
-        //   • on DESCEND vite quand la connexion faiblit (maxDurationFor
-        //     QualityDecrease court) et on REMONTE prudemment (minDurationFor
-        //     QualityIncrease long) → pas de yo-yo, image stable.
-        // Aucun plafond fixe : sur bonne connexion, la HD revient toute seule.
+        // ADAPTATION AUTOMATIQUE DE LA QUALITÉ. Ne s'applique QUE si le flux
+        // propose PLUSIEURS qualités (HLS/DASH multi-débit, VOD) — un flux à
+        // débit unique (.ts live habituel) ne peut PAS être amélioré : c'est
+        // le fournisseur qui décide de la netteté.
+        //   • NETTETÉ PRIORISÉE (demande client) : bandwidthFraction 0.80 (au
+        //     lieu de 0.60) → on exploite 80 % du débit mesuré pour choisir la
+        //     MEILLEURE qualité que la connexion supporte. On garde une marge
+        //     de 20 % contre les coupures — sharpness maximale SANS yo-yo.
+        //   • on MONTE plus vite en HD (minDurationForQualityIncrease 10 s au
+        //     lieu de 15) et on descend toujours vite si ça faiblit.
+        // Aucun plafond de résolution : la HD/4K de la source est utilisée
+        // jusqu'à la définition réelle de l'écran (viewport display par défaut).
         val trackSelector = DefaultTrackSelector(
             appContext,
             AdaptiveTrackSelection.Factory(
-                15_000, // minDurationForQualityIncreaseMs (remonte prudemment)
+                10_000, // minDurationForQualityIncreaseMs (monte plus vite en HD)
                 18_000, // maxDurationForQualityDecreaseMs (descend vite)
                 20_000, // minDurationToRetainAfterDiscardMs
-                0.6f,   // bandwidthFraction (marge de sécurité réseau)
+                0.80f,  // bandwidthFraction (netteté priorisée, marge 20 %)
             ),
         )
 

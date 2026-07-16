@@ -25,6 +25,7 @@ import '../../playlists/domain/playlist.dart';
 import '../domain/vod_info.dart';
 import '../domain/vod_series.dart';
 import 'catalog_disk_cache.dart';
+import '../../player/data/stream_diagnostics.dart';
 
 /// Décodage du cache disque en ISOLATE (10 000 séries possibles).
 List<VodSeries> decodeSeriesCatalog(String raw) {
@@ -88,27 +89,40 @@ class SeriesRepository extends ChangeNotifier {
   /// Catalogue des séries (vignettes). [forceRefresh] re-tape le serveur.
   /// Mémoire → disque (instantané + refresh silencieux) → réseau.
   Future<List<VodSeries>> fetchSeries({bool forceRefresh = false}) async {
-    if (!forceRefresh && _cache != null) return _cache!;
+    if (!forceRefresh && _cache != null) {
+      _diag('mémoire : ${_cache!.length} séries');
+      return _cache!;
+    }
     final String key = await _sourceKey();
     if (!forceRefresh) {
       final List<VodSeries>? disk = await _disk.load(key);
       if (disk != null && disk.isNotEmpty) {
         _cache = disk;
+        _diag('disque (source $key) : ${disk.length} séries');
         unawaited(_refreshInBackground());
         return disk;
       }
     }
+    _diag('réseau demandé (source $key)…');
     final List<VodSeries> fresh = await _fetchFromNetwork();
     if (fresh.isNotEmpty) {
       _cache = fresh;
+      _diag('réseau OK : ${fresh.length} séries reçues');
       unawaited(_disk.save(fresh, key));
     } else {
-      // Échec réseau / source sans séries : jamais de destruction d'un
-      // catalogue existant (même contrat que VodRepository).
-      _cache ??= const <VodSeries>[];
+      // Réseau vide / panne : on NE MET PAS en cache le vide (sinon l'écran
+      // resterait vide toute la session) → réessai à la prochaine ouverture.
+      // On conserve un éventuel cache existant (pas de destruction).
+      _diag(
+          'réseau : 0 série (source sans séries, compte M3U, ou panne) — '
+          'réessai à la prochaine ouverture',
+          level: 'warn');
     }
-    return _cache!;
+    return _cache ?? const <VodSeries>[];
   }
+
+  void _diag(String m, {String level = 'info'}) =>
+      StreamDiagnostics.instance.recordEvent('séries', m, level: level);
 
   /// Appel réseau brut — AUCUN effet de bord sur _cache.
   Future<List<VodSeries>> _fetchFromNetwork() async {
@@ -160,11 +174,22 @@ class SeriesRepository extends ChangeNotifier {
   Future<({VodInfo? info, List<VodEpisode> episodes})> fetchDetail(
       String seriesId) async {
     final XtreamClient? client = await _client();
-    if (client == null) return (info: null, episodes: const <VodEpisode>[]);
+    if (client == null) {
+      _diag('ouverture série $seriesId : aucun compte Xtream (M3U seul) → '
+          'pas d\'épisodes', level: 'warn');
+      return (info: null, episodes: const <VodEpisode>[]);
+    }
     try {
-      return await client.fetchSeriesDetail(seriesId);
+      final ({VodInfo? info, List<VodEpisode> episodes}) d =
+          await client.fetchSeriesDetail(seriesId);
+      _diag(d.episodes.isEmpty
+          ? 'ouverture série $seriesId : 0 épisode renvoyé par le serveur'
+          : 'ouverture série $seriesId : ${d.episodes.length} épisodes',
+          level: d.episodes.isEmpty ? 'warn' : 'info');
+      return d;
     } catch (e) {
       if (kDebugMode) debugPrint('[Series] detail error: $e');
+      _diag('ouverture série $seriesId : ÉCHEC ($e)', level: 'error');
       return (info: null, episodes: const <VodEpisode>[]);
     } finally {
       client.dispose();

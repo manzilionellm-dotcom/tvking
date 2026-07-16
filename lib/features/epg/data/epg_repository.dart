@@ -42,6 +42,36 @@ class EpgRepository {
   bool get isSyncing => _syncing;
 
   // ============================================================
+  //  CACHE MÉMOIRE « programme en cours » (fluidité du défilement)
+  // ============================================================
+  //  Défiler une liste de chaînes créait autant de requêtes SQLite que de
+  //  tuiles affichées (chaque tuile demande son programme en cours) → rafale
+  //  de requêtes + setState pendant le scroll = saccades. Ce cache court
+  //  (60 s) rend instantané tout ré-affichage d'une chaîne déjà vue : on
+  //  défile de haut en bas sans re-toucher la base. Vidé à chaque sync EPG
+  //  (les données changent) et borné (LRU) pour ne pas peser sur une box.
+  final Map<String, ({DateTime at, EpgProgram? prog})> _nowCache =
+      <String, ({DateTime at, EpgProgram? prog})>{};
+  static const Duration _nowTtl = Duration(seconds: 60);
+  static const int _nowCacheMax = 600;
+
+  /// Programme en cours DÉJÀ EN CACHE (synchrone, zéro I/O) — `null` si absent
+  /// ou périmé. Les tuiles l'utilisent pour s'afficher SANS attendre la base.
+  EpgProgram? cachedCurrent(String channelId) {
+    final ({DateTime at, EpgProgram? prog})? e = _nowCache[channelId];
+    if (e == null) return null;
+    if (DateTime.now().difference(e.at) > _nowTtl) return null;
+    return e.prog;
+  }
+
+  void _rememberNow(String channelId, EpgProgram? prog) {
+    if (_nowCache.length >= _nowCacheMax) {
+      _nowCache.remove(_nowCache.keys.first); // éviction FIFO simple
+    }
+    _nowCache[channelId] = (at: DateTime.now(), prog: prog);
+  }
+
+  // ============================================================
   //  Initialisation (création des tables)
   // ============================================================
 
@@ -157,6 +187,7 @@ class EpgRepository {
           debugPrint('[EpgRepository] $total programmes importés');
         }
 
+        _nowCache.clear(); // nouvelles données EPG → cache mémoire périmé
         if (!_changesController.isClosed) {
           _changesController.add(null);
         }
@@ -189,6 +220,7 @@ class EpgRepository {
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
     await db.delete('epg_programs');
+    _nowCache.clear();
     if (!_changesController.isClosed) _changesController.add(null);
   }
 
@@ -197,7 +229,13 @@ class EpgRepository {
   // ============================================================
 
   /// Programme actuellement diffusé sur cette chaîne (null si rien).
+  /// Sert d'abord le CACHE MÉMOIRE (60 s) → défiler une liste ne re-tape
+  /// pas la base pour des chaînes déjà vues (fluidité).
   Future<EpgProgram?> currentProgram(String channelId) async {
+    final ({DateTime at, EpgProgram? prog})? hit = _nowCache[channelId];
+    if (hit != null && DateTime.now().difference(hit.at) <= _nowTtl) {
+      return hit.prog;
+    }
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
     final int now = DateTime.now().millisecondsSinceEpoch;
@@ -207,8 +245,10 @@ class EpgRepository {
       whereArgs: <Object>[channelId, now, now],
       limit: 1,
     );
-    if (rows.isEmpty) return null;
-    return EpgProgram.fromMap(rows.first);
+    final EpgProgram? prog =
+        rows.isEmpty ? null : EpgProgram.fromMap(rows.first);
+    _rememberNow(channelId, prog);
+    return prog;
   }
 
   /// Programme suivant après celui en cours (null si rien programmé).

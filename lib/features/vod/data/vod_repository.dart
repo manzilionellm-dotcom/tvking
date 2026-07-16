@@ -33,6 +33,7 @@ import '../../playlists/data/xtream_client.dart';
 import '../domain/vod_info.dart';
 import '../domain/vod_movie.dart';
 import 'catalog_disk_cache.dart';
+import '../../player/data/stream_diagnostics.dart';
 
 /// Décode le fichier de cache (JSON → films) — TOP-LEVEL pour tourner dans
 /// un isolate via [compute] : 10 000 films = ~2-5 Mo de JSON, un décodage
@@ -114,32 +115,41 @@ class VodRepository extends ChangeNotifier {
   /// [ChangeNotifier] (addListener) et relisent fetchMovies() — qui répond
   /// alors depuis la mémoire, sans re-travail.
   Future<List<VodMovie>> fetchMovies({bool forceRefresh = false}) async {
-    if (!forceRefresh && _cache != null) return _cache!;
-
+    if (!forceRefresh && _cache != null) {
+      _diag('mémoire : ${_cache!.length} films');
+      return _cache!;
+    }
     final String key = await _sourceKey();
     if (!forceRefresh) {
-      // 2e étage : cache DISQUE (si la source correspond) → affichage
-      // immédiat + refresh silencieux.
       final List<VodMovie>? disk = await _disk.load(key);
       if (disk != null && disk.isNotEmpty) {
         _cache = disk;
+        _diag('disque (source $key) : ${disk.length} films → '
+            'rafraîchissement en arrière-plan');
         unawaited(_refreshInBackground());
         return disk;
       }
     }
-    // 3e étage : réseau (1er lancement ou forceRefresh).
+    _diag('réseau demandé (source $key)…');
     final List<VodMovie> fresh = await _fetchFromNetwork();
     if (fresh.isNotEmpty) {
       _cache = fresh;
+      _diag('réseau OK : ${fresh.length} films reçus');
       unawaited(_disk.save(fresh, key));
     } else {
-      // ÉCHEC réseau ou source sans VOD : on NE DÉTRUIT JAMAIS un catalogue
-      // existant (mémoire ou disque) — une panne transitoire pendant un
-      // « Recharger » ne doit pas vider l'écran Films pour de bon.
-      _cache ??= const <VodMovie>[];
+      // Réseau vide / panne : on NE MET PAS en cache le vide (sinon l'écran
+      // resterait vide toute la session) → réessai à la prochaine ouverture.
+      // On conserve un éventuel cache existant (pas de destruction).
+      _diag(
+          'réseau : 0 film (source sans VOD, compte M3U, ou panne) — '
+          'réessai à la prochaine ouverture',
+          level: 'warn');
     }
-    return _cache!;
+    return _cache ?? const <VodMovie>[];
   }
+
+  void _diag(String m, {String level = 'info'}) =>
+      StreamDiagnostics.instance.recordEvent('cinéma', m, level: level);
 
   /// Appel réseau brut (liste vide en cas d'erreur — fail-open, et AUCUN
   /// effet de bord sur _cache : c'est l'appelant qui décide quoi garder).
