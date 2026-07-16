@@ -25,6 +25,7 @@
 //  ▶ Regarder de la vedette lance aussi direct (c'est un bouton de lecture
 //  explicite, pas une vignette).
 // =========================================================
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -36,6 +37,7 @@ import '../../vod/data/playback_position_repository.dart';
 import '../../vod/data/recent_vod_repository.dart';
 import '../../vod/data/vod_repository.dart';
 import '../../vod/data/vod_watchlist_repository.dart';
+import '../../vod/domain/vod_info.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -61,6 +63,15 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   List<VodMovie> _watchlist = const <VodMovie>[];
   // Ids présents dans « Ma Liste » (repère rapide pour l'affichage du ✓).
   Set<String> _inList = <String>{};
+
+  // Fiche du film VEDETTE, chargée en tâche de fond après le catalogue :
+  // sert le BACKDROP (image paysage) et le synopsis du bandeau cinéma
+  // plein cadre. `_heroInfoId` mémorise POUR QUEL film cette fiche a été
+  // demandée → si la vedette change (nouveau « dernier vu ») on ignore une
+  // réponse périmée et on recharge. Absent / sans backdrop → repli sur le
+  // bandeau classique (affiche à droite), aucune régression.
+  VodInfo? _heroInfo;
+  String? _heroInfoId;
 
   @override
   void initState() {
@@ -134,6 +145,25 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
       _inList = _watchlist.map((VodMovie m) => m.id).toSet();
       _loading = false;
     });
+    // Catalogue prêt → on demande en tâche de fond le BACKDROP du film
+    // vedette (même règle que la fiche : appel get_vod_info mis en cache
+    // LRU). Le bandeau s'ouvre tout de suite en repli, puis passe en mode
+    // cinéma plein cadre dès que l'image de fond arrive — sans à-coup.
+    if (_all.isNotEmpty) {
+      final VodMovie hero = _recent.isNotEmpty ? _recent.first : _all.first;
+      unawaited(_ensureHeroInfo(hero));
+    }
+  }
+
+  /// Charge (une fois) la fiche du film vedette pour son backdrop paysage.
+  /// Idempotent : deux _load() rapprochés sur le même héros ne relancent
+  /// pas l'appel. Protège contre les réponses périmées si la vedette change.
+  Future<void> _ensureHeroInfo(VodMovie hero) async {
+    if (_heroInfoId == hero.id) return; // déjà chargé / en cours pour ce film
+    _heroInfoId = hero.id;
+    final VodInfo? info = await VodRepository.instance.fetchInfo(hero.id);
+    if (!mounted || _heroInfoId != hero.id) return; // vedette changée entre-temps
+    setState(() => _heroInfo = info);
   }
 
   /// Ajoute/retire [m] de « Ma Liste » (par profil) et rafraîchit l'affichage.
@@ -270,6 +300,12 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
 
     // Film mis en avant : le dernier vu, sinon le premier du catalogue.
     final VodMovie hero = _recent.isNotEmpty ? _recent.first : _all.first;
+    // Backdrop + synopsis du bandeau cinéma : uniquement si la fiche chargée
+    // correspond BIEN au héros courant (sinon on afficherait l'image d'un
+    // autre film le temps que la bonne fiche arrive).
+    final bool heroInfoReady = _heroInfoId == hero.id;
+    final String? heroBackdrop = heroInfoReady ? _heroInfo?.backdropUrl : null;
+    final String? heroPlot = heroInfoReady ? _heroInfo?.plot : null;
 
     // Reprises en cours (« Continuer à regarder ») : lues directement dans le
     // repo (≤ 100 entrées triées, O(1)) — films ET épisodes de séries.
@@ -314,6 +350,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
           return _HeroBanner(
             movie: hero,
             autofocus: true,
+            backdropUrl: heroBackdrop,
+            plot: heroPlot,
             inList: _inList.contains(hero.id),
             onPlay: () => _play(<VodMovie>[hero], 0),
             onToggleList: () => _toggleList(hero),
@@ -342,12 +380,21 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
 }
 
 /// Grande affiche vedette (haut de page) : visuel + titre + méta + ▶ Regarder.
+///
+/// Deux rendus, choisis automatiquement :
+///  • CINÉMA (façon Netflix) quand un backdrop paysage est disponible :
+///    image plein cadre, voile sombre, titre + synopsis + boutons posés
+///    en bas à gauche.
+///  • CLASSIQUE en repli (pas de backdrop : source pauvre en métadonnées,
+///    fiche pas encore arrivée…) : affiche à droite sur dégradé, comme avant.
 class _HeroBanner extends StatelessWidget {
   const _HeroBanner({
     required this.movie,
     required this.onPlay,
     required this.inList,
     required this.onToggleList,
+    this.backdropUrl,
+    this.plot,
     this.autofocus = false,
   });
 
@@ -355,17 +402,156 @@ class _HeroBanner extends StatelessWidget {
   final VoidCallback onPlay;
   final bool inList;
   final VoidCallback onToggleList;
+
+  /// Image de fond paysage (get_vod_info). `null` → rendu classique.
+  final String? backdropUrl;
+
+  /// Synopsis court affiché sous le titre dans le rendu cinéma (facultatif).
+  final String? plot;
   final bool autofocus;
+
+  /// Métadonnées compactes (année · note · catégorie) — communes aux 2 rendus.
+  String get _meta => <String>[
+        if (movie.year != null && movie.year!.isNotEmpty) movie.year!,
+        if (movie.rating != null && movie.rating!.isNotEmpty)
+          '★ ${movie.rating}',
+        if (movie.category.trim().isNotEmpty) movie.category.trim(),
+      ].join('   ·   ');
+
+  /// Rangée de boutons (Regarder / Ma Liste / Télécharger) — partagée par les
+  /// deux rendus pour garder un comportement de focus identique.
+  Widget _actions(BuildContext context) => Row(
+        children: <Widget>[
+          _HeroButton(
+            icon: Icons.play_arrow_rounded,
+            label: context.l10n.tvWatch,
+            autofocus: autofocus,
+            primary: true,
+            onSelect: onPlay,
+          ),
+          const SizedBox(width: 12),
+          // « Ma Liste » : ajoute/retire le film vedette (par profil).
+          _HeroButton(
+            icon: inList ? Icons.check_rounded : Icons.add_rounded,
+            label: inList ? context.l10n.tvInMyList : context.l10n.tvMyList,
+            primary: false,
+            onSelect: onToggleList,
+          ),
+          const SizedBox(width: 12),
+          // « Télécharger » : garde le film pour le regarder hors-ligne.
+          _HeroDownloadButton(movie: movie),
+        ],
+      );
 
   @override
   Widget build(BuildContext context) {
-    final String meta = <String>[
-      if (movie.year != null && movie.year!.isNotEmpty) movie.year!,
-      if (movie.rating != null && movie.rating!.isNotEmpty)
-        '★ ${movie.rating}',
-      if (movie.category.trim().isNotEmpty) movie.category.trim(),
-    ].join('   ·   ');
+    final bool cinematic = backdropUrl != null && backdropUrl!.isNotEmpty;
+    return cinematic ? _buildCinematic(context) : _buildClassic(context);
+  }
 
+  // ----- Rendu CINÉMA : backdrop plein cadre + voile + contenu en bas -----
+  Widget _buildCinematic(BuildContext context) {
+    final String meta = _meta;
+    return Container(
+      height: 340,
+      margin: const EdgeInsets.only(bottom: 22),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+        border: Border.all(color: TvTokens.lineSoft),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          // Fond : image paysage du film, plein cadre.
+          CachedNetworkImage(
+            imageUrl: backdropUrl!,
+            fit: BoxFit.cover,
+            // 1000 px : net sur une TV 1080p sans faire exploser la mémoire
+            // image (un seul backdrop à la fois → coût négligeable).
+            memCacheWidth: 1000,
+            fadeInDuration: const Duration(milliseconds: 220),
+            placeholder: (_, __) => const ColoredBox(color: TvTokens.card),
+            errorWidget: (_, __, ___) => const ColoredBox(color: TvTokens.card),
+          ),
+          // Voile de GAUCHE : garantit la lisibilité du texte quel que soit
+          // le backdrop (un film clair ne noierait pas le titre).
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: <Color>[
+                  Color(0xF008080A),
+                  Color(0x6608080A),
+                  Color(0x00000000),
+                ],
+                stops: <double>[0.0, 0.5, 0.85],
+              ),
+            ),
+          ),
+          // Voile du BAS : ancre les boutons et fond le bandeau dans la page.
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: <Color>[Color(0xE608080A), Color(0x00000000)],
+                stops: <double>[0.0, 0.6],
+              ),
+            ),
+          ),
+          // Contenu : titre + méta + synopsis + boutons, en bas à gauche.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(30, 24, 30, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: <Widget>[
+                ConstrainedBox(
+                  // On borne la largeur du texte : il ne recouvre pas le
+                  // visuel côté droit (le sujet du film reste visible).
+                  constraints: const BoxConstraints(maxWidth: 640),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text(
+                        movie.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TvTokens.display(32, color: TvTokens.text),
+                      ),
+                      if (meta.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 8),
+                        Text(meta,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TvTokens.ui(14, color: TvTokens.muted)),
+                      ],
+                      if (plot != null && plot!.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 10),
+                        Text(plot!,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TvTokens.ui(14, color: TvTokens.muted)),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                _actions(context),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ----- Rendu CLASSIQUE (repli) : affiche à droite sur dégradé -----
+  Widget _buildClassic(BuildContext context) {
+    final String meta = _meta;
     return Container(
       height: 210,
       margin: const EdgeInsets.only(bottom: 22),
@@ -403,30 +589,7 @@ class _HeroBanner extends StatelessWidget {
                         style: TvTokens.ui(14, color: TvTokens.muted)),
                   ],
                   const SizedBox(height: 18),
-                  Row(
-                    children: <Widget>[
-                      _HeroButton(
-                        icon: Icons.play_arrow_rounded,
-                        label: context.l10n.tvWatch,
-                        autofocus: autofocus,
-                        primary: true,
-                        onSelect: onPlay,
-                      ),
-                      const SizedBox(width: 12),
-                      // « Ma Liste » : ajoute/retire le film vedette (par profil).
-                      _HeroButton(
-                        icon: inList
-                            ? Icons.check_rounded
-                            : Icons.add_rounded,
-                        label: inList ? context.l10n.tvInMyList : context.l10n.tvMyList,
-                        primary: false,
-                        onSelect: onToggleList,
-                      ),
-                      const SizedBox(width: 12),
-                      // « Télécharger » : garde le film pour le regarder hors-ligne.
-                      _HeroDownloadButton(movie: movie),
-                    ],
-                  ),
+                  _actions(context),
                 ],
               ),
             ),
