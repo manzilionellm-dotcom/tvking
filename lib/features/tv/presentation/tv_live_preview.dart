@@ -128,7 +128,8 @@ class TvLivePreview extends StatefulWidget {
   State<TvLivePreview> createState() => _TvLivePreviewState();
 }
 
-class _TvLivePreviewState extends State<TvLivePreview> with RouteAware {
+class _TvLivePreviewState extends State<TvLivePreview>
+    with RouteAware, WidgetsBindingObserver {
   NativeVideoController? _ctrl;
   Timer? _debounce;
   bool _resolving = false;
@@ -144,7 +145,29 @@ class _TvLivePreviewState extends State<TvLivePreview> with RouteAware {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (widget.enabled) _schedule();
+  }
+
+  /// TERRAIN (2026-07-16) : « on quitte l'app TV et l'audio continue en
+  /// arrière-plan ». Le lecteur PLEIN ÉCRAN se coupait déjà (son propre
+  /// observer), mais PAS l'aperçu d'accueil : appuyer sur Home depuis
+  /// l'accueil laissait l'ExoPlayer de l'aperçu jouer derrière le
+  /// lanceur. Sur TV, quitter l'app = SILENCE, point. On libère tout en
+  /// arrière-plan et on ré-arme au retour.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        _reset(disposePlayer: true);
+        if (mounted) setState(() {});
+      case AppLifecycleState.resumed:
+        if (widget.enabled && !_covered) _schedule();
+      case AppLifecycleState.inactive:
+        break; // transitions brèves (dialogue…) → on ne coupe pas
+    }
   }
 
   @override
@@ -205,6 +228,7 @@ class _TvLivePreviewState extends State<TvLivePreview> with RouteAware {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     TvLivePreview.routeObserver.unsubscribe(this);
     _reset(disposePlayer: true);
     super.dispose();

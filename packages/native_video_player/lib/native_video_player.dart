@@ -321,7 +321,7 @@ class NativeVideoController extends ChangeNotifier {
 /// = HYBRID COMPOSITION : la SurfaceView est composée dans une vraie fenêtre
 /// Android (pas re-routée par une texture Flutter). C'est ce qui débloque le
 /// rendu des trames HEVC sur les box où la texture restait noire.
-class NativeVideoView extends StatelessWidget {
+class NativeVideoView extends StatefulWidget {
   const NativeVideoView({super.key, required this.controller});
 
   final NativeVideoController controller;
@@ -329,9 +329,50 @@ class NativeVideoView extends StatelessWidget {
   static const String _viewType = 'native_video_player/view';
 
   @override
+  State<NativeVideoView> createState() => _NativeVideoViewState();
+}
+
+class _NativeVideoViewState extends State<NativeVideoView>
+    with WidgetsBindingObserver {
+  NativeVideoController get controller => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// DÉFENSE DE FOND (terrain 2026-07-16) : « on quitte l'app TV et
+  /// l'audio continue en arrière-plan ». Ce plugin n'équipe QUE les
+  /// surfaces TV (le mobile lit via media_kit et garde son mode
+  /// « Écouteurs » volontaire) — sur TV, quitter l'app = silence.
+  /// PAUSE UNIQUEMENT, jamais de reprise automatique : chaque écran
+  /// décide lui-même de reprendre au retour (lecteur → play, aperçu →
+  /// ré-armement). Couvre aussi toute surface future qui oublierait
+  /// son propre observer.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        controller.pause();
+      case AppLifecycleState.resumed:
+      case AppLifecycleState.inactive:
+        break;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return PlatformViewLink(
-      viewType: _viewType,
+      viewType: NativeVideoView._viewType,
       surfaceFactory: (BuildContext context, PlatformViewController controller) {
         return AndroidViewSurface(
           controller: controller as AndroidViewController,
@@ -343,7 +384,7 @@ class NativeVideoView extends StatelessWidget {
         final AndroidViewController viewController =
             PlatformViewsService.initExpensiveAndroidView(
           id: params.id,
-          viewType: _viewType,
+          viewType: NativeVideoView._viewType,
           layoutDirection: TextDirection.ltr,
           // Transporte le mode APERÇU jusqu'au natif (tampons réduits).
           creationParams: <String, dynamic>{'preview': controller.preview},

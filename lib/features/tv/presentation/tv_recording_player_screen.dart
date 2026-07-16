@@ -39,7 +39,8 @@ class TvRecordingPlayerScreen extends StatefulWidget {
       _TvRecordingPlayerScreenState();
 }
 
-class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen> {
+class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
+    with WidgetsBindingObserver {
   NativeVideoController? _controller;
   final FocusNode _focus = FocusNode();
 
@@ -53,7 +54,24 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _verifyThenOpen();
+  }
+
+  /// Pas de lecture en arrière-plan sur TV (même règle que le lecteur
+  /// live) : Home/multitâche → pause ; retour dans l'app → reprise.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        _controller?.pause();
+      case AppLifecycleState.resumed:
+        if (_playing && !_ended) _controller?.play();
+      case AppLifecycleState.inactive:
+        break; // transitions brèves → on ne coupe pas
+    }
   }
 
   /// Vérifie que le fichier EXISTE et n'est pas vide AVANT d'ouvrir : on
@@ -126,6 +144,7 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller?.removeListener(_onPlayer);
     _controller?.dispose();
     _focus.dispose();
