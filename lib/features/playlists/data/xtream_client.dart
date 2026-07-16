@@ -473,38 +473,31 @@ class XtreamClient {
   Future<List<VodMovie>> fetchVodMovies({Map<String, String>? categories}) async {
     final Map<String, String> cats =
         categories ?? await fetchVodCategories();
-    final List<dynamic> raw = await _callApiList(action: 'get_vod_streams');
-
-    final List<VodMovie> movies = <VodMovie>[];
-    for (final dynamic item in raw) {
-      if (movies.length >= DeviceMemory.channelCap) break; // plafond mémoire RAM-tiered (anti-OOM)
-      if (item is! Map<String, dynamic>) continue;
-      final String streamId = item['stream_id']?.toString() ?? '';
-      if (streamId.isEmpty) continue;
-      final String name =
-          item['name']?.toString() ?? l10nNow.fallbackNoNameParens;
-      final String categoryId = item['category_id']?.toString() ?? '';
-      final String category = cats[categoryId] ?? 'Autres';
-      // Extension du conteneur : mp4 par défaut si non fournie.
-      String ext = (item['container_extension']?.toString() ?? 'mp4').trim();
-      if (ext.isEmpty) ext = 'mp4';
-      final String? poster = item['stream_icon']?.toString();
-      final String? rating = item['rating']?.toString();
-
-      movies.add(
-        VodMovie(
-          id: 'vod-$streamId',
-          name: name,
-          category: category.isEmpty ? 'Autres' : category,
-          streamUrl: _buildVodStreamUrl(streamId, ext),
-          containerExt: ext,
-          posterUrl: (poster == null || poster.isEmpty) ? null : poster,
-          rating: (rating == null || rating.isEmpty || rating == '0')
-              ? null
-              : rating,
-        ),
-      );
-    }
+    // GROSSE SOURCE (10 000+ films) : on télécharge le corps HTTP puis on
+    // fait TOUT le travail lourd — décodage JSON ET construction des objets
+    // films — DANS UN ISOLATE. Avant, seul le décodage était isolé et la
+    // construction de dizaines de milliers d'objets gelait l'écran
+    // (« le Cinéma ne s'ouvre pas », écran noir figé). Le fil d'affichage
+    // ne reçoit plus qu'une liste PRÊTE, déjà plafonnée.
+    final Uri uri = _buildUri(action: 'get_vod_streams');
+    final String body = await _getBody(uri);
+    CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
+        'xtream.http.get_vod_streams',
+        bytes: body.length);
+    final List<VodMovie> movies = await compute(
+      _parseVodMoviesIsolate,
+      (
+        body,
+        cats,
+        DeviceMemory.channelCap,
+        _baseUrl,
+        _userEnc,
+        _passEnc,
+        l10nNow.fallbackNoNameParens,
+      ),
+    );
+    CrashReporting.instance
+        .recordMemoryBreadcrumb('xtream.vod.parsed');
     if (kDebugMode) {
       debugPrint('[XtreamClient] ${movies.length} films VOD récupérés');
     }
@@ -861,3 +854,56 @@ class XtreamClient {
 /// envoyable à un isolate. Sert à ne pas geler l'UI sur les grosses réponses
 /// Xtream (get_live_streams / VOD / séries de plusieurs Mo).
 dynamic _decodeJsonInIsolate(String source) => jsonDecode(source);
+
+/// Analyse COMPLÈTE du catalogue VOD dans un isolate : décodage JSON +
+/// construction des objets [VodMovie] (plafonnée). Tourne HORS du fil
+/// d'affichage → l'écran Cinéma ne gèle jamais, même avec 50 000 films.
+/// Entrée (record, seul argument transmissible à un isolate) :
+///   (corps HTTP, catégories id→nom, plafond, baseUrl, userEnc, passEnc,
+///    nom de repli). Les [VodMovie] (champs String uniquement) sont
+///   recopiés vers le fil principal — sûr entre isolates.
+List<VodMovie> _parseVodMoviesIsolate(
+  (String, Map<String, String>, int, String, String, String, String) input,
+) {
+  final (
+    String body,
+    Map<String, String> cats,
+    int cap,
+    String baseUrl,
+    String userEnc,
+    String passEnc,
+    String fallbackName,
+  ) = input;
+  final dynamic decoded = jsonDecode(body);
+  final List<dynamic> raw = decoded is List
+      ? decoded
+      : (decoded is Map && decoded['data'] is List
+          ? decoded['data'] as List<dynamic>
+          : const <dynamic>[]);
+  final List<VodMovie> movies = <VodMovie>[];
+  for (final dynamic item in raw) {
+    if (movies.length >= cap) break; // plafond mémoire (anti-OOM)
+    if (item is! Map) continue;
+    final String streamId = item['stream_id']?.toString() ?? '';
+    if (streamId.isEmpty) continue;
+    final String name = item['name']?.toString() ?? fallbackName;
+    final String categoryId = item['category_id']?.toString() ?? '';
+    final String category = cats[categoryId] ?? 'Autres';
+    String ext = (item['container_extension']?.toString() ?? 'mp4').trim();
+    if (ext.isEmpty) ext = 'mp4';
+    final String? poster = item['stream_icon']?.toString();
+    final String? rating = item['rating']?.toString();
+    movies.add(VodMovie(
+      id: 'vod-$streamId',
+      name: name,
+      category: category.isEmpty ? 'Autres' : category,
+      streamUrl: '$baseUrl/movie/$userEnc/$passEnc/$streamId.$ext',
+      containerExt: ext,
+      posterUrl: (poster == null || poster.isEmpty) ? null : poster,
+      rating: (rating == null || rating.isEmpty || rating == '0')
+          ? null
+          : rating,
+    ));
+  }
+  return movies;
+}

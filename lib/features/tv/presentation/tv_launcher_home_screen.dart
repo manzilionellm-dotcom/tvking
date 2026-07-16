@@ -700,15 +700,41 @@ class _RecentMoviesRailState extends State<_RecentMoviesRail> {
     if (!mounted) return;
     try {
       final List<VodMovie> all = await VodRepository.instance.fetchMovies();
-      // « Derniers ajoutés » : les panels Xtream numérotent les films par
-      // ordre d'ajout (stream_id croissant) → id numérique DÉCROISSANT =
-      // les plus récents d'abord. Best-effort si l'id n'est pas numérique.
-      final List<VodMovie> sorted = List<VodMovie>.of(all)
-        ..sort((VodMovie a, VodMovie b) =>
-            _numericId(b.id).compareTo(_numericId(a.id)));
+      // « Derniers ajoutés » : id numérique DÉCROISSANT (les panels Xtream
+      // numérotent par ordre d'ajout). SÉLECTION DES 14 PLUS RÉCENTS SANS
+      // TRIER TOUT LE CATALOGUE : l'ancien tri complet de 50 000 films —
+      // avec une regex à CHAQUE comparaison — gelait l'accueil. Ici une
+      // seule passe O(n) : on garde les 14 plus grands ids, insertion bornée.
+      const int keep = 14;
+      final List<VodMovie> top = <VodMovie>[];
+      final List<int> keys = <int>[]; // id numérique parallèle à `top`
+      void bubbleUp(int i) {
+        while (i > 0 && keys[i - 1] < keys[i]) {
+          final int tk = keys[i - 1];
+          keys[i - 1] = keys[i];
+          keys[i] = tk;
+          final VodMovie tm = top[i - 1];
+          top[i - 1] = top[i];
+          top[i] = tm;
+          i--;
+        }
+      }
+
+      for (final VodMovie m in all) {
+        final int k = _numericId(m.id);
+        if (top.length < keep) {
+          top.add(m);
+          keys.add(k);
+          bubbleUp(top.length - 1);
+        } else if (k > keys[keep - 1]) {
+          top[keep - 1] = m;
+          keys[keep - 1] = k;
+          bubbleUp(keep - 1);
+        }
+      }
       if (mounted) {
         setState(() {
-          _movies = sorted.take(14).toList();
+          _movies = top;
           _loaded = true;
         });
       }
@@ -718,8 +744,25 @@ class _RecentMoviesRailState extends State<_RecentMoviesRail> {
   }
 
   static int _numericId(String id) {
-    final RegExpMatch? m = RegExp(r'(\d+)').firstMatch(id);
-    return m == null ? 0 : int.parse(m.group(1)!);
+    // Extraction manuelle (pas de RegExp — appelée par film, doit être
+    // légère) : 1er groupe de chiffres de l'id « vod-12345 ».
+    int start = -1;
+    for (int i = 0; i < id.length; i++) {
+      final int c = id.codeUnitAt(i);
+      if (c >= 0x30 && c <= 0x39) {
+        start = i;
+        break;
+      }
+    }
+    if (start < 0) return 0;
+    int val = 0;
+    for (int i = start; i < id.length; i++) {
+      final int c = id.codeUnitAt(i);
+      if (c < 0x30 || c > 0x39) break;
+      val = val * 10 + (c - 0x30);
+      if (val > 2000000000) break; // borne anti-débordement
+    }
+    return val;
   }
 
   @override
