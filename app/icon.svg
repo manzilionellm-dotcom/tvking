@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- TV King app icon: the royal gold crown on the #121212 canvas.
+       Full-bleed background keeps it safe for maskable/rounded launchers. -->
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f7e0a3"/>
+      <stop offset="0.45" stop-color="#e3b96b"/>
+      <stop offset="1" stop-color="#c9962f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.62">
+      <stop offset="0" stop-color="#e3b96b" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#e3b96b" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="#121212"/>
+  <rect width="512" height="512" fill="url(#glow)"/>
+  <path d="M128 322 L128 196 L198 254 L256 156 L314 254 L384 196 L384 322 Z" fill="url(#gold)"/>
+  <rect x="128" y="340" width="256" height="32" rx="16" fill="url(#gold)"/>
+  <circle cx="128" cy="182" r="15" fill="url(#gold)"/>
+  <circle cx="256" cy="140" r="17" fill="url(#gold)"/>
+  <circle cx="384" cy="182" r="15" fill="url(#gold)"/>
+</svg>

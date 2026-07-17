@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation";
  * hovered, keeping information density low (10-foot UI).
  */
 
-const NAV = [
+export const NAV = [
   { href: "/search", label: "Rechercher", icon: "search" },
   { href: "/", label: "Accueil", icon: "home" },
   { href: "/sport", label: "Sport", icon: "sport" },
@@ -18,7 +18,8 @@ const NAV = [
   { href: "/reglages", label: "Réglages", icon: "settings" },
 ] as const;
 
-function Icon({ name }: { name: string }) {
+/* Shared with the mobile shell (MobileNav) so both navs stay in sync. */
+export function NavIcon({ name }: { name: string }) {
   const common = "h-[1.6rem] w-[1.6rem]";
   switch (name) {
     case "search":
@@ -68,7 +69,7 @@ export default function Sidebar() {
 
   return (
     <nav
-      className="group/nav fixed inset-y-0 left-0 z-50 flex w-[5.5rem] flex-col gap-[0.4rem] bg-gradient-to-r from-black/95 to-black/0 py-[var(--safe-y)] pl-[1.2rem] transition-all duration-200 hover:w-[16rem] hover:bg-[var(--bg)]/95 focus-within:w-[16rem] focus-within:bg-[var(--bg)]/95"
+      className="group/nav fixed inset-y-0 left-0 z-50 flex w-[5.5rem] flex-col gap-[0.4rem] bg-gradient-to-r from-black/95 to-black/0 py-[var(--safe-y)] pl-[1.2rem] transition-all duration-200 hover:w-[16rem] hover:bg-[var(--bg)]/95 focus-within:w-[16rem] focus-within:bg-[var(--bg)]/95 max-md:hidden"
     >
       <div className="mb-[1.6rem] flex items-center gap-[0.7rem] pl-[0.3rem]">
         <span className="flex h-[2.6rem] w-[2.6rem] shrink-0 items-center justify-center rounded-[var(--radius)] text-[1.5rem] shadow-[0_0_1.4rem_rgba(227,185,107,0.45)]" style={{ background: "var(--gold-grad)" }}>
@@ -102,7 +103,7 @@ export default function Sidebar() {
                 style={{ background: "var(--gold-grad)" }}
               />
             )}
-            <span className="shrink-0"><Icon name={item.icon} /></span>
+            <span className="shrink-0"><NavIcon name={item.icon} /></span>
             <span className="whitespace-nowrap text-[1.15rem] font-semibold opacity-0 transition-opacity group-hover/nav:opacity-100 group-focus-within/nav:opacity-100">
               {item.label}
             </span>

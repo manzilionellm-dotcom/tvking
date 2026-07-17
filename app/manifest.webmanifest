@@ -1,0 +1,27 @@
+{
+  "name": "TV King — Sport & Formation",
+  "short_name": "TV King",
+  "description": "Sport en direct et formation, dans une expérience royale — sur téléviseur comme au creux de la main.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#121212",
+  "lang": "fr",
+  "categories": ["entertainment", "sports", "education"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "maskable"
+    }
+  ]
+}
