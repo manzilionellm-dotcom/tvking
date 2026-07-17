@@ -7,6 +7,7 @@
 //  flash, pas de spinner). Aucune dépendance au cast.
 // =========================================================
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -37,27 +38,31 @@ class ChannelLogo extends StatelessWidget {
         height: size,
         child: (url == null || url.isEmpty)
             ? fallback
-            : Image.network(
-                url,
+            // CachedNetworkImage : cache DISQUE en plus du borné mémoire.
+            // useOldImageOnUrlChange = l'équivalent du gaplessPlayback
+            // d'Image.network ; placeholder = fallback (zéro flash, zéro
+            // spinner) ; imageBuilder = même fond neutre qu'avant.
+            : CachedNetworkImage(
+                imageUrl: url,
                 width: size,
                 height: size,
                 fit: BoxFit.contain,
-                cacheWidth: (size * 3).round(),
-                gaplessPlayback: true,
-                errorBuilder: (_, __, ___) => fallback,
-                frameBuilder: (BuildContext c, Widget child, int? frame,
-                    bool wasSync) {
-                  // Image prête → on la pose sur un fond neutre. Sinon, on
-                  // montre le fallback (zéro flash, zéro spinner).
-                  if (wasSync || frame != null) {
-                    return Container(
-                      color: AppColors.maisonSurfaceHigh,
-                      alignment: Alignment.center,
-                      padding: EdgeInsets.all(size * 0.12),
-                      child: child,
-                    );
-                  }
-                  return fallback;
+                memCacheWidth: (size * 3).round(),
+                useOldImageOnUrlChange: true,
+                errorWidget: (_, __, ___) => fallback,
+                placeholder: (_, __) => fallback,
+                imageBuilder:
+                    (BuildContext c, ImageProvider<Object> provider) {
+                  // Image prête → on la pose sur un fond neutre.
+                  return Container(
+                    color: AppColors.maisonSurfaceHigh,
+                    alignment: Alignment.center,
+                    padding: EdgeInsets.all(size * 0.12),
+                    child: Image(
+                        image: provider,
+                        fit: BoxFit.contain,
+                        gaplessPlayback: true),
+                  );
                 },
               ),
       ),
