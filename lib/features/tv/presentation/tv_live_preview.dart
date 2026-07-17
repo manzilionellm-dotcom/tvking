@@ -187,11 +187,13 @@ class _TvLivePreviewState extends State<TvLivePreview>
     if (mounted) setState(() {});
   }
 
-  /// Retour sur cet écran : on réarme l'aperçu (anti-rebond normal).
+  /// Retour sur cet écran : on réarme l'aperçu — avec le RÉPIT LONG
+  /// « retour de route » (cf. _schedule) : le lecteur plein écran qu'on
+  /// vient de quitter est encore en train de rendre son décodeur.
   @override
   void didPopNext() {
     _covered = false;
-    if (widget.enabled) _schedule();
+    if (widget.enabled) _schedule(afterRouteReturn: true);
   }
 
   @override
@@ -200,9 +202,10 @@ class _TvLivePreviewState extends State<TvLivePreview>
     // (Pas de setState ici : didUpdateWidget précède déjà un rebuild.)
     if (old.enabled != widget.enabled) {
       // Suspension / reprise (plein écran) : libération COMPLÈTE du lecteur
-      // natif — c'est la garantie « jamais 2 flux ouverts ».
+      // natif — c'est la garantie « jamais 2 flux ouverts ». La reprise
+      // (false→true) n'arrive qu'au RETOUR d'un plein écran → répit long.
       _reset(disposePlayer: true);
-      if (widget.enabled) _schedule();
+      if (widget.enabled) _schedule(afterRouteReturn: true);
     } else if (old.channel.id != widget.channel.id) {
       // FLUIDITÉ : changer de chaîne NE détruit PAS la vue native (créer /
       // détruire une PlatformView + un ExoPlayer à chaque cran de défilement
@@ -254,7 +257,17 @@ class _TvLivePreviewState extends State<TvLivePreview>
     }
   }
 
-  void _schedule() {
+  /// RÉPIT LONG au retour d'un plein écran (lecteur/fiche) : à 600 ms,
+  /// l'aperçu recréait un ExoPlayer pile pendant le release (thread player)
+  /// de celui qu'on vient de quitter — et si l'utilisateur enchaînait vers
+  /// Cinéma, ce lecteur tout neuf était re-détruit aussitôt : jusqu'à 3
+  /// cycles création/destruction de décodeur en ~2 s autour d'une simple
+  /// navigation (l'« accroche » sortie du live → Cinéma). À 1,8 s, une
+  /// navigation enchaînée n'ouvre plus RIEN ; celui qui reste sur l'accueil
+  /// ne voit qu'un logo ~1 s de plus.
+  static const Duration _kResumeAfterRoute = Duration(milliseconds: 1800);
+
+  void _schedule({bool afterRouteReturn = false}) {
     if (_covered) return; // un écran est posé par-dessus → aperçu coupé
     _debounce?.cancel();
     // TOUJOURS anti-rebondi ici : le démarrage immédiat d'une SÉLECTION (OK)
@@ -264,9 +277,13 @@ class _TvLivePreviewState extends State<TvLivePreview>
     // répit (churn de connexions, revue de code 2026-07-16).
     // PETITE BOX : anti-rebond rallongé (×2) — on n'ouvre un flux qu'après
     // une vraie pause du défilement (moins de churn décodeur/réseau).
-    final Duration wait = TvMemoryGuard.instance.lowSpec
-        ? widget.debounce * 2
+    final Duration base = afterRouteReturn
+        ? (_kResumeAfterRoute > widget.debounce
+            ? _kResumeAfterRoute
+            : widget.debounce)
         : widget.debounce;
+    final Duration wait =
+        TvMemoryGuard.instance.lowSpec ? base * 2 : base;
     _debounce = Timer(wait, _start);
   }
 
