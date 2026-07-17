@@ -10,8 +10,6 @@
 //    - Vitesse de lecture (0.5x à 2x)
 // =========================================================
 
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../../../../core/i18n/l10n_extension.dart';
@@ -47,116 +45,117 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
 
   @override
   Widget build(BuildContext context) {
+    // PAS de BackdropFilter au-dessus d'une vidéo en lecture : le blur
+    // (saveLayer + 2 passes) était RE-CALCULÉ À CHAQUE FRAME tant que la
+    // sheet restait ouverte (la vidéo derrière invalide en continu). Le
+    // fond était déjà à alpha 0.92 → un voile quasi opaque rend pareil
+    // pour ~0 GPU (même parade que côté TV, cf. tv_live_screen).
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppColors.background.withValues(alpha: 0.92),
-            border: Border(
-              top: BorderSide(
-                color: Colors.white.withValues(alpha: 0.06),
-              ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.background.withValues(alpha: 0.97),
+          border: Border(
+            top: BorderSide(
+              color: Colors.white.withValues(alpha: 0.06),
             ),
           ),
-          child: SafeArea(
-            top: false,
-            child: ListenableBuilder(
-              listenable: PlayerSettings.instance,
-              builder: (BuildContext context, _) {
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      _grabber(),
-                      const SizedBox(height: 18),
-                      Text(context.l10n.playerSettingsTitle,
-                          style: AppTextStyles.headlineMedium),
-                      const SizedBox(height: 18),
+        ),
+        child: SafeArea(
+          top: false,
+          child: ListenableBuilder(
+            listenable: PlayerSettings.instance,
+            builder: (BuildContext context, _) {
+              return SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    _grabber(),
+                    const SizedBox(height: 18),
+                    Text(context.l10n.playerSettingsTitle,
+                        style: AppTextStyles.headlineMedium),
+                    const SizedBox(height: 18),
 
-                      // ----- Vitesse -----
-                      _sectionTitle(context.l10n.playerSpeedSection),
-                      _speedSelector(),
-                      const SizedBox(height: 22),
+                    // ----- Vitesse -----
+                    _sectionTitle(context.l10n.playerSpeedSection),
+                    _speedSelector(),
+                    const SizedBox(height: 22),
 
-                      // ----- Mode d'affichage -----
-                      _sectionTitle(context.l10n.playerDisplayMode),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: AspectRatioMode.values
-                            .map((AspectRatioMode m) => _aspectChip(m))
-                            .toList(),
-                      ),
-                      const SizedBox(height: 22),
+                    // ----- Mode d'affichage -----
+                    _sectionTitle(context.l10n.playerDisplayMode),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: AspectRatioMode.values
+                          .map((AspectRatioMode m) => _aspectChip(m))
+                          .toList(),
+                    ),
+                    const SizedBox(height: 22),
 
-                      // ----- Buffer -----
-                      _sectionTitle(context.l10n.playerBufferSize),
-                      Text(
-                        context.l10n.playerBufferSeconds(
-                            PlayerSettings.instance.bufferSeconds),
-                        style: AppTextStyles.bodyLarge.copyWith(
-                          color: AppColors.accentCyan,
-                          fontWeight: FontWeight.w600,
-                        ),
+                    // ----- Buffer -----
+                    _sectionTitle(context.l10n.playerBufferSize),
+                    Text(
+                      context.l10n.playerBufferSeconds(
+                          PlayerSettings.instance.bufferSeconds),
+                      style: AppTextStyles.bodyLarge.copyWith(
+                        color: AppColors.accentCyan,
+                        fontWeight: FontWeight.w600,
                       ),
-                      Slider(
-                        value: PlayerSettings.instance.bufferSeconds
-                            .toDouble(),
-                        min: 5,
-                        max: 60,
-                        divisions: 11,
-                        label: '${PlayerSettings.instance.bufferSeconds}s',
-                        activeColor: AppColors.accentPink,
-                        inactiveColor:
-                            AppColors.accentPink.withValues(alpha: 0.2),
-                        onChanged: (double v) =>
-                            PlayerSettings.instance.setBufferSeconds(v.toInt()),
+                    ),
+                    Slider(
+                      value: PlayerSettings.instance.bufferSeconds.toDouble(),
+                      min: 5,
+                      max: 60,
+                      divisions: 11,
+                      label: '${PlayerSettings.instance.bufferSeconds}s',
+                      activeColor: AppColors.accentPink,
+                      inactiveColor:
+                          AppColors.accentPink.withValues(alpha: 0.2),
+                      onChanged: (double v) =>
+                          PlayerSettings.instance.setBufferSeconds(v.toInt()),
+                    ),
+                    Text(
+                      context.l10n.playerBufferHelp,
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
                       ),
-                      Text(
-                        context.l10n.playerBufferHelp,
-                        style: AppTextStyles.bodyMedium.copyWith(
-                          fontSize: 11,
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                      const SizedBox(height: 22),
+                    ),
+                    const SizedBox(height: 22),
 
-                      // ----- Anti-coupure (anti-buffering) -----
-                      _toggle(
-                        label: context.l10n.playerAntiFreeze,
-                        sublabel: context.l10n.playerAntiFreezeHelp,
-                        value: PlayerSettings.instance.antiFreeze,
-                        onChanged: (bool v) =>
-                            PlayerSettings.instance.setAntiFreeze(v),
-                      ),
-                      const SizedBox(height: 14),
+                    // ----- Anti-coupure (anti-buffering) -----
+                    _toggle(
+                      label: context.l10n.playerAntiFreeze,
+                      sublabel: context.l10n.playerAntiFreezeHelp,
+                      value: PlayerSettings.instance.antiFreeze,
+                      onChanged: (bool v) =>
+                          PlayerSettings.instance.setAntiFreeze(v),
+                    ),
+                    const SizedBox(height: 14),
 
-                      // ----- Décodage hardware -----
-                      _toggle(
-                        label: context.l10n.playerHwDecode,
-                        sublabel: context.l10n.playerHwDecodeHelp,
-                        value: PlayerSettings.instance.hardwareDecode,
-                        onChanged: (bool v) =>
-                            PlayerSettings.instance.setHardwareDecode(v),
-                      ),
-                      const SizedBox(height: 14),
+                    // ----- Décodage hardware -----
+                    _toggle(
+                      label: context.l10n.playerHwDecode,
+                      sublabel: context.l10n.playerHwDecodeHelp,
+                      value: PlayerSettings.instance.hardwareDecode,
+                      onChanged: (bool v) =>
+                          PlayerSettings.instance.setHardwareDecode(v),
+                    ),
+                    const SizedBox(height: 14),
 
-                      // ----- Affichage des stats -----
-                      _toggle(
-                        label: context.l10n.playerShowStats,
-                        sublabel: context.l10n.playerShowStatsHelp,
-                        value: PlayerSettings.instance.showStats,
-                        onChanged: (bool v) =>
-                            PlayerSettings.instance.setShowStats(v),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                    // ----- Affichage des stats -----
+                    _toggle(
+                      label: context.l10n.playerShowStats,
+                      sublabel: context.l10n.playerShowStatsHelp,
+                      value: PlayerSettings.instance.showStats,
+                      onChanged: (bool v) =>
+                          PlayerSettings.instance.setShowStats(v),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ),
