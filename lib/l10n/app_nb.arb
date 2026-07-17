@@ -611,6 +611,20 @@
   },
   "tvDownloadFailed": "Mislyktes · trykk for å prøve igjen",
   "tvDownloadQueued": "Venter…",
+  "tvDlRail": "Nedlastet",
+  "tvDlSmart": "Smarte nedlastinger",
+  "tvDlSmartOn": "På — sette episoder fjernes, og neste kommer av seg selv",
+  "tvDlSmartOff": "Av",
+  "tvDlFree": "{size} ledig på boksen",
+  "@tvDlFree": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDlNoSpace": "Ikke nok plass — frigjør plass og fortsett",
+  "tvDlEpisodeHint": "Hold inne en episode for å laste den ned (eller fjerne den)",
   "tvWatch": "Se",
   "tvMyList": "Min liste",
   "tvInMyList": "I Min liste",

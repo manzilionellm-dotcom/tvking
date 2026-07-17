@@ -611,6 +611,20 @@
   },
   "tvDownloadFailed": "Mislykkedes · tryk for at prøve igen",
   "tvDownloadQueued": "Venter…",
+  "tvDlRail": "Downloadet",
+  "tvDlSmart": "Smarte downloads",
+  "tvDlSmartOn": "Til — sete afsnit fjernes, og det næste kommer af sig selv",
+  "tvDlSmartOff": "Fra",
+  "tvDlFree": "{size} ledig på boksen",
+  "@tvDlFree": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDlNoSpace": "Ikke nok plads — frigør plads, og genoptag",
+  "tvDlEpisodeHint": "Hold et afsnit nede for at downloade (eller fjerne) det",
   "tvWatch": "Se",
   "tvMyList": "Min liste",
   "tvInMyList": "På Min liste",

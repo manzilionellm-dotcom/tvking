@@ -27,15 +27,37 @@ class TvDownloadsScreen extends StatefulWidget {
 }
 
 class _TvDownloadsScreenState extends State<TvDownloadsScreen> {
+  /// Espace libre du volume (« 12,4 Go libres ») — lu une fois à l'entrée
+  /// puis à chaque changement de liste (un fichier supprimé libère de la
+  /// place). null = mesure indisponible (on n'affiche rien).
+  int? _freeBytes;
+
   @override
   void initState() {
     super.initState();
     VodDownloadService.instance.load();
+    _refreshFreeSpace();
+    VodDownloadService.instance.addListener(_refreshFreeSpace);
+  }
+
+  @override
+  void dispose() {
+    VodDownloadService.instance.removeListener(_refreshFreeSpace);
+    super.dispose();
+  }
+
+  void _refreshFreeSpace() {
+    VodDownloadService.instance.freeSpace().then((int? v) {
+      if (mounted && v != _freeBytes) setState(() => _freeBytes = v);
+    });
   }
 
   void _playOffline(VodDownload d) {
     final Channel c = Channel(
-      id: 'dl_${d.id}',
+      // Id D'ORIGINE (pas de préfixe) : la position de reprise et les
+      // téléchargements intelligents sont clés sur cet id — le même film
+      // repris en ligne ou hors-ligne continue EXACTEMENT où il en était.
+      id: d.id,
       name: d.name,
       category: d.category,
       // Fichier LOCAL (file://) → lu par ExoPlayer, isLive:false → lecteur
@@ -60,6 +82,7 @@ class _TvDownloadsScreenState extends State<TvDownloadsScreen> {
       case VodDownloadStatus.paused:
       case VodDownloadStatus.error:
       case VodDownloadStatus.queued:
+      case VodDownloadStatus.noSpace:
         VodDownloadService.instance.resume(d.id);
     }
   }
@@ -76,14 +99,35 @@ class _TvDownloadsScreenState extends State<TvDownloadsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(context.l10n.tvDownloadsTitle,
-                    style: const TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.w800,
-                        color: TvTokens.text)),
-                const SizedBox(height: 4),
-                Text(context.l10n.tvDownloadsSubtitle,
-                    style: const TextStyle(fontSize: 14, color: TvTokens.muted)),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(context.l10n.tvDownloadsTitle,
+                              style: const TextStyle(
+                                  fontSize: 30,
+                                  fontWeight: FontWeight.w800,
+                                  color: TvTokens.text)),
+                          const SizedBox(height: 4),
+                          Text(
+                              _freeBytes == null
+                                  ? context.l10n.tvDownloadsSubtitle
+                                  : context.l10n.tvDlFree(
+                                      VodDownloadService.fmtBytes(_freeBytes!)),
+                              style: const TextStyle(
+                                  fontSize: 14, color: TvTokens.muted)),
+                        ],
+                      ),
+                    ),
+                    // TÉLÉCHARGEMENTS INTELLIGENTS (Netflix) : épisode vu →
+                    // supprimé, épisode suivant → téléchargé tout seul.
+                    _SmartToggle(
+                        enabled: VodDownloadService.instance.smartEnabled),
+                  ],
+                ),
                 const SizedBox(height: 20),
                 Expanded(
                   child: items.isEmpty
@@ -126,6 +170,62 @@ class _TvDownloadsScreenState extends State<TvDownloadsScreen> {
           ],
         ),
       );
+}
+
+/// Interrupteur « Téléchargements intelligents » — focusable D-pad, même
+/// langage visuel que les rangées (carte, liseré doré au focus). OK bascule.
+class _SmartToggle extends StatelessWidget {
+  const _SmartToggle({required this.enabled});
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.small,
+      onSelect: () =>
+          VodDownloadService.instance.setSmartEnabled(!enabled),
+      builder: (BuildContext context, bool focused) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: focused ? TvTokens.sel : TvTokens.card,
+            borderRadius: BorderRadius.circular(TvTokens.rCard),
+            border: Border.all(
+                color: focused ? TvTokens.gold : TvTokens.lineSoft,
+                width: focused ? TvDimens.focusOutline : 1),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(enabled ? Icons.auto_awesome : Icons.auto_awesome_outlined,
+                  size: 18,
+                  color: enabled ? TvTokens.gold : TvTokens.mutedDim),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(context.l10n.tvDlSmart,
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: TvTokens.text)),
+                  Text(
+                      enabled
+                          ? context.l10n.tvDlSmartOn
+                          : context.l10n.tvDlSmartOff,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color:
+                              enabled ? TvTokens.gold : TvTokens.mutedDim)),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _DownloadRow extends StatelessWidget {
@@ -174,6 +274,12 @@ class _DownloadRow extends StatelessWidget {
           icon: Icons.hourglass_bottom_rounded,
           label: context.l10n.tvDownloadQueued,
           color: TvTokens.muted
+        );
+      case VodDownloadStatus.noSpace:
+        return (
+          icon: Icons.sd_storage_rounded,
+          label: context.l10n.tvDlNoSpace,
+          color: TvTokens.live
         );
     }
   }

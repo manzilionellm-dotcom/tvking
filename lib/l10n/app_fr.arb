@@ -2084,6 +2084,20 @@
   },
   "tvDownloadFailed": "Échec · appuie pour réessayer",
   "tvDownloadQueued": "En attente…",
+  "tvDlRail": "Téléchargés",
+  "tvDlSmart": "Téléchargements intelligents",
+  "tvDlSmartOn": "Activés — épisode vu supprimé, le suivant arrive tout seul",
+  "tvDlSmartOff": "Désactivés",
+  "tvDlFree": "{size} libres sur la box",
+  "@tvDlFree": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDlNoSpace": "Espace insuffisant — libère de la place puis reprends",
+  "tvDlEpisodeHint": "Appui long sur un épisode : télécharger (ou retirer)",
   "tvWatch": "Regarder",
   "tvMyList": "Ma Liste",
   "tvInMyList": "Dans Ma Liste",

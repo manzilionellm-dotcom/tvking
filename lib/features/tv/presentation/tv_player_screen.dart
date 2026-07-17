@@ -17,6 +17,7 @@
 //  Back = quitter. Logo « The Few » affiché à l'ouverture / au zap.
 // =========================================================
 import 'dart:async';
+import 'dart:io' show File;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -43,6 +44,7 @@ import '../../recordings/domain/recording.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../vod/data/playback_position_repository.dart';
+import '../../vod/data/vod_download_service.dart';
 import '../data/autoplay_policy.dart';
 import '../data/cine_perf.dart';
 import '../data/failure_explainer.dart';
@@ -402,6 +404,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // Le lecteur se ferme → le réseau est libre : la file de téléchargements
+    // Cinéma peut repartir (elle patientait pendant toute lecture réseau).
+    VodDownloadService.instance.setPlaybackHold(false);
     _hideTimer?.cancel();
     _presenceTimer?.cancel();
     _numTimer?.cancel();
@@ -507,6 +512,25 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     if (_isVod && _controller.isEnded) {
       unawaited(
           PlaybackPositionRepository.instance.markFinished(_current.id));
+      // TÉLÉCHARGEMENTS INTELLIGENTS (Netflix) : l'épisode terminé était
+      // téléchargé → son fichier est supprimé (il est vu, la place se
+      // libère) ; et le SUIVANT part en file — il se téléchargera dès que
+      // le réseau sera libre. Un FILM n'est jamais concerné : le service
+      // ne supprime que des épisodes, et on ne fournit `next` que si la
+      // liste du lecteur en a un (donc une saison, jamais un film seul).
+      final Channel? nextEp = _nextUpChannel;
+      unawaited(VodDownloadService.instance.onEpisodeWatched(
+        watchedId: _current.id,
+        next: nextEp == null || nextEp.isLive
+            ? null
+            : VodNextEpisode(
+                id: nextEp.id,
+                name: nextEp.cleanName,
+                streamUrl: nextEp.streamUrl,
+                posterUrl: nextEp.logoUrl,
+                groupName: nextEp.category,
+              ),
+      ));
       // ÉPISODE de série avec un suivant → l'overlay « À suivre » prend la
       // main sur cette fin : on N'ENTRE PAS dans la reconnexion anti-gel
       // ci-dessous (elle rouvrirait l'épisode terminé pendant le compte à
@@ -652,6 +676,26 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   Future<void> _loadCurrentUrl({String? userAgent}) async {
     final Channel channel = _current;
     String realUrl = _effectiveUrl; // variante adoptée > URL chaîne
+    // HORS-LIGNE D'ABORD (téléchargements Cinéma) : si CE contenu VOD a été
+    // téléchargé, on joue le FICHIER LOCAL — démarrage instantané, zéro
+    // réseau, zéro connexion consommée chez le fournisseur. On saute toute
+    // la mécanique distante (formats mémorisés, relais, cascade : aucun
+    // sens sur un fichier). On signale aussi « réseau libre » à la file de
+    // téléchargements : c'est ce qui permet de REGARDER l'épisode local
+    // pendant que le SUIVANT se télécharge (boucle Netflix).
+    if (_isVod) {
+      final String? local = VodDownloadService.instance.localFile(channel.id);
+      if (local != null && await File(local).exists()) {
+        if (!mounted || channel.id != _current.id) return;
+        _relayPlayUrl = null;
+        VodDownloadService.instance.setPlaybackHold(false);
+        _controller.setUrl(Uri.file(local).toString());
+        return;
+      }
+    }
+    // Lecture RÉSEAU (live ou VOD distante) → la file de téléchargements
+    // patiente pour ne pas voler le créneau 1-connexion du panel.
+    VodDownloadService.instance.setPlaybackHold(true);
     // FORMAT MÉMORISÉ (parité téléphone — corrige la tempête de connexions
     // terrain du 2026-07-09 02:20 : la TV re-cascadait à CHAQUE chaîne
     // depuis l'URL nue .ts → 8 sondes + cascade × zap → compte 1-connexion

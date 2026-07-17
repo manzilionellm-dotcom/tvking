@@ -560,6 +560,7 @@ class _DownloadButton extends StatelessWidget {
             case VodDownloadStatus.paused:
             case VodDownloadStatus.error:
             case VodDownloadStatus.queued:
+            case VodDownloadStatus.noSpace:
               icon = Icons.download_rounded;
               label = context.l10n.tvResume;
               onSelect = () => VodDownloadService.instance.resume(movie.id);

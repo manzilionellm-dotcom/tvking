@@ -8,6 +8,8 @@
 //  Données : SeriesRepository (cache mémoire plafonné RAM = anti-OOM). Les
 //  ÉPISODES d'une série sont chargés À LA DEMANDE à l'ouverture de la fiche.
 // =========================================================
+import 'dart:async' show unawaited;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -15,6 +17,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../vod/data/playback_position_repository.dart';
 import '../../vod/data/series_repository.dart';
+import '../../vod/data/vod_download_service.dart';
 import '../../vod/domain/vod_info.dart';
 import '../../vod/domain/vod_series.dart';
 import '../core/tv_dimens.dart';
@@ -455,6 +458,36 @@ class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
     if (mounted) setState(() {}); // progress lu directement dans build()
   }
 
+  /// Appui long sur un épisode : télécharge / met en pause / supprime,
+  /// selon l'état courant. Un seul geste, comportement contextuel — même
+  /// pattern que l'écran « Mes téléchargements ».
+  void _toggleEpisodeDownload(VodEpisode e) {
+    final VodDownloadService dl = VodDownloadService.instance;
+    final VodDownload? d = dl.byId(e.id);
+    if (d == null) {
+      unawaited(dl.enqueue(
+        id: e.id,
+        // Même libellé que la lecture (« S01E03 · Titre ») : l'utilisateur
+        // retrouve EXACTEMENT le même nom dans « Mes téléchargements ».
+        name: '${e.tag} · ${e.title}',
+        streamUrl: e.streamUrl,
+        posterUrl: e.posterUrl ?? widget.series.posterUrl,
+        containerExt: e.containerExt,
+        isEpisode: true,
+        groupName: widget.series.name,
+      ));
+      return;
+    }
+    if (d.isComplete) {
+      unawaited(dl.remove(e.id));
+    } else if (d.status == VodDownloadStatus.downloading ||
+        d.status == VodDownloadStatus.queued) {
+      unawaited(dl.pause(e.id));
+    } else {
+      unawaited(dl.resume(e.id));
+    }
+  }
+
   void _playEpisode(List<VodEpisode> seasonEps, int index) {
     final List<Channel> list = seasonEps
         .map((VodEpisode e) => Channel(
@@ -622,20 +655,36 @@ class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
           ),
         if (seasons.length > 1) const SizedBox(height: 14),
         // ----- Épisodes de la saison -----
+        // ListenableBuilder : les rangées suivent l'état des téléchargements
+        // en direct (pourcentage qui avance, ✓ à la fin) — le service
+        // throttle déjà ses notifications (~512 Ko), pas de tempête.
         Expanded(
-          child: ListView.separated(
-            addAutomaticKeepAlives: false,
-            itemCount: seasonEps.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (BuildContext context, int i) => _EpisodeRow(
-              episode: seasonEps[i],
-              autofocus: seasons.length <= 1 && i == 0,
-              // Fraction déjà vue (reprise) — null si jamais entamé.
-              progress: PlaybackPositionRepository.instance
-                  .progressFor(seasonEps[i].id),
-              onPlay: () => _playEpisode(seasonEps, i),
+          child: ListenableBuilder(
+            listenable: VodDownloadService.instance,
+            builder: (BuildContext context, _) => ListView.separated(
+              addAutomaticKeepAlives: false,
+              itemCount: seasonEps.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (BuildContext context, int i) => _EpisodeRow(
+                episode: seasonEps[i],
+                autofocus: seasons.length <= 1 && i == 0,
+                // Fraction déjà vue (reprise) — null si jamais entamé.
+                progress: PlaybackPositionRepository.instance
+                    .progressFor(seasonEps[i].id),
+                download:
+                    VodDownloadService.instance.byId(seasonEps[i].id),
+                onPlay: () => _playEpisode(seasonEps, i),
+                onToggleDownload: () => _toggleEpisodeDownload(seasonEps[i]),
+              ),
             ),
           ),
+        ),
+        // Aide discrète : le geste n'est pas devinable sans indice.
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(context.l10n.tvDlEpisodeHint,
+              style: TextStyle(
+                  fontSize: TvDimens.label, color: TvTokens.mutedDim)),
         ),
       ],
     );
@@ -738,6 +787,8 @@ class _EpisodeRow extends StatelessWidget {
     required this.episode,
     required this.onPlay,
     this.progress,
+    this.download,
+    this.onToggleDownload,
     this.autofocus = false,
   });
   final VodEpisode episode;
@@ -746,6 +797,11 @@ class _EpisodeRow extends StatelessWidget {
   /// Fraction déjà vue (0..1) — null si l'épisode n'a pas de reprise en
   /// cours. Affiche un fin filet doré sous le titre (repère « entamé »).
   final double? progress;
+
+  /// État de téléchargement de CET épisode (null = pas téléchargé) et
+  /// action d'appui long (télécharger / pause / supprimer).
+  final VodDownload? download;
+  final VoidCallback? onToggleDownload;
   final bool autofocus;
 
   @override
@@ -755,6 +811,7 @@ class _EpisodeRow extends StatelessWidget {
       scale: TvFocusScale.small,
       baseColor: TvTokens.card,
       onSelect: onPlay,
+      onLongPress: onToggleDownload,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
@@ -841,11 +898,51 @@ class _EpisodeRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
+            // État de téléchargement (indicateur passif — l'action est
+            // l'appui long sur la rangée) : ✓ doré = prêt hors-ligne,
+            // « 42 % » = en cours, ⏸ = en pause, ⏳ = en file d'attente.
+            if (download != null) ...<Widget>[
+              _DlBadge(download: download!),
+              const SizedBox(width: 10),
+            ],
             Icon(Icons.play_circle_outline_rounded,
                 size: 26, color: TvTokens.mutedDim),
           ],
         ),
       ),
     );
+  }
+}
+
+/// Pastille d'état de téléchargement d'un épisode — volontairement
+/// minuscule et muette : l'intelligence travaille en coulisses, l'UI ne
+/// fait que le laisser deviner (esprit « ça reste là, sans bruit »).
+class _DlBadge extends StatelessWidget {
+  const _DlBadge({required this.download});
+  final VodDownload download;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (download.status) {
+      case VodDownloadStatus.done:
+        return Icon(Icons.download_done_rounded,
+            size: 22, color: TvTokens.gold);
+      case VodDownloadStatus.downloading:
+        return Text('${(download.progress * 100).round()} %',
+            style: TextStyle(
+                fontSize: TvDimens.label,
+                fontWeight: FontWeight.w700,
+                color: TvTokens.gold));
+      case VodDownloadStatus.paused:
+        return Icon(Icons.pause_circle_outline_rounded,
+            size: 22, color: TvTokens.mutedDim);
+      case VodDownloadStatus.queued:
+        return Icon(Icons.schedule_rounded,
+            size: 22, color: TvTokens.mutedDim);
+      case VodDownloadStatus.error:
+      case VodDownloadStatus.noSpace:
+        return Icon(Icons.error_outline_rounded,
+            size: 22, color: TvTokens.mutedDim);
+    }
   }
 }

@@ -611,6 +611,20 @@
   },
   "tvDownloadFailed": "Imeshindwa · bonyeza kujaribu tena",
   "tvDownloadQueued": "Inasubiri…",
+  "tvDlRail": "Zilizopakuliwa",
+  "tvDlSmart": "Upakuaji werevu",
+  "tvDlSmartOn": "Umewashwa — kipindi kilichotazamwa hufutwa, kinachofuata huja chenyewe",
+  "tvDlSmartOff": "Umezimwa",
+  "tvDlFree": "{size} zipo wazi kwenye kifaa",
+  "@tvDlFree": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDlNoSpace": "Nafasi haitoshi — futa baadhi ya faili kisha uendelee",
+  "tvDlEpisodeHint": "Bonyeza na ushikilie kipindi ili kukipakua (au kukiondoa)",
   "tvWatch": "Tazama",
   "tvMyList": "Orodha yangu",
   "tvInMyList": "Kwenye orodha yangu",

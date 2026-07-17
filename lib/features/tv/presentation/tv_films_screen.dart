@@ -104,6 +104,10 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     // du réseau (stale-while-revalidate du VodRepository), on regroupe et on
     // met à jour SANS spinner ni à-coup.
     VodRepository.instance.addListener(_onCatalogRefreshed);
+    // La rangée « Téléchargés » apparaît/disparaît au rythme des
+    // téléchargements terminés (fin de fichier, suppression auto d'un
+    // épisode vu par les téléchargements intelligents…).
+    VodDownloadService.instance.addListener(_onPositionsChanged);
     _load();
   }
 
@@ -114,6 +118,7 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     CinePerf.cancel(CinePerf.homeFirstRender);
     PlaybackPositionRepository.instance.removeListener(_onPositionsChanged);
     VodRepository.instance.removeListener(_onCatalogRefreshed);
+    VodDownloadService.instance.removeListener(_onPositionsChanged);
     super.dispose();
   }
 
@@ -349,20 +354,63 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     // On les assemble en une liste ordonnée → pas d'arithmétique d'index
     // fragile. `resume: true` = la rangée lance via _playResume (et n'a pas
     // de « Ma Liste » au long-press : une entrée peut être un épisode).
-    final List<({String title, List<VodMovie> movies, bool resume})> rails =
-        <({String title, List<VodMovie> movies, bool resume})>[
+    // Rangée « Téléchargés » : contenus PRÊTS hors-ligne (films + épisodes),
+    // synthétisés en VodMovie pour réutiliser les affiches telles quelles.
+    // L'URL reste la distante : le lecteur substitue le fichier local tout
+    // seul (localFile) → OK = lecture INSTANTANÉE, zéro réseau.
+    final List<VodMovie> dlMovies = <VodMovie>[
+      for (final VodDownload d in VodDownloadService.instance.all)
+        if (d.isComplete)
+          VodMovie(
+            id: d.id,
+            name: d.name,
+            category: d.isEpisode ? d.groupName : d.category,
+            streamUrl: d.streamUrl,
+            containerExt: '',
+            posterUrl: d.posterUrl,
+            year: d.year,
+            rating: d.rating,
+          ),
+    ];
+
+    final List<({String title, List<VodMovie> movies, bool resume, bool dl})>
+        rails =
+        <({String title, List<VodMovie> movies, bool resume, bool dl})>[
       if (resumeMovies.isNotEmpty)
         (
           title: context.l10n.tvRailContinueWatching,
           movies: resumeMovies,
-          resume: true
+          resume: true,
+          dl: false
+        ),
+      if (dlMovies.isNotEmpty)
+        (
+          title: context.l10n.tvDlRail,
+          movies: dlMovies,
+          resume: false,
+          dl: true
         ),
       if (_watchlist.isNotEmpty)
-        (title: context.l10n.tvMyList, movies: _watchlist, resume: false),
+        (
+          title: context.l10n.tvMyList,
+          movies: _watchlist,
+          resume: false,
+          dl: false
+        ),
       if (_recent.isNotEmpty)
-        (title: context.l10n.tvRailRecent, movies: _recent, resume: false),
+        (
+          title: context.l10n.tvRailRecent,
+          movies: _recent,
+          resume: false,
+          dl: false
+        ),
       for (final String cat in _cats)
-        (title: cat, movies: _byCat[cat] ?? const <VodMovie>[], resume: false),
+        (
+          title: cat,
+          movies: _byCat[cat] ?? const <VodMovie>[],
+          resume: false,
+          dl: false
+        ),
     ];
 
     // Budget « premier rendu utile < 400 ms » : première frame AFFICHÉE avec
@@ -377,8 +425,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     // Mémoire du focus par rangée : si une affiche était focusée avant la
     // reconstruction de l'onglet, c'est ELLE qui reprend l'autofocus (pas le
     // héros). Index clampé — le catalogue a pu changer entre-temps.
-    final int memRail =
-        rails.indexWhere((({String title, List<VodMovie> movies, bool resume}) r) =>
+    final int memRail = rails.indexWhere(
+        (({String title, List<VodMovie> movies, bool resume, bool dl}) r) =>
             r.title == _focusRail);
 
     return PageStorage(
@@ -402,8 +450,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
               onToggleList: () => _toggleList(hero),
             );
           }
-          final ({String title, List<VodMovie> movies, bool resume}) rail =
-              rails[i - 1];
+          final ({String title, List<VodMovie> movies, bool resume, bool dl})
+              rail = rails[i - 1];
           return _Rail(
             railKey: PageStorageKey<String>('films-rail-${rail.title}'),
             title: rail.title,
@@ -430,14 +478,18 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
                 );
               }
             },
-            // OK sur une affiche → FICHE détail. EXCEPTION Netflix : la rangée
-            // « Continuer à regarder » relance DIRECTEMENT la lecture (le but
-            // de cette rangée est de reprendre en un seul OK).
+            // OK sur une affiche → FICHE détail. EXCEPTIONS Netflix : les
+            // rangées « Continuer à regarder » et « Téléchargés » lancent
+            // DIRECTEMENT la lecture (reprendre / lire hors-ligne en un OK).
             onPlay: (int j) => rail.resume
                 ? _playResume(resume[j])
-                : _openDetail(rail.movies[j]),
+                : rail.dl
+                    ? _play(<VodMovie>[rail.movies[j]], 0)
+                    : _openDetail(rail.movies[j]),
             onToggleList: (int j) {
-              if (!rail.resume) _toggleList(rail.movies[j]);
+              // « Ma Liste » n'a pas de sens sur reprise/téléchargements
+              // (entrées synthétiques, potentiellement des épisodes).
+              if (!rail.resume && !rail.dl) _toggleList(rail.movies[j]);
             },
           );
         },
@@ -703,6 +755,7 @@ class _HeroDownloadButton extends StatelessWidget {
             case VodDownloadStatus.paused:
             case VodDownloadStatus.error:
             case VodDownloadStatus.queued:
+            case VodDownloadStatus.noSpace:
               icon = Icons.download_rounded;
               label = context.l10n.tvResume;
               onSelect = () => VodDownloadService.instance.resume(movie.id);

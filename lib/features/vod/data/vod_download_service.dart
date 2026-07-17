@@ -1,27 +1,44 @@
 // =========================================================
-//  vod_download_service.dart — Téléchargement de films (hors-ligne)
+//  vod_download_service.dart — Téléchargements Cinéma (hors-ligne)
 // =========================================================
 //  « Regarder plus tard, sans connexion » (comme Netflix). MODULE
-//  INDÉPENDANT : télécharge le FICHIER du film (VOD Xtream = un vrai
-//  fichier mp4/mkv, déjà compressé par le fournisseur) vers le stockage
-//  local, puis le film se lit HORS-LIGNE via le lecteur EXISTANT (fichier
-//  local → ExoPlayer, isLive:false → mêmes commandes Netflix ±10 s).
+//  INDÉPENDANT : télécharge le FICHIER du film ou de l'épisode (VOD
+//  Xtream = un vrai fichier mp4/mkv, déjà compressé par le fournisseur)
+//  vers le stockage PRIVÉ de l'app, puis la lecture passe HORS-LIGNE par
+//  le lecteur EXISTANT (fichier local → ExoPlayer, isLive:false → mêmes
+//  commandes Netflix ±10 s). Le dossier est invisible pour l'utilisateur
+//  (Android/data/<app>/…) et purgé automatiquement à la désinstallation.
 //
-//  « INTELLIGENT comme Netflix » — la vérité, sans mythe :
-//   • Netflix ne « compresse » rien par magie au téléchargement : il
-//     livre un fichier DÉJÀ encodé efficacement à la qualité choisie. Un
-//     film VOD IPTV est PAREIL — un fichier fini, bien plus léger que le
-//     flux live (pas de sur-débit). On le tire donc DIRECTEMENT.
-//   • Ce qui rend Netflix « fluide et rapide » : téléchargement EN TÂCHE
-//     DE FOND à pleine vitesse + REPRISE après coupure. On fait les deux :
-//     requêtes HTTP Range → on reprend EXACTEMENT où on s'est arrêté (zéro
-//     octet re-téléchargé), reconnexion auto avec back-off, progression en
-//     temps réel. Rien à ré-encoder sur la box (ce qui tuerait la qualité
-//     ET la batterie) : on copie l'octet, point.
+//  « INTELLIGENT comme Netflix » — trois mécanismes, tous ici :
 //
-//  STOCKAGE : fichier dans <external>/Downloads ; métadonnées en JSON
-//  (SharedPreferences). Reprise possible entre deux ouvertures de l'app.
-//  Best-effort : ne jette jamais, n'impacte ni le lecteur ni le direct.
+//   1. FILE SÉRIELLE : UN téléchargement à la fois, les autres attendent
+//      en `queued`. C'est ce que fait Netflix : la bande passante entière
+//      pour un fichier = terminé plus vite, jamais 3 films à moitié.
+//
+//   2. COURTOISIE RÉSEAU (spécifique IPTV) : beaucoup de comptes Xtream
+//      n'autorisent qu'UNE connexion. Un téléchargement pendant une
+//      lecture en STREAMING volerait le créneau → écran « chaîne vide ou
+//      bloquée » (bug terrain connu). Le lecteur nous signale donc ses
+//      lectures RÉSEAU (setPlaybackHold) : pendant ce temps, la file
+//      patiente. Une lecture LOCALE (fichier téléchargé) ne bloque rien —
+//      c'est là que la boucle devient magique : on regarde l'épisode
+//      téléchargé PENDANT que le suivant se télécharge.
+//
+//   3. TÉLÉCHARGEMENTS INTELLIGENTS (épisodes) : quand un épisode se
+//      termine, on SUPPRIME son fichier (il est vu — la place se libère
+//      toute seule) et on met LE SUIVANT en file. L'espace occupé reste
+//      donc constant (~1-2 épisodes), peu importe la longueur de la
+//      série. Désactivable dans « Mes téléchargements ».
+//
+//  GARDE D'ESPACE : avant de démarrer (et en cours de route), on lit
+//  l'espace libre réel du volume (`df`, présent sur Android/toybox). En
+//  dessous du seuil, le téléchargement passe en `noSpace` au lieu de
+//  remplir la box jusqu'à l'os. Best-effort : si `df` n'existe pas
+//  (desktop de dev), on ne bloque pas.
+//
+//  STOCKAGE : fichiers dans <stockage privé app>/Downloads ; métadonnées
+//  en JSON (SharedPreferences). Reprise HTTP Range → zéro octet
+//  re-téléchargé après une coupure ou un redémarrage.
 // =========================================================
 import 'dart:async';
 import 'dart:convert';
@@ -34,9 +51,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../domain/vod_movie.dart';
 
-enum VodDownloadStatus { queued, downloading, paused, done, error }
+enum VodDownloadStatus { queued, downloading, paused, done, error, noSpace }
 
-/// Un film en cours / terminé de téléchargement.
+/// Un contenu (film OU épisode) en cours / terminé de téléchargement.
 class VodDownload {
   VodDownload({
     required this.id,
@@ -47,6 +64,8 @@ class VodDownload {
     this.category = '',
     this.year,
     this.rating,
+    this.isEpisode = false,
+    this.groupName = '',
     this.totalBytes = 0,
     this.downloadedBytes = 0,
     this.status = VodDownloadStatus.queued,
@@ -60,6 +79,14 @@ class VodDownload {
   final String category;
   final String? year;
   final String? rating;
+
+  /// Épisode de série (true) ou film (false). Seuls les ÉPISODES sont
+  /// supprimés automatiquement une fois vus — jamais un film.
+  final bool isEpisode;
+
+  /// Nom de la série (épisodes) — affiché dans la rangée « Téléchargés ».
+  final String groupName;
+
   int totalBytes;
   int downloadedBytes;
   VodDownloadStatus status;
@@ -77,13 +104,18 @@ class VodDownload {
         'category': category,
         'year': year,
         'rating': rating,
+        'isEpisode': isEpisode,
+        'groupName': groupName,
         'totalBytes': totalBytes,
         'downloadedBytes': downloadedBytes,
-        // Un téléchargement interrompu reprend en 'paused' (jamais 'downloading'
-        // au rechargement de l'app).
-        'status': (status == VodDownloadStatus.downloading
-                ? VodDownloadStatus.paused
-                : status)
+        // Un téléchargement interrompu reprend en 'paused' (jamais
+        // 'downloading' au rechargement de l'app). `noSpace` redevient
+        // 'queued' : l'utilisateur a pu libérer de la place entre-temps.
+        'status': switch (status) {
+          VodDownloadStatus.downloading => VodDownloadStatus.paused,
+          VodDownloadStatus.noSpace => VodDownloadStatus.queued,
+          _ => status,
+        }
             .name,
       };
 
@@ -96,6 +128,8 @@ class VodDownload {
         category: (j['category'] as String?) ?? '',
         year: j['year'] as String?,
         rating: j['rating'] as String?,
+        isEpisode: (j['isEpisode'] as bool?) ?? false,
+        groupName: (j['groupName'] as String?) ?? '',
         totalBytes: (j['totalBytes'] as num?)?.toInt() ?? 0,
         downloadedBytes: (j['downloadedBytes'] as num?)?.toInt() ?? 0,
         status: VodDownloadStatus.values.firstWhere(
@@ -105,22 +139,67 @@ class VodDownload {
       );
 }
 
+/// Ce qu'il faut savoir d'un ÉPISODE SUIVANT pour l'enchaîner en
+/// téléchargement (champs plats : le service ne dépend d'aucun modèle UI).
+class VodNextEpisode {
+  const VodNextEpisode({
+    required this.id,
+    required this.name,
+    required this.streamUrl,
+    this.posterUrl,
+    this.groupName = '',
+  });
+  final String id;
+  final String name;
+  final String streamUrl;
+  final String? posterUrl;
+  final String groupName;
+}
+
 class VodDownloadService extends ChangeNotifier {
   VodDownloadService._();
   static final VodDownloadService instance = VodDownloadService._();
 
   static const String _kKey = 'vod_downloads.v1';
+  static const String _kSmartKey = 'vod_downloads.smart.v1';
+
+  /// Seuils d'espace libre : on REFUSE de démarrer sous 500 Mo, et on
+  /// SUSPEND un téléchargement en cours sous 200 Mo. Marge volontaire :
+  /// une box qui suffoque (0 octet libre) casse TOUT le système, pas
+  /// seulement notre fichier.
+  static const int kMinFreeToStart = 500 * 1024 * 1024;
+  static const int kMinFreeWhileRunning = 200 * 1024 * 1024;
 
   final Map<String, VodDownload> _items = <String, VodDownload>{};
   final Map<String, HttpClient> _clients = <String, HttpClient>{};
   bool _loaded = false;
+  bool _smart = true;
 
-  /// Liste (téléchargements récents d'abord suffit ; ordre d'insertion ici).
+  /// Id du job actuellement au robinet (file SÉRIELLE : un seul).
+  String? _activeId;
+
+  /// true tant que le lecteur streame en RÉSEAU (live ou VOD distante) —
+  /// la file patiente pour ne pas voler le créneau 1-connexion du panel.
+  bool _playbackHold = false;
+
+  /// Liste (ordre d'insertion — les récents en dernier).
   List<VodDownload> get all => _items.values.toList(growable: false);
   VodDownload? byId(String id) => _items[id];
   bool isDownloaded(String id) => _items[id]?.isComplete ?? false;
 
-  /// Fichier local prêt à lire (null si pas terminé).
+  /// Téléchargements intelligents (épisodes) — ON par défaut, persisté.
+  bool get smartEnabled => _smart;
+  Future<void> setSmartEnabled(bool v) async {
+    _smart = v;
+    notifyListeners();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kSmartKey, v);
+    } catch (_) {}
+  }
+
+  /// Fichier local prêt à lire (null si pas terminé). LE point d'entrée du
+  /// lecteur : si non-null, la lecture est instantanée et 100 % hors réseau.
   String? localFile(String id) {
     final VodDownload? d = _items[id];
     if (d == null || !d.isComplete) return null;
@@ -132,6 +211,7 @@ class VodDownloadService extends ChangeNotifier {
     _loaded = true;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
+      _smart = prefs.getBool(_kSmartKey) ?? true;
       final String raw = prefs.getString(_kKey) ?? '[]';
       final List<dynamic> list = jsonDecode(raw) as List<dynamic>;
       _items.clear();
@@ -147,7 +227,34 @@ class VodDownloadService extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---- courtoisie réseau (appelé par le lecteur TV) ---------------------
+
+  /// Le lecteur déclare ses lectures RÉSEAU. true = un flux distant joue
+  /// (on suspend la file, statut `queued`, Range → reprise sans perte) ;
+  /// false = réseau libre (fin de lecture, ou lecture d'un fichier LOCAL)
+  /// → la file repart toute seule.
+  void setPlaybackHold(bool hold) {
+    if (_playbackHold == hold) return;
+    _playbackHold = hold;
+    if (hold) {
+      final String? id = _activeId;
+      if (id != null) {
+        final VodDownload? d = _items[id];
+        _clients.remove(id)?.close(force: true);
+        if (d != null && d.status == VodDownloadStatus.downloading) {
+          d.status = VodDownloadStatus.queued; // reprendra tout seul
+          notifyListeners();
+        }
+      }
+    } else {
+      _pump();
+    }
+  }
+
   Future<Directory> _dir() async {
+    // Stockage PRIVÉ de l'app (Android/data/<pkg>/files) : invisible dans
+    // les gestionnaires de fichiers grand public, purgé à la
+    // désinstallation — « on ne sait même pas où c'est, et ça reste là ».
     Directory? base;
     try {
       base = await getExternalStorageDirectory();
@@ -172,33 +279,118 @@ class VodDownloadService extends ChangeNotifier {
     }
   }
 
-  /// Lance (ou reprend) le téléchargement d'un film. Idempotent : si déjà
-  /// terminé, ne refait rien ; si en cours, ne relance pas un 2e job.
-  Future<void> downloadMovie(VodMovie m) async {
-    await load();
-    final VodDownload? existing = _items[m.id];
-    if (existing != null && existing.isComplete) return;
-    if (existing != null && existing.status == VodDownloadStatus.downloading) {
-      return;
-    }
-    if (existing == null) {
-      final Directory dir = await _dir();
-      final String ext = m.containerExt.isNotEmpty ? m.containerExt : 'mp4';
-      final String safe =
-          m.name.replaceAll(RegExp(r'[^\w\d\-_. ]+'), '_');
-      final String path = p.join(dir.path, '${m.id}_$safe.$ext');
-      _items[m.id] = VodDownload(
+  /// Lance (ou reprend) le téléchargement d'un FILM. Idempotent.
+  Future<void> downloadMovie(VodMovie m) => enqueue(
         id: m.id,
         name: m.name,
-        filePath: path,
         streamUrl: m.streamUrl,
         posterUrl: m.posterUrl,
         category: m.category,
         year: m.year,
         rating: m.rating,
+        containerExt: m.containerExt,
       );
+
+  /// Entrée GÉNÉRIQUE (film ou épisode). Idempotent : déjà fini → rien ;
+  /// déjà en cours/en file → rien. Sinon crée la fiche et alimente la file.
+  Future<void> enqueue({
+    required String id,
+    required String name,
+    required String streamUrl,
+    String? posterUrl,
+    String category = '',
+    String? year,
+    String? rating,
+    String containerExt = '',
+    bool isEpisode = false,
+    String groupName = '',
+  }) async {
+    await load();
+    if (streamUrl.isEmpty || streamUrl.startsWith('file:')) return;
+    final VodDownload? existing = _items[id];
+    if (existing != null) {
+      if (existing.isComplete ||
+          existing.status == VodDownloadStatus.downloading ||
+          existing.status == VodDownloadStatus.queued) {
+        return;
+      }
+      // paused / error / noSpace → on le remet simplement en file.
+      existing.status = VodDownloadStatus.queued;
+      notifyListeners();
+      await _persist();
+      _pump();
+      return;
     }
-    await _run(m.id);
+    final Directory dir = await _dir();
+    final String ext = containerExt.isNotEmpty
+        ? containerExt
+        : _extFromUrl(streamUrl) ?? 'mp4';
+    final String safe = name.replaceAll(RegExp(r'[^\w\d\-_. ]+'), '_');
+    final String path = p.join(dir.path, '${id}_$safe.$ext');
+    _items[id] = VodDownload(
+      id: id,
+      name: name,
+      filePath: path,
+      streamUrl: streamUrl,
+      posterUrl: posterUrl,
+      category: category,
+      year: year,
+      rating: rating,
+      isEpisode: isEpisode,
+      groupName: groupName,
+    );
+    notifyListeners();
+    await _persist();
+    _pump();
+  }
+
+  /// « .mkv » dans l'URL → « mkv » (repli quand l'extension conteneur
+  /// n'est pas fournie, ex. enchaînement d'épisodes depuis le lecteur).
+  static String? _extFromUrl(String url) {
+    final String path = Uri.tryParse(url)?.path ?? url;
+    final int dot = path.lastIndexOf('.');
+    if (dot < 0 || dot == path.length - 1) return null;
+    final String ext = path.substring(dot + 1).toLowerCase();
+    if (ext.length > 5 || !RegExp(r'^[a-z0-9]+$').hasMatch(ext)) return null;
+    return ext;
+  }
+
+  // ---- TÉLÉCHARGEMENTS INTELLIGENTS (épisodes) --------------------------
+
+  /// À appeler quand un ÉPISODE vient d'être terminé (générique atteint).
+  /// Fait les deux gestes Netflix, si l'option est active :
+  ///   1. l'épisode VU était téléchargé → son fichier est SUPPRIMÉ (la
+  ///      place se libère toute seule, un film n'est JAMAIS touché) ;
+  ///   2. l'épisode SUIVANT (s'il existe et n'est pas déjà là) est mis en
+  ///      file — il démarrera dès que le réseau sera libre (courtoisie).
+  Future<void> onEpisodeWatched({
+    required String watchedId,
+    VodNextEpisode? next,
+  }) async {
+    await load();
+    if (!_smart) return;
+    final VodDownload? watched = _items[watchedId];
+    final bool watchedWasEpisode = watched?.isEpisode ?? false;
+    if (watched != null && watchedWasEpisode) {
+      await remove(watchedId);
+      debugPrint('[VodDl] smart: épisode vu supprimé ($watchedId)');
+    }
+    // On n'enchaîne le suivant QUE dans une logique d'épisodes : soit le vu
+    // était un épisode téléchargé, soit le suivant est explicitement fourni
+    // par le lecteur en fin d'épisode (jamais après un film).
+    if (next == null || next.streamUrl.isEmpty) return;
+    if (_items[next.id]?.isComplete ?? false) return;
+    await enqueue(
+      id: next.id,
+      name: next.name,
+      streamUrl: next.streamUrl,
+      posterUrl: next.posterUrl,
+      isEpisode: true,
+      groupName: next.groupName.isNotEmpty
+          ? next.groupName
+          : (watched?.groupName ?? ''),
+    );
+    debugPrint('[VodDl] smart: épisode suivant en file (${next.id})');
   }
 
   /// Met en pause (coupe la connexion, garde l'octet déjà écrit → reprise).
@@ -206,14 +398,22 @@ class VodDownloadService extends ChangeNotifier {
     final VodDownload? d = _items[id];
     if (d == null) return;
     _clients.remove(id)?.close(force: true);
-    if (d.status == VodDownloadStatus.downloading) {
+    if (d.status == VodDownloadStatus.downloading ||
+        d.status == VodDownloadStatus.queued) {
       d.status = VodDownloadStatus.paused;
       notifyListeners();
       await _persist();
     }
   }
 
-  Future<void> resume(String id) => _run(id);
+  Future<void> resume(String id) async {
+    final VodDownload? d = _items[id];
+    if (d == null || d.isComplete) return;
+    d.status = VodDownloadStatus.queued;
+    notifyListeners();
+    await _persist();
+    _pump();
+  }
 
   /// Supprime le téléchargement ET le fichier local (libère la place).
   Future<void> remove(String id) async {
@@ -229,12 +429,99 @@ class VodDownloadService extends ChangeNotifier {
     await _persist();
   }
 
+  // ---- file sérielle ----------------------------------------------------
+
+  /// Démarre le prochain job en attente — si le robinet est libre ET que le
+  /// lecteur ne streame pas. Appelé après chaque événement (enqueue, fin,
+  /// erreur, resume, fin de lecture réseau).
+  void _pump() {
+    if (_playbackHold) return;
+    if (_activeId != null && _clients.containsKey(_activeId)) return;
+    final VodDownload? nextUp = pickNext(_items.values);
+    if (nextUp == null) {
+      _activeId = null;
+      return;
+    }
+    _activeId = nextUp.id;
+    unawaited(_run(nextUp.id));
+  }
+
+  /// Choix du prochain job : premier `queued` (ordre d'insertion). Pur et
+  /// statique → testable sans IO.
+  @visibleForTesting
+  static VodDownload? pickNext(Iterable<VodDownload> items) {
+    for (final VodDownload d in items) {
+      if (d.status == VodDownloadStatus.queued) return d;
+    }
+    return null;
+  }
+
+  // ---- garde d'espace disque ---------------------------------------------
+
+  /// Espace libre (octets) du volume portant `path` — via `df -k`, présent
+  /// sur Android (toybox), Linux et macOS. null = indisponible (on ne
+  /// bloque pas : best-effort, comme tout le service).
+  static Future<int?> freeDiskBytes(String path) async {
+    try {
+      final ProcessResult r = await Process.run('df', <String>['-k', path]);
+      if (r.exitCode != 0) return null;
+      return parseDfAvailableBytes(r.stdout.toString());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Parse la sortie de `df -k` : avant-dernière colonne numérique de la
+  /// dernière ligne = Ko disponibles. Pur → testé unitairement.
+  @visibleForTesting
+  static int? parseDfAvailableBytes(String dfOutput) {
+    final List<String> lines = dfOutput
+        .trim()
+        .split('\n')
+        .where((String l) => l.trim().isNotEmpty)
+        .toList();
+    if (lines.length < 2) return null;
+    // Colonnes toybox/GNU : Filesystem 1K-blocks Used Available Use% Mounted
+    final List<String> cols = lines.last.trim().split(RegExp(r'\s+'));
+    if (cols.length < 4) return null;
+    // « Available » est la 4e colonne — mais un nom de FS avec espace peut
+    // décaler : on prend la colonne juste avant le pourcentage (xx%).
+    for (int i = cols.length - 1; i >= 1; i--) {
+      if (cols[i].endsWith('%')) {
+        final int? kb = int.tryParse(cols[i - 1]);
+        return kb == null ? null : kb * 1024;
+      }
+    }
+    return null;
+  }
+
+  /// Espace libre du volume des téléchargements — pour l'affichage
+  /// « X libres » dans « Mes téléchargements ». null = indisponible.
+  Future<int?> freeSpace() async {
+    try {
+      final Directory dir = await _dir();
+      return freeDiskBytes(dir.path);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Cœur : GET avec REPRISE (HTTP Range) → écrit en append. Reconnexion
   /// auto avec back-off. La progression est notifiée de façon throttlée.
   Future<void> _run(String id) async {
     final VodDownload? d = _items[id];
     if (d == null || d.isComplete) return;
     if (_clients.containsKey(id)) return; // déjà en cours
+
+    // GARDE D'ESPACE avant d'ouvrir la connexion.
+    final int? free = await freeDiskBytes(p.dirname(d.filePath));
+    if (free != null && free < kMinFreeToStart) {
+      d.status = VodDownloadStatus.noSpace;
+      if (_activeId == id) _activeId = null;
+      notifyListeners();
+      await _persist();
+      return;
+    }
 
     d.status = VodDownloadStatus.downloading;
     notifyListeners();
@@ -259,7 +546,8 @@ class VodDownloadService extends ChangeNotifier {
         ..connectionTimeout = const Duration(seconds: 20);
       _clients[id] = client;
       try {
-        final HttpClientRequest req = await client.getUrl(Uri.parse(d.streamUrl));
+        final HttpClientRequest req =
+            await client.getUrl(Uri.parse(d.streamUrl));
         req.headers.set(HttpHeaders.userAgentHeader, 'VLC/3.0.20 LibVLC/3.0.20');
         // REPRISE : on demande la suite à partir de l'octet déjà écrit.
         if (already > 0) {
@@ -286,15 +574,28 @@ class VodDownloadService extends ChangeNotifier {
 
         final IOSink sink = file.openWrite(mode: FileMode.append);
         int sinceNotify = 0;
+        int sinceSpaceCheck = 0;
         await for (final List<int> chunk in resp) {
           if (d.status != VodDownloadStatus.downloading) break;
           sink.add(chunk);
           d.downloadedBytes += chunk.length;
           sinceNotify += chunk.length;
+          sinceSpaceCheck += chunk.length;
           // Throttle : on ne rafraîchit l'UI que ~tous les 512 Ko.
           if (sinceNotify >= 512 * 1024) {
             sinceNotify = 0;
             notifyListeners();
+          }
+          // GARDE D'ESPACE en cours de route (~tous les 64 Mo) : si le
+          // volume frôle la saturation, on suspend PROPREMENT (Range →
+          // reprise sans perte quand la place revient).
+          if (sinceSpaceCheck >= 64 * 1024 * 1024) {
+            sinceSpaceCheck = 0;
+            final int? nowFree = await freeDiskBytes(p.dirname(d.filePath));
+            if (nowFree != null && nowFree < kMinFreeWhileRunning) {
+              d.status = VodDownloadStatus.noSpace;
+              break;
+            }
           }
         }
         await sink.flush();
@@ -308,8 +609,10 @@ class VodDownloadService extends ChangeNotifier {
           d.totalBytes = d.downloadedBytes;
           d.status = VodDownloadStatus.done;
           _clients.remove(id)?.close();
+          if (_activeId == id) _activeId = null;
           notifyListeners();
           await _persist();
+          _pump(); // au suivant de la file
           return;
         }
         // Sinon (coupure au milieu) → on reprendra à la boucle suivante.
@@ -329,13 +632,16 @@ class VodDownloadService extends ChangeNotifier {
     }
 
     _clients.remove(id)?.close(force: true);
+    if (_activeId == id) _activeId = null;
     if (d.status == VodDownloadStatus.downloading) {
       // Sorti de la boucle sans finir → erreur (max essais atteint).
-      d.status =
-          d.downloadedBytes > 0 ? VodDownloadStatus.paused : VodDownloadStatus.error;
-      notifyListeners();
-      await _persist();
+      d.status = d.downloadedBytes > 0
+          ? VodDownloadStatus.paused
+          : VodDownloadStatus.error;
     }
+    notifyListeners();
+    await _persist();
+    _pump(); // la file continue même après un échec
   }
 
   /// « 1,2 Go » / « 640 Mo » — taille lisible.

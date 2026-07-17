@@ -611,6 +611,20 @@
   },
   "tvDownloadFailed": "Misslyckades · tryck för att försöka igen",
   "tvDownloadQueued": "Väntar…",
+  "tvDlRail": "Nedladdat",
+  "tvDlSmart": "Smarta nedladdningar",
+  "tvDlSmartOn": "På — sedda avsnitt tas bort och nästa kommer av sig självt",
+  "tvDlSmartOff": "Av",
+  "tvDlFree": "{size} ledigt på boxen",
+  "@tvDlFree": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDlNoSpace": "Otillräckligt utrymme — frigör plats och återuppta",
+  "tvDlEpisodeHint": "Håll in ett avsnitt för att ladda ned (eller ta bort) det",
   "tvWatch": "Titta",
   "tvMyList": "Min lista",
   "tvInMyList": "I Min lista",

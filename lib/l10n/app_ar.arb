@@ -611,6 +611,20 @@
   },
   "tvDownloadFailed": "فشل · اضغط لإعادة المحاولة",
   "tvDownloadQueued": "في الانتظار…",
+  "tvDlRail": "تم تنزيلها",
+  "tvDlSmart": "التنزيلات الذكية",
+  "tvDlSmartOn": "مفعّلة — تُحذف الحلقة المشاهدة وتصل التالية تلقائيًا",
+  "tvDlSmartOff": "معطّلة",
+  "tvDlFree": "{size} متاحة على الجهاز",
+  "@tvDlFree": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDlNoSpace": "المساحة غير كافية — حرّر مساحة ثم تابع",
+  "tvDlEpisodeHint": "اضغط مطولًا على حلقة لتنزيلها (أو إزالتها)",
   "tvWatch": "مشاهدة",
   "tvMyList": "قائمتي",
   "tvInMyList": "في قائمتي",

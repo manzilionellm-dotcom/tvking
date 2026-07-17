@@ -612,6 +612,20 @@
   },
   "tvDownloadFailed": "Failed · press to retry",
   "tvDownloadQueued": "Waiting…",
+  "tvDlRail": "Downloaded",
+  "tvDlSmart": "Smart downloads",
+  "tvDlSmartOn": "On — watched episodes are removed, the next one arrives by itself",
+  "tvDlSmartOff": "Off",
+  "tvDlFree": "{size} free on this box",
+  "@tvDlFree": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "tvDlNoSpace": "Not enough space — free some room, then resume",
+  "tvDlEpisodeHint": "Long-press an episode to download (or remove) it",
   "tvWatch": "Watch",
   "tvMyList": "My List",
   "tvInMyList": "In My List",
