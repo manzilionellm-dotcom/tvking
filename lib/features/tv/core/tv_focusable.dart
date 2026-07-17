@@ -194,25 +194,25 @@ class _TvFocusableState extends State<TvFocusable> {
           ? (_) {
               _node.requestFocus();
               if (!_pressed) {
-        setState(() => _pressed = true);
-        widget.onPressChange?.call(true);
-      }
+                setState(() => _pressed = true);
+                widget.onPressChange?.call(true);
+              }
             }
           : null,
       onTapUp: widget.enabled
           ? (_) {
               if (_pressed) {
-        setState(() => _pressed = false);
-        widget.onPressChange?.call(false);
-      }
+                setState(() => _pressed = false);
+                widget.onPressChange?.call(false);
+              }
             }
           : null,
       onTapCancel: widget.enabled
           ? () {
               if (_pressed) {
-        setState(() => _pressed = false);
-        widget.onPressChange?.call(false);
-      }
+                setState(() => _pressed = false);
+                widget.onPressChange?.call(false);
+              }
             }
           : null,
       onTap: widget.enabled ? widget.onSelect : null,
@@ -220,9 +220,9 @@ class _TvFocusableState extends State<TvFocusable> {
       onLongPress: (widget.enabled && widget.onLongPress != null)
           ? () {
               if (_pressed) {
-        setState(() => _pressed = false);
-        widget.onPressChange?.call(false);
-      }
+                setState(() => _pressed = false);
+                widget.onPressChange?.call(false);
+              }
               widget.onLongPress!.call();
             }
           : null,
@@ -239,49 +239,57 @@ class _TvFocusableState extends State<TvFocusable> {
           if (!f) widget.onPressChange?.call(false);
           widget.onFocusChange?.call(f);
         },
-        child: AnimatedScale(
-          // Signal 1 : SCALE (transform GPU uniquement).
-          scale: targetScale,
-          duration: TvDimens.focusAnim,
-          curve: TvDimens.focusCurve,
-          child: AnimatedOpacity(
-            opacity: widget.enabled ? 1.0 : 0.45, // §4 disabled
+        // RepaintBoundary : l'animation de focus (scale + ombre/halo blur
+        // 34-40 px, ~9 frames) repeint la couche de la TUILE seulement. Les
+        // items de ListView/GridView.builder en ont déjà un (framework) ;
+        // celui-ci couvre les tuiles posées dans des Row/Column (5 grandes
+        // tuiles + barre du haut du Modèle B, rangée d'icônes Rails…), où
+        // chaque cran de D-pad repeignait la route ENTIÈRE — par-dessus une
+        // SurfaceView hybrid composition sur l'accueil.
+        child: RepaintBoundary(
+          child: AnimatedScale(
+            // Signal 1 : SCALE (transform GPU uniquement).
+            scale: targetScale,
             duration: TvDimens.focusAnim,
-            child: AnimatedContainer(
-              duration: TvDimens.focusAnim,
-              curve: TvDimens.focusCurve,
-              decoration: BoxDecoration(
-                // Signal 2 : COULEUR de surface (tonale, Maison Noir).
-                color: active
-                    ? focusBg
-                    : (widget.selected ? TvTokens.sel : widget.baseColor),
-                borderRadius: radius,
-                // Signal 4 : CONTOUR OR au focus (visible partout, §5 spec).
-                border: (widget.showOutline && (active || widget.selected))
-                    ? Border.all(
-                        color: active ? TvTokens.gold : TvTokens.line,
-                        width: TvDimens.focusOutline,
-                      )
-                    : null,
-                // Signal 3 : ÉLÉVATION (ombre portée) + lueur champagne. C'est
-                // l'ombre profonde — pas la bordure — qui « soulève » l'élément
-                // façon Apple TV+ ; la lueur or signe la marque.
-                boxShadow: (widget.showGlow && active)
-                    ? <BoxShadow>[
-                        BoxShadow(
-                          color: const Color(0x99000000), // noir 60 %
-                          blurRadius: TvDimens.focusElevBlur,
-                          offset: const Offset(0, TvDimens.focusElevDy),
-                        ),
-                        BoxShadow(
-                          color: TvTokens.gold.withValues(alpha: 0.35),
-                          blurRadius: TvDimens.focusGlowBlur,
-                          spreadRadius: TvDimens.focusGlowSpread,
-                        ),
-                      ]
-                    : null,
+            curve: TvDimens.focusCurve,
+            child: _DisabledDim(
+              enabled: widget.enabled,
+              child: AnimatedContainer(
+                duration: TvDimens.focusAnim,
+                curve: TvDimens.focusCurve,
+                decoration: BoxDecoration(
+                  // Signal 2 : COULEUR de surface (tonale, Maison Noir).
+                  color: active
+                      ? focusBg
+                      : (widget.selected ? TvTokens.sel : widget.baseColor),
+                  borderRadius: radius,
+                  // Signal 4 : CONTOUR OR au focus (visible partout, §5 spec).
+                  border: (widget.showOutline && (active || widget.selected))
+                      ? Border.all(
+                          color: active ? TvTokens.gold : TvTokens.line,
+                          width: TvDimens.focusOutline,
+                        )
+                      : null,
+                  // Signal 3 : ÉLÉVATION (ombre portée) + lueur champagne. C'est
+                  // l'ombre profonde — pas la bordure — qui « soulève » l'élément
+                  // façon Apple TV+ ; la lueur or signe la marque.
+                  boxShadow: (widget.showGlow && active)
+                      ? <BoxShadow>[
+                          const BoxShadow(
+                            color: Color(0x99000000), // noir 60 %
+                            blurRadius: TvDimens.focusElevBlur,
+                            offset: Offset(0, TvDimens.focusElevDy),
+                          ),
+                          BoxShadow(
+                            color: TvTokens.gold.withValues(alpha: 0.35),
+                            blurRadius: TvDimens.focusGlowBlur,
+                            spreadRadius: TvDimens.focusGlowSpread,
+                          ),
+                        ]
+                      : null,
+                ),
+                child: widget.child,
               ),
-              child: widget.child,
             ),
           ),
         ),
@@ -357,5 +365,22 @@ class _TvFocusBuilderState extends State<TvFocusBuilder> {
           ? widget.pressedBuilder!(context, f, _pressed && f)
           : widget.builder!(context, f),
     );
+  }
+}
+
+/// Voile « désactivé » (§4 disabled). L'ancien code posait un
+/// [AnimatedOpacity] permanent autour de CHAQUE tuile : à opacité 1.0 le
+/// saveLayer est court-circuité, mais le widget restait dans l'arbre de
+/// toutes les grilles (30+ tuiles). Ici la couche d'opacité n'existe QUE
+/// pour une tuile réellement désactivée — cas rare.
+class _DisabledDim extends StatelessWidget {
+  const _DisabledDim({required this.enabled, required this.child});
+  final bool enabled;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (enabled) return child;
+    return Opacity(opacity: 0.45, child: child);
   }
 }
