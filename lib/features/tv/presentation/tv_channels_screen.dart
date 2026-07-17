@@ -24,6 +24,7 @@ import 'package:flutter/material.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
+import '../../epg/data/short_epg_service.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -300,12 +301,23 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                 // Aperçu vidéo EN DIRECT de la chaîne focalisée (muet,
                 // anti-rebond ~600 ms, repli logo — cf. TvLivePreview).
                 // Une chaîne SÉLECTIONNÉE (OK) démarre sans anti-rebond.
-                AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: TvLivePreview(
-                    channel: ch,
-                    enabled: _previewLive,
-                    startImmediately: ch.id == _selectedId,
+                // TACTILE (téléphone/tablette) : un TAP sur la vignette ouvre
+                // le plein écran — GestureDetector pur, AUCUN FocusNode ajouté
+                // → le parcours D-pad (liste → boutons) reste identique.
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    final int idx =
+                        _visible.indexWhere((Channel x) => x.id == ch.id);
+                    _play(idx < 0 ? 0 : idx);
+                  },
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: TvLivePreview(
+                      channel: ch,
+                      enabled: _previewLive,
+                      startImmediately: ch.id == _selectedId,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -315,9 +327,16 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                     style: TvTokens.ui(TvDimens.title,
                         weight: FontWeight.w800, color: TvTokens.text)),
                 const SizedBox(height: 10),
-                // Programme du jour (façon IBO) : le programme EN COURS en
-                // or, puis les 3 suivants avec leurs horaires.
-                Expanded(child: _PreviewPrograms(channelId: ch.id)),
+                // « NOS ÉVÉNEMENTS » (demande client) : les émissions à venir
+                // de la chaîne, sous l'aperçu — en-tête de section + le
+                // programme EN COURS en or, puis les suivants avec horaires.
+                Text('NOS ÉVÉNEMENTS',
+                    style: TvTokens.ui(12,
+                        weight: FontWeight.w700,
+                        color: TvTokens.mutedDim,
+                        spacing: 1.4)),
+                const SizedBox(height: 8),
+                Expanded(child: _PreviewPrograms(channel: ch)),
                 const SizedBox(height: 10),
                 // Boutons d'action (façon IBO) : Regarder / ★ Favori /
                 // Rechercher — « Regarder » garde la place d'honneur.
@@ -707,8 +726,8 @@ class _ActionButton extends StatelessWidget {
 /// puis les suivantes avec leurs horaires. Sans EPG → petit mot discret
 /// (jamais un trou vide).
 class _PreviewPrograms extends StatefulWidget {
-  const _PreviewPrograms({required this.channelId});
-  final String channelId;
+  const _PreviewPrograms({required this.channel});
+  final Channel channel;
 
   @override
   State<_PreviewPrograms> createState() => _PreviewProgramsState();
@@ -734,7 +753,7 @@ class _PreviewProgramsState extends State<_PreviewPrograms> {
   @override
   void didUpdateWidget(_PreviewPrograms old) {
     super.didUpdateWidget(old);
-    if (old.channelId != widget.channelId) {
+    if (old.channel.id != widget.channel.id) {
       _loaded = false;
       _programs = const <EpgProgram>[];
       _debounce?.cancel();
@@ -751,20 +770,30 @@ class _PreviewProgramsState extends State<_PreviewPrograms> {
   }
 
   Future<void> _load() async {
-    final String id = widget.channelId;
+    final String id = widget.channel.id;
     List<EpgProgram> today = const <EpgProgram>[];
     try {
       today = await EpgRepository.instance.todayPrograms(id);
     } catch (_) {
       // EPG indisponible → on affichera le repli.
     }
-    if (!mounted || id != widget.channelId) return;
+    if (!mounted || id != widget.channel.id) return;
     final DateTime now = DateTime.now();
     // En cours + suivantes uniquement (le passé n'intéresse personne ici).
-    final List<EpgProgram> upcoming = today
+    List<EpgProgram> upcoming = today
         .where((EpgProgram p) => p.stopDateTime.isAfter(now))
         .take(4)
         .toList();
+    // REPLI « EPG courte » (demande client — la section restait vide) : si la
+    // base XMLTV ne connaît pas cette chaîne, on demande au panel Xtream ses
+    // « maintenant + suivants » (une requête API, cachée 10 min — cf.
+    // ShortEpgService). Chaînes M3U sans XMLTV : rien de plus à tenter.
+    if (upcoming.isEmpty) {
+      final List<EpgProgram> short =
+          await ShortEpgService.instance.upcomingFor(widget.channel);
+      if (!mounted || id != widget.channel.id) return;
+      upcoming = short.take(4).toList();
+    }
     setState(() {
       _programs = upcoming;
       _loaded = true;
