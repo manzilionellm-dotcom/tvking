@@ -557,7 +557,12 @@ class _FavoritesGridState extends State<_FavoritesGrid> {
     super.dispose();
   }
 
+  /// Jeton anti-course : requêtes SQL concurrentes possibles si deux
+  /// événements favoris se suivent — seule la plus récente écrit.
+  int _recomputeGen = 0;
+
   Future<void> _recompute() async {
+    final int gen = ++_recomputeGen;
     final Set<String> ids = FavoritesRepository.instance.current;
     if (ids.isEmpty) {
       if (mounted) setState(() => _favs = <Channel>[]);
@@ -575,7 +580,9 @@ class _FavoritesGridState extends State<_FavoritesGrid> {
       for (final String id in ids)
         if (byId[id] != null) byId[id]!,
     ];
-    if (mounted) setState(() => _favs = out.take(9).toList());
+    if (mounted && gen == _recomputeGen) {
+      setState(() => _favs = out.take(9).toList());
+    }
   }
 
   @override

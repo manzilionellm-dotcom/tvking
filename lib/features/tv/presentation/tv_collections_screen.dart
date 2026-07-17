@@ -263,6 +263,9 @@ class _TvCollectionDetailScreenState
     _favKey = key;
     _resolve(ids).then((List<Channel> list) {
       if (mounted && _favKey == key) setState(() => _favs = list);
+    }).catchError((Object _) {
+      // Échec SQLite : on garde l'affichage courant (avant, le
+      // FutureBuilder absorbait l'erreur — même tolérance ici).
     });
   }
 

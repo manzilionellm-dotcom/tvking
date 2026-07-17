@@ -129,13 +129,15 @@ class TvTokens {
   // cache de police + alloue un TextStyle : on fige le résultat par
   // combinaison (taille/graisse/couleur/espacement) — bornée par le design
   // system (3 rôles × quelques tailles), donc sans dérive mémoire.
-  static final Map<int, TextStyle> _styleMemo = <int, TextStyle>{};
+  // Clé RECORD (égalité par valeur) et non un hash : une collision de hash
+  // aurait renvoyé silencieusement le mauvais style.
+  static final Map<(int, double, FontWeight, Color, double), TextStyle>
+      _styleMemo = <(int, double, FontWeight, Color, double), TextStyle>{};
 
   static TextStyle _memo(
       int font, double size, FontWeight weight, Color color, double spacing,
       TextStyle Function() build) {
-    final int key = Object.hash(font, size, weight, color, spacing);
-    return _styleMemo[key] ??= build();
+    return _styleMemo[(font, size, weight, color, spacing)] ??= build();
   }
 
   static TextStyle display(double size,

@@ -528,7 +528,13 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
     super.dispose();
   }
 
+  /// Jeton anti-course (revue de code) : _recompute est async depuis le
+  /// passage aux requêtes SQL — deux événements favoris rapprochés = deux
+  /// requêtes concurrentes, la plus LENTE pouvait écraser la plus récente.
+  int _recomputeGen = 0;
+
   Future<void> _recompute() async {
+    final int gen = ++_recomputeGen;
     final Set<String> favIds = FavoritesRepository.instance.current;
     if (favIds.isEmpty) {
       if (mounted) {
@@ -573,7 +579,7 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
       for (int i = 0; i < picked.length; i++)
         _FavSlot(channel: picked[i], program: programs[i]),
     ];
-    if (mounted) {
+    if (mounted && gen == _recomputeGen) {
       setState(() {
         _slots = slots;
         _loading = false;

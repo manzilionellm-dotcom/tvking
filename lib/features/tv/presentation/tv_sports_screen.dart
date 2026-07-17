@@ -251,7 +251,11 @@ class _TickerState extends State<_Ticker>
   }
 
   void _onTick(Duration elapsed) {
-    final double dt = (elapsed - _prev).inMicroseconds / 1e6;
+    // Clamp : elapsed continue de compter pendant le mute TickerMode (écran
+    // recouvert) — sans borne, le 1er tick au retour faisait sauter le
+    // bandeau de toute la durée d'absence.
+    final double dt =
+        ((elapsed - _prev).inMicroseconds / 1e6).clamp(0.0, 0.1);
     _prev = elapsed;
     if (!_sc.hasClients) return;
     final double max = _sc.position.maxScrollExtent;
