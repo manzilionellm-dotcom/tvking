@@ -161,12 +161,12 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
           final List<VodSeries> list = _byCat[cat] ?? const <VodSeries>[];
           if (list.isEmpty) return const SizedBox.shrink();
           return Padding(
-            padding: const EdgeInsets.only(bottom: 20),
+            padding: const EdgeInsets.only(bottom: 14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Padding(
-                  padding: const EdgeInsets.only(left: 4, bottom: 10),
+                  padding: const EdgeInsets.only(left: 4, bottom: 8),
                   child: Text(
                     cat.toUpperCase(),
                     maxLines: 1,
@@ -178,12 +178,12 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
                   ),
                 ),
                 SizedBox(
-                  height: 218,
+                  height: 200,
                   child: ListView.builder(
                     key: PageStorageKey<String>('series-rail-$cat'),
                     scrollDirection: Axis.horizontal,
                     addAutomaticKeepAlives: false,
-                    itemExtent: 142,
+                    itemExtent: 132,
                     itemCount: list.length,
                     itemBuilder: (BuildContext context, int j) => Padding(
                       padding: const EdgeInsets.only(right: 12),
@@ -255,8 +255,10 @@ class _SeriesHero extends StatelessWidget {
     );
 
     return Container(
-      height: 210,
-      margin: const EdgeInsets.only(bottom: 22),
+      // Densité VIP (parité TvFilmsScreen) : héros série borné à ~30 % de
+      // la hauteur réelle → l'écran montre le héros ET des rangées ensemble.
+      height: (MediaQuery.of(context).size.height * 0.30).clamp(180.0, 230.0),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(TvDimens.cardRadius),
         gradient: const LinearGradient(

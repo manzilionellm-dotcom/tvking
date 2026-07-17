@@ -592,8 +592,13 @@ class _HeroBanner extends StatelessWidget {
   Widget _buildCinematic(BuildContext context) {
     final String meta = _meta;
     return Container(
-      height: 340,
-      margin: const EdgeInsets.only(bottom: 22),
+      // DENSITÉ « VIP » (terrain 2026-07-17) : le héros ne doit PLUS manger
+      // la moitié de l'écran (un grand vide sombre + il fallait descendre
+      // pour voir le cinéma). On le borne à ~38 % de la hauteur réelle du
+      // canevas (≈ 274 px sur 720) → dès l'ouverture on voit le héros ET
+      // deux rangées de films ensemble, sans toucher aux commandes.
+      height: (MediaQuery.of(context).size.height * 0.38).clamp(230.0, 300.0),
+      margin: const EdgeInsets.only(bottom: 16),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(TvDimens.cardRadius),
@@ -692,8 +697,8 @@ class _HeroBanner extends StatelessWidget {
   Widget _buildClassic(BuildContext context) {
     final String meta = _meta;
     return Container(
-      height: 210,
-      margin: const EdgeInsets.only(bottom: 22),
+      height: (MediaQuery.of(context).size.height * 0.30).clamp(180.0, 230.0),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(TvDimens.cardRadius),
         gradient: const LinearGradient(
@@ -920,12 +925,14 @@ class _Rail extends StatelessWidget {
   Widget build(BuildContext context) {
     if (movies.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
+      // Rangées resserrées (densité VIP) : moins d'air entre elles → on voit
+      // plus de cinéma d'un coup, sans que ça paraisse tassé.
+      padding: const EdgeInsets.only(bottom: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 10),
+            padding: const EdgeInsets.only(left: 4, bottom: 8),
             child: Text(
               title.toUpperCase(),
               maxLines: 1,
@@ -937,12 +944,12 @@ class _Rail extends StatelessWidget {
             ),
           ),
           SizedBox(
-            height: 218,
+            height: 200,
             child: ListView.builder(
               key: railKey,
               scrollDirection: Axis.horizontal,
               addAutomaticKeepAlives: false,
-              itemExtent: 142,
+              itemExtent: 132,
               itemCount: movies.length,
               itemBuilder: (BuildContext context, int i) => Padding(
                 padding: const EdgeInsets.only(right: 12),
