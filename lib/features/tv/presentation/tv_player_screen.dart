@@ -175,6 +175,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // AUCUN effet en live ni pour un film isolé (gardé par la policy).
   final AutoplayPolicy _autoplay = AutoplayPolicy();
   Timer? _upNextTimer;
+
+  /// Fermeture auto de la feuille « Pistes » (10 s d'inactivité).
+  Timer? _tracksAutoClose;
   bool _upNextVisible = false;
   bool _upNextAuto = true; // false = garde-fou atteint → attend un OK
   int _upNextSeconds = 0;
@@ -432,6 +435,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _toastTimer?.cancel();
     _zapSettle?.cancel();
     _upNextTimer?.cancel();
+    _tracksAutoClose?.cancel();
     _seekPreviewTimer?.cancel();
     // Lecteur quitté avant la 1re image → la mesure TTFF ne veut rien dire.
     CinePerf.cancel(CinePerf.playToFirstFrame);
@@ -1335,9 +1339,23 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       _tracksFocus = 0;
       _overlay = false; // la feuille remplace la barre à l'écran
     });
+    _armTracksAutoClose();
+  }
+
+  /// FERMETURE AUTO (demande terrain 2026-07-17) : après un changement de
+  /// langue/sous-titres — ou simple inactivité — la feuille disparaît
+  /// toute seule au bout de 10 s. Chaque interaction (flèche, OK, tap)
+  /// RELANCE le compte : on ne ferme jamais au nez de quelqu'un qui
+  /// navigue encore dans la liste.
+  void _armTracksAutoClose() {
+    _tracksAutoClose?.cancel();
+    _tracksAutoClose = Timer(const Duration(seconds: 10), () {
+      if (mounted && _tracksVisible) _closeTracksSheet();
+    });
   }
 
   void _closeTracksSheet() {
+    _tracksAutoClose?.cancel();
     setState(() => _tracksVisible = false);
     _showOverlayTemporarily();
   }
@@ -1347,6 +1365,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   /// rebuild du player, pas d'écran noir). Le ratio est 100 % Flutter
   /// (dimensionnement de la PlatformView) et persiste via PlayerSettings.
   void _activateSheetEntry(_TrackSheetEntry e) {
+    // Sélection (D-pad OU tap tactile) → la fenêtre de fermeture auto
+    // repart : la feuille disparaîtra 10 s après le DERNIER choix.
+    _armTracksAutoClose();
     switch (e.kind) {
       case _SheetKind.audio:
         _controller.setAudioTrack(e.index);
@@ -1720,6 +1741,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Retour ferme. Tout le reste est consommé : pas de zap accidentel
     // sous le panneau.
     if (_tracksVisible) {
+      // Chaque touche dans la feuille relance la fenêtre de fermeture
+      // auto (10 s) — on ne ferme pas au nez de quelqu'un qui navigue.
+      _armTracksAutoClose();
       final List<_TrackSheetEntry> rows = _sheetEntries();
       if (_isOk(k)) {
         if (_tracksFocus >= 0 && _tracksFocus < rows.length) {
