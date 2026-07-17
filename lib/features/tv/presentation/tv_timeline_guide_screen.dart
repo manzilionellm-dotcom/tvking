@@ -338,9 +338,11 @@ class _GuideRow extends StatefulWidget {
 }
 
 class _GuideRowState extends State<_GuideRow> {
-  /// Requête EPG mémorisée : recréée UNIQUEMENT quand la chaîne ou la
-  /// fenêtre change — jamais sur un simple tic d'horloge de l'écran.
-  late Future<List<EpgProgram>> _progs;
+  /// Requête EPG mémorisée (programme + drapeau « rejouable » PRÉ-CALCULÉ :
+  /// la construction d'URL catch-up de canReplay ne se refait plus à chaque
+  /// rebuild de bloc) : recréée UNIQUEMENT quand la chaîne ou la fenêtre
+  /// change — jamais sur un simple tic d'horloge de l'écran.
+  late Future<List<(EpgProgram, bool)>> _progs;
 
   @override
   void initState() {
@@ -358,8 +360,11 @@ class _GuideRowState extends State<_GuideRow> {
     }
   }
 
-  Future<List<EpgProgram>> _load() => EpgRepository.instance
-      .programsBetween(widget.channel.id, widget.startMs, widget.endMs);
+  Future<List<(EpgProgram, bool)>> _load() => EpgRepository.instance
+      .programsBetween(widget.channel.id, widget.startMs, widget.endMs)
+      .then((List<EpgProgram> list) => <(EpgProgram, bool)>[
+            for (final EpgProgram p in list) (p, widget.canReplay(p))
+          ]);
 
   @override
   Widget build(BuildContext context) {
@@ -401,15 +406,15 @@ class _GuideRowState extends State<_GuideRow> {
         Expanded(
           child: SizedBox(
             height: widget.rowH,
-            child: FutureBuilder<List<EpgProgram>>(
+            child: FutureBuilder<List<(EpgProgram, bool)>>(
               // Borné à la fenêtre : requête SQL indexée, par ligne
               // visible — et MÉMORISÉE (cf. _GuideRowState : le tic
               // 30 s de l'écran ne re-tape plus SQLite).
               future: _progs,
               builder: (BuildContext context,
-                  AsyncSnapshot<List<EpgProgram>> snap) {
-                final List<EpgProgram> progs =
-                    snap.data ?? const <EpgProgram>[];
+                  AsyncSnapshot<List<(EpgProgram, bool)>> snap) {
+                final List<(EpgProgram, bool)> progs =
+                    snap.data ?? const <(EpgProgram, bool)>[];
                 return Stack(
                   clipBehavior: Clip.hardEdge,
                   children: <Widget>[
@@ -423,7 +428,8 @@ class _GuideRowState extends State<_GuideRow> {
                         ),
                       ),
                     ),
-                    for (final EpgProgram p in progs) _block(p),
+                    for (final (EpgProgram, bool) e in progs)
+                      _block(e.$1, e.$2),
                     if (widget.nowDx != null)
                       Positioned(
                         left: widget.nowDx! - 1,
@@ -443,7 +449,7 @@ class _GuideRowState extends State<_GuideRow> {
     );
   }
 
-  Widget _block(EpgProgram p) {
+  Widget _block(EpgProgram p, bool replayable) {
     // Position/longueur du bloc, ROGNÉES à la fenêtre visible.
     final double left =
         ((p.startTime - widget.startMs) / 60000).clamp(0, 1e9) * widget.pxPerMin;
@@ -455,7 +461,6 @@ class _GuideRowState extends State<_GuideRow> {
     if (width < 8) return const SizedBox.shrink();
     final int nowMs = DateTime.now().millisecondsSinceEpoch;
     final bool onAir = p.startTime <= nowMs && nowMs < p.stopTime;
-    final bool replayable = widget.canReplay(p);
     return Positioned(
       left: left,
       top: 3,
