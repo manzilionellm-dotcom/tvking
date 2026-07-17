@@ -191,7 +191,7 @@ class _SmartToggle extends StatelessWidget {
             color: focused ? TvTokens.sel : TvTokens.card,
             borderRadius: BorderRadius.circular(TvTokens.rCard),
             border: Border.all(
-                color: focused ? TvTokens.gold : TvTokens.lineSoft,
+                color: focused ? TvTokens.ember : TvTokens.lineSoft,
                 width: focused ? TvDimens.focusOutline : 1),
           ),
           child: Row(
@@ -199,7 +199,7 @@ class _SmartToggle extends StatelessWidget {
             children: <Widget>[
               Icon(enabled ? Icons.auto_awesome : Icons.auto_awesome_outlined,
                   size: 18,
-                  color: enabled ? TvTokens.gold : TvTokens.mutedDim),
+                  color: enabled ? TvTokens.ember : TvTokens.mutedDim),
               const SizedBox(width: 8),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -217,7 +217,7 @@ class _SmartToggle extends StatelessWidget {
                       style: TextStyle(
                           fontSize: 12,
                           color:
-                              enabled ? TvTokens.gold : TvTokens.mutedDim)),
+                              enabled ? TvTokens.ember : TvTokens.mutedDim)),
                 ],
               ),
             ],
@@ -249,13 +249,13 @@ class _DownloadRow extends StatelessWidget {
           icon: Icons.play_circle_fill_rounded,
           label: context.l10n
               .tvDownloadReady(VodDownloadService.fmtBytes(d.totalBytes)),
-          color: TvTokens.gold
+          color: TvTokens.ember
         );
       case VodDownloadStatus.downloading:
         return (
           icon: Icons.pause_circle_filled_rounded,
           label: context.l10n.tvDownloadInProgress(pct),
-          color: TvTokens.goldBright
+          color: TvTokens.emberBright
         );
       case VodDownloadStatus.paused:
         return (
@@ -301,7 +301,7 @@ class _DownloadRow extends StatelessWidget {
             color: focused ? TvTokens.sel : TvTokens.card,
             borderRadius: BorderRadius.circular(TvTokens.rCard),
             border: Border.all(
-                color: focused ? TvTokens.gold : TvTokens.lineSoft,
+                color: focused ? TvTokens.ember : TvTokens.lineSoft,
                 width: focused ? TvDimens.focusOutline : 1),
           ),
           child: Row(
@@ -334,7 +334,7 @@ class _DownloadRow extends StatelessWidget {
                               child: Container(
                                 height: 5,
                                 decoration: const BoxDecoration(
-                                    gradient: TvTokens.ctaGradient),
+                                    gradient: TvTokens.cineGradient),
                               ),
                             ),
                           ],

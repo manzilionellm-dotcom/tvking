@@ -545,7 +545,7 @@ class _Key extends StatelessWidget {
           return Container(
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: focused ? TvTokens.gold : TvTokens.sel,
+              color: focused ? TvTokens.ember : TvTokens.sel,
               borderRadius: BorderRadius.circular(TvDimens.cardRadius),
             ),
             child: Text(label,

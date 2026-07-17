@@ -188,7 +188,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // lecture reste DIRECTE (le relais n'est pas dans le chemin).
   Recording? _activeRecording;
   bool get _isRecording => _activeRecording != null;
-  String? _relayPlayUrl; // URL locale 127.0.0.1 utilisée pendant l'enregistrement
+  String?
+      _relayPlayUrl; // URL locale 127.0.0.1 utilisée pendant l'enregistrement
   String? _toastMsg; // petit message éphémère (sauvegardé / vide / échec)
 
   // ----- Favoris -----
@@ -305,15 +306,27 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   String get _effectiveUrl => _adoptedAltUrl ?? _current.streamUrl;
 
   static const List<LogicalKeyboardKey> _digits = <LogicalKeyboardKey>[
-    LogicalKeyboardKey.digit0, LogicalKeyboardKey.digit1, LogicalKeyboardKey.digit2,
-    LogicalKeyboardKey.digit3, LogicalKeyboardKey.digit4, LogicalKeyboardKey.digit5,
-    LogicalKeyboardKey.digit6, LogicalKeyboardKey.digit7, LogicalKeyboardKey.digit8,
+    LogicalKeyboardKey.digit0,
+    LogicalKeyboardKey.digit1,
+    LogicalKeyboardKey.digit2,
+    LogicalKeyboardKey.digit3,
+    LogicalKeyboardKey.digit4,
+    LogicalKeyboardKey.digit5,
+    LogicalKeyboardKey.digit6,
+    LogicalKeyboardKey.digit7,
+    LogicalKeyboardKey.digit8,
     LogicalKeyboardKey.digit9,
   ];
   static const List<LogicalKeyboardKey> _numpad = <LogicalKeyboardKey>[
-    LogicalKeyboardKey.numpad0, LogicalKeyboardKey.numpad1, LogicalKeyboardKey.numpad2,
-    LogicalKeyboardKey.numpad3, LogicalKeyboardKey.numpad4, LogicalKeyboardKey.numpad5,
-    LogicalKeyboardKey.numpad6, LogicalKeyboardKey.numpad7, LogicalKeyboardKey.numpad8,
+    LogicalKeyboardKey.numpad0,
+    LogicalKeyboardKey.numpad1,
+    LogicalKeyboardKey.numpad2,
+    LogicalKeyboardKey.numpad3,
+    LogicalKeyboardKey.numpad4,
+    LogicalKeyboardKey.numpad5,
+    LogicalKeyboardKey.numpad6,
+    LogicalKeyboardKey.numpad7,
+    LogicalKeyboardKey.numpad8,
     LogicalKeyboardKey.numpad9,
   ];
 
@@ -352,7 +365,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     )..attach();
     // Favoris en direct (le se met à jour tout seul).
     FavoritesRepository.instance.initialize();
-    _favSub = FavoritesRepository.instance.favoritesStream.listen((Set<String> ids) {
+    _favSub =
+        FavoritesRepository.instance.favoritesStream.listen((Set<String> ids) {
       if (mounted) setState(() => _favIds = ids);
     });
     _open(reuse: true); // historique / présence pour la 1re chaîne
@@ -424,7 +438,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // (arrêt du relais + clôture en base), sans toucher au controller détruit.
     if (_activeRecording != null) {
       final Recording rec = _activeRecording!;
-      LocalStreamRelay.instance.stopRecording(rec.streamUrl ?? _current.streamUrl);
+      LocalStreamRelay.instance
+          .stopRecording(rec.streamUrl ?? _current.streamUrl);
       RecordingRepository.instance.finishRecording(rec);
     }
     // Position VOD au moment de QUITTER le lecteur (Back) : c'est LA
@@ -449,7 +464,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     if (_controller.position != _lastPos) {
       _lastPos = _controller.position;
       _freeze.onProgress(DateTime.now());
-      if (_fatal && mounted) setState(() => _fatal = false);
+      if (_fatal && mounted)
+        setState(() => _fatal = false);
       // FILM : quand la barre est visible, on la fait AVANCER (tick 500 ms du
       // natif). Uniquement en VOD + overlay → aucun rebuild inutile en direct.
       else if (_isVod && _overlay && mounted) {
@@ -461,7 +477,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       // BUDGET « Regarder → première frame » (VOD, cible < 2,5 s) : le chrono
       // part de l'appui (fiche/accueil) ou de l'_open (reprise directe), et
       // s'arrête ICI, à la toute première image de CETTE ouverture.
-      if (!_everShownFrame && _isVod &&
+      if (!_everShownFrame &&
+          _isVod &&
           CinePerf.isRunning(CinePerf.playToFirstFrame)) {
         CinePerf.end(CinePerf.playToFirstFrame, detail: _current.name);
       }
@@ -510,8 +527,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // plus apparaître dans « Continuer à regarder » (règle des 95 % du repo,
     // appliquée ici aussi car un flux terminé n'émet plus de position).
     if (_isVod && _controller.isEnded) {
-      unawaited(
-          PlaybackPositionRepository.instance.markFinished(_current.id));
+      unawaited(PlaybackPositionRepository.instance.markFinished(_current.id));
       // TÉLÉCHARGEMENTS INTELLIGENTS (Netflix) : l'épisode terminé était
       // téléchargé → son fichier est supprimé (il est vu, la place se
       // libère) ; et le SUIVANT part en file — il se téléchargera dès que
@@ -627,7 +643,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _armStartupWatchdog(); // coupure rapide si aucune image en ~20 s
     _fatalNetworkHint = false;
     _errorLoggedThisOpen = false; // nouvelle ouverture → on re-journalise
-    _adoptedAltUrl = null; // la variante adoptée était propre à l'ancienne chaîne
+    _adoptedAltUrl =
+        null; // la variante adoptée était propre à l'ancienne chaîne
     // Nouveau contenu → la carte « À suivre » de l'ancien n'a plus de sens.
     _upNextTimer?.cancel();
     _upNextVisible = false;
@@ -647,10 +664,11 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       }
       unawaited(_loadResumePoint());
     }
-    if (mounted) setState(() {
-      _buffering = true;
-      _fatal = false;
-    });
+    if (mounted)
+      setState(() {
+        _buffering = true;
+        _fatal = false;
+      });
     // Charge la chaîne courante VIA LE RELAIS (parité téléphone) : le
     // relais ouvre l'unique connexion, gère la reconnexion, et surtout
     // résout les domaines bloqués par le DNS opérateur en DoH
@@ -704,8 +722,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // la chaîne ouvre sur /live/…m3u8 sans re-sonder. Seule la 1re chaîne
     // d'une source neuve cascade encore.
     if (_adoptedAltUrl == null) {
-      final pl.Playlist? src =
-          StreamBlockedFallback.xtreamPlaylistFor(channel);
+      final pl.Playlist? src = StreamBlockedFallback.xtreamPlaylistFor(channel);
       if (src?.id != null) {
         final XtreamContentType type =
             StreamBlockedFallback.contentTypeOf(channel);
@@ -731,8 +748,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         final String? sourceUa =
             await XtreamUrlFormatStore.instance.sourceUserAgent(src.id!);
         if (!mounted || channel.id != _current.id) return;
-        if (sourceUa != null &&
-            sourceUa != PlayerSettings.instance.userAgent) {
+        if (sourceUa != null && sourceUa != PlayerSettings.instance.userAgent) {
           await PlayerSettings.instance.setUserAgent(sourceUa);
           userAgent ??= sourceUa;
         }
@@ -1028,7 +1044,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
 
   /// « Réessayer » manuel depuis l'écran d'erreur : on repart d'un budget neuf.
   void _manualRetry() {
-    _freeze.openChannel(DateTime.now()); // horloge fraîche : pas de watchdog immédiat
+    _freeze.openChannel(
+        DateTime.now()); // horloge fraîche : pas de watchdog immédiat
     _rebufferTimes.clear(); // budget rebuffer neuf pour la nouvelle tentative
     _armStartupWatchdog(); // si la reprise ne démarre pas non plus → coupure rapide
     setState(() {
@@ -1149,10 +1166,11 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     setState(() => _overlay = true);
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(seconds: 6), () {
-      if (mounted) setState(() {
-        _overlay = false;
-        _btnFocus = -1; // on oublie le surlignage quand la barre se masque
-      });
+      if (mounted)
+        setState(() {
+          _overlay = false;
+          _btnFocus = -1; // on oublie le surlignage quand la barre se masque
+        });
     });
   }
 
@@ -1205,7 +1223,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       return;
     }
     setState(() {
-      _btnFocus = (_btnFocus < 0 ? 1 : _btnFocus + delta).clamp(0, _btnCount - 1);
+      _btnFocus =
+          (_btnFocus < 0 ? 1 : _btnFocus + delta).clamp(0, _btnCount - 1);
     });
     _showOverlayTemporarily();
   }
@@ -1269,8 +1288,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     final double streamAr = _controller.videoAspectRatio ?? (16 / 9);
     switch (_aspect) {
       case AspectRatioMode.fit:
-        return Center(
-            child: AspectRatio(aspectRatio: streamAr, child: view));
+        return Center(child: AspectRatio(aspectRatio: streamAr, child: view));
       case AspectRatioMode.ratio169:
         return Center(child: AspectRatio(aspectRatio: 16 / 9, child: view));
       case AspectRatioMode.ratio43:
@@ -1438,8 +1456,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // L'utilisateur a quitté / changé de contenu pendant la lecture prefs →
     // cette reprise ne concerne plus l'écran affiché.
     if (!mounted || !identical(opened, _current) || _resumeApplied) return;
-    _pendingResume =
-        PlaybackPositionRepository.instance.positionFor(opened.id);
+    _pendingResume = PlaybackPositionRepository.instance.positionFor(opened.id);
     _maybeApplyResume();
   }
 
@@ -1480,10 +1497,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Pour un ÉPISODE, `name` vaut « S1 E3 · Titre » et `category` porte le
     // nom de la série : on préfixe pour que la rangée « Continuer à
     // regarder » reste lisible hors de la fiche série.
-    final String displayName =
-        (isEpisode && c.category.trim().isNotEmpty)
-            ? '${c.category.trim()} — ${c.name}'
-            : c.name;
+    final String displayName = (isEpisode && c.category.trim().isNotEmpty)
+        ? '${c.category.trim()} — ${c.name}'
+        : c.name;
     unawaited(PlaybackPositionRepository.instance.record(
       key: c.id,
       position: _controller.position,
@@ -1622,7 +1638,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   void _jumpNumber() {
     final int? n = int.tryParse(_numBuffer);
     _numBuffer = '';
-    if (n == null || n <= 0) { setState(() {}); return; }
+    if (n == null || n <= 0) {
+      setState(() {});
+      return;
+    }
     _savePlaybackPosition(); // no-op en direct (cf. _zap)
     _prevIndex = _index; // mémoire « dernière chaîne » (recall)
     _resetStabilitySession(); // choix utilisateur → session neuve
@@ -1688,13 +1707,13 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         return KeyEventResult.handled;
       }
       if (k == LogicalKeyboardKey.arrowUp) {
-        setState(() =>
-            _tracksFocus = (_tracksFocus - 1).clamp(0, rows.length - 1));
+        setState(
+            () => _tracksFocus = (_tracksFocus - 1).clamp(0, rows.length - 1));
         return KeyEventResult.handled;
       }
       if (k == LogicalKeyboardKey.arrowDown) {
-        setState(() =>
-            _tracksFocus = (_tracksFocus + 1).clamp(0, rows.length - 1));
+        setState(
+            () => _tracksFocus = (_tracksFocus + 1).clamp(0, rows.length - 1));
         return KeyEventResult.handled;
       }
       return KeyEventResult.handled;
@@ -1753,16 +1772,27 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
 
     int di = _digits.indexOf(k);
     if (di < 0) di = _numpad.indexOf(k);
-    if (di >= 0) { _onDigit(di); return KeyEventResult.handled; }
+    if (di >= 0) {
+      _onDigit(di);
+      return KeyEventResult.handled;
+    }
 
     // Haut/Bas (et Ch+/Ch-) = zap direct — UNIQUEMENT en direct. Sur un FILM,
     // on ne zappe pas (Netflix) : on montre juste la barre.
     if (_isPrev(k)) {
-      if (_isVod) { _showOverlayTemporarily(); } else { _zap(-1); }
+      if (_isVod) {
+        _showOverlayTemporarily();
+      } else {
+        _zap(-1);
+      }
       return KeyEventResult.handled;
     }
     if (_isNext(k)) {
-      if (_isVod) { _showOverlayTemporarily(); } else { _zap(1); }
+      if (_isVod) {
+        _showOverlayTemporarily();
+      } else {
+        _zap(1);
+      }
       return KeyEventResult.handled;
     }
 
@@ -1770,13 +1800,19 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     //   • FILM  → avance/recul de 10 s (façon Netflix) ;
     //   • DIRECT → déplace le surlignage entre les boutons de la barre.
     if (k == LogicalKeyboardKey.arrowLeft) {
-      if (_isVod) { _seekRelative(const Duration(seconds: -10)); }
-      else { _navBtn(-1); }
+      if (_isVod) {
+        _seekRelative(const Duration(seconds: -10));
+      } else {
+        _navBtn(-1);
+      }
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.arrowRight) {
-      if (_isVod) { _seekRelative(const Duration(seconds: 10)); }
-      else { _navBtn(1); }
+      if (_isVod) {
+        _seekRelative(const Duration(seconds: 10));
+      } else {
+        _navBtn(1);
+      }
       return KeyEventResult.handled;
     }
     // Touches média AVANCE/RETOUR (télécommandes qui en ont) → seek sur un film.
@@ -1817,323 +1853,331 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: true,
-      child: Focus(
-        focusNode: _focus,
-        autofocus: true,
-        onKeyEvent: _onKey,
-        // TACTILE (TV/tablette à écran tactile) : tap = affiche/masque la
-        // barre ; glissé vertical = zap. Les boutons de la barre captent leur
-        // propre tap (ils gagnent l'arène des gestes) avant ce fond.
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () {
-            _lastUserAction = DateTime.now();
-            _autoplay.onUserInteraction(); // tactile = présence aussi
-            if (_askStillWatching) {
-              setState(() => _askStillWatching = false);
-              _controller.play();
-              return;
-            }
-            _toggleOverlay();
-          },
-          onVerticalDragEnd: (DragEndDetails d) {
-            _lastUserAction = DateTime.now();
-            final double v = d.primaryVelocity ?? 0;
-            if (v < -250) {
-              _zap(1); // glissé vers le HAUT → chaîne suivante
-            } else if (v > 250) {
-              _zap(-1); // glissé vers le BAS → chaîne précédente
-            }
-          },
-          child: ColoredBox(
-            color: Colors.black,
-            child: Stack(
-              fit: StackFit.expand,
-              children: <Widget>[
-              // Vidéo SurfaceView native, dimensionnée selon le FORMAT
-              // D'IMAGE choisi (feuille « Pistes & format »). La Surface
-              // ExoPlayer remplit la PlatformView : piloter sa taille
-              // côté Flutter suffit — zéro rebuild du player, pas
-              // d'écran noir au changement de mode.
-              _buildVideoSurface(),
-              // Écran de marque pendant l'ouverture / le zap / une reconnexion.
-              if (_buffering && !_fatal)
-                const ColoredBox(
-                  color: TvTokens.bg,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        TvLogo(width: 200),
-                        SizedBox(height: 28),
-                        SizedBox(
-                          width: 40, height: 40,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 3, color: TvTokens.gold),
+    // Material TRANSPARENT : le lecteur est poussé depuis des dizaines
+    // d'endroits (zap, fiches, téléchargements, reprise…) et n'a pas de
+    // Scaffold — sans Material ancêtre, tout l'overlay partait en secours
+    // Flutter (textes jaunes soulignés, monospace). Bug terrain 2026-07-17.
+    return Material(
+      type: MaterialType.transparency,
+      child: PopScope(
+        canPop: true,
+        child: Focus(
+          focusNode: _focus,
+          autofocus: true,
+          onKeyEvent: _onKey,
+          // TACTILE (TV/tablette à écran tactile) : tap = affiche/masque la
+          // barre ; glissé vertical = zap. Les boutons de la barre captent leur
+          // propre tap (ils gagnent l'arène des gestes) avant ce fond.
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              _lastUserAction = DateTime.now();
+              _autoplay.onUserInteraction(); // tactile = présence aussi
+              if (_askStillWatching) {
+                setState(() => _askStillWatching = false);
+                _controller.play();
+                return;
+              }
+              _toggleOverlay();
+            },
+            onVerticalDragEnd: (DragEndDetails d) {
+              _lastUserAction = DateTime.now();
+              final double v = d.primaryVelocity ?? 0;
+              if (v < -250) {
+                _zap(1); // glissé vers le HAUT → chaîne suivante
+              } else if (v > 250) {
+                _zap(-1); // glissé vers le BAS → chaîne précédente
+              }
+            },
+            child: ColoredBox(
+              color: Colors.black,
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  // Vidéo SurfaceView native, dimensionnée selon le FORMAT
+                  // D'IMAGE choisi (feuille « Pistes & format »). La Surface
+                  // ExoPlayer remplit la PlatformView : piloter sa taille
+                  // côté Flutter suffit — zéro rebuild du player, pas
+                  // d'écran noir au changement de mode.
+                  _buildVideoSurface(),
+                  // Écran de marque pendant l'ouverture / le zap / une reconnexion.
+                  if (_buffering && !_fatal)
+                    const ColoredBox(
+                      color: TvTokens.bg,
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            TvLogo(width: 200),
+                            SizedBox(height: 28),
+                            SizedBox(
+                              width: 40,
+                              height: 40,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 3, color: TvTokens.gold),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
+                    ),
+                  // « TU REGARDES ENCORE ? » : lecture en pause après une longue
+                  // inactivité — n'importe quelle touche reprend. Économise la
+                  // bande passante quand la TV reste allumée sans personne.
+                  if (_askStillWatching)
+                    ColoredBox(
+                      color: const Color(0xE6000000), // scrim noir 90 %
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            const Icon(Icons.nightlight_round,
+                                color: TvTokens.gold, size: 52),
+                            const SizedBox(height: 18),
+                            Text(context.l10n.tvPlayerStillWatching,
+                                style: TextStyle(
+                                    fontSize: TvDimens.title + 6,
+                                    fontWeight: FontWeight.w800,
+                                    color: TvTokens.text)),
+                            const SizedBox(height: 10),
+                            Text(context.l10n.tvPlayerPressAnyKey,
+                                style: TextStyle(
+                                    fontSize: TvDimens.body,
+                                    color: TvTokens.muted)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  // Écran d'ERREUR (P1-6) : la reconnexion automatique a été épuisée
+                  // (flux durablement injoignable). On ARRÊTE de boucler et on offre
+                  // un « Réessayer » manuel (OK) ou « Quitter » (Retour).
+                  if (_fatal)
+                    ColoredBox(
+                      color: TvTokens.bg,
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            const Icon(Icons.error_outline_rounded,
+                                color: TvTokens.mutedDim, size: 56),
+                            const SizedBox(height: 16),
+                            Text(_current.cleanName,
+                                style: TextStyle(
+                                    fontSize: TvDimens.title,
+                                    fontWeight: FontWeight.w800,
+                                    color: TvTokens.text)),
+                            const SizedBox(height: 8),
+                            Text(
+                                _everShownFrame
+                                    ? context.l10n.tvChannelUnavailable
+                                    : context.l10n.tvChannelBlockedBySource,
+                                style: TextStyle(
+                                    fontSize: TvDimens.body,
+                                    color: TvTokens.mutedDim)),
+                            // Indice réseau/VPN : uniquement quand le diagnostic
+                            // multi-UA a conclu à un blocage réseau (DNS/timeout)
+                            // plutôt qu'à un simple souci de signature de lecteur.
+                            if (_fatalNetworkHint) ...<Widget>[
+                              const SizedBox(height: 6),
+                              Text(context.l10n.tvChannelNetworkHint,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                      fontSize: TvDimens.body * 0.85,
+                                      color: TvTokens.mutedDim)),
+                            ],
+                            const SizedBox(height: 20),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 22, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: TvTokens.sel,
+                                borderRadius:
+                                    BorderRadius.circular(TvTokens.rButton),
+                                border: Border.all(
+                                    color: TvTokens.gold,
+                                    width: TvDimens.focusOutline),
+                              ),
+                              child: Text(context.l10n.tvRetryQuitHint,
+                                  style: TextStyle(
+                                      fontSize: TvDimens.titleS,
+                                      fontWeight: FontWeight.w700,
+                                      color: TvTokens.goldBright)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  // Panneau de lecture (façon YouTube / Netflix) : glisse depuis le
+                  // bas + fondu, masqué automatiquement après 5 s. Contient l'info
+                  // chaîne + tous les contrôles (dont REC et en bas).
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: AnimatedSlide(
+                      offset: _overlay ? Offset.zero : const Offset(0, 0.28),
+                      duration: TvDimens.focusAnim,
+                      curve: Curves.easeOutCubic,
+                      child: AnimatedOpacity(
+                        opacity: _overlay ? 1 : 0,
+                        duration: TvDimens.focusAnim,
+                        child: IgnorePointer(
+                          ignoring: !_overlay,
+                          child: _ControlsBar(
+                            channel: _current,
+                            index: _index,
+                            total: widget.channels.length,
+                            isRecording: _isRecording,
+                            isFavorite: _isFavorite,
+                            focusedIndex: _btnFocus,
+                            onGuide: _openGuide,
+                            onRecord: _toggleRecording,
+                            onFavorite: _toggleFavorite,
+                            onMulti: _openMultiView,
+                            onTracks: _openTracksSheet,
+                            // ---- Mode FILM (Netflix) ----
+                            isVod: _isVod,
+                            position: _controller.position,
+                            duration: _controller.duration,
+                            buffered: _controller.buffered,
+                            isPlaying: _controller.isPlaying,
+                            onSeekBack: () =>
+                                _seekRelative(const Duration(seconds: -10)),
+                            onSeekFwd: () =>
+                                _seekRelative(const Duration(seconds: 10)),
+                            onPlayPause: _togglePlayPause,
+                            seekPreview: _seekPreview,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              // « TU REGARDES ENCORE ? » : lecture en pause après une longue
-              // inactivité — n'importe quelle touche reprend. Économise la
-              // bande passante quand la TV reste allumée sans personne.
-              if (_askStillWatching)
-                ColoredBox(
-                  color: const Color(0xE6000000), // scrim noir 90 %
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        const Icon(Icons.nightlight_round,
-                            color: TvTokens.gold, size: 52),
-                        const SizedBox(height: 18),
-                        Text(context.l10n.tvPlayerStillWatching,
-                            style: TextStyle(
-                                fontSize: TvDimens.title + 6,
+                  // Numéro saisi à la télécommande (coin haut-droit).
+                  if (_numBuffer.isNotEmpty)
+                    Positioned(
+                      top: TvDimens.safeV + 8,
+                      right: TvDimens.safeH,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white24),
+                        ),
+                        child: Text(_numBuffer,
+                            style: const TextStyle(
+                                fontSize: 44,
                                 fontWeight: FontWeight.w800,
-                                color: TvTokens.text)),
-                        const SizedBox(height: 10),
-                        Text(
-                            context.l10n.tvPlayerPressAnyKey,
-                            style: TextStyle(
-                                fontSize: TvDimens.body,
-                                color: TvTokens.muted)),
-                      ],
+                                color: Colors.white,
+                                letterSpacing: 4)),
+                      ),
                     ),
-                  ),
-                ),
-              // Écran d'ERREUR (P1-6) : la reconnexion automatique a été épuisée
-              // (flux durablement injoignable). On ARRÊTE de boucler et on offre
-              // un « Réessayer » manuel (OK) ou « Quitter » (Retour).
-              if (_fatal)
-                ColoredBox(
-                  color: TvTokens.bg,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        const Icon(Icons.error_outline_rounded,
-                            color: TvTokens.mutedDim, size: 56),
-                        const SizedBox(height: 16),
-                        Text(_current.cleanName,
-                            style: TextStyle(
-                                fontSize: TvDimens.title,
-                                fontWeight: FontWeight.w800,
-                                color: TvTokens.text)),
-                        const SizedBox(height: 8),
-                        Text(
-                            _everShownFrame
-                                ? context.l10n.tvChannelUnavailable
-                                : context.l10n.tvChannelBlockedBySource,
-                            style: TextStyle(
-                                fontSize: TvDimens.body,
-                                color: TvTokens.mutedDim)),
-                        // Indice réseau/VPN : uniquement quand le diagnostic
-                        // multi-UA a conclu à un blocage réseau (DNS/timeout)
-                        // plutôt qu'à un simple souci de signature de lecteur.
-                        if (_fatalNetworkHint) ...<Widget>[
-                          const SizedBox(height: 6),
-                          Text(context.l10n.tvChannelNetworkHint,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                  fontSize: TvDimens.body * 0.85,
-                                  color: TvTokens.mutedDim)),
-                        ],
-                        const SizedBox(height: 20),
-                        Container(
+                  // Pastille « ● REC » visible en permanence pendant l'enregistrement
+                  // (même quand la barre est masquée).
+                  if (_isRecording)
+                    Positioned(
+                      top: TvDimens.safeV + 8,
+                      left: TvDimens.safeH,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(100),
+                          border: Border.all(color: TvTokens.live),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(Icons.fiber_manual_record_rounded,
+                                color: TvTokens.live, size: 16),
+                            const SizedBox(width: 8),
+                            Text(context.l10n.playerRec,
+                                style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 2,
+                                    color: TvTokens.text)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  // Message éphémère (sauvegardé / vide / échec).
+                  if (_toastMsg != null)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: TvDimens.safeV + 120,
+                      child: Center(
+                        child: Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 22, vertical: 12),
                           decoration: BoxDecoration(
-                            color: TvTokens.sel,
-                            borderRadius:
-                                BorderRadius.circular(TvTokens.rButton),
-                            border: Border.all(
-                                color: TvTokens.gold,
-                                width: TvDimens.focusOutline),
+                            color: Colors.black.withValues(alpha: 0.78),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white24),
                           ),
-                          child: Text(context.l10n.tvRetryQuitHint,
+                          child: Text(_toastMsg!,
                               style: TextStyle(
-                                  fontSize: TvDimens.titleS,
+                                  fontSize: 18,
                                   fontWeight: FontWeight.w700,
-                                  color: TvTokens.goldBright)),
+                                  color: TvTokens.text)),
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-              // Panneau de lecture (façon YouTube / Netflix) : glisse depuis le
-              // bas + fondu, masqué automatiquement après 5 s. Contient l'info
-              // chaîne + tous les contrôles (dont REC et en bas).
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: AnimatedSlide(
-                  offset: _overlay ? Offset.zero : const Offset(0, 0.28),
-                  duration: TvDimens.focusAnim,
-                  curve: Curves.easeOutCubic,
-                  child: AnimatedOpacity(
-                    opacity: _overlay ? 1 : 0,
-                    duration: TvDimens.focusAnim,
-                    child: IgnorePointer(
-                      ignoring: !_overlay,
-                      child: _ControlsBar(
-                        channel: _current,
-                        index: _index,
-                        total: widget.channels.length,
-                        isRecording: _isRecording,
-                        isFavorite: _isFavorite,
-                        focusedIndex: _btnFocus,
-                        onGuide: _openGuide,
-                        onRecord: _toggleRecording,
-                        onFavorite: _toggleFavorite,
-                        onMulti: _openMultiView,
-                        onTracks: _openTracksSheet,
-                        // ---- Mode FILM (Netflix) ----
-                        isVod: _isVod,
-                        position: _controller.position,
-                        duration: _controller.duration,
-                        buffered: _controller.buffered,
-                        isPlaying: _controller.isPlaying,
-                        onSeekBack: () =>
-                            _seekRelative(const Duration(seconds: -10)),
-                        onSeekFwd: () =>
-                            _seekRelative(const Duration(seconds: 10)),
-                        onPlayPause: _togglePlayPause,
-                        seekPreview: _seekPreview,
                       ),
                     ),
-                  ),
-                ),
+                  // Carte « À SUIVRE » (bas-droite, façon Netflix) : titre du
+                  // prochain épisode + compte à rebours 10 s + Lire maintenant /
+                  // Annuler. Uniquement à la fin d'un ÉPISODE avec un suivant
+                  // (cf. _handleVodEnded) — jamais en live ni pour un film.
+                  // Feuille « Pistes & format d'image » (panneau latéral droit,
+                  // focus émulé — cf. _onKey qui lui détourne tout le D-pad).
+                  if (_tracksVisible)
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: _TracksSheet(
+                        audio: _controller.audioTracks,
+                        text: _controller.textTracks,
+                        entries: _sheetEntries(),
+                        focusedIndex: _tracksFocus,
+                        aspect: _aspect,
+                        onActivate: _activateSheetEntry,
+                        onClose: _closeTracksSheet,
+                      ),
+                    ),
+                  // Pastille « Épisode suivant » (30 dernières secondes d'un
+                  // épisode, barre masquée) : OK = enchaîner tout de suite,
+                  // ne rien faire = regarder le générique. Se cache quand la
+                  // barre s'ouvre (OK redevient lecture/pause, sans ambiguïté).
+                  if (_endPillVisible && !_overlay && _nextUpChannel != null)
+                    Positioned(
+                      right: TvDimens.safeH,
+                      bottom: TvDimens.safeV + 24,
+                      child: _NextEpisodePill(
+                        onTap: () {
+                          _autoplay.onUserInteraction();
+                          _playUpNext(auto: false);
+                        },
+                      ),
+                    ),
+                  if (_upNextVisible && _nextUpChannel != null)
+                    Positioned(
+                      right: TvDimens.safeH,
+                      bottom: TvDimens.safeV + 24,
+                      child: _UpNextCard(
+                        title: _nextUpChannel!.cleanName,
+                        seconds: _upNextAuto ? _upNextSeconds : null,
+                        totalSeconds: _autoplay.countdownSeconds,
+                        focusedIndex: _upNextBtn,
+                        // Tactile : un tap direct sur un bouton de la carte.
+                        onPlay: () {
+                          _autoplay.onUserInteraction();
+                          _playUpNext(auto: false);
+                        },
+                        onCancel: _cancelUpNext,
+                      ),
+                    ),
+                ],
               ),
-              // Numéro saisi à la télécommande (coin haut-droit).
-              if (_numBuffer.isNotEmpty)
-                Positioned(
-                  top: TvDimens.safeV + 8,
-                  right: TvDimens.safeH,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.7),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white24),
-                    ),
-                    child: Text(_numBuffer,
-                        style: const TextStyle(
-                            fontSize: 44,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            letterSpacing: 4)),
-                  ),
-                ),
-              // Pastille « ● REC » visible en permanence pendant l'enregistrement
-              // (même quand la barre est masquée).
-              if (_isRecording)
-                Positioned(
-                  top: TvDimens.safeV + 8,
-                  left: TvDimens.safeH,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(100),
-                      border: Border.all(color: TvTokens.live),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Icon(Icons.fiber_manual_record_rounded,
-                            color: TvTokens.live, size: 16),
-                        const SizedBox(width: 8),
-                        Text(context.l10n.playerRec,
-                            style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 2,
-                                color: TvTokens.text)),
-                      ],
-                    ),
-                  ),
-                ),
-              // Message éphémère (sauvegardé / vide / échec).
-              if (_toastMsg != null)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: TvDimens.safeV + 120,
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 22, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.78),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white24),
-                      ),
-                      child: Text(_toastMsg!,
-                          style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: TvTokens.text)),
-                    ),
-                  ),
-                ),
-              // Carte « À SUIVRE » (bas-droite, façon Netflix) : titre du
-              // prochain épisode + compte à rebours 10 s + Lire maintenant /
-              // Annuler. Uniquement à la fin d'un ÉPISODE avec un suivant
-              // (cf. _handleVodEnded) — jamais en live ni pour un film.
-              // Feuille « Pistes & format d'image » (panneau latéral droit,
-              // focus émulé — cf. _onKey qui lui détourne tout le D-pad).
-              if (_tracksVisible)
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: _TracksSheet(
-                    audio: _controller.audioTracks,
-                    text: _controller.textTracks,
-                    entries: _sheetEntries(),
-                    focusedIndex: _tracksFocus,
-                    aspect: _aspect,
-                    onActivate: _activateSheetEntry,
-                    onClose: _closeTracksSheet,
-                  ),
-                ),
-              // Pastille « Épisode suivant » (30 dernières secondes d'un
-              // épisode, barre masquée) : OK = enchaîner tout de suite,
-              // ne rien faire = regarder le générique. Se cache quand la
-              // barre s'ouvre (OK redevient lecture/pause, sans ambiguïté).
-              if (_endPillVisible && !_overlay && _nextUpChannel != null)
-                Positioned(
-                  right: TvDimens.safeH,
-                  bottom: TvDimens.safeV + 24,
-                  child: _NextEpisodePill(
-                    onTap: () {
-                      _autoplay.onUserInteraction();
-                      _playUpNext(auto: false);
-                    },
-                  ),
-                ),
-              if (_upNextVisible && _nextUpChannel != null)
-                Positioned(
-                  right: TvDimens.safeH,
-                  bottom: TvDimens.safeV + 24,
-                  child: _UpNextCard(
-                    title: _nextUpChannel!.cleanName,
-                    seconds: _upNextAuto ? _upNextSeconds : null,
-                    totalSeconds: _autoplay.countdownSeconds,
-                    focusedIndex: _upNextBtn,
-                    // Tactile : un tap direct sur un bouton de la carte.
-                    onPlay: () {
-                      _autoplay.onUserInteraction();
-                      _playUpNext(auto: false);
-                    },
-                    onCancel: _cancelUpNext,
-                  ),
-                ),
-              ],
             ),
           ),
         ),
@@ -2401,7 +2445,7 @@ class _NextEpisodePill extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         decoration: BoxDecoration(
-          color: TvTokens.gold,
+          color: TvTokens.ember,
           borderRadius: BorderRadius.circular(12),
           boxShadow: <BoxShadow>[
             BoxShadow(
@@ -2415,14 +2459,14 @@ class _NextEpisodePill extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             const Icon(Icons.skip_next_rounded,
-                size: 24, color: TvTokens.onGold),
+                size: 24, color: TvTokens.onEmber),
             const SizedBox(width: 8),
             Text(
               context.l10n.tvNextEpisode,
               style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
-                  color: TvTokens.onGold),
+                  color: TvTokens.onEmber),
             ),
           ],
         ),
@@ -2471,13 +2515,11 @@ class _VodControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final int totalMs = duration.inMilliseconds;
-    final double frac = totalMs > 0
-        ? (position.inMilliseconds / totalMs).clamp(0.0, 1.0)
-        : 0.0;
+    final double frac =
+        totalMs > 0 ? (position.inMilliseconds / totalMs).clamp(0.0, 1.0) : 0.0;
     // AVANCE CHARGÉE (ligne grise façon YouTube) : jamais en-deçà de la lecture.
-    final double bufferedFrac = totalMs > 0
-        ? (buffered.inMilliseconds / totalMs).clamp(0.0, 1.0)
-        : 0.0;
+    final double bufferedFrac =
+        totalMs > 0 ? (buffered.inMilliseconds / totalMs).clamp(0.0, 1.0) : 0.0;
     final Duration remaining =
         totalMs > 0 ? duration - position : Duration.zero;
     return Column(
@@ -2493,15 +2535,14 @@ class _VodControls extends StatelessWidget {
               ? const SizedBox.shrink()
               : LayoutBuilder(
                   builder: (BuildContext context, BoxConstraints c) {
-                    final double f = (seekPreview!.inMilliseconds / totalMs)
-                        .clamp(0.0, 1.0);
+                    final double f =
+                        (seekPreview!.inMilliseconds / totalMs).clamp(0.0, 1.0);
                     // 74 = largeur de la colonne temps à gauche de la barre.
                     const double sideW = 74;
                     final double barW = c.maxWidth - sideW * 2;
                     const double bubbleW = 86;
-                    final double left =
-                        (sideW + f * barW - bubbleW / 2)
-                            .clamp(0.0, c.maxWidth - bubbleW);
+                    final double left = (sideW + f * barW - bubbleW / 2)
+                        .clamp(0.0, c.maxWidth - bubbleW);
                     return Stack(
                       children: <Widget>[
                         Positioned(
@@ -2509,18 +2550,17 @@ class _VodControls extends StatelessWidget {
                           top: 0,
                           child: Container(
                             width: bubbleW,
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 5),
+                            padding: const EdgeInsets.symmetric(vertical: 5),
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
-                              color: TvTokens.gold,
+                              color: TvTokens.ember,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(_fmt(seekPreview!),
                                 style: const TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w800,
-                                    color: TvTokens.onGold)),
+                                    color: TvTokens.onEmber)),
                           ),
                         ),
                       ],
@@ -2558,8 +2598,8 @@ class _VodControls extends StatelessWidget {
                       widthFactor: frac,
                       child: Container(
                         height: 6,
-                        decoration:
-                            const BoxDecoration(gradient: TvTokens.ctaGradient),
+                        decoration: const BoxDecoration(
+                            gradient: TvTokens.cineGradient),
                       ),
                     ),
                   ],
@@ -2594,7 +2634,7 @@ class _VodControls extends StatelessWidget {
               label: isPlaying ? context.l10n.tvPause : context.l10n.tvPlay,
               onTap: onPlayPause,
               primary: true,
-              accent: TvTokens.gold,
+              accent: TvTokens.ember,
             ),
             const SizedBox(width: 34),
             _CtrlButton(
@@ -2638,22 +2678,22 @@ class _CtrlButtonState extends State<_CtrlButton> {
   @override
   Widget build(BuildContext context) {
     final double d = widget.primary ? 76 : 62;
-    final Color accent = widget.accent ?? TvTokens.gold;
+    final Color accent = widget.accent ?? TvTokens.ember;
     // Surlignage D-pad = anneau OR épais + halo : visible sur N'IMPORTE quelle
     // télécommande (le repère « où je suis »).
     final Color borderColor = widget.focused
-        ? TvTokens.gold
+        ? TvTokens.ember
         : (widget.active ? accent : Colors.white24);
     final Color bg = widget.focused
-        ? TvTokens.gold.withValues(alpha: 0.28)
+        ? TvTokens.ember.withValues(alpha: 0.28)
         : (widget.active
             ? accent.withValues(alpha: 0.22)
             : Colors.black.withValues(alpha: 0.42));
     final Color iconColor = widget.focused
-        ? TvTokens.gold
+        ? TvTokens.ember
         : (widget.active ? accent : TvTokens.text);
     final Color labelColor = widget.focused
-        ? TvTokens.gold
+        ? TvTokens.ember
         : (widget.active ? accent : TvTokens.muted);
 
     final double scale = _down ? 0.9 : (widget.focused ? 1.12 : 1.0);
@@ -2677,17 +2717,19 @@ class _CtrlButtonState extends State<_CtrlButton> {
               decoration: BoxDecoration(
                 color: bg,
                 shape: BoxShape.circle,
-                border: Border.all(color: borderColor, width: widget.focused ? 2 : 1),
+                border: Border.all(
+                    color: borderColor, width: widget.focused ? 2 : 1),
                 boxShadow: widget.focused
                     ? <BoxShadow>[
                         BoxShadow(
-                            color: TvTokens.gold.withValues(alpha: 0.45),
+                            color: TvTokens.ember.withValues(alpha: 0.45),
                             blurRadius: 24,
                             spreadRadius: -2),
                       ]
                     : null,
               ),
-              child: Icon(widget.icon, color: iconColor, size: widget.primary ? 42 : 30),
+              child: Icon(widget.icon,
+                  color: iconColor, size: widget.primary ? 42 : 30),
             ),
             if (widget.label != null) ...<Widget>[
               const SizedBox(height: 7),
@@ -2758,7 +2800,7 @@ class _UpNextCard extends StatelessWidget {
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 2,
-                  color: TvTokens.gold)),
+                  color: TvTokens.ember)),
           const SizedBox(height: 8),
           Text(title,
               maxLines: 2,
@@ -2781,7 +2823,7 @@ class _UpNextCard extends StatelessWidget {
                         ? (seconds! / totalSeconds).clamp(0.0, 1.0)
                         : 0,
                     strokeWidth: 3,
-                    color: TvTokens.gold,
+                    color: TvTokens.ember,
                     backgroundColor: Colors.white24,
                   ),
                 ),
@@ -2849,10 +2891,11 @@ class _UpNextButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: focused ? TvTokens.gold : Colors.white.withValues(alpha: 0.08),
+          color:
+              focused ? TvTokens.ember : Colors.white.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(TvTokens.rButton),
           border: Border.all(
-              color: focused ? TvTokens.gold : Colors.white24,
+              color: focused ? TvTokens.ember : Colors.white24,
               width: focused ? TvDimens.focusOutline : 1),
         ),
         child: Row(
@@ -3045,8 +3088,8 @@ class _TracksSheetState extends State<_TracksSheet> {
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text(context.l10n.tracksNoAudio,
-                  style: const TextStyle(
-                      fontSize: 13, color: TvTokens.mutedDim)),
+                  style:
+                      const TextStyle(fontSize: 13, color: TvTokens.mutedDim)),
             ),
           const SizedBox(height: 10),
           Expanded(

@@ -35,6 +35,27 @@ class TvTokens {
   static const Color goldBright = Color(0xFFE4CBA0); // OR FOCUS (texte + lueur)
   static const Color goldDeep = Color(0xFF9C855F); // or sombre : dégradés
   static const Color live = Color(0xFFD8453F); // pastille EN DIRECT (rouge vif sobre)
+
+  // ----- CINÉMA : accent ROUGE BRAISE immersif (terrain 2026-07-17) -----
+  // Demande client : côté Films & Séries, un rouge profond façon salle de
+  // cinéma — moins lumineux que l'or, il « atténue le regard » dans le noir.
+  // C'est le rouge ember de la marque 7 MOTION (#D63A30), décliné : accent,
+  // variante focus (plus claire), variante sombre (dégradés), texte posé
+  // dessus, et fond de badge translucide. Le LIVE garde l'or : deux mondes,
+  // deux ambiances — même obsidienne.
+  static const Color ember = Color(0xFFD63A30); // ACCENT Cinéma (brand ember)
+  static const Color emberBright = Color(0xFFEF6A5E); // focus / texte accent
+  static const Color emberDeep = Color(0xFF8E241D); // dégradés, ombres
+  static const Color onEmber = Color(0xFFFFF3F0); // texte sur bouton rouge
+  static const Color emberBadgeBg = Color(0x1FD63A30); // fond badge (rouge 12 %)
+
+  /// Dégradé des accents Cinéma (barres de progression, bouton REGARDER…) —
+  /// l'équivalent rouge du ctaGradient or.
+  static const Gradient cineGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: <Color>[emberBright, ember],
+  );
   static const Color success = Color(0xFF5FA975); // ✓ copié
 
   // ---- Rayons ----

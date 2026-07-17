@@ -168,8 +168,12 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
     setState(() => _previewLive = false);
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
-    await Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => screen));
+    // Material TRANSPARENT : certains écrans poussés (Cinéma, modèles
+    // d'accueil…) n'ont pas de Scaffold à eux — sans Material ancêtre,
+    // leurs textes partent en secours Flutter (jaune souligné, monospace).
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) =>
+            Material(type: MaterialType.transparency, child: screen)));
     if (mounted) setState(() => _previewLive = true);
   }
 

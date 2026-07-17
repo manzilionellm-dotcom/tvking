@@ -501,18 +501,18 @@ class _ActionButton extends StatelessWidget {
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         final Color bg = focused
-            ? TvTokens.gold
-            : (primary ? TvTokens.badgeBg : TvTokens.card);
+            ? TvTokens.ember
+            : (primary ? TvTokens.emberBadgeBg : TvTokens.card);
         final Color fg = focused
             ? const Color(0xFF1A1206)
-            : (primary ? TvTokens.goldBright : TvTokens.text);
+            : (primary ? TvTokens.emberBright : TvTokens.text);
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(TvDimens.cardRadius),
             border:
-                Border.all(color: primary ? TvTokens.gold : TvTokens.lineSoft),
+                Border.all(color: primary ? TvTokens.ember : TvTokens.lineSoft),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,

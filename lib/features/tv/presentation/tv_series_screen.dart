@@ -290,10 +290,10 @@ class _SeriesHero extends StatelessWidget {
                     onSelect: onOpen,
                     builder: (BuildContext context, bool focused) {
                       final Color bg =
-                          focused ? TvTokens.gold : TvTokens.badgeBg;
+                          focused ? TvTokens.ember : TvTokens.emberBadgeBg;
                       final Color fg = focused
                           ? const Color(0xFF1A1206)
-                          : TvTokens.goldBright;
+                          : TvTokens.emberBright;
                       return Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 24, vertical: 12),
@@ -301,7 +301,7 @@ class _SeriesHero extends StatelessWidget {
                           color: bg,
                           borderRadius:
                               BorderRadius.circular(TvDimens.cardRadius),
-                          border: Border.all(color: TvTokens.gold),
+                          border: Border.all(color: TvTokens.ember),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -766,7 +766,7 @@ class _SeasonChip extends StatelessWidget {
             color: (focused || active) ? TvTokens.sel : TvTokens.card,
             borderRadius: BorderRadius.circular(TvTokens.rButton),
             border: focused
-                ? Border.all(color: TvTokens.gold, width: TvDimens.focusOutline)
+                ? Border.all(color: TvTokens.ember, width: TvDimens.focusOutline)
                 : null,
           ),
           child: Text(label,
@@ -774,7 +774,7 @@ class _SeasonChip extends StatelessWidget {
                   fontSize: TvDimens.body,
                   fontWeight: FontWeight.w700,
                   color: focused
-                      ? TvTokens.goldBright
+                      ? TvTokens.emberBright
                       : (active ? TvTokens.text : TvTokens.muted))),
         );
       },
@@ -853,7 +853,7 @@ class _EpisodeRow extends StatelessWidget {
                   style: TextStyle(
                       fontSize: TvDimens.label,
                       fontWeight: FontWeight.w800,
-                      color: TvTokens.gold)),
+                      color: TvTokens.ember)),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -886,7 +886,7 @@ class _EpisodeRow extends StatelessWidget {
                               widthFactor: progress!.clamp(0.04, 1.0),
                               child: Container(
                                 decoration: const BoxDecoration(
-                                    gradient: TvTokens.ctaGradient),
+                                    gradient: TvTokens.cineGradient),
                               ),
                             ),
                           ],
@@ -926,13 +926,13 @@ class _DlBadge extends StatelessWidget {
     switch (download.status) {
       case VodDownloadStatus.done:
         return Icon(Icons.download_done_rounded,
-            size: 22, color: TvTokens.gold);
+            size: 22, color: TvTokens.ember);
       case VodDownloadStatus.downloading:
         return Text('${(download.progress * 100).round()} %',
             style: TextStyle(
                 fontSize: TvDimens.label,
                 fontWeight: FontWeight.w700,
-                color: TvTokens.gold));
+                color: TvTokens.ember));
       case VodDownloadStatus.paused:
         return Icon(Icons.pause_circle_outline_rounded,
             size: 22, color: TvTokens.mutedDim);

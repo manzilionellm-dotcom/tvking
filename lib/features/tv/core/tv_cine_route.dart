@@ -12,20 +12,28 @@
 //  frame), moins coûteux que le zoom Material sur les box modestes.
 // =========================================================
 
-import 'package:flutter/widgets.dart';
+// `material.dart` (et pas seulement widgets.dart) : la route pose un
+// Material transparent autour de chaque écran (cf. commentaire plus bas).
+import 'package:flutter/material.dart';
 
 class TvCineRoute<T> extends PageRouteBuilder<T> {
   TvCineRoute({required WidgetBuilder builder})
       : super(
           transitionDuration: const Duration(milliseconds: 220),
           reverseTransitionDuration: const Duration(milliseconds: 180),
+          // Material TRANSPARENT obligatoire : les écrans Cinéma n'ont pas
+          // tous un Scaffold à eux — sans un Material ancêtre, chaque Text
+          // part en « secours » Flutter (jaune souligné, police monospace).
+          // C'était le bug des « lignes jaunes » vu sur le terrain
+          // (2026-07-17). Le wrap ici couvre TOUTE navigation Cinéma.
           pageBuilder: (BuildContext context, Animation<double> anim,
                   Animation<double> secondary) =>
-              builder(context),
+              Material(
+                  type: MaterialType.transparency, child: builder(context)),
           transitionsBuilder: (BuildContext context, Animation<double> anim,
               Animation<double> secondary, Widget child) {
-            final CurvedAnimation curved = CurvedAnimation(
-                parent: anim, curve: Curves.easeOutCubic);
+            final CurvedAnimation curved =
+                CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
             return FadeTransition(
               opacity: curved,
               child: SlideTransition(
