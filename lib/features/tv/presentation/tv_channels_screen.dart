@@ -222,6 +222,15 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
           const SizedBox(height: 6),
           Expanded(
             child: ListView.builder(
+              // Extent MESURÉ (prototype) : scroll sans re-mesure par frame
+              // sur des centaines de catégories possibles.
+              prototypeItem: _RowTile(
+                label: 'Prototype',
+                count: 0,
+                active: false,
+                autofocus: false,
+                onSelect: () {},
+              ),
               itemCount: _cats.length,
               itemBuilder: (BuildContext c, int i) {
                 final String cat = _cats[i];
@@ -254,6 +263,18 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
     return _panel(
       title: 'Chaînes · ${_visible.length}',
       child: ListView.builder(
+        // Extent MESURÉ (prototype) : la liste peut porter le bouquet
+        // entier (10 000+ sur « Toutes ») — sans extent, chaque frame de
+        // scroll re-mesure et la position reste estimée.
+        prototypeItem: _ChannelTile(
+          number: 8888,
+          channel: _visible.first,
+          favorite: false,
+          selected: false,
+          autofocus: false,
+          onSelect: () {},
+          onFavorite: () {},
+        ),
         itemCount: _visible.length,
         itemBuilder: (BuildContext c, int i) {
           final Channel ch = _visible[i];

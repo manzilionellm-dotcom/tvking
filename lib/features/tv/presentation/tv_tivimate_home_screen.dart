@@ -238,6 +238,16 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
           ),
           Expanded(
             child: ListView.builder(
+              // Hauteur de rangée MESURÉE une fois (prototype) : sans
+              // extent, chaque frame de scroll re-mesure les enfants et la
+              // position est estimée (scrollbar qui saute, jumpTo imprécis).
+              prototypeItem: _GroupTile(
+                label: 'Prototype',
+                count: 0,
+                active: false,
+                autofocus: false,
+                onSelect: () {},
+              ),
               itemCount: _groups.length,
               itemBuilder: (BuildContext context, int i) {
                 final String g = _groups[i];
@@ -281,6 +291,16 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            // Rangées à hauteur constante (logo 44 + paddings, nom sur 1
+            // ligne) : le prototype fige l'extent → scroll D-pad sans
+            // re-mesure, position exacte même sur le bouquet entier.
+            prototypeItem: _ChannelRow(
+              number: 8888,
+              channel: _visible.first,
+              active: false,
+              autofocus: false,
+              onSelect: () {},
+            ),
             itemCount: _visible.length,
             itemBuilder: (BuildContext context, int i) {
               final Channel c = _visible[i];
