@@ -540,9 +540,14 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
       return;
     }
 
-    final List<Channel> all = PlaylistRepository.instance.currentChannels;
+    // Requêtes SQL ponctuelles (patron tv_live_screen) au lieu d'une Map
+    // id→Channel de TOUT le bouquet reconstruite à chaque toggle ★ (O(N)
+    // sur 10-50 k chaînes pour n'en garder que 12). L'ordre des favoris
+    // (insertion) est préservé en réordonnant le résultat.
     final Map<String, Channel> byId = <String, Channel>{
-      for (final Channel c in all) c.id: c,
+      for (final Channel c in await PlaylistRepository.instance
+          .getChannelsByExternalIds(favIds.toList(growable: false)))
+        c.id: c,
     };
     final List<Channel> favorites = <Channel>[];
     for (final String id in favIds) {
@@ -553,16 +558,21 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
     // rail scrolle de toute façon.
     final List<Channel> picked = favorites.take(12).toList();
 
-    final List<_FavSlot> slots = <_FavSlot>[];
-    for (final Channel c in picked) {
-      EpgProgram? p;
-      try {
-        p = await EpgRepository.instance.currentProgram(c.id);
-      } catch (_) {
-        p = null;
-      }
-      slots.add(_FavSlot(channel: c, program: p));
-    }
+    // EPG en PARALLÈLE (Future.wait) : la boucle `await` séquentielle
+    // additionnait 12 allers-retours SQLite avant d'afficher le rail.
+    final List<EpgProgram?> programs = await Future.wait(
+      picked.map((Channel c) async {
+        try {
+          return await EpgRepository.instance.currentProgram(c.id);
+        } catch (_) {
+          return null;
+        }
+      }),
+    );
+    final List<_FavSlot> slots = <_FavSlot>[
+      for (int i = 0; i < picked.length; i++)
+        _FavSlot(channel: picked[i], program: programs[i]),
+    ];
     if (mounted) {
       setState(() {
         _slots = slots;

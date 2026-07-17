@@ -95,15 +95,28 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
   String? _slotId;
   DateTime? _slotAt;
 
+  // Map id→Channel MÉMOÏSÉE par identité de liste : _recomputeHero repart à
+  // chaque événement playlist/zapping — reconstruire une map O(N) du bouquet
+  // entier (10-50 k chaînes) à chaque fois coûtait 10-60 ms pour quelques
+  // lookups. Tant que la playlist n'a pas changé, la map est réutilisée.
+  List<Channel>? _byIdSource;
+  Map<String, Channel>? _byIdCache;
+
+  Map<String, Channel> _byId(List<Channel> all) {
+    if (!identical(all, _byIdSource)) {
+      _byIdSource = all;
+      _byIdCache = <String, Channel>{for (final Channel c in all) c.id: c};
+    }
+    return _byIdCache!;
+  }
+
   Future<void> _recomputeHero() async {
     final List<Channel> all = PlaylistRepository.instance.currentChannels;
     if (all.isEmpty) {
       if (mounted) setState(() => _hero = null);
       return;
     }
-    final Map<String, Channel> byId = <String, Channel>{
-      for (final Channel c in all) c.id: c,
-    };
+    final Map<String, Channel> byId = _byId(all);
     Channel? hero;
     bool habit = false;
     // « MA SOIRÉE » : la chaîne la plus regardée DANS CE CRÉNEAU (heure ± 1,
@@ -544,10 +557,18 @@ class _FavoritesGridState extends State<_FavoritesGrid> {
     super.dispose();
   }
 
-  void _recompute() {
+  Future<void> _recompute() async {
     final Set<String> ids = FavoritesRepository.instance.current;
+    if (ids.isEmpty) {
+      if (mounted) setState(() => _favs = <Channel>[]);
+      return;
+    }
+    // Requêtes SQL ponctuelles (patron tv_live_screen) au lieu d'une Map
+    // id→Channel de TOUT le bouquet reconstruite à chaque toggle ★ (O(N)
+    // sur 10-50 k chaînes pour 9 tuiles). L'ordre des favoris est préservé.
     final Map<String, Channel> byId = <String, Channel>{
-      for (final Channel c in PlaylistRepository.instance.currentChannels)
+      for (final Channel c in await PlaylistRepository.instance
+          .getChannelsByExternalIds(ids.toList(growable: false)))
         c.id: c,
     };
     final List<Channel> out = <Channel>[
