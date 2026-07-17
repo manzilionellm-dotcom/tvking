@@ -30,6 +30,7 @@ import '../data/series_repository.dart';
 import '../data/vod_download_service.dart';
 import '../data/vod_repository.dart';
 import '../domain/vod_movie.dart';
+import '../../tv/core/vod_titles.dart';
 import '../domain/vod_series.dart';
 import 'movie_detail_screen.dart';
 import 'series_detail_screen.dart';
@@ -291,7 +292,7 @@ class _PosterCard extends StatelessWidget {
             const SizedBox(height: 6),
             SizedBox(
               width: 96,
-              child: Text(movie.name,
+              child: Text(VodTitles.clean(movie.name),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -398,7 +399,7 @@ class _SeriesTab extends StatelessWidget {
                             const SizedBox(height: 6),
                             SizedBox(
                               width: 96,
-                              child: Text(s.name,
+                              child: Text(VodTitles.clean(s.name),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
@@ -553,8 +554,8 @@ class _DownloadTile extends StatelessWidget {
       ),
       title: Text(
           d.isEpisode && d.groupName.isNotEmpty
-              ? '${d.groupName} — ${d.name}'
-              : d.name,
+              ? '${VodTitles.clean(d.groupName)} — ${d.name}'
+              : VodTitles.clean(d.name),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(

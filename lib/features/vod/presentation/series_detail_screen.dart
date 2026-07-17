@@ -23,6 +23,7 @@ import '../data/playback_position_repository.dart';
 import '../data/series_repository.dart';
 import '../data/vod_download_service.dart';
 import '../domain/vod_series.dart';
+import '../../tv/core/vod_titles.dart';
 
 class SeriesDetailScreen extends StatefulWidget {
   const SeriesDetailScreen({super.key, required this.series});
@@ -138,7 +139,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.background,
-        title: Text(widget.series.name,
+        title: Text(VodTitles.clean(widget.series.name),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(

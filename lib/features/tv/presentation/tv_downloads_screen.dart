@@ -17,6 +17,7 @@ import '../../vod/data/vod_download_service.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import '../core/vod_titles.dart';
 import 'tv_player_screen.dart';
 
 class TvDownloadsScreen extends StatefulWidget {
@@ -312,7 +313,7 @@ class _DownloadRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(d.name,
+                    Text(VodTitles.clean(d.name),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(

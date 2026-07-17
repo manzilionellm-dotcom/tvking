@@ -43,6 +43,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_cine_route.dart';
 import '../core/tv_tokens.dart';
+import '../core/vod_titles.dart';
 import '../data/cine_perf.dart';
 import 'tv_player_screen.dart';
 
@@ -235,7 +236,7 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
               children: <Widget>[
                 // Titre — gros, lisible à 3 m (TvTokens.display).
                 Text(
-                  m.name,
+                  VodTitles.clean(m.name),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TvTokens.display(TvDimens.displayM,

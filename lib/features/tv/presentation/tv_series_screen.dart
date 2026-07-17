@@ -25,6 +25,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_poster_prefetch.dart';
 import '../core/tv_cine_route.dart';
 import '../core/tv_tokens.dart';
+import '../core/vod_titles.dart';
 import '../data/cine_perf.dart';
 import 'tv_components.dart';
 import 'tv_player_screen.dart';
@@ -133,7 +134,12 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     // PRÉSENTATION « NETFLIX » : une SÉRIE VEDETTE en haut, puis une rangée
     // horizontale par catégorie. Tout est paresseux (builder vertical +
     // builder horizontal) → sûr sur box à RAM limitée.
-    final VodSeries hero = _all.first;
+    // VEDETTE = billboard curé (guidelines featured carousel) : toujours
+    // une série AVEC visuel — une source pauvre en jaquettes ne doit pas
+    // laisser un trou noir en haut de l'écran.
+    final VodSeries hero = _all.firstWhere(
+        (VodSeries s) => (s.posterUrl ?? '').isNotEmpty,
+        orElse: () => _all.first);
     // Mémoire du focus par rangée (retour d'onglet) : index de la catégorie
     // qui portait le focus, -1 si aucune → autofocus sur la vedette.
     final int memCat = _cats.indexOf(_focusCat ?? '');
@@ -271,7 +277,7 @@ class _SeriesHero extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
                   Text(
-                    series.name,
+                    VodTitles.clean(series.name),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TvTokens.display(28, color: TvTokens.text),
@@ -381,7 +387,7 @@ class _SeriesPoster extends StatelessWidget {
           const SizedBox(height: 6),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Text(series.name,
+            child: Text(VodTitles.clean(series.name),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
@@ -396,10 +402,36 @@ class _SeriesPoster extends StatelessWidget {
   }
 
   Widget _poster() {
+    // REPLI OFFICIEL (guidelines « immersive list » : image manquante →
+    // couleur de thème + TEXTE LISIBLE) : le TITRE s'écrit sur la carte —
+    // jamais de tuile grise anonyme (pattern Netflix).
     final Widget fallback = Container(
-      color: TvTokens.tile,
-      child: Center(
-        child: Icon(Icons.live_tv_rounded, size: 30, color: TvTokens.mutedDim),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[TvTokens.sel, TvTokens.tile],
+        ),
+      ),
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          Icon(Icons.video_library_rounded,
+              size: 22, color: TvTokens.mutedDim),
+          const SizedBox(height: 8),
+          Text(
+            VodTitles.clean(series.name),
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: TvDimens.caption,
+                fontWeight: FontWeight.w600,
+                height: 1.25,
+                color: TvTokens.text),
+          ),
+        ],
       ),
     );
     final String? url = series.posterUrl;
@@ -589,7 +621,7 @@ class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Text(widget.series.name,
+                      Text(VodTitles.clean(widget.series.name),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TvTokens.display(28, color: TvTokens.text)),

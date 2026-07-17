@@ -44,6 +44,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_poster_prefetch.dart';
 import '../core/tv_cine_route.dart';
 import '../core/tv_tokens.dart';
+import '../core/vod_titles.dart';
 import '../data/cine_perf.dart';
 import '../../vod/data/vod_download_service.dart';
 import 'tv_components.dart';
@@ -176,9 +177,28 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     // LRU). Le bandeau s'ouvre tout de suite en repli, puis passe en mode
     // cinéma plein cadre dès que l'image de fond arrive — sans à-coup.
     if (_all.isNotEmpty) {
-      final VodMovie hero = _recent.isNotEmpty ? _recent.first : _all.first;
+      final VodMovie hero = _pickHero();
       unawaited(_ensureHeroInfo(hero));
     }
+  }
+
+
+  /// VEDETTE façon billboard Netflix (recherche 2026-07-17, guidelines
+  /// Android TV « featured carousel ») : le grand visuel du haut est un
+  /// contenu CURÉ — il doit TOUJOURS avoir une image. On garde la
+  /// priorité « dernier vu », mais on saute les entrées sans jaquette
+  /// (sources pauvres en métadonnées) : plus jamais un trou noir avec
+  /// trois boutons qui flottent. Si vraiment RIEN n'a d'image, le rendu
+  /// de repli du bandeau (dégradé + grand titre) prend le relais.
+  VodMovie _pickHero() {
+    bool hasArt(VodMovie m) => (m.posterUrl ?? '').isNotEmpty;
+    for (final VodMovie m in _recent) {
+      if (hasArt(m)) return m;
+    }
+    for (final VodMovie m in _all) {
+      if (hasArt(m)) return m;
+    }
+    return _recent.isNotEmpty ? _recent.first : _all.first;
   }
 
   /// Charge (une fois) la fiche du film vedette pour son backdrop paysage.
@@ -328,7 +348,7 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     }
 
     // Film mis en avant : le dernier vu, sinon le premier du catalogue.
-    final VodMovie hero = _recent.isNotEmpty ? _recent.first : _all.first;
+    final VodMovie hero = _pickHero();
     // Backdrop + synopsis du bandeau cinéma : uniquement si la fiche chargée
     // correspond BIEN au héros courant (sinon on afficherait l'image d'un
     // autre film le temps que la bonne fiche arrive).
@@ -636,7 +656,7 @@ class _HeroBanner extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
                       Text(
-                        movie.name,
+                        VodTitles.clean(movie.name),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TvTokens.display(32, color: TvTokens.text),
@@ -695,7 +715,7 @@ class _HeroBanner extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
                   Text(
-                    movie.name,
+                    VodTitles.clean(movie.name),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TvTokens.display(28, color: TvTokens.text),
@@ -833,10 +853,20 @@ class _HeroPoster extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Repli sans affiche : panneau décoratif dans le langage du thème
+    // (braise sombre → obsidienne) — le bandeau garde une présence
+    // visuelle, jamais un bloc gris mort à droite du titre.
     final Widget fallback = Container(
-      color: TvTokens.tile,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: <Color>[TvTokens.emberDeep, TvTokens.sel],
+        ),
+      ),
       child: Center(
-        child: Icon(Icons.movie_rounded, size: 44, color: TvTokens.mutedDim),
+        child: Icon(Icons.theaters_rounded,
+            size: 44, color: TvTokens.emberBright),
       ),
     );
     if (url == null || url!.isEmpty) return fallback;
@@ -1043,7 +1073,9 @@ class _PosterCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),
             child: Text(
-              movie.name,
+              // Titre CURÉ (TitleCurator) : « EN | Barney's G… » → « Barney's
+              // Great Adventure ». L'id et la recherche gardent le nom brut.
+              VodTitles.clean(movie.name),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
@@ -1059,10 +1091,36 @@ class _PosterCard extends StatelessWidget {
   }
 
   Widget _poster() {
+    // REPLI OFFICIEL (guidelines Android TV « immersive list » : image
+    // manquante → couleur de fond du thème + TEXTE LISIBLE) : une affiche
+    // absente devient une carte sombre avec le TITRE écrit dessus — comme
+    // Netflix quand l'artwork manque. Fini la tuile grise anonyme.
     final Widget fallback = Container(
-      color: TvTokens.tile,
-      child: Center(
-        child: Icon(Icons.movie_rounded, size: 30, color: TvTokens.mutedDim),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[TvTokens.sel, TvTokens.tile],
+        ),
+      ),
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          Icon(Icons.movie_rounded, size: 22, color: TvTokens.mutedDim),
+          const SizedBox(height: 8),
+          Text(
+            VodTitles.clean(movie.name),
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: TvDimens.caption,
+                fontWeight: FontWeight.w600,
+                height: 1.25,
+                color: TvTokens.text),
+          ),
+        ],
       ),
     );
     final String? url = movie.posterUrl;

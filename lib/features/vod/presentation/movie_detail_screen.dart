@@ -24,6 +24,7 @@ import '../data/vod_download_service.dart';
 import '../data/vod_repository.dart';
 import '../domain/vod_info.dart';
 import '../domain/vod_movie.dart';
+import '../../tv/core/vod_titles.dart';
 
 class MovieDetailScreen extends StatefulWidget {
   const MovieDetailScreen({super.key, required this.movie});
@@ -165,7 +166,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(m.name,
+                Text(VodTitles.clean(m.name),
                     style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w800,
