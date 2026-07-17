@@ -419,15 +419,20 @@ class _Backdrop extends StatelessWidget {
     Widget posterBlur() {
       final String? p = posterUrl;
       if (p == null || p.isEmpty) return gradientFallback;
-      return ImageFiltered(
-        imageFilter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-        child: CachedNetworkImage(
-          imageUrl: p,
-          fit: BoxFit.cover,
-          memCacheWidth: 160,
-          fadeInDuration: const Duration(milliseconds: 200),
-          placeholder: (_, __) => gradientFallback,
-          errorWidget: (_, __, ___) => gradientFallback,
+      // RepaintBoundary : le fond ne change JAMAIS après chargement — sans
+      // couche isolée, le blur σ=28 (résolution écran) était RE-EXÉCUTÉ à
+      // chaque repaint de la fiche (fréquents au focus D-pad).
+      return RepaintBoundary(
+        child: ImageFiltered(
+          imageFilter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+          child: CachedNetworkImage(
+            imageUrl: p,
+            fit: BoxFit.cover,
+            memCacheWidth: 160,
+            fadeInDuration: const Duration(milliseconds: 200),
+            placeholder: (_, __) => gradientFallback,
+            errorWidget: (_, __, ___) => gradientFallback,
+          ),
         ),
       );
     }
