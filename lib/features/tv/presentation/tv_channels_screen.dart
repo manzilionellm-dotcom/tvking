@@ -20,7 +20,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
@@ -321,12 +323,21 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                 // Aperçu vidéo EN DIRECT de la chaîne focalisée (muet,
                 // anti-rebond ~600 ms, repli logo — cf. TvLivePreview).
                 // Une chaîne SÉLECTIONNÉE (OK) démarre sans anti-rebond.
-                AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: TvLivePreview(
-                    channel: ch,
-                    enabled: _previewLive,
-                    startImmediately: ch.id == _selectedId,
+                // Le cadre est FOCUSABLE : OK dessus = plein écran de la
+                // chaîne affichée (même action que « Regarder »).
+                _PreviewFrame(
+                  onSelect: () {
+                    final int idx =
+                        _visible.indexWhere((Channel x) => x.id == ch.id);
+                    _play(idx < 0 ? 0 : idx);
+                  },
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: TvLivePreview(
+                      channel: ch,
+                      enabled: _previewLive,
+                      startImmediately: ch.id == _selectedId,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -336,9 +347,12 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                     style: TvTokens.ui(TvDimens.title,
                         weight: FontWeight.w800, color: TvTokens.text)),
                 const SizedBox(height: 10),
-                // Programme du jour (façon IBO) : le programme EN COURS en
-                // or, puis les 3 suivants avec leurs horaires.
-                Expanded(child: _PreviewPrograms(channelId: ch.id)),
+                // EPG : « En ce moment » (barre de progression) + « À suivre »
+                // — même appariement que la grille TiviMate, repli intelligent
+                // (catégorie) si la chaîne n'a pas d'EPG apparié.
+                Expanded(
+                    child: _PreviewPrograms(
+                        channelId: ch.id, category: ch.category)),
                 const SizedBox(height: 10),
                 // Boutons d'action (façon IBO) : Regarder / ★ Favori /
                 // Rechercher — « Regarder » garde la place d'honneur.
@@ -667,6 +681,76 @@ class _ChannelTileState extends State<_ChannelTile> {
   }
 }
 
+/// Cadre FOCUSABLE autour de l'aperçu vidéo : OK (ou tap) = plein écran de
+/// la chaîne affichée. On N'utilise PAS TvFocusBuilder ici : son AnimatedScale
+/// transformerait la SurfaceView native (hybrid composition) → risque de
+/// « trame fantôme » (cf. tv_live_preview / dispose natif). On se contente
+/// d'un Focus + liseré or au focus, sans transformer la surface.
+class _PreviewFrame extends StatefulWidget {
+  const _PreviewFrame({required this.child, required this.onSelect});
+  final Widget child;
+  final VoidCallback onSelect;
+
+  @override
+  State<_PreviewFrame> createState() => _PreviewFrameState();
+}
+
+class _PreviewFrameState extends State<_PreviewFrame> {
+  final FocusNode _node = FocusNode(debugLabel: 'preview-frame');
+  bool _focused = false;
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
+  bool _isOk(LogicalKeyboardKey k) =>
+      k == LogicalKeyboardKey.select ||
+      k == LogicalKeyboardKey.enter ||
+      k == LogicalKeyboardKey.numpadEnter ||
+      k == LogicalKeyboardKey.gameButtonA ||
+      k == LogicalKeyboardKey.space;
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent && _isOk(event.logicalKey)) {
+      widget.onSelect();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      focusNode: _node,
+      onKeyEvent: _onKey,
+      onFocusChange: (bool f) => setState(() => _focused = f),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          _node.requestFocus();
+          widget.onSelect();
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+            border: Border.all(
+                color: _focused ? TvTokens.gold : TvTokens.lineSoft,
+                width: _focused ? 2 : 1),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(TvDimens.cardRadius - 3),
+            child: widget.child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Bouton d'action du panneau Aperçu (Regarder / Favori / Rechercher).
 /// [primary] = pastille or au focus (l'action principale se voit).
 class _ActionButton extends StatelessWidget {
@@ -728,8 +812,13 @@ class _ActionButton extends StatelessWidget {
 /// puis les suivantes avec leurs horaires. Sans EPG → petit mot discret
 /// (jamais un trou vide).
 class _PreviewPrograms extends StatefulWidget {
-  const _PreviewPrograms({required this.channelId});
+  const _PreviewPrograms({required this.channelId, required this.category});
   final String channelId;
+
+  /// Catégorie BRUTE de la chaîne (group-title / category_name) : sert au
+  /// REPLI intelligent quand aucun EPG n'apparie cette chaîne — on montre
+  /// la catégorie plutôt qu'un message d'erreur brut.
+  final String category;
 
   @override
   State<_PreviewPrograms> createState() => _PreviewProgramsState();
@@ -773,63 +862,119 @@ class _PreviewProgramsState extends State<_PreviewPrograms> {
 
   Future<void> _load() async {
     final String id = widget.channelId;
-    List<EpgProgram> today = const <EpgProgram>[];
+    List<EpgProgram> progs = const <EpgProgram>[];
     try {
-      today = await EpgRepository.instance.todayPrograms(id);
+      // APPARIEMENT IDENTIQUE À LA GRILLE TiviMate : `programsBetween` par
+      // `channel.id` (= tvg-id côté M3U / stream-id côté Xtream), sur une
+      // FENÊTRE GLISSANTE [-1 h ; +24 h]. Capte l'émission en cours même si
+      // elle a commencé la veille, et le « À suivre » même passé minuit —
+      // là où l'ancien `todayPrograms` (bornes minuit→minuit) ratait le
+      // programme suivant en fin de soirée.
+      final DateTime now = DateTime.now();
+      progs = await EpgRepository.instance.programsBetween(
+        id,
+        now.subtract(const Duration(hours: 1)).millisecondsSinceEpoch,
+        now.add(const Duration(hours: 24)).millisecondsSinceEpoch,
+      );
     } catch (_) {
-      // EPG indisponible → on affichera le repli.
+      // EPG indisponible → on affichera le repli intelligent.
     }
     if (!mounted || id != widget.channelId) return;
-    final DateTime now = DateTime.now();
-    // En cours + suivantes uniquement (le passé n'intéresse personne ici).
-    final List<EpgProgram> upcoming = today
-        .where((EpgProgram p) => p.stopDateTime.isAfter(now))
-        .take(4)
-        .toList();
     setState(() {
-      _programs = upcoming;
+      _programs = progs;
       _loaded = true;
     });
+  }
+
+  double _progress(EpgProgram p, DateTime now) {
+    final int span = p.stopTime - p.startTime;
+    if (span <= 0) return 0;
+    return ((now.millisecondsSinceEpoch - p.startTime) / span)
+        .clamp(0.0, 1.0)
+        .toDouble();
   }
 
   @override
   Widget build(BuildContext context) {
     if (!_loaded) return const SizedBox.shrink();
-    if (_programs.isEmpty) {
+
+    // Programmes triés par start_time ASC (programsBetween) → on prend le
+    // 1er « en cours » et le 1er « à venir ».
+    final DateTime now = DateTime.now();
+    final int nowMs = now.millisecondsSinceEpoch;
+    EpgProgram? current;
+    EpgProgram? next;
+    for (final EpgProgram p in _programs) {
+      if (current == null && p.isLiveAt(now)) {
+        current = p;
+      } else if (next == null && p.startTime > nowMs) {
+        next = p;
+      }
+      if (current != null && next != null) break;
+    }
+
+    // FALLBACK INTELLIGENT : jamais « Programme non disponible » brut face
+    // au client. Nom de catégorie si dispo, sinon « EN DIRECT » (clé
+    // existante, localisée). Cas : source sans EPG ou tvg-id non apparié.
+    if (current == null && next == null) {
+      final String cat = ChannelClassifier.prettifyCategory(widget.category);
+      final String label = (cat.isNotEmpty && cat.toLowerCase() != 'autres')
+          ? cat
+          : context.l10n.tvProgramLive;
       return Align(
         alignment: Alignment.topLeft,
-        child: Text('Programme non disponible',
+        child: Text(label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim)),
       );
     }
-    final DateTime now = DateTime.now();
-    return ListView.separated(
-      padding: EdgeInsets.zero,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: _programs.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 6),
-      itemBuilder: (BuildContext c, int i) {
-        final EpgProgram p = _programs[i];
-        final bool live = p.isLiveAt(now);
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(p.timeRangeShort,
-                style: TvTokens.ui(TvDimens.caption,
-                    weight: FontWeight.w700,
-                    color: live ? TvTokens.gold : TvTokens.mutedDim)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(p.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        if (current != null) ...<Widget>[
+          // « EN CE MOMENT · <titre> » (clé tvLiveNowPlaying, 8 langues).
+          Text(context.l10n.tvLiveNowPlaying(current.title),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TvTokens.ui(TvDimens.caption,
+                  weight: FontWeight.w700, color: TvTokens.text)),
+          const SizedBox(height: 7),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    minHeight: 4,
+                    value: _progress(current, now),
+                    backgroundColor: TvTokens.lineSoft,
+                    valueColor:
+                        const AlwaysStoppedAnimation<Color>(TvTokens.gold),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(current.timeRangeShort,
                   style: TvTokens.ui(TvDimens.caption,
-                      weight: live ? FontWeight.w700 : FontWeight.w500,
-                      color: live ? TvTokens.text : TvTokens.muted)),
-            ),
-          ],
-        );
-      },
+                      weight: FontWeight.w700, color: TvTokens.mutedDim)),
+            ],
+          ),
+        ],
+        if (next != null) ...<Widget>[
+          const SizedBox(height: 12),
+          // « À suivre · <titre> » (clé tvGuideUpNextProgram, 8 langues).
+          Text(context.l10n.tvGuideUpNextProgram(next.title),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TvTokens.ui(TvDimens.caption,
+                  weight: FontWeight.w600, color: TvTokens.muted)),
+          const SizedBox(height: 2),
+          Text(next.timeRangeShort,
+              style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim)),
+        ],
+      ],
     );
   }
 }
