@@ -1686,40 +1686,6 @@ class _LogoChip extends StatelessWidget {
   }
 }
 
-class _Logo extends StatelessWidget {
-  const _Logo({required this.channel});
-  final Channel channel;
-
-  @override
-  Widget build(BuildContext context) {
-    final Widget fallback = Center(
-      child: Text(channel.initials,
-          style: TextStyle(
-              fontSize: TvDimens.title,
-              fontWeight: FontWeight.w800,
-              color: TvTokens.muted)),
-    );
-    final String? url = channel.logoUrl;
-    if (url == null || url.isEmpty) return fallback;
-    // CACHE DISQUE + mémoire (cached_network_image) : après le 1er affichage,
-    // les logos s'affichent INSTANTANÉMENT — même après un redémarrage — et ne
-    // se RE-TÉLÉCHARGENT jamais. C'est ce qui donne le scroll fluide « façon
-    // Netflix » sur 20 000 chaînes (avant : Image.network re-téléchargeait à
-    // chaque fois → flashs + jank). Skeleton discret (initiales 35 %) au lieu
-    // d'un spinner (20 000 spinners = lag).
-    return CachedNetworkImage(
-      imageUrl: url,
-      fit: BoxFit.contain,
-      placeholder: (_, __) => Opacity(opacity: 0.35, child: fallback),
-      errorWidget: (_, __, ___) => fallback,
-      memCacheWidth: 200,
-      memCacheHeight: 200, // décodage borné aussi en hauteur (mémoire/image)
-      fadeInDuration: const Duration(milliseconds: 180),
-      fadeOutDuration: const Duration(milliseconds: 120),
-    );
-  }
-}
-
 /// Petit bouton-pilule focusable (or au focus). Utilisé sur l'accueil vide
 /// (« Réessayer », « J'ajoute ma propre liste »).
 class _ActionPill extends StatelessWidget {
