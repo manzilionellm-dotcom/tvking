@@ -611,8 +611,16 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       return;
     }
     try {
+      // ResizeImage : le paramètre `size` de PaletteGenerator ne borne PAS
+      // le décodage — le logo partait en pleine résolution (~4 Mo/logo)
+      // dans l'ImageCache pour extraire UNE couleur (churn d'évictions des
+      // vignettes visibles). Même motif que tv_poster_prefetch.
       final PaletteGenerator pal = await PaletteGenerator.fromImageProvider(
-        CachedNetworkImageProvider(url),
+        ResizeImage(
+          CachedNetworkImageProvider(url),
+          width: 64,
+          policy: ResizeImagePolicy.fit,
+        ),
         size: const Size(48, 48),
         maximumColorCount: 8,
       );
