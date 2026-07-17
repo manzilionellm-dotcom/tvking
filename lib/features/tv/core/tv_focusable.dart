@@ -298,6 +298,7 @@ class TvFocusBuilder extends StatefulWidget {
     this.builder,
     this.onSelect,
     this.onLongPress,
+    this.onFocusChange,
     this.focusNode,
     this.autofocus = false,
     this.scale = TvFocusScale.medium,
@@ -315,6 +316,12 @@ class TvFocusBuilder extends StatefulWidget {
       pressedBuilder;
   final VoidCallback? onSelect;
   final VoidCallback? onLongPress;
+
+  /// Notifié aux TRANSITIONS de focus (gain/perte). À utiliser pour les
+  /// effets de bord (débounce d'aperçu, pré-chargement…) au lieu d'un test
+  /// `if (focused)` DANS le builder — qui re-déclencherait l'effet à chaque
+  /// rebuild de la tuile, pas seulement à l'arrivée du focus.
+  final ValueChanged<bool>? onFocusChange;
   final FocusNode? focusNode;
   final bool autofocus;
   final TvFocusScale scale;
@@ -339,7 +346,10 @@ class _TvFocusBuilderState extends State<TvFocusBuilder> {
       scale: widget.scale,
       enabled: widget.enabled,
       showOutline: false,
-      onFocusChange: (bool v) => setState(() => _focused = v),
+      onFocusChange: (bool v) {
+        setState(() => _focused = v);
+        widget.onFocusChange?.call(v);
+      },
       onPressChange: widget.pressedBuilder == null
           ? null
           : (bool v) => setState(() => _pressed = v),
