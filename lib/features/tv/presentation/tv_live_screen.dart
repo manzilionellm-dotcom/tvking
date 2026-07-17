@@ -634,6 +634,10 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     } catch (_) {
       // extraction impossible → on garde le preset de catégorie.
     }
+    // Garde-fou mémoire (même patron que _nameMemo) : une Color par chaîne
+    // survolée, sans purge → croissance continue en endurance sur les très
+    // gros bouquets.
+    if (_domCache.length > 2000) _domCache.clear();
     _domCache[c.id] = color;
     if (mounted && _previewCh?.id == c.id) _ambient.value = color;
   }

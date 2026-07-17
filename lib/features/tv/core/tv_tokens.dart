@@ -123,18 +123,36 @@ class TvTokens {
   //   • ui      = Inter  (tout le reste)
   //   • mono    = JetBrains Mono (code d'activation / identifiants UNIQUEMENT)
   // =========================================================
+  // MÉMOÏSATION (revue perf) : ces helpers sont appelés dans les builders
+  // de focus, exécutés à CHAQUE cran de D-pad (tuiles du Modèle B, boutons
+  // Channels, rails…). Chaque appel GoogleFonts.xxx() refait un lookup de
+  // cache de police + alloue un TextStyle : on fige le résultat par
+  // combinaison (taille/graisse/couleur/espacement) — bornée par le design
+  // system (3 rôles × quelques tailles), donc sans dérive mémoire.
+  static final Map<int, TextStyle> _styleMemo = <int, TextStyle>{};
+
+  static TextStyle _memo(
+      int font, double size, FontWeight weight, Color color, double spacing,
+      TextStyle Function() build) {
+    final int key = Object.hash(font, size, weight, color, spacing);
+    return _styleMemo[key] ??= build();
+  }
+
   static TextStyle display(double size,
           {FontWeight weight = FontWeight.w600, Color color = text, double spacing = 0}) =>
-      GoogleFonts.cormorantGaramond(
-          fontSize: size, fontWeight: weight, color: color, letterSpacing: spacing);
+      _memo(0, size, weight, color, spacing,
+          () => GoogleFonts.cormorantGaramond(
+              fontSize: size, fontWeight: weight, color: color, letterSpacing: spacing));
 
   static TextStyle ui(double size,
           {FontWeight weight = FontWeight.w400, Color color = text, double spacing = 0}) =>
-      GoogleFonts.manrope(
-          fontSize: size, fontWeight: weight, color: color, letterSpacing: spacing);
+      _memo(1, size, weight, color, spacing,
+          () => GoogleFonts.manrope(
+              fontSize: size, fontWeight: weight, color: color, letterSpacing: spacing));
 
   static TextStyle mono(double size,
           {FontWeight weight = FontWeight.w600, Color color = goldBright, double spacing = 0}) =>
-      GoogleFonts.jetBrainsMono(
-          fontSize: size, fontWeight: weight, color: color, letterSpacing: spacing);
+      _memo(2, size, weight, color, spacing,
+          () => GoogleFonts.jetBrainsMono(
+              fontSize: size, fontWeight: weight, color: color, letterSpacing: spacing));
 }

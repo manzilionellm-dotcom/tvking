@@ -176,6 +176,12 @@ class LocalStreamRelay {
   /// par URL pour ne pas noyer la boîte noire).
   final Set<String> _hlsProvenUrls = <String>{};
 
+  /// Garde-fou mémoire : si le panel met un jeton de session dans l'URL de
+  /// playlist, chaque zap ajoute une entrée unique → croissance continue en
+  /// endurance. Au-delà de la borne on repart de zéro (au pire, une preuve
+  /// re-journalisée une fois par URL).
+  static const int _kMaxProvenUrls = 200;
+
   /// URL locale de la PLAYLIST HLS NORMALISÉE pour [realUrl].
   ///
   /// Cause racine terrain (2026-07-08) : mpv lisait la playlist du
@@ -199,6 +205,7 @@ class LocalStreamRelay {
     HttpRequest req,
     String realUrl,
   ) async {
+    if (_hlsProvenUrls.length > _kMaxProvenUrls) _hlsProvenUrls.clear();
     final bool firstServe = _hlsProvenUrls.add(realUrl);
     final HttpClient client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 8)
