@@ -68,6 +68,15 @@ class _MemoryPressureGuard with WidgetsBindingObserver {
 
 final _MemoryPressureGuard _memoryPressureGuard = _MemoryPressureGuard();
 
+/// SOURCE UNIQUE du plafond d'ImageCache : quand un flavor possède son propre
+/// garde-mémoire (TV → TvMemoryGuard), il pose ce drapeau AU DÉBUT de son
+/// bootstrap et le tuner générique ci-dessous s'efface. Avant, les DEUX
+/// écrivaient `imageCache.maximumSize` en async non ordonné — le « dernier
+/// arrivé gagne » de façon non déterministe (ex. box 2 Go : 120 ou 260
+/// entrées selon la course). Le défaut prudent du boot reste posé dans tous
+/// les cas.
+bool imageCacheOwnedByFlavor = false;
+
 /// Ajuste le cache d'images selon la RAM réelle. Le défaut posé au boot est
 /// déjà PRUDENT (sûr même à 1 Go) ; ici on l'ÉLARGIT sur les box bien dotées et
 /// on le RESSERRE encore sur les box « low RAM ». Best-effort : si l'info n'est
@@ -78,7 +87,9 @@ final _MemoryPressureGuard _memoryPressureGuard = _MemoryPressureGuard();
 /// vérité « petite box / grande box ».
 Future<void> _tuneImageCacheForRam() async {
   try {
+    if (imageCacheOwnedByFlavor) return; // TV : TvMemoryGuard fait autorité
     await DeviceMemory.ensureLoaded();
+    if (imageCacheOwnedByFlavor) return; // re-vérif après l'await (course)
     final int totalMb = DeviceMemory.totalMb;
     final bool lowRam = DeviceMemory.lowRam;
     int imgs;
