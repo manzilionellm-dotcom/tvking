@@ -86,20 +86,27 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     super.dispose();
   }
 
-  /// Nombre de chaînes par groupe — PRÉ-CALCULÉ à l'ingestion (une passe).
-  /// Filtrer 10 000+ chaînes par tuile à chaque rebuild saccaderait.
+  /// Nombre de chaînes par groupe ET chaînes par groupe — PRÉ-CALCULÉS à
+  /// l'ingestion (une seule passe, même patron que tv_channels_screen).
+  /// Avant, seuls les compteurs l'étaient : chaque OK sur un groupe
+  /// refaisait un `where(prettifyCategory(...))` sur le bouquet ENTIER
+  /// (10 000-20 000 regex sur le thread UI ≈ 50-300 ms de gel par
+  /// changement d'onglet au D-pad).
   Map<String, int> _counts = <String, int>{};
+  Map<String, List<Channel>> _byGroup = <String, List<Channel>>{};
 
   void _ingest(List<Channel> channels) {
     // Groupes = catégories nettoyées, dans l'ordre de première apparition.
     final List<String> groups = <String>[_kAllGroup];
     final Set<String> seen = <String>{};
     final Map<String, int> counts = <String, int>{};
+    final Map<String, List<Channel>> byGroup = <String, List<Channel>>{};
     for (final Channel c in channels) {
       final String g = ChannelClassifier.prettifyCategory(c.category);
       if (g.isEmpty) continue;
       if (seen.add(g)) groups.add(g);
       counts[g] = (counts[g] ?? 0) + 1;
+      (byGroup[g] ??= <Channel>[]).add(c);
     }
     counts[_kAllGroup] = channels.length;
     if (!mounted) return;
@@ -107,6 +114,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
       _all = channels;
       _groups = groups;
       _counts = counts;
+      _byGroup = byGroup;
       if (!_groups.contains(_group)) _group = _kAllGroup;
       _visible = _channelsFor(_group);
       _preview.value ??= _visible.isNotEmpty ? _visible.first : null;
@@ -116,10 +124,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
 
   List<Channel> _channelsFor(String group) {
     if (group == _kAllGroup) return _all;
-    return _all
-        .where((Channel c) =>
-            ChannelClassifier.prettifyCategory(c.category) == group)
-        .toList(growable: false);
+    return _byGroup[group] ?? const <Channel>[];
   }
 
   void _selectGroup(String group) {
