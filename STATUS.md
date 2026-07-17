@@ -7,6 +7,49 @@
 
 ---
 
+## Session (2026-07-17) — EPG « En direct » enfin visible + aperçu cliquable
+
+Branche : `claude/autonomous-mobile-tv-release-r21jqf` (reprise de
+`claude/maison-mere-phone` au commit 9f1ce58). Demande client depuis une
+capture de l'écran **En direct** : sous l'aperçu, « ça doit venir les
+émissions qui suivent (nos événements) » et « la petite vidéo doit être
+cliquable ».
+
+### Cause racine « Programme non disponible » (chaînes Xtream)
+Le XMLTV du panel identifie ses chaînes par `epg_channel_id` (« TF1.fr »)
+alors que nos chaînes Xtream s'appellent `xtream-<stream_id>` → AUCUN
+programme importé ne matchait jamais une chaîne (boîte noire : import_ok
+avec count=0 et known élevé). Corrigé par un **pont d'alias** :
+- `XtreamClient` collecte `epg_channel_id → xtream-<id>` pendant l'import
+  live (borné anti-OOM), exposé via `epgChannelAliases`.
+- `EpgRepository` : table `epg_aliases`, le filtre du parseur XMLTV est
+  élargi aux SEULS ids EPG des chaînes connues (jamais d'élargissement
+  sauvage) et chaque programme est rangé sous l'id de SA chaîne à
+  l'insertion (`mergeKnownWithAliases` / `remapProgramRow`, pures/testées).
+- `PlaylistRepository` persiste les alias à l'ajout ET au refresh Xtream.
+
+### Repli EPG courte (get_short_epg)
+`ShortEpgService` : quand le XMLTV local ne connaît pas la chaîne, on
+demande au panel ses « maintenant + suivants » — appel API léger (JAMAIS
+une connexion de flux → comptes 1-conn respectés), cache mémoire 10 min
+positif/négatif, best-effort. `parseShortEpgListings` pur (base64 ou clair,
+timestamps, entrées invalides ignorées) testé sur 4 cas.
+
+### UI aperçu En direct
+- Section **« NOS ÉVÉNEMENTS »** (en-tête) au-dessus des émissions à venir
+  (en cours en or + suivantes), qui bascule sur le repli get_short_epg
+  quand le XMLTV est muet.
+- **Vignette d'aperçu cliquable** : un tap ouvre le plein écran
+  (GestureDetector pur, aucun FocusNode → parcours D-pad TV inchangé).
+
+### Gates
+`flutter analyze` 0 erreur ; 8 nouveaux tests verts (`epg_alias_short_epg`) ;
+suite locale : les seuls échecs sont les tests sqflite_ffi (binaire sqlite3
+non téléchargeable dans le sandbox — CI les passe). Fichiers DLNA +
+`local_hls_relay` intacts ; aucun import media_kit ajouté (build TV sain).
+
+---
+
 ## Dernière session (2026-07-16 → 17) — « SEVEN CINÉMA » : le côté Films & Séries niveau plateforme premium
 
 Branche : `claude/seven-cinema-vod-venljh` (partie du HEAD
