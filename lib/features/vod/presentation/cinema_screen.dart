@@ -1,0 +1,659 @@
+// =========================================================
+//  cinema_screen.dart — CINÉMA mobile (Films · Séries · Téléchargés)
+// =========================================================
+//  Le pendant TÉLÉPHONE du Cinéma TV refondu (2026-07-17) : même moteur
+//  de données (VodRepository / SeriesRepository / PlaybackPositionRepository
+//  / VodDownloadService — tous partagés), mais une UI TACTILE :
+//    • onglet FILMS : rangée « Continuer à regarder », « Téléchargés »,
+//      puis une rangée d'affiches par catégorie — tap = fiche film ;
+//    • onglet SÉRIES : pareil, tap = fiche série (saisons/épisodes) ;
+//    • onglet TÉLÉCHARGÉS : la file complète (lecture hors-ligne en un
+//      tap, pause/reprise, interrupteur Téléchargements intelligents,
+//      espace libre).
+//
+//  Avant cet écran, le mobile n'avait PAS de Cinéma : films et séries
+//  étaient de simples catégories IPTV lancées brutes dans le lecteur.
+//  Les textes réutilisent les clés l10n déjà traduites pour la TV (mêmes
+//  libellés = même langage produit sur les deux mondes).
+// =========================================================
+import 'dart:async' show unawaited;
+
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+
+import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../channels/domain/channel.dart';
+import '../../player/presentation/play_channel.dart';
+import '../data/playback_position_repository.dart';
+import '../data/series_repository.dart';
+import '../data/vod_download_service.dart';
+import '../data/vod_repository.dart';
+import '../domain/vod_movie.dart';
+import '../domain/vod_series.dart';
+import 'movie_detail_screen.dart';
+import 'series_detail_screen.dart';
+
+class CinemaScreen extends StatefulWidget {
+  const CinemaScreen({super.key, this.initialTab = 0});
+
+  /// 0 = Films, 1 = Séries, 2 = Téléchargés (le rayon tapé dans l'accueil
+  /// ouvre directement le bon onglet).
+  final int initialTab;
+
+  @override
+  State<CinemaScreen> createState() => _CinemaScreenState();
+}
+
+class _CinemaScreenState extends State<CinemaScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs = TabController(
+      length: 3, vsync: this, initialIndex: widget.initialTab.clamp(0, 2));
+
+  List<VodMovie> _movies = const <VodMovie>[];
+  List<VodSeries> _series = const <VodSeries>[];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Rafraîchissement silencieux (même règle que la TV) : cache disque
+    // d'abord, mise à jour sans spinner quand le réseau répond.
+    VodRepository.instance.addListener(_reload);
+    SeriesRepository.instance.addListener(_reload);
+    VodDownloadService.instance.addListener(_onDownloadsChanged);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    VodRepository.instance.removeListener(_reload);
+    SeriesRepository.instance.removeListener(_reload);
+    VodDownloadService.instance.removeListener(_onDownloadsChanged);
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  void _reload() {
+    if (mounted) _load(silent: true);
+  }
+
+  void _onDownloadsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    if (mounted && !silent) setState(() => _loading = true);
+    final List<VodMovie> movies = await VodRepository.instance.fetchMovies();
+    final List<VodSeries> series =
+        await SeriesRepository.instance.fetchSeries();
+    await PlaybackPositionRepository.instance.ensureLoaded();
+    if (!mounted) return;
+    setState(() {
+      _movies = movies;
+      _series = series;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        title: Text(context.l10n.catFilterMovies,
+            style: const TextStyle(
+                fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+        bottom: TabBar(
+          controller: _tabs,
+          indicatorColor: AppColors.accent,
+          labelColor: AppColors.accent,
+          unselectedLabelColor: AppColors.textSecondary,
+          tabs: <Widget>[
+            Tab(text: context.l10n.catFilterMovies),
+            Tab(text: context.l10n.catFilterSeries),
+            Tab(text: context.l10n.tvDlRail),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabs,
+        children: <Widget>[
+          _FilmsTab(movies: _movies, loading: _loading),
+          _SeriesTab(series: _series, loading: _loading),
+          const _DownloadsTab(),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Onglet FILMS — rangées d'affiches façon Netflix (tactile)
+// ---------------------------------------------------------------------------
+
+class _FilmsTab extends StatelessWidget {
+  const _FilmsTab({required this.movies, required this.loading});
+  final List<VodMovie> movies;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading && movies.isEmpty) {
+      return const _CinemaSkeleton();
+    }
+    if (movies.isEmpty) {
+      return _EmptyState(text: context.l10n.tvFilmsEmpty);
+    }
+
+    // « Continuer à regarder » : positions de reprise croisées au catalogue.
+    final PlaybackPositionRepository positions =
+        PlaybackPositionRepository.instance;
+    final Map<String, VodMovie> byId = <String, VodMovie>{
+      for (final VodMovie m in movies) m.id: m,
+    };
+    final List<VodMovie> resume = <VodMovie>[
+      for (final PlaybackPosition e in positions.entries)
+        if (!e.isEpisode && byId.containsKey(e.key)) byId[e.key]!,
+    ];
+
+    // « Téléchargés » : contenus prêts hors-ligne (films uniquement ici —
+    // les épisodes vivent dans l'onglet Téléchargés et la fiche série).
+    final List<VodMovie> downloaded = <VodMovie>[
+      for (final VodDownload d in VodDownloadService.instance.all)
+        if (d.isComplete && !d.isEpisode && byId.containsKey(d.id))
+          byId[d.id]!,
+    ];
+
+    // Rangées par catégorie (ordre d'apparition du catalogue).
+    final List<String> cats = <String>[];
+    final Map<String, List<VodMovie>> byCat = <String, List<VodMovie>>{};
+    for (final VodMovie m in movies) {
+      final String c = m.category.trim().isEmpty
+          ? context.l10n.tvOthers
+          : m.category.trim();
+      (byCat[c] ??= (() {
+        cats.add(c);
+        return <VodMovie>[];
+      })())
+          .add(m);
+    }
+
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      children: <Widget>[
+        if (resume.isNotEmpty)
+          _PosterRail(
+            title: context.l10n.tvRailContinueWatching,
+            movies: resume,
+            progressFor: (VodMovie m) => positions.progressFor(m.id),
+          ),
+        if (downloaded.isNotEmpty)
+          _PosterRail(
+              title: context.l10n.tvDlRail, movies: downloaded),
+        for (final String c in cats)
+          _PosterRail(title: c, movies: byCat[c]!),
+      ],
+    );
+  }
+}
+
+/// Une rangée horizontale d'affiches. Tap = fiche film.
+class _PosterRail extends StatelessWidget {
+  const _PosterRail({
+    required this.title,
+    required this.movies,
+    this.progressFor,
+  });
+  final String title;
+  final List<VodMovie> movies;
+  final double? Function(VodMovie)? progressFor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 10),
+          child: Text(title.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.4,
+                  color: AppColors.textTertiary)),
+        ),
+        SizedBox(
+          height: 172,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: movies.length,
+            itemBuilder: (BuildContext context, int i) => _PosterCard(
+              movie: movies[i],
+              progress: progressFor?.call(movies[i]),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PosterCard extends StatelessWidget {
+  const _PosterCard({required this.movie, this.progress});
+  final VodMovie movie;
+  final double? progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+            builder: (_) => MovieDetailScreen(movie: movie)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SizedBox(
+                width: 96,
+                height: 140,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    _poster(movie.posterUrl),
+                    // Filet de progression (repère « entamé », comme la TV).
+                    if (progress != null)
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: SizedBox(
+                          height: 4,
+                          child: Stack(children: <Widget>[
+                            Container(color: Colors.white24),
+                            FractionallySizedBox(
+                              widthFactor: progress!.clamp(0.04, 1.0),
+                              child: Container(color: AppColors.accent),
+                            ),
+                          ]),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              width: 96,
+              child: Text(movie.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textSecondary)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Affiche avec décodage BORNÉ (192 px de large suffisent pour 96 dp) —
+/// la même règle mémoire que partout ailleurs dans l'app.
+Widget _poster(String? url) => (url == null || url.isEmpty)
+    ? const ColoredBox(
+        color: AppColors.surface,
+        child: Icon(Icons.movie_outlined,
+            size: 28, color: AppColors.textMuted))
+    : CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        memCacheWidth: 192,
+        fadeInDuration: const Duration(milliseconds: 150),
+        placeholder: (_, __) => const ColoredBox(color: AppColors.surface),
+        errorWidget: (_, __, ___) => const ColoredBox(
+            color: AppColors.surface,
+            child: Icon(Icons.movie_outlined,
+                size: 28, color: AppColors.textMuted)),
+      );
+
+// ---------------------------------------------------------------------------
+//  Onglet SÉRIES
+// ---------------------------------------------------------------------------
+
+class _SeriesTab extends StatelessWidget {
+  const _SeriesTab({required this.series, required this.loading});
+  final List<VodSeries> series;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading && series.isEmpty) return const _CinemaSkeleton();
+    if (series.isEmpty) {
+      return _EmptyState(text: context.l10n.tvNoSeries);
+    }
+    final List<String> cats = <String>[];
+    final Map<String, List<VodSeries>> byCat = <String, List<VodSeries>>{};
+    for (final VodSeries s in series) {
+      final String c = s.category.trim().isEmpty
+          ? context.l10n.tvOthers
+          : s.category.trim();
+      (byCat[c] ??= (() {
+        cats.add(c);
+        return <VodSeries>[];
+      })())
+          .add(s);
+    }
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      children: <Widget>[
+        for (final String c in cats)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 10),
+                child: Text(c.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.4,
+                        color: AppColors.textTertiary)),
+              ),
+              SizedBox(
+                height: 172,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  itemCount: byCat[c]!.length,
+                  itemBuilder: (BuildContext context, int i) {
+                    final VodSeries s = byCat[c]![i];
+                    return GestureDetector(
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                            builder: (_) =>
+                                SeriesDetailScreen(series: s)),
+                      ),
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: SizedBox(
+                                  width: 96,
+                                  height: 140,
+                                  child: _poster(s.posterUrl)),
+                            ),
+                            const SizedBox(height: 6),
+                            SizedBox(
+                              width: 96,
+                              child: Text(s.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      color: AppColors.textSecondary)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Onglet TÉLÉCHARGÉS — la file complète + intelligence
+// ---------------------------------------------------------------------------
+
+class _DownloadsTab extends StatefulWidget {
+  const _DownloadsTab();
+
+  @override
+  State<_DownloadsTab> createState() => _DownloadsTabState();
+}
+
+class _DownloadsTabState extends State<_DownloadsTab> {
+  int? _freeBytes;
+
+  @override
+  void initState() {
+    super.initState();
+    VodDownloadService.instance.load();
+    _refreshFree();
+  }
+
+  void _refreshFree() {
+    VodDownloadService.instance.freeSpace().then((int? v) {
+      if (mounted && v != _freeBytes) setState(() => _freeBytes = v);
+    });
+  }
+
+  void _playOffline(VodDownload d) {
+    unawaited(playChannel(
+      context,
+      Channel(
+        id: d.id, // id d'ORIGINE : reprise partagée online/hors-ligne
+        name: d.name,
+        category: d.category,
+        streamUrl: Uri.file(d.filePath).toString(),
+        isLive: false,
+        logoUrl: d.posterUrl,
+      ),
+    ));
+  }
+
+  void _onTap(VodDownload d) {
+    final VodDownloadService dl = VodDownloadService.instance;
+    switch (d.status) {
+      case VodDownloadStatus.done:
+        _playOffline(d);
+      case VodDownloadStatus.downloading:
+        unawaited(dl.pause(d.id));
+      case VodDownloadStatus.paused:
+      case VodDownloadStatus.error:
+      case VodDownloadStatus.queued:
+      case VodDownloadStatus.noSpace:
+        unawaited(dl.resume(d.id));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: VodDownloadService.instance,
+      builder: (BuildContext context, _) {
+        final VodDownloadService dl = VodDownloadService.instance;
+        final List<VodDownload> items = dl.all;
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: <Widget>[
+            // Interrupteur Téléchargements intelligents + espace libre.
+            SwitchListTile(
+              value: dl.smartEnabled,
+              onChanged: (bool v) => dl.setSmartEnabled(v),
+              activeTrackColor: AppColors.accent,
+              contentPadding: EdgeInsets.zero,
+              title: Text(context.l10n.tvDlSmart,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary)),
+              subtitle: Text(
+                  _freeBytes == null
+                      ? context.l10n.tvDlSmartOn
+                      : context.l10n
+                          .tvDlFree(VodDownloadService.fmtBytes(_freeBytes!)),
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textTertiary)),
+            ),
+            const Divider(color: AppColors.ash, height: 24),
+            if (items.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 60),
+                child: _EmptyState(text: context.l10n.tvDownloadsEmptyHelp),
+              ),
+            for (final VodDownload d in items)
+              _DownloadTile(
+                d: d,
+                onTap: () => _onTap(d),
+                onDelete: () {
+                  unawaited(dl.remove(d.id));
+                  _refreshFree();
+                },
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _DownloadTile extends StatelessWidget {
+  const _DownloadTile(
+      {required this.d, required this.onTap, required this.onDelete});
+  final VodDownload d;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final int pct = (d.progress * 100).round();
+    final String sub = switch (d.status) {
+      VodDownloadStatus.done => context.l10n
+          .tvDownloadReady(VodDownloadService.fmtBytes(d.totalBytes)),
+      VodDownloadStatus.downloading => context.l10n.tvDownloadInProgress(pct),
+      VodDownloadStatus.paused => context.l10n.tvDownloadPausedAt(pct),
+      VodDownloadStatus.error => context.l10n.tvDownloadFailed,
+      VodDownloadStatus.queued => context.l10n.tvDownloadQueued,
+      VodDownloadStatus.noSpace => context.l10n.tvDlNoSpace,
+    };
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      onTap: onTap,
+      leading: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(width: 46, height: 64, child: _poster(d.posterUrl)),
+      ),
+      title: Text(
+          d.isEpisode && d.groupName.isNotEmpty
+              ? '${d.groupName} — ${d.name}'
+              : d.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+              fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(sub,
+              style: const TextStyle(
+                  fontSize: 12, color: AppColors.textTertiary)),
+          if (d.status == VodDownloadStatus.downloading ||
+              d.status == VodDownloadStatus.paused) ...<Widget>[
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: SizedBox(
+                height: 4,
+                child: Stack(children: <Widget>[
+                  Container(color: Colors.white12),
+                  FractionallySizedBox(
+                    widthFactor: d.progress,
+                    child: Container(color: AppColors.accent),
+                  ),
+                ]),
+              ),
+            ),
+          ],
+        ],
+      ),
+      trailing: IconButton(
+        icon: const Icon(Icons.delete_outline_rounded,
+            color: AppColors.textTertiary),
+        onPressed: onDelete,
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Communs
+// ---------------------------------------------------------------------------
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const Icon(Icons.movie_outlined,
+                size: 44, color: AppColors.textMuted),
+            const SizedBox(height: 12),
+            Text(text,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 14, color: AppColors.textTertiary)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Squelette « respirant » (aucun spinner — même règle que la TV).
+class _CinemaSkeleton extends StatelessWidget {
+  const _CinemaSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: <Widget>[
+        for (int r = 0; r < 3; r++) ...<Widget>[
+          Container(
+              width: 120,
+              height: 12,
+              margin: const EdgeInsets.only(top: 18, bottom: 12),
+              decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(6))),
+          SizedBox(
+            height: 150,
+            child: Row(children: <Widget>[
+              for (int i = 0; i < 4; i++)
+                Container(
+                    width: 96,
+                    margin: const EdgeInsets.only(right: 10),
+                    decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(10))),
+            ]),
+          ),
+        ],
+      ],
+    );
+  }
+}

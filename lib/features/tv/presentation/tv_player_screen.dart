@@ -1454,6 +1454,23 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     setState(() {}); // la barre reflète tout de suite la nouvelle position
   }
 
+  /// TAP-SUR-LA-BARRE (YouTube) : saute à la fraction touchée (0..1).
+  /// Même sortie que _seekBy : bulle de preview 1,2 s + barre rafraîchie.
+  void _seekToFraction(double f) {
+    final Duration total = _controller.duration;
+    if (!_isVod || total <= Duration.zero) return;
+    final Duration target =
+        Duration(milliseconds: (total.inMilliseconds * f).round());
+    _controller.seekTo(target);
+    _seekPreview = target;
+    _seekPreviewTimer?.cancel();
+    _seekPreviewTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _seekPreview = null);
+    });
+    _showOverlayTemporarily();
+    setState(() {});
+  }
+
   // ---- REPRISE DE LECTURE (« Reprendre à 42:15 », façon Netflix) ----
   // Tout est gardé par `_isVod` : le DIRECT (zapping) n'exécute RIEN d'ici.
 
@@ -2055,6 +2072,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                                 _seekRelative(const Duration(seconds: 10)),
                             onPlayPause: _togglePlayPause,
                             seekPreview: _seekPreview,
+                            onSeekToFraction: _seekToFraction,
                           ),
                         ),
                       ),
@@ -2223,6 +2241,7 @@ class _ControlsBar extends StatelessWidget {
     required this.onSeekBack,
     required this.onSeekFwd,
     required this.onPlayPause,
+    required this.onSeekToFraction,
     this.seekPreview,
   });
 
@@ -2252,6 +2271,7 @@ class _ControlsBar extends StatelessWidget {
   final VoidCallback onSeekBack;
   final VoidCallback onSeekFwd;
   final VoidCallback onPlayPause;
+  final ValueChanged<double> onSeekToFraction;
 
   @override
   Widget build(BuildContext context) {
@@ -2291,6 +2311,7 @@ class _ControlsBar extends StatelessWidget {
               onSeekBack: onSeekBack,
               onSeekFwd: onSeekFwd,
               onPlayPause: onPlayPause,
+              onSeekToFraction: onSeekToFraction,
               seekPreview: seekPreview,
             )
           else
@@ -2497,6 +2518,7 @@ class _VodControls extends StatelessWidget {
     required this.buffered,
     required this.isPlaying,
     required this.onSeekBack,
+    required this.onSeekToFraction,
     required this.onSeekFwd,
     required this.onPlayPause,
     this.seekPreview,
@@ -2513,6 +2535,11 @@ class _VodControls extends StatelessWidget {
   final VoidCallback onSeekBack;
   final VoidCallback onSeekFwd;
   final VoidCallback onPlayPause;
+
+  /// TAP-SUR-LA-BARRE (façon YouTube, écrans tactiles) : fraction 0..1
+  /// de l'endroit touché → l'écran convertit en seek absolu. Le glissé
+  /// du doigt le long de la barre fait pareil en continu.
+  final ValueChanged<double> onSeekToFraction;
 
   static String _fmt(Duration d) {
     final int s = d.inSeconds < 0 ? 0 : d.inSeconds;
@@ -2591,30 +2618,66 @@ class _VodControls extends StatelessWidget {
                       color: TvTokens.text)),
             ),
             Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: Stack(
-                  children: <Widget>[
-                    // Fond de la barre (partie non chargée).
-                    Container(height: 6, color: Colors.white24),
-                    // Avance CHARGÉE en tampon (« ligne grise » YouTube) : un
-                    // gris plus clair qui montre jusqu'où le film est prêt à
-                    // jouer sans coupure, même si Internet faiblit.
-                    FractionallySizedBox(
-                      widthFactor: bufferedFrac,
-                      child: Container(height: 6, color: Colors.white38),
-                    ),
-                    // Position lue (doré, façon Netflix).
-                    FractionallySizedBox(
-                      widthFactor: frac,
-                      child: Container(
-                        height: 6,
-                        decoration: const BoxDecoration(
-                            gradient: TvTokens.cineGradient),
+              // TAP-SUR-LA-BARRE (YouTube) : toucher un point = sauter
+              // exactement là ; glisser le doigt = suivre en continu. La
+              // zone de toucher fait 28 px de haut (la barre visible n'en
+              // fait que 6 — un doigt n'est pas un curseur), le calcul se
+              // fait sur la largeur RÉELLE de la barre via LayoutBuilder.
+              child: LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints c) {
+                  void seekAt(double dx) {
+                    if (c.maxWidth <= 0) return;
+                    onSeekToFraction((dx / c.maxWidth).clamp(0.0, 1.0));
+                  }
+
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTapDown: (TapDownDetails d) =>
+                        seekAt(d.localPosition.dx),
+                    onHorizontalDragUpdate: (DragUpdateDetails d) =>
+                        seekAt(d.localPosition.dx),
+                    child: SizedBox(
+                      height: 28,
+                      child: Center(
+                        // width: infinity → la barre garde TOUTE la largeur
+                        // de la colonne (Center donne des contraintes
+                        // lâches, sans ça le Stack s'effondrerait).
+                        child: SizedBox(
+                          height: 6,
+                          width: double.infinity,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: <Widget>[
+                                // Fond de la barre (partie non chargée).
+                                Container(color: Colors.white24),
+                                // Avance CHARGÉE en tampon (« ligne grise »
+                                // YouTube) : jusqu'où le film est prêt à
+                                // jouer sans coupure.
+                                FractionallySizedBox(
+                                  alignment: Alignment.centerLeft,
+                                  widthFactor: bufferedFrac,
+                                  child:
+                                      Container(color: Colors.white38),
+                                ),
+                                // Position lue (rouge braise, façon Netflix).
+                                FractionallySizedBox(
+                                  alignment: Alignment.centerLeft,
+                                  widthFactor: frac,
+                                  child: Container(
+                                    decoration: const BoxDecoration(
+                                        gradient: TvTokens.cineGradient),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
             SizedBox(

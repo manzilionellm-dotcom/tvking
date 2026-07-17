@@ -53,6 +53,7 @@ import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
 import '../../stats/data/engagement_service.dart';
 import '../../vod/data/playback_position_repository.dart';
+import '../../vod/data/vod_download_service.dart';
 import '../data/hls_preflight.dart';
 import '../data/local_stream_relay.dart';
 import '../data/pip_service.dart';
@@ -898,6 +899,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// récent est abandonnée (garde de génération, journalisée).
   Future<void> _openMedia(String realUrl) {
     final int gen = ++_openGeneration;
+    // COURTOISIE RÉSEAU (téléchargements Cinéma) : une lecture DISTANTE
+    // suspend la file (beaucoup de comptes n'ont qu'UNE connexion — un
+    // téléchargement simultané ferait « chaîne vide »). Un fichier LOCAL
+    // libère le réseau : on regarde l'épisode téléchargé PENDANT que le
+    // suivant descend.
+    final bool isLocal = realUrl.startsWith('file:') ||
+        realUrl.startsWith('/');
+    VodDownloadService.instance.setPlaybackHold(!isLocal);
     _openChain = _openChain.then((_) => _openMediaInner(realUrl, gen));
     return _openChain;
   }
@@ -1553,7 +1562,35 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         streamUrl: _currentChannel.streamUrl,
         posterUrl: _currentChannel.logoUrl,
       ));
+      // TÉLÉCHARGEMENTS INTELLIGENTS (parité TV, mobile) : épisode terminé
+      // (règle des 95 %, la même que le repo) → son fichier téléchargé est
+      // supprimé et l'épisode SUIVANT de la liste part en file. Le service
+      // ne touche jamais un film et ignore tout si l'option est OFF.
+      if (dur.inSeconds > 0 &&
+          pos.inMilliseconds / dur.inMilliseconds >= 0.95) {
+        final List<Channel>? list = widget.zapPlaylist;
+        final int idx = _zapIndex;
+        final Channel? next =
+            (list != null && idx >= 0 && idx + 1 < list.length)
+                ? list[idx + 1]
+                : null;
+        unawaited(VodDownloadService.instance.onEpisodeWatched(
+          watchedId: _currentChannel.id,
+          next: next == null || next.isLive
+              ? null
+              : VodNextEpisode(
+                  id: next.id,
+                  name: next.cleanName,
+                  streamUrl: next.streamUrl,
+                  posterUrl: next.logoUrl,
+                  groupName: next.category,
+                ),
+        ));
+      }
     }
+    // COURTOISIE RÉSEAU : le lecteur se ferme → la file de téléchargements
+    // Cinéma peut repartir (elle patientait pendant les lectures réseau).
+    VodDownloadService.instance.setPlaybackHold(false);
     PlayerSettings.instance.removeListener(_onSettingsChanged);
     CastManager.instance.removeListener(_onCastStateChanged);
     // Si un enregistrement relais tourne encore, on le clôt (sinon la

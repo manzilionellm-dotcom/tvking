@@ -40,6 +40,7 @@ import '../../../country_home/presentation/widgets/channel_logo.dart';
 import '../../../player/presentation/play_channel.dart';
 import '../../../playlists/data/favorites_repository.dart';
 import '../../../vod/data/playback_position_repository.dart';
+import '../../../vod/presentation/cinema_screen.dart';
 
 /// Grands « rayons » de contenu, pour la barre de filtres du haut.
 /// Tout ce qui n'est ni film, ni série, ni adulte tombe dans [tv]
@@ -530,7 +531,20 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
             label: b.label(context),
             icon: b.icon,
             active: b == effective,
-            onTap: () => setState(() => _bucket = b),
+            // CINÉMA (2026-07-17) : les rayons Films et Séries ouvrent le
+            // VRAI Cinéma (catalogue d'affiches, fiches, téléchargements —
+            // le même moteur que la TV) au lieu de la simple liste IPTV.
+            // Le rayon TV (et Adulte) garde le comportement existant.
+            onTap: () {
+              if (b == _Bucket.films || b == _Bucket.series) {
+                Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => CinemaScreen(
+                      initialTab: b == _Bucket.films ? 0 : 1),
+                ));
+                return;
+              }
+              setState(() => _bucket = b);
+            },
           );
         },
       ),
