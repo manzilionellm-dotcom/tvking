@@ -1805,6 +1805,15 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       return KeyEventResult.handled;
     }
 
+    // FILM : flèche BAS = feuille « Pistes » (audio, sous-titres, format) —
+    // le geste des plateformes (les options vivent sous le scrubber). Les
+    // AUTRES variantes « suivant » (Ch-, PageDown…) gardent leur rôle
+    // d'affichage de barre : on ne détourne que la flèche directionnelle.
+    if (_isVod && k == LogicalKeyboardKey.arrowDown) {
+      _openTracksSheet();
+      return KeyEventResult.handled;
+    }
+
     // Haut/Bas (et Ch+/Ch-) = zap direct — UNIQUEMENT en direct. Sur un FILM,
     // on ne zappe pas (Netflix) : on montre juste la barre.
     if (_isPrev(k)) {
@@ -2312,6 +2321,7 @@ class _ControlsBar extends StatelessWidget {
               onSeekFwd: onSeekFwd,
               onPlayPause: onPlayPause,
               onSeekToFraction: onSeekToFraction,
+              onTracks: onTracks,
               seekPreview: seekPreview,
             )
           else
@@ -2521,6 +2531,7 @@ class _VodControls extends StatelessWidget {
     required this.onSeekToFraction,
     required this.onSeekFwd,
     required this.onPlayPause,
+    required this.onTracks,
     this.seekPreview,
   });
 
@@ -2535,6 +2546,11 @@ class _VodControls extends StatelessWidget {
   final VoidCallback onSeekBack;
   final VoidCallback onSeekFwd;
   final VoidCallback onPlayPause;
+
+  /// Feuille « Pistes » (audio, sous-titres, format d'image) — LE réglage
+  /// qui manquait en mode FILM (terrain 2026-07-17 : « pas moyen d'ajouter
+  /// des sous-titres ou changer de langue sur les films »).
+  final VoidCallback onTracks;
 
   /// TAP-SUR-LA-BARRE (façon YouTube, écrans tactiles) : fraction 0..1
   /// de l'endroit touché → l'écran convertit en seek absolu. Le glissé
@@ -2694,7 +2710,7 @@ class _VodControls extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 14),
-        // ---- ⏪10 · ▶/⏸ · 10⏩ ----
+        // ---- ⏪10 · ▶/⏸ · 10⏩ · Pistes ----
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
@@ -2715,7 +2731,23 @@ class _VodControls extends StatelessWidget {
                 icon: Icons.forward_10_rounded,
                 label: context.l10n.tvSkip10,
                 onTap: onSeekFwd),
+            const SizedBox(width: 34),
+            // « Pistes » : audio, sous-titres, format — désormais AUSSI en
+            // mode film (avant : seulement en direct, donc « pas moyen de
+            // changer la langue sur un film » — terrain 2026-07-17).
+            _CtrlButton(
+                icon: Icons.subtitles_rounded,
+                label: context.l10n.tracksTitle,
+                onTap: onTracks),
           ],
+        ),
+        const SizedBox(height: 10),
+        // Indice télécommande : la flèche BAS ouvre la même feuille (le
+        // geste des plateformes — les boutons ci-dessus sont tactiles).
+        Center(
+          child: Text(context.l10n.tvVodTracksHint,
+              style:
+                  TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim)),
         ),
       ],
     );

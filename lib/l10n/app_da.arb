@@ -634,6 +634,7 @@
     }
   },
   "tvDlSeasonDone": "Sæson downloadet",
+  "tvVodTracksHint": "Ned: lyd, undertekster & format",
   "tvHueTitle": "Philips Hue-lys",
   "tvHueSubtitle": "Biografen styrer lyset i rummet — som en rigtig biograf.",
   "tvHueStatusNone": "Ingen Hue-bro fundet. Kør en søgning (samme Wi-Fi som boksen).",

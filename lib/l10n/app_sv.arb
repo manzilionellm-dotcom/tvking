@@ -634,6 +634,7 @@
     }
   },
   "tvDlSeasonDone": "Säsong nedladdad",
+  "tvVodTracksHint": "Ned: ljud, undertexter & format",
   "tvHueTitle": "Philips Hue-lampor",
   "tvHueSubtitle": "Bion styr ljuset i rummet — som en riktig biosalong.",
   "tvHueStatusNone": "Ingen Hue-brygga hittad. Kör en sökning (samma Wi-Fi som boxen).",

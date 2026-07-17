@@ -634,6 +634,7 @@
     }
   },
   "tvDlSeasonDone": "Sesong lastet ned",
+  "tvVodTracksHint": "Ned: lyd, undertekster og format",
   "tvHueTitle": "Philips Hue-lys",
   "tvHueSubtitle": "Kinoen styrer lyset i rommet — som en ekte kinosal.",
   "tvHueStatusNone": "Ingen Hue-bro funnet. Kjør et søk (samme Wi-Fi som boksen).",

@@ -635,6 +635,7 @@
     }
   },
   "tvDlSeasonDone": "Season downloaded",
+  "tvVodTracksHint": "Down: audio, subtitles & format",
   "tvHueTitle": "Philips Hue lights",
   "tvHueSubtitle": "Cinema drives the room lighting — like a real theatre.",
   "tvHueStatusNone": "No Hue bridge found. Run a search (same Wi-Fi as this box).",

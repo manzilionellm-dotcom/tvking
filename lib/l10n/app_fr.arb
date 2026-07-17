@@ -2107,6 +2107,7 @@
     }
   },
   "tvDlSeasonDone": "Saison téléchargée",
+  "tvVodTracksHint": "Bas : audio, sous-titres & format",
   "tvHueTitle": "Lumières Philips Hue",
   "tvHueSubtitle": "Le Cinéma pilote la lumière de la pièce — comme une vraie salle.",
   "tvHueStatusNone": "Aucun pont Hue détecté. Lance une recherche (même Wi-Fi que la box).",
