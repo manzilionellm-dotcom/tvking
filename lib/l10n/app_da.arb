@@ -625,6 +625,15 @@
   },
   "tvDlNoSpace": "Ikke nok plads — frigør plads, og genoptag",
   "tvDlEpisodeHint": "Hold et afsnit nede for at downloade (eller fjerne) det",
+  "tvDlSeason": "Download sæsonen ({count})",
+  "@tvDlSeason": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDlSeasonDone": "Sæson downloadet",
   "tvHueTitle": "Philips Hue-lys",
   "tvHueSubtitle": "Biografen styrer lyset i rummet — som en rigtig biograf.",
   "tvHueStatusNone": "Ingen Hue-bro fundet. Kør en søgning (samme Wi-Fi som boksen).",

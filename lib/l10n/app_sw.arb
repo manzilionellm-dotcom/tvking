@@ -625,6 +625,15 @@
   },
   "tvDlNoSpace": "Nafasi haitoshi — futa baadhi ya faili kisha uendelee",
   "tvDlEpisodeHint": "Bonyeza na ushikilie kipindi ili kukipakua (au kukiondoa)",
+  "tvDlSeason": "Pakua msimu ({count})",
+  "@tvDlSeason": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDlSeasonDone": "Msimu umepakuliwa",
   "tvHueTitle": "Taa za Philips Hue",
   "tvHueSubtitle": "Sinema huongoza mwanga wa chumba — kama ukumbi halisi.",
   "tvHueStatusNone": "Hakuna daraja la Hue lililopatikana. Anzisha utafutaji (Wi-Fi ileile).",

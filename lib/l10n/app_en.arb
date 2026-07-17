@@ -626,6 +626,15 @@
   },
   "tvDlNoSpace": "Not enough space — free some room, then resume",
   "tvDlEpisodeHint": "Long-press an episode to download (or remove) it",
+  "tvDlSeason": "Download season ({count})",
+  "@tvDlSeason": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDlSeasonDone": "Season downloaded",
   "tvHueTitle": "Philips Hue lights",
   "tvHueSubtitle": "Cinema drives the room lighting — like a real theatre.",
   "tvHueStatusNone": "No Hue bridge found. Run a search (same Wi-Fi as this box).",

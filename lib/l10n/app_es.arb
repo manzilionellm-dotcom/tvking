@@ -625,6 +625,15 @@
   },
   "tvDlNoSpace": "Espacio insuficiente: libera sitio y reanuda",
   "tvDlEpisodeHint": "Mantén pulsado un episodio para descargarlo (o quitarlo)",
+  "tvDlSeason": "Descargar la temporada ({count})",
+  "@tvDlSeason": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDlSeasonDone": "Temporada descargada",
   "tvHueTitle": "Luces Philips Hue",
   "tvHueSubtitle": "El Cine controla la luz de la sala, como un cine de verdad.",
   "tvHueStatusNone": "No se encontró el puente Hue. Búscalo (mismo Wi-Fi que el dispositivo).",

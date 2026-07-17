@@ -458,6 +458,34 @@ class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
     if (mounted) setState(() {}); // progress lu directement dans build()
   }
 
+  /// « MODE VOYAGE » (demande client) : UN geste → toute la saison part en
+  /// file. 5 minutes avant de partir, on appuie, et la file sérielle
+  /// descend les épisodes un par un à pleine vitesse — de quoi tenir des
+  /// heures hors-ligne sans s'occuper de rien. Les épisodes déjà
+  /// téléchargés (ou en cours) sont sautés : le bouton est idempotent.
+  void _downloadSeason(List<VodEpisode> seasonEps) {
+    final VodDownloadService dl = VodDownloadService.instance;
+    for (final VodEpisode e in seasonEps) {
+      final VodDownload? existing = dl.byId(e.id);
+      if (existing != null && !_isRetryable(existing.status)) continue;
+      unawaited(dl.enqueue(
+        id: e.id,
+        name: '${e.tag} · ${e.title}',
+        streamUrl: e.streamUrl,
+        posterUrl: e.posterUrl ?? widget.series.posterUrl,
+        containerExt: e.containerExt,
+        isEpisode: true,
+        groupName: widget.series.name,
+      ));
+    }
+  }
+
+  /// paused / error / noSpace = relançable par « Télécharger la saison ».
+  static bool _isRetryable(VodDownloadStatus s) =>
+      s == VodDownloadStatus.paused ||
+      s == VodDownloadStatus.error ||
+      s == VodDownloadStatus.noSpace;
+
   /// Appui long sur un épisode : télécharge / met en pause / supprime,
   /// selon l'état courant. Un seul geste, comportement contextuel — même
   /// pattern que l'écran « Mes téléchargements ».
@@ -654,6 +682,24 @@ class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
             ),
           ),
         if (seasons.length > 1) const SizedBox(height: 14),
+        // ----- MODE VOYAGE : toute la saison en un geste -----
+        // Compteur vivant : « Télécharger la saison (8) » → n'affiche que
+        // ce qui RESTE à descendre ; saison complète → ✓ discret.
+        ListenableBuilder(
+          listenable: VodDownloadService.instance,
+          builder: (BuildContext context, _) {
+            final int remaining = seasonEps
+                .where((VodEpisode e) =>
+                    !(VodDownloadService.instance.byId(e.id)?.isComplete ??
+                        false))
+                .length;
+            return _SeasonDownloadButton(
+              remaining: remaining,
+              onSelect: () => _downloadSeason(seasonEps),
+            );
+          },
+        ),
+        const SizedBox(height: 12),
         // ----- Épisodes de la saison -----
         // ListenableBuilder : les rangées suivent l'état des téléchargements
         // en direct (pourcentage qui avance, ✓ à la fin) — le service
@@ -910,6 +956,67 @@ class _EpisodeRow extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Bouton « Télécharger la saison » (mode voyage) — un geste, toute la
+/// saison en file. Devient « ✓ Saison téléchargée » quand tout est là.
+class _SeasonDownloadButton extends StatelessWidget {
+  const _SeasonDownloadButton({
+    required this.remaining,
+    required this.onSelect,
+  });
+
+  /// Épisodes de la saison PAS ENCORE téléchargés (0 = saison complète).
+  final int remaining;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool done = remaining == 0;
+    return TvFocusBuilder(
+      scale: TvFocusScale.small,
+      onSelect: done ? () {} : onSelect,
+      builder: (BuildContext context, bool focused) {
+        final Color bg = focused && !done ? TvTokens.ember : TvTokens.sel;
+        final Color fg = done
+            ? TvTokens.mutedDim
+            : focused
+                ? TvTokens.onEmber
+                : TvTokens.emberBright;
+        return Container(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(TvTokens.rCard),
+            border: Border.all(
+                color: focused && !done ? TvTokens.ember : TvTokens.lineSoft),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(
+                  done
+                      ? Icons.download_done_rounded
+                      : Icons.download_for_offline_rounded,
+                  size: 22,
+                  color: fg),
+              const SizedBox(width: 10),
+              Text(
+                done
+                    ? context.l10n.tvDlSeasonDone
+                    : context.l10n.tvDlSeason(remaining),
+                style: TextStyle(
+                    fontSize: TvDimens.title,
+                    fontWeight: FontWeight.w700,
+                    color: fg),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

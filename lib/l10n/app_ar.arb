@@ -625,6 +625,15 @@
   },
   "tvDlNoSpace": "المساحة غير كافية — حرّر مساحة ثم تابع",
   "tvDlEpisodeHint": "اضغط مطولًا على حلقة لتنزيلها (أو إزالتها)",
+  "tvDlSeason": "تنزيل الموسم ({count})",
+  "@tvDlSeason": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDlSeasonDone": "تم تنزيل الموسم",
   "tvHueTitle": "أضواء Philips Hue",
   "tvHueSubtitle": "السينما تتحكم في إضاءة الغرفة — كقاعة سينما حقيقية.",
   "tvHueStatusNone": "لم يُعثر على جسر Hue. ابدأ بحثًا (نفس شبكة Wi-Fi).",

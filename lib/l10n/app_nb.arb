@@ -625,6 +625,15 @@
   },
   "tvDlNoSpace": "Ikke nok plass — frigjør plass og fortsett",
   "tvDlEpisodeHint": "Hold inne en episode for å laste den ned (eller fjerne den)",
+  "tvDlSeason": "Last ned sesongen ({count})",
+  "@tvDlSeason": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDlSeasonDone": "Sesong lastet ned",
   "tvHueTitle": "Philips Hue-lys",
   "tvHueSubtitle": "Kinoen styrer lyset i rommet — som en ekte kinosal.",
   "tvHueStatusNone": "Ingen Hue-bro funnet. Kjør et søk (samme Wi-Fi som boksen).",

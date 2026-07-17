@@ -625,6 +625,15 @@
   },
   "tvDlNoSpace": "Otillräckligt utrymme — frigör plats och återuppta",
   "tvDlEpisodeHint": "Håll in ett avsnitt för att ladda ned (eller ta bort) det",
+  "tvDlSeason": "Ladda ned säsongen ({count})",
+  "@tvDlSeason": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvDlSeasonDone": "Säsong nedladdad",
   "tvHueTitle": "Philips Hue-lampor",
   "tvHueSubtitle": "Bion styr ljuset i rummet — som en riktig biosalong.",
   "tvHueStatusNone": "Ingen Hue-brygga hittad. Kör en sökning (samma Wi-Fi som boxen).",
