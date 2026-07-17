@@ -68,10 +68,6 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
   /// Aperçu héro actif ? Coupé AVANT d'ouvrir un plein écran (jamais 2 flux).
   bool _previewLive = true;
 
-  /// Horloge du coin haut-droit (rafraîchie chaque minute, comme une box).
-  late String _clock = _fmtClock();
-  Timer? _clockTimer;
-
   @override
   void initState() {
     super.initState();
@@ -80,21 +76,14 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
         .listen((_) => _recomputeHero());
     _recentSub =
         RecentlyWatchedRepository.instance.stream.listen((_) => _recomputeHero());
-    _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      final String now = _fmtClock();
-      if (now != _clock && mounted) setState(() => _clock = now);
-    });
   }
 
   @override
   void dispose() {
     _chanSub?.cancel();
     _recentSub?.cancel();
-    _clockTimer?.cancel();
     super.dispose();
   }
-
-  static String _fmtClock() => DateFormat.Hm().format(DateTime.now());
 
   /// `true` quand le héro vient de l'habitude horaire (badge « Ma soirée »).
   bool _heroFromHabit = false;
@@ -312,9 +301,11 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
             tip: 'Quitter',
             onSelect: _confirmExit),
         const SizedBox(width: 10),
-        Text(_clock,
-            style: TvTokens.ui(TvDimens.title,
-                weight: FontWeight.w700, color: TvTokens.text)),
+        // Widget FEUILLE (patron _Clock de rails) : l'horloge se met à jour
+        // toute seule — l'ancien Timer du State racine reconstruisait
+        // l'ACCUEIL ENTIER (héro + grille favoris + tuiles, ~200 widgets)
+        // une fois par minute pour changer un Text.
+        const _LauncherClock(),
       ],
     );
   }
@@ -889,5 +880,43 @@ class _TopIcon extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Horloge du coin haut-droit — widget FEUILLE autonome (patron _Clock de
+/// tv_rails_home_screen) : son tic ne reconstruit que ce Text.
+class _LauncherClock extends StatefulWidget {
+  const _LauncherClock();
+
+  @override
+  State<_LauncherClock> createState() => _LauncherClockState();
+}
+
+class _LauncherClockState extends State<_LauncherClock> {
+  late String _clock = _fmt();
+  Timer? _timer;
+
+  static String _fmt() => DateFormat.Hm().format(DateTime.now());
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+      final String now = _fmt();
+      if (now != _clock && mounted) setState(() => _clock = now);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(_clock,
+        style: TvTokens.ui(TvDimens.title,
+            weight: FontWeight.w700, color: TvTokens.text));
   }
 }
