@@ -24,6 +24,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -142,10 +143,10 @@ abstract final class M3uFetcher {
               (resp.contentLength != null && resp.contentLength! > 0)
                   ? resp.contentLength
                   : null;
-          final List<int> bytes =
+          final Uint8List bytes =
               await _readCapped(resp.stream, kMaxM3uBytes, onBytes, total)
                   .timeout(_timeout);
-          final String body = _decodeBytes(bytes);
+          final String body = await _decodeBytesInBackground(bytes);
           final String head = body.trimLeft();
           if (head.isEmpty) {
             lastError = Exception(l10nNow.m3uEmptyResponse(url));
@@ -269,7 +270,7 @@ abstract final class M3uFetcher {
   /// Lit [stream] en accumulant les octets, mais COUPE à [maxBytes] : au-delà,
   /// on lève [PlaylistImportTooLarge] (le `for await` s'arrête, l'abonnement est
   /// annulé) → on ne matérialise JAMAIS une source géante d'un bloc. Anti-OOM.
-  static Future<List<int>> _readCapped(
+  static Future<Uint8List> _readCapped(
     Stream<List<int>> stream,
     int maxBytes, [
     void Function(int received, int? total)? onBytes,
@@ -290,30 +291,51 @@ abstract final class M3uFetcher {
     return builder.takeBytes();
   }
 
-  /// Décodage UTF-8 → Latin-1 fallback + BOM strip.
-  /// On travaille sur les octets bruts (jamais `body`) pour avoir le
-  /// contrôle total de l'encoding.
-  static String _decodeBytes(List<int> bytes) {
-    if (bytes.isEmpty) return '';
-
-    // Strip BOM UTF-8 (EF BB BF) si présent
-    final List<int> stripped =
-        (bytes.length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
-            ? bytes.sublist(3)
-            : bytes;
-
-    // Tente UTF-8 strict — c'est le format légal de M3U_PLUS.
-    try {
-      return utf8.decode(stripped, allowMalformed: false);
-    } catch (_) {
-      // Pas du UTF-8 valide → c'est probablement Latin-1 / Windows-1252.
-      // Latin-1 ne lève jamais d'exception : chaque byte = un char.
-      if (kDebugMode) {
-        debugPrint(
-          '[M3uFetcher] UTF-8 invalide, fallback Latin-1 pour ${stripped.length} bytes',
-        );
-      }
-      return latin1.decode(stripped);
+  /// Décodage octets → String HORS du fil d'affichage. Une playlist pèse
+  /// jusqu'à [kMaxM3uBytes] (60 Mo) : le `utf8.decode` d'un bloc pareil sur
+  /// le main isolate gelait l'UI 200 ms-1 s (le DOUBLE en cas de repli
+  /// Latin-1, qui re-décode tout). Les octets partent en O(1) via
+  /// [TransferableTypedData] ; la String revient sans copie (Isolate.exit).
+  /// Petits corps : décodage inline — l'isolate coûterait plus qu'il ne rend.
+  static Future<String> _decodeBytesInBackground(Uint8List bytes) {
+    const int inlineMax = 256 * 1024; // 256 Ko ≈ < 5 ms de décodage
+    if (bytes.length <= inlineMax) {
+      return Future<String>.value(_m3uDecodeEntry(bytes));
     }
+    return compute(
+      _m3uDecodeTransferableEntry,
+      TransferableTypedData.fromList(<Uint8List>[bytes]),
+    );
+  }
+}
+
+/// Entrée isolate du décodage (top-level = requis par `compute`).
+String _m3uDecodeTransferableEntry(TransferableTypedData data) =>
+    _m3uDecodeEntry(data.materialize().asUint8List());
+
+/// Décodage UTF-8 → Latin-1 fallback + BOM strip.
+/// On travaille sur les octets bruts (jamais `body`) pour avoir le
+/// contrôle total de l'encoding.
+String _m3uDecodeEntry(Uint8List bytes) {
+  if (bytes.isEmpty) return '';
+
+  // Strip BOM UTF-8 (EF BB BF) si présent
+  final Uint8List stripped =
+      (bytes.length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+          ? Uint8List.sublistView(bytes, 3)
+          : bytes;
+
+  // Tente UTF-8 strict — c'est le format légal de M3U_PLUS.
+  try {
+    return utf8.decode(stripped, allowMalformed: false);
+  } catch (_) {
+    // Pas du UTF-8 valide → c'est probablement Latin-1 / Windows-1252.
+    // Latin-1 ne lève jamais d'exception : chaque byte = un char.
+    if (kDebugMode) {
+      debugPrint(
+        '[M3uFetcher] UTF-8 invalide, fallback Latin-1 pour ${stripped.length} bytes',
+      );
+    }
+    return latin1.decode(stripped);
   }
 }

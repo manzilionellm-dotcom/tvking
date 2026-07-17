@@ -31,6 +31,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -480,14 +481,14 @@ class XtreamClient {
     // (« le Cinéma ne s'ouvre pas », écran noir figé). Le fil d'affichage
     // ne reçoit plus qu'une liste PRÊTE, déjà plafonnée.
     final Uri uri = _buildUri(action: 'get_vod_streams');
-    final String body = await _getBody(uri);
+    final Uint8List bodyBytes = await _getBodyBytes(uri);
     CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
         'xtream.http.get_vod_streams',
-        bytes: body.length);
+        bytes: bodyBytes.length);
     final List<VodMovie> movies = await compute(
       _parseVodMoviesIsolate,
       (
-        body,
+        TransferableTypedData.fromList(<Uint8List>[bodyBytes]),
         cats,
         DeviceMemory.channelCap,
         _baseUrl,
@@ -722,6 +723,16 @@ class XtreamClient {
   /// la signature gagnante. Lève une [XtreamException] si aucune signature n'a
   /// 200, ou [PlaylistImportTooLarge] si la réponse dépasse le plafond.
   Future<String> _getBody(Uri uri) async {
+    // Décodage INLINE réservé aux petites réponses (verifyCredentials,
+    // fiches) : les listes complètes passent par _getBodyBytes + isolate.
+    return utf8.decode(await _getBodyBytes(uri), allowMalformed: true);
+  }
+
+  /// Comme [_getBody] mais SANS décodage String : les octets bruts, prêts à
+  /// partir en isolate via [TransferableTypedData]. Un `utf8.decode` de
+  /// 40-80 Mo sur le main isolate gelait l'UI 300 ms-1,5 s à chaque
+  /// import/refresh de source (spinner figé, risque d'ANR).
+  Future<Uint8List> _getBodyBytes(Uri uri) async {
     Object? lastError;
     for (final String ua in _candidateUserAgents()) {
       try {
@@ -739,13 +750,10 @@ class XtreamClient {
             await _http.send(req).timeout(_timeout);
         if (resp.statusCode == 200) {
           _workingUserAgent = ua;
-          final List<int> bytes = await _readCapped(
+          return await _readCapped(
             resp.stream,
             kMaxXtreamJsonBytes,
           ).timeout(_bodyTimeout);
-          // Xtream sert du JSON (UTF-8). allowMalformed pour ne jamais planter
-          // sur un octet douteux d'un backend exotique.
-          return utf8.decode(bytes, allowMalformed: true);
         }
         lastError = XtreamException(
           l10nNow.xtreamHttpError(resp.statusCode, uri.host),
@@ -767,7 +775,7 @@ class XtreamClient {
 
   /// Lit [stream] en bornant à [maxBytes] (anti-OOM) : dépassement →
   /// [PlaylistImportTooLarge], le flux est interrompu et l'abonnement annulé.
-  static Future<List<int>> _readCapped(
+  static Future<Uint8List> _readCapped(
       Stream<List<int>> stream, int maxBytes) async {
     final BytesBuilder builder = BytesBuilder(copy: false);
     int total = 0;
@@ -809,14 +817,20 @@ class XtreamClient {
     String? categoryId,
   }) async {
     final Uri uri = _buildUri(action: action, categoryId: categoryId);
-    final String body = await _getBody(uri);
+    final Uint8List bytes = await _getBodyBytes(uri);
     // Breadcrumb : taille du corps HTTP reçu (suspect OOM n°1 sur grosse source).
     CrashReporting.instance
-        .recordMemoryBreadcrumbWithCounts('xtream.http.$action', bytes: body.length);
+        .recordMemoryBreadcrumbWithCounts('xtream.http.$action', bytes: bytes.length);
     try {
-      // Décodage dans un ISOLATE (compute) : sur un gros bouquet la réponse
-      // pèse plusieurs Mo et un jsonDecode synchrone gèlerait l'UI (ANR).
-      final dynamic decoded = await compute(_decodeJsonInIsolate, body);
+      // Décodage UTF-8 **et** jsonDecode dans un ISOLATE : sur un gros
+      // bouquet la réponse pèse des dizaines de Mo — même le seul
+      // utf8.decode synchrone gelait l'UI. Les octets partent en O(1)
+      // (TransferableTypedData), le résultat revient sans copie
+      // (Isolate.exit sous compute).
+      final dynamic decoded = await compute(
+        _decodeJsonBytesInIsolate,
+        TransferableTypedData.fromList(<Uint8List>[bytes]),
+      );
       CrashReporting.instance.recordMemoryBreadcrumb('xtream.json.decoded.$action');
       if (decoded is List<dynamic>) return decoded;
       // Certains serveurs encapsulent dans `{data: [...]}` ; on tolère.
@@ -860,23 +874,35 @@ class XtreamClient {
   }
 }
 
-/// Décode du JSON dans un isolate (`compute`). Top-level = requis pour être
-/// envoyable à un isolate. Sert à ne pas geler l'UI sur les grosses réponses
-/// Xtream (get_live_streams / VOD / séries de plusieurs Mo).
-dynamic _decodeJsonInIsolate(String source) => jsonDecode(source);
+/// Décode UTF-8 + JSON dans un isolate (`compute`). Top-level = requis pour
+/// être envoyable à un isolate. Reçoit les OCTETS bruts (transfert O(1) via
+/// [TransferableTypedData]) : ni le décodage UTF-8 (dizaines de Mo) ni le
+/// jsonDecode ne touchent le fil d'affichage.
+dynamic _decodeJsonBytesInIsolate(TransferableTypedData data) => jsonDecode(
+    utf8.decode(data.materialize().asUint8List(), allowMalformed: true));
 
 /// Analyse COMPLÈTE du catalogue VOD dans un isolate : décodage JSON +
 /// construction des objets [VodMovie] (plafonnée). Tourne HORS du fil
 /// d'affichage → l'écran Cinéma ne gèle jamais, même avec 50 000 films.
 /// Entrée (record, seul argument transmissible à un isolate) :
-///   (corps HTTP, catégories id→nom, plafond, baseUrl, userEnc, passEnc,
-///    nom de repli). Les [VodMovie] (champs String uniquement) sont
-///   recopiés vers le fil principal — sûr entre isolates.
+///   (octets HTTP transférés O(1), catégories id→nom, plafond, baseUrl,
+///    userEnc, passEnc, nom de repli). Le décodage UTF-8 se fait ICI aussi
+///   (un corps VOD pèse des Mo — rien ne doit rester sur le main isolate).
+///   Les [VodMovie] (champs String uniquement) reviennent sans copie
+///   (Isolate.exit sous compute).
 List<VodMovie> _parseVodMoviesIsolate(
-  (String, Map<String, String>, int, String, String, String, String) input,
+  (
+    TransferableTypedData,
+    Map<String, String>,
+    int,
+    String,
+    String,
+    String,
+    String
+  ) input,
 ) {
   final (
-    String body,
+    TransferableTypedData bodyData,
     Map<String, String> cats,
     int cap,
     String baseUrl,
@@ -884,6 +910,8 @@ List<VodMovie> _parseVodMoviesIsolate(
     String passEnc,
     String fallbackName,
   ) = input;
+  final String body =
+      utf8.decode(bodyData.materialize().asUint8List(), allowMalformed: true);
   final dynamic decoded = jsonDecode(body);
   final List<dynamic> raw = decoded is List
       ? decoded
