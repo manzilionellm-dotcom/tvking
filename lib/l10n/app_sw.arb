@@ -625,6 +625,40 @@
   },
   "tvDlNoSpace": "Nafasi haitoshi — futa baadhi ya faili kisha uendelee",
   "tvDlEpisodeHint": "Bonyeza na ushikilie kipindi ili kukipakua (au kukiondoa)",
+  "tvHueTitle": "Taa za Philips Hue",
+  "tvHueSubtitle": "Sinema huongoza mwanga wa chumba — kama ukumbi halisi.",
+  "tvHueStatusNone": "Hakuna daraja la Hue lililopatikana. Anzisha utafutaji (Wi-Fi ileile).",
+  "tvHueStatusFound": "Daraja limepatikana ({ip}) — linahitaji kuunganishwa.",
+  "@tvHueStatusFound": {
+    "placeholders": {
+      "ip": {
+        "type": "String"
+      }
+    }
+  },
+  "tvHueStatusPaired": "Daraja limeunganishwa · taa {count}",
+  "@tvHueStatusPaired": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvHueSearch": "Tafuta daraja",
+  "tvHueSearching": "Inatafuta…",
+  "tvHuePair": "Unganisha — kisha bonyeza kitufe cha daraja",
+  "tvHuePairing": "Bonyeza kitufe kikubwa cha daraja la Hue… sekunde {seconds}",
+  "@tvHuePairing": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "tvHueEnabledOn": "Hali ya ukumbi wa sinema: IMEWASHWA",
+  "tvHueEnabledOff": "Hali ya ukumbi wa sinema: imezimwa",
+  "tvHueTest": "Jaribu mandhari (sekunde 4)",
+  "tvHueHelp": "Filamu ikianza → taa hupungua hadi wekundu mwororo. Ukisitisha → mwanga huongezeka kidogo. Filamu ikiisha → kila kitu hurudi sawasawa kama awali, hata taa zilizozimwa. Yote hufanyika kwenye Wi-Fi yako: hakuna akaunti, hakuna intaneti.",
   "tvWatch": "Tazama",
   "tvMyList": "Orodha yangu",
   "tvInMyList": "Kwenye orodha yangu",

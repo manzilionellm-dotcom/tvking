@@ -625,6 +625,40 @@
   },
   "tvDlNoSpace": "المساحة غير كافية — حرّر مساحة ثم تابع",
   "tvDlEpisodeHint": "اضغط مطولًا على حلقة لتنزيلها (أو إزالتها)",
+  "tvHueTitle": "أضواء Philips Hue",
+  "tvHueSubtitle": "السينما تتحكم في إضاءة الغرفة — كقاعة سينما حقيقية.",
+  "tvHueStatusNone": "لم يُعثر على جسر Hue. ابدأ بحثًا (نفس شبكة Wi-Fi).",
+  "tvHueStatusFound": "تم العثور على الجسر ({ip}) — يلزم الاقتران.",
+  "@tvHueStatusFound": {
+    "placeholders": {
+      "ip": {
+        "type": "String"
+      }
+    }
+  },
+  "tvHueStatusPaired": "الجسر مقترن · {count} مصابيح",
+  "@tvHueStatusPaired": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvHueSearch": "البحث عن الجسر",
+  "tvHueSearching": "جارٍ البحث…",
+  "tvHuePair": "اقتران — ثم اضغط زر الجسر",
+  "tvHuePairing": "اضغط الزر الكبير على جسر Hue… {seconds} ث",
+  "@tvHuePairing": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "tvHueEnabledOn": "وضع قاعة السينما: مفعّل",
+  "tvHueEnabledOff": "وضع قاعة السينما: معطّل",
+  "tvHueTest": "تجربة الأجواء (4 ثوانٍ)",
+  "tvHueHelp": "عند بدء الفيلم تنخفض الإضاءة إلى أحمر دافئ هادئ. عند الإيقاف المؤقت ترتفع قليلًا. عند النهاية يعود كل شيء تمامًا كما كان، حتى المصابيح المطفأة. كل ذلك محليًا عبر شبكتك: بلا حساب وبلا إنترنت.",
   "tvWatch": "مشاهدة",
   "tvMyList": "قائمتي",
   "tvInMyList": "في قائمتي",

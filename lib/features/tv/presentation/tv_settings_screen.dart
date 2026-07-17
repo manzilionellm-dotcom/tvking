@@ -22,6 +22,7 @@ import 'tv_collections_screen.dart';
 import 'tv_display_settings_screen.dart';
 import 'tv_family_screen.dart';
 import 'tv_home_template_screen.dart';
+import 'tv_hue_screen.dart';
 import 'tv_invite_screen.dart';
 import 'tv_legal_screen.dart';
 import 'tv_sleep_timer_screen.dart';
@@ -336,6 +337,44 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     Icon(Icons.query_stats_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsStats,
+                        style: TextStyle(
+                            fontSize: TvDimens.title,
+                            fontWeight: FontWeight.w700,
+                            color: fg)),
+                    const Spacer(),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          // ----- Lumières Philips Hue (mode salle de cinéma) -----
+          //  Ambiance rouge braise pilotée par le Cinéma : découverte du
+          //  pont, association, activation et test — cf. tv_hue_screen.
+          TvFocusBuilder(
+            scale: TvFocusScale.large,
+            onSelect: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const TvHueScreen(),
+              ),
+            ),
+            builder: (BuildContext context, bool focused) {
+              final Color bg = focused ? TvTokens.ember : TvTokens.sel;
+              final Color fg =
+                  focused ? TvTokens.onEmber : TvTokens.emberBright;
+              return Container(
+                width: 760,
+                decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                child: Row(
+                  children: <Widget>[
+                    Icon(Icons.lightbulb_rounded, color: fg, size: 26),
+                    const SizedBox(width: 12),
+                    Text(context.l10n.tvHueTitle,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,

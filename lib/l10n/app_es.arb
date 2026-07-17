@@ -625,6 +625,40 @@
   },
   "tvDlNoSpace": "Espacio insuficiente: libera sitio y reanuda",
   "tvDlEpisodeHint": "Mantén pulsado un episodio para descargarlo (o quitarlo)",
+  "tvHueTitle": "Luces Philips Hue",
+  "tvHueSubtitle": "El Cine controla la luz de la sala, como un cine de verdad.",
+  "tvHueStatusNone": "No se encontró el puente Hue. Búscalo (mismo Wi-Fi que el dispositivo).",
+  "tvHueStatusFound": "Puente encontrado ({ip}) — falta vincularlo.",
+  "@tvHueStatusFound": {
+    "placeholders": {
+      "ip": {
+        "type": "String"
+      }
+    }
+  },
+  "tvHueStatusPaired": "Puente vinculado · {count} luces",
+  "@tvHueStatusPaired": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvHueSearch": "Buscar el puente",
+  "tvHueSearching": "Buscando…",
+  "tvHuePair": "Vincular — luego pulsa el botón del puente",
+  "tvHuePairing": "Pulsa el botón grande del puente Hue… {seconds} s",
+  "@tvHuePairing": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "tvHueEnabledOn": "Modo sala de cine: ACTIVADO",
+  "tvHueEnabledOff": "Modo sala de cine: desactivado",
+  "tvHueTest": "Probar el ambiente (4 segundos)",
+  "tvHueHelp": "Al empezar la película, las luces bajan a un rojo brasa suave. En pausa, la luz sube un poco. Al terminar, todo vuelve exactamente como estaba, incluso las luces apagadas. Todo ocurre en tu Wi-Fi local: sin cuenta y sin internet.",
   "tvWatch": "Ver",
   "tvMyList": "Mi lista",
   "tvInMyList": "En Mi lista",

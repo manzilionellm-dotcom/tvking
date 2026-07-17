@@ -2098,6 +2098,40 @@
   },
   "tvDlNoSpace": "Espace insuffisant — libère de la place puis reprends",
   "tvDlEpisodeHint": "Appui long sur un épisode : télécharger (ou retirer)",
+  "tvHueTitle": "Lumières Philips Hue",
+  "tvHueSubtitle": "Le Cinéma pilote la lumière de la pièce — comme une vraie salle.",
+  "tvHueStatusNone": "Aucun pont Hue détecté. Lance une recherche (même Wi-Fi que la box).",
+  "tvHueStatusFound": "Pont trouvé ({ip}) — reste à l’associer.",
+  "@tvHueStatusFound": {
+    "placeholders": {
+      "ip": {
+        "type": "String"
+      }
+    }
+  },
+  "tvHueStatusPaired": "Pont associé · {count} lampes",
+  "@tvHueStatusPaired": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvHueSearch": "Rechercher le pont",
+  "tvHueSearching": "Recherche en cours…",
+  "tvHuePair": "Associer — puis appuie sur le bouton du pont",
+  "tvHuePairing": "Appuie sur le gros bouton du pont Hue… {seconds} s",
+  "@tvHuePairing": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "tvHueEnabledOn": "Mode salle de cinéma : ACTIVÉ",
+  "tvHueEnabledOff": "Mode salle de cinéma : désactivé",
+  "tvHueTest": "Tester l’ambiance (4 secondes)",
+  "tvHueHelp": "Film lancé → les lampes plongent dans un rouge braise doux. Pause → la lumière remonte un peu. Fin du film → tout revient exactement comme avant, même les lampes qui étaient éteintes. Tout se passe en local sur ton Wi-Fi : aucun compte, aucun internet requis.",
   "tvWatch": "Regarder",
   "tvMyList": "Ma Liste",
   "tvInMyList": "Dans Ma Liste",

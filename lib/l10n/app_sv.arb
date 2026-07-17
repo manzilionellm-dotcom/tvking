@@ -625,6 +625,40 @@
   },
   "tvDlNoSpace": "Otillräckligt utrymme — frigör plats och återuppta",
   "tvDlEpisodeHint": "Håll in ett avsnitt för att ladda ned (eller ta bort) det",
+  "tvHueTitle": "Philips Hue-lampor",
+  "tvHueSubtitle": "Bion styr ljuset i rummet — som en riktig biosalong.",
+  "tvHueStatusNone": "Ingen Hue-brygga hittad. Kör en sökning (samma Wi-Fi som boxen).",
+  "tvHueStatusFound": "Brygga hittad ({ip}) — parkoppling återstår.",
+  "@tvHueStatusFound": {
+    "placeholders": {
+      "ip": {
+        "type": "String"
+      }
+    }
+  },
+  "tvHueStatusPaired": "Brygga parkopplad · {count} lampor",
+  "@tvHueStatusPaired": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvHueSearch": "Sök efter bryggan",
+  "tvHueSearching": "Söker…",
+  "tvHuePair": "Parkoppla — tryck sedan på bryggans knapp",
+  "tvHuePairing": "Tryck på den stora knappen på Hue-bryggan… {seconds} s",
+  "@tvHuePairing": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "tvHueEnabledOn": "Bioläge: PÅ",
+  "tvHueEnabledOff": "Bioläge: av",
+  "tvHueTest": "Testa stämningen (4 sekunder)",
+  "tvHueHelp": "Filmen startar → lamporna dämpas till ett mjukt glödrött. Paus → ljuset höjs lite. Filmen slutar → allt återgår exakt som förut, även släckta lampor. Allt sker lokalt på ditt Wi-Fi: inget konto, inget internet.",
   "tvWatch": "Titta",
   "tvMyList": "Min lista",
   "tvInMyList": "I Min lista",

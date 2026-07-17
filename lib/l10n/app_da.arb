@@ -625,6 +625,40 @@
   },
   "tvDlNoSpace": "Ikke nok plads — frigør plads, og genoptag",
   "tvDlEpisodeHint": "Hold et afsnit nede for at downloade (eller fjerne) det",
+  "tvHueTitle": "Philips Hue-lys",
+  "tvHueSubtitle": "Biografen styrer lyset i rummet — som en rigtig biograf.",
+  "tvHueStatusNone": "Ingen Hue-bro fundet. Kør en søgning (samme Wi-Fi som boksen).",
+  "tvHueStatusFound": "Bro fundet ({ip}) — parring mangler.",
+  "@tvHueStatusFound": {
+    "placeholders": {
+      "ip": {
+        "type": "String"
+      }
+    }
+  },
+  "tvHueStatusPaired": "Bro parret · {count} lamper",
+  "@tvHueStatusPaired": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvHueSearch": "Søg efter broen",
+  "tvHueSearching": "Søger…",
+  "tvHuePair": "Par — og tryk så på knappen på broen",
+  "tvHuePairing": "Tryk på den store knap på Hue-broen… {seconds} s",
+  "@tvHuePairing": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "tvHueEnabledOn": "Biograftilstand: TIL",
+  "tvHueEnabledOff": "Biograftilstand: fra",
+  "tvHueTest": "Test stemningen (4 sekunder)",
+  "tvHueHelp": "Filmen starter → lyset dæmpes til en blød gløderød farve. Pause → lyset stiger lidt. Filmen slutter → alt vender tilbage præcis som før, også slukkede lamper. Alt foregår lokalt på dit Wi-Fi: ingen konto, intet internet.",
   "tvWatch": "Se",
   "tvMyList": "Min liste",
   "tvInMyList": "På Min liste",

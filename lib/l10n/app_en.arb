@@ -626,6 +626,40 @@
   },
   "tvDlNoSpace": "Not enough space — free some room, then resume",
   "tvDlEpisodeHint": "Long-press an episode to download (or remove) it",
+  "tvHueTitle": "Philips Hue lights",
+  "tvHueSubtitle": "Cinema drives the room lighting — like a real theatre.",
+  "tvHueStatusNone": "No Hue bridge found. Run a search (same Wi-Fi as this box).",
+  "tvHueStatusFound": "Bridge found ({ip}) — pairing still needed.",
+  "@tvHueStatusFound": {
+    "placeholders": {
+      "ip": {
+        "type": "String"
+      }
+    }
+  },
+  "tvHueStatusPaired": "Bridge paired · {count} lights",
+  "@tvHueStatusPaired": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tvHueSearch": "Search for the bridge",
+  "tvHueSearching": "Searching…",
+  "tvHuePair": "Pair — then press the button on the bridge",
+  "tvHuePairing": "Press the big button on the Hue bridge… {seconds} s",
+  "@tvHuePairing": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "tvHueEnabledOn": "Cinema mode: ON",
+  "tvHueEnabledOff": "Cinema mode: off",
+  "tvHueTest": "Test the ambience (4 seconds)",
+  "tvHueHelp": "Movie starts → the lights dim to a soft ember red. Pause → the light comes up a little. Movie ends → everything returns exactly as it was, including lights that were off. Everything stays on your local Wi-Fi: no account, no internet needed.",
   "tvWatch": "Watch",
   "tvMyList": "My List",
   "tvInMyList": "In My List",

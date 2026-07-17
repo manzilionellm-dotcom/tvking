@@ -7,7 +7,7 @@
 
 ---
 
-## Dernière session (2026-07-16, soir) — « SEVEN CINÉMA » : le côté Films & Séries niveau plateforme premium
+## Dernière session (2026-07-16 → 17) — « SEVEN CINÉMA » : le côté Films & Séries niveau plateforme premium
 
 Branche : `claude/seven-cinema-vod-venljh` (partie du HEAD
 `claude/tv-channels-live-preview-24f338`). 5 phases livrées, chacune
@@ -62,6 +62,49 @@ commit + push + CI Quality verte. 542 tests (499 → 542), analyze 0 erreur.
   fiche → lecteur (le reste de l'app garde ses transitions).
 - Tests widgets : TvFocusable (focus/OK/zoom/flèches), TvSkeletonRails et
   TvEmptyState (« zéro spinner »).
+
+### Phase 6 — Téléchargements intelligents (2026-07-17, déployé tv-prod)
+- `vod_download_service` refondu : file SÉRIELLE (un job à la fois),
+  COURTOISIE RÉSEAU (`setPlaybackHold` depuis le lecteur — jamais 2
+  connexions sur un compte 1-conn ; lecture LOCALE libère le réseau),
+  smart downloads (épisode vu → fichier supprimé + suivant en file,
+  toggle persisté ON), garde d'espace `df -k` (500 Mo start / 200 Mo
+  en route → statut noSpace), épisodes téléchargeables (isEpisode,
+  groupName).
+- Lecteur : substitution hors-ligne D'ABORD (`localFile` → file://,
+  démarrage instantané, zéro mécanique distante) ; fin d'épisode →
+  `onEpisodeWatched` à côté du markFinished.
+- UI : rangée « Téléchargés » (lecture directe), appui long épisode =
+  télécharger (pastille ✓/%), écran Téléchargements (toggle smart +
+  espace libre), id D'ORIGINE en lecture offline (reprise partagée).
+
+### Correctifs terrain + thème (2026-07-17)
+- « LIGNES JAUNES » (photos client) = Material MANQUANT (texte de
+  secours Flutter jaune souligné monospace) sur 3 chemins : TvCineRoute,
+  lanceur `_open`, lecteur TV → Material transparent posé aux trois.
+- CINÉMA EN ROUGE BRAISE (demande client) : tokens `ember*` +
+  `cineGradient` (#D63A30) sur Films/Séries/Fiche/Recherche/
+  Téléchargements + commandes VOD du lecteur. Le LIVE garde l'or.
+- Crash « film ne s'ouvre pas » (box à jour du 16 au soir) : la VOD
+  passait par le relais live → réglé par « VOD hors relais » (Phase 4).
+
+### Phase 7 — Philips Hue : mode salle de cinéma (2026-07-17)
+- `lib/features/hue/data/hue_service.dart` : découverte SSDP locale du
+  pont (signature hue-bridgeid), association par bouton physique
+  (fenêtre 30 s, clé persistée), scène rouge braise via groupe 0
+  (bri 36, hue 1500), pause → bri 90, sortie → restauration EXACTE par
+  lampe (colormode ct/hs respecté, éteintes restent éteintes). Zéro
+  cloud, zéro dépendance, best-effort partout.
+- `tv_hue_screen.dart` (Réglages TV → Lumières Philips Hue) :
+  rechercher / associer avec compte à rebours / activer / tester 4 s.
+- Hooks lecteur VOD only : start (cinemaStart idempotent), pause/resume,
+  dispose (cinemaEnd). 13 clés i18n × 8 langues. Tests parsing +
+  restauration (583 tests verts au total).
+
+### CI utilitaire
+- `publish-cinema-test.yml` (sur main, workflow_dispatch, input run_id) :
+  publie l'APK d'un run build-tv en prérelease `cinema-test` à LIEN
+  DIRECT (Downloader sans compte GitHub). Jamais « latest ».
 
 ### À savoir / reste à faire côté Cinéma
 - Les MESURES réelles des budgets s'observent sur box via la Boîte noire

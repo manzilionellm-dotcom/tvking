@@ -45,6 +45,7 @@ import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../vod/data/playback_position_repository.dart';
 import '../../vod/data/vod_download_service.dart';
+import '../../hue/data/hue_service.dart';
 import '../data/autoplay_policy.dart';
 import '../data/cine_perf.dart';
 import '../data/failure_explainer.dart';
@@ -421,6 +422,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Le lecteur se ferme → le réseau est libre : la file de téléchargements
     // Cinéma peut repartir (elle patientait pendant toute lecture réseau).
     VodDownloadService.instance.setPlaybackHold(false);
+    // Hue : sortie du film → chaque lampe revient exactement comme avant.
+    unawaited(HueService.instance.cinemaEnd());
     _hideTimer?.cancel();
     _presenceTimer?.cancel();
     _numTimer?.cancel();
@@ -702,6 +705,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // téléchargements : c'est ce qui permet de REGARDER l'épisode local
     // pendant que le SUIVANT se télécharge (boucle Netflix).
     if (_isVod) {
+      // Hue « salle de cinéma » : le film démarre → la pièce plonge dans le
+      // rouge braise. Idempotent (une scène active n'est pas relancée au
+      // zap d'épisode) et 100 % best-effort — ne retarde jamais la lecture.
+      unawaited(HueService.instance.cinemaStart());
       final String? local = VodDownloadService.instance.localFile(channel.id);
       if (local != null && await File(local).exists()) {
         if (!mounted || channel.id != _current.id) return;
@@ -1402,8 +1409,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   void _togglePlayPause() {
     if (_controller.isPlaying) {
       _controller.pause();
+      // Hue « salle de cinéma » : pause film → la lumière remonte un peu
+      // (no-op silencieux si pas de pont / option OFF / scène inactive).
+      if (_isVod) unawaited(HueService.instance.cinemaPause());
     } else {
       _controller.play();
+      if (_isVod) unawaited(HueService.instance.cinemaResume());
     }
     _showOverlayTemporarily();
     setState(() {});
