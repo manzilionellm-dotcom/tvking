@@ -129,6 +129,7 @@ class DiagnosticBatchRunner extends ChangeNotifier {
         notifyListeners();
 
         final Channel ch = channels[i];
+        final DateTime iterationStart = DateTime.now();
 
         // 1) Cast — on encaisse l'exception, le diagnostic est déjà
         //    archivé par le CastManager dans tous les cas (finally).
@@ -149,9 +150,19 @@ class DiagnosticBatchRunner extends ChangeNotifier {
         }
 
         // 2) Ramasser le diagnostic qui vient d'être archivé.
+        //    GARDE ANTI-DOUBLON (terrain 2026-07-17, rapport LG avec
+        //    sessions dupliquées) : quand castTo échoue par TIMEOUT
+        //    GLOBAL, il lève AVANT que la session inner n'ait archivé
+        //    son diagnostic (le finally de _castToInner ne s'exécute
+        //    qu'à sa complétion coopérative, parfois ~15 s plus tard,
+        //    un SOAP encore en vol). À cet instant, recent.first est
+        //    encore le diag de l'itération PRÉCÉDENTE → il était
+        //    ré-ajouté tel quel. On ne ramasse que si le diagnostic
+        //    date bien de CETTE itération.
         final List<CastSessionDiagnostic> recent =
             CastManager.instance.recentDiagnostics;
-        if (recent.isNotEmpty) {
+        if (recent.isNotEmpty &&
+            !recent.first.startedAt.isBefore(iterationStart)) {
           // Le 1er = celui qu'on vient d'archiver (insert à 0)
           _results.add(recent.first);
           notifyListeners();

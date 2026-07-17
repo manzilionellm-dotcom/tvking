@@ -67,6 +67,81 @@ void main() {
     });
   });
 
+  group('dlnaStartStrategyFor — souvenir de VICTOIRE (LG 2026-07-17)', () {
+    // Terrain : la cascade re-payait ~45 s d'essais perdus à CHAQUE
+    // chaîne (direct 15 s + relay+full en timeout) avant de retomber
+    // sur la stratégie gagnante. Le souvenir de victoire démarre
+    // directement dessus.
+    test('victoire fraîche → on démarre sur la stratégie gagnante', () {
+      expect(
+        CastManager.dlnaStartStrategyFor(
+          failStreak: 0,
+          lastFail: null,
+          now: now,
+          winningStrategy: 4, // relay+minimal (gagnant Roland Garros)
+          lastWin: now.subtract(const Duration(minutes: 2)),
+        ),
+        4,
+      );
+    });
+
+    test('victoire expirée (TTL) → échelle complète (0)', () {
+      expect(
+        CastManager.dlnaStartStrategyFor(
+          failStreak: 0,
+          lastFail: null,
+          now: now,
+          winningStrategy: 4,
+          lastWin: now.subtract(kDlnaPathMemoTtl + const Duration(seconds: 1)),
+        ),
+        0,
+      );
+    });
+
+    test('échec direct PLUS RÉCENT que la victoire → la mémoire '
+        'd\'échecs garde la main', () {
+      expect(
+        CastManager.dlnaStartStrategyFor(
+          failStreak: 2,
+          lastFail: now.subtract(const Duration(minutes: 1)),
+          now: now,
+          winningStrategy: 1, // vieille victoire directe
+          lastWin: now.subtract(const Duration(minutes: 5)),
+        ),
+        3,
+        reason: 'la TV vient de rester muette en direct : repartir '
+            'sur la victoire directe périmée re-paierait les timeouts',
+      );
+    });
+
+    test('victoire plus récente que le dernier échec → la victoire '
+        'gagne', () {
+      expect(
+        CastManager.dlnaStartStrategyFor(
+          failStreak: 2,
+          lastFail: now.subtract(const Duration(minutes: 5)),
+          now: now,
+          winningStrategy: 4,
+          lastWin: now.subtract(const Duration(minutes: 1)),
+        ),
+        4,
+      );
+    });
+
+    test('sans victoire → comportement historique inchangé', () {
+      expect(
+        CastManager.dlnaStartStrategyFor(
+          failStreak: 2,
+          lastFail: now.subtract(const Duration(minutes: 1)),
+          now: now,
+          winningStrategy: null,
+          lastWin: null,
+        ),
+        3,
+      );
+    });
+  });
+
   group('dlnaDirectSoapTimeoutFor — timeout SOAP adaptatif', () {
     test('aucun historique → timeout plein (15 s)', () {
       expect(

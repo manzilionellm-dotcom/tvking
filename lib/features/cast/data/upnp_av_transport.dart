@@ -42,6 +42,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
 
+import '../../../core/observability/structured_logger.dart';
 import '../domain/cast_device.dart';
 import 'cast_transport.dart';
 import 'dlna_profiles.dart';
@@ -172,12 +173,42 @@ class UpnpAvTransport implements CastTransport {
     final String metadata = _buildMetadataForCurrentMode(streamUrl, title);
 
     // (3) SetAVTransportURI — le point où ça pète habituellement.
-    await _soapCall(
-      action: 'SetAVTransportURI',
-      body: '<InstanceID>0</InstanceID>'
-          '<CurrentURI>${_escape(streamUrl)}</CurrentURI>'
-          '<CurrentURIMetaData>${_escape(metadata)}</CurrentURIMetaData>',
-    );
+    Future<void> setUri() => _soapCall(
+          action: 'SetAVTransportURI',
+          body: '<InstanceID>0</InstanceID>'
+              '<CurrentURI>${_escape(streamUrl)}</CurrentURI>'
+              '<CurrentURIMetaData>${_escape(metadata)}</CurrentURIMetaData>',
+        );
+    try {
+      await setUri();
+    } on Exception catch (e) {
+      // RATTRAPAGE 701 « Transition not available » (terrain LG webOS
+      // QNED816QA 2026-07-17) : la TV est restée VERROUILLÉE sur le
+      // cast précédent — le Stop best-effort de (1) n'a pas suffi et
+      // _waitUntilStopped a expiré en silence (3 s, TV encore en
+      // TRANSITIONING). Avant : l'échec faisait passer à la stratégie
+      // suivante… qui re-tapait la même TV coincée → 9 échecs de
+      // suite, ~90 s perdues, message « Ta TV est bloquée ». Ici : on
+      // DÉBLOQUE (Stop appuyé + attente RÉELLE de libération, 6 s) et
+      // on rejoue UNE fois SetAVTransportURI dans la même tentative.
+      if (!isTransitionNotAvailable(e.toString())) rethrow;
+      try {
+        await _soapCall(action: 'Stop', body: '<InstanceID>0</InstanceID>');
+      } on Exception {
+        // best effort — la TV peut refuser Stop tant qu'elle transite
+      }
+      final bool freed =
+          await _waitUntilStopped(maxWait: const Duration(seconds: 6));
+      StructuredLogger.instance.warn(
+        domain: 'cast',
+        event: 'dlna.transition_recovery',
+        ctx: <String, Object?>{
+          'deviceName': device.name,
+          'freed': freed,
+        },
+      );
+      await setUri(); // 2e refus → l'échec remonte au failover, comme avant
+    }
 
     // (4) Poll GetTransportInfo jusqu'à sortir de TRANSITIONING.
     //     Sans ça, Play sur un device en TRANSITIONING renvoie 500.
@@ -299,7 +330,11 @@ class UpnpAvTransport implements CastTransport {
   /// TRANSITIONING — ce qui fige l'appel sur webOS/LG (zapping cassé).
   /// Chaque sonde est bornée à 2s pour ne jamais bloquer si la TV ne
   /// répond pas à GetTransportInfo.
-  Future<void> _waitUntilStopped({
+  /// Renvoie `true` si le renderer est confirmé libéré (ou muet —
+  /// `null` = pas de GetTransportInfo, on ne peut pas faire mieux),
+  /// `false` si le délai expire alors qu'il est ENCORE occupé — le
+  /// rattrapage 701 s'en sert pour tracer l'issue dans la boîte noire.
+  Future<bool> _waitUntilStopped({
     required Duration maxWait,
     Duration pollEvery = const Duration(milliseconds: 200),
   }) async {
@@ -310,10 +345,21 @@ class UpnpAvTransport implements CastTransport {
       if (state == null ||
           state == 'STOPPED' ||
           state == 'NO_MEDIA_PRESENT') {
-        return;
+        return true;
       }
       await Future<void>.delayed(pollEvery);
     }
+    return false;
+  }
+
+  /// Le message d'erreur SOAP correspond-il au refus UPnP 701
+  /// « Transition not available » ? (TV verrouillée sur la lecture
+  /// précédente — LG webOS surtout). Pur et statique → testable.
+  @visibleForTesting
+  static bool isTransitionNotAvailable(String message) {
+    final String m = message.toLowerCase();
+    return m.contains('transition not available') ||
+        m.contains('code upnp 701');
   }
 
   /// Poll GetTransportInfo jusqu'à PLAYING (ou PAUSED_PLAYBACK).
@@ -504,18 +550,40 @@ class UpnpAvTransport implements CastTransport {
 
   /// Extrait le `<errorDescription>` ou `<faultstring>` d'une réponse
   /// SOAP 500 — uniquement pour les logs dev. Format UPnP 1.0 §3.2.2.
+  /// Certaines TVs n'envoient QUE `<errorCode>` (701 sans texte) : on
+  /// le remonte alors sous la forme « code UPnP NNN » pour que le
+  /// rattrapage 701 (voir playStream) puisse quand même le reconnaître.
   String? _parseSoapFault(String body) {
     try {
       final XmlDocument doc = XmlDocument.parse(body);
       final Iterable<XmlElement> errDesc =
           doc.findAllElements('errorDescription');
-      if (errDesc.isNotEmpty) return errDesc.first.innerText.trim();
+      if (errDesc.isNotEmpty && errDesc.first.innerText.trim().isNotEmpty) {
+        return errDesc.first.innerText.trim();
+      }
       final Iterable<XmlElement> fault = doc.findAllElements('faultstring');
-      if (fault.isNotEmpty) return fault.first.innerText.trim();
+      if (fault.isNotEmpty && fault.first.innerText.trim().isNotEmpty) {
+        // « UPnPError » générique : le vrai motif vit dans errorCode.
+        final String faultText = fault.first.innerText.trim();
+        final String? code = _firstElementText(doc, 'errorCode');
+        if (code != null && faultText.toLowerCase() == 'upnperror') {
+          return 'code UPnP $code';
+        }
+        return faultText;
+      }
+      final String? code = _firstElementText(doc, 'errorCode');
+      if (code != null) return 'code UPnP $code';
     } on Exception {
       // body pas XML → tant pis
     }
     return null;
+  }
+
+  static String? _firstElementText(XmlDocument doc, String tag) {
+    final Iterable<XmlElement> els = doc.findAllElements(tag);
+    if (els.isEmpty) return null;
+    final String text = els.first.innerText.trim();
+    return text.isEmpty ? null : text;
   }
 
   String _escape(String s) => s

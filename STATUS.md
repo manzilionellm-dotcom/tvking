@@ -164,10 +164,42 @@ maison-mère + miroir une fois la CI verte).
   testée (≠ kUntransmuxableAudio) ; commentaire R8 corrigé (les
   workflows passent en réalité proguard-android-OPTIMIZE.txt).
 
+### Suite (2026-07-17) — release publiée + verdict terrain + correctifs LG
+- **Release téléphone « prod » publiée** (run #1090, accord client) avec
+  le fix crash R8 — installable via Réglages → Vérifier les mises à jour.
+- **Boîte noire client reçue** (LG QNED816QA + SHIELD, panel
+  business-cdn-8k) : SHIELD **8/8** (100 %, 8,1 s de moyenne, relais
+  gagnant partout, audio AAC sur tout l'échantillon — pas d'AC-3
+  rencontré) ; LG DLNA **5/8** (21,6 s de moyenne). Causes LG lues dans
+  les logs : TV verrouillée sur le cast précédent (fault UPnP 701
+  « Transition not available »), ~45 s d'essais perdus par chaîne
+  (stratégie gagnante jamais mémorisée), « limite atteinte » (la TV
+  tire encore l'ancien flux pendant le pré-vol). Post-mortem : une
+  chaîne HEVC échoue via relais TS sur SHIELD (CAF exige du fMP4 pour
+  le HEVC → argument de plus pour le chantier fMP4). Chaînes TENNIS
+  EVENT 1 / FRANCE 3 : le panel sert `black.ts` (placeholder) au probe.
+- **Correctifs livrés (chemin DLNA uniquement, Chromecast intouché)** :
+  1. Rattrapage 701 dans `UpnpAvTransport.playStream` : Stop appuyé +
+     attente réelle de libération (6 s) + UNE nouvelle chance de
+     SetAVTransportURI (event boîte noire `dlna.transition_recovery`) ;
+     `_parseSoapFault` remonte aussi `errorCode` nu (« code UPnP 701 »).
+  2. Stop DLNA best-effort (borné 3 s) AVANT le pré-vol dans
+     `_castToInner` — miroir du réflexe Chromecast (contention
+     1-connexion).
+  3. Souvenir de la STRATÉGIE GAGNANTE par TV (`_DlnaPathMemo`,
+     TTL 15 min, prioritaire si plus frais que le dernier échec,
+     oublié sur échec total) — event `failover.start_at_winner`.
+  4. Diagnostic : garde anti-doublon dans `DiagnosticBatchRunner`
+     (sessions dupliquées du rapport = diag périmé ramassé après un
+     timeout global).
+  Tests : faux renderer DLNA HTTP (701 rattrapé/persistant/code nu/716
+  non rattrapé) + souvenir de victoire (5 cas purs).
+
 ### Prochaines étapes (mission casting)
-1. Récupérer la **boîte noire client** : corréler
-   `ready_audio_at_risk` ↔ plaintes, lire receiverModel/Maker, vérifier
-   zéro `keepalive_failed` depuis c908e4d.
+1. Vérifier au prochain export client que la LG remonte à ~8/8 et que
+   `dlna.transition_recovery` / `failover.start_at_winner` apparaissent.
+   Corréler `ready_audio_at_risk` ↔ plaintes quand une chaîne AC-3 sera
+   dans l'échantillon.
 2. **Brancher le fMP4** derrière une garde stricte : récepteur web
    (non-ExoPlayer) ET audio ∈ {ac3, eac3} — population qui échoue à
    coup sûr aujourd'hui — avec repli TS inchangé et kill switch.

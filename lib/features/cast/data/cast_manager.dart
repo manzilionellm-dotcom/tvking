@@ -99,6 +99,17 @@ const Duration kDlnaShortSoapTimeout = Duration(seconds: 8);
 class _DlnaPathMemo {
   int directConnFailStreak = 0;
   DateTime? lastDirectConnFail;
+
+  /// STRATÉGIE GAGNANTE du dernier cast réussi sur cet appareil
+  /// (terrain LG webOS 2026-07-17 : la cascade re-payait ~45 s
+  /// d'essais perdus à CHAQUE chaîne — direct 15 s + relay+full en
+  /// timeout — avant de retomber sur la gagnante). Fraîcheur bornée
+  /// par [kDlnaPathMemoTtl] : expirée, on re-déroule l'échelle
+  /// complète (le direct, plus autonome, mérite d'être re-sondé).
+  /// Un échec TOTAL de cascade efface ce souvenir (la TV a peut-être
+  /// changé d'humeur — firmware, réseau, panel).
+  int? winningStrategy;
+  DateTime? lastWin;
 }
 
 /// Phase 1+/B5 — Exception interne levee par `_checkCancelled` quand
@@ -822,6 +833,22 @@ class CastManager extends ChangeNotifier {
         await GoogleCastApi.instance.stop();
       } on Exception catch (_) {/* best-effort : le probe tranchera */}
     }
+    // MIROIR DLNA du réflexe ci-dessus (terrain LG webOS 2026-07-17,
+    // « limite atteinte » ×3 dans la boîte noire) : sur les stratégies
+    // DIRECTES, la TV DLNA tire ELLE-MÊME le flux fournisseur — et
+    // continue de le tirer pendant tout le pré-vol de la nouvelle
+    // chaîne → le panel 1-connexion refuse le probe. On arrête la
+    // lecture d'abord. Best-effort et borné COURT : si la TV traîne,
+    // le Stop systématique de playStream refera le ménage — ici on
+    // veut juste libérer le slot fournisseur avant le probe. Bonus :
+    // la TV a ~toute la durée du pré-vol pour se libérer → moins de
+    // 701 « Transition not available » au SetAVTransportURI suivant.
+    final Object? prevTransport = _transport;
+    if (prevTransport is UpnpAvTransport) {
+      try {
+        await prevTransport.stop().timeout(const Duration(seconds: 3));
+      } on Exception catch (_) {/* best-effort : le probe tranchera */}
+    }
     _setProgress(CastProgress.validating);
 
     final CastSessionDiagnostic diag = CastSessionDiagnostic(
@@ -1332,17 +1359,27 @@ class CastManager extends ChangeNotifier {
     final _DlnaPathMemo memo =
         _dlnaPathMemos.putIfAbsent(transport.device.id, _DlnaPathMemo.new);
     final DateTime nowForMemo = DateTime.now();
-    final int startStrategy = dlnaStartStrategyFor(
+    // Le souvenir de victoire peut viser une variante altmime (s ≥ 5)
+    // dont l'index dépend du MIME de CETTE chaîne : on borne à
+    // l'échelle réelle du jour (au pire on retombe une marche avant).
+    int startStrategy = dlnaStartStrategyFor(
       failStreak: memo.directConnFailStreak,
       lastFail: memo.lastDirectConnFail,
       now: nowForMemo,
+      winningStrategy: memo.winningStrategy,
+      lastWin: memo.lastWin,
     );
+    if (startStrategy > totalStrategies - 1) {
+      startStrategy = totalStrategies - 1;
+    }
     if (startStrategy > 0) {
+      final bool fromWin = startStrategy == memo.winningStrategy;
       StructuredLogger.instance.info(
         domain: 'cast',
-        event: 'failover.start_at_relay',
+        event: fromWin ? 'failover.start_at_winner' : 'failover.start_at_relay',
         ctx: <String, Object?>{
           'deviceName': transport.device.name,
+          'startStrategy': startStrategy,
           'directConnFailStreak': memo.directConnFailStreak,
         },
       );
@@ -1491,6 +1528,10 @@ class CastManager extends ChangeNotifier {
           memo.directConnFailStreak = 0;
           memo.lastDirectConnFail = null;
         }
+        // Souvenir de victoire : le prochain cast sur cette TV démarre
+        // ICI au lieu de re-payer tout le gradient (TTL 15 min).
+        memo.winningStrategy = s;
+        memo.lastWin = DateTime.now();
         // Revue 2026-07-09 (MINEUR 6) : si une strategie RELAIS a
         // echoue avant qu'une strategie DIRECTE ne gagne,
         // _currentRelayUrl est reste pose → le keep-alive foreground
@@ -1572,6 +1613,11 @@ class CastManager extends ChangeNotifier {
         }
       }
     }
+    // Échec TOTAL : le souvenir de victoire ne vaut plus rien (TV
+    // coincée, panel qui a changé d'humeur…) — on l'efface pour que la
+    // prochaine session re-déroule l'échelle complète depuis le début.
+    memo.winningStrategy = null;
+    memo.lastWin = null;
     throw lastError ?? Exception('Cast DLNA échec inconnu');
   }
 
@@ -1637,7 +1683,20 @@ class CastManager extends ChangeNotifier {
     required int failStreak,
     required DateTime? lastFail,
     required DateTime now,
+    int? winningStrategy,
+    DateTime? lastWin,
   }) {
+    // SOUVENIR DE VICTOIRE prioritaire (terrain LG 2026-07-17) : si ce
+    // même appareil a un cast gagnant FRAIS — et plus récent que le
+    // dernier échec direct, sinon la mémoire d'échecs sait mieux — on
+    // démarre directement sur la stratégie qui a marché. Zapping :
+    // ~45 s d'essais perdus économisés par chaîne sur les TV têtues.
+    if (winningStrategy != null &&
+        lastWin != null &&
+        now.difference(lastWin) < kDlnaPathMemoTtl &&
+        (lastFail == null || lastWin.isAfter(lastFail))) {
+      return winningStrategy;
+    }
     final bool recent =
         lastFail != null && now.difference(lastFail) < kDlnaPathMemoTtl;
     return (recent && failStreak >= 2) ? 3 : 0;
