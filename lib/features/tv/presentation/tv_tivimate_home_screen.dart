@@ -19,6 +19,7 @@
 // =========================================================
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -294,13 +295,19 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                     _preview.value = c;
                   }
                 },
-                child: ValueListenableBuilder<Channel?>(
-                  valueListenable: _preview,
-                  builder: (BuildContext context, Channel? p, _) =>
+                // _ActiveWatcher (et non ValueListenableBuilder) : un
+                // déplacement de focus notifiait TOUTES les lignes visibles
+                // (~12-15 _ChannelRow reconstruites) pour 2 qui changent —
+                // ici seule la ligne qui GAGNE et celle qui PERD `active`
+                // se reconstruisent.
+                child: _ActiveWatcher(
+                  listenable: _preview,
+                  channelId: c.id,
+                  builder: (BuildContext context, bool active) =>
                       _ChannelRow(
                     number: i + 1,
                     channel: c,
-                    active: p?.id == c.id,
+                    active: active,
                     autofocus: i == 0,
                     onSelect: () => _play(i),
                   ),
@@ -341,7 +348,12 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                       fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 10),
-                MiniEpgNowNext(channelId: c.id),
+                // Débouncé : l'aperçu suit le FOCUS — sans répit, défiler
+                // 50 chaînes = 100 requêtes SQLite (patron des 400 ms de
+                // _PreviewPrograms, tv_channels_screen).
+                MiniEpgNowNext(
+                    channelId: c.id,
+                    debounce: const Duration(milliseconds: 350)),
               ],
             ),
           ),
@@ -468,6 +480,61 @@ class _GroupTile extends StatelessWidget {
       },
     );
   }
+}
+
+/// Écoute [listenable] mais ne reconstruit QUE si `active` (== « la chaîne
+/// prévisualisée est la mienne ») CHANGE. Un ValueListenableBuilder par
+/// ligne reconstruisait toutes les lignes visibles à chaque cran de D-pad ;
+/// ici, seules la ligne qui gagne et celle qui perd le surlignage bougent.
+class _ActiveWatcher extends StatefulWidget {
+  const _ActiveWatcher({
+    required this.listenable,
+    required this.channelId,
+    required this.builder,
+  });
+
+  final ValueListenable<Channel?> listenable;
+  final String channelId;
+  final Widget Function(BuildContext context, bool active) builder;
+
+  @override
+  State<_ActiveWatcher> createState() => _ActiveWatcherState();
+}
+
+class _ActiveWatcherState extends State<_ActiveWatcher> {
+  late bool _active = widget.listenable.value?.id == widget.channelId;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.listenable.addListener(_onChanged);
+  }
+
+  @override
+  void didUpdateWidget(_ActiveWatcher old) {
+    super.didUpdateWidget(old);
+    if (!identical(old.listenable, widget.listenable)) {
+      old.listenable.removeListener(_onChanged);
+      widget.listenable.addListener(_onChanged);
+    }
+    // Recyclage d'item (le builder réutilise ce State pour une autre
+    // chaîne) : on réévalue sans attendre une notification.
+    _active = widget.listenable.value?.id == widget.channelId;
+  }
+
+  @override
+  void dispose() {
+    widget.listenable.removeListener(_onChanged);
+    super.dispose();
+  }
+
+  void _onChanged() {
+    final bool now = widget.listenable.value?.id == widget.channelId;
+    if (now != _active && mounted) setState(() => _active = now);
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _active);
 }
 
 /// Ligne de chaîne : [n°] [logo] [nom] [► si active]. Focus = pill blanc.

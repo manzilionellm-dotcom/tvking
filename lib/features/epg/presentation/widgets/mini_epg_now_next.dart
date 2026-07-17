@@ -27,11 +27,22 @@ import '../../domain/epg_program.dart';
 import '../epg_format.dart';
 
 class MiniEpgNowNext extends StatefulWidget {
-  const MiniEpgNowNext({required this.channelId, super.key});
+  const MiniEpgNowNext({
+    required this.channelId,
+    this.debounce = Duration.zero,
+    super.key,
+  });
 
   /// Id de la chaîne en cours de lecture. Quand il change (zapping),
   /// on recharge le now/next pour la nouvelle chaîne.
   final String channelId;
+
+  /// Répit avant de recharger l'EPG quand [channelId] CHANGE. À fournir
+  /// quand le widget suit le FOCUS D-pad (aperçu TiviMate) : sans répit,
+  /// défiler 50 chaînes = 100 requêtes SQLite (2 par cran). Zéro (défaut)
+  /// = comportement historique du lecteur (le zap est déjà débouncé en
+  /// amont par le répit de zapping).
+  final Duration debounce;
 
   @override
   State<MiniEpgNowNext> createState() => _MiniEpgNowNextState();
@@ -41,6 +52,7 @@ class _MiniEpgNowNextState extends State<MiniEpgNowNext> {
   EpgProgram? _now;
   EpgProgram? _next;
   Timer? _ticker;
+  Timer? _reload;
 
   @override
   void initState() {
@@ -53,8 +65,16 @@ class _MiniEpgNowNextState extends State<MiniEpgNowNext> {
   @override
   void didUpdateWidget(covariant MiniEpgNowNext oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Changement de chaîne → on recharge le programme.
-    if (oldWidget.channelId != widget.channelId) _load();
+    // Changement de chaîne → on recharge le programme (débouncé si demandé :
+    // seule la chaîne où le focus SE POSE interroge SQLite).
+    if (oldWidget.channelId != widget.channelId) {
+      _reload?.cancel();
+      if (widget.debounce == Duration.zero) {
+        _load();
+      } else {
+        _reload = Timer(widget.debounce, _load);
+      }
+    }
   }
 
   Future<void> _load() async {
@@ -72,6 +92,7 @@ class _MiniEpgNowNextState extends State<MiniEpgNowNext> {
   @override
   void dispose() {
     _ticker?.cancel();
+    _reload?.cancel();
     super.dispose();
   }
 
