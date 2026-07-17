@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.view.SurfaceView
 import android.view.View
@@ -70,6 +71,18 @@ class NativeVideoView(
         // sur le main thread). Sert au « couvre-feu » ci-dessous.
         private val instances = mutableSetOf<NativeVideoView>()
 
+        // THREAD PLAYER PARTAGÉ (patron Media3 « threading model » officiel :
+        // ExoPlayer.Builder.setLooper). TOUT accès au player passe par lui —
+        // surtout release(), qui BLOQUE son appelant jusqu'à ~500 ms (codecs
+        // matériels + AudioTrack). Sur le main thread Android, ce blocage
+        // tombait pile en fin d'animation de pop : c'était LE « ça accroche
+        // en quittant le direct ». Un seul thread pour toutes les vues =
+        // les releases/préparations se sérialisent proprement (le codec de
+        // l'ancien lecteur est rendu avant que le suivant le réclame), et
+        // le main thread ne porte plus jamais une opération lecteur.
+        private val playerThread =
+            HandlerThread("NativeVideoPlayerOps").apply { start() }
+
         /**
          * Coupe TOUS les lecteurs — appelé par le plugin quand l'ACTIVITÉ passe
          * en arrière-plan (Home / veille / autre app). GARANTIE NATIVE « zéro
@@ -79,7 +92,7 @@ class NativeVideoView(
          * pause remonte à Dart via onIsPlayingChanged → l'UI reste cohérente.
          */
         fun pauseAll() {
-            for (v in instances) v.player.pause()
+            for (v in instances) v.playerHandler.post { v.player.pause() }
         }
     }
 
@@ -94,7 +107,18 @@ class NativeVideoView(
 
     private val channel = MethodChannel(messenger, "native_video_player/$id")
     private val player: ExoPlayer
+
+    // RÉPARTITION DES THREADS (contrat de ce fichier) :
+    //   • `handler` (MAIN)         : MethodChannel (les envois vers Dart
+    //     DOIVENT partir du main thread) + vues Android (SubtitleView).
+    //   • `playerHandler` (PLAYER) : TOUT accès à `player` (contrat
+    //     setLooper), l'état de reconnexion (currentUrl/retryCount/
+    //     pendingRetry), la pompe de position et currentTracks.
+    // Les callbacks Player.Listener arrivent sur le thread PLAYER (c'est le
+    // looper d'application du lecteur) → chaque envoi canal fait un
+    // handler.post, chaque toucher de vue aussi.
     private val handler = Handler(Looper.getMainLooper())
+    private val playerHandler = Handler(playerThread.looper)
 
     private var currentUrl: String? = null
 
@@ -128,10 +152,11 @@ class NativeVideoView(
     private var networkCallbackRegistered = false
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            // Callback hors thread principal → on repasse par le handler.
-            handler.post {
+            // Callback hors thread → on repasse par le thread PLAYER (l'état
+            // de retry et setMedia y sont confinés).
+            playerHandler.post {
                 val retry = pendingRetry ?: return@post
-                handler.removeCallbacks(retry)
+                playerHandler.removeCallbacks(retry)
                 pendingRetry = null
                 retry.run()
             }
@@ -166,8 +191,11 @@ class NativeVideoView(
 
     private val positionPump = object : Runnable {
         override fun run() {
+            // Tourne sur le thread PLAYER (les getters ExoPlayer exigent le
+            // looper d'application) ; chaque envoi canal repasse par le main.
             if (player.isPlaying) {
-                channel.invokeMethod("position", player.currentPosition)
+                val pos = player.currentPosition
+                handler.post { channel.invokeMethod("position", pos) }
             }
             // DURÉE : connue uniquement pour un contenu SEEKABLE (film / VOD /
             // catch-up). Un DIRECT renvoie TIME_UNSET → on émet 0 (= pas de
@@ -176,16 +204,17 @@ class NativeVideoView(
             val durMs = if (rawDur != androidx.media3.common.C.TIME_UNSET && rawDur > 0) rawDur else 0L
             if (durMs != lastDurationMs) {
                 lastDurationMs = durMs
-                channel.invokeMethod("duration", durMs)
+                handler.post { channel.invokeMethod("duration", durMs) }
             }
             // AVANCE CHARGÉE (façon YouTube) : jusqu'où le tampon est déjà
             // rempli EN AVANT de la lecture. Sert à dessiner la « ligne grise »
             // sur la barre de progression VOD. Émis uniquement pour un média
             // seekable (film) — inutile sur un direct.
             if (durMs > 0) {
-                channel.invokeMethod("buffered", player.bufferedPosition)
+                val buffered = player.bufferedPosition
+                handler.post { channel.invokeMethod("buffered", buffered) }
             }
-            handler.postDelayed(this, 500)
+            playerHandler.postDelayed(this, 500)
         }
     }
 
@@ -338,28 +367,38 @@ class NativeVideoView(
             .setTrackSelector(trackSelector)
             .setBandwidthMeter(bandwidthMeter)
             .setHandleAudioBecomingNoisy(true)
+            // Looper d'application = thread PLAYER partagé (cf. companion) :
+            // les appels au lecteur — release() en tête — ne bloquent plus
+            // JAMAIS le main thread. build() depuis le main est le patron
+            // documenté (« Threading model » Media3).
+            .setLooper(playerThread.looper)
             .build()
 
-        player.setVideoSurfaceView(surfaceView)
-        player.addListener(this)
-        player.playWhenReady = true
-        // ZAP FLUIDE : garde les décodeurs MediaCodec « chauds » entre deux
-        // préparations (setUrl au zap, retry silencieux). Sans ça, ExoPlayer
-        // relâche le codec matériel à chaque stop/prepare et la box (surtout
-        // à faible RAM) paie ~300-800 ms de ré-initialisation par chaîne.
-        player.setForegroundMode(true)
+        // Toute la configuration du lecteur bascule sur SON thread (contrat
+        // setLooper). Postée d'un bloc : elle s'exécute avant tout setUrl
+        // (même file, ordre FIFO).
+        playerHandler.post {
+            player.setVideoSurfaceView(surfaceView)
+            player.addListener(this)
+            player.playWhenReady = true
+            // ZAP FLUIDE : garde les décodeurs MediaCodec « chauds » entre deux
+            // préparations (setUrl au zap, retry silencieux). Sans ça, ExoPlayer
+            // relâche le codec matériel à chaque stop/prepare et la box (surtout
+            // à faible RAM) paie ~300-800 ms de ré-initialisation par chaîne.
+            player.setForegroundMode(true)
+
+            // SOUS-TITRES DÉSACTIVÉS par défaut (comportement historique : rien
+            // n'était rendu). L'utilisateur les active via le bouton Sous-titres.
+            player.trackSelectionParameters = player.trackSelectionParameters
+                .buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                .build()
+        }
 
         // Reprise réseau instantanée : actif toute la vie du lecteur (un
         // callback réseau enregistré est quasi gratuit ; il ne FAIT quelque
         // chose que si un retry attend son back-off).
         registerNetworkCallback()
-
-        // SOUS-TITRES DÉSACTIVÉS par défaut (comportement historique : rien
-        // n'était rendu). L'utilisateur les active via le bouton Sous-titres.
-        player.trackSelectionParameters = player.trackSelectionParameters
-            .buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-            .build()
 
         // Empilement vidéo + sous-titres (style par défaut de l'appareil).
         val match = FrameLayout.LayoutParams(
@@ -371,13 +410,17 @@ class NativeVideoView(
         subtitleView.setUserDefaultTextSize()
         container.addView(subtitleView, match)
 
-        handler.postDelayed(positionPump, 500)
+        playerHandler.postDelayed(positionPump, 500)
     }
 
     override fun getView(): View = container
 
     // ---- Dart → natif -------------------------------------------------------
 
+    // Arrive sur le MAIN thread (MethodChannel). Chaque opération lecteur est
+    // POSTÉE sur le thread player puis on répond tout de suite : Dart ignore
+    // les résultats (fire-and-forget), et la file FIFO du thread player
+    // garantit l'ordre des commandes (setUrl → play → seekTo…).
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "setUrl" -> {
@@ -389,31 +432,33 @@ class NativeVideoView(
                 // Signature de lecteur CUSTOM (diagnostic multi-UA côté Dart,
                 // cf. currentUserAgent) — absente/vide = User-Agent par défaut.
                 val ua = call.argument<String>("userAgent")?.takeIf { it.isNotBlank() }
-                cancelRetry()
-                // On ne remet le budget de reconnexion silencieuse à zéro QUE
-                // pour une VRAIE nouvelle chaîne (URL différente). Si Dart
-                // ré-ouvre la MÊME URL (recover sur flux gelé), on CONSERVE le
-                // compteur → après maxSilentRetries on remonte enfin l'erreur à
-                // Dart au lieu de relancer 8 essais à l'infini (boucle CPU/réseau).
-                if (url != currentUrl) retryCount = 0
-                currentUrl = url
-                currentUserAgent = ua
-                setMedia(url, ua)
+                playerHandler.post {
+                    cancelRetry()
+                    // On ne remet le budget de reconnexion silencieuse à zéro QUE
+                    // pour une VRAIE nouvelle chaîne (URL différente). Si Dart
+                    // ré-ouvre la MÊME URL (recover sur flux gelé), on CONSERVE le
+                    // compteur → après maxSilentRetries on remonte enfin l'erreur à
+                    // Dart au lieu de relancer 8 essais à l'infini (boucle CPU/réseau).
+                    if (url != currentUrl) retryCount = 0
+                    currentUrl = url
+                    currentUserAgent = ua
+                    setMedia(url, ua)
+                }
                 result.success(null)
             }
             "play" -> {
-                player.play()
+                playerHandler.post { player.play() }
                 result.success(null)
             }
             "setVolume" -> {
                 // Multi-vue : on coupe le son des tuiles inactives (volume 0) et
                 // on ne laisse le son QUE sur la tuile active (volume 1).
                 val v = (call.argument<Double>("volume") ?: 1.0).toFloat()
-                player.volume = v.coerceIn(0f, 1f)
+                playerHandler.post { player.volume = v.coerceIn(0f, 1f) }
                 result.success(null)
             }
             "pause" -> {
-                player.pause()
+                playerHandler.post { player.pause() }
                 result.success(null)
             }
             "seekTo" -> {
@@ -422,30 +467,36 @@ class NativeVideoView(
                 // effet utile sur un direct non-seekable (ExoPlayer l'ignore).
                 val ms = (call.argument<Int>("ms") ?: 0).toLong()
                 val safe = ms.coerceAtLeast(0L)
-                player.seekTo(safe)
+                playerHandler.post { player.seekTo(safe) }
                 result.success(null)
             }
             "setAudioTrack" -> {
                 // Sélectionne la N-ième piste AUDIO (index dans la liste envoyée
                 // à Dart par onTracksChanged).
-                selectTrack(androidx.media3.common.C.TRACK_TYPE_AUDIO,
-                    call.argument<Int>("index") ?: 0)
+                val idx = call.argument<Int>("index") ?: 0
+                playerHandler.post {
+                    selectTrack(androidx.media3.common.C.TRACK_TYPE_AUDIO, idx)
+                }
                 result.success(null)
             }
             "setSubtitleTrack" -> {
                 // index >= 0 → active la N-ième piste TEXTE ; -1 → sous-titres OFF.
                 val idx = call.argument<Int>("index") ?: -1
                 if (idx < 0) {
-                    player.trackSelectionParameters =
-                        player.trackSelectionParameters.buildUpon()
-                            .setTrackTypeDisabled(
-                                androidx.media3.common.C.TRACK_TYPE_TEXT, true)
-                            .clearOverridesOfType(
-                                androidx.media3.common.C.TRACK_TYPE_TEXT)
-                            .build()
-                    subtitleView.setCues(null)
+                    playerHandler.post {
+                        player.trackSelectionParameters =
+                            player.trackSelectionParameters.buildUpon()
+                                .setTrackTypeDisabled(
+                                    androidx.media3.common.C.TRACK_TYPE_TEXT, true)
+                                .clearOverridesOfType(
+                                    androidx.media3.common.C.TRACK_TYPE_TEXT)
+                                .build()
+                    }
+                    subtitleView.setCues(null) // vue → main thread (on y est)
                 } else {
-                    selectTrack(androidx.media3.common.C.TRACK_TYPE_TEXT, idx)
+                    playerHandler.post {
+                        selectTrack(androidx.media3.common.C.TRACK_TYPE_TEXT, idx)
+                    }
                 }
                 result.success(null)
             }
@@ -477,35 +528,42 @@ class NativeVideoView(
 
     // ---- natif → Dart (Player.Listener) ------------------------------------
 
+    // NB threading : ces callbacks arrivent sur le thread PLAYER (looper
+    // d'application du lecteur). L'état de retry se manipule ICI même ;
+    // chaque envoi vers Dart repasse par le main (contrat MethodChannel).
     override fun onPlaybackStateChanged(playbackState: Int) {
         when (playbackState) {
-            Player.STATE_BUFFERING -> channel.invokeMethod("buffering", true)
+            Player.STATE_BUFFERING ->
+                handler.post { channel.invokeMethod("buffering", true) }
             Player.STATE_READY -> {
                 retryCount = 0 // lecture OK → on oublie les erreurs passées
-                channel.invokeMethod("buffering", false)
+                handler.post { channel.invokeMethod("buffering", false) }
             }
-            Player.STATE_ENDED -> channel.invokeMethod("ended", null)
+            Player.STATE_ENDED ->
+                handler.post { channel.invokeMethod("ended", null) }
             Player.STATE_IDLE -> { /* après erreur : géré par onPlayerError */ }
         }
     }
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
-        channel.invokeMethod("playing", isPlaying)
+        handler.post { channel.invokeMethod("playing", isPlaying) }
     }
 
     override fun onRenderedFirstFrame() {
         retryCount = 0
-        channel.invokeMethod("firstFrame", null)
+        handler.post { channel.invokeMethod("firstFrame", null) }
     }
 
     // Taille réelle de la vidéo → Dart peut proposer les formats d'image
     // (Auto = ratio réel, 16:9, 4:3, Étiré) au lieu du 16:9 figé.
     override fun onVideoSizeChanged(videoSize: VideoSize) {
         if (videoSize.width > 0 && videoSize.height > 0) {
-            channel.invokeMethod(
-                "videoSize",
-                mapOf("width" to videoSize.width, "height" to videoSize.height),
-            )
+            handler.post {
+                channel.invokeMethod(
+                    "videoSize",
+                    mapOf("width" to videoSize.width, "height" to videoSize.height),
+                )
+            }
         }
     }
 
@@ -542,12 +600,17 @@ class NativeVideoView(
                 )
             }
         }
-        channel.invokeMethod("tracks", mapOf("audio" to audio, "text" to text))
+        handler.post {
+            channel.invokeMethod("tracks", mapOf("audio" to audio, "text" to text))
+        }
     }
 
     // Sous-titres décodés par ExoPlayer → dessinés par la SubtitleView.
+    // Vue Android → main thread obligatoire (le callback arrive sur le
+    // thread player).
     override fun onCues(cueGroup: CueGroup) {
-        subtitleView.setCues(cueGroup.cues)
+        val cues = cueGroup.cues
+        handler.post { subtitleView.setCues(cues) }
     }
 
     override fun onPlayerError(error: PlaybackException) {
@@ -556,7 +619,7 @@ class NativeVideoView(
         // IMMÉDIATEMENT, sans compter d'essai ni montrer quoi que ce soit.
         // C'est la recommandation officielle Media3 pour les flux live.
         if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
-            channel.invokeMethod("buffering", true)
+            handler.post { channel.invokeMethod("buffering", true) }
             scheduleRetry(0L)
             return
         }
@@ -566,7 +629,7 @@ class NativeVideoView(
         // (qui bascule sur la variante d'URL du même flux).
         if (retryCount < maxSilentRetries) {
             retryCount++
-            channel.invokeMethod("buffering", true)
+            handler.post { channel.invokeMethod("buffering", true) }
             val delay = (500L * (1 shl (retryCount - 1))).coerceAtMost(3_000L)
             scheduleRetry(delay)
         } else {
@@ -578,15 +641,17 @@ class NativeVideoView(
             // "ERROR_CODE_IO_BAD_HTTP_STATUS") + le message de la CAUSE racine
             // (souvent plus parlant que le message de façade) donnent au
             // sender de quoi journaliser un diagnostic exploitable à distance.
-            channel.invokeMethod(
-                "error",
-                mapOf(
-                    "message" to error.message,
-                    "errorCode" to error.errorCode,
-                    "errorCodeName" to error.errorCodeName,
-                    "causeMessage" to error.cause?.message,
-                ),
-            )
+            handler.post {
+                channel.invokeMethod(
+                    "error",
+                    mapOf(
+                        "message" to error.message,
+                        "errorCode" to error.errorCode,
+                        "errorCodeName" to error.errorCodeName,
+                        "causeMessage" to error.cause?.message,
+                    ),
+                )
+            }
         }
     }
 
@@ -645,6 +710,8 @@ class NativeVideoView(
         player.playWhenReady = true
     }
 
+    // Retry : état et exécution CONFINÉS au thread player (appelé par
+    // onPlayerError, setUrl et networkCallback — tous trois y passent).
     private fun scheduleRetry(delayMs: Long) {
         cancelRetry()
         val r = object : Runnable {
@@ -664,33 +731,44 @@ class NativeVideoView(
             }
         }
         pendingRetry = r
-        handler.postDelayed(r, delayMs)
+        playerHandler.postDelayed(r, delayMs)
     }
 
     private fun cancelRetry() {
-        pendingRetry?.let { handler.removeCallbacks(it) }
+        pendingRetry?.let { playerHandler.removeCallbacks(it) }
         pendingRetry = null
     }
 
     // ---- cycle de vie -------------------------------------------------------
 
     override fun dispose() {
+        // Main thread : vues, canal, callbacks système — IMMÉDIAT.
         unregisterNetworkCallback()
         instances.remove(this)
-        cancelRetry()
-        handler.removeCallbacks(positionPump)
-        player.removeListener(this)
         // DÉFENSE ANTI-« TRAME FANTÔME » (terrain 2026-07-16) : une
         // SurfaceView en hybrid composition GARDE sa dernière trame
         // décodée tant qu'elle n'est pas détachée — l'aperçu d'accueil
-        // restait incrusté par-dessus l'écran suivant. On détache la
-        // surface du player ET on retire les vues du conteneur pour que
-        // la couche Android disparaisse avec la dispose, pas « plus
-        // tard » au bon vouloir du compositeur.
-        player.clearVideoSurfaceView(surfaceView)
-        player.setForegroundMode(false) // relâche les codecs avant release
-        player.release()
+        // restait incrusté par-dessus l'écran suivant. Retirer les vues
+        // ICI, synchrone, détache la SurfaceView de la fenêtre : la
+        // couche Android disparaît avec la dispose, pas « plus tard »
+        // au bon vouloir du compositeur.
         container.removeAllViews()
         channel.setMethodCallHandler(null)
+
+        // Thread player : l'arrêt RÉEL du lecteur. setForegroundMode(false)
+        // et release() BLOQUENT leur appelant (codecs matériels + AudioTrack,
+        // jusqu'à ~500 ms) — c'était exécuté sur le main thread Android, en
+        // fin d'animation de pop : LE « ça accroche en quittant le direct ».
+        // Ici le blocage tombe sur le thread player partagé ; sa file FIFO
+        // garantit en prime que le codec est rendu AVANT que le lecteur
+        // suivant (aperçu d'accueil, zap) ne le réclame.
+        playerHandler.post {
+            cancelRetry()
+            playerHandler.removeCallbacks(positionPump)
+            player.removeListener(this)
+            player.clearVideoSurfaceView(surfaceView)
+            player.setForegroundMode(false) // relâche les codecs avant release
+            player.release()
+        }
     }
 }
