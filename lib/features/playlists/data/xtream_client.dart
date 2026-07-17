@@ -40,6 +40,7 @@ import '../../../core/app/device_memory.dart';
 import '../../../core/crash/crash_reporting.dart';
 import '../../../core/i18n/l10n_now.dart';
 import '../../channels/domain/channel.dart';
+import '../../epg/domain/epg_program.dart';
 import '../../player/data/player_settings.dart';
 import '../../player/data/stream_diagnostics.dart';
 import '../../vod/domain/vod_info.dart';
@@ -289,6 +290,21 @@ class XtreamClient {
     return channels;
   }
 
+  /// PONT EPG : alias `epg_channel_id` → id de chaîne (`xtream-N`), accumulés
+  /// pendant l'import. Le XMLTV du panel (`xmltv.php`) identifie ses chaînes
+  /// par `epg_channel_id` (ex. « TF1.fr ») alors que nos chaînes s'appellent
+  /// `xtream-<stream_id>` : sans ce pont, AUCUN programme importé ne matchait
+  /// une chaîne Xtream → « Programme non disponible » partout (mismatch
+  /// confirmé par la boîte noire : epg.import_ok avec count=0 et known élevé).
+  /// Persisté par PlaylistRepository dans `epg_aliases`, consommé par
+  /// EpgRepository au moment d'insérer les programmes. Borné (anti-OOM).
+  final Map<String, String> _epgAliases = <String, String>{};
+  static const int _kEpgAliasCap = 60000;
+
+  /// Alias collectés par le DERNIER import/fetch live (epg_channel_id → id).
+  Map<String, String> get epgChannelAliases =>
+      Map<String, String>.unmodifiable(_epgAliases);
+
   /// Mappe UN objet JSON `get_live_streams` en [Channel] (parsing défensif :
   /// Xtream renvoie souvent des nombres en String). Renvoie `null` si l'entrée
   /// est inexploitable (pas de stream_id).
@@ -299,6 +315,11 @@ class XtreamClient {
   ) {
     final String streamId = item['stream_id']?.toString() ?? '';
     if (streamId.isEmpty) return null;
+    final String epgChannelId =
+        item['epg_channel_id']?.toString().trim() ?? '';
+    if (epgChannelId.isNotEmpty && _epgAliases.length < _kEpgAliasCap) {
+      _epgAliases[epgChannelId] = 'xtream-$streamId';
+    }
     final String name =
         item['name']?.toString() ?? l10nNow.fallbackNoNameParens;
     final String categoryId = item['category_id']?.toString() ?? '';
@@ -841,6 +862,8 @@ class XtreamClient {
     String? categoryId,
     String? seriesId,
     String? vodId,
+    String? streamId,
+    int? limit,
   }) {
     final Uri base = Uri.parse('$_baseUrl/player_api.php');
     final Map<String, String> queryParameters = <String, String>{
@@ -855,8 +878,91 @@ class XtreamClient {
       if (seriesId != null && seriesId.isNotEmpty) 'series_id': seriesId,
       // Fiche film (get_vod_info) : identifiant du film demandé.
       if (vodId != null && vodId.isNotEmpty) 'vod_id': vodId,
+      // EPG courte (get_short_epg) : identifiant du flux + nb de programmes.
+      if (streamId != null && streamId.isNotEmpty) 'stream_id': streamId,
+      if (limit != null) 'limit': '$limit',
     };
     return base.replace(queryParameters: queryParameters);
+  }
+
+  // ============================================================
+  //  EPG COURTE (get_short_epg) — repli quand le XMLTV n'a rien
+  // ============================================================
+
+  /// Programmes « maintenant + suivants » d'UNE chaîne via l'API du panel
+  /// (`get_short_epg`). Appel API léger (pas une connexion de FLUX : ne
+  /// consomme pas la connexion unique des comptes 1-conn). Sert de REPLI à
+  /// l'aperçu quand la base XMLTV locale ne connaît pas la chaîne (panel
+  /// sans URL XMLTV, sync pas encore passée…). Renvoie `[]` sur toute
+  /// réponse vide/malformée — jamais d'exception vers l'UI.
+  Future<List<EpgProgram>> fetchShortEpg({
+    required String streamId,
+    int limit = 8,
+  }) async {
+    try {
+      final Uri uri = _buildUri(
+          action: 'get_short_epg', streamId: streamId, limit: limit);
+      final String body = await _getBody(uri);
+      final dynamic decoded = jsonDecode(body);
+      return parseShortEpgListings(decoded, 'xtream-$streamId');
+    } catch (_) {
+      return const <EpgProgram>[];
+    }
+  }
+
+  /// Parsing PUR (testable sans réseau) du JSON `get_short_epg` :
+  /// `{"epg_listings":[{title(base64), start_timestamp, stop_timestamp,
+  /// description(base64)}, …]}`. Défensif : titres en base64 OU en clair,
+  /// timestamps en secondes epoch (String ou int), entrées invalides
+  /// ignorées une à une.
+  static List<EpgProgram> parseShortEpgListings(
+    dynamic decoded,
+    String channelId,
+  ) {
+    final List<dynamic> listings = decoded is Map<String, dynamic>
+        ? (decoded['epg_listings'] is List
+            ? decoded['epg_listings'] as List<dynamic>
+            : const <dynamic>[])
+        : (decoded is List ? decoded : const <dynamic>[]);
+    final List<EpgProgram> out = <EpgProgram>[];
+    for (final dynamic raw in listings) {
+      if (raw is! Map) continue;
+      final int? startS = _epochSeconds(raw['start_timestamp']);
+      final int? stopS = _epochSeconds(raw['stop_timestamp']);
+      if (startS == null || stopS == null || stopS <= startS) continue;
+      final String title = _decodeMaybeBase64(raw['title']?.toString());
+      if (title.isEmpty) continue;
+      final String desc =
+          _decodeMaybeBase64(raw['description']?.toString());
+      out.add(EpgProgram(
+        channelId: channelId,
+        startTime: startS * 1000,
+        stopTime: stopS * 1000,
+        title: title,
+        description: desc.isEmpty ? null : desc,
+      ));
+    }
+    out.sort((EpgProgram a, EpgProgram b) => a.startTime - b.startTime);
+    return out;
+  }
+
+  static int? _epochSeconds(dynamic v) {
+    if (v is int) return v > 0 ? v : null;
+    final int? parsed = int.tryParse(v?.toString() ?? '');
+    return (parsed != null && parsed > 0) ? parsed : null;
+  }
+
+  /// Les panels encodent titres/descriptions en base64 — mais pas tous.
+  /// On tente le décodage ; si le résultat n'est pas de l'UTF-8 valide ou
+  /// que l'entrée n'est pas du base64, on garde le texte tel quel.
+  static String _decodeMaybeBase64(String? v) {
+    final String s = (v ?? '').trim();
+    if (s.isEmpty) return '';
+    try {
+      return utf8.decode(base64Decode(s)).trim();
+    } catch (_) {
+      return s;
+    }
   }
 }
 

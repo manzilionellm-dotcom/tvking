@@ -959,6 +959,11 @@ class PlaylistRepository {
       // `getAllChannels` ne renvoie que les chaînes de la playlist active.
       await setActivePlaylist(playlistId);
 
+      // PONT EPG : persiste les alias epg_channel_id → id collectés pendant
+      // l'import AVANT la sync XMLTV (elle s'en sert pour ranger chaque
+      // programme sous l'id de sa chaîne — fin du « Programme non
+      // disponible » sur les comptes Xtream).
+      await EpgRepository.instance.saveAliases(xtream.epgChannelAliases);
       // EPG auto en arrière-plan (Xtream a sa propre URL XMLTV). On passe les
       // IDS collectés pendant l'import en flux (pas de liste Channel gardée).
       if (newPlaylist.epgUrl != null) {
@@ -1190,6 +1195,9 @@ class PlaylistRepository {
           ),
         );
         await _emitCurrentState();
+        // PONT EPG : mêmes alias qu'à l'ajout (le refresh re-télécharge
+        // get_live_streams → correspondances à jour avant la sync XMLTV).
+        await EpgRepository.instance.saveAliases(xtream.epgChannelAliases);
         // EPG : même correctif que le chemin M3U ci-dessus — le refresh
         // des chaînes rafraîchit aussi le guide (sinon il se périme en ~2 j).
         if (playlist.epgUrl != null && playlist.epgUrl!.isNotEmpty) {

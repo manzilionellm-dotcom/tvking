@@ -100,8 +100,84 @@ class EpgRepository {
       CREATE INDEX IF NOT EXISTS idx_epg_start_time
       ON epg_programs(start_time)
     ''');
+    // PONT EPG XTREAM : le XMLTV du panel identifie les chaînes par
+    // `epg_channel_id` (« TF1.fr ») alors que nos chaînes Xtream sont
+    // `xtream-<stream_id>` → sans table de correspondance, AUCUN programme
+    // ne matchait (« Programme non disponible » permanent, mismatch vu par
+    // la boîte noire). Remplie à l'import Xtream, lue à l'import XMLTV.
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS epg_aliases (
+        epg_id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL
+      )
+    ''');
 
     _initialized = true;
+  }
+
+  // ============================================================
+  //  ALIAS EPG (pont epg_channel_id ↔ id de chaîne Xtream)
+  // ============================================================
+
+  /// Enregistre les correspondances `epg_channel_id → Channel.id` collectées
+  /// pendant un import Xtream (upsert idempotent, par lots).
+  Future<void> saveAliases(Map<String, String> aliases) async {
+    if (aliases.isEmpty) return;
+    await initialize();
+    final Database db = await PlaylistDatabase.instance.database;
+    final Batch batch = db.batch();
+    for (final MapEntry<String, String> e in aliases.entries) {
+      batch.insert(
+        'epg_aliases',
+        <String, Object?>{'epg_id': e.key, 'channel_id': e.value},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  /// Charge tous les alias connus (epg_id → channel_id). Une entrée par
+  /// chaîne au maximum → volume borné par la taille du bouquet.
+  Future<Map<String, String>> _loadAliases() async {
+    final Database db = await PlaylistDatabase.instance.database;
+    final List<Map<String, Object?>> rows =
+        await db.query('epg_aliases', columns: <String>['epg_id', 'channel_id']);
+    return <String, String>{
+      for (final Map<String, Object?> r in rows)
+        r['epg_id'].toString(): r['channel_id'].toString(),
+    };
+  }
+
+  /// Élargit le filtre du parseur XMLTV aux ids EPG des chaînes connues :
+  /// le XMLTV parle en `epg_channel_id`, nos chaînes en `Channel.id` — on
+  /// n'accepte un alias QUE si sa chaîne fait partie du filtre demandé
+  /// (jamais d'élargissement sauvage). `known == null` = pas de filtre.
+  /// Statique et pure → testée sans base.
+  @visibleForTesting
+  static Set<String>? mergeKnownWithAliases(
+    Set<String>? known,
+    Map<String, String> aliases,
+  ) {
+    if (known == null || aliases.isEmpty) return known;
+    return <String>{
+      ...known,
+      for (final MapEntry<String, String> e in aliases.entries)
+        if (known.contains(e.value)) e.key,
+    };
+  }
+
+  /// Range une ligne programme sous l'id de SA chaîne quand `channel_id`
+  /// est un alias EPG ; les ids déjà canoniques passent inchangés.
+  /// Statique et pure → testée sans base.
+  @visibleForTesting
+  static Map<String, Object?> remapProgramRow(
+    Map<String, Object?> row,
+    Map<String, String> aliases,
+  ) {
+    final String? mapped = aliases[row['channel_id']];
+    return mapped == null
+        ? row
+        : <String, Object?>{...row, 'channel_id': mapped};
   }
 
   // ============================================================
@@ -157,6 +233,14 @@ class EpgRepository {
         // On purge d'abord les vieux programmes pour faire de la place
         await purgeStale();
 
+        // PONT EPG : les alias `epg_channel_id → Channel.id` (import Xtream)
+        // élargissent le filtre du parseur (le XMLTV parle en epg_channel_id)
+        // et chaque programme retenu est RANGÉ sous l'id de SA chaîne — c'est
+        // ce remap qui fait enfin matcher lectures (`Channel.id`) et données.
+        final Map<String, String> aliases = await _loadAliases();
+        final Set<String>? effectiveKnown =
+            mergeKnownWithAliases(knownChannelIds, aliases);
+
         // FLUIDITÉ — le parse XML (décodage UTF-8 + événements + dates)
         // tourne dans un ISOLATE DÉDIÉ : une sync EPG de plusieurs
         // centaines de Mo ne gèle plus une seule frame de l'UI. Seuls
@@ -166,11 +250,13 @@ class EpgRepository {
         final Database db = await PlaylistDatabase.instance.database;
         final int total = await XmltvParser.parseInIsolate(
           bytes,
-          knownChannelIds: knownChannelIds,
+          knownChannelIds: effectiveKnown,
           onBatch: (List<Map<String, Object?>> rows) async {
             final Batch batch = db.batch();
             for (final Map<String, Object?> row in rows) {
-              batch.insert('epg_programs', row);
+              // Remap alias → id de chaîne (cf. commentaire ci-dessus). Les
+              // ids déjà canoniques (M3U tvg-id) passent inchangés.
+              batch.insert('epg_programs', remapProgramRow(row, aliases));
             }
             await batch.commit(noResult: true);
           },
