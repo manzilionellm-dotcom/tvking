@@ -573,6 +573,7 @@
   "tvAddListValidate": "Confirm and load my list",
   "tvSearchingChannels": "Looking for your channels…",
   "tvRetry": "Retry",
+  "tvSeriesLoadFailed": "Couldn't load the episodes. Check your connection.",
   "tvSourceInvalid": "Subscription received but rejected — check the credentials in the panel.",
   "tvQuitTitle": "Exit The Few TV?",
   "tvQuitMessage": "Restart to refresh your channels, or exit the app.",

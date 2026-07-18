@@ -246,6 +246,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // l'erreur claire (avec « réessayer ») au lieu du spinner infini.
   // Même philosophie que le fix TV (verrou _recovering, 2026-07-06).
   Timer? _startupTimer;
+
+  /// Repli VOD directe → relais si aucune image en [_kVodDirectGrace].
+  Timer? _vodRelayFallbackTimer;
+  static const Duration _kVodDirectGrace = Duration(seconds: 8);
   Timer? _zapDebounce;
   // Chaîne en attente derrière le debounce : si un nouveau zap arrive
   // avant l'échéance, elle est « absorbée » (zéro requête émise) — on
@@ -1083,8 +1087,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       );
       _playerOpenedOnce = true;
       _player.open(Media(realUrl));
+      // FILET « jamais bloqué » (terrain 2026-07-18) : si la lecture
+      // directe ne produit AUCUNE image en quelques secondes (source
+      // capricieuse, domaine récalcitrant…), on bascule automatiquement
+      // sur le relais — sans laisser l'utilisateur sur un spinner infini.
+      // Les fichiers LOCAUX n'ont pas de repli (rien à relayer).
+      if (!isLocalFile) _armVodRelayFallback(realUrl, gen);
       return;
     }
+    await _openViaRelay(realUrl, gen);
+  }
+
+  /// Ouvre une URL EN PASSANT PAR LE RELAIS local (1 connexion + DoH + UA).
+  /// Repli sur la lecture directe si le relais ne démarre pas.
+  Future<void> _openViaRelay(String realUrl, int gen) async {
     try {
       final String localUrl =
           await LocalStreamRelay.instance.playUrlFor(realUrl);
@@ -1095,9 +1111,28 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // Si le relais ne démarre pas (cas improbable), on retombe sur la
       // lecture directe pour ne jamais priver l'utilisateur de l'image.
       debugPrint('[Player] relais indisponible, lecture directe: $e');
+      if (!mounted || gen != _openGeneration) return;
       _playerOpenedOnce = true;
       _player.open(Media(realUrl));
     }
+  }
+
+  /// Arme le repli VOD directe → relais : si la 1re image n'est pas décodée
+  /// dans [_kVodDirectGrace], on ré-ouvre via le relais (une seule fois par
+  /// ouverture). Annulé dès la 1re frame (_markPlaybackStarted) ou un zap.
+  void _armVodRelayFallback(String directUrl, int gen) {
+    _vodRelayFallbackTimer?.cancel();
+    _vodRelayFallbackTimer = Timer(_kVodDirectGrace, () {
+      if (!mounted || gen != _openGeneration) return;
+      if (_playedChannelId == _currentChannel.id || _hasError) return;
+      StreamDiagnostics.instance.recordEvent(
+        'player',
+        'VOD directe sans 1re image en ${_kVodDirectGrace.inSeconds} s → '
+            'repli automatique sur le relais',
+        level: 'warn',
+      );
+      unawaited(_openViaRelay(directUrl, gen));
+    });
   }
 
   /// Callback du `PageView` quand l'utilisateur a fini un swipe vertical.
@@ -1550,6 +1585,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _upNextTimer?.cancel();
     _watchdogTimer?.cancel();
     _startupTimer?.cancel();
+    _vodRelayFallbackTimer?.cancel();
     _zapDebounce?.cancel();
     // Mode « Écouteurs » : on coupe le service audio de fond et on lève le
     // drapeau natif (sinon le son continuerait après la fermeture du
@@ -1699,6 +1735,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// directe) vs « jamais lu » (sonde + cascade de variantes).
   void _markPlaybackStarted() {
     _startupTimer?.cancel(); // le démarrage a VRAIMENT eu lieu → borne levée
+    _vodRelayFallbackTimer?.cancel(); // 1re image OK → pas de repli relais
     if (_playedChannelId != _currentChannel.id) {
       _playedChannelId = _currentChannel.id;
 

@@ -572,6 +572,7 @@
   "tvAddListValidate": "Bekreft og last inn listen min",
   "tvSearchingChannels": "Søker etter kanalene dine…",
   "tvRetry": "Prøv igjen",
+  "tvSeriesLoadFailed": "Kunne ikke laste episodene. Sjekk tilkoblingen din.",
   "tvSourceInvalid": "Abonnement mottatt, men avvist — sjekk opplysningene i panelet.",
   "tvQuitTitle": "Avslutte The Few TV?",
   "tvQuitMessage": "Start på nytt for å oppdatere kanalene, eller avslutt appen.",

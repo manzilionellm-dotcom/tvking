@@ -572,6 +572,7 @@
   "tvAddListValidate": "Thibitisha na upakie orodha yangu",
   "tvSearchingChannels": "Inatafuta vituo vyako…",
   "tvRetry": "Jaribu tena",
+  "tvSeriesLoadFailed": "Imeshindwa kupakia vipindi. Angalia muunganisho wako.",
   "tvSourceInvalid": "Usajili umepokelewa lakini umekataliwa — angalia taarifa kwenye paneli.",
   "tvQuitTitle": "Funga The Few TV?",
   "tvQuitMessage": "Anzisha upya ili kuonyesha upya vituo vyako, au funga programu.",

@@ -572,6 +572,7 @@
   "tvAddListValidate": "Confirmar y cargar mi lista",
   "tvSearchingChannels": "Buscando tus canales…",
   "tvRetry": "Reintentar",
+  "tvSeriesLoadFailed": "No se pudieron cargar los episodios. Revisa tu conexión.",
   "tvSourceInvalid": "Suscripción recibida pero rechazada — verifica las credenciales en el panel.",
   "tvQuitTitle": "¿Salir de The Few TV?",
   "tvQuitMessage": "Reinicia para actualizar tus canales, o sal de la app.",

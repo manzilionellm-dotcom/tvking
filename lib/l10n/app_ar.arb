@@ -572,6 +572,7 @@
   "tvAddListValidate": "تأكيد وتحميل قائمتي",
   "tvSearchingChannels": "جارٍ البحث عن قنواتك…",
   "tvRetry": "إعادة المحاولة",
+  "tvSeriesLoadFailed": "تعذّر تحميل الحلقات. تحقّق من اتصالك.",
   "tvSourceInvalid": "تم استلام الاشتراك لكنه مرفوض — تحقّق من البيانات في اللوحة.",
   "tvQuitTitle": "إغلاق The Few TV؟",
   "tvQuitMessage": "أعد التشغيل لتحديث قنواتك، أو أغلق التطبيق.",

@@ -36,20 +36,42 @@ class SeriesDetailScreen extends StatefulWidget {
 class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
   List<VodEpisode> _episodes = const <VodEpisode>[];
   bool _loading = true;
+  bool _failed = false; // le chargement a échoué / expiré (≠ « 0 épisode »)
   int? _season;
 
   @override
   void initState() {
     super.initState();
-    SeriesRepository.instance
-        .fetchEpisodes(widget.series.id)
-        .then((List<VodEpisode> eps) {
+    _loadEpisodes();
+  }
+
+  /// Charge les épisodes SANS JAMAIS rester bloqué : timeout dur + capture
+  /// d'erreur. Avant, un `.then` sans `catchError`/timeout laissait la fiche
+  /// figée sur le squelette si la source répondait mal (bug terrain
+  /// 2026-07-18 : « ça bugue sur série »).
+  Future<void> _loadEpisodes() async {
+    if (mounted) setState(() {
+      _loading = true;
+      _failed = false;
+    });
+    try {
+      final List<VodEpisode> eps = await SeriesRepository.instance
+          .fetchEpisodes(widget.series.id)
+          .timeout(const Duration(seconds: 20));
       if (!mounted) return;
       setState(() {
         _episodes = eps;
         _loading = false;
       });
-    });
+    } catch (e) {
+      debugPrint('[SeriesDetail] fetchEpisodes: $e');
+      if (!mounted) return;
+      setState(() {
+        _episodes = const <VodEpisode>[];
+        _loading = false;
+        _failed = true;
+      });
+    }
   }
 
   /// Épisode → Channel de lecture, fichier LOCAL substitué s'il est
@@ -154,7 +176,46 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
                 child: _EpisodesSkeleton(),
               ),
             )
-          : ListView(
+          : _episodes.isEmpty
+              // ÉTAT VIDE / ÉCHEC (jamais figé sur le squelette) : message
+              // clair + bouton Réessayer. _failed distingue une erreur
+              // réseau d'une série réellement sans épisodes.
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(
+                            _failed
+                                ? Icons.wifi_off_rounded
+                                : Icons.video_library_outlined,
+                            size: 46,
+                            color: AppColors.textMuted),
+                        const SizedBox(height: 14),
+                        Text(
+                          _failed
+                              ? context.l10n.tvSeriesLoadFailed
+                              : context.l10n.tvNoSeries,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontSize: 15, color: AppColors.textSecondary),
+                        ),
+                        if (_failed) ...<Widget>[
+                          const SizedBox(height: 18),
+                          FilledButton.icon(
+                            onPressed: _loadEpisodes,
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: Text(context.l10n.tvRetry),
+                            style: FilledButton.styleFrom(
+                                backgroundColor: AppColors.accent),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                )
+              : ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               children: <Widget>[
                 if (widget.series.plot != null &&

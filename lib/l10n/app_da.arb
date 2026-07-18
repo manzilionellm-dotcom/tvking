@@ -572,6 +572,7 @@
   "tvAddListValidate": "Bekræft og indlæs min liste",
   "tvSearchingChannels": "Søger efter dine kanaler…",
   "tvRetry": "Prøv igen",
+  "tvSeriesLoadFailed": "Kunne ikke indlæse afsnittene. Tjek din forbindelse.",
   "tvSourceInvalid": "Abonnement modtaget, men afvist — tjek oplysningerne i panelet.",
   "tvQuitTitle": "Luk The Few TV?",
   "tvQuitMessage": "Genstart for at opdatere dine kanaler, eller luk appen.",
