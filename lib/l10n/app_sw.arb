@@ -635,6 +635,16 @@
   },
   "tvDlSeasonDone": "Msimu umepakuliwa",
   "tvVodTracksHint": "Chini: sauti, manukuu na umbizo",
+  "tvRailNew": "Mpya",
+  "tvRailBecause": "Kwa sababu ulitazama {title}",
+  "@tvRailBecause": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBadgeNew": "MPYA",
   "tvHueTitle": "Taa za Philips Hue",
   "tvHueSubtitle": "Sinema huongoza mwanga wa chumba — kama ukumbi halisi.",
   "tvHueStatusNone": "Hakuna daraja la Hue lililopatikana. Anzisha utafutaji (Wi-Fi ileile).",

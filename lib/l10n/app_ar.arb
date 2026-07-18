@@ -635,6 +635,16 @@
   },
   "tvDlSeasonDone": "تم تنزيل الموسم",
   "tvVodTracksHint": "لأسفل: الصوت والترجمة والتنسيق",
+  "tvRailNew": "أحدث الإضافات",
+  "tvRailBecause": "لأنك شاهدت {title}",
+  "@tvRailBecause": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBadgeNew": "جديد",
   "tvHueTitle": "أضواء Philips Hue",
   "tvHueSubtitle": "السينما تتحكم في إضاءة الغرفة — كقاعة سينما حقيقية.",
   "tvHueStatusNone": "لم يُعثر على جسر Hue. ابدأ بحثًا (نفس شبكة Wi-Fi).",

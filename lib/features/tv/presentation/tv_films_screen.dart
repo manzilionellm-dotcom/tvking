@@ -35,6 +35,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../vod/data/playback_position_repository.dart';
 import '../../vod/data/recent_vod_repository.dart';
+import '../../vod/data/vod_novelty_service.dart';
 import '../../vod/data/vod_repository.dart';
 import '../../vod/data/vod_watchlist_repository.dart';
 import '../../vod/domain/vod_info.dart';
@@ -77,6 +78,9 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   Map<String, List<VodMovie>> _byCat = const <String, List<VodMovie>>{};
   List<VodMovie> _recent = const <VodMovie>[];
   List<VodMovie> _watchlist = const <VodMovie>[];
+  // Ids des films NOUVEAUX (apparus dans le catalogue depuis la dernière
+  // visite) → rangée « Nouveautés » + pastille NOUVEAU sur les affiches.
+  Set<String> _newIds = <String>{};
   // Ids présents dans « Ma Liste » (repère rapide pour l'affichage du ✓).
   Set<String> _inList = <String>{};
 
@@ -163,6 +167,15 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
         existing.add(m);
       }
     }
+    // NOUVEAUTÉS : réconcilie les ids du catalogue avec l'historique de
+    // nouveauté (apparitions). Best-effort, en arrière-plan — l'accueil ne
+    // l'attend pas ; le setState final le rafraîchit dès que c'est prêt.
+    final int nowMs = DateTime.now().millisecondsSinceEpoch;
+    unawaited(VodNoveltyService.instance
+        .reconcileMovies(movies.map((VodMovie m) => m.id), nowMs: nowMs)
+        .then((Set<String> fresh) {
+      if (mounted) setState(() => _newIds = fresh);
+    }));
     setState(() {
       _all = movies;
       _cats = cats;
@@ -393,6 +406,34 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
           ),
     ];
 
+    // NOUVEAUTÉS : films apparus dans le catalogue depuis la dernière visite
+    // (raison n°1 de rouvrir l'app — recherche rétention). Ordre catalogue,
+    // borné pour rester léger.
+    final List<VodMovie> newMovies = _newIds.isEmpty
+        ? const <VodMovie>[]
+        : <VodMovie>[
+            for (final VodMovie m in _all)
+              if (_newIds.contains(m.id)) m,
+          ].take(24).toList(growable: false);
+
+    // « PARCE QUE VOUS AVEZ REGARDÉ … » : rang de reco personnalisé, le
+    // cœur addictif de Netflix. On prend le DERNIER film vu et on propose
+    // d'autres titres de sa catégorie (hors ce qu'il a déjà vu). 100 % local.
+    List<VodMovie> becauseMovies = const <VodMovie>[];
+    String becauseTitle = '';
+    if (_recent.isNotEmpty) {
+      final VodMovie seed = _recent.first;
+      final String cat = seed.category.trim();
+      if (cat.isNotEmpty) {
+        final Set<String> seen = _recent.map((VodMovie m) => m.id).toSet();
+        becauseMovies = <VodMovie>[
+          for (final VodMovie m in (_byCat[cat] ?? const <VodMovie>[]))
+            if (!seen.contains(m.id)) m,
+        ].take(24).toList(growable: false);
+        becauseTitle = context.l10n.tvRailBecause(VodTitles.clean(seed.name));
+      }
+    }
+
     final List<({String title, List<VodMovie> movies, bool resume, bool dl})>
         rails =
         <({String title, List<VodMovie> movies, bool resume, bool dl})>[
@@ -401,6 +442,20 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
           title: context.l10n.tvRailContinueWatching,
           movies: resumeMovies,
           resume: true,
+          dl: false
+        ),
+      if (newMovies.isNotEmpty)
+        (
+          title: context.l10n.tvRailNew,
+          movies: newMovies,
+          resume: false,
+          dl: false
+        ),
+      if (becauseMovies.isNotEmpty)
+        (
+          title: becauseTitle,
+          movies: becauseMovies,
+          resume: false,
           dl: false
         ),
       if (dlMovies.isNotEmpty)
@@ -477,6 +532,7 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
             title: rail.title,
             movies: rail.movies,
             inList: _inList,
+            newIds: _newIds,
             progress: progress,
             // Ré-autofocus de l'affiche mémorisée (mémoire du focus par rangée).
             autofocusIndex: (i - 1) == memRail
@@ -892,6 +948,7 @@ class _Rail extends StatelessWidget {
     required this.title,
     required this.movies,
     required this.inList,
+    required this.newIds,
     required this.progress,
     required this.onPlay,
     required this.onToggleList,
@@ -903,6 +960,9 @@ class _Rail extends StatelessWidget {
   final String title;
   final List<VodMovie> movies;
   final Set<String> inList;
+
+  /// Ids des films NOUVEAUX → pastille « NOUVEAU » en coin d'affiche.
+  final Set<String> newIds;
 
   /// Fraction déjà vue par id de contenu (reprise de lecture) : dessine la
   /// petite barre dorée sous l'affiche. Absent de la map = rien à afficher.
@@ -960,6 +1020,7 @@ class _Rail extends StatelessWidget {
                   child: _PosterCard(
                     movie: movies[i],
                     inList: inList.contains(movies[i].id),
+                    isNew: newIds.contains(movies[i].id),
                     progress: progress[movies[i].id],
                     autofocus: i == autofocusIndex,
                     onFocus:
@@ -985,12 +1046,17 @@ class _PosterCard extends StatelessWidget {
     required this.inList,
     required this.onPlay,
     required this.onToggleList,
+    this.isNew = false,
     this.progress,
     this.autofocus = false,
     this.onFocus,
   });
   final VodMovie movie;
   final bool inList;
+
+  /// Film récemment apparu au catalogue → pastille « NOUVEAU » (coin haut
+  /// gauche, opposée au ✓ « Ma Liste »).
+  final bool isNew;
   final VoidCallback onPlay;
   final VoidCallback onToggleList;
 
@@ -1070,6 +1136,29 @@ class _PosterCard extends StatelessWidget {
                         ),
                         child: const Icon(Icons.check_rounded,
                             size: 15, color: Color(0xFF1A1206)),
+                      ),
+                    ),
+                  // Pastille « NOUVEAU » (coin haut gauche) — film apparu
+                  // récemment dans le catalogue de la source.
+                  if (isNew)
+                    Positioned(
+                      top: 6,
+                      left: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          gradient: TvTokens.cineGradient,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          context.l10n.tvBadgeNew,
+                          style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.6,
+                              color: TvTokens.onEmber),
+                        ),
                       ),
                     ),
                 ],

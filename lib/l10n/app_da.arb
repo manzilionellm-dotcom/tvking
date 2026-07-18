@@ -635,6 +635,16 @@
   },
   "tvDlSeasonDone": "Sæson downloadet",
   "tvVodTracksHint": "Ned: lyd, undertekster & format",
+  "tvRailNew": "Nyheder",
+  "tvRailBecause": "Fordi du så {title}",
+  "@tvRailBecause": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBadgeNew": "NY",
   "tvHueTitle": "Philips Hue-lys",
   "tvHueSubtitle": "Biografen styrer lyset i rummet — som en rigtig biograf.",
   "tvHueStatusNone": "Ingen Hue-bro fundet. Kør en søgning (samme Wi-Fi som boksen).",
