@@ -255,6 +255,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// le chien de garde de démarrage (25 s) pour ne pas laisser un spinner.
   Timer? _vodRelayFallbackTimer;
   static const Duration _kVodDirectGrace = Duration(seconds: 12);
+  // Reprise différée après une micro-coupure EOF live (800 ms). STOCKÉE pour
+  // être annulable (M3) : sans ça, un démontage ou un zap rapide juste après
+  // l'EOF déclenchait une réouverture parasite sur une chaîne déjà quittée.
+  Timer? _eofReopenTimer;
   Timer? _zapDebounce;
   // Chaîne en attente derrière le debounce : si un nouveau zap arrive
   // avant l'échéance, elle est « absorbée » (zéro requête émise) — on
@@ -458,7 +462,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               '#$_watchdogRecoveries',
           level: 'warn',
         );
-        Timer(const Duration(milliseconds: 800), () {
+        _eofReopenTimer?.cancel();
+        _eofReopenTimer = Timer(const Duration(milliseconds: 800), () {
           if (!mounted || _hasError) return;
           _openMedia(_effectiveUrl);
         });
@@ -651,6 +656,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await old.dispose().timeout(const Duration(seconds: 5));
     } catch (_) {}
     _createPlayer();
+    // ÉTAT DE LECTURE remis à neuf AVANT que les listeners de la nouvelle
+    // instance n'émettent (M1) : sinon le watchdog lisait la position 0 de
+    // l'instance NEUVE tout en croyant `_isPlaying == true` (valeur héritée
+    // de l'ancienne) → comptage de « stale ticks » prématuré / faux gel.
+    _isPlaying = false;
+    _isBuffering = true;
+    _lastWatchdogPos = Duration.zero;
+    _watchdogStaleTicks = 0;
+    _watchdogGoodTicks = 0;
     StreamDiagnostics.instance.recordEvent(
       'player',
       'instance mpv recréée en ${sw.elapsedMilliseconds - stopMs} ms '
@@ -790,6 +804,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       );
     }
     _zapDebounce?.cancel();
+    _eofReopenTimer?.cancel(); // pas de réouverture EOF parasite sur l'ancienne
     _pendingZapChannel = next;
     _zapClock
       ..reset()
@@ -916,7 +931,31 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final bool isLocal = realUrl.startsWith('file:') ||
         realUrl.startsWith('/');
     VodDownloadService.instance.setPlaybackHold(!isLocal);
-    _openChain = _openChain.then((_) => _openMediaInner(realUrl, gen));
+    // BLINDAGE DE LA FILE (cause racine « lecteur figé définitivement ») : si
+    // _openMediaInner lève une exception NON rattrapée (bind du relais qui
+    // échoue, _player.open synchrone, propriété mpv…), la future de la file
+    // deviendrait REJETÉE — et TOUTE ouverture ultérieure (zap, retry,
+    // watchdog) ferait `.then` sur une future rejetée, donc plus JAMAIS
+    // exécutée. Le `catchError` garantit que la file reste toujours saine :
+    // l'échec est journalisé et affiché (jamais un écran noir muet).
+    _openChain = _openChain.then((_) => _openMediaInner(realUrl, gen)).catchError(
+      (Object e, StackTrace st) {
+        StreamDiagnostics.instance.recordEvent(
+          'player',
+          'Ouverture interrompue par une exception : $e — file préservée, '
+              'prochaine ouverture possible',
+          level: 'error',
+        );
+        // On ne réagit que si cette ouverture est encore la plus récente
+        // (sinon un zap plus récent est déjà en cours : on ne l'écrase pas).
+        if (mounted && gen == _openGeneration) {
+          setState(() {
+            _hasError = true;
+            _errorMessage = context.l10n.playerStreamInterrupted;
+          });
+        }
+      },
+    );
     return _openChain;
   }
 
@@ -1449,7 +1488,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       final dynamic native = (_player.platform as dynamic);
       await native?.setProperty(name, value);
       return true;
-    } catch (_) {
+    } catch (e) {
+      // M5 : rendre VISIBLE l'échec de configuration mpv. Si l'API media_kit
+      // change (montée de version), TOUTES les options de résilience
+      // (user-agent, keep-open, reconnect, buffers) cessaient de s'appliquer
+      // EN SILENCE → UA par défaut refusé = écran noir généralisé sans trace.
+      // Désormais chaque refus laisse une trace dans la boîte noire.
+      StreamDiagnostics.instance.recordEvent(
+        'player',
+        'Propriété mpv « $name » NON appliquée ($e) — résilience réduite',
+        level: 'warn',
+      );
       return false;
     }
   }
@@ -1663,6 +1712,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _watchdogTimer?.cancel();
     _startupTimer?.cancel();
     _vodRelayFallbackTimer?.cancel();
+    _eofReopenTimer?.cancel();
     _zapDebounce?.cancel();
     // Mode « Écouteurs » : on coupe le service audio de fond et on lève le
     // drapeau natif (sinon le son continuerait après la fermeture du
@@ -2011,6 +2061,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       });
     }
     final String url = _effectiveUrl;
+    // H2 : un gel vient souvent d'un upstream SILENCIEUX (ni erreur ni EOF).
+    // Rouvrir mpv sur la MÊME session du relais ne relance pas l'amont
+    // (_ensureUpstream est un no-op tant que upstreamActive). On force donc
+    // une vraie reconnexion amont AVANT de rouvrir — live TS via relais
+    // uniquement (le HLS direct et la VOD ne passent pas par le relais).
+    if (widget.overrideUrl == null &&
+        _currentChannel.isLive &&
+        !HlsPreflight.isHlsUrl(url)) {
+      LocalStreamRelay.instance.forceReconnect(url);
+    }
     _openMedia(url);
   }
 

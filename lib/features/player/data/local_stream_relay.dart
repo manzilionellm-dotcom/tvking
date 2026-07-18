@@ -73,6 +73,17 @@ const int _kMaxReconnectFailures = 12;
 /// définitif ferme la session immédiatement, sans aucun retry.
 const int _kMaxInitialFailures = 3;
 
+/// Un flux TS live est CONTINU : au-delà de ce délai SANS le moindre octet
+/// reçu alors que la session diffusait, l'upstream est « silencieux » — il a
+/// accepté la connexion puis a cessé d'émettre SANS erreur ni EOF (cas
+/// terrain fréquent : edge saturé). Ni `onError` ni `onDone` ne se
+/// déclenchent → sans ce garde-fou la session reste figée jusqu'au
+/// `idleTimeout` (10 min). On force alors une VRAIE reconnexion amont.
+const Duration _kUpstreamStallTimeout = Duration(seconds: 12);
+
+/// Période de la ronde qui surveille le silence d'ingestion ci-dessus.
+const Duration _kStallCheckInterval = Duration(seconds: 4);
+
 /// Échec DÉFINITIF annoncé par le relais : l'URL réelle concernée et le
 /// dernier statut HTTP vu (`null` = échec réseau / serveur muet, aucune
 /// réponse HTTP). Le statut permet au diagnostic de choisir la bonne
@@ -588,10 +599,71 @@ class LocalStreamRelay {
     }
   }
 
+  /// Reconnexion FORCÉE (annule la connexion en cours et en rouvre une
+  /// neuve). Déclenchée soit par le watchdog de silence (upstream muet), soit
+  /// par le LECTEUR quand il détecte un gel : rouvrir mpv sur la même session
+  /// ne suffit pas si l'amont est silencieux — il faut relancer l'amont.
+  /// @returns true si une session existait pour [realUrl].
+  bool forceReconnect(String realUrl) {
+    final _RelaySession? session = _sessions[realUrl];
+    if (session == null) return false;
+    StreamDiagnostics.instance.recordEvent(
+      'relay',
+      'Reconnexion amont forcée (gel/silence détecté) — '
+          '${StreamDiagnostics.maskCredentials(realUrl)}',
+      level: 'warn',
+    );
+    session.reconnectCount++;
+    unawaited(_forceReconnectNow(session));
+    return true;
+  }
+
+  Future<void> _forceReconnectNow(_RelaySession session) async {
+    session.stallTimer?.cancel();
+    session.stallTimer = null;
+    try { await session.sub?.cancel(); } catch (_) {}
+    session.sub = null;
+    session.reconnectFailures = 0; // acte volontaire, pas un échec consécutif
+    if (!session.hasConsumers) {
+      _maybeCloseSession(session);
+      return;
+    }
+    await _connectUpstream(session);
+  }
+
+  /// (Re)arme la ronde qui détecte un upstream silencieux. Idempotent.
+  void _armStallWatch(_RelaySession session) {
+    session.stallTimer?.cancel();
+    session.lastByteAt = DateTime.now(); // point de départ propre
+    session.stallTimer = Timer.periodic(_kStallCheckInterval, (_) {
+      // Playlist HLS = document (pas de flux continu) ; avant le 1er octet
+      // c'est le timeout de démarrage du lecteur qui gère ; plus personne
+      // n'écoute = rien à surveiller.
+      if (session.upstreamIsPlaylist ||
+          !session.everStreamed ||
+          !session.hasConsumers) {
+        return;
+      }
+      final DateTime? last = session.lastByteAt;
+      if (last == null) return;
+      if (DateTime.now().difference(last) >= _kUpstreamStallTimeout) {
+        StreamDiagnostics.instance.recordEvent(
+          'watchdog',
+          'Upstream silencieux ${_kUpstreamStallTimeout.inSeconds} s (ni '
+              'octet ni erreur) → reconnexion amont forcée',
+          level: 'warn',
+        );
+        session.reconnectCount++;
+        unawaited(_forceReconnectNow(session));
+      }
+    });
+  }
+
   void _attachUpstreamListener(
     _RelaySession session,
     HttpClientResponse resp,
   ) {
+    _armStallWatch(session);
     session.sub = resp.listen(
       (List<int> chunk) => _fanout(session, chunk),
       onError: (Object e, StackTrace s) {
@@ -645,6 +717,7 @@ class LocalStreamRelay {
     // coupures ULTÉRIEURES redeviennent des reconnexions légitimes
     // (même sur un 4xx — token/edge recyclé en cours de live).
     session.everStreamed = true;
+    session.lastByteAt = DateTime.now(); // watchdog de silence d'ingestion
     // Débitmètre (capteur du moniteur de stabilité TV) + mémoire de
     // démarrage à chaud (burst servi aux lecteurs qui se rebranchent).
     session.rateMeter.addBytes(data.length, DateTime.now());
@@ -756,6 +829,8 @@ class LocalStreamRelay {
   }
 
   void _closeSession(_RelaySession session) {
+    session.stallTimer?.cancel();
+    session.stallTimer = null;
     try {
       session.sub?.cancel();
     } catch (_) {}
@@ -828,6 +903,14 @@ class _RelaySession {
   /// null pour une playlist HLS). Garantit que lecteurs/fichier ne voient
   /// jamais un demi-paquet après une coupure serveur.
   TsSyncAligner? aligner;
+
+  /// Horodatage du DERNIER octet reçu de l'upstream. Alimente le watchdog de
+  /// silence d'ingestion (upstream qui se tait sans erreur ni EOF).
+  DateTime? lastByteAt;
+
+  /// Ronde périodique qui détecte un upstream silencieux (voir
+  /// [_kUpstreamStallTimeout]) et force une reconnexion.
+  Timer? stallTimer;
 
   /// Mémoire glissante des derniers octets alignés : burst de démarrage à
   /// chaud pour un lecteur qui se (re)branche (image de retour quasi
