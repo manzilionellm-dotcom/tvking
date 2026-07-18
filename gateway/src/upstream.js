@@ -21,12 +21,23 @@ const agent = new Agent({
 
 function base() { return config.upstreamBase; }
 
-/** Construit l'URL upstream d'un flux à partir d'un chemin de la façade. */
-export function upstreamStreamUrl(kind, streamId, ext) {
-  // kind = 'live' | 'movie' | 'series'
+/** Liste ordonnée des bases fournisseur (principale puis secours). */
+export function upstreamBases() {
+  return config.upstreamBases && config.upstreamBases.length
+    ? config.upstreamBases
+    : [config.upstreamBase];
+}
+
+/** Suffixe d'URL d'un flux (SANS base) : /kind/user/pass/id.ext. */
+export function upstreamStreamPath(kind, streamId, ext) {
   const u = encodeURIComponent(config.upstreamUser);
   const p = encodeURIComponent(config.upstreamPass);
-  return `${base()}/${kind}/${u}/${p}/${streamId}.${ext}`;
+  return `/${kind}/${u}/${p}/${streamId}.${ext}`;
+}
+
+/** Construit l'URL upstream d'un flux (base principale + suffixe). */
+export function upstreamStreamUrl(kind, streamId, ext) {
+  return `${base()}${upstreamStreamPath(kind, streamId, ext)}`;
 }
 
 /** Appel player_api.php avec les identifiants de la LIGNE (upstream). */
@@ -104,4 +115,32 @@ export async function proxyRaw(url, signal, extraHeaders) {
     headers: { 'user-agent': config.userAgent, ...(extraHeaders || {}) },
     signal,
   });
+}
+
+/**
+ * Proxy direct AVEC failover de ligne : essaie chaque base (principale puis
+ * secours) pour [streamPath] et renvoie la 1re réponse exploitable. On bascule
+ * uniquement sur une panne de LIGNE (erreur réseau ou 5xx) — un 4xx (film
+ * absent) est renvoyé tel quel (les lignes de secours sont des miroirs, pas des
+ * catalogues différents). Avec une seule base : identique à proxyRaw.
+ */
+export async function proxyRawFailover(streamPath, signal, extraHeaders) {
+  const bases = upstreamBases();
+  let lastErr = null;
+  for (let i = 0; i < bases.length; i++) {
+    try {
+      const up = await proxyRaw(bases[i] + streamPath, signal, extraHeaders);
+      if (up.statusCode >= 500 && i < bases.length - 1) {
+        // Corps jeté : absorbe ses erreurs (AbortError sur signal partagé).
+        try { up.body.on('error', () => {}); up.body.destroy(); } catch { /* ignore */ }
+        continue; // ligne en panne (5xx) → suivante
+      }
+      return up;
+    } catch (e) {
+      lastErr = e;
+      if (i < bases.length - 1) continue; // erreur réseau → ligne suivante
+      throw e;
+    }
+  }
+  throw lastErr || new Error('aucune base fournisseur');
 }

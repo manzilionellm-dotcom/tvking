@@ -13,7 +13,7 @@ import { acquireSession, snapshotSessions } from './limits.js';
 import { hub } from './hub.js';
 import { parseStreamPath, streamKey, makeM3URewriter, rewritePlayerApi } from './xtream.js';
 import {
-  callPlayerApi, openGetPhp, proxyRaw, upstreamStreamUrl,
+  callPlayerApi, openGetPhp, proxyRawFailover, upstreamStreamPath,
 } from './upstream.js';
 
 const START = Date.now();
@@ -87,9 +87,9 @@ async function handleLive(streamId, ext, req, res, user) {
   }
   res.on('close', () => sess.release());
   const key = streamKey('live', streamId, ext);
-  const url = upstreamStreamUrl('live', streamId, ext);
+  const streamPath = upstreamStreamPath('live', streamId, ext);
   metrics.inc('gw_live_requests_total');
-  const r = await hub.subscribe(key, url, res);
+  const r = await hub.subscribe(key, streamPath, res);
   if (!r.ok) {
     sess.release();
     if (!res.headersSent && !res.writableEnded) {
@@ -119,7 +119,8 @@ async function handleVod(kind, streamId, ext, req, res, user) {
   try {
     const extra = {};
     if (req.headers.range) extra.range = req.headers.range;
-    const up = await proxyRaw(upstreamStreamUrl(kind, streamId, ext), ac.signal, extra);
+    const up = await proxyRawFailover(
+      upstreamStreamPath(kind, streamId, ext), ac.signal, extra);
     const headers = {
       'content-type': up.headers['content-type'] || 'application/octet-stream',
     };

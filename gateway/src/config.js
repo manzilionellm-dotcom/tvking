@@ -35,8 +35,19 @@ export const config = {
   // https://tv.mondomaine.com . Sans slash final.
   publicBase: trimSlash(str('PUBLIC_BASE', '')),
 
-  // --- Ligne fournisseur (UNE seule, la « maison mère ») ---
+  // --- Ligne fournisseur (« maison mère ») ---
   upstreamBase: trimSlash(str('UPSTREAM_BASE', '')),
+  // Lignes de SECOURS (failover). Liste séparée par des virgules. Si la ligne
+  // principale meurt (réseau/5xx/refus), la passerelle bascule sur la
+  // suivante SANS couper les spectateurs. Vide = pas de failover (comportement
+  // historique, une seule ligne). Toutes partagent UPSTREAM_USER/PASS.
+  upstreamBases: [
+    trimSlash(str('UPSTREAM_BASE', '')),
+    ...str('UPSTREAM_BASE_FALLBACKS', '')
+      .split(',')
+      .map((s) => trimSlash(s.trim()))
+      .filter((s) => s.length > 0),
+  ].filter((s) => s.length > 0),
   upstreamUser: str('UPSTREAM_USER', ''),
   upstreamPass: str('UPSTREAM_PASS', ''),
   // Nombre MAX de connexions simultanées AUTORISÉES par le fournisseur sur

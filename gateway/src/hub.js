@@ -14,7 +14,7 @@
 //  lents (protège les autres), fermeture différée quand plus personne ne
 //  regarde (zapping aller-retour fluide).
 // =========================================================
-import { openStream } from './upstream.js';
+import { openStream, upstreamBases } from './upstream.js';
 import { config } from './config.js';
 import { metrics } from './metrics.js';
 import { log } from './logger.js';
@@ -22,10 +22,14 @@ import { log } from './logger.js';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 class StreamSession {
-  constructor(hub, key, url) {
+  constructor(hub, key, streamPath) {
     this.hub = hub;
     this.key = key;
-    this.url = url;
+    // Suffixe d'URL (sans base) + liste ordonnée des lignes fournisseur
+    // (principale puis secours). L'URL effective = base courante + suffixe.
+    this.streamPath = streamPath;
+    this.bases = upstreamBases();
+    this.baseIndex = 0;
     this.subscribers = new Set(); // Set<ServerResponse>
     this.abort = new AbortController();
     this.state = 'connecting'; // connecting | live | reconnecting | closed
@@ -39,24 +43,68 @@ class StreamSession {
     this.ready = this._connectLoop();
   }
 
+  /** URL effective courante = ligne fournisseur active + suffixe du flux. */
+  get url() { return this.bases[this.baseIndex] + this.streamPath; }
+
+  /**
+   * Ouvre la connexion en essayant les lignes fournisseur DANS L'ORDRE
+   * (principale puis secours). Bascule sur la suivante à la moindre panne de
+   * connexion (réseau OU HTTP >=400) tant qu'il en reste. Renvoie
+   * `{ ok:true, res }` sur succès, `{ ok:false, status }` si TOUTES les lignes
+   * ont répondu >=400, et RELANCE l'exception réseau si toutes échouent en
+   * réseau (traité par le catch de la boucle → backoff). Avec une seule ligne,
+   * le comportement est strictement identique à l'ancien code.
+   */
+  async _openWithFailover() {
+    for (let i = 0; i < this.bases.length; i++) {
+      const url = this.bases[i] + this.streamPath;
+      try {
+        const res = await openStream(url, this.abort.signal);
+        if (res.statusCode >= 400) {
+          // Corps jeté : on absorbe ses erreurs (AbortError quand le signal
+          // partagé s'abandonnera à la fermeture client) pour ne JAMAIS
+          // laisser un 'error' non capté faire tomber le process.
+          try { res.body.on('error', () => {}); res.body.destroy(); } catch { /* ignore */ }
+          if (i < this.bases.length - 1) {
+            metrics.inc('gw_upstream_failover_total');
+            log.warn('upstream.failover', { key: this.key, from: i, status: res.statusCode });
+            continue; // ligne suivante
+          }
+          this.upstreamStatus = res.statusCode;
+          return { ok: false, status: res.statusCode };
+        }
+        this.baseIndex = i; // ligne gagnante
+        this.upstreamStatus = res.statusCode;
+        return { ok: true, res };
+      } catch (e) {
+        if (i < this.bases.length - 1) {
+          metrics.inc('gw_upstream_failover_total');
+          log.warn('upstream.failover', { key: this.key, from: i, error: String((e && e.message) || e) });
+          continue; // ligne suivante
+        }
+        throw e; // dernière ligne : panne réseau propagée au catch du loop
+      }
+    }
+    // Inatteignable (bases non vide), garde défensive.
+    return { ok: false, status: this.upstreamStatus || 502 };
+  }
+
   // ---- Connexion + boucle de reconnexion --------------------------------
   async _connectLoop() {
     let attempt = 0;
     for (;;) {
       if (this.closed) return false;
       try {
-        const res = await openStream(this.url, this.abort.signal);
-        this.upstreamStatus = res.statusCode;
-        if (res.statusCode >= 400) {
-          // Échec DÉFINITIF côté fournisseur (auth, chaîne morte…) : on ne
-          // mutualise pas une erreur, on remonte le statut aux clients.
-          try { res.body.destroy(); } catch { /* ignore */ }
+        const r = await this._openWithFailover();
+        if (!r.ok) {
+          // TOUTES les lignes ont refusé (>=400) : on ne mutualise pas une
+          // erreur, on remonte le statut aux clients.
           if (attempt === 0) return false; // 1re tentative : verdict d'échec
-          // En reconnexion : un 4xx définitif → on abandonne.
           this._endAll();
           this._destroy();
           return false;
         }
+        const res = r.res;
         this.contentType =
           (res.headers && (res.headers['content-type'] || res.headers['Content-Type'])) ||
           this.contentType;
@@ -317,7 +365,7 @@ export class StreamHub {
    * Abonne un client à une chaîne. Mutualise si la chaîne est déjà diffusée.
    * @returns {Promise<{ ok: true } | { ok: false, code: string, status?: number }>}
    */
-  async subscribe(key, url, res) {
+  async subscribe(key, streamPath, res) {
     let session = this.sessions.get(key);
     if (!session) {
       // Nouvelle chaîne → nouvelle connexion fournisseur : on vérifie la
@@ -329,7 +377,7 @@ export class StreamHub {
           return { ok: false, code: 'provider_limit', status: 503 };
         }
       }
-      session = new StreamSession(this, key, url);
+      session = new StreamSession(this, key, streamPath);
       this.sessions.set(key, session);
       metrics.setGauge('gw_upstream_active', this.totalUpstream());
       // On attache le client tout de suite : s'il coupe pendant la connexion,
