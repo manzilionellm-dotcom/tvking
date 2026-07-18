@@ -647,6 +647,26 @@
   "tvBadgeNew": "NY",
   "tvRailNewEpisodes": "Nye episoder",
   "tvBadgeNewEpisodes": "+ EPISODER",
+  "tvSurprise": "Overrask meg",
+  "tvResumeMinutes": "Fortsett · {min} min",
+  "@tvResumeMinutes": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "tvMatchPercent": "{percent}% for deg",
+  "tvGreetMorning": "God morgen",
+  "tvGreetEvening": "God kveld",
+  "tvGreetNight": "God natt",
+  "@tvMatchPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
   "tvHueTitle": "Philips Hue-lys",
   "tvHueSubtitle": "Kinoen styrer lyset i rommet — som en ekte kinosal.",
   "tvHueStatusNone": "Ingen Hue-bro funnet. Kjør et søk (samme Wi-Fi som boksen).",

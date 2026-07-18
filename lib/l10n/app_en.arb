@@ -648,6 +648,26 @@
   "tvBadgeNew": "NEW",
   "tvRailNewEpisodes": "New episodes",
   "tvBadgeNewEpisodes": "+ EPISODES",
+  "tvSurprise": "Surprise me",
+  "tvResumeMinutes": "Resume · {min} min",
+  "@tvResumeMinutes": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "tvMatchPercent": "{percent}% for you",
+  "tvGreetMorning": "Good morning",
+  "tvGreetEvening": "Good evening",
+  "tvGreetNight": "Good night",
+  "@tvMatchPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
   "tvHueTitle": "Philips Hue lights",
   "tvHueSubtitle": "Cinema drives the room lighting — like a real theatre.",
   "tvHueStatusNone": "No Hue bridge found. Run a search (same Wi-Fi as this box).",

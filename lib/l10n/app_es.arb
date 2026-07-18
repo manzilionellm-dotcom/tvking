@@ -647,6 +647,26 @@
   "tvBadgeNew": "NUEVO",
   "tvRailNewEpisodes": "Nuevos episodios",
   "tvBadgeNewEpisodes": "+ EPISODIOS",
+  "tvSurprise": "Sorpréndeme",
+  "tvResumeMinutes": "Reanudar · {min} min",
+  "@tvResumeMinutes": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "tvMatchPercent": "{percent}% para ti",
+  "tvGreetMorning": "Buenos días",
+  "tvGreetEvening": "Buenas noches",
+  "tvGreetNight": "Buenas noches",
+  "@tvMatchPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
   "tvHueTitle": "Luces Philips Hue",
   "tvHueSubtitle": "El Cine controla la luz de la sala, como un cine de verdad.",
   "tvHueStatusNone": "No se encontró el puente Hue. Búscalo (mismo Wi-Fi que el dispositivo).",

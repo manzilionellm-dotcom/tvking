@@ -647,6 +647,26 @@
   "tvBadgeNew": "MPYA",
   "tvRailNewEpisodes": "Vipindi vipya",
   "tvBadgeNewEpisodes": "+ VIPINDI",
+  "tvSurprise": "Nishtue",
+  "tvResumeMinutes": "Endelea · dakika {min}",
+  "@tvResumeMinutes": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "tvMatchPercent": "{percent}% kwako",
+  "tvGreetMorning": "Habari ya asubuhi",
+  "tvGreetEvening": "Habari ya jioni",
+  "tvGreetNight": "Usiku mwema",
+  "@tvMatchPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
   "tvHueTitle": "Taa za Philips Hue",
   "tvHueSubtitle": "Sinema huongoza mwanga wa chumba — kama ukumbi halisi.",
   "tvHueStatusNone": "Hakuna daraja la Hue lililopatikana. Anzisha utafutaji (Wi-Fi ileile).",

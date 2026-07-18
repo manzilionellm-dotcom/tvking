@@ -647,6 +647,26 @@
   "tvBadgeNew": "NY",
   "tvRailNewEpisodes": "Nye afsnit",
   "tvBadgeNewEpisodes": "+ AFSNIT",
+  "tvSurprise": "Overrask mig",
+  "tvResumeMinutes": "Fortsæt · {min} min",
+  "@tvResumeMinutes": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "tvMatchPercent": "{percent}% til dig",
+  "tvGreetMorning": "Godmorgen",
+  "tvGreetEvening": "Godaften",
+  "tvGreetNight": "Godnat",
+  "@tvMatchPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
   "tvHueTitle": "Philips Hue-lys",
   "tvHueSubtitle": "Biografen styrer lyset i rummet — som en rigtig biograf.",
   "tvHueStatusNone": "Ingen Hue-bro fundet. Kør en søgning (samme Wi-Fi som boksen).",

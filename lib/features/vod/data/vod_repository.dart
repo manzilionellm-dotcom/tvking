@@ -197,6 +197,11 @@ class VodRepository extends ChangeNotifier {
     return _cache ?? const <VodMovie>[];
   }
 
+  /// Films DÉJÀ en mémoire (aucun réseau) — pour les surfaces « best-effort »
+  /// qui veulent juste piocher dans le catalogue si présent (ex. l'écran de
+  /// veille « Art Mode »). Vide tant que rien n'a été chargé.
+  List<VodMovie> get cachedMovies => _cache ?? const <VodMovie>[];
+
   void _diag(String m, {String level = 'info'}) =>
       StreamDiagnostics.instance.recordEvent('cinéma', m, level: level);
 

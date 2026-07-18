@@ -14,10 +14,14 @@
 // =========================================================
 import 'dart:async';
 import 'dart:math';
+import 'dart:ui' as ui;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../vod/data/vod_repository.dart';
+import '../../vod/domain/vod_movie.dart';
 import '../core/tv_tokens.dart';
 import '../data/greeting_repository.dart';
 import 'tv_components.dart';
@@ -113,13 +117,21 @@ class _TvScreensaverScreenState extends State<_TvScreensaverScreen> {
   final Random _rng = Random();
   Timer? _move;
   Timer? _clock;
+  Timer? _art;
   Alignment _pos = Alignment.center;
   String _time = '';
+
+  /// « ART MODE » : affiches du catalogue en galerie plein écran (fond
+  /// flouté + affiche nette + léger zoom Ken Burns). Vide → on retombe sur
+  /// le logo tamisé classique (aucun VOD chargé, flavor sans cinéma…).
+  List<VodMovie> _gallery = const <VodMovie>[];
+  int _artIdx = 0;
 
   @override
   void initState() {
     super.initState();
     _tickClock();
+    _initGallery();
     // Déplacement lent du logo : nouvelle position aléatoire toutes les 20 s
     // (borne 0.7 → jamais collé aux bords). AnimatedAlign fait le glissement.
     _move = Timer.periodic(const Duration(seconds: 20), (_) {
@@ -132,6 +144,21 @@ class _TvScreensaverScreenState extends State<_TvScreensaverScreen> {
       });
     });
     _clock = Timer.periodic(const Duration(seconds: 30), (_) => _tickClock());
+  }
+
+  /// Prépare la galerie depuis le catalogue DÉJÀ en mémoire (zéro réseau) :
+  /// affiches présentes, mélangées, plafonnées. Lance la rotation (12 s).
+  void _initGallery() {
+    final List<VodMovie> withArt = <VodMovie>[
+      for (final VodMovie m in VodRepository.instance.cachedMovies)
+        if ((m.posterUrl ?? '').isNotEmpty) m,
+    ]..shuffle(_rng);
+    if (withArt.isEmpty) return;
+    _gallery = withArt.take(40).toList(growable: false);
+    _art = Timer.periodic(const Duration(seconds: 12), (_) {
+      if (!mounted || _gallery.isEmpty) return;
+      setState(() => _artIdx = (_artIdx + 1) % _gallery.length);
+    });
   }
 
   void _tickClock() {
@@ -159,6 +186,7 @@ class _TvScreensaverScreenState extends State<_TvScreensaverScreen> {
   void dispose() {
     _move?.cancel();
     _clock?.cancel();
+    _art?.cancel();
     super.dispose();
   }
 
@@ -184,15 +212,23 @@ class _TvScreensaverScreenState extends State<_TvScreensaverScreen> {
           color: Colors.black, // noir PUR : pixels OLED éteints = zéro usure
           child: Stack(
             children: <Widget>[
-              AnimatedAlign(
-                alignment: _pos,
-                duration: const Duration(seconds: 4),
-                curve: Curves.easeInOut,
-                child: Opacity(
-                  opacity: 0.55, // logo tamisé (doux la nuit, anti-marquage)
-                  child: const TvLogo(width: 200),
+              // ART MODE : galerie d'affiches si le catalogue est chargé,
+              // sinon logo tamisé qui se déplace (comportement d'origine).
+              if (_gallery.isNotEmpty)
+                _ArtSlide(
+                  key: ValueKey<String>(_gallery[_artIdx].id),
+                  movie: _gallery[_artIdx],
+                )
+              else
+                AnimatedAlign(
+                  alignment: _pos,
+                  duration: const Duration(seconds: 4),
+                  curve: Curves.easeInOut,
+                  child: Opacity(
+                    opacity: 0.55, // logo tamisé (doux la nuit, anti-marquage)
+                    child: const TvLogo(width: 200),
+                  ),
                 ),
-              ),
               Positioned(
                 right: 40,
                 bottom: 32,
@@ -222,6 +258,93 @@ class _TvScreensaverScreenState extends State<_TvScreensaverScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Une « diapo » Art Mode : fond plein écran flouté + assombri (la même
+/// affiche, pour une ambiance colorée) et l'affiche NETTE centrée, avec un
+/// lent zoom Ken Burns. Fondu d'entrée (le Stack parent croise les diapos
+/// via la ValueKey). Best-effort : image absente → rien (le noir reste).
+class _ArtSlide extends StatefulWidget {
+  const _ArtSlide({required this.movie, super.key});
+  final VodMovie movie;
+
+  @override
+  State<_ArtSlide> createState() => _ArtSlideState();
+}
+
+class _ArtSlideState extends State<_ArtSlide> {
+  double _opacity = 0.0;
+  double _scale = 1.0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Fondu + zoom Ken Burns amorcés à la première frame (transition douce).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {
+        _opacity = 1.0;
+        _scale = 1.08;
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String url = widget.movie.posterUrl ?? '';
+    return AnimatedOpacity(
+      opacity: _opacity,
+      duration: const Duration(milliseconds: 1400),
+      curve: Curves.easeInOut,
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          // Fond : affiche plein cadre, floutée + assombrie (ambiance).
+          if (url.isNotEmpty)
+            ImageFiltered(
+              imageFilter: ui.ImageFilter.blur(sigmaX: 34, sigmaY: 34),
+              child: CachedNetworkImage(
+                imageUrl: url,
+                fit: BoxFit.cover,
+                memCacheWidth: 200, // flouté → une petite déco suffit
+                placeholder: (_, __) => const ColoredBox(color: Colors.black),
+                errorWidget: (_, __, ___) =>
+                    const ColoredBox(color: Colors.black),
+              ),
+            ),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: <Color>[Color(0xC008080A), Color(0xE608080A)],
+              ),
+            ),
+          ),
+          // Affiche NETTE centrée, avec lent zoom (Ken Burns).
+          Center(
+            child: AnimatedScale(
+              scale: _scale,
+              duration: const Duration(seconds: 12),
+              curve: Curves.easeOut,
+              child: FractionallySizedBox(
+                heightFactor: 0.72,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(TvTokens.rCard),
+                  child: CachedNetworkImage(
+                    imageUrl: url,
+                    fit: BoxFit.contain,
+                    memCacheWidth: 500,
+                    placeholder: (_, __) => const SizedBox.shrink(),
+                    errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

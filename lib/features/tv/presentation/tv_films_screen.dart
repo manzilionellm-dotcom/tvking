@@ -37,6 +37,7 @@ import '../../vod/data/playback_position_repository.dart';
 import '../../vod/data/recent_vod_repository.dart';
 import '../../vod/data/vod_novelty_service.dart';
 import '../../vod/data/vod_repository.dart';
+import '../../vod/data/vod_taste.dart';
 import '../../vod/data/vod_watchlist_repository.dart';
 import '../../vod/domain/vod_info.dart';
 import '../../vod/domain/vod_movie.dart';
@@ -47,6 +48,7 @@ import '../core/tv_cine_route.dart';
 import '../core/tv_tokens.dart';
 import '../core/vod_titles.dart';
 import '../data/cine_perf.dart';
+import '../data/greeting_repository.dart';
 import '../../vod/data/vod_download_service.dart';
 import 'tv_components.dart';
 import 'tv_movie_detail_screen.dart';
@@ -203,6 +205,57 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   /// (sources pauvres en métadonnées) : plus jamais un trou noir avec
   /// trois boutons qui flottent. Si vraiment RIEN n'a d'image, le rendu
   /// de repli du bandeau (dégradé + grand titre) prend le relais.
+  /// Salutation selon l'heure + météo si déjà en cache (« Bonsoir · 21°
+  /// Paris »). Zéro appel réseau : on lit seulement ce qui est là.
+  String _greeting(BuildContext context) {
+    final int h = DateTime.now().hour;
+    final String hello = h >= 18 || h < 5
+        ? (h < 5 ? context.l10n.tvGreetNight : context.l10n.tvGreetEvening)
+        : context.l10n.tvGreetMorning;
+    final Greeting? g = GreetingRepository.instance.current;
+    if (g == null) return hello;
+    final String temp = g.tempC == null ? '' : '${g.tempC!.round()}°';
+    final String meteo = <String>[
+      if (g.emoji.isNotEmpty || temp.isNotEmpty) '${g.emoji} $temp'.trim(),
+      if (g.city.isNotEmpty) g.city,
+    ].join(' · ');
+    return meteo.isEmpty ? hello : '$hello · $meteo';
+  }
+
+  /// Minutes restantes d'une reprise (null si pas de reprise pour cet id, ou
+  /// durée inconnue). Sert au bouton « Reprendre · 23 min » du héros.
+  int? _remainingMinutes(String id) {
+    final PlaybackPosition? e =
+        PlaybackPositionRepository.instance.entryFor(id);
+    if (e == null || e.durationMs <= 0) return null;
+    final int remMs = e.durationMs - e.positionMs;
+    if (remMs <= 60000) return null; // ~fini → « Regarder » classique
+    return (remMs / 60000).ceil();
+  }
+
+  /// « SURPRENDS-MOI » : lance instantanément un film choisi pour le client.
+  /// Priorité à une reprise en cours (on reprend là où il en était) ; sinon
+  /// tirage pondéré par ses catégories préférées. Zéro écran de choix.
+  void _surpriseMe() {
+    // 1) Une reprise en cours ? On relance la plus récente (envie n°1).
+    final List<PlaybackPosition> resume =
+        PlaybackPositionRepository.instance.entries;
+    if (resume.isNotEmpty) {
+      _playResume(resume.first);
+      return;
+    }
+    // 2) Sinon, tirage pondéré par le goût. Aléa 0..1 dérivé de l'horloge
+    //    (varie à chaque appui, aucun Random importé).
+    if (_all.isEmpty) return;
+    final Map<String, double> aff = VodTaste.affinity(
+        recent: _recent, watchlist: _watchlist);
+    final double rng =
+        (DateTime.now().microsecondsSinceEpoch % 100000) / 100000.0;
+    final int idx =
+        VodTaste.surpriseIndex(_all, affinity: aff, rngUnit: rng);
+    if (idx >= 0) _play(<VodMovie>[_all[idx]], 0);
+  }
+
   VodMovie _pickHero() {
     bool hasArt(VodMovie m) => (m.posterUrl ?? '').isNotEmpty;
     for (final VodMovie m in _recent) {
@@ -382,6 +435,15 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
       for (final PlaybackPosition e in resume) e.key: e.progress,
     };
 
+    // SCORE « X % POUR VOUS » : affinité de catégorie bâtie sur l'historique
+    // (derniers vus + Ma Liste). Calculée UNE fois ici, lue par chaque
+    // affiche. Vide si pas d'historique → aucun score affiché (honnête).
+    final Map<String, double> affinity = VodTaste.affinity(
+        recent: _recent, watchlist: _watchlist);
+    final double maxAffinity = affinity.isEmpty
+        ? 0
+        : affinity.values.reduce((double a, double b) => a > b ? a : b);
+
     // Rangées, dans l'ordre façon Netflix : Continuer à regarder (si non
     // vide), puis Ma Liste, puis Derniers vus, puis une rangée par catégorie.
     // On les assemble en une liste ordonnée → pas d'arithmétique d'index
@@ -521,8 +583,11 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
               backdropUrl: heroBackdrop,
               plot: heroPlot,
               inList: _inList.contains(hero.id),
+              resumeRemaining: _remainingMinutes(hero.id),
+              greeting: _greeting(context),
               onPlay: () => _play(<VodMovie>[hero], 0),
               onToggleList: () => _toggleList(hero),
+              onSurprise: _surpriseMe,
             );
           }
           final ({String title, List<VodMovie> movies, bool resume, bool dl})
@@ -533,6 +598,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
             movies: rail.movies,
             inList: _inList,
             newIds: _newIds,
+            affinity: affinity,
+            maxAffinity: maxAffinity,
             progress: progress,
             // Ré-autofocus de l'affiche mémorisée (mémoire du focus par rangée).
             autofocusIndex: (i - 1) == memRail
@@ -588,15 +655,29 @@ class _HeroBanner extends StatelessWidget {
     required this.onPlay,
     required this.inList,
     required this.onToggleList,
+    required this.onSurprise,
+    this.greeting,
+    this.resumeRemaining,
     this.backdropUrl,
     this.plot,
     this.autofocus = false,
   });
 
+  /// Salutation selon l'heure (« Bonsoir · 21° Paris ») posée en HAUT du
+  /// bandeau — surimpression, donc zéro espace vertical en plus.
+  final String? greeting;
+
   final VodMovie movie;
   final VoidCallback onPlay;
   final bool inList;
   final VoidCallback onToggleList;
+
+  /// « Surprends-moi » : lance instantanément un film choisi pour le client.
+  final VoidCallback onSurprise;
+
+  /// Minutes restantes si la vedette est une REPRISE (le bouton devient
+  /// « Reprendre · 23 min ») — null = film neuf (bouton « Regarder »).
+  final int? resumeRemaining;
 
   /// Image de fond paysage (get_vod_info). `null` → rendu classique.
   final String? backdropUrl;
@@ -618,11 +699,25 @@ class _HeroBanner extends StatelessWidget {
   Widget _actions(BuildContext context) => Row(
         children: <Widget>[
           _HeroButton(
-            icon: Icons.play_arrow_rounded,
-            label: context.l10n.tvWatch,
+            icon: resumeRemaining != null
+                ? Icons.play_arrow_rounded
+                : Icons.play_arrow_rounded,
+            // REPRISE PRÉCISE (premium) : « Reprendre · 23 min » au lieu d'un
+            // simple « Regarder » quand la vedette est un film entamé.
+            label: resumeRemaining != null
+                ? context.l10n.tvResumeMinutes(resumeRemaining!)
+                : context.l10n.tvWatch,
             autofocus: autofocus,
             primary: true,
             onSelect: onPlay,
+          ),
+          const SizedBox(width: 12),
+          // « Surprends-moi » : un film choisi pour toi, lancé tout de suite.
+          _HeroButton(
+            icon: Icons.casino_rounded,
+            label: context.l10n.tvSurprise,
+            primary: false,
+            onSelect: onSurprise,
           ),
           const SizedBox(width: 12),
           // « Ma Liste » : ajoute/retire le film vedette (par profil).
@@ -701,6 +796,22 @@ class _HeroBanner extends StatelessWidget {
               ),
             ),
           ),
+          // Salutation selon l'heure, en haut à gauche (surimpression).
+          if (greeting != null && greeting!.isNotEmpty)
+            Positioned(
+              top: 16,
+              left: 30,
+              child: Text(
+                greeting!,
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: TvTokens.text,
+                    shadows: <Shadow>[
+                      Shadow(blurRadius: 8, color: Color(0xCC000000)),
+                    ]),
+              ),
+            ),
           // Contenu : titre + méta + synopsis + boutons, en bas à gauche.
           Padding(
             padding: const EdgeInsets.fromLTRB(30, 24, 30, 24),
@@ -949,6 +1060,8 @@ class _Rail extends StatelessWidget {
     required this.movies,
     required this.inList,
     required this.newIds,
+    required this.affinity,
+    required this.maxAffinity,
     required this.progress,
     required this.onPlay,
     required this.onToggleList,
@@ -963,6 +1076,10 @@ class _Rail extends StatelessWidget {
 
   /// Ids des films NOUVEAUX → pastille « NOUVEAU » en coin d'affiche.
   final Set<String> newIds;
+
+  /// Affinité de catégorie (goût) + maximum, pour le score « X % pour vous ».
+  final Map<String, double> affinity;
+  final double maxAffinity;
 
   /// Fraction déjà vue par id de contenu (reprise de lecture) : dessine la
   /// petite barre dorée sous l'affiche. Absent de la map = rien à afficher.
@@ -1021,6 +1138,8 @@ class _Rail extends StatelessWidget {
                     movie: movies[i],
                     inList: inList.contains(movies[i].id),
                     isNew: newIds.contains(movies[i].id),
+                    matchPercent: VodTaste.matchPercent(movies[i],
+                        affinity: affinity, maxAffinity: maxAffinity),
                     progress: progress[movies[i].id],
                     autofocus: i == autofocusIndex,
                     onFocus:
@@ -1047,6 +1166,7 @@ class _PosterCard extends StatelessWidget {
     required this.onPlay,
     required this.onToggleList,
     this.isNew = false,
+    this.matchPercent,
     this.progress,
     this.autofocus = false,
     this.onFocus,
@@ -1057,6 +1177,9 @@ class _PosterCard extends StatelessWidget {
   /// Film récemment apparu au catalogue → pastille « NOUVEAU » (coin haut
   /// gauche, opposée au ✓ « Ma Liste »).
   final bool isNew;
+
+  /// Score « X % pour vous » (goût) — null = rien d'honnête à afficher.
+  final int? matchPercent;
   final VoidCallback onPlay;
   final VoidCallback onToggleList;
 
@@ -1166,6 +1289,17 @@ class _PosterCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
+          // Score « X % pour vous » (goût) — discret, en ember, seulement
+          // quand l'app a de quoi le dire honnêtement.
+          if (matchPercent != null)
+            Text(
+              context.l10n.tvMatchPercent(matchPercent!),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: TvTokens.emberBright),
+            ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),
             child: Text(

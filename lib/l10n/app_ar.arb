@@ -647,6 +647,26 @@
   "tvBadgeNew": "جديد",
   "tvRailNewEpisodes": "حلقات جديدة",
   "tvBadgeNewEpisodes": "+ حلقات",
+  "tvSurprise": "فاجئني",
+  "tvResumeMinutes": "استئناف · {min} دقيقة",
+  "@tvResumeMinutes": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "tvMatchPercent": "{percent}% لك",
+  "tvGreetMorning": "صباح الخير",
+  "tvGreetEvening": "مساء الخير",
+  "tvGreetNight": "تصبح على خير",
+  "@tvMatchPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
   "tvHueTitle": "أضواء Philips Hue",
   "tvHueSubtitle": "السينما تتحكم في إضاءة الغرفة — كقاعة سينما حقيقية.",
   "tvHueStatusNone": "لم يُعثر على جسر Hue. ابدأ بحثًا (نفس شبكة Wi-Fi).",

@@ -647,6 +647,26 @@
   "tvBadgeNew": "NY",
   "tvRailNewEpisodes": "Nya avsnitt",
   "tvBadgeNewEpisodes": "+ AVSNITT",
+  "tvSurprise": "Överraska mig",
+  "tvResumeMinutes": "Fortsätt · {min} min",
+  "@tvResumeMinutes": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "tvMatchPercent": "{percent}% för dig",
+  "tvGreetMorning": "God morgon",
+  "tvGreetEvening": "God kväll",
+  "tvGreetNight": "God natt",
+  "@tvMatchPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
   "tvHueTitle": "Philips Hue-lampor",
   "tvHueSubtitle": "Bion styr ljuset i rummet — som en riktig biosalong.",
   "tvHueStatusNone": "Ingen Hue-brygga hittad. Kör en sökning (samma Wi-Fi som boxen).",
