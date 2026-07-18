@@ -27,6 +27,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../core/crash/crash_reporting.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/net/doh_resolver.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -1089,8 +1090,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             : 'VOD (film/épisode) → lecture directe mpv (Range natif, '
                 'hors relais — démarrage rapide + seek fluide)',
       );
+      // CONTOURNEMENT DNS FAI (cause racine terrain 2026-07-18) : mpv fait
+      // sa PROPRE résolution DNS — il n'utilise PAS le HttpClient Dart, donc
+      // le DoH (installDohResolution) NE s'applique PAS à la lecture directe.
+      // Sur les réseaux qui bloquent la résolution des domaines IPTV (très
+      // courant en France), CHAQUE film restait sur le spinner alors que le
+      // Live marchait (le relais, lui, fait du DoH). On résout donc l'hôte
+      // NOUS-MÊMES (DNS système puis DoH), on ouvre mpv sur l'IP, et on lui
+      // passe l'en-tête Host d'origine pour que le serveur reconnaisse le
+      // vhost. Range/seek natifs conservés (on ne repasse pas par le relais).
+      final (String openUrl, Map<String, String>? headers) =
+          await _vodDirectTarget(realUrl);
+      if (!mounted || gen != _openGeneration) return;
       _playerOpenedOnce = true;
-      _player.open(Media(realUrl));
+      _player.open(Media(openUrl, httpHeaders: headers));
       // FILET « jamais bloqué » (terrain 2026-07-18) : si la lecture
       // directe ne produit AUCUNE image en quelques secondes, on lance
       // la CASCADE de variantes — PAS le relais. Le relais est un tuyau
@@ -1157,6 +1170,46 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       );
       unawaited(_declareChannelBlocked());
     });
+  }
+
+  /// Prépare l'ouverture DIRECTE d'un film : résout l'hôte (DNS système
+  /// puis DoH) et renvoie l'URL réécrite sur l'IP + l'en-tête Host
+  /// d'origine, pour contourner un blocage DNS opérateur SANS repasser par
+  /// le relais (on garde Range/seek). Renvoie l'URL telle quelle (sans
+  /// en-tête) si : ce n'est pas du http:// (en https, réécrire sur l'IP
+  /// casserait le SNI/certificat), l'hôte est déjà une IP, ou rien ne
+  /// résout (mpv tentera alors le nom brut — puis la cascade prendra le
+  /// relais). Journalisé dans la boîte noire pour diagnostic terrain.
+  Future<(String, Map<String, String>?)> _vodDirectTarget(String url) async {
+    final Uri? u = Uri.tryParse(url);
+    if (u == null || u.scheme != 'http' || u.host.isEmpty) {
+      return (url, null);
+    }
+    if (InternetAddress.tryParse(u.host) != null) {
+      return (url, null); // déjà une IP littérale
+    }
+    final InternetAddress? ip = await resolveHostForMedia(u.host);
+    if (ip == null) {
+      StreamDiagnostics.instance.recordEvent(
+        'probe',
+        'VOD DNS : « ${u.host} » IRRÉSOLU (système + DoH) → mpv tente le nom '
+            'brut ; la cascade prendra le relais si besoin',
+        level: 'warn',
+      );
+      return (url, null);
+    }
+    // Host d'origine (avec port si présent) conservé dans l'en-tête pour
+    // que le serveur serve le bon vhost malgré la connexion par IP.
+    final String hostHeader = u.hasPort ? '${u.host}:${u.port}' : u.host;
+    final String rewritten = u.replace(host: ip.address).toString();
+    if (rewritten != url) {
+      StreamDiagnostics.instance.recordEvent(
+        'probe',
+        'VOD DNS : « ${u.host} » → ${ip.address} (en-tête Host conservé) — '
+            'contournement blocage DNS opérateur, lecture directe (Range)',
+      );
+    }
+    return (rewritten, <String, String>{'Host': hostHeader});
   }
 
   /// Callback du `PageView` quand l'utilisateur a fini un swipe vertical.

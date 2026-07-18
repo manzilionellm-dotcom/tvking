@@ -79,6 +79,37 @@ void main() {
     expect(await r.resolve('panel.example.com'), isEmpty);
   });
 
+  group('resolveHostForMedia (lecture directe mpv — contournement DNS)', () {
+    test('IP littérale → renvoyée telle quelle, aucune requête réseau',
+        () async {
+      // Aucun stub DoH : si la fonction tentait de résoudre, elle
+      // échouerait. Une IP littérale doit court-circuiter toute résolution.
+      r.httpGetOverride =
+          (String ip, String host, String name) async => throw 'ne doit pas être appelé';
+      final InternetAddress? out = await resolveHostForMedia('203.0.113.7');
+      expect(out, isNotNull);
+      expect(out!.address, '203.0.113.7');
+    });
+
+    test('hôte bloqué côté système → repli DoH (IP renvoyée)', () async {
+      // `.invalid` (RFC 2606) : jamais résolvable en système → force le DoH.
+      r.httpGetOverride = (String ip, String host, String name) async {
+        expect(name, 'panel-bloque.invalid');
+        return _dohJson(<String>['198.51.100.42']);
+      };
+      final InternetAddress? out =
+          await resolveHostForMedia('panel-bloque.invalid');
+      expect(out, isNotNull);
+      expect(out!.address, '198.51.100.42');
+    });
+
+    test('hôte irrésolu (ni système ni DoH) → null', () async {
+      r.httpGetOverride =
+          (String ip, String host, String name) async => throw 'KO';
+      expect(await resolveHostForMedia('panel-bloque.invalid'), isNull);
+    });
+  });
+
   test(
       'BOUT EN BOUT : client DoH joint un serveur via un hôte que le DNS '
       'système ne connaît pas (résolu vers 127.0.0.1 par le DoH stubbé)',

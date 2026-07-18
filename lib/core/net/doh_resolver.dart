@@ -159,6 +159,32 @@ class DohResolver {
   }
 }
 
+/// Résout [host] en UNE adresse IP pour une lecture média DIRECTE (mpv),
+/// qui ne passe PAS par un [HttpClient] Dart et ignore donc
+/// [installDohResolution]. DNS système d'abord (rapide, exact pour les
+/// CDN locaux) ; DoH en repli quand l'opérateur bloque le domaine IPTV.
+/// Renvoie null si rien ne résout (l'appelant laisse alors mpv tenter le
+/// nom brut). Une IP littérale est renvoyée telle quelle. On préfère
+/// l'IPv4 (compatibilité maximale des panels).
+Future<InternetAddress?> resolveHostForMedia(String host) async {
+  final InternetAddress? literal = InternetAddress.tryParse(host);
+  if (literal != null) return literal;
+  // 1) DNS système (budget court : sur réseau bloquant, échoue vite).
+  try {
+    final List<InternetAddress> sys = await InternetAddress.lookup(host)
+        .timeout(const Duration(seconds: 3));
+    for (final InternetAddress a in sys) {
+      if (a.type == InternetAddressType.IPv4) return a;
+    }
+    if (sys.isNotEmpty) return sys.first;
+  } catch (_) {
+    // blocage / échec → DoH
+  }
+  // 2) DoH : l'app résout elle-même, l'opérateur ne peut pas filtrer.
+  final List<InternetAddress> doh = await DohResolver.instance.resolve(host);
+  return doh.isNotEmpty ? doh.first : null;
+}
+
 /// Installe la résolution DoH sur [client] : le DNS système est tenté
 /// d'abord ; en cas d'échec (blocage opérateur), le domaine est résolu
 /// en DoH et la connexion part directement sur l'IP obtenue — le
