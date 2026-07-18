@@ -11,6 +11,10 @@ import {
 } from './users.js';
 import { acquireSession, snapshotSessions } from './limits.js';
 import { hub } from './hub.js';
+import { RateLimiter } from './ratelimit.js';
+
+// Limiteur des endpoints coûteux (get.php / player_api), par utilisateur.
+const apiLimiter = new RateLimiter(config.apiRateLimit, config.apiRateWindowMs);
 import { parseStreamPath, streamKey, makeM3URewriter, rewritePlayerApi } from './xtream.js';
 import {
   callPlayerApi, openGetPhp, proxyRawFailover, upstreamStreamPath,
@@ -141,6 +145,10 @@ async function handlePlayerApi(url, res) {
   const q = Object.fromEntries(url.searchParams);
   const user = authenticate(q.username, q.password);
   if (!user) return sendJson(res, 200, { user_info: { auth: 0 } });
+  if (!apiLimiter.allow(user.username)) {
+    metrics.inc('gw_rate_limited_total', 1, { endpoint: 'player_api' });
+    return sendJson(res, 429, { user_info: { auth: 1, status: 'Rate limited' } });
+  }
   const params = { ...q };
   delete params.username; delete params.password;
   try {
@@ -164,6 +172,10 @@ async function handleGetPhp(url, res) {
   const q = Object.fromEntries(url.searchParams);
   const user = authenticate(q.username, q.password);
   if (!user) return sendText(res, 403, '#EXTM3U\n# auth failed\n', 'application/x-mpegurl');
+  if (!apiLimiter.allow(user.username)) {
+    metrics.inc('gw_rate_limited_total', 1, { endpoint: 'get_php' });
+    return sendText(res, 429, '#EXTM3U\n# rate limited\n', 'application/x-mpegurl');
+  }
   const params = { ...q };
   delete params.username; delete params.password;
   const ac = new AbortController();

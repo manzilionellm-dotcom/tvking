@@ -12,8 +12,20 @@
 //  USERS_FILE pour permettre la gestion depuis le panel (CRUD).
 // =========================================================
 import { readFile, writeFile, rename } from 'node:fs/promises';
+import { timingSafeEqual } from 'node:crypto';
 import { config } from './config.js';
 import { log } from './logger.js';
+
+// Comparaison à TEMPS CONSTANT : un `===` sur les mots de passe fuit, par son
+// temps de réponse, le nombre de caractères corrects en tête → un attaquant
+// peut reconstruire le mot de passe octet par octet. timingSafeEqual coupe
+// cette fuite (la longueur reste observable, ce qui est acceptable).
+function safeEqual(a, b) {
+  const ba = Buffer.from(String(a ?? ''), 'utf8');
+  const bb = Buffer.from(String(b ?? ''), 'utf8');
+  if (ba.length !== bb.length) return false;
+  return timingSafeEqual(ba, bb);
+}
 
 // Modèle brut { families: [{ id, maxStreams, users: [{username,password,maxStreams}] }] }
 let model = { families: [] };
@@ -66,7 +78,7 @@ async function persist(file = config.usersFile) {
 export function authenticate(username, password) {
   const u = byUsername.get(String(username || ''));
   if (!u) return null;
-  if (u.password !== String(password || '')) return null;
+  if (!safeEqual(u.password, password)) return null;
   return u;
 }
 

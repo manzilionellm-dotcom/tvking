@@ -94,6 +94,13 @@ export const config = {
   headersTimeoutMs: int('HEADERS_TIMEOUT_MS', 60_000),
   requestTimeoutMs: int('REQUEST_TIMEOUT_MS', 60_000),
 
+  // --- Anti-abus : limite de débit des endpoints coûteux (get.php,
+  // player_api.php) PAR utilisateur. Une box buggée qui martèle la playlist
+  // ne doit pas saturer la ligne / l'event-loop. Généreux par défaut (un
+  // rafraîchissement normal est rare). 0 = désactivé.
+  apiRateLimit: int('API_RATE_LIMIT', 60),
+  apiRateWindowMs: int('API_RATE_WINDOW_MS', 10_000),
+
   // --- Sécurité / admin ---
   // Jeton exigé pour /admin/* et /metrics (en-tête Authorization: Bearer …
   // ou ?token=). Vide = endpoints admin désactivés (recommandé de le poser).
