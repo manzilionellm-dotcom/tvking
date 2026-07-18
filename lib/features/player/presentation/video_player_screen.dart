@@ -247,9 +247,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // Même philosophie que le fix TV (verrou _recovering, 2026-07-06).
   Timer? _startupTimer;
 
-  /// Repli VOD directe → relais si aucune image en [_kVodDirectGrace].
+  /// Repli VOD : cascade de variantes de conteneur si aucune image n'est
+  /// décodée dans [_kVodDirectGrace]. 12 s = on laisse mpv démarrer un
+  /// film volumineux / une origine lente (un vrai 404 est, lui, capté
+  /// instantanément par l'écouteur d'erreur), tout en battant largement
+  /// le chien de garde de démarrage (25 s) pour ne pas laisser un spinner.
   Timer? _vodRelayFallbackTimer;
-  static const Duration _kVodDirectGrace = Duration(seconds: 8);
+  static const Duration _kVodDirectGrace = Duration(seconds: 12);
   Timer? _zapDebounce;
   // Chaîne en attente derrière le debounce : si un nouveau zap arrive
   // avant l'échéance, elle est « absorbée » (zéro requête émise) — on
@@ -1088,12 +1092,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _playerOpenedOnce = true;
       _player.open(Media(realUrl));
       // FILET « jamais bloqué » (terrain 2026-07-18) : si la lecture
-      // directe ne produit AUCUNE image en quelques secondes (source
-      // capricieuse, domaine récalcitrant…), on bascule automatiquement
-      // sur le relais — sans laisser l'utilisateur sur un spinner infini.
-      // Les fichiers LOCAUX n'ont pas de repli (rien à relayer).
+      // directe ne produit AUCUNE image en quelques secondes, on lance
+      // la CASCADE de variantes — PAS le relais. Le relais est un tuyau
+      // d'octets TS CONTINUS SANS Range : sur un film .mp4/.mkv il ne
+      // démarre pas (et empêche le seek). La vraie cause d'un film qui
+      // ne démarre pas est presque toujours le mauvais conteneur dans
+      // l'URL (.mp4 alors que la source sert du .mkv → 404 / 0 frame) ;
+      // la cascade essaie justement les bons conteneurs et ré-ouvre sur
+      // la variante gagnante. On le fait à ~8 s au lieu d'attendre les
+      // 25 s du chien de garde de démarrage. Fichiers LOCAUX exclus.
       if (!isLocalFile) {
-        _armVodRelayFallback(realUrl, gen);
+        _armVodCascadeFallback(gen);
         // « TÉLÉCHARGER PENDANT QUE JE REGARDE » (façon YouTube) : si
         // l'option est active, on met le film en file EN PARALLÈLE → il
         // sera hors-ligne à la fin. No-op si option OFF (défaut).
@@ -1129,10 +1138,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
-  /// Arme le repli VOD directe → relais : si la 1re image n'est pas décodée
-  /// dans [_kVodDirectGrace], on ré-ouvre via le relais (une seule fois par
-  /// ouverture). Annulé dès la 1re frame (_markPlaybackStarted) ou un zap.
-  void _armVodRelayFallback(String directUrl, int gen) {
+  /// Arme le repli VOD : si la 1re image n'est pas décodée dans
+  /// [_kVodDirectGrace], on lance la CASCADE de variantes de conteneur
+  /// (le bon correctif pour un film qui ne démarre pas — mauvais
+  /// conteneur d'URL). Une seule fois par ouverture ; annulé dès la 1re
+  /// frame (_markPlaybackStarted) ou un zap. La cascade a ses propres
+  /// gardes anti-boucle : un 2ᵉ appel (chien de garde 25 s) est ignoré.
+  void _armVodCascadeFallback(int gen) {
     _vodRelayFallbackTimer?.cancel();
     _vodRelayFallbackTimer = Timer(_kVodDirectGrace, () {
       if (!mounted || gen != _openGeneration) return;
@@ -1140,10 +1152,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       StreamDiagnostics.instance.recordEvent(
         'player',
         'VOD directe sans 1re image en ${_kVodDirectGrace.inSeconds} s → '
-            'repli automatique sur le relais',
+            'cascade de variantes (conteneur) — pas le relais (sans Range)',
         level: 'warn',
       );
-      unawaited(_openViaRelay(directUrl, gen));
+      unawaited(_declareChannelBlocked());
     });
   }
 
