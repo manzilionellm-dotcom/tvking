@@ -28,7 +28,9 @@ import '../../player/presentation/play_channel.dart';
 import '../data/playback_position_repository.dart';
 import '../data/series_repository.dart';
 import '../data/vod_download_service.dart';
+import '../data/vod_novelty_service.dart';
 import '../data/vod_repository.dart';
+import '../data/vod_taste.dart';
 import '../domain/vod_movie.dart';
 import '../../tv/core/vod_titles.dart';
 import '../domain/vod_series.dart';
@@ -54,6 +56,10 @@ class _CinemaScreenState extends State<CinemaScreen>
   List<VodMovie> _movies = const <VodMovie>[];
   List<VodSeries> _series = const <VodSeries>[];
   bool _loading = true;
+  // NOUVEAUTÉS (parité TV) : ids films/séries apparus depuis la dernière
+  // visite → rangée « Nouveautés » + pastille NOUVEAU.
+  Set<String> _newMovieIds = <String>{};
+  Set<String> _newSeriesIds = <String>{};
 
   @override
   void initState() {
@@ -95,6 +101,18 @@ class _CinemaScreenState extends State<CinemaScreen>
       _series = series;
       _loading = false;
     });
+    // Nouveautés (films + séries) en arrière-plan — parité TV.
+    final int nowMs = DateTime.now().millisecondsSinceEpoch;
+    VodNoveltyService.instance
+        .reconcileMovies(movies.map((VodMovie m) => m.id), nowMs: nowMs)
+        .then((Set<String> f) {
+      if (mounted) setState(() => _newMovieIds = f);
+    });
+    VodNoveltyService.instance
+        .reconcileSeries(series.map((VodSeries s) => s.id), nowMs: nowMs)
+        .then((Set<String> f) {
+      if (mounted) setState(() => _newSeriesIds = f);
+    });
   }
 
   @override
@@ -121,8 +139,10 @@ class _CinemaScreenState extends State<CinemaScreen>
       body: TabBarView(
         controller: _tabs,
         children: <Widget>[
-          _FilmsTab(movies: _movies, loading: _loading),
-          _SeriesTab(series: _series, loading: _loading),
+          _FilmsTab(
+              movies: _movies, loading: _loading, newIds: _newMovieIds),
+          _SeriesTab(
+              series: _series, loading: _loading, newIds: _newSeriesIds),
           const _DownloadsTab(),
         ],
       ),
@@ -135,9 +155,15 @@ class _CinemaScreenState extends State<CinemaScreen>
 // ---------------------------------------------------------------------------
 
 class _FilmsTab extends StatelessWidget {
-  const _FilmsTab({required this.movies, required this.loading});
+  const _FilmsTab(
+      {required this.movies,
+      required this.loading,
+      this.newIds = const <String>{}});
   final List<VodMovie> movies;
   final bool loading;
+
+  /// Ids des films NOUVEAUX (parité TV) → rangée « Nouveautés » + badge.
+  final Set<String> newIds;
 
   @override
   Widget build(BuildContext context) {
@@ -181,6 +207,36 @@ class _FilmsTab extends StatelessWidget {
           .add(m);
     }
 
+    // NOUVEAUTÉS (parité TV).
+    final List<VodMovie> newMovies = newIds.isEmpty
+        ? const <VodMovie>[]
+        : <VodMovie>[
+            for (final VodMovie m in movies)
+              if (newIds.contains(m.id)) m,
+          ].take(24).toList(growable: false);
+
+    // AFFINITÉ (goût) depuis l'historique de reprise → score « % pour vous »
+    // et rangée « Parce que vous avez regardé ».
+    final Map<String, double> affinity =
+        VodTaste.affinity(recent: resume, watchlist: const <VodMovie>[]);
+    final double maxAffinity = affinity.isEmpty
+        ? 0
+        : affinity.values.reduce((double a, double b) => a > b ? a : b);
+    List<VodMovie> because = const <VodMovie>[];
+    String becauseTitle = '';
+    if (resume.isNotEmpty) {
+      final VodMovie seed = resume.first;
+      final String cat = seed.category.trim();
+      if (cat.isNotEmpty) {
+        final Set<String> seen = resume.map((VodMovie m) => m.id).toSet();
+        because = <VodMovie>[
+          for (final VodMovie m in (byCat[cat] ?? const <VodMovie>[]))
+            if (!seen.contains(m.id)) m,
+        ].take(24).toList(growable: false);
+        becauseTitle = context.l10n.tvRailBecause(VodTitles.clean(seed.name));
+      }
+    }
+
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: <Widget>[
@@ -190,11 +246,28 @@ class _FilmsTab extends StatelessWidget {
             movies: resume,
             progressFor: (VodMovie m) => positions.progressFor(m.id),
           ),
-        if (downloaded.isNotEmpty)
+        if (newMovies.isNotEmpty)
           _PosterRail(
-              title: context.l10n.tvDlRail, movies: downloaded),
+              title: context.l10n.tvRailNew,
+              movies: newMovies,
+              newIds: newIds,
+              affinity: affinity,
+              maxAffinity: maxAffinity),
+        if (because.isNotEmpty)
+          _PosterRail(
+              title: becauseTitle,
+              movies: because,
+              affinity: affinity,
+              maxAffinity: maxAffinity),
+        if (downloaded.isNotEmpty)
+          _PosterRail(title: context.l10n.tvDlRail, movies: downloaded),
         for (final String c in cats)
-          _PosterRail(title: c, movies: byCat[c]!),
+          _PosterRail(
+              title: c,
+              movies: byCat[c]!,
+              newIds: newIds,
+              affinity: affinity,
+              maxAffinity: maxAffinity),
       ],
     );
   }
@@ -206,10 +279,16 @@ class _PosterRail extends StatelessWidget {
     required this.title,
     required this.movies,
     this.progressFor,
+    this.newIds = const <String>{},
+    this.affinity = const <String, double>{},
+    this.maxAffinity = 0,
   });
   final String title;
   final List<VodMovie> movies;
   final double? Function(VodMovie)? progressFor;
+  final Set<String> newIds;
+  final Map<String, double> affinity;
+  final double maxAffinity;
 
   @override
   Widget build(BuildContext context) {
@@ -236,6 +315,9 @@ class _PosterRail extends StatelessWidget {
             itemBuilder: (BuildContext context, int i) => _PosterCard(
               movie: movies[i],
               progress: progressFor?.call(movies[i]),
+              isNew: newIds.contains(movies[i].id),
+              matchPercent: VodTaste.matchPercent(movies[i],
+                  affinity: affinity, maxAffinity: maxAffinity),
             ),
           ),
         ),
@@ -245,9 +327,15 @@ class _PosterRail extends StatelessWidget {
 }
 
 class _PosterCard extends StatelessWidget {
-  const _PosterCard({required this.movie, this.progress});
+  const _PosterCard(
+      {required this.movie,
+      this.progress,
+      this.isNew = false,
+      this.matchPercent});
   final VodMovie movie;
   final double? progress;
+  final bool isNew;
+  final int? matchPercent;
 
   @override
   Widget build(BuildContext context) {
@@ -285,11 +373,41 @@ class _PosterCard extends StatelessWidget {
                           ]),
                         ),
                       ),
+                    // Pastille NOUVEAU (parité TV).
+                    if (isNew)
+                      Positioned(
+                        top: 5,
+                        left: 5,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: AppColors.accent,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(context.l10n.tvBadgeNew,
+                              style: const TextStyle(
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white)),
+                        ),
+                      ),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 6),
+            if (matchPercent != null)
+              SizedBox(
+                width: 96,
+                child: Text(context.l10n.tvMatchPercent(matchPercent!),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.accent)),
+              ),
             SizedBox(
               width: 96,
               child: Text(VodTitles.clean(movie.name),
@@ -329,9 +447,15 @@ Widget _poster(String? url) => (url == null || url.isEmpty)
 // ---------------------------------------------------------------------------
 
 class _SeriesTab extends StatelessWidget {
-  const _SeriesTab({required this.series, required this.loading});
+  const _SeriesTab(
+      {required this.series,
+      required this.loading,
+      this.newIds = const <String>{}});
   final List<VodSeries> series;
   final bool loading;
+
+  /// Ids des séries NOUVELLES (parité TV) → pastille NOUVEAU.
+  final Set<String> newIds;
 
   @override
   Widget build(BuildContext context) {
@@ -392,9 +516,34 @@ class _SeriesTab extends StatelessWidget {
                             ClipRRect(
                               borderRadius: BorderRadius.circular(10),
                               child: SizedBox(
-                                  width: 96,
-                                  height: 140,
-                                  child: _poster(s.posterUrl)),
+                                width: 96,
+                                height: 140,
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: <Widget>[
+                                    _poster(s.posterUrl),
+                                    if (newIds.contains(s.id))
+                                      Positioned(
+                                        top: 5,
+                                        left: 5,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 5, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.accent,
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                          ),
+                                          child: Text(context.l10n.tvBadgeNew,
+                                              style: const TextStyle(
+                                                  fontSize: 8,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: Colors.white)),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
                             ),
                             const SizedBox(height: 6),
                             SizedBox(

@@ -20,7 +20,9 @@ import '../../vod/data/playback_position_repository.dart';
 import '../../vod/data/series_repository.dart';
 import '../../vod/data/vod_download_service.dart';
 import '../../vod/data/vod_novelty_service.dart';
+import '../../vod/data/vod_taste.dart';
 import '../../vod/domain/vod_info.dart';
+import '../../vod/domain/vod_movie.dart';
 import '../../vod/domain/vod_series.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -29,6 +31,7 @@ import '../core/tv_cine_route.dart';
 import '../core/tv_tokens.dart';
 import '../core/vod_titles.dart';
 import '../data/cine_perf.dart';
+import '../data/greeting_repository.dart';
 import 'tv_components.dart';
 import 'tv_player_screen.dart';
 
@@ -209,10 +212,46 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     // Mémoire du focus par rangée (retour d'onglet) : index de la catégorie
     // qui portait le focus, -1 si aucune → autofocus sur la vedette.
     final int memCat = _cats.indexOf(_focusCat ?? '');
-    // Rangée « Nouveaux épisodes » (séries suivies enrichies) en TÊTE, si
-    // présente : elle occupe l'index 1, décalant les catégories d'un cran.
-    final bool hasNewEps = _newEpisodes.isNotEmpty;
-    final int lead = hasNewEps ? 1 : 0;
+
+    // AFFINITÉ (goût) pour le score « % pour vous » et « Surprends-moi » —
+    // bâtie sur les catégories des séries SUIVIES (ce que le client regarde).
+    final Map<String, double> affinity = _seriesAffinity();
+    final double maxAffinity = affinity.isEmpty
+        ? 0
+        : affinity.values.reduce((double a, double b) => a > b ? a : b);
+
+    // RANGÉES DE TÊTE (parité Films), dans l'ordre : « Nouveaux épisodes »
+    // (séries suivies enrichies) puis « Nouveautés » (séries fraîchement
+    // apparues au catalogue, hors celles déjà en nouveaux épisodes).
+    final List<VodSeries> newSeries = _newIds.isEmpty
+        ? const <VodSeries>[]
+        : <VodSeries>[
+            for (final VodSeries s in _all)
+              if (_newIds.contains(s.id) &&
+                  !_newEpisodes.any((VodSeries e) => e.id == s.id))
+                s,
+          ].take(24).toList(growable: false);
+
+    final List<({String key, String title, List<VodSeries> list, bool newEps})>
+        leads =
+        <({String key, String title, List<VodSeries> list, bool newEps})>[
+      if (_newEpisodes.isNotEmpty)
+        (
+          key: 'series-rail-new-episodes',
+          title: context.l10n.tvRailNewEpisodes,
+          list: _newEpisodes,
+          newEps: true
+        ),
+      if (newSeries.isNotEmpty)
+        (
+          key: 'series-rail-new',
+          title: context.l10n.tvRailNew,
+          list: newSeries,
+          newEps: false
+        ),
+    ];
+    final int lead = leads.length;
+
     return PageStorage(
       bucket: _bucket,
       child: ListView.builder(
@@ -224,16 +263,22 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
             return _SeriesHero(
               series: hero,
               autofocus: memCat < 0,
+              greeting: _greeting(context),
               onOpen: () => _openSeries(hero),
+              onSurprise: () => _surpriseSeries(affinity),
             );
           }
-          if (hasNewEps && i == 1) {
+          if (i - 1 < lead) {
+            final ({String key, String title, List<VodSeries> list, bool newEps})
+                r = leads[i - 1];
             return _buildRail(
               context,
-              keyStr: 'series-rail-new-episodes',
-              title: context.l10n.tvRailNewEpisodes,
-              list: _newEpisodes,
-              markNewEpisodes: true,
+              keyStr: r.key,
+              title: r.title,
+              list: r.list,
+              affinity: affinity,
+              maxAffinity: maxAffinity,
+              markNewEpisodes: r.newEps,
             );
           }
           final String cat = _cats[i - 1 - lead];
@@ -244,6 +289,8 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
             keyStr: 'series-rail-$cat',
             title: cat,
             list: list,
+            affinity: affinity,
+            maxAffinity: maxAffinity,
             catForFocus: cat,
             catIndexForFocus: (i - 1 - lead) == memCat ? memCat : -1,
             prefetchNext: (i - lead) < _cats.length
@@ -255,6 +302,56 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     );
   }
 
+  /// Affinité de catégorie bâtie sur les séries SUIVIES (l'historique séries) —
+  /// chaque série suivie pèse pour sa catégorie.
+  Map<String, double> _seriesAffinity() {
+    final Map<String, double> w = <String, double>{};
+    for (final FollowedSeries f in FollowedSeriesRepository.instance.all) {
+      final String c = f.category.trim().toLowerCase();
+      if (c.isEmpty) continue;
+      w[c] = (w[c] ?? 0) + 1.0;
+    }
+    return w;
+  }
+
+  /// Salutation selon l'heure + météo si déjà en cache (parité Films).
+  String _greeting(BuildContext context) {
+    final int h = DateTime.now().hour;
+    final String hello = h >= 18 || h < 5
+        ? (h < 5 ? context.l10n.tvGreetNight : context.l10n.tvGreetEvening)
+        : context.l10n.tvGreetMorning;
+    final Greeting? g = GreetingRepository.instance.current;
+    if (g == null) return hello;
+    final String temp = g.tempC == null ? '' : '${g.tempC!.round()}°';
+    final String meteo = <String>[
+      if (g.emoji.isNotEmpty || temp.isNotEmpty) '${g.emoji} $temp'.trim(),
+      if (g.city.isNotEmpty) g.city,
+    ].join(' · ');
+    return meteo.isEmpty ? hello : '$hello · $meteo';
+  }
+
+  /// « Surprends-moi » séries : ouvre une série choisie pour le client
+  /// (tirage pondéré par le goût), sinon rien si le catalogue est vide.
+  void _surpriseSeries(Map<String, double> affinity) {
+    if (_all.isEmpty) return;
+    // On réutilise le tirage pondéré de VodTaste en projetant les séries en
+    // « films » minimaux (seuls id/catégorie comptent pour le poids).
+    final List<VodMovie> proxy = <VodMovie>[
+      for (final VodSeries s in _all)
+        VodMovie(
+            id: s.id,
+            name: s.name,
+            category: s.category,
+            streamUrl: '',
+            containerExt: ''),
+    ];
+    final double rng =
+        (DateTime.now().microsecondsSinceEpoch % 100000) / 100000.0;
+    final int idx =
+        VodTaste.surpriseIndex(proxy, affinity: affinity, rngUnit: rng);
+    if (idx >= 0) _openSeries(_all[idx]);
+  }
+
   /// Fabrique une rangée horizontale de séries (partagée : « Nouveaux
   /// épisodes » ET catégories). [markNewEpisodes] pose la pastille
   /// « + ÉPISODES » ; sinon on affiche « NOUVEAU » pour les séries fraîches.
@@ -263,6 +360,8 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     required String keyStr,
     required String title,
     required List<VodSeries> list,
+    Map<String, double> affinity = const <String, double>{},
+    double maxAffinity = 0,
     String? catForFocus,
     int catIndexForFocus = -1,
     List<VodSeries> prefetchNext = const <VodSeries>[],
@@ -301,6 +400,17 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
                     series: list[j],
                     isNew: !markNewEpisodes && _newIds.contains(list[j].id),
                     hasNewEpisodes: markNewEpisodes,
+                    matchPercent: VodTaste.matchPercent(
+                      VodMovie(
+                          id: list[j].id,
+                          name: list[j].name,
+                          category: list[j].category,
+                          streamUrl: '',
+                          containerExt: '',
+                          rating: list[j].rating),
+                      affinity: affinity,
+                      maxAffinity: maxAffinity,
+                    ),
                     autofocus: catForFocus != null &&
                         catIndexForFocus >= 0 &&
                         j == _focusIndex.clamp(0, list.length - 1),
@@ -337,11 +447,19 @@ class _SeriesHero extends StatelessWidget {
   const _SeriesHero({
     required this.series,
     required this.onOpen,
+    required this.onSurprise,
+    this.greeting,
     this.autofocus = false,
   });
 
   final VodSeries series;
   final VoidCallback onOpen;
+
+  /// « Surprends-moi » : ouvre une série choisie pour le client (parité Films).
+  final VoidCallback onSurprise;
+
+  /// Salutation selon l'heure, posée en surimpression (zéro espace en plus).
+  final String? greeting;
   final bool autofocus;
 
   @override
@@ -375,85 +493,143 @@ class _SeriesHero extends StatelessWidget {
         border: Border.all(color: TvTokens.lineSoft),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Row(
+      child: Stack(
         children: <Widget>[
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(26, 20, 20, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  Text(
-                    VodTitles.clean(series.name),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TvTokens.display(28, color: TvTokens.text),
-                  ),
-                  if (meta.isNotEmpty) ...<Widget>[
-                    const SizedBox(height: 8),
-                    Text(meta,
-                        maxLines: 1,
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(26, 20, 20, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      Text(
+                        VodTitles.clean(series.name),
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: TvTokens.ui(14, color: TvTokens.muted)),
-                  ],
-                  const SizedBox(height: 18),
-                  TvFocusBuilder(
-                    autofocus: autofocus,
-                    scale: TvFocusScale.small,
-                    onSelect: onOpen,
-                    builder: (BuildContext context, bool focused) {
-                      final Color bg =
-                          focused ? TvTokens.ember : TvTokens.emberBadgeBg;
-                      final Color fg = focused
-                          ? const Color(0xFF1A1206)
-                          : TvTokens.emberBright;
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: bg,
-                          borderRadius:
-                              BorderRadius.circular(TvDimens.cardRadius),
-                          border: Border.all(color: TvTokens.ember),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Icon(Icons.play_arrow_rounded, color: fg, size: 24),
-                            const SizedBox(width: 8),
-                            Text(context.l10n.tvViewSeries,
-                                style: TextStyle(
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w800,
-                                    color: fg)),
-                          ],
-                        ),
-                      );
-                    },
+                        style: TvTokens.display(28, color: TvTokens.text),
+                      ),
+                      if (meta.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 8),
+                        Text(meta,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TvTokens.ui(14, color: TvTokens.muted)),
+                      ],
+                      const SizedBox(height: 18),
+                      Row(
+                        children: <Widget>[
+                          _SeriesHeroButton(
+                            icon: Icons.play_arrow_rounded,
+                            label: context.l10n.tvViewSeries,
+                            autofocus: autofocus,
+                            primary: true,
+                            onSelect: onOpen,
+                          ),
+                          const SizedBox(width: 12),
+                          _SeriesHeroButton(
+                            icon: Icons.casino_rounded,
+                            label: context.l10n.tvSurprise,
+                            primary: false,
+                            onSelect: onSurprise,
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
+                ),
+              ),
+              SizedBox(
+                width: 340,
+                child: (series.posterUrl == null || series.posterUrl!.isEmpty)
+                    ? fallback
+                    : CachedNetworkImage(
+                        imageUrl: series.posterUrl!,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 480,
+                        fadeInDuration: const Duration(milliseconds: 150),
+                        placeholder: (_, __) => fallback,
+                        errorWidget: (_, __, ___) => fallback,
+                      ),
+              ),
+            ],
+          ),
+          if (greeting != null && greeting!.isNotEmpty)
+            Positioned(
+              top: 14,
+              left: 26,
+              child: Text(
+                greeting!,
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: TvTokens.text,
+                    shadows: <Shadow>[
+                      Shadow(blurRadius: 8, color: Color(0xCC000000)),
+                    ]),
               ),
             ),
-          ),
-          SizedBox(
-            width: 340,
-            child: (series.posterUrl == null || series.posterUrl!.isEmpty)
-                ? fallback
-                : CachedNetworkImage(
-                    imageUrl: series.posterUrl!,
-                    fit: BoxFit.cover,
-                    memCacheWidth: 480,
-                    fadeInDuration: const Duration(milliseconds: 150),
-                    placeholder: (_, __) => fallback,
-                    errorWidget: (_, __, ___) => fallback,
-                  ),
-          ),
         ],
       ),
     );
   }
 }
+
+/// Bouton du héros séries — parité visuelle avec les boutons du héros Films.
+class _SeriesHeroButton extends StatelessWidget {
+  const _SeriesHeroButton({
+    required this.icon,
+    required this.label,
+    required this.onSelect,
+    this.primary = false,
+    this.autofocus = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onSelect;
+  final bool primary;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      autofocus: autofocus,
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        final Color bg = focused
+            ? TvTokens.ember
+            : (primary ? TvTokens.emberBadgeBg : TvTokens.sel);
+        final Color fg = focused
+            ? const Color(0xFF1A1206)
+            : (primary ? TvTokens.emberBright : TvTokens.text);
+        return Container(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+            border: Border.all(
+                color: primary ? TvTokens.ember : TvTokens.lineSoft),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(icon, color: fg, size: 22),
+              const SizedBox(width: 8),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w800, color: fg)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 
 class _SeriesPoster extends StatelessWidget {
   const _SeriesPoster({
@@ -461,6 +637,7 @@ class _SeriesPoster extends StatelessWidget {
     required this.onSelect,
     this.isNew = false,
     this.hasNewEpisodes = false,
+    this.matchPercent,
     this.autofocus = false,
     this.onFocus,
   });
@@ -469,6 +646,9 @@ class _SeriesPoster extends StatelessWidget {
 
   /// Série récemment apparue au catalogue → pastille « NOUVEAU ».
   final bool isNew;
+
+  /// Score « X % pour vous » (goût) — null = rien d'honnête à afficher.
+  final int? matchPercent;
 
   /// Série suivie avec de nouveaux épisodes → pastille « + ÉPISODES ».
   final bool hasNewEpisodes;
@@ -531,6 +711,15 @@ class _SeriesPoster extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
+          if (matchPercent != null)
+            Text(
+              context.l10n.tvMatchPercent(matchPercent!),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: TvTokens.emberBright),
+            ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),
             child: Text(VodTitles.clean(series.name),
