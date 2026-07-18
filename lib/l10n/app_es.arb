@@ -645,6 +645,8 @@
     }
   },
   "tvBadgeNew": "NUEVO",
+  "tvRailNewEpisodes": "Nuevos episodios",
+  "tvBadgeNewEpisodes": "+ EPISODIOS",
   "tvHueTitle": "Luces Philips Hue",
   "tvHueSubtitle": "El Cine controla la luz de la sala, como un cine de verdad.",
   "tvHueStatusNone": "No se encontró el puente Hue. Búscalo (mismo Wi-Fi que el dispositivo).",

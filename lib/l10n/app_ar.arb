@@ -645,6 +645,8 @@
     }
   },
   "tvBadgeNew": "جديد",
+  "tvRailNewEpisodes": "حلقات جديدة",
+  "tvBadgeNewEpisodes": "+ حلقات",
   "tvHueTitle": "أضواء Philips Hue",
   "tvHueSubtitle": "السينما تتحكم في إضاءة الغرفة — كقاعة سينما حقيقية.",
   "tvHueStatusNone": "لم يُعثر على جسر Hue. ابدأ بحثًا (نفس شبكة Wi-Fi).",

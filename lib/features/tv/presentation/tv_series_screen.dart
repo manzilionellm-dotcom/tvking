@@ -15,9 +15,11 @@ import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
+import '../../vod/data/followed_series_repository.dart';
 import '../../vod/data/playback_position_repository.dart';
 import '../../vod/data/series_repository.dart';
 import '../../vod/data/vod_download_service.dart';
+import '../../vod/data/vod_novelty_service.dart';
 import '../../vod/domain/vod_info.dart';
 import '../../vod/domain/vod_series.dart';
 import '../core/tv_dimens.dart';
@@ -48,6 +50,10 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
   bool _loading = true;
   List<VodSeries> _all = const <VodSeries>[];
   List<String> _cats = const <String>[];
+  // Séries NOUVELLES au catalogue (badge NOUVEAU) et séries suivies ayant
+  // reçu de nouveaux épisodes (rangée dédiée en tête).
+  Set<String> _newIds = <String>{};
+  List<VodSeries> _newEpisodes = const <VodSeries>[];
   Map<String, List<VodSeries>> _byCat = const <String, List<VodSeries>>{};
 
   @override
@@ -57,13 +63,31 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     // depuis le cache disque, mise à jour sans spinner quand le réseau
     // rapporte du neuf (stale-while-revalidate du SeriesRepository).
     SeriesRepository.instance.addListener(_onCatalogRefreshed);
+    // La rangée « Nouveaux épisodes » se met à jour toute seule (retour
+    // d'une fiche qui efface le drapeau, fin d'un rafraîchissement de fond).
+    FollowedSeriesRepository.instance.addListener(_onFollowedChanged);
     _load();
   }
 
   @override
   void dispose() {
     SeriesRepository.instance.removeListener(_onCatalogRefreshed);
+    FollowedSeriesRepository.instance.removeListener(_onFollowedChanged);
     super.dispose();
+  }
+
+  void _onFollowedChanged() {
+    if (!mounted || _all.isEmpty) return;
+    final Map<String, VodSeries> byId = <String, VodSeries>{
+      for (final VodSeries s in _all) s.id: s,
+    };
+    setState(() {
+      _newEpisodes = <VodSeries>[
+        for (final FollowedSeries f
+            in FollowedSeriesRepository.instance.withNewEpisodes)
+          if (byId[f.id] != null) byId[f.id]!,
+      ];
+    });
   }
 
   void _onCatalogRefreshed() {
@@ -101,9 +125,51 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
       _byCat = byCat;
       _loading = false;
     });
+    _reconcileEngagement(series);
+  }
+
+  /// Mécaniques de rétention (en arrière-plan, l'accueil ne les attend pas) :
+  ///  • NOUVEAUTÉS : séries apparues au catalogue depuis la dernière visite ;
+  ///  • NOUVEAUX ÉPISODES : re-vérifie discrètement les séries suivies
+  ///    (throttlé 6 h, séquentiel, plafonné — courtoisie 1-connexion) et
+  ///    reconstruit la rangée « Nouveaux épisodes ».
+  Future<void> _reconcileEngagement(List<VodSeries> series) async {
+    final int nowMs = DateTime.now().millisecondsSinceEpoch;
+    final Map<String, VodSeries> byId = <String, VodSeries>{
+      for (final VodSeries s in series) s.id: s,
+    };
+    // Nouveautés (badge NOUVEAU).
+    final Set<String> fresh = await VodNoveltyService.instance
+        .reconcileSeries(series.map((VodSeries s) => s.id), nowMs: nowMs);
+    if (mounted) setState(() => _newIds = fresh);
+    // Nouveaux épisodes des séries suivies — le compteur vient de la source
+    // (get_series_info via SeriesRepository), throttlé et plafonné.
+    await FollowedSeriesRepository.instance.refreshStale(
+      nowMs: nowMs,
+      episodeCountOf: (String id) async {
+        try {
+          final List<VodEpisode> eps =
+              await SeriesRepository.instance.fetchEpisodes(id);
+          return eps.length;
+        } catch (_) {
+          return null;
+        }
+      },
+    );
+    if (!mounted) return;
+    // On ne montre en « Nouveaux épisodes » que les séries encore présentes
+    // au catalogue (on a leur affiche/à-jour), drapeau hasNew levé.
+    final List<VodSeries> newEps = <VodSeries>[
+      for (final FollowedSeries f
+          in FollowedSeriesRepository.instance.withNewEpisodes)
+        if (byId[f.id] != null) byId[f.id]!,
+    ];
+    setState(() => _newEpisodes = newEps);
   }
 
   void _openSeries(VodSeries s) {
+    // Ouvrir efface le drapeau « nouveaux épisodes » (série vue).
+    FollowedSeriesRepository.instance.clearNew(s.id);
     Navigator.of(context).push(
       TvCineRoute<void>(builder: (_) => TvSeriesDetailScreen(series: s)),
     );
@@ -143,12 +209,16 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     // Mémoire du focus par rangée (retour d'onglet) : index de la catégorie
     // qui portait le focus, -1 si aucune → autofocus sur la vedette.
     final int memCat = _cats.indexOf(_focusCat ?? '');
+    // Rangée « Nouveaux épisodes » (séries suivies enrichies) en TÊTE, si
+    // présente : elle occupe l'index 1, décalant les catégories d'un cran.
+    final bool hasNewEps = _newEpisodes.isNotEmpty;
+    final int lead = hasNewEps ? 1 : 0;
     return PageStorage(
       bucket: _bucket,
       child: ListView.builder(
         key: const PageStorageKey<String>('series-vertical'),
         addAutomaticKeepAlives: false,
-        itemCount: 1 + _cats.length,
+        itemCount: 1 + lead + _cats.length,
         itemBuilder: (BuildContext context, int i) {
           if (i == 0) {
             return _SeriesHero(
@@ -157,69 +227,105 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
               onOpen: () => _openSeries(hero),
             );
           }
-          final String cat = _cats[i - 1];
+          if (hasNewEps && i == 1) {
+            return _buildRail(
+              context,
+              keyStr: 'series-rail-new-episodes',
+              title: context.l10n.tvRailNewEpisodes,
+              list: _newEpisodes,
+              markNewEpisodes: true,
+            );
+          }
+          final String cat = _cats[i - 1 - lead];
           final List<VodSeries> list = _byCat[cat] ?? const <VodSeries>[];
           if (list.isEmpty) return const SizedBox.shrink();
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Padding(
-                  padding: const EdgeInsets.only(left: 4, bottom: 8),
-                  child: Text(
-                    cat.toUpperCase(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TvTokens.ui(13,
-                        weight: FontWeight.w700,
-                        color: TvTokens.mutedDim,
-                        spacing: 1.6),
-                  ),
-                ),
-                SizedBox(
-                  height: 200,
-                  child: ListView.builder(
-                    key: PageStorageKey<String>('series-rail-$cat'),
-                    scrollDirection: Axis.horizontal,
-                    addAutomaticKeepAlives: false,
-                    itemExtent: 132,
-                    itemCount: list.length,
-                    itemBuilder: (BuildContext context, int j) => Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      // RepaintBoundary : le zoom de focus d'une affiche ne
-                      // repeint qu'elle, pas la rangée (GPU des box modestes).
-                      child: RepaintBoundary(
-                        child: _SeriesPoster(
-                          series: list[j],
-                          autofocus: (i - 1) == memCat &&
-                              j == _focusIndex.clamp(0, list.length - 1),
-                          // Mémoire du focus + pré-chargement des jaquettes de
-                          // la rangée SUIVANTE pendant la navigation de celle-ci.
-                          onFocus: () {
-                            _focusCat = cat;
+          return _buildRail(
+            context,
+            keyStr: 'series-rail-$cat',
+            title: cat,
+            list: list,
+            catForFocus: cat,
+            catIndexForFocus: (i - 1 - lead) == memCat ? memCat : -1,
+            prefetchNext: (i - lead) < _cats.length
+                ? (_byCat[_cats[i - lead]] ?? const <VodSeries>[])
+                : const <VodSeries>[],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Fabrique une rangée horizontale de séries (partagée : « Nouveaux
+  /// épisodes » ET catégories). [markNewEpisodes] pose la pastille
+  /// « + ÉPISODES » ; sinon on affiche « NOUVEAU » pour les séries fraîches.
+  Widget _buildRail(
+    BuildContext context, {
+    required String keyStr,
+    required String title,
+    required List<VodSeries> list,
+    String? catForFocus,
+    int catIndexForFocus = -1,
+    List<VodSeries> prefetchNext = const <VodSeries>[],
+    bool markNewEpisodes = false,
+  }) {
+    if (list.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 8),
+            child: Text(
+              title.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TvTokens.ui(13,
+                  weight: FontWeight.w700,
+                  color: TvTokens.mutedDim,
+                  spacing: 1.6),
+            ),
+          ),
+          SizedBox(
+            height: 200,
+            child: ListView.builder(
+              key: PageStorageKey<String>(keyStr),
+              scrollDirection: Axis.horizontal,
+              addAutomaticKeepAlives: false,
+              itemExtent: 132,
+              itemCount: list.length,
+              itemBuilder: (BuildContext context, int j) => Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: RepaintBoundary(
+                  child: _SeriesPoster(
+                    series: list[j],
+                    isNew: !markNewEpisodes && _newIds.contains(list[j].id),
+                    hasNewEpisodes: markNewEpisodes,
+                    autofocus: catForFocus != null &&
+                        catIndexForFocus >= 0 &&
+                        j == _focusIndex.clamp(0, list.length - 1),
+                    onFocus: catForFocus == null
+                        ? null
+                        : () {
+                            _focusCat = catForFocus;
                             _focusIndex = j;
-                            if (i < _cats.length) {
+                            if (prefetchNext.isNotEmpty) {
                               TvPosterPrefetch.prefetchRow(
                                 context,
                                 <String?>[
-                                  for (final VodSeries s in _byCat[_cats[i]] ??
-                                      const <VodSeries>[])
+                                  for (final VodSeries s in prefetchNext)
                                     s.posterUrl,
                                 ],
                               );
                             }
                           },
-                          onSelect: () => _openSeries(list[j]),
-                        ),
-                      ),
-                    ),
+                    onSelect: () => _openSeries(list[j]),
                   ),
                 ),
-              ],
+              ),
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }
@@ -353,11 +459,19 @@ class _SeriesPoster extends StatelessWidget {
   const _SeriesPoster({
     required this.series,
     required this.onSelect,
+    this.isNew = false,
+    this.hasNewEpisodes = false,
     this.autofocus = false,
     this.onFocus,
   });
   final VodSeries series;
   final VoidCallback onSelect;
+
+  /// Série récemment apparue au catalogue → pastille « NOUVEAU ».
+  final bool isNew;
+
+  /// Série suivie avec de nouveaux épisodes → pastille « + ÉPISODES ».
+  final bool hasNewEpisodes;
 
   /// Reprend le focus au retour sur l'onglet (mémoire du focus par rangée).
   final bool autofocus;
@@ -383,7 +497,37 @@ class _SeriesPoster extends StatelessWidget {
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: _poster(),
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  _poster(),
+                  // Pastille d'engagement (coin haut gauche) : « + ÉPISODES »
+                  // prime sur « NOUVEAU » (info la plus utile pour revenir).
+                  if (hasNewEpisodes || isNew)
+                    Positioned(
+                      top: 6,
+                      left: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          gradient: TvTokens.cineGradient,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          hasNewEpisodes
+                              ? context.l10n.tvBadgeNewEpisodes
+                              : context.l10n.tvBadgeNew,
+                          style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.6,
+                              color: TvTokens.onEmber),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 6),
@@ -473,6 +617,19 @@ class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
   void initState() {
     super.initState();
     _future = SeriesRepository.instance.fetchDetail(widget.series.id);
+    // « VOS SÉRIES » : ouvrir la fiche = suivre la série et caler le
+    // compteur d'épisodes sur la valeur du moment (référence anti-« faux
+    // nouveau »). Efface aussi le drapeau « nouveaux épisodes » de l'accueil.
+    _future.then((({VodInfo? info, List<VodEpisode> episodes}) d) {
+      FollowedSeriesRepository.instance.markOpened(
+        id: widget.series.id,
+        name: widget.series.name,
+        posterUrl: widget.series.posterUrl,
+        category: widget.series.category,
+        episodeCount: d.episodes.length,
+        nowMs: DateTime.now().millisecondsSinceEpoch,
+      );
+    });
     // Reprise de lecture : les barres de progression des épisodes se mettent
     // à jour toutes seules (retour du lecteur, sauvegarde périodique). Le
     // ensureLoaded est un filet — le vrai load() est branché au démarrage.

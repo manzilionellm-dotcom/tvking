@@ -645,6 +645,8 @@
     }
   },
   "tvBadgeNew": "MPYA",
+  "tvRailNewEpisodes": "Vipindi vipya",
+  "tvBadgeNewEpisodes": "+ VIPINDI",
   "tvHueTitle": "Taa za Philips Hue",
   "tvHueSubtitle": "Sinema huongoza mwanga wa chumba — kama ukumbi halisi.",
   "tvHueStatusNone": "Hakuna daraja la Hue lililopatikana. Anzisha utafutaji (Wi-Fi ileile).",
