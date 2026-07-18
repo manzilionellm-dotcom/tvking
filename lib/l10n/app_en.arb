@@ -259,6 +259,7 @@
   "castNoReceiver": "No receiver. Make sure your TV is on the same WiFi and DLNA is enabled.",
   "castInProgress": "ACTIVE",
   "castConnecting": "Connecting...",
+  "playerPreparing": "Preparing…",
   "castInProgressTitle": "Casting",
   "castStopTooltip": "Stop casting",
   "castZapPrevTooltip": "Previous channel",

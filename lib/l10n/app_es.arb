@@ -258,6 +258,7 @@
   "castNoReceiver": "Sin receptor. Asegúrate de que tu TV esté en el mismo WiFi y DLNA esté activado.",
   "castInProgress": "EN CURSO",
   "castConnecting": "Conectando...",
+  "playerPreparing": "Preparando…",
   "castInProgressTitle": "Transmitiendo",
   "castStopTooltip": "Detener transmisión",
   "castZapPrevTooltip": "Canal anterior",

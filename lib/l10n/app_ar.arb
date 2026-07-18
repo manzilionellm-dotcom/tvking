@@ -258,6 +258,7 @@
   "castNoReceiver": "لا يوجد جهاز استقبال. تأكّد من أن التلفاز على نفس شبكة WiFi وأن DLNA مفعّل.",
   "castInProgress": "نشط",
   "castConnecting": "جارٍ الاتصال...",
+  "playerPreparing": "جارٍ التحضير…",
   "castInProgressTitle": "جاري البث",
   "castStopTooltip": "إيقاف البث",
   "castZapPrevTooltip": "القناة السابقة",

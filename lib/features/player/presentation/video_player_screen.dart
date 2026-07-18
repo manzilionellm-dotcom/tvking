@@ -2476,40 +2476,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// dès le zap et jusqu'à la première frame décodée. C'est la
   /// « perception TiviMate » : l'écran répond immédiatement, l'image
   /// suit 1-2 s après.
-  Widget _buildZapSplash() {
-    final Channel ch = _currentChannel;
-    return Container(
-      color: Colors.black.withValues(alpha: 0.82),
-      alignment: Alignment.center,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          ChannelLogo(channel: ch, size: ChannelLogoSize.large),
-          const SizedBox(height: 18),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
-            child: Text(
-              ch.cleanName,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.headlineMedium
-                  .copyWith(color: Colors.white, fontSize: 22),
-            ),
-          ),
-          const SizedBox(height: 20),
-          const SizedBox(
-            width: 26,
-            height: 26,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.4,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white54),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   /// Surface de lecture : la vidéo + spinner + stats + overlays.
   /// Extraite pour pouvoir être ré-utilisée à l'identique dans le
@@ -2563,7 +2529,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 if (!_hasError &&
                     !_audioOnly &&
                     _playedChannelId != _currentChannel.id)
-                  _buildZapSplash(),
+                  _ZapSplash(channel: _currentChannel),
 
                 // ----- 1bis. Badge discret "● REC" -----
                 //  L'enregistrement passe par le mini-relais (1 connexion)
@@ -3186,6 +3152,123 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Splash de chargement d'un film / d'une chaîne : affiche l'affiche, le
+/// titre, une LIGNE DE PROGRESSION ember (évoque « le téléchargement »
+/// comme sur la TV), un STATUT EN DIRECT (dernier événement pertinent de
+/// la boîte noire : résolution DNS, connexion, cascade, tampon, erreur…)
+/// et un chrono. Remplace le spinner « mystère » : l'utilisateur voit ce
+/// qui se passe — et peut le photographier pour diagnostic terrain.
+class _ZapSplash extends StatefulWidget {
+  const _ZapSplash({required this.channel});
+  final Channel channel;
+
+  @override
+  State<_ZapSplash> createState() => _ZapSplashState();
+}
+
+class _ZapSplashState extends State<_ZapSplash> {
+  final Stopwatch _clock = Stopwatch()..start();
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    // Le chrono se rafraîchit chaque seconde (perception « ça avance »).
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  /// Dernier événement PERTINENT pour la lecture — on ignore le bruit
+  /// (cast, mémoire, cycle de vie) pour ne montrer que ce qui concerne
+  /// l'ouverture du flux en cours.
+  String? _liveStatus() {
+    const Set<String> relevant = <String>{
+      'player', 'probe', 'mpv', 'relay', 'hls', 'cascade',
+    };
+    for (final StreamDiagEvent e in StreamDiagnostics.instance.events) {
+      if (relevant.contains(e.tag)) return e.message;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Channel ch = widget.channel;
+    return Container(
+      color: Colors.black.withValues(alpha: 0.82),
+      alignment: Alignment.center,
+      child: ListenableBuilder(
+        // Se redessine à chaque nouvel événement de la boîte noire → le
+        // statut affiché suit la progression réelle de l'ouverture.
+        listenable: StreamDiagnostics.instance,
+        builder: (BuildContext context, _) {
+          final int secs = _clock.elapsed.inSeconds;
+          final String? status = _liveStatus();
+          final String line = status == null
+              ? '${context.l10n.playerPreparing}  ·  ${secs}s'
+              : '$status  ·  ${secs}s';
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              ChannelLogo(channel: ch, size: ChannelLogoSize.large),
+              const SizedBox(height: 18),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40),
+                child: Text(
+                  ch.cleanName,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.headlineMedium
+                      .copyWith(color: Colors.white, fontSize: 22),
+                ),
+              ),
+              const SizedBox(height: 20),
+              // LIGNE DE PROGRESSION ember (« comment ça télécharge »).
+              // Indéterminée : avant la 1re image on ne connaît pas encore
+              // la durée du film — la barre indique « en cours », l'accent
+              // ember rappelle la TV.
+              SizedBox(
+                width: 220,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    minHeight: 4,
+                    backgroundColor: Colors.white.withValues(alpha: 0.14),
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(AppColors.accent),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              // STATUT EN DIRECT + chrono : ce que l'app est en train de
+              // faire, lisible à l'écran (plus besoin de la boîte noire).
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 36),
+                child: Text(
+                  line,
+                  textAlign: TextAlign.center,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: Colors.white54, fontSize: 12, height: 1.35),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

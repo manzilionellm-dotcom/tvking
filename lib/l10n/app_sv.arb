@@ -258,6 +258,7 @@
   "castNoReceiver": "Ingen mottagare. Kontrollera att din TV är på samma WiFi och att DLNA är aktiverat.",
   "castInProgress": "AKTIV",
   "castConnecting": "Ansluter...",
+  "playerPreparing": "Förbereder…",
   "castInProgressTitle": "Castar",
   "castStopTooltip": "Stoppa castning",
   "castZapPrevTooltip": "Föregående kanal",

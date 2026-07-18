@@ -258,6 +258,7 @@
   "castNoReceiver": "Hakuna kipokeaji. Hakikisha TV yako iko kwenye WiFi sawa na DLNA imewashwa.",
   "castInProgress": "INAENDELEA",
   "castConnecting": "Inaunganisha...",
+  "playerPreparing": "Inaandaa…",
   "castInProgressTitle": "Inatangaza",
   "castStopTooltip": "Simamisha utangazaji",
   "castZapPrevTooltip": "Kituo kilichotangulia",

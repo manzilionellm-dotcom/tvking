@@ -773,6 +773,7 @@
     "description": "Texte UI : castInProgress"
   },
   "castConnecting": "Connexion...",
+  "playerPreparing": "Préparation…",
   "@castConnecting": {
     "description": "Texte UI : castConnecting"
   },
