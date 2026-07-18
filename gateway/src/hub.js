@@ -213,6 +213,7 @@ export class StreamHub {
   constructor() {
     this.sessions = new Map(); // key -> StreamSession (live mutualisé)
     this.rawSlots = 0;         // connexions VOD (non mutualisées) en cours
+    this._sweepTimer = null;   // ronde anti-backpressure (plafond mémoire global)
   }
 
   // Connexions upstream DISTINCTES au total (= ce que voit le fournisseur) :
@@ -225,14 +226,81 @@ export class StreamHub {
   }
 
   /**
+   * Ferme UNE session en « idle-grace » (plus aucun spectateur, connexion
+   * gardée au chaud quelques secondes pour un zapping aller-retour fluide)
+   * afin de libérer un slot fournisseur pour une nouvelle chaîne. On ferme
+   * AVANT d'ouvrir : la limite fournisseur n'est jamais dépassée. Évite le
+   * 503 sur un zapping normal quand la ligne est « pleine » de sessions qui
+   * n'ont en réalité plus personne devant l'écran.
+   * @returns {boolean} true si un slot a été récupéré.
+   */
+  _reclaimIdleSlot() {
+    for (const s of this.sessions.values()) {
+      if (!s.closed && s.subscribers.size === 0) {
+        log.info('session.reclaim_idle', { key: s.key });
+        s._destroy(); // décrémente sessions.size de façon synchrone
+        metrics.inc('gw_reclaimed_idle_total');
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // ---- Plafond mémoire GLOBAL (anti-OOM du process 512 Mo) ---------------
+  startBackpressureSweep() {
+    if (this._sweepTimer) return;
+    if (config.globalClientBufferMaxBytes <= 0 || config.backpressureSweepMs <= 0) return;
+    this._sweepTimer = setInterval(() => {
+      try { this._sweepBackpressure(); } catch { /* jamais faire tomber la ronde */ }
+    }, config.backpressureSweepMs);
+    if (this._sweepTimer.unref) this._sweepTimer.unref();
+  }
+
+  stopBackpressureSweep() {
+    if (this._sweepTimer) { clearInterval(this._sweepTimer); this._sweepTimer = null; }
+  }
+
+  // Somme les files d'attente (writableLength) de TOUS les abonnés live ; si le
+  // total dépasse le plafond global, coupe les plus lents jusqu'à repasser
+  // dessous. Le pipe VOD s'auto-régule (pause upstream), donc non concerné.
+  _sweepBackpressure() {
+    const cap = config.globalClientBufferMaxBytes;
+    if (cap <= 0) return;
+    const all = [];
+    let total = 0;
+    for (const s of this.sessions.values()) {
+      for (const res of s.subscribers) {
+        const q = res.writableLength || 0;
+        total += q;
+        all.push({ s, res, q });
+      }
+    }
+    metrics.setGauge('gw_client_buffered_bytes', total);
+    if (total <= cap) return;
+    all.sort((a, b) => b.q - a.q);
+    for (const item of all) {
+      if (total <= cap) break;
+      log.warn('client.global_backpressure', { key: item.s.key, queuedBytes: item.q });
+      item.s.removeSubscriber(item.res);
+      try { item.res.destroy(); } catch { /* */ }
+      metrics.inc('gw_clients_cut_backpressure_total');
+      total -= item.q;
+    }
+  }
+
+  /**
    * Réserve une connexion fournisseur pour un flux NON mutualisé (VOD/série),
    * dans la limite de la ligne. Renvoie une fonction de libération, ou null
    * si la ligne est déjà pleine.
    */
   reserveRaw() {
     if (this.totalUpstream() >= config.providerMaxConnections) {
-      metrics.inc('gw_rejected_provider_limit_total');
-      return null;
+      // Ligne « pleine » : on tente de récupérer un slot laissé au chaud pour
+      // le zapping (aucun spectateur) avant de refuser.
+      if (!this._reclaimIdleSlot() || this.totalUpstream() >= config.providerMaxConnections) {
+        metrics.inc('gw_rejected_provider_limit_total');
+        return null;
+      }
     }
     this.rawSlots += 1;
     metrics.setGauge('gw_upstream_active', this.totalUpstream());
@@ -253,10 +321,13 @@ export class StreamHub {
     let session = this.sessions.get(key);
     if (!session) {
       // Nouvelle chaîne → nouvelle connexion fournisseur : on vérifie la
-      // limite AVANT d'ouvrir (jamais dépasser la ligne).
+      // limite AVANT d'ouvrir (jamais dépasser la ligne). Si elle est pleine,
+      // on récupère d'abord un slot en idle-grace (zapping) plutôt que refuser.
       if (this.totalUpstream() >= config.providerMaxConnections) {
-        metrics.inc('gw_rejected_provider_limit_total');
-        return { ok: false, code: 'provider_limit', status: 503 };
+        if (!this._reclaimIdleSlot() || this.totalUpstream() >= config.providerMaxConnections) {
+          metrics.inc('gw_rejected_provider_limit_total');
+          return { ok: false, code: 'provider_limit', status: 503 };
+        }
       }
       session = new StreamSession(this, key, url);
       this.sessions.set(key, session);

@@ -59,9 +59,29 @@ export const config = {
   // Si un client est trop lent (réseau saturé) et accumule plus que ça en
   // mémoire tampon, on le coupe pour protéger les autres spectateurs.
   clientBufferMaxBytes: int('CLIENT_BUFFER_MAX_BYTES', 8 * 1024 * 1024),
+  // Plafond mémoire GLOBAL des files d'attente clients (somme de tous les
+  // writableLength). Au-delà, on coupe les clients les plus lents pour ne
+  // jamais faire tomber tout le process par OOM (conteneur 512 Mo).
+  // 0 = désactivé.
+  globalClientBufferMaxBytes: int('GLOBAL_CLIENT_BUFFER_MAX_BYTES', 128 * 1024 * 1024),
+  // Période de la ronde anti-backpressure (ms) qui applique le plafond global.
+  backpressureSweepMs: int('BACKPRESSURE_SWEEP_MS', 2000),
   // Reconnexion upstream : nb d'essais et backoff de base (ms).
   upstreamRetries: int('UPSTREAM_RETRIES', 6),
   upstreamRetryBaseMs: int('UPSTREAM_RETRY_BASE_MS', 500),
+
+  // --- Détection des connexions clientes MORTES (anti-slots fantômes) ---
+  // Une box qui disparaît brutalement (coupure secteur/réseau) ne ferme pas
+  // proprement sa socket : sans détection, elle retient indéfiniment un slot
+  // de la ligne fournisseur. On arme un keepalive TCP (le noyau sonde le pair
+  // et coupe la socket morte → l'événement 'close' se déclenche → le slot est
+  // libéré). initialDelay = délai d'inactivité avant la 1re sonde.
+  socketKeepAliveMs: int('SOCKET_KEEPALIVE_MS', 30_000),
+  // Garde-fou anti-slow-loris sur la PHASE REQUÊTE entrante uniquement
+  // (en-têtes/corps de la requête HTTP du client — PAS la durée du flux de
+  // réponse, qui reste illimitée pour le live). 0 = illimité.
+  headersTimeoutMs: int('HEADERS_TIMEOUT_MS', 60_000),
+  requestTimeoutMs: int('REQUEST_TIMEOUT_MS', 60_000),
 
   // --- Sécurité / admin ---
   // Jeton exigé pour /admin/* et /metrics (en-tête Authorization: Bearer …

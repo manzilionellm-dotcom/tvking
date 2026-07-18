@@ -49,22 +49,34 @@ export async function callPlayerApi(params) {
   return { status: res.statusCode, json, text };
 }
 
-/** Récupère un M3U (get.php) avec les identifiants de la ligne. */
+/** Récupère un M3U (get.php) avec les identifiants de la ligne — bufferisé.
+ *  Conservé pour compatibilité ; le chemin chaud utilise openGetPhp (stream). */
 export async function callGetPhp(params) {
+  const res = await openGetPhp(params);
+  const text = await res.body.text();
+  return { status: res.statusCode, text };
+}
+
+/**
+ * Ouvre get.php en STREAMING (corps = Readable, non bufferisé). Permet de
+ * réécrire la playlist ligne par ligne sans charger des dizaines de Mo en
+ * mémoire ni bloquer l'event-loop mono-thread avec un regex géant.
+ * Renvoie { statusCode, headers, body }.
+ */
+export async function openGetPhp(params, signal) {
   const usp = new URLSearchParams({
     username: config.upstreamUser,
     password: config.upstreamPass,
     ...params,
   });
   const url = `${base()}/get.php?${usp.toString()}`;
-  const res = await request(url, {
+  return request(url, {
     method: 'GET',
     dispatcher: agent,
     maxRedirections: config.maxRedirects,
     headers: { 'user-agent': config.userAgent },
+    signal,
   });
-  const text = await res.body.text();
-  return { status: res.statusCode, text };
 }
 
 /**

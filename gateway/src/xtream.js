@@ -33,32 +33,41 @@ export function streamKey(kind, streamId, ext) {
 }
 
 /**
- * Réécrit une playlist M3U : remplace la base + identifiants du FOURNISSEUR
- * par la base publique de la passerelle + les identifiants de l'utilisateur
- * passerelle. Ainsi le client ne voit jamais la ligne réelle.
+ * Fabrique un réécrivain de playlist M3U réutilisable : compile les 4 motifs
+ * UNE seule fois, puis les applique à une chaîne (ligne ou texte entier).
+ * Aucun motif ne franchit un saut de ligne (base+identifiants tiennent sur la
+ * MÊME ligne d'URL), donc appliquer ligne par ligne est STRICTEMENT équivalent
+ * à l'appliquer au texte entier — ce qui permet le streaming (voir server.js).
+ * @returns {((s: string) => string) | null} null si aucune réécriture requise.
  */
-export function rewriteM3U(text, gwUser, gwPass) {
-  if (!config.publicBase) return text;
+export function makeM3URewriter(gwUser, gwPass) {
+  if (!config.publicBase) return null;
   const upBase = config.upstreamBase.replace(/^https?:\/\//i, '');
   const gwUserE = encodeURIComponent(gwUser);
   const gwPassE = encodeURIComponent(gwPass);
   const upUserE = encodeURIComponent(config.upstreamUser);
   const upPassE = encodeURIComponent(config.upstreamPass);
-  // 1) base http(s)://fournisseur[:port] → base publique passerelle
-  let out = text.replace(
-    new RegExp('https?://' + escapeRe(upBase), 'gi'),
-    config.publicBase,
-  );
-  // 2) identifiants dans le chemin /kind/UPUSER/UPPASS/ → /kind/GWUSER/GWPASS/
-  out = out.replace(
-    new RegExp('/(live|movie|series)/' + escapeRe(upUserE) + '/' + escapeRe(upPassE) + '/', 'gi'),
-    (_m, kind) => `/${kind}/${gwUserE}/${gwPassE}/`,
-  );
-  // 3) identifiants en query (get.php?username=…&password=…)
-  out = out
-    .replace(new RegExp('username=' + escapeRe(upUserE), 'gi'), 'username=' + gwUserE)
-    .replace(new RegExp('password=' + escapeRe(upPassE), 'gi'), 'password=' + gwPassE);
-  return out;
+  const reBase = new RegExp('https?://' + escapeRe(upBase), 'gi');
+  const rePath = new RegExp('/(live|movie|series)/' + escapeRe(upUserE) + '/' + escapeRe(upPassE) + '/', 'gi');
+  const reUser = new RegExp('username=' + escapeRe(upUserE), 'gi');
+  const rePass = new RegExp('password=' + escapeRe(upPassE), 'gi');
+  // String.prototype.replace réinitialise lastIndex : réutiliser ces regex
+  // globales d'un appel à l'autre est sûr.
+  return (s) => s
+    .replace(reBase, config.publicBase)
+    .replace(rePath, (_m, kind) => `/${kind}/${gwUserE}/${gwPassE}/`)
+    .replace(reUser, 'username=' + gwUserE)
+    .replace(rePass, 'password=' + gwPassE);
+}
+
+/**
+ * Réécrit une playlist M3U entière (remplace la base + identifiants du
+ * FOURNISSEUR par la base publique de la passerelle + les identifiants de
+ * l'utilisateur passerelle). Conservé pour les appels non-streaming/tests.
+ */
+export function rewriteM3U(text, gwUser, gwPass) {
+  const fn = makeM3URewriter(gwUser, gwPass);
+  return fn ? fn(text) : text;
 }
 
 /** Ajuste server_info d'un player_api pour pointer sur la passerelle. */
