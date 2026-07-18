@@ -17,7 +17,10 @@
 //  Back = quitter. Logo « The Few » affiché à l'ouverture / au zap.
 // =========================================================
 import 'dart:async';
-import 'dart:io' show File;
+import 'dart:io'
+    show File, HttpClient, HttpClientRequest, HttpClientResponse;
+import 'dart:typed_data' show ByteData, Uint8List;
+import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -709,10 +712,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // téléchargements : c'est ce qui permet de REGARDER l'épisode local
     // pendant que le SUIVANT se télécharge (boucle Netflix).
     if (_isVod) {
-      // Hue « salle de cinéma » : le film démarre → la pièce plonge dans le
-      // rouge braise. Idempotent (une scène active n'est pas relancée au
-      // zap d'épisode) et 100 % best-effort — ne retarde jamais la lecture.
-      unawaited(HueService.instance.cinemaStart());
+      // Hue « salle de cinéma » IMMERSIVE : le film démarre → la pièce prend
+      // la TEINTE DOMINANTE de l'affiche (bleu pour un sci-fi, ambre pour un
+      // drame chaud). Calcul depuis l'image (jamais depuis la vidéo → zéro
+      // risque box/1-connexion). Idempotent, best-effort — ne retarde jamais
+      // la lecture (tout est unawaited).
+      unawaited(_startHueImmersive(channel.logoUrl));
       final String? local = VodDownloadService.instance.localFile(channel.id);
       if (local != null && await File(local).exists()) {
         if (!mounted || channel.id != _current.id) return;
@@ -1439,6 +1444,55 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     }
     _showOverlayTemporarily();
     setState(() {});
+  }
+
+  /// Lance l'ambiance Hue TEINTÉE par l'affiche du film. Best-effort de
+  /// bout en bout : sans pont/option, ou si l'image est indisponible ou
+  /// terne, on lance la scène en rouge braise par défaut. Ne touche JAMAIS
+  /// la vidéo (couleur calculée sur l'affiche téléchargée en petit).
+  Future<void> _startHueImmersive(String? posterUrl) async {
+    // Sortie rapide si Hue n'a rien à faire (option OFF / pas de pont) :
+    // on évite un décodage d'image inutile.
+    if (!HueService.instance.enabled || !HueService.instance.isPaired) return;
+    ({int hue, int sat})? tint;
+    try {
+      if (posterUrl != null &&
+          posterUrl.isNotEmpty &&
+          !posterUrl.startsWith('file:')) {
+        final HttpClient client = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 4);
+        try {
+          final HttpClientRequest req =
+              await client.getUrl(Uri.parse(posterUrl));
+          final HttpClientResponse resp =
+              await req.close().timeout(const Duration(seconds: 5));
+          final List<int> bytes = <int>[];
+          await for (final List<int> chunk in resp) {
+            bytes.addAll(chunk);
+            if (bytes.length > 3 * 1024 * 1024) break; // garde-fou 3 Mo
+          }
+          // Décodage BORNÉ à 64 px de large : rapide, suffisant pour une
+          // couleur moyenne, négligeable en mémoire sur box modeste.
+          final ui.Codec codec = await ui.instantiateImageCodec(
+              Uint8List.fromList(bytes),
+              targetWidth: 64);
+          final ui.FrameInfo frame = await codec.getNextFrame();
+          final ByteData? data =
+              await frame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+          frame.image.dispose();
+          if (data != null) {
+            tint = HueService.dominantFromRgba(data.buffer.asUint8List(),
+                stride: 1);
+          }
+        } finally {
+          client.close(force: true);
+        }
+      }
+    } catch (_) {
+      tint = null; // repli braise
+    }
+    if (!mounted || !_isVod) return;
+    await HueService.instance.cinemaStart(hue: tint?.hue, sat: tint?.sat);
   }
 
   // ---- MODE FILM (VOD / catch-up) — commandes façon Netflix ----

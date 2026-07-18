@@ -120,4 +120,36 @@ void main() {
           isNull);
     });
   });
+
+  group('immersion couleur (rgbToHue / dominantFromRgba)', () {
+    test('rouge pur → teinte ~0', () {
+      final r = HueService.rgbToHue(255, 0, 0);
+      expect(r.hue, lessThan(2000));
+      expect(r.sat, 254);
+    });
+    test('bleu pur → teinte vers 2/3 du cercle', () {
+      final b = HueService.rgbToHue(0, 0, 255);
+      expect(b.hue, closeTo(65535 * 240 / 360, 2000));
+      expect(b.sat, 254);
+    });
+    test('gris → saturation nulle', () {
+      expect(HueService.rgbToHue(128, 128, 128).sat, 0);
+    });
+    test('dominante ignore le noir et le gris, garde le vif', () {
+      // 1 px noir, 1 px gris, 1 px bleu vif → doit ressortir bleu.
+      final rgba = <int>[
+        0, 0, 0, 255, // noir (écarté)
+        130, 130, 130, 255, // gris (écarté)
+        20, 40, 240, 255, // bleu vif (gardé)
+      ];
+      final d = HueService.dominantFromRgba(rgba, stride: 1);
+      expect(d, isNotNull);
+      expect(d!.hue, closeTo(65535 * 230 / 360, 6000));
+    });
+    test('image entièrement terne → null (repli braise)', () {
+      final rgba = <int>[10, 10, 10, 255, 12, 12, 12, 255];
+      expect(HueService.dominantFromRgba(rgba, stride: 1), isNull);
+    });
+  });
+
 }

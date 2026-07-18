@@ -300,9 +300,14 @@ class HueService extends ChangeNotifier {
 
   // ---- 3. SCÈNE CINÉMA --------------------------------------------------
 
-  /// Film lancé → capture l'état des lampes puis plonge la pièce dans le
-  /// rouge braise (transition 3 s). Idempotent : scène déjà active → rien.
-  Future<void> cinemaStart() async {
+  /// Film lancé → capture l'état des lampes puis plonge la pièce dans une
+  /// ambiance douce (transition 3 s). Idempotent : scène déjà active → rien.
+  ///
+  /// IMMERSION PAR FILM (2026-07-17) : si [hue]/[sat] sont fournis (teinte
+  /// dominante de l'affiche, calculée par l'appelant), la pièce prend LA
+  /// COULEUR du film — un sci-fi bleu baigne en bleu, un drame chaud en
+  /// ambre. Sans couleur → repli sur le rouge braise de la marque.
+  Future<void> cinemaStart({int? hue, int? sat}) async {
     await load();
     if (!_enabled || !isPaired || sceneActive) return;
     final Map<String, HueLightState>? states = await _fetchLightStates();
@@ -313,11 +318,69 @@ class HueService extends ChangeNotifier {
     await _groupAction(<String, Object?>{
       'on': true,
       'bri': kCinemaBri,
-      'hue': kCinemaHue,
-      'sat': kCinemaSat,
+      'hue': hue ?? kCinemaHue,
+      // On garde une saturation ÉLEVÉE (ambiance colorée, pas blanchâtre)
+      // tout en respectant une teinte plus douce si l'affiche est pâle.
+      'sat': (sat ?? kCinemaSat).clamp(140, 254),
       'transitiontime': 30, // 3,0 s — la salle « s'éteint » en douceur
     });
     notifyListeners();
+  }
+
+  /// Convertit une couleur RVB (0-255) en (hue 0-65535, sat 0-254) Hue.
+  /// Le canal Teinte de Hue est un cercle 0-65535 ; la saturation 0-254.
+  /// On ignore la luminosité (la scène impose sa propre intensité basse).
+  static ({int hue, int sat}) rgbToHue(int r, int g, int b) {
+    final double rf = r / 255.0, gf = g / 255.0, bf = b / 255.0;
+    final double maxC = [rf, gf, bf].reduce((a, c) => a > c ? a : c);
+    final double minC = [rf, gf, bf].reduce((a, c) => a < c ? a : c);
+    final double delta = maxC - minC;
+    double h = 0;
+    if (delta > 0.00001) {
+      if (maxC == rf) {
+        h = ((gf - bf) / delta) % 6;
+      } else if (maxC == gf) {
+        h = (bf - rf) / delta + 2;
+      } else {
+        h = (rf - gf) / delta + 4;
+      }
+      h *= 60;
+      if (h < 0) h += 360;
+    }
+    final double s = maxC <= 0 ? 0 : delta / maxC;
+    return (
+      hue: ((h / 360.0) * 65535).round().clamp(0, 65535),
+      sat: (s * 254).round().clamp(0, 254),
+    );
+  }
+
+  /// Teinte dominante d'une image (octets RVBA) → (hue, sat) Hue.
+  /// On moyenne les pixels VIFS (on écarte le très sombre et le grisâtre :
+  /// ce sont eux qui « salissent » la couleur d'ambiance). [stride] permet
+  /// d'échantillonner (1 pixel sur N) pour rester léger sur box modeste.
+  static ({int hue, int sat})? dominantFromRgba(
+    List<int> rgba, {
+    int stride = 4,
+  }) {
+    if (rgba.length < 4) return null;
+    double rs = 0, gs = 0, bs = 0;
+    int n = 0;
+    final int step = 4 * (stride < 1 ? 1 : stride);
+    for (int i = 0; i + 3 < rgba.length; i += step) {
+      final int r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
+      final int maxc = [r, g, b].reduce((a, c) => a > c ? a : c);
+      final int minc = [r, g, b].reduce((a, c) => a < c ? a : c);
+      // On ne garde que les pixels ni trop sombres ni trop ternes : ce sont
+      // eux qui portent la « couleur » du film (néons, ciel, décor).
+      if (maxc < 60) continue; // quasi noir
+      if (maxc - minc < 40) continue; // gris / blanc cassé
+      rs += r;
+      gs += g;
+      bs += b;
+      n++;
+    }
+    if (n == 0) return null; // affiche terne → l'appelant gardera le braise
+    return rgbToHue((rs / n).round(), (gs / n).round(), (bs / n).round());
   }
 
   /// Pause → la lumière remonte un peu (on retrouve ses pop-corns).
