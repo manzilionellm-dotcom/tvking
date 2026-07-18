@@ -388,6 +388,12 @@ class LocalCastServer {
               a.value.createdAt.isBefore(b.value.createdAt) ? a : b)
           .key;
       _relays.remove(oldest);
+      // C3 — sessions HLS orphelines : une entrée _relays évincée peut avoir
+      // une HlsRelaySession de MÊME token qui, elle, continue de tirer
+      // l'upstream jusqu'à son idle-timeout (~120 s) → elle occupe le slot
+      // « 1 connexion » du fournisseur et fait échouer la nouvelle chaîne
+      // (« limite atteinte » au zapping rapide). On l'arrête AUSSI.
+      _hlsSessions.remove(oldest)?.stop();
     }
 
     final String token = _randomToken();
@@ -740,7 +746,19 @@ class LocalCastServer {
           }
         }
       }
-      // Fallback : première IPv4 non-loopback
+      // Fallback : première IPv4 non-loopback. M5 — sur multi-réseau
+      // (Wi-Fi + VPN/VLAN) cette IP peut appartenir à un AUTRE sous-réseau
+      // que le récepteur → URL relais injoignable poussée à la TV (« format
+      // non supporté » trompeur). On ne peut pas mieux deviner ici, mais on
+      // TRACE explicitement le cas pour que les logs terrain le révèlent au
+      // lieu d'un échec muet.
+      if (rParts.length == 4) {
+        StructuredLogger.instance.warn(
+          domain: 'cast',
+          event: 'lan_ip.subnet_mismatch',
+          ctx: <String, Object?>{'receiver': receiverHost},
+        );
+      }
       for (final NetworkInterface ni in ifs) {
         for (final InternetAddress a in ni.addresses) {
           if (!a.isLoopback) return a.address;
