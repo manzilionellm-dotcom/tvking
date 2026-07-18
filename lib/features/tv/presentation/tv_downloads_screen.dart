@@ -123,10 +123,23 @@ class _TvDownloadsScreenState extends State<TvDownloadsScreen> {
                         ],
                       ),
                     ),
-                    // TÉLÉCHARGEMENTS INTELLIGENTS (Netflix) : épisode vu →
-                    // supprimé, épisode suivant → téléchargé tout seul.
-                    _SmartToggle(
-                        enabled: VodDownloadService.instance.smartEnabled),
+                    // Deux réglages empilés :
+                    //  • TÉLÉCHARGEMENTS INTELLIGENTS (Netflix) : épisode vu →
+                    //    supprimé, épisode suivant → téléchargé tout seul.
+                    //  • PENDANT LA LECTURE (YouTube) : on enregistre le film
+                    //    hors-ligne en même temps qu'on le regarde.
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: <Widget>[
+                        _SmartToggle(
+                            enabled: VodDownloadService.instance.smartEnabled),
+                        const SizedBox(height: 10),
+                        _WatchSaveToggle(
+                            enabled: VodDownloadService
+                                .instance.watchAndSaveEnabled),
+                      ],
+                    ),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -215,6 +228,66 @@ class _SmartToggle extends StatelessWidget {
                       enabled
                           ? context.l10n.tvDlSmartOn
                           : context.l10n.tvDlSmartOff,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color:
+                              enabled ? TvTokens.ember : TvTokens.mutedDim)),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Interrupteur « Télécharger pendant que je regarde » (façon YouTube) —
+/// même langage visuel que [_SmartToggle]. OFF par défaut car il ouvre une
+/// 2ᵉ connexion réseau (à réserver aux comptes qui l'autorisent).
+class _WatchSaveToggle extends StatelessWidget {
+  const _WatchSaveToggle({required this.enabled});
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.small,
+      onSelect: () =>
+          VodDownloadService.instance.setWatchAndSaveEnabled(!enabled),
+      builder: (BuildContext context, bool focused) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: focused ? TvTokens.sel : TvTokens.card,
+            borderRadius: BorderRadius.circular(TvTokens.rCard),
+            border: Border.all(
+                color: focused ? TvTokens.ember : TvTokens.lineSoft,
+                width: focused ? TvDimens.focusOutline : 1),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(
+                  enabled
+                      ? Icons.download_for_offline
+                      : Icons.download_for_offline_outlined,
+                  size: 18,
+                  color: enabled ? TvTokens.ember : TvTokens.mutedDim),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(context.l10n.tvDlWatchSave,
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: TvTokens.text)),
+                  Text(
+                      enabled
+                          ? context.l10n.tvDlWatchSaveOn
+                          : context.l10n.tvDlWatchSaveOff,
                       style: TextStyle(
                           fontSize: 12,
                           color:

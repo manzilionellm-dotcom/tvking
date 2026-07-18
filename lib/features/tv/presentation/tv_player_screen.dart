@@ -718,6 +718,19 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       // risque box/1-connexion). Idempotent, best-effort — ne retarde jamais
       // la lecture (tout est unawaited).
       unawaited(_startHueImmersive(channel.logoUrl));
+      // « TÉLÉCHARGER PENDANT QUE JE REGARDE » (façon YouTube) : si l'option
+      // est active ET que le film n'est pas déjà local, on l'enregistre en
+      // parallèle → hors-ligne à la fin. No-op si OFF (défaut) ou local.
+      final String? already = VodDownloadService.instance.localFile(channel.id);
+      if (already == null) {
+        unawaited(VodDownloadService.instance.watchAlong(
+          id: channel.id,
+          name: channel.cleanName,
+          streamUrl: channel.streamUrl,
+          posterUrl: channel.logoUrl,
+          category: channel.category,
+        ));
+      }
       final String? local = VodDownloadService.instance.localFile(channel.id);
       if (local != null && await File(local).exists()) {
         if (!mounted || channel.id != _current.id) return;

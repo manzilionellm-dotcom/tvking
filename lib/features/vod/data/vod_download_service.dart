@@ -162,6 +162,7 @@ class VodDownloadService extends ChangeNotifier {
 
   static const String _kKey = 'vod_downloads.v1';
   static const String _kSmartKey = 'vod_downloads.smart.v1';
+  static const String _kWatchSaveKey = 'vod_downloads.watch_save.v1';
 
   /// Seuils d'espace libre : on REFUSE de démarrer sous 500 Mo, et on
   /// SUSPEND un téléchargement en cours sous 200 Mo. Marge volontaire :
@@ -182,6 +183,13 @@ class VodDownloadService extends ChangeNotifier {
   /// la file patiente pour ne pas voler le créneau 1-connexion du panel.
   bool _playbackHold = false;
 
+  /// « Télécharger pendant que je regarde » (façon YouTube). Ces ids ont le
+  /// DROIT de se télécharger MÊME pendant une lecture réseau (2e connexion).
+  /// Réservé au film qu'on est en train de regarder → à la fin, il est déjà
+  /// hors-ligne. Sur un compte « 1 connexion » ça peut échouer : le back-off
+  /// du moteur encaisse, la lecture reste prioritaire.
+  final Set<String> _playAlong = <String>{};
+
   /// Liste (ordre d'insertion — les récents en dernier).
   List<VodDownload> get all => _items.values.toList(growable: false);
   VodDownload? byId(String id) => _items[id];
@@ -198,6 +206,49 @@ class VodDownloadService extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// « Télécharger pendant que je regarde » — OFF par défaut (2e connexion :
+  /// à activer par ceux dont le compte l'autorise). Persisté.
+  bool _watchAndSave = false;
+  bool get watchAndSaveEnabled => _watchAndSave;
+  Future<void> setWatchAndSaveEnabled(bool v) async {
+    _watchAndSave = v;
+    notifyListeners();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kWatchSaveKey, v);
+    } catch (_) {}
+  }
+
+  /// Le lecteur signale « je regarde CE film en réseau » : si l'option
+  /// « pendant la lecture » est active et que le film n'est pas déjà
+  /// (télé)chargé, on le met en file EN PARALLÈLE de la lecture (façon
+  /// YouTube) — à la fin, il est hors-ligne. No-op si option OFF, contenu
+  /// local, ou déjà présent.
+  Future<void> watchAlong({
+    required String id,
+    required String name,
+    required String streamUrl,
+    String? posterUrl,
+    String category = '',
+    bool isEpisode = false,
+    String groupName = '',
+  }) async {
+    await load();
+    if (!_watchAndSave) return;
+    if (streamUrl.isEmpty || streamUrl.startsWith('file:')) return;
+    if (_items[id]?.isComplete ?? false) return;
+    _playAlong.add(id);
+    await enqueue(
+      id: id,
+      name: name,
+      streamUrl: streamUrl,
+      posterUrl: posterUrl,
+      category: category,
+      isEpisode: isEpisode,
+      groupName: groupName,
+    );
+  }
+
   /// Fichier local prêt à lire (null si pas terminé). LE point d'entrée du
   /// lecteur : si non-null, la lecture est instantanée et 100 % hors réseau.
   String? localFile(String id) {
@@ -212,6 +263,7 @@ class VodDownloadService extends ChangeNotifier {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       _smart = prefs.getBool(_kSmartKey) ?? true;
+      _watchAndSave = prefs.getBool(_kWatchSaveKey) ?? false;
       final String raw = prefs.getString(_kKey) ?? '[]';
       final List<dynamic> list = jsonDecode(raw) as List<dynamic>;
       _items.clear();
@@ -435,9 +487,14 @@ class VodDownloadService extends ChangeNotifier {
   /// lecteur ne streame pas. Appelé après chaque événement (enqueue, fin,
   /// erreur, resume, fin de lecture réseau).
   void _pump() {
-    if (_playbackHold) return;
     if (_activeId != null && _clients.containsKey(_activeId)) return;
-    final VodDownload? nextUp = pickNext(_items.values);
+    // Pendant une lecture réseau, la file patiente — SAUF les items
+    // « pendant la lecture » (le film qu'on regarde, façon YouTube), qui
+    // ont le droit à leur propre connexion.
+    final Iterable<VodDownload> pool = _playbackHold
+        ? _items.values.where((VodDownload d) => _playAlong.contains(d.id))
+        : _items.values;
+    final VodDownload? nextUp = pickNext(pool);
     if (nextUp == null) {
       _activeId = null;
       return;

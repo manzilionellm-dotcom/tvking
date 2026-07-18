@@ -616,6 +616,9 @@
   "tvDlSmart": "Upakuaji werevu",
   "tvDlSmartOn": "Umewashwa — kipindi kilichotazamwa hufutwa, kinachofuata huja chenyewe",
   "tvDlSmartOff": "Umezimwa",
+  "tvDlWatchSave": "Hifadhi unapotazama",
+  "tvDlWatchSaveOn": "Umewashwa — filamu huhifadhiwa nje ya mtandao unapoitazama",
+  "tvDlWatchSaveOff": "Umezimwa — washa ikiwa mpango wako unaruhusu miunganisho 2",
   "tvDlFree": "{size} zipo wazi kwenye kifaa",
   "@tvDlFree": {
     "placeholders": {

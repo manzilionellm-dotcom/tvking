@@ -617,6 +617,9 @@
   "tvDlSmart": "Smart downloads",
   "tvDlSmartOn": "On — watched episodes are removed, the next one arrives by itself",
   "tvDlSmartOff": "Off",
+  "tvDlWatchSave": "Save while watching",
+  "tvDlWatchSaveOn": "On — the movie saves offline while you watch it",
+  "tvDlWatchSaveOff": "Off — enable if your plan allows 2 connections",
   "tvDlFree": "{size} free on this box",
   "@tvDlFree": {
     "placeholders": {

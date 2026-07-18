@@ -678,6 +678,24 @@ class _DownloadsTabState extends State<_DownloadsTab> {
                   style: const TextStyle(
                       fontSize: 12, color: AppColors.textTertiary)),
             ),
+            // « Télécharger pendant que je regarde » (façon YouTube) : OFF par
+            // défaut car cela ouvre une 2ᵉ connexion réseau.
+            SwitchListTile(
+              value: dl.watchAndSaveEnabled,
+              onChanged: (bool v) => dl.setWatchAndSaveEnabled(v),
+              activeTrackColor: AppColors.accent,
+              contentPadding: EdgeInsets.zero,
+              title: Text(context.l10n.tvDlWatchSave,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary)),
+              subtitle: Text(
+                  dl.watchAndSaveEnabled
+                      ? context.l10n.tvDlWatchSaveOn
+                      : context.l10n.tvDlWatchSaveOff,
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textTertiary)),
+            ),
             const Divider(color: AppColors.ash, height: 24),
             if (items.isEmpty)
               Padding(

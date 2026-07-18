@@ -616,6 +616,9 @@
   "tvDlSmart": "Descargas inteligentes",
   "tvDlSmartOn": "Activadas: el episodio visto se elimina y el siguiente llega solo",
   "tvDlSmartOff": "Desactivadas",
+  "tvDlWatchSave": "Guardar mientras ves",
+  "tvDlWatchSaveOn": "Activado: la película se guarda sin conexión mientras la ves",
+  "tvDlWatchSaveOff": "Desactivado: actívalo si tu plan permite 2 conexiones",
   "tvDlFree": "{size} libres en el dispositivo",
   "@tvDlFree": {
     "placeholders": {

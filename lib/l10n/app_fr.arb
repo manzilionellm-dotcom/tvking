@@ -2089,6 +2089,9 @@
   "tvDlSmart": "Téléchargements intelligents",
   "tvDlSmartOn": "Activés — épisode vu supprimé, le suivant arrive tout seul",
   "tvDlSmartOff": "Désactivés",
+  "tvDlWatchSave": "Enregistrer pendant la lecture",
+  "tvDlWatchSaveOn": "Activé — le film s'enregistre hors ligne pendant que vous le regardez",
+  "tvDlWatchSaveOff": "Désactivé — à activer si votre abonnement autorise 2 connexions",
   "tvDlFree": "{size} libres sur la box",
   "@tvDlFree": {
     "placeholders": {

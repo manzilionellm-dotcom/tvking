@@ -616,6 +616,9 @@
   "tvDlSmart": "Smarte nedlastinger",
   "tvDlSmartOn": "På — sette episoder fjernes, og neste kommer av seg selv",
   "tvDlSmartOff": "Av",
+  "tvDlWatchSave": "Lagre mens du ser",
+  "tvDlWatchSaveOn": "På — filmen lagres frakoblet mens du ser den",
+  "tvDlWatchSaveOff": "Av — slå på hvis abonnementet ditt tillater 2 tilkoblinger",
   "tvDlFree": "{size} ledig på boksen",
   "@tvDlFree": {
     "placeholders": {

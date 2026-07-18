@@ -616,6 +616,9 @@
   "tvDlSmart": "Smarte downloads",
   "tvDlSmartOn": "Til — sete afsnit fjernes, og det næste kommer af sig selv",
   "tvDlSmartOff": "Fra",
+  "tvDlWatchSave": "Gem mens du ser",
+  "tvDlWatchSaveOn": "Til — filmen gemmes offline, mens du ser den",
+  "tvDlWatchSaveOff": "Fra — slå til, hvis dit abonnement tillader 2 forbindelser",
   "tvDlFree": "{size} ledig på boksen",
   "@tvDlFree": {
     "placeholders": {

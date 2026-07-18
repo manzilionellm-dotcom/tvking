@@ -616,6 +616,9 @@
   "tvDlSmart": "التنزيلات الذكية",
   "tvDlSmartOn": "مفعّلة — تُحذف الحلقة المشاهدة وتصل التالية تلقائيًا",
   "tvDlSmartOff": "معطّلة",
+  "tvDlWatchSave": "الحفظ أثناء المشاهدة",
+  "tvDlWatchSaveOn": "مفعّل — يُحفظ الفيلم دون اتصال أثناء مشاهدتك له",
+  "tvDlWatchSaveOff": "معطّل — فعّله إذا كان اشتراكك يسمح باتصالين",
   "tvDlFree": "{size} متاحة على الجهاز",
   "@tvDlFree": {
     "placeholders": {

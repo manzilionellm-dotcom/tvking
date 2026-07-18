@@ -1092,7 +1092,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // capricieuse, domaine récalcitrant…), on bascule automatiquement
       // sur le relais — sans laisser l'utilisateur sur un spinner infini.
       // Les fichiers LOCAUX n'ont pas de repli (rien à relayer).
-      if (!isLocalFile) _armVodRelayFallback(realUrl, gen);
+      if (!isLocalFile) {
+        _armVodRelayFallback(realUrl, gen);
+        // « TÉLÉCHARGER PENDANT QUE JE REGARDE » (façon YouTube) : si
+        // l'option est active, on met le film en file EN PARALLÈLE → il
+        // sera hors-ligne à la fin. No-op si option OFF (défaut).
+        unawaited(VodDownloadService.instance.watchAlong(
+          id: _currentChannel.id,
+          name: _currentChannel.cleanName,
+          streamUrl: realUrl,
+          posterUrl: _currentChannel.logoUrl,
+          category: _currentChannel.category,
+        ));
+      }
       return;
     }
     await _openViaRelay(realUrl, gen);
