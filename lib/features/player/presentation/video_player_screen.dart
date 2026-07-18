@@ -1062,6 +1062,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _player.open(Media(normalizedUrl));
       return;
     }
+    // VOD (film / épisode) ou FICHIER LOCAL téléchargé : lecture DIRECTE
+    // par mpv — PARITÉ TV (2026-07-18). Le relais est un tuyau d'octets TS
+    // CONTINUS, SANS requêtes Range : un mp4/mkv fini qui y passait
+    // démarrait lentement (pas de seek d'ouverture, buffering) et rendait
+    // l'avance/recul saccadée. mpv gère nativement le Range → démarrage
+    // rapide, seek précis, lecture fluide. (Le direct — isLive — garde le
+    // relais : 1 connexion + reconnexion + DoH.)
+    final bool isLocalFile =
+        realUrl.startsWith('file:') || realUrl.startsWith('/');
+    if (isLocalFile || !_currentChannel.isLive) {
+      LocalStreamRelay.instance.closeOtherPlaybacks(realUrl);
+      if (!mounted || gen != _openGeneration) return;
+      StreamDiagnostics.instance.recordEvent(
+        'player',
+        isLocalFile
+            ? 'Fichier local → lecture directe mpv (hors relais)'
+            : 'VOD (film/épisode) → lecture directe mpv (Range natif, '
+                'hors relais — démarrage rapide + seek fluide)',
+      );
+      _playerOpenedOnce = true;
+      _player.open(Media(realUrl));
+      return;
+    }
     try {
       final String localUrl =
           await LocalStreamRelay.instance.playUrlFor(realUrl);

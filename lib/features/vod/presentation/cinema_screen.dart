@@ -357,7 +357,7 @@ class _PosterCard extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: <Widget>[
-                    _poster(movie.posterUrl),
+                    _poster(movie.posterUrl, title: movie.name),
                     // Filet de progression (repère « entamé », comme la TV).
                     if (progress != null)
                       Align(
@@ -425,22 +425,47 @@ class _PosterCard extends StatelessWidget {
 
 /// Affiche avec décodage BORNÉ (192 px de large suffisent pour 96 dp) —
 /// la même règle mémoire que partout ailleurs dans l'app.
-Widget _poster(String? url) => (url == null || url.isEmpty)
-    ? const ColoredBox(
+/// Affiche (ou repli LISIBLE quand la source n'a pas de jaquette) : au lieu
+/// d'une carte grise anonyme, on écrit le TITRE dessus (comme la TV / Netflix
+/// — corrige les rangées « Nouveautés » qui semblaient vides).
+Widget _poster(String? url, {String? title}) {
+  Widget fallback() => ColoredBox(
         color: AppColors.surface,
-        child: Icon(Icons.movie_outlined,
-            size: 28, color: AppColors.textMuted))
-    : CachedNetworkImage(
-        imageUrl: url,
-        fit: BoxFit.cover,
-        memCacheWidth: 192,
-        fadeInDuration: const Duration(milliseconds: 150),
-        placeholder: (_, __) => const ColoredBox(color: AppColors.surface),
-        errorWidget: (_, __, ___) => const ColoredBox(
-            color: AppColors.surface,
-            child: Icon(Icons.movie_outlined,
-                size: 28, color: AppColors.textMuted)),
+        child: (title == null || title.isEmpty)
+            ? const Center(
+                child: Icon(Icons.movie_outlined,
+                    size: 28, color: AppColors.textMuted))
+            : Padding(
+                padding: const EdgeInsets.all(8),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    const Icon(Icons.movie_outlined,
+                        size: 20, color: AppColors.textMuted),
+                    const SizedBox(height: 6),
+                    Text(VodTitles.clean(title),
+                        maxLines: 4,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            fontSize: 11,
+                            height: 1.2,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary)),
+                  ],
+                ),
+              ),
       );
+  if (url == null || url.isEmpty) return fallback();
+  return CachedNetworkImage(
+    imageUrl: url,
+    fit: BoxFit.cover,
+    memCacheWidth: 192,
+    fadeInDuration: const Duration(milliseconds: 150),
+    placeholder: (_, __) => const ColoredBox(color: AppColors.surface),
+    errorWidget: (_, __, ___) => fallback(),
+  );
+}
 
 // ---------------------------------------------------------------------------
 //  Onglet SÉRIES
@@ -521,7 +546,7 @@ class _SeriesTab extends StatelessWidget {
                                 child: Stack(
                                   fit: StackFit.expand,
                                   children: <Widget>[
-                                    _poster(s.posterUrl),
+                                    _poster(s.posterUrl, title: s.name),
                                     if (newIds.contains(s.id))
                                       Positioned(
                                         top: 5,
