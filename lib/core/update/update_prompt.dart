@@ -28,6 +28,17 @@ Future<void> maybePromptUpdate(BuildContext context) async {
   final UpdateInfo? update = await UpdateService.instance.check();
   if (update == null || !context.mounted) return;
 
+  // ANTI-HARCÈLEMENT : si on a DÉJÀ ouvert l'installateur système pour CETTE
+  // version récemment (client qui n'a pas encore installé, ou dont le build
+  // reste plus ancien que la version publiée), on NE rouvre PAS la boîte
+  // « Mettre à jour cette application ? » à chaque reprise d'app / tick. On
+  // réessaiera après le cooldown, ou IMMÉDIATEMENT si une version encore plus
+  // récente sort. (Le bouton MANUEL des Réglages n'est pas concerné.)
+  if (!await UpdateService.instance.shouldAutoInstall(update.versionCode)) {
+    return;
+  }
+  if (!context.mounted) return;
+
   final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(context);
   // Bandeau discret : le client VOIT qu'une mise à jour arrive, sans avoir à
   // décider quoi que ce soit — le téléchargement se fait tout seul en fond.
@@ -39,6 +50,12 @@ Future<void> maybePromptUpdate(BuildContext context) async {
   );
 
   final bool ok = await UpdateService.instance.downloadAndInstall(update);
+  if (ok) {
+    // On RETIENT que l'installateur a été ouvert pour cette version → on ne le
+    // rouvrira plus en boucle (jusqu'au cooldown, ou une version plus récente).
+    // Un échec de téléchargement, lui, N'arme PAS le silence : on réessaiera.
+    await UpdateService.instance.markAutoInstallLaunched(update.versionCode);
+  }
   if (!context.mounted) return;
   messenger?.clearSnackBars();
 

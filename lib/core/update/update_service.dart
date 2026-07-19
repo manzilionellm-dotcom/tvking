@@ -29,6 +29,7 @@ import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_platform.dart';
 import 'build_flags.dart';
@@ -149,6 +150,58 @@ class UpdateService {
     } catch (e) {
       if (kDebugMode) debugPrint('[Update] check error: $e');
       return const UpdateCheckResult(UpdateAvailability.unavailable);
+    }
+  }
+
+  // ============================================================
+  //  ANTI-HARCÈLEMENT (auto-MAJ) — mémoire par versionCode
+  // ============================================================
+  //  BUG corrigé : l'auto-MAJ rouvrait la boîte SYSTÈME Android « Mettre à
+  //  jour cette application ? » à CHAQUE reprise d'app / tick tant que le
+  //  client n'avait pas installé (ou tant que son build restait plus ancien
+  //  que la version publiée). Résultat : dialogue d'installation en boucle —
+  //  agaçant, et un mauvais réflexe de sécurité (on apprend au client à taper
+  //  « Installer » sans réfléchir).
+  //
+  //  Correctif : on MÉMORISE le dernier versionCode pour lequel on a ouvert
+  //  l'installateur, avec l'horodatage. On ne le rouvre PAS pour la MÊME
+  //  version avant [_kAutoInstallCooldown]. Une version ENCORE plus récente
+  //  lève aussitôt le silence ; s'il a installé, le buildNumber rejoint la
+  //  cible → `check()` renvoie `null` et il n'y a plus rien à proposer.
+  //  Le bouton MANUEL des Réglages n'est PAS concerné (geste volontaire).
+
+  static const String _kAutoInstallCodeKey = 'update_auto_install_code_v1';
+  static const String _kAutoInstallAtKey = 'update_auto_install_at_v1';
+  static const Duration _kAutoInstallCooldown = Duration(hours: 24);
+
+  /// Auto-MAJ : faut-il (RE)lancer l'installateur système pour [versionCode] ?
+  /// `false` si on l'a déjà lancé pour CETTE version il y a moins de
+  /// [_kAutoInstallCooldown] (→ on n'importune plus le client à chaque reprise).
+  /// En cas de doute (lecture prefs KO), on renvoie `true` : ne jamais BLOQUER
+  /// une vraie mise à jour.
+  Future<bool> shouldAutoInstall(int versionCode) async {
+    try {
+      final SharedPreferences p = await SharedPreferences.getInstance();
+      final int lastCode = p.getInt(_kAutoInstallCodeKey) ?? 0;
+      if (lastCode != versionCode) return true; // nouvelle version → oui
+      final int lastAt = p.getInt(_kAutoInstallAtKey) ?? 0;
+      final int now = DateTime.now().millisecondsSinceEpoch;
+      return now - lastAt >= _kAutoInstallCooldown.inMilliseconds;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Mémorise qu'on VIENT d'ouvrir l'installateur pour [versionCode] (auto-MAJ),
+  /// pour ne pas rouvrir la boîte système à chaque reprise d'app.
+  Future<void> markAutoInstallLaunched(int versionCode) async {
+    try {
+      final SharedPreferences p = await SharedPreferences.getInstance();
+      await p.setInt(_kAutoInstallCodeKey, versionCode);
+      await p.setInt(
+          _kAutoInstallAtKey, DateTime.now().millisecondsSinceEpoch);
+    } catch (_) {
+      // best-effort : au pire on repropose une fois de trop, jamais un crash.
     }
   }
 

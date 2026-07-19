@@ -28,12 +28,19 @@ const int kMaxM3uBytes = 60 * 1024 * 1024;
 /// laisse un peu plus large. Coupé en streaming dès dépassement.
 const int kMaxXtreamJsonBytes = 80 * 1024 * 1024;
 
-/// Plafond DUR de chaînes matérialisées en mémoire lors d'UN import. Aligné
-/// sur le plafond de LECTURE (`PlaylistRepository.kMaxInMemoryChannels`) pour
-/// que lecture et écriture aient la même borne. Au-delà, on s'arrête (les
-/// chaînes en trop ne sont ni gardées en RAM ni insérées — la source reste
-/// utilisable, juste tronquée à une taille tenable sur box faible).
-const int kMaxChannelsPerImport = 50000;
+/// Plafond de SÉCURITÉ ABSOLU (dernier filet) du nombre de chaînes
+/// matérialisées lors d'UN import. Ce n'est PAS le plafond réel : le vrai
+/// plafond, ADAPTÉ À LA RAM de l'appareil, est `DeviceMemory.channelCap`
+/// (5 000 sur une box 1 Go … jusqu'à 800 000 sur une box haut de gamme) et
+/// c'est LUI que les vrais appelants (M3U + Xtream) passent en `maxChannels`.
+///
+/// Cette constante ne sert que de valeur par défaut si un appelant oubliait de
+/// fournir le plafond adapté. On la met TRÈS HAUT (1 million) pour qu'elle ne
+/// bride JAMAIS silencieusement une grosse source à un petit nombre rond : la
+/// seule borne qui doit s'appliquer est celle de la RAM. (Auparavant fixée à
+/// 50 000, elle faisait afficher « Toutes : 50000 » — un plafond, pas le vrai
+/// total — sur les grosses sources.)
+const int kMaxChannelsPerImport = 1000000;
 
 /// Taille d'un lot d'insertion SQLite à l'import (compromis débit / pic mémoire
 /// transitoire des lignes brutes).
