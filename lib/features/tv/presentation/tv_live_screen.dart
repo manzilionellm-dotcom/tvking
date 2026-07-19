@@ -20,6 +20,7 @@ import '../../../core/crash/crash_reporting.dart';
 import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
+import '../../channels/data/category_order_store.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../device/data/device_identity.dart';
@@ -221,8 +222,19 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     }
     // Mode Enfants : si le parent l'active/désactive, on recharge (re-filtrage).
     ParentalControls.instance.kidsMode.addListener(_onKidsModeChanged);
+    // ORDRE PERSONNALISÉ des catégories (glisser/monter-descendre) : on le charge
+    // (idempotent) et on écoute ses changements pour ré-ordonner le rail EN LIVE.
+    // ignore: discarded_futures
+    CategoryOrderStore.instance.ensureLoaded();
+    CategoryOrderStore.instance.addListener(_onCatOrderChanged);
     // Chargement initial : rangées + catalogue + 1re page.
     _refreshAll();
+  }
+
+  /// L'ordre personnalisé des catégories a changé (réorganisation par l'usager)
+  /// → on reconstruit la liste affichée pour refléter le nouvel ordre.
+  void _onCatOrderChanged() {
+    if (mounted) setState(_rebuildDispCats);
   }
 
   /// Le Mode Enfants a basculé → on recharge rangées + catalogue + page courante
@@ -242,6 +254,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     _railsDebounce?.cancel();
     _previewDebounce?.cancel();
     ParentalControls.instance.kidsMode.removeListener(_onKidsModeChanged);
+    CategoryOrderStore.instance.removeListener(_onCatOrderChanged);
     super.dispose();
   }
 
@@ -384,9 +397,72 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     if (_favCh.isNotEmpty) cats.add(_kFavCat);
     if (_recentCh.isNotEmpty) cats.add(_kRecentCat);
     if (_catCounts.isNotEmpty) cats.add(_kAllCat);
-    cats.addAll(_catCounts.map((e) => e.category));
+    // Les VRAIES catégories dans l'ordre PERSONNALISÉ de l'usager (monter /
+    // descendre). Les pseudo-catégories restent toujours en tête.
+    cats.addAll(_realCatsOrdered());
     _dispCats = cats;
   }
+
+  /// Les VRAIES catégories (hors pseudo) dans l'ordre choisi par l'usager, à
+  /// partir de l'ordre d'import comme base stable (le reste garde sa place).
+  List<String> _realCatsOrdered() {
+    final List<String> base =
+        _catCounts.map((e) => e.category).toList();
+    return CategoryOrderStore.instance.applyOrder(base, (String c) => c);
+  }
+
+  /// `true` si [cat] est une PSEUDO-catégorie (Pour vous / Favoris / Récemment /
+  /// Toutes) — non réordonnable : seules les vraies catégories montent/descendent.
+  bool _isPseudoCat(String cat) =>
+      cat == _kForYouCat ||
+      cat == _kFavCat ||
+      cat == _kRecentCat ||
+      cat == _kAllCat;
+
+  // ============================================================
+  //  RÉORGANISATION DES CATÉGORIES (monter / descendre) — PREMIUM
+  // ============================================================
+  //  Appui long sur une catégorie → elle « rebondit » et affiche des chevrons
+  //  dorés ▲▼ : l'usager la fait monter ou descendre. L'ordre est PERSISTÉ
+  //  (CategoryOrderStore) et appliqué partout (rail + écran Catégories).
+
+  /// Catégorie actuellement « saisie » pour être déplacée (null = aucune).
+  String? _reorderCat;
+
+  /// Entre en mode réorganisation pour [cat] (vraie catégorie uniquement).
+  void _beginReorder(String cat) {
+    if (_isPseudoCat(cat)) return;
+    HapticFeedback.mediumImpact();
+    setState(() => _reorderCat = cat);
+  }
+
+  /// Sort du mode réorganisation.
+  void _endReorder() {
+    if (_reorderCat == null) return;
+    HapticFeedback.selectionClick();
+    setState(() => _reorderCat = null);
+  }
+
+  /// Déplace [cat] de [dir] rang(s) (−1 = monter, +1 = descendre) parmi les
+  /// vraies catégories, puis PERSISTE le nouvel ordre complet.
+  void _moveReorder(String cat, int dir) {
+    final List<String> order = _realCatsOrdered();
+    final int idx = order.indexOf(cat);
+    if (idx < 0) return;
+    final int next = idx + dir;
+    if (next < 0 || next >= order.length) return;
+    final String tmp = order[idx];
+    order[idx] = order[next];
+    order[next] = tmp;
+    HapticFeedback.selectionClick();
+    // On enregistre l'ORDRE COMPLET des vraies catégories : stable, et le rail
+    // se reconstruit via le listener du store (_onCatOrderChanged).
+    // ignore: discarded_futures
+    CategoryOrderStore.instance.setOrder(order);
+  }
+
+  /// Position (0-based) de [cat] parmi les vraies catégories, ou −1.
+  int _realIndexOf(String cat) => _realCatsOrdered().indexOf(cat);
 
   /// Charge le CATALOGUE (catégories + compteurs) par AGRÉGAT SQL, puis choisit
   /// la catégorie courante et charge sa 1re page si besoin. ZÉRO chaîne en RAM
@@ -780,6 +856,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     }
 
     // ===== C-LISTE (catégories) — COMPACTE, EN HAUT À DROITE =====
+    final int reorderCount = _realCatsOrdered().length;
     final Widget cList = _CategoryRail(
       cats: _dispCats,
       selectedCat: _selectedCat,
@@ -789,6 +866,18 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       countOf: _countOf,
       onSelect: _select,
       onFocusDebounced: _selectDebounced,
+      // Réorganisation premium (monter / descendre) — vraies catégories only.
+      reorderCat: _reorderCat,
+      isReorderable: (String c) => !_isPseudoCat(c),
+      onLongPress: _beginReorder,
+      onMoveUp: (String c) => _moveReorder(c, -1),
+      onMoveDown: (String c) => _moveReorder(c, 1),
+      onDoneReorder: _endReorder,
+      canMoveUp: (String c) => _realIndexOf(c) > 0,
+      canMoveDown: (String c) {
+        final int i = _realIndexOf(c);
+        return i >= 0 && i < reorderCount - 1;
+      },
     );
 
     // Grille de chaînes (virtualisée + PAGINÉE depuis SQLite) — toute la zone.
@@ -876,6 +965,14 @@ class _CategoryRail extends StatelessWidget {
     required this.countOf,
     required this.onSelect,
     required this.onFocusDebounced,
+    required this.reorderCat,
+    required this.isReorderable,
+    required this.onLongPress,
+    required this.onMoveUp,
+    required this.onMoveDown,
+    required this.onDoneReorder,
+    required this.canMoveUp,
+    required this.canMoveDown,
   });
 
   final List<String> cats;
@@ -885,6 +982,15 @@ class _CategoryRail extends StatelessWidget {
   final int Function(String) countOf;
   final void Function(String) onSelect;
   final void Function(String) onFocusDebounced;
+  // Réorganisation (monter / descendre) — premium.
+  final String? reorderCat;
+  final bool Function(String) isReorderable;
+  final void Function(String) onLongPress;
+  final void Function(String) onMoveUp;
+  final void Function(String) onMoveDown;
+  final VoidCallback onDoneReorder;
+  final bool Function(String) canMoveUp;
+  final bool Function(String) canMoveDown;
 
   // Lignes COMPACTES façon IBO (moins de « zoom »). La liste REMPLIT toute la
   // colonne de gauche et défile (lazy via itemExtent → fluide même sur des
@@ -938,12 +1044,28 @@ class _CategoryRail extends StatelessWidget {
               itemCount: cats.length,
               itemBuilder: (BuildContext context, int i) {
                 final String cat = cats[i];
+                final bool reordering = reorderCat == cat;
                 return _CRow(
                   label: labelOf(cat),
                   count: countOf(cat),
                   selected: cat == selectedCat,
                   autofocus: i == 0 && autofocusFirst,
-                  onSelect: () => onSelect(cat),
+                  reordering: reordering,
+                  reorderable: isReorderable(cat),
+                  canMoveUp: reordering && canMoveUp(cat),
+                  canMoveDown: reordering && canMoveDown(cat),
+                  onSelect: () {
+                    // En mode réorganisation, un appui sur la ligne saisie =
+                    // « terminé » ; sinon sélection normale de la catégorie.
+                    if (reordering) {
+                      onDoneReorder();
+                    } else {
+                      onSelect(cat);
+                    }
+                  },
+                  onLongPress: () => onLongPress(cat),
+                  onMoveUp: () => onMoveUp(cat),
+                  onMoveDown: () => onMoveDown(cat),
                   onFocused: () {
                     if (selectedCat != cat) onFocusDebounced(cat);
                   },
@@ -959,13 +1081,24 @@ class _CategoryRail extends StatelessWidget {
 }
 
 /// Une ligne de la C-List : libellé (ellipsis) + compteur aligné à droite.
-class _CRow extends StatelessWidget {
+///
+/// PREMIUM — RÉORGANISATION : appui LONG (D-pad OK tenu OU doigt) sur une vraie
+/// catégorie → la ligne « REBONDIT » (ressort) et le compteur laisse place à
+/// des chevrons dorés ▲▼ : on la fait monter / descendre. Un ✓ termine.
+class _CRow extends StatefulWidget {
   const _CRow({
     required this.label,
     required this.count,
     required this.selected,
     required this.autofocus,
+    required this.reordering,
+    required this.reorderable,
+    required this.canMoveUp,
+    required this.canMoveDown,
     required this.onSelect,
+    required this.onLongPress,
+    required this.onMoveUp,
+    required this.onMoveDown,
     required this.onFocused,
   });
 
@@ -973,65 +1106,202 @@ class _CRow extends StatelessWidget {
   final int count;
   final bool selected;
   final bool autofocus;
+  final bool reordering;
+  final bool reorderable;
+  final bool canMoveUp;
+  final bool canMoveDown;
   final VoidCallback onSelect;
+  final VoidCallback onLongPress;
+  final VoidCallback onMoveUp;
+  final VoidCallback onMoveDown;
   final VoidCallback onFocused;
+
+  @override
+  State<_CRow> createState() => _CRowState();
+}
+
+class _CRowState extends State<_CRow> with SingleTickerProviderStateMixin {
+  // Contrôleur du « rebond » (ressort) joué à l'entrée en mode réorganisation.
+  late final AnimationController _bounceCtl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 620),
+  );
+  // Séquence de rebond : petit dépassement puis retour amorti (spring).
+  late final Animation<double> _bounce = TweenSequence<double>(<TweenSequenceItem<double>>[
+    TweenSequenceItem<double>(
+        tween: Tween<double>(begin: 1.0, end: 1.12)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 28),
+    TweenSequenceItem<double>(
+        tween: Tween<double>(begin: 1.12, end: 0.97)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 26),
+    TweenSequenceItem<double>(
+        tween: Tween<double>(begin: 0.97, end: 1.04)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 24),
+    TweenSequenceItem<double>(
+        tween: Tween<double>(begin: 1.04, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 22),
+  ]).animate(_bounceCtl);
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.reordering) _bounceCtl.forward(from: 0);
+  }
+
+  @override
+  void didUpdateWidget(covariant _CRow old) {
+    super.didUpdateWidget(old);
+    // On vient d'ÊTRE saisie → on joue le rebond « je suis prête à bouger ».
+    if (widget.reordering && !old.reordering) {
+      _bounceCtl.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _bounceCtl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: TvFocusBuilder(
-        autofocus: autofocus,
+        autofocus: widget.autofocus,
         scale: TvFocusScale.small,
-        onSelect: onSelect,
+        onSelect: widget.onSelect,
+        // Appui LONG (OK tenu OU doigt) : seulement sur les vraies catégories.
+        onLongPress: widget.reorderable ? widget.onLongPress : null,
         builder: (BuildContext context, bool focused) {
-          if (focused) onFocused();
+          if (focused) widget.onFocused();
           // FOCUS UNIQUE : seule la ligne RÉELLEMENT focus porte l'or. La
           // catégorie active-mais-pas-focus = gris discret (jamais d'or).
-          final bool active = selected && !focused;
-          // Focus/actif = fond PLEIN façon IBO (le « pill »), SANS cadre doré
-          // (ce sont les « lignes jaunes » que le client n'aime pas). Texte
-          // clair au focus, gris au repos. Aucun or ici.
-          final Color bg = focused
-              ? TvTokens.sel
-              : (active ? TvTokens.sel.withValues(alpha: 0.6) : Colors.transparent);
-          final Color fg =
-              (focused || active) ? TvTokens.text : TvTokens.muted;
-          return Container(
+          final bool active = widget.selected && !focused;
+          final bool reordering = widget.reordering;
+          // Focus/actif = fond PLEIN façon IBO (le « pill »). En réorganisation,
+          // fond doré discret + cadre or pour signer « mode déplacement ».
+          final Color bg = reordering
+              ? TvTokens.gold.withValues(alpha: 0.16)
+              : focused
+                  ? TvTokens.sel
+                  : (active
+                      ? TvTokens.sel.withValues(alpha: 0.6)
+                      : Colors.transparent);
+          final Color fg = reordering
+              ? TvTokens.text
+              : (focused || active)
+                  ? TvTokens.text
+                  : TvTokens.muted;
+          final Widget row = Container(
             decoration: BoxDecoration(
               color: bg,
               borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
+              border: reordering
+                  ? Border.all(color: TvTokens.gold, width: 1.4)
+                  : null,
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               children: <Widget>[
                 Expanded(
                   child: Text(
-                    label,
+                    widget.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     // Texte COMPACT façon IBO (moins de zoom).
                     style: TextStyle(
                         fontSize: TvDimens.body,
-                        fontWeight: (focused || active)
+                        fontWeight: (focused || active || reordering)
                             ? FontWeight.w700
                             : FontWeight.w600,
                         color: fg),
                   ),
                 ),
                 const SizedBox(width: 10),
-                // Compteur ALIGNÉ À DROITE — gris discret (jamais or).
-                Text(
-                  '$count',
-                  style: const TextStyle(
-                      fontSize: TvDimens.caption,
-                      fontWeight: FontWeight.w700,
-                      color: TvTokens.mutedDim),
-                ),
+                if (reordering)
+                  // Chevrons DORÉS ▲▼ (+ ✓ terminé) — cliquables au doigt ET
+                  // atteignables au D-pad OK (l'appui court sur la ligne = ✓).
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      _ReorderChevron(
+                        icon: Icons.keyboard_arrow_up_rounded,
+                        enabled: widget.canMoveUp,
+                        onTap: widget.onMoveUp,
+                      ),
+                      _ReorderChevron(
+                        icon: Icons.keyboard_arrow_down_rounded,
+                        enabled: widget.canMoveDown,
+                        onTap: widget.onMoveDown,
+                      ),
+                      _ReorderChevron(
+                        icon: Icons.check_rounded,
+                        enabled: true,
+                        onTap: widget.onSelect,
+                      ),
+                    ],
+                  )
+                else
+                  // Compteur ALIGNÉ À DROITE — gris discret (jamais or).
+                  Text(
+                    '${widget.count}',
+                    style: const TextStyle(
+                        fontSize: TvDimens.caption,
+                        fontWeight: FontWeight.w700,
+                        color: TvTokens.mutedDim),
+                  ),
               ],
             ),
           );
+          // Le REBOND ne s'anime que pour la ligne saisie (coût nul ailleurs).
+          if (!reordering) return row;
+          return AnimatedBuilder(
+            animation: _bounce,
+            builder: (BuildContext context, Widget? child) => Transform.scale(
+              scale: _bounce.value,
+              child: child,
+            ),
+            child: row,
+          );
         },
+      ),
+    );
+  }
+}
+
+/// Petit bouton chevron doré (monter / descendre / valider) pour la
+/// réorganisation. Cliquable au doigt ; grisé quand l'action est impossible
+/// (déjà tout en haut / tout en bas).
+class _ReorderChevron extends StatelessWidget {
+  const _ReorderChevron({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: enabled ? onTap : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Icon(
+          icon,
+          size: 26,
+          color: enabled
+              ? TvTokens.gold
+              : TvTokens.gold.withValues(alpha: 0.28),
+        ),
       ),
     );
   }
