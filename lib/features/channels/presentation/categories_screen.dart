@@ -16,58 +16,106 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../data/category_order_store.dart';
 import '../domain/channel.dart';
+import 'category_order_screen.dart';
 import 'channels_grid_screen.dart';
 
 class CategoriesScreen extends StatelessWidget {
   const CategoriesScreen({super.key});
 
+  Future<void> _openReorder(
+      BuildContext context, List<String> currentOrder) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => CategoryOrderScreen(categories: currentOrder),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Charge l'ordre personnalisé (idempotent) ; le ListenableBuilder
+    // ci-dessous redessine dès qu'il est prêt ou modifié.
+    // ignore: discarded_futures
+    CategoryOrderStore.instance.ensureLoaded();
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(context.l10n.categoriesTitle),
       ),
-      body: StreamBuilder<List<Channel>>(
-        stream: PlaylistRepository.instance.channelsStream,
-        initialData: PlaylistRepository.instance.currentChannels,
-        builder: (BuildContext context, AsyncSnapshot<List<Channel>> snap) {
-          final List<Channel> channels = snap.data ?? <Channel>[];
-          if (channels.isEmpty) {
-            return Center(
-              child: Text(
-                context.l10n.categoriesEmpty,
-                style: AppTextStyles.bodyMedium,
-              ),
-            );
-          }
+      body: ListenableBuilder(
+        listenable: CategoryOrderStore.instance,
+        builder: (BuildContext context, Widget? _) {
+          return StreamBuilder<List<Channel>>(
+            stream: PlaylistRepository.instance.channelsStream,
+            initialData: PlaylistRepository.instance.currentChannels,
+            builder:
+                (BuildContext context, AsyncSnapshot<List<Channel>> snap) {
+              final List<Channel> channels = snap.data ?? <Channel>[];
+              if (channels.isEmpty) {
+                return Center(
+                  child: Text(
+                    context.l10n.categoriesEmpty,
+                    style: AppTextStyles.bodyMedium,
+                  ),
+                );
+              }
 
-          // Regroupe par catégorie
-          final Map<String, List<Channel>> byCat =
-              <String, List<Channel>>{};
-          for (final Channel c in channels) {
-            byCat.putIfAbsent(c.category, () => <Channel>[]).add(c);
-          }
-          final List<MapEntry<String, List<Channel>>> entries = byCat.entries
-              .toList()
-            // Tri descendant par nombre de chaînes
-            ..sort((MapEntry<String, List<Channel>> a,
-                    MapEntry<String, List<Channel>> b) =>
-                b.value.length.compareTo(a.value.length));
+              // Regroupe par catégorie
+              final Map<String, List<Channel>> byCat =
+                  <String, List<Channel>>{};
+              for (final Channel c in channels) {
+                byCat.putIfAbsent(c.category, () => <Channel>[]).add(c);
+              }
+              List<MapEntry<String, List<Channel>>> entries = byCat.entries
+                  .toList()
+                // Tri PAR DÉFAUT : nombre de chaînes décroissant.
+                ..sort((MapEntry<String, List<Channel>> a,
+                        MapEntry<String, List<Channel>> b) =>
+                    b.value.length.compareTo(a.value.length));
+              // ORDRE PERSONNALISÉ de l'utilisateur (glisser-déposer) appliqué
+              // PAR-DESSUS : catégories classées d'abord, le reste ensuite.
+              entries = CategoryOrderStore.instance.applyOrder(
+                  entries, (MapEntry<String, List<Channel>> e) => e.key);
 
-          return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-            physics: const BouncingScrollPhysics(),
-            itemCount: entries.length,
-            separatorBuilder: (BuildContext _, int __) =>
-                const SizedBox(height: 8),
-            itemBuilder: (BuildContext context, int index) {
-              final MapEntry<String, List<Channel>> entry = entries[index];
-              return _CategoryTile(
-                name: entry.key,
-                count: entry.value.length,
-                channels: entry.value,
+              return Column(
+                children: <Widget>[
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+                      child: TextButton.icon(
+                        onPressed: () => _openReorder(
+                          context,
+                          entries
+                              .map((MapEntry<String, List<Channel>> e) => e.key)
+                              .toList(),
+                        ),
+                        icon: const Icon(Icons.swap_vert_rounded, size: 20),
+                        label: Text(context.l10n.categoryOrderEdit),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: entries.length,
+                      separatorBuilder: (BuildContext _, int __) =>
+                          const SizedBox(height: 8),
+                      itemBuilder: (BuildContext context, int index) {
+                        final MapEntry<String, List<Channel>> entry =
+                            entries[index];
+                        return _CategoryTile(
+                          name: entry.key,
+                          count: entry.value.length,
+                          channels: entry.value,
+                        );
+                      },
+                    ),
+                  ),
+                ],
               );
             },
           );

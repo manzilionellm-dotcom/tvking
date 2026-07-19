@@ -356,6 +356,11 @@
     "description": "Texte UI : gridEmptySubtitle"
   },
   "categoriesTitle": "Catégories",
+  "categoryOrderEdit": "Réorganiser",
+  "categoryOrderTitle": "Réorganiser les catégories",
+  "categoryOrderHint": "Glisse une catégorie vers le haut ou le bas pour choisir ton ordre. C'est enregistré et appliqué partout.",
+  "categoryOrderSave": "Enregistrer l'ordre",
+  "categoryOrderReset": "Réinitialiser",
   "@categoriesTitle": {
     "description": "Texte UI : categoriesTitle"
   },
