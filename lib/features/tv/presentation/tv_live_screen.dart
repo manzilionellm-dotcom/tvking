@@ -1894,10 +1894,61 @@ class _ChannelGridState extends State<_ChannelGrid> {
   // grille → perf préservée sur la box.
   final ValueNotifier<int?> _focused = ValueNotifier<int?>(null);
 
+  // Contrôleur de défilement PROPRE à la grille : on en a besoin pour, au
+  // RETOUR du lecteur, faire défiler jusqu'à la chaîne quittée si sa carte est
+  // hors écran (sinon elle ne se construit pas → le focus tombe sur la 1re
+  // carte, « on repart au début de la catégorie »). Cf. _scrollToId.
+  final ScrollController _scroll = ScrollController();
+  // Dernier nombre de COLONNES connu (calculé par le LayoutBuilder ci-dessous) :
+  // sert au calcul de l'offset de défilement vers une carte donnée.
+  int _cols = 1;
+
   @override
   void dispose() {
+    _scroll.dispose();
     _focused.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChannelGrid old) {
+    super.didUpdateWidget(old);
+    // Retour du lecteur : l'écran vient de DÉSIGNER une chaîne à re-focuser.
+    // Si sa carte est HORS écran (grille défilée ou reconstruite), on défile
+    // jusqu'à elle pour qu'elle se (re)construise et reprenne le focus. Sans ça,
+    // aucune carte ne réclamait le focus → il tombait sur la 1re chaîne (effet
+    // « ça repart sur AKKAY ») ou sur le menu. On ne déclenche qu'au FRONT
+    // MONTANT (null → id) pour ne pas défiler à chaque petit rebuild.
+    final String? rid = widget.restoreFocusId;
+    if (rid != null && rid != old.restoreFocusId) {
+      _scrollToId(rid);
+    }
+  }
+
+  /// Fait défiler la grille pour amener la carte de la chaîne [id] dans la vue
+  /// (si elle n'y est pas déjà), afin qu'elle se construise et reprenne le
+  /// focus au retour du lecteur. Calcul d'offset simple à partir de la
+  /// géométrie de la grille (hauteur de rangée + nombre de colonnes).
+  void _scrollToId(String id) {
+    final int idx = widget.channels.indexWhere((Channel c) => c.id == id);
+    if (idx < 0) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      final int cols = _cols < 1 ? 1 : _cols;
+      final int row = idx ~/ cols;
+      // mainAxisExtent (166) + espacement inter-rangées = pas vertical d'une
+      // rangée ; + le padding haut de la grille (4).
+      const double rowStride = 166 + TvDimens.gutter;
+      final double cardTop = 4 + row * rowStride;
+      final double cardBottom = cardTop + 166;
+      final double viewTop = _scroll.offset;
+      final double viewBottom = viewTop + _scroll.position.viewportDimension;
+      // Déjà visible → on ne touche à rien (pas de saut inutile).
+      if (cardTop >= viewTop && cardBottom <= viewBottom) return;
+      final double target =
+          cardTop.clamp(0.0, _scroll.position.maxScrollExtent);
+      _scroll.jumpTo(target);
+    });
   }
 
   @override
@@ -1910,50 +1961,64 @@ class _ChannelGridState extends State<_ChannelGrid> {
       );
     }
     // Quand le focus QUITTE la grille (menu / C-List), on retire l'atténuation.
-    return Focus(
-      canRequestFocus: false,
-      skipTraversal: true,
-      onFocusChange: (bool f) {
-        if (!f) _focused.value = null;
+    // LayoutBuilder : on mémorise le nombre de COLONNES (même formule que
+    // SliverGridDelegateWithMaxCrossAxisExtent) pour pouvoir défiler jusqu'à une
+    // carte précise au retour du lecteur (_scrollToId).
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        const double kMaxExtent = 158;
+        const double kSpacing = TvDimens.gutter;
+        final int cols =
+            (constraints.maxWidth / (kMaxExtent + kSpacing)).ceil();
+        _cols = cols < 1 ? 1 : cols;
+        return Focus(
+          canRequestFocus: false,
+          skipTraversal: true,
+          onFocusChange: (bool f) {
+            if (!f) _focused.value = null;
+          },
+          child: GridView.builder(
+            controller: _scroll,
+            padding: const EdgeInsets.only(top: 4, bottom: 8),
+            // Mémoire bornée au scroll : on ne garde PAS les cartes hors écran
+            // en vie.
+            addAutomaticKeepAlives: false,
+            // PETITES TUILES CARRÉES (réf. Leanback / Android TV) : logo centré
+            // + nom dessous. Plus petites = plus de chaînes à l'écran, look
+            // « app icon » mignon. Elles GRANDISSENT au focus (scale + halo,
+            // cf. TvFocusable) → l'effet animé reste lisible sans encombrer.
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: kMaxExtent,
+              mainAxisExtent: 166,
+              crossAxisSpacing: kSpacing,
+              mainAxisSpacing: kSpacing,
+            ),
+            itemCount: widget.channels.length,
+            // Garde-fou index : aucun accès hors borne même si la liste change.
+            itemBuilder: (BuildContext context, int i) {
+              if (i < 0 || i >= widget.channels.length) {
+                return const SizedBox.shrink();
+              }
+              // PAGINATION : quand on construit une carte proche de la FIN de la
+              // page courante, on demande la suivante. Appel sûr pendant build :
+              // onLoadMore (côté écran) ne fait que lancer un Future (le setState
+              // arrive APRÈS l'await), et il est gardé contre la réentrance.
+              if (i >= widget.channels.length - 16) {
+                widget.onLoadMore?.call();
+              }
+              return _ChannelCard(
+                channel: widget.channels[i],
+                index: i,
+                onPlay: widget.onPlay,
+                onFocused: widget.onFocused,
+                focusedIndex: _focused,
+                restoreFocusId: widget.restoreFocusId,
+                onRestored: widget.onRestored,
+              );
+            },
+          ),
+        );
       },
-      child: GridView.builder(
-        padding: const EdgeInsets.only(top: 4, bottom: 8),
-        // Mémoire bornée au scroll : on ne garde PAS les cartes hors écran en vie.
-        addAutomaticKeepAlives: false,
-        // PETITES TUILES CARRÉES (réf. Leanback / Android TV) : logo centré +
-        // nom dessous. Plus petites = plus de chaînes à l'écran, look « app
-        // icon » mignon. Elles GRANDISSENT au focus (scale + halo, cf.
-        // TvFocusable) → l'effet animé reste lisible sans encombrer.
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 158,
-          mainAxisExtent: 166,
-          crossAxisSpacing: TvDimens.gutter,
-          mainAxisSpacing: TvDimens.gutter,
-        ),
-        itemCount: widget.channels.length,
-        // Garde-fou index : aucun accès hors borne même si la liste change.
-        itemBuilder: (BuildContext context, int i) {
-          if (i < 0 || i >= widget.channels.length) {
-            return const SizedBox.shrink();
-          }
-          // PAGINATION : quand on construit une carte proche de la FIN de la
-          // page courante, on demande la suivante. Appel sûr pendant build :
-          // onLoadMore (côté écran) ne fait que lancer un Future (le setState
-          // arrive APRÈS l'await), et il est gardé contre la réentrance.
-          if (i >= widget.channels.length - 16) {
-            widget.onLoadMore?.call();
-          }
-          return _ChannelCard(
-            channel: widget.channels[i],
-            index: i,
-            onPlay: widget.onPlay,
-            onFocused: widget.onFocused,
-            focusedIndex: _focused,
-            restoreFocusId: widget.restoreFocusId,
-            onRestored: widget.onRestored,
-          );
-        },
-      ),
     );
   }
 }
