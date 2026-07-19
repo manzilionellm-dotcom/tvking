@@ -20,6 +20,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../channels/data/category_order_store.dart';
 import '../../channels/domain/channel.dart';
@@ -189,6 +190,61 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
     CategoryOrderStore.instance.setOrder(order);
   }
 
+  bool _canMoveUp(String cat) => _realCats().indexOf(cat) > 0;
+  bool _canMoveDown(String cat) {
+    final List<String> r = _realCats();
+    final int i = r.indexOf(cat);
+    return i >= 0 && i < r.length - 1;
+  }
+
+  // DOUBLE-CLIC OK = MODE DÉPLACEMENT (télécommande). 1 OK sélectionne ; 2 OK
+  // rapprochés sur une vraie catégorie l'« attrapent » → HAUT/BAS la déplacent.
+  String? _lastOkCat;
+  DateTime? _lastOkAt;
+  void _onCatOk(String cat) {
+    final DateTime now = DateTime.now();
+    final bool doubleOk = _lastOkCat == cat &&
+        _lastOkAt != null &&
+        now.difference(_lastOkAt!) < const Duration(milliseconds: 600);
+    _lastOkCat = cat;
+    _lastOkAt = now;
+    if (doubleOk && !_isPseudoCat(cat)) {
+      _lastOkCat = null;
+      _lastOkAt = null;
+      _beginReorder(cat);
+      return;
+    }
+    _selectCat(cat);
+  }
+
+  /// Mode déplacement : HAUT/BAS déplacent la catégorie saisie (au lieu de
+  /// bouger le focus) ; GAUCHE/DROITE neutralisées ; Retour/Échap pose.
+  KeyEventResult _onReorderKey(FocusNode node, KeyEvent event) {
+    final String? rc = _reorderCat;
+    if (rc == null) return KeyEventResult.ignored;
+    if (event is KeyUpEvent) return KeyEventResult.ignored;
+    final LogicalKeyboardKey k = event.logicalKey;
+    if (k == LogicalKeyboardKey.arrowUp) {
+      if (_canMoveUp(rc)) _moveReorder(rc, -1);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.arrowDown) {
+      if (_canMoveDown(rc)) _moveReorder(rc, 1);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.arrowLeft ||
+        k == LogicalKeyboardKey.arrowRight) {
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.goBack ||
+        k == LogicalKeyboardKey.escape ||
+        k == LogicalKeyboardKey.browserBack) {
+      _endReorder();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   /// Lecture O(1) du groupe pré-calculé (plus aucun filtrage/RegExp au rendu).
   List<Channel> _channelsFor(String cat) {
     if (cat == _kAll) return _all;
@@ -281,7 +337,13 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
           _HomeTile(onSelect: () => Navigator.of(context).maybePop()),
           const SizedBox(height: 6),
           Expanded(
-            child: ListView.builder(
+            // MODE DÉPLACEMENT (télécommande) : HAUT/BAS déplacent la catégorie
+            // saisie tant que _reorderCat != null (cf. _onReorderKey).
+            child: Focus(
+              canRequestFocus: false,
+              skipTraversal: true,
+              onKeyEvent: _onReorderKey,
+              child: ListView.builder(
               itemCount: _cats.length,
               itemBuilder: (BuildContext c, int i) {
                 final String cat = _cats[i];
@@ -289,6 +351,7 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                 final List<String> real = _realCats();
                 final int ri = real.indexOf(cat);
                 return _RowTile(
+                  key: ValueKey<String>(cat),
                   label: cat,
                   count: _countFor(cat),
                   active: cat == _cat,
@@ -301,7 +364,7 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                     if (reordering) {
                       _endReorder();
                     } else {
-                      _selectCat(cat);
+                      _onCatOk(cat);
                     }
                   },
                   onLongPress: () => _beginReorder(cat),
@@ -309,6 +372,7 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                   onMoveDown: () => _moveReorder(cat, 1),
                 );
               },
+            ),
             ),
           ),
         ],
@@ -546,6 +610,7 @@ class _HomeTile extends StatelessWidget {
 /// Ligne de catégorie — compacte, focus = fond plein (jamais de « ligne jaune »).
 class _RowTile extends StatelessWidget {
   const _RowTile({
+    super.key,
     required this.label,
     required this.count,
     required this.active,

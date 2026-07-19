@@ -174,6 +174,61 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     CategoryOrderStore.instance.setOrder(order);
   }
 
+  bool _canMoveUp(String g) => _realGroups().indexOf(g) > 0;
+  bool _canMoveDown(String g) {
+    final List<String> r = _realGroups();
+    final int i = r.indexOf(g);
+    return i >= 0 && i < r.length - 1;
+  }
+
+  // DOUBLE-CLIC OK = MODE DÉPLACEMENT (télécommande). 1 OK sélectionne ; 2 OK
+  // rapprochés sur un vrai groupe l'« attrapent » → HAUT/BAS le déplacent.
+  String? _lastOkGroup;
+  DateTime? _lastOkAt;
+  void _onGroupOk(String g) {
+    final DateTime now = DateTime.now();
+    final bool doubleOk = _lastOkGroup == g &&
+        _lastOkAt != null &&
+        now.difference(_lastOkAt!) < const Duration(milliseconds: 600);
+    _lastOkGroup = g;
+    _lastOkAt = now;
+    if (doubleOk && !_isPseudoGroup(g)) {
+      _lastOkGroup = null;
+      _lastOkAt = null;
+      _beginReorder(g);
+      return;
+    }
+    _selectGroup(g);
+  }
+
+  /// Mode déplacement : HAUT/BAS déplacent le groupe saisi ; GAUCHE/DROITE
+  /// neutralisées ; Retour/Échap pose.
+  KeyEventResult _onReorderKey(FocusNode node, KeyEvent event) {
+    final String? rg = _reorderGroup;
+    if (rg == null) return KeyEventResult.ignored;
+    if (event is KeyUpEvent) return KeyEventResult.ignored;
+    final LogicalKeyboardKey k = event.logicalKey;
+    if (k == LogicalKeyboardKey.arrowUp) {
+      if (_canMoveUp(rg)) _moveReorder(rg, -1);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.arrowDown) {
+      if (_canMoveDown(rg)) _moveReorder(rg, 1);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.arrowLeft ||
+        k == LogicalKeyboardKey.arrowRight) {
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.goBack ||
+        k == LogicalKeyboardKey.escape ||
+        k == LogicalKeyboardKey.browserBack) {
+      _endReorder();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   List<Channel> _channelsFor(String group) {
     if (group == _kAllGroup) return _all;
     return _all
@@ -291,7 +346,13 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                     letterSpacing: 1.2)),
           ),
           Expanded(
-            child: ListView.builder(
+            // MODE DÉPLACEMENT (télécommande) : HAUT/BAS déplacent le groupe
+            // saisi tant que _reorderGroup != null (cf. _onReorderKey).
+            child: Focus(
+              canRequestFocus: false,
+              skipTraversal: true,
+              onKeyEvent: _onReorderKey,
+              child: ListView.builder(
               itemCount: _groups.length,
               itemBuilder: (BuildContext context, int i) {
                 final String g = _groups[i];
@@ -299,6 +360,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                 final List<String> real = _realGroups();
                 final int ri = real.indexOf(g);
                 return _GroupTile(
+                  key: ValueKey<String>(g),
                   label: g,
                   count: _counts[g] ?? 0,
                   active: g == _group,
@@ -311,7 +373,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                     if (reordering) {
                       _endReorder();
                     } else {
-                      _selectGroup(g);
+                      _onGroupOk(g);
                     }
                   },
                   onLongPress: () => _beginReorder(g),
@@ -319,6 +381,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                   onMoveDown: () => _moveReorder(g, 1),
                 );
               },
+            ),
             ),
           ),
         ],
@@ -468,6 +531,7 @@ class _RailIcon extends StatelessWidget {
 /// Ligne de groupe (catégorie). Focus = pill blanc ; actif = texte bleu.
 class _GroupTile extends StatelessWidget {
   const _GroupTile({
+    super.key,
     required this.label,
     required this.count,
     required this.active,

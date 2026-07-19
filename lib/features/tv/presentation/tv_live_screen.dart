@@ -716,6 +716,28 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   /// Sélection immédiate (OK sur une catégorie).
   void _select(String cat) => _applySelection(cat);
 
+  // DOUBLE-CLIC OK = MODE DÉPLACEMENT (télécommande). Un simple OK sélectionne
+  // la catégorie ; DEUX OK rapprochés sur une VRAIE catégorie l'« attrapent »
+  // (mode déplacement) → ensuite HAUT/BAS la déplacent (cf. _CategoryRail).
+  String? _lastOkCat;
+  DateTime? _lastOkAt;
+
+  void _onCatOk(String cat) {
+    final DateTime now = DateTime.now();
+    final bool doubleOk = _lastOkCat == cat &&
+        _lastOkAt != null &&
+        now.difference(_lastOkAt!) < const Duration(milliseconds: 600);
+    _lastOkCat = cat;
+    _lastOkAt = now;
+    if (doubleOk && !_isPseudoCat(cat)) {
+      _lastOkCat = null;
+      _lastOkAt = null;
+      _beginReorder(cat); // 2e OK → on attrape la catégorie
+      return;
+    }
+    _select(cat); // 1er OK → sélection normale
+  }
+
   /// Sélection DÉBOUNCÉE (focus D-pad) : on attend que le focus se pose ~220 ms
   /// avant de charger la nouvelle catégorie → plus de requête à chaque case
   /// traversée à la télécommande.
@@ -864,7 +886,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       autofocusFirst: true,
       labelOf: (String c) => _catLabel(context, c),
       countOf: _countOf,
-      onSelect: _select,
+      onSelect: _onCatOk,
       onFocusDebounced: _selectDebounced,
       // Réorganisation premium (monter / descendre) — vraies catégories only.
       reorderCat: _reorderCat,
@@ -997,6 +1019,38 @@ class _CategoryRail extends StatelessWidget {
   // milliers de catégories, pas de shrinkWrap).
   static const double _kRowExtent = 50;
 
+  /// MODE DÉPLACEMENT (télécommande) : tant qu'une catégorie est « attrapée »
+  /// ([reorderCat] != null), HAUT/BAS la DÉPLACENT (au lieu de bouger le focus)
+  /// et GAUCHE/DROITE sont neutralisées (on ne quitte pas le rail). OK est géré
+  /// par la ligne saisie (qui garde le focus via sa clé) = poser. Retour/Échap
+  /// = poser aussi. Hors mode déplacement : on ne touche à rien (navigation
+  /// normale).
+  KeyEventResult _onReorderKey(FocusNode node, KeyEvent event) {
+    final String? rc = reorderCat;
+    if (rc == null) return KeyEventResult.ignored;
+    if (event is KeyUpEvent) return KeyEventResult.ignored;
+    final LogicalKeyboardKey k = event.logicalKey;
+    if (k == LogicalKeyboardKey.arrowUp) {
+      if (canMoveUp(rc)) onMoveUp(rc);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.arrowDown) {
+      if (canMoveDown(rc)) onMoveDown(rc);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.arrowLeft ||
+        k == LogicalKeyboardKey.arrowRight) {
+      return KeyEventResult.handled; // on ne sort pas du rail en déplaçant
+    }
+    if (k == LogicalKeyboardKey.goBack ||
+        k == LogicalKeyboardKey.escape ||
+        k == LogicalKeyboardKey.browserBack) {
+      onDoneReorder();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored; // OK est géré par la ligne focalisée
+  }
+
   @override
   Widget build(BuildContext context) {
     if (cats.isEmpty) return const SizedBox.shrink();
@@ -1038,7 +1092,16 @@ class _CategoryRail extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: ListView.builder(
+            // MODE DÉPLACEMENT (télécommande) : quand une catégorie est
+            // « attrapée » (double-OK), HAUT/BAS la déplacent au lieu de bouger
+            // le focus. On intercepte donc les flèches ICI tant que
+            // [reorderCat] != null. La ligne saisie garde le focus (clé =
+            // catégorie) → OK dessus = poser.
+            child: Focus(
+              canRequestFocus: false,
+              skipTraversal: true,
+              onKeyEvent: _onReorderKey,
+              child: ListView.builder(
               padding: EdgeInsets.zero,
               itemExtent: _kRowExtent,
               itemCount: cats.length,
@@ -1046,6 +1109,7 @@ class _CategoryRail extends StatelessWidget {
                 final String cat = cats[i];
                 final bool reordering = reorderCat == cat;
                 return _CRow(
+                  key: ValueKey<String>(cat),
                   label: labelOf(cat),
                   count: countOf(cat),
                   selected: cat == selectedCat,
@@ -1072,6 +1136,7 @@ class _CategoryRail extends StatelessWidget {
                 );
               },
             ),
+            ),
           ),
             ],
           ),
@@ -1087,6 +1152,7 @@ class _CategoryRail extends StatelessWidget {
 /// des chevrons dorés ▲▼ : on la fait monter / descendre. Un ✓ termine.
 class _CRow extends StatefulWidget {
   const _CRow({
+    super.key,
     required this.label,
     required this.count,
     required this.selected,
