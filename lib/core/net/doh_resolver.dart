@@ -216,16 +216,34 @@ Future<ConnectionTask<Socket>> _connectResolving(String host, int port) async {
   try {
     final List<InternetAddress> sys =
         await InternetAddress.lookup(host).timeout(const Duration(seconds: 4));
-    if (sys.isNotEmpty) return Socket.startConnect(sys.first, port);
+    if (sys.isNotEmpty) return Socket.startConnect(preferIpv4(sys), port);
   } catch (_) {
     // blocage / échec → on tente le DoH
   }
 
   // 2) DoH : l'app résout elle-même, l'opérateur ne peut pas filtrer.
   final List<InternetAddress> doh = await DohResolver.instance.resolve(host);
-  if (doh.isNotEmpty) return Socket.startConnect(doh.first, port);
+  if (doh.isNotEmpty) return Socket.startConnect(preferIpv4(doh), port);
 
   // 3) Dernier recours : laisser la connexion échouer avec l'erreur
   //    système native (message clair pour l'utilisateur).
   return Socket.startConnect(host, port);
+}
+
+/// Choisit une adresse IPv4 EN PRIORITÉ dans [addrs], sinon la première.
+///
+/// CAUSE RACINE terrain (log box 2026-07-19) : le DNS système renvoie
+/// souvent l'IPv6 en tête (`sys.first`). Or de nombreuses box (Android TV
+/// bon marché, certains FAI) ont une IPv6 CASSÉE ou très lente → la
+/// connexion au flux stalle puis est annulée
+/// (« SocketException: Connection attempt cancelled, … IPv6 … ») → le relais
+/// reconnecte en boucle → buffering / gel. On aligne le relais sur le
+/// résolveur média (qui préfère déjà l'IPv4 « compatibilité maximale des
+/// panels »). Une box en IPv4-only n'est pas affectée ; une chaîne servie
+/// UNIQUEMENT en IPv6 (quasi inexistant en IPTV) retombe sur la 1re adresse.
+InternetAddress preferIpv4(List<InternetAddress> addrs) {
+  for (final InternetAddress a in addrs) {
+    if (a.type == InternetAddressType.IPv4) return a;
+  }
+  return addrs.first;
 }

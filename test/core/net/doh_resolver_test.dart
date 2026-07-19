@@ -147,4 +147,22 @@ void main() {
     client.close(force: true);
     await srv.close(force: true);
   });
+
+  group('preferIpv4', () {
+    test('choisit l’IPv4 même si l’IPv6 est en tête (box IPv6 cassée)', () {
+      final List<InternetAddress> addrs = <InternetAddress>[
+        InternetAddress('2606:4700::6812:1b39', type: InternetAddressType.IPv6),
+        InternetAddress('104.18.27.57', type: InternetAddressType.IPv4),
+      ];
+      expect(preferIpv4(addrs).type, InternetAddressType.IPv4);
+      expect(preferIpv4(addrs).address, '104.18.27.57');
+    });
+
+    test('retombe sur la 1re adresse si aucune IPv4 (source IPv6-only)', () {
+      final List<InternetAddress> addrs = <InternetAddress>[
+        InternetAddress('2606:4700::6812:1b39', type: InternetAddressType.IPv6),
+      ];
+      expect(preferIpv4(addrs).type, InternetAddressType.IPv6);
+    });
+  });
 }
