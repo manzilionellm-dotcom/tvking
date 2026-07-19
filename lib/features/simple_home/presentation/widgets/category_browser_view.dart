@@ -32,6 +32,7 @@ import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/haptics/haptics.dart';
+import '../../../channels/data/category_order_store.dart';
 import '../../../channels/domain/channel.dart';
 import '../../../channels/data/recently_watched_repository.dart';
 import '../../../channels/data/watch_history_repository.dart';
@@ -130,6 +131,90 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
   /// « Tout » : il embrouillait, demande client). Toujours un rayon
   /// sélectionné, bien séparé et lisible.
   _Bucket? _bucket;
+
+  /// Groupe (catégorie) actuellement « saisi » pour être déplacé (null=aucun).
+  /// APPUI LONG sur un groupe → on l'attrape (rebond + flèches dorées ▲▼) pour
+  /// le faire monter/descendre (ex. mettre « Angleterre » tout en haut).
+  /// L'ordre est PERSISTÉ (CategoryOrderStore) et partagé partout.
+  String? _reorderCat;
+
+  @override
+  void initState() {
+    super.initState();
+    // ignore: discarded_futures
+    CategoryOrderStore.instance.ensureLoaded();
+    CategoryOrderStore.instance.addListener(_onOrderChanged);
+  }
+
+  @override
+  void dispose() {
+    CategoryOrderStore.instance.removeListener(_onOrderChanged);
+    super.dispose();
+  }
+
+  void _onOrderChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _beginReorder(String cat) {
+    Haptics.light();
+    setState(() => _reorderCat = cat);
+  }
+
+  void _endReorder() {
+    if (_reorderCat == null) return;
+    setState(() => _reorderCat = null);
+  }
+
+  /// Déplace le groupe à [index] de [dir] rang dans [visibleOrdered], puis
+  /// PERSISTE : les groupes visibles réordonnés d'abord, suivis des autres
+  /// groupes déjà classés (préservés) → ordre partagé cohérent partout.
+  void _moveReorder(List<String> visibleOrdered, int index, int dir) {
+    final int next = index + dir;
+    if (next < 0 || next >= visibleOrdered.length) return;
+    final List<String> reordered = List<String>.from(visibleOrdered);
+    final String tmp = reordered[index];
+    reordered[index] = reordered[next];
+    reordered[next] = tmp;
+    Haptics.light();
+    final List<String> prev = CategoryOrderStore.instance.order;
+    final Set<String> vis = reordered.toSet();
+    final List<String> merged = <String>[
+      ...reordered,
+      ...prev.where((String c) => !vis.contains(c)),
+    ];
+    // ignore: discarded_futures
+    CategoryOrderStore.instance.setOrder(merged);
+  }
+
+  /// Construit une ligne de groupe réordonnable (capture propre de l'index).
+  Widget _categoryRowWidget(
+      List<String> cats, int i, Map<String, List<Channel>> grouped) {
+    final String cat = cats[i];
+    final bool reordering = _reorderCat == cat;
+    return Padding(
+      key: ValueKey<String>(cat),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      child: _CategoryRow(
+        title: cat,
+        count: grouped[cat]!.length,
+        onTap: () {
+          if (reordering) {
+            _endReorder();
+          } else {
+            setState(() => _selected = cat);
+          }
+        },
+        reordering: reordering,
+        canMoveUp: reordering && i > 0,
+        canMoveDown: reordering && i < cats.length - 1,
+        onLongPress: () => _beginReorder(cat),
+        onMoveUp: () => _moveReorder(cats, i, -1),
+        onMoveDown: () => _moveReorder(cats, i, 1),
+        onDoneReorder: _endReorder,
+      ),
+    );
+  }
 
   /// Cache MAC id→chaîne pour le rail « Récemment regardées ». Reconstruit
   /// seulement quand la liste de chaînes change de référence (pas à chaque
@@ -460,9 +545,12 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
     final _Bucket effective =
         (_bucket != null && present.contains(_bucket)) ? _bucket! : ordered.first;
 
-    // Catégories visibles = celles du rayon actif (plus de « Tout »).
-    final List<String> cats =
-        allCats.where((String c) => catBucket[c] == effective).toList();
+    // Catégories visibles = celles du rayon actif (plus de « Tout »),
+    // RÉORDONNÉES selon le choix de l'usager (glisser/monter-descendre).
+    final List<String> cats = CategoryOrderStore.instance.applyOrder(
+      allCats.where((String c) => catBucket[c] == effective).toList(),
+      (String c) => c,
+    );
 
     // TOUT défile ensemble (un seul ListView) : les rangées d'engagement
     // en tête, puis la barre de filtres, puis les catégories. Ça évite tout
@@ -500,15 +588,8 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
             ),
           )
         else
-          for (final String cat in cats)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-              child: _CategoryRow(
-                title: cat,
-                count: grouped[cat]!.length,
-                onTap: () => setState(() => _selected = cat),
-              ),
-            ),
+          for (int i = 0; i < cats.length; i++)
+            _categoryRowWidget(cats, i, grouped),
       ],
     );
   }
@@ -663,31 +744,107 @@ class _FilterChip extends StatelessWidget {
 }
 
 /// Ligne de catégorie : dossier + nom + pastille « nombre de chaînes ».
-class _CategoryRow extends StatelessWidget {
-  const _CategoryRow(
-      {required this.title, required this.count, required this.onTap});
+///
+/// APPUI LONG → on « attrape » le groupe (rebond + flèches dorées ▲▼) pour le
+/// monter / descendre (ex. Angleterre tout en haut). Ordre partagé partout.
+class _CategoryRow extends StatefulWidget {
+  const _CategoryRow({
+    super.key,
+    required this.title,
+    required this.count,
+    required this.onTap,
+    this.reordering = false,
+    this.canMoveUp = false,
+    this.canMoveDown = false,
+    this.onLongPress,
+    this.onMoveUp,
+    this.onMoveDown,
+    this.onDoneReorder,
+  });
   final String title;
   final int count;
   final VoidCallback onTap;
+  final bool reordering;
+  final bool canMoveUp;
+  final bool canMoveDown;
+  final VoidCallback? onLongPress;
+  final VoidCallback? onMoveUp;
+  final VoidCallback? onMoveDown;
+  final VoidCallback? onDoneReorder;
+
+  @override
+  State<_CategoryRow> createState() => _CategoryRowState();
+}
+
+class _CategoryRowState extends State<_CategoryRow>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _bounceCtl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 620),
+  );
+  late final Animation<double> _bounce =
+      TweenSequence<double>(<TweenSequenceItem<double>>[
+    TweenSequenceItem<double>(
+        tween: Tween<double>(begin: 1.0, end: 1.05)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 28),
+    TweenSequenceItem<double>(
+        tween: Tween<double>(begin: 1.05, end: 0.985)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 26),
+    TweenSequenceItem<double>(
+        tween: Tween<double>(begin: 0.985, end: 1.02)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 24),
+    TweenSequenceItem<double>(
+        tween: Tween<double>(begin: 1.02, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 22),
+  ]).animate(_bounceCtl);
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.reordering) _bounceCtl.forward(from: 0);
+  }
+
+  @override
+  void didUpdateWidget(covariant _CategoryRow old) {
+    super.didUpdateWidget(old);
+    if (widget.reordering && !old.reordering) _bounceCtl.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _bounceCtl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surface,
+    final bool reordering = widget.reordering;
+    final Widget tile = Material(
+      color: reordering ? AppColors.royalGoldSurface : AppColors.surface,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
-        onTap: onTap,
+        onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
         borderRadius: BorderRadius.circular(14),
-        child: Padding(
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: reordering
+                ? Border.all(color: AppColors.royalGold, width: 1.4)
+                : null,
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           child: Row(
             children: <Widget>[
-              Icon(Icons.folder_rounded,
-                  color: AppColors.accent, size: 22),
+              Icon(Icons.folder_rounded, color: AppColors.accent, size: 22),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  title,
+                  widget.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.bodyLarge
@@ -695,28 +852,89 @@ class _CategoryRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              // Pastille compteur.
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppColors.accentSurface,
-                  borderRadius: BorderRadius.circular(10),
+              if (reordering)
+                _GroupReorderChevrons(
+                  canUp: widget.canMoveUp,
+                  canDown: widget.canMoveDown,
+                  onUp: widget.onMoveUp ?? () {},
+                  onDown: widget.onMoveDown ?? () {},
+                  onDone: widget.onDoneReorder ?? () {},
+                )
+              else ...<Widget>[
+                // Pastille compteur.
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.accentSurface,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${widget.count}',
+                    style: AppTextStyles.labelSmall.copyWith(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.accent),
+                  ),
                 ),
-                child: Text(
-                  '$count',
-                  style: AppTextStyles.labelSmall.copyWith(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.accent),
-                ),
-              ),
-              const SizedBox(width: 4),
-              Icon(Icons.chevron_right_rounded,
-                  color: AppColors.textTertiary, size: 20),
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right_rounded,
+                    color: AppColors.textTertiary, size: 20),
+              ],
             ],
           ),
         ),
+      ),
+    );
+    if (!reordering) return tile;
+    return AnimatedBuilder(
+      animation: _bounce,
+      builder: (BuildContext context, Widget? child) =>
+          Transform.scale(scale: _bounce.value, child: child),
+      child: tile,
+    );
+  }
+}
+
+/// Chevrons DORÉS ▲ ▼ (+ ✓) — montent / descendent le groupe. Grisés quand
+/// l'action est impossible (déjà tout en haut / tout en bas).
+class _GroupReorderChevrons extends StatelessWidget {
+  const _GroupReorderChevrons({
+    required this.canUp,
+    required this.canDown,
+    required this.onUp,
+    required this.onDown,
+    required this.onDone,
+  });
+  final bool canUp;
+  final bool canDown;
+  final VoidCallback onUp;
+  final VoidCallback onDown;
+  final VoidCallback onDone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        _btn(Icons.keyboard_arrow_up_rounded, canUp, onUp),
+        _btn(Icons.keyboard_arrow_down_rounded, canDown, onDown),
+        _btn(Icons.check_rounded, true, onDone),
+      ],
+    );
+  }
+
+  Widget _btn(IconData icon, bool enabled, VoidCallback onTap) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: enabled ? onTap : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: Icon(icon,
+            size: 26,
+            color: enabled
+                ? AppColors.royalGold
+                : AppColors.royalGold.withValues(alpha: 0.30)),
       ),
     );
   }
