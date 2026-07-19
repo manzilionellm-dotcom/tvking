@@ -36,6 +36,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
 import 'tv_add_source_screen.dart';
 import 'tv_components.dart';
+import 'tv_search_screen.dart';
 import 'tv_player_screen.dart';
 import 'tv_shell.dart';
 
@@ -888,6 +889,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       countOf: _countOf,
       onSelect: _onCatOk,
       onFocusDebounced: _selectDebounced,
+      onSearch: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const TvSearchScreen()),
+      ),
       // Réorganisation premium (monter / descendre) — vraies catégories only.
       reorderCat: _reorderCat,
       isReorderable: (String c) => !_isPseudoCat(c),
@@ -995,6 +999,7 @@ class _CategoryRail extends StatelessWidget {
     required this.onDoneReorder,
     required this.canMoveUp,
     required this.canMoveDown,
+    required this.onSearch,
   });
 
   final List<String> cats;
@@ -1004,6 +1009,7 @@ class _CategoryRail extends StatelessWidget {
   final int Function(String) countOf;
   final void Function(String) onSelect;
   final void Function(String) onFocusDebounced;
+  final VoidCallback onSearch;
   // Réorganisation (monter / descendre) — premium.
   final String? reorderCat;
   final bool Function(String) isReorderable;
@@ -1079,6 +1085,10 @@ class _CategoryRail extends StatelessWidget {
           child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          // RECHERCHE INTELLIGENTE — gros bouton doré en HAUT, bien visible
+          // (personnes âgées). Ouvre la recherche globale.
+          _RailSearchButton(onSelect: onSearch),
+          const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 2, 6, 8),
             child: Text(
@@ -1149,6 +1159,50 @@ class _CategoryRail extends StatelessWidget {
             ],
           ),
         ),
+    );
+  }
+}
+
+/// Gros bouton RECHERCHE INTELLIGENTE en tête du rail DIRECT (Modèles A/C).
+/// Accent or (action premium), très visible — pensé pour les personnes âgées.
+class _RailSearchButton extends StatelessWidget {
+  const _RailSearchButton({required this.onSelect});
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+          decoration: BoxDecoration(
+            color: focused
+                ? TvTokens.gold
+                : TvTokens.gold.withValues(alpha: 0.16),
+            borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
+            border: Border.all(color: TvTokens.gold),
+          ),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.search_rounded,
+                  size: 20, color: focused ? TvTokens.bg : TvTokens.gold),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Recherche intelligente',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: TvDimens.body,
+                        fontWeight: FontWeight.w800,
+                        color: focused ? TvTokens.bg : TvTokens.text)),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

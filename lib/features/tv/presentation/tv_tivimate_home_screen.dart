@@ -336,6 +336,14 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          // RECHERCHE INTELLIGENTE — gros bouton en HAUT, bien visible
+          // (personnes âgées / fatiguées). Ouvre la recherche globale.
+          _TmSearchButton(
+            onSelect: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const TvSearchScreen()),
+            ),
+          ),
+          const SizedBox(height: 10),
           const Padding(
             padding: EdgeInsets.fromLTRB(8, 4, 8, 12),
             child: Text('Groupes',
@@ -532,6 +540,48 @@ class _RailIcon extends StatelessWidget {
 }
 
 /// Ligne de groupe (catégorie). Focus = pill blanc ; actif = texte bleu.
+/// Gros bouton RECHERCHE INTELLIGENTE en tête de la colonne Groupes (tivimate).
+/// Accent bleu marque, très visible (conçu pour les personnes âgées).
+class _TmSearchButton extends StatelessWidget {
+  const _TmSearchButton({required this.onSelect});
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            color: focused ? _tmAccent : _tmAccent.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _tmAccent, width: 1.4),
+          ),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.search_rounded,
+                  size: 22, color: focused ? _tmText : _tmAccent),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('Recherche intelligente',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: _tmText)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _GroupTile extends StatelessWidget {
   const _GroupTile({
     super.key,
