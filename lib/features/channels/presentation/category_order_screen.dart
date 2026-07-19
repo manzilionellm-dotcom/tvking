@@ -7,6 +7,7 @@
 // =========================================================
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
@@ -57,6 +58,35 @@ class _CategoryOrderScreenState extends State<CategoryOrderScreen> {
             child: ReorderableListView.builder(
               padding: const EdgeInsets.fromLTRB(12, 6, 12, 96),
               itemCount: _items.length,
+              // PREMIUM : sur téléphone, APPUI LONG sur la carte pour la
+              // saisir (comportement natif de ReorderableListView sur mobile),
+              // avec un retour haptique franc au moment où on l'« attrape ».
+              onReorderStart: (_) => HapticFeedback.mediumImpact(),
+              onReorderEnd: (_) => HapticFeedback.selectionClick(),
+              // La carte SOULEVÉE pendant le déplacement : légère mise à
+              // l'échelle + halo doré + ombre → sensation haut de gamme.
+              proxyDecorator: (Widget child, int index, Animation<double> anim) {
+                final double t = Curves.easeOut.transform(anim.value);
+                return Transform.scale(
+                  scale: 1 + 0.04 * t,
+                  child: Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(14),
+                    shadowColor: Colors.black.withValues(alpha: 0.5),
+                    elevation: 10 * t,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: AppColors.royalGold
+                              .withValues(alpha: 0.35 + 0.4 * t),
+                        ),
+                      ),
+                      child: child,
+                    ),
+                  ),
+                );
+              },
               onReorder: (int oldIndex, int newIndex) {
                 setState(() {
                   if (newIndex > oldIndex) newIndex -= 1;
@@ -66,32 +96,34 @@ class _CategoryOrderScreenState extends State<CategoryOrderScreen> {
               },
               itemBuilder: (BuildContext context, int index) {
                 final String name = _items[index];
-                return Padding(
+                // APPUI LONG sur TOUTE la carte (pas seulement une poignée) →
+                // on la saisit et on la fait « sauter » où on veut.
+                return ReorderableDelayedDragStartListener(
                   key: ValueKey<String>(name),
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Material(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    child: ListTile(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      leading: Text(
-                        '${index + 1}',
-                        style: AppTextStyles.bodyMedium
-                            .copyWith(color: AppColors.textTertiary),
-                      ),
-                      title: Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.bodyLarge
-                            .copyWith(color: AppColors.textPrimary),
-                      ),
-                      trailing: ReorderableDragStartListener(
-                        index: index,
-                        child: const Icon(Icons.drag_handle_rounded,
-                            color: AppColors.textSecondary),
+                  index: index,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Material(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      child: ListTile(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        leading: Text(
+                          '${index + 1}',
+                          style: AppTextStyles.bodyMedium
+                              .copyWith(color: AppColors.textTertiary),
+                        ),
+                        title: Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyles.bodyLarge
+                              .copyWith(color: AppColors.textPrimary),
+                        ),
+                        trailing: const Icon(Icons.drag_indicator_rounded,
+                            color: AppColors.textTertiary),
                       ),
                     ),
                   ),

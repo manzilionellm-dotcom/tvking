@@ -173,7 +173,7 @@
   "categoriesTitle": "Categories",
   "categoryOrderEdit": "Reorder",
   "categoryOrderTitle": "Reorder categories",
-  "categoryOrderHint": "Drag a category up or down to set your own order. It's saved and applied everywhere.",
+  "categoryOrderHint": "Press and hold a category, then drag it up or down to set your own order. It's saved and applied everywhere.",
   "categoryOrderSave": "Save order",
   "categoryOrderReset": "Reset",
   "categoriesEmpty": "No channels — add a playlist first.",
