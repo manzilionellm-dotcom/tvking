@@ -64,6 +64,14 @@ const String kMaxConnectionsMessage =
     'précédente) occupe encore le créneau. Ferme l\'autre lecture, patiente '
     'quelques secondes, puis réessaie.';
 
+/// Message CLAIR quand le serveur du fournisseur renvoie une erreur 5xx
+/// (500-599). Le 520-524 est typiquement un « origine derrière Cloudflare en
+/// panne ». Ce n'est ni l'app ni la box du client.
+String kServerErrorMessage(int code) =>
+    'Le serveur de ton fournisseur est en panne (erreur $code). Ce n\'est pas '
+    'l\'application ni ta box — réessaie dans un moment, ou contacte ton '
+    'fournisseur si ça dure.';
+
 /// Contrôleur du diagnostic « contenu bloqué » d'UN écran de lecture.
 /// Toutes les liaisons vers le widget sont des callbacks : le
 /// contrôleur ne connaît pas Flutter et se teste avec le vrai réseau.
@@ -136,11 +144,19 @@ class StreamBlockedFallback {
   /// d'afficher le message « limite de connexions ».
   static const int _kMax458Retries = 3;
 
+  /// Idem pour un 5xx (serveur fournisseur en panne) : on retente un peu (le
+  /// serveur peut revenir), plus espacé que le 458, puis message clair.
+  static const int _kMax5xxRetries = 2;
+  static const Duration _k5xxBackoff = Duration(milliseconds: 2000);
+
   String? _attemptedForChannelId;
   String? _backoffConsumedForChannelId;
   // Compteur de retries 458 pour la CHAÎNE COURANTE (réinitialisé au zap).
   String? _conn458ChannelId;
   int _conn458Count = 0;
+  // Compteur de retries 5xx pour la CHAÎNE COURANTE (réinitialisé au zap).
+  String? _conn5xxChannelId;
+  int _conn5xxCount = 0;
   bool _inFlight = false;
   StreamSubscription<RelayFailure>? _relaySub;
 
@@ -191,6 +207,18 @@ class StreamBlockedFallback {
       _log('[458] limite de connexions confirmée après '
           '$_kMax458Retries retries → message clair (pas de sonde/cascade)');
       showBlocked(kMaxConnectionsMessage);
+      return;
+    }
+    // HTTP 5xx = ERREUR SERVEUR du fournisseur (500-599 ; 520-524 = le serveur
+    // d'origine derrière Cloudflare est en panne). Sonder/cascader n'aide pas
+    // (toutes les variantes tapent le MÊME serveur en panne). Quelques retries
+    // (ça peut revenir), puis un message CLAIR — ce n'est ni l'app ni la box.
+    final int? st0 = failure.status;
+    if (st0 != null && st0 >= 500 && st0 <= 599) {
+      if (_try5xxRetry()) return;
+      _log('[5xx] serveur fournisseur en panne (HTTP $st0) après '
+          '$_kMax5xxRetries retries → message clair (pas de sonde/cascade)');
+      showBlocked(kServerErrorMessage(st0));
       return;
     }
     // RÈGLE DE DÉCISION (mission 2026-07-08 14:43) : la branche
@@ -272,6 +300,33 @@ class StreamBlockedFallback {
       }
       resetWatchdogBudget();
       _log('[458] retry silencieux → réouverture de '
+          '${StreamDiagnostics.maskCredentials(getEffectiveUrl())}');
+      reopen(getEffectiveUrl());
+    });
+    return true;
+  }
+
+  /// Retry sur un 5xx (serveur fournisseur en panne). Renvoie `false` quand les
+  /// [_kMax5xxRetries] retries de la chaîne sont épuisés (→ message clair). Le
+  /// compteur se réinitialise dès qu'on change de chaîne (zap).
+  bool _try5xxRetry() {
+    final Channel channel = getChannel();
+    if (_conn5xxChannelId != channel.id) {
+      _conn5xxChannelId = channel.id;
+      _conn5xxCount = 0;
+    }
+    if (_conn5xxCount >= _kMax5xxRetries) return false;
+    _conn5xxCount++;
+    _log('[5xx] serveur fournisseur en panne — retry '
+        '$_conn5xxCount/$_kMax5xxRetries dans ${_k5xxBackoff.inMilliseconds} '
+        'ms (le serveur peut revenir)');
+    Future<void>.delayed(_k5xxBackoff).then((_) {
+      if (!isAlive() || channel.id != getChannel().id) {
+        _log('[5xx] retry abandonné (zap ou écran fermé pendant l\'attente)');
+        return;
+      }
+      resetWatchdogBudget();
+      _log('[5xx] retry silencieux → réouverture de '
           '${StreamDiagnostics.maskCredentials(getEffectiveUrl())}');
       reopen(getEffectiveUrl());
     });
