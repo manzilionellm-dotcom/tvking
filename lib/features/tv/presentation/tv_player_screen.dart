@@ -877,6 +877,15 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       case FreezeAction.none:
         break;
       case FreezeAction.reopen:
+        // H2 — un gel vient souvent d'un upstream SILENCIEUX (ni erreur ni
+        // EOF côté relais). Rouvrir sur la MÊME URL locale du relais
+        // (_relayPlayUrl) NE relance PAS la connexion amont (elle reste
+        // active mais muette) → on force d'abord une vraie reconnexion amont
+        // du relais. Live via relais uniquement (VOD/HLS n'y passent pas :
+        // _relayPlayUrl est null). No-op si aucune session (retour false).
+        if (!_isVod && _relayPlayUrl != null) {
+          LocalStreamRelay.instance.forceReconnect(_effectiveUrl);
+        }
         // Ré-ouvre la MÊME source : l'URL locale du relais si on enregistre,
         // sinon l'URL directe. = reconnexion au direct sans casser l'enreg.
         // RÉCUPÉRATION INVISIBLE (façon Netflix) : `silent:true` NE remet PAS
