@@ -2629,7 +2629,13 @@
   "playerNetworkBlockHint": "Ça ressemble à un blocage réseau (FAI ou DNS) plutôt qu'à un problème de l'app — un VPN peut aider si cette chaîne fonctionne ailleurs.",
   "playerStreamInterrupted": "Flux interrompu. Vérifie ta connexion puis réessaie.",
   "playerBlockedExpired": "Ton abonnement a expiré le {date}. Renouvelle ta ligne auprès de ton fournisseur.",
+  "@playerBlockedExpired": {
+    "placeholders": { "date": { "type": "String" } }
+  },
   "playerBlockedMaxConnections": "Limite de connexions atteinte ({active}/{max}). Un autre écran regarde déjà avec ce compte — ferme-le, puis réessaie.",
+  "@playerBlockedMaxConnections": {
+    "placeholders": { "active": { "type": "String" }, "max": { "type": "String" } }
+  },
   "playerBlockedBanned": "Ce compte est suspendu. Contacte ton fournisseur.",
   "playerCastConnectingTo": "Connexion à {device}…",
   "@playerCastConnectingTo": {
