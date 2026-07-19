@@ -33,6 +33,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/haptics/haptics.dart';
 import '../../../channels/data/category_order_store.dart';
+import '../../../channels/data/hidden_categories_store.dart';
 import '../../../channels/domain/channel.dart';
 import '../../../channels/data/recently_watched_repository.dart';
 import '../../../channels/data/watch_history_repository.dart';
@@ -144,11 +145,15 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
     // ignore: discarded_futures
     CategoryOrderStore.instance.ensureLoaded();
     CategoryOrderStore.instance.addListener(_onOrderChanged);
+    // ignore: discarded_futures
+    HiddenCategoriesStore.instance.ensureLoaded();
+    HiddenCategoriesStore.instance.addListener(_onOrderChanged);
   }
 
   @override
   void dispose() {
     CategoryOrderStore.instance.removeListener(_onOrderChanged);
+    HiddenCategoriesStore.instance.removeListener(_onOrderChanged);
     super.dispose();
   }
 
@@ -164,6 +169,79 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
   void _endReorder() {
     if (_reorderCat == null) return;
     setState(() => _reorderCat = null);
+  }
+
+  /// MASQUE le groupe (le client ne veut pas le voir) — persisté, réversible.
+  void _hideCat(String cat) {
+    Haptics.light();
+    // ignore: discarded_futures
+    HiddenCategoriesStore.instance.hide(cat);
+    _endReorder();
+  }
+
+  /// Feuille « Catégories masquées » : liste les groupes cachés avec un bouton
+  /// pour les RÉ-AFFICHER (rien n'est perdu, tout est réversible).
+  void _openHiddenSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      showDragHandle: true,
+      builder: (BuildContext ctx) {
+        return SafeArea(
+          child: ListenableBuilder(
+            listenable: HiddenCategoriesStore.instance,
+            builder: (BuildContext ctx, Widget? _) {
+              final List<String> hidden =
+                  HiddenCategoriesStore.instance.hidden.toList()..sort();
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                    child: Text(
+                      'Catégories masquées',
+                      style: AppTextStyles.bodyLarge
+                          .copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  if (hidden.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                      child: Text('Aucune catégorie masquée.',
+                          style: AppTextStyles.bodyMedium.copyWith(
+                              fontSize: 13,
+                              color: AppColors.textSecondary)),
+                    )
+                  else
+                    Flexible(
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: <Widget>[
+                          for (final String c in hidden)
+                            ListTile(
+                              leading: Icon(Icons.folder_off_rounded,
+                                  color: AppColors.textTertiary, size: 20),
+                              title: Text(c,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.bodyMedium),
+                              trailing: TextButton(
+                                onPressed: () => HiddenCategoriesStore.instance
+                                    .unhide(c),
+                                child: const Text('Afficher'),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
   }
 
   /// Déplace le groupe à [index] de [dir] rang dans [visibleOrdered], puis
@@ -211,6 +289,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
         onLongPress: () => _beginReorder(cat),
         onMoveUp: () => _moveReorder(cats, i, -1),
         onMoveDown: () => _moveReorder(cats, i, 1),
+        onHide: () => _hideCat(cat),
         onDoneReorder: _endReorder,
       ),
     );
@@ -546,9 +625,12 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
         (_bucket != null && present.contains(_bucket)) ? _bucket! : ordered.first;
 
     // Catégories visibles = celles du rayon actif (plus de « Tout »),
-    // RÉORDONNÉES selon le choix de l'usager (glisser/monter-descendre).
-    final List<String> cats = CategoryOrderStore.instance.applyOrder(
-      allCats.where((String c) => catBucket[c] == effective).toList(),
+    // RÉORDONNÉES selon le choix de l'usager, puis les MASQUÉES retirées.
+    final List<String> cats = HiddenCategoriesStore.instance.applyFilter(
+      CategoryOrderStore.instance.applyOrder(
+        allCats.where((String c) => catBucket[c] == effective).toList(),
+        (String c) => c,
+      ),
       (String c) => c,
     );
 
@@ -575,6 +657,24 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
         const LiveNowFavoritesRow(),
         // Barre de filtres : seulement s'il y a plus d'un rayon.
         if (ordered.length > 1) _buildFilterBar(ordered, effective),
+        // Rappel discret des catégories MASQUÉES + accès pour les ré-afficher.
+        if (HiddenCategoriesStore.instance.count > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _openHiddenSheet,
+                icon: Icon(Icons.visibility_off_rounded,
+                    size: 18, color: AppColors.textTertiary),
+                label: Text(
+                  '${HiddenCategoriesStore.instance.count} masquée(s) · Gérer',
+                  style: AppTextStyles.labelSmall.copyWith(
+                      fontSize: 12, color: AppColors.textTertiary),
+                ),
+              ),
+            ),
+          ),
         // Catégories de la playlist (ordre natif préservé).
         if (cats.isEmpty)
           Padding(
@@ -759,6 +859,7 @@ class _CategoryRow extends StatefulWidget {
     this.onLongPress,
     this.onMoveUp,
     this.onMoveDown,
+    this.onHide,
     this.onDoneReorder,
   });
   final String title;
@@ -770,6 +871,7 @@ class _CategoryRow extends StatefulWidget {
   final VoidCallback? onLongPress;
   final VoidCallback? onMoveUp;
   final VoidCallback? onMoveDown;
+  final VoidCallback? onHide;
   final VoidCallback? onDoneReorder;
 
   @override
@@ -858,6 +960,7 @@ class _CategoryRowState extends State<_CategoryRow>
                   canDown: widget.canMoveDown,
                   onUp: widget.onMoveUp ?? () {},
                   onDown: widget.onMoveDown ?? () {},
+                  onHide: widget.onHide ?? () {},
                   onDone: widget.onDoneReorder ?? () {},
                 )
               else ...<Widget>[
@@ -904,12 +1007,14 @@ class _GroupReorderChevrons extends StatelessWidget {
     required this.canDown,
     required this.onUp,
     required this.onDown,
+    required this.onHide,
     required this.onDone,
   });
   final bool canUp;
   final bool canDown;
   final VoidCallback onUp;
   final VoidCallback onDown;
+  final VoidCallback onHide;
   final VoidCallback onDone;
 
   @override
@@ -917,14 +1022,17 @@ class _GroupReorderChevrons extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        _btn(Icons.keyboard_arrow_up_rounded, canUp, onUp),
-        _btn(Icons.keyboard_arrow_down_rounded, canDown, onDown),
-        _btn(Icons.check_rounded, true, onDone),
+        _btn(Icons.keyboard_arrow_up_rounded, true, canUp, onUp),
+        _btn(Icons.keyboard_arrow_down_rounded, true, canDown, onDown),
+        // MASQUER ce groupe (œil barré) — le client ne veut pas le voir.
+        _btn(Icons.visibility_off_rounded, false, true, onHide),
+        _btn(Icons.check_rounded, true, true, onDone),
       ],
     );
   }
 
-  Widget _btn(IconData icon, bool enabled, VoidCallback onTap) {
+  Widget _btn(IconData icon, bool gold, bool enabled, VoidCallback onTap) {
+    final Color base = gold ? AppColors.royalGold : AppColors.textSecondary;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: enabled ? onTap : null,
@@ -932,9 +1040,7 @@ class _GroupReorderChevrons extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
         child: Icon(icon,
             size: 26,
-            color: enabled
-                ? AppColors.royalGold
-                : AppColors.royalGold.withValues(alpha: 0.30)),
+            color: enabled ? base : base.withValues(alpha: 0.30)),
       ),
     );
   }
