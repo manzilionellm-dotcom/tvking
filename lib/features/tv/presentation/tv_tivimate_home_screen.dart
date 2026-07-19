@@ -376,7 +376,10 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                       _onGroupOk(g);
                     }
                   },
-                  onLongPress: () => _beginReorder(g),
+                  // Appui long : en déplacement il TERMINE (plus besoin de
+                  // « Retour ») ; sinon il attrape.
+                  onLongPress: () =>
+                      reordering ? _endReorder() : _beginReorder(g),
                   onMoveUp: () => _moveReorder(g, -1),
                   onMoveDown: () => _moveReorder(g, 1),
                 );

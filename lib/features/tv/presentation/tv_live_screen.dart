@@ -1127,7 +1127,15 @@ class _CategoryRail extends StatelessWidget {
                       onSelect(cat);
                     }
                   },
-                  onLongPress: () => onLongPress(cat),
+                  // Appui LONG : en mode déplacement il TERMINE (pose la
+                  // catégorie — plus besoin de « Retour ») ; sinon il attrape.
+                  onLongPress: () {
+                    if (reordering) {
+                      onDoneReorder();
+                    } else {
+                      onLongPress(cat);
+                    }
+                  },
                   onMoveUp: () => onMoveUp(cat),
                   onMoveDown: () => onMoveDown(cat),
                   onFocused: () {

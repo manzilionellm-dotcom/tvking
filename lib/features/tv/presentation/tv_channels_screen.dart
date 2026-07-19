@@ -336,6 +336,16 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
           // ET tap gérés.
           _HomeTile(onSelect: () => Navigator.of(context).maybePop()),
           const SizedBox(height: 6),
+          // RECHERCHE INTELLIGENTE — bouton clair en tête de colonne (le petit
+          // « Rech… » de l'aperçu était trop discret). Ouvre la recherche
+          // globale (chaînes + films + séries).
+          _SearchTile(
+            onSelect: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                  builder: (_) => const TvSearchScreen()),
+            ),
+          ),
+          const SizedBox(height: 6),
           Expanded(
             // MODE DÉPLACEMENT (télécommande) : HAUT/BAS déplacent la catégorie
             // saisie tant que _reorderCat != null (cf. _onReorderKey).
@@ -367,7 +377,10 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                       _onCatOk(cat);
                     }
                   },
-                  onLongPress: () => _beginReorder(cat),
+                  // Appui long : en déplacement il TERMINE (plus besoin de
+                  // « Retour ») ; sinon il attrape.
+                  onLongPress: () =>
+                      reordering ? _endReorder() : _beginReorder(cat),
                   onMoveUp: () => _moveReorder(cat, -1),
                   onMoveDown: () => _moveReorder(cat, 1),
                 );
@@ -599,6 +612,49 @@ class _HomeTile extends StatelessWidget {
               ),
               Icon(Icons.home_rounded,
                   size: 18, color: focused ? TvTokens.gold : TvTokens.mutedDim),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Bouton RECHERCHE INTELLIGENTE en tête de la colonne Catégories : accent or
+/// (action premium) → ouvre la recherche globale (chaînes + films + séries).
+class _SearchTile extends StatelessWidget {
+  const _SearchTile({required this.onSelect});
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: focused
+                ? TvTokens.gold
+                : TvTokens.gold.withValues(alpha: 0.16),
+            borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
+            border: Border.all(color: TvTokens.gold),
+          ),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.search_rounded,
+                  size: 20, color: focused ? TvTokens.bg : TvTokens.gold),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Recherche intelligente',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: TvDimens.body,
+                        fontWeight: FontWeight.w800,
+                        color: focused ? TvTokens.bg : TvTokens.text)),
+              ),
             ],
           ),
         );
