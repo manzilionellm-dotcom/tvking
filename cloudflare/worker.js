@@ -115,6 +115,13 @@ const TV_APK_URL =
 const CINEMA_TEST_APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/cinema-test/defew-tv-cinema-test.apk';
 
+// APK de TEST TÉLÉPHONE (prérelease « phone-test », signé clé maîtresse).
+// Équivalent mobile de CINEMA_TEST_APK_URL. Servi via `/fone` (et /phone-test,
+// /tel) → lien à donner SANS exposer GitHub. Non « latest », aucun
+// version.json → invisible pour l'updater in-app (ne se diffuse pas tout seul).
+const PHONE_TEST_APK_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/phone-test/7motion-test.apk';
+
 // App Bundles (.aab) signés pour la Google Play Console. Servis via un lien
 // PUBLIC propre (app.7themotion.com/tv-aab et /phone-aab) → utile pour
 // uploader le dernier build dans la Play Console sans passer par GitHub.
@@ -5741,6 +5748,18 @@ async function handleRequest(request, env, ctx) {
       ['test', 'demo', 'beta'].includes(segments[0].toLowerCase())
     ) {
       return proxyApk(CINEMA_TEST_APK_URL, 'DeFewTV-test.apk', url.searchParams.get('v'));
+    }
+
+    // /fone, /phone-test, /tel — APK de TEST TÉLÉPHONE (prérelease
+    // « phone-test », signé clé maîtresse). Lien propre à donner SANS exposer
+    // GitHub. Fichier « 7motion-test.apk ». Sert TOUJOURS le dernier build de
+    // test téléphone publié (tag phone-test écrasé à chaque publish).
+    if (
+      segments.length === 1 &&
+      ['fone', 'phone-test', 'phonetest', 'tel', 'test-phone'].includes(
+        segments[0].toLowerCase())
+    ) {
+      return proxyApk(PHONE_TEST_APK_URL, '7motion-test.apk', url.searchParams.get('v'));
     }
 
     // /tv-aab et /phone-aab — App Bundles (.aab) SIGNÉS pour la Google Play
