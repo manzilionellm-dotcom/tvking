@@ -516,7 +516,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (_playedChannelId == _currentChannel.id) {
         setState(() {
           _hasError = true;
-          _errorMessage = e;
+          // Si la cause est « compte » (expiré / limite de connexions), on
+          // affiche le message CLAIR ; sinon l'erreur libmpv brute, comme avant.
+          _errorMessage = _blockMessage(e);
         });
       } else {
         // Refus AVANT toute frame (« Error when loading first segment »,
@@ -591,7 +593,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         if (!mounted) return;
         setState(() {
           _hasError = true;
-          _errorMessage = message;
+          _errorMessage = _blockMessage(message);
         });
       },
     )..attach();
@@ -917,6 +919,33 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
+  /// Traduit un blocage en message CLAIR pour le client — écrit noir sur
+  /// blanc à l'écran pour qu'il comprenne (et corrige) tout seul : abonnement
+  /// expiré, limite de connexions (un autre écran regarde déjà), compte
+  /// suspendu. Renvoie [fallback] si aucune cause « compte » n'est
+  /// identifiée (message générique conservé).
+  String _blockMessage(String fallback) {
+    final StreamDiagnostics d = StreamDiagnostics.instance;
+    switch (d.blockReason) {
+      case StreamBlockReason.expired:
+        final DateTime? x = d.xtreamExpDate;
+        final String date = x == null
+            ? '—'
+            : '${x.day.toString().padLeft(2, '0')}/'
+                '${x.month.toString().padLeft(2, '0')}/${x.year}';
+        return context.l10n.playerBlockedExpired(date);
+      case StreamBlockReason.maxConnections:
+        return context.l10n.playerBlockedMaxConnections(
+          '${d.xtreamActiveCons ?? '?'}',
+          '${d.xtreamMaxConnections ?? '?'}',
+        );
+      case StreamBlockReason.banned:
+        return context.l10n.playerBlockedBanned;
+      case StreamBlockReason.none:
+        return fallback;
+    }
+  }
+
   /// Point d'entrée UNIQUE des ouvertures. SÉRIALISÉ : chaque ouverture
   /// attend la fin de la précédente (fermeture attendue comprise) —
   /// jamais deux lectures en vol. Une ouverture dépassée par un zap plus
@@ -951,7 +980,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         if (mounted && gen == _openGeneration) {
           setState(() {
             _hasError = true;
-            _errorMessage = context.l10n.playerStreamInterrupted;
+            _errorMessage =
+              _blockMessage(context.l10n.playerStreamInterrupted);
           });
         }
       },
@@ -1967,7 +1997,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (_playedChannelId == _currentChannel.id) {
         setState(() {
           _hasError = true;
-          _errorMessage = context.l10n.playerStreamInterrupted;
+          _errorMessage =
+              _blockMessage(context.l10n.playerStreamInterrupted);
         });
       } else {
         _declareChannelBlocked();
@@ -2036,7 +2067,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         if (mounted) {
           setState(() {
             _hasError = true;
-            _errorMessage = context.l10n.playerStreamInterrupted;
+            _errorMessage =
+              _blockMessage(context.l10n.playerStreamInterrupted);
           });
         }
       } else {

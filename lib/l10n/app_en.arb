@@ -1414,6 +1414,15 @@
   "playerChannelBlocked": "Channel unavailable: no video received. It's empty or blocked by your source — make sure it isn't already open on another device, otherwise try another channel.",
   "playerNetworkBlockHint": "This looks like a network block (ISP or DNS) rather than an app issue — a VPN may help if this channel works elsewhere.",
   "playerStreamInterrupted": "Stream interrupted. Check your connection and try again.",
+  "playerBlockedExpired": "Your subscription expired on {date}. Renew your line with your provider.",
+  "@playerBlockedExpired": {
+    "placeholders": { "date": { "type": "String" } }
+  },
+  "playerBlockedMaxConnections": "Connection limit reached ({active}/{max}). Another screen is already watching with this account — close it, then try again.",
+  "@playerBlockedMaxConnections": {
+    "placeholders": { "active": { "type": "String" }, "max": { "type": "String" } }
+  },
+  "playerBlockedBanned": "This account is suspended. Contact your provider.",
   "playerCastConnectingTo": "Connecting to {device}…",
   "playerCastStreamingTo": "Streaming to {device}",
   "playerCastDefaultDevice": "the TV",

@@ -870,6 +870,32 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _scheduleOpen();
   }
 
+  /// Traduit un blocage en message CLAIR pour le client — écrit noir sur
+  /// blanc sur l'écran d'erreur : abonnement expiré, limite de connexions
+  /// (un autre écran regarde déjà), compte suspendu. Renvoie [fallback] si
+  /// aucune cause « compte » n'est identifiée.
+  String _tvBlockMessage(String fallback) {
+    final StreamDiagnostics d = StreamDiagnostics.instance;
+    switch (d.blockReason) {
+      case StreamBlockReason.expired:
+        final DateTime? x = d.xtreamExpDate;
+        final String date = x == null
+            ? '—'
+            : '${x.day.toString().padLeft(2, '0')}/'
+                '${x.month.toString().padLeft(2, '0')}/${x.year}';
+        return context.l10n.playerBlockedExpired(date);
+      case StreamBlockReason.maxConnections:
+        return context.l10n.playerBlockedMaxConnections(
+          '${d.xtreamActiveCons ?? '?'}',
+          '${d.xtreamMaxConnections ?? '?'}',
+        );
+      case StreamBlockReason.banned:
+        return context.l10n.playerBlockedBanned;
+      case StreamBlockReason.none:
+        return fallback;
+    }
+  }
+
   /// Applique la décision de [FreezeRecoveryPolicy] : rien à faire, reconnexion,
   /// ou budget épuisé → écran d'erreur borné (P1-6, « Réessayer » manuel).
   void _onFreezeAction(FreezeAction action) {
@@ -2104,9 +2130,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                                     color: TvTokens.text)),
                             const SizedBox(height: 8),
                             Text(
-                                _everShownFrame
+                                _tvBlockMessage(_everShownFrame
                                     ? context.l10n.tvChannelUnavailable
-                                    : context.l10n.tvChannelBlockedBySource,
+                                    : context.l10n.tvChannelBlockedBySource),
+                                textAlign: TextAlign.center,
                                 style: TextStyle(
                                     fontSize: TvDimens.body,
                                     color: TvTokens.mutedDim)),

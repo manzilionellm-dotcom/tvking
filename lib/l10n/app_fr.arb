@@ -2623,6 +2623,9 @@
   "playerChannelBlocked": "Chaîne indisponible : aucune vidéo reçue. Elle est vide ou bloquée par ta source — vérifie qu'elle n'est pas déjà ouverte sur un autre appareil, sinon essaie une autre chaîne.",
   "playerNetworkBlockHint": "Ça ressemble à un blocage réseau (FAI ou DNS) plutôt qu'à un problème de l'app — un VPN peut aider si cette chaîne fonctionne ailleurs.",
   "playerStreamInterrupted": "Flux interrompu. Vérifie ta connexion puis réessaie.",
+  "playerBlockedExpired": "Ton abonnement a expiré le {date}. Renouvelle ta ligne auprès de ton fournisseur.",
+  "playerBlockedMaxConnections": "Limite de connexions atteinte ({active}/{max}). Un autre écran regarde déjà avec ce compte — ferme-le, puis réessaie.",
+  "playerBlockedBanned": "Ce compte est suspendu. Contacte ton fournisseur.",
   "playerCastConnectingTo": "Connexion à {device}…",
   "@playerCastConnectingTo": {
     "placeholders": {
