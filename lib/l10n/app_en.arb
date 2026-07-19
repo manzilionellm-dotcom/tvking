@@ -1428,6 +1428,7 @@
     "placeholders": { "active": { "type": "String" }, "max": { "type": "String" } }
   },
   "playerBlockedBanned": "This account is suspended. Contact your provider.",
+  "playerWeakConnection": "Playback keeps buffering. Your internet connection is likely too weak for this channel (or your provider's server is slow). Check your WiFi / bandwidth, or try a lower-quality channel. This is not an app problem.",
   "playerCastConnectingTo": "Connecting to {device}…",
   "playerCastStreamingTo": "Streaming to {device}",
   "playerCastDefaultDevice": "the TV",

@@ -248,6 +248,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // Même philosophie que le fix TV (verrou _recovering, 2026-07-06).
   Timer? _startupTimer;
 
+  // ── Notice « connexion trop faible » (ça TOURNE trop) ──────────────
+  //  Demande client : quand la lecture CHARGE trop longtemps d'affilée, OU
+  //  rebuffere trop souvent, on ÉCRIT CLAIREMENT au client que c'est sa
+  //  connexion / son fournisseur (pas l'app) — au lieu de le laisser fixer
+  //  la roue qui tourne. On efface la notice dès que la lecture repart.
+  Timer? _bufferNoticeTimer;
+  bool _weakConnection = false;
+  final List<DateTime> _rebufferAt = <DateTime>[];
+  static const Duration _kBufferNoticeDelay = Duration(seconds: 12);
+  static const int _kRebufferBurst = 4; // nb de rebuffers…
+  static const Duration _kRebufferWindow = Duration(seconds: 60); // …en 60 s
+
   /// Repli VOD : cascade de variantes de conteneur si aucune image n'est
   /// décodée dans [_kVodDirectGrace]. 12 s = on laisse mpv démarrer un
   /// film volumineux / une origine lente (un vrai 404 est, lui, capté
@@ -400,12 +412,61 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
+  /// Réagit au buffering mpv : met à jour le spinner ET détecte un
+  /// chargement ANORMALEMENT long / répété → notice « connexion trop faible »
+  /// écrite clairement au client (efface la notice quand la lecture repart).
+  void _onBufferingChanged(bool b) {
+    if (!mounted) return;
+    setState(() => _isBuffering = b);
+    if (b) {
+      // Chargement en cours : on arme la notice si ça dure trop longtemps.
+      _bufferNoticeTimer ??= Timer(_kBufferNoticeDelay, () {
+        if (!mounted || !_isBuffering) return;
+        _raiseWeakConnection(
+            'chargement prolongé (> ${_kBufferNoticeDelay.inSeconds}s sans image)');
+      });
+      // Rebuffers récents (fenêtre glissante) : trop de coupures = réseau faible.
+      final DateTime now = DateTime.now();
+      _rebufferAt.add(now);
+      _rebufferAt
+          .removeWhere((DateTime t) => now.difference(t) > _kRebufferWindow);
+      if (_rebufferAt.length >= _kRebufferBurst) {
+        _raiseWeakConnection('${_rebufferAt.length} coupures de chargement '
+            'en ${_kRebufferWindow.inSeconds}s');
+      }
+    } else {
+      // La lecture repart : on désarme et on efface la notice.
+      _bufferNoticeTimer?.cancel();
+      _bufferNoticeTimer = null;
+      if (_weakConnection) setState(() => _weakConnection = false);
+    }
+  }
+
+  /// Affiche la notice « connexion trop faible » (une fois) + trace la raison
+  /// dans la boîte noire (problème réseau côté client/fournisseur, pas l'app).
+  void _raiseWeakConnection(String reason) {
+    if (!mounted || _weakConnection) return;
+    StreamDiagnostics.instance.recordEvent(
+      'player',
+      'Connexion trop faible / serveur lent — $reason → message client '
+          'affiché (problème réseau côté client ou fournisseur, pas l\'app).',
+      level: 'warn',
+    );
+    setState(() => _weakConnection = true);
+  }
+
+  /// Réinitialise l'état de la notice « connexion faible » (nouveau média/zap).
+  void _resetWeakConnection() {
+    _bufferNoticeTimer?.cancel();
+    _bufferNoticeTimer = null;
+    _rebufferAt.clear();
+    _weakConnection = false;
+  }
+
   /// Abonne l'instance mpv COURANTE aux événements. Les abonnements
   /// vivent dans `_subs` : annulés puis re-créés à chaque recyclage.
   void _attachPlayerListeners() {
-    _subs.add(_player.stream.buffering.listen((bool b) {
-      if (mounted) setState(() => _isBuffering = b);
-    }));
+    _subs.add(_player.stream.buffering.listen(_onBufferingChanged));
     // Durée du flux : quand elle devient connue (> 0), c'est de la
     // VOD/replay seekable → l'OSD doit afficher la barre de progression
     // et les boutons ±10s. On rafraîchit donc le build à ce moment.
@@ -664,6 +725,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // de l'ancienne) → comptage de « stale ticks » prématuré / faux gel.
     _isPlaying = false;
     _isBuffering = true;
+    _resetWeakConnection(); // nouvelle piste → on repart d'une notice vierge
     _lastWatchdogPos = Duration.zero;
     _watchdogStaleTicks = 0;
     _watchdogGoodTicks = 0;
@@ -1741,6 +1803,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _upNextTimer?.cancel();
     _watchdogTimer?.cancel();
     _startupTimer?.cancel();
+    _bufferNoticeTimer?.cancel();
     _vodRelayFallbackTimer?.cancel();
     _eofReopenTimer?.cancel();
     _zapDebounce?.cancel();
@@ -2634,15 +2697,39 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 if (_isBuffering &&
                     !_hasError &&
                     _playedChannelId == _currentChannel.id)
-                  const Center(
-                    child: SizedBox(
-                      width: 56,
-                      height: 56,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 3,
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
+                  Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const SizedBox(
+                          width: 56,
+                          height: 56,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ),
+                        // Ça TOURNE trop : on écrit noir sur blanc au client que
+                        // c'est sa connexion / son fournisseur (pas l'app).
+                        if (_weakConnection)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                                top: 20, left: 32, right: 32),
+                            child: Text(
+                              context.l10n.playerWeakConnection,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                height: 1.35,
+                                shadows: <Shadow>[
+                                  Shadow(color: Colors.black, blurRadius: 6),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
 

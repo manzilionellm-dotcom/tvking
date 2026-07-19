@@ -2637,6 +2637,7 @@
     "placeholders": { "active": { "type": "String" }, "max": { "type": "String" } }
   },
   "playerBlockedBanned": "Ce compte est suspendu. Contacte ton fournisseur.",
+  "playerWeakConnection": "La lecture n'arrête pas de charger. Ta connexion Internet est probablement trop faible pour cette chaîne (ou le serveur de ton fournisseur est lent). Vérifie ton WiFi / ton débit, ou essaie une chaîne de moindre qualité. Ce n'est pas un problème de l'application.",
   "playerCastConnectingTo": "Connexion à {device}…",
   "@playerCastConnectingTo": {
     "placeholders": {
