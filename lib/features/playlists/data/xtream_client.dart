@@ -762,7 +762,7 @@ class XtreamClient {
           _workingUserAgent = ua;
           final List<int> bytes = await _readCapped(
             resp.stream,
-            kMaxXtreamJsonBytes,
+            DeviceMemory.xtreamJsonByteCap,
           ).timeout(_bodyTimeout);
           // Xtream sert du JSON (UTF-8). allowMalformed pour ne jamais planter
           // sur un octet douteux d'un backend exotique.
