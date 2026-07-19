@@ -134,6 +134,13 @@ class StreamDiagnostics extends ChangeNotifier {
   /// Quand ce contrôle a été fait (l'info se périme vite).
   DateTime? xtreamCheckedAt;
 
+  /// `true` quand le FOURNISSEUR sert un flux « placeholder » (écran noir type
+  /// `black.ts`) au lieu de la vraie chaîne : signe quasi certain d'une ligne
+  /// expirée/bloquée CÔTÉ FOURNISSEUR (le serveur répond 200 + vidéo, mais ce
+  /// n'est qu'un écran noir). Posé par le relais quand l'URL finale est un
+  /// placeholder connu ; remis à zéro à chaque nouvelle session.
+  bool placeholderStream = false;
+
   /// Cause CLAIRE d'un blocage, déduite de l'état compte + dernier HTTP.
   /// Priorité : banni > expiré > limite de connexions. `none` sinon (le
   /// lecteur garde alors son message générique). Le 458 (limite) est
@@ -156,7 +163,27 @@ class StreamDiagnostics extends ChangeNotifier {
         xtreamMaxConnections! > 0 &&
         xtreamActiveCons! >= xtreamMaxConnections!;
     if (maxByHttp || maxByCount) return StreamBlockReason.maxConnections;
+    // Filet FINAL : le fournisseur sert un écran noir (black.ts) sans qu'aucun
+    // signal de compte n'ait pu être lu → cause la PLUS probable = ligne
+    // expirée/bloquée. On affiche le message « expiré » (appel à l'action :
+    // renouveler auprès du fournisseur) plutôt qu'un écran noir muet.
+    if (placeholderStream) return StreamBlockReason.expired;
     return StreamBlockReason.none;
+  }
+
+  /// Le relais signale que l'URL FINALE est un placeholder « écran noir »
+  /// (black.ts & co.) : ligne expirée/bloquée côté fournisseur. Idempotent.
+  void recordUpstreamPlaceholder(String finalUrl) {
+    if (placeholderStream) return;
+    placeholderStream = true;
+    _add(
+      'relay',
+      'Le fournisseur renvoie un flux « écran noir » '
+          '(${maskCredentials(finalUrl)}) — ligne expirée ou bloquée côté '
+          'fournisseur (pas un défaut de l\'app).',
+      level: 'error',
+    );
+    notifyListeners();
   }
 
   final List<StreamDiagEvent> _events = <StreamDiagEvent>[];
@@ -186,6 +213,7 @@ class StreamDiagnostics extends ChangeNotifier {
     audioCodec = null;
     resolution = null;
     lastPlayerError = null;
+    placeholderStream = false;
     sessionStart = DateTime.now();
     _add('player', 'Ouverture ${maskCredentials(url)} (UA: $userAgent)');
   }

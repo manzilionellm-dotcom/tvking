@@ -579,6 +579,14 @@ class LocalStreamRelay {
         mime: cResp.headers.contentType?.mimeType,
         source: 'relay',
       );
+      // PLACEHOLDER « ÉCRAN NOIR » : beaucoup de fournisseurs redirigent une
+      // ligne EXPIRÉE/BLOQUÉE vers un petit clip noir (black.ts…). Le serveur
+      // répond alors 200 + vidéo valide → le lecteur jouerait un écran noir en
+      // silence. On le DÉTECTE pour l'écrire noir sur blanc et couper la
+      // tempête de reconnexions (cf. _abortIfLineDead).
+      if (_isBlockedPlaceholder(finalUrl)) {
+        StreamDiagnostics.instance.recordUpstreamPlaceholder(finalUrl);
+      }
       if (cResp.statusCode != 200 && cResp.statusCode != 206) {
         if (kDebugMode) {
           debugPrint('[Relay] HTTP ${cResp.statusCode} sur ${_short(url)}');
@@ -628,7 +636,54 @@ class LocalStreamRelay {
       _maybeCloseSession(session);
       return;
     }
+    // Ligne morte (compte expiré/banni ou écran noir) → ne pas re-marteler.
+    if (_abortIfLineDead(session)) return;
     await _connectUpstream(session);
+  }
+
+  /// Filename (sans query) en minuscules pour la détection de placeholder.
+  static String _fileNameOf(String url) {
+    final Uri? u = Uri.tryParse(url);
+    final String path = (u?.path ?? url).toLowerCase();
+    final int slash = path.lastIndexOf('/');
+    return slash >= 0 ? path.substring(slash + 1) : path;
+  }
+
+  /// `true` si l'URL finale est un flux « écran noir » de fournisseur (ligne
+  /// expirée/bloquée). Noms de fichiers connus, jamais un numéro de chaîne
+  /// légitime (`1562532.ts`). Volontairement STRICT pour zéro faux positif.
+  static bool _isBlockedPlaceholder(String finalUrl) {
+    const Set<String> names = <String>{
+      'black.ts', 'blocked.ts', 'expired.ts', 'offline.ts', 'noaccess.ts',
+      'no_access.ts', 'unavailable.ts', 'notavailable.ts', 'blackscreen.ts',
+      'block.ts', 'noservice.ts',
+    };
+    return names.contains(_fileNameOf(finalUrl));
+  }
+
+  /// Si le COMPTE est mort (expiré/banni) ou que le fournisseur ne sert qu'un
+  /// écran noir, reconnecter est FUTILE : on ferme la session, on signale
+  /// l'échec DÉFINITIF (→ le lecteur affiche « abonnement expiré, renouvelle »)
+  /// et on renvoie `true`. Sinon `false` (reconnexion normale). Le cas « limite
+  /// de connexions » (458) N'est PAS mort : l'autre écran peut se libérer → on
+  /// continue de réessayer.
+  bool _abortIfLineDead(_RelaySession session) {
+    final StreamBlockReason r = StreamDiagnostics.instance.blockReason;
+    if (r != StreamBlockReason.expired && r != StreamBlockReason.banned) {
+      return false;
+    }
+    StreamDiagnostics.instance.recordEvent(
+      'relay',
+      'Abonnement expiré/bloqué (compte) — reconnexions ARRÊTÉES : inutile de '
+          'marteler une ligne morte (le fournisseur ne sert qu\'un écran noir). '
+          'Renouvelle la ligne auprès du fournisseur.',
+      level: 'error',
+    );
+    final String failedUrl = session.realUrl;
+    final int? lastStatus = session.lastUpstreamStatus;
+    _closeSession(session);
+    _definitiveFailures.add(RelayFailure(url: failedUrl, status: lastStatus));
+    return true;
   }
 
   /// (Re)arme la ronde qui détecte un upstream silencieux. Idempotent.
@@ -766,6 +821,10 @@ class LocalStreamRelay {
       _maybeCloseSession(session);
       return;
     }
+    // Ligne morte (compte expiré/banni ou écran noir) → on ARRÊTE la tempête de
+    // reconnexions et on affiche le message clair, au lieu de marteler en
+    // boucle une ligne qui ne reviendra pas (cf. journal : black.ts + Expired).
+    if (_abortIfLineDead(session)) return;
     try {
       await session.sub?.cancel();
     } catch (_) {}
