@@ -108,6 +108,13 @@ const APK_URL =
 const TV_APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-prod/defew-tv.apk';
 
+// APK de TEST (prérelease « cinema-test », signé clé maîtresse). Servi via la
+// route propre `/test` → lien à donner SANS exposer GitHub. Non « latest »,
+// aucun version.json → invisible pour l'updater in-app (ne se diffuse pas
+// tout seul). À utiliser pour valider un build TV sur box avant diffusion.
+const CINEMA_TEST_APK_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/cinema-test/defew-tv-cinema-test.apk';
+
 // App Bundles (.aab) signés pour la Google Play Console. Servis via un lien
 // PUBLIC propre (app.7themotion.com/tv-aab et /phone-aab) → utile pour
 // uploader le dernier build dans la Play Console sans passer par GitHub.
@@ -5723,6 +5730,17 @@ async function handleRequest(request, env, ctx) {
           .includes(segments[0].toLowerCase())
     ) {
       return proxyApk(TV_APK_URL, 'DeFewTV.apk', url.searchParams.get('v'));
+    }
+
+    // /test, /demo, /beta — APK de TEST TV (prérelease « cinema-test »,
+    // signé clé maîtresse). Lien propre à donner/coller dans Downloader
+    // SANS exposer GitHub. Fichier « DeFewTV-test.apk ». Sert TOUJOURS le
+    // dernier build de test publié (tag cinema-test écrasé à chaque publish).
+    if (
+      segments.length === 1 &&
+      ['test', 'demo', 'beta'].includes(segments[0].toLowerCase())
+    ) {
+      return proxyApk(CINEMA_TEST_APK_URL, 'DeFewTV-test.apk', url.searchParams.get('v'));
     }
 
     // /tv-aab et /phone-aab — App Bundles (.aab) SIGNÉS pour la Google Play
