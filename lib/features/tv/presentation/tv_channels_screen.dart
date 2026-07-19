@@ -21,6 +21,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../channels/data/category_order_store.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
@@ -32,6 +33,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
 import '../core/tv_tokens.dart';
+import 'widgets/tv_category_reorder.dart';
 import 'tv_live_preview.dart';
 import 'tv_player_screen.dart';
 import 'tv_search_screen.dart';
@@ -94,14 +96,35 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
     });
     _ingest(PlaylistRepository.instance.currentChannels);
     _chanSub = PlaylistRepository.instance.channelsStream.listen(_ingest);
+    // Ordre PERSONNALISÉ des catégories (partagé partout) : on le charge et on
+    // écoute ses changements pour ré-ordonner la colonne en live.
+    // ignore: discarded_futures
+    CategoryOrderStore.instance.ensureLoaded();
+    CategoryOrderStore.instance.addListener(_onCatOrderChanged);
   }
 
   @override
   void dispose() {
     _chanSub?.cancel();
     _favSub?.cancel();
+    CategoryOrderStore.instance.removeListener(_onCatOrderChanged);
     _preview.dispose();
     super.dispose();
+  }
+
+  void _onCatOrderChanged() {
+    if (mounted) setState(() => _cats = _orderedCats(_cats));
+  }
+
+  /// Applique l'ordre personnalisé de l'usager aux VRAIES catégories (la
+  /// pseudo « Toutes les chaînes » reste toujours en tête).
+  List<String> _orderedCats(List<String> cats) {
+    final List<String> pseudo =
+        cats.where((String c) => c == _kAll).toList();
+    final List<String> real = cats.where((String c) => c != _kAll).toList();
+    final List<String> orderedReal =
+        CategoryOrderStore.instance.applyOrder(real, (String c) => c);
+    return <String>[...pseudo, ...orderedReal];
   }
 
   void _ingest(List<Channel> channels) {
@@ -121,13 +144,49 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
     if (!mounted) return;
     setState(() {
       _all = channels;
-      _cats = cats;
+      // ORDRE PERSONNALISÉ appliqué par-dessus l'ordre d'import.
+      _cats = _orderedCats(cats);
       _groups = groups;
       if (!_cats.contains(_cat)) _cat = _kAll;
       _visible = _channelsFor(_cat);
       _preview.value ??= _visible.isNotEmpty ? _visible.first : null;
       _loading = false;
     });
+  }
+
+  // ---- Réorganisation (monter / descendre) — premium, partagée ----
+
+  /// Catégorie actuellement « saisie » pour être déplacée (null = aucune).
+  String? _reorderCat;
+
+  bool _isPseudoCat(String cat) => cat == _kAll;
+
+  void _beginReorder(String cat) {
+    if (_isPseudoCat(cat)) return;
+    setState(() => _reorderCat = cat);
+  }
+
+  void _endReorder() {
+    if (_reorderCat == null) return;
+    setState(() => _reorderCat = null);
+  }
+
+  /// Vraies catégories (hors pseudo) dans l'ordre courant.
+  List<String> _realCats() => _cats.where((String c) => !_isPseudoCat(c)).toList();
+
+  void _moveReorder(String cat, int dir) {
+    final List<String> order = _realCats();
+    final int idx = order.indexOf(cat);
+    if (idx < 0) return;
+    final int next = idx + dir;
+    if (next < 0 || next >= order.length) return;
+    final String tmp = order[idx];
+    order[idx] = order[next];
+    order[next] = tmp;
+    // Persiste l'ordre complet → le store notifie et tous les écrans se
+    // ré-ordonnent (y compris celui-ci via _onCatOrderChanged).
+    // ignore: discarded_futures
+    CategoryOrderStore.instance.setOrder(order);
   }
 
   /// Lecture O(1) du groupe pré-calculé (plus aucun filtrage/RegExp au rendu).
@@ -226,12 +285,28 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
               itemCount: _cats.length,
               itemBuilder: (BuildContext c, int i) {
                 final String cat = _cats[i];
+                final bool reordering = _reorderCat == cat;
+                final List<String> real = _realCats();
+                final int ri = real.indexOf(cat);
                 return _RowTile(
                   label: cat,
                   count: _countFor(cat),
                   active: cat == _cat,
                   autofocus: i == 0,
-                  onSelect: () => _selectCat(cat),
+                  reordering: reordering,
+                  reorderable: !_isPseudoCat(cat),
+                  canMoveUp: reordering && ri > 0,
+                  canMoveDown: reordering && ri >= 0 && ri < real.length - 1,
+                  onSelect: () {
+                    if (reordering) {
+                      _endReorder();
+                    } else {
+                      _selectCat(cat);
+                    }
+                  },
+                  onLongPress: () => _beginReorder(cat),
+                  onMoveUp: () => _moveReorder(cat, -1),
+                  onMoveDown: () => _moveReorder(cat, 1),
                 );
               },
             ),
@@ -476,12 +551,27 @@ class _RowTile extends StatelessWidget {
     required this.active,
     required this.autofocus,
     required this.onSelect,
+    this.reordering = false,
+    this.reorderable = false,
+    this.canMoveUp = false,
+    this.canMoveDown = false,
+    this.onLongPress,
+    this.onMoveUp,
+    this.onMoveDown,
   });
   final String label;
   final int count;
   final bool active;
   final bool autofocus;
   final VoidCallback onSelect;
+  // Réorganisation (monter / descendre) — premium, partagée.
+  final bool reordering;
+  final bool reorderable;
+  final bool canMoveUp;
+  final bool canMoveDown;
+  final VoidCallback? onLongPress;
+  final VoidCallback? onMoveUp;
+  final VoidCallback? onMoveDown;
 
   @override
   Widget build(BuildContext context) {
@@ -491,16 +581,26 @@ class _RowTile extends StatelessWidget {
         autofocus: autofocus,
         scale: TvFocusScale.small,
         onSelect: onSelect,
+        onLongPress: reorderable ? onLongPress : null,
         builder: (BuildContext context, bool focused) {
-          final Color bg = focused
-              ? TvTokens.sel
-              : (active ? TvTokens.sel.withValues(alpha: 0.6) : Colors.transparent);
-          final Color fg = (focused || active) ? TvTokens.text : TvTokens.muted;
-          return Container(
+          final Color bg = reordering
+              ? TvTokens.gold.withValues(alpha: 0.16)
+              : focused
+                  ? TvTokens.sel
+                  : (active
+                      ? TvTokens.sel.withValues(alpha: 0.6)
+                      : Colors.transparent);
+          final Color fg = (focused || active || reordering)
+              ? TvTokens.text
+              : TvTokens.muted;
+          final Widget row = Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: BoxDecoration(
               color: bg,
               borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
+              border: reordering
+                  ? Border.all(color: TvTokens.gold, width: 1.4)
+                  : null,
             ),
             child: Row(
               children: <Widget>[
@@ -510,19 +610,30 @@ class _RowTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                           fontSize: TvDimens.body,
-                          fontWeight:
-                              (focused || active) ? FontWeight.w700 : FontWeight.w600,
+                          fontWeight: (focused || active || reordering)
+                              ? FontWeight.w700
+                              : FontWeight.w600,
                           color: fg)),
                 ),
                 const SizedBox(width: 8),
-                Text('$count',
-                    style: const TextStyle(
-                        fontSize: TvDimens.caption,
-                        fontWeight: FontWeight.w700,
-                        color: TvTokens.mutedDim)),
+                if (reordering)
+                  TvReorderChevrons(
+                    canUp: canMoveUp,
+                    canDown: canMoveDown,
+                    onUp: onMoveUp ?? () {},
+                    onDown: onMoveDown ?? () {},
+                    onDone: onSelect,
+                  )
+                else
+                  Text('$count',
+                      style: const TextStyle(
+                          fontSize: TvDimens.caption,
+                          fontWeight: FontWeight.w700,
+                          color: TvTokens.mutedDim)),
               ],
             ),
           );
+          return TvReorderBounce(active: reordering, child: row);
         },
       ),
     );
