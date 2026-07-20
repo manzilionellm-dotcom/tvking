@@ -11,6 +11,7 @@ import {
 import { useLiveDevices, useRtEvent, sendCmd } from '@/lib/realtime';
 import { toast } from '@/components/Toast';
 import { cn } from '@/lib/utils';
+import { gatewayApi, hasGatewayConfig, fmtBytes, type GwStatus } from '@/lib/gateway';
 
 /// Page « En ligne » (owner) — CENTRE DE SUPERVISION TEMPS RÉEL.
 ///
@@ -243,6 +244,12 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
   const [query, setQuery] = useState('');
   const { devices: live, connected } = useLiveDevices();
 
+  // Santé passerelle (serveur Node) — VRAIES métriques via /admin/status.
+  const gwConfigured = hasGatewayConfig();
+  const [gw, setGw] = useState<GwStatus | null>(null);
+  // Débit temps réel : dérivé du compteur d'octets (delta entre deux relevés).
+  const gwBw = useRef<{ bytes: number; at: number; rate: number }>({ bytes: 0, at: 0, rate: 0 });
+
   // Séries temps réel (échantillonnées) — utilisateurs par minute.
   const [series, setSeries] = useState<number[]>([]);
   const onlineCountRef = useRef(0);
@@ -272,6 +279,24 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
         setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
       })
       .finally(() => setLoading(false));
+
+    // Santé passerelle (best-effort, indépendant de l'API principale).
+    if (hasGatewayConfig()) {
+      gatewayApi
+        .status()
+        .then((s) => {
+          const bytes = s.metrics.counters['gw_bytes_clients_total'] || 0;
+          const now = Date.now();
+          const prev = gwBw.current;
+          if (prev.at && now > prev.at && bytes >= prev.bytes) {
+            gwBw.current = { bytes, at: now, rate: ((bytes - prev.bytes) / (now - prev.at)) * 1000 };
+          } else {
+            gwBw.current = { bytes, at: now, rate: prev.rate };
+          }
+          setGw(s);
+        })
+        .catch(() => setGw(null)); // passerelle injoignable → la carte le signale
+    }
   }, [onLogout]);
 
   // Le polling 30 s tourne TOUJOURS (même WS connecté).
@@ -488,8 +513,56 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
       });
     }
 
-    return out.slice(0, 12);
-  }, [rows, outdatedCount, latestVersion, apiMs, onlineCount, alertTick]);
+    // 6) Santé PASSERELLE (serveur Node) — saturation ligne fournisseur / CPU.
+    if (gw) {
+      const up = gw.hub.upstreamActive;
+      const max = gw.hub.providerMax || 0;
+      if (max && up >= max) {
+        out.push({
+          id: 'gw-full',
+          sev: 'red',
+          icon: '🛑',
+          text: `Passerelle : ${up}/${max} flux fournisseur — ligne SATURÉE (nouveaux spectateurs refusés).`,
+        });
+      } else if (max && up / max >= 0.85) {
+        out.push({
+          id: 'gw-near',
+          sev: 'orange',
+          icon: '⚠️',
+          text: `Passerelle : ${up}/${max} flux fournisseur — proche de la saturation.`,
+        });
+      }
+      const sys = gw.system;
+      if (sys && sys.cpuPct >= 90) {
+        out.push({ id: 'gw-cpu', sev: 'red', icon: '🔥', text: `Serveur passerelle : CPU ${sys.cpuPct}% — surcharge.` });
+      } else if (sys && sys.cpuPct >= 75) {
+        out.push({ id: 'gw-cpu', sev: 'orange', icon: '🔥', text: `Serveur passerelle : CPU ${sys.cpuPct}% — charge élevée.` });
+      }
+      if (sys && sys.sysMemUsedPct >= 92) {
+        out.push({ id: 'gw-ram', sev: 'red', icon: '🧠', text: `Serveur passerelle : RAM ${sys.sysMemUsedPct}% — mémoire critique.` });
+      }
+    }
+
+    return out.slice(0, 16);
+  }, [rows, outdatedCount, latestVersion, apiMs, onlineCount, alertTick, gw]);
+
+  // Synthèse « Santé serveurs » (dérivée des VRAIES métriques passerelle).
+  const srv = useMemo(() => {
+    if (!gw) return null;
+    const sys = gw.system;
+    const up = gw.hub.upstreamActive;
+    const max = gw.hub.providerMax || 0;
+    const clients = gw.metrics.gauges['gw_clients_active'] ?? 0;
+    const loadRatio = sys && sys.cpuCount ? sys.loadavg1 / sys.cpuCount : 0;
+    const upRatio = max ? up / max : 0;
+    let tone: 'success' | 'warning' | 'accent' = 'success';
+    if ((sys && (sys.cpuPct >= 90 || sys.sysMemUsedPct >= 92)) || loadRatio >= 1 || (max > 0 && up >= max)) {
+      tone = 'accent';
+    } else if ((sys && (sys.cpuPct >= 70 || sys.sysMemUsedPct >= 80)) || loadRatio >= 0.7 || upRatio >= 0.8) {
+      tone = 'warning';
+    }
+    return { sys, up, max, clients, tone, upRatio, rate: gwBw.current.rate };
+  }, [gw]);
 
   // ------- Recherche avancée (MAC / IP / pays / chaîne / plateforme / version)
   const filtered = useMemo(() => {
@@ -701,55 +774,65 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
             )}
           </div>
 
-          {/* ============ SANTÉ DES SERVEURS (honnête) ============ */}
+          {/* ============ SANTÉ DES SERVEURS (temps réel) ============ */}
           <SectionTitle>Santé des serveurs & réseau</SectionTitle>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-xl border border-white/5 bg-midnight p-4">
-              <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">
-                API temps réel
-              </div>
-              <div
-                className={cn(
-                  'mt-1 text-2xl font-bold',
-                  apiTone === 'success'
-                    ? 'text-success'
-                    : apiTone === 'warning'
-                      ? 'text-warning-bright'
-                      : apiTone === 'accent'
-                        ? 'text-accent-bright'
-                        : 'text-ink-primary',
-                )}
-              >
-                {apiMs == null ? '—' : `${apiMs} ms`}
-              </div>
-              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-ink-tertiary">
-                <span
-                  className={cn(
-                    'inline-block h-2 w-2 rounded-full',
-                    apiTone === 'success'
-                      ? 'bg-success'
-                      : apiTone === 'warning'
-                        ? 'bg-warning'
-                        : apiTone === 'accent'
-                          ? 'bg-accent'
-                          : 'bg-ink-muted',
-                  )}
+            {/* API temps réel (toujours mesurée) */}
+            <ServerStat
+              label="API temps réel"
+              value={apiMs == null ? '—' : `${apiMs} ms`}
+              tone={apiTone === 'default' ? undefined : apiTone}
+              sub={connected ? 'WebSocket connecté' : 'WebSocket indisponible'}
+              dot
+            />
+
+            {gwConfigured && srv && srv.sys ? (
+              <>
+                <ServerStat
+                  label="Statut serveur"
+                  value={srv.tone === 'accent' ? '🔴 Rouge' : srv.tone === 'warning' ? '🟠 Orange' : '🟢 Vert'}
+                  tone={srv.tone}
+                  sub={`uptime ${dur(srv.sys.procUptimeSec * 1000)}`}
                 />
-                {connected ? 'WebSocket connecté' : 'WebSocket indisponible'}
+                <ServerStat
+                  label="CPU passerelle"
+                  value={`${srv.sys.cpuPct}%`}
+                  tone={srv.sys.cpuPct >= 90 ? 'accent' : srv.sys.cpuPct >= 70 ? 'warning' : 'success'}
+                  sub={`charge ${srv.sys.loadavg1} · ${srv.sys.cpuCount} cœurs`}
+                />
+                <ServerStat
+                  label="RAM serveur"
+                  value={`${srv.sys.sysMemUsedPct}%`}
+                  tone={srv.sys.sysMemUsedPct >= 92 ? 'accent' : srv.sys.sysMemUsedPct >= 80 ? 'warning' : 'success'}
+                  sub={`process ${srv.sys.rssMB} Mo / ${srv.sys.totalMemMB} Mo`}
+                />
+                <ServerStat
+                  label="Bande passante"
+                  value={`${fmtBytes(srv.rate)}/s`}
+                  sub={`${srv.clients} spectateur${srv.clients > 1 ? 's' : ''} servis`}
+                />
+                <ServerStat
+                  label="Connexions"
+                  value={String(srv.clients)}
+                  sub="clients actifs (passerelle)"
+                />
+                <ServerStat
+                  label="Flux fournisseur"
+                  value={srv.max ? `${srv.up}/${srv.max}` : String(srv.up)}
+                  tone={srv.upRatio >= 1 ? 'accent' : srv.upRatio >= 0.8 ? 'warning' : 'success'}
+                  sub="connexions upstream (mutualisées)"
+                />
+              </>
+            ) : gwConfigured ? (
+              <div className="rounded-xl border border-warning/25 bg-warning/[0.06] p-4 text-sm text-warning-bright sm:col-span-2 lg:col-span-3">
+                Passerelle injoignable — vérifie l'URL et le jeton sur la page « Passerelle ».
               </div>
-            </div>
-            {/* Métriques d'infra non instrumentées → honnêteté (pas de faux chiffres). */}
-            {[
-              { k: 'CPU serveur', why: 'agent serveur requis' },
-              { k: 'RAM serveur', why: 'agent serveur requis' },
-              { k: 'Bande passante', why: 'métrique passerelle requise' },
-            ].map((m) => (
-              <div key={m.k} className="rounded-xl border border-dashed border-white/10 bg-obsidian p-4">
-                <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">{m.k}</div>
-                <div className="mt-1 text-2xl font-bold text-ink-muted">—</div>
-                <div className="mt-1 text-[11px] text-ink-tertiary">Non instrumenté · {m.why}</div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-white/10 bg-obsidian p-4 text-sm text-ink-tertiary sm:col-span-2 lg:col-span-3">
+                Configure la passerelle sur la page « Passerelle » pour la santé serveur en direct :
+                CPU, RAM, bande passante, connexions et charge du serveur de streaming.
               </div>
-            ))}
+            )}
           </div>
 
           {/* ============ RECHERCHE AVANCÉE ============ */}
@@ -895,5 +978,49 @@ function ActionBtn({
     >
       {children}
     </button>
+  );
+}
+
+/// Carte de métrique « Santé serveurs » (valeur + sous-titre + pastille d'état).
+function ServerStat({
+  label,
+  value,
+  tone,
+  sub,
+  dot,
+}: {
+  label: string;
+  value: ReactNode;
+  tone?: 'success' | 'warning' | 'accent';
+  sub?: string;
+  dot?: boolean;
+}) {
+  const color =
+    tone === 'success'
+      ? 'text-success'
+      : tone === 'warning'
+        ? 'text-warning-bright'
+        : tone === 'accent'
+          ? 'text-accent-bright'
+          : 'text-ink-primary';
+  const dotColor =
+    tone === 'success'
+      ? 'bg-success'
+      : tone === 'warning'
+        ? 'bg-warning'
+        : tone === 'accent'
+          ? 'bg-accent'
+          : 'bg-ink-muted';
+  return (
+    <div className="rounded-xl border border-white/5 bg-midnight p-4">
+      <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">{label}</div>
+      <div className={cn('mt-1 text-2xl font-bold', color)}>{value}</div>
+      {sub && (
+        <div className="mt-1 flex items-center gap-1.5 text-[11px] text-ink-tertiary">
+          {dot && <span className={cn('inline-block h-2 w-2 rounded-full', dotColor)} />}
+          {sub}
+        </div>
+      )}
+    </div>
   );
 }

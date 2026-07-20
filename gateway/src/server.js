@@ -2,6 +2,7 @@
 //  server.js — Serveur HTTP + routage de la passerelle
 // =========================================================
 import http from 'node:http';
+import os from 'node:os';
 import { config } from './config.js';
 import { log } from './logger.js';
 import { metrics } from './metrics.js';
@@ -21,6 +22,39 @@ import {
 } from './upstream.js';
 
 const START = Date.now();
+
+// ---- Santé SYSTÈME du serveur (CPU / RAM / charge) ---------------------
+//  Vraies mesures process + OS (aucune dépendance). Le % CPU est calculé
+//  par DELTA entre deux appels (fraction de temps CPU consommée depuis le
+//  dernier /admin/status). Exposé dans /admin/status → le panel affiche une
+//  « Santé serveurs » réelle (plus de « non instrumenté »).
+let _lastCpu = process.cpuUsage();
+let _lastCpuAt = Date.now();
+function systemSnapshot() {
+  const now = Date.now();
+  const delta = process.cpuUsage(_lastCpu); // µs de CPU depuis le dernier appel
+  const elapsedMs = Math.max(1, now - _lastCpuAt);
+  _lastCpu = process.cpuUsage();
+  _lastCpuAt = now;
+  // (user+system) µs ramenés au temps écoulé → % d'UN cœur.
+  const cpuPct = Math.max(
+    0,
+    Math.min(100, Math.round(((delta.user + delta.system) / 1000 / elapsedMs) * 100)),
+  );
+  const mem = process.memoryUsage();
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  return {
+    cpuPct, // % CPU du process (d'un cœur) sur l'intervalle
+    cpuCount: os.cpus().length,
+    loadavg1: Math.round(os.loadavg()[0] * 100) / 100, // charge système 1 min
+    rssMB: Math.round(mem.rss / 1048576), // mémoire résidente du process
+    heapUsedMB: Math.round(mem.heapUsed / 1048576),
+    sysMemUsedPct: Math.round((1 - freeMem / totalMem) * 100), // RAM système utilisée
+    totalMemMB: Math.round(totalMem / 1048576),
+    procUptimeSec: Math.floor(process.uptime()),
+  };
+}
 
 function sendJson(res, status, obj) {
   const body = JSON.stringify(obj);
@@ -240,6 +274,7 @@ async function adminRoute(req, res, url, path) {
       users: listUsers(),
       metrics: metrics.snapshot(),
       uptimeSec: Math.floor((Date.now() - START) / 1000),
+      system: systemSnapshot(),
     });
   }
   if (path === '/admin/reload-users') {
