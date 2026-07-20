@@ -52,6 +52,7 @@ class _TvInviteScreenState extends State<TvInviteScreen> {
         padding: const EdgeInsets.fromLTRB(40, 24, 40, 24),
         child: switch (_view) {
           'invite' => _InviteFlow(mac: _mac, onBack: () => _go('hub')),
+          'lend' => _LendFlow(mac: _mac, onBack: () => _go('hub')),
           'transfer' => _TransferFlow(mac: _mac, onBack: () => _go('hub')),
           'redeem' => _RedeemFlow(mac: _mac, onBack: () => _go('hub')),
           _ => _hub(),
@@ -78,6 +79,15 @@ class _TvInviteScreenState extends State<TvInviteScreen> {
               'Il regarde le match avec toi — 24 h ou 48 h offertes, puis il s’abonne.',
           autofocus: true,
           onSelect: () => _go('invite'),
+        ),
+        const SizedBox(height: 14),
+        _HubOption(
+          emoji: '🤝',
+          title: 'Prêter mon abonnement',
+          subtitle:
+              'Donne ton abonnement à un ami 24 h ou 48 h. Tu es en pause le '
+              'temps du prêt — ça te revient tout seul à la fin.',
+          onSelect: () => _go('lend'),
         ),
         const SizedBox(height: 14),
         _HubOption(
@@ -370,6 +380,189 @@ class _TransferFlowState extends State<_TransferFlow> {
         ],
       ),
     );
+  }
+}
+
+// =========================================================
+// PRÊTER MON ABONNEMENT (24 h / 48 h + retour auto)
+// =========================================================
+class _LendFlow extends StatefulWidget {
+  const _LendFlow({required this.mac, required this.onBack});
+  final String mac;
+  final VoidCallback onBack;
+
+  @override
+  State<_LendFlow> createState() => _LendFlowState();
+}
+
+class _LendFlowState extends State<_LendFlow> {
+  final TextEditingController _friendMac = TextEditingController();
+  int _hours = 24;
+  bool _busy = false;
+  String? _message;
+
+  /// Prêt en cours dont CET appareil est propriétaire, ou null.
+  Map<String, dynamic>? _loan;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshLoan();
+  }
+
+  @override
+  void dispose() {
+    _friendMac.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refreshLoan() async {
+    final Map<String, dynamic>? r = await InviteBackend.myLoan(widget.mac);
+    if (!mounted) return;
+    setState(() => _loan = (r != null && r['active'] == true) ? r : null);
+  }
+
+  Future<void> _lend() async {
+    final String g = _normalizeMac(_friendMac.text);
+    if (g.isEmpty) {
+      setState(() => _message = 'Entre la MAC de ton ami.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    final Map<String, dynamic>? r =
+        await InviteBackend.lend(widget.mac, g, hours: _hours);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      if (r == null) {
+        _message = 'Connexion impossible. Réessaie.';
+      } else if (r['ok'] == true) {
+        _message = 'Prêté ! Ton ami a $_hours h. Toi, tu es en pause — ça te '
+            'revient tout seul à la fin.';
+      } else {
+        _message = switch ((r['error'] ?? '').toString()) {
+          'not_paid' => 'Réservé aux abonnés payés (abonnement actif).',
+          'already_active' => 'Cet ami a déjà un accès actif.',
+          'loan_active' =>
+            'Tu as déjà un prêt en cours. Reprends-le d’abord.',
+          'same_device' => 'C’est ton propre appareil 🙂',
+          _ => 'Prêt impossible pour le moment.',
+        };
+      }
+    });
+    if (r != null && r['ok'] == true) _refreshLoan();
+  }
+
+  Future<void> _reclaim() async {
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    final Map<String, dynamic>? r = await InviteBackend.reclaim(widget.mac);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      if (r != null && r['ok'] == true) {
+        _loan = null;
+        _message = 'Abonnement repris — c’est de nouveau à toi. 👍';
+      } else {
+        _message = 'Reprise impossible pour le moment.';
+      }
+    });
+    if (r != null && r['ok'] == true) {
+      await SubscriptionState.instance.syncWithBackend();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasLoan = _loan != null;
+    return _FlowScaffold(
+      title: 'Prêter mon abonnement',
+      onBack: widget.onBack,
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            if (hasLoan) ...<Widget>[
+              // Prêt en cours → on propose de le REPRENDRE.
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: TvTokens.card,
+                  borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                  border: Border.all(color: TvTokens.gold),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text('Tu as prêté ton abonnement',
+                        style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: TvTokens.goldBright)),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Prêté à ${_loan!['guest'] ?? ''}. ${_remaining()}',
+                      style: const TextStyle(fontSize: 14, color: TvTokens.muted),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              _BigButton(
+                icon: Icons.undo_rounded,
+                label: _busy ? 'Reprise…' : 'Reprendre mon abonnement',
+                autofocus: true,
+                onSelect: _busy ? null : _reclaim,
+              ),
+            ] else ...<Widget>[
+              const Text(
+                'Donne ton abonnement complet à un ami pour 24 h ou 48 h. '
+                'Pendant le prêt, CET appareil est en pause. À l’échéance, '
+                'l’abonnement revient tout seul sur ta MAC.',
+                style: TextStyle(fontSize: 15, color: TvTokens.muted),
+              ),
+              const SizedBox(height: 20),
+              const _StepLabel('1 · Durée du prêt (max)'),
+              Row(children: <Widget>[
+                _Chip(label: '24 heures', on: _hours == 24, onSelect: () => setState(() => _hours = 24)),
+                const SizedBox(width: 12),
+                _Chip(label: '48 heures', on: _hours == 48, onSelect: () => setState(() => _hours = 48)),
+              ]),
+              const SizedBox(height: 20),
+              const _StepLabel('2 · MAC de ton ami'),
+              _MacField(controller: _friendMac, hint: 'MAC (ex. MK:1A:2B:3C:4D:5E)'),
+              const SizedBox(height: 14),
+              _BigButton(
+                icon: Icons.volunteer_activism_rounded,
+                label: _busy ? 'Patiente…' : 'Prêter mon abonnement',
+                autofocus: true,
+                onSelect: _busy ? null : _lend,
+              ),
+            ],
+            if (_message != null) ...<Widget>[
+              const SizedBox(height: 16),
+              Text(_message!,
+                  style: const TextStyle(fontSize: 14, color: TvTokens.muted)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _remaining() {
+    final int ms = (_loan?['ms_left'] as num?)?.toInt() ?? 0;
+    if (ms <= 0) return 'Retour imminent.';
+    final int totalMin = (ms / 60000).floor();
+    final int h = totalMin ~/ 60;
+    final int m = totalMin % 60;
+    if (h > 0) return 'Retour auto dans ${h}h ${m.toString().padLeft(2, '0')}.';
+    return 'Retour auto dans $m min.';
   }
 }
 
