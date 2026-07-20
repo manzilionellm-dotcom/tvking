@@ -25,6 +25,17 @@ import '../domain/recording.dart';
 import 'gallery_exporter.dart';
 import 'http_recording_downloader.dart';
 
+/// Hook de conversion `.ts` → `.mp4` posé par l'ENTRÉE MOBILE (main.dart) avec
+/// `FfmpegConverter.tsToMp4`. Il est volontairement injecté de l'extérieur (et
+/// non importé ici) pour que ce fichier — donc tout le code d'enregistrement —
+/// ne dépende PAS de `ffmpeg_kit`. Ainsi le build TV (qui retire ffmpeg du
+/// pubspec, comme media_kit) compile sans jamais référencer FFmpeg. Signature :
+/// (chemin du .ts) → chemin du .mp4 produit, ou `null` si échec.
+typedef TsToMp4Hook = Future<String?> Function(String srcPath);
+
+/// Posé UNE fois au démarrage de l'app mobile ; reste `null` côté TV.
+TsToMp4Hook? recordingTsToMp4Hook;
+
 class RecordingRepository {
   RecordingRepository._();
   static final RecordingRepository instance = RecordingRepository._();
@@ -258,7 +269,14 @@ class RecordingRepository {
         return;
       }
 
-      final String? mp4Path = await GalleryExporter.convertToMp4(filePath);
+      // FFmpeg d'ABORD (fiable sur nos flux TS/HLS que MediaExtractor refuse),
+      // s'il a été branché par l'app mobile ; sinon le remux natif (rapide quand
+      // il fonctionne, ex. déjà un .mp4). La vidéo n'est jamais ré-encodée.
+      String? mp4Path;
+      if (recordingTsToMp4Hook != null) {
+        mp4Path = await recordingTsToMp4Hook!(filePath);
+      }
+      mp4Path ??= await GalleryExporter.convertToMp4(filePath);
       if (mp4Path == null || mp4Path == filePath) return;
 
       int mp4Size = 0;

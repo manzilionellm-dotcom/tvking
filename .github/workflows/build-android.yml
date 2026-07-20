@@ -102,6 +102,34 @@ jobs:
       - name: Generate native Android folder
         run: flutter create . --platforms=android --org com.manzilionellm.tvking --project-name tv_king
 
+      # minSdk 24 (TÉLÉPHONE) : requis par ffmpeg_kit_flutter_new_min (conversion
+      # des enregistrements .ts → .mp4 galerie). Le fusionneur de manifeste
+      # ÉCHOUE si le minSdk de l'app est < celui d'une lib (24). Android 7.0 =
+      # plancher téléphone en 2026 (quasi 100 % du parc). Le build TV, lui,
+      # RETIRE ffmpeg et garde minSdk 21 pour les vieilles box.
+      - name: Fixer minSdk 24 (téléphone — requis par ffmpeg_kit)
+        run: |
+          python3 - <<'PYEOF'
+          import re, glob
+          cands = glob.glob("android/app/build.gradle.kts") + glob.glob("android/app/build.gradle")
+          if not cands:
+              raise SystemExit("build.gradle introuvable après flutter create")
+          f = cands[0]
+          s = open(f).read()
+          if re.search(r'minSdk\s*=\s*flutter\.minSdkVersion', s):
+              s = re.sub(r'minSdk\s*=\s*flutter\.minSdkVersion', 'minSdk = 24', s)
+          elif re.search(r'minSdkVersion\s+flutter\.minSdkVersion', s):
+              s = re.sub(r'minSdkVersion\s+flutter\.minSdkVersion', 'minSdkVersion 24', s)
+          elif re.search(r'minSdk\s*=\s*\d+', s):
+              s = re.sub(r'minSdk\s*=\s*\d+', 'minSdk = 24', s, count=1)
+          elif re.search(r'minSdkVersion\s+\d+', s):
+              s = re.sub(r'minSdkVersion\s+\d+', 'minSdkVersion 24', s, count=1)
+          else:
+              raise SystemExit("minSdk introuvable dans " + f)
+          open(f, "w").write(s)
+          print("minSdk -> 24 dans", f)
+          PYEOF
+
       # Branding 7 MOTION : remplace le label par défaut du manifest
       # (`tv_king`) par "7 MOTION" pour que le nom affiché sur le
       # bureau Android soit le bon.

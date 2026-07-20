@@ -70,6 +70,7 @@ import 'features/security/data/lock_settings.dart';
 import 'features/security/presentation/age_gate_screen.dart';
 import 'features/security/presentation/lock_screen.dart';
 import 'features/recordings/data/recording_repository.dart';
+import 'features/recordings/data/ffmpeg_converter.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/subscription/presentation/subscription_gate.dart';
 
@@ -91,6 +92,12 @@ void main() {
 /// partir d'ici.
 Future<void> bootApp() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Enregistrements → MP4 galerie : on branche le convertisseur FFmpeg (fiable
+  // sur nos flux TS/HLS). C'est fait ICI, dans l'entrée MOBILE uniquement : le
+  // build TV ne pose jamais ce hook et ne référence donc jamais ffmpeg_kit
+  // (retiré de son pubspec). La conversion garde la vidéo intacte (copie).
+  recordingTsToMp4Hook = FfmpegConverter.tsToMp4;
 
   // libmpv natif — AVANT runApp pour ne pas crasher au premier lecteur.
   // GARDÉ : sur un appareil exotique où la lib native manque/échoue
