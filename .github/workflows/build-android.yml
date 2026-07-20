@@ -789,6 +789,10 @@ jobs:
       # Huawei). Récupère le .aab dans les Artifacts du run pour l'uploader
       # dans la Play Console (Play App Signing re-signe ensuite).
       - name: Build release AAB (Google Play)
+        # Console maître = sideload uniquement (jamais Google Play), et son
+        # applicationId est renommé en …master → l'AAB Play n'a pas de sens et
+        # sa réécriture d'applicationId échouerait. On saute donc l'AAB.
+        if: ${{ github.event.inputs.master_console != 'true' }}
         run: |
           BUILD_TS=$(date +%s)
           # ── Play Store : on RETIRE REQUEST_INSTALL_PACKAGES de l'AAB ──
@@ -874,6 +878,7 @@ jobs:
           ls -lah "$OUT/7motion.aab"
 
       - name: Upload AAB artifact (Google Play)
+        if: ${{ github.event.inputs.master_console != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: 7motion-playstore-aab-${{ github.sha }}
