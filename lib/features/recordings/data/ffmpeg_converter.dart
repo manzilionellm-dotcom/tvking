@@ -27,6 +27,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:ffmpeg_kit_flutter_new_min/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_min/return_code.dart';
 
 abstract final class FfmpegConverter {
   /// Convertit [srcPath] (un `.ts`) en `.mp4` posé À CÔTÉ (même nom, même
