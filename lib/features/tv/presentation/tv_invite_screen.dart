@@ -112,7 +112,7 @@ class _InviteFlow extends StatefulWidget {
 }
 
 class _InviteFlowState extends State<_InviteFlow> {
-  int _hours = 48;
+  int _hours = 5;
   Channel? _channel;
   bool _busy = false;
   String? _code;
@@ -219,6 +219,8 @@ class _InviteFlowState extends State<_InviteFlow> {
             // 1) Durée
             const _StepLabel('1 · Durée offerte'),
             Row(children: <Widget>[
+              _Chip(label: '5 heures', on: _hours == 5, onSelect: () => setState(() => _hours = 5)),
+              const SizedBox(width: 12),
               _Chip(label: '24 heures', on: _hours == 24, onSelect: () => setState(() => _hours = 24)),
               const SizedBox(width: 12),
               _Chip(label: '48 heures', on: _hours == 48, onSelect: () => setState(() => _hours = 48)),

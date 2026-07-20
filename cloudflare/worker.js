@@ -3159,7 +3159,9 @@ async function handleFamilyJoin(request, env) {
 const INVITE_CODE_TTL_MS = 48 * 60 * 60 * 1000; // le code doit être utilisé sous 48 h
 const INVITE_WEEKLY_QUOTA = 5; // 5 invitations PAR SEMAINE (glissante), renouvelées
 const INVITE_WEEK_MS = 7 * 24 * 60 * 60 * 1000; // fenêtre du quota hebdo
-const INVITE_ALLOWED_HOURS = [24, 48]; // durées offertes à l'invité (max 48 h)
+// Durées offertes à l'invité : 5 h (« on regarde ensemble »), 24 h (« prêt »)
+// et 48 h (week-end). Toute autre valeur retombe sur 5 h (la plus courte).
+const INVITE_ALLOWED_HOURS = [5, 24, 48];
 let _inviteSchemaError = '';
 
 async function ensureInviteSchema(env) {
@@ -3199,7 +3201,15 @@ async function ensureInviteSchema(env) {
 /// valeur retombe sur 48 (max). Empêche un invité de se faire offrir 1 an.
 function inviteHours(raw) {
   const h = Number(raw);
-  return INVITE_ALLOWED_HOURS.includes(h) ? h : 48;
+  return INVITE_ALLOWED_HOURS.includes(h) ? h : 5;
+}
+
+/// Normalise le mode d'invitation : 'together' (5 h « ensemble », défaut),
+/// 'lend' (24 h « prêt d'abonnement »), ou 'test' (démo). Informatif : sert
+/// à l'UI invité (bandeau, message de fin) — la durée reste bornée par
+/// inviteHours().
+function inviteMode(raw) {
+  return ['together', 'lend', 'test'].includes(raw) ? raw : 'together';
 }
 
 /// Nettoie la chaîne partagée reçue du client → objet minimal jouable, ou null.
@@ -3364,7 +3374,7 @@ async function handleInviteGrant(request, env) {
 
   const hours = inviteHours(body?.hours);
   const channel = sanitizeInviteChannel(body?.channel);
-  const mode = body?.mode === 'test' ? 'test' : 'together';
+  const mode = inviteMode(body?.mode);
   const g = await grantGuestPassLicense(env, guest, hours, now);
   if (!g.ok) return json({ ok: false, error: g.error });
   // Trace l'invitation (code interne préfixé 'M' = par MAC, non tapé).
@@ -3435,7 +3445,7 @@ async function handleInviteCreate(request, env) {
   }
   const hours = inviteHours(body?.hours);
   const channel = sanitizeInviteChannel(body?.channel);
-  const mode = body?.mode === 'test' ? 'test' : 'together';
+  const mode = inviteMode(body?.mode);
   // Code à 6 chiffres (facile à taper). L'abonné peut générer plusieurs
   // codes (invitations multiples) — chaque code n'active qu'un appareil.
   const buf = new Uint32Array(1);
