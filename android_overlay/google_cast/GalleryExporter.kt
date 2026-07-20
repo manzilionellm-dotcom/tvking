@@ -356,25 +356,45 @@ class GalleryExporter(
      * Retourne le fichier temporaire produit (à renommer ou supprimer par
      * l'appelant), ou `null` si rien n'a marché.
      */
+    /// Codecs que le lecteur / la galerie du téléphone décode de façon fiable.
+    /// Tout le reste (audio AC-3/E-AC-3/DTS/MP2, vidéo MPEG-2/VC-1…) donne le
+    /// fameux « vidéo incompatible ! » avec point d'exclamation, même sur les
+    /// Samsung récents → on ne le laisse jamais tel quel dans l'export.
+    private fun isGalleryAudio(mime: String): Boolean =
+        mime == "audio/mp4a-latm" || mime == "audio/aac"
+
+    private fun isGalleryVideo(mime: String): Boolean =
+        mime == "video/avc" || mime == "video/hevc"
+
     private fun produceMp4(srcFile: File, workDir: File): File? {
+        // 1) REMUX sans perte si TOUT est déjà lisible par la galerie
+        //    (vidéo H.264/HEVC + audio AAC) → instantané, qualité intacte.
         val remux = remuxToMp4(srcFile, workDir)
         if (remux != null && (remux.audioMuxed || !remux.sourceHadAudio)) {
-            // Remux complet (vidéo + audio si présent) → parfait, sans perte.
-            Log.i(TAG, "Remux complet: ${remux.file.length()} octets")
+            Log.i(TAG, "Remux complet (galerie-safe): ${remux.file.length()} octets")
             return remux.file
         }
-        // Soit pas de vidéo muxable, soit audio perdu → on transcode.
-        Log.i(TAG, "Remux insuffisant (remux=${remux != null}) → transcodage")
+        // 2) HYBRIDE : la VIDÉO est lisible (H.264/HEVC) mais pas l'AUDIO (AC-3…).
+        //    On COPIE la vidéo (rapide, SANS perte — essentiel pour un match de
+        //    90 min) et on transcode UNIQUEMENT l'audio en AAC. Résultat : haute
+        //    qualité vidéo + son + lu par la galerie.
+        val hybrid = remuxVideoTranscodeAudio(srcFile, workDir)
+        if (hybrid != null) {
+            remux?.file?.delete()
+            Log.i(TAG, "Hybride (vidéo copiée + audio AAC): ${hybrid.length()} octets")
+            return hybrid
+        }
+        // 3) TRANSCODAGE COMPLET : vidéo non copiable (MPEG-2…) ou pas de décodeur
+        //    audio pour l'hybride → ré-encodage universel H.264 + AAC.
+        Log.i(TAG, "Remux/hybride insuffisants → transcodage complet")
         val transcoded = transcodeToMp4(srcFile, workDir)
         if (transcoded != null) {
-            // Le remux partiel (vidéo seule) ne sert plus.
             remux?.file?.delete()
             Log.i(TAG, "Transcodage OK: ${transcoded.length()} octets")
             return transcoded
         }
+        // 4) Dernier recours : vidéo remuxée seule (sans son) — mieux que rien.
         if (remux != null) {
-            // Transcodage impossible mais on a au moins la vidéo
-            // remuxée (sans son) → mieux que le .ts brut.
             Log.w(TAG, "Transcodage indisponible → vidéo remuxée (sans audio)")
             return remux.file
         }
@@ -418,6 +438,19 @@ class GalleryExporter(
                 val isAudio = mime.startsWith("audio/")
                 if (!isVideo && !isAudio) continue
                 if (isAudio) sourceHadAudio = true
+                // GALERIE : on ne COPIE que des codecs que le lecteur du
+                // téléphone décode (H.264/HEVC + AAC). Un audio AC-3/E-AC-3/DTS/
+                // MP2 est valide en MP4 mais la galerie Samsung le refuse
+                // (« vidéo incompatible ! »). On ne le copie donc PAS : produceMp4
+                // basculera sur l'hybride (copie vidéo + audio AAC).
+                if (isAudio && !isGalleryAudio(mime)) {
+                    Log.w(TAG, "remux: audio '$mime' non lisible en galerie → non copié")
+                    continue
+                }
+                if (isVideo && !isGalleryVideo(mime)) {
+                    Log.w(TAG, "remux: vidéo '$mime' non lisible en galerie → non copiée")
+                    continue
+                }
                 try {
                     val muxIndex = muxer.addTrack(format)
                     indexMap[i] = muxIndex
@@ -898,5 +931,285 @@ class GalleryExporter(
             flags = flags or MediaCodec.BUFFER_FLAG_KEY_FRAME
         }
         return flags
+    }
+
+    // ============================================================
+    //  NIVEAU 1.5 : HYBRIDE (copie vidéo + transcodage AUDIO → AAC)
+    // ============================================================
+
+    /**
+     * COPIE la piste vidéo telle quelle (rapide, sans perte) et transcode
+     * UNIQUEMENT l'audio en AAC. C'est le bon compromis quand la vidéo est déjà
+     * lisible par la galerie (H.264/HEVC) mais l'audio ne l'est pas (AC-3,
+     * E-AC-3, MP2…) : on garde la haute qualité vidéo sans ré-encoder 90 min de
+     * match. Retourne le MP4, ou `null` si impossible (vidéo non copiable, ou
+     * pas de décodeur pour l'audio source) → l'appelant retombe sur le
+     * transcodage complet.
+     */
+    private fun remuxVideoTranscodeAudio(srcFile: File, workDir: File): File? {
+        // --- Repérage des pistes ----------------------------------------
+        var videoTrack = -1
+        var audioTrack = -1
+        var videoFormat: MediaFormat? = null
+        var audioFormat: MediaFormat? = null
+        val probe = MediaExtractor()
+        try {
+            probe.setDataSource(srcFile.absolutePath)
+            for (i in 0 until probe.trackCount) {
+                val f = probe.getTrackFormat(i)
+                val m = f.getString(MediaFormat.KEY_MIME) ?: continue
+                if (videoTrack < 0 && m.startsWith("video/")) { videoTrack = i; videoFormat = f }
+                else if (audioTrack < 0 && m.startsWith("audio/")) { audioTrack = i; audioFormat = f }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "hybride: setDataSource échoué: ${e.message}")
+            return null
+        } finally {
+            try { probe.release() } catch (_: Exception) {}
+        }
+        val vFormat = videoFormat ?: return null
+        val aFormat = audioFormat ?: return null // pas d'audio → rien à faire ici
+        val vMime = vFormat.getString(MediaFormat.KEY_MIME) ?: return null
+        // La vidéo doit être COPIABLE (galerie) : sinon transcodage complet.
+        if (!isGalleryVideo(vMime)) return null
+
+        val outFile = File(workDir, "hybrid_${System.currentTimeMillis()}.mp4.tmp")
+        var vExtractor: MediaExtractor? = null
+        var aExtractor: MediaExtractor? = null
+        var aDecoder: MediaCodec? = null
+        var aEncoder: MediaCodec? = null
+        var muxer: MediaMuxer? = null
+        try {
+            val aMime = aFormat.getString(MediaFormat.KEY_MIME)!!
+            val sampleRate = aFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+            val channels = aFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+            val outAudioFormat = MediaFormat.createAudioFormat(
+                MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, channels,
+            ).apply {
+                setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+                setInteger(MediaFormat.KEY_BIT_RATE, 160_000)
+                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 64 * 1024)
+            }
+            aEncoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
+            aEncoder.configure(outAudioFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            aEncoder.start()
+
+            aExtractor = MediaExtractor().apply {
+                setDataSource(srcFile.absolutePath); selectTrack(audioTrack)
+            }
+            // Peut lever si l'appareil n'a pas de décodeur pour l'audio (AC-3
+            // non licencié) → on renverra null → transcodage complet.
+            aDecoder = MediaCodec.createDecoderByType(aMime)
+            aDecoder.configure(aFormat, null, null, 0)
+            aDecoder.start()
+
+            vExtractor = MediaExtractor().apply {
+                setDataSource(srcFile.absolutePath); selectTrack(videoTrack)
+            }
+
+            muxer = MediaMuxer(outFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            val ok = runHybridLoop(vExtractor!!, vFormat, aExtractor!!, aDecoder!!, aEncoder!!, muxer!!)
+            if (!ok) {
+                try { outFile.delete() } catch (_: Exception) {}
+                return null
+            }
+            return outFile
+        } catch (e: Exception) {
+            Log.w(TAG, "hybride échoué (${e.javaClass.simpleName}: ${e.message})")
+            try { outFile.delete() } catch (_: Exception) {}
+            return null
+        } finally {
+            try { aDecoder?.stop() } catch (_: Exception) {}
+            try { aDecoder?.release() } catch (_: Exception) {}
+            try { aEncoder?.stop() } catch (_: Exception) {}
+            try { aEncoder?.release() } catch (_: Exception) {}
+            try { vExtractor?.release() } catch (_: Exception) {}
+            try { aExtractor?.release() } catch (_: Exception) {}
+            try { muxer?.release() } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * Boucle hybride : la vidéo est COPIÉE (extracteur → muxer, aucun
+     * ré-encodage) pendant que l'audio est décodé → ré-encodé en AAC. Le muxer
+     * démarre quand la piste audio AAC a son format (la piste vidéo, elle, est
+     * connue d'emblée). Les échantillons produits avant le démarrage sont mis
+     * en attente. Retourne true si le fichier a bien été finalisé.
+     */
+    private fun runHybridLoop(
+        vExtractor: MediaExtractor,
+        vFormat: MediaFormat,
+        aExtractor: MediaExtractor,
+        aDecoder: MediaCodec,
+        aEncoder: MediaCodec,
+        muxer: MediaMuxer,
+    ): Boolean {
+        val startMs = System.currentTimeMillis()
+
+        var videoDone = false
+        var audioExtractorDone = false
+        var audioDecoderDone = false
+        var audioEncoderDone = false
+
+        // La piste vidéo est ajoutée TOUT DE SUITE (format source connu) ; la
+        // piste audio quand l'encodeur AAC publie son format.
+        val videoMuxTrack = muxer.addTrack(vFormat)
+        var audioMuxTrack = -1
+        val videoFormatReady = true
+        var audioFormatReady = false
+        var muxing = false
+
+        val pendingVideo = ArrayList<PendingSample>()
+        val pendingAudio = ArrayList<PendingSample>()
+        var pendingAudioDecoderOut = -1
+        val audioDecInfo = MediaCodec.BufferInfo()
+        val aEncInfo = MediaCodec.BufferInfo()
+        val vInfo = MediaCodec.BufferInfo()
+
+        var vbuf = ByteBuffer.allocate(
+            if (vFormat.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
+                maxOf(MIN_BUFFER_BYTES, vFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE))
+            } else {
+                MIN_BUFFER_BYTES
+            },
+        )
+
+        fun maybeStartMuxer() {
+            if (!muxing && videoFormatReady && audioFormatReady) {
+                muxer.start()
+                muxing = true
+                for (p in pendingVideo) muxer.writeSampleData(videoMuxTrack, ByteBuffer.wrap(p.data), p.info)
+                for (p in pendingAudio) muxer.writeSampleData(audioMuxTrack, ByteBuffer.wrap(p.data), p.info)
+                pendingVideo.clear()
+                pendingAudio.clear()
+            }
+        }
+
+        fun writeOrBuffer(track: Int, list: ArrayList<PendingSample>, buf: ByteBuffer, info: MediaCodec.BufferInfo) {
+            if (muxing) {
+                muxer.writeSampleData(track, buf, info)
+            } else {
+                val copy = ByteArray(info.size)
+                buf.position(info.offset)
+                buf.get(copy, 0, info.size)
+                val ic = MediaCodec.BufferInfo()
+                ic.set(0, info.size, info.presentationTimeUs, info.flags)
+                list.add(PendingSample(copy, ic))
+            }
+        }
+
+        while (!videoDone || !audioEncoderDone) {
+            if (System.currentTimeMillis() - startMs > TRANSCODE_MAX_MS) {
+                Log.w(TAG, "hybride: dépassement du budget temps → abandon")
+                return false
+            }
+
+            // ---- 1. Vidéo : COPIE extracteur → muxer -------------------
+            // On ne copie QU'UNE FOIS le muxer démarré (piste audio AAC prête) :
+            // sinon, la vidéo (pure E/S, très rapide) prendrait de l'avance et
+            // mettrait TOUT le match en RAM en attendant l'audio → OOM. Le format
+            // AAC arrive dès les premières trames audio, donc l'attente est
+            // minime. (Aucun échantillon vidéo n'est mis en attente : writeOrBuffer
+            // écrit directement puisque muxing == true ici.)
+            if (!videoDone && muxing) {
+                var size: Int
+                while (true) {
+                    try {
+                        size = vExtractor.readSampleData(vbuf, 0)
+                        break
+                    } catch (e: IllegalArgumentException) {
+                        vbuf = ByteBuffer.allocate(vbuf.capacity() * 2)
+                    }
+                }
+                if (size < 0) {
+                    videoDone = true
+                } else {
+                    vInfo.offset = 0
+                    vInfo.size = size
+                    vInfo.presentationTimeUs = vExtractor.sampleTime
+                    vInfo.flags = sampleFlagsToBufferFlags(vExtractor.sampleFlags)
+                    writeOrBuffer(videoMuxTrack, pendingVideo, vbuf, vInfo)
+                    vExtractor.advance()
+                }
+            }
+
+            // ---- 2. Audio : extracteur → décodeur ----------------------
+            if (!audioExtractorDone) {
+                val inIdx = aDecoder.dequeueInputBuffer(CODEC_TIMEOUT_US)
+                if (inIdx >= 0) {
+                    val buf = aDecoder.getInputBuffer(inIdx)!!
+                    val size = aExtractor.readSampleData(buf, 0)
+                    if (size < 0) {
+                        aDecoder.queueInputBuffer(inIdx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                        audioExtractorDone = true
+                    } else {
+                        aDecoder.queueInputBuffer(inIdx, 0, size, aExtractor.sampleTime, 0)
+                        aExtractor.advance()
+                    }
+                }
+            }
+
+            // ---- 3. Audio : décodeur (PCM) → encodeur AAC --------------
+            if (!audioDecoderDone) {
+                if (pendingAudioDecoderOut < 0) {
+                    val o = aDecoder.dequeueOutputBuffer(audioDecInfo, CODEC_TIMEOUT_US)
+                    if (o >= 0) pendingAudioDecoderOut = o
+                }
+                if (pendingAudioDecoderOut >= 0) {
+                    val inIdx = aEncoder.dequeueInputBuffer(CODEC_TIMEOUT_US)
+                    if (inIdx >= 0) {
+                        val eos = (audioDecInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
+                        val pcm = aDecoder.getOutputBuffer(pendingAudioDecoderOut)!!
+                        val encIn = aEncoder.getInputBuffer(inIdx)!!
+                        encIn.clear()
+                        if (audioDecInfo.size > 0) {
+                            pcm.position(audioDecInfo.offset)
+                            pcm.limit(audioDecInfo.offset + audioDecInfo.size)
+                            encIn.put(pcm)
+                        }
+                        aEncoder.queueInputBuffer(
+                            inIdx, 0, audioDecInfo.size, audioDecInfo.presentationTimeUs,
+                            if (eos) MediaCodec.BUFFER_FLAG_END_OF_STREAM else 0,
+                        )
+                        aDecoder.releaseOutputBuffer(pendingAudioDecoderOut, false)
+                        pendingAudioDecoderOut = -1
+                        if (eos) audioDecoderDone = true
+                    }
+                }
+            }
+
+            // ---- 4. Audio : encodeur AAC → muxer -----------------------
+            if (!audioEncoderDone) {
+                val outIdx = aEncoder.dequeueOutputBuffer(aEncInfo, CODEC_TIMEOUT_US)
+                if (outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                    audioMuxTrack = muxer.addTrack(aEncoder.outputFormat)
+                    audioFormatReady = true
+                    maybeStartMuxer()
+                } else if (outIdx >= 0) {
+                    val encBuf = aEncoder.getOutputBuffer(outIdx)!!
+                    if ((aEncInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                        aEncInfo.size = 0
+                    }
+                    if (aEncInfo.size > 0 && audioMuxTrack >= 0) {
+                        writeOrBuffer(audioMuxTrack, pendingAudio, encBuf, aEncInfo)
+                    }
+                    val eos = (aEncInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
+                    aEncoder.releaseOutputBuffer(outIdx, false)
+                    if (eos) audioEncoderDone = true
+                }
+            }
+        }
+
+        if (!muxing) {
+            Log.w(TAG, "hybride: muxer jamais démarré (audio AAC sans format)")
+            return false
+        }
+        try {
+            muxer.stop()
+        } catch (e: Exception) {
+            Log.w(TAG, "hybride: muxer.stop() a levé: ${e.message}")
+            return false
+        }
+        return true
     }
 }
