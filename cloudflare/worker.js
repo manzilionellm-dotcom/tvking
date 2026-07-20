@@ -3761,6 +3761,35 @@ async function handleInviteRedeem(request, env) {
 }
 
 /// GET /api/family/info/:mac → vue famille (propriétaire OU membre).
+/// RÉFÉRENCE OPAQUE d'un membre : hash stable et NON réversible de sa MAC.
+/// Sert à identifier un membre dans l'app (renommer / retirer) SANS jamais
+/// exposer sa vraie MAC hors du panel — le « registre » famille (MAC en clair)
+/// reste réservé au panel admin. Déterministe : même MAC → même référence.
+export async function familyMemberRef(memberMac) {
+  const data = new TextEncoder().encode('fam:' + String(memberMac).toUpperCase());
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return 'm_' + hex.slice(0, 16);
+}
+
+/// Résout un membre passé par l'app : soit une vraie MAC (compat ascendante),
+/// soit une référence opaque `m_…`. Renvoie la MAC réelle du membre (résolue
+/// en scannant les membres du propriétaire), ou null si aucune correspondance.
+async function resolveFamilyMember(env, ownerMac, memberOrRef) {
+  const s = String(memberOrRef || '').trim();
+  if (!s) return null;
+  if (MAC_RX.test(s.toUpperCase())) return s.toUpperCase(); // ancienne app : MAC directe
+  const rows = await env.DB
+    .prepare('SELECT member_mac FROM app_family_links WHERE owner_mac = ?')
+    .bind(ownerMac).all();
+  for (const r of (rows && rows.results) || []) {
+    if ((await familyMemberRef(r.member_mac)) === s) {
+      return String(r.member_mac).toUpperCase();
+    }
+  }
+  return null;
+}
+
 async function handleFamilyInfo(env, rawMac) {
   const mac = String(rawMac || '').toUpperCase();
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
@@ -3775,11 +3804,19 @@ async function handleFamilyInfo(env, rawMac) {
   const rows = await env.DB
     .prepare('SELECT member_mac, label, created_at FROM app_family_links WHERE owner_mac = ? ORDER BY created_at ASC')
     .bind(mac).all();
-  const members = ((rows && rows.results) || []).map((r) => ({
-    mac: r.member_mac, // le propriétaire voit SES appareils en clair
-    label: r.label || null, // « Papa », « Maman »… (nommé dans l'app)
-    since: r.created_at,
-  }));
+  // CONFIDENTIALITÉ : hors panel, on ne sort PAS les MAC des membres en clair.
+  // L'app reçoit une référence opaque (`ref`, pour renommer/retirer) + la MAC
+  // MASQUÉE (affichage). Le registre complet (MAC en clair) ne vit QUE dans le
+  // panel admin (/admin/clients/:mac, authentifié).
+  const members = [];
+  for (const r of ((rows && rows.results) || [])) {
+    members.push({
+      ref: await familyMemberRef(r.member_mac),
+      mac: maskMac(r.member_mac), // masquée : « MK:••:••:…:5E »
+      label: r.label || null, // « Papa », « Maman »… (nommé dans l'app)
+      since: r.created_at,
+    });
+  }
   const codeRow = await env.DB
     .prepare('SELECT code, expires_at FROM app_family_codes WHERE owner_mac = ? AND expires_at > ?')
     .bind(mac, Date.now()).first();
@@ -3806,10 +3843,13 @@ async function handleFamilyRename(request, env) {
     return familyUnavailable();
   }
   const label = String(body?.label || '').trim().slice(0, 24);
+  // `member` peut être une MAC (ancienne app) ou une référence opaque `m_…`.
+  const memberMac = await resolveFamilyMember(env, mac, member);
+  if (!memberMac) return json({ ok: false, error: 'member_not_found' });
   // Seul le propriétaire du lien peut nommer (WHERE owner_mac = mac).
   await env.DB
     .prepare('UPDATE app_family_links SET label = ? WHERE member_mac = ? AND owner_mac = ?')
-    .bind(label.length > 0 ? label : null, member, mac).run();
+    .bind(label.length > 0 ? label : null, memberMac, mac).run();
   return json({ ok: true });
 }
 
@@ -3823,12 +3863,15 @@ async function handleFamilyRemove(request, env) {
   if (!env.DB || !(await ensureFamilySchema(env))) {
     return familyUnavailable();
   }
-  const member = String(body?.member || '').toUpperCase();
+  const member = String(body?.member || '').trim();
   if (member) {
+    // `member` = MAC (ancienne app) ou référence opaque `m_…`.
+    const memberMac = await resolveFamilyMember(env, mac, member);
+    if (!memberMac) return json({ ok: false, error: 'member_not_found' });
     // Détachement par le PROPRIÉTAIRE uniquement (le lien doit lui appartenir).
     await env.DB
       .prepare('DELETE FROM app_family_links WHERE member_mac = ? AND owner_mac = ?')
-      .bind(member, mac).run();
+      .bind(memberMac, mac).run();
   } else {
     await env.DB
       .prepare('DELETE FROM app_family_links WHERE member_mac = ?')
