@@ -159,7 +159,7 @@ class _GuestScreenState extends State<GuestScreen> {
                 const SizedBox(height: 18),
 
                 // 1) J'ai un code
-                _RedeemCard(mac: _mac, onRedeemed: _refreshPass),
+                _RedeemCard(mac: _mac, onRedeemed: _refresh),
                 const SizedBox(height: 16),
 
                 // 2) Envoyer ma MAC à celui qui m'invite
@@ -702,7 +702,7 @@ class _InviteCardState extends State<_InviteCard> {
       if (r == null) {
         _message = 'Connexion impossible. Réessaie.';
       } else if (r['ok'] == true) {
-        _message = 'Prêté ! Ton ami a ${_lendHours} h. Toi, tu es en pause — '
+        _message = 'Prêté ! Ton ami a $_lendHours h. Toi, tu es en pause — '
             'ça te revient tout seul à la fin (ou reprends quand tu veux).';
       } else {
         _message = _errText((r['error'] ?? '').toString());
