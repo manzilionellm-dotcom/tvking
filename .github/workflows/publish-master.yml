@@ -1,0 +1,60 @@
+# ============================================================================
+#  publish-master.yml — Publie l'APK CONSOLE MAÎTRE d'un run build-android
+#  comme release « master-console » à lien direct (rien qu'à toi).
+#
+#  À N'UTILISER QU'AVEC un run build-android déclenché MANUELLEMENT avec
+#  l'option master_console=true (sinon l'APK est l'app cliente normale).
+#
+#  Étapes :
+#    1. Actions → Build Android APK → « Run workflow » → master_console = true
+#    2. Une fois vert, copier l'ID du run
+#    3. Actions → Publish Master console APK → coller le run_id
+#    → lien : https://github.com/<repo>/releases/download/master-console/7motion-master.apk
+#
+#  GARDE-FOUS : PRÉRELEASE (jamais « latest »/prod), aucun version.json →
+#  l'updater in-app ne la voit pas, déclenchement MANUEL, tag écrasé à chaque
+#  publication. Le POUVOIR reste verrouillé serveur sur les MAC « maître ».
+# ============================================================================
+name: Publish Master console APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'ID du run build-android (lancé avec master_console=true) dont on publie l''APK'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # créer/écraser la release master-console
+  actions: read     # télécharger l'artefact du run build-android
+
+jobs:
+  publish:
+    name: Release master-console (lien direct)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Télécharger l'APK du run build-android
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tvking-release-apk-*
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          merge-multiple: true
+
+      - name: Publier la release master-console (écrase la précédente)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          ls -la
+          mv 7motion.apk 7motion-master.apk
+          # Tag recréé à chaque publication : UNE seule console de test à la fois.
+          gh release delete master-console -R "$GITHUB_REPOSITORY" -y --cleanup-tag || true
+          gh release create master-console -R "$GITHUB_REPOSITORY" \
+            --prerelease \
+            --title "7 MOTION — Console maître (privé, ne pas diffuser)" \
+            --notes "APK console maître (run ${{ inputs.run_id }}). S'ouvre directement sur le générateur de tests. Le pouvoir reste verrouillé sur les MAC déclarées maître dans le panel. Lien direct : https://github.com/$GITHUB_REPOSITORY/releases/download/master-console/7motion-master.apk" \
+            7motion-master.apk
+          echo "✓ https://github.com/$GITHUB_REPOSITORY/releases/download/master-console/7motion-master.apk"
