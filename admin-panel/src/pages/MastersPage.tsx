@@ -3,7 +3,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { MacLink } from '@/components/MacLink';
 import {
   mastersApi, ApiError,
-  type MasterRow, type MasterCategory, type MasterChannel,
+  type MasterRow, type MasterCategory, type MasterChannel, type MasterDiag,
 } from '@/lib/api';
 import { formatMacInput } from '@/lib/utils';
 
@@ -343,6 +343,92 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
   );
 }
 
+// =========================================================
+//  BOÎTE NOIRE — DIAGNOSTIC (par maître)
+// =========================================================
+//  Lance des contrôles ACTIFS côté serveur (façade en ligne ?, liste servie ?,
+//  1re chaîne jouable ?) et affiche un verdict + un score + un conseil de
+//  réparation par ligne. L'outil « qui détecte le problème n'importe quand ».
+const LVL_COLOR = ['var(--diag-ok)', 'var(--diag-warn)', 'var(--diag-bad)'];
+function DiagPanel({ mac, onLogout }: { mac: string; onLogout: () => void }) {
+  const [diag, setDiag] = useState<MasterDiag | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function run() {
+    setErr(null); setBusy(true);
+    try {
+      setDiag(await mastersApi.diag(mac));
+    } catch (e: any) {
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      setErr(e instanceof ApiError ? e.message : 'Diagnostic impossible.');
+    } finally { setBusy(false); }
+  }
+
+  useEffect(() => { run(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [mac]);
+
+  const vColor = diag
+    ? (diag.verdict === 'green' ? 'var(--diag-ok)' : diag.verdict === 'red' ? 'var(--diag-bad)' : 'var(--diag-warn)')
+    : 'var(--diag-warn)';
+  const icon = (lvl: number) => (lvl === 0 ? '✓' : lvl === 2 ? '✕' : '!');
+
+  return (
+    <div
+      className="space-y-3 border-t border-white/5 bg-slate/40 px-4 py-4"
+      style={{ ['--diag-ok' as any]: '#3FBE7C', ['--diag-warn' as any]: '#E0A83C', ['--diag-bad' as any]: '#E5484D' }}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold">🛰️ Boîte noire — diagnostic</span>
+          {diag && (
+            <span
+              className="rounded-full px-2 py-0.5 text-[11px] font-bold"
+              style={{ color: vColor, background: `color-mix(in srgb, ${vColor} 16%, transparent)`, border: `1px solid ${vColor}` }}
+            >
+              {diag.score}%
+            </span>
+          )}
+        </div>
+        <button
+          onClick={run}
+          disabled={busy}
+          className="rounded-md border border-white/10 px-3 py-1 text-xs text-ink-secondary transition hover:border-accent/40 hover:text-accent-bright disabled:opacity-50"
+        >
+          {busy ? 'Analyse…' : 'Relancer'}
+        </button>
+      </div>
+
+      {err && <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>}
+
+      {busy && !diag && (
+        <div className="text-xs text-ink-tertiary">Contrôles actifs en cours (façade, liste, chaîne)…</div>
+      )}
+
+      {diag && (
+        <ul className="space-y-2">
+          {diag.checks.map((c) => (
+            <li key={c.key} className="flex items-start gap-2.5">
+              <span
+                className="mt-0.5 grid h-5 w-5 flex-none place-items-center rounded-full text-[11px] font-black"
+                style={{ color: LVL_COLOR[c.level], background: `color-mix(in srgb, ${LVL_COLOR[c.level]} 16%, transparent)` }}
+              >
+                {icon(c.level)}
+              </span>
+              <div>
+                <div className="text-[13px] font-semibold text-ink-primary">{c.label}</div>
+                {c.detail && <div className="text-[12px] text-ink-secondary">{c.detail}</div>}
+                {c.fix && c.level !== 0 && (
+                  <div className="text-[12px] font-medium" style={{ color: LVL_COLOR[c.level] }}>→ {c.fix}</div>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function MastersPage({ onLogout }: { onLogout: () => void }) {
   const [rows, setRows] = useState<MasterRow[]>([]);
   const [mac, setMac] = useState('');
@@ -351,6 +437,7 @@ export function MastersPage({ onLogout }: { onLogout: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [openList, setOpenList] = useState<string | null>(null);
+  const [openDiag, setOpenDiag] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -482,7 +569,7 @@ export function MastersPage({ onLogout }: { onLogout: () => void }) {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
-                          onClick={() => setOpenList(openList === r.mac ? null : r.mac)}
+                          onClick={() => { setOpenList(openList === r.mac ? null : r.mac); setOpenDiag(null); }}
                           className={`rounded-md border px-3 py-1 text-xs transition ${
                             openList === r.mac
                               ? 'border-accent/40 text-accent-bright'
@@ -490,6 +577,16 @@ export function MastersPage({ onLogout }: { onLogout: () => void }) {
                           }`}
                         >
                           Liste de test
+                        </button>
+                        <button
+                          onClick={() => { setOpenDiag(openDiag === r.mac ? null : r.mac); setOpenList(null); }}
+                          className={`rounded-md border px-3 py-1 text-xs transition ${
+                            openDiag === r.mac
+                              ? 'border-accent/40 text-accent-bright'
+                              : 'border-white/10 text-ink-secondary hover:border-accent/40 hover:text-accent-bright'
+                          }`}
+                        >
+                          Diagnostic
                         </button>
                         <button
                           onClick={() => remove(r.mac)}
@@ -504,6 +601,13 @@ export function MastersPage({ onLogout }: { onLogout: () => void }) {
                     <tr>
                       <td colSpan={3} className="p-0">
                         <TestListEditor mac={r.mac} onLogout={onLogout} />
+                      </td>
+                    </tr>
+                  )}
+                  {openDiag === r.mac && (
+                    <tr>
+                      <td colSpan={3} className="p-0">
+                        <DiagPanel mac={r.mac} onLogout={onLogout} />
                       </td>
                     </tr>
                   )}

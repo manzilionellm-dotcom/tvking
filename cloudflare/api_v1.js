@@ -1147,6 +1147,11 @@ async function apiV1Inner(request, env) {
       if (request.method === 'GET' || request.method === 'POST') return handleMasterChannels(request, env);
       return errResp('method_not_allowed', 'GET or POST', 405);
     }
+    // /masters/diag — BOÎTE NOIRE : contrôles actifs (façade, chaîne jouable…).
+    if (parts.length === 2 && parts[1] === 'diag') {
+      if (request.method === 'GET') return handleMasterDiag(request, env);
+      return errResp('method_not_allowed', 'Only GET', 405);
+    }
     return errResp('method_not_allowed', 'unsupported', 405);
   }
 
@@ -3459,6 +3464,7 @@ async function _copyM3u(src, gatewayBase = '') {
   const text = await res.text();
   const lines = text.split(/\r?\n/);
   const groups = new Map();
+  const seen = new Set(); // dédoublonnage par URL (qualité VIP : pas de doublon)
   let truncated = false;
   let total = 0;
   let pending = null;
@@ -3471,6 +3477,8 @@ async function _copyM3u(src, gatewayBase = '') {
       pending = { group, logo, name };
     } else if (line && !line.startsWith('#') && pending) {
       if (total >= _COPY_MAX_CHANNELS) { truncated = true; break; }
+      if (seen.has(line)) { pending = null; continue; } // doublon → ignoré
+      seen.add(line);
       total++;
       const catId = pending.group;
       if (!groups.has(catId)) groups.set(catId, { id: catId, name: catId, channels: [] });
@@ -3540,6 +3548,92 @@ async function handleMasterChannels(request, env) {
   } catch (e) {
     return errResp('copy_failed', 'Impossible de lire les chaînes : ' + String((e && e.message) || e), 502);
   }
+}
+
+// =========================================================
+//  BOÎTE NOIRE — DIAGNOSTIC (côté panel, authentifié)
+// =========================================================
+//  Même esprit que le diagnostic de l'app, mais lu depuis le panel : teste
+//  ACTIVEMENT la façade et la 1re chaîne de la liste de test. Chaque contrôle
+//  = { key, level (0/1/2), label, detail, fix }. Aucune donnée sensible (mot de
+//  passe, URL avec identifiants) n'est renvoyée — seulement statut + latence.
+
+/// Sonde une URL sans télécharger le flux (2 octets, puis annule le corps).
+async function _probeUrl(url, ms = 5000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  const t0 = Date.now();
+  try {
+    const res = await fetch(url, { method: 'GET', headers: { Range: 'bytes=0-1' }, signal: ctrl.signal, redirect: 'follow' });
+    try { if (res.body) await res.body.cancel(); } catch (_) { /* */ }
+    return { ok: res.status >= 200 && res.status < 400, status: res.status, ms: Date.now() - t0 };
+  } catch (e) {
+    return { ok: false, status: 0, ms: Date.now() - t0, error: String((e && e.message) || e) };
+  } finally { clearTimeout(t); }
+}
+
+// GET /masters/diag?mac= → boîte noire du maître (contrôles actifs).
+async function handleMasterDiag(request, env) {
+  const url = new URL(request.url);
+  const mac = String(url.searchParams.get('mac') || '').toUpperCase();
+  if (!_MASTER_MAC_RX.test(mac)) return errResp('bad_mac', 'MAC maître invalide.', 400);
+
+  const checks = [];
+  const add = (key, level, label, detail, fix) => checks.push({ key, level, label, detail, fix: fix || '' });
+
+  // 1) Compte maître présent ?
+  await ensureMastersTable(env);
+  const mrow = await env.DB.prepare('SELECT 1 AS x FROM app_masters WHERE mac = ?').bind(mac).first();
+  add('master', mrow ? 0 : 2, 'Compte maître reconnu',
+    mrow ? 'Cette MAC est bien un compte maître.' : 'Cette MAC n’est pas dans les comptes maîtres.',
+    mrow ? '' : 'Ajoute-la ci-dessus.');
+
+  // 2) Source assignée ?
+  const src = await _readFirstSource(env, mac);
+  let sHost = '';
+  if (src) { try { sHost = new URL(String(src.server_url || src.m3u_url || '')).host; } catch (_) { /* */ } }
+  add('source', src ? 0 : 1, 'Source (ligne) assignée',
+    src ? `Type ${src.type || '?'}${sHost ? ' · ' + sHost : ''}.` : 'Aucune ligne assignée à ce maître.',
+    src ? '' : 'Assigne une ligne, ou colle un lien dans « Liste de test ».');
+
+  // 3) Façade en ligne ?
+  const gw = await _readGatewayBase(env, mac);
+  if (gw) {
+    const p = await _probeUrl(gw, 5000);
+    add('gateway', p.ok ? 0 : 1, 'Façade (gateway) en ligne',
+      p.ok ? `Ta façade répond (${p.ms} ms).` : `Façade injoignable (${p.error || p.status}).`,
+      p.ok ? '' : 'Vérifie que ton gateway tourne et que l’URL est exacte.');
+  } else {
+    add('gateway', 1, 'Façade (gateway)',
+      'Aucune façade réglée → lecture directe (moins stable/privée).',
+      'Renseigne « Ta façade (gateway) » ci-dessus.');
+  }
+
+  // 4) Liste de test + 5) sonde 1re chaîne.
+  await ensureMasterListTable(env);
+  const lrow = await env.DB.prepare('SELECT m3u FROM master_test_list WHERE mac = ?').bind(mac).first();
+  const m3u = (lrow && lrow.m3u) ? String(lrow.m3u) : '';
+  const count = _countM3uChannels(m3u);
+  add('testlist', count > 0 ? (count <= 5 ? 0 : 1) : 1, 'Liste de test indépendante',
+    count > 0 ? `${count} chaîne(s) partagée(s)${count > 5 ? ' — vise moins de 5' : ''}.`
+              : 'Aucune liste curée — le test ouvre tout le bouquet.',
+    count > 0 ? '' : 'Copie tes chaînes et coche 3-5 chaînes.');
+
+  if (count > 0) {
+    const firstUrl = (m3u.split(/\r?\n/).find((l) => l.trim() && !l.startsWith('#')) || '').trim();
+    if (firstUrl) {
+      const cp = await _probeUrl(firstUrl, 6000);
+      add('channel_probe', cp.ok ? 0 : 2, 'Chaîne de test jouable',
+        cp.ok ? `1re chaîne répond (${cp.status}, ${cp.ms} ms).` : `1re chaîne injoignable (${cp.error || cp.status}).`,
+        cp.ok ? '' : 'Vérifie la façade et la ligne fournisseur.');
+    }
+  }
+
+  const worst = checks.reduce((m, c) => Math.max(m, c.level), 0);
+  const oks = checks.filter((c) => c.level === 0).length;
+  const score = Math.round((oks / checks.length) * 100);
+  const verdict = worst === 0 ? 'green' : (worst === 2 ? 'red' : 'amber');
+  return jsonResp({ mac, verdict, score, checks, generated_at: Date.now() });
 }
 
 // =========================================================

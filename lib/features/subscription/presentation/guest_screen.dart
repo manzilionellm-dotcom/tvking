@@ -475,7 +475,10 @@ class _BlackBoxState extends State<_BlackBox> {
   Future<void> _scan() async {
     if (_busy || widget.mac.isEmpty) return;
     setState(() => _busy = true);
-    final Map<String, dynamic>? r = await InviteBackend.selftest(widget.mac);
+    // Diagnostic ACTIF (façade, liste servie, chaîne jouable) ; repli sur le
+    // selftest si le diag ne répond pas (réseau lent / vieux backend).
+    Map<String, dynamic>? r = await InviteBackend.diag(widget.mac);
+    r ??= await InviteBackend.selftest(widget.mac);
     if (!mounted) return;
     setState(() {
       _busy = false;
@@ -484,75 +487,20 @@ class _BlackBoxState extends State<_BlackBox> {
     });
   }
 
-  /// Statut d'une ligne : 0 = ok (vert), 1 = à vérifier (ambre), 2 = KO (rouge).
-  ({int level, String label, String detail}) _row(String key) {
+  /// Contrôles renvoyés par le diagnostic serveur (déjà prêts à afficher).
+  List<({int level, String label, String detail, String fix})> get _checks {
     final Map<String, dynamic>? d = _data;
-    switch (key) {
-      case 'backend':
-        final bool ok = d != null && d['ok'] == true;
-        return (
-          level: ok ? 0 : 2,
-          label: 'Serveur joignable',
-          detail: ok ? 'Backend en ligne.' : 'Pas de réponse du backend.',
-        );
-      case 'master':
-        final bool ok = d != null && d['master'] == true;
-        return (
-          level: ok ? 0 : 2,
-          label: 'MAC maître reconnue',
-          detail: ok
-              ? 'Cet appareil peut envoyer des tests illimités.'
-              : 'Ajoute cette MAC dans le panel (Comptes maîtres).',
-        );
-      case 'source':
-        final Map<String, dynamic>? s =
-            d != null && d['source'] is Map ? (d['source'] as Map).cast<String, dynamic>() : null;
-        final bool present = s != null && s['present'] == true;
-        return (
-          level: present ? 0 : 1,
-          label: 'Source active',
-          detail: present
-              ? '${s['count'] ?? 1} source(s) · ${s['origin'] ?? 'panel'}'
-              : 'Aucune source assignée à cet appareil.',
-        );
-      case 'testlist':
-        final Map<String, dynamic>? t =
-            d != null && d['test_list'] is Map ? (d['test_list'] as Map).cast<String, dynamic>() : null;
-        final bool present = t != null && t['present'] == true;
-        final int count = t != null ? (t['count'] as num? ?? 0).toInt() : 0;
-        return (
-          // Vert : liste curée → fournisseur voit UNE connexion mutualisée.
-          // Ambre : pas de liste → test = tout le bouquet (chaînes ≠ = lignes ≠).
-          level: present ? 0 : 1,
-          label: 'Liste de test indépendante',
-          detail: present
-              ? '$count chaîne(s) partagée(s) · le fournisseur ne voit qu’une connexion.'
-              : 'Aucune liste curée — le test ouvre tout le bouquet. Configure-la dans le panel.',
-        );
-      case 'relay':
-        final Map<String, dynamic>? s =
-            d != null && d['source'] is Map ? (d['source'] as Map).cast<String, dynamic>() : null;
-        final String host = (s?['host'] ?? '').toString();
-        if (host.isEmpty) {
-          return (
-            level: 1,
-            label: 'Fournisseur ne voit qu’une IP',
-            detail: 'Hôte inconnu — impossible de confirmer le routage.',
-          );
-        }
-        // Un domaine (avec des lettres) = façade gateway → une seule IP de
-        // sortie. Une IP brute (chiffres/points) = risque de sortie directe.
-        final bool isDomain = RegExp(r'[a-zA-Z]').hasMatch(host);
-        return (
-          level: isDomain ? 0 : 1,
-          label: 'Fournisseur ne voit qu’une IP',
-          detail: isDomain
-              ? 'Sortie via $host (relais) → le fournisseur ne voit que cette IP.'
-              : 'Source directe ($host) — vérifie que c’est bien ton gateway.',
-        );
-      default:
-        return (level: 0, label: '', detail: '');
-    }
+    final List<dynamic> raw =
+        d != null && d['checks'] is List ? d['checks'] as List<dynamic> : const <dynamic>[];
+    return raw.whereType<Map<dynamic, dynamic>>().map((Map<dynamic, dynamic> m) {
+      final Map<String, dynamic> mm = m.cast<String, dynamic>();
+      return (
+        level: (mm['level'] as num? ?? 0).toInt(),
+        label: (mm['label'] ?? '').toString(),
+        detail: (mm['detail'] ?? '').toString(),
+        fix: (mm['fix'] ?? '').toString(),
+      );
+    }).toList();
   }
 
   @override
@@ -563,21 +511,20 @@ class _BlackBoxState extends State<_BlackBox> {
       'La liste des maîtres vit uniquement dans le panel.',
       'Chaque test est coupé automatiquement à l’échéance.',
     ];
-    final List<({int level, String label, String detail})> rows = _done
-        ? <({int level, String label, String detail})>[
-            _row('backend'),
-            _row('master'),
-            _row('source'),
-            _row('testlist'),
-            _row('relay'),
-          ]
-        : const <({int level, String label, String detail})>[];
-    // Verdict global : tout vert = sécurité pleine.
-    final bool allGreen = _done && rows.every((r) => r.level == 0);
-    final int worst = rows.isEmpty ? 1 : rows.map((r) => r.level).reduce((a, b) => a > b ? a : b);
+    final List<({int level, String label, String detail, String fix})> rows = _checks;
+    // Verdict serveur si présent, sinon calculé depuis les lignes.
+    final String verdict = (_data?['verdict'] ?? '').toString();
+    final int score = (_data?['score'] as num? ?? 0).toInt();
+    final int worst = rows.isEmpty
+        ? (_done ? 2 : 1)
+        : rows.map((r) => r.level).reduce((a, b) => a > b ? a : b);
+    final bool allGreen =
+        _done && (verdict == 'green' || (rows.isNotEmpty && worst == 0));
     final Color headColor = !_done
         ? AppColors.textSecondary
-        : (worst == 0 ? AppColors.success : (worst == 2 ? AppColors.accent : AppColors.warning));
+        : (allGreen
+            ? AppColors.success
+            : (verdict == 'red' || worst == 2 ? AppColors.accent : AppColors.warning));
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -595,11 +542,28 @@ class _BlackBoxState extends State<_BlackBox> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Boîte noire — sécurité',
+                  'Boîte noire — diagnostic',
                   style: AppTextStyles.headlineMedium
                       .copyWith(fontSize: 16, fontWeight: FontWeight.w800),
                 ),
               ),
+              // Pastille de score (0–100 %) quand le diag a répondu.
+              if (_done && rows.isNotEmpty) ...<Widget>[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: headColor.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: headColor.withValues(alpha: 0.4)),
+                  ),
+                  child: Text(
+                    '$score%',
+                    style: AppTextStyles.labelSmall.copyWith(
+                      fontSize: 12, color: headColor, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
               if (_busy)
                 const SizedBox(
                   width: 16, height: 16,
@@ -620,10 +584,12 @@ class _BlackBoxState extends State<_BlackBox> {
           const SizedBox(height: 4),
           Text(
             !_done
-                ? 'Analyse en cours…'
-                : (allGreen
-                    ? 'Sécurité pleine ✓ — le fournisseur ne voit qu’une IP.'
-                    : 'À vérifier — voir les points ambre/rouge ci-dessous.'),
+                ? 'Analyse active en cours… (façade, liste, chaîne)'
+                : (rows.isEmpty
+                    ? 'Backend injoignable — réessaie dans un instant.'
+                    : (allGreen
+                        ? 'Tout est vert ✓ — copie VIP, fournisseur aveugle.'
+                        : 'À corriger — suis les conseils sous les points ambre/rouge.')),
             style: AppTextStyles.bodyMedium.copyWith(
               fontSize: 12.5,
               color: headColor,
@@ -632,11 +598,7 @@ class _BlackBoxState extends State<_BlackBox> {
           ),
           const SizedBox(height: 12),
           for (final r in rows) ...<Widget>[
-            _line(
-              level: r.level,
-              label: r.label,
-              detail: r.detail,
-            ),
+            _line(level: r.level, label: r.label, detail: r.detail, fix: r.fix),
             const SizedBox(height: 8),
           ],
           if (_done) ...<Widget>[
@@ -653,6 +615,7 @@ class _BlackBoxState extends State<_BlackBox> {
     required int level,
     required String label,
     String? detail,
+    String? fix,
     bool dim = false,
   }) {
     final Color c = level == 0
@@ -678,11 +641,21 @@ class _BlackBoxState extends State<_BlackBox> {
                   fontWeight: dim ? FontWeight.w500 : FontWeight.w700,
                 ),
               ),
-              if (detail != null)
+              if (detail != null && detail.isNotEmpty)
                 Text(
                   detail,
                   style: AppTextStyles.labelSmall
                       .copyWith(fontSize: 11, color: AppColors.textSecondary),
+                ),
+              // Conseil de réparation : seulement si la ligne n'est pas verte.
+              if (fix != null && fix.isNotEmpty && level != 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    '→ $fix',
+                    style: AppTextStyles.labelSmall.copyWith(
+                      fontSize: 11, color: c, fontWeight: FontWeight.w600),
+                  ),
                 ),
             ],
           ),

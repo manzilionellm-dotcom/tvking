@@ -1007,7 +1007,24 @@ export const mastersApi = {
           body: { mac, paste: (paste || '').trim(), gateway_base: (gatewayBase || '').trim() },
         })
       : request<MasterChannelsResp>(`/api/v1/masters/channels?mac=${encodeURIComponent(mac)}`),
+  // BOÎTE NOIRE : diagnostic actif (façade en ligne, chaîne jouable…).
+  diag: (mac: string) =>
+    request<MasterDiag>(`/api/v1/masters/diag?mac=${encodeURIComponent(mac)}`),
 };
+export interface MasterDiagCheck {
+  key: string;
+  level: number; // 0 ok · 1 à vérifier · 2 KO
+  label: string;
+  detail: string;
+  fix: string;
+}
+export interface MasterDiag {
+  mac: string;
+  verdict: 'green' | 'amber' | 'red';
+  score: number;
+  checks: MasterDiagCheck[];
+  generated_at: number;
+}
 export interface MasterChannelsResp {
   mac: string;
   type: string;

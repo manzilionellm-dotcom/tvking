@@ -3589,6 +3589,161 @@ async function handleInviteSelftest(env, rawMac) {
   return jsonPrivate({ ok: true, master, source, active_test: activeTest, test_list: testList });
 }
 
+// =========================================================
+//  BOÎTE NOIRE — DIAGNOSTIC PUISSANT (détecte tout, à tout moment)
+// =========================================================
+//  Contrairement au selftest (faits statiques), le diagnostic TESTE
+//  ACTIVEMENT la chaîne complète :
+//   • compte maître reconnu ?         • source assignée ?
+//   • façade (gateway) EN LIGNE ?     • liste réellement SERVIE ?
+//   • 1re chaîne JOUABLE (sonde) ?    • fournisseur ne voit qu'une IP ?
+//  Chaque contrôle a un niveau (0 vert / 1 ambre / 2 rouge), un détail lisible
+//  et un conseil de réparation (« fix ») — pensé pour qu'un humain OU un
+//  assistant puisse voir la panne et la corriger tout de suite. Aucune donnée
+//  sensible (mot de passe, URL avec identifiants) n'est renvoyée.
+
+/// Lit la façade (gateway_base) enregistrée pour un maître ('' si aucune).
+async function readMasterGatewayBase(env, mac) {
+  try {
+    const row = await env.DB
+      .prepare('SELECT gateway_base FROM master_test_list WHERE mac = ?')
+      .bind(String(mac).toUpperCase()).first();
+    return (row && row.gateway_base) ? String(row.gateway_base) : '';
+  } catch (_) { return ''; }
+}
+
+/// Sonde une URL sans télécharger le flux : on demande 2 octets, on lit le
+/// verdict (statut + latence), puis on annule le corps. Timeout dur.
+async function _probeUrl(url, ms = 5000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  const t0 = Date.now();
+  try {
+    const res = await fetch(url, {
+      method: 'GET', headers: { Range: 'bytes=0-1' }, signal: ctrl.signal, redirect: 'follow',
+    });
+    try { if (res.body) await res.body.cancel(); } catch (_) { /* ignore */ }
+    return { ok: res.status >= 200 && res.status < 400, status: res.status, ms: Date.now() - t0 };
+  } catch (e) {
+    return { ok: false, status: 0, ms: Date.now() - t0, error: String((e && e.message) || e) };
+  } finally { clearTimeout(t); }
+}
+
+/// GET /api/invite/diag/:mac → BOÎTE NOIRE complète (contrôles actifs).
+async function handleInviteDiag(env, rawMac, request) {
+  const mac = String(rawMac || '').toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const now = Date.now();
+  let origin = '';
+  try { origin = new URL(request.url).origin; } catch (_) { /* ignore */ }
+
+  const checks = [];
+  const add = (key, level, label, detail, fix) =>
+    checks.push({ key, level, label, detail, fix: fix || '' });
+
+  // 1) Backend (on est là → il répond).
+  add('backend', 0, 'Serveur joignable', 'Backend en ligne et répond.', '');
+
+  // 2) Compte maître.
+  const master = await isMasterMac(env, mac);
+  add('master', master ? 0 : 2, 'Compte maître reconnu',
+    master ? 'Cet appareil peut distribuer des tests illimités.'
+           : 'Cette MAC n’est pas maître.',
+    master ? '' : 'Panel → Comptes maîtres → Ajouter cette MAC.');
+
+  // 3) Source assignée (device_sources).
+  let sHost = '', sType = '', sOrigin = '', sCount = 0, sPresent = false;
+  try {
+    const { items } = await readDeviceSourceItems(env, mac);
+    if (items && items.length) {
+      const f = items[0] || {};
+      sPresent = true; sType = f.type || ''; sOrigin = f.origin || 'panel'; sCount = items.length;
+      try { sHost = new URL(String(f.server_url || f.m3u_url || '')).host; } catch (_) { /* */ }
+    }
+  } catch (_) { /* ignore */ }
+  add('source', sPresent ? 0 : 1, 'Source active',
+    sPresent ? `${sCount} source(s) · ${sType || '?'} · ${sOrigin}` : 'Aucune source assignée à cet appareil.',
+    sPresent ? '' : 'Assigne une ligne (ou envoie/reçois un test).');
+
+  // 4) Façade (gateway) — réellement en ligne ?
+  const gw = master ? await readMasterGatewayBase(env, mac) : '';
+  if (gw) {
+    const p = await _probeUrl(gw, 5000);
+    let isDomain = false;
+    try { isDomain = /[a-zA-Z]/.test(new URL(gw).hostname); } catch (_) { /* */ }
+    add('gateway', p.ok ? 0 : 1, 'Façade (gateway) en ligne',
+      p.ok ? `Ta façade répond (${p.ms} ms)${isDomain ? ' · relais par domaine' : ''}.`
+           : `Façade injoignable (${p.error || p.status}). Les tests jouent en direct, mais moins privés.`,
+      p.ok ? '' : 'Vérifie que ton gateway tourne et que l’URL est exacte.');
+  } else {
+    add('gateway', 1, 'Façade (gateway)',
+      master ? 'Aucune façade réglée → lecture directe (moins stable/privée).'
+             : 'Non applicable (pas un maître).',
+      master ? 'Panel → Liste de test → « Ta façade (gateway) ».' : '');
+  }
+
+  // 5) Relais : le fournisseur ne voit qu’une IP ? (host = domaine, pas IP brute)
+  if (sPresent) {
+    const isDomain = /[a-zA-Z]/.test(sHost);
+    add('relay', isDomain ? 0 : 1, 'Fournisseur ne voit qu’une IP',
+      isDomain ? `Sortie via ${sHost} (relais) → une seule IP.` : `Source directe (${sHost}).`,
+      isDomain ? '' : 'Fais pointer la source/façade sur ton gateway.');
+  }
+
+  // 6) Liste de test + 7) service réel + 8) sonde 1re chaîne.
+  if (master) {
+    let listCount = 0, listRef = '';
+    try { const tl = await readMasterTestList(env, mac); listCount = tl.count; listRef = tl.ref; } catch (_) { /* */ }
+    add('testlist', listCount > 0 ? (listCount <= 5 ? 0 : 1) : 1, 'Liste de test indépendante',
+      listCount > 0
+        ? `${listCount} chaîne(s) partagée(s)${listCount > 5 ? ' — au-delà de 5, l’indépendance faiblit' : ''}.`
+        : 'Aucune liste curée — le test ouvre tout le bouquet.',
+      listCount > 0 ? '' : 'Panel → Liste de test → coche 3-5 chaînes.');
+
+    if (listCount > 0 && listRef && origin) {
+      const serveUrl = `${origin}/api/master-list/${listRef}.m3u`;
+      let m3uText = '';
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 5000);
+        const r = await fetch(serveUrl, { signal: ctrl.signal });
+        clearTimeout(t);
+        if (r.ok) m3uText = await r.text();
+      } catch (_) { /* */ }
+      const served = (m3uText.match(/#EXTINF/gi) || []).length;
+      add('testlist_serve', served > 0 ? 0 : 2, 'Liste servie correctement',
+        served > 0 ? `L’URL de test renvoie ${served} chaîne(s).` : 'L’URL de test ne renvoie rien.',
+        served > 0 ? '' : 'Ré-enregistre la liste dans le panel.');
+
+      // Sonde de la 1re chaîne (jouabilité réelle) — URL jamais renvoyée.
+      const firstUrl = (m3uText.split(/\r?\n/).find((l) => l.trim() && !l.startsWith('#')) || '').trim();
+      if (firstUrl) {
+        const cp = await _probeUrl(firstUrl, 6000);
+        add('channel_probe', cp.ok ? 0 : 2, 'Chaîne de test jouable',
+          cp.ok ? `1re chaîne répond (${cp.status}, ${cp.ms} ms).`
+                : `1re chaîne injoignable (${cp.error || cp.status}).`,
+          cp.ok ? '' : 'Vérifie la façade et la ligne fournisseur.');
+      }
+    }
+  }
+
+  // 9) Test actif en ce moment ?
+  let activeTest = false;
+  try {
+    const st = await d1StatusForMac(env, mac, now);
+    activeTest = !!(st && st.paid && st.plan && String(st.plan).startsWith('trial_'));
+  } catch (_) { /* */ }
+  add('active', 0, 'Test en cours',
+    activeTest ? 'Un test/pass est actif sur cet appareil.' : 'Aucun test actif (normal au repos).', '');
+
+  // Verdict global.
+  const worst = checks.reduce((m, c) => Math.max(m, c.level), 0);
+  const oks = checks.filter((c) => c.level === 0).length;
+  const score = Math.round((oks / checks.length) * 100);
+  const verdict = worst === 0 ? 'green' : (worst === 2 ? 'red' : 'amber');
+  return jsonPrivate({ ok: true, mac, master, verdict, score, checks, generated_at: now });
+}
+
 /// Assigne au testeur [toMac] la source à jouer pendant le test du maître
 /// [fromMac]. DEUX modes :
 ///
@@ -6006,6 +6161,10 @@ async function handleRequest(request, env, ctx) {
       if (segments[2] === 'selftest' && segments.length === 4) {
         if (request.method !== 'GET') return badRequest('only GET supported');
         return handleInviteSelftest(env, segments[3]);
+      }
+      if (segments[2] === 'diag' && segments.length === 4) {
+        if (request.method !== 'GET') return badRequest('only GET supported');
+        return handleInviteDiag(env, segments[3], request);
       }
       return notFound('unknown invite route');
     }
