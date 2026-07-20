@@ -1119,6 +1119,23 @@ async function apiV1Inner(request, env) {
     return errResp('method_not_allowed', 'Only GET', 405);
   }
 
+  // /masters — COMPTES MAÎTRES (démo illimitée). Pouvoir fort (envoyer des
+  // tests sans quota ni paiement) → réservé au super_admin (l'exploitant).
+  if (parts[0] === 'masters') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (parts.length === 1) {
+      if (request.method === 'GET') return handleMastersList(env);
+      if (request.method === 'POST') return handleMastersAdd(request, env);
+      return errResp('method_not_allowed', 'GET or POST', 405);
+    }
+    if (parts.length === 2 && request.method === 'DELETE') {
+      return handleMastersRemove(env, parts[1]);
+    }
+    return errResp('method_not_allowed', 'unsupported', 405);
+  }
+
   // /devices
   if (parts[0] === 'devices') {
     if (parts.length === 1) {
@@ -3164,6 +3181,53 @@ async function handleInvitesList(request, env, user) {
   sql += ' ORDER BY iv.created_at DESC LIMIT 300';
   const rs = await env.DB.prepare(sql).bind(...binds).all();
   return jsonResp({ items: rs.results || [] });
+}
+
+// =========================================================
+//  COMPTES MAÎTRES — démo illimitée (envoyer des tests à volonté)
+// =========================================================
+//  Une MAC listée ici peut, depuis l'app, envoyer des pass invités (« tests »)
+//  sans quota ni obligation d'abonnement payé (cf. worker.js isMasterMac).
+//  Réservé au super_admin. La table est la même que côté worker (app_masters).
+const _MASTER_MAC_RX = /^MK(?::[0-9A-Fa-f]{2}){5}$/;
+
+async function ensureMastersTable(env) {
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS app_masters (mac TEXT PRIMARY KEY, note TEXT, created_at INTEGER)',
+    ).run();
+  } catch (_) { /* déjà présente */ }
+}
+
+async function handleMastersList(env) {
+  await ensureMastersTable(env);
+  const rs = await env.DB
+    .prepare('SELECT mac, note, created_at FROM app_masters ORDER BY created_at DESC')
+    .all();
+  return jsonResp({ items: rs.results || [] });
+}
+
+async function handleMastersAdd(request, env) {
+  let body;
+  try { body = await request.json(); } catch (_) { return errResp('bad_json', 'Invalid JSON', 400); }
+  const mac = String(body?.mac || '').toUpperCase();
+  if (!_MASTER_MAC_RX.test(mac)) {
+    return errResp('bad_mac', 'MAC invalide (format MK:XX:XX:XX:XX:XX).', 400);
+  }
+  const note = String(body?.note || '').trim().slice(0, 80);
+  await ensureMastersTable(env);
+  await env.DB
+    .prepare('INSERT OR REPLACE INTO app_masters (mac, note, created_at) VALUES (?, ?, ?)')
+    .bind(mac, note || null, Date.now()).run();
+  return jsonResp({ ok: true, mac });
+}
+
+async function handleMastersRemove(env, rawMac) {
+  const mac = String(rawMac || '').toUpperCase();
+  if (!_MASTER_MAC_RX.test(mac)) return errResp('bad_mac', 'MAC invalide.', 400);
+  await ensureMastersTable(env);
+  await env.DB.prepare('DELETE FROM app_masters WHERE mac = ?').bind(mac).run();
+  return jsonResp({ ok: true, mac });
 }
 
 // =========================================================

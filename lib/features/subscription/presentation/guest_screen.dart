@@ -65,6 +65,10 @@ class _GuestScreenState extends State<GuestScreen> {
   Map<String, dynamic>? _loan;
   bool _reclaiming = false;
 
+  /// CET appareil est-il un compte MAÎTRE (démo illimitée) ? Débloque l'envoi
+  /// de tests sans quota ni abonnement.
+  bool _isMaster = false;
+
   bool get _isPaid =>
       SubscriptionState.instance.status == SubscriptionStatus.paid;
 
@@ -85,11 +89,13 @@ class _GuestScreenState extends State<GuestScreen> {
     if (_mac.isEmpty) return;
     final Map<String, dynamic>? pass = await InviteBackend.mine(_mac);
     final Map<String, dynamic>? loan = await InviteBackend.myLoan(_mac);
+    final bool master = await InviteBackend.isMaster(_mac);
     if (!mounted) return;
     setState(() {
       // On n'affiche le bandeau invité que si l'appareil a RÉELLEMENT été invité.
       _pass = (pass != null && pass['invited'] == true) ? pass : null;
       _loan = (loan != null && loan['active'] == true) ? loan : null;
+      _isMaster = master;
     });
   }
 
@@ -165,10 +171,11 @@ class _GuestScreenState extends State<GuestScreen> {
                 // 2) Envoyer ma MAC à celui qui m'invite
                 _ShareMacCard(macNu: _macNu),
 
-                // 3) Inviter un ami (réservé aux abonnés payés)
-                if (_isPaid) ...<Widget>[
+                // 3) Inviter un ami (abonnés payés) OU envoyer des tests
+                //    illimités (comptes maîtres).
+                if (_isPaid || _isMaster) ...<Widget>[
                   const SizedBox(height: 16),
-                  _InviteCard(mac: _mac, onLent: _refresh),
+                  _InviteCard(mac: _mac, onLent: _refresh, isMaster: _isMaster),
                 ],
               ],
             ),
@@ -599,11 +606,18 @@ class _ShareMacCard extends StatelessWidget {
 //  3) Inviter un ami (abonné payé)
 // =========================================================
 class _InviteCard extends StatefulWidget {
-  const _InviteCard({required this.mac, required this.onLent});
+  const _InviteCard({
+    required this.mac,
+    required this.onLent,
+    this.isMaster = false,
+  });
   final String mac;
 
   /// Appelé après un PRÊT réussi (le parent rafraîchit l'état « j'ai prêté »).
   final VoidCallback onLent;
+
+  /// Compte MAÎTRE : envoi de tests illimité (durée 1 h dispo, pas de quota).
+  final bool isMaster;
 
   @override
   State<_InviteCard> createState() => _InviteCardState();
@@ -617,10 +631,15 @@ class _InviteCardState extends State<_InviteCard> {
   //    en pause, l'ami a tout, et ça me revient tout seul à l'échéance.
   String _flow = 'together';
   int _lendHours = 24; // durée du prêt (24 ou 48)
+  int _testHours = 1; // durée du test (comptes maîtres) : 1 / 5 / 24 / 48 h
   bool _busy = false;
   String? _code;
   String? _message;
   final TextEditingController _friendMac = TextEditingController();
+
+  /// Durée du flux « ensemble » : 5 h pour un abonné, choisie (défaut 1 h)
+  /// pour un compte maître (tests courts).
+  int get _ensembleHours => widget.isMaster ? _testHours : 5;
 
   @override
   void dispose() {
@@ -637,8 +656,8 @@ class _InviteCardState extends State<_InviteCard> {
     });
     final Map<String, dynamic>? r = await InviteBackend.create(
       widget.mac,
-      hours: 5,
-      mode: 'together',
+      hours: _ensembleHours,
+      mode: widget.isMaster ? 'test' : 'together',
     );
     if (!mounted) return;
     setState(() {
@@ -667,8 +686,8 @@ class _InviteCardState extends State<_InviteCard> {
     final Map<String, dynamic>? r = await InviteBackend.grant(
       widget.mac,
       g,
-      hours: 5,
-      mode: 'together',
+      hours: _ensembleHours,
+      mode: widget.isMaster ? 'test' : 'together',
     );
     if (!mounted) return;
     setState(() {
@@ -676,7 +695,9 @@ class _InviteCardState extends State<_InviteCard> {
       if (r == null) {
         _message = 'Connexion impossible. Réessaie.';
       } else if (r['ok'] == true) {
-        _message = 'Activé ! Ton ami a 5 h pour regarder avec toi. 🎉';
+        _message = widget.isMaster
+            ? 'Test envoyé ! Ton contact a $_ensembleHours h d’accès. 🎉'
+            : 'Activé ! Ton ami a 5 h pour regarder avec toi. 🎉';
       } else {
         _message = _errText((r['error'] ?? '').toString());
       }
@@ -731,36 +752,92 @@ class _InviteCardState extends State<_InviteCard> {
   Widget build(BuildContext context) {
     final bool lend = _flow == 'lend';
     return _Card(
-      icon: Icons.card_giftcard_rounded,
-      title: 'Inviter un ami',
-      subtitle: 'Deux façons de partager : regarder ensemble, ou lui prêter '
-          'ton abonnement.',
+      icon: widget.isMaster
+          ? Icons.workspace_premium_rounded
+          : Icons.card_giftcard_rounded,
+      title: widget.isMaster ? 'Envoyer un test' : 'Inviter un ami',
+      subtitle: widget.isMaster
+          ? 'Mode maître : envoie un test à qui tu veux, autant que tu veux.'
+          : 'Deux façons de partager : regarder ensemble, ou lui prêter '
+              'ton abonnement.',
       children: <Widget>[
-        // Choix du FLUX : ensemble (5 h) vs prêt (24/48 h).
-        Row(
-          children: <Widget>[
-            _FlowTab(
-              label: 'Ensemble',
-              hint: '5 h · tu gardes tes chaînes',
-              on: !lend,
-              onTap: () => setState(() {
-                _flow = 'together';
-                _message = null;
-              }),
+        // Bandeau « mode maître » : envoi illimité, durée au choix (dont 1 h).
+        if (widget.isMaster) ...<Widget>[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.accentSurface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.accent.withValues(alpha: 0.5)),
             ),
-            const SizedBox(width: 10),
-            _FlowTab(
-              label: 'Prêter',
-              hint: '24-48 h · tu passes en pause',
-              on: lend,
-              onTap: () => setState(() {
-                _flow = 'lend';
-                _message = null;
-              }),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(children: <Widget>[
+                  Icon(Icons.bolt_rounded, color: AppColors.accent, size: 18),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Compte maître — tests illimités',
+                    style: AppTextStyles.bodyLarge.copyWith(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 10),
+                Text(
+                  'Durée du test',
+                  style: AppTextStyles.labelSmall
+                      .copyWith(fontSize: 10, color: AppColors.textTertiary),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: <Widget>[
+                    for (final int h in <int>[1, 5, 24, 48]) ...<Widget>[
+                      _DurChip(
+                        label: '$h h',
+                        hint: h == 1 ? 'test' : '',
+                        on: _testHours == h,
+                        onTap: () => setState(() => _testHours = h),
+                      ),
+                      if (h != 48) const SizedBox(width: 8),
+                    ],
+                  ],
+                ),
+              ],
             ),
-          ],
-        ),
-        const SizedBox(height: 16),
+          ),
+          const SizedBox(height: 14),
+        ],
+        // Choix du FLUX : ensemble (5 h) vs prêt (24/48 h). Caché pour un
+        // maître (il envoie des tests, il ne prête pas son abonnement).
+        if (!widget.isMaster) ...<Widget>[
+          Row(
+            children: <Widget>[
+              _FlowTab(
+                label: 'Ensemble',
+                hint: '5 h · tu gardes tes chaînes',
+                on: !lend,
+                onTap: () => setState(() {
+                  _flow = 'together';
+                  _message = null;
+                }),
+              ),
+              const SizedBox(width: 10),
+              _FlowTab(
+                label: 'Prêter',
+                hint: '24-48 h · tu passes en pause',
+                on: lend,
+                onTap: () => setState(() {
+                  _flow = 'lend';
+                  _message = null;
+                }),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
 
         if (!lend) ...<Widget>[
           // ---------- FLUX ENSEMBLE (5 h, code ou identifiant) ----------

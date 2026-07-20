@@ -104,6 +104,21 @@ abstract final class InviteBackend {
   static Future<Map<String, dynamic>?> reclaim(String mac) =>
       _post('/api/invite/reclaim', <String, Object?>{'mac': mac});
 
+  /// CET appareil est-il un compte MAÎTRE (démo illimitée) ? Débloque l'envoi
+  /// de tests sans quota ni abonnement dans l'écran invité. Réponse : true/false.
+  static Future<bool> isMaster(String mac) async {
+    try {
+      final http.Response r = await http
+          .get(Uri.parse('$kSubscriptionBaseUrl/api/invite/master/$mac'),
+              headers: _headers)
+          .timeout(_timeout);
+      final Object? decoded = jsonDecode(r.body);
+      return decoded is Map<String, dynamic> && decoded['master'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// État du PRÊT en cours du propriétaire [mac] (pour afficher « prêté à X,
   /// retour dans Y » + le bouton Reprendre, même quand l'app est en pause).
   /// Réponse : { active, return_at, ms_left, guest } ou { active:false }.

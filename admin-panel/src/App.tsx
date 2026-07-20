@@ -29,6 +29,7 @@ import { HistoryPage } from '@/pages/HistoryPage';
 import { ReferencesPage } from '@/pages/ReferencesPage';
 import { TransferPage } from '@/pages/TransferPage';
 import { SharesPage } from '@/pages/SharesPage';
+import { MastersPage } from '@/pages/MastersPage';
 import { FamiliesPage } from '@/pages/FamiliesPage';
 import { RadarPage } from '@/pages/RadarPage';
 import { GatewayPage } from '@/pages/GatewayPage';
@@ -141,6 +142,7 @@ export default function App() {
       <Route path="/references" element={<ReferencesPage onLogout={handleLogout} />} />
       <Route path="/transfer" element={<TransferPage onLogout={handleLogout} />} />
       <Route path="/shares" element={<SharesPage onLogout={handleLogout} />} />
+      <Route path="/masters" element={<MastersPage onLogout={handleLogout} />} />
       <Route path="/families" element={<FamiliesPage onLogout={handleLogout} />} />
       <Route path="/radar" element={<RadarPage onLogout={handleLogout} />} />
       <Route path="/gateway" element={<GatewayPage onLogout={handleLogout} />} />

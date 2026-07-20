@@ -3196,9 +3196,10 @@ async function handleFamilyJoin(request, env) {
 const INVITE_CODE_TTL_MS = 48 * 60 * 60 * 1000; // le code doit être utilisé sous 48 h
 const INVITE_WEEKLY_QUOTA = 5; // 5 invitations PAR SEMAINE (glissante), renouvelées
 const INVITE_WEEK_MS = 7 * 24 * 60 * 60 * 1000; // fenêtre du quota hebdo
-// Durées offertes à l'invité : 5 h (« on regarde ensemble »), 24 h (« prêt »)
-// et 48 h (week-end). Toute autre valeur retombe sur 5 h (la plus courte).
-const INVITE_ALLOWED_HOURS = [5, 24, 48];
+// Durées offertes à l'invité : 1 h (test court, comptes maîtres), 5 h (« on
+// regarde ensemble »), 24 h (« prêt ») et 48 h (week-end). Toute autre valeur
+// retombe sur 5 h (la plus courte des durées « invité » classiques).
+const INVITE_ALLOWED_HOURS = [1, 5, 24, 48];
 let _inviteSchemaError = '';
 
 async function ensureInviteSchema(env) {
@@ -3302,6 +3303,79 @@ function invitePaidPlayable(st) {
   return !!(st && st.paid && !st.expired && !st.frozen && !st.banned);
 }
 
+// =========================================================
+//  COMPTES MAÎTRES (« démo illimitée »)
+// =========================================================
+//  Une MAC marquée MAÎTRE dans le panel peut envoyer des pass invités
+//  (« tests ») À VOLONTÉ, à n'importe qui, sur la chaîne de son choix —
+//  SANS quota hebdo et SANS obligation d'être un abonné payé. Réservé à
+//  l'exploitant (toi) : la liste est gérée uniquement via le panel admin
+//  (/api/v1/masters, authentifié). Rien d'illimité n'est exposé publiquement
+//  tant que la MAC n'est pas ajoutée par un admin.
+let _masterSchemaReady = false;
+async function ensureMasterSchema(env) {
+  if (!env.DB) return false;
+  if (_masterSchemaReady) return true;
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS app_masters (' +
+      'mac TEXT PRIMARY KEY, note TEXT, created_at INTEGER)',
+    ).run();
+    _masterSchemaReady = true;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Cette MAC est-elle un compte MAÎTRE ? (démo illimitée). Best-effort :
+/// toute erreur/table absente → false (jamais de privilège par défaut).
+async function isMasterMac(env, mac) {
+  const m = String(mac || '').toUpperCase();
+  if (!MAC_RX.test(m)) return false;
+  if (!env.DB || !(await ensureMasterSchema(env))) return false;
+  try {
+    const row = await env.DB
+      .prepare('SELECT 1 AS x FROM app_masters WHERE mac = ?').bind(m).first();
+    return !!row;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// GET /api/invite/master/:mac → l'app demande si CET appareil est maître
+/// (pour débloquer le mode « envoi illimité » dans l'écran invité).
+async function handleInviteMaster(env, rawMac) {
+  const mac = String(rawMac || '').toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const master = await isMasterMac(env, mac);
+  return jsonPrivate({ master });
+}
+
+/// Copie la/les SOURCE(S) du maître [fromMac] vers l'appareil testé [toMac] :
+/// le testeur voit alors TOUT le bouquet (pas une seule chaîne) pendant la
+/// durée du test. Comme les sources pointent sur le gateway, ses connexions
+/// restent invisibles au fournisseur. La licence courte (1 h…) coupe l'accès à
+/// l'échéance, même si la source reste posée. Best-effort : jamais bloquant.
+async function copyMasterSourceForTest(env, fromMac, toMac) {
+  try {
+    const { items } = await readDeviceSourceItems(env, String(fromMac).toUpperCase());
+    if (!items || !items.length) return false;
+    // Marquées 'panel' (assignées) → non éditables par le testeur ; on retire
+    // les id 'self' du maître (régénérés si besoin).
+    const copy = items.map((s) => {
+      const it = { ...s, origin: 'panel' };
+      delete it.id;
+      return it;
+    });
+    await ensureDeviceSourcesTable(env);
+    await writeDeviceSourceItems(env, String(toMac).toUpperCase(), copy);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 /// DÉCISION PURE du redeem (testable sans base) : renvoie {ok:true} ou
 /// {ok:false, error}. Concentre TOUTES les règles anti-abus « argent » :
 ///   • code valide / non utilisé / non expiré ;
@@ -3311,23 +3385,31 @@ function invitePaidPlayable(st) {
 ///   • UN pass par appareil À VIE (already_used_once).
 export function inviteRedeemDecision(
     { mac, code, codeRow, now, issuerStatus, ownStatus, alreadyRedeemed,
-      issuerWeeklyUsed = 0, weeklyQuota = INVITE_WEEKLY_QUOTA }) {
+      issuerWeeklyUsed = 0, weeklyQuota = INVITE_WEEKLY_QUOTA,
+      issuerIsMaster = false }) {
   if (!/^[0-9]{6}$/.test(String(code || ''))) return { ok: false, error: 'code_invalid' };
   if (!codeRow) return { ok: false, error: 'code_invalid' };
   if (codeRow.redeemed_at) return { ok: false, error: 'code_used' };
   if (Number(codeRow.expires_at) < now) return { ok: false, error: 'code_expired' };
   const issuer = String(codeRow.issuer_mac || '').toUpperCase();
   if (issuer === String(mac || '').toUpperCase()) return { ok: false, error: 'own_code' };
-  if (!invitePaidPlayable(issuerStatus)) return { ok: false, error: 'issuer_not_paid' };
-  // QUOTA HEBDO : un abonné peut inviter jusqu'à `weeklyQuota` personnes PAR
-  // SEMAINE glissante (renouvelé). Au-delà → refus (se renouvelle sous 7 j).
-  if (Number(issuerWeeklyUsed) >= Number(weeklyQuota)) {
-    return { ok: false, error: 'issuer_quota' };
+  // Un compte MAÎTRE (démo illimitée) n'a pas besoin d'être payé, et son quota
+  // hebdo ne s'applique pas : il envoie des tests à volonté.
+  if (!issuerIsMaster) {
+    if (!invitePaidPlayable(issuerStatus)) return { ok: false, error: 'issuer_not_paid' };
+    // QUOTA HEBDO : un abonné peut inviter jusqu'à `weeklyQuota` personnes PAR
+    // SEMAINE glissante (renouvelé). Au-delà → refus (se renouvelle sous 7 j).
+    if (Number(issuerWeeklyUsed) >= Number(weeklyQuota)) {
+      return { ok: false, error: 'issuer_quota' };
+    }
   }
   if (ownStatus && ownStatus.paid && !ownStatus.expired) {
     return { ok: false, error: 'already_active' };
   }
-  if (alreadyRedeemed) return { ok: false, error: 'already_used_once' };
+  // Un maître peut re-tester la même personne (pas de « un seul pass à vie »).
+  if (!issuerIsMaster && alreadyRedeemed) {
+    return { ok: false, error: 'already_used_once' };
+  }
   return { ok: true };
 }
 
@@ -3576,28 +3658,41 @@ async function handleInviteGrant(request, env) {
   if (!env.DB || !(await ensureInviteSchema(env))) return inviteUnavailable();
   if (mac === guest) return json({ ok: false, error: 'own_code' });
   const now = Date.now();
+  // Un compte MAÎTRE (démo illimitée) contourne le quota ET l'obligation
+  // d'abonnement payé : il peut activer n'importe qui, autant qu'il veut.
+  const master = await isMasterMac(env, mac);
   const ist = await d1StatusForMac(env, mac);
-  if (!invitePaidPlayable(ist)) return json({ ok: false, error: 'not_paid' });
-  // Quota hebdo (5/semaine glissante).
+  if (!master && !invitePaidPlayable(ist)) return json({ ok: false, error: 'not_paid' });
+  // Quota hebdo (5/semaine glissante) — jamais appliqué à un maître.
   const weekAgo = now - INVITE_WEEK_MS;
   const usedRow = await env.DB.prepare(
     'SELECT COUNT(*) AS n FROM app_invites WHERE issuer_mac = ? AND redeemed_at IS NOT NULL AND redeemed_at > ?',
   ).bind(mac, weekAgo).first();
-  if (((usedRow && Number(usedRow.n)) || 0) >= INVITE_WEEKLY_QUOTA) {
+  if (!master && ((usedRow && Number(usedRow.n)) || 0) >= INVITE_WEEKLY_QUOTA) {
     return json({ ok: false, error: 'issuer_quota' });
   }
   // Invité déjà payé ? déjà servi une fois à vie ?
   const own = await d1StatusForMac(env, guest);
   if (own && own.paid && !own.expired) return json({ ok: false, error: 'already_active' });
-  const prev = await env.DB
-    .prepare('SELECT 1 AS x FROM app_invites WHERE redeemer_mac = ? LIMIT 1').bind(guest).first();
-  if (prev) return json({ ok: false, error: 'already_used_once' });
+  // Le « un seul pass à vie » ne s'applique PAS à un maître : il peut re-tester
+  // la même personne autant qu'il veut (test 1 h, 1 h, 1 h…).
+  if (!master) {
+    const prev = await env.DB
+      .prepare('SELECT 1 AS x FROM app_invites WHERE redeemer_mac = ? LIMIT 1').bind(guest).first();
+    if (prev) return json({ ok: false, error: 'already_used_once' });
+  }
 
   const hours = inviteHours(body?.hours);
   const channel = sanitizeInviteChannel(body?.channel);
   const mode = inviteMode(body?.mode);
   const g = await grantGuestPassLicense(env, guest, hours, now);
   if (!g.ok) return json({ ok: false, error: g.error });
+  // TEST MAÎTRE : accès COMPLET (tout le bouquet, pas une seule chaîne) → on
+  // copie la source du maître vers le testeur. La licence courte coupe à
+  // l'échéance. Tout passe par le gateway → fournisseur aveugle.
+  if (master) {
+    await copyMasterSourceForTest(env, mac, guest);
+  }
   // Trace l'invitation (code interne préfixé 'M' = par MAC, non tapé).
   const buf = new Uint32Array(1); crypto.getRandomValues(buf);
   const code = 'M' + String(100000 + (buf[0] % 900000));
@@ -3645,14 +3740,17 @@ async function handleInviteCreate(request, env) {
   const mac = String(body?.mac || '').toUpperCase();
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   if (!env.DB || !(await ensureInviteSchema(env))) return inviteUnavailable();
-  // Réservé aux abonnements PAYÉS et jouables (comme la famille).
+  // Un compte MAÎTRE (démo illimitée) n'a besoin ni d'abonnement payé ni de
+  // rester sous le quota : il génère autant de codes qu'il veut.
+  const master = await isMasterMac(env, mac);
+  // Réservé aux abonnements PAYÉS et jouables (comme la famille) — sauf maître.
   const st = await d1StatusForMac(env, mac);
-  if (!invitePaidPlayable(st)) {
+  if (!master && !invitePaidPlayable(st)) {
     return json({ ok: false, error: 'not_paid' });
   }
   const now = Date.now();
   // GARDE-FOU QUOTA à la génération aussi : inutile de créer un code si les
-  // 5 invitations de la semaine sont déjà consommées.
+  // 5 invitations de la semaine sont déjà consommées. Jamais pour un maître.
   const weekAgo = now - INVITE_WEEK_MS;
   const usedRow = await env.DB
     .prepare(
@@ -3660,7 +3758,7 @@ async function handleInviteCreate(request, env) {
       'WHERE issuer_mac = ? AND redeemed_at IS NOT NULL AND redeemed_at > ?',
     ).bind(mac, weekAgo).first();
   const weeklyUsed = (usedRow && Number(usedRow.n)) || 0;
-  if (weeklyUsed >= INVITE_WEEKLY_QUOTA) {
+  if (!master && weeklyUsed >= INVITE_WEEKLY_QUOTA) {
     return json({ ok: false, error: 'issuer_quota',
       weekly_used: weeklyUsed, weekly_quota: INVITE_WEEKLY_QUOTA });
   }
@@ -3725,6 +3823,8 @@ async function handleInviteRedeem(request, env) {
       'SELECT COUNT(*) AS n FROM app_invites ' +
       'WHERE issuer_mac = ? AND redeemed_at IS NOT NULL AND redeemed_at > ?',
     ).bind(issuer, weekAgo).first() : null;
+  // Émetteur MAÎTRE (démo illimitée) : ni paiement requis, ni quota au redeem.
+  const issuerIsMaster = issuer ? await isMasterMac(env, issuer) : false;
   const decision = inviteRedeemDecision({
     mac,
     code,
@@ -3735,6 +3835,7 @@ async function handleInviteRedeem(request, env) {
     alreadyRedeemed: !!prev,
     issuerWeeklyUsed: (usedCnt && Number(usedCnt.n)) || 0,
     weeklyQuota: INVITE_WEEKLY_QUOTA,
+    issuerIsMaster,
   });
   if (!decision.ok) return json({ ok: false, error: decision.error });
 
@@ -3743,6 +3844,11 @@ async function handleInviteRedeem(request, env) {
   const hours = inviteHours(row.hours);
   const guest = await grantGuestPassLicense(env, mac, hours, now);
   if (!guest.ok) return json({ ok: false, error: guest.error });
+  // Code d'un MAÎTRE → test à accès COMPLET : on copie la source du maître
+  // vers le testeur (tout le bouquet pendant la durée, via le gateway).
+  if (issuerIsMaster && issuer) {
+    await copyMasterSourceForTest(env, issuer, mac);
+  }
 
   // Lie l'invité au code (le code devient utilisé → non rejouable).
   await env.DB
@@ -5610,6 +5716,10 @@ async function handleRequest(request, env, ctx) {
       if (segments[2] === 'loan' && segments.length === 4) {
         if (request.method !== 'GET') return badRequest('only GET supported');
         return handleInviteLoanStatus(env, segments[3]);
+      }
+      if (segments[2] === 'master' && segments.length === 4) {
+        if (request.method !== 'GET') return badRequest('only GET supported');
+        return handleInviteMaster(env, segments[3]);
       }
       return notFound('unknown invite route');
     }

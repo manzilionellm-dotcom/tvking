@@ -968,6 +968,27 @@ export const invitesApi = {
 };
 
 // =========================================================
+//  COMPTES MAÎTRES — démo illimitée (envoyer des tests à volonté)
+// =========================================================
+export interface MasterRow {
+  mac: string;
+  note: string | null;
+  created_at: number;
+}
+export const mastersApi = {
+  list: () => request<{ items: MasterRow[] }>('/api/v1/masters'),
+  add: (mac: string, note?: string) =>
+    request<{ ok: boolean; mac: string }>('/api/v1/masters', {
+      method: 'POST',
+      body: { mac, note },
+    }),
+  remove: (mac: string) =>
+    request<{ ok: boolean; mac: string }>(`/api/v1/masters/${encodeURIComponent(mac)}`, {
+      method: 'DELETE',
+    }),
+};
+
+// =========================================================
 //  Familles — une ligne (source) partagée par plusieurs appareils
 // =========================================================
 export interface FamilySource {
