@@ -399,6 +399,43 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
   // --- Cas 1 : une licence existe (activee par admin/revendeur) ---
   if (lic) {
     const lstatus = lic.lstatus || 'active';
+
+    // --- PRÊT D'ABONNEMENT (règlement paresseux, sans cron) ---
+    // SEULS les appareils dont la licence est en pause 'loaned' passent ici
+    // (aucun coût pour un abonné actif ou un essai). À l'échéance du prêt on
+    // rend l'abonnement au propriétaire ; sinon on le montre « prêté ».
+    if (lstatus === 'loaned') {
+      let loan = null;
+      try { loan = await activeLoanForOwner(env, mac); } catch (_) { /* schema */ }
+      const decision = loanSettleDecision({ lstatus, loanRow: loan, now });
+      if (decision === 'restore') {
+        try { await settleLoan(env, loan, now); } catch (_) { /* best-effort */ }
+        // Recalcule proprement : le propriétaire est redevenu 'active' (plus
+        // de statut 'loaned' → pas de ré-entrée dans cette branche).
+        return d1StatusForMac(env, mac, now);
+      }
+      if (decision === 'hold') {
+        const returnAt = loan ? Number(loan.return_at) : now;
+        return {
+          exists: true,
+          status: 'active',
+          paid: false,            // en pause pendant le prêt
+          plan: 'loaned',
+          paid_until: null,
+          trial_until: returnAt,
+          days_left: 0,
+          expired: false,
+          frozen: false,
+          banned: false,
+          loaned: true,
+          return_at: returnAt,
+          source: 'd1-loan',
+        };
+      }
+      // decision 'none' : statut 'loaned' résiduel sans prêt actif → on
+      // laisse le calcul normal (expires_at=maintenant → expired, paid:false).
+    }
+
     const lifetime = lic.expires_at === null || lic.expires_at === undefined;
     const expiresAt = lifetime ? now + 36500 * DAY_MS : lic.expires_at;
     const expired = !lifetime && expiresAt <= now;
@@ -3186,6 +3223,13 @@ async function ensureInviteSchema(env) {
       'ALTER TABLE app_invites ADD COLUMN hours INTEGER',
       'ALTER TABLE app_invites ADD COLUMN channel_json TEXT',
       'ALTER TABLE app_invites ADD COLUMN mode TEXT',
+      // PRÊT D'ABONNEMENT (mode='lend') : de quoi restaurer le PROPRIÉTAIRE
+      // à l'échéance sans cron. owner_expires_at = échéance ORIGINALE du
+      // propriétaire (à lui rendre) ; return_at = date de retour auto
+      // (prêt_at + heures) ; returned_at = posé quand le prêt est réglé.
+      'ALTER TABLE app_invites ADD COLUMN owner_expires_at INTEGER',
+      'ALTER TABLE app_invites ADD COLUMN return_at INTEGER',
+      'ALTER TABLE app_invites ADD COLUMN returned_at INTEGER',
     ]) {
       try { await env.DB.prepare(alter).run(); } catch (_) { /* colonne déjà là */ }
     }
@@ -3210,6 +3254,29 @@ function inviteHours(raw) {
 /// inviteHours().
 function inviteMode(raw) {
   return ['together', 'lend', 'test'].includes(raw) ? raw : 'together';
+}
+
+// Durées de PRÊT (mode='lend') : 24 h ou 48 h MAX (jamais plus). Toute autre
+// valeur retombe sur 24 h.
+const LOAN_ALLOWED_HOURS = [24, 48];
+function loanHours(raw) {
+  const h = Number(raw);
+  return LOAN_ALLOWED_HOURS.includes(h) ? h : 24;
+}
+
+/// DÉCISION PURE du règlement d'un prêt (testable sans base). À l'instant
+/// [now], pour un propriétaire dont la meilleure licence est en statut
+/// [lstatus] et un éventuel prêt actif [loanRow] (ligne app_invites mode
+/// 'lend', returned_at NULL), renvoie l'action à prendre :
+///   • 'restore' : l'échéance de retour est atteinte → rendre l'abonnement
+///     au propriétaire (et couper l'invité) ;
+///   • 'hold'    : prêt encore en cours → le propriétaire reste en pause ;
+///   • 'none'    : pas de prêt en cours (statut 'loaned' résiduel) → ne
+///     touche à rien (le caller décide d'un repli sûr).
+export function loanSettleDecision({ lstatus, loanRow, now }) {
+  if (lstatus !== 'loaned') return 'none';
+  if (!loanRow || loanRow.returned_at) return 'none';
+  return Number(loanRow.return_at) <= now ? 'restore' : 'hold';
 }
 
 /// Nettoie la chaîne partagée reçue du client → objet minimal jouable, ou null.
@@ -3341,6 +3408,160 @@ async function handleInviteTransfer(request, env) {
     "UPDATE licenses SET status='expired', expires_at=?, updated_at=? WHERE device_id=?",
   ).bind(now, now, dev.id).run();
   return json({ ok: true, target: maskMac(target), plan, expires_at: expiresAt });
+}
+
+/// Récupère le PRÊT actif (mode='lend', non réglé) d'un propriétaire, ou null.
+async function activeLoanForOwner(env, ownerMac) {
+  return env.DB
+    .prepare(
+      "SELECT code, issuer_mac, redeemer_mac, plan, owner_expires_at, return_at " +
+      "FROM app_invites WHERE issuer_mac = ? AND mode = 'lend' AND returned_at IS NULL " +
+      "ORDER BY return_at DESC LIMIT 1",
+    )
+    .bind(ownerMac).first();
+}
+
+/// RÈGLE un prêt : rend l'abonnement au propriétaire (plan + échéance
+/// ORIGINALE) et coupe l'invité (échéance = maintenant). Marque le prêt
+/// `returned_at`. Idempotent : deux appels concurrents ne cassent rien (le
+/// second ne trouve plus de prêt non réglé). Appelé soit à l'échéance (lazy,
+/// depuis d1StatusForMac) soit sur reprise manuelle (reclaim).
+async function settleLoan(env, loanRow, now) {
+  if (!loanRow || loanRow.returned_at) return;
+  const owner = String(loanRow.issuer_mac).toUpperCase();
+  const guest = String(loanRow.redeemer_mac || '').toUpperCase();
+  const ownerExpires =
+    loanRow.owner_expires_at === null || loanRow.owner_expires_at === undefined
+      ? null : Number(loanRow.owner_expires_at);
+  // 1) Le propriétaire retrouve SON abonnement (plan + échéance d'origine).
+  await setDeviceLicense(env, owner, loanRow.plan || 'yearly', ownerExpires, now);
+  // 2) L'invité perd l'accès immédiatement (sa licence prêtée expire).
+  if (guest && MAC_RX.test(guest)) {
+    const gdev = await env.DB
+      .prepare('SELECT id FROM devices WHERE mac = ?').bind(guest).first();
+    if (gdev) {
+      await env.DB.prepare(
+        "UPDATE licenses SET status='expired', expires_at=?, updated_at=? WHERE device_id=?",
+      ).bind(now, now, gdev.id).run();
+    }
+  }
+  // 3) Le prêt est réglé (ne se rejoue plus).
+  await env.DB
+    .prepare('UPDATE app_invites SET returned_at = ? WHERE code = ?')
+    .bind(now, loanRow.code).run();
+}
+
+/// POST /api/invite/lend { mac (propriétaire payé), guest_mac, hours? } →
+/// PRÊT d'abonnement 24 h ou 48 h MAX. Le propriétaire donne SON abonnement
+/// (plan + accès complet) à un ami, et se met LUI-MÊME en pause pour la durée
+/// du prêt. À l'échéance (ou sur reprise manuelle), l'abonnement revient tout
+/// seul sur la MAC du propriétaire — aucun cron : réglé à la lecture du statut.
+async function handleInviteLend(request, env) {
+  let body;
+  try { body = await request.json(); } catch (_) { return badRequest('invalid JSON body'); }
+  const mac = String(body?.mac || '').toUpperCase();          // propriétaire (payé)
+  const guest = String(body?.guest_mac || '').toUpperCase();  // ami emprunteur
+  if (!MAC_RX.test(mac) || !MAC_RX.test(guest)) return badRequest('invalid mac');
+  if (mac === guest) return json({ ok: false, error: 'same_device' });
+  if (!env.DB || !(await ensureInviteSchema(env))) return inviteUnavailable();
+  const now = Date.now();
+
+  // Le propriétaire doit être PAYÉ et jouable (jamais un essai / pass invité).
+  const st = await d1StatusForMac(env, mac);
+  if (!invitePaidPlayable(st)) return json({ ok: false, error: 'not_paid' });
+  // L'ami ne doit pas déjà avoir un accès payé actif.
+  const gst = await d1StatusForMac(env, guest);
+  if (gst && gst.paid && !gst.expired) return json({ ok: false, error: 'already_active' });
+  // UN SEUL prêt à la fois par propriétaire (il doit reprendre avant de re-prêter).
+  const existing = await activeLoanForOwner(env, mac);
+  if (existing) return json({ ok: false, error: 'loan_active' });
+
+  // Lit le plan + l'échéance ACTUELS du propriétaire (ce qui est prêté et,
+  // surtout, ce qu'on lui rendra à l'identique).
+  const dev = await env.DB
+    .prepare('SELECT id FROM devices WHERE mac = ?').bind(mac).first();
+  if (!dev) return json({ ok: false, error: 'device_error' });
+  const lic = await env.DB
+    .prepare('SELECT plan, expires_at FROM licenses WHERE device_id = ? ' +
+             'ORDER BY (expires_at IS NULL) DESC, expires_at DESC LIMIT 1')
+    .bind(dev.id).first();
+  if (!lic) return json({ ok: false, error: 'not_paid' });
+  const plan = lic.plan || 'yearly';
+  const ownerExpires = lic.expires_at === null || lic.expires_at === undefined
+      ? null : Number(lic.expires_at);
+
+  const hours = loanHours(body?.hours);
+  const returnAt = now + hours * 60 * 60 * 1000;
+  // L'invité ne peut JAMAIS avoir plus que le propriétaire : son accès
+  // s'arrête au plus tôt entre la fin du prêt et l'échéance du propriétaire.
+  const guestUntil = ownerExpires === null ? returnAt : Math.min(returnAt, ownerExpires);
+
+  // 1) L'invité reçoit l'abonnement complet (même plan), borné dans le temps.
+  const put = await setDeviceLicense(env, guest, plan, guestUntil, now);
+  if (!put.ok) return json({ ok: false, error: put.error });
+  // 2) Le propriétaire passe EN PAUSE, statut spécial 'loaned' → c'est le
+  //    SEUL déclencheur du règlement paresseux (aucun coût pour les autres).
+  await env.DB.prepare(
+    "UPDATE licenses SET status='loaned', expires_at=?, updated_at=? WHERE device_id=?",
+  ).bind(now, now, dev.id).run();
+  // 3) Trace le prêt (code interne préfixé 'L' = prêt). Sert au retour auto
+  //    ET à l'affichage panel « Partages & prêts ».
+  const buf = new Uint32Array(1); crypto.getRandomValues(buf);
+  const code = 'L' + String(100000 + (buf[0] % 900000));
+  await env.DB.prepare(
+    'INSERT OR REPLACE INTO app_invites (code, issuer_mac, redeemer_mac, plan, created_at, ' +
+    'expires_at, redeemed_at, guest_until, hours, mode, owner_expires_at, return_at, returned_at) ' +
+    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)',
+  ).bind(code, mac, guest, plan, now, returnAt, now, guestUntil, hours, 'lend',
+         ownerExpires, returnAt).run();
+  return json({
+    ok: true,
+    guest: maskMac(guest),
+    guest_until: guestUntil,
+    return_at: returnAt,
+    hours,
+    mode: 'lend',
+  });
+}
+
+/// POST /api/invite/reclaim { mac (propriétaire) } → le propriétaire REPREND
+/// son abonnement avant l'échéance du prêt (l'invité perd l'accès aussitôt).
+async function handleInviteReclaim(request, env) {
+  let body;
+  try { body = await request.json(); } catch (_) { return badRequest('invalid JSON body'); }
+  const mac = String(body?.mac || '').toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  if (!env.DB || !(await ensureInviteSchema(env))) return inviteUnavailable();
+  const now = Date.now();
+  const loan = await activeLoanForOwner(env, mac);
+  if (!loan) return json({ ok: false, error: 'no_loan' });
+  await settleLoan(env, loan, now);
+  return json({ ok: true, reclaimed: true, guest: maskMac(loan.redeemer_mac) });
+}
+
+/// GET /api/invite/loan/:mac → l'appareil PROPRIÉTAIRE lit l'état de SON prêt
+/// en cours (pour afficher « prêté à X, retour dans Y » + bouton Reprendre).
+/// Règle aussi le prêt à la volée s'il est arrivé à échéance (retour auto même
+/// si l'app du propriétaire n'a pas relu son statut). Réponse :
+///   { active, return_at, guest, hours } ou { active:false }.
+async function handleInviteLoanStatus(env, rawMac) {
+  const mac = String(rawMac || '').toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  if (!env.DB || !(await ensureInviteSchema(env))) return inviteUnavailable();
+  const now = Date.now();
+  const loan = await activeLoanForOwner(env, mac);
+  if (!loan) return jsonPrivate({ active: false });
+  // Échéance atteinte → on règle (retour auto) et on répond « plus de prêt ».
+  if (Number(loan.return_at) <= now) {
+    try { await settleLoan(env, loan, now); } catch (_) { /* best-effort */ }
+    return jsonPrivate({ active: false, just_returned: true });
+  }
+  return jsonPrivate({
+    active: true,
+    return_at: Number(loan.return_at),
+    ms_left: Math.max(0, Number(loan.return_at) - now),
+    guest: maskMac(loan.redeemer_mac),
+  });
 }
 
 /// POST /api/invite/grant { mac, guest_mac, hours?, channel?, mode? }
@@ -5331,9 +5552,21 @@ async function handleRequest(request, env, ctx) {
         if (request.method !== 'POST') return badRequest('only POST supported');
         return handleInviteTransfer(request, env);
       }
+      if (segments[2] === 'lend' && segments.length === 3) {
+        if (request.method !== 'POST') return badRequest('only POST supported');
+        return handleInviteLend(request, env);
+      }
+      if (segments[2] === 'reclaim' && segments.length === 3) {
+        if (request.method !== 'POST') return badRequest('only POST supported');
+        return handleInviteReclaim(request, env);
+      }
       if (segments[2] === 'mine' && segments.length === 4) {
         if (request.method !== 'GET') return badRequest('only GET supported');
         return handleInviteMine(env, segments[3]);
+      }
+      if (segments[2] === 'loan' && segments.length === 4) {
+        if (request.method !== 'GET') return badRequest('only GET supported');
+        return handleInviteLoanStatus(env, segments[3]);
       }
       return notFound('unknown invite route');
     }

@@ -84,6 +84,43 @@ abstract final class InviteBackend {
       _post('/api/invite/transfer',
           <String, Object?>{'mac': mac, 'target_mac': targetMac});
 
+  /// PRÊT d'abonnement : le propriétaire PAYÉ [mac] prête son abonnement à
+  /// [guestMac] pour [hours] (24 ou 48 MAX). Le propriétaire se met en pause ;
+  /// à l'échéance, l'abonnement revient TOUT SEUL sur sa MAC (retour auto).
+  /// Réponse : { ok, guest, guest_until, return_at, hours } ou { error }.
+  static Future<Map<String, dynamic>?> lend(
+    String mac,
+    String guestMac, {
+    int hours = 24,
+  }) =>
+      _post('/api/invite/lend', <String, Object?>{
+        'mac': mac,
+        'guest_mac': guestMac,
+        'hours': hours,
+      });
+
+  /// Le propriétaire [mac] REPREND son abonnement prêté avant l'échéance
+  /// (l'ami perd l'accès aussitôt). Réponse : { ok, reclaimed } ou { error }.
+  static Future<Map<String, dynamic>?> reclaim(String mac) =>
+      _post('/api/invite/reclaim', <String, Object?>{'mac': mac});
+
+  /// État du PRÊT en cours du propriétaire [mac] (pour afficher « prêté à X,
+  /// retour dans Y » + le bouton Reprendre, même quand l'app est en pause).
+  /// Réponse : { active, return_at, ms_left, guest } ou { active:false }.
+  static Future<Map<String, dynamic>?> myLoan(String mac) async {
+    try {
+      final http.Response r = await http
+          .get(Uri.parse('$kSubscriptionBaseUrl/api/invite/loan/$mac'),
+              headers: _headers)
+          .timeout(_timeout);
+      final Object? decoded = jsonDecode(r.body);
+      if (decoded is Map<String, dynamic>) return decoded;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// L'appareil INVITÉ [mac] récupère SA chaîne partagée + temps restant.
   /// Réponse : { active, invited, ms_left, mode, inviter, channel }.
   static Future<Map<String, dynamic>?> mine(String mac) async {

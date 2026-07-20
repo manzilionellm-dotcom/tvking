@@ -58,6 +58,13 @@ class _GuestScreenState extends State<GuestScreen> {
   /// pas répondu ; on l'affiche en bandeau « ton accès invité ».
   Map<String, dynamic>? _pass;
 
+  /// PRÊT en cours dont CET appareil est le PROPRIÉTAIRE (via myLoan) :
+  /// { active, return_at, ms_left, guest }. On affiche alors un bandeau
+  /// « tu as prêté ton abonnement » + le bouton Reprendre — visible MÊME
+  /// quand l'app est en pause (c'est le seul moyen de reprendre la main).
+  Map<String, dynamic>? _loan;
+  bool _reclaiming = false;
+
   bool get _isPaid =>
       SubscriptionState.instance.status == SubscriptionStatus.paid;
 
@@ -70,16 +77,43 @@ class _GuestScreenState extends State<GuestScreen> {
         _mac = m;
         _macNu = DeviceIdentity.stripPrefix(m);
       });
-      _refreshPass();
+      _refresh();
     });
   }
 
-  Future<void> _refreshPass() async {
+  Future<void> _refresh() async {
     if (_mac.isEmpty) return;
-    final Map<String, dynamic>? r = await InviteBackend.mine(_mac);
+    final Map<String, dynamic>? pass = await InviteBackend.mine(_mac);
+    final Map<String, dynamic>? loan = await InviteBackend.myLoan(_mac);
     if (!mounted) return;
-    // On n'affiche le bandeau que si l'appareil a RÉELLEMENT été invité.
-    setState(() => _pass = (r != null && r['invited'] == true) ? r : null);
+    setState(() {
+      // On n'affiche le bandeau invité que si l'appareil a RÉELLEMENT été invité.
+      _pass = (pass != null && pass['invited'] == true) ? pass : null;
+      _loan = (loan != null && loan['active'] == true) ? loan : null;
+    });
+  }
+
+  Future<void> _reclaim() async {
+    if (_reclaiming || _mac.isEmpty) return;
+    setState(() => _reclaiming = true);
+    final Map<String, dynamic>? r = await InviteBackend.reclaim(_mac);
+    if (!mounted) return;
+    setState(() {
+      _reclaiming = false;
+      if (r != null && r['ok'] == true) _loan = null;
+    });
+    if (r != null && r['ok'] == true) {
+      // L'abonnement est revenu : on resynchronise le statut de l'app.
+      await SubscriptionState.instance.syncWithBackend();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text('Abonnement repris — c’est de nouveau à toi. 👍'),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -104,6 +138,17 @@ class _GuestScreenState extends State<GuestScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
+                // Bandeau « tu as prêté ton abonnement » + Reprendre. En tête,
+                // car un propriétaire en pause n'a QUE ça à faire ici.
+                if (_loan != null) ...<Widget>[
+                  _LoanOwnerBanner(
+                    loan: _loan!,
+                    busy: _reclaiming,
+                    onReclaim: _reclaim,
+                  ),
+                  const SizedBox(height: 18),
+                ],
+
                 // Bandeau « ton accès invité » (si un pass est actif/passé).
                 if (_pass != null) ...<Widget>[
                   _GuestPassBanner(pass: _pass!),
@@ -123,7 +168,7 @@ class _GuestScreenState extends State<GuestScreen> {
                 // 3) Inviter un ami (réservé aux abonnés payés)
                 if (_isPaid) ...<Widget>[
                   const SizedBox(height: 16),
-                  _InviteCard(mac: _mac),
+                  _InviteCard(mac: _mac, onLent: _refresh),
                 ],
               ],
             ),
@@ -241,6 +286,84 @@ class _GuestPassBanner extends StatelessWidget {
                   .copyWith(fontSize: 12, color: AppColors.textTertiary),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+// =========================================================
+//  Bandeau : j'ai PRÊTÉ mon abonnement (propriétaire en pause)
+// =========================================================
+class _LoanOwnerBanner extends StatelessWidget {
+  const _LoanOwnerBanner({
+    required this.loan,
+    required this.busy,
+    required this.onReclaim,
+  });
+  final Map<String, dynamic> loan;
+  final bool busy;
+  final VoidCallback onReclaim;
+
+  String _remaining() {
+    final int ms = (loan['ms_left'] as num?)?.toInt() ?? 0;
+    if (ms <= 0) return 'Retour imminent.';
+    final int totalMin = (ms / 60000).floor();
+    final int h = totalMin ~/ 60;
+    final int m = totalMin % 60;
+    if (h > 0) return 'Retour auto dans ${h}h ${m.toString().padLeft(2, '0')}.';
+    return 'Retour auto dans $m min.';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String? guest = loan['guest']?.toString();
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.55)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(Icons.volunteer_activism_rounded,
+                  color: AppColors.accent, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Tu as prêté ton abonnement',
+                  style: AppTextStyles.headlineMedium.copyWith(
+                    fontSize: 15,
+                    color: AppColors.accent,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${guest != null && guest.isNotEmpty ? 'Prêté à $guest. ' : ''}${_remaining()}',
+            style: AppTextStyles.bodyMedium.copyWith(fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: busy ? null : onReclaim,
+              icon: const Icon(Icons.undo_rounded, size: 18),
+              label: Text(busy ? 'Reprise…' : 'Reprendre mon abonnement'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: AppColors.voidSurface,
+                padding: const EdgeInsets.symmetric(vertical: 13),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -476,16 +599,24 @@ class _ShareMacCard extends StatelessWidget {
 //  3) Inviter un ami (abonné payé)
 // =========================================================
 class _InviteCard extends StatefulWidget {
-  const _InviteCard({required this.mac});
+  const _InviteCard({required this.mac, required this.onLent});
   final String mac;
+
+  /// Appelé après un PRÊT réussi (le parent rafraîchit l'état « j'ai prêté »).
+  final VoidCallback onLent;
 
   @override
   State<_InviteCard> createState() => _InviteCardState();
 }
 
 class _InviteCardState extends State<_InviteCard> {
-  // Deux flux : « ensemble » (5 h) et « prêt » (24 h). 48 h reste possible.
-  int _hours = 5;
+  // Deux FLUX bien distincts :
+  //  • 'together' = « on regarde ensemble » (5 h) — je GARDE mon abonnement,
+  //    l'ami regarde une chaîne partagée puis devra s'abonner.
+  //  • 'lend'     = « je prête mon abonnement » (24 h / 48 h max) — JE passe
+  //    en pause, l'ami a tout, et ça me revient tout seul à l'échéance.
+  String _flow = 'together';
+  int _lendHours = 24; // durée du prêt (24 ou 48)
   bool _busy = false;
   String? _code;
   String? _message;
@@ -497,9 +628,7 @@ class _InviteCardState extends State<_InviteCard> {
     super.dispose();
   }
 
-  /// Durée « ensemble » (5 h) → mode together ; « prêt » (24 h) → mode lend.
-  String get _mode => _hours == 24 ? 'lend' : 'together';
-
+  // --- Flux « ensemble » : code à 6 chiffres (5 h, chaîne partagée). ---
   Future<void> _generate() async {
     if (_busy) return;
     setState(() {
@@ -508,8 +637,8 @@ class _InviteCardState extends State<_InviteCard> {
     });
     final Map<String, dynamic>? r = await InviteBackend.create(
       widget.mac,
-      hours: _hours,
-      mode: _mode,
+      hours: 5,
+      mode: 'together',
     );
     if (!mounted) return;
     setState(() {
@@ -524,6 +653,7 @@ class _InviteCardState extends State<_InviteCard> {
     });
   }
 
+  // --- Flux « ensemble » : activation directe par identifiant (5 h). ---
   Future<void> _grantByMac() async {
     final String g = _normalizeMac(_friendMac.text);
     if (g.isEmpty) {
@@ -537,8 +667,8 @@ class _InviteCardState extends State<_InviteCard> {
     final Map<String, dynamic>? r = await InviteBackend.grant(
       widget.mac,
       g,
-      hours: _hours,
-      mode: _mode,
+      hours: 5,
+      mode: 'together',
     );
     if (!mounted) return;
     setState(() {
@@ -546,11 +676,41 @@ class _InviteCardState extends State<_InviteCard> {
       if (r == null) {
         _message = 'Connexion impossible. Réessaie.';
       } else if (r['ok'] == true) {
-        _message = 'Activé ! Ton ami a ${_hours} h d’accès. 🎉';
+        _message = 'Activé ! Ton ami a 5 h pour regarder avec toi. 🎉';
       } else {
         _message = _errText((r['error'] ?? '').toString());
       }
     });
+  }
+
+  // --- Flux « prêt » : je prête mon abonnement (24/48 h) par identifiant. ---
+  Future<void> _lend() async {
+    final String g = _normalizeMac(_friendMac.text);
+    if (g.isEmpty) {
+      setState(() => _message = 'Entre l’identifiant de ton ami.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    final Map<String, dynamic>? r =
+        await InviteBackend.lend(widget.mac, g, hours: _lendHours);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      if (r == null) {
+        _message = 'Connexion impossible. Réessaie.';
+      } else if (r['ok'] == true) {
+        _message = 'Prêté ! Ton ami a ${_lendHours} h. Toi, tu es en pause — '
+            'ça te revient tout seul à la fin (ou reprends quand tu veux).';
+      } else {
+        _message = _errText((r['error'] ?? '').toString());
+      }
+    });
+    // Un prêt réussi met le propriétaire en pause → le parent affiche le
+    // bandeau « j'ai prêté » avec le bouton Reprendre.
+    if (r != null && r['ok'] == true) widget.onLent();
   }
 
   String _errText(String e) => switch (e) {
@@ -560,94 +720,141 @@ class _InviteCardState extends State<_InviteCard> {
           'Tu as utilisé tes invitations de la semaine. Ça se renouvelle bientôt.',
         'already_active' => 'Cet appareil a déjà un accès actif.',
         'already_used_once' => 'Cet appareil a déjà profité d’un pass gratuit.',
+        'loan_active' =>
+          'Tu as déjà un prêt en cours. Reprends-le d’abord pour en refaire un.',
+        'same_device' => 'C’est ton propre appareil 🙂',
         'own_code' => 'C’est ta propre adresse 🙂',
         _ => 'Action impossible pour le moment.',
       };
 
   @override
   Widget build(BuildContext context) {
+    final bool lend = _flow == 'lend';
     return _Card(
       icon: Icons.card_giftcard_rounded,
       title: 'Inviter un ami',
-      subtitle: 'Fais-lui profiter de tes chaînes. Il devra s’abonner ensuite.',
+      subtitle: 'Deux façons de partager : regarder ensemble, ou lui prêter '
+          'ton abonnement.',
       children: <Widget>[
-        // Durée : 5 h (ensemble) / 24 h (prêt) / 48 h.
+        // Choix du FLUX : ensemble (5 h) vs prêt (24/48 h).
         Row(
           children: <Widget>[
-            _DurChip(
-              label: '5 h',
-              hint: 'ensemble',
-              on: _hours == 5,
-              onTap: () => setState(() => _hours = 5),
+            _FlowTab(
+              label: 'Ensemble',
+              hint: '5 h · tu gardes tes chaînes',
+              on: !lend,
+              onTap: () => setState(() {
+                _flow = 'together';
+                _message = null;
+              }),
             ),
             const SizedBox(width: 10),
-            _DurChip(
-              label: '24 h',
-              hint: 'prêt',
-              on: _hours == 24,
-              onTap: () => setState(() => _hours = 24),
-            ),
-            const SizedBox(width: 10),
-            _DurChip(
-              label: '48 h',
-              hint: 'week-end',
-              on: _hours == 48,
-              onTap: () => setState(() => _hours = 48),
+            _FlowTab(
+              label: 'Prêter',
+              hint: '24-48 h · tu passes en pause',
+              on: lend,
+              onTap: () => setState(() {
+                _flow = 'lend';
+                _message = null;
+              }),
             ),
           ],
         ),
-        const SizedBox(height: 14),
-        if (_code != null) ...<Widget>[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceHigh,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.accent),
+        const SizedBox(height: 16),
+
+        if (!lend) ...<Widget>[
+          // ---------- FLUX ENSEMBLE (5 h, code ou identifiant) ----------
+          if (_code != null) ...<Widget>[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceHigh,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.accent),
+              ),
+              child: Text(
+                _code!.split('').join(' '),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 30,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 5,
+                  color: AppColors.accent,
+                ),
+              ),
             ),
-            child: Text(
-              _code!.split('').join(' '),
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 30,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 5,
-                color: AppColors.accent,
+            const SizedBox(height: 6),
+            Text(
+              'Donne ce code à ton ami — valable 48 h.',
+              style: AppTextStyles.bodyMedium
+                  .copyWith(fontSize: 12, color: AppColors.textTertiary),
+            ),
+            const SizedBox(height: 12),
+          ],
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _busy ? null : _generate,
+              icon: const Icon(Icons.qr_code_2_rounded, size: 18),
+              label: Text(_busy
+                  ? 'Patiente…'
+                  : (_code == null ? 'Générer un code' : 'Nouveau code')),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: AppColors.voidSurface,
+                padding: const EdgeInsets.symmetric(vertical: 14),
               ),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 14),
           Text(
-            'Donne ce code à ton ami — valable 48 h.',
+            '— ou active-le directement par son identifiant —',
+            textAlign: TextAlign.center,
             style: AppTextStyles.bodyMedium
                 .copyWith(fontSize: 12, color: AppColors.textTertiary),
           ),
-          const SizedBox(height: 12),
-        ],
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: _busy ? null : _generate,
-            icon: const Icon(Icons.qr_code_2_rounded, size: 18),
-            label: Text(_busy
-                ? 'Patiente…'
-                : (_code == null ? 'Générer un code' : 'Nouveau code')),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.accent,
-              foregroundColor: AppColors.voidSurface,
-              padding: const EdgeInsets.symmetric(vertical: 14),
+        ] else ...<Widget>[
+          // ---------- FLUX PRÊT (24/48 h, identifiant obligatoire) ----------
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceHigh,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Text(
+              'Tu prêtes TON abonnement complet. Pendant le prêt, toi tu es en '
+              'pause. À la fin, ça revient tout seul sur ton appareil (ou tu le '
+              'reprends quand tu veux).',
+              style: AppTextStyles.bodyMedium.copyWith(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+                height: 1.45,
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 14),
-        Text(
-          '— ou active-le directement par son identifiant —',
-          textAlign: TextAlign.center,
-          style: AppTextStyles.bodyMedium
-              .copyWith(fontSize: 12, color: AppColors.textTertiary),
-        ),
-        const SizedBox(height: 10),
+          const SizedBox(height: 12),
+          Row(
+            children: <Widget>[
+              _DurChip(
+                label: '24 h',
+                hint: 'max',
+                on: _lendHours == 24,
+                onTap: () => setState(() => _lendHours = 24),
+              ),
+              const SizedBox(width: 10),
+              _DurChip(
+                label: '48 h',
+                hint: 'max',
+                on: _lendHours == 48,
+                onTap: () => setState(() => _lendHours = 48),
+              ),
+            ],
+          ),
+        ],
+
+        const SizedBox(height: 12),
         TextField(
           controller: _friendMac,
           textCapitalization: TextCapitalization.characters,
@@ -668,16 +875,28 @@ class _InviteCardState extends State<_InviteCard> {
         const SizedBox(height: 10),
         SizedBox(
           width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _busy ? null : _grantByMac,
-            icon: const Icon(Icons.bolt_rounded, size: 18),
-            label: Text(_busy ? 'Patiente…' : 'Activer par identifiant'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.accent,
-              side: BorderSide(color: AppColors.accent.withValues(alpha: 0.6)),
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-          ),
+          child: lend
+              ? FilledButton.icon(
+                  onPressed: _busy ? null : _lend,
+                  icon: const Icon(Icons.volunteer_activism_rounded, size: 18),
+                  label: Text(_busy ? 'Patiente…' : 'Prêter mon abonnement'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.accent,
+                    foregroundColor: AppColors.voidSurface,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                )
+              : OutlinedButton.icon(
+                  onPressed: _busy ? null : _grantByMac,
+                  icon: const Icon(Icons.bolt_rounded, size: 18),
+                  label: Text(_busy ? 'Patiente…' : 'Activer par identifiant'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.accent,
+                    side:
+                        BorderSide(color: AppColors.accent.withValues(alpha: 0.6)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
         ),
         if (_message != null) ...<Widget>[
           const SizedBox(height: 10),
@@ -688,6 +907,62 @@ class _InviteCardState extends State<_InviteCard> {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Onglet de choix de FLUX (Ensemble / Prêter) — plus grand qu'une puce.
+class _FlowTab extends StatelessWidget {
+  const _FlowTab({
+    required this.label,
+    required this.hint,
+    required this.on,
+    required this.onTap,
+  });
+  final String label;
+  final String hint;
+  final bool on;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+          decoration: BoxDecoration(
+            color: on ? AppColors.accentSurface : AppColors.surfaceHigh,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: on ? AppColors.accent : AppColors.border,
+              width: on ? 1.4 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                label,
+                style: AppTextStyles.headlineMedium.copyWith(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: on ? AppColors.accent : AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                hint,
+                style: AppTextStyles.labelSmall.copyWith(
+                  fontSize: 10,
+                  color: on ? AppColors.accent : AppColors.textTertiary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
