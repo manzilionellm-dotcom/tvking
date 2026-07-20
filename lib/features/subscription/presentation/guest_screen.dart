@@ -43,7 +43,12 @@ Future<void> openGuestScreen(BuildContext context) {
 }
 
 class GuestScreen extends StatefulWidget {
-  const GuestScreen({super.key});
+  const GuestScreen({super.key, this.consoleMode = false});
+
+  /// Mode CONSOLE MAÎTRE (build dédié) : l'écran ne montre QUE le générateur
+  /// de tests (pas « j'ai un code » ni « envoyer ma MAC »), et c'est l'écran
+  /// de démarrage de l'app. Le pouvoir reste verrouillé serveur sur la MAC.
+  final bool consoleMode;
 
   @override
   State<GuestScreen> createState() => _GuestScreenState();
@@ -124,13 +129,15 @@ class _GuestScreenState extends State<GuestScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool console = widget.consoleMode;
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        automaticallyImplyLeading: !console, // pas de « retour » : c'est l'app
         title: Text(
-          'Mode invité',
+          console ? 'Console de test' : 'Mode invité',
           style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
         ),
       ),
@@ -143,46 +150,94 @@ class _GuestScreenState extends State<GuestScreen> {
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                // Bandeau « tu as prêté ton abonnement » + Reprendre. En tête,
-                // car un propriétaire en pause n'a QUE ça à faire ici.
-                if (_loan != null) ...<Widget>[
-                  _LoanOwnerBanner(
-                    loan: _loan!,
-                    busy: _reclaiming,
-                    onReclaim: _reclaim,
-                  ),
-                  const SizedBox(height: 18),
-                ],
-
-                // Bandeau « ton accès invité » (si un pass est actif/passé).
-                if (_pass != null) ...<Widget>[
-                  _GuestPassBanner(pass: _pass!),
-                  const SizedBox(height: 18),
-                ],
-
-                const _Intro(),
-                const SizedBox(height: 18),
-
-                // 1) J'ai un code
-                _RedeemCard(mac: _mac, onRedeemed: _refresh),
-                const SizedBox(height: 16),
-
-                // 2) Envoyer ma MAC à celui qui m'invite
-                _ShareMacCard(macNu: _macNu),
-
-                // 3) Inviter un ami (abonnés payés) OU envoyer des tests
-                //    illimités (comptes maîtres).
-                if (_isPaid || _isMaster) ...<Widget>[
-                  const SizedBox(height: 16),
-                  _InviteCard(mac: _mac, onLent: _refresh, isMaster: _isMaster),
-                ],
-              ],
+              children: console
+                  ? _consoleChildren()
+                  : _guestChildren(),
             ),
           ),
         ),
       ),
     );
+  }
+
+  /// Écran invité classique (client) : bandeaux + code + envoyer MAC + inviter.
+  List<Widget> _guestChildren() {
+    return <Widget>[
+      if (_loan != null) ...<Widget>[
+        _LoanOwnerBanner(loan: _loan!, busy: _reclaiming, onReclaim: _reclaim),
+        const SizedBox(height: 18),
+      ],
+      if (_pass != null) ...<Widget>[
+        _GuestPassBanner(pass: _pass!),
+        const SizedBox(height: 18),
+      ],
+      const _Intro(),
+      const SizedBox(height: 18),
+      _RedeemCard(mac: _mac, onRedeemed: _refresh),
+      const SizedBox(height: 16),
+      _ShareMacCard(macNu: _macNu),
+      // Inviter un ami (abonnés) OU envoyer des tests illimités (maîtres).
+      if (_isPaid || _isMaster) ...<Widget>[
+        const SizedBox(height: 16),
+        _InviteCard(mac: _mac, onLent: _refresh, isMaster: _isMaster),
+      ],
+    ];
+  }
+
+  /// Écran CONSOLE MAÎTRE (build dédié) : seulement le générateur de tests.
+  /// Si la MAC n'est pas (encore) maître, on l'explique — le pouvoir vient du
+  /// panel (serveur), pas du build.
+  List<Widget> _consoleChildren() {
+    return <Widget>[
+      Text(
+        'Console de test — codes & accès illimités',
+        style: AppTextStyles.headlineLarge.copyWith(fontSize: 22, height: 1.2),
+      ),
+      const SizedBox(height: 6),
+      Text(
+        'Génère un code ou active quelqu’un par son identifiant : il reçoit un '
+        'accès complet le temps du test (1 h…), autant de fois que tu veux.',
+        style: AppTextStyles.bodyMedium.copyWith(
+          fontSize: 13,
+          color: AppColors.textSecondary,
+          height: 1.55,
+        ),
+      ),
+      const SizedBox(height: 18),
+      if (!_isMaster) ...<Widget>[
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.warning.withValues(alpha: 0.5)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'Cette MAC n’est pas encore « maître »',
+                style: AppTextStyles.bodyLarge.copyWith(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.warning,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Ajoute cet identifiant dans le panel (Comptes maîtres) pour '
+                'débloquer l’envoi de tests : ${_macNu.isEmpty ? '…' : _macNu}',
+                style: AppTextStyles.bodyMedium
+                    .copyWith(fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+      // Le générateur (forcé en mode maître : durée 1/5/24/48 h, illimité).
+      _InviteCard(mac: _mac, onLent: _refresh, isMaster: true),
+    ];
   }
 }
 

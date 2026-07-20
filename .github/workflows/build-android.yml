@@ -36,6 +36,10 @@ on:
         description: 'Aussi publier en GitHub Release (true/false)'
         required: false
         default: 'false'
+      master_console:
+        description: 'Build CONSOLE MAÎTRE (ouvre sur le générateur de tests, true/false)'
+        required: false
+        default: 'false'
 
 permissions:
   contents: write   # nécessaire pour créer/mettre à jour une release
@@ -694,6 +698,15 @@ jobs:
           echo "APP_BUILD_TS=$BUILD_TS"
           # Retry : le download de libmpv (media_kit) renvoie parfois un
           # 504 transitoire côté GitHub → on réessaie jusqu'à 4 fois.
+          # BUILD CONSOLE MAÎTRE : si déclenché manuellement avec
+          # master_console=true, on ajoute le dart-define qui fait ouvrir l'app
+          # directement sur le générateur de tests. Sur un push normal, l'input
+          # est vide → build client normal (aucun impact).
+          MASTER_DEFINE=
+          if [ "${{ github.event.inputs.master_console }}" = "true" ]; then
+            MASTER_DEFINE="--dart-define=MASTER_CONSOLE=true"
+            echo "=== BUILD CONSOLE MAÎTRE (MASTER_CONSOLE=true) ==="
+          fi
           ok=
           for attempt in 1 2 3 4; do
             echo "=== Build attempt $attempt ==="
@@ -701,7 +714,8 @@ jobs:
               --build-number=${{ github.run_number }} \
               --obfuscate --split-debug-info=build/symbols \
               --dart-define=APP_BUILD_TS=$BUILD_TS \
-              --dart-define=GIT_SHA=${{ github.sha }} && { ok=1; break; }
+              --dart-define=GIT_SHA=${{ github.sha }} \
+              $MASTER_DEFINE && { ok=1; break; }
             echo "Attempt $attempt failed; retry in 25s"; sleep 25
           done
           [ "$ok" = 1 ] || { echo "Build failed after retries"; exit 1; }

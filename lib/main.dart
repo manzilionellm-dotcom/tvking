@@ -71,6 +71,8 @@ import 'features/security/presentation/age_gate_screen.dart';
 import 'features/security/presentation/lock_screen.dart';
 import 'features/recordings/data/recording_repository.dart';
 import 'features/recordings/data/ffmpeg_converter.dart';
+import 'core/app/master_console.dart';
+import 'features/subscription/presentation/guest_screen.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/subscription/presentation/subscription_gate.dart';
 
@@ -714,6 +716,10 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
             // 3b) PUB VIDÉO de démarrage (pilotée par le panel), juste avant
             //     l'accueil. Tant qu'on ne sait pas encore (réseau), bref
             //     splash pour éviter un flash d'accueil avant la pub.
+            // BUILD CONSOLE MAÎTRE : app dédiée à l'exploitant → on ouvre
+            // DIRECTEMENT sur le générateur de tests, sans pub ni accueil
+            // client. Le pouvoir reste verrouillé serveur sur la MAC maître.
+            if (kMasterConsole) return const GuestScreen(consoleMode: true);
             if (!_adResolved) return const _Splash();
             if (_adShow && !_adDone) {
               return StartupAdScreen(
