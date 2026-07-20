@@ -34,6 +34,7 @@ const OWNER_NAV: NavSection[] = [
       { key: 'nav.credits',     to: '/credits' },
       { key: 'nav.families',    to: '/families' },
       { key: 'nav.transfer',    to: '/transfer' },
+      { key: 'nav.shares',      to: '/shares' },
       { key: 'nav.pricing',     to: '/tarifs' },
       { key: 'nav.references',  to: '/references' },
     ],

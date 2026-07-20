@@ -939,6 +939,35 @@ export const transferApi = {
 };
 
 // =========================================================
+//  PARTAGES & PRÊTS — ledger anti-vol des invitations entre clients
+// =========================================================
+//  Une transaction = une ligne de app_invites : qui a invité (émetteur),
+//  quel appareil a été invité, le mode (ensemble / prêt), la durée, la date
+//  et l'échéance du pass. Lecture seule — sert à SURVEILLER qui partage quoi.
+export interface InviteRow {
+  code: string;
+  issuer_mac: string;
+  redeemer_mac: string | null;
+  plan: string;
+  created_at: number;
+  expires_at: number;
+  redeemed_at: number | null;
+  guest_until: number | null;
+  hours: number | null;
+  mode: string | null;
+  channel_json: string | null;
+  issuer_name?: string | null;
+  issuer_reseller_id?: string | null;
+  redeemer_block?: string | null;
+}
+export const invitesApi = {
+  list: (q?: string) =>
+    request<{ items: InviteRow[] }>(
+      `/api/v1/invites${q ? `?q=${encodeURIComponent(q)}` : ''}`,
+    ),
+};
+
+// =========================================================
 //  Familles — une ligne (source) partagée par plusieurs appareils
 // =========================================================
 export interface FamilySource {
