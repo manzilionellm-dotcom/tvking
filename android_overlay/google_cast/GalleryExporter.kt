@@ -190,21 +190,37 @@ class GalleryExporter(
 
         // --- Choix de la stratégie de conversion --------------------------
         // produceMp4 : remux sans perte si possible, sinon transcodage,
-        // sinon vidéo remuxée sans audio. Null = rien n'a marché →
-        // copie brute du .ts (dernier repli, comme avant).
-        var dataFile: File = srcFile
-        var tempToCleanup: File? = null
-
+        // sinon vidéo remuxée sans audio. Null = rien n'a marché.
+        //
+        // CORRECTIF (galerie « VLC seulement ») : AVANT, si produceMp4
+        // échouait, on copiait le .ts BRUT dans la galerie en le nommant
+        // « …mp4 » avec le type MIME video/mp4. La galerie/le lecteur photo du
+        // téléphone se fie au conteneur (MP4) → démux MP4 sur des octets
+        // MPEG-TS → échec → « seul VLC (qui sniffe le contenu) l'ouvre ».
+        // On NE MENT PLUS sur le format : on n'insère un video/mp4 QUE si on a
+        // produit un VRAI MP4. Sinon on renvoie une erreur claire (l'appelant
+        // affiche un message) — l'enregistrement reste lisible dans l'app.
         val produced = produceMp4(srcFile, context.cacheDir)
-        if (produced != null) {
-            dataFile = produced
-            tempToCleanup = produced
-        } else {
-            Log.w(TAG, "Aucune conversion possible → copie brute du .ts")
+        if (produced == null) {
+            Log.w(TAG, "Conversion MP4 impossible sur cet appareil (codec non muxable/décodable)")
+            return ExportOutcome.error(
+                "CONVERT_UNSUPPORTED",
+                "Cette chaîne ne peut pas être convertie en MP4 sur ce téléphone " +
+                    "(codec vidéo non pris en charge). L'enregistrement reste lisible dans l'app.",
+            )
         }
+        val dataFile: File = produced
+        val tempToCleanup: File? = produced
 
         return try {
-            insertIntoGallery(dataFile, displayName)
+            // On garantit une extension .mp4 sur le nom affiché (le .ts a pu
+            // rester dans displayName si l'appelant ne l'a pas remplacé).
+            val mp4Name = if (displayName.endsWith(".mp4", ignoreCase = true)) {
+                displayName
+            } else {
+                displayName.substringBeforeLast('.') + ".mp4"
+            }
+            insertIntoGallery(dataFile, mp4Name)
             ExportOutcome.success()
         } catch (e: SecurityException) {
             Log.e(TAG, "SecurityException: $e")
