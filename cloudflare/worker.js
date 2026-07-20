@@ -3432,6 +3432,110 @@ async function handleInviteMaster(env, rawMac) {
   return jsonPrivate({ master });
 }
 
+// =========================================================
+//  LISTE DE TEST INDÉPENDANTE (« notre liste », moins de 5 chaînes)
+// =========================================================
+//  LE CŒUR de l'indépendance vis-à-vis du fournisseur.
+//
+//  Problème : si un test donne accès à TOUT le bouquet, 10 testeurs peuvent
+//  regarder 10 chaînes DIFFÉRENTES → 10 connexions upstream distinctes → la
+//  ligne (un seul trio) sature à PROVIDER_MAX_CONNECTIONS et le fournisseur
+//  « voit » l'activité. C'est l'« impact » à éviter.
+//
+//  Solution (ta technique) : le maître curate UNE PETITE liste (< 5 chaînes),
+//  écrite en M3U dont les URLs pointent sur LE GATEWAY. Tous les tests servent
+//  CETTE liste. Comme le gateway MUTUALISE les chaînes identiques (hub.js : une
+//  chaîne = UNE seule connexion fournisseur, peu importe le nombre de
+//  spectateurs), 10 testeurs sur ces mêmes chaînes = AU PLUS (taille de la
+//  liste) connexions, et s'ils convergent sur la même chaîne = 1 seule.
+//  Le fournisseur ne voit qu'une (ou très peu) connexion(s) : on est
+//  INDÉPENDANT avec un seul trio.
+//
+//  La liste est PRIVÉE : gérée uniquement via le panel admin, servie derrière
+//  une référence OPAQUE (jamais la MAC maître en clair dans l'URL du testeur).
+let _masterListSchemaReady = false;
+async function ensureMasterListSchema(env) {
+  if (!env.DB) return false;
+  if (_masterListSchemaReady) return true;
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS master_test_list (' +
+      'mac TEXT PRIMARY KEY, m3u TEXT, updated_at INTEGER)',
+    ).run();
+    _masterListSchemaReady = true;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Référence OPAQUE et stable d'une liste maître (hash NON réversible de la
+/// MAC). Sert d'URL de test (`/api/master-list/ml_…`) SANS jamais exposer la
+/// vraie MAC du maître au testeur ni au fournisseur.
+export async function masterListRef(masterMac) {
+  const data = new TextEncoder().encode('mlist:' + String(masterMac).toUpperCase());
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return 'ml_' + hex.slice(0, 20);
+}
+
+/// Compte les chaînes d'un M3U (lignes #EXTINF). Best-effort, jamais d'erreur.
+export function countM3uChannels(m3u) {
+  if (!m3u) return 0;
+  const m = String(m3u).match(/#EXTINF/gi);
+  return m ? m.length : 0;
+}
+
+/// Lit la liste de test curée d'un maître : { m3u, count, ref }. m3u vide si
+/// le maître n'a rien curé (→ repli sur le bouquet complet, comportement
+/// historique).
+async function readMasterTestList(env, mac) {
+  const m = String(mac || '').toUpperCase();
+  if (!MAC_RX.test(m) || !env.DB || !(await ensureMasterListSchema(env))) {
+    return { m3u: '', count: 0, ref: '' };
+  }
+  try {
+    const row = await env.DB
+      .prepare('SELECT m3u FROM master_test_list WHERE mac = ?').bind(m).first();
+    const m3u = (row && row.m3u) ? String(row.m3u) : '';
+    return { m3u, count: countM3uChannels(m3u), ref: await masterListRef(m) };
+  } catch (_) {
+    return { m3u: '', count: 0, ref: '' };
+  }
+}
+
+/// Résout la MAC maître à partir de la référence opaque de sa liste (scan des
+/// comptes maîtres). Renvoie la MAC ou null. Sert la route publique de test.
+async function resolveMasterMacByListRef(env, ref) {
+  const r = String(ref || '').trim();
+  if (!/^ml_[0-9a-f]{20}$/.test(r) || !env.DB || !(await ensureMasterSchema(env))) return null;
+  try {
+    const rows = await env.DB.prepare('SELECT mac FROM app_masters').all();
+    for (const row of (rows && rows.results) || []) {
+      if ((await masterListRef(row.mac)) === r) return String(row.mac).toUpperCase();
+    }
+  } catch (_) { /* ignore */ }
+  return null;
+}
+
+/// GET /api/master-list/:ref(.m3u) → sert le M3U curé du maître (texte brut).
+/// URL OPAQUE : le testeur (et le fournisseur) ne voient jamais la MAC maître.
+/// C'est CETTE source (≤ 5 chaînes via gateway) qui rend le test indépendant.
+async function handleMasterListServe(env, rawRef) {
+  const ref = String(rawRef || '').replace(/\.m3u$/i, '');
+  const mac = await resolveMasterMacByListRef(env, ref);
+  if (!mac) return notFound('unknown list');
+  const { m3u } = await readMasterTestList(env, mac);
+  if (!m3u) return notFound('empty list');
+  return new Response(m3u, {
+    status: 200,
+    headers: {
+      'content-type': 'application/vnd.apple.mpegurl; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
+}
+
 /// GET /api/invite/selftest/:mac → « BOÎTE NOIRE » : renvoie les FAITS bruts
 /// que le serveur connaît sur CET appareil, pour que la console maître affiche
 /// un diagnostic de sécurité HONNÊTE (pas des cases vertes bidon) :
@@ -3471,17 +3575,57 @@ async function handleInviteSelftest(env, rawMac) {
     activeTest = !!(st && st.paid && st.plan && String(st.plan).startsWith('trial_'));
   } catch (_) { /* ignore */ }
 
-  return jsonPrivate({ ok: true, master, source, active_test: activeTest });
+  // LISTE DE TEST INDÉPENDANTE : si CET appareil est un maître, on rapporte
+  // sa liste curée (nb de chaînes). count>0 → les tests servent cette petite
+  // liste → le fournisseur ne voit qu'une connexion mutualisée (indépendance).
+  let testList = { present: false, count: 0 };
+  if (master) {
+    try {
+      const tl = await readMasterTestList(env, mac);
+      testList = { present: tl.count > 0, count: tl.count };
+    } catch (_) { /* ignore */ }
+  }
+
+  return jsonPrivate({ ok: true, master, source, active_test: activeTest, test_list: testList });
 }
 
-/// Copie la/les SOURCE(S) du maître [fromMac] vers l'appareil testé [toMac] :
-/// le testeur voit alors TOUT le bouquet (pas une seule chaîne) pendant la
-/// durée du test. Comme les sources pointent sur le gateway, ses connexions
-/// restent invisibles au fournisseur. La licence courte (1 h…) coupe l'accès à
-/// l'échéance, même si la source reste posée. Best-effort : jamais bloquant.
-async function copyMasterSourceForTest(env, fromMac, toMac) {
+/// Assigne au testeur [toMac] la source à jouer pendant le test du maître
+/// [fromMac]. DEUX modes :
+///
+///   1. LISTE DE TEST INDÉPENDANTE (préférée) : si le maître a curé une petite
+///      liste (< 5 chaînes), on assigne CETTE liste — un unique item M3U dont
+///      l'URL opaque (`/api/master-list/ml_…`) sert le M3U curé. Tous les
+///      testeurs partagent ces mêmes chaînes → le gateway mutualise → le
+///      fournisseur ne voit qu'UNE connexion. C'est l'indépendance recherchée.
+///
+///   2. REPLI (aucune liste curée) : on copie TOUT le bouquet du maître (accès
+///      complet). Comportement historique — mais des chaînes différentes = des
+///      connexions différentes (borné par la ligne). D'où l'intérêt du mode 1.
+///
+/// [origin] = origine HTTP du worker (ex. https://…workers.dev), pour bâtir
+/// l'URL absolue de la liste. La licence courte (1 h…) coupe l'accès à
+/// l'échéance. Best-effort : jamais bloquant.
+async function copyMasterSourceForTest(env, fromMac, toMac, origin = '') {
   try {
-    const { items } = await readDeviceSourceItems(env, String(fromMac).toUpperCase());
+    const FROM = String(fromMac).toUpperCase();
+    const TO = String(toMac).toUpperCase();
+    await ensureDeviceSourcesTable(env);
+
+    // --- Mode 1 : liste de test curée (indépendance fournisseur) ------------
+    const tl = await readMasterTestList(env, FROM);
+    if (tl.count > 0 && tl.ref && origin) {
+      const item = {
+        type: 'm3u',
+        label: 'Test 7 Motion',
+        m3u_url: origin.replace(/\/+$/, '') + '/api/master-list/' + tl.ref + '.m3u',
+        origin: 'panel', // VERROUILLÉE : le testeur ne peut pas l'éditer.
+      };
+      await writeDeviceSourceItems(env, TO, [item]);
+      return true;
+    }
+
+    // --- Mode 2 : repli sur le bouquet complet du maître --------------------
+    const { items } = await readDeviceSourceItems(env, FROM);
     if (!items || !items.length) return false;
     // Marquées 'panel' (assignées) → non éditables par le testeur ; on retire
     // les id 'self' du maître (régénérés si besoin).
@@ -3490,8 +3634,7 @@ async function copyMasterSourceForTest(env, fromMac, toMac) {
       delete it.id;
       return it;
     });
-    await ensureDeviceSourcesTable(env);
-    await writeDeviceSourceItems(env, String(toMac).toUpperCase(), copy);
+    await writeDeviceSourceItems(env, TO, copy);
     return true;
   } catch (_) {
     return false;
@@ -3813,11 +3956,13 @@ async function handleInviteGrant(request, env) {
   const mode = inviteMode(body?.mode);
   const g = await grantGuestPassLicense(env, guest, hours, now);
   if (!g.ok) return json({ ok: false, error: g.error });
-  // TEST MAÎTRE : accès COMPLET (tout le bouquet, pas une seule chaîne) → on
-  // copie la source du maître vers le testeur. La licence courte coupe à
-  // l'échéance. Tout passe par le gateway → fournisseur aveugle.
+  // TEST MAÎTRE : on assigne au testeur la source de test du maître — liste
+  // curée (< 5 chaînes, indépendance fournisseur) si définie, sinon tout le
+  // bouquet. La licence courte coupe à l'échéance. Tout passe par le gateway.
   if (master) {
-    await copyMasterSourceForTest(env, mac, guest);
+    let origin = '';
+    try { origin = new URL(request.url).origin; } catch (_) { /* ignore */ }
+    await copyMasterSourceForTest(env, mac, guest, origin);
   }
   // Trace l'invitation (code interne préfixé 'M' = par MAC, non tapé).
   const buf = new Uint32Array(1); crypto.getRandomValues(buf);
@@ -3971,10 +4116,12 @@ async function handleInviteRedeem(request, env) {
   const hours = issuerIsMaster ? masterHours(row.hours) : inviteHours(row.hours);
   const guest = await grantGuestPassLicense(env, mac, hours, now);
   if (!guest.ok) return json({ ok: false, error: guest.error });
-  // Code d'un MAÎTRE → test à accès COMPLET : on copie la source du maître
-  // vers le testeur (tout le bouquet pendant la durée, via le gateway).
+  // Code d'un MAÎTRE → on assigne au testeur SA source de test : liste curée
+  // (indépendance fournisseur) si le maître en a une, sinon tout le bouquet.
   if (issuerIsMaster && issuer) {
-    await copyMasterSourceForTest(env, issuer, mac);
+    let origin = '';
+    try { origin = new URL(request.url).origin; } catch (_) { /* ignore */ }
+    await copyMasterSourceForTest(env, issuer, mac, origin);
   }
 
   // Lie l'invité au code (le code devient utilisé → non rejouable).
@@ -5807,6 +5954,14 @@ async function handleRequest(request, env, ctx) {
         return badRequest('only GET supported on /api/history/:mac');
       }
       return await handlePublicHistory(env, segments[2]);
+    }
+
+    // /api/master-list/:ref(.m3u) — sert le M3U CURÉ d'un maître (liste de test
+    // indépendante). URL OPAQUE : jamais la MAC maître en clair. C'est la source
+    // que l'app du testeur charge → chaînes partagées → fournisseur aveugle.
+    if (segments[0] === 'api' && segments[1] === 'master-list' && segments.length === 3) {
+      if (request.method !== 'GET') return badRequest('only GET supported');
+      return handleMasterListServe(env, segments[2]);
     }
 
     // /api/invite/* — PASS PARTAGE (« regarder ensemble ») : un abonné payant

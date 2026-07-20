@@ -515,6 +515,20 @@ class _BlackBoxState extends State<_BlackBox> {
               ? '${s['count'] ?? 1} source(s) · ${s['origin'] ?? 'panel'}'
               : 'Aucune source assignée à cet appareil.',
         );
+      case 'testlist':
+        final Map<String, dynamic>? t =
+            d != null && d['test_list'] is Map ? (d['test_list'] as Map).cast<String, dynamic>() : null;
+        final bool present = t != null && t['present'] == true;
+        final int count = t != null ? (t['count'] as num? ?? 0).toInt() : 0;
+        return (
+          // Vert : liste curée → fournisseur voit UNE connexion mutualisée.
+          // Ambre : pas de liste → test = tout le bouquet (chaînes ≠ = lignes ≠).
+          level: present ? 0 : 1,
+          label: 'Liste de test indépendante',
+          detail: present
+              ? '$count chaîne(s) partagée(s) · le fournisseur ne voit qu’une connexion.'
+              : 'Aucune liste curée — le test ouvre tout le bouquet. Configure-la dans le panel.',
+        );
       case 'relay':
         final Map<String, dynamic>? s =
             d != null && d['source'] is Map ? (d['source'] as Map).cast<String, dynamic>() : null;
@@ -554,6 +568,7 @@ class _BlackBoxState extends State<_BlackBox> {
             _row('backend'),
             _row('master'),
             _row('source'),
+            _row('testlist'),
             _row('relay'),
           ]
         : const <({int level, String label, String detail})>[];

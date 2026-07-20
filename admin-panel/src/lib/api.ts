@@ -986,6 +986,16 @@ export const mastersApi = {
     request<{ ok: boolean; mac: string }>(`/api/v1/masters/${encodeURIComponent(mac)}`, {
       method: 'DELETE',
     }),
+  // LISTE DE TEST INDÉPENDANTE d'un maître (petit M3U curé, < 5 chaînes).
+  getTestList: (mac: string) =>
+    request<{ mac: string; m3u: string; count: number; updated_at: number | null }>(
+      `/api/v1/masters/test-list?mac=${encodeURIComponent(mac)}`,
+    ),
+  putTestList: (mac: string, m3u: string) =>
+    request<{ ok: boolean; mac: string; count: number }>('/api/v1/masters/test-list', {
+      method: 'PUT',
+      body: { mac, m3u },
+    }),
 };
 
 // =========================================================

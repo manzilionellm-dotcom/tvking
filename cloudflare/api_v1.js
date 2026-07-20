@@ -1133,6 +1133,13 @@ async function apiV1Inner(request, env) {
     if (parts.length === 2 && request.method === 'DELETE') {
       return handleMastersRemove(env, parts[1]);
     }
+    // /masters/test-list — LISTE DE TEST INDÉPENDANTE d'un maître (le petit
+    // M3U curé, < 5 chaînes, servi via gateway). GET ?mac= / PUT {mac, m3u}.
+    if (parts.length === 2 && parts[1] === 'test-list') {
+      if (request.method === 'GET') return handleMasterTestListGet(request, env);
+      if (request.method === 'PUT') return handleMasterTestListPut(request, env);
+      return errResp('method_not_allowed', 'GET or PUT', 405);
+    }
     return errResp('method_not_allowed', 'unsupported', 405);
   }
 
@@ -3238,6 +3245,59 @@ async function handleMastersRemove(env, rawMac) {
   await ensureMastersTable(env);
   await env.DB.prepare('DELETE FROM app_masters WHERE mac = ?').bind(mac).run();
   return jsonResp({ ok: true, mac });
+}
+
+// =========================================================
+//  LISTE DE TEST INDÉPENDANTE (« notre liste », < 5 chaînes)
+// =========================================================
+//  Le maître curate un PETIT M3U (chaînes via gateway). Tous les tests servent
+//  cette liste → chaînes partagées → le gateway mutualise → le fournisseur ne
+//  voit qu'UNE connexion (un seul trio suffit). Table `master_test_list`,
+//  partagée avec le worker (qui la sert derrière une réf opaque).
+async function ensureMasterListTable(env) {
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS master_test_list (mac TEXT PRIMARY KEY, m3u TEXT, updated_at INTEGER)',
+    ).run();
+  } catch (_) { /* déjà présente */ }
+}
+
+// Compte les chaînes d'un M3U (lignes #EXTINF). Sert d'indicateur au panel.
+function _countM3uChannels(m3u) {
+  if (!m3u) return 0;
+  const m = String(m3u).match(/#EXTINF/gi);
+  return m ? m.length : 0;
+}
+
+async function handleMasterTestListGet(request, env) {
+  const url = new URL(request.url);
+  const mac = String(url.searchParams.get('mac') || '').toUpperCase();
+  if (!_MASTER_MAC_RX.test(mac)) return errResp('bad_mac', 'MAC maître invalide.', 400);
+  await ensureMasterListTable(env);
+  const row = await env.DB
+    .prepare('SELECT m3u, updated_at FROM master_test_list WHERE mac = ?').bind(mac).first();
+  const m3u = (row && row.m3u) ? String(row.m3u) : '';
+  return jsonResp({ mac, m3u, count: _countM3uChannels(m3u), updated_at: (row && row.updated_at) || null });
+}
+
+async function handleMasterTestListPut(request, env) {
+  let body;
+  try { body = await request.json(); } catch (_) { return errResp('bad_json', 'Invalid JSON', 400); }
+  const mac = String(body?.mac || '').toUpperCase();
+  if (!_MASTER_MAC_RX.test(mac)) return errResp('bad_mac', 'MAC maître invalide.', 400);
+  // On garde une liste VOLONTAIREMENT petite : indépendance = peu de chaînes
+  // partagées. Plafond souple à 50 lignes / 64 Ko (garde-fou, pas une police).
+  const m3u = String(body?.m3u || '').slice(0, 64 * 1024);
+  const count = _countM3uChannels(m3u);
+  await ensureMasterListTable(env);
+  if (!m3u.trim()) {
+    await env.DB.prepare('DELETE FROM master_test_list WHERE mac = ?').bind(mac).run();
+    return jsonResp({ ok: true, mac, count: 0 });
+  }
+  await env.DB
+    .prepare('INSERT OR REPLACE INTO master_test_list (mac, m3u, updated_at) VALUES (?, ?, ?)')
+    .bind(mac, m3u, Date.now()).run();
+  return jsonResp({ ok: true, mac, count });
 }
 
 // =========================================================
