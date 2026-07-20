@@ -1136,6 +1136,16 @@ async function apiV1Inner(request, env) {
     return errResp('method_not_allowed', 'unsupported', 405);
   }
 
+  // /admin-monitor — MODE ADMIN MONITORING : sessions admin (surveillance),
+  // séparées des stats clients. Gardé par la permission dédiée.
+  if (parts[0] === 'admin-monitor' && parts.length === 1) {
+    if (!resellerCan(a.user, 'admin_monitor')) {
+      return errResp('forbidden', 'Permission admin_monitor requise', 403);
+    }
+    if (request.method === 'GET') return handleAdminMonitorGet(env);
+    return errResp('method_not_allowed', 'Only GET', 405);
+  }
+
   // /devices
   if (parts[0] === 'devices') {
     if (parts.length === 1) {
@@ -3231,6 +3241,35 @@ async function handleMastersRemove(env, rawMac) {
 }
 
 // =========================================================
+//  ADMIN MONITORING — vue des sessions admin (séparée des clients)
+// =========================================================
+//  Lit la table `admin_presence` (alimentée côté worker : les heartbeats des
+//  MAC maîtres/admin y sont détournés au lieu de `presence`). Ces sessions
+//  n'apparaissent JAMAIS dans « En ligne » ni dans les compteurs clients.
+async function handleAdminMonitorGet(env) {
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS admin_presence (' +
+        'mac TEXT PRIMARY KEY, ip TEXT, country TEXT, last_seen INTEGER, channel TEXT)',
+    ).run();
+  } catch (_) { /* déjà là */ }
+  const now = Date.now();
+  const since = now - 15 * 60 * 1000; // « en ligne » = vu < 15 min
+  let rows = [];
+  try {
+    const rs = await env.DB
+      .prepare('SELECT mac, ip, country, last_seen, channel FROM admin_presence WHERE last_seen > ? ORDER BY last_seen DESC LIMIT 500')
+      .bind(since).all();
+    rows = (rs && rs.results) || [];
+  } catch (_) { rows = []; }
+  return jsonResp({
+    items: rows,
+    online_count: rows.length,
+    now,
+  });
+}
+
+// =========================================================
 //  FICHE 360° D'UN APPAREIL — « tout ce que le client a dans le ventre »
 // =========================================================
 //  GET /devices/:id/overview → en UN appel : abonnement (licence), présence
@@ -3739,6 +3778,7 @@ export const RESELLER_CAPS_ALL = [
   'devices',      // voir ses appareils
   'activations',  // voir ses activations
   'resellers',    // créer/gérer des sous-revendeurs (OWNER l'accorde seul)
+  'admin_monitor', // MODE ADMIN MONITORING : voir les sessions admin séparées
 ];
 
 // Droits cochés PAR DÉFAUT à la création d'un revendeur (règle produit :

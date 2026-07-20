@@ -521,8 +521,77 @@ async function ensureScaleSchema(env) {
   _scaleSchemaReady = true;
 }
 
+// =========================================================
+//  ADMIN MONITORING — sessions admin séparées des stats clients
+// =========================================================
+//  Un compte MAÎTRE/admin qui regarde (pour surveiller la qualité) ne doit
+//  JAMAIS gonfler les compteurs clients (« En ligne », Tendances, dashboard).
+//  Astuce propre : on DÉTOURNE sa présence vers une table à part
+//  `admin_presence` → toutes les lectures de `presence` (donc toutes les
+//  stats clients) l'excluent AUTOMATIQUEMENT, sans toucher à leurs requêtes.
+//  Cette table sert aussi de JOURNAL admin séparé (vue Admin Monitoring).
+//
+//  Perf : la liste des MAC maîtres est petite et change rarement → on la met
+//  en cache mémoire (60 s) pour NE PAS faire un SELECT à chaque heartbeat.
+let _masterSetCache = { at: 0, set: new Set() };
+async function isMasterCached(env, mac) {
+  const m = String(mac || '').toUpperCase();
+  const now = Date.now();
+  if (now - _masterSetCache.at > 60_000) {
+    try {
+      if (await ensureMasterSchema(env)) {
+        const rs = await env.DB.prepare('SELECT mac FROM app_masters').all();
+        _masterSetCache = {
+          at: now,
+          set: new Set(((rs && rs.results) || []).map((r) => String(r.mac).toUpperCase())),
+        };
+      } else {
+        _masterSetCache = { at: now, set: new Set() };
+      }
+    } catch (_) {
+      _masterSetCache.at = now; // évite de re-tenter en boucle si D1 KO
+    }
+  }
+  return _masterSetCache.set.has(m);
+}
+
+let _adminPresenceReady = false;
+async function recordAdminPresence(env, mac, ip, country, now, channel) {
+  if (!env.DB) return;
+  try {
+    if (!_adminPresenceReady) {
+      await env.DB.prepare(
+        'CREATE TABLE IF NOT EXISTS admin_presence (' +
+          'mac TEXT PRIMARY KEY, ip TEXT, country TEXT, last_seen INTEGER, channel TEXT)'
+      ).run();
+      try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_admin_presence_lastseen ON admin_presence(last_seen)').run(); } catch (_) {}
+      _adminPresenceReady = true;
+    }
+    const chan = (channel === undefined || channel === null) ? null : String(channel).slice(0, 120);
+    await env.DB
+      .prepare(
+        'INSERT INTO admin_presence (mac, ip, country, last_seen, channel) VALUES (?, ?, ?, ?, ?) ' +
+          'ON CONFLICT(mac) DO UPDATE SET ip = excluded.ip, ' +
+          'country = excluded.country, last_seen = excluded.last_seen, channel = excluded.channel'
+      )
+      .bind(mac, ip, country, now, chan)
+      .run();
+  } catch (_) { /* best-effort */ }
+}
+
 async function recordPresence(env, mac, ip, country, now, channel) {
   if (!env.DB) return;
+  // MODE ADMIN MONITORING : si cette MAC est un compte maître/admin, sa
+  // présence part dans `admin_presence` (jamais dans les stats clients).
+  try {
+    if (await isMasterCached(env, mac)) {
+      await recordAdminPresence(env, mac, ip, country, now, channel);
+      // Purge une éventuelle ligne cliente résiduelle (si la MAC a été
+      // promue admin après avoir été un client normal).
+      try { await env.DB.prepare('DELETE FROM presence WHERE mac = ?').bind(mac).run(); } catch (_) {}
+      return;
+    }
+  } catch (_) { /* en cas de doute, on retombe sur la présence normale */ }
   try {
     // DDL UNE fois par isolate (au lieu d'à chaque heartbeat — gros gain à
     // l'échelle de millions d'appareils). L'upsert, lui, tourne à chaque fois.

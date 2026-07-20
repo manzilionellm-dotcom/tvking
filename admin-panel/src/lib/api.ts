@@ -989,6 +989,23 @@ export const mastersApi = {
 };
 
 // =========================================================
+//  ADMIN MONITORING — sessions admin (séparées des stats clients)
+// =========================================================
+export interface AdminSession {
+  mac: string;
+  ip: string | null;
+  country: string | null;
+  last_seen: number;
+  channel: string | null;
+}
+export const adminMonitorApi = {
+  list: () =>
+    request<{ items: AdminSession[]; online_count: number; now: number }>(
+      '/api/v1/admin-monitor',
+    ),
+};
+
+// =========================================================
 //  Familles — une ligne (source) partagée par plusieurs appareils
 // =========================================================
 export interface FamilySource {
