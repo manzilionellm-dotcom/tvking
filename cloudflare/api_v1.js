@@ -3277,7 +3277,7 @@ async function ensureMasterListTable(env) {
 
 // Nettoie une base gateway collée → origine propre (schéma+hôte+port), sans
 // slash final ni path. '' si vide/invalide.
-function _cleanGatewayBase(raw) {
+export function _cleanGatewayBase(raw) {
   const s = String(raw || '').trim();
   if (!s) return '';
   if (!/^https?:\/\//i.test(s)) return '';
@@ -3436,7 +3436,7 @@ async function _copyXtream(src, gatewayBase = '') {
 // Réécrit l'ORIGINE d'une URL vers le gateway (garde path + query). Sert à
 // faire jouer une chaîne M3U via la façade (stable + privé). Best-effort :
 // URL invalide → renvoyée telle quelle.
-function _rewriteOrigin(u, gatewayBase) {
+export function _rewriteOrigin(u, gatewayBase) {
   if (!gatewayBase) return u;
   try {
     const src = new URL(u);
