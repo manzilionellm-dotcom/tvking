@@ -931,7 +931,25 @@ class _InviteCardState extends State<_InviteCard> {
   //    en pause, l'ami a tout, et ça me revient tout seul à l'échéance.
   String _flow = 'together';
   int _lendHours = 24; // durée du prêt (24 ou 48)
-  int _testHours = 1; // durée du test (comptes maîtres) : 1 / 5 / 24 / 48 h
+  int _testHours = 1; // durée maître (en heures) : 1 h … 8760 h (1 an)
+
+  /// Durées offertes par un compte MAÎTRE : du test 1 h jusqu'à 1 an.
+  /// (heures, libellé, sous-libellé). 720 h = 1 mois, 8760 h = 1 an.
+  static const List<(int, String, String)> _masterDurations = <(int, String, String)>[
+    (1, '1 h', 'test'),
+    (720, '1 mois', ''),
+    (1440, '2 mois', ''),
+    (4320, '6 mois', ''),
+    (8760, '1 an', ''),
+  ];
+
+  /// Libellé lisible d'une durée en heures (pour les messages).
+  String _durLabel(int hours) {
+    for (final (int h, String label, String _) in _masterDurations) {
+      if (h == hours) return label;
+    }
+    return '$hours h';
+  }
   bool _busy = false;
   String? _code;
   String? _message;
@@ -996,7 +1014,7 @@ class _InviteCardState extends State<_InviteCard> {
         _message = 'Connexion impossible. Réessaie.';
       } else if (r['ok'] == true) {
         _message = widget.isMaster
-            ? 'Test envoyé ! Ton contact a $_ensembleHours h d’accès. 🎉'
+            ? 'Envoyé ! Ton contact a ${_durLabel(_ensembleHours)} d’accès complet. 🎉'
             : 'Activé ! Ton ami a 5 h pour regarder avec toi. 🎉';
       } else {
         _message = _errText((r['error'] ?? '').toString());
@@ -1087,22 +1105,24 @@ class _InviteCardState extends State<_InviteCard> {
                 ]),
                 const SizedBox(height: 10),
                 Text(
-                  'Durée du test',
+                  'Durée de l’accès',
                   style: AppTextStyles.labelSmall
                       .copyWith(fontSize: 10, color: AppColors.textTertiary),
                 ),
                 const SizedBox(height: 6),
-                Row(
+                // Du test 1 h jusqu'à 1 an (activation admin, dans ta poche).
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: <Widget>[
-                    for (final int h in <int>[1, 5, 24, 48]) ...<Widget>[
-                      _DurChip(
-                        label: '$h h',
-                        hint: h == 1 ? 'test' : '',
+                    for (final (int h, String label, String hint)
+                        in _masterDurations)
+                      _MasterDurChip(
+                        label: label,
+                        hint: hint,
                         on: _testHours == h,
                         onTap: () => setState(() => _testHours = h),
                       ),
-                      if (h != 48) const SizedBox(width: 8),
-                    ],
                   ],
                 ),
               ],
@@ -1338,6 +1358,61 @@ class _FlowTab extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Puce de durée pour un compte maître — largeur intrinsèque (dans un Wrap,
+/// pas d'Expanded). Sert aux durées 1 h … 1 an.
+class _MasterDurChip extends StatelessWidget {
+  const _MasterDurChip({
+    required this.label,
+    required this.hint,
+    required this.on,
+    required this.onTap,
+  });
+  final String label;
+  final String hint;
+  final bool on;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: on ? AppColors.accentSurface : AppColors.surfaceHigh,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: on ? AppColors.accent : AppColors.border,
+            width: on ? 1.4 : 1,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              label,
+              style: AppTextStyles.headlineMedium.copyWith(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: on ? AppColors.accent : AppColors.textPrimary,
+              ),
+            ),
+            if (hint.isNotEmpty)
+              Text(
+                hint,
+                style: AppTextStyles.labelSmall.copyWith(
+                  fontSize: 9,
+                  color: on ? AppColors.accent : AppColors.textTertiary,
+                ),
+              ),
+          ],
         ),
       ),
     );

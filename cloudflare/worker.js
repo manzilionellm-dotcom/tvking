@@ -3318,6 +3318,17 @@ function inviteHours(raw) {
   return INVITE_ALLOWED_HOURS.includes(h) ? h : 5;
 }
 
+// DURÉES d'un compte MAÎTRE : bien plus large qu'un invité normal. Un maître
+// peut offrir un TEST 1 h, mais aussi un accès 1 mois / 2 mois / 6 mois / 1 an
+// (activation admin, dans sa poche). Exprimées en heures pour réutiliser le
+// même octroi de licence. 720 h = 30 j, 1440 h = 60 j, 4320 h = 180 j,
+// 8760 h = 365 j. On garde aussi les durées invité courtes (5/24/48 h).
+const MASTER_ALLOWED_HOURS = [1, 5, 24, 48, 720, 1440, 4320, 8760];
+function masterHours(raw) {
+  const h = Number(raw);
+  return MASTER_ALLOWED_HOURS.includes(h) ? h : 1;
+}
+
 /// Normalise le mode d'invitation : 'together' (5 h « ensemble », défaut),
 /// 'lend' (24 h « prêt d'abonnement »), ou 'test' (démo). Informatif : sert
 /// à l'UI invité (bandeau, message de fin) — la durée reste bornée par
@@ -3784,7 +3795,11 @@ async function handleInviteGrant(request, env) {
   }
   // Invité déjà payé ? déjà servi une fois à vie ?
   const own = await d1StatusForMac(env, guest);
-  if (own && own.paid && !own.expired) return json({ ok: false, error: 'already_active' });
+  // Un MAÎTRE peut RE-donner un accès même à un appareil déjà actif (ex.
+  // prolonger un test 1 h en 1 an) → il n'est pas bloqué par already_active.
+  if (!master && own && own.paid && !own.expired) {
+    return json({ ok: false, error: 'already_active' });
+  }
   // Le « un seul pass à vie » ne s'applique PAS à un maître : il peut re-tester
   // la même personne autant qu'il veut (test 1 h, 1 h, 1 h…).
   if (!master) {
@@ -3793,7 +3808,7 @@ async function handleInviteGrant(request, env) {
     if (prev) return json({ ok: false, error: 'already_used_once' });
   }
 
-  const hours = inviteHours(body?.hours);
+  const hours = master ? masterHours(body?.hours) : inviteHours(body?.hours);
   const channel = sanitizeInviteChannel(body?.channel);
   const mode = inviteMode(body?.mode);
   const g = await grantGuestPassLicense(env, guest, hours, now);
@@ -3873,7 +3888,7 @@ async function handleInviteCreate(request, env) {
     return json({ ok: false, error: 'issuer_quota',
       weekly_used: weeklyUsed, weekly_quota: INVITE_WEEKLY_QUOTA });
   }
-  const hours = inviteHours(body?.hours);
+  const hours = master ? masterHours(body?.hours) : inviteHours(body?.hours);
   const channel = sanitizeInviteChannel(body?.channel);
   const mode = inviteMode(body?.mode);
   // Code à 6 chiffres (facile à taper). L'abonné peut générer plusieurs
@@ -3951,8 +3966,9 @@ async function handleInviteRedeem(request, env) {
   if (!decision.ok) return json({ ok: false, error: decision.error });
 
   // OCTROI DU PASS : licence de `hours` heures sur l'appareil invité (plan
-  // trial_Nh, 0 crédit). Même octroi D1 que l'admin (licence + dégel).
-  const hours = inviteHours(row.hours);
+  // trial_Nh, 0 crédit). Un code de MAÎTRE peut durer jusqu'à 1 an (masterHours
+  // au lieu du plafond invité).
+  const hours = issuerIsMaster ? masterHours(row.hours) : inviteHours(row.hours);
   const guest = await grantGuestPassLicense(env, mac, hours, now);
   if (!guest.ok) return json({ ok: false, error: guest.error });
   // Code d'un MAÎTRE → test à accès COMPLET : on copie la source du maître
