@@ -249,6 +249,8 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
 
   // Suivi par MAC pour les ALERTES (persistant entre les rendus).
   const countryByMac = useRef<Map<string, string>>(new Map());
+  // Changements de pays récents (mac → {from,to,at}) → alerte « voyage » / VPN.
+  const countryChanges = useRef<Map<string, { from: string; to: string; at: number }>>(new Map());
   const reconnects = useRef<Map<string, number>>(new Map());
   const zaps = useRef<Map<string, number>>(new Map()); // changements de chaîne
   const [alertTick, setAlertTick] = useState(0); // force le recalcul des alertes
@@ -344,7 +346,10 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
     for (const r of rows) {
       if (!r.country) continue;
       const prev = countryByMac.current.get(r.mac);
-      if (prev && prev !== r.country) setAlertTick((n) => n + 1);
+      if (prev && prev !== r.country) {
+        countryChanges.current.set(r.mac, { from: prev, to: r.country, at: Date.now() });
+        setAlertTick((n) => n + 1);
+      }
       countryByMac.current.set(r.mac, r.country);
     }
   }, [rows]);
@@ -446,6 +451,19 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
           sev: 'orange',
           icon: '📶',
           text: `${mac} : ${n} changements de chaîne — lecture peut-être instable.`,
+        });
+      }
+    }
+
+    // 3b) Changement de pays récent (< 15 min) — voyage réel ou VPN/partage.
+    const now = Date.now();
+    for (const [mac, ch] of countryChanges.current) {
+      if (now - ch.at < 15 * 60 * 1000) {
+        out.push({
+          id: `geo-${mac}`,
+          sev: 'orange',
+          icon: '🌍',
+          text: `${mac} : changement de pays ${ch.from} → ${ch.to} (VPN ou partage possible).`,
         });
       }
     }
