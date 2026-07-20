@@ -996,18 +996,25 @@ export const mastersApi = {
       method: 'PUT',
       body: { mac, m3u },
     }),
-  // COPIEUR INTELLIGENT : lit toutes les chaînes du maître, rangées en
-  // catégories, pour cocher celles à partager en test.
-  channels: (mac: string) =>
-    request<{
-      mac: string;
-      type: string;
-      source_label: string | null;
-      categories: MasterCategory[];
-      total: number;
-      truncated: boolean;
-    }>(`/api/v1/masters/channels?mac=${encodeURIComponent(mac)}`),
+  // COPIEUR INTELLIGENT : range toutes les chaînes en catégories, pour cocher
+  // celles à partager en test. `paste` (optionnel) = TON lien Xtream / URL M3U
+  // à copier directement ; sans lui, on lit la ligne assignée au maître.
+  channels: (mac: string, paste?: string) =>
+    paste && paste.trim()
+      ? request<MasterChannelsResp>('/api/v1/masters/channels', {
+          method: 'POST',
+          body: { mac, paste: paste.trim() },
+        })
+      : request<MasterChannelsResp>(`/api/v1/masters/channels?mac=${encodeURIComponent(mac)}`),
 };
+export interface MasterChannelsResp {
+  mac: string;
+  type: string;
+  source_label: string | null;
+  categories: MasterCategory[];
+  total: number;
+  truncated: boolean;
+}
 export interface MasterChannel {
   id: string;
   name: string;

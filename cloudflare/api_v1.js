@@ -1140,11 +1140,12 @@ async function apiV1Inner(request, env) {
       if (request.method === 'PUT') return handleMasterTestListPut(request, env);
       return errResp('method_not_allowed', 'GET or PUT', 405);
     }
-    // /masters/channels — COPIEUR INTELLIGENT : lit toutes les chaînes du
-    // maître et les range en catégories (pour cocher celles à partager).
+    // /masters/channels — COPIEUR INTELLIGENT : range toutes les chaînes en
+    // catégories. GET = ligne assignée au maître ; POST {paste} = TOI qui
+    // colles le lien Xtream / l'URL M3U à copier.
     if (parts.length === 2 && parts[1] === 'channels') {
-      if (request.method === 'GET') return handleMasterChannels(request, env);
-      return errResp('method_not_allowed', 'Only GET', 405);
+      if (request.method === 'GET' || request.method === 'POST') return handleMasterChannels(request, env);
+      return errResp('method_not_allowed', 'GET or POST', 405);
     }
     return errResp('method_not_allowed', 'unsupported', 405);
   }
@@ -3422,14 +3423,33 @@ async function _copyM3u(src) {
   return { type: 'm3u', categories: [...groups.values()], truncated, total };
 }
 
-// GET /masters/channels?mac= → copieur intelligent (catégories + chaînes).
+// Copieur intelligent (catégories + chaînes). DEUX entrées possibles :
+//   • GET  /masters/channels?mac=  → lit la ligne DÉJÀ assignée au maître.
+//   • POST /masters/channels {mac, paste}  → c'est TOI qui colles le lien
+//     Xtream (get.php…) ou l'URL M3U à copier — indépendant du panel.
 async function handleMasterChannels(request, env) {
   const url = new URL(request.url);
-  const mac = String(url.searchParams.get('mac') || '').toUpperCase();
+  let mac = String(url.searchParams.get('mac') || '').toUpperCase();
+  let inline = null;
+  if (request.method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch (_) { return errResp('bad_json', 'Invalid JSON', 400); }
+    if (body && body.mac) mac = String(body.mac).toUpperCase();
+    // Blob collé par le maître : lien Xtream, URL M3U, ou identifiants à plat.
+    const blob = body && (body.paste || body.url || body.source);
+    if (blob || (body && (body.server_url || body.m3u_url))) {
+      const raw = typeof blob === 'string' ? { url: blob } : (blob || body);
+      const det = autoDetectSource(raw);
+      if (det.error) return errResp('bad_source', det.error, 400);
+      inline = det.source;
+    }
+  }
   if (!_MASTER_MAC_RX.test(mac)) return errResp('bad_mac', 'MAC maître invalide.', 400);
-  const src = await _readFirstSource(env, mac);
+  // Priorité au lien collé ; sinon on retombe sur la ligne assignée au maître.
+  const src = inline || await _readFirstSource(env, mac);
   if (!src) {
-    return errResp('no_source', 'Ce maître n’a pas encore de source (ligne) assignée dans le panel.', 404);
+    return errResp('no_source',
+      'Aucune source : colle ton lien Xtream ou ton M3U ci-dessus, ou assigne une ligne à ce maître dans le panel.', 404);
   }
   try {
     let out;

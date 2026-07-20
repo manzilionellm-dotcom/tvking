@@ -63,6 +63,8 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
   const [filter, setFilter] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [m3uText, setM3uText] = useState('');
+  // Lien collé par le maître (Xtream get.php ou URL M3U) à copier directement.
+  const [paste, setPaste] = useState('');
 
   // Charge la liste déjà enregistrée → pré-coche les URLs connues.
   useEffect(() => {
@@ -99,7 +101,8 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
   async function copyChannels() {
     setCopyErr(null); setCopying(true);
     try {
-      const r = await mastersApi.channels(mac);
+      // Si tu as collé un lien → on copie CELUI-LÀ ; sinon la ligne assignée.
+      const r = await mastersApi.channels(mac, paste);
       setCats(r.categories || []);
       setTruncated(!!r.truncated);
     } catch (e: any) {
@@ -175,6 +178,23 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
         les testeurs partagent les mêmes chaînes, le gateway les mutualise et{' '}
         <strong>le fournisseur ne voit qu'une connexion</strong> — un seul trio
         suffit. Aucune sélection = accès à tout le bouquet.
+      </div>
+
+      {/* ===== Source à copier : C'EST TOI qui la colles ===== */}
+      <div>
+        <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+          Lien à copier — ton Xtream (get.php…) ou ton URL M3U
+        </label>
+        <input
+          value={paste}
+          onChange={(e) => setPaste(e.target.value)}
+          spellCheck={false}
+          placeholder="http://serveur:8080/get.php?username=…&password=…  ·  ou  ·  http://…/playlist.m3u"
+          className="w-full rounded-md border border-white/5 bg-midnight px-3 py-2 font-mono text-xs outline-none focus:ring-1 focus:ring-accent"
+        />
+        <p className="mt-1 text-[11px] text-ink-tertiary">
+          Laisse vide pour copier la ligne déjà assignée à ce maître dans le panel.
+        </p>
       </div>
 
       {/* ===== Barre d'action ===== */}
