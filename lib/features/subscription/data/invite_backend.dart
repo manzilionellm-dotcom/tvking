@@ -119,6 +119,23 @@ abstract final class InviteBackend {
     }
   }
 
+  /// BOÎTE NOIRE : faits bruts serveur sur CET appareil (maître ?, source +
+  /// hôte, test actif) pour le diagnostic de sécurité de la console maître.
+  /// Réponse : { ok, master, source:{present,host,type,origin,count}, active_test }.
+  static Future<Map<String, dynamic>?> selftest(String mac) async {
+    try {
+      final http.Response r = await http
+          .get(Uri.parse('$kSubscriptionBaseUrl/api/invite/selftest/$mac'),
+              headers: _headers)
+          .timeout(_timeout);
+      final Object? decoded = jsonDecode(r.body);
+      if (decoded is Map<String, dynamic>) return decoded;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// État du PRÊT en cours du propriétaire [mac] (pour afficher « prêté à X,
   /// retour dans Y » + le bouton Reprendre, même quand l'app est en pause).
   /// Réponse : { active, return_at, ms_left, guest } ou { active:false }.

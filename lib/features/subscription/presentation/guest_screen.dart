@@ -189,6 +189,9 @@ class _GuestScreenState extends State<GuestScreen> {
   /// panel (serveur), pas du build.
   List<Widget> _consoleChildren() {
     return <Widget>[
+      // BOÎTE NOIRE : diagnostic de sécurité en direct (en tête de console).
+      _BlackBox(mac: _mac),
+      const SizedBox(height: 18),
       Text(
         'Console de test — codes & accès illimités',
         style: AppTextStyles.headlineLarge.copyWith(fontSize: 22, height: 1.2),
@@ -428,6 +431,243 @@ class _LoanOwnerBanner extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// =========================================================
+//  BOÎTE NOIRE — diagnostic de sécurité (console maître)
+// =========================================================
+//  Sonde les FAITS RÉELS via /api/invite/selftest et affiche un verdict
+//  honnête : MAC maître ?, source active + hôte, routage relais (le
+//  fournisseur ne voit qu'une IP), + les garanties d'architecture.
+class _BlackBox extends StatefulWidget {
+  const _BlackBox({required this.mac});
+  final String mac;
+
+  @override
+  State<_BlackBox> createState() => _BlackBoxState();
+}
+
+class _BlackBoxState extends State<_BlackBox> {
+  bool _busy = false;
+  Map<String, dynamic>? _data;
+  bool _done = false;
+
+  @override
+  void didUpdateWidget(covariant _BlackBox old) {
+    super.didUpdateWidget(old);
+    // La MAC arrive de façon asynchrone dans le parent → scanne dès qu'on l'a.
+    if (old.mac.isEmpty && widget.mac.isNotEmpty && !_done) _scan();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.mac.isNotEmpty) _scan();
+  }
+
+  Future<void> _scan() async {
+    if (_busy || widget.mac.isEmpty) return;
+    setState(() => _busy = true);
+    final Map<String, dynamic>? r = await InviteBackend.selftest(widget.mac);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _done = true;
+      _data = r;
+    });
+  }
+
+  /// Statut d'une ligne : 0 = ok (vert), 1 = à vérifier (ambre), 2 = KO (rouge).
+  ({int level, String label, String detail}) _row(String key) {
+    final Map<String, dynamic>? d = _data;
+    switch (key) {
+      case 'backend':
+        final bool ok = d != null && d['ok'] == true;
+        return (
+          level: ok ? 0 : 2,
+          label: 'Serveur joignable',
+          detail: ok ? 'Backend en ligne.' : 'Pas de réponse du backend.',
+        );
+      case 'master':
+        final bool ok = d != null && d['master'] == true;
+        return (
+          level: ok ? 0 : 2,
+          label: 'MAC maître reconnue',
+          detail: ok
+              ? 'Cet appareil peut envoyer des tests illimités.'
+              : 'Ajoute cette MAC dans le panel (Comptes maîtres).',
+        );
+      case 'source':
+        final Map<String, dynamic>? s =
+            d != null && d['source'] is Map ? (d['source'] as Map).cast<String, dynamic>() : null;
+        final bool present = s != null && s['present'] == true;
+        return (
+          level: present ? 0 : 1,
+          label: 'Source active',
+          detail: present
+              ? '${s['count'] ?? 1} source(s) · ${s['origin'] ?? 'panel'}'
+              : 'Aucune source assignée à cet appareil.',
+        );
+      case 'relay':
+        final Map<String, dynamic>? s =
+            d != null && d['source'] is Map ? (d['source'] as Map).cast<String, dynamic>() : null;
+        final String host = (s?['host'] ?? '').toString();
+        if (host.isEmpty) {
+          return (
+            level: 1,
+            label: 'Fournisseur ne voit qu’une IP',
+            detail: 'Hôte inconnu — impossible de confirmer le routage.',
+          );
+        }
+        // Un domaine (avec des lettres) = façade gateway → une seule IP de
+        // sortie. Une IP brute (chiffres/points) = risque de sortie directe.
+        final bool isDomain = RegExp(r'[a-zA-Z]').hasMatch(host);
+        return (
+          level: isDomain ? 0 : 1,
+          label: 'Fournisseur ne voit qu’une IP',
+          detail: isDomain
+              ? 'Sortie via $host (relais) → le fournisseur ne voit que cette IP.'
+              : 'Source directe ($host) — vérifie que c’est bien ton gateway.',
+        );
+      default:
+        return (level: 0, label: '', detail: '');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Garanties d'architecture (toujours vraies par conception).
+    const List<String> facts = <String>[
+      'Aucune structure (famille/test) n’est envoyée au fournisseur.',
+      'La liste des maîtres vit uniquement dans le panel.',
+      'Chaque test est coupé automatiquement à l’échéance.',
+    ];
+    final List<({int level, String label, String detail})> rows = _done
+        ? <({int level, String label, String detail})>[
+            _row('backend'),
+            _row('master'),
+            _row('source'),
+            _row('relay'),
+          ]
+        : const <({int level, String label, String detail})>[];
+    // Verdict global : tout vert = sécurité pleine.
+    final bool allGreen = _done && rows.every((r) => r.level == 0);
+    final int worst = rows.isEmpty ? 1 : rows.map((r) => r.level).reduce((a, b) => a > b ? a : b);
+    final Color headColor = !_done
+        ? AppColors.textSecondary
+        : (worst == 0 ? AppColors.success : (worst == 2 ? AppColors.accent : AppColors.warning));
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: headColor.withValues(alpha: 0.55)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(Icons.shield_moon_rounded, color: headColor, size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Boîte noire — sécurité',
+                  style: AppTextStyles.headlineMedium
+                      .copyWith(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+              ),
+              if (_busy)
+                const SizedBox(
+                  width: 16, height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                InkWell(
+                  onTap: _scan,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(Icons.refresh_rounded,
+                        color: AppColors.textTertiary, size: 20),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            !_done
+                ? 'Analyse en cours…'
+                : (allGreen
+                    ? 'Sécurité pleine ✓ — le fournisseur ne voit qu’une IP.'
+                    : 'À vérifier — voir les points ambre/rouge ci-dessous.'),
+            style: AppTextStyles.bodyMedium.copyWith(
+              fontSize: 12.5,
+              color: headColor,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (final r in rows) ...<Widget>[
+            _line(
+              level: r.level,
+              label: r.label,
+              detail: r.detail,
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (_done) ...<Widget>[
+            const SizedBox(height: 2),
+            for (final String f in facts)
+              _line(level: 0, label: f, detail: null, dim: true),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _line({
+    required int level,
+    required String label,
+    String? detail,
+    bool dim = false,
+  }) {
+    final Color c = level == 0
+        ? AppColors.success
+        : (level == 2 ? AppColors.accent : AppColors.warning);
+    final IconData ic = level == 0
+        ? Icons.check_circle_rounded
+        : (level == 2 ? Icons.cancel_rounded : Icons.error_rounded);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Icon(ic, color: c, size: dim ? 14 : 17),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                label,
+                style: AppTextStyles.bodyMedium.copyWith(
+                  fontSize: dim ? 11.5 : 13,
+                  color: dim ? AppColors.textTertiary : AppColors.textPrimary,
+                  fontWeight: dim ? FontWeight.w500 : FontWeight.w700,
+                ),
+              ),
+              if (detail != null)
+                Text(
+                  detail,
+                  style: AppTextStyles.labelSmall
+                      .copyWith(fontSize: 11, color: AppColors.textSecondary),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

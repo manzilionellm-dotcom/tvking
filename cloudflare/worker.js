@@ -3352,6 +3352,48 @@ async function handleInviteMaster(env, rawMac) {
   return jsonPrivate({ master });
 }
 
+/// GET /api/invite/selftest/:mac → « BOÎTE NOIRE » : renvoie les FAITS bruts
+/// que le serveur connaît sur CET appareil, pour que la console maître affiche
+/// un diagnostic de sécurité HONNÊTE (pas des cases vertes bidon) :
+///   • master        : la MAC est-elle un compte maître ?
+///   • source        : { present, host, type, origin, count } (host = l'hôte
+///     réellement joué → sert à voir si ça passe par le gateway ou en direct)
+///   • active_test   : un pass invité/test est-il actif en ce moment ?
+async function handleInviteSelftest(env, rawMac) {
+  const mac = String(rawMac || '').toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const now = Date.now();
+  const master = await isMasterMac(env, mac);
+
+  // Source réellement assignée (device_sources) : hôte + origine + type.
+  let source = null;
+  try {
+    const { items } = await readDeviceSourceItems(env, mac);
+    if (items && items.length) {
+      const first = items[0] || {};
+      const raw = String(first.server_url || first.m3u_url || '');
+      let host = '';
+      try { host = new URL(raw).host; } catch (_) { host = ''; }
+      source = {
+        present: true,
+        host,
+        type: first.type || null,
+        origin: first.origin || 'panel',
+        count: items.length,
+      };
+    }
+  } catch (_) { /* pas de source */ }
+
+  // Un test/pass est-il actif sur cet appareil ? (statut invité)
+  let activeTest = false;
+  try {
+    const st = await d1StatusForMac(env, mac, now);
+    activeTest = !!(st && st.paid && st.plan && String(st.plan).startsWith('trial_'));
+  } catch (_) { /* ignore */ }
+
+  return jsonPrivate({ ok: true, master, source, active_test: activeTest });
+}
+
 /// Copie la/les SOURCE(S) du maître [fromMac] vers l'appareil testé [toMac] :
 /// le testeur voit alors TOUT le bouquet (pas une seule chaîne) pendant la
 /// durée du test. Comme les sources pointent sur le gateway, ses connexions
@@ -5720,6 +5762,10 @@ async function handleRequest(request, env, ctx) {
       if (segments[2] === 'master' && segments.length === 4) {
         if (request.method !== 'GET') return badRequest('only GET supported');
         return handleInviteMaster(env, segments[3]);
+      }
+      if (segments[2] === 'selftest' && segments.length === 4) {
+        if (request.method !== 'GET') return badRequest('only GET supported');
+        return handleInviteSelftest(env, segments[3]);
       }
       return notFound('unknown invite route');
     }
