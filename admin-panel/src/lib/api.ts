@@ -996,7 +996,29 @@ export const mastersApi = {
       method: 'PUT',
       body: { mac, m3u },
     }),
+  // COPIEUR INTELLIGENT : lit toutes les chaînes du maître, rangées en
+  // catégories, pour cocher celles à partager en test.
+  channels: (mac: string) =>
+    request<{
+      mac: string;
+      type: string;
+      source_label: string | null;
+      categories: MasterCategory[];
+      total: number;
+      truncated: boolean;
+    }>(`/api/v1/masters/channels?mac=${encodeURIComponent(mac)}`),
 };
+export interface MasterChannel {
+  id: string;
+  name: string;
+  logo: string;
+  url: string;
+}
+export interface MasterCategory {
+  id: string;
+  name: string;
+  channels: MasterChannel[];
+}
 
 // =========================================================
 //  ADMIN MONITORING — sessions admin (séparées des stats clients)

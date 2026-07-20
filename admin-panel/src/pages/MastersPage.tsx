@@ -1,7 +1,10 @@
-import { Fragment, FormEvent, useEffect, useState } from 'react';
+import { Fragment, FormEvent, useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { MacLink } from '@/components/MacLink';
-import { mastersApi, ApiError, type MasterRow } from '@/lib/api';
+import {
+  mastersApi, ApiError,
+  type MasterRow, type MasterCategory, type MasterChannel,
+} from '@/lib/api';
 import { formatMacInput } from '@/lib/utils';
 
 // =========================================================
@@ -16,26 +19,75 @@ import { formatMacInput } from '@/lib/utils';
 const MAC_RX = /^MK(?::[0-9A-Fa-f]{2}){5}$/;
 
 // =========================================================
-//  Éditeur de LISTE DE TEST INDÉPENDANTE (par maître)
+//  COPIEUR INTELLIGENT + LISTE DE TEST INDÉPENDANTE (par maître)
 // =========================================================
-//  Le maître curate ici un PETIT M3U (< 5 chaînes) dont les URLs pointent sur
-//  le gateway. Tous ses tests serviront CETTE liste → chaînes partagées → le
-//  gateway mutualise → le fournisseur ne voit qu'UNE connexion (un seul trio
-//  suffit). Sans liste : le test donne accès à tout le bouquet (repli).
+//  Le maître clique « Copier mes chaînes » : le serveur lit sa ligne (Xtream/
+//  M3U), range TOUT en catégories, et on affiche des cases à cocher. Il coche
+//  les quelques chaînes à partager en test → on bâtit le petit M3U. Tous les
+//  tests servent CETTE liste → chaînes partagées → le gateway mutualise → le
+//  fournisseur ne voit qu'UNE connexion (un seul trio suffit). Sans liste : le
+//  test donne accès à tout le bouquet (repli).
+
+// Échappe une valeur pour un attribut M3U entre guillemets.
+function m3uAttr(s: string): string {
+  return String(s || '').replace(/"/g, "'").replace(/[\r\n]/g, ' ');
+}
+
+// Construit le M3U de test à partir des chaînes cochées.
+function buildM3u(sel: Map<string, MasterChannel & { group: string }>): string {
+  const lines = ['#EXTM3U'];
+  for (const c of sel.values()) {
+    lines.push(
+      `#EXTINF:-1 tvg-logo="${m3uAttr(c.logo)}" group-title="${m3uAttr(c.group)}",${m3uAttr(c.name)}`,
+    );
+    lines.push(c.url);
+  }
+  return lines.join('\n') + '\n';
+}
+
 function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }) {
-  const [m3u, setM3u] = useState('');
-  const [count, setCount] = useState(0);
+  // Sélection courante : clé = URL (identifie une chaîne de façon unique).
+  const [sel, setSel] = useState<Map<string, MasterChannel & { group: string }>>(new Map());
+  const [savedCount, setSavedCount] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+  // Copieur (catégories chargées depuis la ligne du maître).
+  const [cats, setCats] = useState<MasterCategory[] | null>(null);
+  const [copying, setCopying] = useState(false);
+  const [copyErr, setCopyErr] = useState<string | null>(null);
+  const [truncated, setTruncated] = useState(false);
+  const [openCat, setOpenCat] = useState<string | null>(null);
+  const [filter, setFilter] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [m3uText, setM3uText] = useState('');
+
+  // Charge la liste déjà enregistrée → pré-coche les URLs connues.
   useEffect(() => {
     (async () => {
       try {
         const r = await mastersApi.getTestList(mac);
-        setM3u(r.m3u || '');
-        setCount(r.count || 0);
+        setSavedCount(r.count || 0);
+        setM3uText(r.m3u || '');
+        const m = new Map<string, MasterChannel & { group: string }>();
+        // Parse le M3U enregistré pour reconstituer la sélection (nom/url).
+        const lines = (r.m3u || '').split(/\r?\n/);
+        let pending: { name: string; logo: string; group: string } | null = null;
+        for (const raw of lines) {
+          const line = raw.trim();
+          if (line.startsWith('#EXTINF')) {
+            const group = (line.match(/group-title="([^"]*)"/i) || [])[1] || '';
+            const logo = (line.match(/tvg-logo="([^"]*)"/i) || [])[1] || '';
+            const name = (line.split(',').slice(1).join(',') || '').trim() || 'Chaîne';
+            pending = { name, logo, group };
+          } else if (line && !line.startsWith('#') && pending) {
+            m.set(line, { id: line, name: pending.name, logo: pending.logo, url: line, group: pending.group });
+            pending = null;
+          }
+        }
+        setSel(m);
       } catch (e: any) {
         if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
         setErr(e instanceof ApiError ? e.message : 'Chargement impossible.');
@@ -44,14 +96,36 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mac]);
 
-  // Compte local (retour immédiat) des lignes #EXTINF pendant la saisie.
-  const liveCount = (m3u.match(/#EXTINF/gi) || []).length;
+  async function copyChannels() {
+    setCopyErr(null); setCopying(true);
+    try {
+      const r = await mastersApi.channels(mac);
+      setCats(r.categories || []);
+      setTruncated(!!r.truncated);
+    } catch (e: any) {
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      setCopyErr(e instanceof ApiError ? e.message : 'Copie impossible.');
+    } finally { setCopying(false); }
+  }
+
+  function toggle(ch: MasterChannel, group: string) {
+    setSel((prev) => {
+      const next = new Map(prev);
+      if (next.has(ch.url)) next.delete(ch.url);
+      else next.set(ch.url, { ...ch, group });
+      return next;
+    });
+  }
+
+  function clearSel() { setSel(new Map()); }
 
   async function save() {
     setErr(null); setMsg(null); setBusy(true);
     try {
+      const m3u = sel.size ? buildM3u(sel) : '';
       const r = await mastersApi.putTestList(mac, m3u);
-      setCount(r.count || 0);
+      setSavedCount(r.count || 0);
+      setM3uText(m3u);
       setMsg(r.count > 0
         ? `✅ Liste enregistrée — ${r.count} chaîne${r.count > 1 ? 's' : ''} partagée${r.count > 1 ? 's' : ''}.`
         : '✅ Liste vidée — les tests redonnent tout le bouquet.');
@@ -61,38 +135,164 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
     } finally { setBusy(false); }
   }
 
+  async function saveAdvanced() {
+    setErr(null); setMsg(null); setBusy(true);
+    try {
+      const r = await mastersApi.putTestList(mac, m3uText);
+      setSavedCount(r.count || 0);
+      setMsg(`✅ M3U enregistré — ${r.count} chaîne(s).`);
+    } catch (e: any) {
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      setErr(e instanceof ApiError ? e.message : 'Enregistrement impossible.');
+    } finally { setBusy(false); }
+  }
+
+  // Catégories filtrées par le champ de recherche (nom de catégorie/chaîne).
+  const shownCats = useMemo(() => {
+    if (!cats) return [];
+    const q = filter.trim().toLowerCase();
+    if (!q) return cats;
+    return cats
+      .map((c) => ({
+        ...c,
+        channels: c.name.toLowerCase().includes(q)
+          ? c.channels
+          : c.channels.filter((ch) => ch.name.toLowerCase().includes(q)),
+      }))
+      .filter((c) => c.channels.length > 0);
+  }, [cats, filter]);
+
+  const selCount = sel.size;
+  const tooMany = selCount > 5;
+
   return (
     <div className="space-y-3 border-t border-white/5 bg-slate/40 px-4 py-4">
       <div className="text-[13px] text-ink-secondary">
-        <strong>Liste de test indépendante.</strong> Colle un petit M3U
-        (idéalement <strong>moins de 5 chaînes</strong>) dont les URLs passent
-        par ton gateway. Tous les tests de ce maître serviront cette liste :
-        les testeurs se partagent les mêmes chaînes, le gateway les mutualise
-        et <strong>le fournisseur ne voit qu'une connexion</strong> — un seul
-        trio suffit. Laisse vide pour donner accès à tout le bouquet.
+        <strong>Copieur intelligent.</strong> Clique « Copier mes chaînes » : je
+        lis ta ligne, je range tout en <strong>catégories</strong>, et tu coches
+        les quelques chaînes à partager en test (idéalement{' '}
+        <strong>moins de 5</strong>). Tous les tests servent cette sélection :
+        les testeurs partagent les mêmes chaînes, le gateway les mutualise et{' '}
+        <strong>le fournisseur ne voit qu'une connexion</strong> — un seul trio
+        suffit. Aucune sélection = accès à tout le bouquet.
       </div>
-      <textarea
-        value={m3u}
-        onChange={(e) => setM3u(e.target.value)}
-        rows={7}
-        spellCheck={false}
-        placeholder={'#EXTM3U\n#EXTINF:-1,Chaîne 1\nhttps://ton-gateway/live/...\n#EXTINF:-1,Chaîne 2\nhttps://ton-gateway/live/...'}
-        className="w-full rounded-md border border-white/5 bg-midnight px-3 py-2 font-mono text-xs outline-none focus:ring-1 focus:ring-accent"
-      />
-      <div className="flex items-center gap-3">
+
+      {/* ===== Barre d'action ===== */}
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={copyChannels}
+          disabled={copying}
+          className="rounded-md border border-accent/40 px-3 py-2 text-sm font-medium text-accent-bright transition hover:bg-accent/10 disabled:opacity-50"
+        >
+          {copying ? 'Copie en cours…' : cats ? 'Recopier mes chaînes' : 'Copier mes chaînes'}
+        </button>
         <button
           onClick={save}
           disabled={busy || !loaded}
           className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black transition hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {busy ? 'Enregistrement…' : 'Enregistrer la liste'}
+          {busy ? 'Enregistrement…' : `Enregistrer la sélection (${selCount})`}
         </button>
-        <span className={`text-xs ${liveCount > 5 ? 'text-accent-bright' : 'text-ink-tertiary'}`}>
-          {liveCount} chaîne{liveCount > 1 ? 's' : ''} détectée{liveCount > 1 ? 's' : ''}
-          {liveCount > 5 ? ' — au-delà de 5, l\'indépendance faiblit' : ''}
-          {loaded && count !== liveCount ? ' (non enregistré)' : ''}
+        {selCount > 0 && (
+          <button onClick={clearSel} className="text-xs text-ink-tertiary underline hover:text-ink-secondary">
+            Tout décocher
+          </button>
+        )}
+        <span className={`text-xs ${tooMany ? 'text-warning' : 'text-ink-tertiary'}`}>
+          {selCount} sélectionnée{selCount > 1 ? 's' : ''}
+          {tooMany ? " — au-delà de 5, l'indépendance faiblit" : ''}
+          {loaded && savedCount !== selCount ? ' (non enregistré)' : ''}
         </span>
       </div>
+
+      {copyErr && <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{copyErr}</div>}
+      {truncated && (
+        <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+          Beaucoup de chaînes — la liste a été tronquée à l'affichage. Utilise la
+          recherche pour trouver celles à partager.
+        </div>
+      )}
+
+      {/* ===== Arbre catégories → chaînes ===== */}
+      {cats && (
+        <div className="space-y-2">
+          <input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filtrer une chaîne ou une catégorie…"
+            className="w-full rounded-md border border-white/5 bg-midnight px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
+          />
+          <div className="max-h-96 space-y-1 overflow-y-auto rounded-md border border-white/5 bg-midnight p-2">
+            {shownCats.length === 0 && (
+              <div className="px-2 py-4 text-center text-xs text-ink-tertiary">Aucune chaîne.</div>
+            )}
+            {shownCats.map((c) => {
+              const nSel = c.channels.filter((ch) => sel.has(ch.url)).length;
+              const isOpen = openCat === c.id || !!filter.trim();
+              return (
+                <div key={c.id} className="rounded-md border border-white/[0.04]">
+                  <button
+                    onClick={() => setOpenCat(isOpen && !filter.trim() ? null : c.id)}
+                    className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-white/[0.02]"
+                  >
+                    <span className="text-ink-secondary">
+                      {isOpen ? '▾' : '▸'} {c.name}
+                      <span className="ml-2 text-[10px] text-ink-tertiary">{c.channels.length}</span>
+                    </span>
+                    {nSel > 0 && (
+                      <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] text-accent-bright">{nSel} ✓</span>
+                    )}
+                  </button>
+                  {isOpen && (
+                    <div className="border-t border-white/[0.04] px-2 py-1">
+                      {c.channels.map((ch) => {
+                        const on = sel.has(ch.url);
+                        return (
+                          <label
+                            key={ch.url}
+                            className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] hover:bg-white/[0.02]"
+                          >
+                            <input type="checkbox" checked={on} onChange={() => toggle(ch, c.name)} className="accent-accent" />
+                            <span className={on ? 'text-ink-primary' : 'text-ink-secondary'}>{ch.name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ===== Repli avancé : M3U brut à la main ===== */}
+      <button
+        onClick={() => setShowAdvanced((v) => !v)}
+        className="text-xs text-ink-tertiary underline hover:text-ink-secondary"
+      >
+        {showAdvanced ? 'Masquer' : 'Avancé : coller un M3U à la main'}
+      </button>
+      {showAdvanced && (
+        <div className="space-y-2">
+          <textarea
+            value={m3uText}
+            onChange={(e) => setM3uText(e.target.value)}
+            rows={6}
+            spellCheck={false}
+            placeholder={'#EXTM3U\n#EXTINF:-1,Chaîne 1\nhttps://ton-gateway/live/...'}
+            className="w-full rounded-md border border-white/5 bg-midnight px-3 py-2 font-mono text-xs outline-none focus:ring-1 focus:ring-accent"
+          />
+          <button
+            onClick={saveAdvanced}
+            disabled={busy}
+            className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-ink-secondary transition hover:border-accent/40 hover:text-accent-bright disabled:opacity-50"
+          >
+            Enregistrer ce M3U
+          </button>
+        </div>
+      )}
+
       {err && <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>}
       {msg && <div className="rounded-md px-3 py-2 text-xs" style={{ background: 'rgba(47,169,106,0.15)', color: '#3FBE7C' }}>{msg}</div>}
     </div>

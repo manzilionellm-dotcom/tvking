@@ -1140,6 +1140,12 @@ async function apiV1Inner(request, env) {
       if (request.method === 'PUT') return handleMasterTestListPut(request, env);
       return errResp('method_not_allowed', 'GET or PUT', 405);
     }
+    // /masters/channels — COPIEUR INTELLIGENT : lit toutes les chaînes du
+    // maître et les range en catégories (pour cocher celles à partager).
+    if (parts.length === 2 && parts[1] === 'channels') {
+      if (request.method === 'GET') return handleMasterChannels(request, env);
+      return errResp('method_not_allowed', 'Only GET', 405);
+    }
     return errResp('method_not_allowed', 'unsupported', 405);
   }
 
@@ -3298,6 +3304,156 @@ async function handleMasterTestListPut(request, env) {
     .prepare('INSERT OR REPLACE INTO master_test_list (mac, m3u, updated_at) VALUES (?, ?, ?)')
     .bind(mac, m3u, Date.now()).run();
   return jsonResp({ ok: true, mac, count });
+}
+
+// =========================================================
+//  COPIEUR INTELLIGENT — lit TOUTES les chaînes du maître, les RANGE en
+//  catégories, pour qu'il coche celles à partager en test.
+// =========================================================
+//  On lit la source (ligne) assignée au maître dans device_sources, on
+//  interroge son fournisseur (Xtream player_api ou M3U), et on renvoie un
+//  arbre { catégories → chaînes }. Le panel affiche des cases à cocher ; la
+//  sélection devient le petit M3U de test (URLs identiques pour tous les
+//  testeurs → le gateway mutualise → une seule connexion fournisseur).
+//
+//  Garde-fous : timeout réseau, plafond de chaînes (l'UI n'en garde que
+//  quelques-unes de toute façon), jamais d'erreur fatale (best-effort).
+const _COPY_MAX_CHANNELS = 6000; // au-delà, on tronque et on le signale.
+
+// Fetch avec délai maximal (AbortController) — un fournisseur lent ne doit pas
+// bloquer la requête panel.
+async function _fetchWithTimeout(url, ms = 12_000, init = {}) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal, redirect: 'follow' });
+  } finally { clearTimeout(t); }
+}
+
+// Lit le PREMIER item de source d'une MAC (trio Xtream ou M3U).
+async function _readFirstSource(env, mac) {
+  const row = await env.DB.prepare(
+    'SELECT type, label, server_url, username, password, m3u_url, sources_json ' +
+    'FROM device_sources WHERE mac = ?',
+  ).bind(mac).first();
+  if (!row) return null;
+  if (row.sources_json) {
+    try {
+      const arr = JSON.parse(row.sources_json) || [];
+      if (Array.isArray(arr) && arr[0]) return arr[0];
+    } catch (_) { /* repli colonnes plates */ }
+  }
+  return {
+    type: row.type, label: row.label, server_url: row.server_url,
+    username: row.username, password: row.password, m3u_url: row.m3u_url,
+  };
+}
+
+// Copie Xtream : catégories live + chaînes live (player_api.php).
+async function _copyXtream(src) {
+  const base = String(src.server_url || '').replace(/\/+$/, '');
+  const user = String(src.username || '');
+  const pass = String(src.password || '');
+  const auth = `username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`;
+  let cats = [];
+  let streams = [];
+  try {
+    const cr = await _fetchWithTimeout(`${base}/player_api.php?${auth}&action=get_live_categories`);
+    if (cr.ok) cats = await cr.json();
+  } catch (_) { /* catégories optionnelles */ }
+  const sr = await _fetchWithTimeout(`${base}/player_api.php?${auth}&action=get_live_streams`);
+  if (!sr.ok) throw new Error('provider_http_' + sr.status);
+  streams = await sr.json();
+  if (!Array.isArray(streams)) throw new Error('provider_bad_streams');
+
+  const catName = new Map();
+  for (const c of Array.isArray(cats) ? cats : []) {
+    catName.set(String(c.category_id), String(c.category_name || 'Sans catégorie'));
+  }
+  const groups = new Map(); // catId -> { id, name, channels[] }
+  let truncated = false;
+  let total = 0;
+  for (const s of streams) {
+    if (total >= _COPY_MAX_CHANNELS) { truncated = true; break; }
+    total++;
+    const catId = String(s.category_id ?? 'none');
+    const name = catName.get(catId) || 'Sans catégorie';
+    if (!groups.has(catId)) groups.set(catId, { id: catId, name, channels: [] });
+    groups.get(catId).channels.push({
+      id: String(s.stream_id),
+      name: String(s.name || ('Chaîne ' + s.stream_id)),
+      logo: String(s.stream_icon || ''),
+      // URL LIVE standard Xtream. La source du maître pointant sur le gateway,
+      // cette URL passe par le gateway → mutualisée → fournisseur aveugle.
+      url: `${base}/live/${encodeURIComponent(user)}/${encodeURIComponent(pass)}/${s.stream_id}.ts`,
+    });
+  }
+  return { type: 'xtream', categories: [...groups.values()], truncated, total };
+}
+
+// Copie M3U : parse #EXTINF (group-title = catégorie, tvg-logo, nom) + URL.
+async function _copyM3u(src) {
+  const res = await _fetchWithTimeout(String(src.m3u_url || ''));
+  if (!res.ok) throw new Error('provider_http_' + res.status);
+  const text = await res.text();
+  const lines = text.split(/\r?\n/);
+  const groups = new Map();
+  let truncated = false;
+  let total = 0;
+  let pending = null;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line.startsWith('#EXTINF')) {
+      const group = (line.match(/group-title="([^"]*)"/i) || [])[1] || 'Sans catégorie';
+      const logo = (line.match(/tvg-logo="([^"]*)"/i) || [])[1] || '';
+      const name = (line.split(',').slice(1).join(',') || '').trim() || 'Chaîne';
+      pending = { group, logo, name };
+    } else if (line && !line.startsWith('#') && pending) {
+      if (total >= _COPY_MAX_CHANNELS) { truncated = true; break; }
+      total++;
+      const catId = pending.group;
+      if (!groups.has(catId)) groups.set(catId, { id: catId, name: catId, channels: [] });
+      groups.get(catId).channels.push({
+        id: String(total), name: pending.name, logo: pending.logo, url: line,
+      });
+      pending = null;
+    }
+  }
+  return { type: 'm3u', categories: [...groups.values()], truncated, total };
+}
+
+// GET /masters/channels?mac= → copieur intelligent (catégories + chaînes).
+async function handleMasterChannels(request, env) {
+  const url = new URL(request.url);
+  const mac = String(url.searchParams.get('mac') || '').toUpperCase();
+  if (!_MASTER_MAC_RX.test(mac)) return errResp('bad_mac', 'MAC maître invalide.', 400);
+  const src = await _readFirstSource(env, mac);
+  if (!src) {
+    return errResp('no_source', 'Ce maître n’a pas encore de source (ligne) assignée dans le panel.', 404);
+  }
+  try {
+    let out;
+    if (src.type === 'xtream' && src.server_url && src.username && src.password) {
+      out = await _copyXtream(src);
+    } else if (src.m3u_url) {
+      out = await _copyM3u(src);
+    } else {
+      return errResp('bad_source', 'Source illisible (ni Xtream complet, ni M3U).', 400);
+    }
+    // Trie les catégories par nom, chaînes par nom (lecture confortable).
+    out.categories.sort((a, b) => a.name.localeCompare(b.name));
+    for (const c of out.categories) c.channels.sort((a, b) => a.name.localeCompare(b.name));
+    return jsonResp({
+      mac,
+      type: out.type,
+      source_label: src.label || null,
+      categories: out.categories,
+      total: out.total,
+      truncated: out.truncated,
+    });
+  } catch (e) {
+    return errResp('copy_failed', 'Impossible de lire les chaînes : ' + String((e && e.message) || e), 502);
+  }
 }
 
 // =========================================================
