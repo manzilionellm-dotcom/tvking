@@ -65,6 +65,8 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
   const [m3uText, setM3uText] = useState('');
   // Lien collé par le maître (Xtream get.php ou URL M3U) à copier directement.
   const [paste, setPaste] = useState('');
+  // Façade (gateway) : URLs reconstruites dessus → plus stable + privé.
+  const [gateway, setGateway] = useState('');
 
   // Charge la liste déjà enregistrée → pré-coche les URLs connues.
   useEffect(() => {
@@ -73,6 +75,7 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
         const r = await mastersApi.getTestList(mac);
         setSavedCount(r.count || 0);
         setM3uText(r.m3u || '');
+        setGateway(r.gateway_base || '');
         const m = new Map<string, MasterChannel & { group: string }>();
         // Parse le M3U enregistré pour reconstituer la sélection (nom/url).
         const lines = (r.m3u || '').split(/\r?\n/);
@@ -102,7 +105,8 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
     setCopyErr(null); setCopying(true);
     try {
       // Si tu as collé un lien → on copie CELUI-LÀ ; sinon la ligne assignée.
-      const r = await mastersApi.channels(mac, paste);
+      // La façade (gateway) reconstruit les URLs dessus → stable + privé.
+      const r = await mastersApi.channels(mac, paste, gateway);
       setCats(r.categories || []);
       setTruncated(!!r.truncated);
     } catch (e: any) {
@@ -126,7 +130,7 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
     setErr(null); setMsg(null); setBusy(true);
     try {
       const m3u = sel.size ? buildM3u(sel) : '';
-      const r = await mastersApi.putTestList(mac, m3u);
+      const r = await mastersApi.putTestList(mac, m3u, gateway);
       setSavedCount(r.count || 0);
       setM3uText(m3u);
       setMsg(r.count > 0
@@ -141,7 +145,7 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
   async function saveAdvanced() {
     setErr(null); setMsg(null); setBusy(true);
     try {
-      const r = await mastersApi.putTestList(mac, m3uText);
+      const r = await mastersApi.putTestList(mac, m3uText, gateway);
       setSavedCount(r.count || 0);
       setMsg(`✅ M3U enregistré — ${r.count} chaîne(s).`);
     } catch (e: any) {
@@ -178,6 +182,26 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
         les testeurs partagent les mêmes chaînes, le gateway les mutualise et{' '}
         <strong>le fournisseur ne voit qu'une connexion</strong> — un seul trio
         suffit. Aucune sélection = accès à tout le bouquet.
+      </div>
+
+      {/* ===== Façade (gateway) : stabilité + confidentialité ===== */}
+      <div>
+        <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+          Ta façade (gateway) — recommandé : plus stable + privé
+        </label>
+        <input
+          value={gateway}
+          onChange={(e) => setGateway(e.target.value)}
+          spellCheck={false}
+          placeholder="https://tv.mondomaine.com"
+          className="w-full rounded-md border border-white/5 bg-midnight px-3 py-2 font-mono text-xs outline-none focus:ring-1 focus:ring-accent"
+        />
+        <p className="mt-1 text-[11px] text-ink-tertiary">
+          Réglée une fois : je reconstruis toutes les chaînes copiées sur ton
+          gateway → reconnexion auto, ligne de secours, tampon anti-coupure
+          (plus stable que l'original, y compris au cast) et le fournisseur ne
+          voit qu'une IP. Vide = lecture directe (fonctionne, mais moins privé).
+        </p>
       </div>
 
       {/* ===== Source à copier : C'EST TOI qui la colles ===== */}

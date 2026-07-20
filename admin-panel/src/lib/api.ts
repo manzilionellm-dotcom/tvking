@@ -988,22 +988,23 @@ export const mastersApi = {
     }),
   // LISTE DE TEST INDÉPENDANTE d'un maître (petit M3U curé, < 5 chaînes).
   getTestList: (mac: string) =>
-    request<{ mac: string; m3u: string; count: number; updated_at: number | null }>(
+    request<{ mac: string; m3u: string; count: number; gateway_base: string; updated_at: number | null }>(
       `/api/v1/masters/test-list?mac=${encodeURIComponent(mac)}`,
     ),
-  putTestList: (mac: string, m3u: string) =>
-    request<{ ok: boolean; mac: string; count: number }>('/api/v1/masters/test-list', {
+  putTestList: (mac: string, m3u: string, gatewayBase?: string) =>
+    request<{ ok: boolean; mac: string; count: number; gateway_base: string }>('/api/v1/masters/test-list', {
       method: 'PUT',
-      body: { mac, m3u },
+      body: { mac, m3u, gateway_base: gatewayBase || '' },
     }),
   // COPIEUR INTELLIGENT : range toutes les chaînes en catégories, pour cocher
   // celles à partager en test. `paste` (optionnel) = TON lien Xtream / URL M3U
-  // à copier directement ; sans lui, on lit la ligne assignée au maître.
-  channels: (mac: string, paste?: string) =>
-    paste && paste.trim()
+  // à copier ; `gatewayBase` (optionnel) = ta façade → URLs reconstruites sur
+  // le gateway (plus stable + privé).
+  channels: (mac: string, paste?: string, gatewayBase?: string) =>
+    (paste && paste.trim()) || (gatewayBase && gatewayBase.trim())
       ? request<MasterChannelsResp>('/api/v1/masters/channels', {
           method: 'POST',
-          body: { mac, paste: paste.trim() },
+          body: { mac, paste: (paste || '').trim(), gateway_base: (gatewayBase || '').trim() },
         })
       : request<MasterChannelsResp>(`/api/v1/masters/channels?mac=${encodeURIComponent(mac)}`),
 };

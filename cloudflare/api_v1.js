@@ -3267,6 +3267,35 @@ async function ensureMasterListTable(env) {
       'CREATE TABLE IF NOT EXISTS master_test_list (mac TEXT PRIMARY KEY, m3u TEXT, updated_at INTEGER)',
     ).run();
   } catch (_) { /* déjà présente */ }
+  // URL de la FAÇADE (gateway) du maître : quand elle est posée, les chaînes
+  // copiées sont reconstruites SUR le gateway → plus stables (reconnexion +
+  // failover + tampon) et privées (une seule IP). Migration idempotente.
+  try {
+    await env.DB.prepare('ALTER TABLE master_test_list ADD COLUMN gateway_base TEXT').run();
+  } catch (_) { /* colonne déjà là */ }
+}
+
+// Nettoie une base gateway collée → origine propre (schéma+hôte+port), sans
+// slash final ni path. '' si vide/invalide.
+function _cleanGatewayBase(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  if (!/^https?:\/\//i.test(s)) return '';
+  try {
+    const u = new URL(s);
+    const port = u.port ? `:${u.port}` : '';
+    return `${u.protocol}//${u.hostname}${port}`;
+  } catch (_) { return ''; }
+}
+
+// Lit la base gateway enregistrée pour un maître ('' si aucune).
+async function _readGatewayBase(env, mac) {
+  try {
+    await ensureMasterListTable(env);
+    const row = await env.DB
+      .prepare('SELECT gateway_base FROM master_test_list WHERE mac = ?').bind(mac).first();
+    return (row && row.gateway_base) ? String(row.gateway_base) : '';
+  } catch (_) { return ''; }
 }
 
 // Compte les chaînes d'un M3U (lignes #EXTINF). Sert d'indicateur au panel.
@@ -3282,9 +3311,13 @@ async function handleMasterTestListGet(request, env) {
   if (!_MASTER_MAC_RX.test(mac)) return errResp('bad_mac', 'MAC maître invalide.', 400);
   await ensureMasterListTable(env);
   const row = await env.DB
-    .prepare('SELECT m3u, updated_at FROM master_test_list WHERE mac = ?').bind(mac).first();
+    .prepare('SELECT m3u, gateway_base, updated_at FROM master_test_list WHERE mac = ?').bind(mac).first();
   const m3u = (row && row.m3u) ? String(row.m3u) : '';
-  return jsonResp({ mac, m3u, count: _countM3uChannels(m3u), updated_at: (row && row.updated_at) || null });
+  return jsonResp({
+    mac, m3u, count: _countM3uChannels(m3u),
+    gateway_base: (row && row.gateway_base) || '',
+    updated_at: (row && row.updated_at) || null,
+  });
 }
 
 async function handleMasterTestListPut(request, env) {
@@ -3295,16 +3328,19 @@ async function handleMasterTestListPut(request, env) {
   // On garde une liste VOLONTAIREMENT petite : indépendance = peu de chaînes
   // partagées. Plafond souple à 50 lignes / 64 Ko (garde-fou, pas une police).
   const m3u = String(body?.m3u || '').slice(0, 64 * 1024);
+  const gateway = _cleanGatewayBase(body?.gateway_base);
   const count = _countM3uChannels(m3u);
   await ensureMasterListTable(env);
-  if (!m3u.trim()) {
+  // Liste vide ET pas de gateway → on efface la ligne. Sinon on garde la
+  // gateway_base même sans chaînes (le maître l'a réglée une fois pour toutes).
+  if (!m3u.trim() && !gateway) {
     await env.DB.prepare('DELETE FROM master_test_list WHERE mac = ?').bind(mac).run();
-    return jsonResp({ ok: true, mac, count: 0 });
+    return jsonResp({ ok: true, mac, count: 0, gateway_base: '' });
   }
   await env.DB
-    .prepare('INSERT OR REPLACE INTO master_test_list (mac, m3u, updated_at) VALUES (?, ?, ?)')
-    .bind(mac, m3u, Date.now()).run();
-  return jsonResp({ ok: true, mac, count });
+    .prepare('INSERT OR REPLACE INTO master_test_list (mac, m3u, gateway_base, updated_at) VALUES (?, ?, ?, ?)')
+    .bind(mac, m3u || '', gateway || null, Date.now()).run();
+  return jsonResp({ ok: true, mac, count, gateway_base: gateway });
 }
 
 // =========================================================
@@ -3351,8 +3387,13 @@ async function _readFirstSource(env, mac) {
 }
 
 // Copie Xtream : catégories live + chaînes live (player_api.php).
-async function _copyXtream(src) {
+// [gatewayBase] : si fourni, les URLs de lecture sont bâties SUR le gateway
+// (façade) au lieu du fournisseur → plus stable (reconnexion/failover/tampon)
+// et privé (une seule IP). On lit toujours la LISTE depuis le fournisseur, mais
+// on JOUE via le gateway (mêmes stream_id — le gateway proxifie la même ligne).
+async function _copyXtream(src, gatewayBase = '') {
   const base = String(src.server_url || '').replace(/\/+$/, '');
+  const play = (gatewayBase || base).replace(/\/+$/, ''); // origine de LECTURE
   const user = String(src.username || '');
   const pass = String(src.password || '');
   const auth = `username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`;
@@ -3384,16 +3425,35 @@ async function _copyXtream(src) {
       id: String(s.stream_id),
       name: String(s.name || ('Chaîne ' + s.stream_id)),
       logo: String(s.stream_icon || ''),
-      // URL LIVE standard Xtream. La source du maître pointant sur le gateway,
-      // cette URL passe par le gateway → mutualisée → fournisseur aveugle.
-      url: `${base}/live/${encodeURIComponent(user)}/${encodeURIComponent(pass)}/${s.stream_id}.ts`,
+      // URL LIVE standard Xtream, bâtie sur l'origine de LECTURE (gateway si
+      // réglé, sinon fournisseur) → passe par le gateway → mutualisée + stable.
+      url: `${play}/live/${encodeURIComponent(user)}/${encodeURIComponent(pass)}/${s.stream_id}.ts`,
     });
   }
   return { type: 'xtream', categories: [...groups.values()], truncated, total };
 }
 
+// Réécrit l'ORIGINE d'une URL vers le gateway (garde path + query). Sert à
+// faire jouer une chaîne M3U via la façade (stable + privé). Best-effort :
+// URL invalide → renvoyée telle quelle.
+function _rewriteOrigin(u, gatewayBase) {
+  if (!gatewayBase) return u;
+  try {
+    const src = new URL(u);
+    const gw = new URL(gatewayBase);
+    // ORDRE IMPORTANT : le setter `host` ne change pas le port si l'entrée n'en
+    // a pas → on pose hostname + port séparément pour effacer l'ancien port.
+    src.protocol = gw.protocol;
+    src.hostname = gw.hostname;
+    src.port = gw.port; // '' si la façade n'a pas de port → efface l'ancien.
+    return src.toString();
+  } catch (_) { return u; }
+}
+
 // Copie M3U : parse #EXTINF (group-title = catégorie, tvg-logo, nom) + URL.
-async function _copyM3u(src) {
+// [gatewayBase] : si fourni, l'origine de chaque URL est réécrite vers le
+// gateway (le gateway doit proxifier ces chemins — cas d'une façade Xtream).
+async function _copyM3u(src, gatewayBase = '') {
   const res = await _fetchWithTimeout(String(src.m3u_url || ''));
   if (!res.ok) throw new Error('provider_http_' + res.status);
   const text = await res.text();
@@ -3415,7 +3475,8 @@ async function _copyM3u(src) {
       const catId = pending.group;
       if (!groups.has(catId)) groups.set(catId, { id: catId, name: catId, channels: [] });
       groups.get(catId).channels.push({
-        id: String(total), name: pending.name, logo: pending.logo, url: line,
+        id: String(total), name: pending.name, logo: pending.logo,
+        url: _rewriteOrigin(line, gatewayBase),
       });
       pending = null;
     }
@@ -3431,10 +3492,12 @@ async function handleMasterChannels(request, env) {
   const url = new URL(request.url);
   let mac = String(url.searchParams.get('mac') || '').toUpperCase();
   let inline = null;
+  let gatewayReq = '';
   if (request.method === 'POST') {
     let body;
     try { body = await request.json(); } catch (_) { return errResp('bad_json', 'Invalid JSON', 400); }
     if (body && body.mac) mac = String(body.mac).toUpperCase();
+    if (body && body.gateway_base) gatewayReq = _cleanGatewayBase(body.gateway_base);
     // Blob collé par le maître : lien Xtream, URL M3U, ou identifiants à plat.
     const blob = body && (body.paste || body.url || body.source);
     if (blob || (body && (body.server_url || body.m3u_url))) {
@@ -3451,12 +3514,15 @@ async function handleMasterChannels(request, env) {
     return errResp('no_source',
       'Aucune source : colle ton lien Xtream ou ton M3U ci-dessus, ou assigne une ligne à ce maître dans le panel.', 404);
   }
+  // Façade (gateway) de LECTURE : celle envoyée avec la requête, sinon celle
+  // déjà enregistrée pour ce maître. Vide → lecture directe (moins privée).
+  const gateway = gatewayReq || await _readGatewayBase(env, mac);
   try {
     let out;
     if (src.type === 'xtream' && src.server_url && src.username && src.password) {
-      out = await _copyXtream(src);
+      out = await _copyXtream(src, gateway);
     } else if (src.m3u_url) {
-      out = await _copyM3u(src);
+      out = await _copyM3u(src, gateway);
     } else {
       return errResp('bad_source', 'Source illisible (ni Xtream complet, ni M3U).', 400);
     }
