@@ -494,41 +494,167 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       );
 }
 
-class _Keyboard extends StatelessWidget {
-  const _Keyboard({required this.onType, required this.onBackspace, required this.onClear});
+/// Langues du clavier à l'écran. Le client peut BASCULER d'une langue à l'autre
+/// pour taper des noms de chaînes/films dans leur alphabet (ex. chaînes arabes,
+/// chaînes nordiques). Ajouter une langue = ajouter une entrée ici + son tracé.
+enum _KbLang { latin, nordic, arabic }
+
+class _Keyboard extends StatefulWidget {
+  const _Keyboard(
+      {required this.onType, required this.onBackspace, required this.onClear});
   final ValueChanged<String> onType;
   final VoidCallback onBackspace;
   final VoidCallback onClear;
 
-  static const List<String> _keys = <String>[
-    'A', 'B', 'C', 'D', 'E', 'F',
-    'G', 'H', 'I', 'J', 'K', 'L',
-    'M', 'N', 'O', 'P', 'Q', 'R',
-    'S', 'T', 'U', 'V', 'W', 'X',
-    'Y', 'Z', '0', '1', '2', '3',
-    '4', '5', '6', '7', '8', '9',
+  @override
+  State<_Keyboard> createState() => _KeyboardState();
+}
+
+class _KeyboardState extends State<_Keyboard> {
+  // Langue de saisie ACTIVE (par défaut l'alphabet latin, qui couvre FR/EN…).
+  _KbLang _lang = _KbLang.latin;
+
+  // Tracés par langue. On garde les CHIFFRES sur chaque tracé (utile partout).
+  static const List<String> _digits = <String>[
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
   ];
+  static const List<String> _latin = <String>[
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', //
+    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+  ];
+  // Nordique (suédois/danois/norvégien) : latin + Å Ä Ö Æ Ø.
+  static const List<String> _nordic = <String>[
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', //
+    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+    'Å', 'Ä', 'Ö', 'Æ', 'Ø',
+  ];
+  // Arabe : les 28 lettres + hamza/ta marbouta/alif maqsoura usuels.
+  static const List<String> _arabic = <String>[
+    'ا', 'ب', 'ت', 'ث', 'ج', 'ح', 'خ', 'د', 'ذ', 'ر', 'ز', 'س', 'ش', //
+    'ص', 'ض', 'ط', 'ظ', 'ع', 'غ', 'ف', 'ق', 'ك', 'ل', 'م', 'ن', 'ه',
+    'و', 'ي', 'ء', 'آ', 'ة', 'ى',
+  ];
+
+  List<String> get _letters => switch (_lang) {
+        _KbLang.latin => _latin,
+        _KbLang.nordic => _nordic,
+        _KbLang.arabic => _arabic,
+      };
+
+  // Étiquette COURTE de chaque langue (sur le bouton de bascule).
+  static String _label(_KbLang l) => switch (l) {
+        _KbLang.latin => 'ABC',
+        _KbLang.nordic => 'ÅÄÖ',
+        _KbLang.arabic => 'عربي',
+      };
+
+  // Nom LISIBLE de la langue (pour le libellé « Langue : … »).
+  static String _name(_KbLang l) => switch (l) {
+        _KbLang.latin => 'ABC (latin)',
+        _KbLang.nordic => 'Nordique ÅÄÖ',
+        _KbLang.arabic => 'العربية',
+      };
+
+  void _cycleLang() {
+    setState(() {
+      const List<_KbLang> all = _KbLang.values;
+      _lang = all[(_lang.index + 1) % all.length];
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final List<String> letters = _letters;
+    final _KbLang next = _KbLang.values[(_lang.index + 1) % _KbLang.values.length];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(context.l10n.tvNavSearch,
-            style: TextStyle(fontSize: TvDimens.displayS, fontWeight: FontWeight.w800, color: TvTokens.text)),
-        const SizedBox(height: 16),
+            style: TextStyle(
+                fontSize: TvDimens.displayS,
+                fontWeight: FontWeight.w800,
+                color: TvTokens.text)),
+        const SizedBox(height: 12),
+        // BOUTON DE LANGUE — en HAUT, bien visible (pensé personnes âgées).
+        // Montre la langue ACTIVE et vers quoi on bascule. OK = langue suivante.
+        _LangKey(
+          current: _name(_lang),
+          next: _label(next),
+          onTap: _cycleLang,
+        ),
+        const SizedBox(height: 12),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: <Widget>[
-            for (int i = 0; i < _keys.length; i++)
-              _Key(label: _keys[i], autofocus: i == 0, onTap: () => onType(_keys[i])),
-            _Key(label: '␣', wide: true, onTap: () => onType(' ')),
-            _Key(label: '⌫', onTap: onBackspace),
-            _Key(label: '✕', onTap: onClear),
+            for (int i = 0; i < letters.length; i++)
+              _Key(
+                  label: letters[i],
+                  autofocus: i == 0,
+                  onTap: () => widget.onType(letters[i])),
+            for (final String d in _digits)
+              _Key(label: d, onTap: () => widget.onType(d)),
+            _Key(label: '␣', wide: true, onTap: () => widget.onType(' ')),
+            _Key(label: '⌫', onTap: widget.onBackspace),
+            _Key(label: '✕', onTap: widget.onClear),
           ],
         ),
       ],
+    );
+  }
+}
+
+/// Bouton DORÉ de bascule de langue du clavier. Large et lisible : montre la
+/// langue active + un chevron vers la suivante. OK = passe à la langue suivante.
+class _LangKey extends StatelessWidget {
+  const _LangKey(
+      {required this.current, required this.next, required this.onTap});
+  final String current;
+  final String next;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 244,
+      height: 54,
+      child: TvFocusBuilder(
+        scale: TvFocusScale.small,
+        onSelect: onTap,
+        builder: (BuildContext context, bool focused) {
+          return Container(
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: focused ? TvTokens.gold : TvTokens.sel,
+              borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+              border: Border.all(
+                  color: focused ? TvTokens.gold : TvTokens.goldBright,
+                  width: 1.4),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Icon(Icons.language_rounded,
+                    size: 22,
+                    color: focused ? const Color(0xFF1A1206) : TvTokens.goldBright),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    'Langue : $current  →  $next',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: TvDimens.body,
+                        fontWeight: FontWeight.w800,
+                        color: focused ? const Color(0xFF1A1206) : TvTokens.text),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
