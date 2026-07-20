@@ -113,7 +113,15 @@ class TvRailsHomeScreen extends StatelessWidget {
   const TvRailsHomeScreen({super.key});
 
   void _open(BuildContext c, Widget screen) {
-    Navigator.of(c).push(MaterialPageRoute<void>(builder: (_) => screen));
+    // On ENVELOPPE l'écran poussé dans un Material (transparent) : sans ancêtre
+    // Material, Flutter dessine des DOUBLES SOULIGNEMENTS JAUNES sous chaque
+    // texte (signal « pas de Material »). Les écrans « bucket » (Réglages,
+    // Recherche, Séries, Films…) ne s'enveloppent pas eux-mêmes → on le fait ici
+    // (comme le fait déjà le Lanceur). Résultat : typographie NETTE, pas de
+    // lignes jaunes.
+    Navigator.of(c).push(MaterialPageRoute<void>(
+        builder: (_) =>
+            Material(type: MaterialType.transparency, child: screen)));
   }
 
   Future<void> _confirmExit(BuildContext c) async {

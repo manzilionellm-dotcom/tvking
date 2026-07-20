@@ -159,7 +159,14 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   @override
   Widget build(BuildContext context) {
     final List<Channel> res = _results;
-    return Row(
+    // Material (transparent) au SOMMET de l'écran : cet écran est poussé depuis
+    // PLUSIEURS endroits (boutons « Recherche » de tous les templates), parfois
+    // sans ancêtre Material → Flutter dessinait alors des DOUBLES SOULIGNEMENTS
+    // JAUNES sous chaque lettre du clavier. En s'enveloppant lui-même, l'écran
+    // est TOUJOURS propre, quel que soit l'appelant (clavier net, « VIP »).
+    return Material(
+      type: MaterialType.transparency,
+      child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         // ----- Clavier (instance STABLE → non reconstruite à chaque frappe) -----
@@ -257,6 +264,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
           ),
         ),
       ],
+      ),
     );
   }
 

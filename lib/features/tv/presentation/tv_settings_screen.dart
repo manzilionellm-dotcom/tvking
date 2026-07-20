@@ -98,7 +98,14 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final ({String label, Color color}) st = _statusOf(context);
-    return SingleChildScrollView(
+    // Material (transparent) au SOMMET : ce Réglages est parfois poussé sans
+    // ancêtre Material (rail d'icônes des templates Rails / TiviMate) → Flutter
+    // dessinait des DOUBLES SOULIGNEMENTS JAUNES sous chaque texte. En
+    // s'enveloppant lui-même, l'écran reste NET partout (réglages « haut de
+    // gamme », pas de lignes jaunes).
+    return Material(
+      type: MaterialType.transparency,
+      child: SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -913,6 +920,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
           ),
           const SizedBox(height: 12),
         ],
+      ),
       ),
     );
   }

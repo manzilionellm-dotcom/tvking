@@ -255,7 +255,52 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
   }
 
   void _open(Widget screen) {
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
+    // Material (transparent) OBLIGATOIRE : sans ancêtre Material, Flutter dessine
+    // des DOUBLES SOULIGNEMENTS JAUNES sous chaque texte. Les écrans « bucket »
+    // (Réglages, Recherche, Séries, Films…) ne s'enveloppent pas eux-mêmes → on
+    // le fait ici (comme le Lanceur) → typographie NETTE, pas de lignes jaunes.
+    Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) =>
+            Material(type: MaterialType.transparency, child: screen)));
+  }
+
+  /// RETOUR PROGRESSIF (« bout à bout ») — plus JAMAIS de fermeture brutale de
+  /// l'app au premier Retour. On recule d'UN cran vers la GAUCHE : chaînes →
+  /// groupes → rail d'icônes (via le focus directionnel intégré de Flutter). Ce
+  /// n'est QUE lorsqu'on est déjà tout à gauche (plus rien à gauche) qu'on
+  /// PROPOSE de quitter (avec confirmation), au lieu de fermer sans rien
+  /// demander. Pensé pour les personnes âgées : un Retour = un petit pas en
+  /// arrière, prévisible.
+  Future<void> _onBack() async {
+    final bool moved =
+        FocusScope.of(context).focusInDirection(TraversalDirection.left);
+    if (moved) return; // il restait un cran à gauche → on a juste reculé
+    // Déjà tout à gauche : on demande confirmation avant de quitter l'app.
+    final bool? quit = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext d) => AlertDialog(
+        backgroundColor: _tmPanel,
+        title: const Text('Quitter l’application ?',
+            style: TextStyle(
+                color: _tmText, fontSize: 22, fontWeight: FontWeight.w700)),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(d, false),
+            child: const Text('Annuler',
+                style: TextStyle(color: _tmText2, fontSize: 18)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(d, true),
+            child: const Text('Quitter',
+                style: TextStyle(
+                    color: _tmAccent,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (quit == true) await SystemNavigator.pop();
   }
 
   @override
@@ -264,7 +309,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
       canPop: false,
       onPopInvokedWithResult: (bool didPop, Object? _) async {
         if (didPop) return;
-        await SystemNavigator.pop();
+        await _onBack();
       },
       child: Container(
         color: _tmBg,
