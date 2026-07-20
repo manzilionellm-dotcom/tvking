@@ -237,6 +237,11 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                   // En Privé, aucun historique n'est tracké (incognito) →
                   // elle reste donc masquée, ce qui respecte la promesse.
                   const ResumeBanner(),
+                  // Barre « mode invité » — fine, toujours visible en haut de
+                  // l'accueil : inviter un ami, prêter son abonnement, ou
+                  // entrer un code reçu. Demande client : « toujours présent,
+                  // surtout côté mobile, à l'écran d'accueil ».
+                  _GuestEntryBar(onTap: () => openGuestScreen(context)),
                   Expanded(child: CategoryBrowserView(channels: channels)),
                   _buildBottomBar(),
                 ],
@@ -534,6 +539,54 @@ class _GuestEntryCard extends StatelessWidget {
             ),
             Icon(Icons.chevron_right_rounded, color: AppColors.accent, size: 24),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Barre FINE « mode invité » posée en haut de l'accueil rempli. Une seule
+/// ligne, tappable, teintée ember — impossible à rater sans manger l'espace
+/// d'une grosse carte.
+class _GuestEntryBar extends StatelessWidget {
+  const _GuestEntryBar({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.accentSurface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.accent.withValues(alpha: 0.45)),
+          ),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.card_giftcard_rounded,
+                  color: AppColors.accent, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Inviter un ami · prêter · j’ai un code',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.bodyLarge.copyWith(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.accent,
+                  ),
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded,
+                  color: AppColors.accent, size: 22),
+            ],
+          ),
         ),
       ),
     );
