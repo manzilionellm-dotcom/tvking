@@ -159,6 +159,28 @@ jobs:
             grep 'android:label' "$MANIFEST" || true
           fi
 
+      # CONSOLE MAÎTRE : identité SÉPARÉE (package + nom) pour que l'app
+      # maître s'installe À CÔTÉ de l'app cliente (jamais par-dessus / ne la
+      # désinstalle pas). Uniquement quand master_console=true. Le `namespace`
+      # Kotlin/R reste inchangé (on ne touche QUE l'applicationId).
+      - name: Identité Console maître (package + nom séparés)
+        if: ${{ github.event.inputs.master_console == 'true' }}
+        run: |
+          set -e
+          G=android/app/build.gradle.kts
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ -f "$G" ]; then
+            sed -i 's|applicationId = "com.manzilionellm.tvking.tv_king"|applicationId = "com.manzilionellm.tvking.tv_king.master"|' "$G"
+            echo "--- applicationId (console maître) ---"
+            grep 'applicationId' "$G" || true
+          fi
+          if [ -f "$MANIFEST" ]; then
+            sed -i 's|android:label="The Few"|android:label="7 The Few Master"|g' "$MANIFEST"
+            sed -i 's|android:label="tv_king"|android:label="7 The Few Master"|g' "$MANIFEST"
+            echo "--- label (console maître) ---"
+            grep 'android:label' "$MANIFEST" || true
+          fi
+
       # =====================================================================
       #  Réseau : INTERNET + HTTP en clair (cleartext)
       # ---------------------------------------------------------------------

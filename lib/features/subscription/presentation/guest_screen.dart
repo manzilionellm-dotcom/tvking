@@ -163,6 +163,11 @@ class _GuestScreenState extends State<GuestScreen> {
   /// Écran invité classique (client) : bandeaux + code + envoyer MAC + inviter.
   List<Widget> _guestChildren() {
     return <Widget>[
+      // Compte maître → boîte noire (diagnostic sécurité) en tête.
+      if (_isMaster) ...<Widget>[
+        _BlackBox(mac: _mac),
+        const SizedBox(height: 18),
+      ],
       if (_loan != null) ...<Widget>[
         _LoanOwnerBanner(loan: _loan!, busy: _reclaiming, onReclaim: _reclaim),
         const SizedBox(height: 18),
