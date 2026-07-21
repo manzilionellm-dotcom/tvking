@@ -169,6 +169,28 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
       .filter((c) => c.channels.length > 0);
   }, [cats, filter]);
 
+  // RECHERCHE À PLAT : dès qu'on tape, on liste directement les CHAÎNES qui
+  // correspondent (nom de chaîne OU de catégorie), avec leur catégorie en
+  // libellé — plus besoin d'ouvrir une catégorie à la main. Plafonné pour
+  // rester fluide même sur une très grosse ligne.
+  const flatMatches = useMemo(() => {
+    if (!cats) return [] as { ch: MasterChannel; group: string }[];
+    const q = filter.trim().toLowerCase();
+    if (!q) return [] as { ch: MasterChannel; group: string }[];
+    const out: { ch: MasterChannel; group: string }[] = [];
+    for (const c of cats) {
+      const catHit = c.name.toLowerCase().includes(q);
+      for (const ch of c.channels) {
+        if (catHit || ch.name.toLowerCase().includes(q)) {
+          out.push({ ch, group: c.name });
+          if (out.length >= 500) return out;
+        }
+      }
+    }
+    return out;
+  }, [cats, filter]);
+
+  const searching = filter.trim().length > 0;
   const selCount = sel.size;
   const tooMany = selCount > 5;
 
@@ -266,6 +288,37 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
             placeholder="Filtrer une chaîne ou une catégorie…"
             className="w-full rounded-md border border-white/5 bg-midnight px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
           />
+          {/* Recherche active → LISTE PLATE de chaînes (coche directe). */}
+          {searching && (
+            <div className="max-h-96 space-y-0.5 overflow-y-auto rounded-md border border-white/5 bg-midnight p-2">
+              {flatMatches.length === 0 && (
+                <div className="px-2 py-4 text-center text-xs text-ink-tertiary">
+                  Aucune chaîne ne correspond à « {filter} ».
+                </div>
+              )}
+              {flatMatches.map(({ ch, group }) => {
+                const on = sel.has(ch.url);
+                return (
+                  <label
+                    key={ch.url}
+                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[13px] hover:bg-white/[0.02]"
+                  >
+                    <input type="checkbox" checked={on} onChange={() => toggle(ch, group)} className="accent-accent" />
+                    <span className={on ? 'text-ink-primary' : 'text-ink-secondary'}>{ch.name}</span>
+                    <span className="ml-auto shrink-0 text-[10px] text-ink-tertiary">{group}</span>
+                  </label>
+                );
+              })}
+              {flatMatches.length >= 500 && (
+                <div className="px-2 py-1 text-center text-[10px] text-ink-tertiary">
+                  500 premiers résultats — affine ta recherche.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Pas de recherche → ARBRE catégories → chaînes. */}
+          {!searching && (
           <div className="max-h-96 space-y-1 overflow-y-auto rounded-md border border-white/5 bg-midnight p-2">
             {shownCats.length === 0 && (
               <div className="px-2 py-4 text-center text-xs text-ink-tertiary">Aucune chaîne.</div>
@@ -307,6 +360,7 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
               );
             })}
           </div>
+          )}
         </div>
       )}
 
