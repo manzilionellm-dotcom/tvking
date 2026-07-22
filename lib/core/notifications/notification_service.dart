@@ -208,9 +208,24 @@ class NotificationService {
 
   /// Annule un rappel précédemment posé pour ce programme.
   Future<void> cancelProgramReminder(String channelId, int startMs) async {
+    await _safeCancel(_idFor(channelId, startMs));
+  }
+
+  /// Annulation BLINDÉE d'une notification. `cancel()` déclenche en interne
+  /// `loadScheduledNotifications` (relecture Gson des notifs programmées) : sur
+  /// une build minifiée sans la bonne règle R8, OU quand l'ancien fichier de
+  /// notifications (sérialisé par une version antérieure) n'est plus relisible
+  /// après mise à jour, le plugin lève un PlatformException « Missing type
+  /// parameter ». Non rattrapé, il remontait jusqu'au filet global (crash
+  /// « majeur » de la boîte noire, déclenché typiquement à l'envoi/réception
+  /// d'un test → reprogrammation des rappels). On l'avale ici : au pire un
+  /// rappel n'est pas annulé, jamais un crash.
+  Future<void> _safeCancel(int id) async {
     try {
-      await _plugin.cancel(_idFor(channelId, startMs));
-    } catch (_) {}
+      await _plugin.cancel(id);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Notif] cancel($id): $e');
+    }
   }
 
   // ===================================================================
@@ -379,7 +394,7 @@ class NotificationService {
 
     // 1) « On ne t'a pas vu depuis 3 jours » — annulé/repoussé à chaque
     //    ouverture, donc invisible pour qui revient avant l'échéance.
-    await _plugin.cancel(_idDormant);
+    await _safeCancel(_idDormant);
     await _scheduleAt(
       _idDormant,
       now.add(const Duration(days: 3)),
@@ -388,7 +403,7 @@ class NotificationService {
     );
 
     // 2) Nudge quotidien léger à 20 h (« ce soir sur 7 MOTION »), répété.
-    await _plugin.cancel(_idTonight);
+    await _safeCancel(_idTonight);
     tz.TZDateTime tonight =
         tz.TZDateTime(tz.local, now.year, now.month, now.day, 20);
     if (tonight.isBefore(now)) tonight = tonight.add(const Duration(days: 1));
@@ -404,7 +419,7 @@ class NotificationService {
     //    manquait (avant, l'alerte n'était qu'une bannière in-app d'un
     //    écran que le mobile ne montre même pas → churn silencieux).
     //    Planifié la veille de l'expiration, à 19 h.
-    await _plugin.cancel(_idTrialEnd);
+    await _safeCancel(_idTrialEnd);
     final int? days = SubscriptionState.instance.daysUntilExpiry;
     final SubscriptionStatus st = SubscriptionState.instance.status;
     final bool relevant = st == SubscriptionStatus.trialActive ||
