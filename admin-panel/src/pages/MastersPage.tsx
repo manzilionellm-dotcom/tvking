@@ -41,9 +41,22 @@ const CAT_PAGE_STEP = 500;
 // Une chaîne CURÉE dans la liste de test. L'ORDRE du tableau EST l'ordre de
 // lecture (respecté dans le M3U servi). Le maître range/renomme/regroupe à sa
 // main — « c'est lui qui gère ».
-type CuratedItem = { url: string; name: string; logo: string; group: string };
+//   • `group` = nom du DOSSIER déroulant (group-title M3U). L'app regroupe les
+//     chaînes par ce champ et affiche un dossier qu'on déroule.
+//   • `id` = identifiant LOCAL unique (jamais écrit dans le M3U) : deux
+//     « sous-chaînes même flux » partagent la MÊME url mais restent deux lignes
+//     distinctes — sans id local, React et les cases à cocher les confondraient.
+type CuratedItem = { id: string; url: string; name: string; logo: string; group: string };
+
+// Génère un id local court et unique (rendu + suivi des variantes). Pas de
+// crypto : sert uniquement de clé d'UI, jamais persisté.
+let _uidSeq = 0;
+function uid(): string { _uidSeq += 1; return 'c' + Date.now().toString(36) + '_' + _uidSeq; }
 
 // Construit le M3U de test À PARTIR DE LA LISTE ORDONNÉE (ordre = lecture).
+// `id` n'est PAS écrit : les variantes « même flux » sortent comme plusieurs
+// lignes de même URL + même group-title → l'app les montre dans un dossier, le
+// gateway les sert depuis UNE seule connexion (1 flux garanti).
 function buildM3u(list: CuratedItem[]): string {
   const lines = ['#EXTM3U'];
   for (const c of list) {
@@ -57,6 +70,7 @@ function buildM3u(list: CuratedItem[]): string {
 
 // Parse un M3U en liste ORDONNÉE (préserve l'ordre, la catégorie et le nom).
 // Sert à recharger la liste enregistrée pour l'éditer/réordonner à la main.
+// Chaque ligne reçoit un id local frais (les URLs peuvent se répéter → variantes).
 function parseM3uToList(m3u: string): CuratedItem[] {
   const out: CuratedItem[] = [];
   const lines = (m3u || '').split(/\r?\n/);
@@ -70,6 +84,7 @@ function parseM3uToList(m3u: string): CuratedItem[] {
       pending = { name, logo, group };
     } else if (line && !line.startsWith('#')) {
       out.push({
+        id: uid(),
         url: line,
         name: pending?.name || 'Chaîne',
         logo: pending?.logo || '',
@@ -166,7 +181,7 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
   function toggle(ch: MasterChannel, group: string) {
     setList((prev) => {
       if (prev.some((i) => i.url === ch.url)) return prev.filter((i) => i.url !== ch.url);
-      return [...prev, { url: ch.url, name: ch.name, logo: ch.logo, group }];
+      return [...prev, { id: uid(), url: ch.url, name: ch.name, logo: ch.logo, group }];
     });
   }
 
@@ -201,8 +216,40 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
     setList((prev) => prev.filter((_, i) => i !== idx));
   }
   // Ajout MANUEL d'une chaîne (nom + URL + catégorie) directement dans la liste.
-  function addManual(item: CuratedItem) {
-    setList((prev) => (prev.some((i) => i.url === item.url) ? prev : [...prev, item]));
+  function addManual(item: Omit<CuratedItem, 'id'>) {
+    setList((prev) => (prev.some((i) => i.url === item.url) ? prev : [...prev, { id: uid(), ...item }]));
+  }
+
+  // ---- DOSSIERS (déroulants) + SOUS-CHAÎNES « MÊME FLUX » ------------------
+  // Ajoute une SOUS-CHAÎNE « même flux » juste après [idx] : elle partage la
+  // MÊME url que la chaîne source (→ 1 seul flux fournisseur, garanti par la
+  // mutualisation du gateway) et le MÊME dossier. Si la source n'a pas encore
+  // de dossier, on en crée un à son nom → les deux entrent dans « ce » dossier.
+  function addSameFluxVariant(idx: number) {
+    setList((prev) => {
+      const src = prev[idx];
+      if (!src) return prev;
+      const folder = src.group || src.name || 'Dossier';
+      const next = prev.slice();
+      // La source rejoint le dossier (si elle était « hors dossier »).
+      if (!src.group) next[idx] = { ...src, group: folder };
+      next.splice(idx + 1, 0, {
+        id: uid(), url: src.url, logo: src.logo, group: folder,
+        name: src.name + ' •', // nom modifiable ensuite
+      });
+      return next;
+    });
+  }
+  // Range TOUT un dossier sur UN SEUL flux : toutes ses chaînes prennent l'url
+  // de la 1re → le fournisseur ne voit plus qu'une connexion pour ce dossier.
+  // (Les sous-chaînes montrent alors le même direct — c'est le prix du « 1 flux
+  // garanti ».) Réversible en ré-éditant les URLs à la main (mode avancé).
+  function mergeFolderToOneFlux(folder: string) {
+    setList((prev) => {
+      const first = prev.find((i) => i.group === folder);
+      if (!first) return prev;
+      return prev.map((i) => (i.group === folder ? { ...i, url: first.url } : i));
+    });
   }
   // « Ranger par catégorie » : tri STABLE — les catégories gardent leur ordre
   // de première apparition, et les chaînes gardent leur ordre relatif dans
@@ -304,6 +351,35 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
     [list],
   );
 
+  // ---- COMPTE HONNÊTE DES FLUX PAR DOSSIER (fidèle à la réalité réseau) ----
+  // Un dossier (group) coûte au fournisseur : 1 flux par URL DISTINCTE qu'il
+  // contient (mutualisation du gateway = 1 connexion par chaîne, quel que soit
+  // le nombre de testeurs). Si toutes ses chaînes partagent 1 seule URL →
+  // « 1 flux garanti » (variantes même flux). Sinon « jusqu'à N flux ».
+  // Recherche vérifiée : des chaînes DIFFÉRENTES regardées en même temps = des
+  // connexions distinctes (impossible de les fondre en 1 sans mosaïque).
+  const folders = useMemo(() => {
+    const map = new Map<string, { count: number; urls: Set<string> }>();
+    for (const it of list) {
+      const g = it.group || '';
+      if (!g) continue; // « hors dossier » = chaîne simple, pas un dossier
+      if (!map.has(g)) map.set(g, { count: 0, urls: new Set() });
+      const f = map.get(g)!;
+      f.count += 1;
+      f.urls.add(it.url);
+    }
+    return [...map.entries()].map(([name, f]) => ({
+      name, count: f.count, flux: f.urls.size, oneFlux: f.urls.size === 1,
+    }));
+  }, [list]);
+  // URLs présentes plusieurs fois dans la liste = variantes « même flux » →
+  // badge « 1 flux » sur ces lignes (le fournisseur ne les compte qu'une fois).
+  const urlCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const it of list) m.set(it.url, (m.get(it.url) || 0) + 1);
+    return m;
+  }, [list]);
+
   return (
     <div className="space-y-3 border-t border-white/5 bg-slate/40 px-4 py-4">
       <div className="text-[13px] text-ink-secondary">
@@ -317,6 +393,19 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
         liste : les testeurs partagent les mêmes chaînes, le gateway les
         mutualise et <strong>le fournisseur ne voit qu'une connexion</strong>.
         Aucune liste = accès à tout le bouquet.
+      </div>
+
+      {/* Dossiers + flux : explication HONNÊTE (recherche vérifiée). */}
+      <div className="rounded-md border border-white/5 bg-midnight/60 px-3 py-2 text-[12px] text-ink-tertiary">
+        <strong className="text-ink-secondary">Dossiers &amp; flux.</strong> Mets
+        un même nom de <strong>dossier</strong> à plusieurs chaînes → l'app les
+        affiche dans un dossier déroulant. Un dossier coûte au fournisseur{' '}
+        <strong>1 flux par chaîne différente réellement regardée</strong> (le
+        gateway mutualise : 1000 testeurs sur la même chaîne = 1 flux). Pour
+        garantir <strong>1 seul flux</strong> quoi qu'il arrive, utilise{' '}
+        <strong>＋flux</strong> : la sous-chaîne partage le même lien (même
+        direct sous plusieurs noms). Des chaînes <em>différentes</em> regardées
+        en même temps restent des flux distincts — c'est incontournable.
       </div>
 
       {/* ===== Façade (gateway) : stabilité + confidentialité ===== */}
@@ -455,6 +544,41 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
           </div>
         </div>
 
+        {/* Récap DOSSIERS : compte de flux HONNÊTE par dossier (recherche
+            vérifiée : 1 flux par URL distincte, mutualisé). « Tout sur 1 flux »
+            fond le dossier sur un seul lien (variantes = même direct). */}
+        {folders.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 rounded-md border border-white/5 bg-midnight/60 p-2">
+            {folders.map((f) => (
+              <div
+                key={f.name}
+                className="flex items-center gap-1.5 rounded border border-white/10 bg-midnight px-2 py-1 text-[11px]"
+              >
+                <span className="text-ink-secondary">📁 {f.name}</span>
+                <span className="text-ink-tertiary">{f.count} ch.</span>
+                {f.oneFlux ? (
+                  <span className="rounded bg-success/15 px-1.5 py-0.5 font-semibold" style={{ color: '#3FBE7C' }}>
+                    1 flux garanti
+                  </span>
+                ) : (
+                  <>
+                    <span className="rounded bg-warning/15 px-1.5 py-0.5 font-semibold text-warning">
+                      jusqu'à {f.flux} flux
+                    </span>
+                    <button
+                      onClick={() => mergeFolderToOneFlux(f.name)}
+                      className="rounded border border-white/10 px-1.5 py-0.5 text-ink-tertiary transition hover:border-accent/40 hover:text-accent-bright"
+                      title="Toutes les chaînes du dossier prennent le MÊME lien (le même direct) → 1 flux garanti"
+                    >
+                      Tout sur 1 flux
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
         {list.length === 0 ? (
           <div className="rounded-md border border-dashed border-white/10 bg-midnight px-3 py-4 text-center text-xs text-ink-tertiary">
             Vide. Coche des chaînes ci-dessous, ou ajoute-en une à la main.
@@ -463,7 +587,7 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
           <div className="space-y-1 rounded-md border border-white/5 bg-midnight p-2">
             {list.map((it, idx) => (
               <div
-                key={it.url}
+                key={it.id}
                 draggable
                 onDragStart={() => setDragIdx(idx)}
                 onDragOver={(e) => e.preventDefault()}
@@ -497,15 +621,31 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
                   className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1.5 py-1 text-[13px] text-ink-primary outline-none focus:border-white/10 focus:bg-white/[0.02]"
                   placeholder="Nom de la chaîne"
                 />
-                {/* Regrouper (catégorie / group-title), autocomplétion des groupes connus. */}
+                {/* Badge « 1 flux » quand cette URL est partagée par plusieurs
+                    lignes (variantes même flux → 1 seule connexion fournisseur). */}
+                {urlCounts.get(it.url)! > 1 && (
+                  <span
+                    className="shrink-0 rounded bg-success/15 px-1.5 py-0.5 text-[9px] font-semibold"
+                    style={{ color: '#3FBE7C' }}
+                    title="Même lien qu'une autre ligne → le fournisseur ne compte qu'un seul flux"
+                  >1 flux</span>
+                )}
+                {/* Regrouper (dossier / group-title), autocomplétion des groupes connus. */}
                 <input
                   value={it.group}
                   onChange={(e) => editField(idx, 'group', e.target.value)}
                   list="master-known-groups"
                   spellCheck={false}
                   className="w-28 shrink-0 rounded border border-transparent bg-transparent px-1.5 py-1 text-[11px] text-ink-secondary outline-none focus:border-white/10 focus:bg-white/[0.02]"
-                  placeholder="Catégorie"
+                  placeholder="Dossier"
                 />
+                {/* Ajouter une SOUS-CHAÎNE « même flux » (même lien) dans le
+                    dossier → 1 flux garanti, plusieurs noms affichés. */}
+                <button
+                  onClick={() => addSameFluxVariant(idx)}
+                  className="shrink-0 rounded px-1.5 text-[11px] text-ink-tertiary transition hover:text-accent-bright"
+                  title="Ajouter une sous-chaîne qui partage CE flux (même lien) dans le dossier — 1 flux garanti"
+                >＋flux</button>
                 {/* Supprimer. */}
                 <button
                   onClick={() => removeItem(idx)}
