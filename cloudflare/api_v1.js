@@ -1152,6 +1152,37 @@ async function apiV1Inner(request, env) {
       if (request.method === 'GET') return handleMasterDiag(request, env);
       return errResp('method_not_allowed', 'Only GET', 405);
     }
+    // /masters/tests — SUIVI des tests émis par les maîtres (app OU panel).
+    if (parts.length === 2 && parts[1] === 'tests') {
+      if (request.method === 'GET') return handleMasterTestsList(env);
+      return errResp('method_not_allowed', 'Only GET', 405);
+    }
+    // /masters/test-grant — ATTRIBUE un test à une MAC directement (rt : le
+    // testeur voit son accès + sa liste arriver dans la seconde).
+    if (parts.length === 2 && parts[1] === 'test-grant') {
+      if (request.method !== 'POST') return errResp('method_not_allowed', 'Only POST', 405);
+      return withRt(env, await handleMasterTestGrant(request, env, actor),
+        (b) => ({ macs: [b.guest_mac], what: 'status', scope: 'masters', changedMac: b.guest_mac }));
+    }
+    // /masters/test-code — GÉNÈRE un code 6 chiffres (le testeur le tape).
+    if (parts.length === 2 && parts[1] === 'test-code') {
+      if (request.method !== 'POST') return errResp('method_not_allowed', 'Only POST', 405);
+      return handleMasterTestCode(request, env, actor);
+    }
+    // /masters/test-extend — PROLONGE un test consommé (rt vers le testeur).
+    if (parts.length === 2 && parts[1] === 'test-extend') {
+      if (request.method !== 'POST') return errResp('method_not_allowed', 'Only POST', 405);
+      return withRt(env, await handleMasterTestExtend(request, env, actor),
+        (b) => ({ macs: [b.guest_mac], what: 'status', scope: 'masters', changedMac: b.guest_mac }));
+    }
+    // /masters/test-revoke — RÉVOQUE (accès coupé immédiatement, rt).
+    if (parts.length === 2 && parts[1] === 'test-revoke') {
+      if (request.method !== 'POST') return errResp('method_not_allowed', 'Only POST', 405);
+      return withRt(env, await handleMasterTestRevoke(request, env, actor),
+        (b) => (b.guest_mac
+          ? { macs: [b.guest_mac], what: 'status', scope: 'masters', changedMac: b.guest_mac }
+          : { macs: [], what: 'status', scope: 'masters' }));
+    }
     return errResp('method_not_allowed', 'unsupported', 405);
   }
 
@@ -3820,6 +3851,293 @@ async function handleMasterDiag(request, env) {
   const score = Math.round((oks / checks.length) * 100);
   const verdict = worst === 0 ? 'green' : (worst === 2 ? 'red' : 'amber');
   return jsonResp({ mac, verdict, score, checks, generated_at: Date.now() });
+}
+
+// =========================================================
+//  TESTS DEPUIS LE PANEL — donner, suivre, prolonger, révoquer
+// =========================================================
+//  L'exploitant n'a plus besoin de l'app maître pour distribuer un test :
+//  depuis le panel il ATTRIBUE directement (MAC de l'invité) ou GÉNÈRE un
+//  code 6 chiffres, choisit la durée (1 h → 1 an) — la LISTE SERVIE est la
+//  liste de test curée du maître (référence opaque), comme dans l'app.
+//  Il peut ensuite LISTER les tests, les PROLONGER ou les RÉVOQUER.
+//  Tout ce bloc est derrière la garde super_admin de /masters/*.
+
+// Durées autorisées d'un test maître (heures) : 1 h, 5 h, 24 h, 48 h,
+// 30 j, 60 j, 180 j, 365 j. DOIT rester identique à MASTER_ALLOWED_HOURS
+// (worker.js) — la parité est verrouillée par invite_master.smoke.mjs.
+export const MASTER_TEST_HOURS = [1, 5, 24, 48, 720, 1440, 4320, 8760];
+function _masterTestHours(raw) {
+  const h = Number(raw);
+  return MASTER_TEST_HOURS.includes(h) ? h : 1;
+}
+
+// Réplique EXACTE de masterListRef (worker.js) : référence OPAQUE et stable
+// de la liste de test d'un maître (hash non réversible de la MAC). Les deux
+// implémentations doivent produire le MÊME résultat — parité verrouillée par
+// master_list.smoke.mjs. (api_v1 ne peut pas l'importer de worker.js sans
+// créer un cycle de modules : worker.js importe déjà api_v1.js.)
+export async function masterListRefPanel(masterMac) {
+  const data = new TextEncoder().encode('mlist:' + String(masterMac).toUpperCase());
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return 'ml_' + hex.slice(0, 20);
+}
+
+// Le code doit être utilisé sous 48 h — même valeur que INVITE_CODE_TTL_MS
+// (worker.js).
+const _INVITE_CODE_TTL_MS = 48 * 60 * 60 * 1000;
+
+// S'assure que la table app_invites existe AVEC toutes ses colonnes (le
+// schéma de référence vit côté worker ; ici on est idempotent et additif
+// pour ne jamais planter si le panel écrit avant la première invitation app).
+async function ensureInvitesTable(env) {
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS app_invites (' +
+      'code TEXT PRIMARY KEY, issuer_mac TEXT NOT NULL, redeemer_mac TEXT, ' +
+      'plan TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, ' +
+      'redeemed_at INTEGER, guest_until INTEGER)',
+    ).run();
+  } catch (_) { /* déjà présente */ }
+  for (const alter of [
+    'ALTER TABLE app_invites ADD COLUMN hours INTEGER',
+    'ALTER TABLE app_invites ADD COLUMN channel_json TEXT',
+    "ALTER TABLE app_invites ADD COLUMN mode TEXT DEFAULT 'together'",
+    'ALTER TABLE app_invites ADD COLUMN owner_expires_at INTEGER',
+    'ALTER TABLE app_invites ADD COLUMN return_at INTEGER',
+    'ALTER TABLE app_invites ADD COLUMN returned_at INTEGER',
+  ]) {
+    try { await env.DB.prepare(alter).run(); } catch (_) { /* colonne déjà là */ }
+  }
+}
+
+// Pose une licence d'ESSAI (trial_Nh) sur une MAC : find-or-create du couple
+// customer/device puis upsert de la meilleure licence — même logique que
+// setDeviceLicense (worker.js). `expiresAt` dans le passé = accès coupé.
+async function _setTestLicense(env, mac, plan, expiresAt, now) {
+  // Find-or-create device (comme ensureD1Device côté worker).
+  let dev = await env.DB
+    .prepare('SELECT id, customer_id FROM devices WHERE mac = ?').bind(mac).first();
+  if (!dev) {
+    const cid = genId('cus');
+    const did = genId('dev');
+    await env.DB.batch([
+      env.DB.prepare(
+        'INSERT INTO customers (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)',
+      ).bind(cid, 'Test ' + mac.slice(-5), now, now),
+      env.DB.prepare(
+        'INSERT INTO devices (id, customer_id, mac, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)',
+      ).bind(did, cid, mac, now, now),
+    ]);
+    dev = { id: did, customer_id: cid };
+  }
+  const lic = await env.DB
+    .prepare('SELECT id FROM licenses WHERE device_id = ? ' +
+             'ORDER BY (expires_at IS NULL) DESC, expires_at DESC LIMIT 1')
+    .bind(dev.id).first();
+  if (lic) {
+    await env.DB.prepare(
+      "UPDATE licenses SET status='active', plan=?, expires_at=?, updated_at=? WHERE id=?",
+    ).bind(plan, expiresAt, now, lic.id).run();
+  } else {
+    await env.DB.prepare(
+      'INSERT INTO licenses ' +
+      '(id, customer_id, device_id, app_id, status, plan, started_at, expires_at, auto_renew, reseller_id, created_at, updated_at) ' +
+      "VALUES (?, ?, ?, 'app_7motion', 'active', ?, ?, ?, 0, NULL, ?, ?)",
+    ).bind(genId('lic'), dev.customer_id, dev.id, plan, now, expiresAt, now, now).run();
+  }
+  // Un test qui démarre dégèle l'appareil (sinon block_status primerait).
+  await env.DB.prepare('UPDATE devices SET block_status = NULL WHERE id = ?').bind(dev.id).run();
+  return { ok: true, deviceId: dev.id };
+}
+
+// Assigne au testeur la SOURCE de test du maître — même contrat que
+// copyMasterSourceForTest (worker.js) :
+//   1. liste de test curée (préférée) → un item M3U vers la référence OPAQUE
+//      (`/api/master-list/ml_…`, jamais la MAC maître ni la ligne réelle) ;
+//   2. repli : copie du bouquet complet du maître.
+// `origin` = origine HTTP de CE worker (le panel API et le service public de
+// la liste partagent le même domaine). Best-effort : jamais bloquant.
+async function _assignMasterTestSource(env, masterMac, guestMac, origin) {
+  try {
+    await ensureMasterListTable(env);
+    const row = await env.DB
+      .prepare('SELECT m3u FROM master_test_list WHERE mac = ?').bind(masterMac).first();
+    const count = _countM3uChannels(row && row.m3u);
+    if (count > 0 && origin) {
+      const ref = await masterListRefPanel(masterMac);
+      await upsertDeviceSource(env, guestMac, [{
+        type: 'm3u', label: 'Test 7 Motion',
+        server_url: null, username: null, password: null,
+        m3u_url: origin.replace(/\/+$/, '') + '/api/master-list/' + ref + '.m3u',
+        epg_url: null,
+      }]);
+      return true;
+    }
+    // Repli : tout le bouquet du maître (toutes ses sources, origin 'panel').
+    const srcRow = await env.DB.prepare(
+      'SELECT type, label, server_url, username, password, m3u_url, sources_json ' +
+      'FROM device_sources WHERE mac = ?',
+    ).bind(masterMac).first();
+    if (!srcRow) return false;
+    let items = [];
+    if (srcRow.sources_json) {
+      try { items = JSON.parse(srcRow.sources_json) || []; } catch (_) { items = []; }
+    }
+    if (!Array.isArray(items) || !items.length) {
+      items = [{ type: srcRow.type, label: srcRow.label, server_url: srcRow.server_url,
+        username: srcRow.username, password: srcRow.password, m3u_url: srcRow.m3u_url }];
+    }
+    const copy = items.filter(Boolean).map((s) => { const it = { ...s }; delete it.id; return it; });
+    if (!copy.length) return false;
+    await upsertDeviceSource(env, guestMac, copy.slice(0, 3));
+    return true;
+  } catch (_) { return false; }
+}
+
+// Code interne d'un test donné depuis le panel : 'P' + 6 chiffres (P = panel,
+// non tapable dans l'app — les codes app font 6 chiffres exactement).
+function _panelTestCode() {
+  const buf = new Uint32Array(1); crypto.getRandomValues(buf);
+  return 'P' + String(100000 + (buf[0] % 900000));
+}
+
+// POST /masters/test-grant {master_mac, guest_mac, hours} → attribue un test
+// DIRECTEMENT à la MAC de l'invité (rien à taper côté testeur).
+async function handleMasterTestGrant(request, env, actor) {
+  let body;
+  try { body = await request.json(); } catch (_) { return errResp('bad_json', 'Invalid JSON', 400); }
+  const master = String(body?.master_mac || '').toUpperCase();
+  const guest = String(body?.guest_mac || '').toUpperCase();
+  if (!_MASTER_MAC_RX.test(master)) return errResp('bad_mac', 'MAC maître invalide.', 400);
+  if (!_MASTER_MAC_RX.test(guest)) return errResp('bad_mac', 'MAC invité invalide (format MK:XX:XX:XX:XX:XX).', 400);
+  if (guest === master) return errResp('own_mac', 'Le maître ne peut pas se donner un test à lui-même.', 400);
+  await ensureMastersTable(env);
+  const mrow = await env.DB.prepare('SELECT 1 AS x FROM app_masters WHERE mac = ?').bind(master).first();
+  if (!mrow) return errResp('not_master', 'Cette MAC n’est pas un compte maître.', 404);
+  const hours = _masterTestHours(body?.hours);
+  const now = Date.now();
+  const guestUntil = now + hours * 60 * 60 * 1000;
+  // 1) Licence d'essai (coupe seule l'accès à l'échéance).
+  await _setTestLicense(env, guest, 'trial_' + hours + 'h', guestUntil, now);
+  // 2) Source de test (liste curée via référence opaque, sinon bouquet).
+  let origin = '';
+  try { origin = new URL(request.url).origin; } catch (_) { /* ignore */ }
+  await _assignMasterTestSource(env, master, guest, origin);
+  // 3) Trace dans le MÊME registre que l'app (app_invites) → tout le suivi
+  //    (Partages & prêts, prolonger, révoquer) marche pareil.
+  await ensureInvitesTable(env);
+  const code = _panelTestCode();
+  await env.DB.prepare(
+    'INSERT OR REPLACE INTO app_invites (code, issuer_mac, redeemer_mac, plan, created_at, ' +
+    "expires_at, redeemed_at, guest_until, hours, channel_json, mode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'test')",
+  ).bind(code, master, guest, 'trial_' + hours + 'h', now, now + _INVITE_CODE_TTL_MS, now, guestUntil, hours).run();
+  await logAudit(env, request, actor, 'master.test.grant',
+    { type: 'device', id: guest }, null, { master, hours, guest_until: guestUntil });
+  return jsonResp({ ok: true, code, guest_mac: guest, hours, guest_until: guestUntil });
+}
+
+// POST /masters/test-code {master_mac, hours} → génère un CODE 6 chiffres à
+// transmettre au testeur (il le tape dans l'app ; le redeem public assigne
+// la liste du maître et la durée maître — chemin issuerIsMaster du worker).
+async function handleMasterTestCode(request, env, actor) {
+  let body;
+  try { body = await request.json(); } catch (_) { return errResp('bad_json', 'Invalid JSON', 400); }
+  const master = String(body?.master_mac || '').toUpperCase();
+  if (!_MASTER_MAC_RX.test(master)) return errResp('bad_mac', 'MAC maître invalide.', 400);
+  await ensureMastersTable(env);
+  const mrow = await env.DB.prepare('SELECT 1 AS x FROM app_masters WHERE mac = ?').bind(master).first();
+  if (!mrow) return errResp('not_master', 'Cette MAC n’est pas un compte maître.', 404);
+  const hours = _masterTestHours(body?.hours);
+  const now = Date.now();
+  await ensureInvitesTable(env);
+  const buf = new Uint32Array(1); crypto.getRandomValues(buf);
+  const code = String(100000 + (buf[0] % 900000));
+  const expiresAt = now + _INVITE_CODE_TTL_MS;
+  await env.DB.prepare(
+    'INSERT OR REPLACE INTO app_invites (code, issuer_mac, redeemer_mac, plan, created_at, ' +
+    "expires_at, redeemed_at, guest_until, hours, channel_json, mode) VALUES (?, ?, NULL, ?, ?, ?, NULL, NULL, ?, NULL, 'test')",
+  ).bind(code, master, 'trial_' + hours + 'h', now, expiresAt, hours).run();
+  await logAudit(env, request, actor, 'master.test.code',
+    { type: 'device', id: master }, null, { hours, expires_at: expiresAt });
+  return jsonResp({ ok: true, code, hours, expires_at: expiresAt });
+}
+
+// GET /masters/tests → tous les tests émis par des comptes maîtres (app OU
+// panel) : qui, quelle échéance, quel état. La liste servie est TOUJOURS la
+// liste curée du maître au moment du redeem (ou le bouquet en repli).
+async function handleMasterTestsList(env) {
+  await ensureMastersTable(env);
+  await ensureInvitesTable(env);
+  const rs = await env.DB.prepare(
+    'SELECT iv.code, iv.issuer_mac, iv.redeemer_mac, iv.hours, iv.mode, ' +
+    'iv.created_at, iv.expires_at, iv.redeemed_at, iv.guest_until, am.note AS master_note ' +
+    'FROM app_invites iv JOIN app_masters am ON am.mac = iv.issuer_mac ' +
+    'ORDER BY iv.created_at DESC LIMIT 300',
+  ).all();
+  return jsonResp({ items: (rs && rs.results) || [], now: Date.now() });
+}
+
+// POST /masters/test-extend {code, hours} → PROLONGE un test consommé :
+// nouvelle échéance = max(maintenant, échéance actuelle) + hours.
+async function handleMasterTestExtend(request, env, actor) {
+  let body;
+  try { body = await request.json(); } catch (_) { return errResp('bad_json', 'Invalid JSON', 400); }
+  const code = String(body?.code || '').trim();
+  const hours = _masterTestHours(body?.hours);
+  await ensureMastersTable(env);
+  await ensureInvitesTable(env);
+  const row = await env.DB.prepare(
+    'SELECT iv.code, iv.issuer_mac, iv.redeemer_mac, iv.guest_until FROM app_invites iv ' +
+    'JOIN app_masters am ON am.mac = iv.issuer_mac WHERE iv.code = ?',
+  ).bind(code).first();
+  if (!row) return errResp('not_found', 'Test introuvable (ou pas émis par un maître).', 404);
+  if (!row.redeemer_mac) return errResp('not_redeemed', 'Ce code n’a pas encore été utilisé — rien à prolonger.', 400);
+  const now = Date.now();
+  const base = Math.max(now, Number(row.guest_until) || 0);
+  const newUntil = base + hours * 60 * 60 * 1000;
+  const guest = String(row.redeemer_mac).toUpperCase();
+  await _setTestLicense(env, guest, 'trial_' + hours + 'h', newUntil, now);
+  await env.DB.prepare('UPDATE app_invites SET guest_until = ? WHERE code = ?')
+    .bind(newUntil, code).run();
+  await logAudit(env, request, actor, 'master.test.extend',
+    { type: 'device', id: guest }, null, { code, hours, guest_until: newUntil });
+  return jsonResp({ ok: true, code, guest_mac: guest, guest_until: newUntil });
+}
+
+// POST /masters/test-revoke {code} → RÉVOQUE : accès coupé immédiatement
+// (licence expirée) si le test est en cours ; code tué s'il n'a pas servi.
+async function handleMasterTestRevoke(request, env, actor) {
+  let body;
+  try { body = await request.json(); } catch (_) { return errResp('bad_json', 'Invalid JSON', 400); }
+  const code = String(body?.code || '').trim();
+  await ensureMastersTable(env);
+  await ensureInvitesTable(env);
+  const row = await env.DB.prepare(
+    'SELECT iv.code, iv.redeemer_mac, iv.redeemed_at FROM app_invites iv ' +
+    'JOIN app_masters am ON am.mac = iv.issuer_mac WHERE iv.code = ?',
+  ).bind(code).first();
+  if (!row) return errResp('not_found', 'Test introuvable (ou pas émis par un maître).', 404);
+  const now = Date.now();
+  let guest = null;
+  if (row.redeemer_mac) {
+    guest = String(row.redeemer_mac).toUpperCase();
+    // Coupe l'accès : la meilleure licence de l'appareil expire MAINTENANT.
+    const dev = await env.DB.prepare('SELECT id FROM devices WHERE mac = ?').bind(guest).first();
+    if (dev) {
+      await env.DB.prepare(
+        "UPDATE licenses SET status='expired', expires_at=?, updated_at=? WHERE device_id=?",
+      ).bind(now, now, dev.id).run();
+    }
+    await env.DB.prepare('UPDATE app_invites SET guest_until = ? WHERE code = ?').bind(now, code).run();
+  } else {
+    // Code jamais utilisé → il devient inutilisable sur-le-champ.
+    await env.DB.prepare('UPDATE app_invites SET expires_at = ? WHERE code = ?').bind(now, code).run();
+  }
+  await logAudit(env, request, actor, 'master.test.revoke',
+    { type: 'device', id: guest || code }, null, { code });
+  return jsonResp({ ok: true, code, guest_mac: guest });
 }
 
 // =========================================================

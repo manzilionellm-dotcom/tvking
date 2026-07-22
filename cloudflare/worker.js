@@ -3323,7 +3323,9 @@ function inviteHours(raw) {
 // (activation admin, dans sa poche). Exprimées en heures pour réutiliser le
 // même octroi de licence. 720 h = 30 j, 1440 h = 60 j, 4320 h = 180 j,
 // 8760 h = 365 j. On garde aussi les durées invité courtes (5/24/48 h).
-const MASTER_ALLOWED_HOURS = [1, 5, 24, 48, 720, 1440, 4320, 8760];
+// Exportée pour le smoke test de PARITÉ avec MASTER_TEST_HOURS (api_v1.js) :
+// le panel doit proposer EXACTEMENT les durées que le serveur accepte.
+export const MASTER_ALLOWED_HOURS = [1, 5, 24, 48, 720, 1440, 4320, 8760];
 function masterHours(raw) {
   const h = Number(raw);
   return MASTER_ALLOWED_HOURS.includes(h) ? h : 1;

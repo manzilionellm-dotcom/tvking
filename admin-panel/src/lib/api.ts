@@ -1042,7 +1042,63 @@ export const mastersApi = {
   // BOÎTE NOIRE : diagnostic actif (façade en ligne, chaîne jouable…).
   diag: (mac: string) =>
     request<MasterDiag>(`/api/v1/masters/diag?mac=${encodeURIComponent(mac)}`),
+  // ---- TESTS DEPUIS LE PANEL : donner, suivre, prolonger, révoquer --------
+  // SUIVI : tous les tests émis par des comptes maîtres (app OU panel).
+  tests: () =>
+    request<{ items: MasterTestRow[]; now: number }>('/api/v1/masters/tests'),
+  // ATTRIBUER un test directement à une MAC (rien à taper côté testeur).
+  testGrant: (masterMac: string, guestMac: string, hours: number) =>
+    request<{ ok: boolean; code: string; guest_mac: string; hours: number; guest_until: number }>(
+      '/api/v1/masters/test-grant',
+      { method: 'POST', body: { master_mac: masterMac, guest_mac: guestMac, hours } },
+    ),
+  // GÉNÉRER un code 6 chiffres que le testeur tape dans l'app (valable 48 h).
+  testCode: (masterMac: string, hours: number) =>
+    request<{ ok: boolean; code: string; hours: number; expires_at: number }>(
+      '/api/v1/masters/test-code',
+      { method: 'POST', body: { master_mac: masterMac, hours } },
+    ),
+  // PROLONGER un test consommé (nouvelle échéance = max(now, échéance) + h).
+  testExtend: (code: string, hours: number) =>
+    request<{ ok: boolean; code: string; guest_mac: string; guest_until: number }>(
+      '/api/v1/masters/test-extend',
+      { method: 'POST', body: { code, hours } },
+    ),
+  // RÉVOQUER : accès coupé immédiatement (ou code tué s'il n'a pas servi).
+  testRevoke: (code: string) =>
+    request<{ ok: boolean; code: string; guest_mac: string | null }>(
+      '/api/v1/masters/test-revoke',
+      { method: 'POST', body: { code } },
+    ),
 };
+
+// Une ligne de SUIVI de test maître (registre app_invites, émetteur maître).
+export interface MasterTestRow {
+  code: string;
+  issuer_mac: string;
+  redeemer_mac: string | null;
+  hours: number | null;
+  mode: string | null;
+  created_at: number;
+  expires_at: number;
+  redeemed_at: number | null;
+  guest_until: number | null;
+  master_note?: string | null;
+}
+
+// Durées de test qu'un maître peut offrir (1 h → 1 an). DOIT refléter
+// MASTER_TEST_HOURS (api_v1.js) = MASTER_ALLOWED_HOURS (worker.js) — toute
+// valeur hors liste est ramenée à 1 h par le serveur.
+export const MASTER_TEST_DURATIONS: { hours: number; label: string }[] = [
+  { hours: 1, label: '1 heure' },
+  { hours: 5, label: '5 heures' },
+  { hours: 24, label: '24 heures' },
+  { hours: 48, label: '48 heures' },
+  { hours: 720, label: '30 jours' },
+  { hours: 1440, label: '60 jours' },
+  { hours: 4320, label: '6 mois' },
+  { hours: 8760, label: '1 an' },
+];
 export interface MasterDiagCheck {
   key: string;
   level: number; // 0 ok · 1 à vérifier · 2 KO

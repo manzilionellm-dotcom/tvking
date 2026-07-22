@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { MacLink } from '@/components/MacLink';
-import { invitesApi, ApiError, type InviteRow } from '@/lib/api';
+import {
+  invitesApi, mastersApi, ApiError, MASTER_TEST_DURATIONS,
+  type InviteRow, type MasterTestRow,
+} from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 
 // =========================================================
@@ -60,6 +63,171 @@ function remaining(guestUntil: number | null | undefined, now: number): string {
   const h = Math.floor(min / 60);
   const m = min % 60;
   return h > 0 ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`;
+}
+
+// =========================================================
+//  TESTS MAÎTRES — suivi + GESTION (prolonger / révoquer)
+// =========================================================
+//  Les tests distribués par les comptes maîtres (depuis l'app OU le panel)
+//  se gèrent ICI : qui, quelle durée, quelle échéance, et deux gestes —
+//  PROLONGER (1 h → 1 an de plus) et RÉVOQUER (accès coupé immédiatement).
+//  Réservé à l'owner : l'API /masters/* renvoie 403 à un revendeur → la
+//  section se masque d'elle-même (les tests maîtres restent PRIVÉS).
+function MasterTestsSection({ onLogout }: { onLogout: () => void }) {
+  const [rows, setRows] = useState<MasterTestRow[] | null>(null);
+  const [hidden, setHidden] = useState(false); // 403 → pas owner → invisible
+  const [err, setErr] = useState<string | null>(null);
+  const [busyCode, setBusyCode] = useState<string | null>(null);
+  // Durée choisie PAR ligne pour la prolongation (défaut 24 h).
+  const [extHours, setExtHours] = useState<Record<string, number>>({});
+  const now = Date.now();
+
+  async function load() {
+    try {
+      const r = await mastersApi.tests();
+      setRows(r.items || []);
+    } catch (e: any) {
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      if (e instanceof ApiError && e.status === 403) { setHidden(true); return; }
+      setErr(e instanceof ApiError ? e.message : 'Chargement impossible.');
+    }
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  async function extend(code: string) {
+    setErr(null); setBusyCode(code);
+    try {
+      await mastersApi.testExtend(code, extHours[code] ?? 24);
+      await load();
+    } catch (e: any) {
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      setErr(e instanceof ApiError ? e.message : 'Prolongation impossible.');
+    } finally { setBusyCode(null); }
+  }
+
+  async function revoke(code: string) {
+    setErr(null); setBusyCode(code);
+    try {
+      await mastersApi.testRevoke(code);
+      await load();
+    } catch (e: any) {
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      setErr(e instanceof ApiError ? e.message : 'Révocation impossible.');
+    } finally { setBusyCode(null); }
+  }
+
+  if (hidden || rows === null) return null; // pas owner, ou pas encore chargé
+
+  // État lisible d'un test (mêmes règles que statusOf, plus « révoqué »
+  // impossible à distinguer d'un terminé — on reste simple et honnête).
+  function testStatus(r: MasterTestRow): { label: string; cls: string; active: boolean } {
+    const until = Number(r.guest_until || 0);
+    if (r.redeemed_at) {
+      if (until > now) return { label: 'Actif', cls: 'text-emerald-300', active: true };
+      return { label: 'Terminé', cls: 'text-ink-tertiary', active: false };
+    }
+    if (Number(r.expires_at) > now) return { label: 'Code en attente', cls: 'text-ink-secondary', active: false };
+    return { label: 'Code expiré', cls: 'text-ink-tertiary', active: false };
+  }
+
+  const activeCount = rows.filter((r) => testStatus(r).active).length;
+
+  return (
+    <div className="rounded-xl border border-accent/20 bg-accent/5 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-[11px] font-semibold uppercase tracking-widest text-accent-bright">
+          Tests maîtres — {activeCount} actif{activeCount > 1 ? 's' : ''} · gestion (prolonger / révoquer)
+        </div>
+        <span className="text-[10px] text-ink-tertiary">
+          Invisible dans les stats clients — suivi Admin Monitoring
+        </span>
+      </div>
+
+      {err && (
+        <div className="mb-2 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>
+      )}
+
+      {rows.length === 0 ? (
+        <div className="px-2 py-3 text-center text-xs text-ink-tertiary">
+          Aucun test maître pour l'instant — donne-en un depuis « Comptes maîtres ».
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-sm">
+            <thead>
+              <tr className="border-b border-white/5 text-left text-[10px] uppercase tracking-widest text-ink-tertiary">
+                <th className="px-3 py-2 font-medium">Maître</th>
+                <th className="px-3 py-2 font-medium">Testeur</th>
+                <th className="px-3 py-2 font-medium">Durée</th>
+                <th className="px-3 py-2 font-medium">Échéance</th>
+                <th className="px-3 py-2 font-medium">Statut</th>
+                <th className="px-3 py-2 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const st = testStatus(r);
+                const rest = remaining(r.guest_until, now);
+                return (
+                  <tr key={r.code} className="border-b border-white/[0.03] last:border-0">
+                    <td className="px-3 py-2">
+                      <MacLink mac={r.issuer_mac} />
+                      {r.master_note && <div className="text-[11px] text-ink-tertiary">{r.master_note}</div>}
+                    </td>
+                    <td className="px-3 py-2">
+                      {r.redeemer_mac
+                        ? <MacLink mac={r.redeemer_mac} />
+                        : <span className="font-mono text-[12px] text-ink-tertiary">code {r.code}</span>}
+                    </td>
+                    <td className="px-3 py-2 text-ink-secondary">{hoursLabel(r.hours)}</td>
+                    <td className="px-3 py-2 text-[12px] text-ink-secondary">
+                      {r.guest_until ? formatDateTime(r.guest_until) : '—'}
+                      {rest && <span className="ml-1 text-[11px] text-ink-tertiary">({rest})</span>}
+                    </td>
+                    <td className={`px-3 py-2 text-[12px] font-medium ${st.cls}`}>{st.label}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {r.redeemed_at && (
+                          <>
+                            <select
+                              value={extHours[r.code] ?? 24}
+                              onChange={(e) => setExtHours((p) => ({ ...p, [r.code]: Number(e.target.value) }))}
+                              className="rounded border border-white/10 bg-midnight px-1.5 py-1 text-[11px] outline-none focus:ring-1 focus:ring-accent"
+                            >
+                              {MASTER_TEST_DURATIONS.map((d) => (
+                                <option key={d.hours} value={d.hours}>+{d.label}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => extend(r.code)}
+                              disabled={busyCode === r.code}
+                              className="rounded-md border border-white/10 px-2.5 py-1 text-[11px] text-ink-secondary transition hover:border-accent/40 hover:text-accent-bright disabled:opacity-50"
+                            >
+                              Prolonger
+                            </button>
+                          </>
+                        )}
+                        {(st.active || !r.redeemed_at) && (
+                          <button
+                            onClick={() => revoke(r.code)}
+                            disabled={busyCode === r.code}
+                            className="rounded-md border border-accent/30 px-2.5 py-1 text-[11px] text-accent-bright transition hover:bg-accent/10 disabled:opacity-50"
+                            title={r.redeemed_at ? 'Coupe l’accès immédiatement' : 'Rend le code inutilisable'}
+                          >
+                            Révoquer
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function SharesPage({ onLogout }: { onLogout: () => void }) {
@@ -143,6 +311,9 @@ export function SharesPage({ onLogout }: { onLogout: () => void }) {
       }
     >
       <div className="space-y-5">
+        {/* ===== Tests maîtres (gestion) — owner uniquement ===== */}
+        <MasterTestsSection onLogout={onLogout} />
+
         {/* ===== KPIs ===== */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Kpi label="Transactions" value={kpi.total} />

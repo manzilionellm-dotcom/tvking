@@ -2,7 +2,7 @@ import { Fragment, FormEvent, useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { MacLink } from '@/components/MacLink';
 import {
-  mastersApi, ApiError,
+  mastersApi, ApiError, MASTER_TEST_DURATIONS,
   type MasterRow, type MasterCategory, type MasterChannel, type MasterDiag,
 } from '@/lib/api';
 import { formatMacInput } from '@/lib/utils';
@@ -203,6 +203,23 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
   // Ajout MANUEL d'une chaîne (nom + URL + catégorie) directement dans la liste.
   function addManual(item: CuratedItem) {
     setList((prev) => (prev.some((i) => i.url === item.url) ? prev : [...prev, item]));
+  }
+  // « Ranger par catégorie » : tri STABLE — les catégories gardent leur ordre
+  // de première apparition, et les chaînes gardent leur ordre relatif dans
+  // chaque catégorie. Un clic range tout, puis on affine à la main.
+  function sortByGroup() {
+    setList((prev) => {
+      const order = new Map<string, number>();
+      for (const it of prev) {
+        const g = it.group || '';
+        if (!order.has(g)) order.set(g, order.size);
+      }
+      return prev
+        .map((it, i) => ({ it, i }))
+        .sort((a, b) =>
+          (order.get(a.it.group || '')! - order.get(b.it.group || '')!) || (a.i - b.i))
+        .map((x) => x.it);
+    });
   }
 
   async function save() {
@@ -424,7 +441,18 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
           <span className="text-[10px] uppercase tracking-widest text-ink-tertiary">
             Ma liste de test — glisse pour ranger (l'ordre est respecté à la lecture)
           </span>
-          <span className="text-[10px] text-ink-tertiary">{list.length} chaîne(s)</span>
+          <div className="flex items-center gap-2">
+            {list.length > 1 && (
+              <button
+                onClick={sortByGroup}
+                className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-ink-secondary transition hover:border-accent/40 hover:text-accent-bright"
+                title="Regroupe les chaînes par catégorie (ordre relatif conservé)"
+              >
+                Ranger par catégorie
+              </button>
+            )}
+            <span className="text-[10px] text-ink-tertiary">{list.length} chaîne(s)</span>
+          </div>
         </div>
 
         {list.length === 0 ? (
@@ -680,6 +708,123 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
 }
 
 // =========================================================
+//  DONNER UN TEST — depuis le panel (sans passer par l'app maître)
+// =========================================================
+//  Deux gestes : ATTRIBUER directement à une MAC (le testeur n'a rien à
+//  taper — licence + liste servie poussées en temps réel), ou GÉNÉRER un
+//  code 6 chiffres à transmettre (valable 48 h, le testeur le tape dans
+//  l'app). Durée au choix de 1 h à 1 an. La liste servie est la liste de
+//  test curée du maître (référence opaque), sinon tout le bouquet (repli).
+function GiveTestPanel({ mac, onLogout }: { mac: string; onLogout: () => void }) {
+  const [guestMac, setGuestMac] = useState('');
+  const [hours, setHours] = useState(1);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  // Résultat du dernier geste : code généré ou attribution confirmée.
+  const [result, setResult] = useState<string | null>(null);
+  const [bigCode, setBigCode] = useState<string | null>(null);
+
+  async function grant() {
+    setErr(null); setResult(null); setBigCode(null);
+    const g = guestMac.trim().toUpperCase();
+    if (!MAC_RX.test(g)) { setErr('MAC invité invalide (format MK:XX:XX:XX:XX:XX).'); return; }
+    setBusy(true);
+    try {
+      const r = await mastersApi.testGrant(mac, g, hours);
+      const label = MASTER_TEST_DURATIONS.find((d) => d.hours === r.hours)?.label || `${r.hours} h`;
+      setResult(`✅ Test ${label} attribué à ${r.guest_mac} — échéance ${new Date(r.guest_until).toLocaleString()}. L'appareil reçoit l'accès et la liste immédiatement.`);
+      setGuestMac('');
+    } catch (e: any) {
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      setErr(e instanceof ApiError ? e.message : 'Attribution impossible.');
+    } finally { setBusy(false); }
+  }
+
+  async function genCode() {
+    setErr(null); setResult(null); setBigCode(null);
+    setBusy(true);
+    try {
+      const r = await mastersApi.testCode(mac, hours);
+      const label = MASTER_TEST_DURATIONS.find((d) => d.hours === r.hours)?.label || `${r.hours} h`;
+      setBigCode(r.code);
+      setResult(`Code ${label} — à taper dans l'app avant le ${new Date(r.expires_at).toLocaleString()}.`);
+    } catch (e: any) {
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      setErr(e instanceof ApiError ? e.message : 'Génération impossible.');
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="space-y-3 border-t border-white/5 bg-slate/40 px-4 py-4">
+      <div className="text-[13px] text-ink-secondary">
+        <strong>Donner un test — sans l'app maître.</strong> Choisis la durée,
+        puis : <strong>attribue</strong> directement à la MAC du testeur (rien à
+        taper chez lui), ou <strong>génère un code</strong> à lui transmettre.
+        Le test sert la <strong>liste de test</strong> de ce maître (référence
+        opaque — jamais ta ligne réelle) ; sans liste curée, tout le bouquet.
+        Le suivi (prolonger, révoquer) est dans « Partages &amp; prêts ».
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+            Durée du test
+          </label>
+          <select
+            value={hours}
+            onChange={(e) => setHours(Number(e.target.value))}
+            className="rounded-md border border-white/5 bg-midnight px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
+          >
+            {MASTER_TEST_DURATIONS.map((d) => (
+              <option key={d.hours} value={d.hours}>{d.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="min-w-[220px] flex-1">
+          <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+            MAC du testeur (attribution directe)
+          </label>
+          <input
+            value={guestMac}
+            onChange={(e) => setGuestMac(formatMacInput(e.target.value))}
+            maxLength={17}
+            placeholder="MK:XX:XX:XX:XX:XX"
+            className="w-full rounded-md border border-white/5 bg-midnight px-3 py-2 font-mono text-sm outline-none focus:ring-1 focus:ring-accent"
+          />
+        </div>
+        <button
+          onClick={grant}
+          disabled={busy || !guestMac.trim()}
+          className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black transition hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy ? '…' : 'Attribuer le test'}
+        </button>
+        <span className="text-[11px] text-ink-tertiary">ou</span>
+        <button
+          onClick={genCode}
+          disabled={busy}
+          className="rounded-md border border-accent/40 px-4 py-2 text-sm font-medium text-accent-bright transition hover:bg-accent/10 disabled:opacity-50"
+        >
+          {busy ? '…' : 'Générer un code'}
+        </button>
+      </div>
+
+      {err && <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>}
+      {bigCode && (
+        <div className="rounded-md border border-white/10 bg-midnight px-4 py-3 text-center">
+          <div className="font-mono text-3xl font-bold tracking-[0.3em] text-accent-bright">{bigCode}</div>
+        </div>
+      )}
+      {result && (
+        <div className="rounded-md px-3 py-2 text-xs" style={{ background: 'rgba(47,169,106,0.15)', color: '#3FBE7C' }}>
+          {result}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =========================================================
 //  BOÎTE NOIRE — DIAGNOSTIC (par maître)
 // =========================================================
 //  Lance des contrôles ACTIFS côté serveur (façade en ligne ?, liste servie ?,
@@ -774,6 +919,7 @@ export function MastersPage({ onLogout }: { onLogout: () => void }) {
   const [ok, setOk] = useState<string | null>(null);
   const [openList, setOpenList] = useState<string | null>(null);
   const [openDiag, setOpenDiag] = useState<string | null>(null);
+  const [openGive, setOpenGive] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -905,7 +1051,7 @@ export function MastersPage({ onLogout }: { onLogout: () => void }) {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
-                          onClick={() => { setOpenList(openList === r.mac ? null : r.mac); setOpenDiag(null); }}
+                          onClick={() => { setOpenList(openList === r.mac ? null : r.mac); setOpenDiag(null); setOpenGive(null); }}
                           className={`rounded-md border px-3 py-1 text-xs transition ${
                             openList === r.mac
                               ? 'border-accent/40 text-accent-bright'
@@ -915,7 +1061,17 @@ export function MastersPage({ onLogout }: { onLogout: () => void }) {
                           Liste de test
                         </button>
                         <button
-                          onClick={() => { setOpenDiag(openDiag === r.mac ? null : r.mac); setOpenList(null); }}
+                          onClick={() => { setOpenGive(openGive === r.mac ? null : r.mac); setOpenList(null); setOpenDiag(null); }}
+                          className={`rounded-md border px-3 py-1 text-xs transition ${
+                            openGive === r.mac
+                              ? 'border-accent/40 text-accent-bright'
+                              : 'border-white/10 text-ink-secondary hover:border-accent/40 hover:text-accent-bright'
+                          }`}
+                        >
+                          Donner un test
+                        </button>
+                        <button
+                          onClick={() => { setOpenDiag(openDiag === r.mac ? null : r.mac); setOpenList(null); setOpenGive(null); }}
                           className={`rounded-md border px-3 py-1 text-xs transition ${
                             openDiag === r.mac
                               ? 'border-accent/40 text-accent-bright'
@@ -937,6 +1093,13 @@ export function MastersPage({ onLogout }: { onLogout: () => void }) {
                     <tr>
                       <td colSpan={3} className="p-0">
                         <TestListEditor mac={r.mac} onLogout={onLogout} />
+                      </td>
+                    </tr>
+                  )}
+                  {openGive === r.mac && (
+                    <tr>
+                      <td colSpan={3} className="p-0">
+                        <GiveTestPanel mac={r.mac} onLogout={onLogout} />
                       </td>
                     </tr>
                   )}

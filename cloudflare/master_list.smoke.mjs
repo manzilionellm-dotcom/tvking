@@ -5,6 +5,7 @@
 // Lancer : node cloudflare/master_list.smoke.mjs
 import assert from 'node:assert/strict';
 import { countM3uChannels, masterListRef } from './worker.js';
+import { masterListRefPanel } from './api_v1.js';
 
 let n = 0;
 const ok = (m) => { n++; console.log('  ✓', m); };
@@ -44,5 +45,13 @@ ok('la MAC maître n’apparaît JAMAIS dans la référence (privé)');
 const refOther = await masterListRef('MK:AA:BB:CC:DD:EE');
 assert.notEqual(ref1, refOther);
 ok('deux maîtres → deux références distinctes');
+
+// --- PARITÉ worker ↔ panel : masterListRefPanel (api_v1) = masterListRef ----
+// Le panel (test-grant) bâtit l'URL de liste avec SA réplique de la fonction
+// (cycle d'imports interdit) : les deux DOIVENT produire le même hash, sinon
+// les tests donnés depuis le panel serviraient une URL morte.
+assert.equal(await masterListRefPanel(MAC), ref1);
+assert.equal(await masterListRefPanel('MK:AA:BB:CC:DD:EE'), refOther);
+ok('masterListRefPanel (api_v1) ≡ masterListRef (worker) — parité verrouillée');
 
 console.log(`\n${n} assertions OK — liste de test indépendante validée.`);

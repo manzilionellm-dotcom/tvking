@@ -2,7 +2,8 @@
 // Vérifie la décision pure du redeem quand l'émetteur est un MAÎTRE.
 // Lancer : node cloudflare/invite_master.smoke.mjs
 import assert from 'node:assert/strict';
-import { inviteRedeemDecision } from './worker.js';
+import { inviteRedeemDecision, MASTER_ALLOWED_HOURS } from './worker.js';
+import { MASTER_TEST_HOURS } from './api_v1.js';
 
 let n = 0;
 const ok = (m) => { n++; console.log('  ✓', m); };
@@ -85,5 +86,12 @@ assert.equal(
   'code_used',
 );
 ok('maître → code déjà utilisé reste refusé (intégrité)');
+
+// --- PARITÉ worker ↔ panel : durées de test autorisées ----------------------
+// Le panel (test-grant/test-code) valide avec SA copie de la liste (cycle
+// d'imports interdit) : les deux DOIVENT rester identiques, sinon le panel
+// proposerait des durées que le redeem app refuse (ou l'inverse).
+assert.deepEqual(MASTER_TEST_HOURS, MASTER_ALLOWED_HOURS);
+ok('MASTER_TEST_HOURS (api_v1) ≡ MASTER_ALLOWED_HOURS (worker) — 1 h → 1 an');
 
 console.log(`\n${n} assertions OK — démo illimitée (comptes maîtres) validée.`);
