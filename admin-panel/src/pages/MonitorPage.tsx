@@ -51,7 +51,7 @@ export function MonitorPage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       title="Admin Monitoring"
-      subtitle="Les sessions des comptes admin/maîtres — invisibles dans les stats clients."
+      subtitle="Les sessions des comptes maîtres ET des tests en cours — invisibles dans les stats clients."
       onLogout={onLogout}
       actions={
         <button
@@ -73,8 +73,22 @@ export function MonitorPage({ onLogout }: { onLogout: () => void }) {
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-white/5 bg-midnight p-4">
-            <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">Admins actifs</div>
+            <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">Sessions actives</div>
             <div className="mt-1 text-2xl font-semibold text-accent-bright">{rows.length}</div>
+          </div>
+          {/* Détail maîtres / testeurs : les tests distribués sont suivis ICI,
+              eux aussi hors stats clients (invisibilité totale du flux). */}
+          <div className="rounded-xl border border-white/5 bg-midnight p-4">
+            <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">Maîtres</div>
+            <div className="mt-1 text-2xl font-semibold text-ink-primary">
+              {rows.filter((r) => r.kind !== 'test').length}
+            </div>
+          </div>
+          <div className="rounded-xl border border-white/5 bg-midnight p-4">
+            <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">Testeurs (tests en cours)</div>
+            <div className="mt-1 text-2xl font-semibold text-ink-primary">
+              {rows.filter((r) => r.kind === 'test').length}
+            </div>
           </div>
         </div>
 
@@ -86,7 +100,8 @@ export function MonitorPage({ onLogout }: { onLogout: () => void }) {
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-white/5 text-left text-[10px] uppercase tracking-widest text-ink-tertiary">
-                <th className="px-4 py-3 font-medium">MAC admin</th>
+                <th className="px-4 py-3 font-medium">MAC</th>
+                <th className="px-4 py-3 font-medium">Type</th>
                 <th className="px-4 py-3 font-medium">Chaîne surveillée</th>
                 <th className="px-4 py-3 font-medium">Pays</th>
                 <th className="px-4 py-3 font-medium">IP</th>
@@ -95,14 +110,21 @@ export function MonitorPage({ onLogout }: { onLogout: () => void }) {
             </thead>
             <tbody>
               {busy && rows.length === 0 && (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-ink-tertiary">Chargement…</td></tr>
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-ink-tertiary">Chargement…</td></tr>
               )}
               {!busy && rows.length === 0 && (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-ink-tertiary">Aucune session admin active.</td></tr>
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-ink-tertiary">Aucune session admin active.</td></tr>
               )}
               {rows.map((r) => (
                 <tr key={r.mac} className="border-b border-white/[0.03] last:border-0 hover:bg-white/[0.02]">
                   <td className="px-4 py-3"><MacLink mac={r.mac} /></td>
+                  <td className="px-4 py-3">
+                    {r.kind === 'test' ? (
+                      <span className="rounded bg-sky-500/15 px-2 py-0.5 text-[11px] font-semibold text-sky-300 ring-1 ring-sky-500/30">Testeur</span>
+                    ) : (
+                      <span className="rounded bg-accent/15 px-2 py-0.5 text-[11px] font-semibold text-accent-bright ring-1 ring-accent/30">Maître</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-ink-secondary">{r.channel || '—'}</td>
                   <td className="px-4 py-3 text-ink-secondary">{r.country || '—'}</td>
                   <td className="px-4 py-3 font-mono text-[12px] text-ink-tertiary">{r.ip || '—'}</td>

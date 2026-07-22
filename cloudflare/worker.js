@@ -555,6 +555,39 @@ async function isMasterCached(env, mac) {
   return _masterSetCache.set.has(m);
 }
 
+//  INVISIBILITÉ des TESTS distribués : un testeur en cours de test maître ne
+//  doit pas non plus gonfler les compteurs clients (« En ligne », Tendances…)
+//  — sa présence part AUSSI dans admin_presence, le temps du test. Cache 60 s
+//  (même stratégie que les MAC maîtres) : la liste des tests actifs est
+//  petite et change rarement à l'échelle d'une minute.
+let _testGuestSetCache = { at: 0, set: new Set() };
+async function isActiveTestGuestCached(env, mac) {
+  const m = String(mac || '').toUpperCase();
+  const now = Date.now();
+  if (now - _testGuestSetCache.at > 60_000) {
+    try {
+      if (await ensureInviteSchema(env)) {
+        // Testeurs ACTIFS de comptes maîtres uniquement : les invitations
+        // entre clients normaux (pass partagé) restent des stats CLIENTS.
+        const rs = await env.DB.prepare(
+          'SELECT DISTINCT iv.redeemer_mac AS mac FROM app_invites iv ' +
+          'JOIN app_masters am ON am.mac = iv.issuer_mac ' +
+          'WHERE iv.redeemer_mac IS NOT NULL AND iv.guest_until > ?',
+        ).bind(now).all();
+        _testGuestSetCache = {
+          at: now,
+          set: new Set(((rs && rs.results) || []).map((r) => String(r.mac).toUpperCase())),
+        };
+      } else {
+        _testGuestSetCache = { at: now, set: new Set() };
+      }
+    } catch (_) {
+      _testGuestSetCache.at = now; // évite de re-tenter en boucle si D1 KO
+    }
+  }
+  return _testGuestSetCache.set.has(m);
+}
+
 let _adminPresenceReady = false;
 async function recordAdminPresence(env, mac, ip, country, now, channel) {
   if (!env.DB) return;
@@ -581,13 +614,16 @@ async function recordAdminPresence(env, mac, ip, country, now, channel) {
 
 async function recordPresence(env, mac, ip, country, now, channel) {
   if (!env.DB) return;
-  // MODE ADMIN MONITORING : si cette MAC est un compte maître/admin, sa
-  // présence part dans `admin_presence` (jamais dans les stats clients).
+  // MODE ADMIN MONITORING : si cette MAC est un compte maître/admin OU un
+  // TESTEUR en cours de test maître, sa présence part dans `admin_presence`
+  // (jamais dans les stats clients). L'admin peut ainsi ouvrir PLUSIEURS
+  // lecteurs et distribuer des tests sans jamais fausser « En ligne » ni les
+  // tendances — le tout reste visible dans la vue Admin Monitoring dédiée.
   try {
-    if (await isMasterCached(env, mac)) {
+    if (await isMasterCached(env, mac) || await isActiveTestGuestCached(env, mac)) {
       await recordAdminPresence(env, mac, ip, country, now, channel);
-      // Purge une éventuelle ligne cliente résiduelle (si la MAC a été
-      // promue admin après avoir été un client normal).
+      // Purge une éventuelle ligne cliente résiduelle (MAC promue admin après
+      // avoir été cliente, ou testeur vu comme client juste avant son test).
       try { await env.DB.prepare('DELETE FROM presence WHERE mac = ?').bind(mac).run(); } catch (_) {}
       return;
     }

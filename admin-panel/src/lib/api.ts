@@ -1142,6 +1142,9 @@ export interface AdminSession {
   country: string | null;
   last_seen: number;
   channel: string | null;
+  // 'master' = le compte maître lui-même · 'test' = un testeur en cours de
+  // test maître (présence détournée ici le temps du test, hors stats clients).
+  kind?: 'master' | 'test';
 }
 export const adminMonitorApi = {
   list: () =>

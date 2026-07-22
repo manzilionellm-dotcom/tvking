@@ -4157,8 +4157,16 @@ async function handleAdminMonitorGet(env) {
   const since = now - 15 * 60 * 1000; // « en ligne » = vu < 15 min
   let rows = [];
   try {
+    // `kind` distingue les SESSIONS : 'master' = le compte maître lui-même,
+    // 'test' = un testeur en cours de test maître (sa présence est détournée
+    // ici le temps du test — jamais dans les stats clients).
+    await ensureMastersTable(env);
     const rs = await env.DB
-      .prepare('SELECT mac, ip, country, last_seen, channel FROM admin_presence WHERE last_seen > ? ORDER BY last_seen DESC LIMIT 500')
+      .prepare(
+        'SELECT ap.mac, ap.ip, ap.country, ap.last_seen, ap.channel, ' +
+        "CASE WHEN am.mac IS NULL THEN 'test' ELSE 'master' END AS kind " +
+        'FROM admin_presence ap LEFT JOIN app_masters am ON am.mac = ap.mac ' +
+        'WHERE ap.last_seen > ? ORDER BY ap.last_seen DESC LIMIT 500')
       .bind(since).all();
     rows = (rs && rs.results) || [];
   } catch (_) { rows = []; }
