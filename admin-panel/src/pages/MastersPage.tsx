@@ -87,6 +87,9 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // Note HONNÊTE renvoyée à l'enregistrement quand la façade est http/IP :
+  // acceptée (les apps la joignent) mais non vérifiable par le relais.
+  const [facadeNote, setFacadeNote] = useState<string | null>(null);
 
   // Copieur (catégories chargées depuis la ligne du maître).
   const [cats, setCats] = useState<MasterCategory[] | null>(null);
@@ -200,6 +203,7 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
       setSavedCount(r.count || 0);
       setM3uText(m3u);
       setHasGwPass(!!r.has_gateway_pass);
+      setFacadeNote(r.facade_note || null);
       if (gwPass) setGwPass(''); // secret enregistré → on vide le champ
       setMsg(r.count > 0
         ? `✅ Liste enregistrée — ${r.count} chaîne${r.count > 1 ? 's' : ''} partagée${r.count > 1 ? 's' : ''}.`
@@ -217,6 +221,7 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
       setSavedCount(r.count || 0);
       setList(parseM3uToList(m3uText)); // synchronise la vue « rangement »
       setHasGwPass(!!r.has_gateway_pass);
+      setFacadeNote(r.facade_note || null);
       if (gwPass) setGwPass('');
       setMsg(`✅ M3U enregistré — ${r.count} chaîne(s).`);
     } catch (e: any) {
@@ -303,8 +308,11 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
           Réglée une fois : je reconstruis toutes les chaînes copiées sur ton
           gateway → reconnexion auto, ligne de secours, tampon anti-coupure
           (plus stable que l'original, y compris au cast) et le fournisseur ne
-          voit qu'une IP. Doit être en <strong>https://</strong> avec un vrai
-          domaine (pas une IP). Vide = lecture directe (fonctionne, moins privé).
+          voit qu'une IP. Une façade <strong>http:// ou par IP marche aussi</strong>{' '}
+          (tes apps la joignent directement) — mais le diagnostic ne pourra pas
+          la vérifier d'ici (contrôles en ambre). Recommandé :{' '}
+          <strong>https:// + vrai domaine</strong> pour un diagnostic complet.
+          Vide = lecture directe (fonctionne, moins privé).
         </p>
       </div>
 
@@ -635,6 +643,13 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
 
       {err && <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>}
       {msg && <div className="rounded-md px-3 py-2 text-xs" style={{ background: 'rgba(47,169,106,0.15)', color: '#3FBE7C' }}>{msg}</div>}
+      {/* Façade http/IP acceptée : nuance honnête (les apps la joignent, le
+          relais ne peut pas la vérifier) — informatif, non bloquant. */}
+      {facadeNote && (
+        <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+          {facadeNote}
+        </div>
+      )}
     </div>
   );
 }

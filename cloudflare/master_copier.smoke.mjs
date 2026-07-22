@@ -1,8 +1,11 @@
 // Smoke test — COPIEUR INTELLIGENT + FAÇADE (gateway).
 // Vérifie les briques PURES qui rendent la copie stable + privée :
-//   • validateFacadeBase : CONTRAT strict de façade (https + domaine), qui
-//     remplace la rustine IP→nip.io. Refuse http/IP avec une raison précise ;
-//   • _cleanGatewayBase : origine propre (compat), '' si non conforme ;
+//   • validateFacadeBase : CONTRAT honnête de façade — ACCEPTE toute origine
+//     http(s) valide (la copie ne dépend jamais de Worker→gateway) et CLASSE
+//     la vérifiabilité : probe:true (https + domaine → sondable par le relais)
+//     vs probe:false (http/IP → joignable par les APPS seulement, sondes du
+//     diagnostic informatives). Refuse uniquement l'illisible ;
+//   • _cleanGatewayBase : origine propre (compat), '' si illisible ;
 //   • _rewriteOrigin    : rebâtit une URL de chaîne SUR la façade (stabilité
 //     + confidentialité), sans casser le port ni la query ;
 //   • autoDetectSource  : « colle n'importe quoi » (lien Xtream ou URL M3U).
@@ -15,33 +18,49 @@ import {
 let n = 0;
 const ok = (m) => { n++; console.log('  ✓', m); };
 
-// --- validateFacadeBase : contrat https + domaine (fin de la rustine nip.io) -
+// --- validateFacadeBase : accepter sans mentir sur la vérifiabilité ---------
 let v = validateFacadeBase('https://tv.moi.com/get.php?x=1');
 assert.equal(v.ok, true);
 assert.equal(v.base, 'https://tv.moi.com'); // path + query retirés
-ok('façade : https + domaine → OK, origine propre');
+assert.equal(v.probe, true); // https + domaine → sondable par le relais
+ok('façade : https + domaine → OK, origine propre, SONDABLE (probe:true)');
 
 v = validateFacadeBase('https://tv.moi.com:8443/');
 assert.equal(v.ok, true);
 assert.equal(v.base, 'https://tv.moi.com:8443'); // port conservé, slash retiré
+assert.equal(v.probe, true);
 ok('façade : port conservé, slash final retiré');
 
+// http:// = ACCEPTÉ (les apps la joignent, la copie n'a pas besoin du relais)
+// mais NON sondable → le message explique la nuance au lieu d'interdire.
 v = validateFacadeBase('http://tv.moi.com');
-assert.equal(v.ok, false);
+assert.equal(v.ok, true);
+assert.equal(v.base, 'http://tv.moi.com');
+assert.equal(v.probe, false);
 assert.equal(v.reason, 'not_https');
-assert.ok(/https/i.test(facadeReason(v.reason)));
-ok('façade : http:// REFUSÉ (raison actionnable) — plus de faux « vert »');
+assert.ok(/apps/i.test(facadeReason(v.reason)));
+ok('façade : http:// ACCEPTÉ mais app-seulement (probe:false, message honnête)');
+
+// IP brute (ou nip.io en http) = le cas RÉEL du gateway self-hosté sur VPS :
+// accepté (l'app le joint), classé non sondable — fini le blocage 403/530.
+v = validateFacadeBase('http://203.0.113.7');
+assert.equal(v.ok, true);
+assert.equal(v.base, 'http://203.0.113.7');
+assert.equal(v.probe, false);
+ok('façade : http://IP (VPS nu) ACCEPTÉE en app-seulement — le copieur marche');
 
 v = validateFacadeBase('https://203.0.113.7:8088');
-assert.equal(v.ok, false);
+assert.equal(v.ok, true);
+assert.equal(v.probe, false);
 assert.equal(v.reason, 'ip_literal');
 assert.ok(/IP/i.test(facadeReason(v.reason)));
-ok('façade : IP brute REFUSÉE (le Worker ne joint pas une IP) — nip.io supprimé');
+ok('façade : IP brute → acceptée, sonde du relais NON garantie (informatif)');
 
 v = validateFacadeBase('https://localhost');
-assert.equal(v.ok, false);
+assert.equal(v.ok, true);
+assert.equal(v.probe, false);
 assert.equal(v.reason, 'not_domain');
-ok('façade : hôte sans domaine (localhost) refusé');
+ok('façade : hôte sans domaine (localhost) → app-seulement');
 
 v = validateFacadeBase('pas une url');
 assert.equal(v.ok, false);
@@ -58,8 +77,13 @@ ok('façade : vide → non-OK mais message vide (repli assumé)');
 assert.equal(_cleanGatewayBase('https://tv.moi.com/get.php?x=1'), 'https://tv.moi.com');
 ok('cleanGatewayBase : façade valide → origine propre');
 
-assert.equal(_cleanGatewayBase('http://tv.moi.com:9000/'), '');
-ok('cleanGatewayBase : http:// non conforme → vide');
+// http accepté aussi ici : c'est CE chemin qui réécrit les URLs du copieur —
+// une façade http/IP doit réécrire quand même (lecture par les apps).
+assert.equal(_cleanGatewayBase('http://tv.moi.com:9000/'), 'http://tv.moi.com:9000');
+ok('cleanGatewayBase : http:// accepté (réécriture pour les apps)');
+
+assert.equal(_cleanGatewayBase('pas une url'), '');
+ok('cleanGatewayBase : illisible → vide');
 
 assert.equal(_cleanGatewayBase(''), '');
 ok('cleanGatewayBase : vide → vide');

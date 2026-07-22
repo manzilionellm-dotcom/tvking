@@ -3602,18 +3602,18 @@ async function handleInviteSelftest(env, rawMac) {
 //  assistant puisse voir la panne et la corriger tout de suite. Aucune donnée
 //  sensible (mot de passe, URL avec identifiants) n'est renvoyée.
 
-/// Lit la façade (gateway_base) enregistrée pour un maître ('' si aucune ou
-/// invalide). On revalide via le CONTRAT partagé (https + domaine) : une valeur
-/// héritée non conforme (ancienne IP « nip.io ») est ignorée proprement plutôt
-/// que servie comme si elle marchait.
+/// Lit la façade (gateway_base) enregistrée pour un maître. Renvoie
+/// { base, probe } — base '' si aucune façade exploitable. `probe` = le relais
+/// peut la SONDER (https + domaine) ; une façade http/IP est ACCEPTÉE (les
+/// apps la joignent) mais probe=false → les sondes deviennent INFORMATIVES.
 async function readMasterGatewayBase(env, mac) {
   try {
     const row = await env.DB
       .prepare('SELECT gateway_base FROM master_test_list WHERE mac = ?')
       .bind(String(mac).toUpperCase()).first();
     const v = validateFacadeBase(row && row.gateway_base);
-    return v.ok ? v.base : '';
-  } catch (_) { return ''; }
+    return { base: v.ok ? v.base : '', probe: !!v.probe };
+  } catch (_) { return { base: '', probe: false }; }
 }
 
 /// Sonde une URL sans télécharger le flux : on demande 2 octets, on lit le
@@ -3672,16 +3672,26 @@ async function handleInviteDiag(env, rawMac, request) {
     sPresent ? `${sCount} source(s) · ${sType || '?'} · ${sOrigin}` : 'Aucune source assignée à cet appareil.',
     sPresent ? '' : 'Assigne une ligne (ou envoie/reçois un test).');
 
-  // 4) Façade (gateway) — réellement en ligne ?
-  const gw = master ? await readMasterGatewayBase(env, mac) : '';
+  // 4) Façade (gateway) — réellement en ligne ? DEUX régimes honnêtes :
+  //    sondable (https + domaine) → la sonde fait foi ; app-seulement (http/
+  //    IP) → un échec de sonde est ATTENDU depuis le relais Cloudflare, on
+  //    l'explique en ambre INFORMATIF au lieu d'un « injoignable » mensonger.
+  const gwInfo = master ? await readMasterGatewayBase(env, mac) : { base: '', probe: false };
+  const gw = gwInfo.base;
   if (gw) {
     const p = await _probeUrl(gw, 5000);
-    let isDomain = false;
-    try { isDomain = /[a-zA-Z]/.test(new URL(gw).hostname); } catch (_) { /* */ }
-    add('gateway', p.ok ? 0 : 1, 'Façade (gateway) en ligne',
-      p.ok ? `Ta façade répond (${p.ms} ms)${isDomain ? ' · relais par domaine' : ''}.`
-           : `Façade injoignable (${p.error || p.status}). Les tests jouent en direct, mais moins privés.`,
-      p.ok ? '' : 'Vérifie que ton gateway tourne et que l’URL est exacte.');
+    if (p.ok) {
+      add('gateway', 0, 'Façade (gateway) en ligne',
+        `Ta façade répond (${p.ms} ms)${gwInfo.probe ? ' · relais par domaine' : ''}.`, '');
+    } else if (gwInfo.probe) {
+      add('gateway', 1, 'Façade (gateway) en ligne',
+        `Façade injoignable (${p.error || p.status}). Les tests jouent en direct, mais moins privés.`,
+        'Vérifie que ton gateway tourne et que l’URL est exacte.');
+    } else {
+      add('gateway', 1, 'Façade (gateway) — vérifiable par tes apps seulement',
+        'Façade http/IP : le relais Cloudflare ne peut pas la joindre (c’est attendu, pas une panne) — tes apps, elles, la joignent directement. Vérifie /health depuis un navigateur.',
+        'Contrôle non bloquant. Pour une sonde vérifiable d’ici, passe en https + domaine (Caddy, voir gateway/README).');
+    }
   } else {
     add('gateway', 1, 'Façade (gateway)',
       master ? 'Aucune façade réglée → lecture directe (moins stable/privée).'
@@ -3723,13 +3733,29 @@ async function handleInviteDiag(env, rawMac, request) {
         served > 0 ? '' : 'Ré-enregistre la liste dans le panel.');
 
       // Sonde de la 1re chaîne (jouabilité réelle) — URL jamais renvoyée.
+      // Si elle passe par une façade que le relais NE PEUT PAS joindre
+      // (http/IP), l'échec est ATTENDU → ambre informatif, jamais un rouge
+      // mensonger (la lecture app peut très bien marcher).
       const firstUrl = (m3uText.split(/\r?\n/).find((l) => l.trim() && !l.startsWith('#')) || '').trim();
       if (firstUrl) {
+        let viaAppOnlyFacade = false;
+        try {
+          viaAppOnlyFacade = !gwInfo.probe && !!gw
+            && new URL(firstUrl).hostname === new URL(gw).hostname;
+        } catch (_) { /* URL illisible → sonde standard */ }
         const cp = await _probeUrl(firstUrl, 6000);
-        add('channel_probe', cp.ok ? 0 : 2, 'Chaîne de test jouable',
-          cp.ok ? `1re chaîne répond (${cp.status}, ${cp.ms} ms).`
-                : `1re chaîne injoignable (${cp.error || cp.status}).`,
-          cp.ok ? '' : 'Vérifie la façade et la ligne fournisseur.');
+        if (cp.ok) {
+          add('channel_probe', 0, 'Chaîne de test jouable',
+            `1re chaîne répond (${cp.status}, ${cp.ms} ms).`, '');
+        } else if (viaAppOnlyFacade) {
+          add('channel_probe', 1, 'Chaîne de test — vérifiable par tes apps seulement',
+            'La chaîne passe par ta façade http/IP : le relais Cloudflare ne peut pas la sonder (c’est attendu). Vérifie la lecture directement dans l’app.',
+            'Contrôle non bloquant. Façade en https + domaine = sonde vérifiable d’ici.');
+        } else {
+          add('channel_probe', 2, 'Chaîne de test jouable',
+            `1re chaîne injoignable (${cp.error || cp.status}).`,
+            'Vérifie la façade et la ligne fournisseur.');
+        }
       }
     }
   }

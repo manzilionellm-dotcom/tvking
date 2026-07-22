@@ -3293,53 +3293,63 @@ async function ensureMasterListTable(env) {
 }
 
 // =========================================================
-//  CONTRAT DE FAÇADE (gateway) — joignable de façon FIABLE par le Worker
+//  CONTRAT DE FAÇADE (gateway) — accepter SANS mentir sur la vérifiabilité
 // =========================================================
-//  Un Worker Cloudflare fetch de façon fiable un DOMAINE public en HTTPS
-//  VALIDE, mais ÉCHOUE (403/530) sur une IP brute, et ne peut pas valider le
-//  TLS d'un hôte sans certificat (ex. une IP, un `nip.io`). L'ancienne rustine
-//  IP→nip.io donnait un « vert » MENSONGER (la sonde passait parfois en HTTP
-//  clair, alors que la lecture réelle, elle, ne passait pas). On la remplace
-//  par un CONTRAT strict et honnête : la façade DOIT être
-//    • en https://   (certificat valide → le Worker la joint vraiment) ;
-//    • un vrai domaine (nom d'hôte avec un point + une lettre) → un cert
-//      Let's Encrypt existe (voir gateway/README : Caddy + renouvellement auto).
-//  Toute IP brute / http:// / hôte sans domaine est REFUSÉE, avec une raison
-//  actionnable (au lieu d'être « réparée » en douce vers un état non joignable).
-//  Renvoie { ok, base, reason }. `base` = origine propre (schéma+hôte+port),
-//  sans path ni slash final.
+//  Réalité réseau : un Worker Cloudflare fetch de façon fiable un DOMAINE
+//  public en HTTPS valide, mais ÉCHOUE (403/530) sur une IP brute ou un hôte
+//  http (ex. `http://<ip>.nip.io`) — alors que les APPS (téléphone, TV), elles,
+//  joignent très bien ce gateway. L'ancien contrat strict REFUSAIT donc des
+//  façades qui MARCHENT pour la lecture réelle, et bloquait l'exploitant.
+//
+//  Nouveau contrat, honnête dans les deux sens :
+//    • on ACCEPTE toute origine http(s) syntaxiquement valide — la copie
+//      n'exige AUCUNE requête Worker→gateway (la liste est lue chez le
+//      FOURNISSEUR, seule l'ORIGINE des URLs de flux est réécrite) ;
+//    • on CLASSE la façade : `probe:true` = https + vrai domaine → le relais
+//      peut la SONDER (diagnostic vérifiable de bout en bout) ; `probe:false`
+//      = http / IP / hôte sans domaine → joignable par les APPS seulement,
+//      les sondes du diagnostic deviennent INFORMATIVES (ambre, jamais un
+//      rouge mensonger). `reason` documente pourquoi (message via
+//      facadeReason). La voie recommandée reste https + domaine (Caddy +
+//      Let's Encrypt, voir gateway/README) : seul cas 100 % vérifiable.
+//  Renvoie { ok, base, reason, probe }. `base` = origine propre
+//  (schéma+hôte+port), sans path ni slash final.
 export function validateFacadeBase(raw) {
   const s = String(raw || '').trim();
-  if (!s) return { ok: false, base: '', reason: 'empty' };
-  if (!/^https?:\/\//i.test(s)) return { ok: false, base: '', reason: 'no_scheme' };
+  if (!s) return { ok: false, base: '', reason: 'empty', probe: false };
+  if (!/^https?:\/\//i.test(s)) return { ok: false, base: '', reason: 'no_scheme', probe: false };
   let u;
-  try { u = new URL(s); } catch (_) { return { ok: false, base: '', reason: 'bad_url' }; }
-  if (u.protocol !== 'https:') return { ok: false, base: '', reason: 'not_https' };
+  try { u = new URL(s); } catch (_) { return { ok: false, base: '', reason: 'bad_url', probe: false }; }
   const host = u.hostname;
-  // IPv4 brute → refusée (pas de cert valide ; le Worker ne fetch pas une IP).
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return { ok: false, base: '', reason: 'ip_literal' };
-  // IPv6 littéral (`[…]`) → refusé pour les mêmes raisons.
-  if (host.includes(':') || host.startsWith('[')) return { ok: false, base: '', reason: 'ip_literal' };
+  // IPv4 brute ou IPv6 littéral (`[…]`) → le relais ne les joint pas.
+  const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':') || host.startsWith('[');
   // Domaine = au moins un point ET une lettre (ex. tv.mondomaine.com).
-  if (!/[a-zA-Z]/.test(host) || !host.includes('.')) return { ok: false, base: '', reason: 'not_domain' };
+  const isDomain = !isIp && /[a-zA-Z]/.test(host) && host.includes('.');
   const port = u.port ? `:${u.port}` : '';
-  return { ok: true, base: `${u.protocol}//${host}${port}`, reason: '' };
+  const base = `${u.protocol}//${host}${port}`;
+  // Sondable par le relais = https + vrai domaine (cert valide → fetch fiable).
+  if (u.protocol === 'https:' && isDomain) return { ok: true, base, reason: '', probe: true };
+  // Acceptée quand même (les apps la joignent) — mais non vérifiable d'ici.
+  const reason = u.protocol !== 'https:' ? 'not_https' : (isIp ? 'ip_literal' : 'not_domain');
+  return { ok: true, base, reason, probe: false };
 }
 
-// Message HUMAIN + ACTIONNABLE pour une raison de rejet de façade. '' si valide
-// ou champ vide (vide = lecture directe assumée, pas une erreur).
+// Message HUMAIN + ACTIONNABLE pour une raison de façade. '' si vérifiable ou
+// champ vide (vide = lecture directe assumée, pas une erreur). Pour une façade
+// acceptée mais non sondable (`probe:false`), le message EXPLIQUE la nuance au
+// lieu d'interdire : les apps la joignent, le relais ne peut pas la vérifier.
 export function facadeReason(reason) {
   switch (reason) {
     case 'empty': return '';
     case 'no_scheme':
     case 'bad_url':
-      return 'URL de façade invalide : commence par https:// (ex. https://tv.mondomaine.com).';
+      return 'URL de façade invalide : commence par http(s):// (ex. https://tv.mondomaine.com).';
     case 'not_https':
-      return 'La façade doit être en https:// avec un certificat valide — http n’est pas joignable de façon fiable depuis le relais Cloudflare.';
+      return 'Façade en http : tes apps la joignent, mais le relais Cloudflare ne peut PAS la vérifier — les contrôles « façade/chaîne » du diagnostic seront informatifs (ambre). Recommandé : https + domaine (Caddy + Let’s Encrypt, voir gateway/README).';
     case 'ip_literal':
-      return 'Adresse IP interdite : le relais ne joint pas une IP brute. Mets un vrai domaine (Caddy + Let’s Encrypt, voir gateway/README).';
+      return 'Façade par IP : tes apps la joignent, mais le relais Cloudflare ne joint pas une IP brute — les contrôles « façade/chaîne » du diagnostic seront informatifs (ambre). Recommandé : un vrai domaine en https (Caddy + Let’s Encrypt).';
     case 'not_domain':
-      return 'Nom d’hôte invalide : utilise un domaine complet (ex. tv.mondomaine.com).';
+      return 'Hôte sans domaine : joignable par tes apps seulement — contrôles du diagnostic informatifs. Recommandé : un domaine complet en https (ex. tv.mondomaine.com).';
     default: return 'Façade invalide.';
   }
 }
@@ -3353,22 +3363,27 @@ export function _cleanGatewayBase(raw) {
 }
 
 // Lit la façade + l'identité de diffusion enregistrées pour un maître.
-// Renvoie { base, user, pass } — base '' si aucune façade valide.
+// Renvoie { base, user, pass, probe, reason } — base '' si aucune façade
+// exploitable. `probe` dit si le relais peut la SONDER (https + domaine) ;
+// une façade http/IP reste acceptée (les apps la joignent) mais probe=false.
 async function _readGatewayCreds(env, mac) {
   try {
     await ensureMasterListTable(env);
     const row = await env.DB
       .prepare('SELECT gateway_base, gateway_user, gateway_pass FROM master_test_list WHERE mac = ?')
       .bind(mac).first();
-    if (!row) return { base: '', user: '', pass: '' };
-    // On revalide à la lecture : une valeur héritée invalide (ancienne IP) est
-    // ignorée proprement plutôt que servie comme si elle marchait.
+    if (!row) return { base: '', user: '', pass: '', probe: false, reason: 'empty' };
+    // On revalide à la lecture : une valeur héritée illisible est ignorée
+    // proprement plutôt que servie comme si elle marchait.
+    const v = validateFacadeBase(row.gateway_base);
     return {
-      base: _cleanGatewayBase(row.gateway_base),
+      base: v.ok ? v.base : '',
       user: String(row.gateway_user || ''),
       pass: String(row.gateway_pass || ''),
+      probe: !!v.probe,
+      reason: v.reason || '',
     };
-  } catch (_) { return { base: '', user: '', pass: '' }; }
+  } catch (_) { return { base: '', user: '', pass: '', probe: false, reason: 'empty' }; }
 }
 
 // Compte les chaînes d'un M3U (lignes #EXTINF). Sert d'indicateur au panel.
@@ -3405,8 +3420,11 @@ async function handleMasterTestListPut(request, env) {
   // On garde une liste VOLONTAIREMENT petite : indépendance = peu de chaînes
   // partagées. Plafond souple à 50 lignes / 64 Ko (garde-fou, pas une police).
   const m3u = String(body?.m3u || '').slice(0, 64 * 1024);
-  // FAÇADE : on VALIDE avec un message actionnable au lieu de « réparer » en
-  // silence (fini le nip.io mensonger). Champ vide = lecture directe assumée.
+  // FAÇADE : on n'interdit QUE l'illisible (pas d'URL http(s) valide). Une
+  // façade http/IP est ACCEPTÉE — les apps la joignent, la copie n'a pas
+  // besoin que le relais la joigne — mais on renvoie une NOTE honnête
+  // (`facade_note`) expliquant que le diagnostic ne pourra pas la vérifier.
+  // Champ vide = lecture directe assumée.
   const rawGateway = String(body?.gateway_base || '').trim();
   const fac = validateFacadeBase(rawGateway);
   if (rawGateway && !fac.ok) {
@@ -3438,6 +3456,9 @@ async function handleMasterTestListPut(request, env) {
   return jsonResp({
     ok: true, mac, count, gateway_base: gateway,
     gateway_user: gwUser, has_gateway_pass: !!(gwUser && finalPass),
+    // Façade non sondable par le relais (http/IP) → note honnête à afficher.
+    facade_probe: !!fac.probe,
+    facade_note: gateway && !fac.probe ? facadeReason(fac.reason) : '',
   });
 }
 
@@ -3718,14 +3739,28 @@ async function handleMasterDiag(request, env) {
     src ? `Type ${src.type || '?'}${sHost ? ' · ' + sHost : ''}.` : 'Aucune ligne assignée à ce maître.',
     src ? '' : 'Assigne une ligne, ou colle un lien dans « Liste de test ».');
 
-  // 3) Façade en ligne ? (façade = https + domaine valide, réellement joignable)
+  // 3) Façade en ligne ? DEUX régimes honnêtes :
+  //    • façade SONDABLE (https + domaine) → la sonde fait foi (vert/ambre) ;
+  //    • façade APP-SEULEMENT (http/IP) → la sonde est INFORMATIVE : un échec
+  //      est ATTENDU depuis le relais Cloudflare (403/530) alors que les apps
+  //      la joignent très bien — on l'explique en ambre, sans bloquer, au lieu
+  //      d'afficher un « injoignable » mensonger.
   const gwc = await _readGatewayCreds(env, mac);
   const gw = gwc.base;
   if (gw) {
     const p = await _probeUrl(gw, 5000);
-    add('gateway', p.ok ? 0 : 1, 'Façade (gateway) en ligne',
-      p.ok ? `Ta façade https répond (${p.ms} ms).` : `Façade injoignable (${p.error || p.status}).`,
-      p.ok ? '' : 'Vérifie que ton gateway tourne (Caddy + HTTPS) et que le domaine est exact.');
+    if (gwc.probe) {
+      add('gateway', p.ok ? 0 : 1, 'Façade (gateway) en ligne',
+        p.ok ? `Ta façade https répond (${p.ms} ms).` : `Façade injoignable (${p.error || p.status}).`,
+        p.ok ? '' : 'Vérifie que ton gateway tourne (Caddy + HTTPS) et que le domaine est exact.');
+    } else {
+      // Sonde opportuniste : si elle passe malgré tout, tant mieux (vert).
+      add('gateway', p.ok ? 0 : 1, 'Façade (gateway) — vérifiable par tes apps seulement',
+        p.ok
+          ? `Ta façade répond même depuis le relais (${p.ms} ms).`
+          : 'Façade http/IP : le relais Cloudflare ne peut pas la joindre (c’est attendu, pas une panne) — tes apps, elles, la joignent directement. Vérifie /health depuis un navigateur.',
+        p.ok ? '' : 'Contrôle non bloquant. Pour un diagnostic vérifiable de bout en bout, passe la façade en https + domaine (Caddy, voir gateway/README).');
+    }
     // 3b) Identité de diffusion : sans elle, les URLs de test portent les
     // identifiants FOURNISSEUR (moins privé). Avec elle → ligne réelle masquée.
     add('broadcast_id', gwc.user ? 0 : 1, 'Identité de diffusion',
@@ -3751,10 +3786,26 @@ async function handleMasterDiag(request, env) {
   if (count > 0) {
     const firstUrl = (m3u.split(/\r?\n/).find((l) => l.trim() && !l.startsWith('#')) || '').trim();
     if (firstUrl) {
+      // La 1re chaîne passe-t-elle par une façade que le relais NE PEUT PAS
+      // joindre (http/IP) ? → l'échec de sonde est ATTENDU : ambre informatif,
+      // jamais un rouge mensonger (la lecture app peut très bien marcher).
+      let viaAppOnlyFacade = false;
+      try {
+        viaAppOnlyFacade = !gwc.probe && !!gw && new URL(firstUrl).hostname === new URL(gw).hostname;
+      } catch (_) { /* URL illisible → sonde standard */ }
       const cp = await _probeUrl(firstUrl, 6000);
-      add('channel_probe', cp.ok ? 0 : 2, 'Chaîne de test jouable',
-        cp.ok ? `1re chaîne répond (${cp.status}, ${cp.ms} ms).` : `1re chaîne injoignable (${cp.error || cp.status}).`,
-        cp.ok ? '' : 'Vérifie la façade et la ligne fournisseur.');
+      if (cp.ok) {
+        add('channel_probe', 0, 'Chaîne de test jouable',
+          `1re chaîne répond (${cp.status}, ${cp.ms} ms).`, '');
+      } else if (viaAppOnlyFacade) {
+        add('channel_probe', 1, 'Chaîne de test — vérifiable par tes apps seulement',
+          'La chaîne passe par ta façade http/IP : le relais Cloudflare ne peut pas la sonder (c’est attendu). Vérifie la lecture directement dans l’app.',
+          'Contrôle non bloquant. Façade en https + domaine = sonde vérifiable d’ici.');
+      } else {
+        add('channel_probe', 2, 'Chaîne de test jouable',
+          `1re chaîne injoignable (${cp.error || cp.status}).`,
+          'Vérifie la façade et la ligne fournisseur.');
+      }
     }
   }
 
