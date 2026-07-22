@@ -618,6 +618,17 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   static const List<bool> _diagSeq = <bool>[true, true, false, false]; // H H B B
   final List<bool> _diagBuf = <bool>[];
   bool _diagOpen = false;
+  // Instant du DERNIER appui retenu dans la séquence. La séquence n'est valide
+  // que si ses 4 appuis sont RAPPROCHÉS (cf. _kDiagWindow) : c'est un code
+  // DÉLIBÉRÉ (4 appuis rapides), pas une accumulation d'événements isolés.
+  DateTime? _diagLastKeyAt;
+  // Fenêtre max entre deux appuis de la séquence. Au-delà, on repart de zéro.
+  // CORRECTIF « l'écran diagnostic surgit tout seul » : certaines box IPTV
+  // émettent des événements chaîne+/chaîne- (ou flèches) ISOLÉS et périodiques
+  // (toutes les quelques minutes). Sans fenêtre de temps, 4 de ces événements
+  // espacés finissaient par former « HAUT-HAUT-BAS-BAS » et ouvraient le
+  // diagnostic sans que personne n'ait rien fait.
+  static const Duration _kDiagWindow = Duration(milliseconds: 1200);
 
   @override
   void dispose() {
@@ -630,14 +641,23 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   KeyEventResult _onHomeKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final LogicalKeyboardKey k = event.logicalKey;
-    final bool up =
-        k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.channelUp;
-    final bool down =
-        k == LogicalKeyboardKey.arrowDown || k == LogicalKeyboardKey.channelDown;
+    // FLÈCHES D-PAD UNIQUEMENT (plus channelUp/channelDown) : les touches
+    // « chaîne » sont la 1re source d'événements parasites périodiques émis par
+    // les box → elles ne doivent plus pouvoir déclencher le code caché.
+    final bool up = k == LogicalKeyboardKey.arrowUp;
+    final bool down = k == LogicalKeyboardKey.arrowDown;
     if (!up && !down) {
       if (_diagBuf.isNotEmpty) _diagBuf.clear();
       return KeyEventResult.ignored;
     }
+    // FENÊTRE DE TEMPS : si l'appui précédent est trop ancien, la séquence en
+    // cours est abandonnée (des appuis espacés ne s'additionnent jamais).
+    final DateTime now = DateTime.now();
+    final DateTime? last = _diagLastKeyAt;
+    if (last != null && now.difference(last) > _kDiagWindow) {
+      _diagBuf.clear();
+    }
+    _diagLastKeyAt = now;
     _diagBuf.add(up);
     if (_diagBuf.length > _diagSeq.length) {
       _diagBuf.removeAt(0);
@@ -648,6 +668,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
     }
     if (match) {
       _diagBuf.clear();
+      _diagLastKeyAt = null;
       _openDiagnostic();
     }
     return KeyEventResult.ignored;
