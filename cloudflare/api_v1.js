@@ -1152,6 +1152,12 @@ async function apiV1Inner(request, env) {
       if (request.method === 'GET') return handleMasterDiag(request, env);
       return errResp('method_not_allowed', 'Only GET', 405);
     }
+    // /masters/vod — BIBLIOTHÈQUE CINÉMA : importe le catalogue de films
+    // (affiches + genre + langue). GET = ligne assignée ; POST {paste} = lien collé.
+    if (parts.length === 2 && parts[1] === 'vod') {
+      if (request.method === 'GET' || request.method === 'POST') return handleMasterVod(request, env);
+      return errResp('method_not_allowed', 'GET or POST', 405);
+    }
     // /masters/tests — SUIVI des tests émis par les maîtres (app OU panel).
     if (parts.length === 2 && parts[1] === 'tests') {
       if (request.method === 'GET') return handleMasterTestsList(env);
@@ -3724,6 +3730,199 @@ async function handleMasterChannels(request, env) {
     });
   } catch (e) {
     return errResp('copy_failed', 'Impossible de lire les chaînes : ' + String((e && e.message) || e), 502);
+  }
+}
+
+// =========================================================
+//  BIBLIOTHÈQUE CINÉMA (VOD) — importer le catalogue de films
+// =========================================================
+//  Même esprit que le copieur de chaînes, mais pour le CINÉMA (VOD) : on lit
+//  la liste des FILMS (Xtream get_vod_* ou entrées film d'un M3U), on récupère
+//  leur AFFICHE, on range par GENRE (catégorie) et on détecte la LANGUE
+//  (FR/EN/AR/ES) pour que l'exploitant navigue et coche les films à donner en
+//  test. IMPORTANT : on n'importe QUE le CATALOGUE (liste + affiches +
+//  métadonnées) — jamais les fichiers vidéo (joués à la demande via le
+//  gateway). Le cinéma est de la VOD (fichier à la demande) : pas la contrainte
+//  « 1 connexion live » — un même film peut être mis en cache et resservi.
+const _COPY_MAX_VOD = 20000; // filet anti-abus (catalogues énormes), pas métier.
+
+// Détecte la LANGUE d'un film à partir de son genre + de son titre. Les
+// fournisseurs préfixent souvent la catégorie (« FR - Action », « EN | Horror »,
+// « VOSTFR », « AR | Drama »). Best-effort : '' = langue inconnue (« Autres »).
+// Exportée pour le smoke test (vod_library.smoke.mjs).
+export function detectVodLang(name, group) {
+  const s = (' ' + String(group || '') + ' ' + String(name || '') + ' ')
+    .toUpperCase().replace(/[|_\-\[\]().]/g, ' ');
+  // VF / VOSTFR / TRUEFRENCH / FRENCH → français. On teste le français d'abord
+  // (VOSTFR contient « FR », VF est explicitement français).
+  if (/\b(FR|VF|VFF|VFQ|VOF|VOSTFR|VO?STFR|FRENCH|TRUEFRENCH|FRANCAIS|MULTI)\b/.test(s)) return 'FR';
+  if (/\b(EN|VO|ENG|ENGLISH|VOST|US|UK)\b/.test(s)) return 'EN';
+  if (/\b(AR|ARAB|ARABIC|ARABE)\b/.test(s)) return 'AR';
+  if (/\b(ES|SPA|SPANISH|ESP|LAT|LATINO)\b/.test(s)) return 'ES';
+  return '';
+}
+
+// Nettoie une extension de conteneur VOD (mp4/mkv/avi…) → alphanumérique, mp4
+// par défaut. Sert à bâtir l'URL de lecture Xtream `/movie/…/{id}.{ext}`.
+function _vodExt(raw) {
+  const e = String(raw || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+  return e || 'mp4';
+}
+
+// Copie VOD Xtream : catégories de films (get_vod_categories) + films
+// (get_vod_streams). Même modèle d'URL/identité que _copyXtream : la LISTE est
+// lue avec les identifiants FOURNISSEUR (le Worker joint le domaine), mais
+// l'URL de LECTURE est bâtie sur le gateway (façade) avec l'identité de
+// diffusion quand elle est réglée → ligne réelle masquée.
+async function _copyXtreamVod(src, gatewayBase = '', gwUser = '', gwPass = '') {
+  const base = String(src.server_url || '').replace(/\/+$/, '');
+  const play = (gatewayBase || base).replace(/\/+$/, '');
+  const provUser = String(src.username || '');
+  const provPass = String(src.password || '');
+  const useBroadcast = !!(gatewayBase && gwUser && gwPass);
+  const user = useBroadcast ? String(gwUser) : provUser;
+  const pass = useBroadcast ? String(gwPass) : provPass;
+  const auth = `username=${encodeURIComponent(provUser)}&password=${encodeURIComponent(provPass)}`;
+  let cats = [];
+  let streams = [];
+  try {
+    const cr = await _fetchWithTimeout(`${base}/player_api.php?${auth}&action=get_vod_categories`);
+    if (cr.ok) cats = await cr.json();
+  } catch (_) { /* catégories optionnelles */ }
+  const sr = await _fetchWithTimeout(`${base}/player_api.php?${auth}&action=get_vod_streams`);
+  if (!sr.ok) throw new Error('provider_http_' + sr.status);
+  streams = await sr.json();
+  if (!Array.isArray(streams)) throw new Error('provider_bad_vod');
+
+  const catName = new Map();
+  for (const c of Array.isArray(cats) ? cats : []) {
+    catName.set(String(c.category_id), String(c.category_name || 'Sans genre'));
+  }
+  const groups = new Map();
+  let truncated = false;
+  let total = 0;
+  for (const s of streams) {
+    if (total >= _COPY_MAX_VOD) { truncated = true; break; }
+    total++;
+    const catId = String(s.category_id ?? 'none');
+    const gname = catName.get(catId) || 'Sans genre';
+    const ext = _vodExt(s.container_extension);
+    if (!groups.has(catId)) {
+      groups.set(catId, { id: catId, name: gname, lang: detectVodLang('', gname), movies: [] });
+    }
+    groups.get(catId).movies.push({
+      id: String(s.stream_id),
+      name: String(s.name || ('Film ' + s.stream_id)),
+      poster: String(s.stream_icon || ''),
+      rating: String(s.rating || ''),
+      lang: detectVodLang(String(s.name || ''), gname),
+      // URL VOD standard Xtream, bâtie sur l'origine de LECTURE (gateway si
+      // réglé). Jouée à la demande → cacheable, pas un flux live continu.
+      url: `${play}/movie/${encodeURIComponent(user)}/${encodeURIComponent(pass)}/${s.stream_id}.${ext}`,
+    });
+  }
+  return { type: 'xtream', categories: [...groups.values()], truncated, total };
+}
+
+// Copie VOD depuis un M3U : ne garde QUE les entrées « film » (URL en
+// .mp4/.mkv/… OU catégorie type VOD/FILM/CINÉMA). L'affiche vient de tvg-logo.
+async function _copyM3uVod(src, gatewayBase = '') {
+  const res = await _fetchWithTimeout(String(src.m3u_url || ''));
+  if (!res.ok) throw new Error('provider_http_' + res.status);
+  const text = await res.text();
+  const lines = text.split(/\r?\n/);
+  const groups = new Map();
+  const seen = new Set();
+  let truncated = false;
+  let total = 0;
+  let pending = null;
+  const isVodUrl = (u) => /\.(mp4|mkv|avi|m4v|mov|ts)(\?|$)/i.test(u) && /\/(movie|vod|film)s?\//i.test(u);
+  const isVodGroup = (g) => /vod|film|movie|cinema|cinéma/i.test(g);
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line.startsWith('#EXTINF')) {
+      const group = (line.match(/group-title="([^"]*)"/i) || [])[1] || 'Sans genre';
+      const logo = (line.match(/tvg-logo="([^"]*)"/i) || [])[1] || '';
+      const name = (line.split(',').slice(1).join(',') || '').trim() || 'Film';
+      pending = { group, logo, name };
+    } else if (line && !line.startsWith('#') && pending) {
+      // On ne garde que le CINÉMA : URL de film OU catégorie de type VOD.
+      if (!(isVodUrl(line) || isVodGroup(pending.group))) { pending = null; continue; }
+      if (total >= _COPY_MAX_VOD) { truncated = true; break; }
+      if (seen.has(line)) { pending = null; continue; }
+      seen.add(line);
+      total++;
+      const catId = pending.group;
+      if (!groups.has(catId)) {
+        groups.set(catId, { id: catId, name: catId, lang: detectVodLang('', catId), movies: [] });
+      }
+      groups.get(catId).movies.push({
+        id: String(total), name: pending.name, poster: pending.logo, rating: '',
+        lang: detectVodLang(pending.name, catId),
+        url: _rewriteOrigin(line, gatewayBase),
+      });
+      pending = null;
+    }
+  }
+  return { type: 'm3u', categories: [...groups.values()], truncated, total };
+}
+
+// GET/POST /masters/vod → BIBLIOTHÈQUE CINÉMA. Mêmes entrées que le copieur de
+// chaînes : ligne assignée au maître, ou lien collé. Renvoie { catégories(genre)
+// → films(affiche, langue) }.
+async function handleMasterVod(request, env) {
+  const url = new URL(request.url);
+  let mac = String(url.searchParams.get('mac') || '').toUpperCase();
+  let inline = null;
+  let gatewayReq = '';
+  let gwUserReq = '';
+  let gwPassReq = '';
+  if (request.method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch (_) { return errResp('bad_json', 'Invalid JSON', 400); }
+    if (body && body.mac) mac = String(body.mac).toUpperCase();
+    if (body && body.gateway_base) gatewayReq = _cleanGatewayBase(body.gateway_base);
+    if (body && body.gateway_user) gwUserReq = String(body.gateway_user).trim();
+    if (body && body.gateway_pass) gwPassReq = String(body.gateway_pass).trim();
+    const blob = body && (body.paste || body.url || body.source);
+    if (blob || (body && (body.server_url || body.m3u_url))) {
+      const raw = typeof blob === 'string' ? { url: blob } : (blob || body);
+      const det = autoDetectSource(raw);
+      if (det.error) return errResp('bad_source', det.error, 400);
+      inline = det.source;
+    }
+  }
+  if (!_MASTER_MAC_RX.test(mac)) return errResp('bad_mac', 'MAC maître invalide.', 400);
+  const src = inline || await _readFirstSource(env, mac);
+  if (!src) {
+    return errResp('no_source',
+      'Aucune source : colle ton lien Xtream ou ton M3U, ou assigne une ligne à ce maître.', 404);
+  }
+  const saved = await _readGatewayCreds(env, mac);
+  const gateway = gatewayReq || saved.base;
+  const gwUser = gwUserReq || saved.user;
+  const gwPass = gwPassReq || saved.pass;
+  try {
+    let out;
+    if (src.type === 'xtream' && src.server_url && src.username && src.password) {
+      out = await _copyXtreamVod(src, gateway, gwUser, gwPass);
+    } else if (src.m3u_url) {
+      out = await _copyM3uVod(src, gateway);
+    } else {
+      return errResp('bad_source', 'Source illisible (ni Xtream complet, ni M3U).', 400);
+    }
+    out.categories.sort((a, b) => a.name.localeCompare(b.name));
+    for (const c of out.categories) c.movies.sort((a, b) => a.name.localeCompare(b.name));
+    return jsonResp({
+      mac,
+      type: out.type,
+      source_label: src.label || null,
+      categories: out.categories,
+      total: out.total,
+      truncated: out.truncated,
+    });
+  } catch (e) {
+    return errResp('vod_failed', 'Impossible de lire les films : ' + String((e && e.message) || e), 502);
   }
 }
 
