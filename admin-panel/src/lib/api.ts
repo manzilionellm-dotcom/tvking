@@ -987,24 +987,53 @@ export const mastersApi = {
       method: 'DELETE',
     }),
   // LISTE DE TEST INDÉPENDANTE d'un maître (petit M3U curé, < 5 chaînes).
+  // `gateway_user` = nom de l'identité de diffusion (le secret n'est JAMAIS
+  // réaffiché : `has_gateway_pass` dit seulement s'il est enregistré).
   getTestList: (mac: string) =>
-    request<{ mac: string; m3u: string; count: number; gateway_base: string; updated_at: number | null }>(
+    request<{
+      mac: string; m3u: string; count: number;
+      gateway_base: string; gateway_user: string; has_gateway_pass: boolean;
+      updated_at: number | null;
+    }>(
       `/api/v1/masters/test-list?mac=${encodeURIComponent(mac)}`,
     ),
-  putTestList: (mac: string, m3u: string, gatewayBase?: string) =>
-    request<{ ok: boolean; mac: string; count: number; gateway_base: string }>('/api/v1/masters/test-list', {
+  // `gatewayUser`/`gatewayPass` (optionnels) = identité de diffusion embarquée
+  // dans les URLs de test (masque la ligne fournisseur). Le mot de passe n'est
+  // envoyé que s'il change (le champ est laissé vide sinon → non écrasé).
+  putTestList: (
+    mac: string, m3u: string,
+    gatewayBase?: string, gatewayUser?: string, gatewayPass?: string,
+  ) =>
+    request<{
+      ok: boolean; mac: string; count: number;
+      gateway_base: string; gateway_user: string; has_gateway_pass: boolean;
+    }>('/api/v1/masters/test-list', {
       method: 'PUT',
-      body: { mac, m3u, gateway_base: gatewayBase || '' },
+      body: {
+        mac, m3u,
+        gateway_base: gatewayBase || '',
+        gateway_user: gatewayUser || '',
+        ...(gatewayPass ? { gateway_pass: gatewayPass } : {}),
+      },
     }),
   // COPIEUR INTELLIGENT : range toutes les chaînes en catégories, pour cocher
   // celles à partager en test. `paste` (optionnel) = TON lien Xtream / URL M3U
   // à copier ; `gatewayBase` (optionnel) = ta façade → URLs reconstruites sur
-  // le gateway (plus stable + privé).
-  channels: (mac: string, paste?: string, gatewayBase?: string) =>
+  // le gateway (plus stable + privé) ; `gatewayUser`/`gatewayPass` = identité
+  // de diffusion embarquée dans les URLs (masque la ligne fournisseur).
+  channels: (
+    mac: string, paste?: string,
+    gatewayBase?: string, gatewayUser?: string, gatewayPass?: string,
+  ) =>
     (paste && paste.trim()) || (gatewayBase && gatewayBase.trim())
       ? request<MasterChannelsResp>('/api/v1/masters/channels', {
           method: 'POST',
-          body: { mac, paste: (paste || '').trim(), gateway_base: (gatewayBase || '').trim() },
+          body: {
+            mac, paste: (paste || '').trim(),
+            gateway_base: (gatewayBase || '').trim(),
+            gateway_user: (gatewayUser || '').trim(),
+            ...(gatewayPass ? { gateway_pass: gatewayPass } : {}),
+          },
         })
       : request<MasterChannelsResp>(`/api/v1/masters/channels?mac=${encodeURIComponent(mac)}`),
   // BOÎTE NOIRE : diagnostic actif (façade en ligne, chaîne jouable…).

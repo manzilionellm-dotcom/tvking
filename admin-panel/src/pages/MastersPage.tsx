@@ -67,6 +67,12 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
   const [paste, setPaste] = useState('');
   // Façade (gateway) : URLs reconstruites dessus → plus stable + privé.
   const [gateway, setGateway] = useState('');
+  // Identité de DIFFUSION (= BROADCAST_USER/PASS du gateway) : embarquée dans
+  // les URLs de test → masque la ligne fournisseur. Le mot de passe n'est
+  // JAMAIS réaffiché ; `hasGwPass` dit seulement qu'il est enregistré.
+  const [gwUser, setGwUser] = useState('');
+  const [gwPass, setGwPass] = useState('');
+  const [hasGwPass, setHasGwPass] = useState(false);
 
   // Charge la liste déjà enregistrée → pré-coche les URLs connues.
   useEffect(() => {
@@ -76,6 +82,9 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
         setSavedCount(r.count || 0);
         setM3uText(r.m3u || '');
         setGateway(r.gateway_base || '');
+        setGwUser(r.gateway_user || '');
+        setHasGwPass(!!r.has_gateway_pass);
+        setGwPass(''); // le secret n'est jamais réaffiché
         const m = new Map<string, MasterChannel & { group: string }>();
         // Parse le M3U enregistré pour reconstituer la sélection (nom/url).
         const lines = (r.m3u || '').split(/\r?\n/);
@@ -105,8 +114,9 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
     setCopyErr(null); setCopying(true);
     try {
       // Si tu as collé un lien → on copie CELUI-LÀ ; sinon la ligne assignée.
-      // La façade (gateway) reconstruit les URLs dessus → stable + privé.
-      const r = await mastersApi.channels(mac, paste, gateway);
+      // La façade (gateway) reconstruit les URLs dessus → stable + privé, et
+      // l'identité de diffusion masque la ligne fournisseur dans les URLs.
+      const r = await mastersApi.channels(mac, paste, gateway, gwUser, gwPass);
       setCats(r.categories || []);
       setTruncated(!!r.truncated);
     } catch (e: any) {
@@ -130,9 +140,11 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
     setErr(null); setMsg(null); setBusy(true);
     try {
       const m3u = sel.size ? buildM3u(sel) : '';
-      const r = await mastersApi.putTestList(mac, m3u, gateway);
+      const r = await mastersApi.putTestList(mac, m3u, gateway, gwUser, gwPass);
       setSavedCount(r.count || 0);
       setM3uText(m3u);
+      setHasGwPass(!!r.has_gateway_pass);
+      if (gwPass) setGwPass(''); // secret enregistré → on vide le champ
       setMsg(r.count > 0
         ? `✅ Liste enregistrée — ${r.count} chaîne${r.count > 1 ? 's' : ''} partagée${r.count > 1 ? 's' : ''}.`
         : '✅ Liste vidée — les tests redonnent tout le bouquet.');
@@ -145,8 +157,10 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
   async function saveAdvanced() {
     setErr(null); setMsg(null); setBusy(true);
     try {
-      const r = await mastersApi.putTestList(mac, m3uText, gateway);
+      const r = await mastersApi.putTestList(mac, m3uText, gateway, gwUser, gwPass);
       setSavedCount(r.count || 0);
+      setHasGwPass(!!r.has_gateway_pass);
+      if (gwPass) setGwPass('');
       setMsg(`✅ M3U enregistré — ${r.count} chaîne(s).`);
     } catch (e: any) {
       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
@@ -222,7 +236,46 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
           Réglée une fois : je reconstruis toutes les chaînes copiées sur ton
           gateway → reconnexion auto, ligne de secours, tampon anti-coupure
           (plus stable que l'original, y compris au cast) et le fournisseur ne
-          voit qu'une IP. Vide = lecture directe (fonctionne, mais moins privé).
+          voit qu'une IP. Doit être en <strong>https://</strong> avec un vrai
+          domaine (pas une IP). Vide = lecture directe (fonctionne, moins privé).
+        </p>
+      </div>
+
+      {/* ===== Identité de diffusion : masque la ligne fournisseur ===== */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+            Utilisateur gateway (identité de diffusion)
+          </label>
+          <input
+            value={gwUser}
+            onChange={(e) => setGwUser(e.target.value)}
+            spellCheck={false}
+            placeholder="diffusion"
+            className="w-full rounded-md border border-white/5 bg-midnight px-3 py-2 font-mono text-xs outline-none focus:ring-1 focus:ring-accent"
+          />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+            Mot de passe gateway
+            {hasGwPass && <span className="ml-1 text-success">· enregistré</span>}
+          </label>
+          <input
+            value={gwPass}
+            onChange={(e) => setGwPass(e.target.value)}
+            spellCheck={false}
+            type="password"
+            autoComplete="new-password"
+            placeholder={hasGwPass ? '•••••••• (laisse vide pour conserver)' : 'secret partagé du gateway'}
+            className="w-full rounded-md border border-white/5 bg-midnight px-3 py-2 font-mono text-xs outline-none focus:ring-1 focus:ring-accent"
+          />
+        </div>
+        <p className="text-[11px] text-ink-tertiary sm:col-span-2">
+          Mêmes valeurs que <strong>BROADCAST_USER</strong> /{' '}
+          <strong>BROADCAST_PASS</strong> de ton gateway. Je les embarque dans
+          les URLs de test à la place de tes identifiants fournisseur → ta ligne
+          réelle <strong>n'apparaît jamais</strong> dans la liste servie. Le mot
+          de passe n'est jamais réaffiché.
         </p>
       </div>
 

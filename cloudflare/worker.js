@@ -56,7 +56,7 @@
 // Routee depuis le bas du fetch() en haut de la chaine de match.
 // verifyJwt est reutilise ici pour authentifier le WebSocket admin
 // (/api/v1/rt/ws) AVANT de forwarder au Durable Object temps reel.
-import { apiV1, verifyJwt } from './api_v1.js';
+import { apiV1, verifyJwt, validateFacadeBase } from './api_v1.js';
 // Temps réel (cf. cloudflare/realtime.js + docs/REALTIME-PROTOCOL.md) :
 // Durable Object « RealtimeHub » (WebSockets appareils + panel) et helper
 // publishRt() (publication fail-open après une mutation). La classe DO
@@ -3602,37 +3602,26 @@ async function handleInviteSelftest(env, rawMac) {
 //  assistant puisse voir la panne et la corriger tout de suite. Aucune donnée
 //  sensible (mot de passe, URL avec identifiants) n'est renvoyée.
 
-/// Cloudflare Workers ne peuvent PAS fetch une IP BRUTE (403/530). On mappe
-/// toute IPv4 en nom via nip.io (`<ip>.nip.io` résout vers `<ip>`), joignable
-/// depuis le worker ET l'app. Domaines inchangés.
-function _domainize(base) {
-  const s = String(base || '').trim();
-  if (!s) return s;
-  try {
-    const u = new URL(s);
-    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(u.hostname)) {
-      u.hostname = `${u.hostname}.nip.io`;
-      return u.toString().replace(/\/+$/, '');
-    }
-    return s;
-  } catch (_) { return s; }
-}
-
-/// Lit la façade (gateway_base) enregistrée pour un maître ('' si aucune).
+/// Lit la façade (gateway_base) enregistrée pour un maître ('' si aucune ou
+/// invalide). On revalide via le CONTRAT partagé (https + domaine) : une valeur
+/// héritée non conforme (ancienne IP « nip.io ») est ignorée proprement plutôt
+/// que servie comme si elle marchait.
 async function readMasterGatewayBase(env, mac) {
   try {
     const row = await env.DB
       .prepare('SELECT gateway_base FROM master_test_list WHERE mac = ?')
       .bind(String(mac).toUpperCase()).first();
-    return (row && row.gateway_base) ? _domainize(String(row.gateway_base)) : '';
+    const v = validateFacadeBase(row && row.gateway_base);
+    return v.ok ? v.base : '';
   } catch (_) { return ''; }
 }
 
 /// Sonde une URL sans télécharger le flux : on demande 2 octets, on lit le
 /// verdict (statut + latence), puis on annule le corps. Timeout dur.
-/// IP brute → nip.io (sinon Cloudflare renvoie 403/530 sur une IP directe).
+/// La sonde reflète la VRAIE joignabilité (plus de rewrite IP→nip.io qui
+/// donnait un « vert » mensonger) : une façade doit être un domaine https
+/// valide pour que ce résultat corresponde à la lecture réelle.
 async function _probeUrl(url, ms = 5000) {
-  url = _domainize(url);
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   const t0 = Date.now();

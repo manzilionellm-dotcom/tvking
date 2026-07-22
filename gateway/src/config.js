@@ -108,6 +108,24 @@ export const config = {
   // Fichier JSON des utilisateurs (papa + clones). Voir users.example.json.
   usersFile: str('USERS_FILE', '/data/users.json'),
 
+  // --- Identité de DIFFUSION (liste de test mutualisée) ---
+  // Utilisateur PARTAGÉ, en lecture seule, que le panel embarque dans les URLs
+  // de la petite liste de test (à la place des identifiants fournisseur → la
+  // ligne réelle n'apparaît jamais dans le M3U servi). Tous les testeurs
+  // l'emploient : le hub mutualise les chaînes identiques → le fournisseur ne
+  // voit qu'UNE connexion. Ces valeurs doivent correspondre à
+  // « Utilisateur/mot de passe gateway » saisis dans la console maître.
+  // Vide = pas d'identité de diffusion (repli identifiants fournisseur).
+  broadcastUser: str('BROADCAST_USER', ''),
+  broadcastPass: str('BROADCAST_PASS', ''),
+  // Plafond de TESTEURS SIMULTANÉS sur l'identité de diffusion. À NE PAS
+  // confondre avec PROVIDER_MAX_CONNECTIONS : ce dernier borne les connexions
+  // FOURNISSEUR (côté amont, dans hub.js) ; celui-ci borne les sessions CLIENT
+  // de l'identité partagée (côté aval). Comme les testeurs regardent les mêmes
+  // quelques chaînes, la mutualisation garde l'amont à ~1 connexion même avec
+  // beaucoup de testeurs → cette valeur peut être généreuse.
+  broadcastMaxStreams: int('BROADCAST_MAX_STREAMS', 100),
+
   // --- Journalisation ---
   logLevel: str('LOG_LEVEL', 'info'), // debug | info | warn | error
 };

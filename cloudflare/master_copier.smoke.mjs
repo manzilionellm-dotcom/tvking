@@ -1,28 +1,68 @@
 // Smoke test — COPIEUR INTELLIGENT + FAÇADE (gateway).
 // Vérifie les briques PURES qui rendent la copie stable + privée :
-//   • _cleanGatewayBase : normalise l'URL de façade collée par le maître ;
+//   • validateFacadeBase : CONTRAT strict de façade (https + domaine), qui
+//     remplace la rustine IP→nip.io. Refuse http/IP avec une raison précise ;
+//   • _cleanGatewayBase : origine propre (compat), '' si non conforme ;
 //   • _rewriteOrigin    : rebâtit une URL de chaîne SUR la façade (stabilité
 //     + confidentialité), sans casser le port ni la query ;
 //   • autoDetectSource  : « colle n'importe quoi » (lien Xtream ou URL M3U).
 // Lancer : node cloudflare/master_copier.smoke.mjs
 import assert from 'node:assert/strict';
-import { _cleanGatewayBase, _rewriteOrigin, autoDetectSource } from './api_v1.js';
+import {
+  validateFacadeBase, facadeReason, _cleanGatewayBase, _rewriteOrigin, autoDetectSource,
+} from './api_v1.js';
 
 let n = 0;
 const ok = (m) => { n++; console.log('  ✓', m); };
 
-// --- _cleanGatewayBase : origine propre, sans path ni slash final ----------
-assert.equal(_cleanGatewayBase('https://tv.moi.com/get.php?x=1'), 'https://tv.moi.com');
-ok('façade : path + query retirés → origine propre');
+// --- validateFacadeBase : contrat https + domaine (fin de la rustine nip.io) -
+let v = validateFacadeBase('https://tv.moi.com/get.php?x=1');
+assert.equal(v.ok, true);
+assert.equal(v.base, 'https://tv.moi.com'); // path + query retirés
+ok('façade : https + domaine → OK, origine propre');
 
-assert.equal(_cleanGatewayBase('http://tv.moi.com:9000/'), 'http://tv.moi.com:9000');
+v = validateFacadeBase('https://tv.moi.com:8443/');
+assert.equal(v.ok, true);
+assert.equal(v.base, 'https://tv.moi.com:8443'); // port conservé, slash retiré
 ok('façade : port conservé, slash final retiré');
 
-assert.equal(_cleanGatewayBase('pas une url'), '');
-ok('façade : entrée non-URL → vide (jamais d’erreur)');
+v = validateFacadeBase('http://tv.moi.com');
+assert.equal(v.ok, false);
+assert.equal(v.reason, 'not_https');
+assert.ok(/https/i.test(facadeReason(v.reason)));
+ok('façade : http:// REFUSÉ (raison actionnable) — plus de faux « vert »');
+
+v = validateFacadeBase('https://203.0.113.7:8088');
+assert.equal(v.ok, false);
+assert.equal(v.reason, 'ip_literal');
+assert.ok(/IP/i.test(facadeReason(v.reason)));
+ok('façade : IP brute REFUSÉE (le Worker ne joint pas une IP) — nip.io supprimé');
+
+v = validateFacadeBase('https://localhost');
+assert.equal(v.ok, false);
+assert.equal(v.reason, 'not_domain');
+ok('façade : hôte sans domaine (localhost) refusé');
+
+v = validateFacadeBase('pas une url');
+assert.equal(v.ok, false);
+assert.equal(v.reason, 'no_scheme');
+ok('façade : entrée non-URL → refus (jamais d’erreur)');
+
+v = validateFacadeBase('');
+assert.equal(v.ok, false);
+assert.equal(v.reason, 'empty');
+assert.equal(facadeReason('empty'), ''); // vide = lecture directe assumée, pas une erreur
+ok('façade : vide → non-OK mais message vide (repli assumé)');
+
+// --- _cleanGatewayBase : compat (chaîne) au-dessus du contrat ---------------
+assert.equal(_cleanGatewayBase('https://tv.moi.com/get.php?x=1'), 'https://tv.moi.com');
+ok('cleanGatewayBase : façade valide → origine propre');
+
+assert.equal(_cleanGatewayBase('http://tv.moi.com:9000/'), '');
+ok('cleanGatewayBase : http:// non conforme → vide');
 
 assert.equal(_cleanGatewayBase(''), '');
-ok('façade : vide → vide');
+ok('cleanGatewayBase : vide → vide');
 
 // --- _rewriteOrigin : lecture reconstruite SUR la façade -------------------
 // Façade sans port → l'ancien port du fournisseur DOIT disparaître (bug WHATWG

@@ -3278,48 +3278,97 @@ async function ensureMasterListTable(env) {
   try {
     await env.DB.prepare('ALTER TABLE master_test_list ADD COLUMN gateway_base TEXT').run();
   } catch (_) { /* colonne déjà là */ }
-}
-
-// Cloudflare Workers ne peuvent PAS fetch une IP BRUTE (renvoie 403/530). On
-// transforme donc toute IPv4 en NOM via nip.io (`<ip>.nip.io` résout vers
-// `<ip>`, service DNS public gratuit) → la façade devient joignable depuis le
-// worker (panel + diagnostic + copieur) ET depuis l'app. Domaines inchangés.
-export function _domainize(base) {
-  const s = String(base || '').trim();
-  if (!s) return s;
+  // IDENTITÉ DE DIFFUSION (gateway_user / gateway_pass) : l'utilisateur PARTAGÉ,
+  // en lecture seule, que le gateway reconnaît (BROADCAST_USER/PASS côté
+  // passerelle). Le copieur l'embarque dans les URLs de test À LA PLACE des
+  // identifiants fournisseur → la ligne réelle n'apparaît JAMAIS dans le M3U
+  // servi (confidentialité), et l'URL est réellement jouable via la façade.
+  // Migrations additives idempotentes.
   try {
-    const u = new URL(s);
-    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(u.hostname)) {
-      u.hostname = `${u.hostname}.nip.io`;
-      return u.toString().replace(/\/+$/, '');
-    }
-    return s;
-  } catch (_) { return s; }
+    await env.DB.prepare('ALTER TABLE master_test_list ADD COLUMN gateway_user TEXT').run();
+  } catch (_) { /* colonne déjà là */ }
+  try {
+    await env.DB.prepare('ALTER TABLE master_test_list ADD COLUMN gateway_pass TEXT').run();
+  } catch (_) { /* colonne déjà là */ }
 }
 
-// Nettoie une base gateway collée → origine propre (schéma+hôte+port), sans
-// slash final ni path, et IP brute → nip.io (joignable depuis Cloudflare).
-// '' si vide/invalide.
-export function _cleanGatewayBase(raw) {
+// =========================================================
+//  CONTRAT DE FAÇADE (gateway) — joignable de façon FIABLE par le Worker
+// =========================================================
+//  Un Worker Cloudflare fetch de façon fiable un DOMAINE public en HTTPS
+//  VALIDE, mais ÉCHOUE (403/530) sur une IP brute, et ne peut pas valider le
+//  TLS d'un hôte sans certificat (ex. une IP, un `nip.io`). L'ancienne rustine
+//  IP→nip.io donnait un « vert » MENSONGER (la sonde passait parfois en HTTP
+//  clair, alors que la lecture réelle, elle, ne passait pas). On la remplace
+//  par un CONTRAT strict et honnête : la façade DOIT être
+//    • en https://   (certificat valide → le Worker la joint vraiment) ;
+//    • un vrai domaine (nom d'hôte avec un point + une lettre) → un cert
+//      Let's Encrypt existe (voir gateway/README : Caddy + renouvellement auto).
+//  Toute IP brute / http:// / hôte sans domaine est REFUSÉE, avec une raison
+//  actionnable (au lieu d'être « réparée » en douce vers un état non joignable).
+//  Renvoie { ok, base, reason }. `base` = origine propre (schéma+hôte+port),
+//  sans path ni slash final.
+export function validateFacadeBase(raw) {
   const s = String(raw || '').trim();
-  if (!s) return '';
-  if (!/^https?:\/\//i.test(s)) return '';
-  try {
-    const u = new URL(s);
-    const port = u.port ? `:${u.port}` : '';
-    return _domainize(`${u.protocol}//${u.hostname}${port}`);
-  } catch (_) { return ''; }
+  if (!s) return { ok: false, base: '', reason: 'empty' };
+  if (!/^https?:\/\//i.test(s)) return { ok: false, base: '', reason: 'no_scheme' };
+  let u;
+  try { u = new URL(s); } catch (_) { return { ok: false, base: '', reason: 'bad_url' }; }
+  if (u.protocol !== 'https:') return { ok: false, base: '', reason: 'not_https' };
+  const host = u.hostname;
+  // IPv4 brute → refusée (pas de cert valide ; le Worker ne fetch pas une IP).
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return { ok: false, base: '', reason: 'ip_literal' };
+  // IPv6 littéral (`[…]`) → refusé pour les mêmes raisons.
+  if (host.includes(':') || host.startsWith('[')) return { ok: false, base: '', reason: 'ip_literal' };
+  // Domaine = au moins un point ET une lettre (ex. tv.mondomaine.com).
+  if (!/[a-zA-Z]/.test(host) || !host.includes('.')) return { ok: false, base: '', reason: 'not_domain' };
+  const port = u.port ? `:${u.port}` : '';
+  return { ok: true, base: `${u.protocol}//${host}${port}`, reason: '' };
 }
 
-// Lit la base gateway enregistrée pour un maître ('' si aucune).
-async function _readGatewayBase(env, mac) {
+// Message HUMAIN + ACTIONNABLE pour une raison de rejet de façade. '' si valide
+// ou champ vide (vide = lecture directe assumée, pas une erreur).
+export function facadeReason(reason) {
+  switch (reason) {
+    case 'empty': return '';
+    case 'no_scheme':
+    case 'bad_url':
+      return 'URL de façade invalide : commence par https:// (ex. https://tv.mondomaine.com).';
+    case 'not_https':
+      return 'La façade doit être en https:// avec un certificat valide — http n’est pas joignable de façon fiable depuis le relais Cloudflare.';
+    case 'ip_literal':
+      return 'Adresse IP interdite : le relais ne joint pas une IP brute. Mets un vrai domaine (Caddy + Let’s Encrypt, voir gateway/README).';
+    case 'not_domain':
+      return 'Nom d’hôte invalide : utilise un domaine complet (ex. tv.mondomaine.com).';
+    default: return 'Façade invalide.';
+  }
+}
+
+// Nettoie une base gateway collée → origine https propre, ou '' si vide/invalide
+// (compat : le reste du code lit une chaîne). Voir validateFacadeBase pour le
+// contrat et la raison détaillée.
+export function _cleanGatewayBase(raw) {
+  const v = validateFacadeBase(raw);
+  return v.ok ? v.base : '';
+}
+
+// Lit la façade + l'identité de diffusion enregistrées pour un maître.
+// Renvoie { base, user, pass } — base '' si aucune façade valide.
+async function _readGatewayCreds(env, mac) {
   try {
     await ensureMasterListTable(env);
     const row = await env.DB
-      .prepare('SELECT gateway_base FROM master_test_list WHERE mac = ?').bind(mac).first();
-    // domainize : les anciennes valeurs stockées en IP brute deviennent nip.io.
-    return (row && row.gateway_base) ? _domainize(String(row.gateway_base)) : '';
-  } catch (_) { return ''; }
+      .prepare('SELECT gateway_base, gateway_user, gateway_pass FROM master_test_list WHERE mac = ?')
+      .bind(mac).first();
+    if (!row) return { base: '', user: '', pass: '' };
+    // On revalide à la lecture : une valeur héritée invalide (ancienne IP) est
+    // ignorée proprement plutôt que servie comme si elle marchait.
+    return {
+      base: _cleanGatewayBase(row.gateway_base),
+      user: String(row.gateway_user || ''),
+      pass: String(row.gateway_pass || ''),
+    };
+  } catch (_) { return { base: '', user: '', pass: '' }; }
 }
 
 // Compte les chaînes d'un M3U (lignes #EXTINF). Sert d'indicateur au panel.
@@ -3335,11 +3384,15 @@ async function handleMasterTestListGet(request, env) {
   if (!_MASTER_MAC_RX.test(mac)) return errResp('bad_mac', 'MAC maître invalide.', 400);
   await ensureMasterListTable(env);
   const row = await env.DB
-    .prepare('SELECT m3u, gateway_base, updated_at FROM master_test_list WHERE mac = ?').bind(mac).first();
+    .prepare('SELECT m3u, gateway_base, gateway_user, updated_at FROM master_test_list WHERE mac = ?').bind(mac).first();
   const m3u = (row && row.m3u) ? String(row.m3u) : '';
   return jsonResp({
     mac, m3u, count: _countM3uChannels(m3u),
     gateway_base: (row && row.gateway_base) || '',
+    // On expose le NOM de l'identité de diffusion (jamais le mot de passe) pour
+    // que le panel puisse pré-remplir le champ sans jamais réafficher le secret.
+    gateway_user: (row && row.gateway_user) || '',
+    has_gateway_pass: !!(row && row.gateway_pass),
     updated_at: (row && row.updated_at) || null,
   });
 }
@@ -3352,19 +3405,40 @@ async function handleMasterTestListPut(request, env) {
   // On garde une liste VOLONTAIREMENT petite : indépendance = peu de chaînes
   // partagées. Plafond souple à 50 lignes / 64 Ko (garde-fou, pas une police).
   const m3u = String(body?.m3u || '').slice(0, 64 * 1024);
-  const gateway = _cleanGatewayBase(body?.gateway_base);
+  // FAÇADE : on VALIDE avec un message actionnable au lieu de « réparer » en
+  // silence (fini le nip.io mensonger). Champ vide = lecture directe assumée.
+  const rawGateway = String(body?.gateway_base || '').trim();
+  const fac = validateFacadeBase(rawGateway);
+  if (rawGateway && !fac.ok) {
+    return errResp('bad_facade', facadeReason(fac.reason), 400);
+  }
+  const gateway = fac.ok ? fac.base : '';
+  // IDENTITÉ DE DIFFUSION (optionnelle) : nom + mot de passe partagés du
+  // gateway. Le mot de passe n'est mis à jour que s'il est fourni non vide
+  // (le panel ne le renvoie pas → on ne l'écrase pas par du vide).
+  const gwUser = String(body?.gateway_user || '').trim();
+  const gwPassRaw = body?.gateway_pass;
+  const gwPass = (typeof gwPassRaw === 'string') ? gwPassRaw.trim() : null;
   const count = _countM3uChannels(m3u);
   await ensureMasterListTable(env);
-  // Liste vide ET pas de gateway → on efface la ligne. Sinon on garde la
-  // gateway_base même sans chaînes (le maître l'a réglée une fois pour toutes).
-  if (!m3u.trim() && !gateway) {
+  // Liste vide ET pas de gateway ET pas d'identité → on efface la ligne. Sinon
+  // on garde les réglages même sans chaînes (le maître les a posés une fois).
+  if (!m3u.trim() && !gateway && !gwUser) {
     await env.DB.prepare('DELETE FROM master_test_list WHERE mac = ?').bind(mac).run();
-    return jsonResp({ ok: true, mac, count: 0, gateway_base: '' });
+    return jsonResp({ ok: true, mac, count: 0, gateway_base: '', gateway_user: '', has_gateway_pass: false });
   }
+  // Lit l'ancien mot de passe pour ne pas l'effacer si le panel ne le renvoie
+  // pas (le secret n'est jamais réaffiché → il n'est pas dans le corps).
+  const prev = await env.DB
+    .prepare('SELECT gateway_pass FROM master_test_list WHERE mac = ?').bind(mac).first();
+  const finalPass = (gwPass && gwPass.length) ? gwPass : (prev && prev.gateway_pass) || null;
   await env.DB
-    .prepare('INSERT OR REPLACE INTO master_test_list (mac, m3u, gateway_base, updated_at) VALUES (?, ?, ?, ?)')
-    .bind(mac, m3u || '', gateway || null, Date.now()).run();
-  return jsonResp({ ok: true, mac, count, gateway_base: gateway });
+    .prepare('INSERT OR REPLACE INTO master_test_list (mac, m3u, gateway_base, gateway_user, gateway_pass, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(mac, m3u || '', gateway || null, gwUser || null, gwUser ? finalPass : null, Date.now()).run();
+  return jsonResp({
+    ok: true, mac, count, gateway_base: gateway,
+    gateway_user: gwUser, has_gateway_pass: !!(gwUser && finalPass),
+  });
 }
 
 // =========================================================
@@ -3411,17 +3485,31 @@ async function _readFirstSource(env, mac) {
 }
 
 // Copie Xtream : catégories live + chaînes live (player_api.php).
-// [gatewayBase] : si fourni, les URLs de lecture sont bâties SUR le gateway
-// (façade) au lieu du fournisseur → plus stable (reconnexion/failover/tampon)
-// et privé (une seule IP). On lit toujours la LISTE depuis le fournisseur, mais
-// on JOUE via le gateway (mêmes stream_id — le gateway proxifie la même ligne).
-async function _copyXtream(src, gatewayBase = '') {
-  // IP brute → nip.io : le worker Cloudflare ne peut fetch une IP directe.
-  const base = _domainize(String(src.server_url || '').replace(/\/+$/, ''));
-  const play = _domainize((gatewayBase || base).replace(/\/+$/, '')); // origine de LECTURE
-  const user = String(src.username || '');
-  const pass = String(src.password || '');
-  const auth = `username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`;
+// [gatewayBase] : si fourni (façade https valide), les URLs de LECTURE sont
+// bâties SUR le gateway au lieu du fournisseur → plus stable (reconnexion/
+// failover/tampon) et privé (une seule IP). On lit toujours la LISTE depuis le
+// fournisseur (par son domaine, que le Worker joint), mais on JOUE via le
+// gateway.
+// [gwUser]/[gwPass] : IDENTITÉ DE DIFFUSION (BROADCAST_USER/PASS du gateway).
+// Quand elle est fournie avec une façade, les URLs de test portent CETTE
+// identité partagée — les identifiants FOURNISSEUR n'apparaissent JAMAIS dans
+// le M3U servi (confidentialité) et l'URL est réellement jouable (le gateway
+// authentifie l'identité de diffusion). Sans identité → repli sur les
+// identifiants fournisseur (fonctionne si le gateway fait un passthrough, mais
+// moins privé : voir README).
+async function _copyXtream(src, gatewayBase = '', gwUser = '', gwPass = '') {
+  // Le fournisseur est joint par son DOMAINE (le Worker le fetch sans souci).
+  const base = String(src.server_url || '').replace(/\/+$/, '');
+  const play = (gatewayBase || base).replace(/\/+$/, ''); // origine de LECTURE
+  const provUser = String(src.username || '');
+  const provPass = String(src.password || '');
+  // Identité PORTÉE par les URLs de lecture : diffusion si façade + identité,
+  // sinon identifiants fournisseur (repli).
+  const useBroadcast = !!(gatewayBase && gwUser && gwPass);
+  const user = useBroadcast ? String(gwUser) : provUser;
+  const pass = useBroadcast ? String(gwPass) : provPass;
+  // La LISTE est toujours lue avec les identifiants FOURNISSEUR (côté Worker).
+  const auth = `username=${encodeURIComponent(provUser)}&password=${encodeURIComponent(provPass)}`;
   let cats = [];
   let streams = [];
   try {
@@ -3479,8 +3567,9 @@ export function _rewriteOrigin(u, gatewayBase) {
 // [gatewayBase] : si fourni, l'origine de chaque URL est réécrite vers le
 // gateway (le gateway doit proxifier ces chemins — cas d'une façade Xtream).
 async function _copyM3u(src, gatewayBase = '') {
-  gatewayBase = _domainize(gatewayBase);
-  const res = await _fetchWithTimeout(_domainize(String(src.m3u_url || '')));
+  // La façade est déjà validée (https + domaine) en amont ; on la prend telle
+  // quelle. La playlist source est lue par son URL d'origine (domaine).
+  const res = await _fetchWithTimeout(String(src.m3u_url || ''));
   if (!res.ok) throw new Error('provider_http_' + res.status);
   const text = await res.text();
   const lines = text.split(/\r?\n/);
@@ -3522,11 +3611,15 @@ async function handleMasterChannels(request, env) {
   let mac = String(url.searchParams.get('mac') || '').toUpperCase();
   let inline = null;
   let gatewayReq = '';
+  let gwUserReq = '';
+  let gwPassReq = '';
   if (request.method === 'POST') {
     let body;
     try { body = await request.json(); } catch (_) { return errResp('bad_json', 'Invalid JSON', 400); }
     if (body && body.mac) mac = String(body.mac).toUpperCase();
     if (body && body.gateway_base) gatewayReq = _cleanGatewayBase(body.gateway_base);
+    if (body && body.gateway_user) gwUserReq = String(body.gateway_user).trim();
+    if (body && body.gateway_pass) gwPassReq = String(body.gateway_pass).trim();
     // Blob collé par le maître : lien Xtream, URL M3U, ou identifiants à plat.
     const blob = body && (body.paste || body.url || body.source);
     if (blob || (body && (body.server_url || body.m3u_url))) {
@@ -3543,13 +3636,18 @@ async function handleMasterChannels(request, env) {
     return errResp('no_source',
       'Aucune source : colle ton lien Xtream ou ton M3U ci-dessus, ou assigne une ligne à ce maître dans le panel.', 404);
   }
-  // Façade (gateway) de LECTURE : celle envoyée avec la requête, sinon celle
-  // déjà enregistrée pour ce maître. Vide → lecture directe (moins privée).
-  const gateway = gatewayReq || await _readGatewayBase(env, mac);
+  // Façade (gateway) + identité de diffusion de LECTURE : celles envoyées avec
+  // la requête, sinon celles déjà enregistrées pour ce maître. Façade vide →
+  // lecture directe (moins privée). Identité vide → repli identifiants
+  // fournisseur (moins privé) — voir _copyXtream.
+  const saved = await _readGatewayCreds(env, mac);
+  const gateway = gatewayReq || saved.base;
+  const gwUser = gwUserReq || saved.user;
+  const gwPass = gwPassReq || saved.pass;
   try {
     let out;
     if (src.type === 'xtream' && src.server_url && src.username && src.password) {
-      out = await _copyXtream(src, gateway);
+      out = await _copyXtream(src, gateway, gwUser, gwPass);
     } else if (src.m3u_url) {
       out = await _copyM3u(src, gateway);
     } else {
@@ -3580,9 +3678,10 @@ async function handleMasterChannels(request, env) {
 //  passe, URL avec identifiants) n'est renvoyée — seulement statut + latence.
 
 /// Sonde une URL sans télécharger le flux (2 octets, puis annule le corps).
-/// IP brute → nip.io (sinon Cloudflare renvoie 403/530 sur une IP directe).
+/// La sonde reflète la VRAIE joignabilité : plus aucun rewrite IP→nip.io qui
+/// donnait un « vert » mensonger. Une façade doit être un domaine https valide
+/// (contrat validateFacadeBase) pour que ce résultat corresponde à la lecture.
 async function _probeUrl(url, ms = 5000) {
-  url = _domainize(url);
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   const t0 = Date.now();
@@ -3619,17 +3718,24 @@ async function handleMasterDiag(request, env) {
     src ? `Type ${src.type || '?'}${sHost ? ' · ' + sHost : ''}.` : 'Aucune ligne assignée à ce maître.',
     src ? '' : 'Assigne une ligne, ou colle un lien dans « Liste de test ».');
 
-  // 3) Façade en ligne ?
-  const gw = await _readGatewayBase(env, mac);
+  // 3) Façade en ligne ? (façade = https + domaine valide, réellement joignable)
+  const gwc = await _readGatewayCreds(env, mac);
+  const gw = gwc.base;
   if (gw) {
     const p = await _probeUrl(gw, 5000);
     add('gateway', p.ok ? 0 : 1, 'Façade (gateway) en ligne',
-      p.ok ? `Ta façade répond (${p.ms} ms).` : `Façade injoignable (${p.error || p.status}).`,
-      p.ok ? '' : 'Vérifie que ton gateway tourne et que l’URL est exacte.');
+      p.ok ? `Ta façade https répond (${p.ms} ms).` : `Façade injoignable (${p.error || p.status}).`,
+      p.ok ? '' : 'Vérifie que ton gateway tourne (Caddy + HTTPS) et que le domaine est exact.');
+    // 3b) Identité de diffusion : sans elle, les URLs de test portent les
+    // identifiants FOURNISSEUR (moins privé). Avec elle → ligne réelle masquée.
+    add('broadcast_id', gwc.user ? 0 : 1, 'Identité de diffusion',
+      gwc.user ? 'Identité partagée réglée → identifiants fournisseur masqués dans le M3U servi.'
+               : 'Aucune identité de diffusion → les URLs de test portent tes identifiants fournisseur.',
+      gwc.user ? '' : 'Renseigne « Utilisateur/mot de passe gateway » (= BROADCAST_USER/PASS du gateway).');
   } else {
     add('gateway', 1, 'Façade (gateway)',
-      'Aucune façade réglée → lecture directe (moins stable/privée).',
-      'Renseigne « Ta façade (gateway) » ci-dessus.');
+      'Aucune façade https valide réglée → lecture directe (moins stable/privée).',
+      'Renseigne « Ta façade (gateway) » en https:// (domaine, pas une IP).');
   }
 
   // 4) Liste de test + 5) sonde 1re chaîne.

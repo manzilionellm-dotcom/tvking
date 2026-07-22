@@ -50,6 +50,25 @@ function reindex() {
       });
     }
   }
+  // IDENTITÉ DE DIFFUSION (env-only, JAMAIS persistée dans users.json) : un
+  // utilisateur partagé en lecture seule pour la petite liste de test
+  // mutualisée. Elle est injectée ici, APRÈS le modèle de fichier, pour
+  // survivre aux rechargements à chaud sans jamais être écrite sur disque ni
+  // exposée au CRUD. Son maxStreams borne les TESTEURS simultanés (pas les
+  // connexions fournisseur — celles-ci restent plafonnées dans hub.js).
+  if (config.broadcastUser && config.broadcastPass) {
+    const bMax = Number.isFinite(config.broadcastMaxStreams) && config.broadcastMaxStreams > 0
+      ? config.broadcastMaxStreams : 100;
+    const BFAM = '__broadcast__';
+    nextFams.set(BFAM, { id: BFAM, maxStreams: bMax });
+    nextUsers.set(String(config.broadcastUser), {
+      username: String(config.broadcastUser),
+      password: String(config.broadcastPass),
+      familyId: BFAM,
+      maxStreams: bMax,
+      broadcast: true,
+    });
+  }
   byUsername = nextUsers;
   familyIndex = nextFams;
 }
