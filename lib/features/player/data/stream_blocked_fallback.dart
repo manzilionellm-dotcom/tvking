@@ -143,6 +143,18 @@ class StreamBlockedFallback {
     _relaySub = null;
   }
 
+  /// À appeler quand une IMAGE RÉELLE vient d'être décodée (lecture saine).
+  /// RÉARME les gardes anti-boucle (correctif d'audit) : sans ça, un
+  /// aller-retour de zap vers une chaîne déjà diagnostiquée dans la même
+  /// session d'écran partait DIRECTEMENT en « bloquée » sans re-sonder, et le
+  /// backoff 1-connexion ne se rejouait jamais — alors que le créneau peut
+  /// désormais être libre. Une lecture réussie prouve que l'incident précédent
+  /// est résolu : le prochain échec mérite un diagnostic neuf.
+  void noteFramesDecoded() {
+    _attemptedForChannelId = null;
+    _backoffConsumedForChannelId = null;
+  }
+
   void _onRelayFailure(RelayFailure failure) {
     if (!isAlive()) return; // écran fermé : rien à faire ni à journaliser
     final String failedUrl = failure.url;

@@ -30,8 +30,16 @@ import '../i18n/l10n_extension.dart';
 /// Affiche un dialogue si nécessaire (cellulaire). Fail-open.
 Future<bool> guardCellularPlayback(BuildContext context) async {
   try {
+    // TIMEOUT (correctif d'audit) : `checkConnectivity` est le point de
+    // passage UNIQUE de `playChannel`. Si le plugin natif pend (constaté sur
+    // certaines box), la lecture ne démarrait JAMAIS — à l'encontre du
+    // fail-open annoncé. On borne l'attente à 3 s ; au-delà, on considère le
+    // réseau « non cellulaire » et on laisse passer (fail-open explicite).
     final List<ConnectivityResult> conn =
-        await Connectivity().checkConnectivity();
+        await Connectivity().checkConnectivity().timeout(
+              const Duration(seconds: 3),
+              onTimeout: () => const <ConnectivityResult>[],
+            );
 
     final bool onWifiOrEthernet = conn.contains(ConnectivityResult.wifi) ||
         conn.contains(ConnectivityResult.ethernet);

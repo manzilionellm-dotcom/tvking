@@ -1817,6 +1817,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (_playedChannelId != _currentChannel.id) {
       _playedChannelId = _currentChannel.id;
 
+      // Lecture saine → on réarme les gardes anti-boucle du fallback : un
+      // aller-retour de zap vers cette chaîne re-sondera au lieu de la
+      // déclarer « bloquée » sur la mémoire d'un incident déjà résolu.
+      _fallback.noteFramesDecoded();
+
       // STREAK D'ENGAGEMENT : on marque « journée regardée » dès la 1ʳᵉ
       // frame réelle. Idempotent dans la journée (cf. EngagementService).
       unawaited(EngagementService.instance.registerWatch());
