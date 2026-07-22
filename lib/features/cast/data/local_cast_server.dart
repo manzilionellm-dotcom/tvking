@@ -22,6 +22,7 @@
 // =========================================================
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' show Random;
 
@@ -812,9 +813,15 @@ class LocalCastServer {
       req.response.write('{"url":null}');
     } else {
       final String ext = e.profile.fileExtension;
-      final String t =
-          _browserTitle.replaceAll('"', '').replaceAll(r'\', '');
-      req.response.write('{"url":"/relay/$tok.$ext","title":"$t"}');
+      // SÉRIALISATION VIA jsonEncode (correctif d'audit) : le titre vient d'un
+      // M3U et peut contenir des caractères de contrôle (\n, \r, \t, U+0000…)
+      // qu'un simple retrait de guillemets ne neutralisait pas → JSON invalide
+      // → la page /screen cassait son poll(). jsonEncode échappe tout
+      // correctement.
+      req.response.write(jsonEncode(<String, String>{
+        'url': '/relay/$tok.$ext',
+        'title': _browserTitle,
+      }));
     }
     await req.response.close();
   }

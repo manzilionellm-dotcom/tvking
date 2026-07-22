@@ -72,6 +72,24 @@ abstract final class SourceLinkUtils {
     return 'http://$s';
   }
 
+  /// Schémas AUTORISÉS pour une source de PLAYLIST/panel (M3U, Xtream) :
+  /// uniquement http/https. Un lien de FLUX peut être rtmp/rtsp/udp, mais une
+  /// SOURCE collée par l'utilisateur qui n'est pas http(s) (`file://`,
+  /// `gopher://`, `javascript:`…) est soit une erreur, soit une tentative
+  /// d'injection (lire un fichier local, sonder un service interne). On la
+  /// refuse en amont plutôt que de la fetcher aveuglément.
+  static const Set<String> _allowedSourceSchemes = <String>{'http', 'https'};
+
+  /// `true` si [url] (après complétion de schéma) est une source http(s)
+  /// exploitable. Sert de VALIDATION D'ENTRÉE avant tout fetch d'une URL
+  /// collée par l'utilisateur (correctif d'audit — anti-injection/SSRF).
+  static bool isAllowedSourceUrl(String url) {
+    final String s = ensureScheme(url);
+    final Uri? uri = Uri.tryParse(s);
+    if (uri == null || uri.host.isEmpty) return false;
+    return _allowedSourceSchemes.contains(uri.scheme.toLowerCase());
+  }
+
   /// Fichiers d'API/portail connus qu'un client colle souvent avec le
   /// lien complet : ils ne font PAS partie de l'adresse du serveur.
   static final RegExp _xtreamEndpointRx = RegExp(

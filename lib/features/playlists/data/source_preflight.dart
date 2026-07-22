@@ -62,6 +62,14 @@ abstract final class SourcePreflight {
           'Cette adresse ne ressemble pas à un lien — vérifie les points '
           'et les deux-points.');
     }
+    // VALIDATION D'ENTRÉE (anti-injection) : une source de playlist doit être
+    // http(s). On refuse tout autre schéma (file://, gopher://…) AVANT de
+    // fetcher — sinon un lien hostile pourrait faire lire un fichier local ou
+    // sonder un service interne (cf. SourceLinkUtils.isAllowedSourceUrl).
+    if (!SourceLinkUtils.isAllowedSourceUrl(cleaned)) {
+      throw SourcePreflightException(
+          'Seuls les liens http:// ou https:// sont acceptés pour une source.');
+    }
     final http.Client client = httpClient ?? createIptvHttpClient();
     final bool owns = httpClient == null;
     try {

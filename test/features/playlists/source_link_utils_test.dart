@@ -118,4 +118,27 @@ void main() {
           isNull);
     });
   });
+
+  group('isAllowedSourceUrl (validation anti-injection)', () {
+    test('accepte http et https (schéma explicite ou complété)', () {
+      expect(SourceLinkUtils.isAllowedSourceUrl('http://s.com:8080'), isTrue);
+      expect(SourceLinkUtils.isAllowedSourceUrl('https://s.com/list.m3u'),
+          isTrue);
+      // Sans schéma → complété en http:// → accepté.
+      expect(SourceLinkUtils.isAllowedSourceUrl('s.com:8080/get.php'), isTrue);
+    });
+
+    test('refuse les schémas dangereux (file, gopher, javascript, data)', () {
+      expect(SourceLinkUtils.isAllowedSourceUrl('file:///etc/passwd'), isFalse);
+      expect(SourceLinkUtils.isAllowedSourceUrl('gopher://h/1'), isFalse);
+      expect(
+          SourceLinkUtils.isAllowedSourceUrl('javascript:alert(1)'), isFalse);
+      expect(SourceLinkUtils.isAllowedSourceUrl('data:text/plain,hi'), isFalse);
+    });
+
+    test('refuse une entrée vide ou sans hôte', () {
+      expect(SourceLinkUtils.isAllowedSourceUrl(''), isFalse);
+      expect(SourceLinkUtils.isAllowedSourceUrl('http://'), isFalse);
+    });
+  });
 }

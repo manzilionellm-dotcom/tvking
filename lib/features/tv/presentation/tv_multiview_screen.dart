@@ -69,8 +69,8 @@ class _TvMultiViewScreenState extends State<TvMultiViewScreen>
   // pas de lecture (ni de SON) en arrière-plan sur TV. Le natif a en plus son
   // propre couvre-feu (pauseAll à l'onStop de l'activité) — ceinture et
   // bretelles. Au retour, les connexions des deux flux LIVE sont probablement
-  // mortes : on RE-OUVRE les deux URLs (retour au direct immédiat, sans gel) ;
-  // la tuile inactive garde son volume à 0 (le volume survit au setUrl).
+  // mortes : on RE-OUVRE les deux URLs (retour au direct immédiat, sans gel)
+  // et on RÉ-APPLIQUE le volume par tuile.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
@@ -83,6 +83,11 @@ class _TvMultiViewScreenState extends State<TvMultiViewScreen>
       case AppLifecycleState.resumed:
         for (int k = 0; k < _ctrl.length; k++) {
           _ctrl[k].setUrl(_two[k].streamUrl);
+          // RÉ-APPLIQUE le volume (correctif d'audit) : on ne SUPPOSE plus que
+          // le volume survit à setUrl (comportement natif non garanti). Sans
+          // ça, si native_video_player remet le volume à 1.0 sur setUrl, les
+          // DEUX tuiles émettaient du son au retour de veille.
+          _ctrl[k].setVolume(k == _active ? 1.0 : 0.0);
         }
       case AppLifecycleState.inactive:
         break; // transitions brèves (dialogue…) → on ne coupe pas
