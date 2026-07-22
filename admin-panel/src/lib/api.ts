@@ -1042,6 +1042,24 @@ export const mastersApi = {
   // BOÎTE NOIRE : diagnostic actif (façade en ligne, chaîne jouable…).
   diag: (mac: string) =>
     request<MasterDiag>(`/api/v1/masters/diag?mac=${encodeURIComponent(mac)}`),
+  // BIBLIOTHÈQUE CINÉMA : importe le catalogue de films (affiches + genre +
+  // langue). `paste`/`gateway*` comme le copieur de chaînes. Les films sont
+  // joués à la demande via le gateway — on n'importe QUE le catalogue.
+  vod: (
+    mac: string, paste?: string,
+    gatewayBase?: string, gatewayUser?: string, gatewayPass?: string,
+  ) =>
+    (paste && paste.trim()) || (gatewayBase && gatewayBase.trim())
+      ? request<MasterVodResp>('/api/v1/masters/vod', {
+          method: 'POST',
+          body: {
+            mac, paste: (paste || '').trim(),
+            gateway_base: (gatewayBase || '').trim(),
+            gateway_user: (gatewayUser || '').trim(),
+            ...(gatewayPass ? { gateway_pass: gatewayPass } : {}),
+          },
+        })
+      : request<MasterVodResp>(`/api/v1/masters/vod?mac=${encodeURIComponent(mac)}`),
   // ---- TESTS DEPUIS LE PANEL : donner, suivre, prolonger, révoquer --------
   // SUIVI : tous les tests émis par des comptes maîtres (app OU panel).
   tests: () =>
@@ -1131,6 +1149,30 @@ export interface MasterCategory {
   id: string;
   name: string;
   channels: MasterChannel[];
+}
+
+// ---- Bibliothèque Cinéma (VOD) --------------------------------------------
+export interface MasterMovie {
+  id: string;
+  name: string;
+  poster: string;      // affiche (tvg-logo / stream_icon)
+  rating: string;
+  lang: string;        // 'FR' | 'EN' | 'AR' | 'ES' | '' (inconnu)
+  url: string;         // URL de lecture (via gateway) — jouée à la demande
+}
+export interface MasterVodCategory {
+  id: string;
+  name: string;        // genre
+  lang: string;
+  movies: MasterMovie[];
+}
+export interface MasterVodResp {
+  mac: string;
+  type: string;
+  source_label: string | null;
+  categories: MasterVodCategory[];
+  total: number;
+  truncated: boolean;
 }
 
 // =========================================================

@@ -4,6 +4,7 @@ import { MacLink } from '@/components/MacLink';
 import {
   mastersApi, ApiError, MASTER_TEST_DURATIONS,
   type MasterRow, type MasterCategory, type MasterChannel, type MasterDiag,
+  type MasterVodCategory, type MasterMovie,
 } from '@/lib/api';
 import { formatMacInput } from '@/lib/utils';
 
@@ -848,6 +849,394 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
 }
 
 // =========================================================
+//  BIBLIOTHÈQUE CINÉMA (VOD) — importer les films, les donner en test
+// =========================================================
+//  On importe le CATALOGUE (liste + affiches + genre + langue) — jamais les
+//  fichiers vidéo (joués à la demande via le gateway). L'exploitant filtre par
+//  langue (FR/EN…), coche les films, et les enregistre DANS la liste de test
+//  du maître → ils partent au testeur exactement comme les chaînes. Le cinéma
+//  est de la VOD (fichier à la demande) : pas la contrainte « 1 flux live ».
+
+// Libellé lisible d'un code langue (FR/EN/AR/ES/…), '' = inconnu.
+const LANG_LABEL: Record<string, string> = { FR: 'Français', EN: 'Anglais', AR: 'Arabe', ES: 'Espagnol' };
+function langLabel(code: string): string { return LANG_LABEL[code] || (code || 'Autres'); }
+
+// Pagination d'affichage d'un genre (grille d'affiches) : léger même sur un
+// catalogue énorme.
+const VOD_PAGE = 24;
+const VOD_PAGE_STEP = 48;
+
+// Normalise un titre de film pour comparer les doublons : minuscules, sans
+// accents/ponctuation, sans tags de qualité/année courants (HD, 4K, 1080p,
+// (2021)…), espaces compactés. « Le Parrain (1972) HD » ≈ « le parrain ».
+function normMovieName(name: string): string {
+  return String(name || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')      // enlève les accents
+    .replace(/\b(4k|uhd|fhd|hd|sd|hdr|1080p?|720p?|2160p?|x264|x265|h264|h265|multi|vf|vff|vostfr|truefrench)\b/g, ' ')
+    .replace(/\(?\b(19|20)\d{2}\b\)?/g, ' ')                // année (1999) / 2021
+    .replace(/[^a-z0-9]+/g, ' ')                            // ponctuation → espace
+    .trim();
+}
+
+// Fusionne deux jeux de catégories VOD (accumulation multi-sources) : par
+// GENRE (nom), films dédoublonnés par URL. L'ordre existant est préservé, les
+// nouveaux genres ajoutés à la fin.
+function mergeVodCats(a: MasterVodCategory[], b: MasterVodCategory[]): MasterVodCategory[] {
+  const byName = new Map<string, MasterVodCategory>();
+  const order: string[] = [];
+  const push = (c: MasterVodCategory) => {
+    const key = c.name;
+    if (!byName.has(key)) { byName.set(key, { ...c, movies: [...c.movies] }); order.push(key); return; }
+    const tgt = byName.get(key)!;
+    const seen = new Set(tgt.movies.map((m) => m.url));
+    for (const m of c.movies) if (!seen.has(m.url)) { tgt.movies.push(m); seen.add(m.url); }
+  };
+  for (const c of a) push(c);
+  for (const c of b) push(c);
+  return order.map((k) => byName.get(k)!);
+}
+
+// Une URL est-elle présente dans un jeu de catégories ? (sert à préserver la
+// sélection d'items qui ne viennent PAS du catalogue courant lors du dédoublonnage.)
+function prevHasUrl(cats: MasterVodCategory[], url: string): boolean {
+  for (const c of cats) for (const m of c.movies) if (m.url === url) return true;
+  return false;
+}
+
+// Carte d'un film : affiche (repli sur un dégradé + initiale si l'image ne
+// charge pas — beaucoup d'affiches sont en http et bloquées en https).
+function MovieCard({ movie, on, onToggle }: { movie: MasterMovie; on: boolean; onToggle: () => void }) {
+  const [imgOk, setImgOk] = useState(true);
+  const initial = (movie.name.trim()[0] || '?').toUpperCase();
+  return (
+    <button
+      onClick={onToggle}
+      className={`group relative flex flex-col overflow-hidden rounded-lg border text-left transition ${
+        on ? 'border-accent ring-1 ring-accent' : 'border-white/5 hover:border-white/15'
+      }`}
+      title={movie.name}
+    >
+      <div className="relative aspect-[2/3] w-full bg-gradient-to-br from-slate to-midnight">
+        {imgOk && movie.poster ? (
+          <img
+            src={movie.poster}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={() => setImgOk(false)}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-ink-tertiary">
+            {initial}
+          </div>
+        )}
+        {/* Coche de sélection. */}
+        <span
+          className={`absolute right-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-black transition ${
+            on ? 'bg-accent text-black' : 'bg-black/50 text-white/70 group-hover:bg-black/70'
+          }`}
+        >
+          {on ? '✓' : '+'}
+        </span>
+        {movie.lang && (
+          <span className="absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+            {movie.lang}
+          </span>
+        )}
+      </div>
+      <div className="px-1.5 py-1">
+        <div className="truncate text-[11px] text-ink-secondary">{movie.name}</div>
+      </div>
+    </button>
+  );
+}
+
+function VodLibrary({ mac, onLogout }: { mac: string; onLogout: () => void }) {
+  const [cats, setCats] = useState<MasterVodCategory[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [truncated, setTruncated] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  // Sélection = ensemble d'URLs de films cochés (clé stable = URL de lecture).
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [langFilter, setLangFilter] = useState<string>('all');
+  const [search, setSearch] = useState('');
+  const [shownByCat, setShownByCat] = useState<Record<string, number>>({});
+  const [paste, setPaste] = useState('');
+  // Réglages façade/identité du maître (repris pour NE PAS les écraser au save).
+  const [gw, setGw] = useState({ base: '', user: '' });
+
+  // Au montage : lit la liste de test existante → pré-coche les films déjà
+  // dedans (leurs URLs) et mémorise la façade/identité pour le ré-enregistrement.
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await mastersApi.getTestList(mac);
+        setGw({ base: r.gateway_base || '', user: r.gateway_user || '' });
+        const urls = parseM3uToList(r.m3u || '').map((i) => i.url);
+        setSelected(new Set(urls));
+      } catch (e: any) {
+        if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+        /* pas bloquant : on pourra quand même importer */
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mac]);
+
+  // Importe UNE source et l'ACCUMULE dans le catalogue déjà chargé : on peut
+  // ainsi coller plusieurs M3U/lignes différentes et tout parcourir d'un coup.
+  // Fusion par GENRE (nom), films dédoublonnés par URL à l'accumulation.
+  async function importFilms() {
+    setErr(null); setMsg(null); setLoading(true);
+    try {
+      const r = await mastersApi.vod(mac, paste, gw.base, gw.user);
+      setCats((prev) => mergeVodCats(prev || [], r.categories || []));
+      setTruncated((t) => t || !!r.truncated);
+      const added = (r.categories || []).reduce((s, c) => s + c.movies.length, 0);
+      setMsg(`✅ Import ajouté — ${added} film(s) lus depuis cette source.`);
+    } catch (e: any) {
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      setErr(e instanceof ApiError ? e.message : 'Import impossible.');
+    } finally { setLoading(false); }
+  }
+
+  // « Enlever les doublons » : garde UN seul film par (titre normalisé + langue)
+  // sur tout le catalogue → supprime les répétitions (même film listé plusieurs
+  // fois / présent dans plusieurs genres). Nettoie aussi la sélection des URLs
+  // disparues. Renvoie combien ont été retirés.
+  function removeDuplicates() {
+    setErr(null); setMsg(null);
+    setCats((prev) => {
+      if (!prev) return prev;
+      const seen = new Set<string>();
+      const kept = new Set<string>(); // URLs conservées (pour la sélection)
+      let removed = 0;
+      const next = prev.map((c) => {
+        const movies = c.movies.filter((mv) => {
+          const key = normMovieName(mv.name) + '|' + (mv.lang || '');
+          if (seen.has(key)) { removed++; return false; }
+          seen.add(key); kept.add(mv.url); return true;
+        });
+        return { ...c, movies };
+      }).filter((c) => c.movies.length > 0);
+      // La sélection ne garde que des URLs encore présentes.
+      setSelected((sel) => new Set([...sel].filter((u) => kept.has(u) || !prevHasUrl(prev, u))));
+      setMsg(removed > 0 ? `✅ ${removed} doublon(s) retiré(s).` : 'Aucun doublon trouvé.');
+      return next;
+    });
+  }
+
+  function toggleMovie(url: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(url)) next.delete(url); else next.add(url);
+      return next;
+    });
+  }
+
+  // Toutes les URLs présentes dans le catalogue importé (pour distinguer, à
+  // l'enregistrement, un item « film de cet import » d'un item live déjà là).
+  const importedIndex = useMemo(() => {
+    const byUrl = new Map<string, MasterMovie & { group: string }>();
+    for (const c of cats || []) for (const m of c.movies) byUrl.set(m.url, { ...m, group: c.name });
+    return byUrl;
+  }, [cats]);
+
+  // Répartition par langue (chips de filtre) sur le catalogue importé.
+  const langCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of cats || []) for (const mv of c.movies) {
+      const k = mv.lang || '';
+      m.set(k, (m.get(k) || 0) + 1);
+    }
+    return m;
+  }, [cats]);
+
+  // Genres filtrés (langue + recherche).
+  const shownCats = useMemo(() => {
+    if (!cats) return [];
+    const q = search.trim().toLowerCase();
+    return cats
+      .map((c) => ({
+        ...c,
+        movies: c.movies.filter((mv) => {
+          if (langFilter !== 'all' && (mv.lang || '') !== (langFilter === 'other' ? '' : langFilter)) return false;
+          if (q && !mv.name.toLowerCase().includes(q) && !c.name.toLowerCase().includes(q)) return false;
+          return true;
+        }),
+      }))
+      .filter((c) => c.movies.length > 0);
+  }, [cats, langFilter, search]);
+
+  // Nombre de films de CE catalogue actuellement cochés (indicateur).
+  const selectedInCatalog = useMemo(
+    () => [...selected].filter((u) => importedIndex.has(u)).length,
+    [selected, importedIndex],
+  );
+
+  // Enregistre la sélection DANS la liste de test : on garde les items déjà
+  // présents qui ne viennent PAS de cet import (chaînes live…), et on
+  // reconcilie les films (gardés seulement s'ils restent cochés) + ajoute les
+  // nouveaux cochés. Ordre : items conservés puis films ajoutés.
+  async function save() {
+    setErr(null); setMsg(null); setSaving(true);
+    try {
+      const cur = await mastersApi.getTestList(mac);
+      const existing = parseM3uToList(cur.m3u || '');
+      const keep = existing.filter((it) => !importedIndex.has(it.url) || selected.has(it.url));
+      const keepUrls = new Set(keep.map((i) => i.url));
+      const added: CuratedItem[] = [];
+      for (const url of selected) {
+        if (keepUrls.has(url)) continue;
+        const mv = importedIndex.get(url);
+        if (mv) added.push({ id: uid(), url, name: mv.name, logo: mv.poster, group: mv.group });
+      }
+      const finalList = [...keep, ...added];
+      const r = await mastersApi.putTestList(mac, buildM3u(finalList), gw.base, gw.user);
+      setMsg(`✅ Liste de test enregistrée — ${r.count} entrée(s) au total (${selectedInCatalog} film(s) de ce catalogue).`);
+    } catch (e: any) {
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      setErr(e instanceof ApiError ? e.message : 'Enregistrement impossible.');
+    } finally { setSaving(false); }
+  }
+
+  const langChips: { key: string; label: string }[] = [
+    { key: 'all', label: 'Toutes' },
+    ...[...langCounts.entries()]
+      .filter(([k]) => k)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k]) => ({ key: k, label: langLabel(k) })),
+    ...(langCounts.has('') ? [{ key: 'other', label: 'Autres' }] : []),
+  ];
+
+  return (
+    <div className="space-y-3 border-t border-white/5 bg-slate/40 px-4 py-4">
+      <div className="text-[13px] text-ink-secondary">
+        <strong>Bibliothèque Cinéma.</strong> J'importe le <strong>catalogue de
+        films</strong> de ta ligne (affiches, genre, langue) — <strong>pas les
+        fichiers</strong> : ils se jouent à la demande via le gateway. Filtre par
+        langue, coche les films, puis <strong>enregistre-les dans la liste de
+        test</strong> : ils partent au testeur comme les chaînes.
+      </div>
+
+      {/* Lien à importer (optionnel) + bouton. */}
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-[220px] flex-1">
+          <label className="mb-1 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+            Lien Xtream / M3U (vide = la ligne assignée à ce maître)
+          </label>
+          <input
+            value={paste}
+            onChange={(e) => setPaste(e.target.value)}
+            spellCheck={false}
+            placeholder="http://serveur:8080/get.php?username=…&password=…"
+            className="w-full rounded-md border border-white/5 bg-midnight px-3 py-2 font-mono text-xs outline-none focus:ring-1 focus:ring-accent"
+          />
+        </div>
+        <button
+          onClick={importFilms}
+          disabled={loading}
+          className="rounded-md border border-accent/40 px-3 py-2 text-sm font-medium text-accent-bright transition hover:bg-accent/10 disabled:opacity-50"
+        >
+          {loading ? 'Import…' : cats ? 'Réimporter' : 'Importer mes films'}
+        </button>
+        {cats && cats.length > 0 && (
+          <button
+            onClick={removeDuplicates}
+            className="rounded-md border border-white/10 px-3 py-2 text-xs text-ink-secondary transition hover:border-accent/40 hover:text-accent-bright"
+            title="Garde un seul film par titre + langue"
+          >
+            Enlever les doublons
+          </button>
+        )}
+        <button
+          onClick={save}
+          disabled={saving}
+          className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black transition hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {saving ? 'Enregistrement…' : `Enregistrer dans la liste de test (${selectedInCatalog})`}
+        </button>
+      </div>
+
+      {err && <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>}
+      {msg && <div className="rounded-md px-3 py-2 text-xs" style={{ background: 'rgba(47,169,106,0.15)', color: '#3FBE7C' }}>{msg}</div>}
+      {truncated && (
+        <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+          Catalogue très gros : arrêté à 20 000 films (filet anti-abus). Utilise
+          la recherche pour trouver le reste.
+        </div>
+      )}
+
+      {cats && (
+        <>
+          {/* Filtres langue + recherche. */}
+          <div className="flex flex-wrap items-center gap-2">
+            {langChips.map((c) => (
+              <button
+                key={c.key}
+                onClick={() => setLangFilter(c.key)}
+                className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                  langFilter === c.key
+                    ? 'border-accent/50 bg-accent/10 text-accent-bright'
+                    : 'border-white/10 text-ink-secondary hover:border-accent/40'
+                }`}
+              >
+                {c.label}
+              </button>
+            ))}
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Chercher un film ou un genre…"
+              className="ml-auto min-w-[180px] flex-1 rounded-md border border-white/5 bg-midnight px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-accent"
+            />
+          </div>
+
+          {/* Genres → grille d'affiches. */}
+          <div className="max-h-[32rem] space-y-4 overflow-y-auto rounded-md border border-white/5 bg-midnight p-2">
+            {shownCats.length === 0 && (
+              <div className="px-2 py-6 text-center text-xs text-ink-tertiary">Aucun film ne correspond.</div>
+            )}
+            {shownCats.map((c) => {
+              const limit = shownByCat[c.id] ?? VOD_PAGE;
+              return (
+                <div key={c.id}>
+                  <div className="mb-1.5 flex items-center gap-2 px-1">
+                    <span className="text-[13px] font-semibold text-ink-secondary">{c.name}</span>
+                    <span className="text-[10px] text-ink-tertiary">{c.movies.length} film(s)</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
+                    {c.movies.slice(0, limit).map((mv) => (
+                      <MovieCard
+                        key={mv.url}
+                        movie={mv}
+                        on={selected.has(mv.url)}
+                        onToggle={() => toggleMovie(mv.url)}
+                      />
+                    ))}
+                  </div>
+                  {c.movies.length > limit && (
+                    <button
+                      onClick={() => setShownByCat((p) => ({ ...p, [c.id]: limit + VOD_PAGE_STEP }))}
+                      className="mt-2 w-full rounded border border-white/10 px-2 py-1.5 text-[11px] text-ink-secondary transition hover:border-accent/40 hover:text-accent-bright"
+                    >
+                      Afficher plus ({c.movies.length - limit} restants)
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// =========================================================
 //  DONNER UN TEST — depuis le panel (sans passer par l'app maître)
 // =========================================================
 //  Deux gestes : ATTRIBUER directement à une MAC (le testeur n'a rien à
@@ -1060,6 +1449,7 @@ export function MastersPage({ onLogout }: { onLogout: () => void }) {
   const [openList, setOpenList] = useState<string | null>(null);
   const [openDiag, setOpenDiag] = useState<string | null>(null);
   const [openGive, setOpenGive] = useState<string | null>(null);
+  const [openVod, setOpenVod] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -1191,7 +1581,7 @@ export function MastersPage({ onLogout }: { onLogout: () => void }) {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
-                          onClick={() => { setOpenList(openList === r.mac ? null : r.mac); setOpenDiag(null); setOpenGive(null); }}
+                          onClick={() => { setOpenList(openList === r.mac ? null : r.mac); setOpenDiag(null); setOpenGive(null); setOpenVod(null); }}
                           className={`rounded-md border px-3 py-1 text-xs transition ${
                             openList === r.mac
                               ? 'border-accent/40 text-accent-bright'
@@ -1201,7 +1591,17 @@ export function MastersPage({ onLogout }: { onLogout: () => void }) {
                           Liste de test
                         </button>
                         <button
-                          onClick={() => { setOpenGive(openGive === r.mac ? null : r.mac); setOpenList(null); setOpenDiag(null); }}
+                          onClick={() => { setOpenVod(openVod === r.mac ? null : r.mac); setOpenList(null); setOpenDiag(null); setOpenGive(null); }}
+                          className={`rounded-md border px-3 py-1 text-xs transition ${
+                            openVod === r.mac
+                              ? 'border-accent/40 text-accent-bright'
+                              : 'border-white/10 text-ink-secondary hover:border-accent/40 hover:text-accent-bright'
+                          }`}
+                        >
+                          Cinéma
+                        </button>
+                        <button
+                          onClick={() => { setOpenGive(openGive === r.mac ? null : r.mac); setOpenList(null); setOpenDiag(null); setOpenVod(null); }}
                           className={`rounded-md border px-3 py-1 text-xs transition ${
                             openGive === r.mac
                               ? 'border-accent/40 text-accent-bright'
@@ -1211,7 +1611,7 @@ export function MastersPage({ onLogout }: { onLogout: () => void }) {
                           Donner un test
                         </button>
                         <button
-                          onClick={() => { setOpenDiag(openDiag === r.mac ? null : r.mac); setOpenList(null); setOpenGive(null); }}
+                          onClick={() => { setOpenDiag(openDiag === r.mac ? null : r.mac); setOpenList(null); setOpenGive(null); setOpenVod(null); }}
                           className={`rounded-md border px-3 py-1 text-xs transition ${
                             openDiag === r.mac
                               ? 'border-accent/40 text-accent-bright'
@@ -1233,6 +1633,13 @@ export function MastersPage({ onLogout }: { onLogout: () => void }) {
                     <tr>
                       <td colSpan={3} className="p-0">
                         <TestListEditor mac={r.mac} onLogout={onLogout} />
+                      </td>
+                    </tr>
+                  )}
+                  {openVod === r.mac && (
+                    <tr>
+                      <td colSpan={3} className="p-0">
+                        <VodLibrary mac={r.mac} onLogout={onLogout} />
                       </td>
                     </tr>
                   )}
