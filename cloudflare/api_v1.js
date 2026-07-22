@@ -1158,6 +1158,12 @@ async function apiV1Inner(request, env) {
       if (request.method === 'GET' || request.method === 'POST') return handleMasterVod(request, env);
       return errResp('method_not_allowed', 'GET or POST', 405);
     }
+    // /masters/simulate — SIMULATEUR A/B : ce que recevrait un téléphone
+    // (MAC virtuelle) + sonde de la 1re chaîne → pointe la cause d'un écran noir.
+    if (parts.length === 2 && parts[1] === 'simulate') {
+      if (request.method === 'GET') return handleMasterSimulate(request, env);
+      return errResp('method_not_allowed', 'Only GET', 405);
+    }
     // /masters/tests — SUIVI des tests émis par les maîtres (app OU panel).
     if (parts.length === 2 && parts[1] === 'tests') {
       if (request.method === 'GET') return handleMasterTestsList(env);
@@ -3924,6 +3930,134 @@ async function handleMasterVod(request, env) {
   } catch (e) {
     return errResp('vod_failed', 'Impossible de lire les films : ' + String((e && e.message) || e), 502);
   }
+}
+
+// =========================================================
+//  SIMULATEUR DE TESTEUR (A / B) — « ce que reçoit ce téléphone »
+// =========================================================
+//  L'exploitant crée des MAC VIRTUELLES (A, B), leur donne un test, puis
+//  vérifie ICI ce que l'appareil recevrait DANS L'APP : combien de chaînes/
+//  films, et surtout si la 1re chaîne RÉPOND VRAIMENT (sonde). Ça pointe la
+//  cause exacte d'un « écran noir » (DNS d'un faux domaine, 403, timeout…)
+//  sans avoir besoin d'un téléphone physique. Aucun secret renvoyé : on
+//  n'expose que l'HÔTE (jamais l'URL avec identifiants).
+async function handleMasterSimulate(request, env) {
+  const url = new URL(request.url);
+  const mac = String(url.searchParams.get('mac') || '').toUpperCase();
+  if (!_MASTER_MAC_RX.test(mac)) {
+    return errResp('bad_mac', 'MAC invalide (format MK:XX:XX:XX:XX:XX).', 400);
+  }
+  // Ce que l'app de cet appareil chargerait : sa 1re source assignée.
+  const src = await _readFirstSource(env, mac);
+  if (!src) {
+    return jsonResp({
+      mac, has_source: false,
+      hint: 'Cet appareil n’a pas encore reçu de test. Donne-lui un test (par MAC), puis relance la vérification.',
+    });
+  }
+  let firstUrl = '';
+  let listCount = 0;
+  let kind = '';
+  try {
+    const m3uUrl = String(src.m3u_url || '');
+    if (m3uUrl && /\/api\/master-list\/ml_[0-9a-f]+/i.test(m3uUrl)) {
+      // Cas normal : liste curée servie derrière la référence opaque. On la
+      // récupère (même worker) → 1re URL réelle de flux à sonder.
+      kind = 'curated';
+      const r = await _fetchWithTimeout(m3uUrl, 8000);
+      if (r.ok) {
+        const t = await r.text();
+        listCount = (t.match(/#EXTINF/gi) || []).length;
+        firstUrl = (t.split(/\r?\n/).find((l) => l.trim() && !l.startsWith('#')) || '').trim();
+      }
+    } else if (src.type === 'xtream' && src.server_url) {
+      // Repli bouquet complet : on sonde la joignabilité du serveur fournisseur.
+      kind = 'bouquet';
+      firstUrl = String(src.server_url);
+    } else if (m3uUrl) {
+      kind = 'm3u';
+      const r = await _fetchWithTimeout(m3uUrl, 8000);
+      if (r.ok) {
+        const t = await r.text();
+        listCount = (t.match(/#EXTINF/gi) || []).length;
+        firstUrl = (t.split(/\r?\n/).find((l) => l.trim() && !l.startsWith('#')) || '').trim();
+      }
+    }
+  } catch (_) { /* best-effort */ }
+
+  let host = '';
+  try { host = new URL(firstUrl).host; } catch (_) { host = ''; }
+  // Faux domaine d'exemple laissé dans la façade → cause n°1 d'écran noir.
+  const isExampleHost = /(^|\.)mondomaine\.com$/i.test(host);
+  // Hôte en IP brute → le relais ne le joint pas (mais l'app peut) : sonde
+  // informative (ambre), pas un rouge mensonger.
+  const isIpHost = /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(host) || host.startsWith('[');
+  const probe = firstUrl ? await _probeUrl(firstUrl, 7000) : null;
+
+  // BOÎTE NOIRE PRO : une liste de contrôles (comme le diagnostic maître),
+  // chaque contrôle { key, level 0/1/2, label, detail, fix }.
+  const checks = [];
+  const add = (key, level, label, detail, fix) => checks.push({ key, level, label, detail, fix: fix || '' });
+
+  // 1) Test reçu ? (une source est assignée à l'appareil).
+  add('received', 0, 'Test reçu', 'Cet appareil a bien une liste assignée.', '');
+
+  // 2) Type de liste servie.
+  add('kind', 0, 'Type de liste',
+    kind === 'curated' ? 'Liste de test curée (référence opaque privée).'
+      : kind === 'bouquet' ? 'Bouquet complet du maître (repli, aucune liste curée).'
+      : 'Playlist M3U.', '');
+
+  // 3) Liste non vide ?
+  if (kind === 'curated' || kind === 'm3u') {
+    add('served', listCount > 0 ? 0 : 2, 'Liste servie',
+      listCount > 0 ? `${listCount} chaîne(s)/film(s) servi(s).` : 'La liste servie est VIDE — rien à jouer.',
+      listCount > 0 ? '' : 'Recoche des chaînes/films et « Enregistrer dans la liste de test ».');
+  }
+
+  // 4) Hôte de lecture (où pointe la 1re chaîne).
+  if (host) {
+    if (isExampleHost) {
+      add('host', 2, 'Adresse de lecture',
+        `Pointe vers « ${host} » — c’est le domaine d’EXEMPLE, il n’existe pas.`,
+        'Corrige « Ta façade (gateway) » : ton vrai domaine, ou laisse VIDE (lecture directe), puis « Recopier mes chaînes ».');
+    } else {
+      add('host', 0, 'Adresse de lecture', `Lecture via ${host}.`, '');
+    }
+  }
+
+  // 5) 1re chaîne jouable ? (sonde réelle).
+  if (firstUrl) {
+    if (isExampleHost) {
+      // Inutile de « sonder » : le domaine n'existe pas, la cause est connue.
+      add('play', 2, 'Chaîne jouable',
+        'Injoignable : le domaine d’exemple ne résout pas (DNS) → écran noir sur TOUS les appareils.',
+        'Corrige la façade (voir ci-dessus).');
+    } else if (probe && probe.ok) {
+      add('play', 0, 'Chaîne jouable',
+        `La 1re chaîne répond (${probe.status}, ${probe.ms} ms). L’appareil devrait lire.`, '');
+    } else if (isIpHost) {
+      add('play', 1, 'Chaîne jouable — vérifiable par l’app seulement',
+        `Hôte en IP (${host}) : le relais ne peut pas sonder (attendu), mais l’app le joint peut-être. Teste dans l’app.`,
+        'Pour une sonde fiable d’ici, mets un vrai domaine https (Caddy).');
+    } else {
+      const why = probe ? (probe.error || ('HTTP ' + probe.status)) : 'aucune réponse';
+      add('play', 2, 'Chaîne jouable',
+        `La 1re chaîne NE répond PAS (${why}). Écran noir attendu.`,
+        'Vérifie la façade/la ligne, ou passe en lecture directe (façade vide).');
+    }
+  }
+
+  const worst = checks.reduce((m, c) => Math.max(m, c.level), 0);
+  const oks = checks.filter((c) => c.level === 0).length;
+  const score = checks.length ? Math.round((oks / checks.length) * 100) : 0;
+  const verdict = worst === 0 ? 'green' : (worst === 2 ? 'red' : 'amber');
+
+  return jsonResp({
+    mac, has_source: true, kind, list_count: listCount, host,
+    probe: probe ? { ok: probe.ok, status: probe.status, ms: probe.ms, error: probe.error || '' } : null,
+    verdict, score, checks,
+  });
 }
 
 // =========================================================

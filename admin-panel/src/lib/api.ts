@@ -1088,7 +1088,25 @@ export const mastersApi = {
       '/api/v1/masters/test-revoke',
       { method: 'POST', body: { code } },
     ),
+  // SIMULATEUR A/B : ce que recevrait un téléphone (MAC virtuelle) + sonde de
+  // la 1re chaîne → dit POURQUOI c'est noir (DNS faux domaine, 403, timeout…).
+  simulate: (mac: string) =>
+    request<MasterSimulateResp>(`/api/v1/masters/simulate?mac=${encodeURIComponent(mac)}`),
 };
+
+export interface MasterSimulateResp {
+  mac: string;
+  has_source: boolean;
+  hint?: string;
+  kind?: string;          // 'curated' | 'bouquet' | 'm3u'
+  list_count?: number;
+  host?: string;          // hôte réel de la 1re chaîne (jamais l'URL complète)
+  probe?: { ok: boolean; status: number; ms: number; error: string } | null;
+  verdict?: 'green' | 'amber' | 'red';
+  score?: number;
+  // BOÎTE NOIRE : contrôles détaillés (comme le diagnostic maître).
+  checks?: MasterDiagCheck[];
+}
 
 // Une ligne de SUIVI de test maître (registre app_invites, émetteur maître).
 export interface MasterTestRow {

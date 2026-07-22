@@ -1484,6 +1484,149 @@ function DiagPanel({ mac, onLogout }: { mac: string; onLogout: () => void }) {
   );
 }
 
+// =========================================================
+//  SIMULATEUR DE TESTEUR (A / B) — « ce que reçoit ce téléphone »
+// =========================================================
+//  Crée des MAC VIRTUELLES, donne-leur un test (via « Donner un test → par
+//  MAC »), puis VÉRIFIE ici ce que l'appareil recevrait dans l'app + si la
+//  1re chaîne répond vraiment → pointe la cause d'un écran noir, sans
+//  téléphone physique.
+
+// Génère une MAC de test au format MK:XX:XX:XX:XX:XX (5 octets aléatoires).
+function randomTestMac(): string {
+  const b = () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0').toUpperCase();
+  return 'MK:' + [b(), b(), b(), b(), b()].join(':');
+}
+
+function TesterSlot({ label, onLogout }: { label: string; onLogout: () => void }) {
+  const [mac, setMac] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<import('@/lib/api').MasterSimulateResp | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function verify() {
+    setErr(null); setRes(null);
+    const m = mac.trim().toUpperCase();
+    if (!MAC_RX.test(m)) { setErr('MAC invalide (format MK:XX:XX:XX:XX:XX).'); return; }
+    setBusy(true);
+    try {
+      setRes(await mastersApi.simulate(m));
+    } catch (e: any) {
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      setErr(e instanceof ApiError ? e.message : 'Vérification impossible.');
+    } finally { setBusy(false); }
+  }
+
+  // Couleur du verdict global.
+  const vColor = res?.verdict === 'green' ? 'var(--diag-ok)'
+    : res?.verdict === 'red' ? 'var(--diag-bad)' : 'var(--diag-warn)';
+  const lvlColor = ['var(--diag-ok)', 'var(--diag-warn)', 'var(--diag-bad)'];
+  const icon = (lvl: number) => (lvl === 0 ? '✓' : lvl === 2 ? '✕' : '!');
+
+  return (
+    <div
+      className="space-y-2 rounded-lg border border-white/5 bg-midnight p-3"
+      style={{ ['--diag-ok' as any]: '#3FBE7C', ['--diag-warn' as any]: '#E0A83C', ['--diag-bad' as any]: '#E5484D' }}
+    >
+      <div className="flex items-center gap-2">
+        <span className="grid h-6 w-6 place-items-center rounded-full bg-accent/15 text-xs font-bold text-accent-bright">{label}</span>
+        <span className="text-[11px] uppercase tracking-widest text-ink-tertiary">Téléphone {label} (virtuel)</span>
+        {res && res.has_source && typeof res.score === 'number' && (
+          <span
+            className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold"
+            style={{ color: vColor, background: `color-mix(in srgb, ${vColor} 16%, transparent)`, border: `1px solid ${vColor}` }}
+          >
+            {res.score}%
+          </span>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={mac}
+          onChange={(e) => setMac(formatMacInput(e.target.value))}
+          maxLength={17}
+          placeholder="MK:XX:XX:XX:XX:XX"
+          className="min-w-[170px] flex-1 rounded-md border border-white/5 bg-slate px-3 py-2 font-mono text-sm outline-none focus:ring-1 focus:ring-accent"
+        />
+        <button
+          onClick={() => { setMac(randomTestMac()); setRes(null); setErr(null); }}
+          className="rounded-md border border-white/10 px-2.5 py-2 text-xs text-ink-secondary transition hover:border-accent/40 hover:text-accent-bright"
+          title="Génère une MAC de test"
+        >
+          Générer
+        </button>
+        <button
+          onClick={verify}
+          disabled={busy}
+          className="rounded-md bg-accent px-3 py-2 text-xs font-semibold text-black transition hover:bg-accent-bright disabled:opacity-50"
+        >
+          {busy ? 'Analyse…' : 'Boîte noire'}
+        </button>
+      </div>
+
+      {err && <div className="rounded-md border border-accent/30 bg-accent/10 px-2.5 py-1.5 text-[11px] text-accent-bright">{err}</div>}
+
+      {res && !res.has_source && (
+        <div className="rounded-md border border-warning/30 bg-warning/10 px-2.5 py-1.5 text-[11px] text-warning">
+          {res.hint || 'Cet appareil n’a pas encore reçu de test.'}
+        </div>
+      )}
+      {/* BOÎTE NOIRE : liste de contrôles détaillés (comme le diagnostic maître). */}
+      {res && res.has_source && res.checks && (
+        <ul className="space-y-1.5 rounded-md border border-white/5 bg-slate/40 p-2">
+          {res.checks.map((c) => (
+            <li key={c.key} className="flex items-start gap-2">
+              <span
+                className="mt-0.5 grid h-4 w-4 flex-none place-items-center rounded-full text-[9px] font-black"
+                style={{ color: lvlColor[c.level], background: `color-mix(in srgb, ${lvlColor[c.level]} 16%, transparent)` }}
+              >
+                {icon(c.level)}
+              </span>
+              <div className="min-w-0">
+                <div className="text-[12px] font-semibold text-ink-primary">{c.label}</div>
+                {c.detail && <div className="text-[11px] text-ink-secondary">{c.detail}</div>}
+                {c.fix && c.level !== 0 && (
+                  <div className="text-[11px] font-medium" style={{ color: lvlColor[c.level] }}>→ {c.fix}</div>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function TesterSimulator({ onLogout }: { onLogout: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-xl border border-white/5 bg-midnight">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-4 py-3 text-left"
+      >
+        <span className="text-sm font-semibold text-ink-primary">🧪 Simulateur de test (A / B)</span>
+        <span className="text-xs text-ink-tertiary">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <div className="space-y-3 border-t border-white/5 px-4 py-4">
+          <div className="text-[12px] text-ink-secondary">
+            Crée deux téléphones <strong>virtuels</strong> A et B pour tester sans appareil réel :
+            <strong> 1)</strong> « Générer » une MAC, <strong>2)</strong> lui donner un test
+            (ci-dessous, sur un maître → « Donner un test → par MAC »), <strong>3)</strong> « Vérifier ».
+            Je te dis alors si l'appareil <strong>devrait lire</strong> — et sinon <strong>pourquoi</strong>
+            (faux domaine, chaîne injoignable…).
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <TesterSlot label="A" onLogout={onLogout} />
+            <TesterSlot label="B" onLogout={onLogout} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function MastersPage({ onLogout }: { onLogout: () => void }) {
   const [rows, setRows] = useState<MasterRow[]>([]);
   const [mac, setMac] = useState('');
@@ -1556,6 +1699,9 @@ export function MastersPage({ onLogout }: { onLogout: () => void }) {
           abonnée. Les tests passent par le gateway → <strong>invisibles au
           fournisseur</strong>. À réserver à toi (et gens de confiance).
         </div>
+
+        {/* Simulateur de testeur A/B — boîte noire par téléphone virtuel. */}
+        <TesterSimulator onLogout={onLogout} />
 
         <form onSubmit={add} className="space-y-4 rounded-xl border border-white/5 bg-midnight p-6">
           <div>
