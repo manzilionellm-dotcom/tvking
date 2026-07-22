@@ -44,6 +44,19 @@ export interface GwStatus {
   users: { username: string; familyId: string; maxStreams: number }[];
   metrics: { counters: Record<string, number>; gauges: Record<string, number> };
   uptimeSec: number;
+  /// Santé système du process passerelle (ajoutée par /admin/status). Optionnel :
+  /// absent sur les anciennes versions de la passerelle → l'UI reste tolérante.
+  system?: GwSystem;
+}
+export interface GwSystem {
+  cpuPct: number;
+  cpuCount: number;
+  loadavg1: number;
+  rssMB: number;
+  heapUsedMB: number;
+  sysMemUsedPct: number;
+  totalMemMB: number;
+  procUptimeSec: number;
 }
 export interface GwUser { username: string; password: string; maxStreams: number }
 export interface GwFamily { id: string; maxStreams: number; users: GwUser[] }

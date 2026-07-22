@@ -55,6 +55,23 @@ const String kChannelBlockedMessage =
     'par ta source — vérifie qu\'elle n\'est pas déjà ouverte sur un '
     'autre appareil, sinon essaie une autre chaîne.';
 
+/// Message CLAIR quand le serveur renvoie HTTP 458 = LIMITE DE CONNEXIONS.
+/// Ce n'est PAS un problème de format/signature : l'abonnement n'autorise
+/// qu'un nombre limité de lectures simultanées et le(s) slot(s) sont pris.
+const String kMaxConnectionsMessage =
+    'Limite de connexions atteinte : ton abonnement n\'autorise qu\'un nombre '
+    'limité de lectures en même temps, et un autre écran (ou la chaîne '
+    'précédente) occupe encore le créneau. Ferme l\'autre lecture, patiente '
+    'quelques secondes, puis réessaie.';
+
+/// Message CLAIR quand le serveur du fournisseur renvoie une erreur 5xx
+/// (500-599). Le 520-524 est typiquement un « origine derrière Cloudflare en
+/// panne ». Ce n'est ni l'app ni la box du client.
+String kServerErrorMessage(int code) =>
+    'Le serveur de ton fournisseur est en panne (erreur $code). Ce n\'est pas '
+    'l\'application ni ta box — réessaie dans un moment, ou contacte ton '
+    'fournisseur si ça dure.';
+
 /// Contrôleur du diagnostic « contenu bloqué » d'UN écran de lecture.
 /// Toutes les liaisons vers le widget sont des callbacks : le
 /// contrôleur ne connaît pas Flutter et se teste avec le vrai réseau.
@@ -72,6 +89,7 @@ class StreamBlockedFallback {
     required this.showBlocked,
     this.uaProbeTimeout = const Duration(milliseconds: 2500),
     this.retryBackoff = const Duration(seconds: 3),
+    this.conn458Backoff = const Duration(milliseconds: 1100),
   });
 
   /// Chaîne affichée à l'écran (change au zap).
@@ -117,8 +135,28 @@ class StreamBlockedFallback {
   /// 3 s sur le terrain ; injectable court dans les tests.
   final Duration retryBackoff;
 
+  /// BACKOFF 458 (limite de connexions) : plus COURT que [retryBackoff], car
+  /// le slot se libère dès que la lecture précédente ferme sa socket (~1 s).
+  /// Zapping rapide = on veut repartir vite, pas attendre 3 s.
+  final Duration conn458Backoff;
+
+  /// Nombre de retries rapides autorisés sur un 458 pour UNE chaîne avant
+  /// d'afficher le message « limite de connexions ».
+  static const int _kMax458Retries = 3;
+
+  /// Idem pour un 5xx (serveur fournisseur en panne) : on retente un peu (le
+  /// serveur peut revenir), plus espacé que le 458, puis message clair.
+  static const int _kMax5xxRetries = 2;
+  static const Duration _k5xxBackoff = Duration(milliseconds: 2000);
+
   String? _attemptedForChannelId;
   String? _backoffConsumedForChannelId;
+  // Compteur de retries 458 pour la CHAÎNE COURANTE (réinitialisé au zap).
+  String? _conn458ChannelId;
+  int _conn458Count = 0;
+  // Compteur de retries 5xx pour la CHAÎNE COURANTE (réinitialisé au zap).
+  String? _conn5xxChannelId;
+  int _conn5xxCount = 0;
   bool _inFlight = false;
   StreamSubscription<RelayFailure>? _relaySub;
 
@@ -170,6 +208,31 @@ class StreamBlockedFallback {
     }
     _log('Relais : échec définitif signalé '
         '(HTTP ${failure.status ?? '— (réseau)'}) → décision immédiate');
+    // HTTP 458 = LIMITE DE CONNEXIONS (mission terrain 2026-07-19). Ce n'est
+    // JAMAIS un problème de format/signature : sonder 8 UA + cascader 4
+    // variantes ne fait qu'ouvrir autant de connexions REFUSÉES pareil, ça
+    // martèle le fournisseur et ça n'aide jamais. Le bon geste : quelques
+    // RETRIES RAPIDES (le slot se libère quand la lecture précédente ferme sa
+    // socket), puis un message CLAIR. On zappe vite → on repart vite.
+    if (failure.status == 458) {
+      if (_try458Retry()) return;
+      _log('[458] limite de connexions confirmée après '
+          '$_kMax458Retries retries → message clair (pas de sonde/cascade)');
+      showBlocked(kMaxConnectionsMessage);
+      return;
+    }
+    // HTTP 5xx = ERREUR SERVEUR du fournisseur (500-599 ; 520-524 = le serveur
+    // d'origine derrière Cloudflare est en panne). Sonder/cascader n'aide pas
+    // (toutes les variantes tapent le MÊME serveur en panne). Quelques retries
+    // (ça peut revenir), puis un message CLAIR — ce n'est ni l'app ni la box.
+    final int? st0 = failure.status;
+    if (st0 != null && st0 >= 500 && st0 <= 599) {
+      if (_try5xxRetry()) return;
+      _log('[5xx] serveur fournisseur en panne (HTTP $st0) après '
+          '$_kMax5xxRetries retries → message clair (pas de sonde/cascade)');
+      showBlocked(kServerErrorMessage(st0));
+      return;
+    }
     // RÈGLE DE DÉCISION (mission 2026-07-08 14:43) : la branche
     // « coupure réseau » ne s'applique QUE si la lecture avait
     // réellement démarré (≥ 1 frame décodée). Sinon — et notamment sur
@@ -226,6 +289,60 @@ class StreamBlockedFallback {
     if (!hasDecodedFrames() && _tryScheduleBackoffRetry(reason)) return;
     // Fire-and-forget : run() a son propre catch-all.
     run();
+  }
+
+  /// Retry RAPIDE sur un 458 (limite de connexions). Renvoie `false` quand les
+  /// [_kMax458Retries] retries de la chaîne sont épuisés (→ message clair). Le
+  /// compteur se réinitialise dès qu'on change de chaîne (zap).
+  bool _try458Retry() {
+    final Channel channel = getChannel();
+    if (_conn458ChannelId != channel.id) {
+      _conn458ChannelId = channel.id;
+      _conn458Count = 0;
+    }
+    if (_conn458Count >= _kMax458Retries) return false;
+    _conn458Count++;
+    _log('[458] limite de connexions — retry rapide '
+        '$_conn458Count/$_kMax458Retries dans ${conn458Backoff.inMilliseconds} '
+        'ms (le slot se libère quand l\'autre lecture ferme sa socket)');
+    Future<void>.delayed(conn458Backoff).then((_) {
+      if (!isAlive() || channel.id != getChannel().id) {
+        _log('[458] retry abandonné (zap ou écran fermé pendant l\'attente)');
+        return;
+      }
+      resetWatchdogBudget();
+      _log('[458] retry silencieux → réouverture de '
+          '${StreamDiagnostics.maskCredentials(getEffectiveUrl())}');
+      reopen(getEffectiveUrl());
+    });
+    return true;
+  }
+
+  /// Retry sur un 5xx (serveur fournisseur en panne). Renvoie `false` quand les
+  /// [_kMax5xxRetries] retries de la chaîne sont épuisés (→ message clair). Le
+  /// compteur se réinitialise dès qu'on change de chaîne (zap).
+  bool _try5xxRetry() {
+    final Channel channel = getChannel();
+    if (_conn5xxChannelId != channel.id) {
+      _conn5xxChannelId = channel.id;
+      _conn5xxCount = 0;
+    }
+    if (_conn5xxCount >= _kMax5xxRetries) return false;
+    _conn5xxCount++;
+    _log('[5xx] serveur fournisseur en panne — retry '
+        '$_conn5xxCount/$_kMax5xxRetries dans ${_k5xxBackoff.inMilliseconds} '
+        'ms (le serveur peut revenir)');
+    Future<void>.delayed(_k5xxBackoff).then((_) {
+      if (!isAlive() || channel.id != getChannel().id) {
+        _log('[5xx] retry abandonné (zap ou écran fermé pendant l\'attente)');
+        return;
+      }
+      resetWatchdogBudget();
+      _log('[5xx] retry silencieux → réouverture de '
+          '${StreamDiagnostics.maskCredentials(getEffectiveUrl())}');
+      reopen(getEffectiveUrl());
+    });
+    return true;
   }
 
   /// Programme le retry silencieux unique du backoff 1-connexion.

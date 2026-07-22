@@ -2,6 +2,7 @@
 //  server.js — Serveur HTTP + routage de la passerelle
 // =========================================================
 import http from 'node:http';
+import os from 'node:os';
 import { config } from './config.js';
 import { log } from './logger.js';
 import { metrics } from './metrics.js';
@@ -11,12 +12,49 @@ import {
 } from './users.js';
 import { acquireSession, snapshotSessions } from './limits.js';
 import { hub } from './hub.js';
-import { parseStreamPath, streamKey, rewriteM3U, rewritePlayerApi } from './xtream.js';
+import { RateLimiter } from './ratelimit.js';
+
+// Limiteur des endpoints coûteux (get.php / player_api), par utilisateur.
+const apiLimiter = new RateLimiter(config.apiRateLimit, config.apiRateWindowMs);
+import { parseStreamPath, streamKey, makeM3URewriter, rewritePlayerApi } from './xtream.js';
 import {
-  callPlayerApi, callGetPhp, proxyRaw, upstreamStreamUrl,
+  callPlayerApi, openGetPhp, proxyRawFailover, upstreamStreamPath,
 } from './upstream.js';
 
 const START = Date.now();
+
+// ---- Santé SYSTÈME du serveur (CPU / RAM / charge) ---------------------
+//  Vraies mesures process + OS (aucune dépendance). Le % CPU est calculé
+//  par DELTA entre deux appels (fraction de temps CPU consommée depuis le
+//  dernier /admin/status). Exposé dans /admin/status → le panel affiche une
+//  « Santé serveurs » réelle (plus de « non instrumenté »).
+let _lastCpu = process.cpuUsage();
+let _lastCpuAt = Date.now();
+function systemSnapshot() {
+  const now = Date.now();
+  const delta = process.cpuUsage(_lastCpu); // µs de CPU depuis le dernier appel
+  const elapsedMs = Math.max(1, now - _lastCpuAt);
+  _lastCpu = process.cpuUsage();
+  _lastCpuAt = now;
+  // (user+system) µs ramenés au temps écoulé → % d'UN cœur.
+  const cpuPct = Math.max(
+    0,
+    Math.min(100, Math.round(((delta.user + delta.system) / 1000 / elapsedMs) * 100)),
+  );
+  const mem = process.memoryUsage();
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  return {
+    cpuPct, // % CPU du process (d'un cœur) sur l'intervalle
+    cpuCount: os.cpus().length,
+    loadavg1: Math.round(os.loadavg()[0] * 100) / 100, // charge système 1 min
+    rssMB: Math.round(mem.rss / 1048576), // mémoire résidente du process
+    heapUsedMB: Math.round(mem.heapUsed / 1048576),
+    sysMemUsedPct: Math.round((1 - freeMem / totalMem) * 100), // RAM système utilisée
+    totalMemMB: Math.round(totalMem / 1048576),
+    procUptimeSec: Math.floor(process.uptime()),
+  };
+}
 
 function sendJson(res, status, obj) {
   const body = JSON.stringify(obj);
@@ -87,9 +125,9 @@ async function handleLive(streamId, ext, req, res, user) {
   }
   res.on('close', () => sess.release());
   const key = streamKey('live', streamId, ext);
-  const url = upstreamStreamUrl('live', streamId, ext);
+  const streamPath = upstreamStreamPath('live', streamId, ext);
   metrics.inc('gw_live_requests_total');
-  const r = await hub.subscribe(key, url, res);
+  const r = await hub.subscribe(key, streamPath, res);
   if (!r.ok) {
     sess.release();
     if (!res.headersSent && !res.writableEnded) {
@@ -119,7 +157,8 @@ async function handleVod(kind, streamId, ext, req, res, user) {
   try {
     const extra = {};
     if (req.headers.range) extra.range = req.headers.range;
-    const up = await proxyRaw(upstreamStreamUrl(kind, streamId, ext), ac.signal, extra);
+    const up = await proxyRawFailover(
+      upstreamStreamPath(kind, streamId, ext), ac.signal, extra);
     const headers = {
       'content-type': up.headers['content-type'] || 'application/octet-stream',
     };
@@ -140,6 +179,10 @@ async function handlePlayerApi(url, res) {
   const q = Object.fromEntries(url.searchParams);
   const user = authenticate(q.username, q.password);
   if (!user) return sendJson(res, 200, { user_info: { auth: 0 } });
+  if (!apiLimiter.allow(user.username)) {
+    metrics.inc('gw_rate_limited_total', 1, { endpoint: 'player_api' });
+    return sendJson(res, 429, { user_info: { auth: 1, status: 'Rate limited' } });
+  }
   const params = { ...q };
   delete params.username; delete params.password;
   try {
@@ -163,15 +206,58 @@ async function handleGetPhp(url, res) {
   const q = Object.fromEntries(url.searchParams);
   const user = authenticate(q.username, q.password);
   if (!user) return sendText(res, 403, '#EXTM3U\n# auth failed\n', 'application/x-mpegurl');
+  if (!apiLimiter.allow(user.username)) {
+    metrics.inc('gw_rate_limited_total', 1, { endpoint: 'get_php' });
+    return sendText(res, 429, '#EXTM3U\n# rate limited\n', 'application/x-mpegurl');
+  }
   const params = { ...q };
   delete params.username; delete params.password;
+  const ac = new AbortController();
+  res.on('close', () => { try { ac.abort(); } catch { /* */ } });
+  let up;
   try {
-    const { status, text } = await callGetPhp(params);
-    const rewritten = rewriteM3U(text, user.username, user.password);
-    return sendText(res, status, rewritten, 'application/x-mpegurl');
+    up = await openGetPhp(params, ac.signal);
   } catch (e) {
+    if (!res.headersSent) sendText(res, 502, '#EXTM3U\n# upstream error\n', 'application/x-mpegurl');
+    return;
+  }
+  if (up.statusCode >= 400) {
+    try { up.body.destroy(); } catch { /* */ }
     return sendText(res, 502, '#EXTM3U\n# upstream error\n', 'application/x-mpegurl');
   }
+  res.writeHead(200, {
+    'content-type': 'application/x-mpegurl',
+    'cache-control': 'no-cache',
+  });
+  const rewrite = makeM3URewriter(user.username, user.password);
+  // Pas de réécriture requise (pas de PUBLIC_BASE) → passthrough direct.
+  if (!rewrite) { up.body.pipe(res); return; }
+  // Réécriture ligne par ligne EN STREAMING : mémoire bornée (une ligne
+  // partielle + un chunk), l'event-loop respire entre les chunks, et
+  // backpressure vers l'upstream si le client est lent.
+  let buf = '';
+  up.body.setEncoding('utf8');
+  up.body.on('data', (chunk) => {
+    if (res.writableEnded) return;
+    buf += chunk;
+    let nl;
+    let out = '';
+    while ((nl = buf.indexOf('\n')) !== -1) {
+      out += rewrite(buf.slice(0, nl + 1));
+      buf = buf.slice(nl + 1);
+    }
+    if (out) {
+      if (!res.write(out)) {
+        up.body.pause();
+        res.once('drain', () => { try { up.body.resume(); } catch { /* */ } });
+      }
+    }
+  });
+  up.body.on('end', () => {
+    if (buf && !res.writableEnded) { try { res.write(rewrite(buf)); } catch { /* */ } }
+    try { res.end(); } catch { /* */ }
+  });
+  up.body.on('error', () => { try { res.destroy(); } catch { /* */ } });
 }
 
 // ---- Routeur -----------------------------------------------------------
@@ -188,6 +274,7 @@ async function adminRoute(req, res, url, path) {
       users: listUsers(),
       metrics: metrics.snapshot(),
       uptimeSec: Math.floor((Date.now() - START) / 1000),
+      system: systemSnapshot(),
     });
   }
   if (path === '/admin/reload-users') {
@@ -291,9 +378,24 @@ export function createServer() {
       }
     });
   });
-  // Un flux live n'a pas de fin naturelle : on désactive les timeouts serveur.
-  server.requestTimeout = 0;
-  server.headersTimeout = 0;
+  // Un flux live/VOD n'a pas de fin naturelle : le timeout d'INACTIVITÉ de la
+  // socket reste désactivé (sinon on couperait une lecture légitime). MAIS on
+  // borne la seule PHASE REQUÊTE entrante (anti-slow-loris) — inoffensif car
+  // nos requêtes sont des GET sans corps.
   server.timeout = 0;
+  server.headersTimeout = config.headersTimeoutMs || 0;
+  server.requestTimeout = config.requestTimeoutMs || 0;
+  // Détection des pairs MORTS : keepalive TCP sur chaque connexion. Une box qui
+  // disparaît sans FIN/RST est sondée par le noyau ; la socket morte finit par
+  // être coupée → 'close' se déclenche → le slot de la ligne fournisseur est
+  // libéré (sinon il resterait fantôme et saturerait la ligne → 503 en cascade).
+  if (config.socketKeepAliveMs > 0) {
+    server.on('connection', (socket) => {
+      try { socket.setKeepAlive(true, config.socketKeepAliveMs); } catch { /* */ }
+    });
+  }
+  // Ronde anti-backpressure : plafond mémoire GLOBAL des files clients.
+  hub.startBackpressureSweep();
+  server.on('close', () => hub.stopBackpressureSweep());
   return server;
 }

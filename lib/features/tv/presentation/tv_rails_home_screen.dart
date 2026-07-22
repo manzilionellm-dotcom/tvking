@@ -113,7 +113,15 @@ class TvRailsHomeScreen extends StatelessWidget {
   const TvRailsHomeScreen({super.key});
 
   void _open(BuildContext c, Widget screen) {
-    Navigator.of(c).push(MaterialPageRoute<void>(builder: (_) => screen));
+    // On ENVELOPPE l'écran poussé dans un Material (transparent) : sans ancêtre
+    // Material, Flutter dessine des DOUBLES SOULIGNEMENTS JAUNES sous chaque
+    // texte (signal « pas de Material »). Les écrans « bucket » (Réglages,
+    // Recherche, Séries, Films…) ne s'enveloppent pas eux-mêmes → on le fait ici
+    // (comme le fait déjà le Lanceur). Résultat : typographie NETTE, pas de
+    // lignes jaunes.
+    Navigator.of(c).push(MaterialPageRoute<void>(
+        builder: (_) =>
+            Material(type: MaterialType.transparency, child: screen)));
   }
 
   Future<void> _confirmExit(BuildContext c) async {
@@ -512,6 +520,16 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
   bool _loading = true;
   StreamSubscription<Set<String>>? _favSub;
 
+  // Défilement propre au rail : sert à REVENIR sur la chaîne quittée au retour
+  // du lecteur (si sa carte a défilé hors écran).
+  final ScrollController _scroll = ScrollController();
+  // Chaîne à re-focaliser au RETOUR du lecteur (par id, pas par index : la liste
+  // peut avoir changé d'ordre/longueur pendant la lecture). Sans ça, le focus
+  // retombait sur la 1re carte → « ça repart en haut de l'accueil ».
+  String? _restoreId;
+  // Largeur d'une carte (260) + séparateur (14) = pas horizontal d'un cran.
+  static const double _kCardStride = 260 + 14;
+
   @override
   void initState() {
     super.initState();
@@ -525,6 +543,7 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
   @override
   void dispose() {
     _favSub?.cancel();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -587,15 +606,39 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
     }
   }
 
-  void _play(int index) {
+  Future<void> _play(int index) async {
     final List<Channel> list =
         _slots.map((_FavSlot s) => s.channel).toList(growable: false);
-    if (list.isEmpty) return;
-    Navigator.of(context).push(
+    if (list.isEmpty || index < 0 || index >= list.length) return;
+    final String playedId = list[index].id; // on retiendra CETTE chaîne
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
       ),
     );
+    // RETOUR du lecteur : on DÉSIGNE la chaîne quittée pour que SA carte
+    // reprenne le focus (on revient où on était, pas en haut de l'accueil).
+    if (!mounted) return;
+    setState(() => _restoreId = playedId);
+    _scrollToId(playedId);
+  }
+
+  /// Amène la carte de [id] dans la vue (si besoin) pour qu'elle se construise
+  /// et puisse reprendre le focus au retour du lecteur.
+  void _scrollToId(String id) {
+    final int idx = _slots.indexWhere((_FavSlot s) => s.channel.id == id);
+    if (idx < 0) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      final double target =
+          (idx * _kCardStride).clamp(0.0, _scroll.position.maxScrollExtent);
+      final double left = _scroll.offset;
+      final double right = left + _scroll.position.viewportDimension;
+      final double cardLeft = idx * _kCardStride;
+      if (cardLeft < left || cardLeft + 260 > right) {
+        _scroll.jumpTo(target);
+      }
+    });
   }
 
   @override
@@ -603,14 +646,22 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
     if (_loading) return const SizedBox.shrink();
     if (_slots.isEmpty) return const SizedBox.shrink();
     return ListView.separated(
+      controller: _scroll,
       scrollDirection: Axis.horizontal,
       itemCount: _slots.length,
       separatorBuilder: (_, __) => const SizedBox(width: 14),
       itemBuilder: (BuildContext context, int i) {
         final _FavSlot slot = _slots[i];
+        // Clé STABLE (par id) : le focus SUIT la carte même si la liste change
+        // d'ordre pendant la lecture → la restauration du focus fonctionne.
         return _FavCard(
+          key: ValueKey<String>(slot.channel.id),
           slot: slot,
-          autofocus: i == 0,
+          // Autofocus initial sur la 1re carte SEULEMENT si on ne revient pas du
+          // lecteur (sinon c'est la chaîne quittée qui doit reprendre le focus).
+          autofocus: _restoreId == null && i == 0,
+          restoreFocus: slot.channel.id == _restoreId,
+          onRestored: () => _restoreId = null,
           onSelect: () => _play(i),
         );
       },
@@ -620,18 +671,43 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
 
 /// Carte d'un favori : logo + nom chaîne + programme en cours + barre de
 /// progression. Style IBO rails (tuile #411C4C, focus #391A43 + liseré clair).
-class _FavCard extends StatelessWidget {
+class _FavCard extends StatefulWidget {
   const _FavCard({
+    super.key,
     required this.slot,
     required this.autofocus,
     required this.onSelect,
+    this.restoreFocus = false,
+    this.onRestored,
   });
   final _FavSlot slot;
   final bool autofocus;
   final VoidCallback onSelect;
 
+  /// `true` quand l'écran DÉSIGNE cette carte pour reprendre le focus au retour
+  /// du lecteur (la chaîne qu'on regardait). Elle (re)prend alors le focus.
+  final bool restoreFocus;
+
+  /// Appelé une fois le focus repris → l'écran libère le drapeau.
+  final VoidCallback? onRestored;
+
+  @override
+  State<_FavCard> createState() => _FavCardState();
+}
+
+class _FavCardState extends State<_FavCard> {
+  // Node possédé par la carte : on en a besoin pour RE-DEMANDER le focus au
+  // retour du lecteur (passé à TvFocusBuilder qui ne le dispose alors pas).
+  final FocusNode _node = FocusNode();
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
   double? _progress() {
-    final EpgProgram? p = slot.program;
+    final EpgProgram? p = widget.slot.program;
     if (p == null) return null;
     final int now = DateTime.now().millisecondsSinceEpoch;
     final int total = p.stopTime - p.startTime;
@@ -643,10 +719,20 @@ class _FavCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // RESTAURATION DU FOCUS au retour du lecteur : quand l'écran nous désigne,
+    // on (re)prend le focus en post-frame puis on libère le drapeau.
+    if (widget.restoreFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !widget.restoreFocus) return;
+        _node.requestFocus();
+        widget.onRestored?.call();
+      });
+    }
     return TvFocusBuilder(
-      autofocus: autofocus,
+      focusNode: _node,
+      autofocus: widget.autofocus,
       scale: TvFocusScale.small,
-      onSelect: onSelect,
+      onSelect: widget.onSelect,
       pressedBuilder: (BuildContext context, bool focused, bool pressed) {
         return _railsShell(
           focused: focused,
@@ -662,8 +748,8 @@ class _FavCard extends StatelessWidget {
   }
 
   Widget _favCardBody(bool focused) {
-    final Channel ch = slot.channel;
-    final EpgProgram? prog = slot.program;
+    final Channel ch = widget.slot.channel;
+    final EpgProgram? prog = widget.slot.program;
     final double? progress = _progress();
     return Column(
             crossAxisAlignment: CrossAxisAlignment.start,

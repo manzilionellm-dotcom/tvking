@@ -357,6 +357,11 @@
     "description": "Texte UI : gridEmptySubtitle"
   },
   "categoriesTitle": "Catégories",
+  "categoryOrderEdit": "Réorganiser",
+  "categoryOrderTitle": "Réorganiser les catégories",
+  "categoryOrderHint": "Maintiens une catégorie appuyée, puis glisse-la vers le haut ou le bas pour choisir ton ordre. C'est enregistré et appliqué partout.",
+  "categoryOrderSave": "Enregistrer l'ordre",
+  "categoryOrderReset": "Réinitialiser",
   "@categoriesTitle": {
     "description": "Texte UI : categoriesTitle"
   },
@@ -2633,6 +2638,16 @@
   "playerChannelBlocked": "Chaîne indisponible : aucune vidéo reçue. Elle est vide ou bloquée par ta source — vérifie qu'elle n'est pas déjà ouverte sur un autre appareil, sinon essaie une autre chaîne.",
   "playerNetworkBlockHint": "Ça ressemble à un blocage réseau (FAI ou DNS) plutôt qu'à un problème de l'app — un VPN peut aider si cette chaîne fonctionne ailleurs.",
   "playerStreamInterrupted": "Flux interrompu. Vérifie ta connexion puis réessaie.",
+  "playerBlockedExpired": "Ton abonnement a expiré le {date}. Renouvelle ta ligne auprès de ton fournisseur.",
+  "@playerBlockedExpired": {
+    "placeholders": { "date": { "type": "String" } }
+  },
+  "playerBlockedMaxConnections": "Limite de connexions atteinte ({active}/{max}). Un autre écran regarde déjà avec ce compte — ferme-le, puis réessaie.",
+  "@playerBlockedMaxConnections": {
+    "placeholders": { "active": { "type": "String" }, "max": { "type": "String" } }
+  },
+  "playerBlockedBanned": "Ce compte est suspendu. Contacte ton fournisseur.",
+  "playerWeakConnection": "La lecture n'arrête pas de charger. Ta connexion Internet est probablement trop faible pour cette chaîne (ou le serveur de ton fournisseur est lent). Vérifie ton WiFi / ton débit, ou essaie une chaîne de moindre qualité. Ce n'est pas un problème de l'application.",
   "playerCastConnectingTo": "Connexion à {device}…",
   "@playerCastConnectingTo": {
     "placeholders": {

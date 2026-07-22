@@ -23,12 +23,14 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../channels/data/category_order_store.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/presentation/widgets/mini_epg_now_next.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
+import 'widgets/tv_category_reorder.dart';
 import 'tv_films_screen.dart';
 import 'tv_home_template_screen.dart';
 import 'tv_player_screen.dart';
@@ -78,13 +80,34 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     super.initState();
     _ingest(PlaylistRepository.instance.currentChannels);
     _sub = PlaylistRepository.instance.channelsStream.listen(_ingest);
+    // Ordre PERSONNALISÉ des catégories (partagé partout) + écoute live.
+    // ignore: discarded_futures
+    CategoryOrderStore.instance.ensureLoaded();
+    CategoryOrderStore.instance.addListener(_onCatOrderChanged);
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    CategoryOrderStore.instance.removeListener(_onCatOrderChanged);
     _preview.dispose();
     super.dispose();
+  }
+
+  void _onCatOrderChanged() {
+    if (mounted) setState(() => _groups = _orderedGroups(_groups));
+  }
+
+  /// Applique l'ordre personnalisé aux VRAIS groupes (« Toutes les chaînes »
+  /// reste toujours en tête).
+  List<String> _orderedGroups(List<String> groups) {
+    final List<String> pseudo =
+        groups.where((String g) => g == _kAllGroup).toList();
+    final List<String> real =
+        groups.where((String g) => g != _kAllGroup).toList();
+    final List<String> orderedReal =
+        CategoryOrderStore.instance.applyOrder(real, (String g) => g);
+    return <String>[...pseudo, ...orderedReal];
   }
 
   /// Nombre de chaînes par groupe ET chaînes par groupe — PRÉ-CALCULÉS à
@@ -113,7 +136,8 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     if (!mounted) return;
     setState(() {
       _all = channels;
-      _groups = groups;
+      // ORDRE PERSONNALISÉ appliqué par-dessus l'ordre d'import.
+      _groups = _orderedGroups(groups);
       _counts = counts;
       _byGroup = byGroup;
       if (!_groups.contains(_group)) _group = _kAllGroup;
@@ -121,6 +145,97 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
       _preview.value ??= _visible.isNotEmpty ? _visible.first : null;
       _loading = false;
     });
+  }
+
+  // ---- Réorganisation (monter / descendre) — premium, partagée ----
+
+  /// Groupe actuellement « saisi » pour être déplacé (null = aucun).
+  String? _reorderGroup;
+
+  bool _isPseudoGroup(String g) => g == _kAllGroup;
+
+  List<String> _realGroups() =>
+      _groups.where((String g) => !_isPseudoGroup(g)).toList();
+
+  void _beginReorder(String g) {
+    if (_isPseudoGroup(g)) return;
+    HapticFeedback.mediumImpact();
+    setState(() => _reorderGroup = g);
+  }
+
+  void _endReorder() {
+    if (_reorderGroup == null) return;
+    HapticFeedback.selectionClick();
+    setState(() => _reorderGroup = null);
+  }
+
+  void _moveReorder(String g, int dir) {
+    final List<String> order = _realGroups();
+    final int idx = order.indexOf(g);
+    if (idx < 0) return;
+    final int next = idx + dir;
+    if (next < 0 || next >= order.length) return;
+    final String tmp = order[idx];
+    order[idx] = order[next];
+    order[next] = tmp;
+    HapticFeedback.selectionClick();
+    // ignore: discarded_futures
+    CategoryOrderStore.instance.setOrder(order);
+  }
+
+  bool _canMoveUp(String g) => _realGroups().indexOf(g) > 0;
+  bool _canMoveDown(String g) {
+    final List<String> r = _realGroups();
+    final int i = r.indexOf(g);
+    return i >= 0 && i < r.length - 1;
+  }
+
+  // DOUBLE-CLIC OK = MODE DÉPLACEMENT (télécommande). 1 OK sélectionne ; 2 OK
+  // rapprochés sur un vrai groupe l'« attrapent » → HAUT/BAS le déplacent.
+  String? _lastOkGroup;
+  DateTime? _lastOkAt;
+  void _onGroupOk(String g) {
+    final DateTime now = DateTime.now();
+    final bool doubleOk = _lastOkGroup == g &&
+        _lastOkAt != null &&
+        now.difference(_lastOkAt!) < const Duration(milliseconds: 600);
+    _lastOkGroup = g;
+    _lastOkAt = now;
+    if (doubleOk && !_isPseudoGroup(g)) {
+      _lastOkGroup = null;
+      _lastOkAt = null;
+      _beginReorder(g);
+      return;
+    }
+    _selectGroup(g);
+  }
+
+  /// Mode déplacement : HAUT/BAS déplacent le groupe saisi ; GAUCHE/DROITE
+  /// neutralisées ; Retour/Échap pose.
+  KeyEventResult _onReorderKey(FocusNode node, KeyEvent event) {
+    final String? rg = _reorderGroup;
+    if (rg == null) return KeyEventResult.ignored;
+    if (event is KeyUpEvent) return KeyEventResult.ignored;
+    final LogicalKeyboardKey k = event.logicalKey;
+    if (k == LogicalKeyboardKey.arrowUp) {
+      if (_canMoveUp(rg)) _moveReorder(rg, -1);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.arrowDown) {
+      if (_canMoveDown(rg)) _moveReorder(rg, 1);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.arrowLeft ||
+        k == LogicalKeyboardKey.arrowRight) {
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.goBack ||
+        k == LogicalKeyboardKey.escape ||
+        k == LogicalKeyboardKey.browserBack) {
+      _endReorder();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   List<Channel> _channelsFor(String group) {
@@ -146,7 +261,52 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
   }
 
   void _open(Widget screen) {
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
+    // Material (transparent) OBLIGATOIRE : sans ancêtre Material, Flutter dessine
+    // des DOUBLES SOULIGNEMENTS JAUNES sous chaque texte. Les écrans « bucket »
+    // (Réglages, Recherche, Séries, Films…) ne s'enveloppent pas eux-mêmes → on
+    // le fait ici (comme le Lanceur) → typographie NETTE, pas de lignes jaunes.
+    Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) =>
+            Material(type: MaterialType.transparency, child: screen)));
+  }
+
+  /// RETOUR PROGRESSIF (« bout à bout ») — plus JAMAIS de fermeture brutale de
+  /// l'app au premier Retour. On recule d'UN cran vers la GAUCHE : chaînes →
+  /// groupes → rail d'icônes (via le focus directionnel intégré de Flutter). Ce
+  /// n'est QUE lorsqu'on est déjà tout à gauche (plus rien à gauche) qu'on
+  /// PROPOSE de quitter (avec confirmation), au lieu de fermer sans rien
+  /// demander. Pensé pour les personnes âgées : un Retour = un petit pas en
+  /// arrière, prévisible.
+  Future<void> _onBack() async {
+    final bool moved =
+        FocusScope.of(context).focusInDirection(TraversalDirection.left);
+    if (moved) return; // il restait un cran à gauche → on a juste reculé
+    // Déjà tout à gauche : on demande confirmation avant de quitter l'app.
+    final bool? quit = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext d) => AlertDialog(
+        backgroundColor: _tmPanel,
+        title: const Text('Quitter l’application ?',
+            style: TextStyle(
+                color: _tmText, fontSize: 22, fontWeight: FontWeight.w700)),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(d, false),
+            child: const Text('Annuler',
+                style: TextStyle(color: _tmText2, fontSize: 18)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(d, true),
+            child: const Text('Quitter',
+                style: TextStyle(
+                    color: _tmAccent,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (quit == true) await SystemNavigator.pop();
   }
 
   @override
@@ -155,7 +315,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
       canPop: false,
       onPopInvokedWithResult: (bool didPop, Object? _) async {
         if (didPop) return;
-        await SystemNavigator.pop();
+        await _onBack();
       },
       child: Container(
         color: _tmBg,
@@ -227,6 +387,14 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          // RECHERCHE INTELLIGENTE — gros bouton en HAUT, bien visible
+          // (personnes âgées / fatiguées). Ouvre la recherche globale.
+          _TmSearchButton(
+            onSelect: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const TvSearchScreen()),
+            ),
+          ),
+          const SizedBox(height: 10),
           const Padding(
             padding: EdgeInsets.fromLTRB(8, 4, 8, 12),
             child: Text('Groupes',
@@ -237,7 +405,13 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                     letterSpacing: 1.2)),
           ),
           Expanded(
-            child: ListView.builder(
+            // MODE DÉPLACEMENT (télécommande) : HAUT/BAS déplacent le groupe
+            // saisi tant que _reorderGroup != null (cf. _onReorderKey).
+            child: Focus(
+              canRequestFocus: false,
+              skipTraversal: true,
+              onKeyEvent: _onReorderKey,
+              child: ListView.builder(
               // Hauteur de rangée MESURÉE une fois (prototype) : sans
               // extent, chaque frame de scroll re-mesure les enfants et la
               // position est estimée (scrollbar qui saute, jumpTo imprécis).
@@ -251,14 +425,35 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
               itemCount: _groups.length,
               itemBuilder: (BuildContext context, int i) {
                 final String g = _groups[i];
+                final bool reordering = _reorderGroup == g;
+                final List<String> real = _realGroups();
+                final int ri = real.indexOf(g);
                 return _GroupTile(
+                  key: ValueKey<String>(g),
                   label: g,
                   count: _counts[g] ?? 0,
                   active: g == _group,
                   autofocus: false,
-                  onSelect: () => _selectGroup(g),
+                  reordering: reordering,
+                  reorderable: !_isPseudoGroup(g),
+                  canMoveUp: reordering && ri > 0,
+                  canMoveDown: reordering && ri >= 0 && ri < real.length - 1,
+                  onSelect: () {
+                    if (reordering) {
+                      _endReorder();
+                    } else {
+                      _onGroupOk(g);
+                    }
+                  },
+                  // Appui long : en déplacement il TERMINE (plus besoin de
+                  // « Retour ») ; sinon il attrape.
+                  onLongPress: () =>
+                      reordering ? _endReorder() : _beginReorder(g),
+                  onMoveUp: () => _moveReorder(g, -1),
+                  onMoveDown: () => _moveReorder(g, 1),
                 );
               },
+            ),
             ),
           ),
         ],
@@ -427,13 +622,63 @@ class _RailIcon extends StatelessWidget {
 }
 
 /// Ligne de groupe (catégorie). Focus = pill blanc ; actif = texte bleu.
+/// Gros bouton RECHERCHE INTELLIGENTE en tête de la colonne Groupes (tivimate).
+/// Accent bleu marque, très visible (conçu pour les personnes âgées).
+class _TmSearchButton extends StatelessWidget {
+  const _TmSearchButton({required this.onSelect});
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            color: focused ? _tmAccent : _tmAccent.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _tmAccent, width: 1.4),
+          ),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.search_rounded,
+                  size: 22, color: focused ? _tmText : _tmAccent),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('Recherche intelligente',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: _tmText)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _GroupTile extends StatelessWidget {
   const _GroupTile({
+    super.key,
     required this.label,
     required this.count,
     required this.active,
     required this.autofocus,
     required this.onSelect,
+    this.reordering = false,
+    this.reorderable = false,
+    this.canMoveUp = false,
+    this.canMoveDown = false,
+    this.onLongPress,
+    this.onMoveUp,
+    this.onMoveDown,
   });
   final String label;
 
@@ -442,6 +687,14 @@ class _GroupTile extends StatelessWidget {
   final bool active;
   final bool autofocus;
   final VoidCallback onSelect;
+  // Réorganisation (monter / descendre) — premium, partagée.
+  final bool reordering;
+  final bool reorderable;
+  final bool canMoveUp;
+  final bool canMoveDown;
+  final VoidCallback? onLongPress;
+  final VoidCallback? onMoveUp;
+  final VoidCallback? onMoveDown;
 
   @override
   Widget build(BuildContext context) {
@@ -449,24 +702,32 @@ class _GroupTile extends StatelessWidget {
       autofocus: autofocus,
       scale: TvFocusScale.small,
       onSelect: onSelect,
+      onLongPress: reorderable ? onLongPress : null,
       builder: (BuildContext context, bool focused) {
-        final Color bg = focused
+        final Color bg = reordering
+            ? _tmAccent.withValues(alpha: 0.18)
+            : focused
+                ? _tmText
+                : active
+                    ? _tmSoft
+                    : Colors.transparent;
+        final Color fg = reordering
             ? _tmText
-            : active
-                ? _tmSoft
-                : Colors.transparent;
-        final Color fg = focused
-            ? _tmBg
-            : active
-                ? _tmAccent
-                : _tmText2;
-        return AnimatedContainer(
+            : focused
+                ? _tmBg
+                : active
+                    ? _tmAccent
+                    : _tmText2;
+        final Widget tile = AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           margin: const EdgeInsets.symmetric(vertical: 3),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(28),
+            border: reordering
+                ? Border.all(color: _tmAccent, width: 1.4)
+                : null,
           ),
           child: Row(
             children: <Widget>[
@@ -478,25 +739,37 @@ class _GroupTile extends StatelessWidget {
                   style: TextStyle(
                       color: fg,
                       fontSize: 17,
-                      fontWeight:
-                          active ? FontWeight.w700 : FontWeight.w500),
+                      fontWeight: (active || reordering)
+                          ? FontWeight.w700
+                          : FontWeight.w500),
                 ),
               ),
               const SizedBox(width: 8),
-              // Compteur de chaînes du groupe (ex. « Sports FR · 240 »).
-              Text('$count',
-                  style: TextStyle(
-                      color: focused ? _tmBg : _tmText3,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700)),
-              if (active && !focused) ...<Widget>[
-                const SizedBox(width: 6),
-                const Icon(Icons.play_arrow_rounded,
-                    size: 18, color: _tmAccent),
+              if (reordering)
+                TvReorderChevrons(
+                  canUp: canMoveUp,
+                  canDown: canMoveDown,
+                  onUp: onMoveUp ?? () {},
+                  onDown: onMoveDown ?? () {},
+                  onDone: onSelect,
+                )
+              else ...<Widget>[
+                // Compteur de chaînes du groupe (ex. « Sports FR · 240 »).
+                Text('$count',
+                    style: TextStyle(
+                        color: focused ? _tmBg : _tmText3,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700)),
+                if (active && !focused) ...<Widget>[
+                  const SizedBox(width: 6),
+                  const Icon(Icons.play_arrow_rounded,
+                      size: 18, color: _tmAccent),
+                ],
               ],
             ],
           ),
         );
+        return TvReorderBounce(active: reordering, child: tile);
       },
     );
   }

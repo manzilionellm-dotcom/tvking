@@ -371,11 +371,13 @@ class GoogleCastTransport implements CastTransport {
           // (client natif, ni CORS ni contenu mixte), le DÉCOUPE en vrais
           // segments (TsHlsSegmenter) et sert une playlist HLS LIVE
           // GLISSANTE que le Default Media Receiver lit nativement.
-          urlToCast = await _registerHlsRelay(
+          final ({String url, String mime}) relay = await _registerRelayFor(
             upstream: upstream,
             profileUrl: streamUrl,
+            streamUrl: streamUrl,
           );
-          mime = 'application/x-mpegURL';
+          urlToCast = relay.url;
+          mime = relay.mime;
           castPath = 'local_hls_relay';
           lastRelayUrl = urlToCast;
         }
@@ -425,11 +427,13 @@ class GoogleCastTransport implements CastTransport {
           mime = _guessMime(direct);
           castPath = 'direct_tv';
         } else {
-          urlToCast = await _registerHlsRelay(
+          final ({String url, String mime}) relay = await _registerRelayFor(
             upstream: upstreamForRelay,
             profileUrl: streamUrl,
+            streamUrl: streamUrl,
           );
-          mime = 'application/x-mpegURL';
+          urlToCast = relay.url;
+          mime = relay.mime;
           castPath = 'local_hls_relay';
           lastRelayUrl = urlToCast;
         }
@@ -467,11 +471,13 @@ class GoogleCastTransport implements CastTransport {
           event: 'direct_tv.fallback_relay',
           ctx: <String, Object?>{'error': e.toString()},
         );
-        urlToCast = await _registerHlsRelay(
+        final ({String url, String mime}) relay = await _registerRelayFor(
           upstream: upstreamForRelay,
           profileUrl: streamUrl,
+          streamUrl: streamUrl,
         );
-        mime = 'application/x-mpegURL';
+        urlToCast = relay.url;
+        mime = relay.mime;
         castPath = 'local_hls_relay';
         lastRelayUrl = urlToCast;
       }
@@ -582,6 +588,53 @@ class GoogleCastTransport implements CastTransport {
       );
     }
     return hlsRelay;
+  }
+
+  /// Choisit le BON relais téléphone selon le type de contenu :
+  ///
+  ///   • LIVE (flux MPEG-TS brut, /live/…ts) → relais HLS : le téléphone
+  ///     DÉCOUPE le flux continu en segments (TsHlsSegmenter). Comportement
+  ///     historique, INCHANGÉ.
+  ///   • CINÉMA / VOD (fichier .mp4/.mkv fini) → PASS-THROUGH : le téléphone
+  ///     tire le fichier (User-Agent correct, auth OK) et le RE-SERT TEL QUEL
+  ///     avec le support des requêtes Range. Segmenter un mp4 comme du TS
+  ///     échouait (« format non supporté » — bug terrain 2026-07-19) : un
+  ///     fichier n'est pas un flux TS continu. Le récepteur lit un mp4
+  ///     H.264/AAC nativement + gère le seek (Range).
+  ///
+  /// Garde de SÛRETÉ : pour un flux TS live, on retombe EXACTEMENT sur
+  /// `_registerHlsRelay` (aucun changement de comportement pour le live).
+  /// Renvoie l'URL locale à caster + le MIME adapté.
+  Future<({String url, String mime})> _registerRelayFor({
+    required String upstream,
+    required String profileUrl,
+    required String streamUrl,
+  }) async {
+    final bool isLiveTs = _looksLikeRawMpegTs(streamUrl);
+    if (!isLiveTs && !isHlsOrDash(streamUrl)) {
+      // VOD : pass-through du fichier (wrapInHls:false → route /relay/<t>.<ext>).
+      final DlnaProfile profile =
+          DlnaProfiles.select(url: profileUrl, finalMime: null);
+      final String? passthrough = await LocalCastServer.instance.registerRelay(
+        upstreamUrl: upstream,
+        profile: profile,
+        receiverHost: device.host,
+        wrapInHls: false,
+      );
+      if (passthrough != null) {
+        StructuredLogger.instance.info(
+          domain: 'cast',
+          event: 'vod.passthrough_relay',
+          ctx: <String, Object?>{'mime': _guessMime(profileUrl)},
+        );
+        return (url: passthrough, mime: _guessMime(profileUrl));
+      }
+      // Pass-through indisponible : on ne casse rien, on tente le HLS (repli).
+    }
+    return (
+      url: await _registerHlsRelay(upstream: upstream, profileUrl: profileUrl),
+      mime: 'application/x-mpegURL',
+    );
   }
 
   /// LOAD + attente de la lecture RÉELLE, avec journalisation et

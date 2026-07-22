@@ -249,6 +249,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // Même philosophie que le fix TV (verrou _recovering, 2026-07-06).
   Timer? _startupTimer;
 
+  // ── Notice « connexion trop faible » (ça TOURNE trop) ──────────────
+  //  Demande client : quand la lecture CHARGE trop longtemps d'affilée, OU
+  //  rebuffere trop souvent, on ÉCRIT CLAIREMENT au client que c'est sa
+  //  connexion / son fournisseur (pas l'app) — au lieu de le laisser fixer
+  //  la roue qui tourne. On efface la notice dès que la lecture repart.
+  Timer? _bufferNoticeTimer;
+  bool _weakConnection = false;
+  final List<DateTime> _rebufferAt = <DateTime>[];
+  static const Duration _kBufferNoticeDelay = Duration(seconds: 12);
+  static const int _kRebufferBurst = 4; // nb de rebuffers…
+  static const Duration _kRebufferWindow = Duration(seconds: 60); // …en 60 s
+
   /// Repli VOD : cascade de variantes de conteneur si aucune image n'est
   /// décodée dans [_kVodDirectGrace]. 12 s = on laisse mpv démarrer un
   /// film volumineux / une origine lente (un vrai 404 est, lui, capté
@@ -256,6 +268,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// le chien de garde de démarrage (25 s) pour ne pas laisser un spinner.
   Timer? _vodRelayFallbackTimer;
   static const Duration _kVodDirectGrace = Duration(seconds: 12);
+  // Reprise différée après une micro-coupure EOF live (800 ms). STOCKÉE pour
+  // être annulable (M3) : sans ça, un démontage ou un zap rapide juste après
+  // l'EOF déclenchait une réouverture parasite sur une chaîne déjà quittée.
+  Timer? _eofReopenTimer;
   Timer? _zapDebounce;
   // Chaîne en attente derrière le debounce : si un nouveau zap arrive
   // avant l'échéance, elle est « absorbée » (zéro requête émise) — on
@@ -397,12 +413,61 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
+  /// Réagit au buffering mpv : met à jour le spinner ET détecte un
+  /// chargement ANORMALEMENT long / répété → notice « connexion trop faible »
+  /// écrite clairement au client (efface la notice quand la lecture repart).
+  void _onBufferingChanged(bool b) {
+    if (!mounted) return;
+    setState(() => _isBuffering = b);
+    if (b) {
+      // Chargement en cours : on arme la notice si ça dure trop longtemps.
+      _bufferNoticeTimer ??= Timer(_kBufferNoticeDelay, () {
+        if (!mounted || !_isBuffering) return;
+        _raiseWeakConnection(
+            'chargement prolongé (> ${_kBufferNoticeDelay.inSeconds}s sans image)');
+      });
+      // Rebuffers récents (fenêtre glissante) : trop de coupures = réseau faible.
+      final DateTime now = DateTime.now();
+      _rebufferAt.add(now);
+      _rebufferAt
+          .removeWhere((DateTime t) => now.difference(t) > _kRebufferWindow);
+      if (_rebufferAt.length >= _kRebufferBurst) {
+        _raiseWeakConnection('${_rebufferAt.length} coupures de chargement '
+            'en ${_kRebufferWindow.inSeconds}s');
+      }
+    } else {
+      // La lecture repart : on désarme et on efface la notice.
+      _bufferNoticeTimer?.cancel();
+      _bufferNoticeTimer = null;
+      if (_weakConnection) setState(() => _weakConnection = false);
+    }
+  }
+
+  /// Affiche la notice « connexion trop faible » (une fois) + trace la raison
+  /// dans la boîte noire (problème réseau côté client/fournisseur, pas l'app).
+  void _raiseWeakConnection(String reason) {
+    if (!mounted || _weakConnection) return;
+    StreamDiagnostics.instance.recordEvent(
+      'player',
+      'Connexion trop faible / serveur lent — $reason → message client '
+          'affiché (problème réseau côté client ou fournisseur, pas l\'app).',
+      level: 'warn',
+    );
+    setState(() => _weakConnection = true);
+  }
+
+  /// Réinitialise l'état de la notice « connexion faible » (nouveau média/zap).
+  void _resetWeakConnection() {
+    _bufferNoticeTimer?.cancel();
+    _bufferNoticeTimer = null;
+    _rebufferAt.clear();
+    _weakConnection = false;
+  }
+
   /// Abonne l'instance mpv COURANTE aux événements. Les abonnements
   /// vivent dans `_subs` : annulés puis re-créés à chaque recyclage.
   void _attachPlayerListeners() {
-    _subs.add(_player.stream.buffering.listen((bool b) {
-      if (mounted) setState(() => _isBuffering = b);
-    }));
+    _subs.add(_player.stream.buffering.listen(_onBufferingChanged));
     // Durée du flux : quand elle devient connue (> 0), c'est de la
     // VOD/replay seekable → l'OSD doit afficher la barre de progression
     // et les boutons ±10s. On rafraîchit donc le build à ce moment.
@@ -459,7 +524,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               '#$_watchdogRecoveries',
           level: 'warn',
         );
-        Timer(const Duration(milliseconds: 800), () {
+        _eofReopenTimer?.cancel();
+        _eofReopenTimer = Timer(const Duration(milliseconds: 800), () {
           if (!mounted || _hasError) return;
           _openMedia(_effectiveUrl);
         });
@@ -512,7 +578,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (_playedChannelId == _currentChannel.id) {
         setState(() {
           _hasError = true;
-          _errorMessage = e;
+          // Si la cause est « compte » (expiré / limite de connexions), on
+          // affiche le message CLAIR ; sinon l'erreur libmpv brute, comme avant.
+          _errorMessage = _blockMessage(e);
         });
       } else {
         // Refus AVANT toute frame (« Error when loading first segment »,
@@ -587,7 +655,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         if (!mounted) return;
         setState(() {
           _hasError = true;
-          _errorMessage = message;
+          _errorMessage = _blockMessage(message);
         });
       },
     )..attach();
@@ -652,6 +720,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       await old.dispose().timeout(const Duration(seconds: 5));
     } catch (_) {}
     _createPlayer();
+    // ÉTAT DE LECTURE remis à neuf AVANT que les listeners de la nouvelle
+    // instance n'émettent (M1) : sinon le watchdog lisait la position 0 de
+    // l'instance NEUVE tout en croyant `_isPlaying == true` (valeur héritée
+    // de l'ancienne) → comptage de « stale ticks » prématuré / faux gel.
+    _isPlaying = false;
+    _isBuffering = true;
+    _resetWeakConnection(); // nouvelle piste → on repart d'une notice vierge
+    _lastWatchdogPos = Duration.zero;
+    _watchdogStaleTicks = 0;
+    _watchdogGoodTicks = 0;
     StreamDiagnostics.instance.recordEvent(
       'player',
       'instance mpv recréée en ${sw.elapsedMilliseconds - stopMs} ms '
@@ -791,6 +869,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       );
     }
     _zapDebounce?.cancel();
+    _eofReopenTimer?.cancel(); // pas de réouverture EOF parasite sur l'ancienne
     _pendingZapChannel = next;
     _zapClock
       ..reset()
@@ -903,6 +982,33 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
   }
 
+  /// Traduit un blocage en message CLAIR pour le client — écrit noir sur
+  /// blanc à l'écran pour qu'il comprenne (et corrige) tout seul : abonnement
+  /// expiré, limite de connexions (un autre écran regarde déjà), compte
+  /// suspendu. Renvoie [fallback] si aucune cause « compte » n'est
+  /// identifiée (message générique conservé).
+  String _blockMessage(String fallback) {
+    final StreamDiagnostics d = StreamDiagnostics.instance;
+    switch (d.blockReason) {
+      case StreamBlockReason.expired:
+        final DateTime? x = d.xtreamExpDate;
+        final String date = x == null
+            ? '—'
+            : '${x.day.toString().padLeft(2, '0')}/'
+                '${x.month.toString().padLeft(2, '0')}/${x.year}';
+        return context.l10n.playerBlockedExpired(date);
+      case StreamBlockReason.maxConnections:
+        return context.l10n.playerBlockedMaxConnections(
+          '${d.xtreamActiveCons ?? '?'}',
+          '${d.xtreamMaxConnections ?? '?'}',
+        );
+      case StreamBlockReason.banned:
+        return context.l10n.playerBlockedBanned;
+      case StreamBlockReason.none:
+        return fallback;
+    }
+  }
+
   /// Point d'entrée UNIQUE des ouvertures. SÉRIALISÉ : chaque ouverture
   /// attend la fin de la précédente (fermeture attendue comprise) —
   /// jamais deux lectures en vol. Une ouverture dépassée par un zap plus
@@ -917,7 +1023,32 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final bool isLocal = realUrl.startsWith('file:') ||
         realUrl.startsWith('/');
     VodDownloadService.instance.setPlaybackHold(!isLocal);
-    _openChain = _openChain.then((_) => _openMediaInner(realUrl, gen));
+    // BLINDAGE DE LA FILE (cause racine « lecteur figé définitivement ») : si
+    // _openMediaInner lève une exception NON rattrapée (bind du relais qui
+    // échoue, _player.open synchrone, propriété mpv…), la future de la file
+    // deviendrait REJETÉE — et TOUTE ouverture ultérieure (zap, retry,
+    // watchdog) ferait `.then` sur une future rejetée, donc plus JAMAIS
+    // exécutée. Le `catchError` garantit que la file reste toujours saine :
+    // l'échec est journalisé et affiché (jamais un écran noir muet).
+    _openChain = _openChain.then((_) => _openMediaInner(realUrl, gen)).catchError(
+      (Object e, StackTrace st) {
+        StreamDiagnostics.instance.recordEvent(
+          'player',
+          'Ouverture interrompue par une exception : $e — file préservée, '
+              'prochaine ouverture possible',
+          level: 'error',
+        );
+        // On ne réagit que si cette ouverture est encore la plus récente
+        // (sinon un zap plus récent est déjà en cours : on ne l'écrase pas).
+        if (mounted && gen == _openGeneration) {
+          setState(() {
+            _hasError = true;
+            _errorMessage =
+              _blockMessage(context.l10n.playerStreamInterrupted);
+          });
+        }
+      },
+    );
     return _openChain;
   }
 
@@ -1450,7 +1581,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       final dynamic native = (_player.platform as dynamic);
       await native?.setProperty(name, value);
       return true;
-    } catch (_) {
+    } catch (e) {
+      // M5 : rendre VISIBLE l'échec de configuration mpv. Si l'API media_kit
+      // change (montée de version), TOUTES les options de résilience
+      // (user-agent, keep-open, reconnect, buffers) cessaient de s'appliquer
+      // EN SILENCE → UA par défaut refusé = écran noir généralisé sans trace.
+      // Désormais chaque refus laisse une trace dans la boîte noire.
+      StreamDiagnostics.instance.recordEvent(
+        'player',
+        'Propriété mpv « $name » NON appliquée ($e) — résilience réduite',
+        level: 'warn',
+      );
       return false;
     }
   }
@@ -1663,7 +1804,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _upNextTimer?.cancel();
     _watchdogTimer?.cancel();
     _startupTimer?.cancel();
+    _bufferNoticeTimer?.cancel();
     _vodRelayFallbackTimer?.cancel();
+    _eofReopenTimer?.cancel();
     _zapDebounce?.cancel();
     // Mode « Écouteurs » : on coupe le service audio de fond et on lève le
     // drapeau natif (sinon le son continuerait après la fermeture du
@@ -1923,7 +2066,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (_playedChannelId == _currentChannel.id) {
         setState(() {
           _hasError = true;
-          _errorMessage = context.l10n.playerStreamInterrupted;
+          _errorMessage =
+              _blockMessage(context.l10n.playerStreamInterrupted);
         });
       } else {
         _declareChannelBlocked();
@@ -1992,7 +2136,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         if (mounted) {
           setState(() {
             _hasError = true;
-            _errorMessage = context.l10n.playerStreamInterrupted;
+            _errorMessage =
+              _blockMessage(context.l10n.playerStreamInterrupted);
           });
         }
       } else {
@@ -2017,6 +2162,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       });
     }
     final String url = _effectiveUrl;
+    // H2 : un gel vient souvent d'un upstream SILENCIEUX (ni erreur ni EOF).
+    // Rouvrir mpv sur la MÊME session du relais ne relance pas l'amont
+    // (_ensureUpstream est un no-op tant que upstreamActive). On force donc
+    // une vraie reconnexion amont AVANT de rouvrir — live TS via relais
+    // uniquement (le HLS direct et la VOD ne passent pas par le relais).
+    if (widget.overrideUrl == null &&
+        _currentChannel.isLive &&
+        !HlsPreflight.isHlsUrl(url)) {
+      LocalStreamRelay.instance.forceReconnect(url);
+    }
     _openMedia(url);
   }
 
@@ -2548,15 +2703,39 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 if (_isBuffering &&
                     !_hasError &&
                     _playedChannelId == _currentChannel.id)
-                  const Center(
-                    child: SizedBox(
-                      width: 56,
-                      height: 56,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 3,
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
+                  Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const SizedBox(
+                          width: 56,
+                          height: 56,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ),
+                        // Ça TOURNE trop : on écrit noir sur blanc au client que
+                        // c'est sa connexion / son fournisseur (pas l'app).
+                        if (_weakConnection)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                                top: 20, left: 32, right: 32),
+                            child: Text(
+                              context.l10n.playerWeakConnection,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                height: 1.35,
+                                shadows: <Shadow>[
+                                  Shadow(color: Colors.black, blurRadius: 6),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
 
@@ -3166,12 +3345,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 }
 
-/// Splash de chargement d'un film / d'une chaîne : affiche l'affiche, le
-/// titre, une LIGNE DE PROGRESSION ember (évoque « le téléchargement »
-/// comme sur la TV), un STATUT EN DIRECT (dernier événement pertinent de
-/// la boîte noire : résolution DNS, connexion, cascade, tampon, erreur…)
-/// et un chrono. Remplace le spinner « mystère » : l'utilisateur voit ce
-/// qui se passe — et peut le photographier pour diagnostic terrain.
+/// Splash de chargement d'une chaîne / d'un film — version PREMIUM (sobre) :
+/// uniquement le logo de la chaîne qui « RESPIRE » (opacité + micro-échelle,
+/// lentement) et son nom. AUCUN texte technique de diagnostic, AUCUNE barre
+/// de progression — le mouvement lent et discret du logo suffit à signaler
+/// « ça arrive », dans un esprit haut de gamme. (Le diagnostic reste dispo
+/// dans la boîte noire cachée — appui long sur la version, écran À propos.)
 class _ZapSplash extends StatefulWidget {
   const _ZapSplash({required this.channel});
   final Channel channel;
@@ -3180,104 +3359,60 @@ class _ZapSplash extends StatefulWidget {
   State<_ZapSplash> createState() => _ZapSplashState();
 }
 
-class _ZapSplashState extends State<_ZapSplash> {
-  final Stopwatch _clock = Stopwatch()..start();
-  Timer? _tick;
+class _ZapSplashState extends State<_ZapSplash>
+    with SingleTickerProviderStateMixin {
+  // Respiration LENTE (≈1,9 s aller-retour, easeInOut) : mouvement premium,
+  // jamais agité. Le logo passe doucement de 0,5 → 1,0 d'opacité et de
+  // 0,95 → 1,0 d'échelle, en boucle, jusqu'à la 1re image décodée.
+  late final AnimationController _breathe = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1900),
+  )..repeat(reverse: true);
 
-  @override
-  void initState() {
-    super.initState();
-    // Le chrono se rafraîchit chaque seconde (perception « ça avance »).
-    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
-    });
-  }
+  late final Animation<double> _opacity = Tween<double>(begin: 0.5, end: 1.0)
+      .animate(CurvedAnimation(parent: _breathe, curve: Curves.easeInOut));
+  late final Animation<double> _scale = Tween<double>(begin: 0.95, end: 1.0)
+      .animate(CurvedAnimation(parent: _breathe, curve: Curves.easeInOut));
 
   @override
   void dispose() {
-    _tick?.cancel();
+    _breathe.dispose();
     super.dispose();
-  }
-
-  /// Dernier événement PERTINENT pour la lecture — on ignore le bruit
-  /// (cast, mémoire, cycle de vie) pour ne montrer que ce qui concerne
-  /// l'ouverture du flux en cours.
-  String? _liveStatus() {
-    const Set<String> relevant = <String>{
-      'player', 'probe', 'mpv', 'relay', 'hls', 'cascade',
-    };
-    for (final StreamDiagEvent e in StreamDiagnostics.instance.events) {
-      if (relevant.contains(e.tag)) return e.message;
-    }
-    return null;
   }
 
   @override
   Widget build(BuildContext context) {
     final Channel ch = widget.channel;
     return Container(
-      color: Colors.black.withValues(alpha: 0.82),
+      color: Colors.black.withValues(alpha: 0.88),
       alignment: Alignment.center,
-      child: ListenableBuilder(
-        // Se redessine à chaque nouvel événement de la boîte noire → le
-        // statut affiché suit la progression réelle de l'ouverture.
-        listenable: StreamDiagnostics.instance,
-        builder: (BuildContext context, _) {
-          final int secs = _clock.elapsed.inSeconds;
-          final String? status = _liveStatus();
-          final String line = status == null
-              ? '${context.l10n.playerPreparing}  ·  ${secs}s'
-              : '$status  ·  ${secs}s';
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              ChannelLogo(channel: ch, size: ChannelLogoSize.large),
-              const SizedBox(height: 18),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 40),
-                child: Text(
-                  ch.cleanName,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.headlineMedium
-                      .copyWith(color: Colors.white, fontSize: 22),
-                ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          // Logo de la chaîne en respiration lente — LE seul mouvement.
+          FadeTransition(
+            opacity: _opacity,
+            child: ScaleTransition(
+              scale: _scale,
+              child: ChannelLogo(channel: ch, size: ChannelLogoSize.large),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: Text(
+              ch.cleanName,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.headlineMedium.copyWith(
+                color: Colors.white.withValues(alpha: 0.92),
+                fontSize: 22,
+                letterSpacing: 0.4,
               ),
-              const SizedBox(height: 20),
-              // LIGNE DE PROGRESSION ember (« comment ça télécharge »).
-              // Indéterminée : avant la 1re image on ne connaît pas encore
-              // la durée du film — la barre indique « en cours », l'accent
-              // ember rappelle la TV.
-              SizedBox(
-                width: 220,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
-                  child: LinearProgressIndicator(
-                    minHeight: 4,
-                    backgroundColor: Colors.white.withValues(alpha: 0.14),
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(AppColors.accent),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              // STATUT EN DIRECT + chrono : ce que l'app est en train de
-              // faire, lisible à l'écran (plus besoin de la boîte noire).
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 36),
-                child: Text(
-                  line,
-                  textAlign: TextAlign.center,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      color: Colors.white54, fontSize: 12, height: 1.35),
-                ),
-              ),
-            ],
-          );
-        },
+            ),
+          ),
+        ],
       ),
     );
   }

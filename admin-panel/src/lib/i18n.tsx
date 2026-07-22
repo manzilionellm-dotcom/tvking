@@ -58,6 +58,9 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.history': { fr: 'Historique', en: 'History', ar: 'السجل' },
   'nav.references': { fr: 'Références', en: 'References', ar: 'المراجع' },
   'nav.transfer': { fr: 'Transférer', en: 'Transfer', ar: 'نقل' },
+  'nav.shares': { fr: 'Partages & prêts', en: 'Shares & loans', ar: 'المشاركات والإعارات' },
+  'nav.masters': { fr: 'Comptes maîtres', en: 'Master accounts', ar: 'الحسابات الرئيسية' },
+  'nav.adminMonitor': { fr: 'Admin Monitoring', en: 'Admin Monitoring', ar: 'مراقبة المشرف' },
   'nav.families': { fr: 'Famille', en: 'Family', ar: 'العائلة' },
   'nav.account': { fr: 'Mon compte', en: 'My account', ar: 'حسابي' },
 

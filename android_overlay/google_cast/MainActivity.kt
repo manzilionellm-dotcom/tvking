@@ -257,6 +257,15 @@ class MainActivity : FlutterFragmentActivity() {
         )
     }
 
+    /// `true` sur un téléviseur / box Android TV / Fire TV / Google TV
+    /// (leanback ou type télévision). Sert à INTERDIRE le PiP et la lecture
+    /// audio de fond sur TV : quitter l'app y coupe le son, point.
+    private fun isTvDevice(): Boolean {
+        return packageManager.hasSystemFeature(
+            android.content.pm.PackageManager.FEATURE_LEANBACK,
+        ) || packageManager.hasSystemFeature("android.hardware.type.television")
+    }
+
     /// Entre en PiP MAINTENANT avec le bon aspect ratio. Retourne
     /// true si l'appel a bien été passé à l'OS, false sinon (pas
     /// supporté, exception, etc.).
@@ -350,6 +359,14 @@ class MainActivity : FlutterFragmentActivity() {
     ///     arriver mais sécurité).
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
+        // BOX TV : JAMAIS de PiP. Sur un téléviseur, quitter l'app (Home,
+        // autre app via la télécommande) doit COUPER le son — la lecture en
+        // arrière-plan « façon YouTube » (PiP flottant) n'a aucun sens sur TV
+        // et laissait le son parler en fond (plainte terrain). En n'entrant
+        // PAS en PiP, l'activité passe en onStop → le couvre-feu audio du
+        // plugin natif (NativeVideoView.pauseAll) met tous les lecteurs en
+        // pause. Le PiP reste actif sur téléphone/tablette (pas leanback).
+        if (isTvDevice()) return
         // Mode « Écouteurs » : PAS de PiP vidéo. L'audio de fond est
         // déjà tenu en vie par PlaybackForegroundService, on ne pose
         // donc pas de mini-fenêtre flottante.

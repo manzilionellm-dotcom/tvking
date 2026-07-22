@@ -27,6 +27,9 @@ on:
       - 'lib/features/channels/**'
       - 'lib/features/playlists/**'
       - 'lib/features/epg/**'
+      # Cœur de LECTURE partagé avec la TV (relais local, fallback 458/cascade,
+      # diagnostics, réglages lecteur) : une correction ici DOIT rebuild la TV.
+      - 'lib/features/player/**'
       - 'lib/core/**'
       - 'packages/**'
       - 'pubspec.yaml'
@@ -154,7 +157,7 @@ jobs:
           lines = open(f).read().splitlines(keepends=True)
           out = []
           for line in lines:
-              if re.match(r'\s*(media_kit|media_kit_video|media_kit_libs_android_video|media_kit_libs_windows_video)\s*:', line):
+              if re.match(r'\s*(media_kit|media_kit_video|media_kit_libs_android_video|media_kit_libs_windows_video|ffmpeg_kit_flutter_new_min)\s*:', line):
                   print("retiré:", line.strip())
                   continue
               out.append(line)
@@ -184,8 +187,15 @@ jobs:
               ["grep", "-rl", "package:media_kit", "lib/", "--include=*.dart"],
               capture_output=True, text=True,
           ).stdout
-          media_kit_files = sorted(out.split())
-          print("fichiers media_kit détectés :", media_kit_files)
+          # ffmpeg_kit est AUSSI retiré du pubspec TV (comme media_kit) : les
+          # fichiers qui l'importent (ffmpeg_converter.dart) doivent être exclus
+          # de l'analyse TV, sinon `flutter analyze` échoue sur l'import manquant.
+          out_ff = subprocess.run(
+              ["grep", "-rl", "package:ffmpeg_kit", "lib/", "--include=*.dart"],
+              capture_output=True, text=True,
+          ).stdout
+          media_kit_files = sorted(set(out.split()) | set(out_ff.split()))
+          print("fichiers exclus (media_kit + ffmpeg_kit) :", media_kit_files)
 
           f = "analysis_options.yaml"
           s = open(f).read()

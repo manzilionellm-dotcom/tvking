@@ -56,7 +56,7 @@
 // Routee depuis le bas du fetch() en haut de la chaine de match.
 // verifyJwt est reutilise ici pour authentifier le WebSocket admin
 // (/api/v1/rt/ws) AVANT de forwarder au Durable Object temps reel.
-import { apiV1, verifyJwt } from './api_v1.js';
+import { apiV1, verifyJwt, validateFacadeBase } from './api_v1.js';
 // Temps réel (cf. cloudflare/realtime.js + docs/REALTIME-PROTOCOL.md) :
 // Durable Object « RealtimeHub » (WebSockets appareils + panel) et helper
 // publishRt() (publication fail-open après une mutation). La classe DO
@@ -107,6 +107,20 @@ const APK_URL =
 // plus être écrasé par une autre branche.
 const TV_APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-prod/defew-tv.apk';
+
+// APK de TEST (prérelease « cinema-test », signé clé maîtresse). Servi via la
+// route propre `/test` → lien à donner SANS exposer GitHub. Non « latest »,
+// aucun version.json → invisible pour l'updater in-app (ne se diffuse pas
+// tout seul). À utiliser pour valider un build TV sur box avant diffusion.
+const CINEMA_TEST_APK_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/cinema-test/defew-tv-cinema-test.apk';
+
+// APK de TEST TÉLÉPHONE (prérelease « phone-test », signé clé maîtresse).
+// Équivalent mobile de CINEMA_TEST_APK_URL. Servi via `/fone` (et /phone-test,
+// /tel) → lien à donner SANS exposer GitHub. Non « latest », aucun
+// version.json → invisible pour l'updater in-app (ne se diffuse pas tout seul).
+const PHONE_TEST_APK_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/phone-test/7motion-test.apk';
 
 // App Bundles (.aab) signés pour la Google Play Console. Servis via un lien
 // PUBLIC propre (app.7themotion.com/tv-aab et /phone-aab) → utile pour
@@ -385,6 +399,43 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
   // --- Cas 1 : une licence existe (activee par admin/revendeur) ---
   if (lic) {
     const lstatus = lic.lstatus || 'active';
+
+    // --- PRÊT D'ABONNEMENT (règlement paresseux, sans cron) ---
+    // SEULS les appareils dont la licence est en pause 'loaned' passent ici
+    // (aucun coût pour un abonné actif ou un essai). À l'échéance du prêt on
+    // rend l'abonnement au propriétaire ; sinon on le montre « prêté ».
+    if (lstatus === 'loaned') {
+      let loan = null;
+      try { loan = await activeLoanForOwner(env, mac); } catch (_) { /* schema */ }
+      const decision = loanSettleDecision({ lstatus, loanRow: loan, now });
+      if (decision === 'restore') {
+        try { await settleLoan(env, loan, now); } catch (_) { /* best-effort */ }
+        // Recalcule proprement : le propriétaire est redevenu 'active' (plus
+        // de statut 'loaned' → pas de ré-entrée dans cette branche).
+        return d1StatusForMac(env, mac, now);
+      }
+      if (decision === 'hold') {
+        const returnAt = loan ? Number(loan.return_at) : now;
+        return {
+          exists: true,
+          status: 'active',
+          paid: false,            // en pause pendant le prêt
+          plan: 'loaned',
+          paid_until: null,
+          trial_until: returnAt,
+          days_left: 0,
+          expired: false,
+          frozen: false,
+          banned: false,
+          loaned: true,
+          return_at: returnAt,
+          source: 'd1-loan',
+        };
+      }
+      // decision 'none' : statut 'loaned' résiduel sans prêt actif → on
+      // laisse le calcul normal (expires_at=maintenant → expired, paid:false).
+    }
+
     const lifetime = lic.expires_at === null || lic.expires_at === undefined;
     const expiresAt = lifetime ? now + 36500 * DAY_MS : lic.expires_at;
     const expired = !lifetime && expiresAt <= now;
@@ -470,8 +521,77 @@ async function ensureScaleSchema(env) {
   _scaleSchemaReady = true;
 }
 
+// =========================================================
+//  ADMIN MONITORING — sessions admin séparées des stats clients
+// =========================================================
+//  Un compte MAÎTRE/admin qui regarde (pour surveiller la qualité) ne doit
+//  JAMAIS gonfler les compteurs clients (« En ligne », Tendances, dashboard).
+//  Astuce propre : on DÉTOURNE sa présence vers une table à part
+//  `admin_presence` → toutes les lectures de `presence` (donc toutes les
+//  stats clients) l'excluent AUTOMATIQUEMENT, sans toucher à leurs requêtes.
+//  Cette table sert aussi de JOURNAL admin séparé (vue Admin Monitoring).
+//
+//  Perf : la liste des MAC maîtres est petite et change rarement → on la met
+//  en cache mémoire (60 s) pour NE PAS faire un SELECT à chaque heartbeat.
+let _masterSetCache = { at: 0, set: new Set() };
+async function isMasterCached(env, mac) {
+  const m = String(mac || '').toUpperCase();
+  const now = Date.now();
+  if (now - _masterSetCache.at > 60_000) {
+    try {
+      if (await ensureMasterSchema(env)) {
+        const rs = await env.DB.prepare('SELECT mac FROM app_masters').all();
+        _masterSetCache = {
+          at: now,
+          set: new Set(((rs && rs.results) || []).map((r) => String(r.mac).toUpperCase())),
+        };
+      } else {
+        _masterSetCache = { at: now, set: new Set() };
+      }
+    } catch (_) {
+      _masterSetCache.at = now; // évite de re-tenter en boucle si D1 KO
+    }
+  }
+  return _masterSetCache.set.has(m);
+}
+
+let _adminPresenceReady = false;
+async function recordAdminPresence(env, mac, ip, country, now, channel) {
+  if (!env.DB) return;
+  try {
+    if (!_adminPresenceReady) {
+      await env.DB.prepare(
+        'CREATE TABLE IF NOT EXISTS admin_presence (' +
+          'mac TEXT PRIMARY KEY, ip TEXT, country TEXT, last_seen INTEGER, channel TEXT)'
+      ).run();
+      try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_admin_presence_lastseen ON admin_presence(last_seen)').run(); } catch (_) {}
+      _adminPresenceReady = true;
+    }
+    const chan = (channel === undefined || channel === null) ? null : String(channel).slice(0, 120);
+    await env.DB
+      .prepare(
+        'INSERT INTO admin_presence (mac, ip, country, last_seen, channel) VALUES (?, ?, ?, ?, ?) ' +
+          'ON CONFLICT(mac) DO UPDATE SET ip = excluded.ip, ' +
+          'country = excluded.country, last_seen = excluded.last_seen, channel = excluded.channel'
+      )
+      .bind(mac, ip, country, now, chan)
+      .run();
+  } catch (_) { /* best-effort */ }
+}
+
 async function recordPresence(env, mac, ip, country, now, channel) {
   if (!env.DB) return;
+  // MODE ADMIN MONITORING : si cette MAC est un compte maître/admin, sa
+  // présence part dans `admin_presence` (jamais dans les stats clients).
+  try {
+    if (await isMasterCached(env, mac)) {
+      await recordAdminPresence(env, mac, ip, country, now, channel);
+      // Purge une éventuelle ligne cliente résiduelle (si la MAC a été
+      // promue admin après avoir été un client normal).
+      try { await env.DB.prepare('DELETE FROM presence WHERE mac = ?').bind(mac).run(); } catch (_) {}
+      return;
+    }
+  } catch (_) { /* en cas de doute, on retombe sur la présence normale */ }
   try {
     // DDL UNE fois par isolate (au lieu d'à chaque heartbeat — gros gain à
     // l'échelle de millions d'appareils). L'upsert, lui, tourne à chaque fois.
@@ -3145,7 +3265,10 @@ async function handleFamilyJoin(request, env) {
 const INVITE_CODE_TTL_MS = 48 * 60 * 60 * 1000; // le code doit être utilisé sous 48 h
 const INVITE_WEEKLY_QUOTA = 5; // 5 invitations PAR SEMAINE (glissante), renouvelées
 const INVITE_WEEK_MS = 7 * 24 * 60 * 60 * 1000; // fenêtre du quota hebdo
-const INVITE_ALLOWED_HOURS = [24, 48]; // durées offertes à l'invité (max 48 h)
+// Durées offertes à l'invité : 1 h (test court, comptes maîtres), 5 h (« on
+// regarde ensemble »), 24 h (« prêt ») et 48 h (week-end). Toute autre valeur
+// retombe sur 5 h (la plus courte des durées « invité » classiques).
+const INVITE_ALLOWED_HOURS = [1, 5, 24, 48];
 let _inviteSchemaError = '';
 
 async function ensureInviteSchema(env) {
@@ -3170,6 +3293,13 @@ async function ensureInviteSchema(env) {
       'ALTER TABLE app_invites ADD COLUMN hours INTEGER',
       'ALTER TABLE app_invites ADD COLUMN channel_json TEXT',
       'ALTER TABLE app_invites ADD COLUMN mode TEXT',
+      // PRÊT D'ABONNEMENT (mode='lend') : de quoi restaurer le PROPRIÉTAIRE
+      // à l'échéance sans cron. owner_expires_at = échéance ORIGINALE du
+      // propriétaire (à lui rendre) ; return_at = date de retour auto
+      // (prêt_at + heures) ; returned_at = posé quand le prêt est réglé.
+      'ALTER TABLE app_invites ADD COLUMN owner_expires_at INTEGER',
+      'ALTER TABLE app_invites ADD COLUMN return_at INTEGER',
+      'ALTER TABLE app_invites ADD COLUMN returned_at INTEGER',
     ]) {
       try { await env.DB.prepare(alter).run(); } catch (_) { /* colonne déjà là */ }
     }
@@ -3185,7 +3315,49 @@ async function ensureInviteSchema(env) {
 /// valeur retombe sur 48 (max). Empêche un invité de se faire offrir 1 an.
 function inviteHours(raw) {
   const h = Number(raw);
-  return INVITE_ALLOWED_HOURS.includes(h) ? h : 48;
+  return INVITE_ALLOWED_HOURS.includes(h) ? h : 5;
+}
+
+// DURÉES d'un compte MAÎTRE : bien plus large qu'un invité normal. Un maître
+// peut offrir un TEST 1 h, mais aussi un accès 1 mois / 2 mois / 6 mois / 1 an
+// (activation admin, dans sa poche). Exprimées en heures pour réutiliser le
+// même octroi de licence. 720 h = 30 j, 1440 h = 60 j, 4320 h = 180 j,
+// 8760 h = 365 j. On garde aussi les durées invité courtes (5/24/48 h).
+const MASTER_ALLOWED_HOURS = [1, 5, 24, 48, 720, 1440, 4320, 8760];
+function masterHours(raw) {
+  const h = Number(raw);
+  return MASTER_ALLOWED_HOURS.includes(h) ? h : 1;
+}
+
+/// Normalise le mode d'invitation : 'together' (5 h « ensemble », défaut),
+/// 'lend' (24 h « prêt d'abonnement »), ou 'test' (démo). Informatif : sert
+/// à l'UI invité (bandeau, message de fin) — la durée reste bornée par
+/// inviteHours().
+function inviteMode(raw) {
+  return ['together', 'lend', 'test'].includes(raw) ? raw : 'together';
+}
+
+// Durées de PRÊT (mode='lend') : 24 h ou 48 h MAX (jamais plus). Toute autre
+// valeur retombe sur 24 h.
+const LOAN_ALLOWED_HOURS = [24, 48];
+function loanHours(raw) {
+  const h = Number(raw);
+  return LOAN_ALLOWED_HOURS.includes(h) ? h : 24;
+}
+
+/// DÉCISION PURE du règlement d'un prêt (testable sans base). À l'instant
+/// [now], pour un propriétaire dont la meilleure licence est en statut
+/// [lstatus] et un éventuel prêt actif [loanRow] (ligne app_invites mode
+/// 'lend', returned_at NULL), renvoie l'action à prendre :
+///   • 'restore' : l'échéance de retour est atteinte → rendre l'abonnement
+///     au propriétaire (et couper l'invité) ;
+///   • 'hold'    : prêt encore en cours → le propriétaire reste en pause ;
+///   • 'none'    : pas de prêt en cours (statut 'loaned' résiduel) → ne
+///     touche à rien (le caller décide d'un repli sûr).
+export function loanSettleDecision({ lstatus, loanRow, now }) {
+  if (lstatus !== 'loaned') return 'none';
+  if (!loanRow || loanRow.returned_at) return 'none';
+  return Number(loanRow.return_at) <= now ? 'restore' : 'hold';
 }
 
 /// Nettoie la chaîne partagée reçue du client → objet minimal jouable, ou null.
@@ -3211,6 +3383,426 @@ function invitePaidPlayable(st) {
   return !!(st && st.paid && !st.expired && !st.frozen && !st.banned);
 }
 
+// =========================================================
+//  COMPTES MAÎTRES (« démo illimitée »)
+// =========================================================
+//  Une MAC marquée MAÎTRE dans le panel peut envoyer des pass invités
+//  (« tests ») À VOLONTÉ, à n'importe qui, sur la chaîne de son choix —
+//  SANS quota hebdo et SANS obligation d'être un abonné payé. Réservé à
+//  l'exploitant (toi) : la liste est gérée uniquement via le panel admin
+//  (/api/v1/masters, authentifié). Rien d'illimité n'est exposé publiquement
+//  tant que la MAC n'est pas ajoutée par un admin.
+let _masterSchemaReady = false;
+async function ensureMasterSchema(env) {
+  if (!env.DB) return false;
+  if (_masterSchemaReady) return true;
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS app_masters (' +
+      'mac TEXT PRIMARY KEY, note TEXT, created_at INTEGER)',
+    ).run();
+    _masterSchemaReady = true;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Cette MAC est-elle un compte MAÎTRE ? (démo illimitée). Best-effort :
+/// toute erreur/table absente → false (jamais de privilège par défaut).
+async function isMasterMac(env, mac) {
+  const m = String(mac || '').toUpperCase();
+  if (!MAC_RX.test(m)) return false;
+  if (!env.DB || !(await ensureMasterSchema(env))) return false;
+  try {
+    const row = await env.DB
+      .prepare('SELECT 1 AS x FROM app_masters WHERE mac = ?').bind(m).first();
+    return !!row;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// GET /api/invite/master/:mac → l'app demande si CET appareil est maître
+/// (pour débloquer le mode « envoi illimité » dans l'écran invité).
+async function handleInviteMaster(env, rawMac) {
+  const mac = String(rawMac || '').toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const master = await isMasterMac(env, mac);
+  return jsonPrivate({ master });
+}
+
+// =========================================================
+//  LISTE DE TEST INDÉPENDANTE (« notre liste », moins de 5 chaînes)
+// =========================================================
+//  LE CŒUR de l'indépendance vis-à-vis du fournisseur.
+//
+//  Problème : si un test donne accès à TOUT le bouquet, 10 testeurs peuvent
+//  regarder 10 chaînes DIFFÉRENTES → 10 connexions upstream distinctes → la
+//  ligne (un seul trio) sature à PROVIDER_MAX_CONNECTIONS et le fournisseur
+//  « voit » l'activité. C'est l'« impact » à éviter.
+//
+//  Solution (ta technique) : le maître curate UNE PETITE liste (< 5 chaînes),
+//  écrite en M3U dont les URLs pointent sur LE GATEWAY. Tous les tests servent
+//  CETTE liste. Comme le gateway MUTUALISE les chaînes identiques (hub.js : une
+//  chaîne = UNE seule connexion fournisseur, peu importe le nombre de
+//  spectateurs), 10 testeurs sur ces mêmes chaînes = AU PLUS (taille de la
+//  liste) connexions, et s'ils convergent sur la même chaîne = 1 seule.
+//  Le fournisseur ne voit qu'une (ou très peu) connexion(s) : on est
+//  INDÉPENDANT avec un seul trio.
+//
+//  La liste est PRIVÉE : gérée uniquement via le panel admin, servie derrière
+//  une référence OPAQUE (jamais la MAC maître en clair dans l'URL du testeur).
+let _masterListSchemaReady = false;
+async function ensureMasterListSchema(env) {
+  if (!env.DB) return false;
+  if (_masterListSchemaReady) return true;
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS master_test_list (' +
+      'mac TEXT PRIMARY KEY, m3u TEXT, updated_at INTEGER)',
+    ).run();
+    _masterListSchemaReady = true;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Référence OPAQUE et stable d'une liste maître (hash NON réversible de la
+/// MAC). Sert d'URL de test (`/api/master-list/ml_…`) SANS jamais exposer la
+/// vraie MAC du maître au testeur ni au fournisseur.
+export async function masterListRef(masterMac) {
+  const data = new TextEncoder().encode('mlist:' + String(masterMac).toUpperCase());
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return 'ml_' + hex.slice(0, 20);
+}
+
+/// Compte les chaînes d'un M3U (lignes #EXTINF). Best-effort, jamais d'erreur.
+export function countM3uChannels(m3u) {
+  if (!m3u) return 0;
+  const m = String(m3u).match(/#EXTINF/gi);
+  return m ? m.length : 0;
+}
+
+/// Lit la liste de test curée d'un maître : { m3u, count, ref }. m3u vide si
+/// le maître n'a rien curé (→ repli sur le bouquet complet, comportement
+/// historique).
+async function readMasterTestList(env, mac) {
+  const m = String(mac || '').toUpperCase();
+  if (!MAC_RX.test(m) || !env.DB || !(await ensureMasterListSchema(env))) {
+    return { m3u: '', count: 0, ref: '' };
+  }
+  try {
+    const row = await env.DB
+      .prepare('SELECT m3u FROM master_test_list WHERE mac = ?').bind(m).first();
+    const m3u = (row && row.m3u) ? String(row.m3u) : '';
+    return { m3u, count: countM3uChannels(m3u), ref: await masterListRef(m) };
+  } catch (_) {
+    return { m3u: '', count: 0, ref: '' };
+  }
+}
+
+/// Résout la MAC maître à partir de la référence opaque de sa liste (scan des
+/// comptes maîtres). Renvoie la MAC ou null. Sert la route publique de test.
+async function resolveMasterMacByListRef(env, ref) {
+  const r = String(ref || '').trim();
+  if (!/^ml_[0-9a-f]{20}$/.test(r) || !env.DB || !(await ensureMasterSchema(env))) return null;
+  try {
+    const rows = await env.DB.prepare('SELECT mac FROM app_masters').all();
+    for (const row of (rows && rows.results) || []) {
+      if ((await masterListRef(row.mac)) === r) return String(row.mac).toUpperCase();
+    }
+  } catch (_) { /* ignore */ }
+  return null;
+}
+
+/// GET /api/master-list/:ref(.m3u) → sert le M3U curé du maître (texte brut).
+/// URL OPAQUE : le testeur (et le fournisseur) ne voient jamais la MAC maître.
+/// C'est CETTE source (≤ 5 chaînes via gateway) qui rend le test indépendant.
+async function handleMasterListServe(env, rawRef) {
+  const ref = String(rawRef || '').replace(/\.m3u$/i, '');
+  const mac = await resolveMasterMacByListRef(env, ref);
+  if (!mac) return notFound('unknown list');
+  const { m3u } = await readMasterTestList(env, mac);
+  if (!m3u) return notFound('empty list');
+  return new Response(m3u, {
+    status: 200,
+    headers: {
+      'content-type': 'application/vnd.apple.mpegurl; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
+}
+
+/// GET /api/invite/selftest/:mac → « BOÎTE NOIRE » : renvoie les FAITS bruts
+/// que le serveur connaît sur CET appareil, pour que la console maître affiche
+/// un diagnostic de sécurité HONNÊTE (pas des cases vertes bidon) :
+///   • master        : la MAC est-elle un compte maître ?
+///   • source        : { present, host, type, origin, count } (host = l'hôte
+///     réellement joué → sert à voir si ça passe par le gateway ou en direct)
+///   • active_test   : un pass invité/test est-il actif en ce moment ?
+async function handleInviteSelftest(env, rawMac) {
+  const mac = String(rawMac || '').toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const now = Date.now();
+  const master = await isMasterMac(env, mac);
+
+  // Source réellement assignée (device_sources) : hôte + origine + type.
+  let source = null;
+  try {
+    const { items } = await readDeviceSourceItems(env, mac);
+    if (items && items.length) {
+      const first = items[0] || {};
+      const raw = String(first.server_url || first.m3u_url || '');
+      let host = '';
+      try { host = new URL(raw).host; } catch (_) { host = ''; }
+      source = {
+        present: true,
+        host,
+        type: first.type || null,
+        origin: first.origin || 'panel',
+        count: items.length,
+      };
+    }
+  } catch (_) { /* pas de source */ }
+
+  // Un test/pass est-il actif sur cet appareil ? (statut invité)
+  let activeTest = false;
+  try {
+    const st = await d1StatusForMac(env, mac, now);
+    activeTest = !!(st && st.paid && st.plan && String(st.plan).startsWith('trial_'));
+  } catch (_) { /* ignore */ }
+
+  // LISTE DE TEST INDÉPENDANTE : si CET appareil est un maître, on rapporte
+  // sa liste curée (nb de chaînes). count>0 → les tests servent cette petite
+  // liste → le fournisseur ne voit qu'une connexion mutualisée (indépendance).
+  let testList = { present: false, count: 0 };
+  if (master) {
+    try {
+      const tl = await readMasterTestList(env, mac);
+      testList = { present: tl.count > 0, count: tl.count };
+    } catch (_) { /* ignore */ }
+  }
+
+  return jsonPrivate({ ok: true, master, source, active_test: activeTest, test_list: testList });
+}
+
+// =========================================================
+//  BOÎTE NOIRE — DIAGNOSTIC PUISSANT (détecte tout, à tout moment)
+// =========================================================
+//  Contrairement au selftest (faits statiques), le diagnostic TESTE
+//  ACTIVEMENT la chaîne complète :
+//   • compte maître reconnu ?         • source assignée ?
+//   • façade (gateway) EN LIGNE ?     • liste réellement SERVIE ?
+//   • 1re chaîne JOUABLE (sonde) ?    • fournisseur ne voit qu'une IP ?
+//  Chaque contrôle a un niveau (0 vert / 1 ambre / 2 rouge), un détail lisible
+//  et un conseil de réparation (« fix ») — pensé pour qu'un humain OU un
+//  assistant puisse voir la panne et la corriger tout de suite. Aucune donnée
+//  sensible (mot de passe, URL avec identifiants) n'est renvoyée.
+
+/// Lit la façade (gateway_base) enregistrée pour un maître ('' si aucune ou
+/// invalide). On revalide via le CONTRAT partagé (https + domaine) : une valeur
+/// héritée non conforme (ancienne IP « nip.io ») est ignorée proprement plutôt
+/// que servie comme si elle marchait.
+async function readMasterGatewayBase(env, mac) {
+  try {
+    const row = await env.DB
+      .prepare('SELECT gateway_base FROM master_test_list WHERE mac = ?')
+      .bind(String(mac).toUpperCase()).first();
+    const v = validateFacadeBase(row && row.gateway_base);
+    return v.ok ? v.base : '';
+  } catch (_) { return ''; }
+}
+
+/// Sonde une URL sans télécharger le flux : on demande 2 octets, on lit le
+/// verdict (statut + latence), puis on annule le corps. Timeout dur.
+/// La sonde reflète la VRAIE joignabilité (plus de rewrite IP→nip.io qui
+/// donnait un « vert » mensonger) : une façade doit être un domaine https
+/// valide pour que ce résultat corresponde à la lecture réelle.
+async function _probeUrl(url, ms = 5000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  const t0 = Date.now();
+  try {
+    const res = await fetch(url, {
+      method: 'GET', headers: { Range: 'bytes=0-1' }, signal: ctrl.signal, redirect: 'follow',
+    });
+    try { if (res.body) await res.body.cancel(); } catch (_) { /* ignore */ }
+    return { ok: res.status >= 200 && res.status < 400, status: res.status, ms: Date.now() - t0 };
+  } catch (e) {
+    return { ok: false, status: 0, ms: Date.now() - t0, error: String((e && e.message) || e) };
+  } finally { clearTimeout(t); }
+}
+
+/// GET /api/invite/diag/:mac → BOÎTE NOIRE complète (contrôles actifs).
+async function handleInviteDiag(env, rawMac, request) {
+  const mac = String(rawMac || '').toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const now = Date.now();
+  let origin = '';
+  try { origin = new URL(request.url).origin; } catch (_) { /* ignore */ }
+
+  const checks = [];
+  const add = (key, level, label, detail, fix) =>
+    checks.push({ key, level, label, detail, fix: fix || '' });
+
+  // 1) Backend (on est là → il répond).
+  add('backend', 0, 'Serveur joignable', 'Backend en ligne et répond.', '');
+
+  // 2) Compte maître.
+  const master = await isMasterMac(env, mac);
+  add('master', master ? 0 : 2, 'Compte maître reconnu',
+    master ? 'Cet appareil peut distribuer des tests illimités.'
+           : 'Cette MAC n’est pas maître.',
+    master ? '' : 'Panel → Comptes maîtres → Ajouter cette MAC.');
+
+  // 3) Source assignée (device_sources).
+  let sHost = '', sType = '', sOrigin = '', sCount = 0, sPresent = false;
+  try {
+    const { items } = await readDeviceSourceItems(env, mac);
+    if (items && items.length) {
+      const f = items[0] || {};
+      sPresent = true; sType = f.type || ''; sOrigin = f.origin || 'panel'; sCount = items.length;
+      try { sHost = new URL(String(f.server_url || f.m3u_url || '')).host; } catch (_) { /* */ }
+    }
+  } catch (_) { /* ignore */ }
+  add('source', sPresent ? 0 : 1, 'Source active',
+    sPresent ? `${sCount} source(s) · ${sType || '?'} · ${sOrigin}` : 'Aucune source assignée à cet appareil.',
+    sPresent ? '' : 'Assigne une ligne (ou envoie/reçois un test).');
+
+  // 4) Façade (gateway) — réellement en ligne ?
+  const gw = master ? await readMasterGatewayBase(env, mac) : '';
+  if (gw) {
+    const p = await _probeUrl(gw, 5000);
+    let isDomain = false;
+    try { isDomain = /[a-zA-Z]/.test(new URL(gw).hostname); } catch (_) { /* */ }
+    add('gateway', p.ok ? 0 : 1, 'Façade (gateway) en ligne',
+      p.ok ? `Ta façade répond (${p.ms} ms)${isDomain ? ' · relais par domaine' : ''}.`
+           : `Façade injoignable (${p.error || p.status}). Les tests jouent en direct, mais moins privés.`,
+      p.ok ? '' : 'Vérifie que ton gateway tourne et que l’URL est exacte.');
+  } else {
+    add('gateway', 1, 'Façade (gateway)',
+      master ? 'Aucune façade réglée → lecture directe (moins stable/privée).'
+             : 'Non applicable (pas un maître).',
+      master ? 'Panel → Liste de test → « Ta façade (gateway) ».' : '');
+  }
+
+  // 5) Relais : le fournisseur ne voit qu’une IP ? (host = domaine, pas IP brute)
+  if (sPresent) {
+    const isDomain = /[a-zA-Z]/.test(sHost);
+    add('relay', isDomain ? 0 : 1, 'Fournisseur ne voit qu’une IP',
+      isDomain ? `Sortie via ${sHost} (relais) → une seule IP.` : `Source directe (${sHost}).`,
+      isDomain ? '' : 'Fais pointer la source/façade sur ton gateway.');
+  }
+
+  // 6) Liste de test + 7) service réel + 8) sonde 1re chaîne.
+  if (master) {
+    let listCount = 0, listRef = '';
+    try { const tl = await readMasterTestList(env, mac); listCount = tl.count; listRef = tl.ref; } catch (_) { /* */ }
+    add('testlist', listCount > 0 ? (listCount <= 5 ? 0 : 1) : 1, 'Liste de test indépendante',
+      listCount > 0
+        ? `${listCount} chaîne(s) partagée(s)${listCount > 5 ? ' — au-delà de 5, l’indépendance faiblit' : ''}.`
+        : 'Aucune liste curée — le test ouvre tout le bouquet.',
+      listCount > 0 ? '' : 'Panel → Liste de test → coche 3-5 chaînes.');
+
+    if (listCount > 0 && listRef && origin) {
+      const serveUrl = `${origin}/api/master-list/${listRef}.m3u`;
+      let m3uText = '';
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 5000);
+        const r = await fetch(serveUrl, { signal: ctrl.signal });
+        clearTimeout(t);
+        if (r.ok) m3uText = await r.text();
+      } catch (_) { /* */ }
+      const served = (m3uText.match(/#EXTINF/gi) || []).length;
+      add('testlist_serve', served > 0 ? 0 : 2, 'Liste servie correctement',
+        served > 0 ? `L’URL de test renvoie ${served} chaîne(s).` : 'L’URL de test ne renvoie rien.',
+        served > 0 ? '' : 'Ré-enregistre la liste dans le panel.');
+
+      // Sonde de la 1re chaîne (jouabilité réelle) — URL jamais renvoyée.
+      const firstUrl = (m3uText.split(/\r?\n/).find((l) => l.trim() && !l.startsWith('#')) || '').trim();
+      if (firstUrl) {
+        const cp = await _probeUrl(firstUrl, 6000);
+        add('channel_probe', cp.ok ? 0 : 2, 'Chaîne de test jouable',
+          cp.ok ? `1re chaîne répond (${cp.status}, ${cp.ms} ms).`
+                : `1re chaîne injoignable (${cp.error || cp.status}).`,
+          cp.ok ? '' : 'Vérifie la façade et la ligne fournisseur.');
+      }
+    }
+  }
+
+  // 9) Test actif en ce moment ?
+  let activeTest = false;
+  try {
+    const st = await d1StatusForMac(env, mac, now);
+    activeTest = !!(st && st.paid && st.plan && String(st.plan).startsWith('trial_'));
+  } catch (_) { /* */ }
+  add('active', 0, 'Test en cours',
+    activeTest ? 'Un test/pass est actif sur cet appareil.' : 'Aucun test actif (normal au repos).', '');
+
+  // Verdict global.
+  const worst = checks.reduce((m, c) => Math.max(m, c.level), 0);
+  const oks = checks.filter((c) => c.level === 0).length;
+  const score = Math.round((oks / checks.length) * 100);
+  const verdict = worst === 0 ? 'green' : (worst === 2 ? 'red' : 'amber');
+  return jsonPrivate({ ok: true, mac, master, verdict, score, checks, generated_at: now });
+}
+
+/// Assigne au testeur [toMac] la source à jouer pendant le test du maître
+/// [fromMac]. DEUX modes :
+///
+///   1. LISTE DE TEST INDÉPENDANTE (préférée) : si le maître a curé une petite
+///      liste (< 5 chaînes), on assigne CETTE liste — un unique item M3U dont
+///      l'URL opaque (`/api/master-list/ml_…`) sert le M3U curé. Tous les
+///      testeurs partagent ces mêmes chaînes → le gateway mutualise → le
+///      fournisseur ne voit qu'UNE connexion. C'est l'indépendance recherchée.
+///
+///   2. REPLI (aucune liste curée) : on copie TOUT le bouquet du maître (accès
+///      complet). Comportement historique — mais des chaînes différentes = des
+///      connexions différentes (borné par la ligne). D'où l'intérêt du mode 1.
+///
+/// [origin] = origine HTTP du worker (ex. https://…workers.dev), pour bâtir
+/// l'URL absolue de la liste. La licence courte (1 h…) coupe l'accès à
+/// l'échéance. Best-effort : jamais bloquant.
+async function copyMasterSourceForTest(env, fromMac, toMac, origin = '') {
+  try {
+    const FROM = String(fromMac).toUpperCase();
+    const TO = String(toMac).toUpperCase();
+    await ensureDeviceSourcesTable(env);
+
+    // --- Mode 1 : liste de test curée (indépendance fournisseur) ------------
+    const tl = await readMasterTestList(env, FROM);
+    if (tl.count > 0 && tl.ref && origin) {
+      const item = {
+        type: 'm3u',
+        label: 'Test 7 Motion',
+        m3u_url: origin.replace(/\/+$/, '') + '/api/master-list/' + tl.ref + '.m3u',
+        origin: 'panel', // VERROUILLÉE : le testeur ne peut pas l'éditer.
+      };
+      await writeDeviceSourceItems(env, TO, [item]);
+      return true;
+    }
+
+    // --- Mode 2 : repli sur le bouquet complet du maître --------------------
+    const { items } = await readDeviceSourceItems(env, FROM);
+    if (!items || !items.length) return false;
+    // Marquées 'panel' (assignées) → non éditables par le testeur ; on retire
+    // les id 'self' du maître (régénérés si besoin).
+    const copy = items.map((s) => {
+      const it = { ...s, origin: 'panel' };
+      delete it.id;
+      return it;
+    });
+    await writeDeviceSourceItems(env, TO, copy);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 /// DÉCISION PURE du redeem (testable sans base) : renvoie {ok:true} ou
 /// {ok:false, error}. Concentre TOUTES les règles anti-abus « argent » :
 ///   • code valide / non utilisé / non expiré ;
@@ -3220,23 +3812,31 @@ function invitePaidPlayable(st) {
 ///   • UN pass par appareil À VIE (already_used_once).
 export function inviteRedeemDecision(
     { mac, code, codeRow, now, issuerStatus, ownStatus, alreadyRedeemed,
-      issuerWeeklyUsed = 0, weeklyQuota = INVITE_WEEKLY_QUOTA }) {
+      issuerWeeklyUsed = 0, weeklyQuota = INVITE_WEEKLY_QUOTA,
+      issuerIsMaster = false }) {
   if (!/^[0-9]{6}$/.test(String(code || ''))) return { ok: false, error: 'code_invalid' };
   if (!codeRow) return { ok: false, error: 'code_invalid' };
   if (codeRow.redeemed_at) return { ok: false, error: 'code_used' };
   if (Number(codeRow.expires_at) < now) return { ok: false, error: 'code_expired' };
   const issuer = String(codeRow.issuer_mac || '').toUpperCase();
   if (issuer === String(mac || '').toUpperCase()) return { ok: false, error: 'own_code' };
-  if (!invitePaidPlayable(issuerStatus)) return { ok: false, error: 'issuer_not_paid' };
-  // QUOTA HEBDO : un abonné peut inviter jusqu'à `weeklyQuota` personnes PAR
-  // SEMAINE glissante (renouvelé). Au-delà → refus (se renouvelle sous 7 j).
-  if (Number(issuerWeeklyUsed) >= Number(weeklyQuota)) {
-    return { ok: false, error: 'issuer_quota' };
+  // Un compte MAÎTRE (démo illimitée) n'a pas besoin d'être payé, et son quota
+  // hebdo ne s'applique pas : il envoie des tests à volonté.
+  if (!issuerIsMaster) {
+    if (!invitePaidPlayable(issuerStatus)) return { ok: false, error: 'issuer_not_paid' };
+    // QUOTA HEBDO : un abonné peut inviter jusqu'à `weeklyQuota` personnes PAR
+    // SEMAINE glissante (renouvelé). Au-delà → refus (se renouvelle sous 7 j).
+    if (Number(issuerWeeklyUsed) >= Number(weeklyQuota)) {
+      return { ok: false, error: 'issuer_quota' };
+    }
   }
   if (ownStatus && ownStatus.paid && !ownStatus.expired) {
     return { ok: false, error: 'already_active' };
   }
-  if (alreadyRedeemed) return { ok: false, error: 'already_used_once' };
+  // Un maître peut re-tester la même personne (pas de « un seul pass à vie »).
+  if (!issuerIsMaster && alreadyRedeemed) {
+    return { ok: false, error: 'already_used_once' };
+  }
   return { ok: true };
 }
 
@@ -3319,6 +3919,160 @@ async function handleInviteTransfer(request, env) {
   return json({ ok: true, target: maskMac(target), plan, expires_at: expiresAt });
 }
 
+/// Récupère le PRÊT actif (mode='lend', non réglé) d'un propriétaire, ou null.
+async function activeLoanForOwner(env, ownerMac) {
+  return env.DB
+    .prepare(
+      "SELECT code, issuer_mac, redeemer_mac, plan, owner_expires_at, return_at " +
+      "FROM app_invites WHERE issuer_mac = ? AND mode = 'lend' AND returned_at IS NULL " +
+      "ORDER BY return_at DESC LIMIT 1",
+    )
+    .bind(ownerMac).first();
+}
+
+/// RÈGLE un prêt : rend l'abonnement au propriétaire (plan + échéance
+/// ORIGINALE) et coupe l'invité (échéance = maintenant). Marque le prêt
+/// `returned_at`. Idempotent : deux appels concurrents ne cassent rien (le
+/// second ne trouve plus de prêt non réglé). Appelé soit à l'échéance (lazy,
+/// depuis d1StatusForMac) soit sur reprise manuelle (reclaim).
+async function settleLoan(env, loanRow, now) {
+  if (!loanRow || loanRow.returned_at) return;
+  const owner = String(loanRow.issuer_mac).toUpperCase();
+  const guest = String(loanRow.redeemer_mac || '').toUpperCase();
+  const ownerExpires =
+    loanRow.owner_expires_at === null || loanRow.owner_expires_at === undefined
+      ? null : Number(loanRow.owner_expires_at);
+  // 1) Le propriétaire retrouve SON abonnement (plan + échéance d'origine).
+  await setDeviceLicense(env, owner, loanRow.plan || 'yearly', ownerExpires, now);
+  // 2) L'invité perd l'accès immédiatement (sa licence prêtée expire).
+  if (guest && MAC_RX.test(guest)) {
+    const gdev = await env.DB
+      .prepare('SELECT id FROM devices WHERE mac = ?').bind(guest).first();
+    if (gdev) {
+      await env.DB.prepare(
+        "UPDATE licenses SET status='expired', expires_at=?, updated_at=? WHERE device_id=?",
+      ).bind(now, now, gdev.id).run();
+    }
+  }
+  // 3) Le prêt est réglé (ne se rejoue plus).
+  await env.DB
+    .prepare('UPDATE app_invites SET returned_at = ? WHERE code = ?')
+    .bind(now, loanRow.code).run();
+}
+
+/// POST /api/invite/lend { mac (propriétaire payé), guest_mac, hours? } →
+/// PRÊT d'abonnement 24 h ou 48 h MAX. Le propriétaire donne SON abonnement
+/// (plan + accès complet) à un ami, et se met LUI-MÊME en pause pour la durée
+/// du prêt. À l'échéance (ou sur reprise manuelle), l'abonnement revient tout
+/// seul sur la MAC du propriétaire — aucun cron : réglé à la lecture du statut.
+async function handleInviteLend(request, env) {
+  let body;
+  try { body = await request.json(); } catch (_) { return badRequest('invalid JSON body'); }
+  const mac = String(body?.mac || '').toUpperCase();          // propriétaire (payé)
+  const guest = String(body?.guest_mac || '').toUpperCase();  // ami emprunteur
+  if (!MAC_RX.test(mac) || !MAC_RX.test(guest)) return badRequest('invalid mac');
+  if (mac === guest) return json({ ok: false, error: 'same_device' });
+  if (!env.DB || !(await ensureInviteSchema(env))) return inviteUnavailable();
+  const now = Date.now();
+
+  // Le propriétaire doit être PAYÉ et jouable (jamais un essai / pass invité).
+  const st = await d1StatusForMac(env, mac);
+  if (!invitePaidPlayable(st)) return json({ ok: false, error: 'not_paid' });
+  // L'ami ne doit pas déjà avoir un accès payé actif.
+  const gst = await d1StatusForMac(env, guest);
+  if (gst && gst.paid && !gst.expired) return json({ ok: false, error: 'already_active' });
+  // UN SEUL prêt à la fois par propriétaire (il doit reprendre avant de re-prêter).
+  const existing = await activeLoanForOwner(env, mac);
+  if (existing) return json({ ok: false, error: 'loan_active' });
+
+  // Lit le plan + l'échéance ACTUELS du propriétaire (ce qui est prêté et,
+  // surtout, ce qu'on lui rendra à l'identique).
+  const dev = await env.DB
+    .prepare('SELECT id FROM devices WHERE mac = ?').bind(mac).first();
+  if (!dev) return json({ ok: false, error: 'device_error' });
+  const lic = await env.DB
+    .prepare('SELECT plan, expires_at FROM licenses WHERE device_id = ? ' +
+             'ORDER BY (expires_at IS NULL) DESC, expires_at DESC LIMIT 1')
+    .bind(dev.id).first();
+  if (!lic) return json({ ok: false, error: 'not_paid' });
+  const plan = lic.plan || 'yearly';
+  const ownerExpires = lic.expires_at === null || lic.expires_at === undefined
+      ? null : Number(lic.expires_at);
+
+  const hours = loanHours(body?.hours);
+  const returnAt = now + hours * 60 * 60 * 1000;
+  // L'invité ne peut JAMAIS avoir plus que le propriétaire : son accès
+  // s'arrête au plus tôt entre la fin du prêt et l'échéance du propriétaire.
+  const guestUntil = ownerExpires === null ? returnAt : Math.min(returnAt, ownerExpires);
+
+  // 1) L'invité reçoit l'abonnement complet (même plan), borné dans le temps.
+  const put = await setDeviceLicense(env, guest, plan, guestUntil, now);
+  if (!put.ok) return json({ ok: false, error: put.error });
+  // 2) Le propriétaire passe EN PAUSE, statut spécial 'loaned' → c'est le
+  //    SEUL déclencheur du règlement paresseux (aucun coût pour les autres).
+  await env.DB.prepare(
+    "UPDATE licenses SET status='loaned', expires_at=?, updated_at=? WHERE device_id=?",
+  ).bind(now, now, dev.id).run();
+  // 3) Trace le prêt (code interne préfixé 'L' = prêt). Sert au retour auto
+  //    ET à l'affichage panel « Partages & prêts ».
+  const buf = new Uint32Array(1); crypto.getRandomValues(buf);
+  const code = 'L' + String(100000 + (buf[0] % 900000));
+  await env.DB.prepare(
+    'INSERT OR REPLACE INTO app_invites (code, issuer_mac, redeemer_mac, plan, created_at, ' +
+    'expires_at, redeemed_at, guest_until, hours, mode, owner_expires_at, return_at, returned_at) ' +
+    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)',
+  ).bind(code, mac, guest, plan, now, returnAt, now, guestUntil, hours, 'lend',
+         ownerExpires, returnAt).run();
+  return json({
+    ok: true,
+    guest: maskMac(guest),
+    guest_until: guestUntil,
+    return_at: returnAt,
+    hours,
+    mode: 'lend',
+  });
+}
+
+/// POST /api/invite/reclaim { mac (propriétaire) } → le propriétaire REPREND
+/// son abonnement avant l'échéance du prêt (l'invité perd l'accès aussitôt).
+async function handleInviteReclaim(request, env) {
+  let body;
+  try { body = await request.json(); } catch (_) { return badRequest('invalid JSON body'); }
+  const mac = String(body?.mac || '').toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  if (!env.DB || !(await ensureInviteSchema(env))) return inviteUnavailable();
+  const now = Date.now();
+  const loan = await activeLoanForOwner(env, mac);
+  if (!loan) return json({ ok: false, error: 'no_loan' });
+  await settleLoan(env, loan, now);
+  return json({ ok: true, reclaimed: true, guest: maskMac(loan.redeemer_mac) });
+}
+
+/// GET /api/invite/loan/:mac → l'appareil PROPRIÉTAIRE lit l'état de SON prêt
+/// en cours (pour afficher « prêté à X, retour dans Y » + bouton Reprendre).
+/// Règle aussi le prêt à la volée s'il est arrivé à échéance (retour auto même
+/// si l'app du propriétaire n'a pas relu son statut). Réponse :
+///   { active, return_at, guest, hours } ou { active:false }.
+async function handleInviteLoanStatus(env, rawMac) {
+  const mac = String(rawMac || '').toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  if (!env.DB || !(await ensureInviteSchema(env))) return inviteUnavailable();
+  const now = Date.now();
+  const loan = await activeLoanForOwner(env, mac);
+  if (!loan) return jsonPrivate({ active: false });
+  // Échéance atteinte → on règle (retour auto) et on répond « plus de prêt ».
+  if (Number(loan.return_at) <= now) {
+    try { await settleLoan(env, loan, now); } catch (_) { /* best-effort */ }
+    return jsonPrivate({ active: false, just_returned: true });
+  }
+  return jsonPrivate({
+    active: true,
+    return_at: Number(loan.return_at),
+    ms_left: Math.max(0, Number(loan.return_at) - now),
+    guest: maskMac(loan.redeemer_mac),
+  });
+}
+
 /// POST /api/invite/grant { mac, guest_mac, hours?, channel?, mode? }
 /// L'abonné PAYANT active DIRECTEMENT l'appareil d'un invité par sa MAC
 /// (activation poussée — l'invité n'a rien à taper). Mêmes garde-fous.
@@ -3331,28 +4085,47 @@ async function handleInviteGrant(request, env) {
   if (!env.DB || !(await ensureInviteSchema(env))) return inviteUnavailable();
   if (mac === guest) return json({ ok: false, error: 'own_code' });
   const now = Date.now();
+  // Un compte MAÎTRE (démo illimitée) contourne le quota ET l'obligation
+  // d'abonnement payé : il peut activer n'importe qui, autant qu'il veut.
+  const master = await isMasterMac(env, mac);
   const ist = await d1StatusForMac(env, mac);
-  if (!invitePaidPlayable(ist)) return json({ ok: false, error: 'not_paid' });
-  // Quota hebdo (5/semaine glissante).
+  if (!master && !invitePaidPlayable(ist)) return json({ ok: false, error: 'not_paid' });
+  // Quota hebdo (5/semaine glissante) — jamais appliqué à un maître.
   const weekAgo = now - INVITE_WEEK_MS;
   const usedRow = await env.DB.prepare(
     'SELECT COUNT(*) AS n FROM app_invites WHERE issuer_mac = ? AND redeemed_at IS NOT NULL AND redeemed_at > ?',
   ).bind(mac, weekAgo).first();
-  if (((usedRow && Number(usedRow.n)) || 0) >= INVITE_WEEKLY_QUOTA) {
+  if (!master && ((usedRow && Number(usedRow.n)) || 0) >= INVITE_WEEKLY_QUOTA) {
     return json({ ok: false, error: 'issuer_quota' });
   }
   // Invité déjà payé ? déjà servi une fois à vie ?
   const own = await d1StatusForMac(env, guest);
-  if (own && own.paid && !own.expired) return json({ ok: false, error: 'already_active' });
-  const prev = await env.DB
-    .prepare('SELECT 1 AS x FROM app_invites WHERE redeemer_mac = ? LIMIT 1').bind(guest).first();
-  if (prev) return json({ ok: false, error: 'already_used_once' });
+  // Un MAÎTRE peut RE-donner un accès même à un appareil déjà actif (ex.
+  // prolonger un test 1 h en 1 an) → il n'est pas bloqué par already_active.
+  if (!master && own && own.paid && !own.expired) {
+    return json({ ok: false, error: 'already_active' });
+  }
+  // Le « un seul pass à vie » ne s'applique PAS à un maître : il peut re-tester
+  // la même personne autant qu'il veut (test 1 h, 1 h, 1 h…).
+  if (!master) {
+    const prev = await env.DB
+      .prepare('SELECT 1 AS x FROM app_invites WHERE redeemer_mac = ? LIMIT 1').bind(guest).first();
+    if (prev) return json({ ok: false, error: 'already_used_once' });
+  }
 
-  const hours = inviteHours(body?.hours);
+  const hours = master ? masterHours(body?.hours) : inviteHours(body?.hours);
   const channel = sanitizeInviteChannel(body?.channel);
-  const mode = body?.mode === 'test' ? 'test' : 'together';
+  const mode = inviteMode(body?.mode);
   const g = await grantGuestPassLicense(env, guest, hours, now);
   if (!g.ok) return json({ ok: false, error: g.error });
+  // TEST MAÎTRE : on assigne au testeur la source de test du maître — liste
+  // curée (< 5 chaînes, indépendance fournisseur) si définie, sinon tout le
+  // bouquet. La licence courte coupe à l'échéance. Tout passe par le gateway.
+  if (master) {
+    let origin = '';
+    try { origin = new URL(request.url).origin; } catch (_) { /* ignore */ }
+    await copyMasterSourceForTest(env, mac, guest, origin);
+  }
   // Trace l'invitation (code interne préfixé 'M' = par MAC, non tapé).
   const buf = new Uint32Array(1); crypto.getRandomValues(buf);
   const code = 'M' + String(100000 + (buf[0] % 900000));
@@ -3400,14 +4173,17 @@ async function handleInviteCreate(request, env) {
   const mac = String(body?.mac || '').toUpperCase();
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   if (!env.DB || !(await ensureInviteSchema(env))) return inviteUnavailable();
-  // Réservé aux abonnements PAYÉS et jouables (comme la famille).
+  // Un compte MAÎTRE (démo illimitée) n'a besoin ni d'abonnement payé ni de
+  // rester sous le quota : il génère autant de codes qu'il veut.
+  const master = await isMasterMac(env, mac);
+  // Réservé aux abonnements PAYÉS et jouables (comme la famille) — sauf maître.
   const st = await d1StatusForMac(env, mac);
-  if (!invitePaidPlayable(st)) {
+  if (!master && !invitePaidPlayable(st)) {
     return json({ ok: false, error: 'not_paid' });
   }
   const now = Date.now();
   // GARDE-FOU QUOTA à la génération aussi : inutile de créer un code si les
-  // 5 invitations de la semaine sont déjà consommées.
+  // 5 invitations de la semaine sont déjà consommées. Jamais pour un maître.
   const weekAgo = now - INVITE_WEEK_MS;
   const usedRow = await env.DB
     .prepare(
@@ -3415,13 +4191,13 @@ async function handleInviteCreate(request, env) {
       'WHERE issuer_mac = ? AND redeemed_at IS NOT NULL AND redeemed_at > ?',
     ).bind(mac, weekAgo).first();
   const weeklyUsed = (usedRow && Number(usedRow.n)) || 0;
-  if (weeklyUsed >= INVITE_WEEKLY_QUOTA) {
+  if (!master && weeklyUsed >= INVITE_WEEKLY_QUOTA) {
     return json({ ok: false, error: 'issuer_quota',
       weekly_used: weeklyUsed, weekly_quota: INVITE_WEEKLY_QUOTA });
   }
-  const hours = inviteHours(body?.hours);
+  const hours = master ? masterHours(body?.hours) : inviteHours(body?.hours);
   const channel = sanitizeInviteChannel(body?.channel);
-  const mode = body?.mode === 'test' ? 'test' : 'together';
+  const mode = inviteMode(body?.mode);
   // Code à 6 chiffres (facile à taper). L'abonné peut générer plusieurs
   // codes (invitations multiples) — chaque code n'active qu'un appareil.
   const buf = new Uint32Array(1);
@@ -3480,6 +4256,8 @@ async function handleInviteRedeem(request, env) {
       'SELECT COUNT(*) AS n FROM app_invites ' +
       'WHERE issuer_mac = ? AND redeemed_at IS NOT NULL AND redeemed_at > ?',
     ).bind(issuer, weekAgo).first() : null;
+  // Émetteur MAÎTRE (démo illimitée) : ni paiement requis, ni quota au redeem.
+  const issuerIsMaster = issuer ? await isMasterMac(env, issuer) : false;
   const decision = inviteRedeemDecision({
     mac,
     code,
@@ -3490,14 +4268,23 @@ async function handleInviteRedeem(request, env) {
     alreadyRedeemed: !!prev,
     issuerWeeklyUsed: (usedCnt && Number(usedCnt.n)) || 0,
     weeklyQuota: INVITE_WEEKLY_QUOTA,
+    issuerIsMaster,
   });
   if (!decision.ok) return json({ ok: false, error: decision.error });
 
   // OCTROI DU PASS : licence de `hours` heures sur l'appareil invité (plan
-  // trial_Nh, 0 crédit). Même octroi D1 que l'admin (licence + dégel).
-  const hours = inviteHours(row.hours);
+  // trial_Nh, 0 crédit). Un code de MAÎTRE peut durer jusqu'à 1 an (masterHours
+  // au lieu du plafond invité).
+  const hours = issuerIsMaster ? masterHours(row.hours) : inviteHours(row.hours);
   const guest = await grantGuestPassLicense(env, mac, hours, now);
   if (!guest.ok) return json({ ok: false, error: guest.error });
+  // Code d'un MAÎTRE → on assigne au testeur SA source de test : liste curée
+  // (indépendance fournisseur) si le maître en a une, sinon tout le bouquet.
+  if (issuerIsMaster && issuer) {
+    let origin = '';
+    try { origin = new URL(request.url).origin; } catch (_) { /* ignore */ }
+    await copyMasterSourceForTest(env, issuer, mac, origin);
+  }
 
   // Lie l'invité au code (le code devient utilisé → non rejouable).
   await env.DB
@@ -3516,6 +4303,35 @@ async function handleInviteRedeem(request, env) {
 }
 
 /// GET /api/family/info/:mac → vue famille (propriétaire OU membre).
+/// RÉFÉRENCE OPAQUE d'un membre : hash stable et NON réversible de sa MAC.
+/// Sert à identifier un membre dans l'app (renommer / retirer) SANS jamais
+/// exposer sa vraie MAC hors du panel — le « registre » famille (MAC en clair)
+/// reste réservé au panel admin. Déterministe : même MAC → même référence.
+export async function familyMemberRef(memberMac) {
+  const data = new TextEncoder().encode('fam:' + String(memberMac).toUpperCase());
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return 'm_' + hex.slice(0, 16);
+}
+
+/// Résout un membre passé par l'app : soit une vraie MAC (compat ascendante),
+/// soit une référence opaque `m_…`. Renvoie la MAC réelle du membre (résolue
+/// en scannant les membres du propriétaire), ou null si aucune correspondance.
+async function resolveFamilyMember(env, ownerMac, memberOrRef) {
+  const s = String(memberOrRef || '').trim();
+  if (!s) return null;
+  if (MAC_RX.test(s.toUpperCase())) return s.toUpperCase(); // ancienne app : MAC directe
+  const rows = await env.DB
+    .prepare('SELECT member_mac FROM app_family_links WHERE owner_mac = ?')
+    .bind(ownerMac).all();
+  for (const r of (rows && rows.results) || []) {
+    if ((await familyMemberRef(r.member_mac)) === s) {
+      return String(r.member_mac).toUpperCase();
+    }
+  }
+  return null;
+}
+
 async function handleFamilyInfo(env, rawMac) {
   const mac = String(rawMac || '').toUpperCase();
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
@@ -3530,11 +4346,19 @@ async function handleFamilyInfo(env, rawMac) {
   const rows = await env.DB
     .prepare('SELECT member_mac, label, created_at FROM app_family_links WHERE owner_mac = ? ORDER BY created_at ASC')
     .bind(mac).all();
-  const members = ((rows && rows.results) || []).map((r) => ({
-    mac: r.member_mac, // le propriétaire voit SES appareils en clair
-    label: r.label || null, // « Papa », « Maman »… (nommé dans l'app)
-    since: r.created_at,
-  }));
+  // CONFIDENTIALITÉ : hors panel, on ne sort PAS les MAC des membres en clair.
+  // L'app reçoit une référence opaque (`ref`, pour renommer/retirer) + la MAC
+  // MASQUÉE (affichage). Le registre complet (MAC en clair) ne vit QUE dans le
+  // panel admin (/admin/clients/:mac, authentifié).
+  const members = [];
+  for (const r of ((rows && rows.results) || [])) {
+    members.push({
+      ref: await familyMemberRef(r.member_mac),
+      mac: maskMac(r.member_mac), // masquée : « MK:••:••:…:5E »
+      label: r.label || null, // « Papa », « Maman »… (nommé dans l'app)
+      since: r.created_at,
+    });
+  }
   const codeRow = await env.DB
     .prepare('SELECT code, expires_at FROM app_family_codes WHERE owner_mac = ? AND expires_at > ?')
     .bind(mac, Date.now()).first();
@@ -3561,10 +4385,13 @@ async function handleFamilyRename(request, env) {
     return familyUnavailable();
   }
   const label = String(body?.label || '').trim().slice(0, 24);
+  // `member` peut être une MAC (ancienne app) ou une référence opaque `m_…`.
+  const memberMac = await resolveFamilyMember(env, mac, member);
+  if (!memberMac) return json({ ok: false, error: 'member_not_found' });
   // Seul le propriétaire du lien peut nommer (WHERE owner_mac = mac).
   await env.DB
     .prepare('UPDATE app_family_links SET label = ? WHERE member_mac = ? AND owner_mac = ?')
-    .bind(label.length > 0 ? label : null, member, mac).run();
+    .bind(label.length > 0 ? label : null, memberMac, mac).run();
   return json({ ok: true });
 }
 
@@ -3578,12 +4405,15 @@ async function handleFamilyRemove(request, env) {
   if (!env.DB || !(await ensureFamilySchema(env))) {
     return familyUnavailable();
   }
-  const member = String(body?.member || '').toUpperCase();
+  const member = String(body?.member || '').trim();
   if (member) {
+    // `member` = MAC (ancienne app) ou référence opaque `m_…`.
+    const memberMac = await resolveFamilyMember(env, mac, member);
+    if (!memberMac) return json({ ok: false, error: 'member_not_found' });
     // Détachement par le PROPRIÉTAIRE uniquement (le lien doit lui appartenir).
     await env.DB
       .prepare('DELETE FROM app_family_links WHERE member_mac = ? AND owner_mac = ?')
-      .bind(member, mac).run();
+      .bind(memberMac, mac).run();
   } else {
     await env.DB
       .prepare('DELETE FROM app_family_links WHERE member_mac = ?')
@@ -5288,6 +6118,14 @@ async function handleRequest(request, env, ctx) {
       return await handlePublicHistory(env, segments[2]);
     }
 
+    // /api/master-list/:ref(.m3u) — sert le M3U CURÉ d'un maître (liste de test
+    // indépendante). URL OPAQUE : jamais la MAC maître en clair. C'est la source
+    // que l'app du testeur charge → chaînes partagées → fournisseur aveugle.
+    if (segments[0] === 'api' && segments[1] === 'master-list' && segments.length === 3) {
+      if (request.method !== 'GET') return badRequest('only GET supported');
+      return handleMasterListServe(env, segments[2]);
+    }
+
     // /api/invite/* — PASS PARTAGE (« regarder ensemble ») : un abonné payant
     // génère un code (create), un NOUVEL appareil l'active (redeem) → 2 jours.
     if (segments[0] === 'api' && segments[1] === 'invite') {
@@ -5307,9 +6145,33 @@ async function handleRequest(request, env, ctx) {
         if (request.method !== 'POST') return badRequest('only POST supported');
         return handleInviteTransfer(request, env);
       }
+      if (segments[2] === 'lend' && segments.length === 3) {
+        if (request.method !== 'POST') return badRequest('only POST supported');
+        return handleInviteLend(request, env);
+      }
+      if (segments[2] === 'reclaim' && segments.length === 3) {
+        if (request.method !== 'POST') return badRequest('only POST supported');
+        return handleInviteReclaim(request, env);
+      }
       if (segments[2] === 'mine' && segments.length === 4) {
         if (request.method !== 'GET') return badRequest('only GET supported');
         return handleInviteMine(env, segments[3]);
+      }
+      if (segments[2] === 'loan' && segments.length === 4) {
+        if (request.method !== 'GET') return badRequest('only GET supported');
+        return handleInviteLoanStatus(env, segments[3]);
+      }
+      if (segments[2] === 'master' && segments.length === 4) {
+        if (request.method !== 'GET') return badRequest('only GET supported');
+        return handleInviteMaster(env, segments[3]);
+      }
+      if (segments[2] === 'selftest' && segments.length === 4) {
+        if (request.method !== 'GET') return badRequest('only GET supported');
+        return handleInviteSelftest(env, segments[3]);
+      }
+      if (segments[2] === 'diag' && segments.length === 4) {
+        if (request.method !== 'GET') return badRequest('only GET supported');
+        return handleInviteDiag(env, segments[3], request);
       }
       return notFound('unknown invite route');
     }
@@ -5723,6 +6585,29 @@ async function handleRequest(request, env, ctx) {
           .includes(segments[0].toLowerCase())
     ) {
       return proxyApk(TV_APK_URL, 'DeFewTV.apk', url.searchParams.get('v'));
+    }
+
+    // /test, /demo, /beta — APK de TEST TV (prérelease « cinema-test »,
+    // signé clé maîtresse). Lien propre à donner/coller dans Downloader
+    // SANS exposer GitHub. Fichier « DeFewTV-test.apk ». Sert TOUJOURS le
+    // dernier build de test publié (tag cinema-test écrasé à chaque publish).
+    if (
+      segments.length === 1 &&
+      ['test', 'demo', 'beta'].includes(segments[0].toLowerCase())
+    ) {
+      return proxyApk(CINEMA_TEST_APK_URL, 'DeFewTV-test.apk', url.searchParams.get('v'));
+    }
+
+    // /fone, /phone-test, /tel — APK de TEST TÉLÉPHONE (prérelease
+    // « phone-test », signé clé maîtresse). Lien propre à donner SANS exposer
+    // GitHub. Fichier « 7motion-test.apk ». Sert TOUJOURS le dernier build de
+    // test téléphone publié (tag phone-test écrasé à chaque publish).
+    if (
+      segments.length === 1 &&
+      ['fone', 'phone-test', 'phonetest', 'tel', 'test-phone'].includes(
+        segments[0].toLowerCase())
+    ) {
+      return proxyApk(PHONE_TEST_APK_URL, '7motion-test.apk', url.searchParams.get('v'));
     }
 
     // /tv-aab et /phone-aab — App Bundles (.aab) SIGNÉS pour la Google Play

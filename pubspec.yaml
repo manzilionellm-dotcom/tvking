@@ -103,6 +103,17 @@ dependencies:
   # ExoPlayer est Android-uniquement). Activé en lecture côté Windows (étape 2).
   media_kit_libs_windows_video: ^1.0.10
 
+  # ffmpeg_kit_flutter_new_min — CONVERSION des enregistrements en MP4 lisible
+  # par la galerie du téléphone. Pourquoi : le MediaExtractor/MediaMuxer natif
+  # d'Android n'arrive PAS à relire nos captures .ts (flux live / segments HLS
+  # concaténés) → l'export « galerie » échouait sur toutes les chaînes. FFmpeg,
+  # lui, lit ces flux : on COPIE la vidéo (`-c:v copy`, qualité INTACTE) et on
+  # convertit seulement l'audio en AAC → MP4 lu partout. Fork MAINTENU (binaires
+  # Android 2026). minSdk 24 côté TÉLÉPHONE (ok) ; le build TV RETIRE ce paquet
+  # (comme media_kit) et garde minSdk 21 pour les vieilles box. Appelé UNIQUEMENT
+  # via un hook posé par l'entrée mobile (main.dart) → jamais compilé côté TV.
+  ffmpeg_kit_flutter_new_min: ^3.5.3
+
   # Garde l'écran allumé pendant la lecture (sinon Android
   # éteint l'écran après 30s d'inactivité, même en pleine
   # lecture vidéo).

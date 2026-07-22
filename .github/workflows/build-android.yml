@@ -36,6 +36,10 @@ on:
         description: 'Aussi publier en GitHub Release (true/false)'
         required: false
         default: 'false'
+      master_console:
+        description: 'Build CONSOLE MAÎTRE (ouvre sur le générateur de tests, true/false)'
+        required: false
+        default: 'false'
 
 permissions:
   contents: write   # nécessaire pour créer/mettre à jour une release
@@ -102,6 +106,34 @@ jobs:
       - name: Generate native Android folder
         run: flutter create . --platforms=android --org com.manzilionellm.tvking --project-name tv_king
 
+      # minSdk 24 (TÉLÉPHONE) : requis par ffmpeg_kit_flutter_new_min (conversion
+      # des enregistrements .ts → .mp4 galerie). Le fusionneur de manifeste
+      # ÉCHOUE si le minSdk de l'app est < celui d'une lib (24). Android 7.0 =
+      # plancher téléphone en 2026 (quasi 100 % du parc). Le build TV, lui,
+      # RETIRE ffmpeg et garde minSdk 21 pour les vieilles box.
+      - name: Fixer minSdk 24 (téléphone — requis par ffmpeg_kit)
+        run: |
+          python3 - <<'PYEOF'
+          import re, glob
+          cands = glob.glob("android/app/build.gradle.kts") + glob.glob("android/app/build.gradle")
+          if not cands:
+              raise SystemExit("build.gradle introuvable après flutter create")
+          f = cands[0]
+          s = open(f).read()
+          if re.search(r'minSdk\s*=\s*flutter\.minSdkVersion', s):
+              s = re.sub(r'minSdk\s*=\s*flutter\.minSdkVersion', 'minSdk = 24', s)
+          elif re.search(r'minSdkVersion\s+flutter\.minSdkVersion', s):
+              s = re.sub(r'minSdkVersion\s+flutter\.minSdkVersion', 'minSdkVersion 24', s)
+          elif re.search(r'minSdk\s*=\s*\d+', s):
+              s = re.sub(r'minSdk\s*=\s*\d+', 'minSdk = 24', s, count=1)
+          elif re.search(r'minSdkVersion\s+\d+', s):
+              s = re.sub(r'minSdkVersion\s+\d+', 'minSdkVersion 24', s, count=1)
+          else:
+              raise SystemExit("minSdk introuvable dans " + f)
+          open(f, "w").write(s)
+          print("minSdk -> 24 dans", f)
+          PYEOF
+
       # Branding 7 MOTION : remplace le label par défaut du manifest
       # (`tv_king`) par "7 MOTION" pour que le nom affiché sur le
       # bureau Android soit le bon.
@@ -124,6 +156,28 @@ jobs:
           if [ -f "$MANIFEST" ]; then
             sed -i 's|android:label="tv_king"|android:label="The Few"|g' "$MANIFEST"
             echo "--- Patched manifest ---"
+            grep 'android:label' "$MANIFEST" || true
+          fi
+
+      # CONSOLE MAÎTRE : identité SÉPARÉE (package + nom) pour que l'app
+      # maître s'installe À CÔTÉ de l'app cliente (jamais par-dessus / ne la
+      # désinstalle pas). Uniquement quand master_console=true. Le `namespace`
+      # Kotlin/R reste inchangé (on ne touche QUE l'applicationId).
+      - name: Identité Console maître (package + nom séparés)
+        if: ${{ github.event.inputs.master_console == 'true' }}
+        run: |
+          set -e
+          G=android/app/build.gradle.kts
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ -f "$G" ]; then
+            sed -i 's|applicationId = "com.manzilionellm.tvking.tv_king"|applicationId = "com.manzilionellm.tvking.tv_king.master"|' "$G"
+            echo "--- applicationId (console maître) ---"
+            grep 'applicationId' "$G" || true
+          fi
+          if [ -f "$MANIFEST" ]; then
+            sed -i 's|android:label="The Few"|android:label="7 The Few Master"|g' "$MANIFEST"
+            sed -i 's|android:label="tv_king"|android:label="7 The Few Master"|g' "$MANIFEST"
+            echo "--- label (console maître) ---"
             grep 'android:label' "$MANIFEST" || true
           fi
 
@@ -666,6 +720,15 @@ jobs:
           echo "APP_BUILD_TS=$BUILD_TS"
           # Retry : le download de libmpv (media_kit) renvoie parfois un
           # 504 transitoire côté GitHub → on réessaie jusqu'à 4 fois.
+          # BUILD CONSOLE MAÎTRE : si déclenché manuellement avec
+          # master_console=true, on ajoute le dart-define qui fait ouvrir l'app
+          # directement sur le générateur de tests. Sur un push normal, l'input
+          # est vide → build client normal (aucun impact).
+          MASTER_DEFINE=
+          if [ "${{ github.event.inputs.master_console }}" = "true" ]; then
+            MASTER_DEFINE="--dart-define=MASTER_CONSOLE=true"
+            echo "=== BUILD CONSOLE MAÎTRE (MASTER_CONSOLE=true) ==="
+          fi
           ok=
           for attempt in 1 2 3 4; do
             echo "=== Build attempt $attempt ==="
@@ -673,7 +736,8 @@ jobs:
               --build-number=${{ github.run_number }} \
               --obfuscate --split-debug-info=build/symbols \
               --dart-define=APP_BUILD_TS=$BUILD_TS \
-              --dart-define=GIT_SHA=${{ github.sha }} && { ok=1; break; }
+              --dart-define=GIT_SHA=${{ github.sha }} \
+              $MASTER_DEFINE && { ok=1; break; }
             echo "Attempt $attempt failed; retry in 25s"; sleep 25
           done
           [ "$ok" = 1 ] || { echo "Build failed after retries"; exit 1; }
@@ -725,6 +789,10 @@ jobs:
       # Huawei). Récupère le .aab dans les Artifacts du run pour l'uploader
       # dans la Play Console (Play App Signing re-signe ensuite).
       - name: Build release AAB (Google Play)
+        # Console maître = sideload uniquement (jamais Google Play), et son
+        # applicationId est renommé en …master → l'AAB Play n'a pas de sens et
+        # sa réécriture d'applicationId échouerait. On saute donc l'AAB.
+        if: ${{ github.event.inputs.master_console != 'true' }}
         run: |
           BUILD_TS=$(date +%s)
           # ── Play Store : on RETIRE REQUEST_INSTALL_PACKAGES de l'AAB ──
@@ -810,6 +878,7 @@ jobs:
           ls -lah "$OUT/7motion.aab"
 
       - name: Upload AAB artifact (Google Play)
+        if: ${{ github.event.inputs.master_console != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: 7motion-playstore-aab-${{ github.sha }}

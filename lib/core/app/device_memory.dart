@@ -67,22 +67,50 @@ abstract final class DeviceMemory {
   ///
   /// Coût mémoire approximatif d'UN objet `Channel` une fois chargé : l'objet
   /// Dart + ses chaînes (id, name, category, streamUrl ~100+ car., logoUrl) ≈
-  /// **0,4–0,8 Ko**. On retient ~0,6 Ko/chaîne pour le dimensionnement :
+  /// **0,4–0,8 Ko**. On retient ~0,6 Ko/chaîne pour le dimensionnement.
   ///
-  ///   • ≤ 1 Go  →   5 000 chaînes  (box 1 Go : Flutter + ExoPlayer + logos +
-  ///                 SQLite + cache images laissent TRÈS peu de marge ; 10 000
-  ///                 objets Dart pouvaient encore déclencher le kill natif)
-  ///   • ≤ 2 Go  →  15 000 chaînes
-  ///   • > 2 Go  →  50 000 chaînes
+  /// PALIERS RELEVÉS (« prends tout comme ça vient », proportionnel à la RAM) :
+  ///   • ≤ 1 Go / low-RAM →    5 000  (marge minuscule : on protège d'abord)
+  ///   • ≤ 2 Go           →   25 000
+  ///   • ≤ 3 Go           →   80 000
+  ///   • ≤ 4 Go           →  200 000  (~120 Mo d'objets Channel)
+  ///   • ≤ 6 Go           →  450 000
+  ///   • > 6 Go           →  800 000  (~480 Mo — box haut de gamme)
   ///
-  /// Tant que la RAM n'est pas connue (`!isLoaded`, ex. dans un isolate), on
-  /// renvoie un plafond PRUDENT (8 000) : on protège d'abord les petites box.
-  /// Les chaînes au-delà du plafond restent en base (rien n'est perdu), elles
-  /// ne sont juste pas tenues en mémoire en même temps.
+  /// Les petites box restent PROTÉGÉES (le crash OOM en boucle est
+  /// irrécupérable) ; les grosses box encaissent des centaines de milliers de
+  /// chaînes. Tant que la RAM n'est pas connue (`!isLoaded`, ex. isolate), on
+  /// renvoie un plafond PRUDENT. Les chaînes au-delà du plafond restent EN
+  /// BASE (rien n'est perdu), juste pas tenues en mémoire en même temps.
   static int get channelCap {
     if (!_loaded) return 8000;
     if (_lowRam || (_totalMb > 0 && _totalMb <= 1024)) return 5000;
-    if (_totalMb <= 2048) return 15000;
-    return 50000;
+    if (_totalMb <= 2048) return 25000;
+    if (_totalMb <= 3072) return 80000;
+    if (_totalMb <= 4096) return 200000;
+    if (_totalMb <= 6144) return 450000;
+    return 800000;
+  }
+
+  /// Plafond d'OCTETS téléchargés à l'import (M3U), par palier de RAM. Le
+  /// fetcher STREAME (il ne matérialise pas le corps entier) et coupe au-delà,
+  /// donc ce plafond borne surtout la taille de source ACCEPTÉE — relevé pour
+  /// les grosses box afin de laisser passer des playlists de centaines de
+  /// milliers de chaînes, tout en gardant les petites box prudentes.
+  static int get m3uByteCap {
+    if (!_loaded) return 60 * 1024 * 1024;
+    if (_lowRam || _totalMb <= 1024) return 60 * 1024 * 1024;
+    if (_totalMb <= 2048) return 120 * 1024 * 1024;
+    if (_totalMb <= 4096) return 300 * 1024 * 1024;
+    return 700 * 1024 * 1024;
+  }
+
+  /// Idem pour une réponse JSON Xtream (plus lourde que le M3U équivalent).
+  static int get xtreamJsonByteCap {
+    if (!_loaded) return 80 * 1024 * 1024;
+    if (_lowRam || _totalMb <= 1024) return 80 * 1024 * 1024;
+    if (_totalMb <= 2048) return 160 * 1024 * 1024;
+    if (_totalMb <= 4096) return 400 * 1024 * 1024;
+    return 900 * 1024 * 1024;
   }
 }

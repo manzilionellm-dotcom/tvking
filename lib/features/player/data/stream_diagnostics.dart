@@ -23,6 +23,24 @@
 
 import 'package:flutter/foundation.dart';
 
+/// Raison CLAIRE d'un échec de lecture, à écrire noir sur blanc à l'écran
+/// pour que le client comprenne (et corrige) tout seul — au lieu d'un écran
+/// noir muet. Déduite de l'état du compte Xtream + du dernier statut HTTP.
+enum StreamBlockReason {
+  /// Pas de cause « compte » identifiée → message générique.
+  none,
+
+  /// Abonnement expiré (statut « Expired » ou date d'expiration dépassée).
+  expired,
+
+  /// Compte suspendu / banni / désactivé par le fournisseur.
+  banned,
+
+  /// Limite de connexions atteinte : un autre écran regarde déjà (le panel
+  /// renvoie HTTP 458, ou active_cons ≥ max_connections).
+  maxConnections,
+}
+
 /// Une ligne du journal de diagnostic.
 @immutable
 class StreamDiagEvent {
@@ -116,6 +134,58 @@ class StreamDiagnostics extends ChangeNotifier {
   /// Quand ce contrôle a été fait (l'info se périme vite).
   DateTime? xtreamCheckedAt;
 
+  /// `true` quand le FOURNISSEUR sert un flux « placeholder » (écran noir type
+  /// `black.ts`) au lieu de la vraie chaîne : signe quasi certain d'une ligne
+  /// expirée/bloquée CÔTÉ FOURNISSEUR (le serveur répond 200 + vidéo, mais ce
+  /// n'est qu'un écran noir). Posé par le relais quand l'URL finale est un
+  /// placeholder connu ; remis à zéro à chaque nouvelle session.
+  bool placeholderStream = false;
+
+  /// Cause CLAIRE d'un blocage, déduite de l'état compte + dernier HTTP.
+  /// Priorité : banni > expiré > limite de connexions. `none` sinon (le
+  /// lecteur garde alors son message générique). Le 458 (limite) est
+  /// TOUJOURS fiable (posé par le relais dans la session courante) ; le
+  /// statut « expiré » dépend d'un contrôle de compte récent.
+  StreamBlockReason get blockReason {
+    final String s = (xtreamStatus ?? '').toLowerCase();
+    if (s.contains('banned') ||
+        s.contains('disabled') ||
+        s.contains('suspend')) {
+      return StreamBlockReason.banned;
+    }
+    final bool expiredByStatus = s.contains('expired');
+    final bool expiredByDate =
+        xtreamExpDate != null && xtreamExpDate!.isBefore(DateTime.now());
+    if (expiredByStatus || expiredByDate) return StreamBlockReason.expired;
+    final bool maxByHttp = httpStatus == 458;
+    final bool maxByCount = xtreamMaxConnections != null &&
+        xtreamActiveCons != null &&
+        xtreamMaxConnections! > 0 &&
+        xtreamActiveCons! >= xtreamMaxConnections!;
+    if (maxByHttp || maxByCount) return StreamBlockReason.maxConnections;
+    // Filet FINAL : le fournisseur sert un écran noir (black.ts) sans qu'aucun
+    // signal de compte n'ait pu être lu → cause la PLUS probable = ligne
+    // expirée/bloquée. On affiche le message « expiré » (appel à l'action :
+    // renouveler auprès du fournisseur) plutôt qu'un écran noir muet.
+    if (placeholderStream) return StreamBlockReason.expired;
+    return StreamBlockReason.none;
+  }
+
+  /// Le relais signale que l'URL FINALE est un placeholder « écran noir »
+  /// (black.ts & co.) : ligne expirée/bloquée côté fournisseur. Idempotent.
+  void recordUpstreamPlaceholder(String finalUrl) {
+    if (placeholderStream) return;
+    placeholderStream = true;
+    _add(
+      'relay',
+      'Le fournisseur renvoie un flux « écran noir » '
+          '(${maskCredentials(finalUrl)}) — ligne expirée ou bloquée côté '
+          'fournisseur (pas un défaut de l\'app).',
+      level: 'error',
+    );
+    notifyListeners();
+  }
+
   final List<StreamDiagEvent> _events = <StreamDiagEvent>[];
 
   /// Journal, du plus récent au plus ancien.
@@ -143,6 +213,7 @@ class StreamDiagnostics extends ChangeNotifier {
     audioCodec = null;
     resolution = null;
     lastPlayerError = null;
+    placeholderStream = false;
     sessionStart = DateTime.now();
     _add('player', 'Ouverture ${maskCredentials(url)} (UA: $userAgent)');
   }

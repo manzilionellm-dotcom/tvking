@@ -1,0 +1,39 @@
+# =========================================================
+#  Caddyfile — reverse-proxy TLS de la passerelle « maison mère »
+# =========================================================
+#  Caddy est le SEUL point d'entrée public (ports 80 + 443). Il :
+#    • obtient AUTOMATIQUEMENT un certificat Let's Encrypt valide pour
+#      {$DOMAIN} (challenge HTTP-01 sur le port 80) ;
+#    • le RENOUVELLE seul, en tâche de fond, bien avant l'expiration ;
+#    • redirige tout http:// vers https:// ;
+#    • relaie ensuite vers le gateway interne (service `gateway`, port 8088),
+#      jamais exposé publiquement.
+#
+#  POURQUOI CE FICHIER EXISTE — c'est LA solution robuste au point faible :
+#  un Worker Cloudflare joint de façon FIABLE un domaine https VALIDE, mais
+#  échoue (403/530) sur une IP brute et ne peut valider le TLS d'un `nip.io`.
+#  En mettant la passerelle derrière un VRAI domaine https (ce fichier), le
+#  copieur, le diagnostic et l'app la joignent réellement de bout en bout —
+#  fini la rustine IP→nip.io.
+#
+#  Prérequis : un enregistrement DNS A/AAAA de {$DOMAIN} qui pointe vers l'IP
+#  publique du VPS, et les ports 80 + 443 ouverts. {$DOMAIN} est lu depuis .env.
+# =========================================================
+
+{$DOMAIN} {
+	# Compression des réponses texte (playlists M3U, JSON d'API).
+	encode zstd gzip
+
+	reverse_proxy gateway:8088 {
+		# Flux live/VOD : on DÉSACTIVE la mise en tampon de la réponse
+		# (flush immédiat) → la vidéo passe sans latence ni accumulation
+		# mémoire côté proxy. Indispensable pour du live continu.
+		flush_interval -1
+
+		# En-têtes utiles au gateway (IP réelle du client pour les logs /
+		# le keepalive ; hôte d'origine pour la réécriture des playlists).
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Real-IP {remote_host}
+		header_up Host {host}
+	}
+}

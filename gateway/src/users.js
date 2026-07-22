@@ -12,8 +12,20 @@
 //  USERS_FILE pour permettre la gestion depuis le panel (CRUD).
 // =========================================================
 import { readFile, writeFile, rename } from 'node:fs/promises';
+import { timingSafeEqual } from 'node:crypto';
 import { config } from './config.js';
 import { log } from './logger.js';
+
+// Comparaison à TEMPS CONSTANT : un `===` sur les mots de passe fuit, par son
+// temps de réponse, le nombre de caractères corrects en tête → un attaquant
+// peut reconstruire le mot de passe octet par octet. timingSafeEqual coupe
+// cette fuite (la longueur reste observable, ce qui est acceptable).
+function safeEqual(a, b) {
+  const ba = Buffer.from(String(a ?? ''), 'utf8');
+  const bb = Buffer.from(String(b ?? ''), 'utf8');
+  if (ba.length !== bb.length) return false;
+  return timingSafeEqual(ba, bb);
+}
 
 // Modèle brut { families: [{ id, maxStreams, users: [{username,password,maxStreams}] }] }
 let model = { families: [] };
@@ -37,6 +49,25 @@ function reindex() {
         maxStreams: Number.isFinite(u.maxStreams) ? u.maxStreams : 1,
       });
     }
+  }
+  // IDENTITÉ DE DIFFUSION (env-only, JAMAIS persistée dans users.json) : un
+  // utilisateur partagé en lecture seule pour la petite liste de test
+  // mutualisée. Elle est injectée ici, APRÈS le modèle de fichier, pour
+  // survivre aux rechargements à chaud sans jamais être écrite sur disque ni
+  // exposée au CRUD. Son maxStreams borne les TESTEURS simultanés (pas les
+  // connexions fournisseur — celles-ci restent plafonnées dans hub.js).
+  if (config.broadcastUser && config.broadcastPass) {
+    const bMax = Number.isFinite(config.broadcastMaxStreams) && config.broadcastMaxStreams > 0
+      ? config.broadcastMaxStreams : 100;
+    const BFAM = '__broadcast__';
+    nextFams.set(BFAM, { id: BFAM, maxStreams: bMax });
+    nextUsers.set(String(config.broadcastUser), {
+      username: String(config.broadcastUser),
+      password: String(config.broadcastPass),
+      familyId: BFAM,
+      maxStreams: bMax,
+      broadcast: true,
+    });
   }
   byUsername = nextUsers;
   familyIndex = nextFams;
@@ -66,7 +97,7 @@ async function persist(file = config.usersFile) {
 export function authenticate(username, password) {
   const u = byUsername.get(String(username || ''));
   if (!u) return null;
-  if (u.password !== String(password || '')) return null;
+  if (!safeEqual(u.password, password)) return null;
   return u;
 }
 

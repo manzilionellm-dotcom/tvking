@@ -84,6 +84,93 @@ abstract final class InviteBackend {
       _post('/api/invite/transfer',
           <String, Object?>{'mac': mac, 'target_mac': targetMac});
 
+  /// PRÊT d'abonnement : le propriétaire PAYÉ [mac] prête son abonnement à
+  /// [guestMac] pour [hours] (24 ou 48 MAX). Le propriétaire se met en pause ;
+  /// à l'échéance, l'abonnement revient TOUT SEUL sur sa MAC (retour auto).
+  /// Réponse : { ok, guest, guest_until, return_at, hours } ou { error }.
+  static Future<Map<String, dynamic>?> lend(
+    String mac,
+    String guestMac, {
+    int hours = 24,
+  }) =>
+      _post('/api/invite/lend', <String, Object?>{
+        'mac': mac,
+        'guest_mac': guestMac,
+        'hours': hours,
+      });
+
+  /// Le propriétaire [mac] REPREND son abonnement prêté avant l'échéance
+  /// (l'ami perd l'accès aussitôt). Réponse : { ok, reclaimed } ou { error }.
+  static Future<Map<String, dynamic>?> reclaim(String mac) =>
+      _post('/api/invite/reclaim', <String, Object?>{'mac': mac});
+
+  /// CET appareil est-il un compte MAÎTRE (démo illimitée) ? Débloque l'envoi
+  /// de tests sans quota ni abonnement dans l'écran invité. Réponse : true/false.
+  static Future<bool> isMaster(String mac) async {
+    try {
+      final http.Response r = await http
+          .get(Uri.parse('$kSubscriptionBaseUrl/api/invite/master/$mac'),
+              headers: _headers)
+          .timeout(_timeout);
+      final Object? decoded = jsonDecode(r.body);
+      return decoded is Map<String, dynamic> && decoded['master'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// BOÎTE NOIRE : faits bruts serveur sur CET appareil (maître ?, source +
+  /// hôte, test actif) pour le diagnostic de sécurité de la console maître.
+  /// Réponse : { ok, master, source:{present,host,type,origin,count}, active_test }.
+  static Future<Map<String, dynamic>?> selftest(String mac) async {
+    try {
+      final http.Response r = await http
+          .get(Uri.parse('$kSubscriptionBaseUrl/api/invite/selftest/$mac'),
+              headers: _headers)
+          .timeout(_timeout);
+      final Object? decoded = jsonDecode(r.body);
+      if (decoded is Map<String, dynamic>) return decoded;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// BOÎTE NOIRE PUISSANTE : diagnostic ACTIF (façade en ligne ?, liste servie ?,
+  /// 1re chaîne jouable ?, fournisseur aveugle ?). Réponse :
+  /// { ok, master, verdict:'green|amber|red', score, checks:[{key,level,label,
+  /// detail,fix}] }. Peut prendre quelques secondes (sondes réseau).
+  static Future<Map<String, dynamic>?> diag(String mac) async {
+    try {
+      final http.Response r = await http
+          .get(Uri.parse('$kSubscriptionBaseUrl/api/invite/diag/$mac'),
+              headers: _headers)
+          .timeout(const Duration(seconds: 20));
+      final Object? decoded = jsonDecode(r.body);
+      if (decoded is Map<String, dynamic>) return decoded;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// État du PRÊT en cours du propriétaire [mac] (pour afficher « prêté à X,
+  /// retour dans Y » + le bouton Reprendre, même quand l'app est en pause).
+  /// Réponse : { active, return_at, ms_left, guest } ou { active:false }.
+  static Future<Map<String, dynamic>?> myLoan(String mac) async {
+    try {
+      final http.Response r = await http
+          .get(Uri.parse('$kSubscriptionBaseUrl/api/invite/loan/$mac'),
+              headers: _headers)
+          .timeout(_timeout);
+      final Object? decoded = jsonDecode(r.body);
+      if (decoded is Map<String, dynamic>) return decoded;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// L'appareil INVITÉ [mac] récupère SA chaîne partagée + temps restant.
   /// Réponse : { active, invited, ms_left, mode, inviter, channel }.
   static Future<Map<String, dynamic>?> mine(String mac) async {

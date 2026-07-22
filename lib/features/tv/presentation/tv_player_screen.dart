@@ -256,6 +256,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // du message existant. Remis à false à chaque ouverture (_open).
   bool _fatalNetworkHint = false;
 
+  // `true` quand l'écran fatal vient d'un EXCÈS DE REBUFFERING (ça « tourne »
+  // trop) : on affiche alors au client, noir sur blanc, que sa connexion est
+  // trop faible (problème réseau côté client/fournisseur, pas l'app). Remis à
+  // false à chaque ouverture (_open).
+  bool _weakConnectionFatal = false;
+
   // ----- STABILITÉ « pro » (façon Netflix) : 2 garde-fous anti-spinner -----
   // 1) COUPURE RAPIDE SUR FLUX MORT : si AUCUNE image n'est dessinée en
   //    [_kStartupTimeout] après l'ouverture, on ne laisse PAS le spinner
@@ -641,9 +647,21 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       );
       _rebufferTimes.clear();
       _recordPlaybackFailure();
+      // Ça « tourne » trop : cause = connexion trop faible / serveur lent. On
+      // le trace dans la boîte noire et on écrit clairement au client que
+      // c'est son réseau (pas l'app).
+      StreamDiagnostics.instance.recordEvent(
+        'native',
+        'Connexion trop faible / serveur lent — trop de coupures de '
+            'chargement (${_kMaxRebuffers} en ${_kRebufferWindow.inMinutes} '
+            'min) → message client affiché (problème réseau côté client ou '
+            'fournisseur, pas l\'app).',
+        level: 'warn',
+      );
       if (mounted) {
         setState(() {
           _fatal = true;
+          _weakConnectionFatal = true;
           _buffering = false;
         });
       }
@@ -657,6 +675,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _rebufferTimes.clear(); // nouvelle chaîne → budget rebuffer neuf
     _armStartupWatchdog(); // coupure rapide si aucune image en ~20 s
     _fatalNetworkHint = false;
+    _weakConnectionFatal = false;
     _errorLoggedThisOpen = false; // nouvelle ouverture → on re-journalise
     _adoptedAltUrl =
         null; // la variante adoptée était propre à l'ancienne chaîne
@@ -875,6 +894,32 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _scheduleOpen();
   }
 
+  /// Traduit un blocage en message CLAIR pour le client — écrit noir sur
+  /// blanc sur l'écran d'erreur : abonnement expiré, limite de connexions
+  /// (un autre écran regarde déjà), compte suspendu. Renvoie [fallback] si
+  /// aucune cause « compte » n'est identifiée.
+  String _tvBlockMessage(String fallback) {
+    final StreamDiagnostics d = StreamDiagnostics.instance;
+    switch (d.blockReason) {
+      case StreamBlockReason.expired:
+        final DateTime? x = d.xtreamExpDate;
+        final String date = x == null
+            ? '—'
+            : '${x.day.toString().padLeft(2, '0')}/'
+                '${x.month.toString().padLeft(2, '0')}/${x.year}';
+        return context.l10n.playerBlockedExpired(date);
+      case StreamBlockReason.maxConnections:
+        return context.l10n.playerBlockedMaxConnections(
+          '${d.xtreamActiveCons ?? '?'}',
+          '${d.xtreamMaxConnections ?? '?'}',
+        );
+      case StreamBlockReason.banned:
+        return context.l10n.playerBlockedBanned;
+      case StreamBlockReason.none:
+        return fallback;
+    }
+  }
+
   /// Applique la décision de [FreezeRecoveryPolicy] : rien à faire, reconnexion,
   /// ou budget épuisé → écran d'erreur borné (P1-6, « Réessayer » manuel).
   void _onFreezeAction(FreezeAction action) {
@@ -882,6 +927,15 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       case FreezeAction.none:
         break;
       case FreezeAction.reopen:
+        // H2 — un gel vient souvent d'un upstream SILENCIEUX (ni erreur ni
+        // EOF côté relais). Rouvrir sur la MÊME URL locale du relais
+        // (_relayPlayUrl) NE relance PAS la connexion amont (elle reste
+        // active mais muette) → on force d'abord une vraie reconnexion amont
+        // du relais. Live via relais uniquement (VOD/HLS n'y passent pas :
+        // _relayPlayUrl est null). No-op si aucune session (retour false).
+        if (!_isVod && _relayPlayUrl != null) {
+          LocalStreamRelay.instance.forceReconnect(_effectiveUrl);
+        }
         // Ré-ouvre la MÊME source : l'URL locale du relais si on enregistre,
         // sinon l'URL directe. = reconnexion au direct sans casser l'enreg.
         // RÉCUPÉRATION INVISIBLE (façon Netflix) : `silent:true` NE remet PAS
@@ -2100,9 +2154,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                                     color: TvTokens.text)),
                             const SizedBox(height: 8),
                             Text(
-                                _everShownFrame
-                                    ? context.l10n.tvChannelUnavailable
-                                    : context.l10n.tvChannelBlockedBySource,
+                                _weakConnectionFatal
+                                    ? context.l10n.playerWeakConnection
+                                    : _tvBlockMessage(_everShownFrame
+                                        ? context.l10n.tvChannelUnavailable
+                                        : context.l10n.tvChannelBlockedBySource),
+                                textAlign: TextAlign.center,
                                 style: TextStyle(
                                     fontSize: TvDimens.body,
                                     color: TvTokens.mutedDim)),

@@ -1119,6 +1119,52 @@ async function apiV1Inner(request, env) {
     return errResp('method_not_allowed', 'Only GET', 405);
   }
 
+  // /masters — COMPTES MAÎTRES (démo illimitée). Pouvoir fort (envoyer des
+  // tests sans quota ni paiement) → réservé au super_admin (l'exploitant).
+  if (parts[0] === 'masters') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (parts.length === 1) {
+      if (request.method === 'GET') return handleMastersList(env);
+      if (request.method === 'POST') return handleMastersAdd(request, env);
+      return errResp('method_not_allowed', 'GET or POST', 405);
+    }
+    if (parts.length === 2 && request.method === 'DELETE') {
+      return handleMastersRemove(env, parts[1]);
+    }
+    // /masters/test-list — LISTE DE TEST INDÉPENDANTE d'un maître (le petit
+    // M3U curé, < 5 chaînes, servi via gateway). GET ?mac= / PUT {mac, m3u}.
+    if (parts.length === 2 && parts[1] === 'test-list') {
+      if (request.method === 'GET') return handleMasterTestListGet(request, env);
+      if (request.method === 'PUT') return handleMasterTestListPut(request, env);
+      return errResp('method_not_allowed', 'GET or PUT', 405);
+    }
+    // /masters/channels — COPIEUR INTELLIGENT : range toutes les chaînes en
+    // catégories. GET = ligne assignée au maître ; POST {paste} = TOI qui
+    // colles le lien Xtream / l'URL M3U à copier.
+    if (parts.length === 2 && parts[1] === 'channels') {
+      if (request.method === 'GET' || request.method === 'POST') return handleMasterChannels(request, env);
+      return errResp('method_not_allowed', 'GET or POST', 405);
+    }
+    // /masters/diag — BOÎTE NOIRE : contrôles actifs (façade, chaîne jouable…).
+    if (parts.length === 2 && parts[1] === 'diag') {
+      if (request.method === 'GET') return handleMasterDiag(request, env);
+      return errResp('method_not_allowed', 'Only GET', 405);
+    }
+    return errResp('method_not_allowed', 'unsupported', 405);
+  }
+
+  // /admin-monitor — MODE ADMIN MONITORING : sessions admin (surveillance),
+  // séparées des stats clients. Gardé par la permission dédiée.
+  if (parts[0] === 'admin-monitor' && parts.length === 1) {
+    if (!resellerCan(a.user, 'admin_monitor')) {
+      return errResp('forbidden', 'Permission admin_monitor requise', 403);
+    }
+    if (request.method === 'GET') return handleAdminMonitorGet(env);
+    return errResp('method_not_allowed', 'Only GET', 405);
+  }
+
   // /devices
   if (parts[0] === 'devices') {
     if (parts.length === 1) {
@@ -3167,6 +3213,588 @@ async function handleInvitesList(request, env, user) {
 }
 
 // =========================================================
+//  COMPTES MAÎTRES — démo illimitée (envoyer des tests à volonté)
+// =========================================================
+//  Une MAC listée ici peut, depuis l'app, envoyer des pass invités (« tests »)
+//  sans quota ni obligation d'abonnement payé (cf. worker.js isMasterMac).
+//  Réservé au super_admin. La table est la même que côté worker (app_masters).
+const _MASTER_MAC_RX = /^MK(?::[0-9A-Fa-f]{2}){5}$/;
+
+async function ensureMastersTable(env) {
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS app_masters (mac TEXT PRIMARY KEY, note TEXT, created_at INTEGER)',
+    ).run();
+  } catch (_) { /* déjà présente */ }
+}
+
+async function handleMastersList(env) {
+  await ensureMastersTable(env);
+  const rs = await env.DB
+    .prepare('SELECT mac, note, created_at FROM app_masters ORDER BY created_at DESC')
+    .all();
+  return jsonResp({ items: rs.results || [] });
+}
+
+async function handleMastersAdd(request, env) {
+  let body;
+  try { body = await request.json(); } catch (_) { return errResp('bad_json', 'Invalid JSON', 400); }
+  const mac = String(body?.mac || '').toUpperCase();
+  if (!_MASTER_MAC_RX.test(mac)) {
+    return errResp('bad_mac', 'MAC invalide (format MK:XX:XX:XX:XX:XX).', 400);
+  }
+  const note = String(body?.note || '').trim().slice(0, 80);
+  await ensureMastersTable(env);
+  await env.DB
+    .prepare('INSERT OR REPLACE INTO app_masters (mac, note, created_at) VALUES (?, ?, ?)')
+    .bind(mac, note || null, Date.now()).run();
+  return jsonResp({ ok: true, mac });
+}
+
+async function handleMastersRemove(env, rawMac) {
+  const mac = String(rawMac || '').toUpperCase();
+  if (!_MASTER_MAC_RX.test(mac)) return errResp('bad_mac', 'MAC invalide.', 400);
+  await ensureMastersTable(env);
+  await env.DB.prepare('DELETE FROM app_masters WHERE mac = ?').bind(mac).run();
+  return jsonResp({ ok: true, mac });
+}
+
+// =========================================================
+//  LISTE DE TEST INDÉPENDANTE (« notre liste », < 5 chaînes)
+// =========================================================
+//  Le maître curate un PETIT M3U (chaînes via gateway). Tous les tests servent
+//  cette liste → chaînes partagées → le gateway mutualise → le fournisseur ne
+//  voit qu'UNE connexion (un seul trio suffit). Table `master_test_list`,
+//  partagée avec le worker (qui la sert derrière une réf opaque).
+async function ensureMasterListTable(env) {
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS master_test_list (mac TEXT PRIMARY KEY, m3u TEXT, updated_at INTEGER)',
+    ).run();
+  } catch (_) { /* déjà présente */ }
+  // URL de la FAÇADE (gateway) du maître : quand elle est posée, les chaînes
+  // copiées sont reconstruites SUR le gateway → plus stables (reconnexion +
+  // failover + tampon) et privées (une seule IP). Migration idempotente.
+  try {
+    await env.DB.prepare('ALTER TABLE master_test_list ADD COLUMN gateway_base TEXT').run();
+  } catch (_) { /* colonne déjà là */ }
+  // IDENTITÉ DE DIFFUSION (gateway_user / gateway_pass) : l'utilisateur PARTAGÉ,
+  // en lecture seule, que le gateway reconnaît (BROADCAST_USER/PASS côté
+  // passerelle). Le copieur l'embarque dans les URLs de test À LA PLACE des
+  // identifiants fournisseur → la ligne réelle n'apparaît JAMAIS dans le M3U
+  // servi (confidentialité), et l'URL est réellement jouable via la façade.
+  // Migrations additives idempotentes.
+  try {
+    await env.DB.prepare('ALTER TABLE master_test_list ADD COLUMN gateway_user TEXT').run();
+  } catch (_) { /* colonne déjà là */ }
+  try {
+    await env.DB.prepare('ALTER TABLE master_test_list ADD COLUMN gateway_pass TEXT').run();
+  } catch (_) { /* colonne déjà là */ }
+}
+
+// =========================================================
+//  CONTRAT DE FAÇADE (gateway) — joignable de façon FIABLE par le Worker
+// =========================================================
+//  Un Worker Cloudflare fetch de façon fiable un DOMAINE public en HTTPS
+//  VALIDE, mais ÉCHOUE (403/530) sur une IP brute, et ne peut pas valider le
+//  TLS d'un hôte sans certificat (ex. une IP, un `nip.io`). L'ancienne rustine
+//  IP→nip.io donnait un « vert » MENSONGER (la sonde passait parfois en HTTP
+//  clair, alors que la lecture réelle, elle, ne passait pas). On la remplace
+//  par un CONTRAT strict et honnête : la façade DOIT être
+//    • en https://   (certificat valide → le Worker la joint vraiment) ;
+//    • un vrai domaine (nom d'hôte avec un point + une lettre) → un cert
+//      Let's Encrypt existe (voir gateway/README : Caddy + renouvellement auto).
+//  Toute IP brute / http:// / hôte sans domaine est REFUSÉE, avec une raison
+//  actionnable (au lieu d'être « réparée » en douce vers un état non joignable).
+//  Renvoie { ok, base, reason }. `base` = origine propre (schéma+hôte+port),
+//  sans path ni slash final.
+export function validateFacadeBase(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return { ok: false, base: '', reason: 'empty' };
+  if (!/^https?:\/\//i.test(s)) return { ok: false, base: '', reason: 'no_scheme' };
+  let u;
+  try { u = new URL(s); } catch (_) { return { ok: false, base: '', reason: 'bad_url' }; }
+  if (u.protocol !== 'https:') return { ok: false, base: '', reason: 'not_https' };
+  const host = u.hostname;
+  // IPv4 brute → refusée (pas de cert valide ; le Worker ne fetch pas une IP).
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return { ok: false, base: '', reason: 'ip_literal' };
+  // IPv6 littéral (`[…]`) → refusé pour les mêmes raisons.
+  if (host.includes(':') || host.startsWith('[')) return { ok: false, base: '', reason: 'ip_literal' };
+  // Domaine = au moins un point ET une lettre (ex. tv.mondomaine.com).
+  if (!/[a-zA-Z]/.test(host) || !host.includes('.')) return { ok: false, base: '', reason: 'not_domain' };
+  const port = u.port ? `:${u.port}` : '';
+  return { ok: true, base: `${u.protocol}//${host}${port}`, reason: '' };
+}
+
+// Message HUMAIN + ACTIONNABLE pour une raison de rejet de façade. '' si valide
+// ou champ vide (vide = lecture directe assumée, pas une erreur).
+export function facadeReason(reason) {
+  switch (reason) {
+    case 'empty': return '';
+    case 'no_scheme':
+    case 'bad_url':
+      return 'URL de façade invalide : commence par https:// (ex. https://tv.mondomaine.com).';
+    case 'not_https':
+      return 'La façade doit être en https:// avec un certificat valide — http n’est pas joignable de façon fiable depuis le relais Cloudflare.';
+    case 'ip_literal':
+      return 'Adresse IP interdite : le relais ne joint pas une IP brute. Mets un vrai domaine (Caddy + Let’s Encrypt, voir gateway/README).';
+    case 'not_domain':
+      return 'Nom d’hôte invalide : utilise un domaine complet (ex. tv.mondomaine.com).';
+    default: return 'Façade invalide.';
+  }
+}
+
+// Nettoie une base gateway collée → origine https propre, ou '' si vide/invalide
+// (compat : le reste du code lit une chaîne). Voir validateFacadeBase pour le
+// contrat et la raison détaillée.
+export function _cleanGatewayBase(raw) {
+  const v = validateFacadeBase(raw);
+  return v.ok ? v.base : '';
+}
+
+// Lit la façade + l'identité de diffusion enregistrées pour un maître.
+// Renvoie { base, user, pass } — base '' si aucune façade valide.
+async function _readGatewayCreds(env, mac) {
+  try {
+    await ensureMasterListTable(env);
+    const row = await env.DB
+      .prepare('SELECT gateway_base, gateway_user, gateway_pass FROM master_test_list WHERE mac = ?')
+      .bind(mac).first();
+    if (!row) return { base: '', user: '', pass: '' };
+    // On revalide à la lecture : une valeur héritée invalide (ancienne IP) est
+    // ignorée proprement plutôt que servie comme si elle marchait.
+    return {
+      base: _cleanGatewayBase(row.gateway_base),
+      user: String(row.gateway_user || ''),
+      pass: String(row.gateway_pass || ''),
+    };
+  } catch (_) { return { base: '', user: '', pass: '' }; }
+}
+
+// Compte les chaînes d'un M3U (lignes #EXTINF). Sert d'indicateur au panel.
+function _countM3uChannels(m3u) {
+  if (!m3u) return 0;
+  const m = String(m3u).match(/#EXTINF/gi);
+  return m ? m.length : 0;
+}
+
+async function handleMasterTestListGet(request, env) {
+  const url = new URL(request.url);
+  const mac = String(url.searchParams.get('mac') || '').toUpperCase();
+  if (!_MASTER_MAC_RX.test(mac)) return errResp('bad_mac', 'MAC maître invalide.', 400);
+  await ensureMasterListTable(env);
+  const row = await env.DB
+    .prepare('SELECT m3u, gateway_base, gateway_user, updated_at FROM master_test_list WHERE mac = ?').bind(mac).first();
+  const m3u = (row && row.m3u) ? String(row.m3u) : '';
+  return jsonResp({
+    mac, m3u, count: _countM3uChannels(m3u),
+    gateway_base: (row && row.gateway_base) || '',
+    // On expose le NOM de l'identité de diffusion (jamais le mot de passe) pour
+    // que le panel puisse pré-remplir le champ sans jamais réafficher le secret.
+    gateway_user: (row && row.gateway_user) || '',
+    has_gateway_pass: !!(row && row.gateway_pass),
+    updated_at: (row && row.updated_at) || null,
+  });
+}
+
+async function handleMasterTestListPut(request, env) {
+  let body;
+  try { body = await request.json(); } catch (_) { return errResp('bad_json', 'Invalid JSON', 400); }
+  const mac = String(body?.mac || '').toUpperCase();
+  if (!_MASTER_MAC_RX.test(mac)) return errResp('bad_mac', 'MAC maître invalide.', 400);
+  // On garde une liste VOLONTAIREMENT petite : indépendance = peu de chaînes
+  // partagées. Plafond souple à 50 lignes / 64 Ko (garde-fou, pas une police).
+  const m3u = String(body?.m3u || '').slice(0, 64 * 1024);
+  // FAÇADE : on VALIDE avec un message actionnable au lieu de « réparer » en
+  // silence (fini le nip.io mensonger). Champ vide = lecture directe assumée.
+  const rawGateway = String(body?.gateway_base || '').trim();
+  const fac = validateFacadeBase(rawGateway);
+  if (rawGateway && !fac.ok) {
+    return errResp('bad_facade', facadeReason(fac.reason), 400);
+  }
+  const gateway = fac.ok ? fac.base : '';
+  // IDENTITÉ DE DIFFUSION (optionnelle) : nom + mot de passe partagés du
+  // gateway. Le mot de passe n'est mis à jour que s'il est fourni non vide
+  // (le panel ne le renvoie pas → on ne l'écrase pas par du vide).
+  const gwUser = String(body?.gateway_user || '').trim();
+  const gwPassRaw = body?.gateway_pass;
+  const gwPass = (typeof gwPassRaw === 'string') ? gwPassRaw.trim() : null;
+  const count = _countM3uChannels(m3u);
+  await ensureMasterListTable(env);
+  // Liste vide ET pas de gateway ET pas d'identité → on efface la ligne. Sinon
+  // on garde les réglages même sans chaînes (le maître les a posés une fois).
+  if (!m3u.trim() && !gateway && !gwUser) {
+    await env.DB.prepare('DELETE FROM master_test_list WHERE mac = ?').bind(mac).run();
+    return jsonResp({ ok: true, mac, count: 0, gateway_base: '', gateway_user: '', has_gateway_pass: false });
+  }
+  // Lit l'ancien mot de passe pour ne pas l'effacer si le panel ne le renvoie
+  // pas (le secret n'est jamais réaffiché → il n'est pas dans le corps).
+  const prev = await env.DB
+    .prepare('SELECT gateway_pass FROM master_test_list WHERE mac = ?').bind(mac).first();
+  const finalPass = (gwPass && gwPass.length) ? gwPass : (prev && prev.gateway_pass) || null;
+  await env.DB
+    .prepare('INSERT OR REPLACE INTO master_test_list (mac, m3u, gateway_base, gateway_user, gateway_pass, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(mac, m3u || '', gateway || null, gwUser || null, gwUser ? finalPass : null, Date.now()).run();
+  return jsonResp({
+    ok: true, mac, count, gateway_base: gateway,
+    gateway_user: gwUser, has_gateway_pass: !!(gwUser && finalPass),
+  });
+}
+
+// =========================================================
+//  COPIEUR INTELLIGENT — lit TOUTES les chaînes du maître, les RANGE en
+//  catégories, pour qu'il coche celles à partager en test.
+// =========================================================
+//  On lit la source (ligne) assignée au maître dans device_sources, on
+//  interroge son fournisseur (Xtream player_api ou M3U), et on renvoie un
+//  arbre { catégories → chaînes }. Le panel affiche des cases à cocher ; la
+//  sélection devient le petit M3U de test (URLs identiques pour tous les
+//  testeurs → le gateway mutualise → une seule connexion fournisseur).
+//
+//  Garde-fous : timeout réseau, plafond de chaînes (l'UI n'en garde que
+//  quelques-unes de toute façon), jamais d'erreur fatale (best-effort).
+const _COPY_MAX_CHANNELS = 6000; // au-delà, on tronque et on le signale.
+
+// Fetch avec délai maximal (AbortController) — un fournisseur lent ne doit pas
+// bloquer la requête panel.
+async function _fetchWithTimeout(url, ms = 12_000, init = {}) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal, redirect: 'follow' });
+  } finally { clearTimeout(t); }
+}
+
+// Lit le PREMIER item de source d'une MAC (trio Xtream ou M3U).
+async function _readFirstSource(env, mac) {
+  const row = await env.DB.prepare(
+    'SELECT type, label, server_url, username, password, m3u_url, sources_json ' +
+    'FROM device_sources WHERE mac = ?',
+  ).bind(mac).first();
+  if (!row) return null;
+  if (row.sources_json) {
+    try {
+      const arr = JSON.parse(row.sources_json) || [];
+      if (Array.isArray(arr) && arr[0]) return arr[0];
+    } catch (_) { /* repli colonnes plates */ }
+  }
+  return {
+    type: row.type, label: row.label, server_url: row.server_url,
+    username: row.username, password: row.password, m3u_url: row.m3u_url,
+  };
+}
+
+// Copie Xtream : catégories live + chaînes live (player_api.php).
+// [gatewayBase] : si fourni (façade https valide), les URLs de LECTURE sont
+// bâties SUR le gateway au lieu du fournisseur → plus stable (reconnexion/
+// failover/tampon) et privé (une seule IP). On lit toujours la LISTE depuis le
+// fournisseur (par son domaine, que le Worker joint), mais on JOUE via le
+// gateway.
+// [gwUser]/[gwPass] : IDENTITÉ DE DIFFUSION (BROADCAST_USER/PASS du gateway).
+// Quand elle est fournie avec une façade, les URLs de test portent CETTE
+// identité partagée — les identifiants FOURNISSEUR n'apparaissent JAMAIS dans
+// le M3U servi (confidentialité) et l'URL est réellement jouable (le gateway
+// authentifie l'identité de diffusion). Sans identité → repli sur les
+// identifiants fournisseur (fonctionne si le gateway fait un passthrough, mais
+// moins privé : voir README).
+async function _copyXtream(src, gatewayBase = '', gwUser = '', gwPass = '') {
+  // Le fournisseur est joint par son DOMAINE (le Worker le fetch sans souci).
+  const base = String(src.server_url || '').replace(/\/+$/, '');
+  const play = (gatewayBase || base).replace(/\/+$/, ''); // origine de LECTURE
+  const provUser = String(src.username || '');
+  const provPass = String(src.password || '');
+  // Identité PORTÉE par les URLs de lecture : diffusion si façade + identité,
+  // sinon identifiants fournisseur (repli).
+  const useBroadcast = !!(gatewayBase && gwUser && gwPass);
+  const user = useBroadcast ? String(gwUser) : provUser;
+  const pass = useBroadcast ? String(gwPass) : provPass;
+  // La LISTE est toujours lue avec les identifiants FOURNISSEUR (côté Worker).
+  const auth = `username=${encodeURIComponent(provUser)}&password=${encodeURIComponent(provPass)}`;
+  let cats = [];
+  let streams = [];
+  try {
+    const cr = await _fetchWithTimeout(`${base}/player_api.php?${auth}&action=get_live_categories`);
+    if (cr.ok) cats = await cr.json();
+  } catch (_) { /* catégories optionnelles */ }
+  const sr = await _fetchWithTimeout(`${base}/player_api.php?${auth}&action=get_live_streams`);
+  if (!sr.ok) throw new Error('provider_http_' + sr.status);
+  streams = await sr.json();
+  if (!Array.isArray(streams)) throw new Error('provider_bad_streams');
+
+  const catName = new Map();
+  for (const c of Array.isArray(cats) ? cats : []) {
+    catName.set(String(c.category_id), String(c.category_name || 'Sans catégorie'));
+  }
+  const groups = new Map(); // catId -> { id, name, channels[] }
+  let truncated = false;
+  let total = 0;
+  for (const s of streams) {
+    if (total >= _COPY_MAX_CHANNELS) { truncated = true; break; }
+    total++;
+    const catId = String(s.category_id ?? 'none');
+    const name = catName.get(catId) || 'Sans catégorie';
+    if (!groups.has(catId)) groups.set(catId, { id: catId, name, channels: [] });
+    groups.get(catId).channels.push({
+      id: String(s.stream_id),
+      name: String(s.name || ('Chaîne ' + s.stream_id)),
+      logo: String(s.stream_icon || ''),
+      // URL LIVE standard Xtream, bâtie sur l'origine de LECTURE (gateway si
+      // réglé, sinon fournisseur) → passe par le gateway → mutualisée + stable.
+      url: `${play}/live/${encodeURIComponent(user)}/${encodeURIComponent(pass)}/${s.stream_id}.ts`,
+    });
+  }
+  return { type: 'xtream', categories: [...groups.values()], truncated, total };
+}
+
+// Réécrit l'ORIGINE d'une URL vers le gateway (garde path + query). Sert à
+// faire jouer une chaîne M3U via la façade (stable + privé). Best-effort :
+// URL invalide → renvoyée telle quelle.
+export function _rewriteOrigin(u, gatewayBase) {
+  if (!gatewayBase) return u;
+  try {
+    const src = new URL(u);
+    const gw = new URL(gatewayBase);
+    // ORDRE IMPORTANT : le setter `host` ne change pas le port si l'entrée n'en
+    // a pas → on pose hostname + port séparément pour effacer l'ancien port.
+    src.protocol = gw.protocol;
+    src.hostname = gw.hostname;
+    src.port = gw.port; // '' si la façade n'a pas de port → efface l'ancien.
+    return src.toString();
+  } catch (_) { return u; }
+}
+
+// Copie M3U : parse #EXTINF (group-title = catégorie, tvg-logo, nom) + URL.
+// [gatewayBase] : si fourni, l'origine de chaque URL est réécrite vers le
+// gateway (le gateway doit proxifier ces chemins — cas d'une façade Xtream).
+async function _copyM3u(src, gatewayBase = '') {
+  // La façade est déjà validée (https + domaine) en amont ; on la prend telle
+  // quelle. La playlist source est lue par son URL d'origine (domaine).
+  const res = await _fetchWithTimeout(String(src.m3u_url || ''));
+  if (!res.ok) throw new Error('provider_http_' + res.status);
+  const text = await res.text();
+  const lines = text.split(/\r?\n/);
+  const groups = new Map();
+  const seen = new Set(); // dédoublonnage par URL (qualité VIP : pas de doublon)
+  let truncated = false;
+  let total = 0;
+  let pending = null;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line.startsWith('#EXTINF')) {
+      const group = (line.match(/group-title="([^"]*)"/i) || [])[1] || 'Sans catégorie';
+      const logo = (line.match(/tvg-logo="([^"]*)"/i) || [])[1] || '';
+      const name = (line.split(',').slice(1).join(',') || '').trim() || 'Chaîne';
+      pending = { group, logo, name };
+    } else if (line && !line.startsWith('#') && pending) {
+      if (total >= _COPY_MAX_CHANNELS) { truncated = true; break; }
+      if (seen.has(line)) { pending = null; continue; } // doublon → ignoré
+      seen.add(line);
+      total++;
+      const catId = pending.group;
+      if (!groups.has(catId)) groups.set(catId, { id: catId, name: catId, channels: [] });
+      groups.get(catId).channels.push({
+        id: String(total), name: pending.name, logo: pending.logo,
+        url: _rewriteOrigin(line, gatewayBase),
+      });
+      pending = null;
+    }
+  }
+  return { type: 'm3u', categories: [...groups.values()], truncated, total };
+}
+
+// Copieur intelligent (catégories + chaînes). DEUX entrées possibles :
+//   • GET  /masters/channels?mac=  → lit la ligne DÉJÀ assignée au maître.
+//   • POST /masters/channels {mac, paste}  → c'est TOI qui colles le lien
+//     Xtream (get.php…) ou l'URL M3U à copier — indépendant du panel.
+async function handleMasterChannels(request, env) {
+  const url = new URL(request.url);
+  let mac = String(url.searchParams.get('mac') || '').toUpperCase();
+  let inline = null;
+  let gatewayReq = '';
+  let gwUserReq = '';
+  let gwPassReq = '';
+  if (request.method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch (_) { return errResp('bad_json', 'Invalid JSON', 400); }
+    if (body && body.mac) mac = String(body.mac).toUpperCase();
+    if (body && body.gateway_base) gatewayReq = _cleanGatewayBase(body.gateway_base);
+    if (body && body.gateway_user) gwUserReq = String(body.gateway_user).trim();
+    if (body && body.gateway_pass) gwPassReq = String(body.gateway_pass).trim();
+    // Blob collé par le maître : lien Xtream, URL M3U, ou identifiants à plat.
+    const blob = body && (body.paste || body.url || body.source);
+    if (blob || (body && (body.server_url || body.m3u_url))) {
+      const raw = typeof blob === 'string' ? { url: blob } : (blob || body);
+      const det = autoDetectSource(raw);
+      if (det.error) return errResp('bad_source', det.error, 400);
+      inline = det.source;
+    }
+  }
+  if (!_MASTER_MAC_RX.test(mac)) return errResp('bad_mac', 'MAC maître invalide.', 400);
+  // Priorité au lien collé ; sinon on retombe sur la ligne assignée au maître.
+  const src = inline || await _readFirstSource(env, mac);
+  if (!src) {
+    return errResp('no_source',
+      'Aucune source : colle ton lien Xtream ou ton M3U ci-dessus, ou assigne une ligne à ce maître dans le panel.', 404);
+  }
+  // Façade (gateway) + identité de diffusion de LECTURE : celles envoyées avec
+  // la requête, sinon celles déjà enregistrées pour ce maître. Façade vide →
+  // lecture directe (moins privée). Identité vide → repli identifiants
+  // fournisseur (moins privé) — voir _copyXtream.
+  const saved = await _readGatewayCreds(env, mac);
+  const gateway = gatewayReq || saved.base;
+  const gwUser = gwUserReq || saved.user;
+  const gwPass = gwPassReq || saved.pass;
+  try {
+    let out;
+    if (src.type === 'xtream' && src.server_url && src.username && src.password) {
+      out = await _copyXtream(src, gateway, gwUser, gwPass);
+    } else if (src.m3u_url) {
+      out = await _copyM3u(src, gateway);
+    } else {
+      return errResp('bad_source', 'Source illisible (ni Xtream complet, ni M3U).', 400);
+    }
+    // Trie les catégories par nom, chaînes par nom (lecture confortable).
+    out.categories.sort((a, b) => a.name.localeCompare(b.name));
+    for (const c of out.categories) c.channels.sort((a, b) => a.name.localeCompare(b.name));
+    return jsonResp({
+      mac,
+      type: out.type,
+      source_label: src.label || null,
+      categories: out.categories,
+      total: out.total,
+      truncated: out.truncated,
+    });
+  } catch (e) {
+    return errResp('copy_failed', 'Impossible de lire les chaînes : ' + String((e && e.message) || e), 502);
+  }
+}
+
+// =========================================================
+//  BOÎTE NOIRE — DIAGNOSTIC (côté panel, authentifié)
+// =========================================================
+//  Même esprit que le diagnostic de l'app, mais lu depuis le panel : teste
+//  ACTIVEMENT la façade et la 1re chaîne de la liste de test. Chaque contrôle
+//  = { key, level (0/1/2), label, detail, fix }. Aucune donnée sensible (mot de
+//  passe, URL avec identifiants) n'est renvoyée — seulement statut + latence.
+
+/// Sonde une URL sans télécharger le flux (2 octets, puis annule le corps).
+/// La sonde reflète la VRAIE joignabilité : plus aucun rewrite IP→nip.io qui
+/// donnait un « vert » mensonger. Une façade doit être un domaine https valide
+/// (contrat validateFacadeBase) pour que ce résultat corresponde à la lecture.
+async function _probeUrl(url, ms = 5000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  const t0 = Date.now();
+  try {
+    const res = await fetch(url, { method: 'GET', headers: { Range: 'bytes=0-1' }, signal: ctrl.signal, redirect: 'follow' });
+    try { if (res.body) await res.body.cancel(); } catch (_) { /* */ }
+    return { ok: res.status >= 200 && res.status < 400, status: res.status, ms: Date.now() - t0 };
+  } catch (e) {
+    return { ok: false, status: 0, ms: Date.now() - t0, error: String((e && e.message) || e) };
+  } finally { clearTimeout(t); }
+}
+
+// GET /masters/diag?mac= → boîte noire du maître (contrôles actifs).
+async function handleMasterDiag(request, env) {
+  const url = new URL(request.url);
+  const mac = String(url.searchParams.get('mac') || '').toUpperCase();
+  if (!_MASTER_MAC_RX.test(mac)) return errResp('bad_mac', 'MAC maître invalide.', 400);
+
+  const checks = [];
+  const add = (key, level, label, detail, fix) => checks.push({ key, level, label, detail, fix: fix || '' });
+
+  // 1) Compte maître présent ?
+  await ensureMastersTable(env);
+  const mrow = await env.DB.prepare('SELECT 1 AS x FROM app_masters WHERE mac = ?').bind(mac).first();
+  add('master', mrow ? 0 : 2, 'Compte maître reconnu',
+    mrow ? 'Cette MAC est bien un compte maître.' : 'Cette MAC n’est pas dans les comptes maîtres.',
+    mrow ? '' : 'Ajoute-la ci-dessus.');
+
+  // 2) Source assignée ?
+  const src = await _readFirstSource(env, mac);
+  let sHost = '';
+  if (src) { try { sHost = new URL(String(src.server_url || src.m3u_url || '')).host; } catch (_) { /* */ } }
+  add('source', src ? 0 : 1, 'Source (ligne) assignée',
+    src ? `Type ${src.type || '?'}${sHost ? ' · ' + sHost : ''}.` : 'Aucune ligne assignée à ce maître.',
+    src ? '' : 'Assigne une ligne, ou colle un lien dans « Liste de test ».');
+
+  // 3) Façade en ligne ? (façade = https + domaine valide, réellement joignable)
+  const gwc = await _readGatewayCreds(env, mac);
+  const gw = gwc.base;
+  if (gw) {
+    const p = await _probeUrl(gw, 5000);
+    add('gateway', p.ok ? 0 : 1, 'Façade (gateway) en ligne',
+      p.ok ? `Ta façade https répond (${p.ms} ms).` : `Façade injoignable (${p.error || p.status}).`,
+      p.ok ? '' : 'Vérifie que ton gateway tourne (Caddy + HTTPS) et que le domaine est exact.');
+    // 3b) Identité de diffusion : sans elle, les URLs de test portent les
+    // identifiants FOURNISSEUR (moins privé). Avec elle → ligne réelle masquée.
+    add('broadcast_id', gwc.user ? 0 : 1, 'Identité de diffusion',
+      gwc.user ? 'Identité partagée réglée → identifiants fournisseur masqués dans le M3U servi.'
+               : 'Aucune identité de diffusion → les URLs de test portent tes identifiants fournisseur.',
+      gwc.user ? '' : 'Renseigne « Utilisateur/mot de passe gateway » (= BROADCAST_USER/PASS du gateway).');
+  } else {
+    add('gateway', 1, 'Façade (gateway)',
+      'Aucune façade https valide réglée → lecture directe (moins stable/privée).',
+      'Renseigne « Ta façade (gateway) » en https:// (domaine, pas une IP).');
+  }
+
+  // 4) Liste de test + 5) sonde 1re chaîne.
+  await ensureMasterListTable(env);
+  const lrow = await env.DB.prepare('SELECT m3u FROM master_test_list WHERE mac = ?').bind(mac).first();
+  const m3u = (lrow && lrow.m3u) ? String(lrow.m3u) : '';
+  const count = _countM3uChannels(m3u);
+  add('testlist', count > 0 ? (count <= 5 ? 0 : 1) : 1, 'Liste de test indépendante',
+    count > 0 ? `${count} chaîne(s) partagée(s)${count > 5 ? ' — vise moins de 5' : ''}.`
+              : 'Aucune liste curée — le test ouvre tout le bouquet.',
+    count > 0 ? '' : 'Copie tes chaînes et coche 3-5 chaînes.');
+
+  if (count > 0) {
+    const firstUrl = (m3u.split(/\r?\n/).find((l) => l.trim() && !l.startsWith('#')) || '').trim();
+    if (firstUrl) {
+      const cp = await _probeUrl(firstUrl, 6000);
+      add('channel_probe', cp.ok ? 0 : 2, 'Chaîne de test jouable',
+        cp.ok ? `1re chaîne répond (${cp.status}, ${cp.ms} ms).` : `1re chaîne injoignable (${cp.error || cp.status}).`,
+        cp.ok ? '' : 'Vérifie la façade et la ligne fournisseur.');
+    }
+  }
+
+  const worst = checks.reduce((m, c) => Math.max(m, c.level), 0);
+  const oks = checks.filter((c) => c.level === 0).length;
+  const score = Math.round((oks / checks.length) * 100);
+  const verdict = worst === 0 ? 'green' : (worst === 2 ? 'red' : 'amber');
+  return jsonResp({ mac, verdict, score, checks, generated_at: Date.now() });
+}
+
+// =========================================================
+//  ADMIN MONITORING — vue des sessions admin (séparée des clients)
+// =========================================================
+//  Lit la table `admin_presence` (alimentée côté worker : les heartbeats des
+//  MAC maîtres/admin y sont détournés au lieu de `presence`). Ces sessions
+//  n'apparaissent JAMAIS dans « En ligne » ni dans les compteurs clients.
+async function handleAdminMonitorGet(env) {
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS admin_presence (' +
+        'mac TEXT PRIMARY KEY, ip TEXT, country TEXT, last_seen INTEGER, channel TEXT)',
+    ).run();
+  } catch (_) { /* déjà là */ }
+  const now = Date.now();
+  const since = now - 15 * 60 * 1000; // « en ligne » = vu < 15 min
+  let rows = [];
+  try {
+    const rs = await env.DB
+      .prepare('SELECT mac, ip, country, last_seen, channel FROM admin_presence WHERE last_seen > ? ORDER BY last_seen DESC LIMIT 500')
+      .bind(since).all();
+    rows = (rs && rs.results) || [];
+  } catch (_) { rows = []; }
+  return jsonResp({
+    items: rows,
+    online_count: rows.length,
+    now,
+  });
+}
+
+// =========================================================
 //  FICHE 360° D'UN APPAREIL — « tout ce que le client a dans le ventre »
 // =========================================================
 //  GET /devices/:id/overview → en UN appel : abonnement (licence), présence
@@ -3675,6 +4303,7 @@ export const RESELLER_CAPS_ALL = [
   'devices',      // voir ses appareils
   'activations',  // voir ses activations
   'resellers',    // créer/gérer des sous-revendeurs (OWNER l'accorde seul)
+  'admin_monitor', // MODE ADMIN MONITORING : voir les sessions admin séparées
 ];
 
 // Droits cochés PAR DÉFAUT à la création d'un revendeur (règle produit :

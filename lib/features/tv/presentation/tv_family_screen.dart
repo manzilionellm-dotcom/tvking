@@ -341,7 +341,7 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
                   scale: TvFocusScale.small,
                   onSelect: () {
                     final String mm =
-                        (m is Map ? (m['mac'] ?? '') : '').toString();
+                        (m is Map ? (m['ref'] ?? m['mac'] ?? '') : '').toString();
                     setState(() => _renamingMember =
                         _renamingMember == mm ? null : mm);
                   },
@@ -369,7 +369,7 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
                   scale: TvFocusScale.small,
                   onSelect: () {
                     final String mm =
-                        (m is Map ? (m['mac'] ?? '') : '').toString();
+                        (m is Map ? (m['ref'] ?? m['mac'] ?? '') : '').toString();
                     if (_confirmRemove == mm) {
                       _remove(mm);
                     } else {
@@ -378,7 +378,7 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
                   },
                   builder: (BuildContext context, bool focused) {
                     final String mm =
-                        (m is Map ? (m['mac'] ?? '') : '').toString();
+                        (m is Map ? (m['ref'] ?? m['mac'] ?? '') : '').toString();
                     final bool confirming = _confirmRemove == mm;
                     final Color bg = focused
                         ? (confirming ? TvTokens.live : TvTokens.gold)
@@ -416,7 +416,7 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
                 ),
                 // ----- Pastilles de nommage (sous la ligne, façon Netflix) -----
                 if (_renamingMember ==
-                    (m is Map ? (m['mac'] ?? '') : '').toString())
+                    (m is Map ? (m['ref'] ?? m['mac'] ?? '') : '').toString())
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Wrap(
@@ -428,7 +428,7 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
                             scale: TvFocusScale.small,
                             onSelect: () async {
                               final String mm =
-                                  (m is Map ? (m['mac'] ?? '') : '')
+                                  (m is Map ? (m['ref'] ?? m['mac'] ?? '') : '')
                                       .toString();
                               await FamilyBackend.rename(_mac, mm, name);
                               if (!mounted) return;

@@ -30,6 +30,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/device_memory.dart';
 import '../../../core/i18n/l10n_now.dart';
 import '../../player/data/player_settings.dart';
 import 'iptv_http.dart';
@@ -144,7 +145,7 @@ abstract final class M3uFetcher {
                   ? resp.contentLength
                   : null;
           final Uint8List bytes =
-              await _readCapped(resp.stream, kMaxM3uBytes, onBytes, total)
+              await _readCapped(resp.stream, DeviceMemory.m3uByteCap, onBytes, total)
                   .timeout(_timeout);
           final String body = await _decodeBytesInBackground(bytes);
           final String head = body.trimLeft();

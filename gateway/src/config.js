@@ -35,8 +35,19 @@ export const config = {
   // https://tv.mondomaine.com . Sans slash final.
   publicBase: trimSlash(str('PUBLIC_BASE', '')),
 
-  // --- Ligne fournisseur (UNE seule, la « maison mère ») ---
+  // --- Ligne fournisseur (« maison mère ») ---
   upstreamBase: trimSlash(str('UPSTREAM_BASE', '')),
+  // Lignes de SECOURS (failover). Liste séparée par des virgules. Si la ligne
+  // principale meurt (réseau/5xx/refus), la passerelle bascule sur la
+  // suivante SANS couper les spectateurs. Vide = pas de failover (comportement
+  // historique, une seule ligne). Toutes partagent UPSTREAM_USER/PASS.
+  upstreamBases: [
+    trimSlash(str('UPSTREAM_BASE', '')),
+    ...str('UPSTREAM_BASE_FALLBACKS', '')
+      .split(',')
+      .map((s) => trimSlash(s.trim()))
+      .filter((s) => s.length > 0),
+  ].filter((s) => s.length > 0),
   upstreamUser: str('UPSTREAM_USER', ''),
   upstreamPass: str('UPSTREAM_PASS', ''),
   // Nombre MAX de connexions simultanées AUTORISÉES par le fournisseur sur
@@ -59,9 +70,36 @@ export const config = {
   // Si un client est trop lent (réseau saturé) et accumule plus que ça en
   // mémoire tampon, on le coupe pour protéger les autres spectateurs.
   clientBufferMaxBytes: int('CLIENT_BUFFER_MAX_BYTES', 8 * 1024 * 1024),
+  // Plafond mémoire GLOBAL des files d'attente clients (somme de tous les
+  // writableLength). Au-delà, on coupe les clients les plus lents pour ne
+  // jamais faire tomber tout le process par OOM (conteneur 512 Mo).
+  // 0 = désactivé.
+  globalClientBufferMaxBytes: int('GLOBAL_CLIENT_BUFFER_MAX_BYTES', 128 * 1024 * 1024),
+  // Période de la ronde anti-backpressure (ms) qui applique le plafond global.
+  backpressureSweepMs: int('BACKPRESSURE_SWEEP_MS', 2000),
   // Reconnexion upstream : nb d'essais et backoff de base (ms).
   upstreamRetries: int('UPSTREAM_RETRIES', 6),
   upstreamRetryBaseMs: int('UPSTREAM_RETRY_BASE_MS', 500),
+
+  // --- Détection des connexions clientes MORTES (anti-slots fantômes) ---
+  // Une box qui disparaît brutalement (coupure secteur/réseau) ne ferme pas
+  // proprement sa socket : sans détection, elle retient indéfiniment un slot
+  // de la ligne fournisseur. On arme un keepalive TCP (le noyau sonde le pair
+  // et coupe la socket morte → l'événement 'close' se déclenche → le slot est
+  // libéré). initialDelay = délai d'inactivité avant la 1re sonde.
+  socketKeepAliveMs: int('SOCKET_KEEPALIVE_MS', 30_000),
+  // Garde-fou anti-slow-loris sur la PHASE REQUÊTE entrante uniquement
+  // (en-têtes/corps de la requête HTTP du client — PAS la durée du flux de
+  // réponse, qui reste illimitée pour le live). 0 = illimité.
+  headersTimeoutMs: int('HEADERS_TIMEOUT_MS', 60_000),
+  requestTimeoutMs: int('REQUEST_TIMEOUT_MS', 60_000),
+
+  // --- Anti-abus : limite de débit des endpoints coûteux (get.php,
+  // player_api.php) PAR utilisateur. Une box buggée qui martèle la playlist
+  // ne doit pas saturer la ligne / l'event-loop. Généreux par défaut (un
+  // rafraîchissement normal est rare). 0 = désactivé.
+  apiRateLimit: int('API_RATE_LIMIT', 60),
+  apiRateWindowMs: int('API_RATE_WINDOW_MS', 10_000),
 
   // --- Sécurité / admin ---
   // Jeton exigé pour /admin/* et /metrics (en-tête Authorization: Bearer …
@@ -69,6 +107,24 @@ export const config = {
   adminToken: str('ADMIN_TOKEN', ''),
   // Fichier JSON des utilisateurs (papa + clones). Voir users.example.json.
   usersFile: str('USERS_FILE', '/data/users.json'),
+
+  // --- Identité de DIFFUSION (liste de test mutualisée) ---
+  // Utilisateur PARTAGÉ, en lecture seule, que le panel embarque dans les URLs
+  // de la petite liste de test (à la place des identifiants fournisseur → la
+  // ligne réelle n'apparaît jamais dans le M3U servi). Tous les testeurs
+  // l'emploient : le hub mutualise les chaînes identiques → le fournisseur ne
+  // voit qu'UNE connexion. Ces valeurs doivent correspondre à
+  // « Utilisateur/mot de passe gateway » saisis dans la console maître.
+  // Vide = pas d'identité de diffusion (repli identifiants fournisseur).
+  broadcastUser: str('BROADCAST_USER', ''),
+  broadcastPass: str('BROADCAST_PASS', ''),
+  // Plafond de TESTEURS SIMULTANÉS sur l'identité de diffusion. À NE PAS
+  // confondre avec PROVIDER_MAX_CONNECTIONS : ce dernier borne les connexions
+  // FOURNISSEUR (côté amont, dans hub.js) ; celui-ci borne les sessions CLIENT
+  // de l'identité partagée (côté aval). Comme les testeurs regardent les mêmes
+  // quelques chaînes, la mutualisation garde l'amont à ~1 connexion même avec
+  // beaucoup de testeurs → cette valeur peut être généreuse.
+  broadcastMaxStreams: int('BROADCAST_MAX_STREAMS', 100),
 
   // --- Journalisation ---
   logLevel: str('LOG_LEVEL', 'info'), // debug | info | warn | error

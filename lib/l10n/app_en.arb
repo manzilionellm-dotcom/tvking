@@ -172,6 +172,11 @@
   "countryHomeEmptyBody": "No channels to show yet. Check your Internet connection, then re-import your source.",
   "gridEmptySubtitle": "Add a playlist or adjust your filters.",
   "categoriesTitle": "Categories",
+  "categoryOrderEdit": "Reorder",
+  "categoryOrderTitle": "Reorder categories",
+  "categoryOrderHint": "Press and hold a category, then drag it up or down to set your own order. It's saved and applied everywhere.",
+  "categoryOrderSave": "Save order",
+  "categoryOrderReset": "Reset",
   "categoriesEmpty": "No channels — add a playlist first.",
   "focusedNoChannelFound": "No {title} channels found in your playlists.",
   "searchHint": "Search a channel, sport or movie…",
@@ -1416,6 +1421,16 @@
   "playerChannelBlocked": "Channel unavailable: no video received. It's empty or blocked by your source — make sure it isn't already open on another device, otherwise try another channel.",
   "playerNetworkBlockHint": "This looks like a network block (ISP or DNS) rather than an app issue — a VPN may help if this channel works elsewhere.",
   "playerStreamInterrupted": "Stream interrupted. Check your connection and try again.",
+  "playerBlockedExpired": "Your subscription expired on {date}. Renew your line with your provider.",
+  "@playerBlockedExpired": {
+    "placeholders": { "date": { "type": "String" } }
+  },
+  "playerBlockedMaxConnections": "Connection limit reached ({active}/{max}). Another screen is already watching with this account — close it, then try again.",
+  "@playerBlockedMaxConnections": {
+    "placeholders": { "active": { "type": "String" }, "max": { "type": "String" } }
+  },
+  "playerBlockedBanned": "This account is suspended. Contact your provider.",
+  "playerWeakConnection": "Playback keeps buffering. Your internet connection is likely too weak for this channel (or your provider's server is slow). Check your WiFi / bandwidth, or try a lower-quality channel. This is not an app problem.",
   "playerCastConnectingTo": "Connecting to {device}…",
   "playerCastStreamingTo": "Streaming to {device}",
   "playerCastDefaultDevice": "the TV",

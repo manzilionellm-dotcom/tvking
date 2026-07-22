@@ -24,18 +24,89 @@ utilisateurs, la reconnexion, la bande passante et le monitoring.
 | **Monitoring** | `/health`, `/metrics` (Prometheus), `/admin/status` (JSON détaillé). |
 | **Façade Xtream** | `player_api.php`, `get.php`, `/live|/movie|/series/...` : les apps ne changent pas. La ligne réelle est **masquée** (identifiants réécrits). |
 
-## Démarrage (Docker)
+## Déploiement HTTPS de bout en bout (reproductible)
+
+> **Pourquoi HTTPS + un vrai domaine est OBLIGATOIRE (le point faible résolu).**
+> Le copieur et le diagnostic tournent dans un **Worker Cloudflare**. Un Worker
+> joint de façon **fiable** un **domaine public en HTTPS valide**, mais **échoue
+> (403/530)** sur une **IP brute**, et ne peut pas valider le TLS d'un hôte sans
+> certificat (une IP, un `nip.io`). L'ancienne rustine « IP → `nip.io` » donnait
+> un diagnostic **vert mensonger** (la sonde passait parfois, la lecture réelle
+> non). La solution robuste : mettre la passerelle **derrière un vrai domaine
+> HTTPS** via **Caddy** (certificat Let's Encrypt **obtenu et renouvelé
+> automatiquement**). `PUBLIC_BASE` et la « façade » du panel sont alors en
+> `https://…` et joignables **réellement de bout en bout**.
+
+Architecture : **Caddy** (public `80`/`443`, TLS auto) → **gateway** (interne
+`8088`, jamais exposé). Tout est décrit dans `docker-compose.yml` + `Caddyfile`.
 
 ```bash
 cd gateway
-cp .env.example .env         # remplis UPSTREAM_* + PROVIDER_MAX_CONNECTIONS
-cp users.example.json users.json   # papa + clones
+cp .env.example .env                 # (voir ci-dessous les champs à remplir)
+cp users.example.json users.json     # papa + clones
+
+# 1) DNS : fais pointer un enregistrement A (et AAAA si IPv6) de ton domaine
+#    (ex. tv.mondomaine.com) vers l'IP publique du VPS. Ouvre les ports 80+443.
+# 2) Dans .env, renseigne au minimum :
+#      DOMAIN=tv.mondomaine.com
+#      PUBLIC_BASE=https://tv.mondomaine.com
+#      UPSTREAM_BASE / UPSTREAM_USER / UPSTREAM_PASS  (ta ligne)
+#      PROVIDER_MAX_CONNECTIONS=…                     (limite de la ligne)
+#      BROADCAST_USER / BROADCAST_PASS                (identité de diffusion)
+#      ADMIN_TOKEN=…                                  (long secret)
+
 docker compose up -d --build
+```
+
+Caddy demande le certificat au premier démarrage (quelques secondes), puis le
+**renouvelle seul** en tâche de fond. Les certificats sont **persistés** dans le
+volume `caddy_data` (pas de re-émission à chaque redéploiement → pas de
+rate-limit Let's Encrypt). Les deux services redémarrent tout seuls
+(`restart: unless-stopped`).
+
+Vérifier :
+
+```bash
+# Depuis n'importe où : la façade publique répond en HTTPS valide.
+curl -s https://tv.mondomaine.com/health
+
+# Sur le VPS (si tu as décommenté le mapping loopback dans docker-compose) :
 curl -s http://127.0.0.1:8088/health
 ```
 
-Mets un reverse-proxy TLS (Caddy/Traefik/nginx) devant, et renseigne
-`PUBLIC_BASE` avec l'URL publique (ex. `https://tv.mondomaine.com`).
+### Alternative sans ouvrir de port : tunnel `cloudflared`
+
+Si tu ne peux pas exposer 80/443 (NAT, pas de domaine pointé sur le VPS), un
+tunnel **cloudflared** publie le gateway sous un hostname Cloudflare joignable
+par le Worker **sans ouvrir de port**. Fais pointer le tunnel sur le service
+interne `gateway:8088`, et mets `PUBLIC_BASE`/façade sur le hostname du tunnel
+(toujours un domaine `https://` → même contrat, même robustesse). Caddy devient
+alors optionnel. Ce mode reste un domaine HTTPS valide côté Worker.
+
+### Identité de diffusion (confidentialité de la liste de test)
+
+`BROADCAST_USER` / `BROADCAST_PASS` définissent un **utilisateur partagé, en
+lecture seule**, que la **console maître** embarque dans les URLs de la petite
+liste de test — **à la place des identifiants fournisseur**. Résultat : la ligne
+réelle **n'apparaît jamais** dans le M3U servi aux testeurs, et l'URL est
+**réellement jouable** (le gateway authentifie cette identité). Renseigne les
+**mêmes** valeurs dans le panel (« Utilisateur / mot de passe gateway »).
+
+- `BROADCAST_MAX_STREAMS` borne le nombre de **testeurs simultanés** — à ne pas
+  confondre avec `PROVIDER_MAX_CONNECTIONS`, qui borne les connexions
+  **fournisseur** (amont). Comme les testeurs regardent les **mêmes** quelques
+  chaînes, la **mutualisation** garde l'amont à ~1 connexion : cette valeur peut
+  être généreuse.
+- Cette identité est **injectée depuis l'environnement uniquement** : elle n'est
+  **jamais** écrite dans `users.json` ni éditable via le panel (voir
+  `test/broadcast.test.mjs`).
+
+> **Compromis assumé.** Sans identité de diffusion réglée mais **avec** une
+> façade, les URLs de test copiées retombent sur les **identifiants
+> fournisseur** : la lecture fonctionne si le gateway fait un passthrough, mais
+> la ligne réelle transparaît dans le M3U servi. Le diagnostic le **signale**
+> (contrôle « Identité de diffusion » en ambre). Règle `BROADCAST_*` pour un
+> partage pleinement privé.
 
 ## Brancher l'app / le panel
 
@@ -52,10 +123,18 @@ réelle n'est jamais exposée au client.
 
 Voir `.env.example`. Les principales :
 
+- `DOMAIN` — domaine public servi par Caddy (certificat TLS + reverse-proxy).
+- `PUBLIC_BASE` — URL publique **https** (réécriture des playlists /
+  `server_info`). En général `https://$DOMAIN`.
 - `UPSTREAM_BASE`, `UPSTREAM_USER`, `UPSTREAM_PASS` — ta ligne (la seule).
+- `UPSTREAM_BASE_FALLBACKS` — lignes de secours (failover), séparées par des
+  virgules.
 - `PROVIDER_MAX_CONNECTIONS` — connexions simultanées **autorisées** par la
   ligne. La passerelle ne dépasse jamais ce chiffre.
-- `PUBLIC_BASE` — URL publique (réécriture des playlists / `server_info`).
+- `BROADCAST_USER`, `BROADCAST_PASS` — identité de diffusion partagée pour la
+  liste de test (voir section dédiée). Mêmes valeurs côté panel.
+- `BROADCAST_MAX_STREAMS` — plafond de testeurs simultanés (≠ connexions
+  fournisseur).
 - `STREAM_IDLE_GRACE_MS` — délai avant fermeture d'un flux quand plus personne
   ne regarde (zapping aller-retour fluide).
 - `CLIENT_BUFFER_MAX_BYTES` — au-delà, un client trop lent est coupé.

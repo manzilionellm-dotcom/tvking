@@ -48,6 +48,7 @@ import '../../playlists/data/remote_source_repository.dart';
 import '../../playlists/presentation/import_progress_screen.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../../subscription/presentation/guest_screen.dart';
 import 'widgets/announcement_banner.dart';
 import 'widgets/category_browser_view.dart';
 
@@ -236,6 +237,11 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                   // En Privé, aucun historique n'est tracké (incognito) →
                   // elle reste donc masquée, ce qui respecte la promesse.
                   const ResumeBanner(),
+                  // Barre « mode invité » — fine, toujours visible en haut de
+                  // l'accueil : inviter un ami, prêter son abonnement, ou
+                  // entrer un code reçu. Demande client : « toujours présent,
+                  // surtout côté mobile, à l'écran d'accueil ».
+                  _GuestEntryBar(onTap: () => openGuestScreen(context)),
                   Expanded(child: CategoryBrowserView(channels: channels)),
                   _buildBottomBar(),
                 ],
@@ -269,7 +275,12 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
               style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
             ),
           ),
-          const SizedBox(height: 30),
+          const SizedBox(height: 24),
+          // « Invité ou code perso ? » — le tout premier choix d'une nouvelle
+          // install : soit on a été invité par un ami (mode invité), soit on a
+          // son propre identifiant à activer (les blocs ci-dessous).
+          _GuestEntryCard(onTap: () => openGuestScreen(context)),
+          const SizedBox(height: 22),
           const MacActivationView(),
           const SizedBox(height: 14),
           const LegalDisclaimer.compact(),
@@ -343,6 +354,13 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                 ),
               );
             },
+          ),
+          // Mode invité — toujours accessible depuis l'accueil : inviter un
+          // ami, entrer un code, ou envoyer son identifiant.
+          IconButton(
+            tooltip: 'Mode invité',
+            icon: const Icon(Icons.card_giftcard_rounded),
+            onPressed: () => openGuestScreen(context),
           ),
           IconButton(
             tooltip: context.l10n.simpleMyAccount,
@@ -458,6 +476,118 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
             onTap: () => showActivationSheet(context),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Carte « Mode invité » — le premier choix d'une install neuve, posée en
+/// haut de l'écran d'activation : « On t'a invité ? » → ouvre le mode invité
+/// (tape un code, ou envoie ton identifiant à celui qui t'invite). Toujours
+/// visible côté mobile, comme demandé.
+class _GuestEntryCard extends StatelessWidget {
+  const _GuestEntryCard({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.accentSurface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.accent.withValues(alpha: 0.55)),
+        ),
+        child: Row(
+          children: <Widget>[
+            Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.18),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.card_giftcard_rounded,
+                  color: AppColors.accent, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'On t’a invité ?',
+                    style: AppTextStyles.headlineMedium.copyWith(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Entre le code d’un ami, ou envoie-lui ton identifiant.',
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: AppColors.accent, size: 24),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Barre FINE « mode invité » posée en haut de l'accueil rempli. Une seule
+/// ligne, tappable, teintée ember — impossible à rater sans manger l'espace
+/// d'une grosse carte.
+class _GuestEntryBar extends StatelessWidget {
+  const _GuestEntryBar({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.accentSurface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.accent.withValues(alpha: 0.45)),
+          ),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.card_giftcard_rounded,
+                  color: AppColors.accent, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Inviter un ami · prêter · j’ai un code',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.bodyLarge.copyWith(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.accent,
+                  ),
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded,
+                  color: AppColors.accent, size: 22),
+            ],
+          ),
+        ),
       ),
     );
   }

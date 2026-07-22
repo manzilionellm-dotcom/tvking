@@ -459,10 +459,14 @@ export class RealtimeHub {
   onlineDevices() {
     const out = [];
     const seen = new Set(); // dédoublonne l'instant précis d'un remplacement
+    // MODE ADMIN MONITORING : on exclut les MAC maîtres/admin de la liste
+    // « live » envoyée aux panels clients (set cache alimenté par _isAdminMac).
+    const admins = (this._masterCache && this._masterCache.set) || null;
     for (const ws of this.state.getWebSockets('kind:device')) {
       let att;
       try { att = ws.deserializeAttachment(); } catch (_) { continue; }
       if (!att || !att.mac || seen.has(att.mac)) continue;
+      if (admins && admins.has(String(att.mac).toUpperCase())) continue;
       seen.add(att.mac);
       out.push(this.deviceInfo(att));
     }
@@ -524,8 +528,20 @@ export class RealtimeHub {
         this._presenceReady = true;
       }
       const m = att.meta || {};
+      // MODE ADMIN MONITORING : une MAC maître/admin ne pollue pas la table
+      // `presence` (stats clients). Sa présence part dans `admin_presence`.
+      const table = (await this._isAdminMac(att.mac)) ? 'admin_presence' : 'presence';
+      if (table === 'admin_presence') {
+        try {
+          await this.env.DB.prepare(
+            'CREATE TABLE IF NOT EXISTS admin_presence (' +
+              'mac TEXT PRIMARY KEY, ip TEXT, country TEXT, last_seen INTEGER, channel TEXT)'
+          ).run();
+        } catch (_) { /* déjà là */ }
+        try { await this.env.DB.prepare('DELETE FROM presence WHERE mac = ?').bind(att.mac).run(); } catch (_) {}
+      }
       await this.env.DB.prepare(
-        'INSERT INTO presence (mac, ip, country, last_seen, channel) VALUES (?, ?, ?, ?, ?) ' +
+        'INSERT INTO ' + table + ' (mac, ip, country, last_seen, channel) VALUES (?, ?, ?, ?, ?) ' +
           'ON CONFLICT(mac) DO UPDATE SET ip = excluded.ip, ' +
           'country = excluded.country, last_seen = excluded.last_seen, channel = excluded.channel'
       ).bind(att.mac, m.ip || null, m.country || null, now,
@@ -533,6 +549,23 @@ export class RealtimeHub {
     } catch (_) {
       // best-effort : la présence ne casse jamais le temps réel.
     }
+  }
+
+  /// Cette MAC est-elle un compte maître/admin ? (cache mémoire 60 s pour ne
+  /// pas requêter app_masters à chaque écriture de présence). FAIL-OPEN : en
+  /// cas de doute → false (présence cliente normale).
+  async _isAdminMac(mac) {
+    const key = String(mac || '').toUpperCase();
+    const now = Date.now();
+    if (!this._masterCache || now - this._masterCache.at > 60_000) {
+      let set = new Set();
+      try {
+        const rs = await this.env.DB.prepare('SELECT mac FROM app_masters').all();
+        set = new Set(((rs && rs.results) || []).map((r) => String(r.mac).toUpperCase()));
+      } catch (_) { /* table absente → aucun admin */ }
+      this._masterCache = { at: now, set };
+    }
+    return this._masterCache.set.has(key);
   }
 }
 

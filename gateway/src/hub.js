@@ -14,7 +14,7 @@
 //  lents (protège les autres), fermeture différée quand plus personne ne
 //  regarde (zapping aller-retour fluide).
 // =========================================================
-import { openStream } from './upstream.js';
+import { openStream, upstreamBases } from './upstream.js';
 import { config } from './config.js';
 import { metrics } from './metrics.js';
 import { log } from './logger.js';
@@ -22,10 +22,14 @@ import { log } from './logger.js';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 class StreamSession {
-  constructor(hub, key, url) {
+  constructor(hub, key, streamPath) {
     this.hub = hub;
     this.key = key;
-    this.url = url;
+    // Suffixe d'URL (sans base) + liste ordonnée des lignes fournisseur
+    // (principale puis secours). L'URL effective = base courante + suffixe.
+    this.streamPath = streamPath;
+    this.bases = upstreamBases();
+    this.baseIndex = 0;
     this.subscribers = new Set(); // Set<ServerResponse>
     this.abort = new AbortController();
     this.state = 'connecting'; // connecting | live | reconnecting | closed
@@ -39,24 +43,68 @@ class StreamSession {
     this.ready = this._connectLoop();
   }
 
+  /** URL effective courante = ligne fournisseur active + suffixe du flux. */
+  get url() { return this.bases[this.baseIndex] + this.streamPath; }
+
+  /**
+   * Ouvre la connexion en essayant les lignes fournisseur DANS L'ORDRE
+   * (principale puis secours). Bascule sur la suivante à la moindre panne de
+   * connexion (réseau OU HTTP >=400) tant qu'il en reste. Renvoie
+   * `{ ok:true, res }` sur succès, `{ ok:false, status }` si TOUTES les lignes
+   * ont répondu >=400, et RELANCE l'exception réseau si toutes échouent en
+   * réseau (traité par le catch de la boucle → backoff). Avec une seule ligne,
+   * le comportement est strictement identique à l'ancien code.
+   */
+  async _openWithFailover() {
+    for (let i = 0; i < this.bases.length; i++) {
+      const url = this.bases[i] + this.streamPath;
+      try {
+        const res = await openStream(url, this.abort.signal);
+        if (res.statusCode >= 400) {
+          // Corps jeté : on absorbe ses erreurs (AbortError quand le signal
+          // partagé s'abandonnera à la fermeture client) pour ne JAMAIS
+          // laisser un 'error' non capté faire tomber le process.
+          try { res.body.on('error', () => {}); res.body.destroy(); } catch { /* ignore */ }
+          if (i < this.bases.length - 1) {
+            metrics.inc('gw_upstream_failover_total');
+            log.warn('upstream.failover', { key: this.key, from: i, status: res.statusCode });
+            continue; // ligne suivante
+          }
+          this.upstreamStatus = res.statusCode;
+          return { ok: false, status: res.statusCode };
+        }
+        this.baseIndex = i; // ligne gagnante
+        this.upstreamStatus = res.statusCode;
+        return { ok: true, res };
+      } catch (e) {
+        if (i < this.bases.length - 1) {
+          metrics.inc('gw_upstream_failover_total');
+          log.warn('upstream.failover', { key: this.key, from: i, error: String((e && e.message) || e) });
+          continue; // ligne suivante
+        }
+        throw e; // dernière ligne : panne réseau propagée au catch du loop
+      }
+    }
+    // Inatteignable (bases non vide), garde défensive.
+    return { ok: false, status: this.upstreamStatus || 502 };
+  }
+
   // ---- Connexion + boucle de reconnexion --------------------------------
   async _connectLoop() {
     let attempt = 0;
     for (;;) {
       if (this.closed) return false;
       try {
-        const res = await openStream(this.url, this.abort.signal);
-        this.upstreamStatus = res.statusCode;
-        if (res.statusCode >= 400) {
-          // Échec DÉFINITIF côté fournisseur (auth, chaîne morte…) : on ne
-          // mutualise pas une erreur, on remonte le statut aux clients.
-          try { res.body.destroy(); } catch { /* ignore */ }
+        const r = await this._openWithFailover();
+        if (!r.ok) {
+          // TOUTES les lignes ont refusé (>=400) : on ne mutualise pas une
+          // erreur, on remonte le statut aux clients.
           if (attempt === 0) return false; // 1re tentative : verdict d'échec
-          // En reconnexion : un 4xx définitif → on abandonne.
           this._endAll();
           this._destroy();
           return false;
         }
+        const res = r.res;
         this.contentType =
           (res.headers && (res.headers['content-type'] || res.headers['Content-Type'])) ||
           this.contentType;
@@ -213,6 +261,7 @@ export class StreamHub {
   constructor() {
     this.sessions = new Map(); // key -> StreamSession (live mutualisé)
     this.rawSlots = 0;         // connexions VOD (non mutualisées) en cours
+    this._sweepTimer = null;   // ronde anti-backpressure (plafond mémoire global)
   }
 
   // Connexions upstream DISTINCTES au total (= ce que voit le fournisseur) :
@@ -225,14 +274,81 @@ export class StreamHub {
   }
 
   /**
+   * Ferme UNE session en « idle-grace » (plus aucun spectateur, connexion
+   * gardée au chaud quelques secondes pour un zapping aller-retour fluide)
+   * afin de libérer un slot fournisseur pour une nouvelle chaîne. On ferme
+   * AVANT d'ouvrir : la limite fournisseur n'est jamais dépassée. Évite le
+   * 503 sur un zapping normal quand la ligne est « pleine » de sessions qui
+   * n'ont en réalité plus personne devant l'écran.
+   * @returns {boolean} true si un slot a été récupéré.
+   */
+  _reclaimIdleSlot() {
+    for (const s of this.sessions.values()) {
+      if (!s.closed && s.subscribers.size === 0) {
+        log.info('session.reclaim_idle', { key: s.key });
+        s._destroy(); // décrémente sessions.size de façon synchrone
+        metrics.inc('gw_reclaimed_idle_total');
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // ---- Plafond mémoire GLOBAL (anti-OOM du process 512 Mo) ---------------
+  startBackpressureSweep() {
+    if (this._sweepTimer) return;
+    if (config.globalClientBufferMaxBytes <= 0 || config.backpressureSweepMs <= 0) return;
+    this._sweepTimer = setInterval(() => {
+      try { this._sweepBackpressure(); } catch { /* jamais faire tomber la ronde */ }
+    }, config.backpressureSweepMs);
+    if (this._sweepTimer.unref) this._sweepTimer.unref();
+  }
+
+  stopBackpressureSweep() {
+    if (this._sweepTimer) { clearInterval(this._sweepTimer); this._sweepTimer = null; }
+  }
+
+  // Somme les files d'attente (writableLength) de TOUS les abonnés live ; si le
+  // total dépasse le plafond global, coupe les plus lents jusqu'à repasser
+  // dessous. Le pipe VOD s'auto-régule (pause upstream), donc non concerné.
+  _sweepBackpressure() {
+    const cap = config.globalClientBufferMaxBytes;
+    if (cap <= 0) return;
+    const all = [];
+    let total = 0;
+    for (const s of this.sessions.values()) {
+      for (const res of s.subscribers) {
+        const q = res.writableLength || 0;
+        total += q;
+        all.push({ s, res, q });
+      }
+    }
+    metrics.setGauge('gw_client_buffered_bytes', total);
+    if (total <= cap) return;
+    all.sort((a, b) => b.q - a.q);
+    for (const item of all) {
+      if (total <= cap) break;
+      log.warn('client.global_backpressure', { key: item.s.key, queuedBytes: item.q });
+      item.s.removeSubscriber(item.res);
+      try { item.res.destroy(); } catch { /* */ }
+      metrics.inc('gw_clients_cut_backpressure_total');
+      total -= item.q;
+    }
+  }
+
+  /**
    * Réserve une connexion fournisseur pour un flux NON mutualisé (VOD/série),
    * dans la limite de la ligne. Renvoie une fonction de libération, ou null
    * si la ligne est déjà pleine.
    */
   reserveRaw() {
     if (this.totalUpstream() >= config.providerMaxConnections) {
-      metrics.inc('gw_rejected_provider_limit_total');
-      return null;
+      // Ligne « pleine » : on tente de récupérer un slot laissé au chaud pour
+      // le zapping (aucun spectateur) avant de refuser.
+      if (!this._reclaimIdleSlot() || this.totalUpstream() >= config.providerMaxConnections) {
+        metrics.inc('gw_rejected_provider_limit_total');
+        return null;
+      }
     }
     this.rawSlots += 1;
     metrics.setGauge('gw_upstream_active', this.totalUpstream());
@@ -249,16 +365,19 @@ export class StreamHub {
    * Abonne un client à une chaîne. Mutualise si la chaîne est déjà diffusée.
    * @returns {Promise<{ ok: true } | { ok: false, code: string, status?: number }>}
    */
-  async subscribe(key, url, res) {
+  async subscribe(key, streamPath, res) {
     let session = this.sessions.get(key);
     if (!session) {
       // Nouvelle chaîne → nouvelle connexion fournisseur : on vérifie la
-      // limite AVANT d'ouvrir (jamais dépasser la ligne).
+      // limite AVANT d'ouvrir (jamais dépasser la ligne). Si elle est pleine,
+      // on récupère d'abord un slot en idle-grace (zapping) plutôt que refuser.
       if (this.totalUpstream() >= config.providerMaxConnections) {
-        metrics.inc('gw_rejected_provider_limit_total');
-        return { ok: false, code: 'provider_limit', status: 503 };
+        if (!this._reclaimIdleSlot() || this.totalUpstream() >= config.providerMaxConnections) {
+          metrics.inc('gw_rejected_provider_limit_total');
+          return { ok: false, code: 'provider_limit', status: 503 };
+        }
       }
-      session = new StreamSession(this, key, url);
+      session = new StreamSession(this, key, streamPath);
       this.sessions.set(key, session);
       metrics.setGauge('gw_upstream_active', this.totalUpstream());
       // On attache le client tout de suite : s'il coupe pendant la connexion,

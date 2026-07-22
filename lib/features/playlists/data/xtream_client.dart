@@ -774,7 +774,7 @@ class XtreamClient {
           _workingUserAgent = ua;
           return await _readCapped(
             resp.stream,
-            kMaxXtreamJsonBytes,
+            DeviceMemory.xtreamJsonByteCap,
           ).timeout(_bodyTimeout);
         }
         lastError = XtreamException(

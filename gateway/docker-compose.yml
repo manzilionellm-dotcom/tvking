@@ -1,14 +1,19 @@
 # =========================================================
-#  docker-compose.yml — Passerelle « maison mère »
+#  docker-compose.yml — Passerelle « maison mère » + TLS auto (Caddy)
 # =========================================================
-#  Démarrage :
-#    1) cp .env.example .env  (remplir la ligne fournisseur + PROVIDER_MAX)
-#    2) cp users.example.json users.json  (papa + clones)
-#    3) docker compose up -d --build
+#  Démarrage (déploiement HTTPS de bout en bout — voir README) :
+#    1) cp .env.example .env
+#       → remplis la ligne fournisseur (UPSTREAM_*), PROVIDER_MAX_CONNECTIONS,
+#         DOMAIN (ton vrai domaine), et l'identité de diffusion (BROADCAST_*).
+#    2) cp users.example.json users.json      (papa + clones)
+#    3) DNS : fais pointer un A/AAAA de $DOMAIN vers l'IP du VPS ; ouvre 80+443.
+#    4) docker compose up -d --build
+#    → Caddy obtient un certificat Let's Encrypt et sert https://$DOMAIN,
+#      qu'il relaie vers le gateway interne (8088). PUBLIC_BASE = https://$DOMAIN.
 #
-#  TLS : mets un reverse-proxy (Caddy/Traefik/nginx) devant, OU expose
-#  directement en HTTP derrière ton propre proxy. PUBLIC_BASE doit refléter
-#  l'URL vue par les apps (ex. https://tv.mondomaine.com).
+#  ARCHITECTURE : Caddy (public 80/443, TLS auto) → gateway (interne 8088).
+#  Le gateway n'est PAS exposé publiquement ; il n'écoute qu'en interne (réseau
+#  compose) et, en option, sur la loopback de l'hôte pour les checks admin.
 # =========================================================
 services:
   gateway:
@@ -16,11 +21,16 @@ services:
     image: sevenmotion-gateway:latest
     restart: unless-stopped
     env_file: .env
-    ports:
-      - "${PORT:-8088}:8088"
+    # PAS de port public : seul Caddy est exposé. `expose` rend 8088 joignable
+    # UNIQUEMENT depuis le réseau interne compose (donc depuis Caddy). Pour un
+    # curl admin local sur le VPS, décommente le mapping loopback ci-dessous.
+    expose:
+      - "8088"
+    # ports:
+    #   - "127.0.0.1:${PORT:-8088}:8088"   # health/metrics locaux (hôte only)
     volumes:
-      # users.json en lecture-écriture : la gestion des familles/clones
-      # depuis le panel écrit dans ce fichier (persistance).
+      # users.json en lecture-écriture : la gestion des familles/clones depuis
+      # le panel écrit dans ce fichier (persistance).
       - ./users.json:/data/users.json
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8088/health"]
@@ -32,3 +42,28 @@ services:
       resources:
         limits:
           memory: 512M
+
+  # Reverse-proxy TLS : SEUL point d'entrée public. Obtient et RENOUVELLE seul
+  # le certificat Let's Encrypt (voir Caddyfile). redémarrage automatique.
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - gateway
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3 (QUIC)
+    environment:
+      # Domaine servi par Caddy (certificat + reverse-proxy). Lu depuis .env.
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Persistance des CERTIFICATS : sans ce volume, chaque redéploiement
+      # re-demanderait un certificat (risque de rate-limit Let's Encrypt).
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

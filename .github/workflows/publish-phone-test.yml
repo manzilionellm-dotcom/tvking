@@ -1,0 +1,61 @@
+# ============================================================================
+#  publish-phone-test.yml — Publie l'APK TÉLÉPHONE d'un run build-android comme
+#  release « phone-test » à LIEN DIRECT (téléchargeable sans compte GitHub).
+#
+#  Équivalent MOBILE de publish-cinema-test.yml (qui fait pareil pour la TV).
+#
+#  POURQUOI : les artefacts Actions exigent d'être connecté à GitHub. Une
+#  release publique donne une URL stable pour installer l'APK de test :
+#    https://github.com/<repo>/releases/download/phone-test/7motion-test.apk
+#
+#  GARDE-FOUS (identiques à cinema-test) :
+#    - PRÉRELEASE → ne devient JAMAIS « latest »/« prod » (les liens clients
+#      /app /dl continuent de pointer sur l'APK mobile officiel) ;
+#    - AUCUN version.json uploadé → l'updater in-app (qui lit son tag prod) ne
+#      voit pas cette release ;
+#    - déclenchement MANUEL uniquement (workflow_dispatch), tag écrasé à chaque
+#      publication → une seule release de test à la fois.
+# ============================================================================
+name: Publish Phone test APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'ID du run build-android dont on publie l''APK (Actions → run → URL)'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # créer/écraser la release phone-test
+  actions: read     # télécharger l'artefact du run build-android
+
+jobs:
+  publish:
+    name: Release phone-test (lien direct)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Télécharger l'APK du run build-android
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tvking-release-apk-*
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          merge-multiple: true
+
+      - name: Publier la release phone-test (écrase la précédente)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          ls -la
+          mv 7motion.apk 7motion-test.apk
+          # Tag recréé à chaque publication : UNE seule release de test.
+          gh release delete phone-test -R "$GITHUB_REPOSITORY" -y --cleanup-tag || true
+          gh release create phone-test -R "$GITHUB_REPOSITORY" \
+            --prerelease \
+            --title "7 MOTION téléphone — APK de test (ne pas diffuser)" \
+            --notes "APK téléphone de test (run ${{ inputs.run_id }}). Signé avec la clé maîtresse : s'installe PAR-DESSUS l'app en place. Lien direct : https://github.com/$GITHUB_REPOSITORY/releases/download/phone-test/7motion-test.apk" \
+            7motion-test.apk
+          echo "✓ https://github.com/$GITHUB_REPOSITORY/releases/download/phone-test/7motion-test.apk"

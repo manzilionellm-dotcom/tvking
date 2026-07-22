@@ -939,6 +939,159 @@ export const transferApi = {
 };
 
 // =========================================================
+//  PARTAGES & PRÊTS — ledger anti-vol des invitations entre clients
+// =========================================================
+//  Une transaction = une ligne de app_invites : qui a invité (émetteur),
+//  quel appareil a été invité, le mode (ensemble / prêt), la durée, la date
+//  et l'échéance du pass. Lecture seule — sert à SURVEILLER qui partage quoi.
+export interface InviteRow {
+  code: string;
+  issuer_mac: string;
+  redeemer_mac: string | null;
+  plan: string;
+  created_at: number;
+  expires_at: number;
+  redeemed_at: number | null;
+  guest_until: number | null;
+  hours: number | null;
+  mode: string | null;
+  channel_json: string | null;
+  issuer_name?: string | null;
+  issuer_reseller_id?: string | null;
+  redeemer_block?: string | null;
+}
+export const invitesApi = {
+  list: (q?: string) =>
+    request<{ items: InviteRow[] }>(
+      `/api/v1/invites${q ? `?q=${encodeURIComponent(q)}` : ''}`,
+    ),
+};
+
+// =========================================================
+//  COMPTES MAÎTRES — démo illimitée (envoyer des tests à volonté)
+// =========================================================
+export interface MasterRow {
+  mac: string;
+  note: string | null;
+  created_at: number;
+}
+export const mastersApi = {
+  list: () => request<{ items: MasterRow[] }>('/api/v1/masters'),
+  add: (mac: string, note?: string) =>
+    request<{ ok: boolean; mac: string }>('/api/v1/masters', {
+      method: 'POST',
+      body: { mac, note },
+    }),
+  remove: (mac: string) =>
+    request<{ ok: boolean; mac: string }>(`/api/v1/masters/${encodeURIComponent(mac)}`, {
+      method: 'DELETE',
+    }),
+  // LISTE DE TEST INDÉPENDANTE d'un maître (petit M3U curé, < 5 chaînes).
+  // `gateway_user` = nom de l'identité de diffusion (le secret n'est JAMAIS
+  // réaffiché : `has_gateway_pass` dit seulement s'il est enregistré).
+  getTestList: (mac: string) =>
+    request<{
+      mac: string; m3u: string; count: number;
+      gateway_base: string; gateway_user: string; has_gateway_pass: boolean;
+      updated_at: number | null;
+    }>(
+      `/api/v1/masters/test-list?mac=${encodeURIComponent(mac)}`,
+    ),
+  // `gatewayUser`/`gatewayPass` (optionnels) = identité de diffusion embarquée
+  // dans les URLs de test (masque la ligne fournisseur). Le mot de passe n'est
+  // envoyé que s'il change (le champ est laissé vide sinon → non écrasé).
+  putTestList: (
+    mac: string, m3u: string,
+    gatewayBase?: string, gatewayUser?: string, gatewayPass?: string,
+  ) =>
+    request<{
+      ok: boolean; mac: string; count: number;
+      gateway_base: string; gateway_user: string; has_gateway_pass: boolean;
+    }>('/api/v1/masters/test-list', {
+      method: 'PUT',
+      body: {
+        mac, m3u,
+        gateway_base: gatewayBase || '',
+        gateway_user: gatewayUser || '',
+        ...(gatewayPass ? { gateway_pass: gatewayPass } : {}),
+      },
+    }),
+  // COPIEUR INTELLIGENT : range toutes les chaînes en catégories, pour cocher
+  // celles à partager en test. `paste` (optionnel) = TON lien Xtream / URL M3U
+  // à copier ; `gatewayBase` (optionnel) = ta façade → URLs reconstruites sur
+  // le gateway (plus stable + privé) ; `gatewayUser`/`gatewayPass` = identité
+  // de diffusion embarquée dans les URLs (masque la ligne fournisseur).
+  channels: (
+    mac: string, paste?: string,
+    gatewayBase?: string, gatewayUser?: string, gatewayPass?: string,
+  ) =>
+    (paste && paste.trim()) || (gatewayBase && gatewayBase.trim())
+      ? request<MasterChannelsResp>('/api/v1/masters/channels', {
+          method: 'POST',
+          body: {
+            mac, paste: (paste || '').trim(),
+            gateway_base: (gatewayBase || '').trim(),
+            gateway_user: (gatewayUser || '').trim(),
+            ...(gatewayPass ? { gateway_pass: gatewayPass } : {}),
+          },
+        })
+      : request<MasterChannelsResp>(`/api/v1/masters/channels?mac=${encodeURIComponent(mac)}`),
+  // BOÎTE NOIRE : diagnostic actif (façade en ligne, chaîne jouable…).
+  diag: (mac: string) =>
+    request<MasterDiag>(`/api/v1/masters/diag?mac=${encodeURIComponent(mac)}`),
+};
+export interface MasterDiagCheck {
+  key: string;
+  level: number; // 0 ok · 1 à vérifier · 2 KO
+  label: string;
+  detail: string;
+  fix: string;
+}
+export interface MasterDiag {
+  mac: string;
+  verdict: 'green' | 'amber' | 'red';
+  score: number;
+  checks: MasterDiagCheck[];
+  generated_at: number;
+}
+export interface MasterChannelsResp {
+  mac: string;
+  type: string;
+  source_label: string | null;
+  categories: MasterCategory[];
+  total: number;
+  truncated: boolean;
+}
+export interface MasterChannel {
+  id: string;
+  name: string;
+  logo: string;
+  url: string;
+}
+export interface MasterCategory {
+  id: string;
+  name: string;
+  channels: MasterChannel[];
+}
+
+// =========================================================
+//  ADMIN MONITORING — sessions admin (séparées des stats clients)
+// =========================================================
+export interface AdminSession {
+  mac: string;
+  ip: string | null;
+  country: string | null;
+  last_seen: number;
+  channel: string | null;
+}
+export const adminMonitorApi = {
+  list: () =>
+    request<{ items: AdminSession[]; online_count: number; now: number }>(
+      '/api/v1/admin-monitor',
+    ),
+};
+
+// =========================================================
 //  Familles — une ligne (source) partagée par plusieurs appareils
 // =========================================================
 export interface FamilySource {
