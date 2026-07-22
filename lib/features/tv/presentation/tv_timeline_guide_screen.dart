@@ -59,6 +59,12 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
   static DateTime _floorHalfHour(DateTime t) =>
       DateTime(t.year, t.month, t.day, t.hour, t.minute < 30 ? 0 : 30);
 
+  // Futures EPG des lignes MÉMORISÉS (cf. _GuideRowState) : sans ce signal,
+  // un guide ouvert PENDANT un import EPG restait figé à vide tant qu'on ne
+  // décalait pas la fenêtre. Chaque lot inséré incrémente la génération.
+  StreamSubscription<void>? _epgSub;
+  int _epgGeneration = 0;
+
   @override
   void initState() {
     super.initState();
@@ -67,11 +73,15 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
     _clock = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
+    _epgSub = EpgRepository.instance.changes.listen((_) {
+      if (mounted) setState(() => _epgGeneration++);
+    });
   }
 
   @override
   void dispose() {
     _clock?.cancel();
+    _epgSub?.cancel();
     super.dispose();
   }
 
@@ -108,10 +118,11 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
     );
   }
 
-  /// Une émission (passée ou en cours) de [channel] est-elle rejouable
-  /// (archive du fournisseur dispo) ? Cf. CatchupUrlBuilder.
+  /// ARCHIVABLE (invariant dans le temps) : le fournisseur expose-t-il une
+  /// archive pour cette émission ? La garde temporelle (« pas encore
+  /// commencée ») est évaluée par les appelants au moment voulu — la
+  /// stocker ici figeait le drapeau dans les tuples mémorisés des lignes.
   bool _canReplay(Channel channel, EpgProgram p) {
-    if (p.startDateTime.isAfter(DateTime.now())) return false; // à venir
     return CatchupUrlBuilder.build(channel: channel, program: p) != null;
   }
 
@@ -127,7 +138,9 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
       _play(channelIndex);
       return;
     }
-    final String? url = _canReplay(channel, p)
+    // Émission à venir : jamais de replay (garde temporelle, ex-_canReplay).
+    final bool started = p.startTime <= now.millisecondsSinceEpoch;
+    final String? url = (started && _canReplay(channel, p))
         ? CatchupUrlBuilder.build(channel: channel, program: p)
         : null;
     if (url != null) {
@@ -272,6 +285,7 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
                           rowH: _rowH,
                           nowDx: nowVisible ? nowDx : null,
                           onPlay: () => _play(idx),
+                          epgGeneration: _epgGeneration,
                           canReplay: (EpgProgram p) =>
                               _canReplay(_channels[idx], p),
                           onBlock: (EpgProgram p) =>
@@ -313,6 +327,7 @@ class _GuideRow extends StatefulWidget {
     required this.rowH,
     required this.nowDx,
     required this.onPlay,
+    required this.epgGeneration,
     required this.canReplay,
     required this.onBlock,
   });
@@ -327,7 +342,12 @@ class _GuideRow extends StatefulWidget {
   final double? nowDx;
   final VoidCallback onPlay;
 
-  /// Une émission est-elle rejouable (archive dispo) ? → pastille ⟲.
+  /// Incrémentée par l'écran à chaque lot EPG inséré (import en cours) :
+  /// les futures mémorisés se re-arment.
+  final int epgGeneration;
+
+  /// Une émission est-elle ARCHIVABLE (archive dispo, invariant) ? La
+  /// pastille ⟲ n'apparaît qu'une fois l'émission commencée (cf. _block).
   final bool Function(EpgProgram) canReplay;
 
   /// OK sur une case d'émission.
@@ -338,9 +358,11 @@ class _GuideRow extends StatefulWidget {
 }
 
 class _GuideRowState extends State<_GuideRow> {
-  /// Requête EPG mémorisée : recréée UNIQUEMENT quand la chaîne ou la
-  /// fenêtre change — jamais sur un simple tic d'horloge de l'écran.
-  late Future<List<EpgProgram>> _progs;
+  /// Requête EPG mémorisée (programme + drapeau « rejouable » PRÉ-CALCULÉ :
+  /// la construction d'URL catch-up de canReplay ne se refait plus à chaque
+  /// rebuild de bloc) : recréée UNIQUEMENT quand la chaîne ou la fenêtre
+  /// change — jamais sur un simple tic d'horloge de l'écran.
+  late Future<List<(EpgProgram, bool)>> _progs;
 
   @override
   void initState() {
@@ -353,13 +375,17 @@ class _GuideRowState extends State<_GuideRow> {
     super.didUpdateWidget(old);
     if (old.channel.id != widget.channel.id ||
         old.startMs != widget.startMs ||
-        old.endMs != widget.endMs) {
+        old.endMs != widget.endMs ||
+        old.epgGeneration != widget.epgGeneration) {
       _progs = _load();
     }
   }
 
-  Future<List<EpgProgram>> _load() => EpgRepository.instance
-      .programsBetween(widget.channel.id, widget.startMs, widget.endMs);
+  Future<List<(EpgProgram, bool)>> _load() => EpgRepository.instance
+      .programsBetween(widget.channel.id, widget.startMs, widget.endMs)
+      .then((List<EpgProgram> list) => <(EpgProgram, bool)>[
+            for (final EpgProgram p in list) (p, widget.canReplay(p))
+          ]);
 
   @override
   Widget build(BuildContext context) {
@@ -401,15 +427,15 @@ class _GuideRowState extends State<_GuideRow> {
         Expanded(
           child: SizedBox(
             height: widget.rowH,
-            child: FutureBuilder<List<EpgProgram>>(
+            child: FutureBuilder<List<(EpgProgram, bool)>>(
               // Borné à la fenêtre : requête SQL indexée, par ligne
               // visible — et MÉMORISÉE (cf. _GuideRowState : le tic
               // 30 s de l'écran ne re-tape plus SQLite).
               future: _progs,
               builder: (BuildContext context,
-                  AsyncSnapshot<List<EpgProgram>> snap) {
-                final List<EpgProgram> progs =
-                    snap.data ?? const <EpgProgram>[];
+                  AsyncSnapshot<List<(EpgProgram, bool)>> snap) {
+                final List<(EpgProgram, bool)> progs =
+                    snap.data ?? const <(EpgProgram, bool)>[];
                 return Stack(
                   clipBehavior: Clip.hardEdge,
                   children: <Widget>[
@@ -423,7 +449,8 @@ class _GuideRowState extends State<_GuideRow> {
                         ),
                       ),
                     ),
-                    for (final EpgProgram p in progs) _block(p),
+                    for (final (EpgProgram, bool) e in progs)
+                      _block(e.$1, e.$2),
                     if (widget.nowDx != null)
                       Positioned(
                         left: widget.nowDx! - 1,
@@ -443,7 +470,7 @@ class _GuideRowState extends State<_GuideRow> {
     );
   }
 
-  Widget _block(EpgProgram p) {
+  Widget _block(EpgProgram p, bool archivable) {
     // Position/longueur du bloc, ROGNÉES à la fenêtre visible.
     final double left =
         ((p.startTime - widget.startMs) / 60000).clamp(0, 1e9) * widget.pxPerMin;
@@ -455,7 +482,10 @@ class _GuideRowState extends State<_GuideRow> {
     if (width < 8) return const SizedBox.shrink();
     final int nowMs = DateTime.now().millisecondsSinceEpoch;
     final bool onAir = p.startTime <= nowMs && nowMs < p.stopTime;
-    final bool replayable = widget.canReplay(p);
+    // Garde temporelle évaluée ICI, à chaque build (le tic 30 s repeint) :
+    // « archivable » (tuple mémorisé) est invariant, mais une émission à
+    // venir ne montre la pastille replay qu'une fois commencée.
+    final bool replayable = archivable && p.startTime <= nowMs;
     return Positioned(
       left: left,
       top: 3,

@@ -134,12 +134,18 @@ abstract final class ChannelClassifier {
   //  Nettoyage du libellé de catégorie pour l'affichage
   // -------------------------------------------------------
 
+  // Hissées en static final : prettifyCategory est appelée en boucle sur
+  // des bouquets entiers (10 000+ chaînes) — recompiler 2 RegExp par appel
+  // gaspillait du CPU sur le thread UI.
+  static final RegExp _decorations = RegExp(r'[#*=•‣◆◇■□●○▪▫]+');
+  static final RegExp _spaces = RegExp(r'\s+');
+
   /// Enlève les décorations type "## ## ##" / "==" / "•" et trim.
   /// Retourne un libellé propre prêt à afficher.
   static String prettifyCategory(String raw) {
     String s = raw;
-    s = s.replaceAll(RegExp(r'[#*=•‣◆◇■□●○▪▫]+'), ' ');
-    s = s.replaceAll(RegExp(r'\s+'), ' ');
+    s = s.replaceAll(_decorations, ' ');
+    s = s.replaceAll(_spaces, ' ');
     s = s.trim();
     if (s.isEmpty) return 'Autres';
     return s;

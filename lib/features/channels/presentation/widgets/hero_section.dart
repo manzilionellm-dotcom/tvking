@@ -33,6 +33,7 @@
 
 import 'dart:ui';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/i18n/l10n_extension.dart';
@@ -131,19 +132,20 @@ class _AmbientBackdrop extends StatelessWidget {
       fit: StackFit.expand,
       children: <Widget>[
         // 1) Logo étiré, fortement saturé en sombre.
-        Image.network(
-          channel.logoUrl!,
+        CachedNetworkImage(
+          imageUrl: channel.logoUrl!,
           fit: BoxFit.cover,
           // L'image sert UNIQUEMENT de fond coloré, floutée à σ=36
           // juste en dessous : décoder 64 px de large suffit largement
           // (le blur masque tout détail). Sans cette borne, un logo
           // 1000×1000 était décodé plein format pour finir noyé dans
           // le flou — pic RAM ~100× plus gros que nécessaire.
-          cacheWidth: 64,
+          // + cache DISQUE (plus de re-fetch après éviction/redémarrage).
+          memCacheWidth: 64,
           // Si elle échoue (404, timeout, format non géré), on retombe
           // sur le dégradé neutre — l'écran ne doit jamais avoir l'air
           // cassé.
-          errorBuilder: (_, __, ___) => const _NeutralBackdrop(),
+          errorWidget: (_, __, ___) => const _NeutralBackdrop(),
         ),
         // 2) Blur cinéma + voile sombre pour ramener au charbon.
         BackdropFilter(

@@ -234,6 +234,41 @@ class _TvCollectionDetailScreenState
   Future<List<Channel>> _resolve(List<String> ids) =>
       PlaylistRepository.instance.getChannelsByExternalIds(ids);
 
+  // MÉMOÏSATION (revue perf) : les futures étaient créés INLINE dans build,
+  // sous un ListenableBuilder qui rebâtit à CHAQUE toggle OK → chaque appui
+  // relançait les 2 requêtes getChannelsByExternalIds et rebâtissait tout.
+  // Ici on ne re-résout que si la liste d'ids a réellement changé.
+  Future<List<Channel>>? _colFuture;
+  String _colKey = '';
+
+  Future<List<Channel>> _colChannels(List<String> ids) {
+    final String key = ids.join('');
+    if (_colFuture == null || key != _colKey) {
+      _colKey = key;
+      _colFuture = _resolve(ids);
+    }
+    return _colFuture!;
+  }
+
+  /// Favoris RÉSOLUS en état (et non FutureBuilder) : la grille passe en
+  /// SliverGrid.builder — VIRTUALISÉE — au lieu d'un Wrap qui posait
+  /// toutes les tuiles d'un coup (100-500 favoris possibles ≈ 100-300 ms
+  /// de layout + décodage de centaines de logos à l'ouverture).
+  List<Channel> _favs = const <Channel>[];
+  String _favKey = '';
+
+  void _ensureFavs(List<String> ids) {
+    final String key = ids.join('');
+    if (key == _favKey) return; // idempotent : sûr depuis build
+    _favKey = key;
+    _resolve(ids).then((List<Channel> list) {
+      if (mounted && _favKey == key) setState(() => _favs = list);
+    }).catchError((Object _) {
+      // Échec SQLite : on garde l'affichage courant (avant, le
+      // FutureBuilder absorbait l'erreur — même tolérance ici).
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final FavoriteCollectionsRepository repo =
@@ -254,9 +289,11 @@ class _TvCollectionDetailScreenState
           }
           final List<String> favIds =
               FavoritesRepository.instance.current.toList(growable: false);
+          _ensureFavs(favIds);
           return Padding(
             padding: const EdgeInsets.fromLTRB(40, 28, 40, 28),
-            child: ListView(
+            child: CustomScrollView(slivers: <Widget>[
+              SliverList.list(
               children: <Widget>[
                 Row(
                   children: <Widget>[
@@ -339,7 +376,7 @@ class _TvCollectionDetailScreenState
                   SizedBox(
                     height: 128,
                     child: FutureBuilder<List<Channel>>(
-                      future: _resolve(col.ids),
+                      future: _colChannels(col.ids),
                       builder: (BuildContext context,
                           AsyncSnapshot<List<Channel>> snap) {
                         final List<Channel> chans =
@@ -374,36 +411,30 @@ class _TvCollectionDetailScreenState
                 if (favIds.isEmpty)
                   Text(context.l10n.tvCollectionsNoFavorites,
                       style: const TextStyle(
-                          fontSize: 15, color: TvTokens.mutedDim))
-                else
-                  FutureBuilder<List<Channel>>(
-                    future: _resolve(favIds),
-                    builder: (BuildContext context,
-                        AsyncSnapshot<List<Channel>> snap) {
-                      final List<Channel> favs =
-                          snap.data ?? const <Channel>[];
-                      if (favs.isEmpty) return const SizedBox.shrink();
-                      return Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: <Widget>[
-                          for (final Channel ch in favs)
-                            SizedBox(
-                              width: 198,
-                              height: 118,
-                              child: _ChannelTile(
-                                channel: ch,
-                                checked: repo.contains(col.name, ch.id),
-                                onSelect: () =>
-                                    repo.toggle(col.name, ch.id),
-                              ),
-                            ),
-                        ],
-                      );
-                    },
+                          fontSize: 15, color: TvTokens.mutedDim)),
+              ]),
+              // Grille VIRTUALISÉE (SliverGrid remplace l'ancien Wrap qui
+              // posait tous les favoris d'un coup dans le scroll).
+              if (favIds.isNotEmpty && _favs.isNotEmpty)
+                SliverGrid.builder(
+                  gridDelegate:
+                      const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 208,
+                    mainAxisExtent: 118,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
                   ),
-              ],
-            ),
+                  itemCount: _favs.length,
+                  itemBuilder: (BuildContext context, int i) {
+                    final Channel ch = _favs[i];
+                    return _ChannelTile(
+                      channel: ch,
+                      checked: repo.contains(col.name, ch.id),
+                      onSelect: () => repo.toggle(col.name, ch.id),
+                    );
+                  },
+                ),
+            ]),
           );
         },
       ),

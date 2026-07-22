@@ -459,7 +459,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _savePlaybackPosition();
     _controller.removeListener(_onPlayer);
     NowPlaying.instance.clear();
-    SubscriptionState.instance.syncWithBackend(); // on ne regarde plus rien
+    // « On ne regarde plus rien » : DIFFÉRÉ de 1,5 s — lancer une requête
+    // HTTP pile pendant la transition de pop réveillait réseau/CPU au
+    // moment où l'écran suivant doit devenir interactif. Effet global
+    // (singleton) : il survit à ce State sans fuite.
+    unawaited(Future<void>.delayed(const Duration(milliseconds: 1500),
+        () => SubscriptionState.instance.syncWithBackend()));
     _startupWatchdog?.cancel();
     _controller.dispose();
     _focus.dispose();

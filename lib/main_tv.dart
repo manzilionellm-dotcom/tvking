@@ -59,6 +59,11 @@ Future<void> _bootstrap() async {
   // Flavor explicite (un seul produit pour l'instant : The Few).
   FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
 
+  // ImageCache : sur TV, TvMemoryGuard est la SOURCE UNIQUE des plafonds
+  // (posé AVANT tout await → le tuner générique de guarded_main s'efface,
+  // fin de la course « dernier arrivé gagne »).
+  imageCacheOwnedByFlavor = true;
+
   // DISJONCTEUR anti-boucle de redémarrage : si la TV s'est relancée
   // plusieurs fois de suite (crash natif type mémoire en ré-important une
   // grosse source), on passe en MODE SANS ÉCHEC et on saute le ré-import

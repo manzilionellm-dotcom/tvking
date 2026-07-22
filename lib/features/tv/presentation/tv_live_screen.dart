@@ -241,6 +241,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     _catalogDebounce?.cancel();
     _railsDebounce?.cancel();
     _previewDebounce?.cancel();
+    _ambient.dispose();
     ParentalControls.instance.kidsMode.removeListener(_onKidsModeChanged);
     super.dispose();
   }
@@ -558,7 +559,10 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     _previewDebounce?.cancel();
     _previewDebounce = Timer(const Duration(milliseconds: 120), () {
       if (mounted && _previewCh?.id != c.id) {
-        setState(() => _previewCh = c);
+        // PAS de setState ici : seule l'ambiance (ValueNotifier ciblé)
+        // dépend de la chaîne survolée — un setState racine reconstruisait
+        // C-Liste + rangée « Reprendre » + ~30 cartes à CHAQUE cran de D-pad.
+        _previewCh = c;
         _updateAmbient(c); // gradient ambiant dérivé du logo (§6)
       }
     });
@@ -572,7 +576,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   //  UNE seule fois par chaîne (cache statique), sur une image RÉDUITE (48 px),
   //  et UNIQUEMENT pour le hero (1 image à la fois, après débounce du focus) —
   //  jamais par carte ni dans une liste. Repli : preset de catégorie, sinon or.
-  Color _ambient = TvTokens.bg;
+  // ValueNotifier (patron tv_channels_screen) : SEUL le fond ambiant écoute —
+  // un changement de teinte ne reconstruit plus l'écran entier.
+  final ValueNotifier<Color> _ambient = ValueNotifier<Color>(TvTokens.bg);
   static final Map<String, Color> _domCache = <String, Color>{};
 
   Color _categoryAmbient(String category) {
@@ -593,20 +599,28 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   Future<void> _updateAmbient(Channel c) async {
     final Color? cached = _domCache[c.id];
     if (cached != null) {
-      if (mounted) setState(() => _ambient = cached);
+      if (mounted) _ambient.value = cached;
       return;
     }
     // Repli immédiat (preset de catégorie) pendant l'extraction.
     Color color = _categoryAmbient(c.category);
-    if (mounted) setState(() => _ambient = color);
+    if (mounted) _ambient.value = color;
     final String? url = c.logoUrl;
     if (url == null || url.isEmpty) {
       _domCache[c.id] = color;
       return;
     }
     try {
+      // ResizeImage : le paramètre `size` de PaletteGenerator ne borne PAS
+      // le décodage — le logo partait en pleine résolution (~4 Mo/logo)
+      // dans l'ImageCache pour extraire UNE couleur (churn d'évictions des
+      // vignettes visibles). Même motif que tv_poster_prefetch.
       final PaletteGenerator pal = await PaletteGenerator.fromImageProvider(
-        CachedNetworkImageProvider(url),
+        ResizeImage(
+          CachedNetworkImageProvider(url),
+          width: 64,
+          policy: ResizeImagePolicy.fit,
+        ),
         size: const Size(48, 48),
         maximumColorCount: 8,
       );
@@ -620,8 +634,12 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     } catch (_) {
       // extraction impossible → on garde le preset de catégorie.
     }
+    // Garde-fou mémoire (même patron que _nameMemo) : une Color par chaîne
+    // survolée, sans purge → croissance continue en endurance sur les très
+    // gros bouquets.
+    if (_domCache.length > 2000) _domCache.clear();
     _domCache[c.id] = color;
-    if (mounted && _previewCh?.id == c.id) setState(() => _ambient = color);
+    if (mounted && _previewCh?.id == c.id) _ambient.value = color;
   }
 
   // ============================================================
@@ -812,17 +830,26 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
         // ----- FOND AMBIANT (§6) : teinte SOMBRE dérivée de la couleur
         //  dominante du logo survolé. AnimatedContainer = transition douce au
         //  changement de focus (PAS une boucle → conforme RÈGLE 7). Aucun flou.
+        // RepaintBoundary : la transition de teinte (450 ms) repeint SA couche,
+        // pas celle de la route (C-Liste + grille au-dessus).
         Positioned.fill(
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 450),
-            curve: Curves.easeOut,
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: const Alignment(-0.5, -0.85),
-                radius: 1.4,
-                colors: <Color>[_ambient, TvTokens.bg],
-                stops: const <double>[0.0, 0.72],
-              ),
+          child: RepaintBoundary(
+            child: ValueListenableBuilder<Color>(
+              valueListenable: _ambient,
+              builder: (BuildContext context, Color ambient, Widget? _) {
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 450),
+                  curve: Curves.easeOut,
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: const Alignment(-0.5, -0.85),
+                      radius: 1.4,
+                      colors: <Color>[ambient, TvTokens.bg],
+                      stops: const <double>[0.0, 0.72],
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ),
@@ -984,8 +1011,13 @@ class _CRow extends StatelessWidget {
         autofocus: autofocus,
         scale: TvFocusScale.small,
         onSelect: onSelect,
+        // À la TRANSITION de focus uniquement : l'ancien `if (focused)
+        // onFocused()` DANS le builder ré-armait le débounce de catégorie à
+        // CHAQUE rebuild de la ligne, pas seulement à l'arrivée du focus.
+        onFocusChange: (bool f) {
+          if (f) onFocused();
+        },
         builder: (BuildContext context, bool focused) {
-          if (focused) onFocused();
           // FOCUS UNIQUE : seule la ligne RÉELLEMENT focus porte l'or. La
           // catégorie active-mais-pas-focus = gris discret (jamais d'or).
           final bool active = selected && !focused;
@@ -1225,231 +1257,6 @@ class _ResumeCardState extends State<_ResumeCard> {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Hero « aperçu live » : reflète la chaîne SURVOLÉE dans la grille (ou la
-/// dernière vue). Logo normalisé + pastille ● EN DIRECT + EPG « EN CE MOMENT ·
-/// programme ». OK = lire cette chaîne (rôle « Continuer » quand c'est la
-/// dernière vue). La requête EPG est faite UNE fois par chaîne (pas par carte).
-class _LiveHero extends StatefulWidget {
-  const _LiveHero(
-      {required this.channel, required this.all, this.autofocus = false});
-  final Channel channel;
-  final List<Channel> all;
-  final bool autofocus;
-
-  @override
-  State<_LiveHero> createState() => _LiveHeroState();
-}
-
-class _LiveHeroState extends State<_LiveHero> {
-  late Future<EpgProgram?> _epg = _loadEpg();
-
-  Future<EpgProgram?> _loadEpg() =>
-      EpgRepository.instance.currentProgram(widget.channel.id);
-
-  @override
-  void didUpdateWidget(covariant _LiveHero old) {
-    super.didUpdateWidget(old);
-    // Nouvelle chaîne survolée → une (seule) nouvelle requête EPG.
-    if (old.channel.id != widget.channel.id) {
-      _epg = _loadEpg();
-    }
-  }
-
-  void _play() {
-    final int idx = widget.all.indexOf(widget.channel);
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => TvPlayerScreen(
-            channels: widget.all, startIndex: idx < 0 ? 0 : idx),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final Channel c = widget.channel;
-    return TvFocusable(
-      autofocus: widget.autofocus,
-      scale: TvFocusScale.large,
-      baseColor: TvTokens.card,
-      onSelect: _play,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: <Widget>[
-            // Logo normalisé (contain + padding) sur une tuile premium.
-            Container(
-              width: 132,
-              height: 132,
-              decoration: BoxDecoration(
-                color: TvTokens.tile,
-                borderRadius: BorderRadius.circular(TvTokens.rCard),
-                border: Border.all(color: TvTokens.tileBorder),
-              ),
-              padding: const EdgeInsets.all(14),
-              child: _Logo(channel: c),
-            ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  const _LivePill(),
-                  const SizedBox(height: 10),
-                  Text(_tvPretty(c.cleanName),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: TvDimens.headline,
-                          fontWeight: FontWeight.w800,
-                          color: TvTokens.text)),
-                  const SizedBox(height: 8),
-                  // EPG « EN CE MOMENT · programme » (une requête par chaîne) ;
-                  // repli sur la catégorie si pas d'EPG → jamais de ligne vide.
-                  FutureBuilder<EpgProgram?>(
-                    future: _epg,
-                    builder: (BuildContext context,
-                        AsyncSnapshot<EpgProgram?> snap) {
-                      final EpgProgram? p = snap.data;
-                      // FALLBACK (pas d'EPG) : on reste COMPACT — juste la
-                      // catégorie (ou rien), jamais de grand vide.
-                      if (p == null) {
-                        final String cat = c.category.trim();
-                        if (cat.isEmpty) return const SizedBox.shrink();
-                        return Text(_tvPretty(cat),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: TvDimens.body,
-                                color: TvTokens.muted));
-                      }
-                      // EPG dispo : titre + barre de progression + horaires
-                      // (+ synopsis si présent).
-                      final int now = DateTime.now().millisecondsSinceEpoch;
-                      final int span = p.stopTime - p.startTime;
-                      final double prog = span > 0
-                          ? ((now - p.startTime) / span)
-                              .clamp(0.0, 1.0)
-                              .toDouble()
-                          : 0.0;
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          Text(context.l10n.tvLiveNowPlaying(p.title),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  fontSize: TvDimens.body,
-                                  fontWeight: FontWeight.w600,
-                                  color: TvTokens.text)),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: <Widget>[
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(2),
-                                  child: SizedBox(
-                                    height: 4,
-                                    child: LinearProgressIndicator(
-                                      value: prog,
-                                      backgroundColor: TvTokens.line,
-                                      valueColor:
-                                          const AlwaysStoppedAnimation<Color>(
-                                              TvTokens.gold),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Text(p.timeRangeShort,
-                                  style: TextStyle(
-                                      fontSize: TvDimens.label,
-                                      color: TvTokens.mutedDim)),
-                            ],
-                          ),
-                          if (p.description != null &&
-                              p.description!.trim().isNotEmpty) ...<Widget>[
-                            const SizedBox(height: 8),
-                            Text(p.description!.trim(),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    fontSize: TvDimens.label,
-                                    color: TvTokens.muted)),
-                          ],
-                        ],
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Pastille « ● EN DIRECT » (rouge sobre) avec point qui PULSE (0.6→1.0, 1.5 s)
-/// pour signaler la liveness. Animation minuscule (un point de 8 px) → coût nul.
-class _LivePill extends StatefulWidget {
-  const _LivePill();
-
-  @override
-  State<_LivePill> createState() => _LivePillState();
-}
-
-class _LivePillState extends State<_LivePill>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1500),
-  )..repeat(reverse: true);
-  late final Animation<double> _pulse = Tween<double>(begin: 0.6, end: 1.0)
-      .animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: TvTokens.live.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(TvTokens.rSmall),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          FadeTransition(
-            opacity: _pulse,
-            child: Container(
-              width: 8,
-              height: 8,
-              decoration: const BoxDecoration(
-                  color: TvTokens.live, shape: BoxShape.circle),
-            ),
-          ),
-          const SizedBox(width: 7),
-          Text(context.l10n.tvProgramLive,
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.2,
-                  color: TvTokens.live)),
-        ],
       ),
     );
   }
@@ -1875,40 +1682,6 @@ class _LogoChip extends StatelessWidget {
       label: channel.cleanName,
       size: size,
       radius: 10,
-    );
-  }
-}
-
-class _Logo extends StatelessWidget {
-  const _Logo({required this.channel});
-  final Channel channel;
-
-  @override
-  Widget build(BuildContext context) {
-    final Widget fallback = Center(
-      child: Text(channel.initials,
-          style: TextStyle(
-              fontSize: TvDimens.title,
-              fontWeight: FontWeight.w800,
-              color: TvTokens.muted)),
-    );
-    final String? url = channel.logoUrl;
-    if (url == null || url.isEmpty) return fallback;
-    // CACHE DISQUE + mémoire (cached_network_image) : après le 1er affichage,
-    // les logos s'affichent INSTANTANÉMENT — même après un redémarrage — et ne
-    // se RE-TÉLÉCHARGENT jamais. C'est ce qui donne le scroll fluide « façon
-    // Netflix » sur 20 000 chaînes (avant : Image.network re-téléchargeait à
-    // chaque fois → flashs + jank). Skeleton discret (initiales 35 %) au lieu
-    // d'un spinner (20 000 spinners = lag).
-    return CachedNetworkImage(
-      imageUrl: url,
-      fit: BoxFit.contain,
-      placeholder: (_, __) => Opacity(opacity: 0.35, child: fallback),
-      errorWidget: (_, __, ___) => fallback,
-      memCacheWidth: 200,
-      memCacheHeight: 200, // décodage borné aussi en hauteur (mémoire/image)
-      fadeInDuration: const Duration(milliseconds: 180),
-      fadeOutDuration: const Duration(milliseconds: 120),
     );
   }
 }

@@ -753,6 +753,11 @@ class _RecordingThumbState extends State<_RecordingThumb>
                     child: CachedNetworkImage(
                       imageUrl: logo,
                       fit: BoxFit.contain,
+                      // Décodage BORNÉ : vignette ~36 px utiles — décoder le
+                      // PNG 1000×1000 du panel gaspillait ~4 Mo RAM par logo
+                      // (seul site non borné du dépôt, revue images).
+                      memCacheWidth: 96,
+                      memCacheHeight: 96,
                       fadeInDuration: const Duration(milliseconds: 200),
                       errorWidget: (_, __, ___) => Icon(
                         Icons.movie_creation_outlined,

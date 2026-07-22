@@ -68,10 +68,6 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
   /// Aperçu héro actif ? Coupé AVANT d'ouvrir un plein écran (jamais 2 flux).
   bool _previewLive = true;
 
-  /// Horloge du coin haut-droit (rafraîchie chaque minute, comme une box).
-  late String _clock = _fmtClock();
-  Timer? _clockTimer;
-
   @override
   void initState() {
     super.initState();
@@ -80,21 +76,14 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
         .listen((_) => _recomputeHero());
     _recentSub =
         RecentlyWatchedRepository.instance.stream.listen((_) => _recomputeHero());
-    _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      final String now = _fmtClock();
-      if (now != _clock && mounted) setState(() => _clock = now);
-    });
   }
 
   @override
   void dispose() {
     _chanSub?.cancel();
     _recentSub?.cancel();
-    _clockTimer?.cancel();
     super.dispose();
   }
-
-  static String _fmtClock() => DateFormat.Hm().format(DateTime.now());
 
   /// `true` quand le héro vient de l'habitude horaire (badge « Ma soirée »).
   bool _heroFromHabit = false;
@@ -106,15 +95,28 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
   String? _slotId;
   DateTime? _slotAt;
 
+  // Map id→Channel MÉMOÏSÉE par identité de liste : _recomputeHero repart à
+  // chaque événement playlist/zapping — reconstruire une map O(N) du bouquet
+  // entier (10-50 k chaînes) à chaque fois coûtait 10-60 ms pour quelques
+  // lookups. Tant que la playlist n'a pas changé, la map est réutilisée.
+  List<Channel>? _byIdSource;
+  Map<String, Channel>? _byIdCache;
+
+  Map<String, Channel> _byId(List<Channel> all) {
+    if (!identical(all, _byIdSource)) {
+      _byIdSource = all;
+      _byIdCache = <String, Channel>{for (final Channel c in all) c.id: c};
+    }
+    return _byIdCache!;
+  }
+
   Future<void> _recomputeHero() async {
     final List<Channel> all = PlaylistRepository.instance.currentChannels;
     if (all.isEmpty) {
       if (mounted) setState(() => _hero = null);
       return;
     }
-    final Map<String, Channel> byId = <String, Channel>{
-      for (final Channel c in all) c.id: c,
-    };
+    final Map<String, Channel> byId = _byId(all);
     Channel? hero;
     bool habit = false;
     // « MA SOIRÉE » : la chaîne la plus regardée DANS CE CRÉNEAU (heure ± 1,
@@ -312,9 +314,11 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
             tip: 'Quitter',
             onSelect: _confirmExit),
         const SizedBox(width: 10),
-        Text(_clock,
-            style: TvTokens.ui(TvDimens.title,
-                weight: FontWeight.w700, color: TvTokens.text)),
+        // Widget FEUILLE (patron _Clock de rails) : l'horloge se met à jour
+        // toute seule — l'ancien Timer du State racine reconstruisait
+        // l'ACCUEIL ENTIER (héro + grille favoris + tuiles, ~200 widgets)
+        // une fois par minute pour changer un Text.
+        const _LauncherClock(),
       ],
     );
   }
@@ -553,17 +557,32 @@ class _FavoritesGridState extends State<_FavoritesGrid> {
     super.dispose();
   }
 
-  void _recompute() {
+  /// Jeton anti-course : requêtes SQL concurrentes possibles si deux
+  /// événements favoris se suivent — seule la plus récente écrit.
+  int _recomputeGen = 0;
+
+  Future<void> _recompute() async {
+    final int gen = ++_recomputeGen;
     final Set<String> ids = FavoritesRepository.instance.current;
+    if (ids.isEmpty) {
+      if (mounted) setState(() => _favs = <Channel>[]);
+      return;
+    }
+    // Requêtes SQL ponctuelles (patron tv_live_screen) au lieu d'une Map
+    // id→Channel de TOUT le bouquet reconstruite à chaque toggle ★ (O(N)
+    // sur 10-50 k chaînes pour 9 tuiles). L'ordre des favoris est préservé.
     final Map<String, Channel> byId = <String, Channel>{
-      for (final Channel c in PlaylistRepository.instance.currentChannels)
+      for (final Channel c in await PlaylistRepository.instance
+          .getChannelsByExternalIds(ids.toList(growable: false)))
         c.id: c,
     };
     final List<Channel> out = <Channel>[
       for (final String id in ids)
         if (byId[id] != null) byId[id]!,
     ];
-    if (mounted) setState(() => _favs = out.take(9).toList());
+    if (mounted && gen == _recomputeGen) {
+      setState(() => _favs = out.take(9).toList());
+    }
   }
 
   @override
@@ -889,5 +908,43 @@ class _TopIcon extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Horloge du coin haut-droit — widget FEUILLE autonome (patron _Clock de
+/// tv_rails_home_screen) : son tic ne reconstruit que ce Text.
+class _LauncherClock extends StatefulWidget {
+  const _LauncherClock();
+
+  @override
+  State<_LauncherClock> createState() => _LauncherClockState();
+}
+
+class _LauncherClockState extends State<_LauncherClock> {
+  late String _clock = _fmt();
+  Timer? _timer;
+
+  static String _fmt() => DateFormat.Hm().format(DateTime.now());
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+      final String now = _fmt();
+      if (now != _clock && mounted) setState(() => _clock = now);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(_clock,
+        style: TvTokens.ui(TvDimens.title,
+            weight: FontWeight.w700, color: TvTokens.text));
   }
 }

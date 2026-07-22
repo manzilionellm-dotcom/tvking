@@ -18,6 +18,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -2583,21 +2584,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                             color: Colors.black.withValues(alpha: 0.35),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Image.network(
-                            _currentChannel.logoUrl!,
+                          // CachedNetworkImage : cache DISQUE en plus du
+                          // borné mémoire — plus de re-téléchargement après
+                          // éviction/redémarrage (Image.network = mémoire
+                          // seulement).
+                          child: CachedNetworkImage(
+                            imageUrl: _currentChannel.logoUrl!,
                             height: 36,
                             width: 60,
                             // Incrustation 60 px : borne le décodage
                             // (~3× densité). Les logos IPTV font parfois
                             // 1000×1000 — inutile de les décoder pleins
                             // pour une vignette.
-                            cacheWidth: 180,
+                            memCacheWidth: 180,
                             fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) =>
+                            errorWidget: (_, __, ___) =>
                                 const SizedBox.shrink(),
-                            loadingBuilder: (BuildContext c, Widget child,
-                                ImageChunkEvent? p) =>
-                                p == null ? child : const SizedBox.shrink(),
+                            placeholder: (_, __) =>
+                                const SizedBox.shrink(),
                           ),
                         ),
                       ),
@@ -3643,14 +3647,15 @@ class _ZapPreviewPage extends StatelessWidget {
                   child: logoUrl != null && logoUrl.isNotEmpty
                       ? ClipRRect(
                           borderRadius: BorderRadius.circular(22.5),
-                          child: Image.network(
-                            logoUrl,
+                          child: CachedNetworkImage(
+                            imageUrl: logoUrl,
                             width: 120,
                             height: 120,
-                            // 120 px affichés : décodage borné ~3×.
-                            cacheWidth: 360,
+                            // 120 px affichés : décodage borné ~3× + cache
+                            // disque (plus de re-fetch après éviction).
+                            memCacheWidth: 360,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Text(
+                            errorWidget: (_, __, ___) => Text(
                               _initials(channel.cleanName),
                               style: AppTextStyles.displayLarge,
                             ),
@@ -3759,12 +3764,13 @@ class _CastingOverlay extends StatelessWidget {
                       ],
                     ),
                     child: channel.hasLogo
-                        ? Image.network(
-                            channel.logoUrl!,
+                        ? CachedNetworkImage(
+                            imageUrl: channel.logoUrl!,
                             fit: BoxFit.contain,
-                            // Carte 104 px : décodage borné ~3×.
-                            cacheWidth: 312,
-                            errorBuilder: (_, __, ___) =>
+                            // Carte 104 px : décodage borné ~3× + cache
+                            // disque (plus de re-fetch après éviction).
+                            memCacheWidth: 312,
+                            errorWidget: (_, __, ___) =>
                                 _monogram(),
                           )
                         : _monogram(),

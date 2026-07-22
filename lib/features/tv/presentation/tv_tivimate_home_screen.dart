@@ -19,6 +19,7 @@
 // =========================================================
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -86,20 +87,27 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     super.dispose();
   }
 
-  /// Nombre de chaînes par groupe — PRÉ-CALCULÉ à l'ingestion (une passe).
-  /// Filtrer 10 000+ chaînes par tuile à chaque rebuild saccaderait.
+  /// Nombre de chaînes par groupe ET chaînes par groupe — PRÉ-CALCULÉS à
+  /// l'ingestion (une seule passe, même patron que tv_channels_screen).
+  /// Avant, seuls les compteurs l'étaient : chaque OK sur un groupe
+  /// refaisait un `where(prettifyCategory(...))` sur le bouquet ENTIER
+  /// (10 000-20 000 regex sur le thread UI ≈ 50-300 ms de gel par
+  /// changement d'onglet au D-pad).
   Map<String, int> _counts = <String, int>{};
+  Map<String, List<Channel>> _byGroup = <String, List<Channel>>{};
 
   void _ingest(List<Channel> channels) {
     // Groupes = catégories nettoyées, dans l'ordre de première apparition.
     final List<String> groups = <String>[_kAllGroup];
     final Set<String> seen = <String>{};
     final Map<String, int> counts = <String, int>{};
+    final Map<String, List<Channel>> byGroup = <String, List<Channel>>{};
     for (final Channel c in channels) {
       final String g = ChannelClassifier.prettifyCategory(c.category);
       if (g.isEmpty) continue;
       if (seen.add(g)) groups.add(g);
       counts[g] = (counts[g] ?? 0) + 1;
+      (byGroup[g] ??= <Channel>[]).add(c);
     }
     counts[_kAllGroup] = channels.length;
     if (!mounted) return;
@@ -107,6 +115,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
       _all = channels;
       _groups = groups;
       _counts = counts;
+      _byGroup = byGroup;
       if (!_groups.contains(_group)) _group = _kAllGroup;
       _visible = _channelsFor(_group);
       _preview.value ??= _visible.isNotEmpty ? _visible.first : null;
@@ -116,10 +125,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
 
   List<Channel> _channelsFor(String group) {
     if (group == _kAllGroup) return _all;
-    return _all
-        .where((Channel c) =>
-            ChannelClassifier.prettifyCategory(c.category) == group)
-        .toList(growable: false);
+    return _byGroup[group] ?? const <Channel>[];
   }
 
   void _selectGroup(String group) {
@@ -232,6 +238,16 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
           ),
           Expanded(
             child: ListView.builder(
+              // Hauteur de rangée MESURÉE une fois (prototype) : sans
+              // extent, chaque frame de scroll re-mesure les enfants et la
+              // position est estimée (scrollbar qui saute, jumpTo imprécis).
+              prototypeItem: _GroupTile(
+                label: 'Prototype',
+                count: 0,
+                active: false,
+                autofocus: false,
+                onSelect: () {},
+              ),
               itemCount: _groups.length,
               itemBuilder: (BuildContext context, int i) {
                 final String g = _groups[i];
@@ -275,6 +291,16 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            // Rangées à hauteur constante (logo 44 + paddings, nom sur 1
+            // ligne) : le prototype fige l'extent → scroll D-pad sans
+            // re-mesure, position exacte même sur le bouquet entier.
+            prototypeItem: _ChannelRow(
+              number: 8888,
+              channel: _visible.first,
+              active: false,
+              autofocus: false,
+              onSelect: () {},
+            ),
             itemCount: _visible.length,
             itemBuilder: (BuildContext context, int i) {
               final Channel c = _visible[i];
@@ -289,13 +315,19 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                     _preview.value = c;
                   }
                 },
-                child: ValueListenableBuilder<Channel?>(
-                  valueListenable: _preview,
-                  builder: (BuildContext context, Channel? p, _) =>
+                // _ActiveWatcher (et non ValueListenableBuilder) : un
+                // déplacement de focus notifiait TOUTES les lignes visibles
+                // (~12-15 _ChannelRow reconstruites) pour 2 qui changent —
+                // ici seule la ligne qui GAGNE et celle qui PERD `active`
+                // se reconstruisent.
+                child: _ActiveWatcher(
+                  listenable: _preview,
+                  channelId: c.id,
+                  builder: (BuildContext context, bool active) =>
                       _ChannelRow(
                     number: i + 1,
                     channel: c,
-                    active: p?.id == c.id,
+                    active: active,
                     autofocus: i == 0,
                     onSelect: () => _play(i),
                   ),
@@ -336,7 +368,12 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                       fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 10),
-                MiniEpgNowNext(channelId: c.id),
+                // Débouncé : l'aperçu suit le FOCUS — sans répit, défiler
+                // 50 chaînes = 100 requêtes SQLite (patron des 400 ms de
+                // _PreviewPrograms, tv_channels_screen).
+                MiniEpgNowNext(
+                    channelId: c.id,
+                    debounce: const Duration(milliseconds: 350)),
               ],
             ),
           ),
@@ -463,6 +500,61 @@ class _GroupTile extends StatelessWidget {
       },
     );
   }
+}
+
+/// Écoute [listenable] mais ne reconstruit QUE si `active` (== « la chaîne
+/// prévisualisée est la mienne ») CHANGE. Un ValueListenableBuilder par
+/// ligne reconstruisait toutes les lignes visibles à chaque cran de D-pad ;
+/// ici, seules la ligne qui gagne et celle qui perd le surlignage bougent.
+class _ActiveWatcher extends StatefulWidget {
+  const _ActiveWatcher({
+    required this.listenable,
+    required this.channelId,
+    required this.builder,
+  });
+
+  final ValueListenable<Channel?> listenable;
+  final String channelId;
+  final Widget Function(BuildContext context, bool active) builder;
+
+  @override
+  State<_ActiveWatcher> createState() => _ActiveWatcherState();
+}
+
+class _ActiveWatcherState extends State<_ActiveWatcher> {
+  late bool _active = widget.listenable.value?.id == widget.channelId;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.listenable.addListener(_onChanged);
+  }
+
+  @override
+  void didUpdateWidget(_ActiveWatcher old) {
+    super.didUpdateWidget(old);
+    if (!identical(old.listenable, widget.listenable)) {
+      old.listenable.removeListener(_onChanged);
+      widget.listenable.addListener(_onChanged);
+    }
+    // Recyclage d'item (le builder réutilise ce State pour une autre
+    // chaîne) : on réévalue sans attendre une notification.
+    _active = widget.listenable.value?.id == widget.channelId;
+  }
+
+  @override
+  void dispose() {
+    widget.listenable.removeListener(_onChanged);
+    super.dispose();
+  }
+
+  void _onChanged() {
+    final bool now = widget.listenable.value?.id == widget.channelId;
+    if (now != _active && mounted) setState(() => _active = now);
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _active);
 }
 
 /// Ligne de chaîne : [n°] [logo] [nom] [► si active]. Focus = pill blanc.

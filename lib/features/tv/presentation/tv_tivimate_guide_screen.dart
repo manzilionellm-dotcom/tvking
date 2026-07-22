@@ -68,6 +68,14 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
   static DateTime _floorHalfHour(DateTime t) =>
       DateTime(t.year, t.month, t.day, t.hour, t.minute < 30 ? 0 : 30);
 
+  // Les futures EPG des lignes sont MÉMORISÉS (cf. _GuideRowState) : sans
+  // ce signal, un guide ouvert PENDANT un import EPG (1er lancement,
+  // refresh quotidien) restait figé à vide tant qu'on ne décalait pas la
+  // fenêtre. Chaque lot inséré par l'import incrémente la génération →
+  // les lignes re-requêtent.
+  StreamSubscription<void>? _epgSub;
+  int _epgGeneration = 0;
+
   @override
   void initState() {
     super.initState();
@@ -75,11 +83,15 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
     _clock = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
+    _epgSub = EpgRepository.instance.changes.listen((_) {
+      if (mounted) setState(() => _epgGeneration++);
+    });
   }
 
   @override
   void dispose() {
     _clock?.cancel();
+    _epgSub?.cancel();
     super.dispose();
   }
 
@@ -116,8 +128,12 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
     );
   }
 
+  /// ARCHIVABLE (invariant dans le temps) : le fournisseur expose-t-il une
+  /// archive pour cette émission ? La garde temporelle (« pas encore
+  /// commencée ») est évaluée AU MOMENT VOULU par les appelants (_block à
+  /// chaque build, _onBlock à l'appui) — la stocker ici figeait le drapeau
+  /// dans les tuples mémorisés des lignes (revue de code).
   bool _canReplay(Channel channel, EpgProgram p) {
-    if (p.startDateTime.isAfter(DateTime.now())) return false;
     return CatchupUrlBuilder.build(channel: channel, program: p) != null;
   }
 
@@ -129,7 +145,9 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
       _play(channelIndex);
       return;
     }
-    final String? url = _canReplay(channel, p)
+    // Émission à venir : jamais de replay (garde temporelle, ex-_canReplay).
+    final bool started = p.startTime <= now.millisecondsSinceEpoch;
+    final String? url = (started && _canReplay(channel, p))
         ? CatchupUrlBuilder.build(channel: channel, program: p)
         : null;
     if (url != null) {
@@ -281,6 +299,7 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
                                 rowH: _rowH,
                                 nowDx: nowVisible ? nowDx : null,
                                 onPlay: () => _play(idx),
+                                epgGeneration: _epgGeneration,
                                 canReplay: (EpgProgram p) =>
                                     _canReplay(_channels[idx], p),
                                 onBlock: (EpgProgram p) =>
@@ -316,7 +335,19 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
 
 /// Une LIGNE de la grille : cellule chaîne (n° + logo + nom, focusable) +
 /// blocs de programmes focusables (OK = direct / revoir).
-class _GuideRow extends StatelessWidget {
+///
+/// FLUIDITÉ — StatefulWidget avec FUTURE MÉMORISÉ (même patron que la
+/// grille Timeline, tv_timeline_guide_screen.dart) : en Stateless, le
+/// FutureBuilder recréait sa requête `programsBetween` à CHAQUE build.
+/// Or l'écran entier se reconstruit toutes les 30 s (tic de la ligne
+/// « maintenant ») et à chaque décalage de fenêtre → chaque tic
+/// relançait une requête SQLite PAR LIGNE VISIBLE (~14 requêtes/30 s)
+/// et re-résolvait les FutureBuilders (flash de blocs vides). Le future
+/// ne se recrée que si la chaîne OU la fenêtre change (didUpdateWidget).
+/// Au passage, `canReplay` (construction d'URL catch-up) est calculé UNE
+/// fois par programme au retour de la requête — plus ~70-110 appels par
+/// tic dans les builders.
+class _GuideRow extends StatefulWidget {
   const _GuideRow({
     required this.channel,
     required this.number,
@@ -328,6 +359,7 @@ class _GuideRow extends StatelessWidget {
     required this.rowH,
     required this.nowDx,
     required this.onPlay,
+    required this.epgGeneration,
     required this.canReplay,
     required this.onBlock,
   });
@@ -342,8 +374,45 @@ class _GuideRow extends StatelessWidget {
   final double rowH;
   final double? nowDx;
   final VoidCallback onPlay;
+
+  /// Incrémentée par l'écran à chaque lot EPG inséré (import en cours) :
+  /// les futures mémorisés se re-arment — sinon un guide ouvert pendant
+  /// l'import restait vide jusqu'au prochain décalage de fenêtre.
+  final int epgGeneration;
   final bool Function(EpgProgram) canReplay;
   final void Function(EpgProgram) onBlock;
+
+  @override
+  State<_GuideRow> createState() => _GuideRowState();
+}
+
+class _GuideRowState extends State<_GuideRow> {
+  /// Requête EPG mémorisée (programme + drapeau « archivable » pré-calculé,
+  /// invariant dans le temps) : recréée UNIQUEMENT quand la chaîne, la
+  /// fenêtre ou la génération EPG change.
+  late Future<List<(EpgProgram, bool)>> _progs;
+
+  @override
+  void initState() {
+    super.initState();
+    _progs = _load();
+  }
+
+  @override
+  void didUpdateWidget(_GuideRow old) {
+    super.didUpdateWidget(old);
+    if (old.channel.id != widget.channel.id ||
+        old.startMs != widget.startMs ||
+        old.endMs != widget.endMs ||
+        old.epgGeneration != widget.epgGeneration) {
+      _progs = _load();
+    }
+  }
+
+  Future<List<(EpgProgram, bool)>> _load() => EpgRepository.instance
+      .programsBetween(widget.channel.id, widget.startMs, widget.endMs)
+      .then((List<EpgProgram> list) =>
+          <(EpgProgram, bool)>[for (final EpgProgram p in list) (p, widget.canReplay(p))]);
 
   @override
   Widget build(BuildContext context) {
@@ -351,12 +420,12 @@ class _GuideRow extends StatelessWidget {
       children: <Widget>[
         // ----- Cellule chaîne (focusable) : n° + logo + nom -----
         SizedBox(
-          width: chanColW - 8,
-          height: rowH,
+          width: widget.chanColW - 8,
+          height: widget.rowH,
           child: TvFocusBuilder(
-            autofocus: autofocus,
+            autofocus: widget.autofocus,
             scale: TvFocusScale.small,
-            onSelect: onPlay,
+            onSelect: widget.onPlay,
             builder: (BuildContext context, bool focused) {
               // Focus = pill blanc plein (texte noir) façon TiviMate.
               final Color bg = focused ? _tmText : _tmPanel;
@@ -373,7 +442,7 @@ class _GuideRow extends StatelessWidget {
                     SizedBox(
                       width: 34,
                       child: Text(
-                        '$number',
+                        '${widget.number}',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             color: numColor,
@@ -383,14 +452,14 @@ class _GuideRow extends StatelessWidget {
                     ),
                     const SizedBox(width: 6),
                     TvChannelLogo(
-                        logoUrl: channel.logoUrl,
-                        label: channel.name,
+                        logoUrl: widget.channel.logoUrl,
+                        label: widget.channel.name,
                         size: 40,
                         radius: 8),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        channel.cleanName,
+                        widget.channel.cleanName,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -409,14 +478,13 @@ class _GuideRow extends StatelessWidget {
         // ----- Timeline de la ligne -----
         Expanded(
           child: SizedBox(
-            height: rowH,
-            child: FutureBuilder<List<EpgProgram>>(
-              future: EpgRepository.instance
-                  .programsBetween(channel.id, startMs, endMs),
+            height: widget.rowH,
+            child: FutureBuilder<List<(EpgProgram, bool)>>(
+              future: _progs,
               builder: (BuildContext context,
-                  AsyncSnapshot<List<EpgProgram>> snap) {
-                final List<EpgProgram> progs =
-                    snap.data ?? const <EpgProgram>[];
+                  AsyncSnapshot<List<(EpgProgram, bool)>> snap) {
+                final List<(EpgProgram, bool)> progs =
+                    snap.data ?? const <(EpgProgram, bool)>[];
                 return Stack(
                   clipBehavior: Clip.hardEdge,
                   children: <Widget>[
@@ -428,10 +496,11 @@ class _GuideRow extends StatelessWidget {
                         ),
                       ),
                     ),
-                    for (final EpgProgram p in progs) _block(p),
-                    if (nowDx != null)
+                    for (final (EpgProgram, bool) e in progs)
+                      _block(e.$1, e.$2),
+                    if (widget.nowDx != null)
                       Positioned(
-                        left: nowDx! - 0.5,
+                        left: widget.nowDx! - 0.5,
                         top: 0,
                         bottom: 0,
                         child: Container(
@@ -448,19 +517,23 @@ class _GuideRow extends StatelessWidget {
     );
   }
 
-  Widget _block(EpgProgram p) {
+  Widget _block(EpgProgram p, bool archivable) {
     final double left =
-        ((p.startTime - startMs) / 60000).clamp(0, 1e9) * pxPerMin;
+        ((p.startTime - widget.startMs) / 60000).clamp(0, 1e9) * widget.pxPerMin;
     final double right =
-        ((endMs - p.stopTime) / 60000).clamp(0, 1e9) * pxPerMin;
-    final double windowW = (endMs - startMs) / 60000 * pxPerMin;
+        ((widget.endMs - p.stopTime) / 60000).clamp(0, 1e9) * widget.pxPerMin;
+    final double windowW =
+        (widget.endMs - widget.startMs) / 60000 * widget.pxPerMin;
     final double width =
         (windowW - left - right).clamp(0, windowW).toDouble();
     if (width < 8) return const SizedBox.shrink();
     final int nowMs = DateTime.now().millisecondsSinceEpoch;
     final bool onAir = p.startTime <= nowMs && nowMs < p.stopTime;
     final bool past = p.stopTime <= nowMs;
-    final bool replayable = canReplay(p);
+    // Garde temporelle évaluée ICI, à chaque build (le tic 30 s repeint) :
+    // « archivable » (tuple mémorisé) est invariant, mais une émission à
+    // venir ne montre la pastille replay qu'une fois commencée.
+    final bool replayable = archivable && (onAir || past);
     return Positioned(
       left: left,
       top: 3,
@@ -468,7 +541,7 @@ class _GuideRow extends StatelessWidget {
       width: width - 3,
       child: TvFocusBuilder(
         scale: TvFocusScale.small,
-        onSelect: () => onBlock(p),
+        onSelect: () => widget.onBlock(p),
         builder: (BuildContext context, bool focused) {
           // Focus = pill blanc/texte noir ; en cours = teinté accent ;
           // passé = cellule assombrie ; à venir = #2A2E35.

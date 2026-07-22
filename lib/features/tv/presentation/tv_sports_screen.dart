@@ -10,6 +10,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show Ticker;
 
 import '../../../core/i18n/l10n_extension.dart';
 
@@ -230,31 +231,43 @@ class _Ticker extends StatefulWidget {
   State<_Ticker> createState() => _TickerState();
 }
 
-class _TickerState extends State<_Ticker> {
+class _TickerState extends State<_Ticker>
+    with SingleTickerProviderStateMixin {
   final ScrollController _sc = ScrollController();
-  Timer? _timer;
+
+  // TICKER (vsync) et non Timer.periodic(30 ms) : l'ancien timer poussait
+  // un jumpTo à ~33 Hz DÉSYNCHRONISÉ du rafraîchissement (layout+paint
+  // permanents, à contretemps des frames) — et continuait de tourner sous
+  // un écran poussé par-dessus. Un Ticker est cadencé par le vsync ET
+  // silencé automatiquement par TickerMode quand l'écran est recouvert.
+  late final Ticker _ticker = createTicker(_onTick);
+  Duration _prev = Duration.zero;
+  static const double _pxPerSecond = 40; // ≈ l'ancien 1,2 px / 30 ms
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _start());
+    _ticker.start();
   }
 
-  void _start() {
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(milliseconds: 30), (_) {
-      if (!_sc.hasClients) return;
-      final double max = _sc.position.maxScrollExtent;
-      if (max <= 0) return;
-      double next = _sc.offset + 1.2;
-      if (next >= max) next = 0;
-      _sc.jumpTo(next);
-    });
+  void _onTick(Duration elapsed) {
+    // Clamp : elapsed continue de compter pendant le mute TickerMode (écran
+    // recouvert) — sans borne, le 1er tick au retour faisait sauter le
+    // bandeau de toute la durée d'absence.
+    final double dt =
+        ((elapsed - _prev).inMicroseconds / 1e6).clamp(0.0, 0.1);
+    _prev = elapsed;
+    if (!_sc.hasClients) return;
+    final double max = _sc.position.maxScrollExtent;
+    if (max <= 0) return;
+    double next = _sc.offset + _pxPerSecond * dt;
+    if (next >= max) next = 0;
+    _sc.jumpTo(next);
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _ticker.dispose();
     _sc.dispose();
     super.dispose();
   }

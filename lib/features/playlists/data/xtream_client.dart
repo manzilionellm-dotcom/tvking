@@ -31,6 +31,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -267,20 +268,32 @@ class XtreamClient {
     final Map<String, String> cats =
         categories ?? await fetchLiveCategories();
 
-    final List<dynamic> raw = await _callApiList(
-      action: 'get_live_streams',
+    // TOUT le travail lourd — décodage UTF-8 + JSON ET construction des
+    // 10-50 k objets Channel — part dans UN isolate (même patron que le
+    // VOD, _parseVodMoviesIsolate) : avant, seul le décodage était isolé
+    // et le mapping gelait l'UI 100-500 ms sur le chemin rapide d'import.
+    final Uri uri = _buildUri(action: 'get_live_streams');
+    final Uint8List bodyBytes = await _getBodyBytes(uri);
+    CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
+        'xtream.http.get_live_streams',
+        bytes: bodyBytes.length);
+    final List<Channel> channels = await compute(
+      _parseLiveChannelsIsolate,
+      (
+        TransferableTypedData.fromList(<Uint8List>[bodyBytes]),
+        cats,
+        // PLAFOND MÉMOIRE (anti-OOM), ADAPTÉ À LA RAM (channelCap) : on
+        // arrête de matérialiser au-delà — la source est juste tronquée à
+        // une taille tenable sur box faible.
+        DeviceMemory.channelCap,
+        playlistId,
+        _baseUrl,
+        _userEnc,
+        _passEnc,
+        _liveExtension,
+        l10nNow.fallbackNoNameParens,
+      ),
     );
-
-    final List<Channel> channels = <Channel>[];
-    for (final dynamic item in raw) {
-      // PLAFOND MÉMOIRE (anti-OOM), ADAPTÉ À LA RAM (DeviceMemory.channelCap) :
-      // on arrête de matérialiser au-delà — le reste reste sur le serveur, la
-      // source est juste tronquée à une taille tenable sur box faible.
-      if (channels.length >= DeviceMemory.channelCap) break;
-      if (item is! Map<String, dynamic>) continue;
-      final Channel? ch = _mapLiveStream(item, playlistId, cats);
-      if (ch != null) channels.add(ch);
-    }
 
     if (kDebugMode) {
       debugPrint('[XtreamClient] ${channels.length} chaînes live récupérées');
@@ -501,14 +514,14 @@ class XtreamClient {
     // (« le Cinéma ne s'ouvre pas », écran noir figé). Le fil d'affichage
     // ne reçoit plus qu'une liste PRÊTE, déjà plafonnée.
     final Uri uri = _buildUri(action: 'get_vod_streams');
-    final String body = await _getBody(uri);
+    final Uint8List bodyBytes = await _getBodyBytes(uri);
     CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
         'xtream.http.get_vod_streams',
-        bytes: body.length);
+        bytes: bodyBytes.length);
     final List<VodMovie> movies = await compute(
       _parseVodMoviesIsolate,
       (
-        body,
+        TransferableTypedData.fromList(<Uint8List>[bodyBytes]),
         cats,
         DeviceMemory.channelCap,
         _baseUrl,
@@ -573,36 +586,23 @@ class XtreamClient {
   Future<List<VodSeries>> fetchSeries({Map<String, String>? categories}) async {
     final Map<String, String> cats =
         categories ?? await fetchSeriesCategories();
-    final List<dynamic> raw = await _callApiList(action: 'get_series');
-
-    final List<VodSeries> out = <VodSeries>[];
-    for (final dynamic item in raw) {
-      if (out.length >= DeviceMemory.channelCap) break; // anti-OOM RAM-tiered
-      if (item is! Map<String, dynamic>) continue;
-      final String seriesId = item['series_id']?.toString() ?? '';
-      if (seriesId.isEmpty) continue;
-      final String name =
-          item['name']?.toString() ?? l10nNow.fallbackNoNameParens;
-      final String categoryId = item['category_id']?.toString() ?? '';
-      final String category = cats[categoryId] ?? 'Autres';
-      final String? cover = item['cover']?.toString();
-      final String? plot = item['plot']?.toString();
-      final String? rating = item['rating']?.toString();
-      final String? year = item['releaseDate']?.toString();
-      out.add(
-        VodSeries(
-          id: seriesId,
-          name: name,
-          category: category.isEmpty ? 'Autres' : category,
-          posterUrl: (cover == null || cover.isEmpty) ? null : cover,
-          plot: (plot == null || plot.isEmpty) ? null : plot,
-          rating: (rating == null || rating.isEmpty || rating == '0')
-              ? null
-              : rating,
-          year: (year == null || year.isEmpty) ? null : year,
-        ),
-      );
-    }
+    // Décodage UTF-8 + JSON ET mapping des milliers de VodSeries dans UN
+    // isolate (même patron que le VOD, _parseVodMoviesIsolate) : la
+    // construction des objets d'un gros catalogue gelait sinon l'UI.
+    final Uri uri = _buildUri(action: 'get_series');
+    final Uint8List bodyBytes = await _getBodyBytes(uri);
+    CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
+        'xtream.http.get_series',
+        bytes: bodyBytes.length);
+    final List<VodSeries> out = await compute(
+      _parseSeriesIsolate,
+      (
+        TransferableTypedData.fromList(<Uint8List>[bodyBytes]),
+        cats,
+        DeviceMemory.channelCap,
+        l10nNow.fallbackNoNameParens,
+      ),
+    );
     if (kDebugMode) {
       debugPrint('[XtreamClient] ${out.length} séries récupérées');
     }
@@ -742,7 +742,11 @@ class XtreamClient {
   /// JSON Xtream géant d'un bloc en RAM (cause racine OOM box faibles). Mémorise
   /// la signature gagnante. Lève une [XtreamException] si aucune signature n'a
   /// 200, ou [PlaylistImportTooLarge] si la réponse dépasse le plafond.
-  Future<String> _getBody(Uri uri) async {
+  /// Corps HTTP en octets BRUTS, prêts à partir en isolate via
+  /// [TransferableTypedData]. Aucun décodage String sur le main isolate :
+  /// un `utf8.decode` de 40-80 Mo y gelait l'UI 300 ms-1,5 s à chaque
+  /// import/refresh de source (spinner figé, risque d'ANR).
+  Future<Uint8List> _getBodyBytes(Uri uri) async {
     Object? lastError;
     for (final String ua in _candidateUserAgents()) {
       try {
@@ -760,13 +764,10 @@ class XtreamClient {
             await _http.send(req).timeout(_timeout);
         if (resp.statusCode == 200) {
           _workingUserAgent = ua;
-          final List<int> bytes = await _readCapped(
+          return await _readCapped(
             resp.stream,
             kMaxXtreamJsonBytes,
           ).timeout(_bodyTimeout);
-          // Xtream sert du JSON (UTF-8). allowMalformed pour ne jamais planter
-          // sur un octet douteux d'un backend exotique.
-          return utf8.decode(bytes, allowMalformed: true);
         }
         lastError = XtreamException(
           l10nNow.xtreamHttpError(resp.statusCode, uri.host),
@@ -788,7 +789,7 @@ class XtreamClient {
 
   /// Lit [stream] en bornant à [maxBytes] (anti-OOM) : dépassement →
   /// [PlaylistImportTooLarge], le flux est interrompu et l'abonnement annulé.
-  static Future<List<int>> _readCapped(
+  static Future<Uint8List> _readCapped(
       Stream<List<int>> stream, int maxBytes) async {
     final BytesBuilder builder = BytesBuilder(copy: false);
     int total = 0;
@@ -804,13 +805,20 @@ class XtreamClient {
     return builder.takeBytes();
   }
 
-  /// Appel API qui retourne une Map JSON (cas verifyCredentials).
+  /// Appel API qui retourne une Map JSON (verifyCredentials, fiches).
+  /// Décodage en isolate : petit pour verifyCredentials, mais
+  /// `get_series_info` peut peser 100 Ko-2 Mo (séries à centaines
+  /// d'épisodes) — 10-100 ms de jsonDecode sur le main à l'ouverture
+  /// d'une fiche.
   Future<Map<String, dynamic>> _callApi(
       {required String? action, String? seriesId, String? vodId}) async {
     final Uri uri = _buildUri(action: action, seriesId: seriesId, vodId: vodId);
-    final String body = await _getBody(uri);
+    final Uint8List bodyBytes = await _getBodyBytes(uri);
     try {
-      final dynamic decoded = jsonDecode(body);
+      final dynamic decoded = await compute(
+        _decodeJsonBytesInIsolate,
+        TransferableTypedData.fromList(<Uint8List>[bodyBytes]),
+      );
       if (decoded is Map<String, dynamic>) return decoded;
       throw XtreamException(
         'Réponse JSON non attendue (Map attendue) sur action=$action.',
@@ -830,14 +838,20 @@ class XtreamClient {
     String? categoryId,
   }) async {
     final Uri uri = _buildUri(action: action, categoryId: categoryId);
-    final String body = await _getBody(uri);
+    final Uint8List bytes = await _getBodyBytes(uri);
     // Breadcrumb : taille du corps HTTP reçu (suspect OOM n°1 sur grosse source).
     CrashReporting.instance
-        .recordMemoryBreadcrumbWithCounts('xtream.http.$action', bytes: body.length);
+        .recordMemoryBreadcrumbWithCounts('xtream.http.$action', bytes: bytes.length);
     try {
-      // Décodage dans un ISOLATE (compute) : sur un gros bouquet la réponse
-      // pèse plusieurs Mo et un jsonDecode synchrone gèlerait l'UI (ANR).
-      final dynamic decoded = await compute(_decodeJsonInIsolate, body);
+      // Décodage UTF-8 **et** jsonDecode dans un ISOLATE : sur un gros
+      // bouquet la réponse pèse des dizaines de Mo — même le seul
+      // utf8.decode synchrone gelait l'UI. Les octets partent en O(1)
+      // (TransferableTypedData), le résultat revient sans copie
+      // (Isolate.exit sous compute).
+      final dynamic decoded = await compute(
+        _decodeJsonBytesInIsolate,
+        TransferableTypedData.fromList(<Uint8List>[bytes]),
+      );
       CrashReporting.instance.recordMemoryBreadcrumb('xtream.json.decoded.$action');
       if (decoded is List<dynamic>) return decoded;
       // Certains serveurs encapsulent dans `{data: [...]}` ; on tolère.
@@ -966,23 +980,35 @@ class XtreamClient {
   }
 }
 
-/// Décode du JSON dans un isolate (`compute`). Top-level = requis pour être
-/// envoyable à un isolate. Sert à ne pas geler l'UI sur les grosses réponses
-/// Xtream (get_live_streams / VOD / séries de plusieurs Mo).
-dynamic _decodeJsonInIsolate(String source) => jsonDecode(source);
+/// Décode UTF-8 + JSON dans un isolate (`compute`). Top-level = requis pour
+/// être envoyable à un isolate. Reçoit les OCTETS bruts (transfert O(1) via
+/// [TransferableTypedData]) : ni le décodage UTF-8 (dizaines de Mo) ni le
+/// jsonDecode ne touchent le fil d'affichage.
+dynamic _decodeJsonBytesInIsolate(TransferableTypedData data) => jsonDecode(
+    utf8.decode(data.materialize().asUint8List(), allowMalformed: true));
 
 /// Analyse COMPLÈTE du catalogue VOD dans un isolate : décodage JSON +
 /// construction des objets [VodMovie] (plafonnée). Tourne HORS du fil
 /// d'affichage → l'écran Cinéma ne gèle jamais, même avec 50 000 films.
 /// Entrée (record, seul argument transmissible à un isolate) :
-///   (corps HTTP, catégories id→nom, plafond, baseUrl, userEnc, passEnc,
-///    nom de repli). Les [VodMovie] (champs String uniquement) sont
-///   recopiés vers le fil principal — sûr entre isolates.
+///   (octets HTTP transférés O(1), catégories id→nom, plafond, baseUrl,
+///    userEnc, passEnc, nom de repli). Le décodage UTF-8 se fait ICI aussi
+///   (un corps VOD pèse des Mo — rien ne doit rester sur le main isolate).
+///   Les [VodMovie] (champs String uniquement) reviennent sans copie
+///   (Isolate.exit sous compute).
 List<VodMovie> _parseVodMoviesIsolate(
-  (String, Map<String, String>, int, String, String, String, String) input,
+  (
+    TransferableTypedData,
+    Map<String, String>,
+    int,
+    String,
+    String,
+    String,
+    String
+  ) input,
 ) {
   final (
-    String body,
+    TransferableTypedData bodyData,
     Map<String, String> cats,
     int cap,
     String baseUrl,
@@ -990,6 +1016,8 @@ List<VodMovie> _parseVodMoviesIsolate(
     String passEnc,
     String fallbackName,
   ) = input;
+  final String body =
+      utf8.decode(bodyData.materialize().asUint8List(), allowMalformed: true);
   final dynamic decoded = jsonDecode(body);
   final List<dynamic> raw = decoded is List
       ? decoded
@@ -1022,4 +1050,125 @@ List<VodMovie> _parseVodMoviesIsolate(
     ));
   }
   return movies;
+}
+
+/// Analyse COMPLÈTE de `get_live_streams` dans un isolate : décodage UTF-8 +
+/// JSON + construction des [Channel] (plafonnée). Même patron que
+/// [_parseVodMoviesIsolate] — le fil d'affichage ne reçoit qu'une liste
+/// prête. `fallbackName` est passé en paramètre (l10nNow n'existe pas dans
+/// un isolate neuf).
+List<Channel> _parseLiveChannelsIsolate(
+  (
+    TransferableTypedData,
+    Map<String, String>,
+    int,
+    int,
+    String,
+    String,
+    String,
+    String,
+    String
+  ) input,
+) {
+  final (
+    TransferableTypedData bodyData,
+    Map<String, String> cats,
+    int cap,
+    int playlistId,
+    String baseUrl,
+    String userEnc,
+    String passEnc,
+    String liveExtension,
+    String fallbackName,
+  ) = input;
+  final dynamic decoded = jsonDecode(
+      utf8.decode(bodyData.materialize().asUint8List(), allowMalformed: true));
+  final List<dynamic> raw = decoded is List
+      ? decoded
+      : (decoded is Map && decoded['data'] is List
+          ? decoded['data'] as List<dynamic>
+          : const <dynamic>[]);
+  final List<Channel> channels = <Channel>[];
+  for (final dynamic item in raw) {
+    if (channels.length >= cap) break; // plafond mémoire (anti-OOM)
+    if (item is! Map<String, dynamic>) continue;
+    final String streamId = item['stream_id']?.toString() ?? '';
+    if (streamId.isEmpty) continue;
+    final String name = item['name']?.toString() ?? fallbackName;
+    final String categoryId = item['category_id']?.toString() ?? '';
+    final String category = cats[categoryId] ?? 'Autres';
+    final String? streamIcon = item['stream_icon']?.toString();
+    final dynamic tvArchiveRaw = item['tv_archive'];
+    final int tvArchive = tvArchiveRaw is int
+        ? tvArchiveRaw
+        : int.tryParse(tvArchiveRaw?.toString() ?? '') ?? 0;
+    final dynamic tvArchiveDurationRaw = item['tv_archive_duration'];
+    final int tvArchiveDuration = tvArchiveDurationRaw is int
+        ? tvArchiveDurationRaw
+        : int.tryParse(tvArchiveDurationRaw?.toString() ?? '') ?? 0;
+    channels.add(Channel(
+      id: 'xtream-$streamId',
+      playlistId: playlistId,
+      name: name,
+      category: category.isEmpty ? 'Autres' : category,
+      // Même construction que _buildLiveStreamUrl (l'extension live de la
+      // source est passée en paramètre).
+      streamUrl: liveExtension == 'm3u8'
+          ? '$baseUrl/live/$userEnc/$passEnc/$streamId.m3u8'
+          : '$baseUrl/$userEnc/$passEnc/$streamId.ts',
+      isLive: true,
+      logoUrl: (streamIcon == null || streamIcon.isEmpty) ? null : streamIcon,
+      catchupSupported: tvArchive == 1,
+      catchupDays: tvArchive == 1 ? tvArchiveDuration : null,
+    ));
+  }
+  return channels;
+}
+
+/// Analyse COMPLÈTE de `get_series` dans un isolate : décodage UTF-8 + JSON
+/// + construction des [VodSeries] (plafonnée). Même patron que le VOD.
+List<VodSeries> _parseSeriesIsolate(
+  (TransferableTypedData, Map<String, String>, int, String) input,
+) {
+  final (
+    TransferableTypedData bodyData,
+    Map<String, String> cats,
+    int cap,
+    String fallbackName,
+  ) = input;
+  final dynamic decoded = jsonDecode(
+      utf8.decode(bodyData.materialize().asUint8List(), allowMalformed: true));
+  final List<dynamic> raw = decoded is List
+      ? decoded
+      : (decoded is Map && decoded['data'] is List
+          ? decoded['data'] as List<dynamic>
+          : const <dynamic>[]);
+  final List<VodSeries> out = <VodSeries>[];
+  for (final dynamic item in raw) {
+    if (out.length >= cap) break; // anti-OOM RAM-tiered
+    if (item is! Map<String, dynamic>) continue;
+    final String seriesId = item['series_id']?.toString() ?? '';
+    if (seriesId.isEmpty) continue;
+    final String name = item['name']?.toString() ?? fallbackName;
+    final String categoryId = item['category_id']?.toString() ?? '';
+    final String category = cats[categoryId] ?? 'Autres';
+    final String? cover = item['cover']?.toString();
+    final String? plot = item['plot']?.toString();
+    final String? rating = item['rating']?.toString();
+    final String? year = item['releaseDate']?.toString();
+    out.add(
+      VodSeries(
+        id: seriesId,
+        name: name,
+        category: category.isEmpty ? 'Autres' : category,
+        posterUrl: (cover == null || cover.isEmpty) ? null : cover,
+        plot: (plot == null || plot.isEmpty) ? null : plot,
+        rating: (rating == null || rating.isEmpty || rating == '0')
+            ? null
+            : rating,
+        year: (year == null || year.isEmpty) ? null : year,
+      ),
+    );
+  }
+  return out;
 }

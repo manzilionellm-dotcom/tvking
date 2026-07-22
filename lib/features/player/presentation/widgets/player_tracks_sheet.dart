@@ -10,8 +10,6 @@
 //  ça peut monter à 10+.
 // =========================================================
 
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
@@ -29,53 +27,55 @@ class PlayerTracksSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // PAS de BackdropFilter au-dessus d'une vidéo en lecture : le blur
+    // (saveLayer + 2 passes) était RE-CALCULÉ À CHAQUE FRAME tant que la
+    // sheet restait ouverte (la vidéo derrière invalide en continu). Le
+    // fond était déjà à alpha 0.92 → un voile quasi opaque rend pareil
+    // pour ~0 GPU (même parade que côté TV, cf. tv_live_screen).
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppColors.background.withValues(alpha: 0.92),
-            border: Border(
-              top: BorderSide(
-                color: Colors.white.withValues(alpha: 0.06),
-              ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.background.withValues(alpha: 0.97),
+          border: Border(
+            top: BorderSide(
+              color: Colors.white.withValues(alpha: 0.06),
             ),
           ),
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.7,
-          ),
-          child: SafeArea(
-            top: false,
-            child: StreamBuilder<Tracks>(
-              stream: player.stream.tracks,
-              initialData: player.state.tracks,
-              builder: (BuildContext context, AsyncSnapshot<Tracks> snap) {
-                final Tracks tracks = snap.data ?? player.state.tracks;
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      _grabber(),
-                      const SizedBox(height: 18),
-                      Text(context.l10n.tracksTitle,
-                          style: AppTextStyles.headlineMedium),
-                      const SizedBox(height: 18),
+        ),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.7,
+        ),
+        child: SafeArea(
+          top: false,
+          child: StreamBuilder<Tracks>(
+            stream: player.stream.tracks,
+            initialData: player.state.tracks,
+            builder: (BuildContext context, AsyncSnapshot<Tracks> snap) {
+              final Tracks tracks = snap.data ?? player.state.tracks;
+              return SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    _grabber(),
+                    const SizedBox(height: 18),
+                    Text(context.l10n.tracksTitle,
+                        style: AppTextStyles.headlineMedium),
+                    const SizedBox(height: 18),
 
-                      // ----- Audio -----
-                      _section(context.l10n.tracksAudio, tracks.audio),
-                      _audioList(context, tracks),
-                      const SizedBox(height: 22),
+                    // ----- Audio -----
+                    _section(context.l10n.tracksAudio, tracks.audio),
+                    _audioList(context, tracks),
+                    const SizedBox(height: 22),
 
-                      // ----- Sous-titres -----
-                      _section(context.l10n.tracksSubtitles, tracks.subtitle),
-                      _subtitleList(context, tracks),
-                    ],
-                  ),
-                );
-              },
-            ),
+                    // ----- Sous-titres -----
+                    _section(context.l10n.tracksSubtitles, tracks.subtitle),
+                    _subtitleList(context, tracks),
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -109,8 +109,7 @@ class PlayerTracksSheet extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
             decoration: BoxDecoration(
               color: AppColors.surface,
               borderRadius: BorderRadius.circular(4),
@@ -174,8 +173,7 @@ class PlayerTracksSheet extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         onTap: onTap,
         child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           margin: const EdgeInsets.only(bottom: 6),
           decoration: BoxDecoration(
             color: selected
@@ -191,9 +189,7 @@ class PlayerTracksSheet extends StatelessWidget {
           child: Row(
             children: <Widget>[
               Icon(
-                selected
-                    ? Icons.check_circle_rounded
-                    : Icons.circle_outlined,
+                selected ? Icons.check_circle_rounded : Icons.circle_outlined,
                 size: 18,
                 color: selected ? AppColors.accentPink : AppColors.textMuted,
               ),
@@ -264,9 +260,8 @@ class PlayerTracksSheet extends StatelessWidget {
       // layout type "stereo"). Si c'est un nombre → clé plurielle
       // localisée « N canaux » ; sinon on affiche le layout technique.
       final int? count = int.tryParse(t.channels!);
-      parts.add(count != null
-          ? context.l10n.trackChannelCount(count)
-          : t.channels!);
+      parts.add(
+          count != null ? context.l10n.trackChannelCount(count) : t.channels!);
     }
     if (t.codec != null) {
       parts.add(t.codec!.toUpperCase());
