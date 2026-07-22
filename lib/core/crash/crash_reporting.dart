@@ -23,6 +23,7 @@ import 'dart:io' show ProcessInfo;
 import 'package:flutter/foundation.dart';
 
 import '../app/device_memory.dart';
+import 'secret_redactor.dart';
 
 /// Signature d'un « puits » d'erreurs distant (ex. Firebase Crashlytics).
 /// On reste volontairement générique : la couche métier n'a aucune idée
@@ -87,9 +88,15 @@ class CrashReporting {
     String? context,
     bool fatal = false,
   }) {
+    // CAVIARDAGE (correctif de fuite d'identifiants) : le message d'erreur
+    // brut contient très souvent l'URI d'une source IPTV, identifiants de
+    // l'abonné inclus. On les masque AVANT de toucher le moindre puits
+    // (ring, boîte noire disque, POST panel) — point d'étranglement unique.
+    final String safeError = SecretRedactor.redact('$error');
     final String line = '${DateTime.now().toIso8601String()}'
         '${fatal ? ' [FATAL]' : ''}'
-        '${context != null ? ' ($context)' : ''} $error';
+        '${context != null ? ' (${SecretRedactor.redact(context)})' : ''} '
+        '$safeError';
 
     _ring.add(line);
     if (_ring.length > _maxRing) _ring.removeAt(0);

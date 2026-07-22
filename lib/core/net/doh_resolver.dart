@@ -55,14 +55,29 @@ class DohResolver {
   static const Duration _minTtl = Duration(seconds: 60);
   static const Duration _maxTtl = Duration(hours: 6);
 
+  /// TTL court du CACHE NÉGATIF : un hôte qui ne résout nulle part (mort ou
+  /// bloqué partout) coûtait ~14 s à CHAQUE tentative (DNS système 4 s + 2
+  /// fournisseurs DoH × 5 s). On mémorise l'échec brièvement pour que les
+  /// re-tentatives rapprochées (zapping, retry du lecteur) répondent
+  /// instantanément — assez court pour re-tester vite quand le réseau revient.
+  static const Duration _negativeTtl = Duration(seconds: 45);
+
+  /// PLAFOND du cache (anti-OOM) : les panels à domaine WILDCARD génèrent des
+  /// sous-domaines à la volée → sans borne, une longue session de zapping
+  /// ferait grossir la map indéfiniment (contribution au kill mémoire natif
+  /// sur box ≤ 1 Go). 256 entrées ≈ quelques dizaines de Ko, largement assez
+  /// pour tous les hôtes vivants d'une session.
+  static const int _kCacheCap = 256;
+
   final Map<String, _CacheEntry> _cache = <String, _CacheEntry>{};
 
   /// Injectable pour les tests : exécute la requête DoH et renvoie le
   /// corps JSON brut (ou lève). En production : requête HTTPS réelle
-  /// vers l'IP du fournisseur.
+  /// vers l'IP du fournisseur. Signature volontairement à 3 arguments (le
+  /// type d'enregistrement A/AAAA n'intéresse pas les stubs de test).
   @visibleForTesting
-  Future<String> Function(String providerIp, String providerHost,
-      String name)? httpGetOverride;
+  Future<String> Function(String providerIp, String providerHost, String name)?
+      httpGetOverride;
 
   /// Vide le cache (tests / changement de réseau).
   void clearCache() => _cache.clear();
@@ -74,47 +89,88 @@ class DohResolver {
     if (cached != null && cached.isFresh) return cached.addresses;
 
     for (final ({String ip, String host}) p in _providers) {
-      try {
-        final String body = await (httpGetOverride ?? _realDohGet)(
-          p.ip,
-          p.host,
-          host,
-        ).timeout(const Duration(seconds: 5));
-        final (List<InternetAddress> addrs, Duration ttl) =
-            _parseDohJson(body);
-        if (addrs.isNotEmpty) {
-          _cache[host] = _CacheEntry(addrs, DateTime.now().add(ttl));
-          if (kDebugMode) {
-            debugPrint('[DoH] $host → ${addrs.map((InternetAddress a) => a.address).join(', ')} '
-                '(via ${p.host})');
+      // A (IPv4) d'abord — compatibilité maximale des panels — puis AAAA
+      // (IPv6) SI le fournisseur RÉPOND mais sans enregistrement A : sur les
+      // réseaux mobiles IPv6-only (fréquents chez certains opérateurs), un
+      // domaine sans A n'était JAMAIS résolu → « ça ne marche pas » persistant.
+      // En revanche, si le fournisseur ÉCHOUE (réseau/timeout), il est mort :
+      // on bascule directement au fournisseur suivant plutôt que de re-taper
+      // le même en AAAA (inutile et coûteux).
+      for (final String type in const <String>['A', 'AAAA']) {
+        try {
+          final Future<String> Function() call = httpGetOverride != null
+              ? () => httpGetOverride!(p.ip, p.host, host)
+              : () => _realDohGet(p.ip, p.host, host, type);
+          final String body =
+              await call().timeout(const Duration(seconds: 5));
+          final (List<InternetAddress> addrs, Duration ttl) =
+              _parseDohJson(body);
+          if (addrs.isNotEmpty) {
+            _cachePut(host, _CacheEntry(addrs, DateTime.now().add(ttl)));
+            if (kDebugMode) {
+              debugPrint('[DoH] $host → ${addrs.map((InternetAddress a) => a.address).join(', ')} '
+                  '(via ${p.host}, $type)');
+            }
+            return addrs;
           }
-          return addrs;
+          // Réponse VIDE (pas d'exception) : le fournisseur marche mais ce
+          // type manque → on tente le type suivant sur CE fournisseur.
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[DoH] ${p.host} ($type) KO pour $host : $e');
+          }
+          // Échec dur du fournisseur : inutile d'insister en AAAA, on passe
+          // au fournisseur suivant.
+          break;
         }
-      } catch (e) {
-        if (kDebugMode) debugPrint('[DoH] ${p.host} KO pour $host : $e');
-        // fournisseur suivant
       }
     }
+    // CACHE NÉGATIF : mémorise l'échec complet (TTL court) pour que les
+    // re-tentatives immédiates ne re-paient pas toute la cascade de timeouts.
+    _cachePut(
+      host,
+      _CacheEntry(
+          const <InternetAddress>[], DateTime.now().add(_negativeTtl)),
+    );
     return const <InternetAddress>[];
+  }
+
+  /// Insère en respectant le plafond : purge d'abord les entrées périmées,
+  /// puis éviction FIFO (les plus anciennes insérées) si on déborde encore.
+  void _cachePut(String host, _CacheEntry entry) {
+    if (_cache.length >= _kCacheCap) {
+      _cache.removeWhere((_, _CacheEntry e) => !e.isFresh);
+      while (_cache.length >= _kCacheCap) {
+        _cache.remove(_cache.keys.first);
+      }
+    }
+    _cache[host] = entry;
   }
 
   /// Requête DoH JSON réelle. Client DÉDIÉ (pas de connectionFactory —
   /// sinon récursion) qui se connecte à l'IP du fournisseur : aucune
-  /// résolution système requise. On tolère les certificats interceptés
-  /// (réseaux hostiles) — l'objectif est l'accessibilité, et la réponse
-  /// est de toute façon revalidée en tentant la connexion réelle.
+  /// résolution système requise.
+  ///
+  /// SÉCURITÉ (correctif d'audit) : le certificat TLS du fournisseur est
+  /// validé NORMALEMENT (chaîne + nom). Les certificats de 1.1.1.1 et
+  /// 8.8.8.8 contiennent leurs IPs en SAN → la validation par défaut passe.
+  /// L'ancien `badCertificateCallback => true` permettait à un attaquant
+  /// on-path de se faire passer pour le résolveur et d'empoisonner la
+  /// réponse DNS (l'app se connectait ensuite au serveur pirate en HTTP
+  /// clair, identifiants Xtream dans l'URL). Si un réseau intercepte le TLS,
+  /// la requête échoue proprement et on retombe sur le DNS système —
+  /// accessibilité préservée, authenticité jamais sacrifiée.
   Future<String> _realDohGet(
     String providerIp,
     String providerHost,
-    String name,
-  ) async {
+    String name, [
+    String type = 'A',
+  ]) async {
     final HttpClient client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 5)
-      ..badCertificateCallback =
-          (X509Certificate cert, String host, int port) => true;
+      ..connectionTimeout = const Duration(seconds: 5);
     try {
       final Uri uri = Uri.parse(
-          'https://$providerIp/dns-query?name=${Uri.encodeQueryComponent(name)}&type=A');
+          'https://$providerIp/dns-query?name=${Uri.encodeQueryComponent(name)}&type=$type');
       final HttpClientRequest req = await client.getUrl(uri);
       // Présente le bon nom d'hôte (Host header ; le SNI part sur l'IP,
       // le certificat de 1.1.1.1 / 8.8.8.8 couvre ces noms).
@@ -143,7 +199,8 @@ class DohResolver {
     int minTtl = _maxTtl.inSeconds;
     for (final Object? a in answer) {
       if (a is! Map) continue;
-      if (a['type'] != 1) continue; // 1 = A (IPv4)
+      // 1 = A (IPv4), 28 = AAAA (IPv6) — les deux sont exploitables.
+      if (a['type'] != 1 && a['type'] != 28) continue;
       final Object? data = a['data'];
       if (data is! String) continue;
       final InternetAddress? ip = InternetAddress.tryParse(data.trim());

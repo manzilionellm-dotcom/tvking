@@ -79,6 +79,69 @@ void main() {
     expect(await r.resolve('panel.example.com'), isEmpty);
   });
 
+  test('cache NÉGATIF : un hôte irrésolu n\'est re-sondé qu\'une fois',
+      () async {
+    int calls = 0;
+    r.httpGetOverride = (String ip, String host, String name) async {
+      calls++;
+      throw const SocketException('bloqué partout');
+    };
+    expect(await r.resolve('mort.example.com'), isEmpty);
+    final int afterFirst = calls; // 2 fournisseurs tentés
+    // 2e appel immédiat : doit venir du cache négatif (aucun nouvel essai).
+    expect(await r.resolve('mort.example.com'), isEmpty);
+    expect(calls, afterFirst, reason: 'le cache négatif évite la re-cascade');
+  });
+
+  test('repli AAAA quand le fournisseur répond sans A (IPv6-only)', () async {
+    final List<String> typesSeen = <String>[];
+    r.httpGetOverride = (String ip, String host, String name) async {
+      // Le stub ignore le type (signature 3-arg) : on simule un domaine qui
+      // n'a PAS d'A en renvoyant vide au 1er appel, puis un AAAA au 2e.
+      typesSeen.add(ip);
+      if (typesSeen.length == 1) {
+        return jsonEncode(<String, Object?>{'Status': 0, 'Answer': <Object>[]});
+      }
+      return jsonEncode(<String, Object?>{
+        'Status': 0,
+        'Answer': <Map<String, Object?>>[
+          <String, Object?>{
+            'name': 'x',
+            'type': 28, // AAAA
+            'TTL': 300,
+            'data': '2606:4700::6812:2b05',
+          },
+        ],
+      });
+    };
+    final List<InternetAddress> addrs = await r.resolve('v6only.example.com');
+    expect(addrs.single.type, InternetAddressType.IPv6);
+  });
+
+  test('plafond du cache : ne dépasse jamais la borne (anti-OOM)', () async {
+    r.httpGetOverride =
+        (String ip, String host, String name) async => _dohJson(<String>['1.2.3.4']);
+    // Résout bien plus d'hôtes distincts que la borne interne (256) : sans
+    // éviction, la map exploserait. On vérifie qu'une résolution ancienne a
+    // été évincée (nouvelle requête réseau) tout en gardant les récentes.
+    int calls = 0;
+    r.httpGetOverride = (String ip, String host, String name) async {
+      calls++;
+      return _dohJson(<String>['1.2.3.4']);
+    };
+    for (int i = 0; i < 400; i++) {
+      await r.resolve('host$i.example.com');
+    }
+    final int callsAfterFill = calls;
+    // Le tout 1er hôte a dû être évincé → une nouvelle résolution le re-sonde.
+    await r.resolve('host0.example.com');
+    expect(calls, callsAfterFill + 1,
+        reason: 'host0 évincé par le plafond → re-résolu');
+    // Un hôte récent reste en cache (aucune nouvelle requête).
+    await r.resolve('host399.example.com');
+    expect(calls, callsAfterFill + 1, reason: 'host399 encore en cache');
+  });
+
   group('resolveHostForMedia (lecture directe mpv — contournement DNS)', () {
     test('IP littérale → renvoyée telle quelle, aucune requête réseau',
         () async {
