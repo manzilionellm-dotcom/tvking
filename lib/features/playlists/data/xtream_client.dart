@@ -277,7 +277,8 @@ class XtreamClient {
     CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
         'xtream.http.get_live_streams',
         bytes: bodyBytes.length);
-    final List<Channel> channels = await compute(
+    final (List<Channel> channels, Map<String, String> aliases) =
+        await compute(
       _parseLiveChannelsIsolate,
       (
         TransferableTypedData.fromList(<Uint8List>[bodyBytes]),
@@ -294,6 +295,13 @@ class XtreamClient {
         l10nNow.fallbackNoNameParens,
       ),
     );
+
+    // PONT EPG : les alias collectés dans l'isolate rejoignent le sac de
+    // l'instance (même plafond anti-OOM que le chemin par catégorie).
+    for (final MapEntry<String, String> e in aliases.entries) {
+      if (_epgAliases.length >= _kEpgAliasCap) break;
+      _epgAliases[e.key] = e.value;
+    }
 
     if (kDebugMode) {
       debugPrint('[XtreamClient] ${channels.length} chaînes live récupérées');
@@ -916,8 +924,12 @@ class XtreamClient {
     try {
       final Uri uri = _buildUri(
           action: 'get_short_epg', streamId: streamId, limit: limit);
-      final String body = await _getBody(uri);
-      final dynamic decoded = jsonDecode(body);
+      // Corps en OCTETS + décodage utf8/JSON sur place : la réponse
+      // get_short_epg est minuscule (quelques Ko, `limit` programmes) —
+      // pas besoin de l'isolate des gros imports, un decode synchrone
+      // ne gèle rien ici.
+      final Uint8List bodyBytes = await _getBodyBytes(uri);
+      final dynamic decoded = jsonDecode(utf8.decode(bodyBytes));
       return parseShortEpgListings(decoded, 'xtream-$streamId');
     } catch (_) {
       return const <EpgProgram>[];
@@ -1057,7 +1069,7 @@ List<VodMovie> _parseVodMoviesIsolate(
 /// [_parseVodMoviesIsolate] — le fil d'affichage ne reçoit qu'une liste
 /// prête. `fallbackName` est passé en paramètre (l10nNow n'existe pas dans
 /// un isolate neuf).
-List<Channel> _parseLiveChannelsIsolate(
+(List<Channel>, Map<String, String>) _parseLiveChannelsIsolate(
   (
     TransferableTypedData,
     Map<String, String>,
@@ -1089,11 +1101,21 @@ List<Channel> _parseLiveChannelsIsolate(
           ? decoded['data'] as List<dynamic>
           : const <dynamic>[]);
   final List<Channel> channels = <Channel>[];
+  // PONT EPG (cf. _epgAliases) : la collecte des alias epg_channel_id →
+  // xtream-<id> doit survivre au passage du mapping dans l'isolate — sinon
+  // le chemin RAPIDE d'import perd le pont et « Programme non disponible »
+  // revient. Collectés ici, fusionnés (bornés) par l'appelant.
+  final Map<String, String> aliases = <String, String>{};
   for (final dynamic item in raw) {
     if (channels.length >= cap) break; // plafond mémoire (anti-OOM)
     if (item is! Map<String, dynamic>) continue;
     final String streamId = item['stream_id']?.toString() ?? '';
     if (streamId.isEmpty) continue;
+    final String epgChannelId =
+        item['epg_channel_id']?.toString().trim() ?? '';
+    if (epgChannelId.isNotEmpty) {
+      aliases[epgChannelId] = 'xtream-$streamId';
+    }
     final String name = item['name']?.toString() ?? fallbackName;
     final String categoryId = item['category_id']?.toString() ?? '';
     final String category = cats[categoryId] ?? 'Autres';
@@ -1122,7 +1144,7 @@ List<Channel> _parseLiveChannelsIsolate(
       catchupDays: tvArchive == 1 ? tvArchiveDuration : null,
     ));
   }
-  return channels;
+  return (channels, aliases);
 }
 
 /// Analyse COMPLÈTE de `get_series` dans un isolate : décodage UTF-8 + JSON
