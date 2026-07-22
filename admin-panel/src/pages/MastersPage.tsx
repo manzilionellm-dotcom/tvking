@@ -33,10 +33,15 @@ function m3uAttr(s: string): string {
   return String(s || '').replace(/"/g, "'").replace(/[\r\n]/g, ' ');
 }
 
-// Construit le M3U de test à partir des chaînes cochées.
-function buildM3u(sel: Map<string, MasterChannel & { group: string }>): string {
+// Une chaîne CURÉE dans la liste de test. L'ORDRE du tableau EST l'ordre de
+// lecture (respecté dans le M3U servi). Le maître range/renomme/regroupe à sa
+// main — « c'est lui qui gère ».
+type CuratedItem = { url: string; name: string; logo: string; group: string };
+
+// Construit le M3U de test À PARTIR DE LA LISTE ORDONNÉE (ordre = lecture).
+function buildM3u(list: CuratedItem[]): string {
   const lines = ['#EXTM3U'];
-  for (const c of sel.values()) {
+  for (const c of list) {
     lines.push(
       `#EXTINF:-1 tvg-logo="${m3uAttr(c.logo)}" group-title="${m3uAttr(c.group)}",${m3uAttr(c.name)}`,
     );
@@ -45,9 +50,38 @@ function buildM3u(sel: Map<string, MasterChannel & { group: string }>): string {
   return lines.join('\n') + '\n';
 }
 
+// Parse un M3U en liste ORDONNÉE (préserve l'ordre, la catégorie et le nom).
+// Sert à recharger la liste enregistrée pour l'éditer/réordonner à la main.
+function parseM3uToList(m3u: string): CuratedItem[] {
+  const out: CuratedItem[] = [];
+  const lines = (m3u || '').split(/\r?\n/);
+  let pending: { name: string; logo: string; group: string } | null = null;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line.startsWith('#EXTINF')) {
+      const group = (line.match(/group-title="([^"]*)"/i) || [])[1] || '';
+      const logo = (line.match(/tvg-logo="([^"]*)"/i) || [])[1] || '';
+      const name = (line.split(',').slice(1).join(',') || '').trim() || 'Chaîne';
+      pending = { name, logo, group };
+    } else if (line && !line.startsWith('#')) {
+      out.push({
+        url: line,
+        name: pending?.name || 'Chaîne',
+        logo: pending?.logo || '',
+        group: pending?.group || '',
+      });
+      pending = null;
+    }
+  }
+  return out;
+}
+
 function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }) {
-  // Sélection courante : clé = URL (identifie une chaîne de façon unique).
-  const [sel, setSel] = useState<Map<string, MasterChannel & { group: string }>>(new Map());
+  // Liste curée ORDONNÉE : l'ordre du tableau EST l'ordre de lecture. Le maître
+  // coche depuis le copieur, puis range/renomme/regroupe/ajoute à sa main.
+  const [list, setList] = useState<CuratedItem[]>([]);
+  // Index en cours de glisser-déposer (réordonnancement à la souris).
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [savedCount, setSavedCount] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -73,6 +107,10 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
   const [gwUser, setGwUser] = useState('');
   const [gwPass, setGwPass] = useState('');
   const [hasGwPass, setHasGwPass] = useState(false);
+  // Champs d'AJOUT MANUEL d'une chaîne dans la liste curée (nom + URL + cat).
+  const [addName, setAddName] = useState('');
+  const [addUrl, setAddUrl] = useState('');
+  const [addGroup, setAddGroup] = useState('');
 
   // Charge la liste déjà enregistrée → pré-coche les URLs connues.
   useEffect(() => {
@@ -85,23 +123,8 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
         setGwUser(r.gateway_user || '');
         setHasGwPass(!!r.has_gateway_pass);
         setGwPass(''); // le secret n'est jamais réaffiché
-        const m = new Map<string, MasterChannel & { group: string }>();
-        // Parse le M3U enregistré pour reconstituer la sélection (nom/url).
-        const lines = (r.m3u || '').split(/\r?\n/);
-        let pending: { name: string; logo: string; group: string } | null = null;
-        for (const raw of lines) {
-          const line = raw.trim();
-          if (line.startsWith('#EXTINF')) {
-            const group = (line.match(/group-title="([^"]*)"/i) || [])[1] || '';
-            const logo = (line.match(/tvg-logo="([^"]*)"/i) || [])[1] || '';
-            const name = (line.split(',').slice(1).join(',') || '').trim() || 'Chaîne';
-            pending = { name, logo, group };
-          } else if (line && !line.startsWith('#') && pending) {
-            m.set(line, { id: line, name: pending.name, logo: pending.logo, url: line, group: pending.group });
-            pending = null;
-          }
-        }
-        setSel(m);
+        // Recharge la liste ORDONNÉE (ordre = lecture) pour l'éditer à la main.
+        setList(parseM3uToList(r.m3u || ''));
       } catch (e: any) {
         if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
         setErr(e instanceof ApiError ? e.message : 'Chargement impossible.');
@@ -125,21 +148,54 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
     } finally { setCopying(false); }
   }
 
+  // Coche/décoche depuis le copieur : on AJOUTE en fin de liste (l'ordre se
+  // gère ensuite à la main) ou on RETIRE. Clé d'unicité = URL.
   function toggle(ch: MasterChannel, group: string) {
-    setSel((prev) => {
-      const next = new Map(prev);
-      if (next.has(ch.url)) next.delete(ch.url);
-      else next.set(ch.url, { ...ch, group });
-      return next;
+    setList((prev) => {
+      if (prev.some((i) => i.url === ch.url)) return prev.filter((i) => i.url !== ch.url);
+      return [...prev, { url: ch.url, name: ch.name, logo: ch.logo, group }];
     });
   }
 
-  function clearSel() { setSel(new Map()); }
+  function clearSel() { setList([]); }
+
+  // ---- Rangement à la main (ordre respecté à la lecture) -----------------
+  // Déplace un élément d'un cran (▲/▼) — stable, sans dépendance.
+  function moveItem(idx: number, dir: -1 | 1) {
+    setList((prev) => {
+      const j = idx + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = prev.slice();
+      [next[idx], next[j]] = [next[j], next[idx]];
+      return next;
+    });
+  }
+  // Réordonnancement par glisser-déposer : insère la ligne tirée à la place cible.
+  function dropOn(target: number) {
+    setList((prev) => {
+      if (dragIdx === null || dragIdx === target) return prev;
+      const next = prev.slice();
+      const [moved] = next.splice(dragIdx, 1);
+      next.splice(target, 0, moved);
+      return next;
+    });
+    setDragIdx(null);
+  }
+  function editField(idx: number, field: 'name' | 'group', value: string) {
+    setList((prev) => prev.map((it, i) => (i === idx ? { ...it, [field]: value } : it)));
+  }
+  function removeItem(idx: number) {
+    setList((prev) => prev.filter((_, i) => i !== idx));
+  }
+  // Ajout MANUEL d'une chaîne (nom + URL + catégorie) directement dans la liste.
+  function addManual(item: CuratedItem) {
+    setList((prev) => (prev.some((i) => i.url === item.url) ? prev : [...prev, item]));
+  }
 
   async function save() {
     setErr(null); setMsg(null); setBusy(true);
     try {
-      const m3u = sel.size ? buildM3u(sel) : '';
+      const m3u = list.length ? buildM3u(list) : '';
       const r = await mastersApi.putTestList(mac, m3u, gateway, gwUser, gwPass);
       setSavedCount(r.count || 0);
       setM3uText(m3u);
@@ -159,6 +215,7 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
     try {
       const r = await mastersApi.putTestList(mac, m3uText, gateway, gwUser, gwPass);
       setSavedCount(r.count || 0);
+      setList(parseM3uToList(m3uText)); // synchronise la vue « rangement »
       setHasGwPass(!!r.has_gateway_pass);
       if (gwPass) setGwPass('');
       setMsg(`✅ M3U enregistré — ${r.count} chaîne(s).`);
@@ -205,8 +262,15 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
   }, [cats, filter]);
 
   const searching = filter.trim().length > 0;
-  const selCount = sel.size;
+  const inList = (url: string) => list.some((i) => i.url === url);
+  const selCount = list.length;
   const tooMany = selCount > 5;
+  // Catégories déjà présentes dans la liste → proposées en autocomplétion
+  // quand on regroupe/ajoute à la main (regrouper « comme je veux »).
+  const knownGroups = useMemo(
+    () => Array.from(new Set(list.map((i) => i.group).filter(Boolean))),
+    [list],
+  );
 
   return (
     <div className="space-y-3 border-t border-white/5 bg-slate/40 px-4 py-4">
@@ -214,10 +278,13 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
         <strong>Copieur intelligent.</strong> Clique « Copier mes chaînes » : je
         lis ta ligne, je range tout en <strong>catégories</strong>, et tu coches
         les quelques chaînes à partager en test (idéalement{' '}
-        <strong>moins de 5</strong>). Tous les tests servent cette sélection :
-        les testeurs partagent les mêmes chaînes, le gateway les mutualise et{' '}
-        <strong>le fournisseur ne voit qu'une connexion</strong> — un seul trio
-        suffit. Aucune sélection = accès à tout le bouquet.
+        <strong>moins de 5</strong>). Dans <strong>« Ma liste de test »</strong>,
+        tu <strong>ranges tout comme tu veux</strong> : glisser pour réordonner,
+        renommer, regrouper, retirer, ou ajouter une chaîne à la main — l'ordre
+        est <strong>respecté à la lecture</strong>. Tous les tests servent cette
+        liste : les testeurs partagent les mêmes chaînes, le gateway les
+        mutualise et <strong>le fournisseur ne voit qu'une connexion</strong>.
+        Aucune liste = accès à tout le bouquet.
       </div>
 
       {/* ===== Façade (gateway) : stabilité + confidentialité ===== */}
@@ -332,6 +399,128 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
         </div>
       )}
 
+      {/* ===== MA LISTE (rangement à la main) — l'ordre EST celui de lecture ===== */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] uppercase tracking-widest text-ink-tertiary">
+            Ma liste de test — glisse pour ranger (l'ordre est respecté à la lecture)
+          </span>
+          <span className="text-[10px] text-ink-tertiary">{list.length} chaîne(s)</span>
+        </div>
+
+        {list.length === 0 ? (
+          <div className="rounded-md border border-dashed border-white/10 bg-midnight px-3 py-4 text-center text-xs text-ink-tertiary">
+            Vide. Coche des chaînes ci-dessous, ou ajoute-en une à la main.
+          </div>
+        ) : (
+          <div className="space-y-1 rounded-md border border-white/5 bg-midnight p-2">
+            {list.map((it, idx) => (
+              <div
+                key={it.url}
+                draggable
+                onDragStart={() => setDragIdx(idx)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => dropOn(idx)}
+                onDragEnd={() => setDragIdx(null)}
+                className={`flex items-center gap-1.5 rounded px-1.5 py-1 ${dragIdx === idx ? 'opacity-50' : ''} hover:bg-white/[0.02]`}
+              >
+                {/* Poignée + rang (numéro d'ordre de lecture). */}
+                <span className="cursor-grab select-none px-1 text-ink-tertiary" title="Glisser pour ranger">⠿</span>
+                <span className="w-5 shrink-0 text-center text-[10px] text-ink-tertiary">{idx + 1}</span>
+                {/* Réordonnancement stable au clavier/souris (▲/▼). */}
+                <div className="flex shrink-0 flex-col">
+                  <button
+                    onClick={() => moveItem(idx, -1)}
+                    disabled={idx === 0}
+                    className="px-1 text-[9px] leading-none text-ink-tertiary hover:text-accent-bright disabled:opacity-20"
+                    title="Monter"
+                  >▲</button>
+                  <button
+                    onClick={() => moveItem(idx, 1)}
+                    disabled={idx === list.length - 1}
+                    className="px-1 text-[9px] leading-none text-ink-tertiary hover:text-accent-bright disabled:opacity-20"
+                    title="Descendre"
+                  >▼</button>
+                </div>
+                {/* Renommer (nom affiché). */}
+                <input
+                  value={it.name}
+                  onChange={(e) => editField(idx, 'name', e.target.value)}
+                  spellCheck={false}
+                  className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1.5 py-1 text-[13px] text-ink-primary outline-none focus:border-white/10 focus:bg-white/[0.02]"
+                  placeholder="Nom de la chaîne"
+                />
+                {/* Regrouper (catégorie / group-title), autocomplétion des groupes connus. */}
+                <input
+                  value={it.group}
+                  onChange={(e) => editField(idx, 'group', e.target.value)}
+                  list="master-known-groups"
+                  spellCheck={false}
+                  className="w-28 shrink-0 rounded border border-transparent bg-transparent px-1.5 py-1 text-[11px] text-ink-secondary outline-none focus:border-white/10 focus:bg-white/[0.02]"
+                  placeholder="Catégorie"
+                />
+                {/* Supprimer. */}
+                <button
+                  onClick={() => removeItem(idx)}
+                  className="shrink-0 px-1.5 text-ink-tertiary hover:text-accent-bright"
+                  title="Retirer de la liste"
+                >✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <datalist id="master-known-groups">
+          {knownGroups.map((g) => <option key={g} value={g} />)}
+        </datalist>
+
+        {/* Ajout MANUEL d'une chaîne (nom + URL + catégorie). */}
+        <div className="flex flex-wrap items-end gap-2 rounded-md border border-white/5 bg-midnight/60 p-2">
+          <div className="min-w-[120px] flex-1">
+            <label className="mb-1 block text-[9px] uppercase tracking-widest text-ink-tertiary">Nom</label>
+            <input
+              value={addName}
+              onChange={(e) => setAddName(e.target.value)}
+              spellCheck={false}
+              placeholder="Ma chaîne"
+              className="w-full rounded border border-white/5 bg-midnight px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-accent"
+            />
+          </div>
+          <div className="min-w-[180px] flex-[2]">
+            <label className="mb-1 block text-[9px] uppercase tracking-widest text-ink-tertiary">URL</label>
+            <input
+              value={addUrl}
+              onChange={(e) => setAddUrl(e.target.value)}
+              spellCheck={false}
+              placeholder="https://ton-gateway/live/…"
+              className="w-full rounded border border-white/5 bg-midnight px-2 py-1.5 font-mono text-[11px] outline-none focus:ring-1 focus:ring-accent"
+            />
+          </div>
+          <div className="min-w-[100px] flex-1">
+            <label className="mb-1 block text-[9px] uppercase tracking-widest text-ink-tertiary">Catégorie</label>
+            <input
+              value={addGroup}
+              onChange={(e) => setAddGroup(e.target.value)}
+              list="master-known-groups"
+              spellCheck={false}
+              placeholder="(optionnel)"
+              className="w-full rounded border border-white/5 bg-midnight px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-accent"
+            />
+          </div>
+          <button
+            onClick={() => {
+              const url = addUrl.trim();
+              if (!/^https?:\/\//i.test(url)) return; // URL requise (http/https)
+              addManual({ url, name: addName.trim() || 'Chaîne', logo: '', group: addGroup.trim() });
+              setAddName(''); setAddUrl(''); setAddGroup('');
+            }}
+            disabled={!/^https?:\/\//i.test(addUrl.trim())}
+            className="rounded-md border border-accent/40 px-3 py-1.5 text-xs font-medium text-accent-bright transition hover:bg-accent/10 disabled:opacity-40"
+          >
+            Ajouter
+          </button>
+        </div>
+      </div>
+
       {/* ===== Arbre catégories → chaînes ===== */}
       {cats && (
         <div className="space-y-2">
@@ -350,7 +539,7 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
                 </div>
               )}
               {flatMatches.map(({ ch, group }) => {
-                const on = sel.has(ch.url);
+                const on = inList(ch.url);
                 return (
                   <label
                     key={ch.url}
@@ -377,7 +566,7 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
               <div className="px-2 py-4 text-center text-xs text-ink-tertiary">Aucune chaîne.</div>
             )}
             {shownCats.map((c) => {
-              const nSel = c.channels.filter((ch) => sel.has(ch.url)).length;
+              const nSel = c.channels.filter((ch) => inList(ch.url)).length;
               const isOpen = openCat === c.id || !!filter.trim();
               return (
                 <div key={c.id} className="rounded-md border border-white/[0.04]">
@@ -396,7 +585,7 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
                   {isOpen && (
                     <div className="border-t border-white/[0.04] px-2 py-1">
                       {c.channels.map((ch) => {
-                        const on = sel.has(ch.url);
+                        const on = inList(ch.url);
                         return (
                           <label
                             key={ch.url}
