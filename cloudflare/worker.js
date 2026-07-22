@@ -3602,19 +3602,37 @@ async function handleInviteSelftest(env, rawMac) {
 //  assistant puisse voir la panne et la corriger tout de suite. Aucune donnée
 //  sensible (mot de passe, URL avec identifiants) n'est renvoyée.
 
+/// Cloudflare Workers ne peuvent PAS fetch une IP BRUTE (403/530). On mappe
+/// toute IPv4 en nom via nip.io (`<ip>.nip.io` résout vers `<ip>`), joignable
+/// depuis le worker ET l'app. Domaines inchangés.
+function _domainize(base) {
+  const s = String(base || '').trim();
+  if (!s) return s;
+  try {
+    const u = new URL(s);
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(u.hostname)) {
+      u.hostname = `${u.hostname}.nip.io`;
+      return u.toString().replace(/\/+$/, '');
+    }
+    return s;
+  } catch (_) { return s; }
+}
+
 /// Lit la façade (gateway_base) enregistrée pour un maître ('' si aucune).
 async function readMasterGatewayBase(env, mac) {
   try {
     const row = await env.DB
       .prepare('SELECT gateway_base FROM master_test_list WHERE mac = ?')
       .bind(String(mac).toUpperCase()).first();
-    return (row && row.gateway_base) ? String(row.gateway_base) : '';
+    return (row && row.gateway_base) ? _domainize(String(row.gateway_base)) : '';
   } catch (_) { return ''; }
 }
 
 /// Sonde une URL sans télécharger le flux : on demande 2 octets, on lit le
 /// verdict (statut + latence), puis on annule le corps. Timeout dur.
+/// IP brute → nip.io (sinon Cloudflare renvoie 403/530 sur une IP directe).
 async function _probeUrl(url, ms = 5000) {
+  url = _domainize(url);
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   const t0 = Date.now();

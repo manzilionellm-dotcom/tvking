@@ -3280,8 +3280,26 @@ async function ensureMasterListTable(env) {
   } catch (_) { /* colonne déjà là */ }
 }
 
+// Cloudflare Workers ne peuvent PAS fetch une IP BRUTE (renvoie 403/530). On
+// transforme donc toute IPv4 en NOM via nip.io (`<ip>.nip.io` résout vers
+// `<ip>`, service DNS public gratuit) → la façade devient joignable depuis le
+// worker (panel + diagnostic + copieur) ET depuis l'app. Domaines inchangés.
+export function _domainize(base) {
+  const s = String(base || '').trim();
+  if (!s) return s;
+  try {
+    const u = new URL(s);
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(u.hostname)) {
+      u.hostname = `${u.hostname}.nip.io`;
+      return u.toString().replace(/\/+$/, '');
+    }
+    return s;
+  } catch (_) { return s; }
+}
+
 // Nettoie une base gateway collée → origine propre (schéma+hôte+port), sans
-// slash final ni path. '' si vide/invalide.
+// slash final ni path, et IP brute → nip.io (joignable depuis Cloudflare).
+// '' si vide/invalide.
 export function _cleanGatewayBase(raw) {
   const s = String(raw || '').trim();
   if (!s) return '';
@@ -3289,7 +3307,7 @@ export function _cleanGatewayBase(raw) {
   try {
     const u = new URL(s);
     const port = u.port ? `:${u.port}` : '';
-    return `${u.protocol}//${u.hostname}${port}`;
+    return _domainize(`${u.protocol}//${u.hostname}${port}`);
   } catch (_) { return ''; }
 }
 
@@ -3299,7 +3317,8 @@ async function _readGatewayBase(env, mac) {
     await ensureMasterListTable(env);
     const row = await env.DB
       .prepare('SELECT gateway_base FROM master_test_list WHERE mac = ?').bind(mac).first();
-    return (row && row.gateway_base) ? String(row.gateway_base) : '';
+    // domainize : les anciennes valeurs stockées en IP brute deviennent nip.io.
+    return (row && row.gateway_base) ? _domainize(String(row.gateway_base)) : '';
   } catch (_) { return ''; }
 }
 
@@ -3397,8 +3416,9 @@ async function _readFirstSource(env, mac) {
 // et privé (une seule IP). On lit toujours la LISTE depuis le fournisseur, mais
 // on JOUE via le gateway (mêmes stream_id — le gateway proxifie la même ligne).
 async function _copyXtream(src, gatewayBase = '') {
-  const base = String(src.server_url || '').replace(/\/+$/, '');
-  const play = (gatewayBase || base).replace(/\/+$/, ''); // origine de LECTURE
+  // IP brute → nip.io : le worker Cloudflare ne peut fetch une IP directe.
+  const base = _domainize(String(src.server_url || '').replace(/\/+$/, ''));
+  const play = _domainize((gatewayBase || base).replace(/\/+$/, '')); // origine de LECTURE
   const user = String(src.username || '');
   const pass = String(src.password || '');
   const auth = `username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`;
@@ -3459,7 +3479,8 @@ export function _rewriteOrigin(u, gatewayBase) {
 // [gatewayBase] : si fourni, l'origine de chaque URL est réécrite vers le
 // gateway (le gateway doit proxifier ces chemins — cas d'une façade Xtream).
 async function _copyM3u(src, gatewayBase = '') {
-  const res = await _fetchWithTimeout(String(src.m3u_url || ''));
+  gatewayBase = _domainize(gatewayBase);
+  const res = await _fetchWithTimeout(_domainize(String(src.m3u_url || '')));
   if (!res.ok) throw new Error('provider_http_' + res.status);
   const text = await res.text();
   const lines = text.split(/\r?\n/);
@@ -3559,7 +3580,9 @@ async function handleMasterChannels(request, env) {
 //  passe, URL avec identifiants) n'est renvoyée — seulement statut + latence.
 
 /// Sonde une URL sans télécharger le flux (2 octets, puis annule le corps).
+/// IP brute → nip.io (sinon Cloudflare renvoie 403/530 sur une IP directe).
 async function _probeUrl(url, ms = 5000) {
+  url = _domainize(url);
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   const t0 = Date.now();
