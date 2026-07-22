@@ -33,6 +33,11 @@ function m3uAttr(s: string): string {
   return String(s || '').replace(/"/g, "'").replace(/[\r\n]/g, ' ');
 }
 
+// Pagination d'AFFICHAGE d'une catégorie du copieur : tranche initiale puis
+// pas d'élargissement (« Afficher plus »). Le serveur, lui, renvoie TOUT.
+const CAT_PAGE = 200;
+const CAT_PAGE_STEP = 500;
+
 // Une chaîne CURÉE dans la liste de test. L'ORDRE du tableau EST l'ordre de
 // lecture (respecté dans le M3U servi). Le maître range/renomme/regroupe à sa
 // main — « c'est lui qui gère ».
@@ -97,6 +102,10 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
   const [copyErr, setCopyErr] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
   const [openCat, setOpenCat] = useState<string | null>(null);
+  // RENDU PAR PAGES d'une catégorie ouverte : une très grosse ligne (des
+  // milliers de chaînes) se PARCOURT sans geler le navigateur — on affiche
+  // CAT_PAGE chaînes, puis « Afficher plus » recharge par tranches.
+  const [shownByCat, setShownByCat] = useState<Record<string, number>>({});
   const [filter, setFilter] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [m3uText, setM3uText] = useState('');
@@ -145,6 +154,7 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
       const r = await mastersApi.channels(mac, paste, gateway, gwUser, gwPass);
       setCats(r.categories || []);
       setTruncated(!!r.truncated);
+      setShownByCat({}); // nouvelle copie → pagination d'affichage remise à zéro
     } catch (e: any) {
       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
       setCopyErr(e instanceof ApiError ? e.message : 'Copie impossible.');
@@ -402,8 +412,9 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
       {copyErr && <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{copyErr}</div>}
       {truncated && (
         <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
-          Beaucoup de chaînes — la liste a été tronquée à l'affichage. Utilise la
-          recherche pour trouver celles à partager.
+          Ligne exceptionnellement grosse : le serveur s'est arrêté à 20 000
+          chaînes (filet anti-abus). Tout ce qui est copié est bien là — utilise
+          la recherche pour trouver le reste si besoin.
         </div>
       )}
 
@@ -592,7 +603,10 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
                   </button>
                   {isOpen && (
                     <div className="border-t border-white/[0.04] px-2 py-1">
-                      {c.channels.map((ch) => {
+                      {/* Tranche affichée (CAT_PAGE par défaut) : le DOM reste
+                          léger même pour une catégorie de plusieurs milliers
+                          de chaînes — « Afficher plus » élargit la tranche. */}
+                      {c.channels.slice(0, shownByCat[c.id] ?? CAT_PAGE).map((ch) => {
                         const on = inList(ch.url);
                         return (
                           <label
@@ -604,6 +618,17 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
                           </label>
                         );
                       })}
+                      {c.channels.length > (shownByCat[c.id] ?? CAT_PAGE) && (
+                        <button
+                          onClick={() => setShownByCat((prev) => ({
+                            ...prev,
+                            [c.id]: (prev[c.id] ?? CAT_PAGE) + CAT_PAGE_STEP,
+                          }))}
+                          className="mt-1 w-full rounded border border-white/10 px-2 py-1.5 text-[11px] text-ink-secondary transition hover:border-accent/40 hover:text-accent-bright"
+                        >
+                          Afficher plus ({c.channels.length - (shownByCat[c.id] ?? CAT_PAGE)} restantes)
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

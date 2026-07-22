@@ -3417,9 +3417,14 @@ async function handleMasterTestListPut(request, env) {
   try { body = await request.json(); } catch (_) { return errResp('bad_json', 'Invalid JSON', 400); }
   const mac = String(body?.mac || '').toUpperCase();
   if (!_MASTER_MAC_RX.test(mac)) return errResp('bad_mac', 'MAC maître invalide.', 400);
-  // On garde une liste VOLONTAIREMENT petite : indépendance = peu de chaînes
-  // partagées. Plafond souple à 50 lignes / 64 Ko (garde-fou, pas une police).
-  const m3u = String(body?.m3u || '').slice(0, 64 * 1024);
+  // L'indépendance reste meilleure avec une PETITE liste, mais on ne tronque
+  // JAMAIS en silence (une coupe au milieu d'un M3U = liste corrompue servie
+  // aux testeurs). Garde-fou explicite et actionnable au-delà de 256 Ko.
+  const m3u = String(body?.m3u || '');
+  if (m3u.length > 256 * 1024) {
+    return errResp('m3u_too_large',
+      'Liste trop grosse (max 256 Ko). Garde une liste de test courte — pour tout le bouquet, laisse la liste vide (le test sert alors la ligne complète).', 400);
+  }
   // FAÇADE : on n'interdit QUE l'illisible (pas d'URL http(s) valide). Une
   // façade http/IP est ACCEPTÉE — les apps la joignent, la copie n'a pas
   // besoin que le relais la joigne — mais on renvoie une NOTE honnête
@@ -3472,9 +3477,10 @@ async function handleMasterTestListPut(request, env) {
 //  sélection devient le petit M3U de test (URLs identiques pour tous les
 //  testeurs → le gateway mutualise → une seule connexion fournisseur).
 //
-//  Garde-fous : timeout réseau, plafond de chaînes (l'UI n'en garde que
-//  quelques-unes de toute façon), jamais d'erreur fatale (best-effort).
-const _COPY_MAX_CHANNELS = 6000; // au-delà, on tronque et on le signale.
+//  Garde-fous : timeout réseau, plafond de chaînes TRÈS haut (l'exploitant
+//  doit pouvoir copier TOUTE sa ligne, même énorme — le panel, lui, affiche
+//  par pages pour rester fluide), jamais d'erreur fatale (best-effort).
+const _COPY_MAX_CHANNELS = 20000; // filet anti-abus, pas une troncature métier.
 
 // Fetch avec délai maximal (AbortController) — un fournisseur lent ne doit pas
 // bloquer la requête panel.
