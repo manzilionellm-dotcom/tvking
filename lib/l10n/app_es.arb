@@ -360,6 +360,7 @@
   "aboutLegalNotice": "The Few es un reproductor multimedia genérico. No se incluye ningún contenido con la app. Eres responsable de las fuentes que añadas y de su conformidad con las leyes de tu país.",
   "lockPinTooShort": "Introduce al menos 4 dígitos.",
   "lockPinWrong": "Código incorrecto.",
+  "lockPinLocked": "Demasiados intentos. Inténtalo de nuevo en {seconds} s.",
   "lockUnlockReason": "Desbloquea {app}",
   "lockAppLocked": "Aplicación bloqueada",
   "lockAuthenticating": "Autenticando...",

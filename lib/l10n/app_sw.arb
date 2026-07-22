@@ -360,6 +360,7 @@
   "aboutLegalNotice": "The Few ni kicheza media cha kawaida. Hakuna maudhui yanayojumuishwa na programu. Wewe ndiye unayewajibika kwa vyanzo unavyoongeza na uzingatiaji wao wa sheria za nchi yako.",
   "lockPinTooShort": "Weka angalau tarakimu 4.",
   "lockPinWrong": "Msimbo si sahihi.",
+  "lockPinLocked": "Majaribio mengi. Jaribu tena baada ya sekunde {seconds}.",
   "lockUnlockReason": "Fungua {app}",
   "lockAppLocked": "Programu imefungwa",
   "lockAuthenticating": "Inathibitisha...",

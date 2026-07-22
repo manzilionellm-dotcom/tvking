@@ -97,8 +97,14 @@ class _LockScreenState extends State<LockScreen> {
       widget.onUnlocked();
       return;
     }
+    // Verrouillage anti-brute-force : si un blocage est actif, on l'explique
+    // (durée restante) plutôt que de répéter « Code incorrect ».
+    final Duration lock = await AppPinSettings.instance.lockoutRemaining();
+    if (!mounted) return;
     setState(() {
-      _pinError = context.l10n.lockPinWrong;
+      _pinError = lock > Duration.zero
+          ? context.l10n.lockPinLocked(lock.inSeconds + 1)
+          : context.l10n.lockPinWrong;
       _pinCtrl.clear();
     });
   }

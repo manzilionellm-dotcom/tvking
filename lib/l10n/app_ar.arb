@@ -360,6 +360,7 @@
   "aboutLegalNotice": "The Few مشغّل وسائط عام. لا يتضمّن التطبيق أي محتوى. أنت مسؤول عن المصادر التي تضيفها وعن امتثالها لقوانين بلدك.",
   "lockPinTooShort": "أدخل 4 أرقام على الأقل.",
   "lockPinWrong": "رمز غير صحيح.",
+  "lockPinLocked": "محاولات كثيرة. أعد المحاولة خلال {seconds} ثانية.",
   "lockUnlockReason": "افتح قفل {app}",
   "lockAppLocked": "التطبيق مقفل",
   "lockAuthenticating": "جارٍ المصادقة...",

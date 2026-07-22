@@ -1251,6 +1251,15 @@
   "@lockPinWrong": {
     "description": "Texte UI : lockPinWrong"
   },
+  "lockPinLocked": "Trop d'essais. Réessaie dans {seconds} s.",
+  "@lockPinLocked": {
+    "description": "Texte UI : lockPinLocked (verrouillage anti-brute-force)",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
   "lockUnlockReason": "Déverrouille {app}",
   "@lockUnlockReason": {
     "description": "Texte UI : lockUnlockReason",

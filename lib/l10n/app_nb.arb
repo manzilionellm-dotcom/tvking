@@ -360,6 +360,7 @@
   "aboutLegalNotice": "The Few er en generisk mediespiller. Ikke noe innhold følger med appen. Du er ansvarlig for kildene du legger til, og at de er i samsvar med lovene i landet ditt.",
   "lockPinTooShort": "Skriv inn minst 4 sifre.",
   "lockPinWrong": "Feil kode.",
+  "lockPinLocked": "For mange forsøk. Prøv igjen om {seconds} s.",
   "lockUnlockReason": "Lås opp {app}",
   "lockAppLocked": "Appen er låst",
   "lockAuthenticating": "Autentiserer...",

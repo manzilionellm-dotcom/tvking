@@ -28,4 +28,32 @@ void main() {
   test('chaîne vide inchangée', () {
     expect(cipher.encrypt(''), '');
   });
+
+  group('v2 (DEK matérielle) préférée + migration', () {
+    test('round-trip v2 : chiffre en enc:v2: et déchiffre', () {
+      final SecretCipher c = SecretCipher.instance
+        ..debugSetV2KeyForTest(List<int>.generate(32, (int i) => 255 - i));
+      const String secret = 'motDePasseXtream_v2';
+      final String encd = c.encrypt(secret);
+      expect(encd.startsWith('enc:v2:'), isTrue,
+          reason: 'la v2 est préférée quand la DEK matérielle est là');
+      expect(c.decrypt(encd), secret);
+    });
+
+    test('migration : une valeur enc:v1: reste lisible même en mode v2', () {
+      // On chiffre d'abord en v1 (comme une install existante), puis on
+      // active la v2 : l'ancienne valeur doit encore se déchiffrer.
+      final SecretCipher c = SecretCipher.instance;
+      c.debugSetKeyForTest(List<int>.generate(32, (int i) => i));
+      final String v1Encrypted = c.encrypt('ancienSecret');
+      expect(v1Encrypted.startsWith('enc:v1:'), isTrue);
+      // La v2 s'active (nouvelle install migrée) mais la v1 reste branchée
+      // pour relire l'existant.
+      c.debugSetV2KeyForTest(List<int>.generate(32, (int i) => 100 + i));
+      expect(c.decrypt(v1Encrypted), 'ancienSecret',
+          reason: 'les valeurs v1 doivent survivre à l\'arrivée de la v2');
+      // Et le NOUVEAU chiffrement passe bien en v2.
+      expect(c.encrypt('nouveauSecret').startsWith('enc:v2:'), isTrue);
+    });
+  });
 }

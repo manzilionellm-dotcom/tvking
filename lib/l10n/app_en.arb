@@ -361,6 +361,7 @@
   "aboutLegalNotice": "The Few is a generic media player. No content is included with the app. You are responsible for the sources you add and their compliance with the laws in your country.",
   "lockPinTooShort": "Enter at least 4 digits.",
   "lockPinWrong": "Wrong code.",
+  "lockPinLocked": "Too many attempts. Try again in {seconds} s.",
   "lockUnlockReason": "Unlock {app}",
   "lockAppLocked": "App locked",
   "lockAuthenticating": "Authenticating...",
