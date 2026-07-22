@@ -1077,6 +1077,31 @@ function VodLibrary({ mac, onLogout }: { mac: string; onLogout: () => void }) {
     [selected, importedIndex],
   );
 
+  // URLs actuellement AFFICHÉES (après filtre langue + recherche) → cibles du
+  // « Tout sélectionner » / « Tout décocher » (on agit sur la vue courante).
+  const shownUrls = useMemo(() => {
+    const out: string[] = [];
+    for (const c of shownCats) for (const mv of c.movies) out.push(mv.url);
+    return out;
+  }, [shownCats]);
+  const shownCount = shownUrls.length;
+  const shownSelected = useMemo(
+    () => shownUrls.filter((u) => selected.has(u)).length,
+    [shownUrls, selected],
+  );
+
+  // Coche TOUT ce qui est affiché (respecte le filtre : « toutes les FR »…).
+  function selectAllShown() {
+    setSelected((prev) => new Set([...prev, ...shownUrls]));
+  }
+  // Décoche tout ce qui est affiché (laisse le reste de la sélection intact).
+  function deselectAllShown() {
+    setSelected((prev) => {
+      const drop = new Set(shownUrls);
+      return new Set([...prev].filter((u) => !drop.has(u)));
+    });
+  }
+
   // Enregistre la sélection DANS la liste de test : on garde les items déjà
   // présents qui ne viennent PAS de cet import (chaînes live…), et on
   // reconcilie les films (gardés seulement s'ils restent cochés) + ajoute les
@@ -1193,6 +1218,26 @@ function VodLibrary({ mac, onLogout }: { mac: string; onLogout: () => void }) {
               placeholder="Chercher un film ou un genre…"
               className="ml-auto min-w-[180px] flex-1 rounded-md border border-white/5 bg-midnight px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-accent"
             />
+          </div>
+
+          {/* Sélection en masse sur la VUE affichée (filtre langue + recherche). */}
+          <div className="flex items-center gap-2 text-[11px] text-ink-tertiary">
+            <span>{shownCount} film(s) affiché(s){shownSelected > 0 ? ` · ${shownSelected} coché(s)` : ''}</span>
+            <button
+              onClick={selectAllShown}
+              disabled={shownCount === 0 || shownSelected === shownCount}
+              className="rounded-md border border-accent/40 px-2.5 py-1 font-medium text-accent-bright transition hover:bg-accent/10 disabled:opacity-40"
+            >
+              Tout sélectionner{langFilter !== 'all' ? ` (${langLabel(langFilter === 'other' ? '' : langFilter)})` : ''}
+            </button>
+            {shownSelected > 0 && (
+              <button
+                onClick={deselectAllShown}
+                className="rounded-md border border-white/10 px-2.5 py-1 text-ink-secondary transition hover:border-accent/40 hover:text-accent-bright"
+              >
+                Tout décocher
+              </button>
+            )}
           </div>
 
           {/* Genres → grille d'affiches. */}
