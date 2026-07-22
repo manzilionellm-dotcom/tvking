@@ -54,7 +54,16 @@ class StreamStabilityMonitor {
     this.stableForRestore = const Duration(minutes: 4),
     this.relapseWindow = const Duration(minutes: 3),
     this.maxRestores = 2,
+    this.nominalWarmup = const Duration(seconds: 12),
   });
+
+  /// Fenêtre de REMPLISSAGE INITIAL du tampon après l'ouverture d'une chaîne :
+  /// pendant ce court instant, le relais ingère PLUS VITE que le temps réel
+  /// pour se constituer une avance. On n'apprend PAS le débit nominal sur ce
+  /// burst et on ne déclare AUCUN déficit — sinon la pointe de démarrage
+  /// figeait un seuil trop haut et provoquait une descente préventive à tort
+  /// une fois le débit revenu au régime établi (faux positif signalé en audit).
+  final Duration nominalWarmup;
 
   /// Fenêtre de comptage des incidents (rebuffers + pertes upstream).
   final Duration eventWindow;
@@ -89,6 +98,7 @@ class StreamStabilityMonitor {
 
   // ----- État de session (remis à zéro par openChannel) -----
   final List<DateTime> _events = <DateTime>[];
+  DateTime? _openedAt; // début de session → borne la fenêtre de warmup
   double? _smoothedRate;
   double _nominalRate = 0;
   int _deficitStreak = 0;
@@ -117,6 +127,7 @@ class StreamStabilityMonitor {
   /// tout repart de zéro — la session d'adaptation précédente est close.
   void openChannel(DateTime now) {
     _events.clear();
+    _openedAt = now;
     _smoothedRate = null;
     _nominalRate = 0;
     _deficitStreak = 0;
@@ -146,18 +157,39 @@ class StreamStabilityMonitor {
 
     // ----- Apprentissage du débit nominal + détection de déficit -----
     if (ingestBytesPerSecond != null && ingestBytesPerSecond > 0) {
-      final double s = _smoothedRate == null
-          ? ingestBytesPerSecond
-          : _smoothedRate! * 0.7 + ingestBytesPerSecond * 0.3;
-      _smoothedRate = s;
-      if (s > _nominalRate) _nominalRate = s;
-      final bool deficit =
-          _nominalRate > 0 && s < _nominalRate * deficitRatio;
-      if (deficit) {
-        _deficitStreak++;
-        _lastIncident = now;
-      } else {
+      final DateTime? openedAt = _openedAt;
+      final bool warming =
+          openedAt != null && now.difference(openedAt) < nominalWarmup;
+      if (warming) {
+        // Burst de remplissage : on n'apprend RIEN (ni débit lissé, ni
+        // nominal) et on ne juge rien. La 1re mesure POST-warmup amorcera le
+        // débit lissé sur le régime RÉEL, pas sur la pointe de démarrage —
+        // sinon le résidu du burst gonflait le nominal et fabriquait un
+        // déficit fantôme (faux positif d'audit).
         _deficitStreak = 0;
+      } else {
+        final double s = _smoothedRate == null
+            ? ingestBytesPerSecond
+            : _smoothedRate! * 0.7 + ingestBytesPerSecond * 0.3;
+        _smoothedRate = s;
+        // Enveloppe du débit nominal : ATTAQUE immédiate (une vraie montée
+        // durable du débit est prise en compte tout de suite) mais RELEASE
+        // LENTE (le nominal redescend doucement vers le régime établi). Sans
+        // cette release, une seule pointe restait gravée comme nominal et tout
+        // le régime normal passait ensuite pour un « déficit » permanent.
+        if (s > _nominalRate) {
+          _nominalRate = s;
+        } else if (_nominalRate > 0) {
+          _nominalRate = _nominalRate * 0.9 + s * 0.1;
+        }
+        final bool deficit =
+            _nominalRate > 0 && s < _nominalRate * deficitRatio;
+        if (deficit) {
+          _deficitStreak++;
+          _lastIncident = now;
+        } else {
+          _deficitStreak = 0;
+        }
       }
     }
 

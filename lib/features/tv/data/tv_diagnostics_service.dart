@@ -141,7 +141,13 @@ class TvDiagnosticsService {
         final http.StreamedResponse g =
             await req.send().timeout(kCheckTimeout);
         code = g.statusCode;
-        await g.stream.listen((_) {}).cancel();
+        // On ANNULE aussitôt le corps sans le lire. `onError`/`cancelOnError`
+        // (correctif d'audit) : sans eux, une erreur émise sur ce court
+        // intervalle devenait une erreur asynchrone NON GÉRÉE (remontée au
+        // filet global). Ici on l'avale : le code de statut est déjà lu.
+        await g.stream
+            .listen((_) {}, onError: (_) {}, cancelOnError: true)
+            .cancel();
       }
       if (code == 456) {
         return const TvCheckResult(

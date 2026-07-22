@@ -49,6 +49,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
@@ -114,6 +115,9 @@ class LocalStreamRelay {
   /// l'URL upstream, pas l'URL locale). Une session = une chaîne tirée
   /// une seule fois et distribuée à ses consommateurs.
   final Map<String, _RelaySession> _sessions = <String, _RelaySession>{};
+
+  /// Jitter des reconnexions (désynchronise les reprises simultanées).
+  final Random _reconnectJitter = Random();
 
   /// `true` si une chaîne donnée est en cours d'enregistrement via le relais.
   bool isRecording(String realUrl) =>
@@ -301,7 +305,21 @@ class LocalStreamRelay {
     try {
       final File file = File(filePath);
       await file.parent.create(recursive: true);
-      session.recordSink = file.openWrite();
+      // COURSE (correctif d'audit) : `create` est un point d'`await`. Si le
+      // DERNIER lecteur s'est débranché pendant cet await, _maybeCloseSession
+      // a pu FERMER la session (recordSink encore null → aucun consommateur)
+      // et la retirer de _sessions. Poser recordSink ici l'attacherait alors à
+      // une session ORPHELINE (upstream mort, absente de la map) → fichier
+      // jamais alimenté + sink jamais fermé (fuite de descripteur). On
+      // revérifie donc que la session est TOUJOURS celle enregistrée.
+      if (_sessions[realUrl] != session) {
+        // La session a été fermée sous nos pieds : on la ré-ouvre proprement
+        // (REC seul, sans lecteur, est un cas valide) et on relance l'upstream.
+        _sessions[realUrl] = session;
+        _ensureUpstream(session);
+      }
+      final IOSink sink = file.openWrite();
+      session.recordSink = sink;
       session.recordPath = filePath;
       session.recordBytes = 0;
     } catch (e) {
@@ -556,7 +574,14 @@ class LocalStreamRelay {
       cReq.maxRedirects = 8;
       cReq.headers.set(HttpHeaders.acceptHeader, '*/*');
 
-      final HttpClientResponse cResp = await cReq.close();
+      // TIMEOUT DE RÉPONSE (correctif d'audit) : connectionTimeout ne borne
+      // QUE l'établissement TCP. Un serveur qui ACCEPTE la connexion mais
+      // n'envoie jamais les en-têtes (edge saturé) faisait pendre ce
+      // `close()` jusqu'à idleTimeout (10 min) — la remontée d'échec et la
+      // cascade de variantes du lecteur restaient bloquées. On borne donc
+      // l'attente des en-têtes à 20 s : au-delà, on considère l'upstream mort.
+      final HttpClientResponse cResp =
+          await cReq.close().timeout(const Duration(seconds: 20));
       session.lastUpstreamStatus = cResp.statusCode;
       final String upstreamMime =
           cResp.headers.contentType?.mimeType.toLowerCase() ?? '';
@@ -747,8 +772,14 @@ class LocalStreamRelay {
           '#${session.reconnectFailures}',
       level: 'warn',
     );
-    final int wait = (2 * session.reconnectFailures).clamp(2, 16);
-    await Future<void>.delayed(Duration(seconds: wait));
+    // Back-off + JITTER (correctif d'audit) : plusieurs sessions (lecture +
+    // enregistrement(s)) qui reconnectent EN PHASE martelaient un panel qui
+    // rate-limite. On garde le back-off croissant borné [2 s ; 16 s] mais on
+    // ajoute un jitter aléatoire (0-1000 ms) pour désynchroniser les reprises.
+    final int base = (2 * session.reconnectFailures).clamp(2, 16);
+    final int jitterMs = _reconnectJitter.nextInt(1000);
+    await Future<void>.delayed(
+        Duration(seconds: base, milliseconds: jitterMs));
     if (!session.hasConsumers) {
       _maybeCloseSession(session);
       return;

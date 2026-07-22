@@ -87,6 +87,29 @@ void main() {
     expect(last, StabilityAction.downshift);
   });
 
+  test('burst de démarrage puis régime stable → AUCUNE descente à tort', () {
+    // Reproduit le faux positif d'audit : le relais remplit son tampon au
+    // démarrage (ingestion 3× le temps réel pendant ~10 s), PUIS le débit
+    // revient au régime réel. L'ancien code gravait le burst comme nominal →
+    // le régime normal (bien suffisant) passait ensuite pour un déficit et
+    // déclenchait une descente injustifiée. Ne doit PLUS arriver.
+    final StreamStabilityMonitor m = fresh();
+    // 0-8 s : burst de remplissage (3× le régime établi de 500 Ko/s).
+    for (int s = 0; s <= 8; s += 4) {
+      expect(m.onSample(at(s), ingestBytesPerSecond: 1500000),
+          StabilityAction.none);
+    }
+    // 12-180 s : régime établi, PARFAITEMENT sain (500 Ko/s soutenus).
+    StabilityAction worst = StabilityAction.none;
+    for (int s = 12; s <= 180; s += 4) {
+      final StabilityAction a =
+          m.onSample(at(s), ingestBytesPerSecond: 500000);
+      if (a == StabilityAction.downshift) worst = a;
+    }
+    expect(worst, StabilityAction.none,
+        reason: 'un régime stable après un burst ne doit jamais dégrader');
+  });
+
   test('après la descente : cooldown, puis remontée après 4 min de calme',
       () {
     final StreamStabilityMonitor m = fresh();
