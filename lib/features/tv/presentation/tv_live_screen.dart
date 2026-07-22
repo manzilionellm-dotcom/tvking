@@ -150,6 +150,12 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // qu'une chaîne présente DANS LES DEUX vole le focus du mauvais côté au retour.
   bool _restoreFromRail = false;
   bool _syncing = false;
+  // Garde anti-ré-entrée d'ouverture du lecteur : une double-activation rapide
+  // (double-tap tactile, télécommande bas de gamme qui double le « select »)
+  // empilait DEUX TvPlayerScreen → deux ExoPlayer + une 2e connexion amont,
+  // à l'encontre de la garantie « jamais 2 flux / 1 connexion ». On refuse
+  // toute 2e ouverture tant que la première n'est pas revenue.
+  bool _openingPlayer = false;
   RemoteSyncResult? _lastSync;
   // Garde-fou : on borne le nombre de ré-imports AUTOMATIQUES de la source.
   // Sans ça, si la source ne charge jamais (échec/box surchargée), le timer 12 s
@@ -536,12 +542,18 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   Future<void> _openPlayerWith(List<Channel> list, int index,
       {required bool fromRail}) async {
     if (index < 0 || index >= list.length) return;
+    if (_openingPlayer) return; // double-activation ignorée (cf. _openingPlayer)
+    _openingPlayer = true;
     final String chId = list[index].id;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
-      ),
-    );
+    try {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
+        ),
+      );
+    } finally {
+      _openingPlayer = false;
+    }
     if (!mounted) return;
     setState(() {
       _restoreFocusId = chId;

@@ -64,6 +64,11 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
   /// place du synopsis (la structure de la fiche, elle, est déjà là).
   bool _loadingInfo = true;
 
+  /// Garde anti-ré-entrée : une double-activation rapide de « Regarder »
+  /// empilait deux lecteurs (deux décodeurs). On ignore la 2e tant que la
+  /// 1re route n'est pas revenue.
+  bool _openingPlayer = false;
+
   /// Films de la MÊME catégorie (rail « Similaires ») — servis depuis le
   /// cache mémoire du VodRepository : zéro réseau, fiche toujours < 300 ms.
   List<VodMovie> _similar = const <VodMovie>[];
@@ -142,22 +147,31 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
   /// PlaybackPositionRepository à l'ouverture, donc sans entrée il part de
   /// zéro (aucune modif du lecteur nécessaire).
   Future<void> _play({bool fromStart = false}) async {
+    if (_openingPlayer) return; // double-activation ignorée (cf. _openingPlayer)
+    _openingPlayer = true;
     if (fromStart) {
       await PlaybackPositionRepository.instance.markFinished(widget.movie.id);
     }
-    if (!mounted) return;
+    if (!mounted) {
+      _openingPlayer = false;
+      return;
+    }
     RecentVodRepository.instance.add(widget.movie);
     // Budget « Regarder → première frame < 2,5 s » : le chrono part de
     // L'APPUI (ici), le lecteur l'arrête à la première image affichée.
     CinePerf.start(CinePerf.playToFirstFrame);
-    Navigator.of(context).push(
-      TvCineRoute<void>(
-        builder: (_) => TvPlayerScreen(
-          channels: <Channel>[_asChannel(widget.movie)],
-          startIndex: 0,
+    try {
+      await Navigator.of(context).push(
+        TvCineRoute<void>(
+          builder: (_) => TvPlayerScreen(
+            channels: <Channel>[_asChannel(widget.movie)],
+            startIndex: 0,
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      _openingPlayer = false;
+    }
   }
 
   @override

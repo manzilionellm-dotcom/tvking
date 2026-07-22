@@ -70,7 +70,12 @@ final Map<String, (String Function(AppLocalizations), Set<ChannelGenre>)>
 };
 
 class CountryHomeView extends StatelessWidget {
-  const CountryHomeView({super.key, required this.channels, this.trailing});
+  const CountryHomeView(
+      {super.key, required this.channels, this.trailing, this.onRetry});
+
+  /// Action « Réessayer » de l'état vide (ré-import / rechargement). Optionnel :
+  /// si null, l'état vide affiche le message sans bouton d'action.
+  final VoidCallback? onRetry;
 
   /// Chaînes de CE pays (déjà filtrées par l'appelant).
   final List<Channel> channels;
@@ -125,6 +130,14 @@ class CountryHomeView extends StatelessWidget {
 
   Widget _build(BuildContext context, double scale, Set<String> favs,
       List<String> recentIds) {
+    // ÉTAT VIDE EXPLICITE (correctif d'audit — plainte « ça ne marche pas »
+    // sans feedback) : si aucune chaîne n'est disponible (import échoué,
+    // région bloquée), on n'affiche PLUS un écran quasi blanc mais un message
+    // clair et actionnable (vérifier la connexion + réessayer). Sans ça,
+    // l'utilisateur ne savait pas quoi faire.
+    if (channels.isEmpty) {
+      return _emptyState(context, scale);
+    }
     // Populaires, puis on pousse les chaînes mortes au fond (santé).
     final List<Channel> popular = ChannelHealthRepository.instance.sortByHealth(
         PopularityRepository.instance.getPopularChannels(channels, top: 12));
@@ -261,6 +274,58 @@ class CountryHomeView extends StatelessWidget {
   }
 
   // ---- Sous-widgets ----
+
+  /// État vide actionnable : message clair + bouton « Réessayer » (si
+  /// [onRetry] fourni). Couleurs/typo via AppColors/AppTextStyles.
+  Widget _emptyState(BuildContext context, double scale) {
+    return ColoredBox(
+      color: AppColors.maisonBg,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(Icons.tv_off_rounded,
+                  size: 56 * scale,
+                  color: AppColors.maisonInk.withValues(alpha: 0.35)),
+              SizedBox(height: 16 * scale),
+              Text(
+                context.l10n.gridEmptyTitle,
+                textAlign: TextAlign.center,
+                style: AppTextStyles.maisonSection.copyWith(fontSize: 20 * scale),
+              ),
+              SizedBox(height: 10 * scale),
+              Text(
+                context.l10n.countryHomeEmptyBody,
+                textAlign: TextAlign.center,
+                style: AppTextStyles.maisonProgram.copyWith(fontSize: 14 * scale),
+              ),
+              if (onRetry != null) ...<Widget>[
+                SizedBox(height: 20 * scale),
+                Material(
+                  color: AppColors.black7Red,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: onRetry,
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: 22 * scale, vertical: 12 * scale),
+                      child: Text(
+                        context.l10n.buttonRetry,
+                        style: AppTextStyles.maisonCta.copyWith(fontSize: 14 * scale),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _textScaleToggle(BuildContext context, double scale) {
     final bool big = TextScaleRepository.instance.isBig;

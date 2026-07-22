@@ -168,6 +168,7 @@
   "refreshDoneCount": "Actualizado: {count} lista(s).",
   "errorWithMessage": "Error: {error}",
   "gridEmptyTitle": "No hay canales aquí",
+  "countryHomeEmptyBody": "Aún no hay canales que mostrar. Comprueba tu conexión a Internet y vuelve a importar tu fuente.",
   "gridEmptySubtitle": "Añade una lista o ajusta tus filtros.",
   "categoriesTitle": "Categorías",
   "categoriesEmpty": "No hay canales — añade primero una lista.",

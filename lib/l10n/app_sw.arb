@@ -168,6 +168,7 @@
   "refreshDoneCount": "Imesasishwa: orodha {count}.",
   "errorWithMessage": "Hitilafu: {error}",
   "gridEmptyTitle": "Hakuna chaneli hapa",
+  "countryHomeEmptyBody": "Hakuna vituo vya kuonyesha bado. Angalia muunganisho wako wa Intaneti, kisha uingize chanzo chako tena.",
   "gridEmptySubtitle": "Ongeza orodha au rekebisha vichujio vyako.",
   "categoriesTitle": "Aina",
   "categoriesEmpty": "Hakuna chaneli — ongeza orodha kwanza.",

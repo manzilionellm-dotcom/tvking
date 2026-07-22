@@ -168,6 +168,7 @@
   "refreshDoneCount": "Uppdaterat: {count} spellista/-or.",
   "errorWithMessage": "Fel: {error}",
   "gridEmptyTitle": "Inga kanaler här",
+  "countryHomeEmptyBody": "Inga kanaler att visa ännu. Kontrollera din internetanslutning och importera din källa igen.",
   "gridEmptySubtitle": "Lägg till en spellista eller justera dina filter.",
   "categoriesTitle": "Kategorier",
   "categoriesEmpty": "Inga kanaler — lägg till en spellista först.",

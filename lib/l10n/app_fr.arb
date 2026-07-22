@@ -348,6 +348,7 @@
     }
   },
   "gridEmptyTitle": "Aucune chaîne ici",
+  "countryHomeEmptyBody": "Aucune chaîne à afficher pour l'instant. Vérifie ta connexion Internet, puis relance l'import de ta source.",
   "@gridEmptyTitle": {
     "description": "Texte UI : gridEmptyTitle"
   },

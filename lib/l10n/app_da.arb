@@ -168,6 +168,7 @@
   "refreshDoneCount": "Opdateret: {count} playliste(r).",
   "errorWithMessage": "Fejl: {error}",
   "gridEmptyTitle": "Ingen kanaler her",
+  "countryHomeEmptyBody": "Ingen kanaler at vise endnu. Tjek din internetforbindelse, og genimportér din kilde.",
   "gridEmptySubtitle": "Tilføj en playliste eller juster dine filtre.",
   "categoriesTitle": "Kategorier",
   "categoriesEmpty": "Ingen kanaler — tilføj en playliste først.",

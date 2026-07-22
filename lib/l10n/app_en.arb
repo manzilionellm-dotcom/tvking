@@ -169,6 +169,7 @@
   "refreshDoneCount": "Refreshed: {count} playlist(s).",
   "errorWithMessage": "Error: {error}",
   "gridEmptyTitle": "No channels here",
+  "countryHomeEmptyBody": "No channels to show yet. Check your Internet connection, then re-import your source.",
   "gridEmptySubtitle": "Add a playlist or adjust your filters.",
   "categoriesTitle": "Categories",
   "categoriesEmpty": "No channels — add a playlist first.",

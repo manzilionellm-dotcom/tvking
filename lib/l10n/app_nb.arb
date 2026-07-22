@@ -168,6 +168,7 @@
   "refreshDoneCount": "Oppdatert: {count} spilleliste(r).",
   "errorWithMessage": "Feil: {error}",
   "gridEmptyTitle": "Ingen kanaler her",
+  "countryHomeEmptyBody": "Ingen kanaler å vise ennå. Sjekk internettforbindelsen din, og importer kilden på nytt.",
   "gridEmptySubtitle": "Legg til en spilleliste eller juster filtrene.",
   "categoriesTitle": "Kategorier",
   "categoriesEmpty": "Ingen kanaler — legg til en spilleliste først.",

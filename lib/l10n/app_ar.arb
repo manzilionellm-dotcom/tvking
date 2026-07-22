@@ -168,6 +168,7 @@
   "refreshDoneCount": "تم التحديث: {count} قائمة تشغيل.",
   "errorWithMessage": "خطأ: {error}",
   "gridEmptyTitle": "لا توجد قنوات هنا",
+  "countryHomeEmptyBody": "لا توجد قنوات لعرضها بعد. تحقق من اتصالك بالإنترنت ثم أعد استيراد مصدرك.",
   "gridEmptySubtitle": "أضف قائمة تشغيل أو عدّل عوامل التصفية.",
   "categoriesTitle": "الفئات",
   "categoriesEmpty": "لا توجد قنوات — أضف قائمة تشغيل أولاً.",
