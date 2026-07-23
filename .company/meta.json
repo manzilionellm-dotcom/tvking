@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "app": "TV King (version TV / 10-foot UI)",
+  "framework": "Next.js 16 (App Router) + React 19, empaqueté en APK WebView",
+  "scope": "TV Box — version TV uniquement (le pendant téléphone /fone est hors périmètre)",
+  "transformation_done": false,
+  "notes": "USINE APP v2 adapté à la réalité web/TV (pas Flutter/Media3). Aucune fabrication de surface native inexistante."
+}

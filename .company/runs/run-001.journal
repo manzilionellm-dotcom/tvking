@@ -1,0 +1,22 @@
+# Run 001 — Fondations qualité (version TV)
+
+Branche : claude/tv-box-version-tv-6m5rph
+Mode : MODE T (adapté web/TV) — périmètre borné, une PR.
+
+## T0 — Baseline mesurée (2026-07-23, commandes exécutées)
+- `npm ci` : OK | source: exécution | confiance: haute
+- `eslint .` : exit 0, 0 warning | source: exécution
+- `npm run build` : exit 0, 115 pages statiques, TS OK | source: exécution
+- Tests : AUCUN (pas de script `test`, 0 fichier) | source: inspection
+- Observabilité : AUCUNE (pas d'error boundary, pas de logger) | source: inspection
+- Données : mock (app/lib/data.ts, dégradés) | source: inspection
+
+## Journal (case cochée = phase committée)
+- [ ] 1. Mémoire + journal + baseline T0
+- [ ] 2. Outillage de test (vitest) + scripts test/typecheck
+- [ ] 3. Logique pure testable : spatial.ts, focusMemory.ts, telemetry.ts + tests
+- [ ] 4. TV-UX : restauration du focus + touche RETOUR (Escape) cohérente
+- [ ] 5. Lecteur : fix play/pause (Espace) + RETOUR pour quitter
+- [ ] 6. Observabilité : error.tsx + global-error.tsx (PII-free)
+- [ ] 7. Gate CI web (ci.yml) + budget de taille (size-budget.mjs)
+- [ ] 8. QA finale (lint+typecheck+test+build verts) + commit + push + rapport
