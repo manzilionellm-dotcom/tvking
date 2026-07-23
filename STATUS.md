@@ -7,6 +7,57 @@
 
 ---
 
+## Session (2026-07-23) — Console MAÎTRE : 4 bugs de prod corrigés + bout-en-bout testé
+
+Branche : `claude/panel-master-console-g8kz0x-mycjlu` (reprise de
+`claude/panel-master-console-g8kz0x` au commit 5cd9688). Mission : rendre la
+SECTION MAÎTRE du panel 100 % fonctionnelle et testée — plus jamais d'écran
+noir chez les testeurs.
+
+### Bugs de production corrigés (backend `cloudflare/` + panel `admin-panel/`)
+1. **Piège « mondomaine.com »** : toute façade sur un domaine d'EXEMPLE
+   (mondomaine / ton-domaine / example / exemple) est REFUSÉE côté serveur
+   (`validateFacadeBase` → `example_domain`, message actionnable). Panel :
+   placeholder neutre + alerte dès la saisie (`EXAMPLE_FACADE_RX`).
+2. **Correctif structurel n°1** : `rewriteM3uFacade` — au changement de
+   façade, les URLs bâties sur l'ANCIENNE façade (ou sur un domaine d'exemple
+   hérité) sont reconstruites à l'enregistrement ; le PUT renvoie le M3U
+   stocké (`m3u`, `rebuilt`, `rebuild_note`) et le panel se resynchronise.
+   Filet AU SERVICE (`handleMasterListServe`) : lignes d'exemple héritées
+   réécrites à la volée sur la façade courante.
+3. **Lecture fournisseur robuste** : `_fetchProviderRetry` (timeout + 1
+   retry), repli `get.php` (M3U) quand player_api est illisible, identité de
+   diffusion substituée dans le repli (`_swapXtreamCreds`), erreurs traduites
+   en messages actionnables (`_copyErrorMessage`).
+4. **/diag ↔ /simulate cohérents** : la sonde « Chaîne jouable » NOMME l'hôte
+   fautif partout, détecte le domaine d'exemple des deux côtés, et le
+   simulateur applique le même régime « façade http/IP = ambre informatif »
+   (résolution du maître via la référence opaque).
+
+### Tests (tous verts : 15 fichiers smoke + tsc + build + node --check)
+- `facade_guard.smoke.mjs` (verrou façade + rewriteM3uFacade + creds swap).
+- `copy_fallback.smoke.mjs` (repli get.php, retry, confidentialité).
+- `master_e2e.smoke.mjs` : parcours COMPLET sur D1 factice via les VRAIS
+  handlers — liste (F1→F2), test à A par MAC + B par code, liste servie par
+  référence opaque, simulateur GREEN ×2, SONDE PARALLÈLE simultanée
+  (hôte/statut/latence journalisés) + mutualisation (même chaîne = même URL
+  = 1 connexion), legacy mondomaine → ROUGE nommé puis réparé, façade vide
+  → direct, liste vidée → bouquet, invisibilité admin_presence
+  (kind master/test), prolonger/révoquer.
+
+### Preuve « 2 téléphones » — outil livré, confirmation humaine EN ATTENTE
+- `tool/probe_two_testers.mjs` : sonde EN PARALLÈLE les flux de 2 testeurs
+  (HTTP 200 + octets qui coulent, latence 1er octet, hôte nommé — aucun
+  secret journalisé). Testé en local (succès ET échec). L'environnement de
+  cette session n'a PAS d'accès réseau sortant vers la prod (proxy 403) →
+  à lancer depuis une machine de l'exploitant :
+  `node tool/probe_two_testers.mjs <listeA.m3u> <listeB.m3u>`.
+- Il RESTE la preuve humaine : 2 téléphones réels qui lisent en même temps,
+  confirmés visuellement par l'exploitant (OK/photo). Ne pas déclarer la
+  mission finie sans ça.
+
+---
+
 ## Session (2026-07-17) — EPG « En direct » enfin visible + aperçu cliquable
 
 Branche : `claude/autonomous-mobile-tv-release-r21jqf` (reprise de
