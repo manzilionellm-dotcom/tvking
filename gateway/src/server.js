@@ -3,7 +3,7 @@
 // =========================================================
 import http from 'node:http';
 import os from 'node:os';
-import { config } from './config.js';
+import { config, publicBaseInfo, warnConfig } from './config.js';
 import { log } from './logger.js';
 import { metrics } from './metrics.js';
 import {
@@ -280,6 +280,67 @@ async function adminRoute(req, res, url, path) {
   if (path === '/admin/reload-users') {
     const r = await loadUsers();
     return sendJson(res, 200, { ok: true, ...r });
+  }
+
+  // ---- Auto-test de configuration (lisible à distance par le panel) ------
+  //  Boucle la VÉRIFIABILITÉ de bout en bout : le panel/diagnostic interroge
+  //  cet endpoint (authentifié) et sait, SANS deviner, si le gateway est en
+  //  état « vert » (façade https sondable, identité de diffusion réglée, ligne
+  //  fournisseur présente). RÈGLE D'OR : on n'expose AUCUN secret — que des
+  //  booléens et des valeurs déjà publiques (PUBLIC_BASE, nom d'utilisateur de
+  //  diffusion qui figure de toute façon dans le M3U servi). Jamais de mot de
+  //  passe (fournisseur ou diffusion), jamais l'hôte fournisseur.
+  if (path === '/admin/selftest') {
+    const info = publicBaseInfo();
+    const warnings = warnConfig();
+    // Message façade : réutilise l'avertissement centralisé (une seule vérité).
+    const facadeWarn = warnings.find((w) => w.code.startsWith('public_base_'));
+    const broadcastReady = !!(config.broadcastUser && config.broadcastPass);
+    const upstreamReady = !!(config.upstreamBase && config.upstreamUser && config.upstreamPass);
+
+    const checks = [];
+    const add = (key, level, label, detail, fix = '') => checks.push({ key, level, label, detail, fix });
+
+    // 1) Façade HTTPS sondable (le levier du « vert vérifiable »).
+    add('facade_https', info.probe ? 0 : 1, 'Façade HTTPS sondable',
+      info.probe
+        ? `PUBLIC_BASE en https + domaine (${info.base}) → sondable de bout en bout.`
+        : (facadeWarn ? facadeWarn.message : 'PUBLIC_BASE non sondable.'),
+      info.probe ? '' : 'Passe PUBLIC_BASE en https + domaine (Caddy, voir gateway/README).');
+
+    // 2) Identité de diffusion réglée (masque la ligne réelle dans le M3U).
+    add('broadcast_identity', broadcastReady ? 0 : 1, 'Identité de diffusion',
+      broadcastReady
+        ? `Identité « ${config.broadcastUser} » active (max ${config.broadcastMaxStreams} testeurs) → identifiants fournisseur masqués.`
+        : 'Aucune identité de diffusion → les URLs de test porteraient les identifiants fournisseur.',
+      broadcastReady ? '' : 'Renseigne BROADCAST_USER / BROADCAST_PASS dans le .env du gateway.');
+
+    // 3) Ligne fournisseur présente (sans jamais exposer les identifiants).
+    add('provider_line', upstreamReady ? 0 : 2, 'Ligne fournisseur configurée',
+      upstreamReady
+        ? `Ligne présente · plafond ${config.providerMaxConnections} connexion(s) amont.`
+        : 'Ligne fournisseur incomplète (UPSTREAM_BASE/USER/PASS).',
+      upstreamReady ? '' : 'Complète UPSTREAM_* dans le .env.');
+
+    const worst = checks.reduce((m, c) => Math.max(m, c.level), 0);
+    return sendJson(res, 200, {
+      ok: worst === 0,           // true = état « vert » vérifiable
+      level: worst,              // 0 vert · 1 ambre · 2 rouge
+      version: 'v500',           // repère de version (identité de diffusion)
+      facade: { base: info.base, probe: info.probe, reason: info.reason },
+      broadcast: {               // JAMAIS le mot de passe
+        configured: broadcastReady,
+        user: config.broadcastUser || '',
+        maxStreams: config.broadcastMaxStreams,
+      },
+      provider: {                // JAMAIS les identifiants ni l'hôte fournisseur
+        configured: upstreamReady,
+        maxConnections: config.providerMaxConnections,
+      },
+      checks,
+      warnings,
+      uptimeSec: Math.floor((Date.now() - START) / 1000),
+    });
   }
 
   // Gestion des familles / clones

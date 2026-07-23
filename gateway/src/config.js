@@ -141,59 +141,76 @@ export function validateConfig(cfg = config) {
 }
 
 // =========================================================
-//  warnConfig — avertissements NON bloquants au démarrage
+//  publicBaseInfo — classe PUBLIC_BASE (source unique de vérité)
 // =========================================================
-//  Pourquoi une fonction séparée de validateConfig : ces points ne DOIVENT PAS
-//  empêcher le démarrage (le gateway http/IP FONCTIONNE — les apps joignent la
-//  façade). Mais ils changent la VÉRIFIABILITÉ du diagnostic. On applique donc
-//  EXACTEMENT le même contrat que le Worker (validateFacadeBase) : seul
+//  Applique EXACTEMENT le même contrat que le Worker (validateFacadeBase) : seul
 //  `https + vrai domaine` est SONDABLE par le relais Cloudflare → diagnostic
-//  « vert » vérifiable. Le reste reste « informatif » (ambre). Aligner les deux
-//  côtés évite qu'un opérateur croie être « vert » alors que la façade n'est
-//  pas sondable. On AVERTIT clairement, on ne bloque pas.
-export function warnConfig(cfg = config) {
-  const warnings = [];
-  const add = (code, message) => warnings.push({ code, message });
-
+//  « vert » vérifiable. On centralise ici la classification pour que le
+//  démarrage (warnConfig) ET l'endpoint /admin/selftest disent la MÊME chose.
+//  Renvoie { base, probe, reason } : base = PUBLIC_BASE tel quel ; probe = true
+//  si sondable ; reason = '' si sondable, sinon la cause (missing|invalid|
+//  not_https|ip|not_domain). AUCUN secret ici (PUBLIC_BASE est public).
+export function publicBaseInfo(cfg = config) {
   const pb = cfg.publicBase;
-  if (!pb) {
-    add('public_base_missing',
-      'PUBLIC_BASE non défini : les playlists ne sont PAS réécrites sur la ' +
-      'façade → les apps reçoivent les URLs fournisseur (moins stable/privé). ' +
-      'Renseigne PUBLIC_BASE=https://ton-domaine (voir gateway/README).');
-    return warnings; // rien d'autre à analyser sans base publique.
-  }
-
+  if (!pb) return { base: '', probe: false, reason: 'missing' };
   let u = null;
-  try { u = new URL(pb); } catch (_) { /* URL illisible */ }
-  if (!u) {
-    add('public_base_invalid',
-      `PUBLIC_BASE invalide (« ${pb} ») : attendu http(s)://domaine, sans slash final.`);
-    return warnings;
-  }
-
+  try { u = new URL(pb); } catch (_) { return { base: pb, probe: false, reason: 'invalid' }; }
   const host = u.hostname;
   // Même heuristique que le Worker : IPv4 brute / IPv6 littéral = non sondable ;
   // domaine = au moins un point ET une lettre (ex. gw.mondomaine.com).
   const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':') || host.startsWith('[');
   const isDomain = !isIp && /[a-zA-Z]/.test(host) && host.includes('.');
+  if (u.protocol === 'https:' && isDomain) return { base: pb, probe: true, reason: '' };
+  const reason = u.protocol !== 'https:' ? 'not_https' : (isIp ? 'ip' : 'not_domain');
+  return { base: pb, probe: false, reason };
+}
 
-  if (u.protocol !== 'https:') {
-    add('public_base_not_https',
-      `PUBLIC_BASE en ${u.protocol.replace(':', '')} : tes apps joignent la ` +
-      'façade, mais le relais Cloudflare ne peut PAS la sonder → le diagnostic ' +
-      'reste « informatif » (ambre), jamais « vert ». Recommandé : https + ' +
-      'domaine (Caddy + Let’s Encrypt, voir gateway/README).');
-  } else if (isIp) {
-    add('public_base_ip',
-      'PUBLIC_BASE en https mais sur une IP brute : le relais Cloudflare ne ' +
-      'sonde pas une IP → diagnostic « informatif ». Recommandé : un vrai ' +
-      'domaine (ex. https://gw.mondomaine.com).');
-  } else if (!isDomain) {
-    add('public_base_not_domain',
-      'PUBLIC_BASE sans domaine complet : joignable par les apps seulement → ' +
-      'diagnostic « informatif ». Recommandé : un domaine complet en https.');
+// =========================================================
+//  warnConfig — avertissements NON bloquants au démarrage
+// =========================================================
+//  Pourquoi une fonction séparée de validateConfig : ces points ne DOIVENT PAS
+//  empêcher le démarrage (le gateway http/IP FONCTIONNE — les apps joignent la
+//  façade). Mais ils changent la VÉRIFIABILITÉ du diagnostic. On s'appuie sur
+//  publicBaseInfo (contrat du Worker) : si la façade n'est pas sondable, on
+//  AVERTIT clairement (sans bloquer) pour qu'un opérateur ne se croie pas
+//  « vert » alors que la façade ne l'est pas.
+const PUBLIC_BASE_WARN = {
+  missing: [
+    'public_base_missing',
+    'PUBLIC_BASE non défini : les playlists ne sont PAS réécrites sur la ' +
+    'façade → les apps reçoivent les URLs fournisseur (moins stable/privé). ' +
+    'Renseigne PUBLIC_BASE=https://ton-domaine (voir gateway/README).',
+  ],
+  invalid: [
+    'public_base_invalid',
+    'PUBLIC_BASE invalide : attendu http(s)://domaine, sans slash final.',
+  ],
+  not_https: [
+    'public_base_not_https',
+    'PUBLIC_BASE en http : tes apps joignent la façade, mais le relais ' +
+    'Cloudflare ne peut PAS la sonder → le diagnostic reste « informatif » ' +
+    '(ambre), jamais « vert ». Recommandé : https + domaine (Caddy + Let’s ' +
+    'Encrypt, voir gateway/README).',
+  ],
+  ip: [
+    'public_base_ip',
+    'PUBLIC_BASE en https mais sur une IP brute : le relais Cloudflare ne ' +
+    'sonde pas une IP → diagnostic « informatif ». Recommandé : un vrai ' +
+    'domaine (ex. https://gw.mondomaine.com).',
+  ],
+  not_domain: [
+    'public_base_not_domain',
+    'PUBLIC_BASE sans domaine complet : joignable par les apps seulement → ' +
+    'diagnostic « informatif ». Recommandé : un domaine complet en https.',
+  ],
+};
+
+export function warnConfig(cfg = config) {
+  const warnings = [];
+  const info = publicBaseInfo(cfg);
+  if (!info.probe) {
+    const [code, message] = PUBLIC_BASE_WARN[info.reason] || PUBLIC_BASE_WARN.invalid;
+    warnings.push({ code, message });
   }
-
   return warnings;
 }

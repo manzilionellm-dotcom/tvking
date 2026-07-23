@@ -104,6 +104,25 @@ curl -fsS https://gw.7themotion.com/health           # → {"ok":true,...}
 curl -sI https://gw.7themotion.com/health | grep -i strict   # TLS servi par Caddy
 ```
 
+**Auto-test de configuration (état « vert » lisible à distance) :**
+```bash
+# Remplace <ADMIN_TOKEN> par la valeur de .env (ne la colle nulle part ailleurs).
+curl -fsS -H "Authorization: Bearer <ADMIN_TOKEN>" https://gw.7themotion.com/admin/selftest
+```
+Réponse attendue (état « vert ») — **aucun secret n'y figure**, uniquement des
+booléens et des valeurs publiques :
+```json
+{ "ok": true, "level": 0, "version": "v500",
+  "facade":   { "base": "https://gw.7themotion.com", "probe": true, "reason": "" },
+  "broadcast":{ "configured": true, "user": "diffusion", "maxStreams": 100 },
+  "provider": { "configured": true, "maxConnections": 5 },
+  "checks": [ /* facade_https, broadcast_identity, provider_line → level 0 */ ],
+  "warnings": [] }
+```
+> `ok:true` + `facade.probe:true` = façade **sondable** → le Diagnostic du panel
+> passera au **vert**. Si `probe:false`, le champ `warnings` explique quoi
+> corriger (le plus souvent : PUBLIC_BASE pas en https + domaine).
+
 ---
 
 ## 5. Panel — pointer la façade HTTPS + identité de diffusion
