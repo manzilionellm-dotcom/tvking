@@ -1,0 +1,5 @@
+{
+  "staticJsBytes": 663237,
+  "unit": "bytes",
+  "metric": "sum(.next/static/**/*.js)"
+}
