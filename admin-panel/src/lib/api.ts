@@ -1007,9 +1007,15 @@ export const mastersApi = {
     request<{
       ok: boolean; mac: string; count: number;
       gateway_base: string; gateway_user: string; has_gateway_pass: boolean;
+      // Le M3U réellement STOCKÉ : si la façade a changé, le serveur a
+      // reconstruit les URLs (`rebuilt` = combien) — le panel se resynchronise
+      // dessus au lieu de garder des URLs périmées en mémoire.
+      m3u?: string; rebuilt?: number;
+      // Façade retirée alors que des URLs pointaient dessus → conseil honnête.
+      rebuild_note?: string;
       // Façade acceptée mais NON sondable par le relais (http/IP) :
       // facade_probe=false + une note honnête à afficher (ambre).
-      facade_probe: boolean; facade_note: string;
+      facade_probe?: boolean; facade_note?: string;
     }>('/api/v1/masters/test-list', {
       method: 'PUT',
       body: {

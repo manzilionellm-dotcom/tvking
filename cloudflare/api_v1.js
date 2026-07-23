@@ -3357,6 +3357,17 @@ async function ensureMasterListTable(env) {
 //      Let's Encrypt, voir gateway/README) : seul cas 100 % vérifiable.
 //  Renvoie { ok, base, reason, probe }. `base` = origine propre
 //  (schéma+hôte+port), sans path ni slash final.
+
+// PIÈGE DU DOMAINE D'EXEMPLE (cause n°1 d'écran noir constatée en prod) : le
+// placeholder/les docs montraient « tv.mondomaine.com » et des exploitants
+// l'ont ENREGISTRÉ tel quel comme façade → toutes les URLs de test pointaient
+// vers un domaine INEXISTANT → DNS/530 → écran noir sur TOUS les appareils.
+// On refuse donc NET, côté serveur, tout hôte d'exemple connu (mondomaine,
+// ton-domaine, example/exemple) — le message dit exactement quoi faire.
+// Exportée pour que simulate/diag et les smoke tests partagent LE MÊME motif.
+export const EXAMPLE_FACADE_HOST_RX =
+  /(^|\.)(mondomaine|ton-domaine|tondomaine|example|exemple)\.(com|net|org|fr|tld)$/i;
+
 export function validateFacadeBase(raw) {
   const s = String(raw || '').trim();
   if (!s) return { ok: false, base: '', reason: 'empty', probe: false };
@@ -3364,6 +3375,12 @@ export function validateFacadeBase(raw) {
   let u;
   try { u = new URL(s); } catch (_) { return { ok: false, base: '', reason: 'bad_url', probe: false }; }
   const host = u.hostname;
+  // Domaine d'EXEMPLE (mondomaine.com…) → REFUS franc : il n'existe pas, tout
+  // ce qui serait bâti dessus finirait en écran noir. Jamais « accepté quand
+  // même » : c'est le piège exact qu'on corrige.
+  if (EXAMPLE_FACADE_HOST_RX.test(host)) {
+    return { ok: false, base: '', reason: 'example_domain', probe: false };
+  }
   // IPv4 brute ou IPv6 littéral (`[…]`) → le relais ne les joint pas.
   const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':') || host.startsWith('[');
   // Domaine = au moins un point ET une lettre (ex. tv.mondomaine.com).
@@ -3384,15 +3401,17 @@ export function validateFacadeBase(raw) {
 export function facadeReason(reason) {
   switch (reason) {
     case 'empty': return '';
+    case 'example_domain':
+      return 'Ce domaine est l’EXEMPLE de la documentation — il n’existe pas : toutes les URLs de test pointeraient dans le vide (écran noir garanti). Mets TON vrai domaine de gateway (celui que tu as configuré avec Caddy), ou laisse le champ VIDE pour une lecture directe.';
     case 'no_scheme':
     case 'bad_url':
-      return 'URL de façade invalide : commence par http(s):// (ex. https://tv.mondomaine.com).';
+      return 'URL de façade invalide : commence par http(s):// (ton vrai domaine de gateway, ex. https://tv.TON-vrai-domaine.com).';
     case 'not_https':
       return 'Façade en http : tes apps la joignent, mais le relais Cloudflare ne peut PAS la vérifier — les contrôles « façade/chaîne » du diagnostic seront informatifs (ambre). Recommandé : https + domaine (Caddy + Let’s Encrypt, voir gateway/README).';
     case 'ip_literal':
       return 'Façade par IP : tes apps la joignent, mais le relais Cloudflare ne joint pas une IP brute — les contrôles « façade/chaîne » du diagnostic seront informatifs (ambre). Recommandé : un vrai domaine en https (Caddy + Let’s Encrypt).';
     case 'not_domain':
-      return 'Hôte sans domaine : joignable par tes apps seulement — contrôles du diagnostic informatifs. Recommandé : un domaine complet en https (ex. tv.mondomaine.com).';
+      return 'Hôte sans domaine : joignable par tes apps seulement — contrôles du diagnostic informatifs. Recommandé : un domaine complet en https (ton vrai domaine de gateway).';
     default: return 'Façade invalide.';
   }
 }
@@ -3485,7 +3504,6 @@ async function handleMasterTestListPut(request, env) {
   const gwUser = String(body?.gateway_user || '').trim();
   const gwPassRaw = body?.gateway_pass;
   const gwPass = (typeof gwPassRaw === 'string') ? gwPassRaw.trim() : null;
-  const count = _countM3uChannels(m3u);
   await ensureMasterListTable(env);
   // Liste vide ET pas de gateway ET pas d'identité → on efface la ligne. Sinon
   // on garde les réglages même sans chaînes (le maître les a posés une fois).
@@ -3493,17 +3511,35 @@ async function handleMasterTestListPut(request, env) {
     await env.DB.prepare('DELETE FROM master_test_list WHERE mac = ?').bind(mac).run();
     return jsonResp({ ok: true, mac, count: 0, gateway_base: '', gateway_user: '', has_gateway_pass: false });
   }
-  // Lit l'ancien mot de passe pour ne pas l'effacer si le panel ne le renvoie
-  // pas (le secret n'est jamais réaffiché → il n'est pas dans le corps).
+  // Lit la ligne PRÉCÉDENTE : l'ancien mot de passe (le secret n'est jamais
+  // réaffiché → il n'est pas dans le corps, on ne l'écrase pas par du vide) ET
+  // l'ancienne façade (pour reconstruire les URLs si elle a changé).
   const prev = await env.DB
-    .prepare('SELECT gateway_pass FROM master_test_list WHERE mac = ?').bind(mac).first();
+    .prepare('SELECT gateway_base, gateway_pass FROM master_test_list WHERE mac = ?').bind(mac).first();
   const finalPass = (gwPass && gwPass.length) ? gwPass : (prev && prev.gateway_pass) || null;
+  // CORRECTIF STRUCTUREL n°1 : si la façade a changé, les URLs déjà bâties sur
+  // l'ANCIENNE façade (ou sur un domaine d'exemple hérité) sont reconstruites
+  // sur la NOUVELLE au moment même de l'enregistrement — plus jamais de liste
+  // qui pointe sur un hôte périmé après un changement de façade.
+  const prevBase = _cleanGatewayBase(prev && prev.gateway_base);
+  const rw = rewriteM3uFacade(m3u, prevBase, gateway);
+  const finalM3u = rw.m3u;
+  const count = _countM3uChannels(finalM3u);
   await env.DB
     .prepare('INSERT OR REPLACE INTO master_test_list (mac, m3u, gateway_base, gateway_user, gateway_pass, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(mac, m3u || '', gateway || null, gwUser || null, gwUser ? finalPass : null, Date.now()).run();
+    .bind(mac, finalM3u || '', gateway || null, gwUser || null, gwUser ? finalPass : null, Date.now()).run();
   return jsonResp({
     ok: true, mac, count, gateway_base: gateway,
     gateway_user: gwUser, has_gateway_pass: !!(gwUser && finalPass),
+    // Le M3U réellement stocké (URLs reconstruites) : le panel se resynchronise
+    // dessus au lieu de garder en mémoire des URLs périmées.
+    m3u: finalM3u,
+    rebuilt: rw.changed,
+    // Façade retirée alors que des URLs pointaient encore dessus : impossible
+    // de deviner l'URL fournisseur d'origine → conseil honnête et actionnable.
+    rebuild_note: rw.stale > 0
+      ? `${rw.stale} chaîne(s) pointent encore sur l’ancienne façade : clique « Recopier mes chaînes » puis ré-enregistre pour les rebâtir en lecture directe.`
+      : '',
     // Façade non sondable par le relais (http/IP) → note honnête à afficher.
     facade_probe: !!fac.probe,
     facade_note: gateway && !fac.probe ? facadeReason(fac.reason) : '',
@@ -3533,6 +3569,49 @@ async function _fetchWithTimeout(url, ms = 12_000, init = {}) {
   try {
     return await fetch(url, { ...init, signal: ctrl.signal, redirect: 'follow' });
   } finally { clearTimeout(t); }
+}
+
+// Fetch ROBUSTE vers un fournisseur : timeout + UN retry (les panels IPTV
+// tombent souvent en 5xx/coupure fugace — un seul nouvel essai suffit à
+// absorber l'à-coup sans masquer une vraie panne). Erreur réseau ou 5xx →
+// on attend un court instant et on rejoue UNE fois.
+async function _fetchProviderRetry(url, ms = 12_000) {
+  let first;
+  try {
+    first = await _fetchWithTimeout(url, ms);
+    if (first.status < 500) return first; // 2xx/3xx/4xx : réponse franche, on la garde
+  } catch (_) { /* réseau/timeout → retry */ }
+  await new Promise((r) => setTimeout(r, 600));
+  try {
+    return await _fetchWithTimeout(url, ms);
+  } catch (e) {
+    if (first) return first; // le 5xx initial est plus parlant qu'un 2e timeout
+    throw e;
+  }
+}
+
+// Message ACTIONNABLE d'une erreur de copie fournisseur : au lieu d'un code
+// brut (« provider_http_512 »), on dit ce qui se passe ET quoi faire.
+function _copyErrorMessage(e) {
+  const raw = String((e && e.message) || e || '');
+  const m = raw.match(/^provider_http_(\d+)$/);
+  if (m) {
+    const st = Number(m[1]);
+    if (st === 401 || st === 403) {
+      return `Le fournisseur refuse les identifiants (HTTP ${st}). Vérifie utilisateur/mot de passe de la ligne (ou que la ligne n’est pas expirée).`;
+    }
+    if (st >= 500) {
+      return `Le serveur du fournisseur est en erreur (HTTP ${st}) — j’ai réessayé, même réponse. Réessaie dans quelques minutes, ou vérifie la ligne chez le fournisseur.`;
+    }
+    return `Le fournisseur a répondu HTTP ${st}. Vérifie que le lien collé est exact (serveur, port, identifiants).`;
+  }
+  if (raw === 'provider_bad_streams' || raw === 'provider_bad_vod') {
+    return 'Le fournisseur a répondu mais sa liste est illisible (ni player_api exploitable, ni repli M3U get.php). Vérifie les identifiants, ou colle directement ton URL M3U complète.';
+  }
+  if (/abort/i.test(raw)) {
+    return 'Le fournisseur n’a pas répondu à temps (délai dépassé, réessayé une fois). Sa panne est probablement passagère — réessaie dans un instant.';
+  }
+  return 'Impossible de lire les chaînes : ' + raw;
 }
 
 // Lit le PREMIER item de source d'une MAC (trio Xtream ou M3U).
@@ -3567,7 +3646,8 @@ async function _readFirstSource(env, mac) {
 // authentifie l'identité de diffusion). Sans identité → repli sur les
 // identifiants fournisseur (fonctionne si le gateway fait un passthrough, mais
 // moins privé : voir README).
-async function _copyXtream(src, gatewayBase = '', gwUser = '', gwPass = '') {
+// Exportée pour le smoke test du REPLI de lecture (copy_fallback.smoke.mjs).
+export async function _copyXtream(src, gatewayBase = '', gwUser = '', gwPass = '') {
   // Le fournisseur est joint par son DOMAINE (le Worker le fetch sans souci).
   const base = String(src.server_url || '').replace(/\/+$/, '');
   const play = (gatewayBase || base).replace(/\/+$/, ''); // origine de LECTURE
@@ -3581,15 +3661,49 @@ async function _copyXtream(src, gatewayBase = '', gwUser = '', gwPass = '') {
   // La LISTE est toujours lue avec les identifiants FOURNISSEUR (côté Worker).
   const auth = `username=${encodeURIComponent(provUser)}&password=${encodeURIComponent(provPass)}`;
   let cats = [];
-  let streams = [];
+  let streams = null;
+  // LECTURE ROBUSTE (constatée fragile en prod) : player_api peut renvoyer un
+  // 5xx fugace, du HTML d'erreur ou un JSON non-tableau. On lit avec timeout +
+  // retry, et si player_api reste illisible on REPLIE sur get.php (M3U) — la
+  // même ligne exposée autrement — avant de renoncer.
+  let playerApiFailure = null; // mémorise pourquoi player_api a échoué (message)
+  try {
+    const sr = await _fetchProviderRetry(`${base}/player_api.php?${auth}&action=get_live_streams`);
+    if (!sr.ok) throw new Error('provider_http_' + sr.status);
+    const parsed = await sr.json().catch(() => null); // HTML/garbage → null, pas un crash
+    if (Array.isArray(parsed)) streams = parsed;
+    else playerApiFailure = new Error('provider_bad_streams');
+  } catch (e) { playerApiFailure = e; }
+
+  if (streams === null) {
+    // --- REPLI get.php : la playlist M3U officielle de la même ligne --------
+    const m3uUrl = `${base}/get.php?${auth}&type=m3u_plus&output=ts`;
+    let fb = null;
+    try { fb = await _fetchProviderRetry(m3uUrl); } catch (_) { /* réseau mort */ }
+    if (fb && fb.ok) {
+      const text = await fb.text();
+      const out = parseM3uChannelsText(text, gatewayBase);
+      if (out.total > 0) {
+        // Identité de diffusion : le M3U get.php porte les identifiants
+        // FOURNISSEUR dans ses chemins /live/u/p/… — on les remplace par
+        // l'identité partagée quand elle est réglée (confidentialité intacte
+        // même en mode repli).
+        if (useBroadcast) {
+          for (const c of out.categories) {
+            for (const ch of c.channels) ch.url = _swapXtreamCreds(ch.url, provUser, provPass, user, pass);
+          }
+        }
+        return { type: 'xtream', ...out, fallback: 'get_php' };
+      }
+    }
+    // Ni player_api ni get.php : on remonte la cause player_api (plus parlante).
+    throw playerApiFailure || new Error('provider_bad_streams');
+  }
+
   try {
     const cr = await _fetchWithTimeout(`${base}/player_api.php?${auth}&action=get_live_categories`);
     if (cr.ok) cats = await cr.json();
   } catch (_) { /* catégories optionnelles */ }
-  const sr = await _fetchWithTimeout(`${base}/player_api.php?${auth}&action=get_live_streams`);
-  if (!sr.ok) throw new Error('provider_http_' + sr.status);
-  streams = await sr.json();
-  if (!Array.isArray(streams)) throw new Error('provider_bad_streams');
 
   const catName = new Map();
   for (const c of Array.isArray(cats) ? cats : []) {
@@ -3616,6 +3730,38 @@ async function _copyXtream(src, gatewayBase = '', gwUser = '', gwPass = '') {
   return { type: 'xtream', categories: [...groups.values()], truncated, total };
 }
 
+// Remplace les identifiants FOURNISSEUR par l'identité de DIFFUSION dans une
+// URL Xtream standard (/live|movie|series/user/pass/…). Sert au REPLI get.php
+// du copieur : le M3U du fournisseur embarque ses identifiants dans le chemin,
+// on ne doit JAMAIS les laisser fuiter dans la liste servie quand une identité
+// partagée est réglée. Best-effort : URL non conforme → renvoyée telle quelle.
+// Exportée pour les smoke tests.
+export function _swapXtreamCreds(u, provUser, provPass, newUser, newPass) {
+  try {
+    const url = new URL(u);
+    const parts = url.pathname.split('/'); // ['', 'live', user, pass, '55.ts']
+    const kind = parts[1];
+    if ((kind === 'live' || kind === 'movie' || kind === 'series')
+      && decodeURIComponent(parts[2] || '') === String(provUser)
+      && decodeURIComponent(parts[3] || '') === String(provPass)) {
+      parts[2] = encodeURIComponent(String(newUser));
+      parts[3] = encodeURIComponent(String(newPass));
+      url.pathname = parts.join('/');
+      return url.toString();
+    }
+    // Variante « courte » sans préfixe : /user/pass/55.ts (répandue chez les
+    // panels Xtream) — mêmes identifiants aux positions 1 et 2.
+    if (decodeURIComponent(parts[1] || '') === String(provUser)
+      && decodeURIComponent(parts[2] || '') === String(provPass)) {
+      parts[1] = encodeURIComponent(String(newUser));
+      parts[2] = encodeURIComponent(String(newPass));
+      url.pathname = parts.join('/');
+      return url.toString();
+    }
+    return u;
+  } catch (_) { return u; }
+}
+
 // Réécrit l'ORIGINE d'une URL vers le gateway (garde path + query). Sert à
 // faire jouer une chaîne M3U via la façade (stable + privé). Best-effort :
 // URL invalide → renvoyée telle quelle.
@@ -3633,16 +3779,68 @@ export function _rewriteOrigin(u, gatewayBase) {
   } catch (_) { return u; }
 }
 
+// =========================================================
+//  CORRECTIF STRUCTUREL n°1 — les URLs suivent la façade
+// =========================================================
+//  Problème constaté en prod : la liste de test stockait des URLs BÂTIES sur
+//  la façade du moment. Changer la façade + « Enregistrer » ne les corrigeait
+//  pas → les testeurs continuaient de pointer sur l'ancien hôte (voire sur le
+//  domaine d'exemple) → écran noir persistant.
+//  Cette fonction PURE reconstruit une liste M3U quand la façade change :
+//    • lignes dont l'ORIGINE == oldBase (ancienne façade) → réécrites sur
+//      newBase (nouvelle façade) ;
+//    • lignes sur un DOMAINE D'EXEMPLE (mondomaine…) → TOUJOURS réécrites si
+//      une vraie façade est fournie (elles ne sont jamais légitimes) ;
+//    • toutes les autres lignes (ajouts manuels, autres hôtes, lignes #…) →
+//      INTACTES : on ne casse jamais une URL qu'on ne connaît pas.
+//  Renvoie { m3u, changed, stale } :
+//    changed = nb d'URLs réécrites ; stale = nb d'URLs qu'on aurait DÛ
+//    réécrire mais sans nouvelle façade pour le faire (newBase vide) — le
+//    panel affiche alors un conseil « Recopie tes chaînes » honnête.
+//  Exportée pour worker.js (filet au service) et les smoke tests.
+export function rewriteM3uFacade(m3u, oldBase, newBase) {
+  const text = String(m3u || '');
+  if (!text) return { m3u: text, changed: 0, stale: 0 };
+  const oldOrigin = String(oldBase || '').replace(/\/+$/, '').toLowerCase();
+  const gw = String(newBase || '').replace(/\/+$/, '');
+  let changed = 0;
+  let stale = 0;
+  const out = text.split(/\r?\n/).map((raw) => {
+    const line = raw.trim();
+    // Commentaires (#EXTINF…), lignes vides : jamais touchés.
+    if (!line || line.startsWith('#')) return raw;
+    let u;
+    try { u = new URL(line); } catch (_) { return raw; } // URL illisible → intacte
+    const origin = `${u.protocol}//${u.host}`.toLowerCase();
+    const needsRewrite =
+      (oldOrigin && origin === oldOrigin) || EXAMPLE_FACADE_HOST_RX.test(u.hostname);
+    if (!needsRewrite || origin === gw.toLowerCase()) return raw;
+    if (!gw) { stale += 1; return raw; } // pas de nouvelle façade → on signale
+    changed += 1;
+    return _rewriteOrigin(line, gw);
+  });
+  return { m3u: out.join('\n'), changed, stale };
+}
+
 // Copie M3U : parse #EXTINF (group-title = catégorie, tvg-logo, nom) + URL.
 // [gatewayBase] : si fourni, l'origine de chaque URL est réécrite vers le
 // gateway (le gateway doit proxifier ces chemins — cas d'une façade Xtream).
 async function _copyM3u(src, gatewayBase = '') {
   // La façade est déjà validée (https + domaine) en amont ; on la prend telle
-  // quelle. La playlist source est lue par son URL d'origine (domaine).
-  const res = await _fetchWithTimeout(String(src.m3u_url || ''));
+  // quelle. La playlist source est lue par son URL d'origine (domaine), avec
+  // timeout + un retry (fournisseurs capricieux).
+  const res = await _fetchProviderRetry(String(src.m3u_url || ''));
   if (!res.ok) throw new Error('provider_http_' + res.status);
   const text = await res.text();
-  const lines = text.split(/\r?\n/);
+  const out = parseM3uChannelsText(text, gatewayBase);
+  return { type: 'm3u', ...out };
+}
+
+// Parse un TEXTE M3U en { categories, truncated, total } — brique PURE
+// partagée par la copie M3U et par le REPLI get.php du copieur Xtream.
+// Exportée pour les smoke tests (repli de lecture).
+export function parseM3uChannelsText(text, gatewayBase = '') {
+  const lines = String(text || '').split(/\r?\n/);
   const groups = new Map();
   const seen = new Set(); // dédoublonnage par URL (qualité VIP : pas de doublon)
   let truncated = false;
@@ -3669,7 +3867,7 @@ async function _copyM3u(src, gatewayBase = '') {
       pending = null;
     }
   }
-  return { type: 'm3u', categories: [...groups.values()], truncated, total };
+  return { categories: [...groups.values()], truncated, total };
 }
 
 // Copieur intelligent (catégories + chaînes). DEUX entrées possibles :
@@ -3735,7 +3933,9 @@ async function handleMasterChannels(request, env) {
       truncated: out.truncated,
     });
   } catch (e) {
-    return errResp('copy_failed', 'Impossible de lire les chaînes : ' + String((e && e.message) || e), 502);
+    // Message ACTIONNABLE (identifiants refusés, serveur en panne, délai…) au
+    // lieu d'un code brut — l'exploitant sait quoi faire tout de suite.
+    return errResp('copy_failed', _copyErrorMessage(e), 502);
   }
 }
 
@@ -3795,9 +3995,9 @@ async function _copyXtreamVod(src, gatewayBase = '', gwUser = '', gwPass = '') {
     const cr = await _fetchWithTimeout(`${base}/player_api.php?${auth}&action=get_vod_categories`);
     if (cr.ok) cats = await cr.json();
   } catch (_) { /* catégories optionnelles */ }
-  const sr = await _fetchWithTimeout(`${base}/player_api.php?${auth}&action=get_vod_streams`);
+  const sr = await _fetchProviderRetry(`${base}/player_api.php?${auth}&action=get_vod_streams`);
   if (!sr.ok) throw new Error('provider_http_' + sr.status);
-  streams = await sr.json();
+  streams = await sr.json().catch(() => null); // HTML/garbage → erreur propre
   if (!Array.isArray(streams)) throw new Error('provider_bad_vod');
 
   const catName = new Map();
@@ -3833,7 +4033,7 @@ async function _copyXtreamVod(src, gatewayBase = '', gwUser = '', gwPass = '') {
 // Copie VOD depuis un M3U : ne garde QUE les entrées « film » (URL en
 // .mp4/.mkv/… OU catégorie type VOD/FILM/CINÉMA). L'affiche vient de tvg-logo.
 async function _copyM3uVod(src, gatewayBase = '') {
-  const res = await _fetchWithTimeout(String(src.m3u_url || ''));
+  const res = await _fetchProviderRetry(String(src.m3u_url || ''));
   if (!res.ok) throw new Error('provider_http_' + res.status);
   const text = await res.text();
   const lines = text.split(/\r?\n/);
@@ -3928,7 +4128,7 @@ async function handleMasterVod(request, env) {
       truncated: out.truncated,
     });
   } catch (e) {
-    return errResp('vod_failed', 'Impossible de lire les films : ' + String((e && e.message) || e), 502);
+    return errResp('vod_failed', _copyErrorMessage(e), 502);
   }
 }
 
@@ -3986,12 +4186,31 @@ async function handleMasterSimulate(request, env) {
   } catch (_) { /* best-effort */ }
 
   let host = '';
-  try { host = new URL(firstUrl).host; } catch (_) { host = ''; }
+  let hostname = '';
+  try { const hu = new URL(firstUrl); host = hu.host; hostname = hu.hostname; } catch (_) { host = ''; }
   // Faux domaine d'exemple laissé dans la façade → cause n°1 d'écran noir.
-  const isExampleHost = /(^|\.)mondomaine\.com$/i.test(host);
+  // MÊME motif que le rejet serveur (validateFacadeBase) : diag, simulate et
+  // enregistrement racontent la même histoire.
+  const isExampleHost = EXAMPLE_FACADE_HOST_RX.test(hostname);
   // Hôte en IP brute → le relais ne le joint pas (mais l'app peut) : sonde
   // informative (ambre), pas un rouge mensonger.
   const isIpHost = /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(host) || host.startsWith('[');
+  // COHÉRENCE /diag ↔ /simulate : si la liste est CURÉE, on retrouve le maître
+  // qui la sert (référence opaque → MAC) et sa façade. Une façade http/IP
+  // (app-seulement) rend l'échec de sonde ATTENDU depuis le relais → ambre
+  // informatif ici AUSSI, exactement comme dans le diagnostic maître.
+  let viaAppOnlyFacade = false;
+  if (kind === 'curated' && host) {
+    try {
+      const ref = (String(src.m3u_url || '').match(/ml_[0-9a-f]{20}/i) || [])[0];
+      const masterMac = ref ? await _resolveMasterByListRef(env, ref) : null;
+      if (masterMac) {
+        const gwc = await _readGatewayCreds(env, masterMac);
+        viaAppOnlyFacade = !!gwc.base && !gwc.probe
+          && new URL(firstUrl).hostname === new URL(gwc.base).hostname;
+      }
+    } catch (_) { /* best-effort : sonde standard */ }
+  }
   const probe = firstUrl ? await _probeUrl(firstUrl, 7000) : null;
 
   // BOÎTE NOIRE PRO : une liste de contrôles (comme le diagnostic maître),
@@ -4026,25 +4245,28 @@ async function handleMasterSimulate(request, env) {
     }
   }
 
-  // 5) 1re chaîne jouable ? (sonde réelle).
+  // 5) 1re chaîne jouable ? (sonde réelle). Le contrôle NOMME toujours l'hôte
+  //    fautif : « ça ne marche pas » ne suffit pas, on dit OÙ ça casse.
   if (firstUrl) {
     if (isExampleHost) {
       // Inutile de « sonder » : le domaine n'existe pas, la cause est connue.
       add('play', 2, 'Chaîne jouable',
-        'Injoignable : le domaine d’exemple ne résout pas (DNS) → écran noir sur TOUS les appareils.',
+        `Injoignable : « ${host} » est le domaine d’EXEMPLE, il ne résout pas (DNS) → écran noir sur TOUS les appareils.`,
         'Corrige la façade (voir ci-dessus).');
     } else if (probe && probe.ok) {
       add('play', 0, 'Chaîne jouable',
-        `La 1re chaîne répond (${probe.status}, ${probe.ms} ms). L’appareil devrait lire.`, '');
-    } else if (isIpHost) {
+        `La 1re chaîne répond via ${host} (${probe.status}, ${probe.ms} ms). L’appareil devrait lire.`, '');
+    } else if (viaAppOnlyFacade || isIpHost) {
+      // Façade http/IP du maître (ou hôte en IP) : le relais ne peut pas
+      // sonder — échec ATTENDU, pas un rouge mensonger. Même régime que /diag.
       add('play', 1, 'Chaîne jouable — vérifiable par l’app seulement',
-        `Hôte en IP (${host}) : le relais ne peut pas sonder (attendu), mais l’app le joint peut-être. Teste dans l’app.`,
+        `La chaîne passe par « ${host} » (façade http/IP) : le relais Cloudflare ne peut pas la sonder (c’est attendu), mais l’app la joint peut-être. Teste dans l’app.`,
         'Pour une sonde fiable d’ici, mets un vrai domaine https (Caddy).');
     } else {
       const why = probe ? (probe.error || ('HTTP ' + probe.status)) : 'aucune réponse';
       add('play', 2, 'Chaîne jouable',
-        `La 1re chaîne NE répond PAS (${why}). Écran noir attendu.`,
-        'Vérifie la façade/la ligne, ou passe en lecture directe (façade vide).');
+        `La 1re chaîne NE répond PAS via « ${host} » (${why}). Écran noir attendu.`,
+        `Vérifie que « ${host} » est bien ton gateway/ta ligne (façade + « Recopier mes chaînes »), ou passe en lecture directe (façade vide).`);
     }
   }
 
@@ -4137,6 +4359,12 @@ async function handleMasterDiag(request, env) {
       gwc.user ? 'Identité partagée réglée → identifiants fournisseur masqués dans le M3U servi.'
                : 'Aucune identité de diffusion → les URLs de test portent tes identifiants fournisseur.',
       gwc.user ? '' : 'Renseigne « Utilisateur/mot de passe gateway » (= BROADCAST_USER/PASS du gateway).');
+  } else if (gwc.reason === 'example_domain') {
+    // Façade enregistrée AVANT le verrou serveur avec le domaine d'exemple :
+    // rouge franc + geste exact — c'est LA cause historique d'écran noir.
+    add('gateway', 2, 'Façade (gateway) — domaine d’exemple',
+      'La façade enregistrée est le domaine d’EXEMPLE de la doc (mondomaine…) : il n’existe pas, tout ce qui pointe dessus finit en écran noir.',
+      'Remplace-la par TON vrai domaine de gateway (ou vide le champ), puis ré-enregistre la liste : les URLs seront reconstruites.');
   } else {
     add('gateway', 1, 'Façade (gateway)',
       'Aucune façade https valide réglée → lecture directe (moins stable/privée).',
@@ -4156,6 +4384,12 @@ async function handleMasterDiag(request, env) {
   if (count > 0) {
     const firstUrl = (m3u.split(/\r?\n/).find((l) => l.trim() && !l.startsWith('#')) || '').trim();
     if (firstUrl) {
+      // L'hôte réellement joué par la 1re chaîne : TOUJOURS nommé dans le
+      // verdict (savoir OÙ ça casse, pas juste « ça casse »). Même logique que
+      // le simulateur → les deux boîtes noires racontent la même histoire.
+      let cHost = '';
+      let cHostname = '';
+      try { const hu = new URL(firstUrl); cHost = hu.host; cHostname = hu.hostname; } catch (_) { /* */ }
       // La 1re chaîne passe-t-elle par une façade que le relais NE PEUT PAS
       // joindre (http/IP) ? → l'échec de sonde est ATTENDU : ambre informatif,
       // jamais un rouge mensonger (la lecture app peut très bien marcher).
@@ -4163,18 +4397,26 @@ async function handleMasterDiag(request, env) {
       try {
         viaAppOnlyFacade = !gwc.probe && !!gw && new URL(firstUrl).hostname === new URL(gw).hostname;
       } catch (_) { /* URL illisible → sonde standard */ }
-      const cp = await _probeUrl(firstUrl, 6000);
-      if (cp.ok) {
-        add('channel_probe', 0, 'Chaîne de test jouable',
-          `1re chaîne répond (${cp.status}, ${cp.ms} ms).`, '');
-      } else if (viaAppOnlyFacade) {
-        add('channel_probe', 1, 'Chaîne de test — vérifiable par tes apps seulement',
-          'La chaîne passe par ta façade http/IP : le relais Cloudflare ne peut pas la sonder (c’est attendu). Vérifie la lecture directement dans l’app.',
-          'Contrôle non bloquant. Façade en https + domaine = sonde vérifiable d’ici.');
-      } else {
+      if (EXAMPLE_FACADE_HOST_RX.test(cHostname)) {
+        // Domaine d'exemple hérité dans la liste : cause connue, pas besoin de
+        // sonder — verdict identique au simulateur.
         add('channel_probe', 2, 'Chaîne de test jouable',
-          `1re chaîne injoignable (${cp.error || cp.status}).`,
-          'Vérifie la façade et la ligne fournisseur.');
+          `1re chaîne injoignable : « ${cHost} » est le domaine d’EXEMPLE, il n’existe pas (DNS) → écran noir garanti.`,
+          'Mets ta vraie façade (ou vide-la), puis ré-enregistre la liste : les URLs seront reconstruites.');
+      } else {
+        const cp = await _probeUrl(firstUrl, 6000);
+        if (cp.ok) {
+          add('channel_probe', 0, 'Chaîne de test jouable',
+            `1re chaîne répond via ${cHost} (${cp.status}, ${cp.ms} ms).`, '');
+        } else if (viaAppOnlyFacade) {
+          add('channel_probe', 1, 'Chaîne de test — vérifiable par tes apps seulement',
+            `La chaîne passe par ta façade http/IP (« ${cHost} ») : le relais Cloudflare ne peut pas la sonder (c’est attendu). Vérifie la lecture directement dans l’app.`,
+            'Contrôle non bloquant. Façade en https + domaine = sonde vérifiable d’ici.');
+        } else {
+          add('channel_probe', 2, 'Chaîne de test jouable',
+            `1re chaîne injoignable via « ${cHost} » (${cp.error || cp.status}).`,
+            `Vérifie que « ${cHost} » est bien en ligne (façade/ligne fournisseur), ou reconstruis la liste (« Recopier mes chaînes »).`);
+        }
       }
     }
   }
@@ -4215,6 +4457,26 @@ export async function masterListRefPanel(masterMac) {
   const buf = await crypto.subtle.digest('SHA-256', data);
   const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
   return 'ml_' + hex.slice(0, 20);
+}
+
+// Retrouve la MAC MAÎTRE derrière une référence opaque de liste (ml_…) en
+// scannant les comptes maîtres — miroir de resolveMasterMacByListRef
+// (worker.js). Sert au simulateur : partir de la liste servie à un testeur
+// pour retrouver la façade du maître et juger la sonde avec la MÊME honnêteté
+// que le diagnostic. Renvoie la MAC ou null (jamais d'erreur).
+async function _resolveMasterByListRef(env, ref) {
+  const r = String(ref || '').trim();
+  if (!/^ml_[0-9a-f]{20}$/i.test(r)) return null;
+  try {
+    await ensureMastersTable(env);
+    const rows = await env.DB.prepare('SELECT mac FROM app_masters').all();
+    for (const row of (rows && rows.results) || []) {
+      if ((await masterListRefPanel(row.mac)) === r.toLowerCase()) {
+        return String(row.mac).toUpperCase();
+      }
+    }
+  } catch (_) { /* best-effort */ }
+  return null;
 }
 
 // Le code doit être utilisé sous 48 h — même valeur que INVITE_CODE_TTL_MS

@@ -19,6 +19,12 @@ import { formatMacInput } from '@/lib/utils';
 
 const MAC_RX = /^MK(?::[0-9A-Fa-f]{2}){5}$/;
 
+// PIÈGE DU DOMAINE D'EXEMPLE : des exploitants ont recopié tel quel le domaine
+// d'exemple des docs (« mondomaine.com »…) comme façade → URLs de test vers un
+// domaine inexistant → écran noir partout. Le serveur REFUSE désormais ces
+// hôtes ; côté panel on prévient DÈS LA SAISIE (même motif que le serveur).
+const EXAMPLE_FACADE_RX = /(^|\.)(mondomaine|ton-domaine|tondomaine|example|exemple)\.(com|net|org|fr|tld)\b/i;
+
 // =========================================================
 //  COPIEUR INTELLIGENT + LISTE DE TEST INDÉPENDANTE (par maître)
 // =========================================================
@@ -270,18 +276,31 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
     });
   }
 
+  // Après un PUT, le serveur renvoie le M3U réellement STOCKÉ : si la façade a
+  // changé, il a RECONSTRUIT les URLs dessus (correctif structurel n°1) — on se
+  // resynchronise sur SA version au lieu de garder des URLs périmées en mémoire.
+  function syncFromServer(r: Awaited<ReturnType<typeof mastersApi.putTestList>>, fallbackM3u: string) {
+    const serverM3u = typeof r.m3u === 'string' ? r.m3u : fallbackM3u;
+    setM3uText(serverM3u);
+    setList(parseM3uToList(serverM3u));
+    setSavedCount(r.count || 0);
+    setHasGwPass(!!r.has_gateway_pass);
+    // Note façade http/IP (informative) + note « URLs restées sur l'ancienne
+    // façade » (actionnable) : affichées ensemble si les deux existent.
+    const notes = [r.facade_note, r.rebuild_note].filter(Boolean).join(' — ');
+    setFacadeNote(notes || null);
+  }
+
   async function save() {
     setErr(null); setMsg(null); setBusy(true);
     try {
       const m3u = list.length ? buildM3u(list) : '';
       const r = await mastersApi.putTestList(mac, m3u, gateway, gwUser, gwPass);
-      setSavedCount(r.count || 0);
-      setM3uText(m3u);
-      setHasGwPass(!!r.has_gateway_pass);
-      setFacadeNote(r.facade_note || null);
+      syncFromServer(r, m3u);
       if (gwPass) setGwPass(''); // secret enregistré → on vide le champ
+      const rebuilt = r.rebuilt ? ` ${r.rebuilt} URL(s) reconstruite(s) sur la nouvelle façade.` : '';
       setMsg(r.count > 0
-        ? `✅ Liste enregistrée — ${r.count} chaîne${r.count > 1 ? 's' : ''} partagée${r.count > 1 ? 's' : ''}.`
+        ? `✅ Liste enregistrée — ${r.count} chaîne${r.count > 1 ? 's' : ''} partagée${r.count > 1 ? 's' : ''}.${rebuilt}`
         : '✅ Liste vidée — les tests redonnent tout le bouquet.');
     } catch (e: any) {
       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
@@ -293,12 +312,10 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
     setErr(null); setMsg(null); setBusy(true);
     try {
       const r = await mastersApi.putTestList(mac, m3uText, gateway, gwUser, gwPass);
-      setSavedCount(r.count || 0);
-      setList(parseM3uToList(m3uText)); // synchronise la vue « rangement »
-      setHasGwPass(!!r.has_gateway_pass);
-      setFacadeNote(r.facade_note || null);
+      syncFromServer(r, m3uText);
       if (gwPass) setGwPass('');
-      setMsg(`✅ M3U enregistré — ${r.count} chaîne(s).`);
+      const rebuilt = r.rebuilt ? ` ${r.rebuilt} URL(s) reconstruite(s) sur la nouvelle façade.` : '';
+      setMsg(`✅ M3U enregistré — ${r.count} chaîne(s).${rebuilt}`);
     } catch (e: any) {
       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
       setErr(e instanceof ApiError ? e.message : 'Enregistrement impossible.');
@@ -418,9 +435,23 @@ function TestListEditor({ mac, onLogout }: { mac: string; onLogout: () => void }
           value={gateway}
           onChange={(e) => setGateway(e.target.value)}
           spellCheck={false}
-          placeholder="https://tv.mondomaine.com"
+          // Placeholder NEUTRE (pas un domaine copiable) : l'ancien exemple
+          // « tv.mondomaine.com » était recopié tel quel → écran noir. Jamais
+          // de domaine d'exemple affiché ici.
+          placeholder="https://  (ton vrai domaine de gateway — vide = lecture directe)"
           className="w-full rounded-md border border-white/5 bg-midnight px-3 py-2 font-mono text-xs outline-none focus:ring-1 focus:ring-accent"
         />
+        {/* Alerte DÈS LA SAISIE si la valeur ressemble au domaine d'exemple
+            des docs : le serveur la refusera de toute façon (écran noir garanti). */}
+        {EXAMPLE_FACADE_RX.test(gateway) && (
+          <div className="mt-1.5 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[11px] text-warning">
+            ⚠️ « {gateway.trim()} » ressemble au domaine d&apos;<strong>EXEMPLE</strong> de
+            la documentation — ce domaine n&apos;existe pas : toutes les URLs de test
+            pointeraient dans le vide (<strong>écran noir garanti</strong>). Mets le
+            domaine de <strong>TON</strong> gateway, ou laisse le champ vide
+            (lecture directe). Le serveur refusera cette valeur à l&apos;enregistrement.
+          </div>
+        )}
         <p className="mt-1 text-[11px] text-ink-tertiary">
           Réglée une fois : je reconstruis toutes les chaînes copiées sur ton
           gateway → reconnexion auto, ligne de secours, tampon anti-coupure
@@ -1672,6 +1703,8 @@ export function MastersPage({ onLogout }: { onLogout: () => void }) {
   }
 
   async function remove(m: string) {
+    // Geste fort (la MAC perd le pouvoir maître) → confirmation explicite.
+    if (!window.confirm(`Retirer ${m} des comptes maîtres ? Elle ne pourra plus distribuer de tests.`)) return;
     setErr(null); setOk(null);
     try {
       await mastersApi.remove(m);

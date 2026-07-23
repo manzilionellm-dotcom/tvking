@@ -106,6 +106,8 @@ function MasterTestsSection({ onLogout }: { onLogout: () => void }) {
   }
 
   async function revoke(code: string) {
+    // Geste destructif (accès coupé immédiatement) → confirmation explicite.
+    if (!window.confirm('Révoquer ce test ? L’accès du testeur est coupé immédiatement.')) return;
     setErr(null); setBusyCode(code);
     try {
       await mastersApi.testRevoke(code);

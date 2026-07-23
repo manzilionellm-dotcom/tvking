@@ -56,7 +56,7 @@
 // Routee depuis le bas du fetch() en haut de la chaine de match.
 // verifyJwt est reutilise ici pour authentifier le WebSocket admin
 // (/api/v1/rt/ws) AVANT de forwarder au Durable Object temps reel.
-import { apiV1, verifyJwt, validateFacadeBase } from './api_v1.js';
+import { apiV1, verifyJwt, validateFacadeBase, rewriteM3uFacade } from './api_v1.js';
 // Temps réel (cf. cloudflare/realtime.js + docs/REALTIME-PROTOCOL.md) :
 // Durable Object « RealtimeHub » (WebSockets appareils + panel) et helper
 // publishRt() (publication fail-open après une mutation). La classe DO
@@ -3563,8 +3563,18 @@ async function handleMasterListServe(env, rawRef) {
   const ref = String(rawRef || '').replace(/\.m3u$/i, '');
   const mac = await resolveMasterMacByListRef(env, ref);
   if (!mac) return notFound('unknown list');
-  const { m3u } = await readMasterTestList(env, mac);
-  if (!m3u) return notFound('empty list');
+  const { m3u: stored } = await readMasterTestList(env, mac);
+  if (!stored) return notFound('empty list');
+  // FILET AU MOMENT DU SERVICE (correctif structurel n°1) : la façade COURANTE
+  // du maître est appliquée à la volée aux lignes héritées encore bâties sur
+  // un domaine d'exemple (mondomaine…) — même une liste enregistrée AVANT le
+  // correctif est servie corrigée. Les autres URLs (façade à jour, ajouts
+  // manuels, lecture directe) passent telles quelles.
+  let m3u = stored;
+  try {
+    const gw = await readMasterGatewayBase(env, mac);
+    if (gw.base) m3u = rewriteM3uFacade(stored, '', gw.base).m3u;
+  } catch (_) { /* best-effort : on sert la liste telle quelle */ }
   return new Response(m3u, {
     status: 200,
     headers: {
@@ -3650,8 +3660,10 @@ async function readMasterGatewayBase(env, mac) {
       .prepare('SELECT gateway_base FROM master_test_list WHERE mac = ?')
       .bind(String(mac).toUpperCase()).first();
     const v = validateFacadeBase(row && row.gateway_base);
-    return { base: v.ok ? v.base : '', probe: !!v.probe };
-  } catch (_) { return { base: '', probe: false }; }
+    // `reason` remonte aussi : 'example_domain' = façade héritée sur le
+    // domaine d'exemple (rejetée à la lecture) → le diagnostic l'explique.
+    return { base: v.ok ? v.base : '', probe: !!v.probe, reason: v.reason || '' };
+  } catch (_) { return { base: '', probe: false, reason: '' }; }
 }
 
 /// Sonde une URL sans télécharger le flux : on demande 2 octets, on lit le
@@ -3730,6 +3742,12 @@ async function handleInviteDiag(env, rawMac, request) {
         'Façade http/IP : le relais Cloudflare ne peut pas la joindre (c’est attendu, pas une panne) — tes apps, elles, la joignent directement. Vérifie /health depuis un navigateur.',
         'Contrôle non bloquant. Pour une sonde vérifiable d’ici, passe en https + domaine (Caddy, voir gateway/README).');
     }
+  } else if (master && gwInfo.reason === 'example_domain') {
+    // Façade héritée = domaine d'EXEMPLE (mondomaine…) : cause historique
+    // d'écran noir → rouge franc + geste exact, cohérent avec le panel.
+    add('gateway', 2, 'Façade (gateway) — domaine d’exemple',
+      'La façade enregistrée est le domaine d’EXEMPLE de la doc : il n’existe pas, tout ce qui pointe dessus finit en écran noir.',
+      'Panel → Liste de test : mets TON vrai domaine (ou vide le champ), puis ré-enregistre la liste.');
   } else {
     add('gateway', 1, 'Façade (gateway)',
       master ? 'Aucune façade réglée → lecture directe (moins stable/privée).'
