@@ -4773,6 +4773,21 @@ async function handleAdminMonitorGet(env) {
 }
 
 // =========================================================
+//  EXPORTS DE TEST — bout en bout (master_e2e.smoke.mjs)
+// =========================================================
+//  Ces handlers restent PRIVÉS côté HTTP (routés derrière la garde
+//  super_admin de /masters/*) ; on les exporte UNIQUEMENT pour que le smoke
+//  test bout-en-bout rejoue le vrai parcours (liste → test → simulateur) sur
+//  une base factice, sans réseau ni authentification simulée.
+export {
+  handleMasterTestListGet, handleMasterTestListPut,
+  handleMasterTestGrant, handleMasterTestCode,
+  handleMasterTestExtend, handleMasterTestRevoke,
+  handleMasterSimulate, handleMasterDiag, handleAdminMonitorGet,
+  _copyErrorMessage,
+};
+
+// =========================================================
 //  FICHE 360° D'UN APPAREIL — « tout ce que le client a dans le ventre »
 // =========================================================
 //  GET /devices/:id/overview → en UN appel : abonnement (licence), présence

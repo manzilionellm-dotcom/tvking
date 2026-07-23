@@ -612,7 +612,8 @@ async function recordAdminPresence(env, mac, ip, country, now, channel) {
   } catch (_) { /* best-effort */ }
 }
 
-async function recordPresence(env, mac, ip, country, now, channel) {
+// Exportée pour le smoke test bout-en-bout (invisibilité maîtres/testeurs).
+export async function recordPresence(env, mac, ip, country, now, channel) {
   if (!env.DB) return;
   // MODE ADMIN MONITORING : si cette MAC est un compte maître/admin OU un
   // TESTEUR en cours de test maître, sa présence part dans `admin_presence`
@@ -3559,7 +3560,9 @@ async function resolveMasterMacByListRef(env, ref) {
 /// GET /api/master-list/:ref(.m3u) → sert le M3U curé du maître (texte brut).
 /// URL OPAQUE : le testeur (et le fournisseur) ne voient jamais la MAC maître.
 /// C'est CETTE source (≤ 5 chaînes via gateway) qui rend le test indépendant.
-async function handleMasterListServe(env, rawRef) {
+// Exportée pour le smoke test bout-en-bout (master_e2e.smoke.mjs) : la route
+// HTTP publique, elle, ne change pas (/api/master-list/:ref).
+export async function handleMasterListServe(env, rawRef) {
   const ref = String(rawRef || '').replace(/\.m3u$/i, '');
   const mac = await resolveMasterMacByListRef(env, ref);
   if (!mac) return notFound('unknown list');
@@ -3849,7 +3852,8 @@ async function handleInviteDiag(env, rawMac, request) {
 /// [origin] = origine HTTP du worker (ex. https://…workers.dev), pour bâtir
 /// l'URL absolue de la liste. La licence courte (1 h…) coupe l'accès à
 /// l'échéance. Best-effort : jamais bloquant.
-async function copyMasterSourceForTest(env, fromMac, toMac, origin = '') {
+// Exportée pour le smoke test bout-en-bout (contrat d'assignation au redeem).
+export async function copyMasterSourceForTest(env, fromMac, toMac, origin = '') {
   try {
     const FROM = String(fromMac).toUpperCase();
     const TO = String(toMac).toUpperCase();
