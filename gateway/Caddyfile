@@ -1,0 +1,35 @@
+# ============================================================================
+# Caddyfile — Gateway 7 MOTION
+#
+# Caddy obtient et renouvelle AUTOMATIQUEMENT un certificat Let's Encrypt pour
+# votre domaine (variable CADDY_DOMAIN, définie dans .env), puis proxifie le
+# trafic HTTPS vers le service gateway sur le réseau interne Docker.
+#
+# Résultat : https://votre-domaine → gateway, joignable par les apps ET par le
+# Worker Cloudflare (le Diagnostic passe au vert).
+# ============================================================================
+
+{
+	# E-mail pour Let's Encrypt (avis d'expiration). Repris de .env.
+	email {$CADDY_EMAIL}
+}
+
+# Le domaine réel (DNS A record → IP du VPS). HTTPS auto, HTTP redirigé.
+{$CADDY_DOMAIN} {
+	# Journalisation d'accès (utile pour le suivi de charge).
+	log {
+		output stdout
+		format console
+	}
+
+	# On proxifie vers le service « gateway » (nom de service docker-compose),
+	# port interne 8088. Le flux live est en streaming : on désactive tout tampon
+	# côté proxy pour ne pas ré-introduire de latence ni de mémoire superflue.
+	reverse_proxy gateway:8088 {
+		# Flux live : pas de mise en tampon de la réponse (flush au fil de l'eau).
+		flush_interval -1
+		# En-têtes utiles pour le suivi côté amont applicatif.
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP {remote_host}
+	}
+}

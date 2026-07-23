@@ -1,0 +1,9 @@
+# Secrets — JAMAIS committés (seul .env.example est versionné).
+.env
+.env.local
+.env.*
+!.env.example
+
+# Divers
+node_modules/
+*.log

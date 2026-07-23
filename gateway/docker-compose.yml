@@ -1,0 +1,65 @@
+# ============================================================================
+# docker-compose.yml — Gateway 7 MOTION : déploiement CLÉ EN MAIN.
+#
+#   gateway  : le service Node (mutualisation + fan-out).
+#   caddy    : reverse-proxy HTTPS avec Let's Encrypt AUTOMATIQUE sur votre
+#              vrai domaine → joignable par les apps ET par le Worker Cloudflare
+#              (Diagnostic au vert).
+#
+# Prérequis : un domaine dont l'enregistrement DNS A pointe vers l'IP du VPS,
+# et les ports 80 + 443 ouverts (Let's Encrypt en a besoin).
+#
+# Lancement :
+#   cp .env.example .env   # puis éditez .env
+#   docker compose up -d
+#   docker compose logs -f
+# ============================================================================
+
+services:
+  gateway:
+    build: .
+    # On peut aussi utiliser une image publiée : image: votre-registre/gateway:1.0
+    restart: unless-stopped
+    env_file: .env
+    # Le gateway n'expose PAS de port sur l'hôte : seul Caddy l'atteint via le
+    # réseau interne Docker. La façade publique passe donc TOUJOURS par HTTPS.
+    expose:
+      - "8088"
+    # 500 sockets : on relève la limite de descripteurs de fichiers du conteneur.
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    networks:
+      - gw
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    # Caddy écoute le web (HTTP redirigé → HTTPS) et le TLS.
+    ports:
+      - "80:80"
+      - "443:443"
+    env_file: .env
+    environment:
+      # Repris dans le Caddyfile (domaine + e-mail Let's Encrypt).
+      CADDY_DOMAIN: ${CADDY_DOMAIN}
+      CADDY_EMAIL: ${CADDY_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Persistance des certificats (évite de re-demander à chaque redémarrage —
+      # important : Let's Encrypt a des quotas).
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - gateway
+    networks:
+      - gw
+
+networks:
+  gw:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
