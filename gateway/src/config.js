@@ -139,3 +139,61 @@ export function validateConfig(cfg = config) {
   if (cfg.providerMaxConnections < 1) missing.push('PROVIDER_MAX_CONNECTIONS>=1');
   return missing;
 }
+
+// =========================================================
+//  warnConfig — avertissements NON bloquants au démarrage
+// =========================================================
+//  Pourquoi une fonction séparée de validateConfig : ces points ne DOIVENT PAS
+//  empêcher le démarrage (le gateway http/IP FONCTIONNE — les apps joignent la
+//  façade). Mais ils changent la VÉRIFIABILITÉ du diagnostic. On applique donc
+//  EXACTEMENT le même contrat que le Worker (validateFacadeBase) : seul
+//  `https + vrai domaine` est SONDABLE par le relais Cloudflare → diagnostic
+//  « vert » vérifiable. Le reste reste « informatif » (ambre). Aligner les deux
+//  côtés évite qu'un opérateur croie être « vert » alors que la façade n'est
+//  pas sondable. On AVERTIT clairement, on ne bloque pas.
+export function warnConfig(cfg = config) {
+  const warnings = [];
+  const add = (code, message) => warnings.push({ code, message });
+
+  const pb = cfg.publicBase;
+  if (!pb) {
+    add('public_base_missing',
+      'PUBLIC_BASE non défini : les playlists ne sont PAS réécrites sur la ' +
+      'façade → les apps reçoivent les URLs fournisseur (moins stable/privé). ' +
+      'Renseigne PUBLIC_BASE=https://ton-domaine (voir gateway/README).');
+    return warnings; // rien d'autre à analyser sans base publique.
+  }
+
+  let u = null;
+  try { u = new URL(pb); } catch (_) { /* URL illisible */ }
+  if (!u) {
+    add('public_base_invalid',
+      `PUBLIC_BASE invalide (« ${pb} ») : attendu http(s)://domaine, sans slash final.`);
+    return warnings;
+  }
+
+  const host = u.hostname;
+  // Même heuristique que le Worker : IPv4 brute / IPv6 littéral = non sondable ;
+  // domaine = au moins un point ET une lettre (ex. gw.mondomaine.com).
+  const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':') || host.startsWith('[');
+  const isDomain = !isIp && /[a-zA-Z]/.test(host) && host.includes('.');
+
+  if (u.protocol !== 'https:') {
+    add('public_base_not_https',
+      `PUBLIC_BASE en ${u.protocol.replace(':', '')} : tes apps joignent la ` +
+      'façade, mais le relais Cloudflare ne peut PAS la sonder → le diagnostic ' +
+      'reste « informatif » (ambre), jamais « vert ». Recommandé : https + ' +
+      'domaine (Caddy + Let’s Encrypt, voir gateway/README).');
+  } else if (isIp) {
+    add('public_base_ip',
+      'PUBLIC_BASE en https mais sur une IP brute : le relais Cloudflare ne ' +
+      'sonde pas une IP → diagnostic « informatif ». Recommandé : un vrai ' +
+      'domaine (ex. https://gw.mondomaine.com).');
+  } else if (!isDomain) {
+    add('public_base_not_domain',
+      'PUBLIC_BASE sans domaine complet : joignable par les apps seulement → ' +
+      'diagnostic « informatif ». Recommandé : un domaine complet en https.');
+  }
+
+  return warnings;
+}

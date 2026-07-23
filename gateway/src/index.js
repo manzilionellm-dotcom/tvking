@@ -1,7 +1,7 @@
 // =========================================================
 //  index.js — Point d'entrée de la passerelle « maison mère »
 // =========================================================
-import { config, validateConfig } from './config.js';
+import { config, validateConfig, warnConfig } from './config.js';
 import { log } from './logger.js';
 import { loadUsers } from './users.js';
 import { hub } from './hub.js';
@@ -13,6 +13,14 @@ async function main() {
     log.error('config.invalid', { missing });
     // eslint-disable-next-line no-process-exit
     process.exit(1);
+  }
+
+  // Avertissements NON bloquants : surtout PUBLIC_BASE en http/IP → la façade
+  // FONCTIONNE pour les apps mais n'est PAS sondable par le relais Cloudflare
+  // (diagnostic « informatif », pas « vert »). On le dit clairement au
+  // démarrage pour que l'opérateur sache passer en https + domaine.
+  for (const w of warnConfig()) {
+    log.warn('config.warning', { code: w.code, message: w.message });
   }
 
   await loadUsers();
