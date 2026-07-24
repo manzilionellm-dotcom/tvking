@@ -849,7 +849,6 @@ class _FilterChip extends StatelessWidget {
 /// monter / descendre (ex. Angleterre tout en haut). Ordre partagé partout.
 class _CategoryRow extends StatefulWidget {
   const _CategoryRow({
-    super.key,
     required this.title,
     required this.count,
     required this.onTap,

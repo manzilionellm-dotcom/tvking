@@ -794,7 +794,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
     if (_zapPageController != null && _zapPageController!.hasClients) {
       // Animation fluide TikTok-style. `_zapAnimating` empêche le
-      // double-firing de `onPageChanged` pendant l'animation.
+      // double-firing de `onPageChanged` pendant l'animation : au
+      // wrap-around (⏮ sur la 1re chaîne → dernière), `animateToPage`
+      // traverse TOUTES les pages intermédiaires et chaque
+      // `onPageChanged` déclencherait un `_player.open` inutile.
+      // On ignore donc les pages traversées et on applique le zap
+      // UNE seule fois, à la fin de l'animation.
       _zapAnimating = true;
       _zapPageController!
           .animateToPage(
@@ -802,7 +807,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             duration: const Duration(milliseconds: 280),
             curve: Curves.easeOutCubic,
           )
-          .whenComplete(() => _zapAnimating = false);
+          .whenComplete(() {
+            _zapAnimating = false;
+            _applyZap(wrapped);
+          });
     } else {
       // Mode TV ou playlist absente → bascule direct.
       _applyZap(wrapped);
@@ -1345,7 +1353,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   /// Callback du `PageView` quand l'utilisateur a fini un swipe vertical.
-  void _onZapPageChanged(int newIndex) => _applyZap(newIndex);
+  /// Pendant un zap par BOUTON (`_zapTo` → `animateToPage`), les pages
+  /// traversées sont ignorées : le zap final est appliqué par le
+  /// `whenComplete` de l'animation (cf. `_zapTo`).
+  void _onZapPageChanged(int newIndex) {
+    if (_zapAnimating) return;
+    _applyZap(newIndex);
+  }
 
   void _zapNext() => _zapTo(_zapIndex + 1);
   void _zapPrev() => _zapTo(_zapIndex - 1);

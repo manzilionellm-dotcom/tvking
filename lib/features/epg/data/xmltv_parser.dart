@@ -322,21 +322,21 @@ class XmltvParser {
                   curStartMs != null &&
                   curStopMs != null &&
                   curTitle != null &&
-                  curTitle!.isNotEmpty) {
+                  curTitle.isNotEmpty) {
                 final bool skip =
-                    skipPredicate != null && skipPredicate(curChannelId!);
+                    skipPredicate != null && skipPredicate(curChannelId);
                 final bool inWindow =
-                    curStopMs! >= minStop && curStartMs! <= maxStart;
+                    curStopMs >= minStop && curStartMs <= maxStart;
                 if (!skip && inWindow) {
                   final EpgProgram prog = EpgProgram(
-                    channelId: curChannelId!,
-                    startTime: curStartMs!,
-                    stopTime: curStopMs!,
-                    title: curTitle!,
-                    description: curDesc == null || curDesc!.isEmpty
+                    channelId: curChannelId,
+                    startTime: curStartMs,
+                    stopTime: curStopMs,
+                    title: curTitle,
+                    description: curDesc == null || curDesc.isEmpty
                         ? null
                         : curDesc,
-                    category: curCategory == null || curCategory!.isEmpty
+                    category: curCategory == null || curCategory.isEmpty
                         ? null
                         : curCategory,
                     iconUrl: curIconUrl,

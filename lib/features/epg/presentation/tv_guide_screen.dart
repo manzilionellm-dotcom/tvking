@@ -361,12 +361,6 @@ class _GuideBody extends StatelessWidget {
   /// clé d'invalidation des requêtes mémorisées des lignes.
   final int epgVersion;
 
-  double _xForTime(DateTime t) {
-    final int ms =
-        t.millisecondsSinceEpoch - timelineStart.millisecondsSinceEpoch;
-    return (ms / (1000 * 60 * 60)) * hourWidth;
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListView.builder(

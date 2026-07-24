@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "programme": "USINE APP v2 — périmètre MOBILE uniquement",
+  "app": {
+    "nom": "7 MOTION",
+    "codename": "tv_king",
+    "app_id_source": "android_overlay (à confirmer au prochain run avec accès build)",
+    "entree_mobile": "lib/main.dart",
+    "entrees_hors_perimetre": ["lib/main_tv.dart", "lib/main_tizen.dart", "lib/main_windows.dart", "lib/main_prive.dart"],
+    "framework": "Flutter (stable), Dart ^3.5.0",
+    "lecteur": "media_kit (libmpv) — mobile ; le module lib/features/tv/ est HORS périmètre de ce programme",
+    "distribution": "APK direct via GitHub Releases (tags prod/latest, phone-test), pas de Play Store constaté"
+  },
+  "perimetre": {
+    "inclus": "lib/main.dart + lib/core/ + lib/features/* (hors tv/), test/",
+    "exclus_par_consigne_client": "application TV : lib/features/tv/, lib/main_tv.dart, workflows build-tv/build-tizen, tags tv-*",
+    "note": "le code partagé (player, playlists, epg, channels…) sert AUSSI la TV : toute modification partagée doit être neutre ou bénéfique pour la TV, jamais régressive"
+  },
+  "transformation_done": false,
+  "bootstrap_done_partiel": true,
+  "cree_le": "2026-07-24",
+  "branche_travail": "claude/usine-app-v2-mobile-e3ungl",
+  "branche_reference_phone": "claude/maison-mere-phone"
+}

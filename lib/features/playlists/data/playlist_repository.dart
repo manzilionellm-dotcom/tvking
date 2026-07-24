@@ -1027,6 +1027,8 @@ class PlaylistRepository {
     await db.delete('playlists');
     _channelsCache = const <Channel>[];
     _playlistsCache = const <Playlist>[];
+    // Même nettoyage anti-fuite que _deletePlaylist (voir plus bas).
+    Channel.clearComputedCaches();
   }
 
   // ============================================================
@@ -1266,6 +1268,10 @@ class PlaylistRepository {
     // orpheline. Sans ça, les chaînes réapparaissaient après suppression.
     await db.delete('channels', where: 'playlist_id = ?', whereArgs: <Object>[id]);
     await db.delete('playlists', where: 'id = ?', whereArgs: <Object>[id]);
+    // Anti-fuite mémoire : les caches calculés (genre/pays/qualité/nom)
+    // gardaient les entrées des ids supprimés pour toujours. Vidage
+    // complet, recalcul paresseux au prochain accès — coût nul.
+    Channel.clearComputedCaches();
     if (wasActive.isNotEmpty) {
       final List<Map<String, Object?>> next = await db.query(
         'playlists',

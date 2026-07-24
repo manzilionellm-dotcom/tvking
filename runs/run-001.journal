@@ -1,0 +1,26 @@
+# Run 001 — USINE APP v2, périmètre MOBILE — 2026-07-24
+
+Branche : claude/usine-app-v2-mobile-e3ungl (base : claude/maison-mere-phone @ 43f751d)
+
+- [x] §0 Identification du périmètre : app mobile = lib/main.dart (7 MOTION), TV exclue par consigne client
+- [x] §0 Branche de travail créée depuis la référence téléphone la plus récente
+- [x] §0 Outillage : Flutter 3.44.8 stable installé, pub get OK
+- [x] §0 Mémoire .company/ créée (meta, state, decisions, assumptions, roadmap, backlog)
+- [x] T0 Baseline analyze : 0 erreur / 25 warnings (20 hors TV) / 264 infos (fichier scratchpad analyze-baseline.txt)
+- [x] T0 Baseline tests : 647/647 verts (flutter test, exit 0)
+- [x] T0 CI : Quality verte sur la base (run GitHub 29957800553)
+- [x] Sprint item 1 : xmltv_parser — 11 `!` inutiles retirés (neutre)
+- [x] Sprint item 2 : Channel — cache calculé : invalidate mort → clearComputedCaches câblé dans la suppression de playlist (anti-fuite)
+- [x] Sprint item 3 : lecteur mobile — garde anti multi-open du zap bouton réellement implémentée (_zapAnimating enfin lu)
+- [x] Sprint item 4 : category_section_screen — champ _countryFilter mort retiré
+- [x] Sprint item 5 : home_screen legacy — _openAdultGuarded mort + import biométrie retirés (chemin actif = garde d'âge, vérifié)
+- [x] Sprint item 6 : tv_guide_screen (module epg partagé) — _xForTime dupliqué mort retiré
+- [x] Sprint item 7 : xtream_client — _buildVodStreamUrl mort retiré (supersédé par VOD direct)
+- [x] Sprint item 8 : settings_screen — _ThemeModePicker/_ThemeOption jamais branchés retirés (décision D-05, dette D3)
+- [x] Sprint item 9 : watch_stats_service — champ _sampler superflu retiré (timer à vie d'app documenté)
+- [x] Sprint item 10 : category_browser_view super.key inutile + import test inutile retirés
+- [x] QA : flutter analyze → 0 erreur, 5 warnings restants TOUS dans features/tv (hors périmètre), 268 issues (< 289)
+- [x] QA : flutter test → 647/647 verts (exit 0)
+- [x] Commit + push sur claude/usine-app-v2-mobile-e3ungl
+
+Fin de run : verte. Prochain run : voir roadmap.md (T1 observabilité vidéo mobile).

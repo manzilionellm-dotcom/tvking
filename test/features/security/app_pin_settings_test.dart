@@ -6,7 +6,6 @@
 //  le durcissement : hachage salé, verrouillage progressif, migration.
 // =========================================================
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tv_king/features/security/data/app_pin_settings.dart';

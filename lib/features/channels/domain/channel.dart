@@ -173,6 +173,14 @@ class Channel {
   /// Pas de couleurs de marque arbitraires dans la v2.
   /// Le getter est conservé pour la compatibilité d'API.
   List<Color>? get gradientColors => null;
+
+  /// Vide les caches calculés (genre / pays / qualité / nom curé).
+  ///
+  /// À appeler à la suppression d'une playlist : les ids supprimés ne
+  /// reviendront plus, leurs entrées deviendraient orphelines et la Map
+  /// grossirait à chaque remplacement de playlist. Le vidage complet est
+  /// sans danger : tout se recalcule paresseusement au prochain accès.
+  static void clearComputedCaches() => _ChannelComputedCache.clear();
 }
 
 /// Cache statique pour les valeurs calculées (genre / pays / qualité).
@@ -192,14 +200,14 @@ abstract final class _ChannelComputedCache {
   // Nom curé (présentable) caché par id — voir Channel.cleanName.
   static final Map<String, String> cleanNames = <String, String>{};
 
-  /// À appeler quand on supprime une playlist : on nettoie les
-  /// entrées orphelines pour ne pas faire de fuite mémoire.
-  static void invalidate(Iterable<String> idsToRemove) {
-    for (final String id in idsToRemove) {
-      genres.remove(id);
-      countries.remove(id);
-      qualities.remove(id);
-      cleanNames.remove(id);
-    }
+  /// À appeler quand on supprime une playlist : on vide les caches
+  /// pour ne pas faire de fuite mémoire. Vider TOUT est correct et
+  /// bon marché : chaque valeur est une pure fonction du nom/id de la
+  /// chaîne, recalculée paresseusement au prochain accès (putIfAbsent).
+  static void clear() {
+    genres.clear();
+    countries.clear();
+    qualities.clear();
+    cleanNames.clear();
   }
 }

@@ -546,11 +546,6 @@ class XtreamClient {
     return movies;
   }
 
-  /// URL d'un film VOD au format standard Xtream.
-  String _buildVodStreamUrl(String streamId, String ext) {
-    return '$_baseUrl/movie/$_userEnc/$_passEnc/$streamId.$ext';
-  }
-
   /// Fiche DÉTAILLÉE d'un film (`get_vod_info`) : synopsis, casting,
   /// réalisateur, genre, durée, image de fond… — tout ce que le catalogue
   /// (`get_vod_streams`) ne fournit pas.

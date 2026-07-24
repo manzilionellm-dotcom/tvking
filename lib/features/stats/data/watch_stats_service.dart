@@ -47,7 +47,6 @@ class WatchStatsService extends ChangeNotifier {
 
   /// jour (YYYY-MM-DD) → {'t': minutes totales, 'c': {chaîne: minutes}}
   Map<String, Map<String, dynamic>> _days = <String, Map<String, dynamic>>{};
-  Timer? _sampler;
   bool _started = false;
   String _loadedForKey = '';
 
@@ -58,7 +57,9 @@ class WatchStatsService extends ChangeNotifier {
     await _load();
     // Changement de profil → on relit les stats DU profil actif.
     ProfilesRepository.instance.addListener(_onProfileMaybeChanged);
-    _sampler = Timer.periodic(const Duration(minutes: 1), (_) => _tick());
+    // Échantillonneur à vie d'app (singleton, démarrage idempotent) :
+    // le Timer n'est volontairement jamais annulé, inutile de le garder.
+    Timer.periodic(const Duration(minutes: 1), (_) => _tick());
   }
 
   void _onProfileMaybeChanged() {

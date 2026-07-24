@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "run_courant": 1,
+  "rollout": null,
+  "experiments": null,
+  "dette": {
+    "items": [
+      {"id": "D1", "desc": "pubspec.lock non commité (chaîne de build non déterministe, mobile ET TV impactés — décision partagée à prendre)", "cout_estime": "moyen"},
+      {"id": "D2", "desc": "home_screen.dart (accueil legacy ~900 lignes) non routé depuis main.dart — l'accueil actif est SimpleHomeScreen ; candidat au retrait après confirmation", "cout_estime": "faible"},
+      {"id": "D3", "desc": "Mode Daylight complet (AppTheme.daylight + l10n) jamais branché : main.dart force ThemeMode.dark. Décision produit : brancher ou retirer", "cout_estime": "moyen"},
+      {"id": "D4", "desc": "1 paquet discontinué signalé par pub get + 43 paquets avec majeures indisponibles (contraintes) — audit deps à mener", "cout_estime": "moyen"},
+      {"id": "D5", "desc": "video_player_screen.dart (~3800 lignes) sans harnais de test widget (media_kit non mockée) — la garde anti multi-open du zap bouton (run 1) n'a pas de test automatisé", "cout_estime": "eleve"}
+    ]
+  },
+  "baseline": {
+    "date": "2026-07-24",
+    "analyze": {"erreurs": 0, "warnings_total": 25, "warnings_hors_tv": 20, "infos": 264},
+    "tests": {"total": 647, "verts": 647},
+    "ci_quality": "verte sur claude/maison-mere-phone (run 29957800553 du 2026-07-22)"
+  },
+  "apres_run_001": {
+    "analyze": {"erreurs": 0, "warnings_total": 5, "warnings_hors_tv": 0, "note": "les 5 restants sont tous dans lib/features/tv/ — hors périmètre par consigne client"}
+  }
+}

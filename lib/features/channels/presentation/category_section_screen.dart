@@ -75,7 +75,6 @@ class _CategorySectionScreenState extends State<CategorySectionScreen> {
   bool _liveOnly = false;
   ChannelQuality? _qualityFilter;
   String? _selectedSubCategory;
-  CountryInfo? _countryFilter;
 
   // Recherche interne
   String _query = '';

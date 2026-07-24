@@ -28,7 +28,6 @@ import '../../../core/branding/brand_logo.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/cinematic_spacing.dart';
 import '../../cast/presentation/cast_mini_bar.dart';
 import '../../player/presentation/play_channel.dart';
@@ -37,7 +36,6 @@ import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../vod/presentation/movies_screen.dart';
 import '../../profile/presentation/profile_screen.dart';
-import '../../security/data/biometric_auth.dart';
 import '../data/recently_watched_repository.dart';
 import '../domain/channel.dart';
 import '../domain/channel_genre.dart';
@@ -744,43 +742,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ))
             .then((_) => _resetNav());
     }
-  }
-
-  /// Ouvre la section Adulte UNIQUEMENT après authentification
-  /// biométrique réussie. Sinon toast d'erreur et abandon.
-  Future<void> _openAdultGuarded() async {
-    final bool supported = await BiometricAuth.instance.isSupported();
-    if (!supported) {
-      // Device sans capteur ni PIN système (très rare) : on tolère
-      // l'accès sans bloquer — c'est le comportement local_auth par
-      // défaut. À l'usage, sur tous les Android récents l'auth
-      // est disponible et bloquera.
-      if (!mounted) return;
-      await _openSection(context.l10n.sectionAdult, ChannelGenre.adult);
-      return;
-    }
-    final bool authed = await BiometricAuth.instance.authenticate(
-      reason: context.l10n.adultAuthReason,
-    );
-    if (!authed) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.surfaceHigh,
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.all(16),
-          duration: const Duration(seconds: 2),
-          content: Text(
-            context.l10n.adultAuthCancelled,
-            style: AppTextStyles.bodyMedium,
-          ),
-        ),
-      );
-      return;
-    }
-    if (!mounted) return;
-    await _openSection(context.l10n.sectionAdult, ChannelGenre.adult);
   }
 
   void _resetNav() {
