@@ -1,0 +1,30 @@
+# Run 001 — Fondations qualité (version TV)
+
+Branche : claude/tv-box-version-tv-6m5rph
+Mode : MODE T (adapté web/TV) — périmètre borné, une PR.
+
+## T0 — Baseline mesurée (2026-07-23, commandes exécutées)
+- `npm ci` : OK | source: exécution | confiance: haute
+- `eslint .` : exit 0, 0 warning | source: exécution
+- `npm run build` : exit 0, 115 pages statiques, TS OK | source: exécution
+- Tests : AUCUN (pas de script `test`, 0 fichier) | source: inspection
+- Observabilité : AUCUNE (pas d'error boundary, pas de logger) | source: inspection
+- Données : mock (app/lib/data.ts, dégradés) | source: inspection
+
+## Journal (case cochée = phase committée)
+- [x] 1. Mémoire + journal + baseline T0
+- [x] 2. Outillage de test (vitest) + scripts test/typecheck
+- [x] 3. Logique pure testable : spatial.ts, focusMemory.ts, telemetry.ts, playerKeys.ts + tests (40, couv. 100% lignes)
+- [x] 4. TV-UX : restauration du focus + touche RETOUR (Escape) cohérente (SpatialNav)
+- [x] 5. Lecteur : fix play/pause (media keys + k) + RETOUR/quitter cohérent
+- [x] 6. Observabilité : error.tsx + global-error.tsx (PII-free via telemetry)
+- [x] 7. Gate CI web (ci.yml) + budget de taille (size-budget.mjs, baseline 647.7 KiB)
+- [x] 8. QA finale — TOUT VERT :
+      lint=0 · typecheck=0 · test:coverage=0 (40/40, 100% lignes / 98.9% branches) · build=0 · budget=0
+
+## Sécurité
+- Next 16.2.4→16.2.11 (advisories DoS/cache-poisoning/XSS corrigées). npm audit prod 6→3 highs.
+- 3 highs restants : bundlés dans Next (postcss) + sharp (image opt. non utilisée) → non corrigeables sans casse, consignés (decisions.md D2). Aucun `--force`.
+
+## Fin légale
+(a) journal 100% coché + gates verts. PR à ouvrir sur demande utilisateur (pas d'ordre explicite).

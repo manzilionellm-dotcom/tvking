@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MediaItem } from "../lib/data";
+import { playerKeyAction } from "../lib/playerKeys";
 
 /*
  * Mock player. The transport and the "À suivre" (Up Next) panel implement the
@@ -55,17 +56,38 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
 
   const toggle = useCallback(() => setPlaying((p) => !p), []);
 
-  // Space / Enter toggles play (k is the YouTube convention).
+  // TV remote media keys + "k" convenience. (Enter/Space still activate the
+  // focused transport button natively; global Space is intentionally left to
+  // that button so it never double-fires.) The mapping lives in ../lib/playerKeys.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.key === " " || e.key === "k") && document.activeElement === document.body) {
-        e.preventDefault();
-        toggle();
+      const action = playerKeyAction(e.key);
+      if (!action) return;
+      e.preventDefault();
+      switch (action) {
+        case "toggle":
+          toggle();
+          break;
+        case "exit":
+          router.push(`/title/${item.id}`);
+          break;
+        case "next":
+          if (next) {
+            navigatedRef.current = true;
+            router.push(`/watch/${next.id}`);
+          }
+          break;
+        case "seekForward":
+          setPos((p) => Math.min(DURATION, p + 10));
+          break;
+        case "seekBack":
+          setPos((p) => Math.max(0, p - 10));
+          break;
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggle]);
+  }, [toggle, router, item.id, next]);
 
   const showUpNext = next && pos >= UPNEXT_AT && !autoCancelled;
   const countdown = Math.max(0, DURATION - pos);
