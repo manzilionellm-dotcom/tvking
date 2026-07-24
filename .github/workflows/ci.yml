@@ -9,12 +9,11 @@
 name: CI
 
 on:
+  # Les branches de travail sont couvertes par leur PR ; on ne double pas le run.
   pull_request:
   push:
     branches:
       - main
-      - "claude/**"
-      - "usine/**"
 
 # Un seul run par ref : un nouveau push annule le précédent.
 concurrency:
