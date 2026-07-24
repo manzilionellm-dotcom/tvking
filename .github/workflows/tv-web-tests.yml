@@ -1,0 +1,53 @@
+# =========================================================
+#  tv-web-tests.yml — Barrière qualité de l'app TV web (Tizen/webOS)
+# =========================================================
+#  L'app tv-tizen-webos/ (JS pur, embarquée dans les builds .tpk/.ipk) n'avait
+#  AUCUN test ni vérification de syntaxe. Ce workflow ajoute un filet léger,
+#  VOLONTAIREMENT SÉPARÉ des builds signés (build-tizen.yml…) qu'il ne touche
+#  pas :
+#    • node --check  → aucune régression de SYNTAXE dans le JS embarqué
+#      (on ne peut pas lancer un vrai runtime TV en CI ; parser, c'est le
+#       minimum qui attrape une accolade oubliée avant qu'elle parte en .tpk).
+#    • node --test   → la logique PURE portée depuis les correctifs TV
+#      (clé de focus + mémoire de focus par écran, contrat des touches média)
+#      est vérifiée sans navigateur.
+#  Aucune dépendance npm : runner de test intégré à Node 22.
+# =========================================================
+name: TV web tests (Tizen/webOS)
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+      - 'integration/**'
+      - 'feature/**'
+    paths:
+      - 'tv-tizen-webos/**'
+      - '.github/workflows/tv-web-tests.yml'
+  pull_request:
+    paths:
+      - 'tv-tizen-webos/**'
+      - '.github/workflows/tv-web-tests.yml'
+
+jobs:
+  test:
+    name: Parse-check + unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Parse-check du JS embarqué (aucune régression de syntaxe)
+        run: |
+          set -e
+          for f in tv-tizen-webos/shared/js/*.js; do
+            node --check "$f"
+            echo "OK  $f"
+          done
+
+      - name: Tests unitaires (logique pure portée des correctifs TV)
+        run: node --test tv-tizen-webos/test/*.test.js

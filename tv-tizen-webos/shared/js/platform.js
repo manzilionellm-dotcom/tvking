@@ -26,6 +26,10 @@ DFT.keys = {
   ENTER: 13,
   // Liste car certaines plateformes émettent plusieurs codes pour « Retour ».
   BACK: [10009, 461, 8, 27],
+  // Touches média Tizen (keyCode → nom KeyboardEvent.key). webOS et les
+  // navigateurs émettent déjà e.key = 'MediaPlayPause'… ; Tizen émet ces
+  // codes numériques. nav.js normalise via cette table (cf. mediaKeys.js).
+  MEDIA: { 10252: 'MediaPlayPause', 415: 'MediaPlay', 19: 'MediaPause', 413: 'MediaStop' },
 };
 
 DFT.isBack = function (keyCode) {

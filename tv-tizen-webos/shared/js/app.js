@@ -88,8 +88,9 @@ DFT.app = (function () {
     }
     DFT.ui.setText('act-msg', msg);
     screen('activation');
+    DFT.nav.onMedia(null);
     DFT.nav.onBack(function () { /* écran racine : rien */ });
-    DFT.nav.focusFirst();
+    DFT.nav.enterScene('activation');
   }
 
   // ---------- Charge la source poussée par le panel ----------
@@ -106,13 +107,13 @@ DFT.app = (function () {
         channels = (out && out.channels) || [];
         if (!channels.length) {
           DFT.ui.setText('act-msg', 'Source vide ou injoignable. Vérifie avec ton revendeur.');
-          screen('activation'); DFT.nav.focusFirst(); return;
+          screen('activation'); DFT.nav.enterScene('activation'); return;
         }
         indexChannels();
         renderLive();
       }).catch(function () {
         DFT.ui.setText('act-msg', 'Impossible de charger la source. Réessaie plus tard.');
-        screen('activation'); DFT.nav.focusFirst();
+        screen('activation'); DFT.nav.enterScene('activation');
       });
     }).catch(function () {
       showActivation(null);
@@ -139,13 +140,15 @@ DFT.app = (function () {
       catBox.appendChild(catRow(cats[i]));
     }
     renderGrid();
+    DFT.nav.onMedia(null);
     DFT.nav.onBack(function () { screen('live'); });
-    DFT.nav.focusFirst();
+    DFT.nav.enterScene('live');
   }
 
   function catRow(name) {
     var d = document.createElement('div');
     d.className = 'cat focusable' + (name === currentCat ? ' active' : '');
+    d.setAttribute('data-fk', 'cat:' + name);   // clé stable → restauration du focus
     d.textContent = name;
     d.onclick = function () {
       currentCat = name;
@@ -169,6 +172,7 @@ DFT.app = (function () {
   function chanTile(ch) {
     var d = document.createElement('div');
     d.className = 'tile focusable';
+    d.setAttribute('data-fk', 'ch:' + (ch.url || ch.name || ''));  // clé stable → restauration du focus
     var logo = ch.logo
       ? '<div class="tile-logo" style="background-image:url(\'' + ch.logo.replace(/'/g, '') + '\')"></div>'
       : '<div class="tile-logo tile-logo-empty">' + (ch.name || '?').charAt(0) + '</div>';
@@ -184,8 +188,15 @@ DFT.app = (function () {
     DFT.ui.setText('player-title', ch.name || '');
     DFT.ui.setBuffering(true);
     DFT.player.play(ch.url);
+    // Touches média de la télécommande (déclarées par platform.js, jusqu'ici
+    // ignorées) : play/pause bascule la lecture, stop ferme le lecteur.
+    DFT.nav.onMedia(function (action) {
+      if (action === 'stop') { DFT.player.stop(); DFT.nav.onMedia(null); renderLive(); }
+      else if (action === 'toggle') { DFT.player.toggle(); }
+    });
     DFT.nav.onBack(function () {
       DFT.player.stop();
+      DFT.nav.onMedia(null);
       renderLive();
     });
   }
