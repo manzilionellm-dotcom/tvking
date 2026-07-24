@@ -29,3 +29,12 @@ Phase : T1 — Observabilité vidéo S3 du lecteur mobile.
 Fin de run : verte. Prochain run (roadmap) : T2 sécurité mobile (scrubbing
 PII, FLAG_SECURE, backup rules) puis exploitation des agrégats S3 (retry
 par famille d'erreur, budgets vidéo à la baseline).
+
+## Publication phone-test (demande client, 2026-07-24)
+- APK signé clé maîtresse, produit par build-android run 30102276507
+  (commit 9fbcee5, build #1250), publié via publish-phone-test
+  (run 30103744897) → release prérelease `phone-test` (jamais « latest »/
+  prod, invisible de l'updater in-app).
+- Artefact : 7motion-test.apk — 66 035 732 octets
+  sha256: 7195e958910d47dc0745300c604e683dd0c118531adc1aa14e7dff4588070e14
+- Lien direct : https://github.com/manzilionellm-dotcom/tvking/releases/download/phone-test/7motion-test.apk
