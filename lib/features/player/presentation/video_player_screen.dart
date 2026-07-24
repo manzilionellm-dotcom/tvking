@@ -63,6 +63,8 @@ import '../data/player_settings.dart';
 import '../data/stream_blocked_fallback.dart';
 import '../data/stream_diagnostics.dart';
 import '../data/xtream_url_variants.dart';
+import '../domain/playback_error_taxonomy.dart';
+import '../domain/playback_session_stats.dart';
 import 'aspect_mode_label.dart';
 import 'stream_debug_screen.dart';
 import 'widgets/player_settings_sheet.dart';
@@ -279,6 +281,44 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Channel? _pendingZapChannel;
   // Chrono « zap → première frame » (mesure fluidité, cible < 2 s).
   final Stopwatch _zapClock = Stopwatch();
+
+  // ── Métriques de session S3 (usine v2 run 002) ────────────────────
+  // Une session = ouverture (ou zap) → fermeture (ou zap suivant).
+  // Nourrie par les listeners EXISTANTS (première frame, buffering,
+  // erreurs fatales, reconnexions watchdog), résumée en UNE ligne
+  // boîte noire — voir playback_session_stats.dart.
+  PlaybackSessionStats? _sessionStats;
+
+  /// Résume la session de métriques en cours (si elle existe) dans la
+  /// boîte noire, puis l'oublie. Appelé au zap et à la fermeture.
+  void _flushStatsSession() {
+    final PlaybackSessionStats? s = _sessionStats;
+    if (s == null) return;
+    _sessionStats = null;
+    final PlaybackSessionSummary sum = s.summarize();
+    // Zap en rafale : une chaîne juste TRAVERSÉE (< 1,5 s, aucune frame,
+    // aucune erreur) n'est pas un raté de démarrage — on ne journalise
+    // pas, sinon chaque rafale inonderait la boîte noire de faux warns.
+    final bool zapTraversee = !sum.started &&
+        sum.sessionMs < 1500 &&
+        sum.errorCounts.isEmpty &&
+        sum.recoveryCount == 0;
+    if (zapTraversee) return;
+    StreamDiagnostics.instance.recordEvent(
+      'video',
+      sum.toLogLine(),
+      level: sum.healthy ? 'info' : 'warn',
+    );
+  }
+
+  /// Clôt la session précédente et en ouvre une neuve pour la chaîne
+  /// courante (live vs VOD d'après le contenu effectif).
+  void _startStatsSession() {
+    _flushStatsSession();
+    _sessionStats = PlaybackSessionStats(
+      isLive: widget.overrideUrl == null && _currentChannel.isLive,
+    );
+  }
   static const Duration _kStartupTimeout = Duration(seconds: 25);
 
   // Autoplay « À suivre » (façon YouTube / Netflix) : quand un contenu
@@ -418,6 +458,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// écrite clairement au client (efface la notice quand la lecture repart).
   void _onBufferingChanged(bool b) {
     if (!mounted) return;
+    // S3 : après la 1re frame, chaque passage en buffering est un stall
+    // compté dans les agrégats de session (avant, c'est le chargement).
+    _sessionStats?.onBuffering(b);
     setState(() => _isBuffering = b);
     if (b) {
       // Chargement en cours : on arme la notice si ça dure trop longtemps.
@@ -518,6 +561,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (liveDecoded) {
         if (_watchdogRecoveries >= _kWatchdogMaxRecoveries) return;
         _watchdogRecoveries++;
+        _sessionStats?.onRecovery(); // S3 : zombie devenu donnée
         StreamDiagnostics.instance.recordEvent(
           'player',
           'Micro-coupure (EOF live) → reprise silencieuse '
@@ -569,6 +613,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         return;
       }
       StreamDiagnostics.instance.recordPlayerError(e);
+      // S3 : erreur FATALE classée par famille (réseau / token / source /
+      // décodeur) dans les agrégats de session — la famille est la donnée
+      // qui permettra (run futur) le retry intelligent par catégorie.
+      _sessionStats?.onError(PlaybackErrorTaxonomy.classify(e));
       // Si la chaîne n'a JAMAIS atteint la lecture, la source n'a peut-être
       // envoyé aucune vidéo décodable (chaîne vide / black.ts d'1 octet /
       // bloquée par le fournisseur) — MAIS ça peut aussi être une signature
@@ -682,6 +730,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _zapClock
       ..reset()
       ..start(); // mesure « ouverture → première frame »
+    // S3 : nouvelle session de MÉTRIQUES (TTFF, stalls, rebuffering,
+    // erreurs par famille) — résumée à la fermeture ou au zap suivant.
+    _startStatsSession();
     _openMedia(url);
 
     _scheduleHideOverlay();
@@ -882,6 +933,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _zapClock
       ..reset()
       ..start(); // la mesure inclut le debounce : c'est le ressenti réel
+    // S3 : la session de métriques de l'ANCIENNE chaîne est résumée
+    // (boîte noire), une neuve démarre pour la chaîne visée.
+    _startStatsSession();
     _zapDebounce = Timer(const Duration(milliseconds: 400), () {
       _pendingZapChannel = null;
       if (!mounted || _currentChannel.id != next.id) return;
@@ -1813,6 +1867,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   void dispose() {
+    // S3 : la session de métriques est résumée en UNE ligne boîte noire
+    // (TTFF, stalls, rebuffering, erreurs par famille, reconnexions).
+    _flushStatsSession();
     _hideOverlayTimer?.cancel();
     _presenceTimer?.cancel();
     _upNextTimer?.cancel();
@@ -1971,6 +2028,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _markPlaybackStarted() {
     _startupTimer?.cancel(); // le démarrage a VRAIMENT eu lieu → borne levée
     _vodRelayFallbackTimer?.cancel(); // 1re image OK → pas de repli relais
+    // S3 : fige le TTFF de la session (seule la 1re frame compte).
+    _sessionStats?.onFirstFrame();
     if (_playedChannelId != _currentChannel.id) {
       _playedChannelId = _currentChannel.id;
 
@@ -2162,6 +2221,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _watchdogRecoveries++;
     debugPrint(
         '[Player] watchdog: flux gelé → reconnexion automatique #$_watchdogRecoveries');
+    _sessionStats?.onRecovery(); // S3 : zombie devenu donnée
     StreamDiagnostics.instance.recordEvent(
       'watchdog',
       'Flux gelé (position immobile) → reconnexion automatique '

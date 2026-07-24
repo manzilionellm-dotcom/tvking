@@ -1,0 +1,31 @@
+# Run 002 — USINE APP v2, périmètre MOBILE — 2026-07-24
+
+Branche : claude/usine-app-v2-mobile-e3ungl (suite du run 001, commit 39235e1)
+Phase : T1 — Observabilité vidéo S3 du lecteur mobile.
+
+- [x] Recon lecteur mobile : S4 déjà largement présent (watchdog position
+      figée 15 s / max 4 reconnexions, borne de démarrage, reprise EOF live,
+      détection connexion faible, boîte noire StreamDiagnostics) ; zap→1re
+      frame déjà chronométré. MANQUE identifié : taxonomie d'erreurs +
+      agrégats de session (ratio rebuffering, taux de démarrage, stalls).
+- [x] Domaine pur : playback_error_taxonomy.dart (familles S3 : réseau /
+      token / source / décodeur / inconnu ; 403 prioritaire sur source)
+- [x] Domaine pur : playback_session_stats.dart (TTFF, stalls, bufferingMs,
+      ratio de rebuffering, erreurs par famille, reconnexions ; horloge
+      injectable ; résumé une-ligne pour la boîte noire)
+- [x] Tests : test/features/player/playback_session_stats_test.dart —
+      12 tests, tous verts (taxonomie 5, agrégats 7)
+- [x] Câblage chirurgical video_player_screen.dart (9 points) : session
+      créée à l'ouverture + au zap (_applyZap, point de convergence de tous
+      les chemins de zap), onFirstFrame dans _markPlaybackStarted,
+      onBuffering dans _onBufferingChanged, onError (classé) sur le chemin
+      d'erreur FATALE, onRecovery aux 2 sites de reconnexion (EOF live +
+      watchdog position figée), flush au dispose. Anti-bruit : chaîne juste
+      traversée en rafale (< 1,5 s, aucune frame/erreur) non journalisée.
+- [x] QA : flutter analyze → 0 erreur, 0 warning hors features/tv
+- [x] QA : flutter test → suite complète verte (659 tests)
+- [x] Commit + push + CI Quality verte
+
+Fin de run : verte. Prochain run (roadmap) : T2 sécurité mobile (scrubbing
+PII, FLAG_SECURE, backup rules) puis exploitation des agrégats S3 (retry
+par famille d'erreur, budgets vidéo à la baseline).

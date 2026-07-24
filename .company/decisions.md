@@ -47,3 +47,20 @@ entier est en dette D2 (à confirmer qu'aucune reprise n'est prévue).
 NOTE sécurité vérifiée : la section Adulte de l'UI ACTIVE passe par le
 rayon Adulte de `category_browser_view` + garde d'âge/PIN (features/security),
 la garde biométrique supprimée n'était pas le chemin actif.
+
+## Run 002 — 2026-07-24
+
+### D-2026-07-24-07 — S3 : agrégats de session plutôt que nouveaux events
+Le lecteur mobile émettait déjà les événements unitaires (1re frame, gels,
+erreurs, reconnexions) mais aucun agrégat. Choix : deux classes PURES
+(`playback_error_taxonomy`, `playback_session_stats`, horloge injectable,
+12 tests) + câblage aux listeners EXISTANTS — zéro nouveau listener, zéro
+timer supplémentaire, une seule ligne boîte noire par session. Une session
+suit le ressenti utilisateur (ouverture/zap → fermeture/zap) et SURVIT aux
+reconnexions internes. Anti-bruit : chaînes juste traversées en rafale de
+zap (< 1,5 s, aucune frame) non journalisées.
+
+### D-2026-07-24-08 — Taxonomie : 403 = famille token, pas source
+Un 403 Xtream signifie compte/token (expiré, limite de connexions) : le
+classer « source » induirait des retries aveugles. Priorité de classement
+token → réseau → décodeur → source, verrouillée par test.

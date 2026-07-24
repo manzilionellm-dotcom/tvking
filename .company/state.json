@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "run_courant": 1,
+  "run_courant": 2,
   "rollout": null,
   "experiments": null,
   "dette": {
@@ -20,5 +20,19 @@
   },
   "apres_run_001": {
     "analyze": {"erreurs": 0, "warnings_total": 5, "warnings_hors_tv": 0, "note": "les 5 restants sont tous dans lib/features/tv/ — hors périmètre par consigne client"}
+  },
+  "apres_run_002": {
+    "date": "2026-07-24",
+    "phase": "T1 observabilité vidéo S3 (lecteur mobile)",
+    "livre": "taxonomie d'erreurs (réseau/token/source/décodeur) + agrégats de session (TTFF, stalls, ratio rebuffering, taux de démarrage, reconnexions) journalisés en une ligne boîte noire par session",
+    "s3_couverture": {
+      "ttff": "mesuré (ouverture ET zap → 1re frame)",
+      "zapping": "mesuré (préexistant, _zapClock)",
+      "taux_demarrage": "mesuré (started par session)",
+      "ratio_rebuffering": "mesuré (bufferingMs / temps post-1re-frame)",
+      "erreurs_par_taxonomie": "mesuré (fatales classées)",
+      "watchdogs_télémétrés": "mesuré (reconnexions par session)",
+      "resolution_debit": "NON — pas encore exposé par le câblage media_kit, backlog"
+    }
   }
 }
