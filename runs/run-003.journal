@@ -37,3 +37,12 @@ allowBackup exécutée verte ; APK/AAB produits, aucune publication) ·
 DeFew TV ✓ · Tizen ✓ · Windows ✗ (FFmpegKit archive — infra desktop
 préexistante, hors périmètre mobile, consignée au registre de risques).
 Fin de run : VERTE.
+
+## Publication phone-test (demande client, 2026-07-25)
+- APK signé clé maîtresse, produit par build-android run 30158788079
+  (commit 635b8d1, correctifs S9-1/S9-2 + fix perf redactor de ce run).
+- Publié via publish-phone-test (run 30168285103) → release prérelease
+  `phone-test` (écrase la précédente, jamais "latest"/prod, invisible de
+  l'updater in-app — pas de version.json).
+- Artefact : 7motion-test.apk — 66 035 756 octets.
+- Lien direct : https://github.com/manzilionellm-dotcom/tvking/releases/download/phone-test/7motion-test.apk

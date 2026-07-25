@@ -88,5 +88,13 @@
       "hors_perimetre": "Build DeFew TV: success · Tizen: success · Windows: failure (Failed to extract FFmpegKit archive — infra du build desktop, sans lien avec ce run, hors périmètre mobile)",
       "date": "2026-07-25"
     }
+  },
+  "dernier_lien_phone_test": {
+    "url": "https://github.com/manzilionellm-dotcom/tvking/releases/download/phone-test/7motion-test.apk",
+    "run_build": 30158788079,
+    "run_publish": 30168285103,
+    "commit": "635b8d1",
+    "date": "2026-07-25",
+    "note": "prerelease de test, signée clé maîtresse, jamais prod/latest, invisible de l'updater"
   }
 }
