@@ -1,13 +1,77 @@
 {
   "schema_version": 1,
   "items": [
-    {"id": "B1", "titre": "Observabilité vidéo S3 mobile : mesurer TTFF/zapping/rebuffering/taux de démarrage via media_kit + taxonomie d'erreurs", "preuve": "aucune métrique S3 systématique trouvée côté mobile (CinePerf est TV/data)", "impact": "haut", "effort": "moyen", "score": "haut"},
-    {"id": "B2", "titre": "Watchdogs anti-état-zombie du lecteur mobile (écran noir, spinner infini, position figée, piste manquante)", "preuve": "S4 : aucun watchdog trouvé dans video_player_screen.dart", "impact": "haut", "effort": "moyen", "score": "haut"},
-    {"id": "B3", "titre": "Harnais de test du lecteur mobile (mock media_kit) pour tester zap/garde/erreurs (dette D5)", "preuve": "garde anti multi-open livrée sans test automatisé au run 001", "impact": "moyen", "effort": "eleve", "score": "moyen"},
-    {"id": "B4", "titre": "Audit deps : paquet discontinué + 43 majeures bloquées (dette D4)", "preuve": "sortie flutter pub get du 2026-07-24", "impact": "moyen", "effort": "moyen", "score": "moyen"},
-    {"id": "B5", "titre": "Décision produit : brancher le mode Daylight ou retirer AppTheme.daylight (dette D3)", "preuve": "main.dart force ThemeMode.dark ; picker supprimé au run 001", "impact": "bas", "effort": "moyen", "score": "bas"},
-    {"id": "B6", "titre": "Retirer home_screen.dart legacy après confirmation (dette D2)", "preuve": "non instancié ; accueil actif = SimpleHomeScreen", "impact": "bas", "effort": "faible", "score": "bas"},
-    {"id": "B7", "titre": "Descente des 264 infos analyze par lots puis CI Quality stricte", "preuve": "analyze 2026-07-24", "impact": "moyen", "effort": "moyen", "score": "moyen"},
-    {"id": "B8", "titre": "pubspec.lock : proposer le commit du lockfile (impacte aussi la TV → validation client)", "preuve": ".gitignore ligne 24", "impact": "moyen", "effort": "faible", "score": "moyen"}
+    {
+      "id": "B1",
+      "titre": "Observabilité vidéo S3 mobile : mesurer TTFF/zapping/rebuffering/taux de démarrage via media_kit + taxonomie d'erreurs",
+      "preuve": "aucune métrique S3 systématique trouvée côté mobile (CinePerf est TV/data)",
+      "impact": "haut",
+      "effort": "moyen",
+      "score": "haut"
+    },
+    {
+      "id": "B2",
+      "titre": "Watchdogs S4 restants du lecteur mobile : désync/absence de pistes (tracks attendues vs rendues) — le reste (position figée, spinner démarrage, notice connexion) EXISTE déjà",
+      "preuve": "recon run 003 : _watchdogTimer (15 s + budget), _startupTimer, _bufferNoticeTimer présents dans video_player_screen.dart",
+      "impact": "moyen",
+      "effort": "moyen",
+      "score": "moyen"
+    },
+    {
+      "id": "B3",
+      "titre": "Harnais de test du lecteur mobile (mock media_kit) pour tester zap/garde/erreurs (dette D5)",
+      "preuve": "garde anti multi-open livrée sans test automatisé au run 001",
+      "impact": "moyen",
+      "effort": "eleve",
+      "score": "moyen"
+    },
+    {
+      "id": "B4",
+      "titre": "Audit deps : paquet discontinué + 43 majeures bloquées (dette D4)",
+      "preuve": "sortie flutter pub get du 2026-07-24",
+      "impact": "moyen",
+      "effort": "moyen",
+      "score": "moyen"
+    },
+    {
+      "id": "B5",
+      "titre": "Décision produit : brancher le mode Daylight ou retirer AppTheme.daylight (dette D3)",
+      "preuve": "main.dart force ThemeMode.dark ; picker supprimé au run 001",
+      "impact": "bas",
+      "effort": "moyen",
+      "score": "bas"
+    },
+    {
+      "id": "B6",
+      "titre": "Retirer home_screen.dart legacy après confirmation (dette D2)",
+      "preuve": "non instancié ; accueil actif = SimpleHomeScreen",
+      "impact": "bas",
+      "effort": "faible",
+      "score": "bas"
+    },
+    {
+      "id": "B7",
+      "titre": "Descente des 264 infos analyze par lots puis CI Quality stricte",
+      "preuve": "analyze 2026-07-24",
+      "impact": "moyen",
+      "effort": "moyen",
+      "score": "moyen"
+    },
+    {
+      "id": "B8",
+      "titre": "pubspec.lock : proposer le commit du lockfile (impacte aussi la TV → validation client)",
+      "preuve": ".gitignore ligne 24",
+      "impact": "moyen",
+      "effort": "faible",
+      "score": "moyen"
+    },
+    {
+      "id": "B9",
+      "titre": "Veille MODULE D (teardown leaders IPTV + avis négatifs + Share of Store initial) — 20 min bornées, fetch réel avec sources datées",
+      "preuve": "jamais exécutée depuis v2 ; réseau sortant disponible via proxy",
+      "impact": "moyen",
+      "effort": "faible",
+      "score": "moyen"
+    }
   ]
 }

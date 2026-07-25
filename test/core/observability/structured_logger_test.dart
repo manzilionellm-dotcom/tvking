@@ -113,4 +113,63 @@ void main() {
       expect(after.length, 1);
     });
   });
+
+  group('StructuredLogger caviardage des secrets (S9)', () {
+    setUp(() => StructuredLogger.instance.clearSinks());
+
+    test('une URL Xtream dans le ctx sort caviardée vers TOUS les sinks', () {
+      final List<String> got = <String>[];
+      StructuredLogger.instance.addSink(got.add);
+
+      // Cas réel : un call site logge e.toString() — une ClientException
+      // embarque l'URI complète avec les identifiants de l'abonné.
+      StructuredLogger.instance.error(
+        domain: 'relay',
+        event: 'upstream_fail',
+        ctx: <String, Object?>{
+          'error': 'ClientException: Failed host lookup, '
+              'uri=http://portal.example.com/live/jean123/S3cret!/9042.ts',
+        },
+      );
+
+      expect(got.length, 1);
+      expect(got.first, isNot(contains('jean123')));
+      expect(got.first, isNot(contains('S3cret!')));
+      // La structure reste exploitable : host et id de flux préservés.
+      expect(got.first, contains('portal.example.com'));
+      expect(got.first, contains('9042.ts'));
+    });
+
+    test('username/password en query sortent caviardés', () {
+      final List<String> got = <String>[];
+      StructuredLogger.instance.addSink(got.add);
+
+      StructuredLogger.instance.warn(
+        domain: 'xtream',
+        event: 'probe',
+        ctx: <String, Object?>{
+          'url': 'http://h.example/player_api.php?username=abo1&password=pw77',
+        },
+      );
+
+      expect(got.first, isNot(contains('abo1')));
+      expect(got.first, isNot(contains('pw77')));
+    });
+
+    test('une ligne sans secret reste un JSON intact', () {
+      final List<String> got = <String>[];
+      StructuredLogger.instance.addSink(got.add);
+
+      StructuredLogger.instance.info(
+        domain: 'player',
+        event: 'first_frame',
+        ctx: <String, Object?>{'ttffMs': 420},
+      );
+
+      final Map<String, dynamic> decoded =
+          jsonDecode(got.first) as Map<String, dynamic>;
+      expect(decoded['domain'], 'player');
+      expect((decoded['ctx'] as Map<String, dynamic>)['ttffMs'], 420);
+    });
+  });
 }

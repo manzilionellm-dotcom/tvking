@@ -1,25 +1,58 @@
 {
   "schema_version": 1,
-  "run_courant": 2,
+  "run_courant": 3,
   "rollout": null,
   "experiments": null,
   "dette": {
     "items": [
-      {"id": "D1", "desc": "pubspec.lock non commité (chaîne de build non déterministe, mobile ET TV impactés — décision partagée à prendre)", "cout_estime": "moyen"},
-      {"id": "D2", "desc": "home_screen.dart (accueil legacy ~900 lignes) non routé depuis main.dart — l'accueil actif est SimpleHomeScreen ; candidat au retrait après confirmation", "cout_estime": "faible"},
-      {"id": "D3", "desc": "Mode Daylight complet (AppTheme.daylight + l10n) jamais branché : main.dart force ThemeMode.dark. Décision produit : brancher ou retirer", "cout_estime": "moyen"},
-      {"id": "D4", "desc": "1 paquet discontinué signalé par pub get + 43 paquets avec majeures indisponibles (contraintes) — audit deps à mener", "cout_estime": "moyen"},
-      {"id": "D5", "desc": "video_player_screen.dart (~3800 lignes) sans harnais de test widget (media_kit non mockée) — la garde anti multi-open du zap bouton (run 1) n'a pas de test automatisé", "cout_estime": "eleve"}
+      {
+        "id": "D1",
+        "desc": "pubspec.lock non commité (chaîne de build non déterministe, mobile ET TV impactés — décision partagée à prendre)",
+        "cout_estime": "moyen"
+      },
+      {
+        "id": "D2",
+        "desc": "home_screen.dart (accueil legacy ~900 lignes) non routé depuis main.dart — l'accueil actif est SimpleHomeScreen ; candidat au retrait après confirmation",
+        "cout_estime": "faible"
+      },
+      {
+        "id": "D3",
+        "desc": "Mode Daylight complet (AppTheme.daylight + l10n) jamais branché : main.dart force ThemeMode.dark. Décision produit : brancher ou retirer",
+        "cout_estime": "moyen"
+      },
+      {
+        "id": "D4",
+        "desc": "1 paquet discontinué signalé par pub get + 43 paquets avec majeures indisponibles (contraintes) — audit deps à mener",
+        "cout_estime": "moyen"
+      },
+      {
+        "id": "D5",
+        "desc": "video_player_screen.dart (~3800 lignes) sans harnais de test widget (media_kit non mockée) — la garde anti multi-open du zap bouton (run 1) n'a pas de test automatisé",
+        "cout_estime": "eleve"
+      }
     ]
   },
   "baseline": {
     "date": "2026-07-24",
-    "analyze": {"erreurs": 0, "warnings_total": 25, "warnings_hors_tv": 20, "infos": 264},
-    "tests": {"total": 647, "verts": 647},
+    "analyze": {
+      "erreurs": 0,
+      "warnings_total": 25,
+      "warnings_hors_tv": 20,
+      "infos": 264
+    },
+    "tests": {
+      "total": 647,
+      "verts": 647
+    },
     "ci_quality": "verte sur claude/maison-mere-phone (run 29957800553 du 2026-07-22)"
   },
   "apres_run_001": {
-    "analyze": {"erreurs": 0, "warnings_total": 5, "warnings_hors_tv": 0, "note": "les 5 restants sont tous dans lib/features/tv/ — hors périmètre par consigne client"}
+    "analyze": {
+      "erreurs": 0,
+      "warnings_total": 5,
+      "warnings_hors_tv": 0,
+      "note": "les 5 restants sont tous dans lib/features/tv/ — hors périmètre par consigne client"
+    }
   },
   "apres_run_002": {
     "date": "2026-07-24",
@@ -34,5 +67,19 @@
       "watchdogs_télémétrés": "mesuré (reconnexions par session)",
       "resolution_debit": "NON — pas encore exposé par le câblage media_kit, backlog"
     }
+  },
+  "apres_run_003": {
+    "date": "2026-07-25",
+    "programme": "USINE v3 (migration depuis v2, mémoire conservée)",
+    "phase": "T2 sécurité mobile + S9 (caviardage des secrets dans TOUS les puits de logs)",
+    "livre": [
+      "S9-1 : SecretRedactor appliqué au point d'étranglement StructuredLogger._emit + BlackBox.record (les 3 affluents de la boîte noire caviardent désormais : CrashReporting l'était déjà)",
+      "S9-2 : build-android.yml — android:allowBackup=false injecté au manifeste (patch idempotent) : base playlists/identifiants Xtream et état d'activation hors backup adb/cloud"
+    ],
+    "qa": {
+      "analyze": "0 err / 0 warn / 294 infos (= baseline, analyseur 3.38.7)",
+      "tests": "663/663 verts (+4 nouveaux)"
+    },
+    "verification_ci_en_attente": "run build-android sur la branche pour constater '✓ allowBackup' dans les logs de l'étape privacy — à évaluer au prochain run si non constaté ce run"
   }
 }

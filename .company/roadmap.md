@@ -1,7 +1,11 @@
 # Roadmap — USINE APP v2 (périmètre mobile)
 
-## Fait (run 001 — 2026-07-24)
+## Fait (runs 001-003)
 - Bootstrap mémoire `.company/` + journal de run.
+- Run 002 : observabilité vidéo S3 du lecteur mobile (taxonomie + agrégats).
+- Run 003 (v3) : T2/S9 — caviardage des secrets dans TOUS les puits de logs
+  (StructuredLogger + BlackBox + CrashReporting) ; allowBackup=false au
+  manifeste build-android. QA 663/663.
 - Baseline mesurée : analyze 0 err / 25 warn / 264 infos ; 647 tests verts.
 - Sprint 1 : 20/20 warnings hors TV purgés (+ 2 fixes réels : anti-fuite
   caches Channel, garde anti multi-open du zap bouton).
@@ -11,9 +15,11 @@
    (Boîte noire, CinePerf, structured_logger) vs la liste S3 (TTFF, zapping,
    rebuffering, taux de démarrage, taxonomie d'erreurs, watchdogs) ; combler
    les trous côté MOBILE (media_kit AnalyticsListener équivalent).
-2. **T2 Sécurité mobile + S9** : audit scrubbing PII dans les logs (des
-   tests SecretRedactor existent — vérifier la couverture des chemins réels),
-   FLAG_SECURE sur écrans sensibles mobile, backup rules.
+2. **T2 Sécurité mobile — reste** : FLAG_SECURE sur écrans sensibles mobile
+   (lock/PIN — l'app principale n'a pas le patch FLAG_SECURE du flavor
+   Privé), constat CI du patch allowBackup (run build-android sur la
+   branche), audit tokens au repos (secret_cipher v2 existe — vérifier les
+   chemins).
 3. **T3 Deps** : traiter D4 (paquet discontinué + majeures bloquées),
    décision pubspec.lock (D1, partagée avec TV — demander au client).
 4. **T5 Harnais S6 (mobile)** : scénarios réseau simulés exécutables en CI

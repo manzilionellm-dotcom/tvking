@@ -121,6 +121,32 @@ void main() {
     expect(report, contains('open_failed'));
   });
 
+  test('record() direct caviarde les secrets avant le disque (S9)', () async {
+    await BlackBox.instance.initialize(directory: tmp);
+
+    BlackBox.instance.record(
+      domain: 'player',
+      event: 'open_failed',
+      level: 'err',
+      ctx: <String, Object?>{
+        'url': 'http://portal.example.com/live/jean123/S3cret!/9042.ts',
+      },
+    );
+
+    final List<String> recent = BlackBox.instance.recent();
+    final String line =
+        recent.firstWhere((String l) => l.contains('open_failed'));
+    expect(line, isNot(contains('jean123')));
+    expect(line, isNot(contains('S3cret!')));
+    expect(line, contains('portal.example.com'));
+
+    // Le disque non plus ne doit jamais voir le secret.
+    await BlackBox.instance.flushNow();
+    final String onDisk =
+        await File('${tmp.path}/black_box/blackbox.jsonl').readAsString();
+    expect(onDisk, isNot(contains('S3cret!')));
+  });
+
   test('rotation du fichier au-delà de la taille max', () async {
     await BlackBox.instance.initialize(directory: tmp);
     // Gonfle artificiellement le fichier au-delà de kMaxFileBytes.

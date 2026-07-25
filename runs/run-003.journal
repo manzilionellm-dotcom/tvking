@@ -4,12 +4,28 @@ Branche : claude/usine-app-v3-iptv-mjbjts (reprise de la lignée v2, commit 2395
 Programme : migration v2→v3 (mêmes lois, modules S/D/V explicites) — périmètre
 inchangé : MOBILE uniquement, lib/features/tv/ + main_tv/tizen/windows intouchés.
 
-- [ ] C0 Reprise : verrou de run, meta.json migrée v3, journal ouvert, commit départ
-- [ ] Baseline run 003 : flutter analyze (attendu 0 err / 0 warn hors tv) + flutter test (attendu 659 verts)
-- [ ] Recon T2 sécurité mobile : scrubbing PII des logs (SecretRedactor : couverture réelle), FLAG_SECURE, backup rules, tokens au repos
-- [ ] Sprint S4/B2 : watchdogs anti-zombie manquants du lecteur mobile (écran noir / spinner infini) télémétrés — domaine pur + tests d'abord
-- [ ] Correctifs T2 retenus (bornés, avec tests)
-- [ ] QA : flutter analyze → 0 erreur, 0 warning hors features/tv
-- [ ] QA : flutter test → suite complète verte
-- [ ] Mémoire .company/ mise à jour (state, decisions, roadmap, backlog)
-- [ ] Commit + push branche désignée + RAPPORT FINAL
+- [x] C0 Reprise : verrou de run, meta.json migrée v3, journal ouvert, commit départ
+- [x] Baseline run 003 : flutter analyze 0 err / 0 warn (294 infos, analyseur 3.38.7)
+      + flutter test 659/659 verts (exit 0) — conforme au run 002
+- [x] Recon T2 sécurité mobile : cartographie des 3 affluents de la boîte noire.
+      TROU CONFIRMÉ : SecretRedactor appliqué au seul CrashReporting.recordError ;
+      StructuredLogger._emit (63 sites, dont e.toString() → URI complète avec
+      identifiants Xtream) et BlackBox.record() écrivaient SUR DISQUE sans
+      caviardage (+ rapport collable buildReport). recording_service.dart:52
+      examiné : payload MethodChannel, pas un log — hors risque.
+- [x] Recon S4/B2 : watchdogs déjà largement présents (position figée 15 s +
+      budget borné, borne de démarrage anti-spinner, notice connexion faible,
+      repli VOD, reprise EOF). B2 rétrogradé au backlog (reste : désync pistes).
+- [x] Correctif S9-1 : caviardage au point d'étranglement StructuredLogger._emit
+      + BlackBox.record — couvre les 63 sites existants et tous les futurs.
+      Tests : +3 logger (Xtream path, query user/pass, JSON intact sans secret),
+      +1 boîte noire (record() direct → ring ET disque caviardés).
+- [x] Correctif S9-2 : build-android.yml — étape idempotente
+      « Patch AndroidManifest for privacy » : android:allowBackup="false"
+      (base playlists/identifiants Xtream + état d'activation hors backup
+      adb/cloud). Même style que les patches réseau existants. Vérification
+      d'exécution : run build-android déclenché sur cette branche (voir state).
+- [x] QA : flutter analyze → 0 erreur, 0 warning hors features/tv (294 infos = baseline)
+- [x] QA : flutter test → 663/663 verts (659 baseline + 4 nouveaux), exit 0
+- [x] Mémoire .company/ mise à jour (state, decisions, roadmap, backlog)
+- [x] Commit + push branche désignée + RAPPORT FINAL

@@ -241,6 +241,31 @@ jobs:
           echo "--- Manifest réseau patché ---"
           grep -nE 'INTERNET|usesCleartextTraffic|REQUEST_INSTALL_PACKAGES|<application' "$MANIFEST" || true
 
+      # =====================================================================
+      #  CONFIDENTIALITÉ (S9) : android:allowBackup="false".
+      #  Sans lui, le backup auto d'Android (adb backup / sauvegarde cloud)
+      #  emporte la base locale — playlists avec identifiants Xtream de
+      #  l'abonné — et l'état d'activation lié à l'appareil, restaurables
+      #  sur un AUTRE appareil. `flutter create` régénère le manifeste sans
+      #  cet attribut à chaque build, il faut donc l'injecter comme les
+      #  attributs réseau ci-dessus (sed idempotent, garde grep).
+      # =====================================================================
+      - name: Patch AndroidManifest for privacy (allowBackup=false)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ ! -f "$MANIFEST" ]; then
+            echo "❌ Manifest manquant — flutter create a-t-il tourné ?"
+            exit 1
+          fi
+          if ! grep -q 'allowBackup' "$MANIFEST"; then
+            sed -i 's|<application|<application\n        android:allowBackup="false"|' "$MANIFEST"
+            echo "✓ android:allowBackup=\"false\" ajouté (base playlists/identifiants hors backup)"
+          else
+            echo "⊙ allowBackup déjà présent"
+          fi
+          grep -nE 'allowBackup|<application' "$MANIFEST" || true
+
       # Active le mode Android TV / Fire TV / Google TV :
       #
       #   1. <uses-feature android.software.leanback required=false>

@@ -60,6 +60,8 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../crash/secret_redactor.dart';
+
 /// Niveau de gravite d'un evenement.
 enum LogLevel {
   /// Transition normale (un cast a demarre, un recording reconnecte).
@@ -161,6 +163,14 @@ class StructuredLogger {
           '${DateTime.now().toUtc().toIso8601String()} ${lvl.short} $domain.$event '
           '(ctx non-serialisable: ${ctx.keys.join(",")})';
     }
+
+    // Caviardage AVANT diffusion : beaucoup de call sites passent
+    // `e.toString()` (une ClientException embarque l'URI complète, donc
+    // les identifiants Xtream de l'abonné) et la boîte noire — sink de ce
+    // logger — écrit chaque ligne SUR DISQUE puis dans le rapport collable.
+    // Un seul point d'étranglement couvre les 60+ sites existants et tous
+    // les futurs. SecretRedactor est idempotent et ne throw jamais.
+    line = SecretRedactor.redact(line);
 
     for (final LogSink sink in _sinks) {
       try {

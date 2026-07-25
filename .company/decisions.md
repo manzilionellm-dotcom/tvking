@@ -64,3 +64,32 @@ zap (< 1,5 s, aucune frame) non journalisées.
 Un 403 Xtream signifie compte/token (expiré, limite de connexions) : le
 classer « source » induirait des retries aveugles. Priorité de classement
 token → réseau → décodeur → source, verrouillée par test.
+
+## Run 003 — 2026-07-25 (USINE v3)
+
+### D-2026-07-25-01 — Reprise v3 sur la lignée v2 (branche désignée)
+La branche désignée `claude/usine-app-v3-iptv-mjbjts` avait été auto-créée
+depuis `main` (prototype Next.js, sans rapport avec l'app mobile). Elle est
+repositionnée sur la lignée v2 (`claude/usine-app-v2-mobile-e3ungl`,
+239526f) qui contient l'app Flutter ET la mémoire `.company/` des runs
+001-002. Aucun commit unique perdu (la pointe distante = snapshot de main).
+
+### D-2026-07-25-02 — S9 : caviarder au point d'étranglement, pas aux 63 sites
+Le SecretRedactor n'était appliqué qu'à CrashReporting.recordError. Or le
+StructuredLogger (63 sites, beaucoup passent e.toString() → une
+ClientException embarque l'URI complète, donc les identifiants Xtream de
+l'abonné) alimente la boîte noire qui écrit SUR DISQUE et dans le rapport
+collable. Choix : redacter la ligne sérialisée UNE fois dans _emit (et dans
+BlackBox.record pour le chemin direct) plutôt que corriger site par site —
+couvre l'existant et tous les futurs call sites, coût une passe regex par
+ligne de log (froide). Partagé avec la TV : bénéfice identique, zéro
+changement de comportement hors masquage.
+
+### D-2026-07-25-03 — allowBackup=false au manifeste (build CI)
+L'app est activée par appareil (MAC) et la base locale porte les
+identifiants Xtream. Le backup auto Android permettait d'extraire la base
+(adb backup / cloud) et de restaurer l'état d'activation sur un autre
+appareil. `flutter create` régénérant le manifeste à chaque build CI,
+l'attribut est injecté par une étape sed idempotente dans build-android.yml
+(même pattern que cleartext/INTERNET). Périmètre : build-android uniquement
+(la TV a son propre workflow, hors périmètre par consigne client).

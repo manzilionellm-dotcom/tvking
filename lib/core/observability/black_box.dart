@@ -40,6 +40,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../crash/crash_reporting.dart';
+import '../crash/secret_redactor.dart';
 import 'structured_logger.dart';
 
 /// Un constat produit par l'analyse automatique.
@@ -180,13 +181,17 @@ class BlackBox {
     Map<String, Object?> ctx = const <String, Object?>{},
   }) {
     try {
-      _recordRaw(jsonEncode(<String, Object?>{
+      // Même caviardage que le StructuredLogger (qui redacte dans _emit)
+      // et que le CrashReporting (qui redacte dans recordError) : ce
+      // chemin DIRECT était le seul des trois affluents de la boîte
+      // noire à écrire sur disque sans passer par SecretRedactor.
+      _recordRaw(SecretRedactor.redact(jsonEncode(<String, Object?>{
         'ts': DateTime.now().toUtc().toIso8601String(),
         'lvl': level,
         'domain': domain,
         'event': event,
         if (ctx.isNotEmpty) 'ctx': ctx,
-      }));
+      })));
     } on Object {
       // une boîte noire ne fait JAMAIS planter l'avion
     }
