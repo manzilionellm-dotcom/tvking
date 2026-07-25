@@ -96,5 +96,22 @@
     "commit": "635b8d1",
     "date": "2026-07-25",
     "note": "prerelease de test, signée clé maîtresse, jamais prod/latest, invisible de l'updater"
+  },
+  "publication_production_2026-07-25": {
+    "declencheur": "demande client explicite (AskUserQuestion : « Oui, publier en production maintenant » + « Masquer github.com des liens clients » + domaine 7themotion.com)",
+    "contexte_important": "une décision client antérieure (2026-07-16, commentée dans build-android.yml) avait COUPÉ la distribution APK téléphone (app basculée TV+Windows only). Le workflow garde un interrupteur MANUEL exprès pour réouverture — c'est celui utilisé ici, avec accord explicite recueilli ce tour-ci.",
+    "action": "fast-forward (pas de force, pas de main) de claude/usine-app-v3-iptv-mjbjts vers claude/maison-mere-phone (commit a8a428e, ancêtre commun confirmé), puis build-android.yml déclenché avec make_release=true sur cette branche",
+    "run_build": 30169959729,
+    "run_domaine": 30169962341,
+    "resultat": {
+      "tag_prod": "édité avec succès (garde anti-downgrade non déclenchée : run #1260 > précédent)",
+      "commit_publie": "a8a428eda1cbc72666e502f7c7a8ca264437a345",
+      "version_name": "0.3.3",
+      "lien_github_brut": "https://github.com/manzilionellm-dotcom/tvking/releases/download/prod/7motion.apk",
+      "domaine_rattache": "dl.7themotion.com -> seven-motion-backend (Cloudflare Worker), DNS/SSL ~1 min",
+      "lien_domaine_masque_recommande": "https://dl.7themotion.com/vip (proxy complet, github.com jamais exposé au client — /install /thefew /few équivalents)",
+      "lien_domaine_redirect_simple": "https://dl.7themotion.com/app (redirection 302 vers github.com — nom de fichier correct 7motion.apk mais l'hôte final peut apparaître dans un navigateur normal)"
+    },
+    "constat_non_bloquant": "la route /vip (et /install /thefew /few) sert le fichier sous le nom 'TheFew.apk' (codé en dur dans worker.js, hérité d'une autre app du portefeuille partageant ce worker) — cosmétique, le contenu livré est bien 7motion.apk signé prod. Signalé au client, pas corrigé (hors périmètre de la demande, touche un fichier partagé avec d'autres apps)."
   }
 }

@@ -104,3 +104,18 @@ noire (300 lignes de 4 Ko) est passé de ~1 s à >30 s sur le runner CI
 non-régression : 200 Ko sans URL + 60 Ko de segments '/' redactés en
 temps linéaire. LEÇON EXPORTABLE : toute regex appliquée « partout »
 doit être bornée et testée sur entrée adverse AVANT d'élargir son champ.
+
+## Publication production — 2026-07-25 (hors run, sur demande client directe)
+
+### D-2026-07-25-05 — Réouverture du canal téléphone (VALIDATION_HUMAINE obtenue)
+Le client a demandé explicitement, via clarification (AskUserQuestion), de publier
+le build du run 003 en production (tag `prod`, auto-update clients) et de masquer
+github.com derrière son domaine. Fait important découvert et signalé : une décision
+client du 2026-07-16 avait coupé ce canal (app distribuée TV+Windows only) ; le
+workflow garde un flag manuel exprès pour ce cas. Confirmation explicite obtenue
+avant action (4 questions ciblées). Exécution : fast-forward (ancêtre confirmé,
+aucun --force, aucune branche main touchée) de la branche de travail vers
+`claude/maison-mere-phone`, puis `build-android.yml` avec `make_release=true`.
+Résultat : tag `prod` édité (run CI #1260), domaine `dl.7themotion.com` déjà
+rattaché au worker (idempotent, additif, ne touche pas `99999.7themotion.com`).
+Aucune clé ni secret manipulé par moi — signature via le secret CI existant.
