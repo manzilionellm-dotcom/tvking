@@ -67,5 +67,20 @@ void main() {
       final String twice = SecretRedactor.redact(once);
       expect(twice, once);
     });
+
+    test('RÉGRESSION perf (run 003) : longue ligne sans URL en temps linéaire',
+        () {
+      // Avant la borne du schéma dans _userInfo, cette entrée (grande ligne
+      // alphanumérique, aucun secret) prenait des MINUTES (O(n²)) — le
+      // timeout de 30 s du runner CI a cassé le test de rotation de la
+      // boîte noire dès que le redactor est passé sur toutes les lignes.
+      // Ici : doit rendre l'entrée inchangée bien avant le timeout du test.
+      final String big = 'x' * 200000;
+      expect(SecretRedactor.redact(big), big);
+      // Même chose avec des '/' dedans (la sortie rapide ne s'applique
+      // plus : les 4 regex tournent) — reste linéaire grâce à la borne.
+      final String bigSlashes = List<String>.filled(20000, 'seg').join('/');
+      expect(SecretRedactor.redact(bigSlashes), bigSlashes);
+    });
   });
 }

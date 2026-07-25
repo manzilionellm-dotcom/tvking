@@ -93,3 +93,14 @@ appareil. `flutter create` régénérant le manifeste à chaque build CI,
 l'attribut est injecté par une étape sed idempotente dans build-android.yml
 (même pattern que cleartext/INTERNET). Périmètre : build-android uniquement
 (la TV a son propre workflow, hors périmètre par consigne client).
+
+### D-2026-07-25-04 — Regex du redactor bornée (leçon de la CI rouge)
+Le point d'étranglement S9 a mis SecretRedactor sur le chemin de toutes
+les lignes de log ; sa regex _userInfo (schéma non borné + backtracking)
+était O(n²) sur les longues lignes sans URL → le test de rotation boîte
+noire (300 lignes de 4 Ko) est passé de ~1 s à >30 s sur le runner CI
+(timeout). Correctif : schéma borné {0,31} (aucun schéma réel ne dépasse
+32) + sortie rapide quand la ligne ne contient ni '/' ni '='. Test de
+non-régression : 200 Ko sans URL + 60 Ko de segments '/' redactés en
+temps linéaire. LEÇON EXPORTABLE : toute regex appliquée « partout »
+doit être bornée et testée sur entrée adverse AVANT d'élargir son champ.

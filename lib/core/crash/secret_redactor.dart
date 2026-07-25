@@ -24,8 +24,13 @@ class SecretRedactor {
   static const String _mask = '•••';
 
   // userinfo dans une URL : scheme://USER:PASS@host → scheme://•••:•••@host
+  // PERF (run 003) : le quantificateur du schéma est BORNÉ à 32 caractères.
+  // Sans borne, sur une longue ligne sans URL, le moteur avalait le reste de
+  // la ligne à CHAQUE position puis backtrackait → O(n²) (timeout CI constaté
+  // sur des lignes de 4 Ko dès que le redactor est passé sur le chemin de
+  // toutes les lignes de log). Aucun schéma d'URI réel ne dépasse 32.
   static final RegExp _userInfo =
-      RegExp(r'([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/@\s:]+:[^/@\s]+@');
+      RegExp(r'([a-zA-Z][a-zA-Z0-9+.\-]{0,31}://)[^/@\s:]+:[^/@\s]+@');
 
   // Paramètres de query sensibles : ?username=U&password=P&token=T …
   // On garde le nom du paramètre, on masque sa valeur (jusqu'au prochain
@@ -52,6 +57,11 @@ class SecretRedactor {
   /// d'imprévu). Une entrée sans secret ressort inchangée.
   static String redact(String text) {
     if (text.isEmpty) return text;
+    // Sortie rapide : tous les motifs sensibles exigent un '/' (chemin ou
+    // scheme://) ou un '=' (paramètre de query). Une ligne qui n'a ni l'un
+    // ni l'autre ne peut rien contenir à caviarder — on évite 4 passes
+    // regex sur le cas de très loin le plus fréquent (ligne de log banale).
+    if (!text.contains('/') && !text.contains('=')) return text;
     try {
       String out = text.replaceAllMapped(
           _userInfo, (Match m) => '${m.group(1)}$_mask:$_mask@');

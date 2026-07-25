@@ -26,6 +26,7 @@ inchangé : MOBILE uniquement, lib/features/tv/ + main_tv/tizen/windows intouch�
       adb/cloud). Même style que les patches réseau existants. Vérification
       d'exécution : run build-android déclenché sur cette branche (voir state).
 - [x] QA : flutter analyze → 0 erreur, 0 warning hors features/tv (294 infos = baseline)
-- [x] QA : flutter test → 663/663 verts (659 baseline + 4 nouveaux), exit 0
+- [x] QA : flutter test → 664/664 verts (659 baseline + 5 nouveaux), exit 0
+- [x] Incident CI (attempt 1) : timeout 30 s du test de rotation — regex _userInfo O(n²) exposée par le choke point → bornée {0,31} + sortie rapide + test de non-régression perf. QA relancée verte.
 - [x] Mémoire .company/ mise à jour (state, decisions, roadmap, backlog)
 - [x] Commit + push branche désignée + RAPPORT FINAL
