@@ -76,6 +76,7 @@ export default async function TitlePage({ params }: PageProps<"/title/[slug]">) 
             {item.live === "upcoming" ? (
               <button
                 data-focusable
+                data-focus-default
                 className="focusable rounded-[var(--radius)] px-[1.6rem] py-[0.8rem] text-[1.25rem] font-bold text-black shadow-[0_0.6rem_1.6rem_rgba(227,185,107,0.35)]"
                 style={{ background: "var(--gold-grad)" }}
               >
@@ -85,6 +86,7 @@ export default async function TitlePage({ params }: PageProps<"/title/[slug]">) 
               <Link
                 href={`/watch/${item.id}`}
                 data-focusable
+                data-focus-default
                 className="focusable flex items-center gap-[0.6rem] rounded-[var(--radius)] px-[1.6rem] py-[0.8rem] text-[1.25rem] font-bold text-black shadow-[0_0.6rem_1.6rem_rgba(227,185,107,0.35)]"
                 style={{ background: "var(--gold-grad)" }}
               >

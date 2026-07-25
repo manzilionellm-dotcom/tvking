@@ -18,6 +18,7 @@ export default function MediaCard({ item }: { item: MediaItem }) {
     <Link
       href={`/title/${item.id}`}
       data-focusable
+      data-focus-key={`card:${item.id}`}
       className="card focusable group relative block shrink-0 cursor-pointer text-left"
       style={{ width: dims.w }}
       aria-label={item.title}
