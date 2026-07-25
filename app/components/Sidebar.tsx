@@ -91,6 +91,7 @@ export default function Sidebar() {
             key={item.href}
             href={item.href}
             data-focusable
+            data-focus-key={`nav:${item.href}`}
             className={`focusable relative flex items-center gap-[1rem] rounded-[var(--radius)] px-[0.7rem] py-[0.7rem] ${
               active ? "text-[var(--gold-strong)]" : "text-[var(--text-medium)]"
             }`}

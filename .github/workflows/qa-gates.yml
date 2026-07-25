@@ -1,0 +1,42 @@
+# ============================================================================
+#  qa-gates.yml — CI de l'app TV web (Next.js).
+#
+#  La porte de merge : lint + typecheck + tests + build, via scripts/qa-gates.sh
+#  (le même script qu'en local — une seule définition du « vert »).
+#
+#  Périmètre : le code web de ce repo uniquement. Les workflows APK
+#  (publish-cinema-test / publish-phone-test / publish-master) ne sont pas
+#  concernés et restent inchangés.
+# ============================================================================
+name: QA gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: qa-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    name: lint · typecheck · tests · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install (lockfile strict)
+        run: npm ci
+
+      - name: QA gates
+        run: bash scripts/qa-gates.sh

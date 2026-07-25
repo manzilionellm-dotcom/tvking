@@ -1,0 +1,11 @@
+# RUN-001 — MODE T (transformation), périmètre TV BOX UNIQUEMENT
+# Mobile (workflows 7motion téléphone/console maître) : INTERDIT DE TOUCHER (instruction humaine).
+[x] T0 RECON — baseline mesurée (lint 0 erreur, tsc 0 erreur, build vert 115 pages, 0 test, 0 CI de PR)
+[x] B1 Bootstrap mémoire .company/ + journal + commit checkpoint
+[x] B2 CI qa-gates (lint + typecheck + tests + build) sur PR — app TV web seulement
+[x] T5 Tests — vitest + extraction logique pure (spatial, resume, data invariants)
+[x] S7a Focus scope lecteur (le D-pad ne doit jamais sortir de l'overlay) + touche BACK + touches media
+[x] S7b Restauration du focus au retour de navigation (mémoire par route)
+[x] S2 Reprise de lecture persistée (stockage versionné v1)
+[x] QA finale — lint + tsc + tests + build verts (qa-gates.sh exit 0)
+[ ] Push + PR + RAPPORT FINAL
