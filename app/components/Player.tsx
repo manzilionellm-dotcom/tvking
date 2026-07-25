@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { MediaItem } from "../lib/data";
+import { loadResume, positionOf, saveResume, withPosition } from "../lib/resume";
 
 /*
  * Mock player. The transport and the "À suivre" (Up Next) panel implement the
@@ -16,6 +17,13 @@ import type { MediaItem } from "../lib/data";
 
 const DURATION = 40; // seconds (mock)
 const UPNEXT_AT = 30; // show Up Next in the last 10s
+
+/* TV remotes surface "back" under several key names depending on the platform
+   (Android TV WebView, Tizen, WebOS, desktop). All of them leave the player. */
+const BACK_KEYS = new Set(["Escape", "Backspace", "GoBack", "BrowserBack", "XF86Back"]);
+
+/* The resume store only changes through this player, never underneath it. */
+const noSubscription = () => () => {};
 
 function fmt(s: number) {
   const m = Math.floor(s / 60);
@@ -34,6 +42,27 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
   useEffect(() => {
     reduceRef.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   }, []);
+
+  // A previously saved position wins over the mock progress hint. Read via
+  // useSyncExternalStore (server snapshot: null) so hydration stays consistent,
+  // then seeded exactly once as a render-phase state adjustment.
+  const savedPos = useSyncExternalStore(
+    noSubscription,
+    () => positionOf(loadResume(), item.id),
+    () => null
+  );
+  const [seeded, setSeeded] = useState(false);
+  if (savedPos !== null && !seeded) {
+    setSeeded(true);
+    setPos(Math.min(Math.floor(savedPos), DURATION));
+  }
+
+  // Persist the playhead every 5s and at the end (where the entry is dropped —
+  // a finished programme must not reappear in "Reprendre").
+  useEffect(() => {
+    if (pos === 0 || (pos % 5 !== 0 && pos < DURATION)) return;
+    saveResume(withPosition(loadResume(), item.id, pos, DURATION, Date.now()));
+  }, [pos, item.id]);
 
   // Advance the mock playhead one tick at a time; stops itself at the end.
   useEffect(() => {
@@ -54,10 +83,44 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
   const atEnd = pos >= DURATION;
 
   const toggle = useCallback(() => setPlaying((p) => !p), []);
+  const exit = useCallback(() => router.push(`/title/${item.id}`), [router, item.id]);
 
-  // Space / Enter toggles play (k is the YouTube convention).
+  // Remote-control keys: BACK leaves the player, media keys drive transport
+  // directly (they work whatever element holds the focus). Space/k still
+  // toggle when nothing is focused (YouTube convention).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (BACK_KEYS.has(e.key)) {
+        e.preventDefault();
+        exit();
+        return;
+      }
+      switch (e.key) {
+        case "MediaPlayPause":
+          e.preventDefault();
+          toggle();
+          return;
+        case "MediaPlay":
+          e.preventDefault();
+          setPlaying(true);
+          return;
+        case "MediaPause":
+          e.preventDefault();
+          setPlaying(false);
+          return;
+        case "MediaStop":
+          e.preventDefault();
+          exit();
+          return;
+        case "MediaRewind":
+          e.preventDefault();
+          setPos((p) => Math.max(0, p - 10));
+          return;
+        case "MediaFastForward":
+          e.preventDefault();
+          setPos((p) => Math.min(DURATION, p + 10));
+          return;
+      }
       if ((e.key === " " || e.key === "k") && document.activeElement === document.body) {
         e.preventDefault();
         toggle();
@@ -65,13 +128,15 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggle]);
+  }, [toggle, exit]);
 
   const showUpNext = next && pos >= UPNEXT_AT && !autoCancelled;
   const countdown = Math.max(0, DURATION - pos);
 
   return (
-    <div className="fixed inset-0 z-[60] overflow-hidden bg-black">
+    // data-focus-scope confines D-pad navigation to the player while it covers
+    // the app — focus must never land on the sidebar hidden underneath.
+    <div data-focus-scope className="fixed inset-0 z-[60] overflow-hidden bg-black">
       {/* "Video" surface */}
       <div
         className="absolute inset-0"
@@ -155,6 +220,7 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
           </button>
           <button
             data-focusable
+            data-focus-default
             onClick={toggle}
             className="focusable flex h-[3.4rem] w-[3.4rem] items-center justify-center rounded-full text-black"
             style={{ background: "var(--gold-grad)" }}
