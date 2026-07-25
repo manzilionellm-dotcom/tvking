@@ -8,8 +8,13 @@
     "date": "2026-07-25",
     "lint_errors": 0,
     "tsc_errors": 0,
-    "build": "vert (115 pages statiques)",
-    "tests": "0 → cible: suite verte au run-001",
-    "note": "budgets perf web (First Load JS par route) relevés en fin de run dans data/perf/"
-  }
+    "build": "vert (115 pages statiques, Next 16.2.11)",
+    "tests": "21 tests verts (3 suites) + smoke E2E 15/15",
+    "note": "budgets perf web (First Load JS par route) relev\u00e9s en fin de run dans data/perf/",
+    "budgets": {
+      "max_chunk_js_ko": 224,
+      "next_dir_mo": 24
+    }
+  },
+  "deps_note": "next 16.2.4 -> 16.2.11 (avis de s\u00e9curit\u00e9 next corrig\u00e9s); 12 highs restants = toolchain dev (eslint/postcss/sharp), fix = majeurs breaking -> backlog"
 }
