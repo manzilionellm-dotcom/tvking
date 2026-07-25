@@ -1,0 +1,123 @@
+# ============================================================================
+#  add-tv-domain.yml — Branche tv.7themotion.com sur l'app TV (hébergée Vercel).
+#
+#  But : que la TV s'ouvre sur https://tv.7themotion.com au lieu d'une URL
+#  *.vercel.app. Le workflow pose UNIQUEMENT l'enregistrement DNS côté
+#  Cloudflare ; l'ajout du domaine dans le projet Vercel se fait côté Vercel
+#  (Project → Settings → Domains), il n'existe pas d'API Cloudflare pour ça.
+#
+#  Même esprit que add-download-domain.yml (côté APK) : ADDITIF, IDEMPOTENT,
+#  et incapable de toucher autre chose.
+#    - refuse tout hôte qui n'est pas un sous-domaine de la zone visée ;
+#    - refuse la liste noire des hôtes déjà en service (99999, dl, @, www) ;
+#    - si l'enregistrement existe déjà et pointe au bon endroit → ne fait rien ;
+#    - `proxied: false` (nuage gris) : Vercel doit voir la vraie requête pour
+#      émettre son certificat, un proxy Cloudflare devant casse l'émission.
+#
+#  Lancer : Actions → « Add TV domain » → Run workflow.
+#  Réutilise le secret CLOUDFLARE_API_TOKEN déjà en place. Le token doit avoir
+#  la permission Zone → DNS → Edit sur 7themotion.com ; sinon le workflow le
+#  dit clairement et ne modifie rien.
+# ============================================================================
+
+name: Add TV domain
+
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        description: 'Sous-domaine à brancher sur l''app TV'
+        required: true
+        default: 'tv.7themotion.com'
+        type: string
+      target:
+        description: 'Cible CNAME (donnée par Vercel : cname.vercel-dns.com)'
+        required: true
+        default: 'cname.vercel-dns.com'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  add-tv-domain:
+    name: CNAME du domaine TV
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CF_API: 'https://api.cloudflare.com/client/v4'
+      TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      HOST: ${{ inputs.host }}
+      TARGET: ${{ inputs.target }}
+      ZONE_NAME: '7themotion.com'
+    steps:
+      - name: Pose (ou vérifie) le CNAME
+        run: |
+          set -u
+          AUTH_H="Authorization: Bearer $TOKEN"
+          JSON_H="Content-Type: application/json"
+
+          # ---- Garde-fou 1 : l'hôte doit appartenir à la zone -----------------
+          case "$HOST" in
+            *".$ZONE_NAME") : ;;
+            *) echo "❌ $HOST n'est pas un sous-domaine de $ZONE_NAME. Rien fait."; exit 1 ;;
+          esac
+
+          # ---- Garde-fou 2 : hôtes déjà en service, intouchables --------------
+          for p in "99999.$ZONE_NAME" "dl.$ZONE_NAME" "$ZONE_NAME" "www.$ZONE_NAME"; do
+            if [ "$HOST" = "$p" ]; then
+              echo "🔒 $HOST est déjà en service (APK / panel). REFUSÉ."; exit 1
+            fi
+          done
+
+          echo "== 1) Zone $ZONE_NAME =="
+          ZONES=$(curl -s -H "$AUTH_H" "$CF_API/zones?name=$ZONE_NAME")
+          ZONE=$(echo "$ZONES" | jq -r '.result[0].id // empty')
+          if [ -z "$ZONE" ]; then
+            echo "❌ Zone introuvable avec ce token."
+            echo "$ZONES" | jq -r '.errors[]?.message' 2>/dev/null
+            echo "   → il manque probablement la permission Zone:Read / DNS:Edit"
+            echo "     sur $ZONE_NAME. Aucune ressource n'a été modifiée."
+            exit 1
+          fi
+          echo "zone_id=$ZONE"
+
+          echo "== 2) Enregistrement existant pour $HOST ? =="
+          REC=$(curl -s -H "$AUTH_H" "$CF_API/zones/$ZONE/dns_records?name=$HOST")
+          ID=$(echo "$REC" | jq -r '.result[0].id // empty')
+          CUR=$(echo "$REC" | jq -r '.result[0].content // empty')
+          CUR_TYPE=$(echo "$REC" | jq -r '.result[0].type // empty')
+          PROXIED=$(echo "$REC" | jq -r '.result[0].proxied // empty')
+
+          BODY=$(jq -n --arg h "$HOST" --arg c "$TARGET" \
+            '{type:"CNAME", name:$h, content:$c, ttl:1, proxied:false,
+              comment:"App TV (Vercel) — posé par add-tv-domain.yml"}')
+
+          if [ -n "$ID" ]; then
+            if [ "$CUR" = "$TARGET" ] && [ "$CUR_TYPE" = "CNAME" ] && [ "$PROXIED" = "false" ]; then
+              echo "✅ $HOST pointe déjà sur $TARGET (DNS only) — rien à faire."
+              echo "   https://$HOST"
+              exit 0
+            fi
+            echo "ℹ️ $HOST existe ($CUR_TYPE → $CUR, proxied=$PROXIED) — on le repointe."
+            OUT=$(curl -s -H "$AUTH_H" -H "$JSON_H" -X PUT \
+              "$CF_API/zones/$ZONE/dns_records/$ID" --data "$BODY")
+          else
+            echo "== 3) Création du CNAME $HOST → $TARGET =="
+            OUT=$(curl -s -H "$AUTH_H" -H "$JSON_H" -X POST \
+              "$CF_API/zones/$ZONE/dns_records" --data "$BODY")
+          fi
+
+          echo "$OUT" | jq '{success, errors, result:{name:.result.name, type:.result.type, content:.result.content, proxied:.result.proxied}}' 2>/dev/null || echo "$OUT"
+
+          if [ "$(echo "$OUT" | jq -r '.success')" = "true" ]; then
+            echo "✅ DNS posé : $HOST → $TARGET (DNS only)."
+            echo "   Côté Vercel : Project → Settings → Domains → Add → $HOST"
+            echo "   (le certificat est émis dans la minute qui suit)"
+            exit 0
+          fi
+
+          echo "❌ Échec. Aucune autre ressource n'a été modifiée."
+          echo "   À la main : dash.cloudflare.com → $ZONE_NAME → DNS → Add record"
+          echo "   CNAME | $HOST | $TARGET | Proxy status: DNS only"
+          exit 1
