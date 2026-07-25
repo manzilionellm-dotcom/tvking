@@ -1,0 +1,15 @@
+# Run 003 — USINE APP v3, périmètre MOBILE — 2026-07-25
+
+Branche : claude/usine-app-v3-iptv-mjbjts (reprise de la lignée v2, commit 239526f)
+Programme : migration v2→v3 (mêmes lois, modules S/D/V explicites) — périmètre
+inchangé : MOBILE uniquement, lib/features/tv/ + main_tv/tizen/windows intouchés.
+
+- [ ] C0 Reprise : verrou de run, meta.json migrée v3, journal ouvert, commit départ
+- [ ] Baseline run 003 : flutter analyze (attendu 0 err / 0 warn hors tv) + flutter test (attendu 659 verts)
+- [ ] Recon T2 sécurité mobile : scrubbing PII des logs (SecretRedactor : couverture réelle), FLAG_SECURE, backup rules, tokens au repos
+- [ ] Sprint S4/B2 : watchdogs anti-zombie manquants du lecteur mobile (écran noir / spinner infini) télémétrés — domaine pur + tests d'abord
+- [ ] Correctifs T2 retenus (bornés, avec tests)
+- [ ] QA : flutter analyze → 0 erreur, 0 warning hors features/tv
+- [ ] QA : flutter test → suite complète verte
+- [ ] Mémoire .company/ mise à jour (state, decisions, roadmap, backlog)
+- [ ] Commit + push branche désignée + RAPPORT FINAL

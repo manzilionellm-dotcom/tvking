@@ -1,12 +1,17 @@
 {
   "schema_version": 1,
-  "programme": "USINE APP v2 — périmètre MOBILE uniquement",
+  "programme": "USINE APP v3 — périmètre MOBILE uniquement (migration depuis v2, mémoire conservée)",
   "app": {
     "nom": "7 MOTION",
     "codename": "tv_king",
     "app_id_source": "android_overlay (à confirmer au prochain run avec accès build)",
     "entree_mobile": "lib/main.dart",
-    "entrees_hors_perimetre": ["lib/main_tv.dart", "lib/main_tizen.dart", "lib/main_windows.dart", "lib/main_prive.dart"],
+    "entrees_hors_perimetre": [
+      "lib/main_tv.dart",
+      "lib/main_tizen.dart",
+      "lib/main_windows.dart",
+      "lib/main_prive.dart"
+    ],
     "framework": "Flutter (stable), Dart ^3.5.0",
     "lecteur": "media_kit (libmpv) — mobile ; le module lib/features/tv/ est HORS périmètre de ce programme",
     "distribution": "APK direct via GitHub Releases (tags prod/latest, phone-test), pas de Play Store constaté"
@@ -19,6 +24,7 @@
   "transformation_done": false,
   "bootstrap_done_partiel": true,
   "cree_le": "2026-07-24",
-  "branche_travail": "claude/usine-app-v2-mobile-e3ungl",
-  "branche_reference_phone": "claude/maison-mere-phone"
+  "branche_travail": "claude/usine-app-v3-iptv-mjbjts",
+  "branche_reference_phone": "claude/maison-mere-phone",
+  "migre_v3_le": "2026-07-25"
 }
