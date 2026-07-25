@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "run": "run-001",
+  "mode": "T",
+  "rollout": null,
+  "experiments": null,
+  "baselines": {
+    "date": "2026-07-25",
+    "lint_errors": 0,
+    "tsc_errors": 0,
+    "build": "vert (115 pages statiques)",
+    "tests": "0 → cible: suite verte au run-001",
+    "note": "budgets perf web (First Load JS par route) relevés en fin de run dans data/perf/"
+  }
+}

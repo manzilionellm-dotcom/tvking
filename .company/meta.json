@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "app_id": "tvking-tv",
+  "detected_from": "git remote (manzilionellm-dotcom/tvking) + repo content (Next.js 10-foot TV UI)",
+  "scope": "TV box / 10-foot UI uniquement — le mobile (workflows 7motion phone/master) est HORS PÉRIMÈTRE sur instruction humaine",
+  "stack": {
+    "framework": "Next.js 16.2.4 (App Router, SSG)",
+    "react": "19.2.4",
+    "styling": "Tailwind CSS 4",
+    "typescript": "5.x",
+    "lint": "eslint 9 + eslint-config-next"
+  },
+  "transformation_done": false,
+  "created": "2026-07-25"
+}
