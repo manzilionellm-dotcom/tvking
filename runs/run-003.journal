@@ -30,3 +30,10 @@ inchangé : MOBILE uniquement, lib/features/tv/ + main_tv/tizen/windows intouch�
 - [x] Incident CI (attempt 1) : timeout 30 s du test de rotation — regex _userInfo O(n²) exposée par le choke point → bornée {0,31} + sortie rapide + test de non-régression perf. QA relancée verte.
 - [x] Mémoire .company/ mise à jour (state, decisions, roadmap, backlog)
 - [x] Commit + push branche désignée + RAPPORT FINAL
+
+## Clôture (2026-07-25, après réveil programmé)
+CI sur 635b8d1 : Quality ✓ · Tests ✓ · Build Android ✓ (étape privacy
+allowBackup exécutée verte ; APK/AAB produits, aucune publication) ·
+DeFew TV ✓ · Tizen ✓ · Windows ✗ (FFmpegKit archive — infra desktop
+préexistante, hors périmètre mobile, consignée au registre de risques).
+Fin de run : VERTE.

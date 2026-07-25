@@ -80,6 +80,13 @@
       "analyze": "0 err / 0 warn / 294 infos (= baseline, analyseur 3.38.7)",
       "tests": "663/663 verts (+4 nouveaux)"
     },
-    "verification_ci_en_attente": "run build-android sur la branche pour constater '✓ allowBackup' dans les logs de l'étape privacy — à évaluer au prochain run si non constaté ce run"
+    "ci": {
+      "commit": "635b8d1",
+      "quality": "success (run 30158788075)",
+      "tests": "success (run 30158788076)",
+      "build_android": "success (run 30158788079) — étape 'Patch AndroidManifest for privacy (allowBackup=false)' exécutée et verte ; APK+AAB produits, publications skipped (rien diffusé)",
+      "hors_perimetre": "Build DeFew TV: success · Tizen: success · Windows: failure (Failed to extract FFmpegKit archive — infra du build desktop, sans lien avec ce run, hors périmètre mobile)",
+      "date": "2026-07-25"
+    }
   }
 }
